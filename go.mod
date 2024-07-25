@@ -1,4 +1,4 @@
-module github.com/cccteam/cccutils
+module github.com/cccteam/ccc
 
 go 1.22.5
 
