@@ -1,4 +1,4 @@
-package cccutils
+package ccc
 
 import (
 	"github.com/go-playground/errors/v5"

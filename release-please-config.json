@@ -23,7 +23,7 @@
   ],
   "packages": {
     ".": {
-      "package-name": "cccutils"
+      "package-name": "ccc"
     }
   }
 }

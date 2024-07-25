@@ -1,4 +1,4 @@
-package cccutils
+package ccc
 
 import (
 	"bytes"
