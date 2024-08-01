@@ -1,6 +1,8 @@
 package ccc
 
 import (
+	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/gofrs/uuid"
@@ -14,6 +16,47 @@ func Must[T any](value T, err error) T {
 	}
 
 	return value
+}
+
+func TestMust_string(t *testing.T) {
+	t.Parallel()
+
+	type args struct {
+		value string
+		err   error
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      string
+		wantPanic bool
+	}{
+		{
+			name: "No error",
+			args: args{value: "test", err: nil},
+			want: "test",
+		},
+		{
+			name:      "With error",
+			args:      args{value: "test", err: errors.New("test")},
+			wantPanic: true,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			defer func() {
+				if r := recover(); (r != nil) != tt.wantPanic {
+					t.Errorf("Must() panic = %v, wantPanic %v", r, tt.wantPanic)
+				}
+			}()
+
+			if got := Must(tt.args.value, tt.args.err); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Must() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestNewUUID(t *testing.T) {
