@@ -63,16 +63,6 @@ func (u *UUID) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// UUIDMustParse parses a string into a UUID, panicking if the string is not a valid UUID.
-func UUIDMustParse(s string) UUID {
-	uid, err := UUIDFromString(s)
-	if err != nil {
-		panic(err)
-	}
-
-	return uid
-}
-
 type NullUUID struct {
 	UUID
 	Valid bool
