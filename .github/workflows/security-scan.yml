@@ -3,8 +3,6 @@ name: Security Scan
 on:
   schedule:
     - cron: "0 14 * * *" # Daily at 8:00 AM CDT
-  pull_request:
-    types: [opened, synchronize, reopened]
 
 jobs:
   security_scan:
