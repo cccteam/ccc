@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/cccteam/ccc/compare/v0.1.0...v0.2.0) (2024-08-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* Removed function `UUIDMustParse()` ([#12](https://github.com/cccteam/ccc/issues/12))
+
+### Features
+
+* Add generic implementation of Must() ([#12](https://github.com/cccteam/ccc/issues/12)) ([29510d5](https://github.com/cccteam/ccc/commit/29510d5740d6dcce32ab39222beb0ed31db805f8))
+* Add security scanner and License ([#11](https://github.com/cccteam/ccc/issues/11)) ([960e8f7](https://github.com/cccteam/ccc/commit/960e8f71f1ed31d0f3105d075ef8ba0fd20a01b8))
+* Add unit tests ([#9](https://github.com/cccteam/ccc/issues/9)) ([fe68c52](https://github.com/cccteam/ccc/commit/fe68c52af4c1c23d25262a640f67e5c165c3c37e))
+* Removed function `UUIDMustParse()` ([#12](https://github.com/cccteam/ccc/issues/12)) ([29510d5](https://github.com/cccteam/ccc/commit/29510d5740d6dcce32ab39222beb0ed31db805f8))
+
 ## 0.1.0 (2024-07-25)
 
 
