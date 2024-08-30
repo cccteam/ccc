@@ -1,6 +1,7 @@
 // Attribution: robbiet480's sns.go repo (https://github.com/robbiet480/go.sns) was used as the starting point for this file under the MIT License.
 
-package ccc
+// Package sns provides AWS SNS related functionality.
+package sns
 
 import (
 	"bytes"
@@ -8,17 +9,17 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"reflect"
 	"regexp"
 	"time"
 
 	"github.com/go-playground/errors/v5"
 )
 
-type SNSPayload struct {
+type Payload struct {
 	Message          string `json:"Message"`
 	MessageID        string `json:"MessageId"`
 	Signature        string `json:"Signature"`
@@ -33,16 +34,16 @@ type SNSPayload struct {
 	UnsubscribeURL   string `json:"UnsubscribeURL"`
 }
 
-var snsHostPattern = regexp.MustCompile(`^sns\.[a-zA-Z0-9\-]{3,}\.amazonaws\.com(\.cn)?$`)
+var hostPattern = regexp.MustCompile(`^sns\.[a-zA-Z0-9\-]{3,}\.amazonaws\.com(\.cn)?$`)
 
 // VerifyAuthenticity verifies that the payload is authentic (i.e., that it was sent by AWS SNS)
-func (s *SNSPayload) VerifyAuthenticity(ctx context.Context) error {
-	payloadSignature, err := base64.StdEncoding.DecodeString(s.Signature)
+func (p *Payload) VerifyAuthenticity(ctx context.Context) error {
+	payloadSignature, err := base64.StdEncoding.DecodeString(p.Signature)
 	if err != nil {
 		return errors.Wrap(err, "base64.StdEncoding.DecodeString()")
 	}
 
-	certURL, err := url.Parse(s.SigningCertURL)
+	certURL, err := url.Parse(p.SigningCertURL)
 	if err != nil {
 		return errors.Wrap(err, "url.Parse()")
 	}
@@ -51,7 +52,7 @@ func (s *SNSPayload) VerifyAuthenticity(ctx context.Context) error {
 		return errors.New("signing certificate URL is not https")
 	}
 
-	if !snsHostPattern.MatchString(certURL.Host) {
+	if !hostPattern.MatchString(certURL.Host) {
 		return errors.New("signing certificate URL does not match SNS host pattern")
 	}
 
@@ -82,36 +83,40 @@ func (s *SNSPayload) VerifyAuthenticity(ctx context.Context) error {
 		return errors.Wrap(err, "x509.ParseCertificate()")
 	}
 
-	if err := parsedCert.CheckSignature(s.signatureAlgorithm(), s.signaturePayload(), payloadSignature); err != nil {
+	if err := parsedCert.CheckSignature(p.signatureAlgorithm(), p.signaturePayload(), payloadSignature); err != nil {
 		return errors.Wrap(err, "parsedCert.CheckSignature()")
 	}
 
 	return nil
 }
 
-func (s *SNSPayload) signaturePayload() []byte {
+func (p *Payload) signaturePayload() []byte {
 	var signature bytes.Buffer
-	reflectedPayload := reflect.Indirect(reflect.ValueOf(s))
-	for _, key := range snsSignatureKeys() {
-		field := reflectedPayload.FieldByName(key)
-		value := field.String()
-		if field.IsValid() && value != "" {
-			signature.WriteString(key + "\n")
-			signature.WriteString(value + "\n")
+
+	signatureMap := map[string]string{
+		"Message":      p.Message,
+		"MessageId":    p.MessageID,
+		"Subject":      p.Subject,
+		"SubscribeURL": p.SubscribeURL,
+		"Timestamp":    p.Timestamp,
+		"Token":        p.Token,
+		"TopicArn":     p.TopicArn,
+		"Type":         p.Type,
+	}
+
+	for key, value := range signatureMap {
+		if value != "" {
+			signature.WriteString(fmt.Sprintf("%s\n%s\n", key, value))
 		}
 	}
 
 	return signature.Bytes()
 }
 
-func (s *SNSPayload) signatureAlgorithm() x509.SignatureAlgorithm {
-	if s.SignatureVersion == "2" {
+func (p *Payload) signatureAlgorithm() x509.SignatureAlgorithm {
+	if p.SignatureVersion == "2" {
 		return x509.SHA256WithRSA
 	}
 
 	return x509.SHA1WithRSA
-}
-
-func snsSignatureKeys() []string {
-	return []string{"Message", "MessageId", "Subject", "SubscribeURL", "Timestamp", "Token", "TopicArn", "Type"}
 }
