@@ -162,6 +162,66 @@ issues:
         - gochecknoinits
         - lll
 
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'Message' want 'message'
+
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'MessageId' want 'messageId'
+
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'Signature' want 'signature'
+
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'SignatureVersion' want 'SignatureVersion'
+
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'SigningCertURL' want 'signingCertURL'
+
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'SubscribeURL' want 'subscribeURL'
+
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'Subject' want 'subject'
+
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'Timestamp' want 'timestamp'
+
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'Token' want 'token'
+
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'TopicArn' want 'topicArn'
+
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'Type' want 'type'
+
+    - path: sns\.go
+      linters:
+        - tagliatelle
+      text: got 'UnsubscribeURL' want 'unsubscribeURL'
+
   include:
     - EXC0002
     - EXC0005
