@@ -44,9 +44,15 @@ func New() *Client {
 }
 
 // VerifyAuthenticity verifies that the body of the request is authentic (i.e., that it was sent by AWS SNS) and returns the payload.
-func (c *Client) VerifyAuthenticity(ctx context.Context, reqBody []byte) (*Payload, error) {
+func (c *Client) VerifyAuthenticity(ctx context.Context, reqBody io.Reader) (*Payload, error) {
 	var payload Payload
-	if err := json.Unmarshal(reqBody, &payload); err != nil {
+
+	bodyBytes, err := io.ReadAll(reqBody)
+	if err != nil {
+		return &payload, errors.Wrap(err, "io.ReadAll()")
+	}
+
+	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
 		return &payload, errors.Wrap(err, "json.Unmarshal()")
 	}
 
