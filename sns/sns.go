@@ -105,20 +105,23 @@ func (c *Client) VerifyAuthenticity(ctx context.Context, reqBody []byte) (*Paylo
 func (p *Payload) signaturePayload() []byte {
 	var signature bytes.Buffer
 
-	signatureMap := map[string]string{
-		"Message":      p.Message,
-		"MessageId":    p.MessageID,
-		"Subject":      p.Subject,
-		"SubscribeURL": p.SubscribeURL,
-		"Timestamp":    p.Timestamp,
-		"Token":        p.Token,
-		"TopicArn":     p.TopicArn,
-		"Type":         p.Type,
+	signatureFields := []struct {
+		key   string
+		value string
+	}{
+		{"Message", p.Message},
+		{"MessageId", p.MessageID},
+		{"Subject", p.Subject},
+		{"SubscribeURL", p.SubscribeURL},
+		{"Timestamp", p.Timestamp},
+		{"Token", p.Token},
+		{"TopicArn", p.TopicArn},
+		{"Type", p.Type},
 	}
 
-	for key, value := range signatureMap {
-		if value != "" {
-			signature.WriteString(fmt.Sprintf("%s\n%s\n", key, value))
+	for _, s := range signatureFields {
+		if s.value != "" {
+			signature.WriteString(fmt.Sprintf("%s\n%s\n", s.key, s.value))
 		}
 	}
 
