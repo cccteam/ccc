@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -18,6 +19,8 @@ import (
 
 	"github.com/go-playground/errors/v5"
 )
+
+var hostPattern = regexp.MustCompile(`^sns\.[a-zA-Z0-9\-]{3,}\.amazonaws\.com(\.cn)?$`)
 
 type Payload struct {
 	Message          string `json:"Message"`
@@ -34,60 +37,69 @@ type Payload struct {
 	UnsubscribeURL   string `json:"UnsubscribeURL"`
 }
 
-var hostPattern = regexp.MustCompile(`^sns\.[a-zA-Z0-9\-]{3,}\.amazonaws\.com(\.cn)?$`)
+type Client struct{}
 
-// VerifyAuthenticity verifies that the payload is authentic (i.e., that it was sent by AWS SNS)
-func (p *Payload) VerifyAuthenticity(ctx context.Context) error {
-	payloadSignature, err := base64.StdEncoding.DecodeString(p.Signature)
-	if err != nil {
-		return errors.Wrap(err, "base64.StdEncoding.DecodeString()")
+func New() *Client {
+	return &Client{}
+}
+
+// VerifyAuthenticity verifies that the body of the request is authentic (i.e., that it was sent by AWS SNS) and returns the payload.
+func (c *Client) VerifyAuthenticity(ctx context.Context, reqBody []byte) (*Payload, error) {
+	var payload Payload
+	if err := json.Unmarshal(reqBody, &payload); err != nil {
+		return &payload, errors.Wrap(err, "json.Unmarshal()")
 	}
 
-	certURL, err := url.Parse(p.SigningCertURL)
+	payloadSignature, err := base64.StdEncoding.DecodeString(payload.Signature)
 	if err != nil {
-		return errors.Wrap(err, "url.Parse()")
+		return &payload, errors.Wrap(err, "base64.StdEncoding.DecodeString()")
+	}
+
+	certURL, err := url.Parse(payload.SigningCertURL)
+	if err != nil {
+		return &payload, errors.Wrap(err, "url.Parse()")
 	}
 
 	if certURL.Scheme != "https" {
-		return errors.New("signing certificate URL is not https")
+		return &payload, errors.New("signing certificate URL is not https")
 	}
 
 	if !hostPattern.MatchString(certURL.Host) {
-		return errors.New("signing certificate URL does not match SNS host pattern")
+		return &payload, errors.New("signing certificate URL does not match SNS host pattern")
 	}
 
 	certReq, err := http.NewRequestWithContext(ctx, http.MethodGet, certURL.String(), http.NoBody)
 	if err != nil {
-		return errors.Wrap(err, "http.NewRequestWithContext()")
+		return &payload, errors.Wrap(err, "http.NewRequestWithContext()")
 	}
 
 	httpClient := &http.Client{Timeout: time.Second * 10}
 	certResp, err := httpClient.Do(certReq)
 	if err != nil {
-		return errors.Wrap(err, "http.Get()")
+		return &payload, errors.Wrap(err, "http.Get()")
 	}
 	defer certResp.Body.Close()
 
 	encodedCert, err := io.ReadAll(certResp.Body)
 	if err != nil {
-		return errors.Wrap(err, "io.ReadAll()")
+		return &payload, errors.Wrap(err, "io.ReadAll()")
 	}
 
 	decodedCert, _ := pem.Decode(encodedCert)
 	if decodedCert == nil {
-		return errors.New("the decoded signing certificate is empty")
+		return &payload, errors.New("the decoded signing certificate is empty")
 	}
 
 	parsedCert, err := x509.ParseCertificate(decodedCert.Bytes)
 	if err != nil {
-		return errors.Wrap(err, "x509.ParseCertificate()")
+		return &payload, errors.Wrap(err, "x509.ParseCertificate()")
 	}
 
-	if err := parsedCert.CheckSignature(p.signatureAlgorithm(), p.signaturePayload(), payloadSignature); err != nil {
-		return errors.Wrap(err, "parsedCert.CheckSignature()")
+	if err := parsedCert.CheckSignature(payload.signatureAlgorithm(), payload.signaturePayload(), payloadSignature); err != nil {
+		return &payload, errors.Wrap(err, "parsedCert.CheckSignature()")
 	}
 
-	return nil
+	return &payload, nil
 }
 
 func (p *Payload) signaturePayload() []byte {
