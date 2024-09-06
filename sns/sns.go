@@ -47,13 +47,8 @@ func New() *Client {
 func (c *Client) VerifyAuthenticity(ctx context.Context, reqBody io.Reader) (*Payload, error) {
 	var payload Payload
 
-	bodyBytes, err := io.ReadAll(reqBody)
-	if err != nil {
-		return &payload, errors.Wrap(err, "io.ReadAll()")
-	}
-
-	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
-		return &payload, errors.Wrap(err, "json.Unmarshal()")
+	if err := json.NewDecoder(reqBody).Decode(&payload); err != nil {
+		return &payload, errors.Wrap(err, "json.NewDecoder().Decode()")
 	}
 
 	payloadSignature, err := base64.StdEncoding.DecodeString(payload.Signature)
