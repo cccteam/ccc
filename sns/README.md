@@ -1,7 +1,16 @@
 # sns
 
-The sns package provides tooling to verify the authenticity of a SNS Payload. The validation process follows the general guidance provided in [AWS Documentation](ttps://docs.aws.amazon.com/sns/latest/dg/sns-verify-signature-of-message.html). Verifying the certificate was received from Amazon SNS is done by ensuring the SigningCertURL points to a https://sns.your-zone-1.amazonaws.com url or a https://sns.your-zone-1.amazonaws.com.cn url.
+The `sns` package provides tooling to verify the authenticity of an Amazon SNS (Simple Notification Service) Payload. The validation process adheres to the guidelines outlined in the [AWS Documentation](https://docs.aws.amazon.com/sns/latest/dg/sns-verify-signature-of-message.html).
 
-### IMPORTANT
+### Key Features
 
-This library does NOT validate the TopicArn. This is left to the consumer of the library. As added validation, it is encurage that the SigningCertURL Host is whitelisted against a list of zones that you are actually using. (i.e. https://sns.us-west-1.amazonaws.com)
+- Ensures the `SigningCertURL` originates from a valid Amazon SNS domain.
+- Supports both the standard AWS regions (`https://sns.<your-region>.amazonaws.com`) and the AWS China regions (`https://sns.<your-region>.amazonaws.com.cn`).
+
+### Important Notes
+
+**1. TopicArn Validation:**  
+This library does **NOT** perform validation on the `TopicArn`. Users of this library are responsible for handling this validation on their own.
+
+**2. SigningCertURL Whitelisting:**  
+For added security, it is highly recommended to whitelist the `SigningCertURL` host against the specific AWS regions you're actively using (e.g., `https://sns.us-west-1.amazonaws.com`). This ensures that the certificate URL matches the intended region.
