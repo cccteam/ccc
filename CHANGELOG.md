@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/cccteam/ccc/compare/v0.2.0...v0.2.1) (2024-09-06)
+
+
+### Features
+
+* Add an sns package ([#14](https://github.com/cccteam/ccc/issues/14)) ([52d7864](https://github.com/cccteam/ccc/commit/52d7864df014d23200f7262cbbd7b59be4b567a9))
+
+
+### Bug Fixes
+
+* Move Must() out of test file so it can be used external to package ([#15](https://github.com/cccteam/ccc/issues/15)) ([7e5f735](https://github.com/cccteam/ccc/commit/7e5f7356e35723da813654dc626516a6003f0c18))
+
 ## [0.2.0](https://github.com/cccteam/ccc/compare/v0.1.0...v0.2.0) (2024-08-16)
 
 
