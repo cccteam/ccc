@@ -1,6 +1,8 @@
 package ccc
 
 import (
+	"encoding/json"
+
 	"github.com/go-playground/errors/v5"
 	"github.com/gofrs/uuid"
 )
@@ -52,6 +54,15 @@ func (u UUID) EncodeSpanner() (any, error) {
 	return u.String(), nil
 }
 
+func (u UUID) MarshalText() ([]byte, error) {
+	v, err := u.UUID.MarshalText()
+	if err != nil {
+		return nil, errors.Wrap(err, "u.UUID.MarshalText()")
+	}
+
+	return v, nil
+}
+
 func (u *UUID) UnmarshalText(text []byte) error {
 	uid := &uuid.UUID{}
 	if err := uid.UnmarshalText(text); err != nil {
@@ -59,6 +70,44 @@ func (u *UUID) UnmarshalText(text []byte) error {
 	}
 
 	u.UUID = *uid
+
+	return nil
+}
+
+func (u UUID) MarshalJSON() ([]byte, error) {
+	if u.IsNil() {
+		return []byte("null"), nil
+	}
+
+	v, err := u.MarshalText()
+	if err != nil {
+		return nil, errors.Wrap(err, "u.MarshalText()")
+	}
+
+	j, err := json.Marshal(string(v))
+	if err != nil {
+		return nil, errors.Wrap(err, "json.Marshal()")
+	}
+
+	return j, nil
+}
+
+func (u *UUID) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return errors.Wrap(err, "json.Unmarshal()")
+	}
+
+	if s == "null" {
+		return nil
+	}
+
+	uid, err := uuid.FromString(s)
+	if err != nil {
+		return errors.Wrap(err, "uuid.FromString()")
+	}
+
+	u.UUID = uid
 
 	return nil
 }
@@ -125,6 +174,19 @@ func (u NullUUID) EncodeSpanner() (any, error) {
 	return u.UUID.String(), nil
 }
 
+func (u NullUUID) MarshalText() ([]byte, error) {
+	if !u.Valid {
+		return nil, nil
+	}
+
+	v, err := u.UUID.MarshalText()
+	if err != nil {
+		return nil, errors.Wrap(err, "u.UUID.MarshalText()")
+	}
+
+	return v, nil
+}
+
 func (u *NullUUID) UnmarshalText(text []byte) error {
 	uid := &UUID{}
 	if err := uid.UnmarshalText(text); err != nil {
@@ -132,6 +194,47 @@ func (u *NullUUID) UnmarshalText(text []byte) error {
 	}
 
 	u.UUID = *uid
+	u.Valid = true
+
+	return nil
+}
+
+func (u NullUUID) MarshalJSON() ([]byte, error) {
+	if !u.Valid {
+		return []byte("null"), nil
+	}
+
+	v, err := u.MarshalText()
+	if err != nil {
+		return nil, errors.Wrap(err, "u.MarshalText()")
+	}
+
+	j, err := json.Marshal(string(v))
+	if err != nil {
+		return nil, errors.Wrap(err, "json.Marshal()")
+	}
+
+	return j, nil
+}
+
+func (u *NullUUID) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return errors.Wrap(err, "json.Unmarshal()")
+	}
+
+	if s == "null" {
+		u.Valid = false
+
+		return nil
+	}
+
+	uid, err := uuid.FromString(s)
+	if err != nil {
+		return errors.Wrap(err, "uuid.FromString()")
+	}
+
+	u.UUID = UUID{UUID: uid}
 	u.Valid = true
 
 	return nil
