@@ -75,10 +75,6 @@ func (u *UUID) UnmarshalText(text []byte) error {
 }
 
 func (u UUID) MarshalJSON() ([]byte, error) {
-	if u.IsNil() {
-		return []byte("null"), nil
-	}
-
 	v, err := u.MarshalText()
 	if err != nil {
 		return nil, errors.Wrap(err, "u.MarshalText()")
