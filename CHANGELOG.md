@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/cccteam/ccc/compare/v0.2.2...v0.2.3) (2024-09-23)
+
+
+### Features
+
+* Add support for JSON Marchalling ([#20](https://github.com/cccteam/ccc/issues/20)) ([c9eb623](https://github.com/cccteam/ccc/commit/c9eb623ee504536e57bdcab2eea23ab6dd9f19dc))
+
 ## [0.2.2](https://github.com/cccteam/ccc/compare/v0.2.1...v0.2.2) (2024-09-17)
 
 
