@@ -3,7 +3,6 @@
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
   "include-v-in-tag": true,
-  "include-component-in-tag": false,
   "changelog-sections": [
     { "type": "feat", "section": "Features" },
     { "type": "feature", "section": "Features" },
@@ -23,7 +22,8 @@
   ],
   "packages": {
     ".": {
-      "package-name": "ccc"
+      "package-name": "ccc",
+      "include-component-in-tag": false
     },
     "sns": {
       "package-name": "sns"
