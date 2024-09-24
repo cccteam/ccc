@@ -23,7 +23,27 @@
   ],
   "packages": {
     ".": {
-      "package-name": "ccc"
+      "path": ".",
+      "release-type": "go",
+      "component": "root",
+      "package-name": "ccc",
+      "changelog-path": "CHANGELOG.md",
+      "include-v-in-tag": true
+    },
+    "sns": {
+      "path": "sns",
+      "release-type": "go",
+      "component": "sns",
+      "changelog-path": "sns/CHANGELOG.md",
+      "include-v-in-tag": true
+    },
+    "accesstypes": {
+      "path": "accesstypes",
+      "release-type": "go",
+      "component": "accesstypes",
+      "changelog-path": "accesstypes/CHANGELOG.md",
+      "include-v-in-tag": true
     }
-  }
+  },
+  "monorepo-tags": true
 }
