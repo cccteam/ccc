@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/cccteam/ccc/compare/v0.2.4...v0.2.5) (2024-09-24)
+
+
+### Bug Fixes
+
+* Fix package tag seperator ([#27](https://github.com/cccteam/ccc/issues/27)) ([bc24411](https://github.com/cccteam/ccc/commit/bc24411a37cbe90788ed7eb9688d9ff6132e0370))
+
 ## [0.2.4](https://github.com/cccteam/ccc/compare/v0.2.3...v0.2.4) (2024-09-24)
 
 
