@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.4](https://github.com/cccteam/ccc/compare/v0.2.3...v0.2.4) (2024-09-24)
+
+
+### Features
+
+* Distribute packages versioned separately ([#24](https://github.com/cccteam/ccc/issues/24)) ([aae6b4f](https://github.com/cccteam/ccc/commit/aae6b4f646d7b0b8f4926180f5c90099def694ea))
+
+
+### Bug Fixes
+
+* Fix bug that prevented mashaling the zero value for ccc.UUID ([#22](https://github.com/cccteam/ccc/issues/22)) ([998a360](https://github.com/cccteam/ccc/commit/998a360131bed098858da1f99e1c76ba64fae022))
+
 ## [0.2.3](https://github.com/cccteam/ccc/compare/v0.2.2...v0.2.3) (2024-09-23)
 
 
