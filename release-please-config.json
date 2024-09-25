@@ -25,7 +25,8 @@
   "packages": {
     ".": {
       "package-name": "ccc",
-      "include-component-in-tag": false
+      "include-component-in-tag": false,
+      "exclude-paths": ["sns", "accesstypes"]
     },
     "sns": {
       "package-name": "sns"
