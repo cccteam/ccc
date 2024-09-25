@@ -17,14 +17,18 @@ func UnmarshalResource(resource string) Resource {
 	return Resource(strings.TrimPrefix(resource, resourcePrefix))
 }
 
-func (d Resource) Marshal() string {
-	if !d.IsValid() {
-		panic(fmt.Sprintf("invalid resource %q, type can not contain prefix", string(d)))
+func (r Resource) Marshal() string {
+	if !r.IsValid() {
+		panic(fmt.Sprintf("invalid resource %q, type can not contain prefix", string(r)))
 	}
 
-	return resourcePrefix + string(d)
+	return resourcePrefix + string(r)
 }
 
-func (d Resource) IsValid() bool {
-	return !strings.HasPrefix(string(d), resourcePrefix)
+func (r Resource) IsValid() bool {
+	return !strings.HasPrefix(string(r), resourcePrefix)
+}
+
+func (r Resource) Resource(fieldName string) Resource {
+	return Resource(fmt.Sprintf("%s.%s", r, fieldName))
 }

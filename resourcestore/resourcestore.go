@@ -2,58 +2,114 @@
 package resourcestore
 
 import (
+	"context"
+	"slices"
 	"sync"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
 )
 
+type (
+	fieldStore    map[accesstypes.Resource]map[accesstypes.Permission][]string
+	resourceStore map[accesstypes.Resource][]accesstypes.Permission
+)
+
+type Enforcer interface {
+	RequireResources(ctx context.Context, user accesstypes.User, domain accesstypes.Domain, perms accesstypes.Permission, resources ...accesstypes.Resource) error
+}
+
 type Store struct {
 	mu sync.RWMutex
 
-	// store is used to store permission resource mappings
-	//
-	//	store
-	//	├── Resource1
-	//	│   ├── Read
-	//	│   │   └── [field1, field3, ...]
-	//	│   ├── Write
-	//	│   │   └── [field2, field3, ...]
-	//	│   └── ...
-	//	├── Resource2
-	//	└── Resource...
-	store map[accesstypes.Resource]map[accesstypes.Permission][]string
+	enforcer Enforcer
+
+	fieldStore    map[accesstypes.PermissionScope]fieldStore
+	resourceStore map[accesstypes.PermissionScope]resourceStore
 }
 
-func New() *Store {
+func New(e Enforcer) *Store {
 	store := &Store{
-		store: map[accesstypes.Resource]map[accesstypes.Permission][]string{},
+		enforcer:      e,
+		fieldStore:    map[accesstypes.PermissionScope]fieldStore{},
+		resourceStore: map[accesstypes.PermissionScope]resourceStore{},
 	}
 
 	return store
 }
 
-func (s *Store) Add(res accesstypes.Resource, permission accesstypes.Permission, fields []string) error {
+func (s *Store) AddResourceFields(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource, fields []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.store[res][permission]; ok {
-		return errors.Newf("found existing entry under parent: %s and permission: %s", res, permission)
+	if _, ok := s.fieldStore[scope][res][permission]; ok {
+		return errors.Newf("found existing entry under resource: %s and permission: %s", res, permission)
 	}
-
-	if s.store[res] == nil {
-		s.store[res] = map[accesstypes.Permission][]string{}
+	if s.fieldStore[scope][res] == nil {
+		if s.fieldStore[scope] == nil {
+			s.fieldStore[scope] = make(fieldStore, 2)
+		}
+		s.fieldStore[scope][res] = map[accesstypes.Permission][]string{}
 	}
-	s.store[res][permission] = copyOfFields(fields)
+	s.fieldStore[scope][res][permission] = copyOfFields(fields)
 
 	return nil
 }
 
-func (s *Store) Fields(parent accesstypes.Resource, permission accesstypes.Permission) []string {
+func (s *Store) AddResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if ok := slices.Contains(s.resourceStore[scope][res], permission); ok {
+		return errors.Newf("found existing entry under resource: %s and permission: %s", res, permission)
+	}
+
+	if s.fieldStore[scope][res] == nil {
+		if s.fieldStore[scope] == nil {
+			s.fieldStore[scope] = make(map[accesstypes.Resource]map[accesstypes.Permission][]string, 2)
+		}
+		s.fieldStore[scope][res] = make(map[accesstypes.Permission][]string, 2)
+	}
+	s.resourceStore[scope][res] = append(s.resourceStore[scope][res], permission)
+
+	return nil
+}
+
+func (s *Store) ResolvePermissionsOnResource(
+	ctx context.Context,
+	user accesstypes.User,
+	domain accesstypes.Domain,
+	scope accesstypes.PermissionScope,
+	parent accesstypes.Resource,
+) map[accesstypes.Permission]map[accesstypes.Resource]bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	fields, ok := s.store[parent][permission]
+	permissions := s.fieldStore[scope][parent]
+
+	resolvedPermissions := make(map[accesstypes.Permission]map[accesstypes.Resource]bool, len(permissions))
+	for permission, fields := range permissions {
+
+		usersPermissions := make(map[accesstypes.Resource]bool, len(fields))
+		for _, field := range fields {
+			fullyQualifiedResource := parent.Resource(field)
+			err := s.enforcer.RequireResources(ctx, user, domain, permission, fullyQualifiedResource) // TODO: Do some research here to see if we need to inspect the err
+
+			userPossesses := err == nil
+			usersPermissions[fullyQualifiedResource] = userPossesses
+		}
+		resolvedPermissions[permission] = usersPermissions
+
+	}
+
+	return resolvedPermissions
+}
+
+func (s *Store) Fields(scope accesstypes.PermissionScope, parent accesstypes.Resource, permission accesstypes.Permission) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	fields, ok := s.fieldStore[scope][parent][permission]
 	if !ok {
 		return nil
 	}
@@ -61,11 +117,11 @@ func (s *Store) Fields(parent accesstypes.Resource, permission accesstypes.Permi
 	return copyOfFields(fields)
 }
 
-func (s *Store) PermissionsWithFields(parent accesstypes.Resource) map[accesstypes.Permission][]string {
+func (s *Store) PermissionsWithFields(scope accesstypes.PermissionScope, parent accesstypes.Resource) map[accesstypes.Permission][]string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	permissionsWithFields, ok := s.store[parent]
+	permissionsWithFields, ok := s.fieldStore[scope][parent]
 	if !ok {
 		return nil
 	}
