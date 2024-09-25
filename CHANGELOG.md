@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/cccteam/ccc/compare/v0.2.6...v0.2.7) (2024-09-25)
+
+
+### Bug Fixes
+
+* Exclude sub-package changes from base package ([#38](https://github.com/cccteam/ccc/issues/38)) ([a9132d1](https://github.com/cccteam/ccc/commit/a9132d17f1ddfb94cb5a3504835d8ee628aff235))
+
 ## [0.2.6](https://github.com/cccteam/ccc/compare/v0.2.5...v0.2.6) (2024-09-25)
 
 
