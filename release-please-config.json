@@ -26,13 +26,32 @@
     ".": {
       "package-name": "ccc",
       "include-component-in-tag": false,
-      "exclude-paths": ["sns", "accesstypes"]
-    },
-    "sns": {
-      "package-name": "sns"
+      "exclude-paths": [
+        "accesstypes",
+        "columnset",
+        "patchset",
+        "resourceset",
+        "resourcestore",
+        "sns"
+      ]
     },
     "accesstypes": {
       "package-name": "accesstypes"
+    },
+    "columnset": {
+      "package-name": "columnset"
+    },
+    "patchset": {
+      "package-name": "patchset"
+    },
+    "resourceset": {
+      "package-name": "resourceset"
+    },
+    "resourcestore": {
+      "package-name": "resourcestore"
+    },
+    "sns": {
+      "package-name": "sns"
     }
   }
 }

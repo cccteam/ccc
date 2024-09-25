@@ -1,5 +1,9 @@
 {
   ".": "0.2.7",
   "sns": "0.2.4",
-  "accesstypes": "0.2.4"
+  "accesstypes": "0.2.4",
+  "resourcestore": "0.0.1",
+  "columnset": "0.0.1",
+  "patchset": "0.0.1",
+  "resourceset": "0.0.1"
 }
