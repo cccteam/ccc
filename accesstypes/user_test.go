@@ -50,18 +50,18 @@ func TestUser_Marshal(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		u         User
+		user      User
 		want      string
 		wantPanic bool
 	}{
 		{
 			name: "Success",
-			u:    "MyUser",
+			user: "MyUser",
 			want: userPrefix + "MyUser",
 		},
 		{
 			name:      "Panic",
-			u:         userPrefix + "MyUser",
+			user:      userPrefix + "MyUser",
 			wantPanic: true,
 		},
 	}
@@ -75,7 +75,7 @@ func TestUser_Marshal(t *testing.T) {
 					t.Errorf("User.Mashal() panic = %v, wantPanic %v", didPanic, tt.wantPanic)
 				}
 			}()
-			if got := tt.u.Marshal(); got != tt.want {
+			if got := tt.user.Marshal(); got != tt.want {
 				t.Errorf("User.Marshal() = %v, want %v", got, tt.want)
 			}
 		})
