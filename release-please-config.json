@@ -4,6 +4,7 @@
   "bump-patch-for-minor-pre-major": true,
   "include-v-in-tag": true,
   "tag-separator": "/",
+  "separate-pull-requests": true,
   "changelog-sections": [
     { "type": "feat", "section": "Features" },
     { "type": "feature", "section": "Features" },
