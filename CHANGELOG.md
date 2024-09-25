@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/cccteam/ccc/compare/v0.2.5...v0.2.6) (2024-09-25)
+
+
+### Features
+
+* Add license ([#29](https://github.com/cccteam/ccc/issues/29)) ([b33d9be](https://github.com/cccteam/ccc/commit/b33d9be39ed471bf2b8cb6cace9f65fbc432c812))
+
 ## [0.2.5](https://github.com/cccteam/ccc/compare/v0.2.4...v0.2.5) (2024-09-24)
 
 
