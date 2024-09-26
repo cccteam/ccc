@@ -16,7 +16,7 @@ type (
 )
 
 type Enforcer interface {
-	RequireResources(ctx context.Context, user accesstypes.User, domain accesstypes.Domain, perms accesstypes.Permission, resources ...accesstypes.Resource) error
+	RequireResources(ctx context.Context, user accesstypes.User, domain accesstypes.Domain, perms accesstypes.Permission, resources ...accesstypes.Resource) (bool, error)
 }
 
 type Store struct {
@@ -75,13 +75,7 @@ func (s *Store) AddResource(scope accesstypes.PermissionScope, permission access
 	return nil
 }
 
-func (s *Store) ResolvePermissionsOnResource(
-	ctx context.Context,
-	user accesstypes.User,
-	domain accesstypes.Domain,
-	scope accesstypes.PermissionScope,
-	parent accesstypes.Resource,
-) map[accesstypes.Permission]map[accesstypes.Resource]bool {
+func (s *Store) ResolvePermissionsOnResource(ctx context.Context, user accesstypes.User) any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -103,30 +97,6 @@ func (s *Store) ResolvePermissionsOnResource(
 	}
 
 	return resolvedPermissions
-}
-
-func (s *Store) Fields(scope accesstypes.PermissionScope, parent accesstypes.Resource, permission accesstypes.Permission) []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	fields, ok := s.fieldStore[scope][parent][permission]
-	if !ok {
-		return nil
-	}
-
-	return copyOfFields(fields)
-}
-
-func (s *Store) PermissionsWithFields(scope accesstypes.PermissionScope, parent accesstypes.Resource) map[accesstypes.Permission][]string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	permissionsWithFields, ok := s.fieldStore[scope][parent]
-	if !ok {
-		return nil
-	}
-
-	return copyOfPermissionFieldsMap(permissionsWithFields)
 }
 
 func copyOfPermissionFieldsMap(m map[accesstypes.Permission][]string) map[accesstypes.Permission][]string {
