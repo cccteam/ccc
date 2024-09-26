@@ -5,8 +5,7 @@ import (
 	"context"
 
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/httpio"
-	"github.com/cccteam/httpio/resourceset"
+	"github.com/cccteam/ccc/resourceset"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -19,20 +18,16 @@ type ColumnSet interface {
 	StructFields(ctx context.Context) ([]string, error)
 }
 
-type Enforcer interface {
-	RequireResources(ctx context.Context, user accesstypes.User, domain accesstypes.Domain, perms accesstypes.Permission, resources ...accesstypes.Resource) error
-}
-
 // columnSet is a struct that returns columns that a given user has access to view
 type columnSet[T any] struct {
 	fieldMapper       *resourceset.FieldMapper
 	resourceSet       *resourceset.ResourceSet
-	permissionChecker Enforcer
+	permissionChecker accesstypes.Enforcer
 	domainFromCtx     DomainFromCtx
 	userFromCtx       UserFromCtx
 }
 
-func NewColumnSet[T any](rSet *resourceset.ResourceSet, permissionChecker Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (ColumnSet, error) {
+func NewColumnSet[T any](rSet *resourceset.ResourceSet, permissionChecker accesstypes.Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (ColumnSet, error) {
 	target := new(T)
 
 	m, err := resourceset.NewFieldMapper(target)
@@ -67,12 +62,10 @@ func (p *columnSet[T]) StructFields(ctx context.Context) ([]string, error) {
 	return fields, nil
 }
 
-func hasPermission(ctx context.Context, enforcer Enforcer, resourceSet *resourceset.ResourceSet, domain accesstypes.Domain, user accesstypes.User, resource accesstypes.Resource) (bool, error) {
-	if err := enforcer.RequireResources(ctx, user, domain, resourceSet.RequiredPermission(), resource); err != nil {
-		if httpio.CauseIsError(err) {
-			return false, errors.Wrap(err, "Enforcer.RequireResources()")
-		}
-
+func hasPermission(ctx context.Context, enforcer accesstypes.Enforcer, resourceSet *resourceset.ResourceSet, domain accesstypes.Domain, user accesstypes.User, resource accesstypes.Resource) (bool, error) {
+	if ok, _, err := enforcer.RequireResources(ctx, user, domain, resourceSet.RequiredPermission(), resource); err != nil {
+		return false, errors.Wrap(err, "Enforcer.RequireResources()")
+	} else if !ok {
 		return false, nil
 	}
 

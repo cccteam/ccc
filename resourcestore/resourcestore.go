@@ -15,20 +15,16 @@ type (
 	resourceStore map[accesstypes.Resource][]accesstypes.Permission
 )
 
-type Enforcer interface {
-	RequireResources(ctx context.Context, user accesstypes.User, domain accesstypes.Domain, perms accesstypes.Permission, resources ...accesstypes.Resource) (bool, error)
-}
-
 type Store struct {
 	mu sync.RWMutex
 
-	enforcer Enforcer
+	enforcer accesstypes.Enforcer
 
 	fieldStore    map[accesstypes.PermissionScope]fieldStore
 	resourceStore map[accesstypes.PermissionScope]resourceStore
 }
 
-func New(e Enforcer) *Store {
+func New(e accesstypes.Enforcer) *Store {
 	store := &Store{
 		enforcer:      e,
 		fieldStore:    map[accesstypes.PermissionScope]fieldStore{},
@@ -79,22 +75,22 @@ func (s *Store) ResolvePermissionsOnResource(ctx context.Context, user accesstyp
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	permissions := s.fieldStore[scope][parent]
+	resolvedPermissions := make(map[accesstypes.Permission]map[accesstypes.Resource]bool)
+	// permissions := s.fieldStore[scope][parent]
 
-	resolvedPermissions := make(map[accesstypes.Permission]map[accesstypes.Resource]bool, len(permissions))
-	for permission, fields := range permissions {
+	// for permission, fields := range permissions {
 
-		usersPermissions := make(map[accesstypes.Resource]bool, len(fields))
-		for _, field := range fields {
-			fullyQualifiedResource := parent.Resource(field)
-			err := s.enforcer.RequireResources(ctx, user, domain, permission, fullyQualifiedResource) // TODO: Do some research here to see if we need to inspect the err
+	// 	usersPermissions := make(map[accesstypes.Resource]bool, len(fields))
+	// 	for _, field := range fields {
+	// 		fullyQualifiedResource := parent.Resource(field)
+	// 		err := s.enforcer.RequireResources(ctx, user, domain, permission, fullyQualifiedResource) // TODO: Do some research here to see if we need to inspect the err
 
-			userPossesses := err == nil
-			usersPermissions[fullyQualifiedResource] = userPossesses
-		}
-		resolvedPermissions[permission] = usersPermissions
+	// 		userPossesses := err == nil
+	// 		usersPermissions[fullyQualifiedResource] = userPossesses
+	// 	}
+	// 	resolvedPermissions[permission] = usersPermissions
 
-	}
+	// }
 
 	return resolvedPermissions
 }
