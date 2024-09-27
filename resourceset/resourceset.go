@@ -4,6 +4,7 @@ package resourceset
 import (
 	"fmt"
 	reflect "reflect"
+	"slices"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
@@ -36,11 +37,9 @@ func (r *ResourceSet) RequiredPermission() accesstypes.Permission {
 	return r.requiredPermission
 }
 
-func (r *ResourceSet) Contains(fieldName string) bool {
-	for _, required := range r.requiredPermFields {
-		if required == fieldName {
-			return true
-		}
+func (r *ResourceSet) PermissionRequired(fieldName string) bool {
+	if slices.Contains(r.requiredPermFields, fieldName) {
+		return true
 	}
 
 	return false

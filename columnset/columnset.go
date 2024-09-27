@@ -48,7 +48,7 @@ func (p *columnSet[T]) StructFields(ctx context.Context) ([]string, error) {
 	fields := make([]string, 0, p.fieldMapper.Len())
 	domain, user := p.domainFromCtx(ctx), p.userFromCtx(ctx)
 	for _, field := range p.fieldMapper.Fields() {
-		if !p.resourceSet.Contains(field) {
+		if !p.resourceSet.PermissionRequired(field) {
 			fields = append(fields, field)
 		} else {
 			if hasPerm, err := hasPermission(ctx, p.permissionChecker, p.resourceSet, domain, user, p.resourceSet.Resource(field)); err != nil {
