@@ -14,17 +14,22 @@ const domainPrefix = "domain:"
 type Domain string
 
 func UnmarshalDomain(domain string) Domain {
-	return Domain(strings.TrimPrefix(domain, domainPrefix))
+	d := Domain(strings.TrimPrefix(domain, domainPrefix))
+	if !d.isValid() {
+		panic(fmt.Sprintf("invalid domain %q", domain))
+	}
+
+	return d
 }
 
 func (d Domain) Marshal() string {
-	if !d.IsValid() {
+	if !d.isValid() {
 		panic(fmt.Sprintf("invalid domain %q, type can not contain prefix", string(d)))
 	}
 
 	return domainPrefix + string(d)
 }
 
-func (d Domain) IsValid() bool {
+func (d Domain) isValid() bool {
 	return !strings.HasPrefix(string(d), domainPrefix)
 }
