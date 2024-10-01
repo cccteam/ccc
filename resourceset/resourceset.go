@@ -11,46 +11,44 @@ import (
 
 type ResourceSet struct {
 	requiredPermission accesstypes.Permission
-	requiredPermFields []string
+	requiredFieldPerm  accesstypes.FieldPermission
 	resource           accesstypes.Resource
 }
 
 func New(v any, resource accesstypes.Resource, requiredPermission accesstypes.Permission) (*ResourceSet, error) {
-	requiredPermFields, err := permissionsFromTags(v)
+	requiredPermFields, err := permissionsFromTags(v, requiredPermission)
 	if err != nil {
 		panic(err)
 	}
 
 	return &ResourceSet{
 		requiredPermission: requiredPermission,
-		requiredPermFields: requiredPermFields,
+		requiredFieldPerm:  requiredPermFields,
 		resource:           resource,
 	}, nil
 }
 
-func (r *ResourceSet) Fields() []string {
-	return r.requiredPermFields
+func (r *ResourceSet) FieldPermissions() accesstypes.FieldPermission {
+	return r.requiredFieldPerm
 }
 
 func (r *ResourceSet) RequiredPermission() accesstypes.Permission {
 	return r.requiredPermission
 }
 
-func (r *ResourceSet) Contains(fieldName string) bool {
-	for _, required := range r.requiredPermFields {
-		if required == fieldName {
-			return true
-		}
+func (r *ResourceSet) PermissionRequired(fieldName accesstypes.Field) bool {
+	if r.requiredFieldPerm[fieldName] != accesstypes.NullPermission {
+		return true
 	}
 
 	return false
 }
 
-func (r *ResourceSet) Resource(fieldName string) accesstypes.Resource {
+func (r *ResourceSet) Resource(fieldName accesstypes.Field) accesstypes.Resource {
 	return accesstypes.Resource(fmt.Sprintf("%s.%s", r.resource, fieldName))
 }
 
-func permissionsFromTags(v any) (fields []string, err error) {
+func permissionsFromTags(v any, permission accesstypes.Permission) (fields accesstypes.FieldPermission, err error) {
 	vType := reflect.TypeOf(v)
 	if vType.Kind() == reflect.Ptr {
 		vType = vType.Elem()
@@ -59,11 +57,14 @@ func permissionsFromTags(v any) (fields []string, err error) {
 		return nil, errors.Newf("expected a struct, got %s", vType.Kind())
 	}
 
+	fields = make(accesstypes.FieldPermission)
 	for i := range vType.NumField() {
 		field := vType.Field(i)
 		tagList := field.Tag.Get("perm") // `perm:"required"`
 		if tagList == "required" {
-			fields = append(fields, field.Name)
+			fields[accesstypes.Field(field.Name)] = permission
+		} else if registerAllResources {
+			fields[accesstypes.Field(field.Name)] = accesstypes.NullPermission
 		}
 	}
 
