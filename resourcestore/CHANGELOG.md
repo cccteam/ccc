@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/cccteam/ccc/compare/resourcestore/v0.1.1...resourcestore/v0.2.0) (2024-10-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* Rename TypeScriptPermissions to GenerateTypeScriptEnums ([#61](https://github.com/cccteam/ccc/issues/61))
+
+### Code Refactoring
+
+* Rename TypeScriptPermissions to GenerateTypeScriptEnums ([#61](https://github.com/cccteam/ccc/issues/61)) ([d889459](https://github.com/cccteam/ccc/commit/d889459ff64b6a517573f2a24da4ca1328e0a204))
+
 ## [0.1.1](https://github.com/cccteam/ccc/compare/resourcestore/v0.1.0...resourcestore/v0.1.1) (2024-10-02)
 
 
