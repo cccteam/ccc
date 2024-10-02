@@ -20,7 +20,12 @@ export enum {{.Name}} {
 {{end}}
 `
 
-func (s *Store) TypeScriptPermissions(dst string) error {
+type Enum struct {
+	Name   string
+	Values any
+}
+
+func (s *Store) GenerateTypeScriptEnums(dst string) error {
 	perms := make(map[accesstypes.Permission]struct{})
 	resources := make(map[accesstypes.Resource]struct{})
 	for _, store := range s.resourceStore {
@@ -89,9 +94,4 @@ func writeFile(dst string, enums []Enum) error {
 		return errors.Wrap(err, "f.Close()")
 	}
 	return nil
-}
-
-type Enum struct {
-	Name   string
-	Values any
 }
