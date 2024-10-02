@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/cccteam/ccc/compare/resourcestore/v0.1.0...resourcestore/v0.1.1) (2024-10-02)
+
+
+### Features
+
+* Added functionality to generate enums for typescript ([#59](https://github.com/cccteam/ccc/issues/59)) ([60029f5](https://github.com/cccteam/ccc/commit/60029f5b46671516a41ee0491f10c711650de7c2))
+
 ## [0.1.0](https://github.com/cccteam/ccc/compare/resourcestore-v0.0.1...resourcestore/v0.1.0) (2024-10-01)
 
 
