@@ -9,7 +9,13 @@ const permissionPrefix = "perm:"
 
 type Permission string
 
-const NullPermission Permission = ""
+const (
+	NullPermission Permission = ""
+	Create         Permission = "Create"
+	Read           Permission = "Read"
+	Update         Permission = "Update"
+	Delete         Permission = "Delete"
+)
 
 type (
 	Field                       string
