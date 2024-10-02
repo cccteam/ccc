@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/cccteam/ccc/compare/accesstypes/v0.2.5...accesstypes/v0.2.6) (2024-10-02)
+
+
+### Features
+
+* Added `CRUD` permission types to the accesstypes package ([#63](https://github.com/cccteam/ccc/issues/63)) ([427f602](https://github.com/cccteam/ccc/commit/427f602feef542231a847739efcdcf01f6823df3))
+
 ## [0.2.5](https://github.com/cccteam/ccc/compare/accesstypes/v0.2.4...accesstypes/v0.2.5) (2024-10-01)
 
 
