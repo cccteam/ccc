@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/cccteam/ccc/compare/v0.2.7...v0.2.8) (2024-10-02)
+
+
+### Features
+
+* Add new Duration type which supports JSON and Spanner marshaling ([#57](https://github.com/cccteam/ccc/issues/57)) ([1d2db06](https://github.com/cccteam/ccc/commit/1d2db06b145d9ac011c4e45a79620d335f982fe6))
+
 ## [0.2.7](https://github.com/cccteam/ccc/compare/v0.2.6...v0.2.7) (2024-09-25)
 
 
