@@ -62,7 +62,9 @@ func (p *columnSet[T]) StructFields(ctx context.Context) ([]accesstypes.Field, e
 	return fields, nil
 }
 
-func hasPermission(ctx context.Context, enforcer accesstypes.Enforcer, resourceSet *resourceset.ResourceSet, domain accesstypes.Domain, user accesstypes.User, resource accesstypes.Resource) (bool, error) {
+func hasPermission(
+	ctx context.Context, enforcer accesstypes.Enforcer, resourceSet *resourceset.ResourceSet, domain accesstypes.Domain, user accesstypes.User, resource accesstypes.Resource,
+) (bool, error) {
 	if ok, _, err := enforcer.RequireResources(ctx, user, domain, resourceSet.RequiredPermission(), resource); err != nil {
 		return false, errors.Wrap(err, "Enforcer.RequireResources()")
 	} else if !ok {
