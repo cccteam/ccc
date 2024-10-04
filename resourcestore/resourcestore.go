@@ -22,16 +22,13 @@ type Store struct {
 
 	fieldStore    map[accesstypes.PermissionScope]fieldStore
 	resourceStore map[accesstypes.PermissionScope]resourceStore
-
-	resourceScopeIndex map[accesstypes.Resource]accesstypes.PermissionScope
 }
 
 func New(e accesstypes.Enforcer) *Store {
 	store := &Store{
-		enforcer:           e,
-		fieldStore:         make(map[accesstypes.PermissionScope]fieldStore, 2),
-		resourceStore:      make(map[accesstypes.PermissionScope]resourceStore, 2),
-		resourceScopeIndex: make(map[accesstypes.Resource]accesstypes.PermissionScope),
+		enforcer:      e,
+		fieldStore:    make(map[accesstypes.PermissionScope]fieldStore, 2),
+		resourceStore: make(map[accesstypes.PermissionScope]resourceStore, 2),
 	}
 
 	return store
@@ -40,12 +37,6 @@ func New(e accesstypes.Enforcer) *Store {
 func (s *Store) AddResourceFields(scope accesstypes.PermissionScope, res accesstypes.Resource, fields accesstypes.FieldPermission) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if foundScope, ok := s.resourceScopeIndex[res]; !ok {
-		s.resourceScopeIndex[res] = scope
-	} else if foundScope != scope {
-		return errors.Newf("attempted to add resource %s to scope %s which already exists under existing scope %s", res, scope, foundScope)
-	}
 
 	if s.fieldStore[scope][res] == nil {
 		if s.fieldStore[scope] == nil {
@@ -74,12 +65,6 @@ func (s *Store) AddResourceFields(scope accesstypes.PermissionScope, res accesst
 func (s *Store) AddResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if foundScope, ok := s.resourceScopeIndex[res]; !ok {
-		s.resourceScopeIndex[res] = scope
-	} else if foundScope != scope {
-		return errors.Newf("attempted to add resource %s to scope %s which already exists under existing scope %s", res, scope, foundScope)
-	}
 
 	if ok := slices.Contains(s.resourceStore[scope][res], permission); ok {
 		return errors.Newf("found existing entry under resource: %s and permission: %s", res, permission)
@@ -172,6 +157,9 @@ func (s *Store) ResolvePermissions(ctx context.Context, user accesstypes.User, d
 }
 
 func (s *Store) List() map[accesstypes.Permission][]accesstypes.Resource {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	permissionResources := make(map[accesstypes.Permission][]accesstypes.Resource)
 	for _, store := range s.resourceStore {
 		for resource, permissions := range store {
@@ -195,9 +183,23 @@ func (s *Store) List() map[accesstypes.Permission][]accesstypes.Resource {
 }
 
 func (s *Store) Scope(resource accesstypes.Resource) accesstypes.PermissionScope {
-	res, _ := resource.ResourceAndField()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	return s.resourceScopeIndex[res]
+	for scope, store := range s.resourceStore {
+		if _, ok := store[resource]; ok {
+			return scope
+		}
+	}
+
+	for scope, store := range s.fieldStore {
+		r, f := resource.ResourceAndField()
+		if _, ok := store[r][f]; ok {
+			return scope
+		}
+	}
+
+	return ""
 }
 
 func copyOfPermissionFieldsMap(m map[accesstypes.Permission][]string) map[accesstypes.Permission][]string {
