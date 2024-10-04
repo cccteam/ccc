@@ -11,7 +11,7 @@ import (
 )
 
 type (
-	fieldStore    map[accesstypes.Resource]map[accesstypes.Field][]accesstypes.Permission
+	tagStore      map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission
 	resourceStore map[accesstypes.Resource][]accesstypes.Permission
 )
 
@@ -20,42 +20,42 @@ type Store struct {
 
 	enforcer accesstypes.Enforcer
 
-	fieldStore    map[accesstypes.PermissionScope]fieldStore
+	tagStore      map[accesstypes.PermissionScope]tagStore
 	resourceStore map[accesstypes.PermissionScope]resourceStore
 }
 
 func New(e accesstypes.Enforcer) *Store {
 	store := &Store{
 		enforcer:      e,
-		fieldStore:    make(map[accesstypes.PermissionScope]fieldStore, 2),
+		tagStore:      make(map[accesstypes.PermissionScope]tagStore, 2),
 		resourceStore: make(map[accesstypes.PermissionScope]resourceStore, 2),
 	}
 
 	return store
 }
 
-func (s *Store) AddResourceFields(scope accesstypes.PermissionScope, res accesstypes.Resource, fields accesstypes.FieldPermission) error {
+func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstypes.Resource, tags accesstypes.TagPermission) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.fieldStore[scope][res] == nil {
-		if s.fieldStore[scope] == nil {
-			s.fieldStore[scope] = make(fieldStore)
+	if s.tagStore[scope][res] == nil {
+		if s.tagStore[scope] == nil {
+			s.tagStore[scope] = make(tagStore)
 		}
 
-		s.fieldStore[scope][res] = make(map[accesstypes.Field][]accesstypes.Permission, len(fields))
+		s.tagStore[scope][res] = make(map[accesstypes.Tag][]accesstypes.Permission, len(tags))
 	}
 
-	for field, permission := range fields {
-		permissions := s.fieldStore[scope][res][field]
+	for tag, permission := range tags {
+		permissions := s.tagStore[scope][res][tag]
 		if slices.Contains(permissions, permission) {
-			return errors.Newf("found existing mapping between field (%s) and permission (%s) under resource (%s)", field, permission, res)
+			return errors.Newf("found existing mapping between tag (%s) and permission (%s) under resource (%s)", tag, permission, res)
 		}
 
 		if permission != accesstypes.NullPermission {
-			s.fieldStore[scope][res][field] = append(permissions, permission)
+			s.tagStore[scope][res][tag] = append(permissions, permission)
 		} else {
-			s.fieldStore[scope][res][field] = permissions
+			s.tagStore[scope][res][tag] = permissions
 		}
 	}
 
@@ -83,57 +83,78 @@ func (s *Store) ResolvePermissions(ctx context.Context, user accesstypes.User, d
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	resolvedFieldPermissions := make(accesstypes.ResolvedFieldPermissions, len(domains))
+	resolvedTagPermissions, err := resolveTags(ctx, domains, s, user)
+	if err != nil {
+		return nil, err
+	}
+
+	resolvedResourcePermissions, err := resolveResource(ctx, domains, s, user)
+	if err != nil {
+		return nil, err
+	}
+
+	return &accesstypes.ResolvedPermissions{
+		Resources: resolvedResourcePermissions,
+		Tags:      resolvedTagPermissions,
+	}, nil
+}
+
+func resolveTags(ctx context.Context, domains []accesstypes.Domain, s *Store, user accesstypes.User) (accesstypes.ResolvedTagPermissions, error) {
+	resolvedTagPermissions := make(accesstypes.ResolvedTagPermissions, len(domains))
 	for _, domain := range domains {
-		fieldStore := s.fieldStore[accesstypes.DomainPermissionScope]
+		tagStore := s.tagStore[accesstypes.DomainPermissionScope]
 		if domain == accesstypes.GlobalDomain {
-			fieldStore = s.fieldStore[accesstypes.GlobalPermissionScope]
+			tagStore = s.tagStore[accesstypes.GlobalPermissionScope]
 		}
-		permissionFields := map[accesstypes.Permission][]accesstypes.Resource{}
-		for res, fields := range fieldStore {
-			for field, permissions := range fields {
+		permissionResources := map[accesstypes.Permission][]accesstypes.Resource{}
+		for res, tags := range tagStore {
+			for tag, permissions := range tags {
 				for _, permission := range permissions {
-					permissionFields[permission] = append(permissionFields[permission], res.ResourceWithField(field))
+					permissionResources[permission] = append(permissionResources[permission], res.ResourceWithTag(tag))
 				}
 			}
 		}
 
-		for permission, resources := range permissionFields {
+		for permission, resources := range permissionResources {
 			_, missing, err := s.enforcer.RequireResources(ctx, user, domain, permission, resources...)
 			if err != nil {
 				return nil, errors.Wrap(err, "accesstypes.Enforcer.RequireResources()")
 			}
 
-			for _, missingField := range missing {
-				res, field := missingField.ResourceAndField()
-				if resolvedFieldPermissions[domain][res][field] == nil {
-					if resolvedFieldPermissions[domain][res] == nil {
-						if resolvedFieldPermissions[domain] == nil {
-							resolvedFieldPermissions[domain] = make(map[accesstypes.Resource]map[accesstypes.Field]map[accesstypes.Permission]bool)
+			for _, missingResource := range missing {
+				res, tag := missingResource.ResourceAndTag()
+				if resolvedTagPermissions[domain][res][tag] == nil {
+					if resolvedTagPermissions[domain][res] == nil {
+						if resolvedTagPermissions[domain] == nil {
+							resolvedTagPermissions[domain] = make(map[accesstypes.Resource]map[accesstypes.Tag]map[accesstypes.Permission]bool)
 						}
-						resolvedFieldPermissions[domain][res] = make(map[accesstypes.Field]map[accesstypes.Permission]bool)
+						resolvedTagPermissions[domain][res] = make(map[accesstypes.Tag]map[accesstypes.Permission]bool)
 					}
-					resolvedFieldPermissions[domain][res][field] = make(map[accesstypes.Permission]bool)
+					resolvedTagPermissions[domain][res][tag] = make(map[accesstypes.Permission]bool)
 				}
-				resolvedFieldPermissions[domain][res][field][permission] = false
+				resolvedTagPermissions[domain][res][tag][permission] = false
 			}
 		}
 	}
 
+	return resolvedTagPermissions, nil
+}
+
+func resolveResource(ctx context.Context, domains []accesstypes.Domain, s *Store, user accesstypes.User) (accesstypes.ResolvedResourcePermissions, error) {
 	resolvedResourcePermissions := make(accesstypes.ResolvedResourcePermissions, 2)
 	for _, domain := range domains {
 		resourceStore := s.resourceStore[accesstypes.DomainPermissionScope]
 		if domain == accesstypes.GlobalDomain {
 			resourceStore = s.resourceStore[accesstypes.GlobalPermissionScope]
 		}
-		permissionFields := map[accesstypes.Permission][]accesstypes.Resource{}
+		permissionResources := map[accesstypes.Permission][]accesstypes.Resource{}
 		for res, permissions := range resourceStore {
 			for _, permission := range permissions {
-				permissionFields[permission] = append(permissionFields[permission], res)
+				permissionResources[permission] = append(permissionResources[permission], res)
 			}
 		}
-		for permission, resoures := range permissionFields {
-			_, missing, err := s.enforcer.RequireResources(ctx, user, domain, permission, resoures...)
+		for permission, resources := range permissionResources {
+			_, missing, err := s.enforcer.RequireResources(ctx, user, domain, permission, resources...)
 			if err != nil {
 				return nil, errors.Wrap(err, "accesstypes.Enforcer.RequireResources()")
 			}
@@ -150,10 +171,7 @@ func (s *Store) ResolvePermissions(ctx context.Context, user accesstypes.User, d
 		}
 	}
 
-	return &accesstypes.ResolvedPermissions{
-		Resources: resolvedResourcePermissions,
-		Fields:    resolvedFieldPermissions,
-	}, nil
+	return resolvedResourcePermissions, nil
 }
 
 func (s *Store) List() map[accesstypes.Permission][]accesstypes.Resource {
@@ -169,11 +187,11 @@ func (s *Store) List() map[accesstypes.Permission][]accesstypes.Resource {
 		}
 	}
 
-	for _, store := range s.fieldStore {
-		for resource, fields := range store {
-			for field, permissions := range fields {
+	for _, store := range s.tagStore {
+		for resource, tags := range store {
+			for tag, permissions := range tags {
 				for _, permission := range permissions {
-					permissionResources[permission] = append(permissionResources[permission], resource.ResourceWithField(field))
+					permissionResources[permission] = append(permissionResources[permission], resource.ResourceWithTag(tag))
 				}
 			}
 		}
@@ -192,28 +210,12 @@ func (s *Store) Scope(resource accesstypes.Resource) accesstypes.PermissionScope
 		}
 	}
 
-	for scope, store := range s.fieldStore {
-		r, f := resource.ResourceAndField()
-		if _, ok := store[r][f]; ok {
+	for scope, store := range s.tagStore {
+		r, t := resource.ResourceAndTag()
+		if _, ok := store[r][t]; ok {
 			return scope
 		}
 	}
 
 	return ""
-}
-
-func copyOfPermissionFieldsMap(m map[accesstypes.Permission][]string) map[accesstypes.Permission][]string {
-	cpy := map[accesstypes.Permission][]string{}
-	for permission, fields := range m {
-		cpy[permission] = copyOfFields(fields)
-	}
-
-	return cpy
-}
-
-func copyOfFields(fields []string) []string {
-	cpy := make([]string, len(fields))
-	copy(cpy, fields)
-
-	return cpy
 }

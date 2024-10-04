@@ -37,12 +37,12 @@ func (s *Store) GenerateTypeScriptEnums(dst string) error {
 		}
 	}
 
-	fields := make(map[accesstypes.Resource]map[accesstypes.Field]struct{})
-	for _, store := range s.fieldStore {
+	fields := make(map[accesstypes.Resource]map[accesstypes.Tag]struct{})
+	for _, store := range s.tagStore {
 		for r, resourceFields := range store {
 			for field, permissions := range resourceFields {
 				if fields[r] == nil {
-					fields[r] = make(map[accesstypes.Field]struct{})
+					fields[r] = make(map[accesstypes.Tag]struct{})
 				}
 				fields[r][field] = struct{}{}
 				for _, perm := range permissions {
@@ -93,5 +93,6 @@ func writeFile(dst string, enums []Enum) error {
 	if err := f.Close(); err != nil {
 		return errors.Wrap(err, "f.Close()")
 	}
+
 	return nil
 }
