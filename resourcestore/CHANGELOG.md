@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/cccteam/ccc/compare/resourcestore/v0.2.0...resourcestore/v0.2.1) (2024-10-04)
+
+
+### Features
+
+* Added `Store.List()` and `Store.Scope()` methods ([#65](https://github.com/cccteam/ccc/issues/65)) ([ddd9b6c](https://github.com/cccteam/ccc/commit/ddd9b6c578b8527ff32fc477219b50d0b89501c5))
+
 ## [0.2.0](https://github.com/cccteam/ccc/compare/resourcestore/v0.1.1...resourcestore/v0.2.0) (2024-10-02)
 
 
