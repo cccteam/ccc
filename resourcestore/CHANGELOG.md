@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/resourcestore/v0.2.1...resourcestore/v0.3.0) (2024-10-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* Change AddResourceFields() method to AddResourceTags() ([#75](https://github.com/cccteam/ccc/issues/75))
+
+### Code Refactoring
+
+* Change AddResourceFields() method to AddResourceTags() ([#75](https://github.com/cccteam/ccc/issues/75)) ([cb8ee7a](https://github.com/cccteam/ccc/commit/cb8ee7a7824d942fea27320abe8933cd29182134))
+
 ## [0.2.1](https://github.com/cccteam/ccc/compare/resourcestore/v0.2.0...resourcestore/v0.2.1) (2024-10-04)
 
 
