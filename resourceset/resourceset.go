@@ -12,25 +12,27 @@ import (
 
 type ResourceSet struct {
 	requiredPermission accesstypes.Permission
-	requiredFieldPerm  accesstypes.FieldPermission
+	requiredTagPerm    accesstypes.TagPermission
+	fieldToTag         map[accesstypes.Field]accesstypes.Tag
 	resource           accesstypes.Resource
 }
 
 func New(v any, resource accesstypes.Resource, requiredPermission accesstypes.Permission) (*ResourceSet, error) {
-	requiredPermFields, err := permissionsFromTags(v, requiredPermission)
+	requiredTagPerm, fieldToTag, err := permissionsFromTags(v, requiredPermission)
 	if err != nil {
 		panic(err)
 	}
 
 	return &ResourceSet{
 		requiredPermission: requiredPermission,
-		requiredFieldPerm:  requiredPermFields,
+		requiredTagPerm:    requiredTagPerm,
+		fieldToTag:         fieldToTag,
 		resource:           resource,
 	}, nil
 }
 
-func (r *ResourceSet) FieldPermissions() accesstypes.FieldPermission {
-	return r.requiredFieldPerm
+func (r *ResourceSet) TagPermissions() accesstypes.TagPermission {
+	return r.requiredTagPerm
 }
 
 func (r *ResourceSet) RequiredPermission() accesstypes.Permission {
@@ -38,42 +40,41 @@ func (r *ResourceSet) RequiredPermission() accesstypes.Permission {
 }
 
 func (r *ResourceSet) PermissionRequired(fieldName accesstypes.Field) bool {
-	if r.requiredFieldPerm[fieldName] != accesstypes.NullPermission {
-		return true
-	}
-
-	return false
+	return r.requiredTagPerm[r.fieldToTag[fieldName]] != accesstypes.NullPermission
 }
 
 func (r *ResourceSet) Resource(fieldName accesstypes.Field) accesstypes.Resource {
-	return accesstypes.Resource(fmt.Sprintf("%s.%s", r.resource, fieldName))
+	return accesstypes.Resource(fmt.Sprintf("%s.%s", r.resource, r.fieldToTag[fieldName]))
 }
 
-func permissionsFromTags(v any, permission accesstypes.Permission) (fields accesstypes.FieldPermission, err error) {
+func permissionsFromTags(v any, permission accesstypes.Permission) (tags accesstypes.TagPermission, fieldToTag map[accesstypes.Field]accesstypes.Tag, err error) {
 	vType := reflect.TypeOf(v)
 	if vType.Kind() == reflect.Ptr {
 		vType = vType.Elem()
 	}
 	if vType.Kind() != reflect.Struct {
-		return nil, errors.Newf("expected a struct, got %s", vType.Kind())
+		return nil, nil, errors.Newf("expected a struct, got %s", vType.Kind())
 	}
 
-	fields = make(accesstypes.FieldPermission)
+	tags = make(accesstypes.TagPermission)
+	fieldToTag = make(map[accesstypes.Field]accesstypes.Tag)
 	for i := range vType.NumField() {
 		field := vType.Field(i)
 		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		permTag := field.Tag.Get("perm") // `perm:"required"`
 		if permTag == "required" {
 			if jsonTag == "" || jsonTag == "-" {
-				return nil, errors.Newf("can not set %s permission on the %s field when json tag is empty", permission, field.Name)
+				return nil, nil, errors.Newf("can not set %s permission on the %s field when json tag is empty", permission, field.Name)
 			}
-			fields[accesstypes.Field(jsonTag)] = permission
+			tags[accesstypes.Tag(jsonTag)] = permission
+			fieldToTag[accesstypes.Field(field.Name)] = accesstypes.Tag(jsonTag)
 		} else if registerAllResources {
 			if jsonTag != "" && jsonTag != "-" {
-				fields[accesstypes.Field(jsonTag)] = accesstypes.NullPermission
+				tags[accesstypes.Tag(jsonTag)] = accesstypes.NullPermission
+				fieldToTag[accesstypes.Field(field.Name)] = accesstypes.Tag(jsonTag)
 			}
 		}
 	}
 
-	return fields, nil
+	return tags, fieldToTag, nil
 }
