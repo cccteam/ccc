@@ -18,16 +18,17 @@ const (
 )
 
 type (
+	Tag                         string
 	Field                       string
-	FieldPermission             map[Field]Permission
+	TagPermission               map[Tag]Permission
 	PermissionScope             string
-	ResolvedFieldPermissions    map[Domain]map[Resource]map[Field]map[Permission]bool
+	ResolvedTagPermissions      map[Domain]map[Resource]map[Tag]map[Permission]bool
 	ResolvedResourcePermissions map[Domain]map[Resource]map[Permission]bool
 )
 
 type ResolvedPermissions struct {
 	Resources ResolvedResourcePermissions
-	Fields    ResolvedFieldPermissions
+	Tags      ResolvedTagPermissions
 }
 
 const (

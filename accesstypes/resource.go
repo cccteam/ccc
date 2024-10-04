@@ -34,22 +34,22 @@ func (r Resource) isValid() bool {
 	return !strings.HasPrefix(string(r), resourcePrefix)
 }
 
-func (r Resource) ResourceWithField(fieldName Field) Resource {
-	if strings.Contains(string(fieldName), ".") {
-		panic("invalid field name, must not contain '.'")
+func (r Resource) ResourceWithTag(tag Tag) Resource {
+	if strings.Contains(string(tag), ".") {
+		panic("invalid tag name, must not contain '.'")
 	}
 
-	return Resource(fmt.Sprintf("%s.%s", r, fieldName))
+	return Resource(fmt.Sprintf("%s.%s", r, tag))
 }
 
-func (r Resource) ResourceAndField() (Resource, Field) {
+func (r Resource) ResourceAndTag() (Resource, Tag) {
 	parts := strings.Split(string(r), ".")
 	if len(parts) > 2 {
 		panic("invalid resource name contains more than one '.'")
 	}
 
 	if len(parts) == 2 {
-		return Resource(parts[0]), Field(parts[1])
+		return Resource(parts[0]), Tag(parts[1])
 	}
 
 	return Resource(parts[0]), ""
