@@ -4,6 +4,7 @@ package resourceset
 import (
 	"fmt"
 	reflect "reflect"
+	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
@@ -60,11 +61,17 @@ func permissionsFromTags(v any, permission accesstypes.Permission) (fields acces
 	fields = make(accesstypes.FieldPermission)
 	for i := range vType.NumField() {
 		field := vType.Field(i)
-		tagList := field.Tag.Get("perm") // `perm:"required"`
-		if tagList == "required" {
-			fields[accesstypes.Field(field.Name)] = permission
+		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		permTag := field.Tag.Get("perm") // `perm:"required"`
+		if permTag == "required" {
+			if jsonTag == "" || jsonTag == "-" {
+				return nil, errors.Newf("can not set %s permission on the %s field when json tag is empty", permission, field.Name)
+			}
+			fields[accesstypes.Field(jsonTag)] = permission
 		} else if registerAllResources {
-			fields[accesstypes.Field(field.Name)] = accesstypes.NullPermission
+			if jsonTag != "" && jsonTag != "-" {
+				fields[accesstypes.Field(jsonTag)] = accesstypes.NullPermission
+			}
 		}
 	}
 
