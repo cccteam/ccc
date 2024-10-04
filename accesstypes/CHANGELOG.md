@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/accesstypes/v0.2.6...accesstypes/v0.3.0) (2024-10-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* Changed method ResourceWithField() to ResourceWithTag() ([#69](https://github.com/cccteam/ccc/issues/69))
+
+### Code Refactoring
+
+* Changed method ResourceWithField() to ResourceWithTag() ([#69](https://github.com/cccteam/ccc/issues/69)) ([e73de18](https://github.com/cccteam/ccc/commit/e73de1840538be8288943bd93f510b69b2204bc0))
+* New Tag type and changed dependent types ([#69](https://github.com/cccteam/ccc/issues/69)) ([e73de18](https://github.com/cccteam/ccc/commit/e73de1840538be8288943bd93f510b69b2204bc0))
+
 ## [0.2.6](https://github.com/cccteam/ccc/compare/accesstypes/v0.2.5...accesstypes/v0.2.6) (2024-10-02)
 
 
