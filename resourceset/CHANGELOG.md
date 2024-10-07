@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/resourceset/v0.2.0...resourceset/v0.3.0) (2024-10-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* Upgrade to address breaking changes in accesstypes ([#82](https://github.com/cccteam/ccc/issues/82))
+
+### Bug Fixes
+
+* Upgrade to address breaking changes in accesstypes ([#82](https://github.com/cccteam/ccc/issues/82)) ([900acb7](https://github.com/cccteam/ccc/commit/900acb7298ae2507bcbfa57b58ba2597a41549fe))
+
 ## [0.2.0](https://github.com/cccteam/ccc/compare/resourceset/v0.1.2...resourceset/v0.2.0) (2024-10-04)
 
 
