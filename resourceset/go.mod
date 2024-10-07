@@ -3,7 +3,7 @@ module github.com/cccteam/ccc/resourceset
 go 1.23.1
 
 require (
-	github.com/cccteam/ccc/accesstypes v0.2.5
+	github.com/cccteam/ccc/accesstypes v0.3.0
 	github.com/go-playground/errors/v5 v5.4.0
 )
 
