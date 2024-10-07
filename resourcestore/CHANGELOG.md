@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.1](https://github.com/cccteam/ccc/compare/resourcestore/v0.3.0...resourcestore/v0.3.1) (2024-10-07)
+
+
+### Features
+
+* Stablize sort order of generated enums ([#83](https://github.com/cccteam/ccc/issues/83)) ([7629738](https://github.com/cccteam/ccc/commit/7629738a4d118059390e0206a5b1f9ae674ac516))
+
+
+### Bug Fixes
+
+* Fix import version of resoucetypes ([#83](https://github.com/cccteam/ccc/issues/83)) ([7629738](https://github.com/cccteam/ccc/commit/7629738a4d118059390e0206a5b1f9ae674ac516))
+
 ## [0.3.0](https://github.com/cccteam/ccc/compare/resourcestore/v0.2.1...resourcestore/v0.3.0) (2024-10-04)
 
 
