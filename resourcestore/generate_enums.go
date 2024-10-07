@@ -1,6 +1,7 @@
 package resourcestore
 
 import (
+	"iter"
 	"maps"
 	"os"
 	"slices"
@@ -22,7 +23,7 @@ export enum {{.Name}} {
 
 type Enum struct {
 	Name   string
-	Values any
+	Values []string
 }
 
 func (s *Store) GenerateTypeScriptEnums(dst string) error {
@@ -54,16 +55,17 @@ func (s *Store) GenerateTypeScriptEnums(dst string) error {
 
 	enums := []Enum{{
 		Name:   "Permissions",
-		Values: slices.Collect(maps.Keys(perms)),
+		Values: collectSortedStrings(maps.Keys(perms)),
 	}, {
 		Name:   "Resources",
-		Values: slices.Collect(maps.Keys(resources)),
+		Values: collectSortedStrings(maps.Keys(resources)),
 	}}
 
-	for resource, fields := range fields {
+	for _, field := range collectSortedStrings(maps.Keys(fields)) {
+		fields := fields[accesstypes.Resource(field)]
 		enums = append(enums, Enum{
-			Name:   string(resource),
-			Values: slices.Collect(maps.Keys(fields)),
+			Name:   field,
+			Values: collectSortedStrings(maps.Keys(fields)),
 		})
 	}
 
@@ -95,4 +97,14 @@ func writeFile(dst string, enums []Enum) error {
 	}
 
 	return nil
+}
+
+func collectSortedStrings[T iter.Seq[S], S ~string](seq T) (s []string) {
+	for elem := range seq {
+		s = append(s, string(elem))
+	}
+
+	slices.Sort(s)
+
+	return s
 }
