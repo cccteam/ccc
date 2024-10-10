@@ -99,6 +99,24 @@ func (s *Store) ResolvePermissions(ctx context.Context, user accesstypes.User, d
 	}, nil
 }
 
+func (s *Store) Permissions() []accesstypes.Permission {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	//TODO: Implement this
+
+	return nil
+}
+
+func (s *Store) Resources() []accesstypes.Resource {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	//TODO: Implement this
+
+	return nil
+}
+
 func resolveTags(ctx context.Context, domains []accesstypes.Domain, s *Store, user accesstypes.User) (accesstypes.ResolvedTagPermissions, error) {
 	resolvedTagPermissions := make(accesstypes.ResolvedTagPermissions, len(domains))
 	for _, domain := range domains {
