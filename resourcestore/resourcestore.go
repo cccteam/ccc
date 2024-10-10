@@ -119,6 +119,26 @@ func (s *Store) resources() map[string]accesstypes.Resource {
 	return resources
 }
 
+func (s *Store) permissionResources() map[accesstypes.Permission]map[string]bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	mapping := map[accesstypes.Permission]map[string]bool{}
+
+	resources := s.resources()
+	permissions := s.permissions()
+
+	for enum := range resources {
+		for _, perm := range permissions {
+			mapping[perm][enum] = false
+		}
+	}
+
+	// TODO toggle some to true
+
+	return mapping
+}
+
 func (s *Store) List() map[accesstypes.Permission][]accesstypes.Resource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
