@@ -11,7 +11,7 @@ import (
 type TSGenerator struct {
 	Permissions []accesstypes.Permission
 	Resources   map[string]accesstypes.Resource
-	Mappings    map[accesstypes.Permission]map[accesstypes.Resource]bool
+	Mappings    map[accesstypes.Permission]map[string]bool
 }
 
 const tmpl = `// This file is auto-generated. Do not edit manually.
@@ -60,7 +60,7 @@ func (s *Store) GenerateTypeScript(dst string) error {
 	if err := tsFile.Execute(f, TSGenerator{
 		Permissions: s.permissions(),
 		Resources:   s.resources(),
-		Mappings:    map[accesstypes.Permission]map[accesstypes.Resource]bool{},
+		Mappings:    s.permissionResources(),
 	}); err != nil {
 		panic(err)
 	}

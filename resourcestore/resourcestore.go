@@ -124,17 +124,40 @@ func (s *Store) permissionResources() map[accesstypes.Permission]map[string]bool
 	defer s.mu.RUnlock()
 
 	mapping := map[accesstypes.Permission]map[string]bool{}
-
-	resources := s.resources()
-	permissions := s.permissions()
-
-	for enum := range resources {
-		for _, perm := range permissions {
-			mapping[perm][enum] = false
+	enums := make(map[string]struct{})
+	for _, store := range s.resourceStore {
+		for resource, permissions := range store {
+			enum := string(resource)
+			enums[enum] = struct{}{}
+			for _, perm := range permissions {
+				if mapping[perm] == nil {
+					mapping[perm] = make(map[string]bool)
+				}
+				mapping[perm][enum] = true
+			}
 		}
 	}
-
-	// TODO toggle some to true
+	for _, store := range s.tagStore {
+		for resource, tagmap := range store {
+			for tag, permissions := range tagmap {
+				enum := fmt.Sprintf("%s_%s", resource, tag)
+				enums[enum] = struct{}{}
+				for _, perm := range permissions {
+					if mapping[perm] == nil {
+						mapping[perm] = make(map[string]bool)
+					}
+					mapping[perm][enum] = true
+				}
+			}
+		}
+	}
+	for perm := range mapping {
+		for enum := range enums {
+			if _, ok := mapping[perm][enum]; !ok {
+				mapping[perm][enum] = false
+			}
+		}
+	}
 
 	return mapping
 }
