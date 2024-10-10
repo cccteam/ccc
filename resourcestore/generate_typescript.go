@@ -51,8 +51,8 @@ func (s *Store) GenerateTypeScript(dst string) error {
 	}
 
 	if err := tsFile.Execute(os.Stdout, TSGenerator{
-		Permissions: s.Permissions(),
-		Resources:   s.Resources(),
+		Permissions: s.permissions(),
+		Resources:   s.resources(),
 		Mappings:    map[accesstypes.Permission]map[accesstypes.Resource]bool{},
 	}); err != nil {
 		panic(err)

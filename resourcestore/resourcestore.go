@@ -3,6 +3,7 @@ package resourcestore
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"sync"
 
@@ -99,7 +100,7 @@ func (s *Store) ResolvePermissions(ctx context.Context, user accesstypes.User, d
 	}, nil
 }
 
-func (s *Store) Permissions() []accesstypes.Permission {
+func (s *Store) permissions() []accesstypes.Permission {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -121,13 +122,25 @@ func (s *Store) Permissions() []accesstypes.Permission {
 	return slices.Compact(permissions)
 }
 
-func (s *Store) Resources() []accesstypes.Resource {
+func (s *Store) resources() []accesstypes.Resource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	//TODO: Implement this
+	resources := []accesstypes.Resource{}
+	for _, stores := range s.resourceStore {
+		slices.AppendSeq(resources, maps.Keys(stores))
+	}
 
-	return nil
+	for _, stores := range s.tagStore {
+		for resource, tags := range stores {
+			for tag := range tags {
+				resources = append(resources, resource.ResourceWithTag(tag))
+			}
+		}
+	}
+	slices.Sort(resources)
+
+	return slices.Compact(resources)
 }
 
 func resolveTags(ctx context.Context, domains []accesstypes.Domain, s *Store, user accesstypes.User) (accesstypes.ResolvedTagPermissions, error) {
