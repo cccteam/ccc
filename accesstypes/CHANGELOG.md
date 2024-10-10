@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/cccteam/ccc/compare/accesstypes/v0.3.0...accesstypes/v0.4.0) (2024-10-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove unused methods from UserPermissionCollection and RolePermissionCollection ([#87](https://github.com/cccteam/ccc/issues/87))
+* Refactor UserPermissionCollection type ([#87](https://github.com/cccteam/ccc/issues/87))
+
+### Code Refactoring
+
+* Refactor UserPermissionCollection type ([#87](https://github.com/cccteam/ccc/issues/87)) ([2d8c76c](https://github.com/cccteam/ccc/commit/2d8c76c4762ad0ee968e7d9e47ea7f2d9f22e85e))
+* Remove unused methods from UserPermissionCollection and RolePermissionCollection ([#87](https://github.com/cccteam/ccc/issues/87)) ([2d8c76c](https://github.com/cccteam/ccc/commit/2d8c76c4762ad0ee968e7d9e47ea7f2d9f22e85e))
+
 ## [0.3.0](https://github.com/cccteam/ccc/compare/accesstypes/v0.2.6...accesstypes/v0.3.0) (2024-10-04)
 
 
