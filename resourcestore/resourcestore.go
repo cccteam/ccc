@@ -103,9 +103,22 @@ func (s *Store) Permissions() []accesstypes.Permission {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	//TODO: Implement this
+	permissions := []accesstypes.Permission{}
+	for _, stores := range s.resourceStore {
+		for _, perms := range stores {
+			permissions = append(permissions, perms...)
+		}
+	}
+	for _, stores := range s.tagStore {
+		for _, tags := range stores {
+			for _, perms := range tags {
+				permissions = append(permissions, perms...)
+			}
+		}
+	}
+	slices.Sort(permissions)
 
-	return nil
+	return slices.Compact(permissions)
 }
 
 func (s *Store) Resources() []accesstypes.Resource {
