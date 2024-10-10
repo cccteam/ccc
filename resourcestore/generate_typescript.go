@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/go-playground/errors/v5"
 )
 
 type TSGenerator struct {
@@ -45,12 +46,18 @@ export function hasPermission(permission: Permissions, resource: Resources): boo
 `
 
 func (s *Store) GenerateTypeScript(dst string) error {
+	f, err := os.Create(dst)
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer f.Close()
+
 	tsFile, err := template.New("").Parse(tmpl)
 	if err != nil {
 		panic(err)
 	}
 
-	if err := tsFile.Execute(os.Stdout, TSGenerator{
+	if err := tsFile.Execute(f, TSGenerator{
 		Permissions: s.permissions(),
 		Resources:   s.resources(),
 		Mappings:    map[accesstypes.Permission]map[accesstypes.Resource]bool{},
@@ -58,5 +65,9 @@ func (s *Store) GenerateTypeScript(dst string) error {
 		panic(err)
 	}
 
-	return nil
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	return err
 }
