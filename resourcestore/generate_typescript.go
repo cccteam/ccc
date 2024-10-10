@@ -10,7 +10,7 @@ import (
 
 type TSGenerator struct {
 	Permissions []accesstypes.Permission
-	Resources   []accesstypes.Resource
+	Resources   map[string]accesstypes.Resource
 	Mappings    map[accesstypes.Permission]map[accesstypes.Resource]bool
 }
 
@@ -22,8 +22,8 @@ export enum Permissions {
 }
 
 export enum Resources {
-{{- range .Resources}}
-  {{.}} = '{{.}}',
+{{- range $enum, $resource := .Resources}}
+  {{$enum}} = '{{$resource}}',
 {{- end}}
 }
 

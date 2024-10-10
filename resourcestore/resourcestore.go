@@ -2,7 +2,7 @@
 package resourcestore
 
 import (
-	"maps"
+	"fmt"
 	"slices"
 	"sync"
 
@@ -97,25 +97,26 @@ func (s *Store) permissions() []accesstypes.Permission {
 	return slices.Compact(permissions)
 }
 
-func (s *Store) resources() []accesstypes.Resource {
+func (s *Store) resources() map[string]accesstypes.Resource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	resources := []accesstypes.Resource{}
+	resources := make(map[string]accesstypes.Resource)
 	for _, stores := range s.resourceStore {
-		slices.AppendSeq(resources, maps.Keys(stores))
+		for resource := range stores {
+			resources[string(resource)] = resource
+		}
 	}
 
 	for _, stores := range s.tagStore {
 		for resource, tags := range stores {
 			for tag := range tags {
-				resources = append(resources, resource.ResourceWithTag(tag))
+				resources[fmt.Sprintf("%s_%s", resource, tag)] = resource.ResourceWithTag(tag)
 			}
 		}
 	}
-	slices.Sort(resources)
 
-	return slices.Compact(resources)
+	return resources
 }
 
 func (s *Store) List() map[accesstypes.Permission][]accesstypes.Resource {
