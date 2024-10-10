@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/cccteam/ccc/compare/columnset/v0.0.3...columnset/v0.0.4) (2024-10-10)
+
+
+### Bug Fixes
+
+* Fix linter issue ([#71](https://github.com/cccteam/ccc/issues/71)) ([ad529cc](https://github.com/cccteam/ccc/commit/ad529cc66dd098c9563269c3153df37caefab48c))
+
 ## [0.0.3](https://github.com/cccteam/ccc/compare/columnset/v0.0.2...columnset/v0.0.3) (2024-10-01)
 
 
