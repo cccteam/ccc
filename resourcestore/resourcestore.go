@@ -22,15 +22,21 @@ type Store struct {
 }
 
 func New() *Store {
-	store := &Store{
+	if !generate {
+		return &Store{}
+	}
+
+	return &Store{
 		tagStore:      make(map[accesstypes.PermissionScope]tagStore, 2),
 		resourceStore: make(map[accesstypes.PermissionScope]resourceStore, 2),
 	}
-
-	return store
 }
 
 func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstypes.Resource, tags accesstypes.TagPermission) error {
+	if !generate {
+		return nil
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -59,6 +65,10 @@ func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstyp
 }
 
 func (s *Store) AddResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
+	if !generate {
+		return nil
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
