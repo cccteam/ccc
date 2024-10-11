@@ -135,9 +135,11 @@ func (s *Store) permissionResources() map[string]map[accesstypes.Permission]bool
 
 	mapping := map[string]map[accesstypes.Permission]bool{}
 	perms := make(map[accesstypes.Permission]struct{})
+	enums := make(map[string]struct{})
 	for _, store := range s.resourceStore {
 		for resource, permissions := range store {
 			enum := string(resource)
+			enums[enum] = struct{}{}
 			for _, perm := range permissions {
 				perms[perm] = struct{}{}
 				if mapping[enum] == nil {
@@ -151,6 +153,7 @@ func (s *Store) permissionResources() map[string]map[accesstypes.Permission]bool
 		for resource, tagmap := range store {
 			for tag, permissions := range tagmap {
 				enum := fmt.Sprintf("%s_%s", resource, tag)
+				enums[enum] = struct{}{}
 				for _, perm := range permissions {
 					perms[perm] = struct{}{}
 					if mapping[enum] == nil {
@@ -161,9 +164,12 @@ func (s *Store) permissionResources() map[string]map[accesstypes.Permission]bool
 			}
 		}
 	}
-	for enum := range mapping {
+	for enum := range enums {
 		for perm := range perms {
 			if _, ok := mapping[enum][perm]; !ok {
+				if mapping[enum] == nil {
+					mapping[enum] = make(map[accesstypes.Permission]bool)
+				}
 				mapping[enum][perm] = false
 			}
 		}
