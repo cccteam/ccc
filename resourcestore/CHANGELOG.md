@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/cccteam/ccc/compare/resourcestore/v0.4.0...resourcestore/v0.4.1) (2024-10-11)
+
+
+### Bug Fixes
+
+* modify go build tags ([#91](https://github.com/cccteam/ccc/issues/91)) ([ef42102](https://github.com/cccteam/ccc/commit/ef42102c8b6c8e4a00b4fba6baf8699f130996ca))
+
 ## [0.4.0](https://github.com/cccteam/ccc/compare/resourcestore/v0.3.1...resourcestore/v0.4.0) (2024-10-11)
 
 
