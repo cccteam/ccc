@@ -22,7 +22,7 @@ type Store struct {
 }
 
 func New() *Store {
-	if !generate {
+	if !collectResourcePermissions {
 		return &Store{}
 	}
 
@@ -33,7 +33,7 @@ func New() *Store {
 }
 
 func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstypes.Resource, tags accesstypes.TagPermission) error {
-	if !generate {
+	if !collectResourcePermissions {
 		return nil
 	}
 
@@ -65,7 +65,7 @@ func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstyp
 }
 
 func (s *Store) AddResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
-	if !generate {
+	if !collectResourcePermissions {
 		return nil
 	}
 

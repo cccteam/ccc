@@ -1,4 +1,4 @@
-//go:build register_all_resources
+//go:build collect_resource_permissions
 
 package resourceset
 

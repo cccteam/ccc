@@ -1,5 +1,5 @@
-//go:build !generate
+//go:build !collect_resource_permissions
 
 package resourcestore
 
-const generate = false
+const collectResourcePermissions = false
