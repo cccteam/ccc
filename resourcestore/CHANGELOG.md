@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/cccteam/ccc/compare/resourcestore/v0.3.1...resourcestore/v0.4.0) (2024-10-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* Removed method `GenerateTypeScriptEnums()` ([#89](https://github.com/cccteam/ccc/issues/89))
+
+### Features
+
+* Add method `GenerateTypeScript()` to generate typescript code with resource to permission mapping ([#89](https://github.com/cccteam/ccc/issues/89)) ([ccef2a2](https://github.com/cccteam/ccc/commit/ccef2a2d970298a85525a6709d8e49a018c4a5bd))
+
+
+### Code Refactoring
+
+* Removed method `GenerateTypeScriptEnums()` ([#89](https://github.com/cccteam/ccc/issues/89)) ([ccef2a2](https://github.com/cccteam/ccc/commit/ccef2a2d970298a85525a6709d8e49a018c4a5bd))
+
 ## [0.3.1](https://github.com/cccteam/ccc/compare/resourcestore/v0.3.0...resourcestore/v0.3.1) (2024-10-07)
 
 
