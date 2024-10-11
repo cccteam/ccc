@@ -119,21 +119,21 @@ func (s *Store) resources() map[string]accesstypes.Resource {
 	return resources
 }
 
-func (s *Store) permissionResources() map[accesstypes.Permission]map[string]bool {
+func (s *Store) permissionResources() map[string]map[accesstypes.Permission]bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	mapping := map[accesstypes.Permission]map[string]bool{}
-	enums := make(map[string]struct{})
+	mapping := map[string]map[accesstypes.Permission]bool{}
+	perms := make(map[accesstypes.Permission]struct{})
 	for _, store := range s.resourceStore {
 		for resource, permissions := range store {
 			enum := string(resource)
-			enums[enum] = struct{}{}
 			for _, perm := range permissions {
-				if mapping[perm] == nil {
-					mapping[perm] = make(map[string]bool)
+				perms[perm] = struct{}{}
+				if mapping[enum] == nil {
+					mapping[enum] = make(map[accesstypes.Permission]bool)
 				}
-				mapping[perm][enum] = true
+				mapping[enum][perm] = true
 			}
 		}
 	}
@@ -141,20 +141,20 @@ func (s *Store) permissionResources() map[accesstypes.Permission]map[string]bool
 		for resource, tagmap := range store {
 			for tag, permissions := range tagmap {
 				enum := fmt.Sprintf("%s_%s", resource, tag)
-				enums[enum] = struct{}{}
 				for _, perm := range permissions {
-					if mapping[perm] == nil {
-						mapping[perm] = make(map[string]bool)
+					perms[perm] = struct{}{}
+					if mapping[enum] == nil {
+						mapping[enum] = make(map[accesstypes.Permission]bool)
 					}
-					mapping[perm][enum] = true
+					mapping[enum][perm] = true
 				}
 			}
 		}
 	}
-	for perm := range mapping {
-		for enum := range enums {
-			if _, ok := mapping[perm][enum]; !ok {
-				mapping[perm][enum] = false
+	for enum := range mapping {
+		for perm := range perms {
+			if _, ok := mapping[enum][perm]; !ok {
+				mapping[enum][perm] = false
 			}
 		}
 	}
