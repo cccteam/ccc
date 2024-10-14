@@ -13,6 +13,7 @@ const (
 	NullPermission Permission = ""
 	Create         Permission = "Create"
 	Read           Permission = "Read"
+	List           Permission = "List"
 	Update         Permission = "Update"
 	Delete         Permission = "Delete"
 )
