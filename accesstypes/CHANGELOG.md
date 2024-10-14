@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/cccteam/ccc/compare/accesstypes/v0.4.0...accesstypes/v0.4.1) (2024-10-14)
+
+
+### Features
+
+* Add List permission ([#98](https://github.com/cccteam/ccc/issues/98)) ([c4787ad](https://github.com/cccteam/ccc/commit/c4787ad590ff049bf4eeb006fb7b63e35d78be75))
+
 ## [0.4.0](https://github.com/cccteam/ccc/compare/accesstypes/v0.3.0...accesstypes/v0.4.0) (2024-10-10)
 
 
