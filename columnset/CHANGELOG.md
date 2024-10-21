@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.4](https://github.com/cccteam/ccc/compare/columnset/v0.0.3...columnset/v0.0.4) (2024-10-21)
+
+
+### Bug Fixes
+
+* Fix linter issue ([#71](https://github.com/cccteam/ccc/issues/71)) ([ad529cc](https://github.com/cccteam/ccc/commit/ad529cc66dd098c9563269c3153df37caefab48c))
+
+
+### Code Upgrade
+
+* Upgrade go dependencies ([#100](https://github.com/cccteam/ccc/issues/100)) ([1a06773](https://github.com/cccteam/ccc/commit/1a06773790bbed65aed1ea5a3567f4a4cab6fbac))
+
 ## [0.0.3](https://github.com/cccteam/ccc/compare/columnset/v0.0.2...columnset/v0.0.3) (2024-10-01)
 
 
