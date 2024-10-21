@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/cccteam/ccc/compare/patchset/v0.2.0...patchset/v0.2.1) (2024-10-21)
+
+
+### Code Upgrade
+
+* Upgrade go dependencies ([#102](https://github.com/cccteam/ccc/issues/102)) ([a06b8a9](https://github.com/cccteam/ccc/commit/a06b8a996ea3ab4bf25c23a4a718ef9821b05ecc))
+
 ## [0.2.0](https://github.com/cccteam/ccc/compare/patchset/v0.1.0...patchset/v0.2.0) (2024-10-08)
 
 
