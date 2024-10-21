@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.9](https://github.com/cccteam/ccc/compare/v0.2.8...v0.2.9) (2024-10-21)
+
+
+### Features
+
+* Add `NewDuration()` and `NewDurationFromString()` constructors ([#104](https://github.com/cccteam/ccc/issues/104)) ([6caff80](https://github.com/cccteam/ccc/commit/6caff805e9540d2b72ef40e4c9a15621e96f1f90))
+* Implement `NullDuration` type ([#104](https://github.com/cccteam/ccc/issues/104)) ([6caff80](https://github.com/cccteam/ccc/commit/6caff805e9540d2b72ef40e4c9a15621e96f1f90))
+
 ## [0.2.8](https://github.com/cccteam/ccc/compare/v0.2.7...v0.2.8) (2024-10-02)
 
 

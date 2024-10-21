@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/cccteam/ccc/compare/resourcestore/v0.4.1...resourcestore/v0.4.2) (2024-10-21)
+
+
+### Code Upgrade
+
+* Upgrade go dependencies ([#101](https://github.com/cccteam/ccc/issues/101)) ([18e36a0](https://github.com/cccteam/ccc/commit/18e36a0e5ee749a0d5daaf91466bb02e899da2aa))
+
 ## [0.4.1](https://github.com/cccteam/ccc/compare/resourcestore/v0.4.0...resourcestore/v0.4.1) (2024-10-11)
 
 
