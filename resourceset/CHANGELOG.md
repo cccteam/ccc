@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/cccteam/ccc/compare/resourceset/v0.3.1...resourceset/v0.3.2) (2024-10-21)
+
+
+### Code Upgrade
+
+* Upgrade go dependencies ([#103](https://github.com/cccteam/ccc/issues/103)) ([b728acd](https://github.com/cccteam/ccc/commit/b728acd493365623066089277dcf2de1c9da64c2))
+
 ## [0.3.1](https://github.com/cccteam/ccc/compare/resourceset/v0.3.0...resourceset/v0.3.1) (2024-10-11)
 
 
