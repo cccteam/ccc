@@ -1,7 +1,7 @@
 github.com/cccteam/ccc/accesstypes v0.4.1 h1:0B5jo1N9jKBkCw1vcCVzRo68Hq8jZ1Xlpyt/hIVvrFk=
 github.com/cccteam/ccc/accesstypes v0.4.1/go.mod h1:b/h5mdhoRGPB6q27wde4VTIMMYPT2MMOw4NqBEG7FZ8=
-github.com/cccteam/ccc/resourceset v0.3.1 h1:PPttDmCN8cCsB+LXLh9yaQ/fF09ERed0+d5ux/kad2s=
-github.com/cccteam/ccc/resourceset v0.3.1/go.mod h1:fpga+CoS0qmlUbq02hwlo8FOGoY5WKjsBi134q6xW5s=
+github.com/cccteam/ccc/resourceset v0.3.2 h1:/iWYLN0S1bzFbMm9Ag+TQZH80Gooh3p9khpDy/TiEok=
+github.com/cccteam/ccc/resourceset v0.3.2/go.mod h1:WRe4vcTTOzwvGCiPcYLBQAIsZMlDrn7+w2YVOAb5YG8=
 github.com/go-playground/errors/v5 v5.4.0 h1:BxBxwlRjuclYbRebE4ddrRrMK705lS2mHzHw7BDoDPA=
 github.com/go-playground/errors/v5 v5.4.0/go.mod h1:6aVeVHsT36RNu/m/8AvGdPv8T2J/+KfVv6Su4VvBfpQ=
 github.com/go-playground/pkg/v5 v5.30.0 h1:ElTFBK1Pf3Jm0pRBi/AvgzbwBPAFzFsI2h4uH2xaEsY=
