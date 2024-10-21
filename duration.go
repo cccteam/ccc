@@ -133,7 +133,7 @@ func (d *NullDuration) UnmarshalText(text []byte) error {
 // MarshalJSON implements json.Marshaler.MarshalJSON for Duration.
 func (d NullDuration) MarshalJSON() ([]byte, error) {
 	if !d.Valid {
-		return []byte("null"), nil
+		return []byte(jsonNull), nil
 	}
 
 	b, err := json.Marshal(d.Duration.String())
@@ -151,7 +151,7 @@ func (d *NullDuration) UnmarshalJSON(b []byte) error {
 		return errors.Newf("json.Unmarshal() error: %s", err)
 	}
 
-	if s == "null" {
+	if s == jsonNull {
 		d.Valid = false
 
 		return nil

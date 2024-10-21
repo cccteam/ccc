@@ -94,7 +94,7 @@ func (u *UUID) UnmarshalJSON(data []byte) error {
 		return errors.Wrap(err, "json.Unmarshal()")
 	}
 
-	if s == "null" {
+	if s == jsonNull {
 		return nil
 	}
 
@@ -197,7 +197,7 @@ func (u *NullUUID) UnmarshalText(text []byte) error {
 
 func (u NullUUID) MarshalJSON() ([]byte, error) {
 	if !u.Valid {
-		return []byte("null"), nil
+		return []byte(jsonNull), nil
 	}
 
 	v, err := u.MarshalText()
@@ -219,7 +219,7 @@ func (u *NullUUID) UnmarshalJSON(data []byte) error {
 		return errors.Wrap(err, "json.Unmarshal()")
 	}
 
-	if s == "null" {
+	if s == jsonNull {
 		u.Valid = false
 
 		return nil
