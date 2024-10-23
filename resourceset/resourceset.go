@@ -47,6 +47,10 @@ func (r *ResourceSet) Resource(fieldName accesstypes.Field) accesstypes.Resource
 	return accesstypes.Resource(fmt.Sprintf("%s.%s", r.resource, r.fieldToTag[fieldName]))
 }
 
+func (r *ResourceSet) BaseResource() accesstypes.Resource {
+	return r.resource
+}
+
 func permissionsFromTags(v any, permission accesstypes.Permission) (tags accesstypes.TagPermission, fieldToTag map[accesstypes.Field]accesstypes.Tag, err error) {
 	vType := reflect.TypeOf(v)
 	if vType.Kind() == reflect.Ptr {
