@@ -6,6 +6,7 @@ import (
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resourceset"
+	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -57,6 +58,10 @@ func (p *columnSet[T]) StructFields(ctx context.Context) ([]accesstypes.Field, e
 				fields = append(fields, field)
 			}
 		}
+	}
+
+	if len(fields) == 0 {
+		return nil, httpio.NewForbiddenMessagef("user %s does not have %s permission on any fields in %s", user, p.resourceSet.RequiredPermission(), p.resourceSet.BaseResource())
 	}
 
 	return fields, nil
