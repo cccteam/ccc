@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/cccteam/ccc/compare/resourceset/v0.3.3...resourceset/v0.3.4) (2024-10-23)
+
+
+### Bug Fixes
+
+* Fix import for unit tests ([#115](https://github.com/cccteam/ccc/issues/115)) ([4f0da34](https://github.com/cccteam/ccc/commit/4f0da34c25bc2346e94c54d5ddbfe74ac068be01))
+
 ## [0.3.3](https://github.com/cccteam/ccc/compare/resourceset/v0.3.2...resourceset/v0.3.3) (2024-10-23)
 
 
