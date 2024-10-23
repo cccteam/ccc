@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/cccteam/ccc/compare/patchset/v0.2.1...patchset/v0.2.2) (2024-10-23)
+
+
+### Features
+
+* Add support for keys ([#109](https://github.com/cccteam/ccc/issues/109)) ([8f23951](https://github.com/cccteam/ccc/commit/8f239515236c088f3e848a8db6e061fd7fe49eff))
+* Add support to fetch a value from the patchset ([#109](https://github.com/cccteam/ccc/issues/109)) ([8f23951](https://github.com/cccteam/ccc/commit/8f239515236c088f3e848a8db6e061fd7fe49eff))
+
 ## [0.2.1](https://github.com/cccteam/ccc/compare/patchset/v0.2.0...patchset/v0.2.1) (2024-10-21)
 
 
