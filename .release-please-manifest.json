@@ -3,7 +3,7 @@
   "sns": "0.2.4",
   "accesstypes": "0.4.1",
   "resourcestore": "0.4.2",
-  "columnset": "0.0.4",
+  "columnset": "0.0.5",
   "patchset": "0.2.2",
   "resourceset": "0.3.3"
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5](https://github.com/cccteam/ccc/compare/columnset/v0.0.4...columnset/v0.0.5) (2024-10-23)
+
+
+### Bug Fixes
+
+* Return error for condition where user does not have permission for any column ([#113](https://github.com/cccteam/ccc/issues/113)) ([c501924](https://github.com/cccteam/ccc/commit/c5019244871bb407d755d4eab3634258260610a1))
+
 ## [0.0.4](https://github.com/cccteam/ccc/compare/columnset/v0.0.3...columnset/v0.0.4) (2024-10-21)
 
 
