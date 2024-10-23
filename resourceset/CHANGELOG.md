@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/cccteam/ccc/compare/resourceset/v0.3.2...resourceset/v0.3.3) (2024-10-23)
+
+
+### Features
+
+* New BaseResource() method ([#111](https://github.com/cccteam/ccc/issues/111)) ([694ef45](https://github.com/cccteam/ccc/commit/694ef454390be2cbb8223a53f7fccd8eeb7904ff))
+
 ## [0.3.2](https://github.com/cccteam/ccc/compare/resourceset/v0.3.1...resourceset/v0.3.2) (2024-10-21)
 
 
