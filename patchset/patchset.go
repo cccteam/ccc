@@ -10,16 +10,26 @@ import (
 
 type PatchSet struct {
 	data map[accesstypes.Field]any
+	pkey map[accesstypes.Field]any
 }
 
 func NewPatchSet(data map[accesstypes.Field]any) *PatchSet {
 	return &PatchSet{
 		data: data,
+		pkey: make(map[accesstypes.Field]any),
 	}
 }
 
 func (p *PatchSet) Set(field accesstypes.Field, value any) {
 	p.data[field] = value
+}
+
+func (p *PatchSet) Get(field accesstypes.Field) any {
+	return p.data[field]
+}
+
+func (p *PatchSet) SetKey(field accesstypes.Field, value any) {
+	p.pkey[field] = value
 }
 
 func (p *PatchSet) StructFields() []accesstypes.Field {
@@ -32,4 +42,12 @@ func (p *PatchSet) Len() int {
 
 func (p *PatchSet) Data() map[accesstypes.Field]any {
 	return p.data
+}
+
+func (p *PatchSet) KeyData() map[accesstypes.Field]any {
+	return p.pkey
+}
+
+func (p *PatchSet) HasKey() bool {
+	return len(p.pkey) > 0
 }
