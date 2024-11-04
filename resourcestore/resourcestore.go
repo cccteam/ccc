@@ -32,7 +32,7 @@ func New() *Store {
 	}
 }
 
-func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstypes.Resource, tags accesstypes.TagPermission) error {
+func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstypes.Resource, tags accesstypes.TagPermissions) error {
 	if !collectResourcePermissions {
 		return nil
 	}
@@ -48,16 +48,18 @@ func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstyp
 		s.tagStore[scope][res] = make(map[accesstypes.Tag][]accesstypes.Permission, len(tags))
 	}
 
-	for tag, permission := range tags {
-		permissions := s.tagStore[scope][res][tag]
-		if slices.Contains(permissions, permission) {
-			return errors.Newf("found existing mapping between tag (%s) and permission (%s) under resource (%s)", tag, permission, res)
-		}
+	for tag, tagPermissions := range tags {
+		for _, permission := range tagPermissions {
+			permissions := s.tagStore[scope][res][tag]
+			if slices.Contains(permissions, permission) {
+				return errors.Newf("found existing mapping between tag (%s) and permission (%s) under resource (%s)", tag, permission, res)
+			}
 
-		if permission != accesstypes.NullPermission {
-			s.tagStore[scope][res][tag] = append(permissions, permission)
-		} else {
-			s.tagStore[scope][res][tag] = permissions
+			if permission != accesstypes.NullPermission {
+				s.tagStore[scope][res][tag] = append(permissions, permission)
+			} else {
+				s.tagStore[scope][res][tag] = permissions
+			}
 		}
 	}
 

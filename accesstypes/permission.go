@@ -21,7 +21,7 @@ const (
 type (
 	Tag                         string
 	Field                       string
-	TagPermission               map[Tag]Permission
+	TagPermissions              map[Tag][]Permission
 	PermissionScope             string
 	ResolvedTagPermissions      map[Domain]map[Resource]map[Tag]map[Permission]bool
 	ResolvedResourcePermissions map[Domain]map[Resource]map[Permission]bool
