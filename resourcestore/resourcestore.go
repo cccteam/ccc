@@ -124,10 +124,18 @@ func (s *Store) resources() map[string]accesstypes.Resource {
 		}
 	}
 
+	return resources
+}
+
+func (s *Store) tags() map[string]accesstypes.Resource {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	resources := make(map[string]accesstypes.Resource)
 	for _, stores := range s.tagStore {
 		for resource, tags := range stores {
 			for tag := range tags {
-				resources[fmt.Sprintf("%s_%s", resource, tag)] = resource.ResourceWithTag(tag)
+				resources[string(tag)] = resource.ResourceWithTag(tag)
 			}
 		}
 	}
@@ -158,7 +166,7 @@ func (s *Store) permissionResources() map[string]map[accesstypes.Permission]bool
 	for _, store := range s.tagStore {
 		for resource, tagmap := range store {
 			for tag, permissions := range tagmap {
-				enum := fmt.Sprintf("%s_%s", resource, tag)
+				enum := fmt.Sprintf("%s.%s", resource, tag)
 				enums[enum] = struct{}{}
 				for _, perm := range permissions {
 					perms[perm] = struct{}{}

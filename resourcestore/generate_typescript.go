@@ -11,6 +11,7 @@ import (
 type TSGenerator struct {
 	Permissions []accesstypes.Permission
 	Resources   map[string]accesstypes.Resource
+	Tags        map[string]accesstypes.Resource
 	Mappings    map[string]map[accesstypes.Permission]bool
 }
 
@@ -27,8 +28,17 @@ export enum Resources {
 {{- end}}
 }
 
+{{- range _, $resource := .Resources}}
+export enum $resource {
+	{{- range $tag, $permission := .Tags}}
+		{{$tag}} = '{{$permission}}',
+	{{- end}}
+}
+{{- end}}
+
+type AllResources = Resources {{- range _, $resource := .Resources}}| {{$resource}}{{- end}};
 type PermissionResources = Record<Permissions, boolean>;
-type PermissionMappings = Record<Resources, PermissionResources>;
+type PermissionMappings = Record<AllResources, PermissionResources>;
 
 const Mappings: PermissionMappings = {
 {{- range $perm, $resources := .Mappings}}
@@ -40,7 +50,7 @@ const Mappings: PermissionMappings = {
 {{- end}}
 };
 
-export function requiresPermission(resource: Resources, permission: Permissions): boolean {
+export function requiresPermission(resource: AllResources, permission: Permissions): boolean {
   return Mappings[resource][permission];
 }
 `
