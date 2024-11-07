@@ -2,7 +2,6 @@
 package resourcestore
 
 import (
-	"fmt"
 	"slices"
 	"sync"
 
@@ -13,6 +12,7 @@ import (
 type (
 	tagStore      map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission
 	resourceStore map[accesstypes.Resource][]accesstypes.Permission
+	permissionMap map[accesstypes.Resource]map[accesstypes.Permission]bool
 )
 
 type Store struct {
@@ -113,78 +113,81 @@ func (s *Store) permissions() []accesstypes.Permission {
 	return slices.Compact(permissions)
 }
 
-func (s *Store) resources() map[string]accesstypes.Resource {
+func (s *Store) resources() map[accesstypes.Resource]struct{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	resources := make(map[string]accesstypes.Resource)
+	resources := make(map[accesstypes.Resource]struct{})
 	for _, stores := range s.resourceStore {
 		for resource := range stores {
-			resources[string(resource)] = resource
+			resources[resource] = struct{}{}
 		}
 	}
 
 	return resources
 }
 
-func (s *Store) tags() map[string]accesstypes.Resource {
+func (s *Store) tags() map[accesstypes.Resource][]accesstypes.Tag {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	resources := make(map[string]accesstypes.Resource)
-	for _, stores := range s.tagStore {
-		for resource, tags := range stores {
+	resourcetags := make(map[accesstypes.Resource][]accesstypes.Tag)
+
+	for _, tagStore := range s.tagStore {
+		for resource, tags := range tagStore {
 			for tag := range tags {
-				resources[string(tag)] = resource.ResourceWithTag(tag)
+				if _, ok := resourcetags[resource]; ok {
+					resourcetags[resource] = append(resourcetags[resource], tag)
+				} else {
+					resourcetags[resource] = []accesstypes.Tag{tag}
+				}
 			}
 		}
 	}
 
-	return resources
+	return resourcetags
 }
 
-func (s *Store) permissionResources() map[string]map[accesstypes.Permission]bool {
+func (s *Store) permissionResources() permissionMap {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	mapping := map[string]map[accesstypes.Permission]bool{}
+	mapping := make(map[accesstypes.Resource]map[accesstypes.Permission]bool)
 	perms := make(map[accesstypes.Permission]struct{})
-	enums := make(map[string]struct{})
+	resources := make(map[accesstypes.Resource]struct{})
+	permMapper := func(res accesstypes.Resource, permissions []accesstypes.Permission, permSet map[accesstypes.Permission]struct{}, permMap permissionMap) (map[accesstypes.Permission]struct{}, permissionMap) {
+		for _, perm := range permissions {
+			permSet[perm] = struct{}{}
+			if permMap[res] == nil {
+				permMap[res] = map[accesstypes.Permission]bool{perm: true}
+			}
+		}
+
+		return permSet, permMap
+	}
+
 	for _, store := range s.resourceStore {
 		for resource, permissions := range store {
-			enum := string(resource)
-			enums[enum] = struct{}{}
-			for _, perm := range permissions {
-				perms[perm] = struct{}{}
-				if mapping[enum] == nil {
-					mapping[enum] = make(map[accesstypes.Permission]bool)
-				}
-				mapping[enum][perm] = true
-			}
+			resources[resource] = struct{}{}
+			perms, mapping = permMapper(resource, permissions, perms, mapping)
 		}
 	}
+
 	for _, store := range s.tagStore {
 		for resource, tagmap := range store {
 			for tag, permissions := range tagmap {
-				enum := fmt.Sprintf("%s.%s", resource, tag)
-				enums[enum] = struct{}{}
-				for _, perm := range permissions {
-					perms[perm] = struct{}{}
-					if mapping[enum] == nil {
-						mapping[enum] = make(map[accesstypes.Permission]bool)
-					}
-					mapping[enum][perm] = true
-				}
+				resources[resource.ResourceWithTag(tag)] = struct{}{}
+				perms, mapping = permMapper(resource.ResourceWithTag(tag), permissions, perms, mapping)
 			}
 		}
 	}
-	for enum := range enums {
+
+	for resource := range resources {
 		for perm := range perms {
-			if _, ok := mapping[enum][perm]; !ok {
-				if mapping[enum] == nil {
-					mapping[enum] = make(map[accesstypes.Permission]bool)
-				}
-				mapping[enum][perm] = false
+			if _, ok := mapping[resource]; !ok {
+				mapping[resource] = map[accesstypes.Permission]bool{perm: false}
+			} else if _, ok := mapping[resource][perm]; !ok {
+				mapping[resource][perm] = false
 			}
 		}
 	}
