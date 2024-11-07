@@ -28,7 +28,7 @@ export enum Resources {
 {{- end}}
 }
 
-{{- range _, $resource := .Resources}}
+{{- range $_, $resource := .Resources}}
 export enum $resource {
 	{{- range $tag, $permission := .Tags}}
 		{{$tag}} = '{{$permission}}',
@@ -36,7 +36,7 @@ export enum $resource {
 }
 {{- end}}
 
-type AllResources = Resources {{- range _, $resource := .Resources}}| {{$resource}}{{- end}};
+type AllResources = Resources {{- range $_, $resource := .Resources}}| {{$resource}}{{- end}};
 type PermissionResources = Record<Permissions, boolean>;
 type PermissionMappings = Record<AllResources, PermissionResources>;
 
