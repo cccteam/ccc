@@ -43,6 +43,10 @@ export enum {{$resource}} {
 
 {{- end}}
 
+type AllResources = Resources {{- range $resource, $_ := .Resources}} | {{$resource}}{{- end}};
+type PermissionResources = Record<Permissions, boolean>;
+type PermissionMappings = Record<AllResources, PermissionResources>;
+
 const Mappings: PermissionMappings = {
 	{{- range $resource, $_ := $resources}}
 	[Resources.{{$resource}}]: {
@@ -50,26 +54,15 @@ const Mappings: PermissionMappings = {
 		[Permissions.{{$perm}}]: {{index $permissionmap $resource $perm}},
 		{{- end}}
 	},
-		{{- range $tag := index $resourcetags $resource}}
-		
+		{{- range $tag := index $resourcetags $resource}}		
 	[{{$resource.ResourceWithTag $tag}}]: {
 			{{- range $perm := $permissions}}
 		[Permissions.{{$perm}}]: {{index $permissionmap $resource $perm}},
 			{{- end}}
 	},
-		
 		{{- end}}
-	
 	{{- end}}
-
 };
-
-
-type AllResources = Resources {{- range $resource, $_ := .Resources}} | {{$resource}}{{- end}};
-type PermissionResources = Record<Permissions, boolean>;
-type PermissionMappings = Record<AllResources, PermissionResources>;
-
-
 
 export function requiresPermission(resource: AllResources, permission: Permissions): boolean {
   return Mappings[resource][permission];
