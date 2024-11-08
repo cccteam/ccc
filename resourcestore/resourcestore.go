@@ -148,28 +148,26 @@ func (s *Store) tags() map[accesstypes.Resource][]accesstypes.Tag {
 	return resourcetags
 }
 
-func (s *Store) permissionResources() permissionMap {
+func (s *Store) requiredPermissionsMap() permissionMap {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	mapping := make(map[accesstypes.Resource]map[accesstypes.Permission]bool)
-	perms := make(map[accesstypes.Permission]struct{})
+	permMap := make(permissionMap)
+	permSet := make(map[accesstypes.Permission]struct{})
 	resources := make(map[accesstypes.Resource]struct{})
-	permMapper := func(res accesstypes.Resource, permissions []accesstypes.Permission, permSet map[accesstypes.Permission]struct{}, permMap permissionMap) (map[accesstypes.Permission]struct{}, permissionMap) {
+	setRequiredPerms := func(res accesstypes.Resource, permissions []accesstypes.Permission) {
 		for _, perm := range permissions {
 			permSet[perm] = struct{}{}
 			if permMap[res] == nil {
 				permMap[res] = map[accesstypes.Permission]bool{perm: true}
 			}
 		}
-
-		return permSet, permMap
 	}
 
 	for _, store := range s.resourceStore {
 		for resource, permissions := range store {
 			resources[resource] = struct{}{}
-			perms, mapping = permMapper(resource, permissions, perms, mapping)
+			setRequiredPerms(resource, permissions)
 		}
 	}
 
@@ -177,22 +175,20 @@ func (s *Store) permissionResources() permissionMap {
 		for resource, tagmap := range store {
 			for tag, permissions := range tagmap {
 				resources[resource.ResourceWithTag(tag)] = struct{}{}
-				perms, mapping = permMapper(resource.ResourceWithTag(tag), permissions, perms, mapping)
+				setRequiredPerms(resource.ResourceWithTag(tag), permissions)
 			}
 		}
 	}
 
 	for resource := range resources {
-		for perm := range perms {
-			if _, ok := mapping[resource]; !ok {
-				mapping[resource] = map[accesstypes.Permission]bool{perm: false}
-			} else if _, ok := mapping[resource][perm]; !ok {
-				mapping[resource][perm] = false
+		for perm := range permSet {
+			if _, ok := permMap[resource]; !ok {
+				permMap[resource] = map[accesstypes.Permission]bool{perm: false}
 			}
 		}
 	}
 
-	return mapping
+	return permMap
 }
 
 func (s *Store) List() map[accesstypes.Permission][]accesstypes.Resource {

@@ -85,7 +85,7 @@ func (s *Store) GenerateTypeScript(dst string) error {
 		Permissions: s.permissions(),
 		Resources:   s.resources(),
 		Tags:        s.tags(),
-		Mappings:    s.permissionResources(),
+		Mappings:    s.requiredPermissionsMap(),
 	}); err != nil {
 		panic(err)
 	}
