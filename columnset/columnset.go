@@ -49,7 +49,7 @@ func (p *columnSet[T]) StructFields(ctx context.Context) ([]accesstypes.Field, e
 	fields := make([]accesstypes.Field, 0, p.fieldMapper.Len())
 	domain, user := p.domainFromCtx(ctx), p.userFromCtx(ctx)
 	for _, field := range p.fieldMapper.Fields() {
-		if !p.resourceSet.PermissionRequired(field, p.resourceSet.RequiredPermission()) {
+		if !p.resourceSet.PermissionRequired(field, p.resourceSet.Permission()) {
 			fields = append(fields, field)
 		} else {
 			if hasPerm, err := hasPermission(ctx, p.permissionChecker, p.resourceSet, domain, user, p.resourceSet.Resource(field)); err != nil {
@@ -61,7 +61,7 @@ func (p *columnSet[T]) StructFields(ctx context.Context) ([]accesstypes.Field, e
 	}
 
 	if len(fields) == 0 {
-		return nil, httpio.NewForbiddenMessagef("user %s does not have %s permission on any fields in %s", user, p.resourceSet.RequiredPermission(), p.resourceSet.BaseResource())
+		return nil, httpio.NewForbiddenMessagef("user %s does not have %s permission on any fields in %s", user, p.resourceSet.Permission(), p.resourceSet.BaseResource())
 	}
 
 	return fields, nil
@@ -70,7 +70,7 @@ func (p *columnSet[T]) StructFields(ctx context.Context) ([]accesstypes.Field, e
 func hasPermission(
 	ctx context.Context, enforcer accesstypes.Enforcer, resourceSet *resourceset.ResourceSet, domain accesstypes.Domain, user accesstypes.User, resource accesstypes.Resource,
 ) (bool, error) {
-	if ok, _, err := enforcer.RequireResources(ctx, user, domain, resourceSet.RequiredPermission(), resource); err != nil {
+	if ok, _, err := enforcer.RequireResources(ctx, user, domain, resourceSet.Permission(), resource); err != nil {
 		return false, errors.Wrap(err, "Enforcer.RequireResources()")
 	} else if !ok {
 		return false, nil

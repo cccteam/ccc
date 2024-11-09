@@ -29,7 +29,7 @@ func TestNew(t *testing.T) {
 				resource: "resource",
 			},
 			want: &ResourceSet{
-				requiredPermissions: []accesstypes.Permission{accesstypes.Read},
+				permissions: []accesstypes.Permission{accesstypes.Read},
 				requiredTagPerm: accesstypes.TagPermissions{
 					"field2": {accesstypes.Read},
 				},
@@ -50,7 +50,7 @@ func TestNew(t *testing.T) {
 				resource: "resource",
 			},
 			want: &ResourceSet{
-				requiredPermissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update},
+				permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update},
 				requiredTagPerm: accesstypes.TagPermissions{
 					"field2": {accesstypes.Create, accesstypes.Update},
 				},

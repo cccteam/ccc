@@ -13,10 +13,10 @@ import (
 )
 
 type ResourceSet struct {
-	requiredPermissions []accesstypes.Permission
-	requiredTagPerm     accesstypes.TagPermissions
-	fieldToTag          map[accesstypes.Field]accesstypes.Tag
-	resource            accesstypes.Resource
+	permissions     []accesstypes.Permission
+	requiredTagPerm accesstypes.TagPermissions
+	fieldToTag      map[accesstypes.Field]accesstypes.Tag
+	resource        accesstypes.Resource
 }
 
 func New(v any, resource accesstypes.Resource) (*ResourceSet, error) {
@@ -26,10 +26,10 @@ func New(v any, resource accesstypes.Resource) (*ResourceSet, error) {
 	}
 
 	return &ResourceSet{
-		requiredPermissions: permissions,
-		requiredTagPerm:     requiredTagPerm,
-		fieldToTag:          fieldToTag,
-		resource:            resource,
+		permissions:     permissions,
+		requiredTagPerm: requiredTagPerm,
+		fieldToTag:      fieldToTag,
+		resource:        resource,
 	}, nil
 }
 
@@ -37,12 +37,12 @@ func (r *ResourceSet) TagPermissions() accesstypes.TagPermissions {
 	return r.requiredTagPerm
 }
 
-func (r *ResourceSet) RequiredPermission() accesstypes.Permission {
-	switch len(r.requiredPermissions) {
+func (r *ResourceSet) Permission() accesstypes.Permission {
+	switch len(r.permissions) {
 	case 0:
 		return accesstypes.NullPermission
 	case 1:
-		return r.requiredPermissions[0]
+		return r.permissions[0]
 	default:
 		panic("resource set has more than one required permission")
 	}

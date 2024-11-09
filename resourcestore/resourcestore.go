@@ -67,6 +67,10 @@ func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstyp
 }
 
 func (s *Store) AddResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
+	if permission == accesstypes.NullPermission {
+		return errors.New("cannot register null permission")
+	}
+
 	if !collectResourcePermissions {
 		return nil
 	}

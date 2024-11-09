@@ -20,6 +20,13 @@ func NewPatchSet(data map[accesstypes.Field]any) *PatchSet {
 	}
 }
 
+func NewEmptyPatchSet() *PatchSet {
+	return &PatchSet{
+		data: make(map[accesstypes.Field]any),
+		pkey: make(map[accesstypes.Field]any),
+	}
+}
+
 func (p *PatchSet) Set(field accesstypes.Field, value any) {
 	p.data[field] = value
 }
@@ -30,6 +37,10 @@ func (p *PatchSet) Get(field accesstypes.Field) any {
 
 func (p *PatchSet) SetKey(field accesstypes.Field, value any) {
 	p.pkey[field] = value
+}
+
+func (p *PatchSet) Key(field accesstypes.Field) any {
+	return p.pkey[field]
 }
 
 func (p *PatchSet) StructFields() []accesstypes.Field {
