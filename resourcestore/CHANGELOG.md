@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/cccteam/ccc/compare/resourcestore/v0.4.2...resourcestore/v0.5.0) (2024-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120))
+
+### Features
+
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120)) ([9f15fce](https://github.com/cccteam/ccc/commit/9f15fce5c8022ca5c25b86dee12be0326212cc75))
+
+
+### Code Upgrade
+
+* Upgrade go dependencies ([#127](https://github.com/cccteam/ccc/issues/127)) ([9fae5f2](https://github.com/cccteam/ccc/commit/9fae5f2a049a8b4a6f73bb55b171c9ef8578af08))
+
 ## [0.4.2](https://github.com/cccteam/ccc/compare/resourcestore/v0.4.1...resourcestore/v0.4.2) (2024-10-21)
 
 
