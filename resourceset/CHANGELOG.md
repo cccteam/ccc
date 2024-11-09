@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.0](https://github.com/cccteam/ccc/compare/resourceset/v0.3.3...resourceset/v0.4.0) (2024-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120))
+
+### Features
+
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120)) ([9f15fce](https://github.com/cccteam/ccc/commit/9f15fce5c8022ca5c25b86dee12be0326212cc75))
+
+
+### Bug Fixes
+
+* Fix import for unit tests ([#115](https://github.com/cccteam/ccc/issues/115)) ([4f0da34](https://github.com/cccteam/ccc/commit/4f0da34c25bc2346e94c54d5ddbfe74ac068be01))
+
+
+### Code Upgrade
+
+* Upgrade go dependencies ([#126](https://github.com/cccteam/ccc/issues/126)) ([64192ed](https://github.com/cccteam/ccc/commit/64192ed95dace976dbb9088b167144455047c078))
+
 ## [0.3.3](https://github.com/cccteam/ccc/compare/resourceset/v0.3.2...resourceset/v0.3.3) (2024-10-23)
 
 
