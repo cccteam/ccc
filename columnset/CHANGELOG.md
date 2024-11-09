@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.0](https://github.com/cccteam/ccc/compare/columnset/v0.0.5...columnset/v0.1.0) (2024-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120))
+
+### Features
+
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120)) ([9f15fce](https://github.com/cccteam/ccc/commit/9f15fce5c8022ca5c25b86dee12be0326212cc75))
+
+
+### Code Upgrade
+
+* Upgrade go dependencies ([#128](https://github.com/cccteam/ccc/issues/128)) ([045f94a](https://github.com/cccteam/ccc/commit/045f94a28f9dae9c2157fbbacfec73a904903d75))
+
 ## [0.0.5](https://github.com/cccteam/ccc/compare/columnset/v0.0.4...columnset/v0.0.5) (2024-10-23)
 
 
