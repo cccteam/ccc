@@ -155,12 +155,12 @@ func (s *Store) requiredPermissionsMap() permissionMap {
 	permMap := make(permissionMap)
 	permSet := make(map[accesstypes.Permission]struct{})
 	resources := make(map[accesstypes.Resource]struct{})
+
 	setRequiredPerms := func(res accesstypes.Resource, permissions []accesstypes.Permission) {
+		permMap[res] = make(map[accesstypes.Permission]bool)
 		for _, perm := range permissions {
 			permSet[perm] = struct{}{}
-			if permMap[res] == nil {
-				permMap[res] = map[accesstypes.Permission]bool{perm: true}
-			}
+			permMap[res][perm] = true
 		}
 	}
 
@@ -182,8 +182,8 @@ func (s *Store) requiredPermissionsMap() permissionMap {
 
 	for resource := range resources {
 		for perm := range permSet {
-			if _, ok := permMap[resource]; !ok {
-				permMap[resource] = map[accesstypes.Permission]bool{perm: false}
+			if _, ok := permMap[resource][perm]; !ok {
+				permMap[resource][perm] = false
 			}
 		}
 	}

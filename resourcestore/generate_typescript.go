@@ -1,8 +1,8 @@
 package resourcestore
 
 import (
-	"html/template"
 	"os"
+	"text/template"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
@@ -51,13 +51,13 @@ const Mappings: PermissionMappings = {
 	{{- range $resource, $_ := $resources}}
 	[Resources.{{$resource}}]: {
 		{{- range $perm := $permissions}}
-		[Permissions.{{$perm}}]: {{index $permissionmap $resource $perm}},
+		[Permissions.{{$perm}}]: {{- index $permissionmap $resource $perm}},
 		{{- end}}
 	},
 		{{- range $tag := index $resourcetags $resource}}		
 	[{{$resource.ResourceWithTag $tag}}]: {
 			{{- range $perm := $permissions}}
-		[Permissions.{{$perm}}]: {{index $permissionmap $resource $perm}},
+		[Permissions.{{$perm}}]: {{- index $permissionmap $resource $perm}},
 			{{- end}}
 	},
 		{{- end}}
