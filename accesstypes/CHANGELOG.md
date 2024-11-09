@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/cccteam/ccc/compare/accesstypes/v0.4.1...accesstypes/v0.5.0) (2024-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120))
+
+### Features
+
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120)) ([9f15fce](https://github.com/cccteam/ccc/commit/9f15fce5c8022ca5c25b86dee12be0326212cc75))
+
 ## [0.4.1](https://github.com/cccteam/ccc/compare/accesstypes/v0.4.0...accesstypes/v0.4.1) (2024-10-14)
 
 
