@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/patchset/v0.2.2...patchset/v0.3.0) (2024-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120))
+
+### Features
+
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120)) ([9f15fce](https://github.com/cccteam/ccc/commit/9f15fce5c8022ca5c25b86dee12be0326212cc75))
+
+
+### Code Upgrade
+
+* Upgrade go dependencies ([#125](https://github.com/cccteam/ccc/issues/125)) ([bc379ee](https://github.com/cccteam/ccc/commit/bc379eefa9ec295092ff2ae15fc5bd7729d0084c))
+
 ## [0.2.2](https://github.com/cccteam/ccc/compare/patchset/v0.2.1...patchset/v0.2.2) (2024-10-23)
 
 
