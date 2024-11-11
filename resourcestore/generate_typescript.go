@@ -57,7 +57,7 @@ const Mappings: PermissionMappings = {
 		{{- range $tag := index $resourcetags $resource}}		
 	[{{$resource.ResourceWithTag $tag}}]: {
 			{{- range $perm := $permissions}}
-		[Permissions.{{$perm}}]: {{index (index $permissionmap $resource) $perm}},
+		[Permissions.{{$perm}}]: {{- index $permissionmap ($resource.ResourceWithTag $tag) $perm}},
 			{{- end}}
 	},
 		{{- end}}
