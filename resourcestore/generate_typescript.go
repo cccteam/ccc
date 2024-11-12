@@ -9,19 +9,17 @@ import (
 )
 
 type TSGenerator struct {
-	Permissions []accesstypes.Permission
-	Resources   map[accesstypes.Resource]struct{}
-	Tags        map[accesstypes.Resource][]accesstypes.Tag
-	Mappings    map[accesstypes.Resource]map[accesstypes.Permission]bool
+	Permissions         []accesstypes.Permission
+	Resources           []accesstypes.Resource
+	ResourceTags        map[accesstypes.Resource][]accesstypes.Tag
+	ResourcePermissions map[accesstypes.Resource]map[accesstypes.Permission]bool
 }
 
 const tmpl = `// This file is auto-generated. Do not edit manually.
-
 {{- $permissions := .Permissions }}
 {{- $resources := .Resources}}
-{{- $resourcetags := .Tags }}
-{{- $permissionmap := .Mappings}}
-
+{{- $resourcetags := .ResourceTags }}
+{{- $resourcePerms := .ResourcePermissions}}
 export enum Permissions {
 {{- range $permissions}}
   {{.}} = '{{.}}',
@@ -29,7 +27,7 @@ export enum Permissions {
 }
 
 export enum Resources {
-{{- range $resource, $_ := $resources}}
+{{- range $resource := $resources}}
   {{$resource}} = '{{$resource}}',
 {{- end}}
 }
@@ -43,21 +41,21 @@ export enum {{$resource}} {
 
 {{- end}}
 
-type AllResources = Resources {{- range $resource, $_ := .Resources}} | {{$resource}}{{- end}};
+type AllResources = Resources {{- range $resource := .Resources}} | {{$resource}}{{- end}};
 type PermissionResources = Record<Permissions, boolean>;
 type PermissionMappings = Record<AllResources, PermissionResources>;
 
 const Mappings: PermissionMappings = {
-	{{- range $resource, $_ := $resources}}
+	{{- range $resource := $resources}}
 	[Resources.{{$resource}}]: {
 		{{- range $perm := $permissions}}
-		[Permissions.{{$perm}}]: {{index (index $permissionmap $resource) $perm}},
+		[Permissions.{{$perm}}]: {{- index $resourcePerms $resource $perm}},
 		{{- end}}
 	},
 		{{- range $tag := index $resourcetags $resource}}		
 	[{{$resource.ResourceWithTag $tag}}]: {
 			{{- range $perm := $permissions}}
-		[Permissions.{{$perm}}]: {{- index $permissionmap ($resource.ResourceWithTag $tag) $perm}},
+		[Permissions.{{$perm}}]: {{- index $resourcePerms ($resource.ResourceWithTag $tag) $perm}},
 			{{- end}}
 	},
 		{{- end}}
@@ -76,16 +74,13 @@ func (s *Store) GenerateTypeScript(dst string) error {
 	}
 	defer f.Close()
 
-	tsFile, err := template.New("").Parse(tmpl)
-	if err != nil {
-		panic(err)
-	}
+	tsFile := template.Must(template.New("").Parse(tmpl))
 
 	if err := tsFile.Execute(f, TSGenerator{
-		Permissions: s.permissions(),
-		Resources:   s.resources(),
-		Tags:        s.tags(),
-		Mappings:    s.requiredPermissionsMap(),
+		Permissions:         s.permissions(),
+		Resources:           s.resources(),
+		ResourceTags:        s.tags(),
+		ResourcePermissions: s.resourcePermissions(),
 	}); err != nil {
 		panic(err)
 	}

@@ -12,7 +12,6 @@ import (
 type (
 	tagStore      map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission
 	resourceStore map[accesstypes.Resource][]accesstypes.Permission
-	permissionMap map[accesstypes.Resource]map[accesstypes.Permission]bool
 )
 
 type Store struct {
@@ -113,18 +112,20 @@ func (s *Store) permissions() []accesstypes.Permission {
 	return slices.Compact(permissions)
 }
 
-func (s *Store) resources() map[accesstypes.Resource]struct{} {
+func (s *Store) resources() []accesstypes.Resource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	resources := make(map[accesstypes.Resource]struct{})
+	resources := []accesstypes.Resource{}
 	for _, stores := range s.resourceStore {
 		for resource := range stores {
-			resources[resource] = struct{}{}
+			resources = append(resources, resource)
 		}
 	}
 
-	return resources
+	slices.Sort(resources)
+
+	return slices.Compact(resources)
 }
 
 func (s *Store) tags() map[accesstypes.Resource][]accesstypes.Tag {
@@ -141,6 +142,7 @@ func (s *Store) tags() map[accesstypes.Resource][]accesstypes.Tag {
 				} else {
 					resourcetags[resource] = []accesstypes.Tag{tag}
 				}
+				slices.Sort(resourcetags[resource])
 			}
 		}
 	}
@@ -148,11 +150,11 @@ func (s *Store) tags() map[accesstypes.Resource][]accesstypes.Tag {
 	return resourcetags
 }
 
-func (s *Store) requiredPermissionsMap() permissionMap {
+func (s *Store) resourcePermissions() map[accesstypes.Resource]map[accesstypes.Permission]bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	permMap := make(permissionMap)
+	permMap := make(map[accesstypes.Resource]map[accesstypes.Permission]bool)
 	permSet := make(map[accesstypes.Permission]struct{})
 	resources := make(map[accesstypes.Resource]struct{})
 
