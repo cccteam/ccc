@@ -9,11 +9,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+type fields struct {
+	tagStore      map[accesstypes.PermissionScope]tagStore
+	resourceStore map[accesstypes.PermissionScope]resourceStore
+}
+
 func TestStore_GenerateTypeScript(t *testing.T) {
-	type fields struct {
-		tagStore      map[accesstypes.PermissionScope]tagStore
-		resourceStore map[accesstypes.PermissionScope]resourceStore
-	}
 	type args struct {
 		dst string
 	}
@@ -23,9 +24,34 @@ func TestStore_GenerateTypeScript(t *testing.T) {
 		args     args
 		wantErr  bool
 		wantPath string
+		wantDiff bool
 	}{
-		// TODO: Add test cases.
+		{
+			name:     "Generated TS Should Match",
+			fields:   fakeStores(t),
+			args:     args{"permissions.ts"},
+			wantErr:  false,
+			wantPath: "testdata/Generate_Typescript/permissions.ts",
+			wantDiff: false,
+		},
+		{
+			name:     "Generated TS Has Wrong Permissions",
+			fields:   fakeStores(t),
+			args:     args{"permissions.ts"},
+			wantErr:  false,
+			wantPath: "testdata/Generate_Typescript/mismatch.ts",
+			wantDiff: true,
+		},
+		{
+			name:     "No File Path",
+			fields:   fakeStores(t),
+			args:     args{""},
+			wantErr:  true,
+			wantPath: "",
+			wantDiff: false,
+		},
 	}
+
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
@@ -36,7 +62,7 @@ func TestStore_GenerateTypeScript(t *testing.T) {
 				resourceStore: tt.fields.resourceStore,
 			}
 
-			tempPath := filepath.Join(t.TempDir(), "permissions.ts")
+			tempPath := filepath.Join(t.TempDir(), tt.args.dst)
 			if err := s.GenerateTypeScript(tempPath); (err != nil) != tt.wantErr {
 				t.Fatalf("Store.GenerateTypeScript() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -46,16 +72,44 @@ func TestStore_GenerateTypeScript(t *testing.T) {
 
 			got, err := os.ReadFile(tempPath)
 			if err != nil {
-				t.Fatalf("unexpected error occurred when calling os.ReadFile() with name %s, error = %s", tempPath, err)
+				t.Fatalf("unexpected error occurred when calling os.ReadFile() with tempPath %s, error = %s", tempPath, err)
 			}
 			want, err := os.ReadFile(tt.wantPath)
 			if err != nil {
-				t.Fatalf("unexpected error occurred when calling os.ReadFile() with name %s, error = %s", tt.wantPath, err)
+				t.Fatalf("unexpected error occurred when calling os.ReadFile() with wantPath %s, error = %s", tt.wantPath, err)
 			}
 
-			if diff := cmp.Diff(want, got); diff != "" {
+			if diff := cmp.Diff(want, got); (diff != "") != tt.wantDiff {
 				t.Errorf("Store.GenerateTypeScript() output mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
+}
+
+func fakeStores(t *testing.T) fields {
+	t.Helper()
+
+	rStore := map[accesstypes.Resource][]accesstypes.Permission{
+		"Prototype1": {"Create", "Delete"},
+		"Prototype2": {"Update", "List", "Read"},
+		"Prototype3": {"Delete", "Read", "List"},
+	}
+
+	tStore := map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission{
+		"Prototype1": {
+			"id":       []accesstypes.Permission{"Create", "Delete"},
+			"protocol": []accesstypes.Permission{"Create", "Delete"},
+		},
+		"Prototype2": {
+			"id":   []accesstypes.Permission{"Create", "Delete"},
+			"uuid": []accesstypes.Permission{"List", "Read", "Update", "Delete"},
+			"addr": []accesstypes.Permission{"Create", "Delete"},
+		},
+		"Prototype3": {
+			"socket":  []accesstypes.Permission{},
+			"sockopt": []accesstypes.Permission{"Read", "List"},
+		},
+	}
+
+	return fields{map[accesstypes.PermissionScope]tagStore{"global": tStore}, map[accesstypes.PermissionScope]resourceStore{"global": rStore}}
 }
