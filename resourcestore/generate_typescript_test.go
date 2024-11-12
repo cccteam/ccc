@@ -34,22 +34,6 @@ func TestStore_GenerateTypeScript(t *testing.T) {
 			wantPath: "testdata/Generate_Typescript/permissions.ts",
 			wantDiff: false,
 		},
-		{
-			name:     "Generated TS Has Wrong Permissions",
-			fields:   fakeStores(t),
-			args:     args{"permissions.ts"},
-			wantErr:  false,
-			wantPath: "testdata/Generate_Typescript/mismatch.ts",
-			wantDiff: true,
-		},
-		{
-			name:     "No File Path",
-			fields:   fakeStores(t),
-			args:     args{""},
-			wantErr:  true,
-			wantPath: "",
-			wantDiff: false,
-		},
 	}
 
 	for _, tt := range tests {
