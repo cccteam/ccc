@@ -15,6 +15,7 @@ type fields struct {
 }
 
 func TestStore_GenerateTypeScript(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		dst string
 	}
@@ -73,27 +74,38 @@ func TestStore_GenerateTypeScript(t *testing.T) {
 func fakeStores(t *testing.T) fields {
 	t.Helper()
 
-	rStore := map[accesstypes.Resource][]accesstypes.Permission{
-		"Prototype1": {"Create", "Delete"},
-		"Prototype2": {"Update", "List", "Read"},
-		"Prototype3": {"Delete", "Read", "List"},
+	return fields{
+		map[accesstypes.PermissionScope]tagStore{
+			"global": {
+				"Prototype1": {
+					"id":   []accesstypes.Permission{"Create", "Delete"},
+					"addr": []accesstypes.Permission{"Read"},
+				},
+				"Prototype2": {
+					"socket":  []accesstypes.Permission{},
+					"sockopt": []accesstypes.Permission{"Read", "List"},
+				},
+			},
+			"domain": {
+				"Prototype3": {
+					"id":   []accesstypes.Permission{"Create", "Delete"},
+					"addr": []accesstypes.Permission{"Read"},
+				},
+				"Prototype4": {
+					"socket":  []accesstypes.Permission{},
+					"sockopt": []accesstypes.Permission{"Read", "List"},
+				},
+			},
+		},
+		map[accesstypes.PermissionScope]resourceStore{
+			"global": {
+				"Prototype1": {"Create", "Delete"},
+				"Prototype2": {"Update", "List", "Read"},
+			},
+			"domain": {
+				"Prototype3": {"Create", "Delete"},
+				"Prototype4": {"Update", "List", "Read"},
+			},
+		},
 	}
-
-	tStore := map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission{
-		"Prototype1": {
-			"id":       []accesstypes.Permission{"Create", "Delete"},
-			"protocol": []accesstypes.Permission{"Create", "Delete"},
-		},
-		"Prototype2": {
-			"id":   []accesstypes.Permission{"Create", "Delete"},
-			"uuid": []accesstypes.Permission{"List", "Read", "Update", "Delete"},
-			"addr": []accesstypes.Permission{"Create", "Delete"},
-		},
-		"Prototype3": {
-			"socket":  []accesstypes.Permission{},
-			"sockopt": []accesstypes.Permission{"Read", "List"},
-		},
-	}
-
-	return fields{map[accesstypes.PermissionScope]tagStore{"global": tStore}, map[accesstypes.PermissionScope]resourceStore{"global": rStore}}
 }

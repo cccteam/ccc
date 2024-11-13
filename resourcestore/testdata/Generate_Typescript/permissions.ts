@@ -10,21 +10,25 @@ export enum Resources {
 	Prototype1 = 'Prototype1',
 	Prototype2 = 'Prototype2',
 	Prototype3 = 'Prototype3',
+	Prototype4 = 'Prototype4',
 }
 export enum Prototype1 {
+	addr = 'Prototype1.addr',
 	id = 'Prototype1.id',
-	protocol = 'Prototype1.protocol',
 }
 export enum Prototype2 {
-	addr = 'Prototype2.addr',
-	id = 'Prototype2.id',
-	uuid = 'Prototype2.uuid',
+	socket = 'Prototype2.socket',
+	sockopt = 'Prototype2.sockopt',
 }
 export enum Prototype3 {
-	socket = 'Prototype3.socket',
-	sockopt = 'Prototype3.sockopt',
+	addr = 'Prototype3.addr',
+	id = 'Prototype3.id',
 }
-type AllResources = Resources | Prototype1 | Prototype2 | Prototype3;
+export enum Prototype4 {
+	socket = 'Prototype4.socket',
+	sockopt = 'Prototype4.sockopt',
+}
+type AllResources = Resources | Prototype1 | Prototype2 | Prototype3 | Prototype4;
 type PermissionResources = Record<Permissions, boolean>;
 type PermissionMappings = Record<AllResources, PermissionResources>;
 const Mappings: PermissionMappings = {
@@ -35,14 +39,14 @@ const Mappings: PermissionMappings = {
 		[Permissions.Read]:false,
 		[Permissions.Update]:false,
 	},
-	[Prototype1.id]: {
-		[Permissions.Create]:true,
-		[Permissions.Delete]:true,
+	[Prototype1.addr]: {
+		[Permissions.Create]:false,
+		[Permissions.Delete]:false,
 		[Permissions.List]:false,
-		[Permissions.Read]:false,
+		[Permissions.Read]:true,
 		[Permissions.Update]:false,
 	},
-	[Prototype1.protocol]: {
+	[Prototype1.id]: {
 		[Permissions.Create]:true,
 		[Permissions.Delete]:true,
 		[Permissions.List]:false,
@@ -56,42 +60,56 @@ const Mappings: PermissionMappings = {
 		[Permissions.Read]:true,
 		[Permissions.Update]:true,
 	},
-	[Prototype2.addr]: {
-		[Permissions.Create]:true,
-		[Permissions.Delete]:true,
-		[Permissions.List]:false,
-		[Permissions.Read]:false,
-		[Permissions.Update]:false,
-	},
-	[Prototype2.id]: {
-		[Permissions.Create]:true,
-		[Permissions.Delete]:true,
-		[Permissions.List]:false,
-		[Permissions.Read]:false,
-		[Permissions.Update]:false,
-	},
-	[Prototype2.uuid]: {
-		[Permissions.Create]:false,
-		[Permissions.Delete]:true,
-		[Permissions.List]:true,
-		[Permissions.Read]:true,
-		[Permissions.Update]:true,
-	},
-	[Resources.Prototype3]: {
-		[Permissions.Create]:false,
-		[Permissions.Delete]:true,
-		[Permissions.List]:true,
-		[Permissions.Read]:true,
-		[Permissions.Update]:false,
-	},
-	[Prototype3.socket]: {
+	[Prototype2.socket]: {
 		[Permissions.Create]:false,
 		[Permissions.Delete]:false,
 		[Permissions.List]:false,
 		[Permissions.Read]:false,
 		[Permissions.Update]:false,
 	},
-	[Prototype3.sockopt]: {
+	[Prototype2.sockopt]: {
+		[Permissions.Create]:false,
+		[Permissions.Delete]:false,
+		[Permissions.List]:true,
+		[Permissions.Read]:true,
+		[Permissions.Update]:false,
+	},
+	[Resources.Prototype3]: {
+		[Permissions.Create]:true,
+		[Permissions.Delete]:true,
+		[Permissions.List]:false,
+		[Permissions.Read]:false,
+		[Permissions.Update]:false,
+	},
+	[Prototype3.addr]: {
+		[Permissions.Create]:false,
+		[Permissions.Delete]:false,
+		[Permissions.List]:false,
+		[Permissions.Read]:true,
+		[Permissions.Update]:false,
+	},
+	[Prototype3.id]: {
+		[Permissions.Create]:true,
+		[Permissions.Delete]:true,
+		[Permissions.List]:false,
+		[Permissions.Read]:false,
+		[Permissions.Update]:false,
+	},
+	[Resources.Prototype4]: {
+		[Permissions.Create]:false,
+		[Permissions.Delete]:false,
+		[Permissions.List]:true,
+		[Permissions.Read]:true,
+		[Permissions.Update]:true,
+	},
+	[Prototype4.socket]: {
+		[Permissions.Create]:false,
+		[Permissions.Delete]:false,
+		[Permissions.List]:false,
+		[Permissions.Read]:false,
+		[Permissions.Update]:false,
+	},
+	[Prototype4.sockopt]: {
 		[Permissions.Create]:false,
 		[Permissions.Delete]:false,
 		[Permissions.List]:true,

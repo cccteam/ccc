@@ -12,7 +12,7 @@ type TSGenerator struct {
 	Permissions         []accesstypes.Permission
 	Resources           []accesstypes.Resource
 	ResourceTags        map[accesstypes.Resource][]accesstypes.Tag
-	ResourcePermissions map[accesstypes.Resource]map[accesstypes.Permission]bool
+	ResourcePermissions permissionMap
 }
 
 const tmpl = `// This file is auto-generated. Do not edit manually.
@@ -76,11 +76,11 @@ func (s *Store) GenerateTypeScript(dst string) error {
 		ResourceTags:        s.tags(),
 		ResourcePermissions: s.resourcePermissions(),
 	}); err != nil {
-		return err
+		return errors.Wrap(err, "template.Template.Execute()")
 	}
 
 	if err := f.Close(); err != nil {
-		return err
+		return errors.Wrap(err, "os.file.Close()")
 	}
 
 	return err

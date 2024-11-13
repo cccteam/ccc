@@ -12,6 +12,7 @@ import (
 type (
 	tagStore      map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission
 	resourceStore map[accesstypes.Resource][]accesstypes.Permission
+	permissionMap map[accesstypes.Resource]map[accesstypes.Permission]bool
 )
 
 type Store struct {
@@ -137,11 +138,7 @@ func (s *Store) tags() map[accesstypes.Resource][]accesstypes.Tag {
 	for _, tagStore := range s.tagStore {
 		for resource, tags := range tagStore {
 			for tag := range tags {
-				if _, ok := resourcetags[resource]; ok {
-					resourcetags[resource] = append(resourcetags[resource], tag)
-				} else {
-					resourcetags[resource] = []accesstypes.Tag{tag}
-				}
+				resourcetags[resource] = append(resourcetags[resource], tag)
 				slices.Sort(resourcetags[resource])
 			}
 		}
@@ -150,7 +147,7 @@ func (s *Store) tags() map[accesstypes.Resource][]accesstypes.Tag {
 	return resourcetags
 }
 
-func (s *Store) resourcePermissions() map[accesstypes.Resource]map[accesstypes.Permission]bool {
+func (s *Store) resourcePermissions() permissionMap {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
