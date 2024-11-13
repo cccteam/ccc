@@ -19,8 +19,8 @@ type ResourceSet struct {
 	resource        accesstypes.Resource
 }
 
-func New(v any, resource accesstypes.Resource) (*ResourceSet, error) {
-	requiredTagPerm, fieldToTag, permissions, err := permissionsFromTags(v)
+func New(v any, resource accesstypes.Resource, permissions ...accesstypes.Permission) (*ResourceSet, error) {
+	requiredTagPerm, fieldToTag, permissions, err := permissionsFromTags(v, permissions)
 	if err != nil {
 		return nil, errors.Wrap(err, "permissionsFromTags()")
 	}
@@ -48,6 +48,10 @@ func (r *ResourceSet) Permission() accesstypes.Permission {
 	}
 }
 
+func (r *ResourceSet) Permissions() []accesstypes.Permission {
+	return r.permissions
+}
+
 func (r *ResourceSet) PermissionRequired(fieldName accesstypes.Field, perm accesstypes.Permission) bool {
 	return slices.Contains(r.requiredTagPerm[r.fieldToTag[fieldName]], perm)
 }
@@ -60,7 +64,7 @@ func (r *ResourceSet) BaseResource() accesstypes.Resource {
 	return r.resource
 }
 
-func permissionsFromTags(v any) (tags accesstypes.TagPermissions, fieldToTag map[accesstypes.Field]accesstypes.Tag, permissions []accesstypes.Permission, err error) {
+func permissionsFromTags(v any, perms []accesstypes.Permission) (tags accesstypes.TagPermissions, fieldToTag map[accesstypes.Field]accesstypes.Tag, permissions []accesstypes.Permission, err error) {
 	vType := reflect.TypeOf(v)
 	if vType.Kind() == reflect.Ptr {
 		vType = vType.Elem()
@@ -74,6 +78,19 @@ func permissionsFromTags(v any) (tags accesstypes.TagPermissions, fieldToTag map
 	permissionMap := make(map[accesstypes.Permission]struct{})
 	mutating := make(map[accesstypes.Permission]struct{})
 	viewing := make(map[accesstypes.Permission]struct{})
+
+	for _, perm := range perms {
+		switch perm {
+		case accesstypes.NullPermission:
+			continue
+		case accesstypes.Create, accesstypes.Update, accesstypes.Delete:
+			mutating[perm] = struct{}{}
+		default:
+			viewing[perm] = struct{}{}
+		}
+		permissionMap[perm] = struct{}{}
+	}
+
 	for i := range vType.NumField() {
 		field := vType.Field(i)
 		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")

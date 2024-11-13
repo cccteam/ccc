@@ -46,13 +46,20 @@ func NewColumnSet[T any](rSet *resourceset.ResourceSet, permissionChecker access
 }
 
 func (p *columnSet[T]) StructFields(ctx context.Context) ([]accesstypes.Field, error) {
-	fields := make([]accesstypes.Field, 0, p.fieldMapper.Len())
 	domain, user := p.domainFromCtx(ctx), p.userFromCtx(ctx)
+
+	if ok, _, err := p.permissionChecker.RequireResources(ctx, user, domain, p.resourceSet.Permission(), p.resourceSet.BaseResource()); err != nil {
+		return nil, errors.Wrap(err, "accesstypes.Enforcer.RequireResources()")
+	} else if !ok {
+		return nil, httpio.NewForbiddenMessagef("user %s does not have %s permission on %s", user, p.resourceSet.Permission(), p.resourceSet.BaseResource())
+	}
+
+	fields := make([]accesstypes.Field, 0, p.fieldMapper.Len())
 	for _, field := range p.fieldMapper.Fields() {
 		if !p.resourceSet.PermissionRequired(field, p.resourceSet.Permission()) {
 			fields = append(fields, field)
 		} else {
-			if hasPerm, err := hasPermission(ctx, p.permissionChecker, p.resourceSet, domain, user, p.resourceSet.Resource(field)); err != nil {
+			if hasPerm, _, err := p.permissionChecker.RequireResources(ctx, user, domain, p.resourceSet.Permission(), p.resourceSet.Resource(field)); err != nil {
 				return nil, errors.Wrap(err, "hasPermission()")
 			} else if hasPerm {
 				fields = append(fields, field)
@@ -65,16 +72,4 @@ func (p *columnSet[T]) StructFields(ctx context.Context) ([]accesstypes.Field, e
 	}
 
 	return fields, nil
-}
-
-func hasPermission(
-	ctx context.Context, enforcer accesstypes.Enforcer, resourceSet *resourceset.ResourceSet, domain accesstypes.Domain, user accesstypes.User, resource accesstypes.Resource,
-) (bool, error) {
-	if ok, _, err := enforcer.RequireResources(ctx, user, domain, resourceSet.Permission(), resource); err != nil {
-		return false, errors.Wrap(err, "Enforcer.RequireResources()")
-	} else if !ok {
-		return false, nil
-	}
-
-	return true, nil
 }
