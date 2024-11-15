@@ -6,12 +6,14 @@ export enum Permissions {
 	Read = 'Read',
 	Update = 'Update',
 }
+
 export enum Resources {
 	Prototype1 = 'Prototype1',
 	Prototype2 = 'Prototype2',
 	Prototype3 = 'Prototype3',
 	Prototype4 = 'Prototype4',
 }
+
 export enum Prototype1 {
 	addr = 'Prototype1.addr',
 	id = 'Prototype1.id',
@@ -28,9 +30,11 @@ export enum Prototype4 {
 	socket = 'Prototype4.socket',
 	sockopt = 'Prototype4.sockopt',
 }
+
 type AllResources = Resources | Prototype1 | Prototype2 | Prototype3 | Prototype4;
 type PermissionResources = Record<Permissions, boolean>;
 type PermissionMappings = Record<AllResources, PermissionResources>;
+
 const Mappings: PermissionMappings = {
 	[Resources.Prototype1]: {
 		[Permissions.Create]:true,
@@ -117,6 +121,7 @@ const Mappings: PermissionMappings = {
 		[Permissions.Update]:false,
 	},
 };
+
 export function requiresPermission(resource: AllResources, permission: Permissions): boolean {
 	return Mappings[resource][permission];
 }
