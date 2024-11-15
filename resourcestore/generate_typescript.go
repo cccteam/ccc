@@ -37,8 +37,7 @@ export enum {{$resource}} {
 	{{$tag}} = '{{$resource.ResourceWithTag $tag}}',
 	{{- end}}
 }
-{{- end}}
-
+{{ end}}
 type AllResources = Resources {{- range $resource := .Resources}} | {{$resource}}{{- end}};
 type PermissionResources = Record<Permissions, boolean>;
 type PermissionMappings = Record<AllResources, PermissionResources>;
