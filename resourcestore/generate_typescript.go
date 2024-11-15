@@ -87,5 +87,5 @@ func (s *Store) GenerateTypeScript(dst string) error {
 		return errors.Wrap(err, "os.file.Close()")
 	}
 
-	return err
+	return nil
 }
