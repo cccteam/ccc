@@ -1,18 +1,17 @@
 {
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"
-  }
+  },
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "eslint.enable": true,
   "editor.formatOnSave": true,
   "editor.renderWhitespace": "all",
   "eslint.lintTask.enable": true,
   "eslint.validate": ["javascript", "typescript"],
-  "eslint.workingDirectories": ["gui"],
   "git.autofetch": true,
   "go.addTags": {
     "transform": "camelcase"
-  }
+  },
   "go.generateTestsFlags": ["-parallel"],
   "go.lintTool": "golangci-lint",
   "go.lintOnSave": "workspace",
@@ -24,9 +23,5 @@
   },
   "gopls": {
     "formatting.gofumpt": true
-  },
-  "rest-client.enableTelemetry": false,
-  "rest-client.previewOption": "exchange",
-  "rest-client.requestNameAsResponseTabTitle": true,
-  "rest-client.showResponseInDifferentTab": true,
+  }
 }

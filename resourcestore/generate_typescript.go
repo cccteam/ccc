@@ -22,20 +22,20 @@ const tmpl = `// This file is auto-generated. Do not edit manually.
 {{- $resourcePerms := .ResourcePermissions}}
 export enum Permissions {
 {{- range $permissions}}
-	{{.}} = '{{.}}',
+  {{.}} = '{{.}}',
 {{- end}}
 }
 
 export enum Resources {
 {{- range $resource := $resources}}
-	{{$resource}} = '{{$resource}}',
+  {{$resource}} = '{{$resource}}',
 {{- end}}
 }
 {{ range $resource, $tags := $resourcetags}}
 export enum {{$resource}} {
-	{{- range $_, $tag:= $tags}}
-	{{$tag}} = '{{$resource.ResourceWithTag $tag}}',
-	{{- end}}
+  {{- range $_, $tag:= $tags}}
+  {{$tag}} = '{{$resource.ResourceWithTag $tag}}',
+  {{- end}}
 }
 {{ end}}
 type AllResources = Resources {{- range $resource := .Resources}} | {{$resource}}{{- end}};
@@ -43,24 +43,24 @@ type PermissionResources = Record<Permissions, boolean>;
 type PermissionMappings = Record<AllResources, PermissionResources>;
 
 const Mappings: PermissionMappings = {
-	{{- range $resource := $resources}}
-	[Resources.{{$resource}}]: {
-		{{- range $perm := $permissions}}
-		[Permissions.{{$perm}}]: {{- index $resourcePerms $resource $perm}},
-		{{- end}}
-	},
-		{{- range $tag := index $resourcetags $resource}}
-	[{{$resource.ResourceWithTag $tag}}]: {
-			{{- range $perm := $permissions}}
-		[Permissions.{{$perm}}]: {{- index $resourcePerms ($resource.ResourceWithTag $tag) $perm}},
-			{{- end}}
-	},
-		{{- end}}
-	{{- end}}
+  {{- range $resource := $resources}}
+  [Resources.{{$resource}}]: {
+    {{- range $perm := $permissions}}
+    [Permissions.{{$perm}}]: {{ index $resourcePerms $resource $perm}},
+    {{- end}}
+  },
+    {{- range $tag := index $resourcetags $resource}}
+  [{{$resource.ResourceWithTag $tag}}]: {
+      {{- range $perm := $permissions}}
+    [Permissions.{{$perm}}]: {{ index $resourcePerms ($resource.ResourceWithTag $tag) $perm}},
+      {{- end}}
+  },
+    {{- end}}
+  {{- end}}
 };
 
 export function requiresPermission(resource: AllResources, permission: Permissions): boolean {
-	return Mappings[resource][permission];
+  return Mappings[resource][permission];
 }
 `
 
