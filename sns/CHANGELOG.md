@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/cccteam/ccc/compare/sns/v0.2.4...sns/v0.2.5) (2024-11-16)
+
+
+### Bug Fixes
+
+* Update Release Please config ([#32](https://github.com/cccteam/ccc/issues/32)) ([141cb33](https://github.com/cccteam/ccc/commit/141cb33d307e4190063ffe99ead84bdd0ca0298f))
+
 ## [0.2.4](https://github.com/cccteam/ccc/compare/sns-v0.2.3...sns-v0.2.4) (2024-09-24)
 
 
