@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/cccteam/ccc/compare/v0.2.9...v0.2.10) (2024-11-16)
+
+
+### Code Refactoring
+
+* change format of generated typescript from resource store ([#119](https://github.com/cccteam/ccc/issues/119)) ([bd90eaa](https://github.com/cccteam/ccc/commit/bd90eaa76014a92679ac1c87aa9c614346563800))
+
 ## [0.2.9](https://github.com/cccteam/ccc/compare/v0.2.8...v0.2.9) (2024-10-21)
 
 
