@@ -24,8 +24,8 @@ github.com/cccteam/ccc/patchset v0.3.0 h1:SN97UjH3AXGWhHQirO1vTgm/veJMedTDjYbK4P
 github.com/cccteam/ccc/patchset v0.3.0/go.mod h1:BF3sjT0F5w7iZge6+T9dZZnoyNy2CWsh0hqmbW7lLGM=
 github.com/cccteam/ccc/resourceset v0.4.1 h1:berP9zUyrjGdQ/hXm15qH7kF+DWlbdTNtdU/p9SWR8E=
 github.com/cccteam/ccc/resourceset v0.4.1/go.mod h1:R81nDOx5eNrN9XuTRe0P3cW39O/5fyJy6X1tCpHnJhg=
-github.com/cccteam/httpio v0.6.4 h1:W8F/rymjKrxPLjQdKIAcd57RPNAY1RB0I7jgwfU9Q+g=
-github.com/cccteam/httpio v0.6.4/go.mod h1:x1u+qit04gGBzS+1c9qZSsa22ZQnLONdHYEyMIuMDjw=
+github.com/cccteam/httpio v0.7.0 h1:AT5qovLKgeDV/ugNID25HyYZQMNfdiLovS97ibbJ9OM=
+github.com/cccteam/httpio v0.7.0/go.mod h1:x1u+qit04gGBzS+1c9qZSsa22ZQnLONdHYEyMIuMDjw=
 github.com/cccteam/logger v0.1.12 h1:qmNPJKb9wOlTHYN+WUUaOkKM1YxVyXsOusuA2Xp7/tE=
 github.com/cccteam/logger v0.1.12/go.mod h1:sctqFYiCg0KkKszjmAkWV4ynkuHNbFwTdsAPn8IlWh0=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
