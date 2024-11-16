@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.1](https://github.com/cccteam/ccc/compare/columnset/v0.1.0...columnset/v0.1.1) (2024-11-16)
+
+
+### Features
+
+* Move base resouce permission checking into columnset ([#132](https://github.com/cccteam/ccc/issues/132)) ([f76879d](https://github.com/cccteam/ccc/commit/f76879d09ff489b64e5290f9d55b278cc01d7b5c))
+
+
+### Code Upgrade
+
+* Upgrade dependencies ([#135](https://github.com/cccteam/ccc/issues/135)) ([7901e64](https://github.com/cccteam/ccc/commit/7901e64376e6f8437af357ed9606429b7187ae95))
+
 ## [0.1.0](https://github.com/cccteam/ccc/compare/columnset/v0.0.5...columnset/v0.1.0) (2024-11-09)
 
 
