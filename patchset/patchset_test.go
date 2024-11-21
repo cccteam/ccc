@@ -331,33 +331,40 @@ func TestPatchSet_Data(t *testing.T) {
 	}
 }
 
-func TestPatchSet_KeyData(t *testing.T) {
+func TestPatchSet_PrimaryKey(t *testing.T) {
 	t.Parallel()
 
 	type fields struct {
-		data map[accesstypes.Field]any
-		pkey map[accesstypes.Field]any
+		data   map[accesstypes.Field]any
+		pkey   map[accesstypes.Field]any
+		fields []accesstypes.Field
 	}
 	tests := []struct {
 		name   string
 		fields fields
-		want   map[accesstypes.Field]any
+		want   PrimaryKey
 	}{
 		{
-			name: "KeyData",
+			name: "PrimaryKey",
 			fields: fields{
 				pkey: map[accesstypes.Field]any{
 					"field1": "value1",
 					"field2": "value2",
 				},
+				fields: []accesstypes.Field{
+					"field1",
+					"field2",
+				},
 			},
-			want: map[accesstypes.Field]any{
-				"field1": "value1",
-				"field2": "value2",
+			want: PrimaryKey{
+				keyParts: []KeyPart{
+					{Key: "field1", Value: "value1"},
+					{Key: "field2", Value: "value2"},
+				},
 			},
 		},
 		{
-			name: "KeyData with data",
+			name: "PrimaryKey with ordering",
 			fields: fields{
 				data: map[accesstypes.Field]any{
 					"field3": "value1",
@@ -366,10 +373,16 @@ func TestPatchSet_KeyData(t *testing.T) {
 					"field1": "value1",
 					"field2": "value2",
 				},
+				fields: []accesstypes.Field{
+					"field2",
+					"field1",
+				},
 			},
-			want: map[accesstypes.Field]any{
-				"field1": "value1",
-				"field2": "value2",
+			want: PrimaryKey{
+				keyParts: []KeyPart{
+					{Key: "field2", Value: "value2"},
+					{Key: "field1", Value: "value1"},
+				},
 			},
 		},
 	}
@@ -378,11 +391,12 @@ func TestPatchSet_KeyData(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
-				data: tt.fields.data,
-				pkey: tt.fields.pkey,
+				data:   tt.fields.data,
+				pkey:   tt.fields.pkey,
+				fields: tt.fields.fields,
 			}
-			got := p.KeyData()
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			got := p.PrimaryKey()
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PrimaryKey{}, KeyPart{})); diff != "" {
 				t.Errorf("PatchSet.KeyData () mismatch (-want +got):\n%s", diff)
 			}
 		})

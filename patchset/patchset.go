@@ -9,8 +9,9 @@ import (
 )
 
 type PatchSet struct {
-	data map[accesstypes.Field]any
-	pkey map[accesstypes.Field]any
+	data   map[accesstypes.Field]any
+	pkey   map[accesstypes.Field]any
+	fields []accesstypes.Field
 }
 
 func NewPatchSet(data map[accesstypes.Field]any) *PatchSet {
@@ -36,6 +37,9 @@ func (p *PatchSet) Get(field accesstypes.Field) any {
 }
 
 func (p *PatchSet) SetKey(field accesstypes.Field, value any) {
+	if _, found := p.data[field]; !found {
+		p.fields = append(p.fields, field)
+	}
 	p.pkey[field] = value
 }
 
@@ -55,8 +59,16 @@ func (p *PatchSet) Data() map[accesstypes.Field]any {
 	return p.data
 }
 
-func (p *PatchSet) KeyData() map[accesstypes.Field]any {
-	return p.pkey
+func (p *PatchSet) PrimaryKey() PrimaryKey {
+	pKey := PrimaryKey{}
+	for _, field := range p.fields {
+		pKey.keyParts = append(pKey.keyParts, KeyPart{
+			Key:   field,
+			Value: p.pkey[field],
+		})
+	}
+
+	return pKey
 }
 
 func (p *PatchSet) HasKey() bool {
