@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/cccteam/ccc/compare/patchset/v0.3.0...patchset/v0.3.1) (2024-11-21)
+
+
+### Bug Fixes
+
+* Fix unstable ordering of composite primary keys ([#136](https://github.com/cccteam/ccc/issues/136)) ([8a37c94](https://github.com/cccteam/ccc/commit/8a37c9408d76dbe571474e6b51874a2c5ac78933))
+
 ## [0.3.0](https://github.com/cccteam/ccc/compare/patchset/v0.2.2...patchset/v0.3.0) (2024-11-09)
 
 
