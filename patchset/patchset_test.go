@@ -327,6 +327,64 @@ func TestPatchSet_Len(t *testing.T) {
 	}
 }
 
+func TestPatchSet_Data(t *testing.T) {
+	t.Parallel()
+
+	type fields struct {
+		data map[accesstypes.Field]any
+		pkey map[accesstypes.Field]any
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   map[accesstypes.Field]any
+	}{
+		{
+			name: "Data",
+			fields: fields{
+				data: map[accesstypes.Field]any{
+					"field1": "value1",
+					"field2": "value2",
+				},
+			},
+			want: map[accesstypes.Field]any{
+				"field1": "value1",
+				"field2": "value2",
+			},
+		},
+		{
+			name: "Data with keys",
+			fields: fields{
+				data: map[accesstypes.Field]any{
+					"field1": "value1",
+					"field2": "value2",
+				},
+				pkey: map[accesstypes.Field]any{
+					"field3": "value1",
+				},
+			},
+			want: map[accesstypes.Field]any{
+				"field1": "value1",
+				"field2": "value2",
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			p := &PatchSet{
+				data: tt.fields.data,
+				pkey: tt.fields.pkey,
+			}
+			got := p.Data()
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("PatchSet.Data () mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestPatchSet_PrimaryKey(t *testing.T) {
 	t.Parallel()
 

@@ -49,6 +49,10 @@ func (p *PatchSet) Len() int {
 	return len(p.data)
 }
 
+func (p *PatchSet) Data() map[accesstypes.Field]any {
+	return p.data
+}
+
 func (p *PatchSet) PrimaryKey() PrimaryKey {
 	pKey := PrimaryKey{}
 	for _, field := range p.kFields {
