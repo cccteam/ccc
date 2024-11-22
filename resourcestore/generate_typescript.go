@@ -26,25 +26,25 @@ import { Domain, Permission, Resource } from '@cccteam/ccc-types';
 {{- $domains := .Domains }}
 export const Permissions = {
 {{- range $permissions }}
-	{{.}}: '{{.}}' as Permission,
+  {{.}}: '{{.}}' as Permission,
 {{- end}}
 };
 
 export const Domains = {
 {{- range $domains }}
-	{{.}}: '{{.}}' as Domain,
+  {{.}}: '{{.}}' as Domain,
 {{- end}}
 };
 
 export const Resources = {
 {{- range $resource := $resources }}
-	{{ $resource }}: '{{ $resource }}' as Resource,
+  {{ $resource }}: '{{ $resource }}' as Resource,
 {{- end}}
 };
 {{ range $resource, $tags := $resourcetags }}
 export const {{ $resource }} = {
 {{- range $_, $tag := $tags }}
-	{{ $tag }}: '{{ $resource.ResourceWithTag $tag }}' as Resource,
+  {{ $tag }}: '{{ $resource.ResourceWithTag $tag }}' as Resource,
 {{- end }}
 };
 {{ end }}
@@ -52,24 +52,24 @@ type PermissionResources = Record<Permission, boolean>;
 type PermissionMappings = Record<Resource, PermissionResources>;
 
 const Mappings: PermissionMappings = {
-	{{- range $resource := $resources }}
-	[Resources.{{ $resource }}]: {
-		{{- range $perm := $permissions }}
-		[Permissions.{{ $perm }}]: {{ index $resourcePerms $resource $perm }},
-		{{- end }}
-	},
-		{{- range $tag := index $resourcetags $resource }}
-	[{{$resource.ResourceWithTag $tag }}]: {
-			{{- range $perm := $permissions }}
-		[Permissions.{{ $perm }}]: {{ index $resourcePerms ($resource.ResourceWithTag $tag) $perm }},
-			{{- end }}
-	},
-		{{- end }}
-	{{- end }}
+  {{- range $resource := $resources }}
+  [Resources.{{ $resource }}]: {
+    {{- range $perm := $permissions }}
+    [Permissions.{{ $perm }}]: {{ index $resourcePerms $resource $perm }},
+    {{- end }}
+  },
+    {{- range $tag := index $resourcetags $resource }}
+  [{{$resource.ResourceWithTag $tag }}]: {
+      {{- range $perm := $permissions }}
+    [Permissions.{{ $perm }}]: {{ index $resourcePerms ($resource.ResourceWithTag $tag) $perm }},
+      {{- end }}
+  },
+    {{- end }}
+  {{- end }}
 };
 
 export function requiresPermission(resource: Resource, permission: Permission): boolean {
-	return Mappings[resource][permission];
+  return Mappings[resource][permission];
 }
 `
 
