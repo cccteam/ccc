@@ -8,30 +8,17 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestNewPatchSet(t *testing.T) {
+func TestNew(t *testing.T) {
 	t.Parallel()
 
-	type args struct {
-		data map[accesstypes.Field]any
-	}
 	tests := []struct {
 		name string
-		args args
 		want *PatchSet
 	}{
 		{
-			name: "NewPatchSet",
-			args: args{
-				data: map[accesstypes.Field]any{
-					"field1": "value1",
-					"field2": "value2",
-				},
-			},
+			name: "New",
 			want: &PatchSet{
-				data: map[accesstypes.Field]any{
-					"field1": "value1",
-					"field2": "value2",
-				},
+				data: make(map[accesstypes.Field]any),
 				pkey: make(map[accesstypes.Field]any),
 			},
 		},
@@ -40,7 +27,7 @@ func TestNewPatchSet(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := NewPatchSet(tt.args.data)
+			got := New()
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PatchSet{})); diff != "" {
 				t.Errorf("NewPatchSet() mismatch (-want +got):\n%s", diff)
 			}
@@ -57,18 +44,53 @@ func TestPatchSet_Set(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		args args
+		args []args
 		want *PatchSet
 	}{
 		{
 			name: "Set",
-			args: args{
-				field: "field1",
-				value: "value1",
+			args: []args{
+				{
+					field: "field1",
+					value: "value1",
+				},
+				{
+					field: "field2",
+					value: "value2",
+				},
 			},
 			want: &PatchSet{
 				data: map[accesstypes.Field]any{
 					"field1": "value1",
+					"field2": "value2",
+				},
+				dFields: []accesstypes.Field{
+					"field1",
+					"field2",
+				},
+				pkey: make(map[accesstypes.Field]any),
+			},
+		},
+		{
+			name: "Set with ordering",
+			args: []args{
+				{
+					field: "field2",
+					value: "value2",
+				},
+				{
+					field: "field1",
+					value: "value1",
+				},
+			},
+			want: &PatchSet{
+				data: map[accesstypes.Field]any{
+					"field1": "value1",
+					"field2": "value2",
+				},
+				dFields: []accesstypes.Field{
+					"field2",
+					"field1",
 				},
 				pkey: make(map[accesstypes.Field]any),
 			},
@@ -82,7 +104,9 @@ func TestPatchSet_Set(t *testing.T) {
 				data: make(map[accesstypes.Field]any),
 				pkey: make(map[accesstypes.Field]any),
 			}
-			p.Set(tt.args.field, tt.args.value)
+			for _, i := range tt.args {
+				p.Set(i.field, i.value)
+			}
 			got := p
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PatchSet{})); diff != "" {
 				t.Errorf("PatchSet.Set() mismatch (-want +got):\n%s", diff)
@@ -143,20 +167,49 @@ func TestPatchSet_SetKey(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		args args
+		args []args
 		want *PatchSet
 	}{
 		{
 			name: "SetKey",
-			args: args{
-				field: "field1",
-				value: "value1",
+			args: []args{
+				{
+					field: "field1",
+					value: "value1",
+				},
+				{
+					field: "field2",
+					value: "value2",
+				},
 			},
 			want: &PatchSet{
 				data: make(map[accesstypes.Field]any),
 				pkey: map[accesstypes.Field]any{
 					"field1": "value1",
+					"field2": "value2",
 				},
+				kFields: []accesstypes.Field{"field1", "field2"},
+			},
+		},
+		{
+			name: "SetKey with ordering",
+			args: []args{
+				{
+					field: "field2",
+					value: "value2",
+				},
+				{
+					field: "field1",
+					value: "value1",
+				},
+			},
+			want: &PatchSet{
+				data: make(map[accesstypes.Field]any),
+				pkey: map[accesstypes.Field]any{
+					"field1": "value1",
+					"field2": "value2",
+				},
+				kFields: []accesstypes.Field{"field2", "field1"},
 			},
 		},
 	}
@@ -168,7 +221,9 @@ func TestPatchSet_SetKey(t *testing.T) {
 				data: make(map[accesstypes.Field]any),
 				pkey: make(map[accesstypes.Field]any),
 			}
-			p.SetKey(tt.args.field, tt.args.value)
+			for _, i := range tt.args {
+				p.SetKey(i.field, i.value)
+			}
 			got := p
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PatchSet{})); diff != "" {
 				t.Errorf("PatchSet.SetKey () mismatch (-want +got):\n%s", diff)
@@ -181,8 +236,9 @@ func TestPatchSet_StructFields(t *testing.T) {
 	t.Parallel()
 
 	type fields struct {
-		data map[accesstypes.Field]any
-		pkey map[accesstypes.Field]any
+		data    map[accesstypes.Field]any
+		pkey    map[accesstypes.Field]any
+		dFields []accesstypes.Field
 	}
 	tests := []struct {
 		name   string
@@ -192,9 +248,9 @@ func TestPatchSet_StructFields(t *testing.T) {
 		{
 			name: "StructFields",
 			fields: fields{
-				data: map[accesstypes.Field]any{
-					"field1": "value1",
-					"field2": "value2",
+				dFields: []accesstypes.Field{
+					"field1",
+					"field2",
 				},
 			},
 			want: []accesstypes.Field{
@@ -203,19 +259,16 @@ func TestPatchSet_StructFields(t *testing.T) {
 			},
 		},
 		{
-			name: "StructFields with keys",
+			name: "StructFields with ordering",
 			fields: fields{
-				data: map[accesstypes.Field]any{
-					"field1": "value1",
-					"field2": "value2",
-				},
-				pkey: map[accesstypes.Field]any{
-					"field3": "value1",
+				dFields: []accesstypes.Field{
+					"field2",
+					"field1",
 				},
 			},
 			want: []accesstypes.Field{
-				"field1",
 				"field2",
+				"field1",
 			},
 		},
 	}
@@ -224,8 +277,9 @@ func TestPatchSet_StructFields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
-				data: tt.fields.data,
-				pkey: tt.fields.pkey,
+				data:    tt.fields.data,
+				dFields: tt.fields.dFields,
+				pkey:    tt.fields.pkey,
 			}
 			got := p.StructFields()
 			if diff := cmp.Diff(tt.want, got); diff != "" {
@@ -268,64 +322,6 @@ func TestPatchSet_Len(t *testing.T) {
 			}
 			if got := p.Len(); got != tt.want {
 				t.Errorf("PatchSet.Len() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestPatchSet_Data(t *testing.T) {
-	t.Parallel()
-
-	type fields struct {
-		data map[accesstypes.Field]any
-		pkey map[accesstypes.Field]any
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   map[accesstypes.Field]any
-	}{
-		{
-			name: "Data",
-			fields: fields{
-				data: map[accesstypes.Field]any{
-					"field1": "value1",
-					"field2": "value2",
-				},
-			},
-			want: map[accesstypes.Field]any{
-				"field1": "value1",
-				"field2": "value2",
-			},
-		},
-		{
-			name: "Data with keys",
-			fields: fields{
-				data: map[accesstypes.Field]any{
-					"field1": "value1",
-					"field2": "value2",
-				},
-				pkey: map[accesstypes.Field]any{
-					"field3": "value1",
-				},
-			},
-			want: map[accesstypes.Field]any{
-				"field1": "value1",
-				"field2": "value2",
-			},
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			p := &PatchSet{
-				data: tt.fields.data,
-				pkey: tt.fields.pkey,
-			}
-			got := p.Data()
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("PatchSet.Data () mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -391,9 +387,9 @@ func TestPatchSet_PrimaryKey(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
-				data:   tt.fields.data,
-				pkey:   tt.fields.pkey,
-				fields: tt.fields.fields,
+				data:    tt.fields.data,
+				pkey:    tt.fields.pkey,
+				kFields: tt.fields.fields,
 			}
 			got := p.PrimaryKey()
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PrimaryKey{}, KeyPart{})); diff != "" {
