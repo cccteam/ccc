@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/cccteam/ccc/compare/patchset/v0.3.1...patchset/v0.3.2) (2024-11-22)
+
+
+### Bug Fixes
+
+* Implement stable ordering of data fields ([#141](https://github.com/cccteam/ccc/issues/141)) ([128edea](https://github.com/cccteam/ccc/commit/128edeae4608f82b3e6765b7c79fb9de741d489a))
+
 ## [0.3.1](https://github.com/cccteam/ccc/compare/patchset/v0.3.0...patchset/v0.3.1) (2024-11-21)
 
 
