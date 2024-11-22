@@ -13,54 +13,63 @@ type TSGenerator struct {
 	Resources           []accesstypes.Resource
 	ResourceTags        map[accesstypes.Resource][]accesstypes.Tag
 	ResourcePermissions permissionMap
+	Domains             []accesstypes.PermissionScope
 }
 
 const tmpl = `// This file is auto-generated. Do not edit manually.
+import { Domain, Permission, Resource } from '@cccteam/ccc-types';
+
 {{- $permissions := .Permissions }}
-{{- $resources := .Resources}}
+{{- $resources := .Resources }}
 {{- $resourcetags := .ResourceTags }}
-{{- $resourcePerms := .ResourcePermissions}}
-export enum Permissions {
-{{- range $permissions}}
-  {{.}} = '{{.}}',
+{{- $resourcePerms := .ResourcePermissions }}
+{{- $domains := .Domains }}
+export const Permissions = {
+{{- range $permissions }}
+	{{.}}: '{{.}}' as Permission,
 {{- end}}
-}
-
-export enum Resources {
-{{- range $resource := $resources}}
-  {{$resource}} = '{{$resource}}',
-{{- end}}
-}
-{{ range $resource, $tags := $resourcetags}}
-export enum {{$resource}} {
-  {{- range $_, $tag:= $tags}}
-  {{$tag}} = '{{$resource.ResourceWithTag $tag}}',
-  {{- end}}
-}
-{{ end}}
-type AllResources = Resources {{- range $resource := .Resources}} | {{$resource}}{{- end}};
-type PermissionResources = Record<Permissions, boolean>;
-type PermissionMappings = Record<AllResources, PermissionResources>;
-
-const Mappings: PermissionMappings = {
-  {{- range $resource := $resources}}
-  [Resources.{{$resource}}]: {
-    {{- range $perm := $permissions}}
-    [Permissions.{{$perm}}]: {{ index $resourcePerms $resource $perm}},
-    {{- end}}
-  },
-    {{- range $tag := index $resourcetags $resource}}
-  [{{$resource.ResourceWithTag $tag}}]: {
-      {{- range $perm := $permissions}}
-    [Permissions.{{$perm}}]: {{ index $resourcePerms ($resource.ResourceWithTag $tag) $perm}},
-      {{- end}}
-  },
-    {{- end}}
-  {{- end}}
 };
 
-export function requiresPermission(resource: AllResources, permission: Permissions): boolean {
-  return Mappings[resource][permission];
+export const Domains = {
+{{- range $domains }}
+	{{.}}: '{{.}}' as Domain,
+{{- end}}
+};
+
+export const Resources = {
+{{- range $resource := $resources }}
+	{{ $resource }}: '{{ $resource }}' as Resource,
+{{- end}}
+};
+{{ range $resource, $tags := $resourcetags }}
+export const {{ $resource }} = {
+{{- range $_, $tag := $tags }}
+	{{ $tag }}: '{{ $resource.ResourceWithTag $tag }}' as Resource,
+{{- end }}
+};
+{{ end }}
+type PermissionResources = Record<Permission, boolean>;
+type PermissionMappings = Record<Resource, PermissionResources>;
+
+const Mappings: PermissionMappings = {
+	{{- range $resource := $resources }}
+	[Resources.{{ $resource }}]: {
+		{{- range $perm := $permissions }}
+		[Permissions.{{ $perm }}]: {{ index $resourcePerms $resource $perm }},
+		{{- end }}
+	},
+		{{- range $tag := index $resourcetags $resource }}
+	[{{$resource.ResourceWithTag $tag }}]: {
+			{{- range $perm := $permissions }}
+		[Permissions.{{ $perm }}]: {{ index $resourcePerms ($resource.ResourceWithTag $tag) $perm }},
+			{{- end }}
+	},
+		{{- end }}
+	{{- end }}
+};
+
+export function requiresPermission(resource: Resource, permission: Permission): boolean {
+	return Mappings[resource][permission];
 }
 `
 
@@ -78,6 +87,7 @@ func (s *Store) GenerateTypeScript(dst string) error {
 		Resources:           s.resources(),
 		ResourceTags:        s.tags(),
 		ResourcePermissions: s.resourcePermissions(),
+		Domains:             s.domains(),
 	}); err != nil {
 		return errors.Wrap(err, "template.Template.Execute()")
 	}
