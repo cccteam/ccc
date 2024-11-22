@@ -190,6 +190,15 @@ func (s *Store) resourcePermissions() permissionMap {
 	return permMap
 }
 
+func (s *Store) domains() []accesstypes.PermissionScope {
+	domains := make([]accesstypes.PermissionScope, 0, len(s.resourceStore))
+	for domain := range s.resourceStore {
+		domains = append(domains, domain)
+	}
+
+	return domains
+}
+
 func (s *Store) List() map[accesstypes.Permission][]accesstypes.Resource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
