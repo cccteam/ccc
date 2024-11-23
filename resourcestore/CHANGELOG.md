@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/cccteam/ccc/compare/resourcestore/v0.5.1...resourcestore/v0.5.2) (2024-11-23)
+
+
+### Code Refactoring
+
+* Typescript generation whitespace fix ([#142](https://github.com/cccteam/ccc/issues/142)) ([76031de](https://github.com/cccteam/ccc/commit/76031de18e64fb5606c6e441bcd627b7dcc5c39f))
+
 ## [0.5.1](https://github.com/cccteam/ccc/compare/resourcestore/v0.5.0...resourcestore/v0.5.1) (2024-11-16)
 
 
