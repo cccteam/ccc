@@ -232,7 +232,7 @@ func TestPatchSet_SetKey(t *testing.T) {
 	}
 }
 
-func TestPatchSet_StructFields(t *testing.T) {
+func TestPatchSet_Fields(t *testing.T) {
 	t.Parallel()
 
 	type fields struct {
@@ -246,7 +246,7 @@ func TestPatchSet_StructFields(t *testing.T) {
 		want   []accesstypes.Field
 	}{
 		{
-			name: "StructFields",
+			name: "Fields",
 			fields: fields{
 				dFields: []accesstypes.Field{
 					"field1",
@@ -259,7 +259,7 @@ func TestPatchSet_StructFields(t *testing.T) {
 			},
 		},
 		{
-			name: "StructFields with ordering",
+			name: "Fields with ordering",
 			fields: fields{
 				dFields: []accesstypes.Field{
 					"field2",
@@ -281,9 +281,9 @@ func TestPatchSet_StructFields(t *testing.T) {
 				dFields: tt.fields.dFields,
 				pkey:    tt.fields.pkey,
 			}
-			got := p.StructFields()
+			got := p.Fields()
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("PatchSet.StructFields () mismatch (-want +got):\n%s", diff)
+				t.Errorf("PatchSet.Fields () mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

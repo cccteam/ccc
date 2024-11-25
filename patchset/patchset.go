@@ -19,11 +19,13 @@ func New() *PatchSet {
 	}
 }
 
-func (p *PatchSet) Set(field accesstypes.Field, value any) {
+func (p *PatchSet) Set(field accesstypes.Field, value any) *PatchSet {
 	if _, found := p.data[field]; !found {
 		p.dFields = append(p.dFields, field)
 	}
 	p.data[field] = value
+
+	return p
 }
 
 func (p *PatchSet) Get(field accesstypes.Field) any {
@@ -41,7 +43,7 @@ func (p *PatchSet) Key(field accesstypes.Field) any {
 	return p.pkey[field]
 }
 
-func (p *PatchSet) StructFields() []accesstypes.Field {
+func (p *PatchSet) Fields() []accesstypes.Field {
 	return p.dFields
 }
 
