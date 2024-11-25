@@ -26,20 +26,13 @@
     ".": {
       "package-name": "ccc",
       "include-component-in-tag": false,
-      "exclude-paths": [
-        "accesstypes",
-        "columnset",
-        "patchset",
-        "resourceset",
-        "resourcestore",
-        "sns"
-      ]
+      "exclude-paths": ["accesstypes", "queryset", "patchset", "resourceset", "resourcestore", "sns"]
     },
     "accesstypes": {
       "package-name": "accesstypes"
     },
-    "columnset": {
-      "package-name": "columnset"
+    "queryset": {
+      "package-name": "queryset"
     },
     "patchset": {
       "package-name": "patchset"

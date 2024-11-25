@@ -10,7 +10,6 @@ linters-settings:
           - $gostd
           - github.com/cccteam
           - github.com/go-playground/errors/v5
-          - github.com/gofrs/uuid
           - github.com/google/go-cmp/cmp
   funlen:
     lines: 100
