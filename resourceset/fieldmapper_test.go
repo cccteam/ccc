@@ -192,10 +192,11 @@ func Test_tagToFieldMap(t *testing.T) {
 		v any
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    map[string]accesstypes.Field
-		wantErr bool
+		name       string
+		args       args
+		want       map[string]accesstypes.Field
+		wantFields []accesstypes.Field
+		wantErr    bool
 	}{
 		{
 			name: "tagToFieldMap",
@@ -208,6 +209,10 @@ func Test_tagToFieldMap(t *testing.T) {
 			want: map[string]accesstypes.Field{
 				"field1": "Field1",
 				"field2": "Field2",
+			},
+			wantFields: []accesstypes.Field{
+				"Field1",
+				"Field2",
 			},
 			wantErr: false,
 		},
@@ -223,6 +228,10 @@ func Test_tagToFieldMap(t *testing.T) {
 				"field1": "Field1",
 				"field2": "Field2",
 			},
+			wantFields: []accesstypes.Field{
+				"Field1",
+				"Field2",
+			},
 			wantErr: false,
 		},
 		{
@@ -235,6 +244,9 @@ func Test_tagToFieldMap(t *testing.T) {
 			},
 			want: map[string]accesstypes.Field{
 				"field2": "Field2",
+			},
+			wantFields: []accesstypes.Field{
+				"Field2",
 			},
 			wantErr: false,
 		},
@@ -250,6 +262,10 @@ func Test_tagToFieldMap(t *testing.T) {
 				"FieldTag1": "FieldTag1",
 				"fieldtag1": "FieldTag1",
 				"fieldTag2": "FieldTag2",
+			},
+			wantFields: []accesstypes.Field{
+				"FieldTag1",
+				"FieldTag2",
 			},
 			wantErr: false,
 		},
@@ -280,13 +296,16 @@ func Test_tagToFieldMap(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := tagToFieldMap(tt.args.v)
+			got, gotFileds, err := tagToFieldMap(tt.args.v)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("tagToFieldMap() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("tagToFieldMap() mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantFields, gotFileds); diff != "" {
+				t.Errorf("tagToFieldMap() fields mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
