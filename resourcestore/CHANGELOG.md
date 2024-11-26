@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/cccteam/ccc/compare/resourcestore/v0.5.2...resourcestore/v0.5.3) (2024-11-26)
+
+
+### Code Refactoring
+
+* replace ccc-types import with ccc-lib ([#147](https://github.com/cccteam/ccc/issues/147)) ([7e5c631](https://github.com/cccteam/ccc/commit/7e5c631f18ebfb1d08ed9c996d29a65051ac9a37))
+
 ## [0.5.2](https://github.com/cccteam/ccc/compare/resourcestore/v0.5.1...resourcestore/v0.5.2) (2024-11-23)
 
 
