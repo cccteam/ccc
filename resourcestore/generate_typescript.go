@@ -17,7 +17,7 @@ type TSGenerator struct {
 }
 
 const tmpl = `// This file is auto-generated. Do not edit manually.
-import { Domain, Permission, Resource } from '@cccteam/ccc-types';
+import { Domain, Permission, Resource } from '@cccteam/ccc-lib';
 
 {{- $permissions := .Permissions }}
 {{- $resources := .Resources }}

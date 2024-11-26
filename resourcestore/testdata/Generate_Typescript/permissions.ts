@@ -1,5 +1,5 @@
 // This file is auto-generated. Do not edit manually.
-import { Domain, Permission, Resource } from '@cccteam/ccc-types';
+import { Domain, Permission, Resource } from '@cccteam/ccc-lib';
 export const Permissions = {
   Create: 'Create' as Permission,
   Delete: 'Delete' as Permission,
