@@ -32,6 +32,10 @@ func TestNewFieldMapper(t *testing.T) {
 					"field1": "Field1",
 					"field2": "Field2",
 				},
+				fields: []accesstypes.Field{
+					"Field1",
+					"Field2",
+				},
 			},
 			wantErr: false,
 		},
@@ -150,6 +154,7 @@ func TestFieldMapper_Fields(t *testing.T) {
 
 	type fields struct {
 		jsonTagToFields map[string]accesstypes.Field
+		fields          []accesstypes.Field
 	}
 	tests := []struct {
 		name   string
@@ -162,6 +167,10 @@ func TestFieldMapper_Fields(t *testing.T) {
 				jsonTagToFields: map[string]accesstypes.Field{
 					"field1": "Field1",
 					"field2": "Field2",
+				},
+				fields: []accesstypes.Field{
+					"Field1",
+					"Field2",
 				},
 			},
 			want: []accesstypes.Field{
@@ -176,6 +185,7 @@ func TestFieldMapper_Fields(t *testing.T) {
 			t.Parallel()
 			f := &FieldMapper{
 				jsonTagToFields: tt.fields.jsonTagToFields,
+				fields:          tt.fields.fields,
 			}
 			got := f.Fields()
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(FieldMapper{})); diff != "" {
@@ -280,6 +290,10 @@ func Test_tagToFieldMap(t *testing.T) {
 			want: map[string]accesstypes.Field{
 				"field1": "Field1",
 				"field2": "Field2",
+			},
+			wantFields: []accesstypes.Field{
+				"Field1",
+				"Field2",
 			},
 			wantErr: false,
 		},

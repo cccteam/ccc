@@ -145,5 +145,8 @@ func permissionsFromTags(v any, perms []accesstypes.Permission) (tags accesstype
 		return nil, nil, nil, nil, errors.Newf("can not have both viewing and mutating permissions in the same struct: found %s and %s", slices.Collect(maps.Keys(viewing)), slices.Collect(maps.Keys(mutating)))
 	}
 
-	return tags, fieldToTag, slices.Collect(maps.Keys(permissionMap)), immutableFields, nil
+	permissions = slices.Collect(maps.Keys(permissionMap))
+	slices.Sort(permissions)
+
+	return tags, fieldToTag, permissions, immutableFields, nil
 }
