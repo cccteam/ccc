@@ -2,6 +2,8 @@
 package queryset
 
 import (
+	"slices"
+
 	"github.com/cccteam/ccc/accesstypes"
 )
 
@@ -14,7 +16,9 @@ func New() *QuerySet {
 }
 
 func (p *QuerySet) AddField(field accesstypes.Field) *QuerySet {
-	p.fields = append(p.fields, field)
+	if !slices.Contains(p.fields, field) {
+		p.fields = append(p.fields, field)
+	}
 
 	return p
 }
