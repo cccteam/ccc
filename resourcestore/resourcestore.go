@@ -10,15 +10,17 @@ import (
 )
 
 type (
-	tagStore      map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission
-	resourceStore map[accesstypes.Resource][]accesstypes.Permission
-	permissionMap map[accesstypes.Resource]map[accesstypes.Permission]bool
+	tagStore          map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission
+	resourceStore     map[accesstypes.Resource][]accesstypes.Permission
+	permissionMap     map[accesstypes.Resource]map[accesstypes.Permission]bool
+	immutableFieldMap map[accesstypes.Resource]map[accesstypes.Tag]struct{}
 )
 
 type Store struct {
-	mu            sync.RWMutex
-	tagStore      map[accesstypes.PermissionScope]tagStore
-	resourceStore map[accesstypes.PermissionScope]resourceStore
+	mu              sync.RWMutex
+	tagStore        map[accesstypes.PermissionScope]tagStore
+	resourceStore   map[accesstypes.PermissionScope]resourceStore
+	immutableFields map[accesstypes.PermissionScope]immutableFieldMap
 }
 
 func New() *Store {
@@ -27,12 +29,13 @@ func New() *Store {
 	}
 
 	return &Store{
-		tagStore:      make(map[accesstypes.PermissionScope]tagStore, 2),
-		resourceStore: make(map[accesstypes.PermissionScope]resourceStore, 2),
+		tagStore:        make(map[accesstypes.PermissionScope]tagStore, 2),
+		resourceStore:   make(map[accesstypes.PermissionScope]resourceStore, 2),
+		immutableFields: make(map[accesstypes.PermissionScope]immutableFieldMap, 2),
 	}
 }
 
-func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstypes.Resource, tags accesstypes.TagPermissions) error {
+func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstypes.Resource, tags accesstypes.TagPermissions, immutableFields map[accesstypes.Tag]struct{}) error {
 	if !collectResourcePermissions {
 		return nil
 	}
@@ -63,6 +66,12 @@ func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstyp
 		}
 	}
 
+	if _, ok := s.immutableFields[scope]; !ok {
+		s.immutableFields[scope] = make(map[accesstypes.Resource]map[accesstypes.Tag]struct{})
+	}
+
+	s.immutableFields[scope][res] = immutableFields
+
 	return nil
 }
 
@@ -89,6 +98,12 @@ func (s *Store) AddResource(scope accesstypes.PermissionScope, permission access
 	s.resourceStore[scope][res] = append(s.resourceStore[scope][res], permission)
 
 	return nil
+}
+
+func (s *Store) IsResourceImmutable(scope accesstypes.PermissionScope, res accesstypes.Resource) bool {
+	resource, tag := res.ResourceAndTag()
+	_, ok := s.immutableFields[scope][resource][tag]
+	return ok
 }
 
 func (s *Store) permissions() []accesstypes.Permission {

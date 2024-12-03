@@ -17,10 +17,11 @@ type ResourceSet struct {
 	requiredTagPerm accesstypes.TagPermissions
 	fieldToTag      map[accesstypes.Field]accesstypes.Tag
 	resource        accesstypes.Resource
+	immutableFields map[accesstypes.Tag]struct{}
 }
 
 func New(v any, resource accesstypes.Resource, permissions ...accesstypes.Permission) (*ResourceSet, error) {
-	requiredTagPerm, fieldToTag, permissions, err := permissionsFromTags(v, permissions)
+	requiredTagPerm, fieldToTag, permissions, immutableFields, err := permissionsFromTags(v, permissions)
 	if err != nil {
 		return nil, errors.Wrap(err, "permissionsFromTags()")
 	}
@@ -30,6 +31,7 @@ func New(v any, resource accesstypes.Resource, permissions ...accesstypes.Permis
 		requiredTagPerm: requiredTagPerm,
 		fieldToTag:      fieldToTag,
 		resource:        resource,
+		immutableFields: immutableFields,
 	}, nil
 }
 
@@ -64,13 +66,17 @@ func (r *ResourceSet) BaseResource() accesstypes.Resource {
 	return r.resource
 }
 
-func permissionsFromTags(v any, perms []accesstypes.Permission) (tags accesstypes.TagPermissions, fieldToTag map[accesstypes.Field]accesstypes.Tag, permissions []accesstypes.Permission, err error) {
+func (r *ResourceSet) ImmutableFields() map[accesstypes.Tag]struct{} {
+	return r.immutableFields
+}
+
+func permissionsFromTags(v any, perms []accesstypes.Permission) (tags accesstypes.TagPermissions, fieldToTag map[accesstypes.Field]accesstypes.Tag, permissions []accesstypes.Permission, immutableFields map[accesstypes.Tag]struct{}, err error) {
 	vType := reflect.TypeOf(v)
 	if vType.Kind() == reflect.Ptr {
 		vType = vType.Elem()
 	}
 	if vType.Kind() != reflect.Struct {
-		return nil, nil, nil, errors.Newf("expected a struct, got %s", vType.Kind())
+		return nil, nil, nil, nil, errors.Newf("expected a struct, got %s", vType.Kind())
 	}
 
 	tags = make(accesstypes.TagPermissions)
@@ -78,6 +84,7 @@ func permissionsFromTags(v any, perms []accesstypes.Permission) (tags accesstype
 	permissionMap := make(map[accesstypes.Permission]struct{})
 	mutating := make(map[accesstypes.Permission]struct{})
 	viewing := make(map[accesstypes.Permission]struct{})
+	immutableFields = make(map[accesstypes.Tag]struct{})
 
 	for _, perm := range perms {
 		switch perm {
@@ -103,12 +110,11 @@ func permissionsFromTags(v any, perms []accesstypes.Permission) (tags accesstype
 			case accesstypes.NullPermission:
 				continue
 			case accesstypes.Delete:
-				return nil, nil, nil, errors.Newf("delete permission is not allowed in struct tag")
+				return nil, nil, nil, nil, errors.Newf("delete permission is not allowed in struct tag")
 			case accesstypes.Create, accesstypes.Update:
 				mutating[permission] = struct{}{}
 			case accesstypes.Permission("Immutable"):
-				// Store this resource as Immutable
-				// TODO(jwatson): Store
+				immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
 				permission = accesstypes.Update
 				mutating[permission] = struct{}{}
 			default:
@@ -116,7 +122,7 @@ func permissionsFromTags(v any, perms []accesstypes.Permission) (tags accesstype
 			}
 
 			if jsonTag == "" || jsonTag == "-" {
-				return nil, nil, nil, errors.Newf("can not set %s permission on the %s field when json tag is empty", permission, field.Name)
+				return nil, nil, nil, nil, errors.Newf("can not set %s permission on the %s field when json tag is empty", permission, field.Name)
 			}
 			tags[accesstypes.Tag(jsonTag)] = append(tags[accesstypes.Tag(jsonTag)], permission)
 			fieldToTag[accesstypes.Field(field.Name)] = accesstypes.Tag(jsonTag)
@@ -132,12 +138,12 @@ func permissionsFromTags(v any, perms []accesstypes.Permission) (tags accesstype
 	}
 
 	if len(viewing) > 1 {
-		return nil, nil, nil, errors.Newf("can not have more then one type of viewing permission in the same struct: found %s", slices.Collect(maps.Keys(viewing)))
+		return nil, nil, nil, nil, errors.Newf("can not have more then one type of viewing permission in the same struct: found %s", slices.Collect(maps.Keys(viewing)))
 	}
 
 	if len(viewing) != 0 && len(mutating) != 0 {
-		return nil, nil, nil, errors.Newf("can not have both viewing and mutating permissions in the same struct: found %s and %s", slices.Collect(maps.Keys(viewing)), slices.Collect(maps.Keys(mutating)))
+		return nil, nil, nil, nil, errors.Newf("can not have both viewing and mutating permissions in the same struct: found %s and %s", slices.Collect(maps.Keys(viewing)), slices.Collect(maps.Keys(mutating)))
 	}
 
-	return tags, fieldToTag, slices.Collect(maps.Keys(permissionMap)), nil
+	return tags, fieldToTag, slices.Collect(maps.Keys(permissionMap)), immutableFields, nil
 }
