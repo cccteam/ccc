@@ -13,13 +13,13 @@ type KeyPart struct {
 	Value any
 }
 
-// PrimaryKey is an object that represents a single or composite primary key and its value.
-type PrimaryKey struct {
+// KeySet is an object that represents a single or composite primary key and its value.
+type KeySet struct {
 	keyParts []KeyPart
 }
 
-func NewPrimaryKey(key accesstypes.Field, value any) PrimaryKey {
-	return PrimaryKey{
+func NewKeySet(key accesstypes.Field, value any) KeySet {
+	return KeySet{
 		keyParts: []KeyPart{
 			{Key: key, Value: value},
 		},
@@ -29,7 +29,7 @@ func NewPrimaryKey(key accesstypes.Field, value any) PrimaryKey {
 // Add adds an additional column to the primary key creating a composite primary key
 //   - PrimaryKey is immutable.
 //   - Add returns a new PrimaryKey that should be used for all subsequent operations.
-func (p PrimaryKey) Add(key accesstypes.Field, value any) PrimaryKey {
+func (p KeySet) Add(key accesstypes.Field, value any) KeySet {
 	p.keyParts = append(p.keyParts, KeyPart{
 		Key:   key,
 		Value: value,
@@ -38,7 +38,11 @@ func (p PrimaryKey) Add(key accesstypes.Field, value any) PrimaryKey {
 	return p
 }
 
-func (p PrimaryKey) RowID() string {
+func (p KeySet) RowID() string {
+	if len(p.keyParts) == 0 {
+		return ""
+	}
+
 	var id strings.Builder
 	for _, v := range p.keyParts {
 		id.WriteString(fmt.Sprintf("|%v", v.Value))
@@ -47,7 +51,7 @@ func (p PrimaryKey) RowID() string {
 	return id.String()[1:]
 }
 
-func (p PrimaryKey) String() string {
+func (p KeySet) String() string {
 	var values strings.Builder
 	for _, keyPart := range p.keyParts {
 		values.WriteString(fmt.Sprintf(", %s: %v", keyPart.Key, keyPart.Value))
@@ -56,7 +60,7 @@ func (p PrimaryKey) String() string {
 	return values.String()[2:]
 }
 
-func (p PrimaryKey) KeySet() spanner.KeySet {
+func (p KeySet) KeySet() spanner.KeySet {
 	keys := make(spanner.Key, 0, len(p.keyParts))
 	for _, v := range p.keyParts {
 		keys = append(keys, v.Value)
@@ -65,7 +69,7 @@ func (p PrimaryKey) KeySet() spanner.KeySet {
 	return keys
 }
 
-func (p PrimaryKey) Map() map[accesstypes.Field]any {
+func (p KeySet) KeyMap() map[accesstypes.Field]any {
 	pKeyMap := make(map[accesstypes.Field]any)
 	for _, keypart := range p.keyParts {
 		pKeyMap[keypart.Key] = keypart.Value
@@ -74,10 +78,10 @@ func (p PrimaryKey) Map() map[accesstypes.Field]any {
 	return pKeyMap
 }
 
-func (p PrimaryKey) Parts() []KeyPart {
+func (p KeySet) Parts() []KeyPart {
 	return p.keyParts
 }
 
-func (p PrimaryKey) Len() int {
+func (p KeySet) Len() int {
 	return len(p.keyParts)
 }

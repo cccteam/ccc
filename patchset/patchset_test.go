@@ -19,7 +19,7 @@ func TestNew(t *testing.T) {
 			name: "New",
 			want: &PatchSet{
 				data: make(map[accesstypes.Field]any),
-				pkey: make(map[accesstypes.Field]any),
+				keys: make(map[accesstypes.Field]any),
 			},
 		},
 	}
@@ -68,7 +68,7 @@ func TestPatchSet_Set(t *testing.T) {
 					"field1",
 					"field2",
 				},
-				pkey: make(map[accesstypes.Field]any),
+				keys: make(map[accesstypes.Field]any),
 			},
 		},
 		{
@@ -92,7 +92,7 @@ func TestPatchSet_Set(t *testing.T) {
 					"field2",
 					"field1",
 				},
-				pkey: make(map[accesstypes.Field]any),
+				keys: make(map[accesstypes.Field]any),
 			},
 		},
 	}
@@ -102,7 +102,7 @@ func TestPatchSet_Set(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
 				data: make(map[accesstypes.Field]any),
-				pkey: make(map[accesstypes.Field]any),
+				keys: make(map[accesstypes.Field]any),
 			}
 			for _, i := range tt.args {
 				p.Set(i.field, i.value)
@@ -184,7 +184,7 @@ func TestPatchSet_SetKey(t *testing.T) {
 			},
 			want: &PatchSet{
 				data: make(map[accesstypes.Field]any),
-				pkey: map[accesstypes.Field]any{
+				keys: map[accesstypes.Field]any{
 					"field1": "value1",
 					"field2": "value2",
 				},
@@ -205,7 +205,7 @@ func TestPatchSet_SetKey(t *testing.T) {
 			},
 			want: &PatchSet{
 				data: make(map[accesstypes.Field]any),
-				pkey: map[accesstypes.Field]any{
+				keys: map[accesstypes.Field]any{
 					"field1": "value1",
 					"field2": "value2",
 				},
@@ -219,7 +219,7 @@ func TestPatchSet_SetKey(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
 				data: make(map[accesstypes.Field]any),
-				pkey: make(map[accesstypes.Field]any),
+				keys: make(map[accesstypes.Field]any),
 			}
 			for _, i := range tt.args {
 				p.SetKey(i.field, i.value)
@@ -279,7 +279,7 @@ func TestPatchSet_Fields(t *testing.T) {
 			p := &PatchSet{
 				data:    tt.fields.data,
 				dFields: tt.fields.dFields,
-				pkey:    tt.fields.pkey,
+				keys:    tt.fields.pkey,
 			}
 			got := p.Fields()
 			if diff := cmp.Diff(tt.want, got); diff != "" {
@@ -318,7 +318,7 @@ func TestPatchSet_Len(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
 				data: tt.fields.data,
-				pkey: tt.fields.pkey,
+				keys: tt.fields.pkey,
 			}
 			if got := p.Len(); got != tt.want {
 				t.Errorf("PatchSet.Len() = %v, want %v", got, tt.want)
@@ -375,7 +375,7 @@ func TestPatchSet_Data(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
 				data: tt.fields.data,
-				pkey: tt.fields.pkey,
+				keys: tt.fields.pkey,
 			}
 			got := p.Data()
 			if diff := cmp.Diff(tt.want, got); diff != "" {
@@ -385,7 +385,7 @@ func TestPatchSet_Data(t *testing.T) {
 	}
 }
 
-func TestPatchSet_PrimaryKey(t *testing.T) {
+func TestPatchSet_KeySet(t *testing.T) {
 	t.Parallel()
 
 	type fields struct {
@@ -396,10 +396,10 @@ func TestPatchSet_PrimaryKey(t *testing.T) {
 	tests := []struct {
 		name   string
 		fields fields
-		want   PrimaryKey
+		want   KeySet
 	}{
 		{
-			name: "PrimaryKey",
+			name: "KeySet",
 			fields: fields{
 				pkey: map[accesstypes.Field]any{
 					"field1": "value1",
@@ -410,7 +410,7 @@ func TestPatchSet_PrimaryKey(t *testing.T) {
 					"field2",
 				},
 			},
-			want: PrimaryKey{
+			want: KeySet{
 				keyParts: []KeyPart{
 					{Key: "field1", Value: "value1"},
 					{Key: "field2", Value: "value2"},
@@ -432,7 +432,7 @@ func TestPatchSet_PrimaryKey(t *testing.T) {
 					"field1",
 				},
 			},
-			want: PrimaryKey{
+			want: KeySet{
 				keyParts: []KeyPart{
 					{Key: "field2", Value: "value2"},
 					{Key: "field1", Value: "value1"},
@@ -446,12 +446,12 @@ func TestPatchSet_PrimaryKey(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
 				data:    tt.fields.data,
-				pkey:    tt.fields.pkey,
+				keys:    tt.fields.pkey,
 				kFields: tt.fields.fields,
 			}
-			got := p.PrimaryKey()
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PrimaryKey{}, KeyPart{})); diff != "" {
-				t.Errorf("PatchSet.KeyData () mismatch (-want +got):\n%s", diff)
+			got := p.KeySet()
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(KeySet{}, KeyPart{})); diff != "" {
+				t.Errorf("PatchSet.KeySet () mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -490,7 +490,7 @@ func TestPatchSet_HasKey(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
 				data: tt.fields.data,
-				pkey: tt.fields.pkey,
+				keys: tt.fields.pkey,
 			}
 			if got := p.HasKey(); got != tt.want {
 				t.Errorf("PatchSet.HasKey() = %v, want %v", got, tt.want)
