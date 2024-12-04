@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/cccteam/ccc/compare/resourceset/v0.4.1...resourceset/v0.4.2) (2024-12-04)
+
+
+### Features
+
+* add immutable permission ([#149](https://github.com/cccteam/ccc/issues/149)) ([560b53f](https://github.com/cccteam/ccc/commit/560b53f4aa0a06b6400e779cd944000550edbdf1))
+
 ## [0.4.1](https://github.com/cccteam/ccc/compare/resourceset/v0.4.0...resourceset/v0.4.1) (2024-11-16)
 
 
