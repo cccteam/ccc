@@ -12,6 +12,10 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+type Resourcer interface {
+	Resource() accesstypes.Resource
+}
+
 type ResourceSet struct {
 	permissions     []accesstypes.Permission
 	requiredTagPerm accesstypes.TagPermissions
@@ -20,8 +24,14 @@ type ResourceSet struct {
 	immutableFields map[accesstypes.Tag]struct{}
 }
 
-func New(v any, resource accesstypes.Resource, permissions ...accesstypes.Permission) (*ResourceSet, error) {
-	requiredTagPerm, fieldToTag, permissions, immutableFields, err := permissionsFromTags(v, permissions)
+func New[Resource Resourcer, Request any](permissions ...accesstypes.Permission) (*ResourceSet, error) {
+	var req Request
+	var res Resource
+	if !reflect.TypeOf(req).ConvertibleTo(reflect.TypeOf(res)) {
+		return nil, errors.Newf("Request (%T) is not convertible to resource (%T)", req, res)
+	}
+
+	requiredTagPerm, fieldToTag, permissions, immutableFields, err := permissionsFromTags(req, permissions)
 	if err != nil {
 		return nil, errors.Wrap(err, "permissionsFromTags()")
 	}
@@ -30,7 +40,7 @@ func New(v any, resource accesstypes.Resource, permissions ...accesstypes.Permis
 		permissions:     permissions,
 		requiredTagPerm: requiredTagPerm,
 		fieldToTag:      fieldToTag,
-		resource:        resource,
+		resource:        res.Resource(),
 		immutableFields: immutableFields,
 	}, nil
 }
