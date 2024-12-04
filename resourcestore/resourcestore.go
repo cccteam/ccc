@@ -103,6 +103,7 @@ func (s *Store) AddResource(scope accesstypes.PermissionScope, permission access
 func (s *Store) IsResourceImmutable(scope accesstypes.PermissionScope, res accesstypes.Resource) bool {
 	resource, tag := res.ResourceAndTag()
 	_, ok := s.immutableFields[scope][resource][tag]
+
 	return ok
 }
 
