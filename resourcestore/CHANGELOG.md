@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.4](https://github.com/cccteam/ccc/compare/resourcestore/v0.5.3...resourcestore/v0.5.4) (2024-12-04)
+
+
+### Features
+
+* add immutable permission ([#149](https://github.com/cccteam/ccc/issues/149)) ([560b53f](https://github.com/cccteam/ccc/commit/560b53f4aa0a06b6400e779cd944000550edbdf1))
+
 ## [0.5.3](https://github.com/cccteam/ccc/compare/resourcestore/v0.5.2...resourcestore/v0.5.3) (2024-11-26)
 
 
