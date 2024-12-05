@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.2](https://github.com/cccteam/ccc/compare/resource/v0.0.1...resource/v0.0.2) (2024-12-05)
+
+
+### Features
+
+* Implement QuerySet ([#146](https://github.com/cccteam/ccc/issues/146)) ([8e71fe8](https://github.com/cccteam/ccc/commit/8e71fe80d044b2c16089b0e40ddf63734aa2f027))
+* Merge queryset, resourceset, patchset, resourcestore into a single resource package ([#146](https://github.com/cccteam/ccc/issues/146)) ([8e71fe8](https://github.com/cccteam/ccc/commit/8e71fe80d044b2c16089b0e40ddf63734aa2f027))
+
 ## [0.4.2](https://github.com/cccteam/ccc/compare/resourceset/v0.4.1...resourceset/v0.4.2) (2024-12-04)
 
 
