@@ -1,5 +1,4 @@
-// package patchset provides types to store json patch set mapping to struct fields.
-package patchset
+package resource
 
 import (
 	"github.com/cccteam/ccc/accesstypes"
@@ -12,7 +11,7 @@ type PatchSet struct {
 	kFields []accesstypes.Field
 }
 
-func New() *PatchSet {
+func NewPatchSet() *PatchSet {
 	return &PatchSet{
 		data: make(map[accesstypes.Field]any),
 		keys: make(map[accesstypes.Field]any),

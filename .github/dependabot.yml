@@ -4,67 +4,43 @@
 
 version: 2
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     groups:
       github-actions:
         patterns:
-          - "*"
-  - package-ecosystem: "gomod"
-    directory: "/"
+          - '*'
+  - package-ecosystem: 'gomod'
+    directory: '/'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     groups:
       go-dependencies:
         patterns:
-          - "*"
-  - package-ecosystem: "gomod"
-    directory: "/accesstypes"
+          - '*'
+  - package-ecosystem: 'gomod'
+    directory: '/accesstypes'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     groups:
       go-dependencies:
         patterns:
-          - "*"
-  - package-ecosystem: "gomod"
-    directory: "/columnset"
+          - '*'
+  - package-ecosystem: 'gomod'
+    directory: '/resource'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     groups:
       go-dependencies:
         patterns:
-          - "*"
-  - package-ecosystem: "gomod"
-    directory: "/patchset"
+          - '*'
+  - package-ecosystem: 'gomod'
+    directory: '/sns'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     groups:
       go-dependencies:
         patterns:
-          - "*"
-  - package-ecosystem: "gomod"
-    directory: "/resourceset"
-    schedule:
-      interval: "weekly"
-    groups:
-      go-dependencies:
-        patterns:
-          - "*"
-  - package-ecosystem: "gomod"
-    directory: "/resourcestore"
-    schedule:
-      interval: "weekly"
-    groups:
-      go-dependencies:
-        patterns:
-          - "*"
-  - package-ecosystem: "gomod"
-    directory: "/sns"
-    schedule:
-      interval: "weekly"
-    groups:
-      go-dependencies:
-        patterns:
-          - "*"
+          - '*'

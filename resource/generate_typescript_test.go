@@ -1,4 +1,4 @@
-package resourcestore
+package resource
 
 import (
 	"os"
@@ -42,7 +42,7 @@ func TestStore_GenerateTypeScript(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			s := &Store{
+			s := &Collection{
 				tagStore:      tt.fields.tagStore,
 				resourceStore: tt.fields.resourceStore,
 			}

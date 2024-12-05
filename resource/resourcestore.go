@@ -1,5 +1,4 @@
-// resourcestore package provides a store to store permission resource mappings
-package resourcestore
+package resource
 
 import (
 	"slices"
@@ -16,32 +15,41 @@ type (
 	immutableFieldMap map[accesstypes.Resource]map[accesstypes.Tag]struct{}
 )
 
-type Store struct {
+type Collection struct {
 	mu              sync.RWMutex
 	tagStore        map[accesstypes.PermissionScope]tagStore
 	resourceStore   map[accesstypes.PermissionScope]resourceStore
 	immutableFields map[accesstypes.PermissionScope]immutableFieldMap
 }
 
-func New() *Store {
+func NewCollection() *Collection {
 	if !collectResourcePermissions {
-		return &Store{}
+		return &Collection{}
 	}
 
-	return &Store{
+	return &Collection{
 		tagStore:        make(map[accesstypes.PermissionScope]tagStore, 2),
 		resourceStore:   make(map[accesstypes.PermissionScope]resourceStore, 2),
 		immutableFields: make(map[accesstypes.PermissionScope]immutableFieldMap, 2),
 	}
 }
 
-func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstypes.Resource, tags accesstypes.TagPermissions, immutableFields map[accesstypes.Tag]struct{}) error {
+func (s *Collection) AddResources(scope accesstypes.PermissionScope, rSet *ResourceSet) error {
 	if !collectResourcePermissions {
 		return nil
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	for _, perm := range rSet.Permissions() {
+		if err := s.addResource(scope, perm, rSet.BaseResource()); err != nil {
+			return err
+		}
+	}
+
+	res := rSet.BaseResource()
+	tags := rSet.TagPermissions()
 
 	if s.tagStore[scope][res] == nil {
 		if s.tagStore[scope] == nil {
@@ -70,12 +78,12 @@ func (s *Store) AddResourceTags(scope accesstypes.PermissionScope, res accesstyp
 		s.immutableFields[scope] = make(map[accesstypes.Resource]map[accesstypes.Tag]struct{})
 	}
 
-	s.immutableFields[scope][res] = immutableFields
+	s.immutableFields[scope][res] = rSet.ImmutableFields()
 
 	return nil
 }
 
-func (s *Store) AddResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
+func (s *Collection) AddResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
 	if permission == accesstypes.NullPermission {
 		return errors.New("cannot register null permission")
 	}
@@ -87,6 +95,10 @@ func (s *Store) AddResource(scope accesstypes.PermissionScope, permission access
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	return s.addResource(scope, permission, res)
+}
+
+func (s *Collection) addResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
 	if ok := slices.Contains(s.resourceStore[scope][res], permission); ok {
 		return errors.Newf("found existing entry under resource: %s and permission: %s", res, permission)
 	}
@@ -100,14 +112,14 @@ func (s *Store) AddResource(scope accesstypes.PermissionScope, permission access
 	return nil
 }
 
-func (s *Store) IsResourceImmutable(scope accesstypes.PermissionScope, res accesstypes.Resource) bool {
+func (s *Collection) IsResourceImmutable(scope accesstypes.PermissionScope, res accesstypes.Resource) bool {
 	resource, tag := res.ResourceAndTag()
 	_, ok := s.immutableFields[scope][resource][tag]
 
 	return ok
 }
 
-func (s *Store) permissions() []accesstypes.Permission {
+func (s *Collection) permissions() []accesstypes.Permission {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -129,7 +141,7 @@ func (s *Store) permissions() []accesstypes.Permission {
 	return slices.Compact(permissions)
 }
 
-func (s *Store) resources() []accesstypes.Resource {
+func (s *Collection) resources() []accesstypes.Resource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -145,7 +157,7 @@ func (s *Store) resources() []accesstypes.Resource {
 	return slices.Compact(resources)
 }
 
-func (s *Store) tags() map[accesstypes.Resource][]accesstypes.Tag {
+func (s *Collection) tags() map[accesstypes.Resource][]accesstypes.Tag {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -163,7 +175,7 @@ func (s *Store) tags() map[accesstypes.Resource][]accesstypes.Tag {
 	return resourcetags
 }
 
-func (s *Store) resourcePermissions() permissionMap {
+func (s *Collection) resourcePermissions() permissionMap {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -206,7 +218,7 @@ func (s *Store) resourcePermissions() permissionMap {
 	return permMap
 }
 
-func (s *Store) domains() []accesstypes.PermissionScope {
+func (s *Collection) domains() []accesstypes.PermissionScope {
 	domains := make([]accesstypes.PermissionScope, 0, len(s.resourceStore))
 	for domain := range s.resourceStore {
 		domains = append(domains, domain)
@@ -215,7 +227,7 @@ func (s *Store) domains() []accesstypes.PermissionScope {
 	return domains
 }
 
-func (s *Store) List() map[accesstypes.Permission][]accesstypes.Resource {
+func (s *Collection) List() map[accesstypes.Permission][]accesstypes.Resource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -241,7 +253,7 @@ func (s *Store) List() map[accesstypes.Permission][]accesstypes.Resource {
 	return permissionResources
 }
 
-func (s *Store) Scope(resource accesstypes.Resource) accesstypes.PermissionScope {
+func (s *Collection) Scope(resource accesstypes.Resource) accesstypes.PermissionScope {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

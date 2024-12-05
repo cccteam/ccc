@@ -1,5 +1,4 @@
-// package patchset provides types to store json patch set mapping to struct fields.
-package patchset
+package resource
 
 import (
 	"testing"
@@ -8,7 +7,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestNew(t *testing.T) {
+func TestNewPatchSet(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -27,7 +26,7 @@ func TestNew(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := New()
+			got := NewPatchSet()
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PatchSet{})); diff != "" {
 				t.Errorf("NewPatchSet() mismatch (-want +got):\n%s", diff)
 			}

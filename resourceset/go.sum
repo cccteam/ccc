@@ -1,8 +1,0 @@
-github.com/cccteam/ccc/accesstypes v0.5.0 h1:puGqjSsVOkQGDqwWd4tJGPgrySQOnRsLY6MEGZfe0KE=
-github.com/cccteam/ccc/accesstypes v0.5.0/go.mod h1:b/h5mdhoRGPB6q27wde4VTIMMYPT2MMOw4NqBEG7FZ8=
-github.com/go-playground/errors/v5 v5.4.0 h1:BxBxwlRjuclYbRebE4ddrRrMK705lS2mHzHw7BDoDPA=
-github.com/go-playground/errors/v5 v5.4.0/go.mod h1:6aVeVHsT36RNu/m/8AvGdPv8T2J/+KfVv6Su4VvBfpQ=
-github.com/go-playground/pkg/v5 v5.30.0 h1:ElTFBK1Pf3Jm0pRBi/AvgzbwBPAFzFsI2h4uH2xaEsY=
-github.com/go-playground/pkg/v5 v5.30.0/go.mod h1:UgHNntEQnMJSygw2O2RQ3LAB0tprx81K90c/pOKh7cU=
-github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
-github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=

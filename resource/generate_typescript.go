@@ -1,4 +1,4 @@
-package resourcestore
+package resource
 
 import (
 	"os"
@@ -73,7 +73,7 @@ export function requiresPermission(resource: Resource, permission: Permission): 
 }
 `
 
-func (s *Store) GenerateTypeScript(dst string) error {
+func (s *Collection) GenerateTypeScript(dst string) error {
 	f, err := os.Create(dst)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")

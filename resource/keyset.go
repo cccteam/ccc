@@ -1,4 +1,4 @@
-package patchset
+package resource
 
 import (
 	"fmt"

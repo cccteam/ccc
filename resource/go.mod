@@ -1,10 +1,11 @@
-module github.com/cccteam/ccc/patchset
+module github.com/cccteam/ccc/resource
 
 go 1.23.1
 
 require (
 	cloud.google.com/go/spanner v1.73.0
 	github.com/cccteam/ccc/accesstypes v0.5.0
+	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.6.0
 )
 
@@ -25,6 +26,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/go-playground/pkg/v5 v5.30.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect

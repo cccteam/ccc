@@ -1,5 +1,5 @@
-// package resourceset is a set of resources that provides a way to map permissions to fields in a struct.
-package resourceset
+// package resource provides a set of types and functions for working with resources.
+package resource
 
 import (
 	"fmt"
@@ -24,7 +24,7 @@ type ResourceSet struct {
 	immutableFields map[accesstypes.Tag]struct{}
 }
 
-func New[Resource Resourcer, Request any](permissions ...accesstypes.Permission) (*ResourceSet, error) {
+func NewResourceSet[Resource Resourcer, Request any](permissions ...accesstypes.Permission) (*ResourceSet, error) {
 	var req Request
 	var res Resource
 	if !reflect.TypeOf(req).ConvertibleTo(reflect.TypeOf(res)) {
@@ -159,4 +159,26 @@ func permissionsFromTags(v any, perms []accesstypes.Permission) (tags accesstype
 	slices.Sort(permissions)
 
 	return tags, fieldToTag, permissions, immutableFields, nil
+}
+
+type cacheEntry struct {
+	index int
+	tag   string
+}
+
+func structTags(t reflect.Type, key string) map[accesstypes.Field]cacheEntry {
+	tagMap := make(map[accesstypes.Field]cacheEntry)
+	for i := range t.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get(key)
+
+		list := strings.Split(tag, ",")
+		if len(list) == 0 || list[0] == "" || list[0] == "-" {
+			continue
+		}
+
+		tagMap[accesstypes.Field(field.Name)] = cacheEntry{index: i, tag: list[0]}
+	}
+
+	return tagMap
 }

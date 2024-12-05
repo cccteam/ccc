@@ -1,4 +1,4 @@
-package resourceset
+package resource
 
 import (
 	"testing"

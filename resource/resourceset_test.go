@@ -1,5 +1,4 @@
-// package resourceset is a set of resources that provides a way to map permissions to fields in a struct.
-package resourceset
+package resource
 
 import (
 	"testing"
@@ -57,7 +56,7 @@ func (r AResource) Resource() accesstypes.Resource {
 	return "AResources"
 }
 
-func TestNew(t *testing.T) {
+func TestNewResourceSet(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
@@ -72,7 +71,7 @@ func TestNew(t *testing.T) {
 	}{
 		{
 			name:   "New only tag permissions",
-			testFn: New[AResource, ARequest],
+			testFn: NewResourceSet[AResource, ARequest],
 			want: &ResourceSet{
 				permissions: []accesstypes.Permission{accesstypes.Read},
 				requiredTagPerm: accesstypes.TagPermissions{
@@ -90,7 +89,7 @@ func TestNew(t *testing.T) {
 			args: args{
 				permissions: []accesstypes.Permission{accesstypes.Read},
 			},
-			testFn: New[AResource, ARequest],
+			testFn: NewResourceSet[AResource, ARequest],
 			want: &ResourceSet{
 				permissions: []accesstypes.Permission{accesstypes.Read},
 				requiredTagPerm: accesstypes.TagPermissions{
@@ -108,7 +107,7 @@ func TestNew(t *testing.T) {
 			args: args{
 				permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update},
 			},
-			testFn: New[AResource, BRequest],
+			testFn: NewResourceSet[AResource, BRequest],
 			want: &ResourceSet{
 				permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update},
 				requiredTagPerm: accesstypes.TagPermissions{
@@ -123,7 +122,7 @@ func TestNew(t *testing.T) {
 		},
 		{
 			name:   "New with multiple permissions",
-			testFn: New[AResource, CRequest],
+			testFn: NewResourceSet[AResource, CRequest],
 			want: &ResourceSet{
 				permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update},
 				requiredTagPerm: accesstypes.TagPermissions{
@@ -138,12 +137,12 @@ func TestNew(t *testing.T) {
 		},
 		{
 			name:    "New with invalid permission mix on tags",
-			testFn:  New[AResource, DRequest],
+			testFn:  NewResourceSet[AResource, DRequest],
 			wantErr: true,
 		},
 		{
 			name:   "New with invalid permission mix on input",
-			testFn: New[AResource, ERequest],
+			testFn: NewResourceSet[AResource, ERequest],
 			args: args{
 				permissions: []accesstypes.Permission{accesstypes.Read, accesstypes.Update},
 			},
@@ -151,17 +150,17 @@ func TestNew(t *testing.T) {
 		},
 		{
 			name:    "New with invalid Delete permission",
-			testFn:  New[AResource, FRequest],
+			testFn:  NewResourceSet[AResource, FRequest],
 			wantErr: true,
 		},
 		{
 			name:    "New with permission on ignored field",
-			testFn:  New[AResource, GRequest],
+			testFn:  NewResourceSet[AResource, GRequest],
 			wantErr: true,
 		},
 		{
 			name:    "New with Resource that can not convert to Request",
-			testFn:  New[AResource, HRequest],
+			testFn:  NewResourceSet[AResource, HRequest],
 			wantErr: true,
 		},
 	}
@@ -171,11 +170,11 @@ func TestNew(t *testing.T) {
 			t.Parallel()
 			got, err := tt.testFn(tt.args.permissions...)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("NewResourceSet() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(ResourceSet{})); diff != "" {
-				t.Errorf("New() mismatch (-want +got):\n%s", diff)
+				t.Errorf("NewResourceSet() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

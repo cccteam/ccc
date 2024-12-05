@@ -1,5 +1,4 @@
-// package queryset provides types to store columns that a given user has access to view
-package queryset
+package resource
 
 import (
 	"slices"
@@ -11,7 +10,7 @@ type QuerySet struct {
 	fields []accesstypes.Field
 }
 
-func New() *QuerySet {
+func NewQuerySet() *QuerySet {
 	return &QuerySet{}
 }
 
