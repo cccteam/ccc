@@ -42,14 +42,14 @@ func (s *Collection) AddResources(scope accesstypes.PermissionScope, rSet *Resou
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	res := rSet.BaseResource()
+	tags := rSet.TagPermissions()
+
 	for _, perm := range rSet.Permissions() {
-		if err := s.addResource(scope, perm, rSet.BaseResource()); err != nil {
+		if err := s.addResource(scope, perm, res); err != nil {
 			return err
 		}
 	}
-
-	res := rSet.BaseResource()
-	tags := rSet.TagPermissions()
 
 	if s.tagStore[scope][res] == nil {
 		if s.tagStore[scope] == nil {

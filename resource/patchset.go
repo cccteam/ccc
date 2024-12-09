@@ -5,64 +5,63 @@ import (
 )
 
 type PatchSet struct {
-	data    map[accesstypes.Field]any
-	dFields []accesstypes.Field
-	keys    map[accesstypes.Field]any
-	kFields []accesstypes.Field
+	querySet *QuerySet
+	data     *fieldSet
 }
 
-func NewPatchSet() *PatchSet {
+func NewPatchSet(row Row) *PatchSet {
 	return &PatchSet{
-		data: make(map[accesstypes.Field]any),
-		keys: make(map[accesstypes.Field]any),
+		querySet: NewQuerySet(row),
+		data:     newFieldSet(),
 	}
 }
 
 func (p *PatchSet) Set(field accesstypes.Field, value any) *PatchSet {
-	if _, found := p.data[field]; !found {
-		p.dFields = append(p.dFields, field)
-	}
-	p.data[field] = value
+	p.data.Set(field, value)
 
 	return p
 }
 
 func (p *PatchSet) Get(field accesstypes.Field) any {
-	return p.data[field]
+	return p.data.Get(field)
 }
 
 func (p *PatchSet) SetKey(field accesstypes.Field, value any) {
-	if _, found := p.keys[field]; !found {
-		p.kFields = append(p.kFields, field)
-	}
-	p.keys[field] = value
+	p.querySet.SetKey(field, value)
 }
 
 func (p *PatchSet) Key(field accesstypes.Field) any {
-	return p.keys[field]
+	return p.querySet.Key(field)
 }
 
 func (p *PatchSet) Fields() []accesstypes.Field {
-	return p.dFields
+	return p.data.fields
 }
 
 func (p *PatchSet) Len() int {
-	return len(p.data)
+	return len(p.data.data)
 }
 
 func (p *PatchSet) Data() map[accesstypes.Field]any {
-	return p.data
+	return p.data.data
 }
 
-func (p *PatchSet) KeySet() KeySet {
-	var keys KeySet
-	for _, field := range p.kFields {
-		keys = keys.Add(field, p.keys[field])
-	}
-
-	return keys
+func (p *PatchSet) PrimaryKey() KeySet {
+	return p.querySet.KeySet()
 }
 
 func (p *PatchSet) HasKey() bool {
-	return len(p.keys) > 0
+	return len(p.querySet.Fields()) > 0
+}
+
+func (p *PatchSet) QuerySet() *QuerySet {
+	return p.querySet
+}
+
+func (p *PatchSet) Row() any {
+	return p.querySet.Row()
+}
+
+func (p *PatchSet) Resource() accesstypes.Resource {
+	return p.querySet.Resource()
 }

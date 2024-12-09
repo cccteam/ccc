@@ -7,7 +7,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 )
 
-func TestNewPrimaryKey(t *testing.T) {
+func TestKeySet_Add(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
@@ -38,7 +38,8 @@ func TestNewPrimaryKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := NewKeySet(tt.args.key, tt.args.value); !reflect.DeepEqual(got, tt.want) {
+			var keySet KeySet
+			if got := keySet.Add(tt.args.key, tt.args.value); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewPrimaryKey() = %v, want %v", got, tt.want)
 			}
 		})

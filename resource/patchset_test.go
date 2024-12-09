@@ -7,6 +7,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+type resourcer struct{}
+
+func (r resourcer) Resource() accesstypes.Resource {
+	return accesstypes.Resource("resourcer")
+}
+
 func TestNewPatchSet(t *testing.T) {
 	t.Parallel()
 
@@ -17,8 +23,8 @@ func TestNewPatchSet(t *testing.T) {
 		{
 			name: "New",
 			want: &PatchSet{
-				data: make(map[accesstypes.Field]any),
-				keys: make(map[accesstypes.Field]any),
+				querySet: NewQuerySet(NewRow[resourcer]()),
+				data:     newFieldSet(),
 			},
 		},
 	}
@@ -26,8 +32,8 @@ func TestNewPatchSet(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := NewPatchSet()
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PatchSet{})); diff != "" {
+			got := NewPatchSet(NewRow[resourcer]())
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PatchSet{}, fieldSet{}, QuerySet{})); diff != "" {
 				t.Errorf("NewPatchSet() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -59,15 +65,17 @@ func TestPatchSet_Set(t *testing.T) {
 				},
 			},
 			want: &PatchSet{
-				data: map[accesstypes.Field]any{
-					"field1": "value1",
-					"field2": "value2",
+				querySet: NewQuerySet(NewRow[resourcer]()),
+				data: &fieldSet{
+					data: map[accesstypes.Field]any{
+						"field1": "value1",
+						"field2": "value2",
+					},
+					fields: []accesstypes.Field{
+						"field1",
+						"field2",
+					},
 				},
-				dFields: []accesstypes.Field{
-					"field1",
-					"field2",
-				},
-				keys: make(map[accesstypes.Field]any),
 			},
 		},
 		{
@@ -83,15 +91,17 @@ func TestPatchSet_Set(t *testing.T) {
 				},
 			},
 			want: &PatchSet{
-				data: map[accesstypes.Field]any{
-					"field1": "value1",
-					"field2": "value2",
+				querySet: NewQuerySet(NewRow[resourcer]()),
+				data: &fieldSet{
+					data: map[accesstypes.Field]any{
+						"field1": "value1",
+						"field2": "value2",
+					},
+					fields: []accesstypes.Field{
+						"field2",
+						"field1",
+					},
 				},
-				dFields: []accesstypes.Field{
-					"field2",
-					"field1",
-				},
-				keys: make(map[accesstypes.Field]any),
 			},
 		},
 	}
@@ -100,14 +110,14 @@ func TestPatchSet_Set(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
-				data: make(map[accesstypes.Field]any),
-				keys: make(map[accesstypes.Field]any),
+				querySet: NewQuerySet(NewRow[resourcer]()),
+				data:     newFieldSet(),
 			}
 			for _, i := range tt.args {
 				p.Set(i.field, i.value)
 			}
 			got := p
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PatchSet{})); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PatchSet{}, fieldSet{}, QuerySet{})); diff != "" {
 				t.Errorf("PatchSet.Set() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -118,7 +128,7 @@ func TestPatchSet_Get(t *testing.T) {
 	t.Parallel()
 
 	type fields struct {
-		data map[accesstypes.Field]any
+		data *fieldSet
 	}
 	type args struct {
 		field accesstypes.Field
@@ -132,8 +142,10 @@ func TestPatchSet_Get(t *testing.T) {
 		{
 			name: "Get",
 			fields: fields{
-				data: map[accesstypes.Field]any{
-					"field1": "value1",
+				data: &fieldSet{
+					data: map[accesstypes.Field]any{
+						"field1": "value1",
+					},
 				},
 			},
 			args: args{
@@ -182,12 +194,17 @@ func TestPatchSet_SetKey(t *testing.T) {
 				},
 			},
 			want: &PatchSet{
-				data: make(map[accesstypes.Field]any),
-				keys: map[accesstypes.Field]any{
-					"field1": "value1",
-					"field2": "value2",
+				querySet: &QuerySet{
+					keys: &fieldSet{
+						data: map[accesstypes.Field]any{
+							"field1": "value1",
+							"field2": "value2",
+						},
+						fields: []accesstypes.Field{"field1", "field2"},
+					},
+					row: NewRow[resourcer](),
 				},
-				kFields: []accesstypes.Field{"field1", "field2"},
+				data: newFieldSet(),
 			},
 		},
 		{
@@ -203,12 +220,17 @@ func TestPatchSet_SetKey(t *testing.T) {
 				},
 			},
 			want: &PatchSet{
-				data: make(map[accesstypes.Field]any),
-				keys: map[accesstypes.Field]any{
-					"field1": "value1",
-					"field2": "value2",
+				querySet: &QuerySet{
+					keys: &fieldSet{
+						data: map[accesstypes.Field]any{
+							"field1": "value1",
+							"field2": "value2",
+						},
+						fields: []accesstypes.Field{"field2", "field1"},
+					},
+					row: NewRow[resourcer](),
 				},
-				kFields: []accesstypes.Field{"field2", "field1"},
+				data: newFieldSet(),
 			},
 		},
 	}
@@ -217,14 +239,14 @@ func TestPatchSet_SetKey(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
-				data: make(map[accesstypes.Field]any),
-				keys: make(map[accesstypes.Field]any),
+				querySet: NewQuerySet(NewRow[resourcer]()),
+				data:     newFieldSet(),
 			}
 			for _, i := range tt.args {
 				p.SetKey(i.field, i.value)
 			}
 			got := p
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PatchSet{})); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(PatchSet{}, fieldSet{}, QuerySet{})); diff != "" {
 				t.Errorf("PatchSet.SetKey () mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -276,9 +298,16 @@ func TestPatchSet_Fields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
-				data:    tt.fields.data,
-				dFields: tt.fields.dFields,
-				keys:    tt.fields.pkey,
+				querySet: &QuerySet{
+					keys: &fieldSet{
+						data: tt.fields.pkey,
+					},
+					row: NewRow[resourcer](),
+				},
+				data: &fieldSet{
+					data:   tt.fields.data,
+					fields: tt.fields.dFields,
+				},
 			}
 			got := p.Fields()
 			if diff := cmp.Diff(tt.want, got); diff != "" {
@@ -316,8 +345,15 @@ func TestPatchSet_Len(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
-				data: tt.fields.data,
-				keys: tt.fields.pkey,
+				querySet: &QuerySet{
+					keys: &fieldSet{
+						data: tt.fields.pkey,
+					},
+					row: NewRow[resourcer](),
+				},
+				data: &fieldSet{
+					data: tt.fields.data,
+				},
 			}
 			if got := p.Len(); got != tt.want {
 				t.Errorf("PatchSet.Len() = %v, want %v", got, tt.want)
@@ -373,8 +409,15 @@ func TestPatchSet_Data(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
-				data: tt.fields.data,
-				keys: tt.fields.pkey,
+				querySet: &QuerySet{
+					keys: &fieldSet{
+						data: tt.fields.pkey,
+					},
+					row: NewRow[resourcer](),
+				},
+				data: &fieldSet{
+					data: tt.fields.data,
+				},
 			}
 			got := p.Data()
 			if diff := cmp.Diff(tt.want, got); diff != "" {
@@ -384,7 +427,7 @@ func TestPatchSet_Data(t *testing.T) {
 	}
 }
 
-func TestPatchSet_KeySet(t *testing.T) {
+func TestPatchSet_PrimaryKey(t *testing.T) {
 	t.Parallel()
 
 	type fields struct {
@@ -398,7 +441,7 @@ func TestPatchSet_KeySet(t *testing.T) {
 		want   KeySet
 	}{
 		{
-			name: "KeySet",
+			name: "PrimaryKey",
 			fields: fields{
 				pkey: map[accesstypes.Field]any{
 					"field1": "value1",
@@ -444,11 +487,18 @@ func TestPatchSet_KeySet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
-				data:    tt.fields.data,
-				keys:    tt.fields.pkey,
-				kFields: tt.fields.fields,
+				querySet: &QuerySet{
+					keys: &fieldSet{
+						data:   tt.fields.pkey,
+						fields: tt.fields.fields,
+					},
+					row: NewRow[resourcer](),
+				},
+				data: &fieldSet{
+					data: tt.fields.data,
+				},
 			}
-			got := p.KeySet()
+			got := p.PrimaryKey()
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(KeySet{}, KeyPart{})); diff != "" {
 				t.Errorf("PatchSet.KeySet () mismatch (-want +got):\n%s", diff)
 			}
@@ -458,8 +508,9 @@ func TestPatchSet_KeySet(t *testing.T) {
 
 func TestPatchSet_HasKey(t *testing.T) {
 	type fields struct {
-		data map[accesstypes.Field]any
-		pkey map[accesstypes.Field]any
+		data    map[accesstypes.Field]any
+		pkey    map[accesstypes.Field]any
+		pFields []accesstypes.Field
 	}
 	tests := []struct {
 		name   string
@@ -472,6 +523,7 @@ func TestPatchSet_HasKey(t *testing.T) {
 				pkey: map[accesstypes.Field]any{
 					"field1": "value1",
 				},
+				pFields: []accesstypes.Field{"field1"},
 			},
 			want: true,
 		},
@@ -488,8 +540,17 @@ func TestPatchSet_HasKey(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet{
-				data: tt.fields.data,
-				keys: tt.fields.pkey,
+				querySet: &QuerySet{
+					keys: &fieldSet{
+						data:   tt.fields.pkey,
+						fields: tt.fields.pFields,
+					},
+					fields: tt.fields.pFields,
+					row:    NewRow[resourcer](),
+				},
+				data: &fieldSet{
+					data: tt.fields.data,
+				},
 			}
 			if got := p.HasKey(); got != tt.want {
 				t.Errorf("PatchSet.HasKey() = %v, want %v", got, tt.want)
