@@ -1,17 +1,26 @@
 package resource
 
-type Queryer[T any] interface {
-	Query() *Query[T]
+import (
+	"context"
+
+	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/accesstypes"
+)
+
+type SpannerReader interface {
+	SpannerRead(ctx context.Context, txn *spanner.ReadOnlyTransaction, dst any) error
+	Resource() accesstypes.Resource
+	KeySet() KeySet
 }
 
-type InsertPatcher interface {
-	InsertPatchSet() *PatchSet
+type SpannerLister interface {
+	SpannerList(ctx context.Context, txn *spanner.ReadOnlyTransaction, dst any) error
 }
 
-type UpdatePatcher interface {
-	UpdatePatchSet() *PatchSet
+type SpannerBuffer interface {
+	SpannerBuffer(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error
 }
 
-type DeletePatcher interface {
-	DeletePatchSet() *PatchSet
+type Queryer[T Resourcer] interface {
+	Query() *QuerySet[T]
 }
