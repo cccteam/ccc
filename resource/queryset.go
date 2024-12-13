@@ -134,7 +134,7 @@ func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 
 	columns, err := q.Columns()
 	if err != nil {
-		return spanner.Statement{}, errors.Wrap(err, "SpannerPatcher.Columns()")
+		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
 	where, params, err := q.Where()
@@ -162,7 +162,7 @@ func (q *QuerySet[Resource]) PostgresStmt() (stmt Stmt, params map[string]any, e
 
 	columns, err := q.Columns()
 	if err != nil {
-		return "", nil, errors.Wrap(err, "SpannerPatcher.Columns()")
+		return "", nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
 	where, params, err := q.Where()

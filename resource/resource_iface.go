@@ -17,8 +17,10 @@ type SpannerLister interface {
 	SpannerList(ctx context.Context, txn *spanner.ReadOnlyTransaction, dst any) error
 }
 
-type SpannerBuffer interface {
+type SpannerBufferer interface {
 	SpannerBuffer(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error
+	Resource() accesstypes.Resource
+	PrimaryKey() KeySet
 }
 
 type Queryer[T Resourcer] interface {

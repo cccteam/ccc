@@ -43,6 +43,10 @@ func (p *PatchSet[Resource]) SetPatchType(t PatchType) *PatchSet[Resource] {
 	return p
 }
 
+func (p *PatchSet[Resource]) PatchType() PatchType {
+	return p.patchType
+}
+
 func (p *PatchSet[Resource]) Set(field accesstypes.Field, value any) *PatchSet[Resource] {
 	p.data.Set(field, value)
 	p.querySet.AddField(field)
@@ -54,6 +58,10 @@ func (p *PatchSet[Resource]) Get(field accesstypes.Field) any {
 	return p.data.Get(field)
 }
 
+func (p *PatchSet[Resource]) IsSet(field accesstypes.Field) bool {
+	return p.data.IsSet(field)
+}
+
 func (p *PatchSet[Resource]) SetKey(field accesstypes.Field, value any) *PatchSet[Resource] {
 	p.querySet.SetKey(field, value)
 
@@ -62,12 +70,6 @@ func (p *PatchSet[Resource]) SetKey(field accesstypes.Field, value any) *PatchSe
 
 func (p *PatchSet[Resource]) Key(field accesstypes.Field) any {
 	return p.querySet.Key(field)
-}
-
-func (p *PatchSet[Resource]) AddField(field accesstypes.Field) *PatchSet[Resource] {
-	p.querySet.AddField(field)
-
-	return p
 }
 
 func (p *PatchSet[Resource]) Fields() []accesstypes.Field {
@@ -90,7 +92,11 @@ func (p *PatchSet[Resource]) HasKey() bool {
 	return len(p.querySet.Fields()) > 0
 }
 
-func (p *PatchSet[Resource]) QuerySet() *QuerySet[Resource] {
+func (p *PatchSet[Resource]) deleteQuerySet() *QuerySet[Resource] {
+	for field := range p.querySet.rMeta.fieldMap {
+		p.querySet.AddField(field)
+	}
+
 	return p.querySet
 }
 
@@ -105,11 +111,11 @@ func (p *PatchSet[Resource]) Resource() accesstypes.Resource {
 func (p *PatchSet[Resource]) SpannerPatch(ctx context.Context, spanner *spanner.Client, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
-		return p.Insert(ctx, spanner, eventSource...)
+		return p.SpannerInsert(ctx, spanner, eventSource...)
 	case UpdatePatchType:
-		return p.Update(ctx, spanner, eventSource...)
+		return p.SpannerUpdate(ctx, spanner, eventSource...)
 	case DeletePatchType:
-		return p.Delete(ctx, spanner, eventSource...)
+		return p.SpannerDelete(ctx, spanner, eventSource...)
 	default:
 		return errors.Newf("PatchType %s not supported", p.patchType)
 	}
@@ -118,19 +124,19 @@ func (p *PatchSet[Resource]) SpannerPatch(ctx context.Context, spanner *spanner.
 func (p *PatchSet[Resource]) SpannerBuffer(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
-		return p.BufferInsert(txn, eventSource...)
+		return p.SpannerBufferInsert(txn, eventSource...)
 	case UpdatePatchType:
-		return p.BufferUpdate(ctx, txn, eventSource...)
+		return p.SpannerBufferUpdate(ctx, txn, eventSource...)
 	case DeletePatchType:
-		return p.BufferDelete(ctx, txn, eventSource...)
+		return p.SpannerBufferDelete(ctx, txn, eventSource...)
 	default:
 		return errors.Newf("PatchType %s not supported", p.patchType)
 	}
 }
 
-func (p *PatchSet[Resource]) Insert(ctx context.Context, s *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerInsert(ctx context.Context, s *spanner.Client, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.BufferInsert(txn, eventSource...); err != nil {
+		if err := p.SpannerBufferInsert(txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -142,9 +148,9 @@ func (p *PatchSet[Resource]) Insert(ctx context.Context, s *spanner.Client, even
 	return nil
 }
 
-func (p *PatchSet[Resource]) Update(ctx context.Context, s *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerUpdate(ctx context.Context, s *spanner.Client, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.BufferUpdate(ctx, txn, eventSource...); err != nil {
+		if err := p.SpannerBufferUpdate(ctx, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -156,9 +162,9 @@ func (p *PatchSet[Resource]) Update(ctx context.Context, s *spanner.Client, even
 	return nil
 }
 
-func (p *PatchSet[Resource]) InsertOrUpdate(ctx context.Context, s *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerInsertOrUpdate(ctx context.Context, s *spanner.Client, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.BufferInsertOrUpdate(ctx, txn, eventSource...); err != nil {
+		if err := p.SpannerBufferInsertOrUpdate(ctx, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -170,9 +176,9 @@ func (p *PatchSet[Resource]) InsertOrUpdate(ctx context.Context, s *spanner.Clie
 	return nil
 }
 
-func (p *PatchSet[Resource]) Delete(ctx context.Context, s *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerDelete(ctx context.Context, s *spanner.Client, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.BufferDelete(ctx, txn, eventSource...); err != nil {
+		if err := p.SpannerBufferDelete(ctx, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -184,7 +190,7 @@ func (p *PatchSet[Resource]) Delete(ctx context.Context, s *spanner.Client, even
 	return nil
 }
 
-func (p *PatchSet[Resource]) BufferInsert(txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerBufferInsert(txn *spanner.ReadWriteTransaction, eventSource ...string) error {
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
@@ -209,7 +215,7 @@ func (p *PatchSet[Resource]) BufferInsert(txn *spanner.ReadWriteTransaction, eve
 	return nil
 }
 
-func (p *PatchSet[Resource]) BufferUpdate(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerBufferUpdate(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
@@ -234,7 +240,7 @@ func (p *PatchSet[Resource]) BufferUpdate(ctx context.Context, txn *spanner.Read
 	return nil
 }
 
-func (p *PatchSet[Resource]) BufferInsertOrUpdate(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerBufferInsertOrUpdate(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
@@ -259,7 +265,7 @@ func (p *PatchSet[Resource]) BufferInsertOrUpdate(ctx context.Context, txn *span
 	return nil
 }
 
-func (p *PatchSet[Resource]) BufferDelete(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerBufferDelete(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
@@ -414,16 +420,11 @@ func (p *PatchSet[Resource]) jsonInsertSet() ([]byte, error) {
 func (p *PatchSet[Resource]) jsonUpdateSet(ctx context.Context, txn *spanner.ReadWriteTransaction) ([]byte, error) {
 	stmt, err := p.querySet.SpannerStmt()
 	if err != nil {
-		return nil, errors.Wrap(err, "SpannerPatcher.Stmt()")
+		return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
 	}
 
 	oldValues := p.Row()
 	if err := spxscan.Get(ctx, txn, oldValues, stmt); err != nil {
-		// TODO(jwatson): Move this out to consumer
-		// if errors.Is(err, spxscan.ErrNotFound) {
-		// 	return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().String())
-		// }
-
 		return nil, errors.Wrap(err, "spxscan.Get()")
 	}
 
@@ -447,19 +448,13 @@ func (p *PatchSet[Resource]) jsonUpdateSet(ctx context.Context, txn *spanner.Rea
 }
 
 func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn *spanner.ReadWriteTransaction) ([]byte, error) {
-	// TODO(jwatson): The delete PatchSet should return ALL COLUMNS. Curretly it returns none.
-	// BUG(jwatson): The delete PatchSet should return ALL COLUMNS. Curretly it returns none.
-	stmt, err := p.querySet.SpannerStmt()
+	stmt, err := p.deleteQuerySet().SpannerStmt()
 	if err != nil {
-		return nil, errors.Wrap(err, "SpannerPatcher.Stmt()")
+		return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")
 	}
 
 	oldValues := p.Row()
 	if err := spxscan.Get(ctx, txn, oldValues, stmt); err != nil {
-		// TODO(jwatson): Move this out to consumer
-		// if errors.Is(err, spxscan.ErrNotFound) {
-		// 	return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().RowID())
-		// }
 		return nil, errors.Wrap(err, "spxscan.Get()")
 	}
 

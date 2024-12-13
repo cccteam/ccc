@@ -27,14 +27,7 @@ type ResourceSet[Resource Resourcer, Request any] struct {
 
 func NewResourceSet[Resource Resourcer, Request any](permissions ...accesstypes.Permission) (*ResourceSet[Resource, Request], error) {
 	var res Resource
-	var req Request
-
-	// TODO(jwatson): Verify this check will not be needed
-	// if !t.ConvertibleTo(reflect.TypeOf(res)) {
-	// 	return nil, errors.Newf("Request (%T) is not convertible to resource (%T)", req, res)
-	// }
-
-	requiredTagPerm, fieldToTag, permissions, immutableFields, err := permissionsFromTags(reflect.TypeOf(req), permissions)
+	requiredTagPerm, fieldToTag, permissions, immutableFields, err := permissionsFromTags(reflect.TypeFor[Request](), permissions)
 	if err != nil {
 		return nil, errors.Wrap(err, "permissionsFromTags()")
 	}
