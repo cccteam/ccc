@@ -9,6 +9,7 @@ import (
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/httpio"
 	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
 )
@@ -187,6 +188,10 @@ func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, txn *spanner.ReadO
 	}
 
 	if err := spxscan.Get(ctx, txn, dst, stmt); err != nil {
+		if errors.Is(err, spxscan.ErrNotFound) {
+			return httpio.NewNotFoundMessagef("%s (%s) not found", q.Resource(), q.KeySet().String())
+		}
+
 		return errors.Wrap(err, "spxscan.Get()")
 	}
 

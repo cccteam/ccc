@@ -12,6 +12,7 @@ import (
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/httpio"
 	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
 )
@@ -403,12 +404,6 @@ func (p *PatchSet[Resource]) jsonInsertSet() ([]byte, error) {
 		return nil, errors.Wrap(err, "Diff()")
 	}
 
-	if len(changeSet) == 0 {
-		// TODO(jwatson): Move this out to consumer
-		// return nil, httpio.NewBadRequestMessage("No data to insert")
-		return nil, errors.New("No data to insert")
-	}
-
 	jsonBytes, err := json.Marshal(changeSet)
 	if err != nil {
 		return nil, errors.Wrap(err, "json.Marshal()")
@@ -425,6 +420,10 @@ func (p *PatchSet[Resource]) jsonUpdateSet(ctx context.Context, txn *spanner.Rea
 
 	oldValues := p.Row()
 	if err := spxscan.Get(ctx, txn, oldValues, stmt); err != nil {
+		if errors.Is(err, spxscan.ErrNotFound) {
+			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().String())
+		}
+
 		return nil, errors.Wrap(err, "spxscan.Get()")
 	}
 
@@ -434,9 +433,7 @@ func (p *PatchSet[Resource]) jsonUpdateSet(ctx context.Context, txn *spanner.Rea
 	}
 
 	if len(changeSet) == 0 {
-		// TODO(jwatson): Move this out to consumer
-		// return nil, httpio.NewBadRequestMessagef("No changes to apply on %s (%s)", patchSet.Resource(), patchSet.PrimaryKey().String())
-		return nil, errors.New("No changes to apply")
+		return nil, httpio.NewBadRequestMessagef("No changes to apply for %s (%s)", p.Resource(), p.PrimaryKey().String())
 	}
 
 	jsonBytes, err := json.Marshal(changeSet)
@@ -455,18 +452,16 @@ func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn *spanner.Rea
 
 	oldValues := p.Row()
 	if err := spxscan.Get(ctx, txn, oldValues, stmt); err != nil {
+		if errors.Is(err, spxscan.ErrNotFound) {
+			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().String())
+		}
+
 		return nil, errors.Wrap(err, "spxscan.Get()")
 	}
 
 	changeSet, err := p.deleteChangeSet(oldValues)
 	if err != nil {
 		return nil, errors.Wrap(err, "Diff()")
-	}
-
-	if len(changeSet) == 0 {
-		// TODO(jwatson): Move this out to consumer
-		// return nil, httpio.NewBadRequestMessage("No changes to apply")
-		return nil, errors.New("No changes to apply")
 	}
 
 	jsonBytes, err := json.Marshal(changeSet)
