@@ -13,6 +13,10 @@ func (n nilResource) Resource() accesstypes.Resource {
 	return "nil"
 }
 
+func (n nilResource) DefaultConfig() Config {
+	return Config{}
+}
+
 // StructDecoder is a struct that can be used for decoding http requests and validating those requests
 type StructDecoder[Request any] struct {
 	validate    ValidatorFunc

@@ -7,6 +7,7 @@ import (
 	reflect "reflect"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
@@ -14,6 +15,7 @@ import (
 
 type Resourcer interface {
 	Resource() accesstypes.Resource
+	DefaultConfig() Config
 }
 
 type ResourceSet[Resource Resourcer, Request any] struct {
@@ -160,7 +162,7 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 
 type ResourceMetadata[Resource Resourcer] struct {
 	fieldMap            map[accesstypes.Field]cacheEntry
-	dbType              dbType
+	dbType              DBType
 	changeTrackingTable string
 	trackChanges        bool
 }
@@ -168,17 +170,70 @@ type ResourceMetadata[Resource Resourcer] struct {
 func NewResourceMetadata[Resource Resourcer]() *ResourceMetadata[Resource] {
 	var res Resource
 
-	// TODO(jwatson): This should come from the Resource type perameter .Config() mehtod.
-	tag := "spanner"
-	changeTrackingTable := "DataChangeEvents"
-	trackChanges := true
+	c := resMetadataCache.get(res)
 
 	return &ResourceMetadata[Resource]{
-		fieldMap:            structTags(reflect.TypeOf(res), tag),
-		dbType:              dbType(tag),
-		changeTrackingTable: changeTrackingTable,
-		trackChanges:        trackChanges,
+		fieldMap:            c.fieldMap,
+		dbType:              c.cfg.DBType,
+		changeTrackingTable: c.cfg.ChangeTrackingTable,
+		trackChanges:        c.cfg.TrackChanges,
 	}
+}
+
+var resMetadataCache = resourceMetadataCache{
+	cache: make(map[reflect.Type]*resourceMetadataCacheEntry),
+}
+
+type resourceMetadataCacheEntry struct {
+	fieldMap map[accesstypes.Field]cacheEntry
+	cfg      Config
+}
+
+type resourceMetadataCache struct {
+	cache map[reflect.Type]*resourceMetadataCacheEntry
+	mu    sync.RWMutex
+}
+
+func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
+	c.mu.RLock()
+
+	t := reflect.TypeOf(res)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	if tagMap, ok := c.cache[t]; ok {
+		defer c.mu.RUnlock()
+
+		return tagMap
+	}
+	c.mu.RUnlock()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if tagMap, ok := c.cache[t]; ok {
+		return tagMap
+	}
+
+	if t.Kind() != reflect.Struct {
+		panic(errors.Newf("expected struct, got %s", t.Kind()))
+	}
+
+	var cfg Config
+	fieldMap := structTags(reflect.TypeOf(res), string(cfg.DBType))
+	if t, ok := res.(Configurer); ok {
+		cfg = t.Config()
+	} else {
+		cfg = res.DefaultConfig()
+	}
+
+	c.cache[t] = &resourceMetadataCacheEntry{
+		fieldMap: fieldMap,
+		cfg:      cfg,
+	}
+
+	return c.cache[t]
 }
 
 func structTags(t reflect.Type, key string) map[accesstypes.Field]cacheEntry {

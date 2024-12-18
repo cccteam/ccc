@@ -27,14 +27,6 @@ func NewQuerySet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *QuerySe
 	}
 }
 
-func (p *QuerySet[Resource]) Row() *Resource {
-	return new(Resource)
-}
-
-func (p *QuerySet[Resource]) Rows() []*Resource {
-	return make([]*Resource, 0)
-}
-
 func (q *QuerySet[Resource]) Resource() accesstypes.Resource {
 	var r Resource
 
@@ -90,9 +82,9 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 	}
 
 	switch q.rMeta.dbType {
-	case spannerdbType:
+	case SpannerDBType:
 		return Columns(strings.Join(columns, ", ")), nil
-	case postgresdbType:
+	case PostgresDBType:
 		return Columns(fmt.Sprintf(`"%s"`, strings.Join(columns, `", "`))), nil
 	default:
 		return "", errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
@@ -115,9 +107,9 @@ func (q *QuerySet[Resource]) Where() (where Where, params map[string]any, err er
 		}
 		key := c.tag
 		switch q.rMeta.dbType {
-		case spannerdbType:
+		case SpannerDBType:
 			builder.WriteString(fmt.Sprintf(" AND %s = @%s", key, strings.ToLower(key)))
-		case postgresdbType:
+		case PostgresDBType:
 			builder.WriteString(fmt.Sprintf(` AND "%s" = @%s`, key, strings.ToLower(key)))
 		default:
 			return "", nil, errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
@@ -129,8 +121,8 @@ func (q *QuerySet[Resource]) Where() (where Where, params map[string]any, err er
 }
 
 func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
-	if q.rMeta.dbType != spannerdbType {
-		return spanner.Statement{}, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", spannerdbType, q.rMeta.dbType)
+	if q.rMeta.dbType != SpannerDBType {
+		return spanner.Statement{}, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
 	columns, err := q.Columns()
@@ -157,8 +149,8 @@ func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 }
 
 func (q *QuerySet[Resource]) PostgresStmt() (stmt Stmt, params map[string]any, err error) {
-	if q.rMeta.dbType != postgresdbType {
-		return "", nil, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", postgresdbType, q.rMeta.dbType)
+	if q.rMeta.dbType != PostgresDBType {
+		return "", nil, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", PostgresDBType, q.rMeta.dbType)
 	}
 
 	columns, err := q.Columns()

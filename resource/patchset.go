@@ -101,10 +101,6 @@ func (p *PatchSet[Resource]) deleteQuerySet() *QuerySet[Resource] {
 	return p.querySet
 }
 
-func (p *PatchSet[Resource]) Row() any {
-	return p.querySet.Row()
-}
-
 func (p *PatchSet[Resource]) Resource() accesstypes.Resource {
 	return p.querySet.Resource()
 }
@@ -399,7 +395,8 @@ func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context
 }
 
 func (p *PatchSet[Resource]) jsonInsertSet() ([]byte, error) {
-	changeSet, err := p.Diff(p.Row())
+	// FIXME(jwatson): We need nil values, not the zero value of the type.
+	changeSet, err := p.Diff(new(Resource))
 	if err != nil {
 		return nil, errors.Wrap(err, "Diff()")
 	}
@@ -418,7 +415,7 @@ func (p *PatchSet[Resource]) jsonUpdateSet(ctx context.Context, txn *spanner.Rea
 		return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
 	}
 
-	oldValues := p.Row()
+	oldValues := new(Resource)
 	if err := spxscan.Get(ctx, txn, oldValues, stmt); err != nil {
 		if errors.Is(err, spxscan.ErrNotFound) {
 			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().String())
@@ -450,7 +447,7 @@ func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn *spanner.Rea
 		return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")
 	}
 
-	oldValues := p.Row()
+	oldValues := new(Resource)
 	if err := spxscan.Get(ctx, txn, oldValues, stmt); err != nil {
 		if errors.Is(err, spxscan.ErrNotFound) {
 			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().String())
