@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.3](https://github.com/cccteam/ccc/compare/resource/v0.0.2...resource/v0.0.3) (2024-12-18)
+
+
+### Code Refactoring
+
+* QuerySet and PatchSet ([#154](https://github.com/cccteam/ccc/issues/154)) ([7a30fb8](https://github.com/cccteam/ccc/commit/7a30fb88e79480eac38ef7761187a2b2c9218327))
+
 ## [0.0.2](https://github.com/cccteam/ccc/compare/resource/v0.0.1...resource/v0.0.2) (2024-12-05)
 
 
