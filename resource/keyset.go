@@ -77,3 +77,12 @@ func (p KeySet) Parts() []KeyPart {
 func (p KeySet) Len() int {
 	return len(p.keyParts)
 }
+
+func (p KeySet) keys() []accesstypes.Field {
+	var pKeys []accesstypes.Field
+	for _, keypart := range p.keyParts {
+		pKeys = append(pKeys, keypart.Key)
+	}
+
+	return pKeys
+}

@@ -22,13 +22,11 @@ type ResourceSet[Resource Resourcer, Request any] struct {
 	permissions     []accesstypes.Permission
 	requiredTagPerm accesstypes.TagPermissions
 	fieldToTag      map[accesstypes.Field]accesstypes.Tag
-	resource        accesstypes.Resource
 	immutableFields map[accesstypes.Tag]struct{}
 	rMeta           *ResourceMetadata[Resource]
 }
 
 func NewResourceSet[Resource Resourcer, Request any](permissions ...accesstypes.Permission) (*ResourceSet[Resource, Request], error) {
-	var res Resource
 	requiredTagPerm, fieldToTag, permissions, immutableFields, err := permissionsFromTags(reflect.TypeFor[Request](), permissions)
 	if err != nil {
 		return nil, errors.Wrap(err, "permissionsFromTags()")
@@ -38,14 +36,15 @@ func NewResourceSet[Resource Resourcer, Request any](permissions ...accesstypes.
 		permissions:     permissions,
 		requiredTagPerm: requiredTagPerm,
 		fieldToTag:      fieldToTag,
-		resource:        res.Resource(),
 		immutableFields: immutableFields,
 		rMeta:           NewResourceMetadata[Resource](),
 	}, nil
 }
 
 func (r *ResourceSet[Resource, Request]) BaseResource() accesstypes.Resource {
-	return r.resource
+	var res Resource
+
+	return res.Resource()
 }
 
 func (r *ResourceSet[Resource, Request]) ImmutableFields() map[accesstypes.Tag]struct{} {
@@ -76,7 +75,9 @@ func (r *ResourceSet[Resource, Request]) Permissions() []accesstypes.Permission 
 }
 
 func (r *ResourceSet[Resource, Request]) Resource(fieldName accesstypes.Field) accesstypes.Resource {
-	return accesstypes.Resource(fmt.Sprintf("%s.%s", r.resource, r.fieldToTag[fieldName]))
+	var res Resource
+
+	return accesstypes.Resource(fmt.Sprintf("%s.%s", res.Resource(), r.fieldToTag[fieldName]))
 }
 
 func (r *ResourceSet[Resource, Request]) TagPermissions() accesstypes.TagPermissions {

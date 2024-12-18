@@ -15,6 +15,7 @@ import (
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
+	"github.com/google/go-cmp/cmp"
 )
 
 type PatchType string
@@ -827,4 +828,37 @@ func matchTextMarshaler[T encoding.TextMarshaler](v, v2 T) (bool, error) {
 	}
 
 	return false, nil
+}
+
+type PatchSetComparer interface {
+	Data() map[accesstypes.Field]any
+	Fields() []accesstypes.Field
+	PatchType() PatchType
+	PrimaryKey() KeySet
+}
+
+func PatchsetCompare(a, b PatchSetComparer) bool {
+	if a.PatchType() != b.PatchType() {
+		return false
+	}
+
+	if cmp.Diff(a.Data(), b.Data()) != "" {
+		return false
+	}
+
+	if cmp.Diff(a.Fields(), b.Fields()) != "" {
+		return false
+	}
+
+	if a.PatchType() == CreatePatchType {
+		if cmp.Diff(a.PrimaryKey().keys(), b.PrimaryKey().keys()) != "" {
+			return false
+		}
+	} else {
+		if cmp.Diff(a.PrimaryKey(), b.PrimaryKey(), cmp.AllowUnexported(KeySet{})) != "" {
+			return false
+		}
+	}
+
+	return true
 }
