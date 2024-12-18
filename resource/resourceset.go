@@ -222,12 +222,12 @@ func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
 	}
 
 	var cfg Config
-	fieldMap := structTags(reflect.TypeOf(res), string(cfg.DBType))
 	if t, ok := res.(Configurer); ok {
 		cfg = t.Config()
 	} else {
 		cfg = res.DefaultConfig()
 	}
+	fieldMap := structTags(t, string(cfg.DBType))
 
 	c.cache[t] = &resourceMetadataCacheEntry{
 		fieldMap: fieldMap,
