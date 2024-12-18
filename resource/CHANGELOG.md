@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/cccteam/ccc/compare/resource/v0.0.3...resource/v0.0.4) (2024-12-18)
+
+
+### Bug Fixes
+
+* Fix use before initialization bug ([#156](https://github.com/cccteam/ccc/issues/156)) ([e062401](https://github.com/cccteam/ccc/commit/e062401abef7eccd728c82f8f094caf4b35046db))
+
 ## [0.0.3](https://github.com/cccteam/ccc/compare/resource/v0.0.2...resource/v0.0.3) (2024-12-18)
 
 
