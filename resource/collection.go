@@ -27,7 +27,7 @@ func AddResources[Resource Resourcer, Request any](s *Collection, scope accessty
 	tags := rSet.TagPermissions()
 
 	for _, perm := range rSet.Permissions() {
-		if err := s.addResource(scope, perm, res); err != nil {
+		if err := s.addResource(false, scope, perm, res); err != nil {
 			return err
 		}
 	}
@@ -95,12 +95,14 @@ func (s *Collection) AddResource(scope accesstypes.PermissionScope, permission a
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.addResource(scope, permission, res)
+	return s.addResource(true, scope, permission, res)
 }
 
-func (s *Collection) addResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
-	if ok := slices.Contains(s.resourceStore[scope][res], permission); ok {
-		return errors.Newf("found existing entry under resource: %s and permission: %s", res, permission)
+func (s *Collection) addResource(allowDuplicateRegistration bool, scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
+	if !allowDuplicateRegistration {
+		if ok := slices.Contains(s.resourceStore[scope][res], permission); ok {
+			return errors.Newf("found existing entry under resource: %s and permission: %s", res, permission)
+		}
 	}
 
 	if s.resourceStore[scope] == nil {
