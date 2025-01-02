@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5](https://github.com/cccteam/ccc/compare/resource/v0.0.4...resource/v0.0.5) (2025-01-02)
+
+
+### Bug Fixes
+
+* Allow duplicate registration of permission and resource ([#158](https://github.com/cccteam/ccc/issues/158)) ([04fad82](https://github.com/cccteam/ccc/commit/04fad825c160b10d5e8de1789d168f12faec4c72))
+
 ## [0.0.4](https://github.com/cccteam/ccc/compare/resource/v0.0.3...resource/v0.0.4) (2024-12-18)
 
 
