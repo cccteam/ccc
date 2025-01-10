@@ -195,7 +195,7 @@ func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, erro
 func (c *GenerationClient) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
 	tmpl, err := template.New(fileTemplate).Funcs(templateFuncs).Parse(fileTemplate)
 	if err != nil {
-		return nil, errors.Wrap(err, "template.New().Parse()")
+		return nil, errors.Wrap(err, "template.Parse()")
 	}
 
 	buf := bytes.NewBuffer([]byte{})

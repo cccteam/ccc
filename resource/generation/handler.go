@@ -58,6 +58,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		})
 	}
 
+	opts := c.handlerOptions[structName]
 	destinationFile := filepath.Join(c.handlerDestination, fmt.Sprintf("%s.go", strcase.ToSnake(pluralize.NewClient().Plural(structName))))
 
 	file, err := os.OpenFile(destinationFile, os.O_RDWR|os.O_CREATE, 0o644)
@@ -75,7 +76,6 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		fileData = []byte("package app\n")
 	}
 
-	opts := c.handlerOptions[structName]
 	for _, h := range handlers {
 		functionName := handlerName(structName, h.handlerType)
 
@@ -98,8 +98,18 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		}
 	}
 
-	if err := c.writeBytesToFile(c.handlerDestination, file, fileData); err != nil {
-		return err
+	if string(fileData) != "package app\n" {
+		if err := c.writeBytesToFile(c.handlerDestination, file, fileData); err != nil {
+			return err
+		}
+	} else {
+		if err := file.Close(); err != nil {
+			return errors.Wrap(err, "file.Close()")
+		}
+
+		if err := os.Remove(destinationFile); err != nil {
+			return errors.Wrap(err, "os.Remove()")
+		}
 	}
 
 	return nil
