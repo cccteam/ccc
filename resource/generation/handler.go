@@ -15,7 +15,6 @@ import (
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/ettle/strcase"
-	"github.com/gertd/go-pluralize"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -59,7 +58,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 	}
 
 	opts := c.handlerOptions[structName]
-	destinationFile := filepath.Join(c.handlerDestination, fmt.Sprintf("%s.go", strcase.ToSnake(pluralize.NewClient().Plural(structName))))
+	destinationFile := filepath.Join(c.handlerDestination, fmt.Sprintf("%s.go", strcase.ToSnake(c.pluralizer.Plural(structName))))
 
 	file, err := os.OpenFile(destinationFile, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
@@ -77,7 +76,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 	}
 
 	for _, h := range handlers {
-		functionName := handlerName(structName, h.handlerType)
+		functionName := c.handlerName(structName, h.handlerType)
 
 		skipGeneration := false
 		if optionTypes, ok := opts[h.handlerType]; ok {
@@ -116,7 +115,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 }
 
 func (c *GenerationClient) replaceHandlerFileContent(existingContent []byte, resultFunctionName string, handler *generatedHandler, generated *generatedType) (string, error) {
-	tmpl, err := template.New("handler").Funcs(templateFuncs).Parse(handler.template)
+	tmpl, err := template.New("handler").Funcs(c.templateFuncs()).Parse(handler.template)
 	if err != nil {
 		return string(existingContent), errors.Wrap(err, "template.New().Parse()")
 	}
@@ -208,7 +207,7 @@ func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*ge
 			}
 
 			if f.Tag != nil {
-				field.Tag = strings.Trim(f.Tag.Value, "`")
+				field.Tag = f.Tag.Value[1 : len(f.Tag.Value)-1]
 				structTag := reflect.StructTag(field.Tag)
 				parseTags(field, structTag)
 
@@ -270,15 +269,15 @@ func parseTags(field *typeField, fieldTag reflect.StructTag) {
 	}
 }
 
-func handlerName(structName string, handlerType HandlerType) string {
+func (c *GenerationClient) handlerName(structName string, handlerType HandlerType) string {
 	var functionName string
 	switch handlerType {
 	case List:
-		functionName = pluralize.NewClient().Plural(structName)
+		functionName = c.pluralizer.Plural(structName)
 	case Read:
 		functionName = structName
 	case Patch:
-		functionName = "Patch" + pluralize.NewClient().Plural(structName)
+		functionName = "Patch" + c.pluralizer.Plural(structName)
 	}
 
 	return functionName

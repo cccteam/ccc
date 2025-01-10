@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strings"
 
 	cloudspanner "cloud.google.com/go/spanner"
 	initiator "github.com/cccteam/db-initiator"
@@ -208,6 +209,74 @@ func (c *GenerationClient) structsFromSource() ([]string, error) {
 	})
 
 	return structs, nil
+}
+
+func (c *GenerationClient) templateFuncs() map[string]any {
+	templateFuncs := map[string]any{
+		"Pluralize": c.pluralizer.Plural,
+		"GoCamel":   strcase.ToGoCamel,
+		"Camel":     strcase.ToCamel,
+		"IsPtr": func(fieldType string) bool {
+			return strings.HasPrefix(fieldType, "*")
+		},
+		"TrimPtr": func(fieldType string) string {
+			return strings.TrimPrefix(fieldType, "*")
+		},
+		"PrimaryKeyTypeIsUUID": func(fields []*typeField) bool {
+			for _, f := range fields {
+				if f.IsPrimaryKey {
+					return f.Type == "ccc.UUID"
+				}
+			}
+
+			return false
+		},
+		"FormatPerm": func(s string) string {
+			if s == "" {
+				return ""
+			}
+
+			return ` perm:"` + s + `"`
+		},
+		"PrimaryKeyType": func(fields []*typeField) string {
+			for _, f := range fields {
+				if f.IsPrimaryKey {
+					return f.Type
+				}
+			}
+
+			return ""
+		},
+		"FormatQueryTag": func(query string) string {
+			if query != "" {
+				return " " + query
+			}
+
+			return ""
+		},
+		"DetermineJSONTag": func(field *typeField, isPatch bool) string {
+			if isPatch {
+				if field.IsPrimaryKey {
+					return "-"
+				}
+
+				for _, c := range field.Conditions {
+					if c == "immutable" {
+						return "-"
+					}
+				}
+			}
+
+			val := strcase.ToCamel(field.Name)
+			if !field.IsPrimaryKey && !isPatch {
+				val += ",omitempty"
+			}
+
+			return val
+		},
+	}
+
+	return templateFuncs
 }
 
 func fieldType(expr ast.Expr) string {

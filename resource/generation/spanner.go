@@ -62,7 +62,7 @@ func (c *GenerationClient) generateResourceInterfaces(types []*generatedType) er
 
 func (c *GenerationClient) generatePatcherTypes(generatedType *generatedType) error {
 	destinationFile := filepath.Join(c.spannerDestination, fmt.Sprintf("%s.go", strcase.ToSnake(c.pluralizer.Plural(generatedType.Name))))
-	fmt.Printf("Generating file: %v\n", destinationFile)
+	fmt.Printf("Generating spanner file: %v\n", destinationFile)
 
 	output, err := c.generateTemplateOutput(resourceFileTemplate, map[string]any{
 		"Source":          c.resourceSource,
@@ -142,40 +142,14 @@ func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, erro
 		}
 
 		isCompoundTable := true
-
 		tableName := c.pluralizer.Plural(k)
+
 		for _, f := range structType.Fields.List {
 			if len(f.Names) == 0 {
 				continue
 			}
 
-			field := &typeField{
-				Name: f.Names[0].Name,
-			}
-
-			field.Type = fieldType(f.Type)
-
-			if f.Tag != nil {
-				field.Tag = f.Tag.Value
-			}
-
-			if table, ok := c.tableFieldLookup[tableName]; ok {
-				if field.Tag != "" {
-					structTag := reflect.StructTag(field.Tag[1 : len(field.Tag)-1])
-					column := structTag.Get("spanner")
-
-					if data, ok := table.Columns[column]; ok {
-						field.IsPrimaryKey = data.ConstraintType == PrimaryKey
-						field.IsIndex = data.IsIndex
-
-						if data.ConstraintType != PrimaryKey && data.ConstraintType != ForeignKey {
-							isCompoundTable = false
-						}
-					}
-				}
-			}
-
-			fields = append(fields, field)
+			fields = append(fields, c.typeFieldFromAstField(tableName, f, &isCompoundTable))
 		}
 
 		typeList = append(typeList, &generatedType{
@@ -192,8 +166,43 @@ func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, erro
 	return typeList, nil
 }
 
+func (c *GenerationClient) typeFieldFromAstField(tableName string, f *ast.Field, isCompoundTable *bool) *typeField {
+	field := &typeField{
+		Name: f.Names[0].Name,
+	}
+
+	field.Type = fieldType(f.Type)
+
+	if f.Tag != nil {
+		field.Tag = f.Tag.Value
+	}
+
+	table, ok := c.tableFieldLookup[tableName]
+	if !ok {
+		return field
+	}
+
+	if field.Tag == "" {
+		return field
+	}
+
+	structTag := reflect.StructTag(field.Tag[1 : len(field.Tag)-1])
+	column := structTag.Get("spanner")
+
+	if data, ok := table.Columns[column]; ok {
+		field.IsPrimaryKey = data.ConstraintType == PrimaryKey
+		field.IsIndex = data.IsIndex
+
+		if data.ConstraintType != PrimaryKey && data.ConstraintType != ForeignKey {
+			*isCompoundTable = false
+		}
+	}
+
+	return field
+}
+
 func (c *GenerationClient) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
-	tmpl, err := template.New(fileTemplate).Funcs(templateFuncs).Parse(fileTemplate)
+	tmpl, err := template.New(fileTemplate).Funcs(c.templateFuncs()).Parse(fileTemplate)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.Parse()")
 	}
