@@ -19,6 +19,7 @@ import (
 	"github.com/ettle/strcase"
 	"github.com/gertd/go-pluralize"
 	"github.com/go-playground/errors/v5"
+	"github.com/momaek/formattag/align"
 	"golang.org/x/tools/imports"
 )
 
@@ -167,6 +168,12 @@ func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, d
 	data, err = imports.Process(destination, data, nil)
 	if err != nil {
 		return errors.Wrap(err, "imports.Process()")
+	}
+
+	align.Init(bytes.NewReader(data))
+	data, err = align.Do()
+	if err != nil {
+		return errors.Wrap(err, "align.Do()")
 	}
 
 	if err := file.Truncate(0); err != nil {
