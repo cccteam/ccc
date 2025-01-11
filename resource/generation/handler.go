@@ -88,12 +88,10 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		}
 
 		if !skipGeneration {
-			updatedFileData, err := c.replaceHandlerFileContent(fileData, functionName, h, generatedType)
+			fileData, err = c.replaceHandlerFileContent(fileData, functionName, h, generatedType)
 			if err != nil {
 				return err
 			}
-
-			fileData = []byte(updatedFileData)
 		}
 	}
 
@@ -114,32 +112,32 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 	return nil
 }
 
-func (c *GenerationClient) replaceHandlerFileContent(existingContent []byte, resultFunctionName string, handler *generatedHandler, generated *generatedType) (string, error) {
+func (c *GenerationClient) replaceHandlerFileContent(existingContent []byte, resultFunctionName string, handler *generatedHandler, generated *generatedType) ([]byte, error) {
 	tmpl, err := template.New("handler").Funcs(c.templateFuncs()).Parse(handler.template)
 	if err != nil {
-		return string(existingContent), errors.Wrap(err, "template.New().Parse()")
+		return nil, errors.Wrap(err, "template.New().Parse()")
 	}
 
 	buf := bytes.NewBuffer([]byte{})
 	if err := tmpl.Execute(buf, map[string]any{
 		"Type": generated,
 	}); err != nil {
-		return string(existingContent), errors.Wrap(err, "tmpl.Execute()")
+		return nil, errors.Wrap(err, "tmpl.Execute()")
 	}
 
-	newContent, err := c.writeHandler(resultFunctionName, string(existingContent), buf.String())
+	newContent, err := c.writeHandler(resultFunctionName, existingContent, buf.Bytes())
 	if err != nil {
-		return string(existingContent), errors.Wrap(err, "replaceFunction()")
+		return nil, errors.Wrap(err, "replaceFunction()")
 	}
 
 	return newContent, nil
 }
 
-func (c *GenerationClient) writeHandler(functionName, existingContent, newFunctionContent string) (string, error) {
+func (c *GenerationClient) writeHandler(functionName string, existingContent, newFunctionContent []byte) ([]byte, error) {
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, "", existingContent, parser.AllErrors)
 	if err != nil {
-		return "", errors.Wrap(err, "parser.ParseFile()")
+		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}
 
 	var start, end token.Pos
@@ -157,16 +155,15 @@ func (c *GenerationClient) writeHandler(functionName, existingContent, newFuncti
 	if start == token.NoPos || end == token.NoPos {
 		fmt.Printf("Generating handler:  %v\n", functionName)
 
-		return existingContent + "\n\n" + newFunctionContent, nil
+		return joinBytes(existingContent, []byte("\n\n"), newFunctionContent), nil
 	}
 
 	fmt.Printf("Regenerating handler: %v\n", functionName)
 
 	startOffset := fset.Position(start).Offset
 	endOffset := fset.Position(end).Offset
-	newContent := existingContent[:startOffset] + newFunctionContent + existingContent[endOffset:]
 
-	return newContent, nil
+	return joinBytes(existingContent[:startOffset], newFunctionContent, existingContent[endOffset:]), nil
 }
 
 func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {
@@ -281,4 +278,8 @@ func (c *GenerationClient) handlerName(structName string, handlerType HandlerTyp
 	}
 
 	return functionName
+}
+
+func joinBytes(p ...[]byte) []byte {
+	return bytes.Join(p, []byte(""))
 }

@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"go/ast"
@@ -158,11 +159,12 @@ func (c *GenerationClient) createLookupMapForQuery(ctx context.Context, qry stri
 }
 
 func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, data []byte) error {
-	formattedData, err := format.Source(data)
+	data, err := format.Source(data)
 	if err != nil {
 		return errors.Wrap(err, "format.Source()")
 	}
-	src, err := imports.Process(destination, formattedData, nil)
+
+	data, err = imports.Process(destination, data, nil)
 	if err != nil {
 		return errors.Wrap(err, "imports.Process()")
 	}
@@ -173,7 +175,7 @@ func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, d
 	if _, err := file.Seek(0, 0); err != nil {
 		return errors.Wrap(err, "file.Seek()")
 	}
-	if _, err := file.Write(src); err != nil {
+	if _, err := file.Write(data); err != nil {
 		return errors.Wrap(err, "file.Write()")
 	}
 
