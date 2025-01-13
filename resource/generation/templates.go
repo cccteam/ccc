@@ -280,7 +280,7 @@ const (
 		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ .Type.Name }}()")
 		defer span.End()
 
-		id := httpio.Param[ccc.UUID](r, router.{{ .Type.Name }}ID)
+		id := httpio.Param[{{ PrimaryKeyType .Type.Fields }}](r, router.{{ .Type.Name }}ID)
 
 		querySet, err := decoder.Decode(r)
 		if err != nil {
