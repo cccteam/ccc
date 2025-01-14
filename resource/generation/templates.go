@@ -386,13 +386,8 @@ func fieldAccessors(patchType PatchType) string {
 	return fmt.Sprintf(`{{ $TypeName := .Name}}
 		{{ range .Fields }}
 		{{ if eq .IsPrimaryKey false }}
-		func (p *{{ $TypeName }}%[1]sPatch) Set{{ .Name }}(v {{ TrimPtr .Type }}) *{{ $TypeName }}%[1]sPatch {
-			{{- $IsPtr := IsPtr .Type }}
-			{{- if eq $IsPtr true }}
-			p.patchSet.Set("{{ .Name }}", &v)
-			{{- else }}
+		func (p *{{ $TypeName }}%[1]sPatch) Set{{ .Name }}(v {{ .Type }}) *{{ $TypeName }}%[1]sPatch {
 			p.patchSet.Set("{{ .Name }}", v)
-			{{ end}}
 
 			return p
 		}
