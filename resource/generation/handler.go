@@ -95,7 +95,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		}
 	}
 
-	if string(fileData) != "package app\n" {
+	if len(bytes.TrimPrefix(fileData, []byte("package app\n"))) > 0 {
 		if err := c.writeBytesToFile(c.handlerDestination, file, fileData); err != nil {
 			return err
 		}

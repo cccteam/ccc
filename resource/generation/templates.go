@@ -181,7 +181,7 @@ func New{{ .Name }}UpdatePatchFromPatchSet(
 
 func New{{ .Name }}UpdatePatch(
 {{- range $i, $e := .Fields }}
-{{- if eq .IsPrimaryKey true }}{{ GoCamel .Name }} {{ .Type }}{{ end }}{{ end }}) *{{ .Name }}UpdatePatch {
+{{- if eq .IsPrimaryKey true }}{{ GoCamel .Name }} {{ .Type }}, {{ end }}{{ end }}) *{{ .Name }}UpdatePatch {
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Name }}]()).
 	{{- range .Fields }}
 	{{- if eq .IsPrimaryKey true }}
@@ -205,7 +205,7 @@ type {{ .Name }}DeletePatch struct {
 
 func New{{ .Name }}DeletePatch(
 {{- range $i, $e := .Fields }}
-{{- if eq .IsPrimaryKey true }}{{ GoCamel .Name }} {{ .Type}}{{ end }}{{ end }}) *{{ .Name }}DeletePatch {
+{{- if eq .IsPrimaryKey true }}{{ GoCamel .Name }} {{ .Type}}, {{ end }}{{ end }}) *{{ .Name }}DeletePatch {
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Name }}]()).
 	{{- range .Fields }}
 	{{- if eq .IsPrimaryKey true }}
