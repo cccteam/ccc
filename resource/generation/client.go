@@ -288,11 +288,11 @@ func (c *GenerationClient) templateFuncs() map[string]any {
 	return templateFuncs
 }
 
-func fieldType(expr ast.Expr) string {
+func fieldType(expr ast.Expr, isHandlerOutput bool) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
 		switch {
-		case slices.Contains(baseTypes, t.Name):
+		case slices.Contains(baseTypes, t.Name) || !isHandlerOutput:
 			return t.Name
 		default:
 			return fmt.Sprintf("resources.%s", t.Name)
@@ -300,9 +300,9 @@ func fieldType(expr ast.Expr) string {
 	case *ast.SelectorExpr:
 		return fmt.Sprintf("%s.%s", t.X, t.Sel.Name)
 	case *ast.StarExpr:
-		return "*" + fieldType(t.X)
+		return "*" + fieldType(t.X, isHandlerOutput)
 	case *ast.ArrayType:
-		return "[]" + fieldType(t.Elt)
+		return "[]" + fieldType(t.Elt, isHandlerOutput)
 	default:
 		panic(fmt.Sprintf("unknown type: %T", t))
 	}

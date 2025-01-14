@@ -200,7 +200,7 @@ func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*ge
 
 			field := &typeField{
 				Name: f.Names[0].Name,
-				Type: fieldType(f.Type),
+				Type: fieldType(f.Type, true),
 			}
 
 			if f.Tag != nil {

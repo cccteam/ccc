@@ -44,6 +44,7 @@ const (
 const (
 	querySetOutputFilename          = "types.go"
 	resourceInterfaceOutputFilename = "resources_iface.go"
+	resourcesTestFileName           = "generated_resources_test.go"
 )
 
 type Config struct {
