@@ -58,7 +58,7 @@ func New{{ .Name }}QueryFromQuerySet(qSet *resource.QuerySet[{{ .Name }}]) *{{ .
 {{ $TypeName := .Name}}
 {{ range .Fields }}
 {{ if eq .IsIndex true }}
-func (q *{{ $TypeName }}Query) SetKey{{ .Name }}(v {{ .Type }}) *{{ $TypeName }}Query {
+func (q *{{ $TypeName }}Query) Set{{ .Name }}(v {{ .Type }}) *{{ $TypeName }}Query {
 	q.qSet.SetKey("{{ .Name }}", v)
 
 	return q
