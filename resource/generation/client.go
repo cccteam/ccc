@@ -11,7 +11,6 @@ import (
 	"os"
 	"slices"
 	"sort"
-	"strings"
 
 	cloudspanner "cloud.google.com/go/spanner"
 	initiator "github.com/cccteam/db-initiator"
@@ -225,12 +224,6 @@ func (c *GenerationClient) templateFuncs() map[string]any {
 		"Pluralize": c.pluralizer.Plural,
 		"GoCamel":   strcase.ToGoCamel,
 		"Camel":     strcase.ToCamel,
-		"IsPtr": func(fieldType string) bool {
-			return strings.HasPrefix(fieldType, "*")
-		},
-		"TrimPtr": func(fieldType string) string {
-			return strings.TrimPrefix(fieldType, "*")
-		},
 		"PrimaryKeyTypeIsUUID": func(fields []*typeField) bool {
 			for _, f := range fields {
 				if f.IsPrimaryKey {
