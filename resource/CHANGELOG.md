@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.7](https://github.com/cccteam/ccc/compare/resource/v0.0.6...resource/v0.0.7) (2025-01-15)
+
+
+### Bug Fixes
+
+* Use NullJSON type for ChangeSet [#164](https://github.com/cccteam/ccc/issues/164) ([8f1da9b](https://github.com/cccteam/ccc/commit/8f1da9ba0be87ecb535d76f5b68453344a8250be))
+
 ## [0.0.6](https://github.com/cccteam/ccc/compare/resource/v0.0.5...resource/v0.0.6) (2025-01-15)
 
 
