@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.6](https://github.com/cccteam/ccc/compare/resource/v0.0.5...resource/v0.0.6) (2025-01-15)
+
+
+### Features
+
+* Added resource generation code to new generation package ([#161](https://github.com/cccteam/ccc/issues/161)) ([2505d96](https://github.com/cccteam/ccc/commit/2505d96dfe43157574a5055d3f609c6aa9586b72))
+
 ## [0.0.5](https://github.com/cccteam/ccc/compare/resource/v0.0.4...resource/v0.0.5) (2025-01-02)
 
 
