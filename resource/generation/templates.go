@@ -154,7 +154,7 @@ func New{{ .Name }}CreatePatch(
 }
 {{ end }}
 
-func (p *{{ .Name }}CreatePatch) InsertPatchSet() *resource.PatchSet[{{ .Name }}] {
+func (p *{{ .Name }}CreatePatch) PatchSet() *resource.PatchSet[{{ .Name }}] {
 	return p.patchSet
 }
 
@@ -193,7 +193,7 @@ func New{{ .Name }}UpdatePatch(
 	return &{{ .Name }}UpdatePatch{patchSet: patchSet}
 }
 
-func (p *{{ .Name }}UpdatePatch) UpdatePatchSet() *resource.PatchSet[{{ .Name }}] {
+func (p *{{ .Name }}UpdatePatch) PatchSet() *resource.PatchSet[{{ .Name }}] {
 	return p.patchSet
 }
 
@@ -217,7 +217,7 @@ func New{{ .Name }}DeletePatch(
 	return &{{ .Name }}DeletePatch{patchSet: patchSet}
 }
 
-func (p *{{ .Name }}DeletePatch) DeletePatchSet() *resource.PatchSet[{{ .Name }}] {
+func (p *{{ .Name }}DeletePatch) PatchSet() *resource.PatchSet[{{ .Name }}] {
 	return p.patchSet
 }
 
@@ -337,18 +337,18 @@ const (
 				if err != nil {
 					return httpio.NewEncoder(w).ClientMessage(ctx, err)
 				}
-				patches = append(patches, patch.InsertPatchSet())
+				patches = append(patches, patch.PatchSet())
 				resp.IDs = append(resp.IDs, patch.ID())
 				{{- else }}
 				id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
-				patches = append(patches, resources.New{{ .Type.Name }}CreatePatchFromPatchSet(id, patchSet).InsertPatchSet())
+				patches = append(patches, resources.New{{ .Type.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet())
 				{{- end }}
 			case resource.OperationUpdate:
 				id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
-				patches = append(patches, resources.New{{ .Type.Name }}UpdatePatchFromPatchSet(id, patchSet).UpdatePatchSet())
+				patches = append(patches, resources.New{{ .Type.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet())
 			case resource.OperationDelete:
 				id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
-				patches = append(patches, resources.New{{ .Type.Name }}DeletePatch(id).DeletePatchSet())
+				patches = append(patches, resources.New{{ .Type.Name }}DeletePatch(id).PatchSet())
 			}
 		}
 
