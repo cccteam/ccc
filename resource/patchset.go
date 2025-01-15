@@ -106,14 +106,14 @@ func (p *PatchSet[Resource]) Resource() accesstypes.Resource {
 	return p.querySet.Resource()
 }
 
-func (p *PatchSet[Resource]) SpannerPatch(ctx context.Context, spanner *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerApply(ctx context.Context, spanner *spanner.Client, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
-		return p.SpannerInsert(ctx, spanner, eventSource...)
+		return p.spannerInsert(ctx, spanner, eventSource...)
 	case UpdatePatchType:
-		return p.SpannerUpdate(ctx, spanner, eventSource...)
+		return p.spannerUpdate(ctx, spanner, eventSource...)
 	case DeletePatchType:
-		return p.SpannerDelete(ctx, spanner, eventSource...)
+		return p.spannerDelete(ctx, spanner, eventSource...)
 	default:
 		return errors.Newf("PatchType %s not supported", p.patchType)
 	}
@@ -122,19 +122,19 @@ func (p *PatchSet[Resource]) SpannerPatch(ctx context.Context, spanner *spanner.
 func (p *PatchSet[Resource]) SpannerBuffer(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
-		return p.SpannerBufferInsert(txn, eventSource...)
+		return p.spannerBufferInsert(txn, eventSource...)
 	case UpdatePatchType:
-		return p.SpannerBufferUpdate(ctx, txn, eventSource...)
+		return p.spannerBufferUpdate(ctx, txn, eventSource...)
 	case DeletePatchType:
-		return p.SpannerBufferDelete(ctx, txn, eventSource...)
+		return p.spannerBufferDelete(ctx, txn, eventSource...)
 	default:
 		return errors.Newf("PatchType %s not supported", p.patchType)
 	}
 }
 
-func (p *PatchSet[Resource]) SpannerInsert(ctx context.Context, s *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerInsert(ctx context.Context, s *spanner.Client, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.SpannerBufferInsert(txn, eventSource...); err != nil {
+		if err := p.spannerBufferInsert(txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -146,9 +146,9 @@ func (p *PatchSet[Resource]) SpannerInsert(ctx context.Context, s *spanner.Clien
 	return nil
 }
 
-func (p *PatchSet[Resource]) SpannerUpdate(ctx context.Context, s *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerUpdate(ctx context.Context, s *spanner.Client, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.SpannerBufferUpdate(ctx, txn, eventSource...); err != nil {
+		if err := p.spannerBufferUpdate(ctx, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -174,9 +174,9 @@ func (p *PatchSet[Resource]) SpannerInsertOrUpdate(ctx context.Context, s *spann
 	return nil
 }
 
-func (p *PatchSet[Resource]) SpannerDelete(ctx context.Context, s *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerDelete(ctx context.Context, s *spanner.Client, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.SpannerBufferDelete(ctx, txn, eventSource...); err != nil {
+		if err := p.spannerBufferDelete(ctx, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -188,7 +188,7 @@ func (p *PatchSet[Resource]) SpannerDelete(ctx context.Context, s *spanner.Clien
 	return nil
 }
 
-func (p *PatchSet[Resource]) SpannerBufferInsert(txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerBufferInsert(txn *spanner.ReadWriteTransaction, eventSource ...string) error {
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
@@ -213,7 +213,7 @@ func (p *PatchSet[Resource]) SpannerBufferInsert(txn *spanner.ReadWriteTransacti
 	return nil
 }
 
-func (p *PatchSet[Resource]) SpannerBufferUpdate(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
@@ -263,7 +263,7 @@ func (p *PatchSet[Resource]) SpannerBufferInsertOrUpdate(ctx context.Context, tx
 	return nil
 }
 
-func (p *PatchSet[Resource]) SpannerBufferDelete(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerBufferDelete(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
