@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.8](https://github.com/cccteam/ccc/compare/resource/v0.0.7...resource/v0.0.8) (2025-01-15)
+
+
+### Bug Fixes
+
+* Remove Key from the Set method name. ([#166](https://github.com/cccteam/ccc/issues/166)) ([af8ce9e](https://github.com/cccteam/ccc/commit/af8ce9e15b825136cbb19ad9efdac835902256df))
+
 ## [0.0.7](https://github.com/cccteam/ccc/compare/resource/v0.0.6...resource/v0.0.7) (2025-01-15)
 
 
