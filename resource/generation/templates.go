@@ -287,7 +287,7 @@ const (
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		row, err := spanner.Read(ctx, a.businessLayer.DB(), resources.New{{ .Type.Name }}QueryFromQuerySet(querySet).SetKeyID(id))
+		row, err := spanner.Read(ctx, a.businessLayer.DB(), resources.New{{ .Type.Name }}QueryFromQuerySet(querySet).SetID(id))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
