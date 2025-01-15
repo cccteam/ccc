@@ -3,6 +3,7 @@ package resource
 import (
 	"time"
 
+	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 )
 
@@ -11,7 +12,7 @@ type DataChangeEvent struct {
 	RowID       string               `spanner:"RowId"`
 	EventTime   time.Time            `spanner:"EventTime"`
 	EventSource string               `spanner:"EventSource"`
-	ChangeSet   string               `spanner:"ChangeSet"`
+	ChangeSet   spanner.NullJSON     `spanner:"ChangeSet"`
 }
 
 type DiffElem struct {

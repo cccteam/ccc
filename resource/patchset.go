@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding"
-	"encoding/json"
 	"iter"
 	"reflect"
 	"time"
@@ -285,7 +284,7 @@ func (p *PatchSet[Resource]) spannerBufferDelete(ctx context.Context, txn *spann
 }
 
 func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn *spanner.ReadWriteTransaction, eventSource string) error {
-	jsonChangeSet, err := p.jsonInsertSet()
+	changeSet, err := p.insertChangeSet()
 	if err != nil {
 		return err
 	}
@@ -296,7 +295,7 @@ func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn *spanner.ReadWr
 			RowID:       p.PrimaryKey().RowID(),
 			EventTime:   spanner.CommitTimestamp,
 			EventSource: eventSource,
-			ChangeSet:   string(jsonChangeSet),
+			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 		},
 	)
 	if err != nil {
@@ -311,12 +310,12 @@ func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn *spanner.ReadWr
 }
 
 func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource string) error {
-	jsonChangeSet, err := p.jsonUpdateSet(ctx, txn)
+	changeSet, err := p.updateChangeSet(ctx, txn)
 	if err != nil {
 		if !errors.Is(err, spxscan.ErrNotFound) {
 			return err
 		}
-		jsonChangeSet, err = p.jsonInsertSet()
+		changeSet, err = p.insertChangeSet()
 		if err != nil {
 			return err
 		}
@@ -328,7 +327,7 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context
 			RowID:       p.PrimaryKey().RowID(),
 			EventTime:   spanner.CommitTimestamp,
 			EventSource: eventSource,
-			ChangeSet:   string(jsonChangeSet),
+			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 		},
 	)
 	if err != nil {
@@ -343,7 +342,7 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context
 }
 
 func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource string) error {
-	jsonChangeSet, err := p.jsonUpdateSet(ctx, txn)
+	changeSet, err := p.updateChangeSet(ctx, txn)
 	if err != nil {
 		return err
 	}
@@ -354,7 +353,7 @@ func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context
 			RowID:       p.PrimaryKey().RowID(),
 			EventTime:   spanner.CommitTimestamp,
 			EventSource: eventSource,
-			ChangeSet:   string(jsonChangeSet),
+			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 		},
 	)
 	if err != nil {
@@ -370,7 +369,7 @@ func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context
 
 func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource string) error {
 	keySet := p.PrimaryKey()
-	jsonChangeSet, err := p.jsonDeleteSet(ctx, txn)
+	changeSet, err := p.jsonDeleteSet(ctx, txn)
 	if err != nil {
 		return err
 	}
@@ -381,7 +380,7 @@ func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context
 			RowID:       keySet.RowID(),
 			EventTime:   spanner.CommitTimestamp,
 			EventSource: eventSource,
-			ChangeSet:   string(jsonChangeSet),
+			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 		},
 	)
 	if err != nil {
@@ -395,22 +394,17 @@ func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context
 	return nil
 }
 
-func (p *PatchSet[Resource]) jsonInsertSet() ([]byte, error) {
+func (p *PatchSet[Resource]) insertChangeSet() (map[accesstypes.Field]DiffElem, error) {
 	// FIXME(jwatson): We need nil values, not the zero value of the type.
 	changeSet, err := p.Diff(new(Resource))
 	if err != nil {
 		return nil, errors.Wrap(err, "Diff()")
 	}
 
-	jsonBytes, err := json.Marshal(changeSet)
-	if err != nil {
-		return nil, errors.Wrap(err, "json.Marshal()")
-	}
-
-	return jsonBytes, nil
+	return changeSet, nil
 }
 
-func (p *PatchSet[Resource]) jsonUpdateSet(ctx context.Context, txn *spanner.ReadWriteTransaction) ([]byte, error) {
+func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn *spanner.ReadWriteTransaction) (map[accesstypes.Field]DiffElem, error) {
 	stmt, err := p.querySet.SpannerStmt()
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
@@ -434,15 +428,10 @@ func (p *PatchSet[Resource]) jsonUpdateSet(ctx context.Context, txn *spanner.Rea
 		return nil, httpio.NewBadRequestMessagef("No changes to apply for %s (%s)", p.Resource(), p.PrimaryKey().String())
 	}
 
-	jsonBytes, err := json.Marshal(changeSet)
-	if err != nil {
-		return nil, errors.Wrap(err, "json.Marshal()")
-	}
-
-	return jsonBytes, nil
+	return changeSet, nil
 }
 
-func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn *spanner.ReadWriteTransaction) ([]byte, error) {
+func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn *spanner.ReadWriteTransaction) (map[accesstypes.Field]DiffElem, error) {
 	stmt, err := p.deleteQuerySet().SpannerStmt()
 	if err != nil {
 		return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")
@@ -462,15 +451,10 @@ func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn *spanner.Rea
 		return nil, errors.Wrap(err, "Diff()")
 	}
 
-	jsonBytes, err := json.Marshal(changeSet)
-	if err != nil {
-		return nil, errors.Wrap(err, "json.Marshal()")
-	}
-
-	return jsonBytes, nil
+	return changeSet, nil
 }
 
-func (p *PatchSet[Resource]) deleteChangeSet(old any) (map[string]DiffElem, error) {
+func (p *PatchSet[Resource]) deleteChangeSet(old any) (map[accesstypes.Field]DiffElem, error) {
 	oldValue := reflect.ValueOf(old)
 	if oldValue.Kind() == reflect.Pointer {
 		oldValue = oldValue.Elem()
@@ -485,11 +469,11 @@ func (p *PatchSet[Resource]) deleteChangeSet(old any) (map[string]DiffElem, erro
 		return nil, errors.Newf("Patcher.Diff(): old must be of kind struct, found kind %s", kind.String())
 	}
 
-	oldMap := map[string]DiffElem{}
+	oldMap := map[accesstypes.Field]DiffElem{}
 	for _, field := range reflect.VisibleFields(oldType) {
 		oldValue := oldValue.FieldByName(field.Name)
 		if oldValue.IsValid() && !oldValue.IsZero() {
-			oldMap[field.Name] = DiffElem{
+			oldMap[accesstypes.Field(field.Name)] = DiffElem{
 				Old: oldValue.Interface(),
 			}
 		}
