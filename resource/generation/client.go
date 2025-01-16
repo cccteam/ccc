@@ -23,14 +23,15 @@ import (
 )
 
 type GenerationClient struct {
-	resourceSource     string
-	spannerDestination string
-	handlerDestination string
-	db                 *cloudspanner.Client
-	pluralizer         *pluralize.Client
-	tableFieldLookup   map[string]TableMetadata
-	handlerOptions     map[string]map[HandlerType][]OptionType
-	cleanup            func()
+	resourceSource      string
+	spannerDestination  string
+	handlerDestination  string
+	db                  *cloudspanner.Client
+	pluralizer          *pluralize.Client
+	tableFieldLookup    map[string]TableMetadata
+	handlerOptions      map[string]map[HandlerType][]OptionType
+	outputFileOverrides map[string]string
+	cleanup             func()
 }
 
 func New(ctx context.Context, config *Config) (*GenerationClient, error) {
@@ -66,13 +67,14 @@ func New(ctx context.Context, config *Config) (*GenerationClient, error) {
 	}
 
 	c := &GenerationClient{
-		resourceSource:     config.ResourceSource,
-		spannerDestination: config.SpannerDestination,
-		handlerDestination: config.HandlerDestination,
-		handlerOptions:     config.HandlerOptions,
-		db:                 db.Client,
-		pluralizer:         pluralizer,
-		cleanup:            cleanupFunc,
+		resourceSource:      config.ResourceSource,
+		spannerDestination:  config.SpannerDestination,
+		handlerDestination:  config.HandlerDestination,
+		handlerOptions:      config.HandlerOptions,
+		outputFileOverrides: config.OutputFileOverrides,
+		db:                  db.Client,
+		pluralizer:          pluralizer,
+		cleanup:             cleanupFunc,
 	}
 
 	c.tableFieldLookup, err = c.createTableLookup(ctx)

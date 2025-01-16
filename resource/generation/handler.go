@@ -57,8 +57,20 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		})
 	}
 
-	opts := c.handlerOptions[structName]
-	destinationFile := filepath.Join(c.handlerDestination, fmt.Sprintf("%s.go", strcase.ToSnake(c.pluralizer.Plural(structName))))
+	opts := make(map[HandlerType]map[OptionType]any)
+	for handlerType, options := range c.handlerOptions[structName] {
+		opts[handlerType] = make(map[OptionType]any)
+		for _, option := range options {
+			opts[handlerType][option] = nil
+		}
+	}
+
+	outputFile := fmt.Sprintf("%s.go", strcase.ToSnake(c.pluralizer.Plural(structName)))
+	if fileName, ok := c.outputFileOverrides[structName]; ok {
+		outputFile = fmt.Sprintf("%s.go", fileName)
+	}
+
+	destinationFile := filepath.Join(c.handlerDestination, outputFile)
 
 	file, err := os.OpenFile(destinationFile, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
@@ -77,17 +89,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 
 	for _, h := range handlers {
 		functionName := c.handlerName(structName, h.handlerType)
-
-		skipGeneration := false
-		if optionTypes, ok := opts[h.handlerType]; ok {
-			for _, o := range optionTypes {
-				if o == NoGenerate {
-					skipGeneration = true
-				}
-			}
-		}
-
-		if !skipGeneration {
+		if _, skipGeneration := opts[h.handlerType][NoGenerate]; skipGeneration {
 			fileData, err = c.replaceHandlerFileContent(fileData, functionName, h, generatedType)
 			if err != nil {
 				return err

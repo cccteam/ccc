@@ -48,12 +48,13 @@ const (
 )
 
 type Config struct {
-	ResourceSource     string
-	HandlerDestination string
-	SpannerDestination string
-	Migrations         string
-	PluralRules        map[string]string
-	HandlerOptions     map[string]map[HandlerType][]OptionType
+	ResourceSource      string
+	HandlerDestination  string
+	SpannerDestination  string
+	Migrations          string
+	PluralRules         map[string]string
+	HandlerOptions      map[string]map[HandlerType][]OptionType
+	OutputFileOverrides map[string]string
 }
 
 type generatedType struct {
