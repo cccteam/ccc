@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"text/template"
 
-	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -86,7 +86,13 @@ func (c *GenerationClient) generateResourceTests(types []*generatedType) error {
 }
 
 func (c *GenerationClient) generatePatcherTypes(generatedType *generatedType) error {
-	destinationFile := filepath.Join(c.spannerDestination, fmt.Sprintf("%s.go", strcase.ToSnake(c.pluralizer.Plural(generatedType.Name))))
+	outputFile := fmt.Sprintf("%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+	if fileName, ok := c.outputFileOverrides[generatedType.Name]; ok {
+		outputFile = fmt.Sprintf("%s.go", fileName)
+	}
+
+	destinationFile := filepath.Join(c.spannerDestination, outputFile)
+
 	fmt.Printf("Generating spanner file: %v\n", destinationFile)
 
 	output, err := c.generateTemplateOutput(resourceFileTemplate, map[string]any{
@@ -175,14 +181,19 @@ func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, erro
 		}
 
 		isCompoundTable := true
-		tableName := c.pluralizer.Plural(k)
+		tableName := c.pluralize(k)
+
+		table, ok := c.tableFieldLookup[tableName]
+		if !ok || table == nil {
+			return nil, errors.Newf("table not found: %s", tableName)
+		}
 
 		for _, f := range structType.Fields.List {
 			if len(f.Names) == 0 {
 				continue
 			}
 
-			fields = append(fields, c.typeFieldFromAstField(tableName, f, &isCompoundTable))
+			fields = append(fields, c.typeFieldFromAstField(table, f, &isCompoundTable))
 		}
 
 		typeList = append(typeList, &generatedType{
@@ -199,7 +210,7 @@ func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, erro
 	return typeList, nil
 }
 
-func (c *GenerationClient) typeFieldFromAstField(tableName string, f *ast.Field, isCompoundTable *bool) *typeField {
+func (c *GenerationClient) typeFieldFromAstField(tableMetadata *TableMetadata, f *ast.Field, isCompoundTable *bool) *typeField {
 	field := &typeField{
 		Name: f.Names[0].Name,
 	}
@@ -210,11 +221,6 @@ func (c *GenerationClient) typeFieldFromAstField(tableName string, f *ast.Field,
 		field.Tag = f.Tag.Value
 	}
 
-	table, ok := c.tableFieldLookup[tableName]
-	if !ok {
-		return field
-	}
-
 	if field.Tag == "" {
 		return field
 	}
@@ -222,7 +228,7 @@ func (c *GenerationClient) typeFieldFromAstField(tableName string, f *ast.Field,
 	structTag := reflect.StructTag(field.Tag[1 : len(field.Tag)-1])
 	column := structTag.Get("spanner")
 
-	if data, ok := table.Columns[column]; ok {
+	if data, ok := tableMetadata.Columns[column]; ok {
 		field.IsPrimaryKey = data.ConstraintType == PrimaryKey
 		field.IsIndex = data.IsIndex
 

@@ -52,7 +52,8 @@ type Config struct {
 	HandlerDestination  string
 	SpannerDestination  string
 	Migrations          string
-	PluralRules         map[string]string
+	PluralOverrides     map[string]string
+	CaserGoInitialisms  map[string]bool
 	HandlerOptions      map[string]map[HandlerType][]OptionType
 	OutputFileOverrides map[string]string
 }
@@ -87,14 +88,15 @@ type FieldMetadata struct {
 }
 
 type InformationSchemaResult struct {
-	TableName      string  `spanner:"TABLE_NAME"`
-	ColumnName     string  `spanner:"COLUMN_NAME"`
-	ConstraintName *string `spanner:"CONSTRAINT_NAME"`
-	ConstraintType *string `spanner:"CONSTRAINT_TYPE"`
-	SpannerType    string  `spanner:"SPANNER_TYPE"`
-	IsNullable     bool    `spanner:"IS_NULLABLE"`
-	IsView         bool    `spanner:"IS_VIEW"`
-	IsIndex        bool    `spanner:"IS_INDEX"`
+	TableName       string  `spanner:"TABLE_NAME"`
+	ColumnName      string  `spanner:"COLUMN_NAME"`
+	ConstraintName  *string `spanner:"CONSTRAINT_NAME"`
+	ConstraintType  *string `spanner:"CONSTRAINT_TYPE"`
+	SpannerType     string  `spanner:"SPANNER_TYPE"`
+	IsNullable      bool    `spanner:"IS_NULLABLE"`
+	IsView          bool    `spanner:"IS_VIEW"`
+	IsIndex         bool    `spanner:"IS_INDEX"`
+	OrdinalPosition int64   `spanner:"ORDINAL_POSITION"`
 }
 
 type TableMetadata struct {

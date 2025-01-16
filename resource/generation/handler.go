@@ -14,7 +14,6 @@ import (
 	"text/template"
 
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -50,7 +49,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		},
 	}
 
-	if !c.tableFieldLookup[structName].IsView {
+	if md, ok := c.tableFieldLookup[structName]; ok && !md.IsView {
 		handlers = append(handlers, &generatedHandler{
 			template:    patchTemplate,
 			handlerType: Patch,
@@ -61,11 +60,11 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 	for handlerType, options := range c.handlerOptions[structName] {
 		opts[handlerType] = make(map[OptionType]any)
 		for _, option := range options {
-			opts[handlerType][option] = nil
+			opts[handlerType][option] = struct{}{}
 		}
 	}
 
-	outputFile := fmt.Sprintf("%s.go", strcase.ToSnake(c.pluralizer.Plural(structName)))
+	outputFile := fmt.Sprintf("%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(structName))))
 	if fileName, ok := c.outputFileOverrides[structName]; ok {
 		outputFile = fmt.Sprintf("%s.go", fileName)
 	}
@@ -89,7 +88,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 
 	for _, h := range handlers {
 		functionName := c.handlerName(structName, h.handlerType)
-		if _, skipGeneration := opts[h.handlerType][NoGenerate]; skipGeneration {
+		if _, skipGeneration := opts[h.handlerType][NoGenerate]; !skipGeneration {
 			fileData, err = c.replaceHandlerFileContent(fileData, functionName, h, generatedType)
 			if err != nil {
 				return err
@@ -195,6 +194,11 @@ func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*ge
 			continue
 		}
 
+		table, ok := c.tableFieldLookup[c.pluralize(structName)]
+		if !ok {
+			return nil, errors.Newf("table not found: %s", c.pluralize(structName))
+		}
+
 		for _, f := range structType.Fields.List {
 			if len(f.Names) == 0 {
 				continue
@@ -211,7 +215,7 @@ func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*ge
 				parseTags(field, structTag)
 
 				spannerCol := structTag.Get("spanner")
-				if md, ok := c.tableFieldLookup[c.pluralizer.Plural(structName)].Columns[spannerCol]; ok {
+				if md, ok := table.Columns[spannerCol]; ok {
 					field.ConstraintType = string(md.ConstraintType)
 					field.IsPrimaryKey = md.ConstraintType == PrimaryKey
 				}
@@ -272,11 +276,11 @@ func (c *GenerationClient) handlerName(structName string, handlerType HandlerTyp
 	var functionName string
 	switch handlerType {
 	case List:
-		functionName = c.pluralizer.Plural(structName)
+		functionName = c.pluralize(structName)
 	case Read:
 		functionName = structName
 	case Patch:
-		functionName = "Patch" + c.pluralizer.Plural(structName)
+		functionName = "Patch" + c.pluralize(structName)
 	}
 
 	return functionName
