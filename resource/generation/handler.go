@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"text/template"
@@ -49,7 +50,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		},
 	}
 
-	if md, ok := c.tableFieldLookup[structName]; ok && !md.IsView {
+	if md, ok := c.tableLookup[structName]; ok && !md.IsView {
 		handlers = append(handlers, &generatedHandler{
 			template:    patchTemplate,
 			handlerType: Patch,
@@ -64,8 +65,8 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		}
 	}
 
-	fileName := strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name)))
-	destinationFilePath := c.outputDestination(c.handlerDestination, fileName)
+	fileName := fmt.Sprintf("%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+	destinationFilePath := filepath.Join(c.handlerDestination, fileName)
 
 	file, err := os.OpenFile(destinationFilePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
@@ -188,7 +189,7 @@ func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*ge
 			continue
 		}
 
-		table, ok := c.tableFieldLookup[c.pluralize(structName)]
+		table, ok := c.tableLookup[c.pluralize(structName)]
 		if !ok {
 			return nil, errors.Newf("table not found: %s", c.pluralize(structName))
 		}

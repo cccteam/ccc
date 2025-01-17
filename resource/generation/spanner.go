@@ -2,6 +2,7 @@ package generation
 
 import (
 	"bytes"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -86,8 +87,8 @@ func (c *GenerationClient) generateResourceTests(types []*generatedType) error {
 }
 
 func (c *GenerationClient) generatePatcherTypes(generatedType *generatedType) error {
-	fileName := strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name)))
-	destinationFilePath := c.outputDestination(c.spannerDestination, fileName)
+	fileName := fmt.Sprintf("%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+	destinationFilePath := filepath.Join(c.spannerDestination, fileName)
 
 	log.Printf("Generating spanner file: %v\n", destinationFilePath)
 
@@ -128,10 +129,6 @@ func (c *GenerationClient) removeDestinationFiles() error {
 	}
 
 	for _, f := range files {
-		if f == c.resourceSource {
-			continue
-		}
-
 		content, err := os.ReadFile(filepath.Join(c.spannerDestination, f))
 		if err != nil {
 			return errors.Wrap(err, "os.ReadFile()")
@@ -179,7 +176,7 @@ func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, erro
 		isCompoundTable := true
 		tableName := c.pluralize(k)
 
-		table, ok := c.tableFieldLookup[tableName]
+		table, ok := c.tableLookup[tableName]
 		if !ok || table == nil {
 			return nil, errors.Newf("table not found: %s", tableName)
 		}

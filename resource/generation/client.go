@@ -9,7 +9,6 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -24,16 +23,15 @@ import (
 )
 
 type GenerationClient struct {
-	resourceSource      string
-	spannerDestination  string
-	handlerDestination  string
-	db                  *cloudspanner.Client
-	caser               *strcase.Caser
-	tableFieldLookup    map[string]*TableMetadata
-	handlerOptions      map[string]map[HandlerType][]OptionType
-	outputFileOverrides map[string]string
-	pluralOverrides     map[string]string
-	cleanup             func()
+	resourceSource     string
+	spannerDestination string
+	handlerDestination string
+	db                 *cloudspanner.Client
+	caser              *strcase.Caser
+	tableLookup        map[string]*TableMetadata
+	handlerOptions     map[string]map[HandlerType][]OptionType
+	pluralOverrides    map[string]string
+	cleanup            func()
 }
 
 func New(ctx context.Context, config *Config) (*GenerationClient, error) {
@@ -64,18 +62,17 @@ func New(ctx context.Context, config *Config) (*GenerationClient, error) {
 	}
 
 	c := &GenerationClient{
-		resourceSource:      config.ResourceSource,
-		spannerDestination:  config.SpannerDestination,
-		handlerDestination:  config.HandlerDestination,
-		handlerOptions:      config.HandlerOptions,
-		outputFileOverrides: config.OutputFileOverrides,
-		pluralOverrides:     config.PluralOverrides,
-		db:                  db.Client,
-		cleanup:             cleanupFunc,
-		caser:               strcase.NewCaser(false, config.CaserGoInitialisms, nil),
+		resourceSource:     config.ResourceSource,
+		spannerDestination: config.SpannerDestination,
+		handlerDestination: config.HandlerDestination,
+		handlerOptions:     config.HandlerOptions,
+		pluralOverrides:    config.PluralOverrides,
+		db:                 db.Client,
+		cleanup:            cleanupFunc,
+		caser:              strcase.NewCaser(false, config.CaserGoInitialisms, nil),
 	}
 
-	c.tableFieldLookup, err = c.createTableLookup(ctx)
+	c.tableLookup, err = c.createTableLookup(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "c.createTableLookup()")
 	}
@@ -202,11 +199,9 @@ func (c *GenerationClient) structsFromSource() ([]string, error) {
 		if !ok {
 			continue
 		}
-		if _, ok := spec.Type.(*ast.StructType); !ok {
-			continue
+		if _, ok := spec.Type.(*ast.StructType); ok {
+			structs = append(structs, k)
 		}
-
-		structs = append(structs, k)
 	}
 
 	sort.Slice(structs, func(i, j int) bool {
@@ -292,15 +287,6 @@ func (c *GenerationClient) pluralize(value string) string {
 	default:
 		return value + "s"
 	}
-}
-
-func (c *GenerationClient) outputDestination(directory, filename string) string {
-	output := fmt.Sprintf("%s.go", filename)
-	if override, ok := c.outputFileOverrides[filename]; ok {
-		output = fmt.Sprintf("%s.go", override)
-	}
-
-	return filepath.Join(directory, output)
 }
 
 func fieldType(expr ast.Expr, isHandlerOutput bool) string {
