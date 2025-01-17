@@ -9,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -291,6 +292,15 @@ func (c *GenerationClient) pluralize(value string) string {
 	default:
 		return value + "s"
 	}
+}
+
+func (c *GenerationClient) outputDestination(directory, filename string) string {
+	output := fmt.Sprintf("%s.go", filename)
+	if override, ok := c.outputFileOverrides[filename]; ok {
+		output = fmt.Sprintf("%s.go", override)
+	}
+
+	return filepath.Join(directory, output)
 }
 
 func fieldType(expr ast.Expr, isHandlerOutput bool) string {

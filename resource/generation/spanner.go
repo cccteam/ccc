@@ -2,10 +2,10 @@ package generation
 
 import (
 	"bytes"
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -86,14 +86,10 @@ func (c *GenerationClient) generateResourceTests(types []*generatedType) error {
 }
 
 func (c *GenerationClient) generatePatcherTypes(generatedType *generatedType) error {
-	outputFile := fmt.Sprintf("%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
-	if fileName, ok := c.outputFileOverrides[generatedType.Name]; ok {
-		outputFile = fmt.Sprintf("%s.go", fileName)
-	}
+	fileName := strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name)))
+	destinationFilePath := c.outputDestination(c.spannerDestination, fileName)
 
-	destinationFile := filepath.Join(c.spannerDestination, outputFile)
-
-	fmt.Printf("Generating spanner file: %v\n", destinationFile)
+	log.Printf("Generating spanner file: %v\n", destinationFilePath)
 
 	output, err := c.generateTemplateOutput(resourceFileTemplate, map[string]any{
 		"Source":          c.resourceSource,
@@ -106,13 +102,13 @@ func (c *GenerationClient) generatePatcherTypes(generatedType *generatedType) er
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	file, err := os.Create(destinationFile)
+	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
 	}
 	defer file.Close()
 
-	if err := c.writeBytesToFile(destinationFile, file, output); err != nil {
+	if err := c.writeBytesToFile(destinationFilePath, file, output); err != nil {
 		return errors.Wrap(err, "c.writeBytesToFile()")
 	}
 

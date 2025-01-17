@@ -7,8 +7,8 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"log"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"text/template"
@@ -64,14 +64,10 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		}
 	}
 
-	outputFile := fmt.Sprintf("%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(structName))))
-	if fileName, ok := c.outputFileOverrides[structName]; ok {
-		outputFile = fmt.Sprintf("%s.go", fileName)
-	}
+	fileName := strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name)))
+	destinationFilePath := c.outputDestination(c.handlerDestination, fileName)
 
-	destinationFile := filepath.Join(c.handlerDestination, outputFile)
-
-	file, err := os.OpenFile(destinationFile, os.O_RDWR|os.O_CREATE, 0o644)
+	file, err := os.OpenFile(destinationFilePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return errors.Wrap(err, "os.OpenFile()")
 	}
@@ -105,7 +101,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 			return errors.Wrap(err, "file.Close()")
 		}
 
-		if err := os.Remove(destinationFile); err != nil {
+		if err := os.Remove(destinationFilePath); err != nil {
 			return errors.Wrap(err, "os.Remove()")
 		}
 	}
@@ -153,13 +149,11 @@ func (c *GenerationClient) writeHandler(functionName string, existingContent, ne
 		}
 	}
 
-	if start == token.NoPos || end == token.NoPos {
-		fmt.Printf("Generating handler:  %v\n", functionName)
+	log.Printf("Generating handler: %v\n", functionName)
 
+	if start == token.NoPos || end == token.NoPos {
 		return joinBytes(existingContent, []byte("\n\n"), newFunctionContent), nil
 	}
-
-	fmt.Printf("Regenerating handler: %v\n", functionName)
 
 	startOffset := fset.Position(start).Offset
 	endOffset := fset.Position(end).Offset
