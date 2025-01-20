@@ -175,7 +175,7 @@ func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*ge
 
 	generatedStruct := &generatedType{IsCompoundTable: true}
 
-Decl:
+declLoop:
 	for _, decl := range parse.Decls {
 		gd, ok := decl.(*ast.GenDecl)
 		if !ok {
@@ -233,7 +233,7 @@ Decl:
 			generatedStruct.Name = structName
 			generatedStruct.Fields = fields
 
-			break Decl
+			break declLoop
 		}
 	}
 
