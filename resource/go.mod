@@ -11,7 +11,6 @@ require (
 	github.com/cccteam/session v0.4.3
 	github.com/cccteam/spxscan v0.0.3
 	github.com/ettle/strcase v0.2.0
-	github.com/gertd/go-pluralize v0.2.1
 	github.com/go-chi/chi/v5 v5.2.0
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.6.0

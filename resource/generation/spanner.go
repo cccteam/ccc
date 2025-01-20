@@ -6,13 +6,14 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"text/template"
 
-	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -86,8 +87,10 @@ func (c *GenerationClient) generateResourceTests(types []*generatedType) error {
 }
 
 func (c *GenerationClient) generatePatcherTypes(generatedType *generatedType) error {
-	destinationFile := filepath.Join(c.spannerDestination, fmt.Sprintf("%s.go", strcase.ToSnake(c.pluralizer.Plural(generatedType.Name))))
-	fmt.Printf("Generating spanner file: %v\n", destinationFile)
+	fileName := fmt.Sprintf("%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+	destinationFilePath := filepath.Join(c.spannerDestination, fileName)
+
+	log.Printf("Generating spanner file: %v\n", destinationFilePath)
 
 	output, err := c.generateTemplateOutput(resourceFileTemplate, map[string]any{
 		"Source":          c.resourceSource,
@@ -100,13 +103,13 @@ func (c *GenerationClient) generatePatcherTypes(generatedType *generatedType) er
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	file, err := os.Create(destinationFile)
+	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
 	}
 	defer file.Close()
 
-	if err := c.writeBytesToFile(destinationFile, file, output); err != nil {
+	if err := c.writeBytesToFile(destinationFilePath, file, output); err != nil {
 		return errors.Wrap(err, "c.writeBytesToFile()")
 	}
 
@@ -126,10 +129,6 @@ func (c *GenerationClient) removeDestinationFiles() error {
 	}
 
 	for _, f := range files {
-		if f == c.resourceSource {
-			continue
-		}
-
 		content, err := os.ReadFile(filepath.Join(c.spannerDestination, f))
 		if err != nil {
 			return errors.Wrap(err, "os.ReadFile()")
@@ -148,48 +147,58 @@ func (c *GenerationClient) removeDestinationFiles() error {
 
 func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, error) {
 	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceSource, nil, 0)
+	parse, err := parser.ParseFile(tk, c.resourceSource, nil, parser.SkipObjectResolution)
 	if err != nil {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}
 
-	if parse == nil || parse.Scope == nil {
+	if parse == nil {
 		return nil, errors.New("unable to parse file")
 	}
 
 	typeList := make([]*generatedType, 0)
-
-	for k, v := range parse.Scope.Objects {
-		var fields []*typeField
-
-		spec, ok := v.Decl.(*ast.TypeSpec)
+	for _, d := range parse.Decls {
+		gd, ok := d.(*ast.GenDecl)
 		if !ok {
 			continue
 		}
-		structType, ok := spec.Type.(*ast.StructType)
-		if !ok {
-			continue
-		}
-		if structType.Fields == nil {
-			continue
-		}
 
-		isCompoundTable := true
-		tableName := c.pluralizer.Plural(k)
-
-		for _, f := range structType.Fields.List {
-			if len(f.Names) == 0 {
+		for _, s := range gd.Specs {
+			ts, ok := s.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			st, ok := ts.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			if st.Fields == nil {
 				continue
 			}
 
-			fields = append(fields, c.typeFieldFromAstField(tableName, f, &isCompoundTable))
-		}
+			isCompoundTable := true
+			tableName := c.pluralize(ts.Name.Name)
 
-		typeList = append(typeList, &generatedType{
-			Name:            k,
-			Fields:          fields,
-			IsCompoundTable: isCompoundTable,
-		})
+			table, ok := c.tableLookup[tableName]
+			if !ok || table == nil {
+				return nil, errors.Newf("table not found: %s", tableName)
+			}
+
+			fields := make([]*typeField, 0)
+			for _, f := range st.Fields.List {
+				if len(f.Names) == 0 {
+					continue
+				}
+
+				fields = append(fields, c.typeFieldFromAstField(table, f, &isCompoundTable))
+			}
+
+			typeList = append(typeList, &generatedType{
+				Name:            ts.Name.Name,
+				Fields:          fields,
+				IsCompoundTable: isCompoundTable,
+			})
+		}
 	}
 
 	sort.Slice(typeList, func(i, j int) bool {
@@ -199,7 +208,7 @@ func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, erro
 	return typeList, nil
 }
 
-func (c *GenerationClient) typeFieldFromAstField(tableName string, f *ast.Field, isCompoundTable *bool) *typeField {
+func (c *GenerationClient) typeFieldFromAstField(tableMetadata *TableMetadata, f *ast.Field, isCompoundTable *bool) *typeField {
 	field := &typeField{
 		Name: f.Names[0].Name,
 	}
@@ -210,11 +219,6 @@ func (c *GenerationClient) typeFieldFromAstField(tableName string, f *ast.Field,
 		field.Tag = f.Tag.Value
 	}
 
-	table, ok := c.tableFieldLookup[tableName]
-	if !ok {
-		return field
-	}
-
 	if field.Tag == "" {
 		return field
 	}
@@ -222,7 +226,7 @@ func (c *GenerationClient) typeFieldFromAstField(tableName string, f *ast.Field,
 	structTag := reflect.StructTag(field.Tag[1 : len(field.Tag)-1])
 	column := structTag.Get("spanner")
 
-	if data, ok := table.Columns[column]; ok {
+	if data, ok := tableMetadata.Columns[column]; ok {
 		field.IsPrimaryKey = data.ConstraintType == PrimaryKey
 		field.IsIndex = data.IsIndex
 

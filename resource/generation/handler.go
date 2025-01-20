@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -14,7 +15,6 @@ import (
 	"text/template"
 
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -50,17 +50,25 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		},
 	}
 
-	if !c.tableFieldLookup[structName].IsView {
+	if md, ok := c.tableLookup[structName]; ok && !md.IsView {
 		handlers = append(handlers, &generatedHandler{
 			template:    patchTemplate,
 			handlerType: Patch,
 		})
 	}
 
-	opts := c.handlerOptions[structName]
-	destinationFile := filepath.Join(c.handlerDestination, fmt.Sprintf("%s.go", strcase.ToSnake(c.pluralizer.Plural(structName))))
+	opts := make(map[HandlerType]map[OptionType]any)
+	for handlerType, options := range c.handlerOptions[structName] {
+		opts[handlerType] = make(map[OptionType]any)
+		for _, option := range options {
+			opts[handlerType][option] = struct{}{}
+		}
+	}
 
-	file, err := os.OpenFile(destinationFile, os.O_RDWR|os.O_CREATE, 0o644)
+	fileName := fmt.Sprintf("%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+	destinationFilePath := filepath.Join(c.handlerDestination, fileName)
+
+	file, err := os.OpenFile(destinationFilePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return errors.Wrap(err, "os.OpenFile()")
 	}
@@ -77,17 +85,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 
 	for _, h := range handlers {
 		functionName := c.handlerName(structName, h.handlerType)
-
-		skipGeneration := false
-		if optionTypes, ok := opts[h.handlerType]; ok {
-			for _, o := range optionTypes {
-				if o == NoGenerate {
-					skipGeneration = true
-				}
-			}
-		}
-
-		if !skipGeneration {
+		if _, skipGeneration := opts[h.handlerType][NoGenerate]; !skipGeneration {
 			fileData, err = c.replaceHandlerFileContent(fileData, functionName, h, generatedType)
 			if err != nil {
 				return err
@@ -104,7 +102,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 			return errors.Wrap(err, "file.Close()")
 		}
 
-		if err := os.Remove(destinationFile); err != nil {
+		if err := os.Remove(destinationFilePath); err != nil {
 			return errors.Wrap(err, "os.Remove()")
 		}
 	}
@@ -152,13 +150,11 @@ func (c *GenerationClient) writeHandler(functionName string, existingContent, ne
 		}
 	}
 
-	if start == token.NoPos || end == token.NoPos {
-		fmt.Printf("Generating handler:  %v\n", functionName)
+	log.Printf("Generating handler: %v\n", functionName)
 
+	if start == token.NoPos || end == token.NoPos {
 		return joinBytes(existingContent, []byte("\n\n"), newFunctionContent), nil
 	}
-
-	fmt.Printf("Regenerating handler: %v\n", functionName)
 
 	startOffset := fset.Position(start).Offset
 	endOffset := fset.Position(end).Offset
@@ -168,64 +164,77 @@ func (c *GenerationClient) writeHandler(functionName string, existingContent, ne
 
 func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {
 	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceSource, nil, 0)
+	parse, err := parser.ParseFile(tk, c.resourceSource, nil, parser.SkipObjectResolution)
 	if err != nil {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}
 
-	if parse == nil || parse.Scope == nil {
+	if parse == nil {
 		return nil, errors.New("unable to parse file")
 	}
 
 	generatedStruct := &generatedType{IsCompoundTable: true}
-	for _, v := range parse.Scope.Objects {
-		var fields []*typeField
 
-		spec, ok := v.Decl.(*ast.TypeSpec)
-		if !ok || spec.Name == nil || spec.Name.Name != structName {
-			continue
-		}
-		structType, ok := spec.Type.(*ast.StructType)
+declLoop:
+	for _, decl := range parse.Decls {
+		gd, ok := decl.(*ast.GenDecl)
 		if !ok {
 			continue
 		}
-		if structType.Fields == nil {
-			continue
-		}
 
-		for _, f := range structType.Fields.List {
-			if len(f.Names) == 0 {
+		for _, s := range gd.Specs {
+			spec, ok := s.(*ast.TypeSpec)
+			if !ok || spec.Name == nil || spec.Name.Name != structName {
+				continue
+			}
+			st, ok := spec.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			if st.Fields == nil {
 				continue
 			}
 
-			field := &typeField{
-				Name: f.Names[0].Name,
-				Type: fieldType(f.Type, true),
+			table, ok := c.tableLookup[c.pluralize(structName)]
+			if !ok {
+				return nil, errors.Newf("table not found: %s", c.pluralize(structName))
 			}
 
-			if f.Tag != nil {
-				field.Tag = f.Tag.Value[1 : len(f.Tag.Value)-1]
-				structTag := reflect.StructTag(field.Tag)
-				parseTags(field, structTag)
-
-				spannerCol := structTag.Get("spanner")
-				if md, ok := c.tableFieldLookup[c.pluralizer.Plural(structName)].Columns[spannerCol]; ok {
-					field.ConstraintType = string(md.ConstraintType)
-					field.IsPrimaryKey = md.ConstraintType == PrimaryKey
+			var fields []*typeField
+			for _, f := range st.Fields.List {
+				if len(f.Names) == 0 {
+					continue
 				}
+
+				field := &typeField{
+					Name: f.Names[0].Name,
+					Type: fieldType(f.Type, true),
+				}
+
+				if f.Tag != nil {
+					field.Tag = f.Tag.Value[1 : len(f.Tag.Value)-1]
+					structTag := reflect.StructTag(field.Tag)
+					parseTags(field, structTag)
+
+					spannerCol := structTag.Get("spanner")
+					if md, ok := table.Columns[spannerCol]; ok {
+						field.ConstraintType = string(md.ConstraintType)
+						field.IsPrimaryKey = md.ConstraintType == PrimaryKey
+					}
+				}
+
+				if !field.IsPrimaryKey {
+					generatedStruct.IsCompoundTable = false
+				}
+
+				fields = append(fields, field)
 			}
 
-			if !field.IsPrimaryKey {
-				generatedStruct.IsCompoundTable = false
-			}
+			generatedStruct.Name = structName
+			generatedStruct.Fields = fields
 
-			fields = append(fields, field)
+			break declLoop
 		}
-
-		generatedStruct.Name = structName
-		generatedStruct.Fields = fields
-
-		break
 	}
 
 	return generatedStruct, nil
@@ -270,11 +279,11 @@ func (c *GenerationClient) handlerName(structName string, handlerType HandlerTyp
 	var functionName string
 	switch handlerType {
 	case List:
-		functionName = c.pluralizer.Plural(structName)
+		functionName = c.pluralize(structName)
 	case Read:
 		functionName = structName
 	case Patch:
-		functionName = "Patch" + c.pluralizer.Plural(structName)
+		functionName = "Patch" + c.pluralize(structName)
 	}
 
 	return functionName
