@@ -164,69 +164,77 @@ func (c *GenerationClient) writeHandler(functionName string, existingContent, ne
 
 func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {
 	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceSource, nil, 0)
+	parse, err := parser.ParseFile(tk, c.resourceSource, nil, parser.SkipObjectResolution)
 	if err != nil {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}
 
-	if parse == nil || parse.Scope == nil {
+	if parse == nil {
 		return nil, errors.New("unable to parse file")
 	}
 
 	generatedStruct := &generatedType{IsCompoundTable: true}
-	for _, v := range parse.Scope.Objects {
-		var fields []*typeField
 
-		spec, ok := v.Decl.(*ast.TypeSpec)
-		if !ok || spec.Name == nil || spec.Name.Name != structName {
-			continue
-		}
-		structType, ok := spec.Type.(*ast.StructType)
+Decl:
+	for _, decl := range parse.Decls {
+		gd, ok := decl.(*ast.GenDecl)
 		if !ok {
 			continue
 		}
-		if structType.Fields == nil {
-			continue
-		}
 
-		table, ok := c.tableLookup[c.pluralize(structName)]
-		if !ok {
-			return nil, errors.Newf("table not found: %s", c.pluralize(structName))
-		}
-
-		for _, f := range structType.Fields.List {
-			if len(f.Names) == 0 {
+		for _, s := range gd.Specs {
+			spec, ok := s.(*ast.TypeSpec)
+			if !ok || spec.Name == nil || spec.Name.Name != structName {
+				continue
+			}
+			st, ok := spec.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			if st.Fields == nil {
 				continue
 			}
 
-			field := &typeField{
-				Name: f.Names[0].Name,
-				Type: fieldType(f.Type, true),
+			table, ok := c.tableLookup[c.pluralize(structName)]
+			if !ok {
+				return nil, errors.Newf("table not found: %s", c.pluralize(structName))
 			}
 
-			if f.Tag != nil {
-				field.Tag = f.Tag.Value[1 : len(f.Tag.Value)-1]
-				structTag := reflect.StructTag(field.Tag)
-				parseTags(field, structTag)
-
-				spannerCol := structTag.Get("spanner")
-				if md, ok := table.Columns[spannerCol]; ok {
-					field.ConstraintType = string(md.ConstraintType)
-					field.IsPrimaryKey = md.ConstraintType == PrimaryKey
+			var fields []*typeField
+			for _, f := range st.Fields.List {
+				if len(f.Names) == 0 {
+					continue
 				}
+
+				field := &typeField{
+					Name: f.Names[0].Name,
+					Type: fieldType(f.Type, true),
+				}
+
+				if f.Tag != nil {
+					field.Tag = f.Tag.Value[1 : len(f.Tag.Value)-1]
+					structTag := reflect.StructTag(field.Tag)
+					parseTags(field, structTag)
+
+					spannerCol := structTag.Get("spanner")
+					if md, ok := table.Columns[spannerCol]; ok {
+						field.ConstraintType = string(md.ConstraintType)
+						field.IsPrimaryKey = md.ConstraintType == PrimaryKey
+					}
+				}
+
+				if !field.IsPrimaryKey {
+					generatedStruct.IsCompoundTable = false
+				}
+
+				fields = append(fields, field)
 			}
 
-			if !field.IsPrimaryKey {
-				generatedStruct.IsCompoundTable = false
-			}
+			generatedStruct.Name = structName
+			generatedStruct.Fields = fields
 
-			fields = append(fields, field)
+			break Decl
 		}
-
-		generatedStruct.Name = structName
-		generatedStruct.Fields = fields
-
-		break
 	}
 
 	return generatedStruct, nil

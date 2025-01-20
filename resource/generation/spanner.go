@@ -147,53 +147,58 @@ func (c *GenerationClient) removeDestinationFiles() error {
 
 func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, error) {
 	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceSource, nil, 0)
+	parse, err := parser.ParseFile(tk, c.resourceSource, nil, parser.SkipObjectResolution)
 	if err != nil {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}
 
-	if parse == nil || parse.Scope == nil {
+	if parse == nil {
 		return nil, errors.New("unable to parse file")
 	}
 
 	typeList := make([]*generatedType, 0)
-
-	for k, v := range parse.Scope.Objects {
-		var fields []*typeField
-
-		spec, ok := v.Decl.(*ast.TypeSpec)
+	for _, d := range parse.Decls {
+		gd, ok := d.(*ast.GenDecl)
 		if !ok {
 			continue
 		}
-		structType, ok := spec.Type.(*ast.StructType)
-		if !ok {
-			continue
-		}
-		if structType.Fields == nil {
-			continue
-		}
 
-		isCompoundTable := true
-		tableName := c.pluralize(k)
-
-		table, ok := c.tableLookup[tableName]
-		if !ok || table == nil {
-			return nil, errors.Newf("table not found: %s", tableName)
-		}
-
-		for _, f := range structType.Fields.List {
-			if len(f.Names) == 0 {
+		for _, s := range gd.Specs {
+			ts, ok := s.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			st, ok := ts.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			if st.Fields == nil {
 				continue
 			}
 
-			fields = append(fields, c.typeFieldFromAstField(table, f, &isCompoundTable))
-		}
+			isCompoundTable := true
+			tableName := c.pluralize(ts.Name.Name)
 
-		typeList = append(typeList, &generatedType{
-			Name:            k,
-			Fields:          fields,
-			IsCompoundTable: isCompoundTable,
-		})
+			table, ok := c.tableLookup[tableName]
+			if !ok || table == nil {
+				return nil, errors.Newf("table not found: %s", tableName)
+			}
+
+			fields := make([]*typeField, 0)
+			for _, f := range st.Fields.List {
+				if len(f.Names) == 0 {
+					continue
+				}
+
+				fields = append(fields, c.typeFieldFromAstField(table, f, &isCompoundTable))
+			}
+
+			typeList = append(typeList, &generatedType{
+				Name:            ts.Name.Name,
+				Fields:          fields,
+				IsCompoundTable: isCompoundTable,
+			})
+		}
 	}
 
 	sort.Slice(typeList, func(i, j int) bool {
