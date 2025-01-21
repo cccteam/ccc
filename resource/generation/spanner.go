@@ -196,7 +196,7 @@ func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, erro
 			typeList = append(typeList, &generatedType{
 				Name:            ts.Name.Name,
 				Fields:          fields,
-				IsCompoundTable: isCompoundTable,
+				IsCompoundTable: isCompoundTable == (len(fields) > 1),
 			})
 		}
 	}

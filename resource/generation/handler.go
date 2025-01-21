@@ -228,6 +228,7 @@ declLoop:
 				fields = append(fields, field)
 			}
 
+			generatedStruct.IsCompoundTable = generatedStruct.IsCompoundTable == (len(fields) > 1)
 			generatedStruct.Name = structName
 			generatedStruct.Fields = fields
 
