@@ -61,11 +61,21 @@ func New(ctx context.Context, config *Config) (*GenerationClient, error) {
 		}
 	}
 
+	handlerOpts := make(map[string]map[HandlerType][]OptionType)
+	for structName, handlerTypes := range config.IgnoredHandlers {
+		for _, handlerType := range handlerTypes {
+			if _, ok := handlerOpts[structName]; !ok {
+				handlerOpts[structName] = make(map[HandlerType][]OptionType)
+			}
+			handlerOpts[structName][handlerType] = append(handlerOpts[structName][handlerType], NoGenerate)
+		}
+	}
+
 	c := &GenerationClient{
 		resourceSource:     config.ResourceSource,
 		spannerDestination: config.SpannerDestination,
 		handlerDestination: config.HandlerDestination,
-		handlerOptions:     config.HandlerOptions,
+		handlerOptions:     handlerOpts,
 		pluralOverrides:    config.PluralOverrides,
 		db:                 db.Client,
 		cleanup:            cleanupFunc,

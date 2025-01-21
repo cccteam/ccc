@@ -85,11 +85,11 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 
 	for _, h := range handlers {
 		functionName := c.handlerName(structName, h.handlerType)
-		if _, skipGeneration := opts[h.handlerType][NoGenerate]; !skipGeneration {
-			fileData, err = c.replaceHandlerFileContent(fileData, functionName, h, generatedType)
-			if err != nil {
-				return err
-			}
+
+		_, skipGeneration := opts[h.handlerType][NoGenerate]
+		fileData, err = c.replaceHandlerFileContent(fileData, functionName, h, generatedType, skipGeneration)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -110,20 +110,26 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 	return nil
 }
 
-func (c *GenerationClient) replaceHandlerFileContent(existingContent []byte, resultFunctionName string, handler *generatedHandler, generated *generatedType) ([]byte, error) {
-	tmpl, err := template.New("handler").Funcs(c.templateFuncs()).Parse(handler.template)
-	if err != nil {
-		return nil, errors.Wrap(err, "template.New().Parse()")
+func (c *GenerationClient) replaceHandlerFileContent(existingContent []byte, resultFunctionName string, handler *generatedHandler, generated *generatedType, emptyContent bool) ([]byte, error) {
+	var newFunctionContent []byte
+
+	if !emptyContent {
+		tmpl, err := template.New("handler").Funcs(c.templateFuncs()).Parse(handler.template)
+		if err != nil {
+			return nil, errors.Wrap(err, "template.New().Parse()")
+		}
+
+		buf := bytes.NewBuffer([]byte{})
+		if err := tmpl.Execute(buf, map[string]any{
+			"Type": generated,
+		}); err != nil {
+			return nil, errors.Wrap(err, "tmpl.Execute()")
+		}
+
+		newFunctionContent = buf.Bytes()
 	}
 
-	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, map[string]any{
-		"Type": generated,
-	}); err != nil {
-		return nil, errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	newContent, err := c.writeHandler(resultFunctionName, existingContent, buf.Bytes())
+	newContent, err := c.writeHandler(resultFunctionName, existingContent, newFunctionContent)
 	if err != nil {
 		return nil, errors.Wrap(err, "replaceFunction()")
 	}
