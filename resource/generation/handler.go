@@ -50,7 +50,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		},
 	}
 
-	if md, ok := c.tableLookup[structName]; ok && !md.IsView {
+	if md, ok := c.tableLookup[c.pluralize(structName)]; ok && !md.IsView {
 		handlers = append(handlers, &generatedHandler{
 			template:    patchTemplate,
 			handlerType: Patch,
@@ -140,13 +140,11 @@ func (c *GenerationClient) writeHandler(functionName string, existingContent, ne
 
 	var start, end token.Pos
 	for _, decl := range node.Decls {
-		if funcDecl, ok := decl.(*ast.FuncDecl); ok {
-			if funcDecl.Name.Name == functionName {
-				start = funcDecl.Pos()
-				end = funcDecl.End()
+		if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl.Name.Name == functionName {
+			start = funcDecl.Pos()
+			end = funcDecl.End()
 
-				break
-			}
+			break
 		}
 	}
 
@@ -241,8 +239,7 @@ declLoop:
 }
 
 func parseTags(field *typeField, fieldTag reflect.StructTag) {
-	perms := fieldTag.Get("perm")
-	if perms != "" {
+	if perms := fieldTag.Get("perm"); perms != "" {
 		if strings.Contains(perms, string(accesstypes.Read)) {
 			field.ReadPerm = string(accesstypes.Read)
 		}
@@ -264,13 +261,11 @@ func parseTags(field *typeField, fieldTag reflect.StructTag) {
 		}
 	}
 
-	query := fieldTag.Get("query")
-	if query != "" {
+	if query := fieldTag.Get("query"); query != "" {
 		field.QueryTag = fmt.Sprintf("query:%q", query)
 	}
 
-	conditions := fieldTag.Get("conditions")
-	if conditions != "" {
+	if conditions := fieldTag.Get("conditions"); conditions != "" {
 		field.Conditions = strings.Split(conditions, ",")
 	}
 }
