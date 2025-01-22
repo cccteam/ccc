@@ -499,17 +499,18 @@ export function resourceMeta(resource: Resource): ResourceMeta {
 	package {{ .Package }}
 
 	const (
-		{{ range .RouteParams }}{{ . }} httpio.ParamType = "{{ GoCamel . }}"
+		{{ range $Struct, $Routes := .RoutesMap }}{{ $Struct }}ID httpio.ParamType = "{{ GoCamel $Struct }}ID"
 		{{ end }}
 	)
 
 	type GeneratedHandlers interface {
-		{{ range .HandlerFuncs }}{{ . }}() http.HandlerFunc
-		{{ end }}
+		{{ range $Struct, $Routes := .RoutesMap }}{{ range $Routes }}{{ .HandlerFunc }}() http.HandlerFunc
+		{{ end }}{{ end }}
 	}
 
 	func GeneratedHandlerGroups(r chi.Router, h GeneratedHandlers) {
-		{{- .HandlerText -}}
+		{{ range $Struct, $Routes := .RoutesMap }}{{ range $Routes }}r.{{ .Method }}("{{ .Path }}", h.{{ .HandlerFunc }}())
+		{{ end }}{{- end -}}
 	}
 	`
 )

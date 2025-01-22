@@ -150,6 +150,13 @@ type generatedHandler struct {
 	template    string
 	handlerType HandlerType
 }
+
+type generatedRoute struct {
+	Method      string
+	Path        string
+	HandlerFunc string
+}
+
 type tsType int
 
 const (
