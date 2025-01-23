@@ -9,6 +9,8 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"log"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -182,6 +184,7 @@ func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 		(t.TABLE_NAME IS NULL AND v.TABLE_NAME IS NOT NULL) as IS_VIEW,
 		ic.INDEX_NAME IS NOT NULL AS IS_INDEX,
 		MAX(COALESCE(i.IS_UNIQUE, false)) AS IS_UNIQUE_INDEX,
+		c.GENERATION_EXPRESSION,
 		c.ORDINAL_POSITION,
 		COALESCE(d.KEY_ORDINAL_POSITION, 1) AS KEY_ORDINAL_POSITION,
 	FROM INFORMATION_SCHEMA.COLUMNS c
@@ -203,6 +206,8 @@ func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 }
 
 func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[string]*TableMetadata, error) {
+	log.Println("Creating spanner table lookup...")
+
 	stmt := cloudspanner.Statement{SQL: qry}
 
 	var result []InformationSchemaResult
@@ -217,8 +222,19 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 		table, ok := m[tableName]
 		if !ok {
 			table = &TableMetadata{
-				Columns: make(map[string]FieldMetadata),
-				IsView:  r.IsView,
+				Columns:       make(map[string]FieldMetadata),
+				SearchIndexes: make(map[string][]*expressionField),
+				IsView:        r.IsView,
+			}
+		}
+
+		if r.SpannerType == "TOKENLIST" {
+			if r.GenerationExpression != nil {
+				for _, f := range searchExpressionFields(*r.GenerationExpression, table.Columns) {
+					table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], f)
+				}
+
+				continue
 			}
 		}
 
@@ -389,6 +405,19 @@ func (c *Client) templateFuncs() map[string]any {
 			return val
 		},
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
+		"FormatTokenTag":               c.formatTokenTags,
+		"ResourceSearchType": func(searchType string) string {
+			switch strings.ToUpper(searchType) {
+			case "SUBSTRING":
+				return "resource.SubString"
+			case "FULLTEXT":
+				return "resource.FullText"
+			case "NGRAMS":
+				return "resource.Ngram"
+			default:
+				return ""
+			}
+		},
 	}
 
 	return templateFuncs
@@ -408,6 +437,27 @@ func (c *Client) pluralize(value string) string {
 	default:
 		return value + "s"
 	}
+}
+
+func (c *Client) formatTokenTags(tableName, fieldName string) string {
+	tokenIndexMap := make(map[string][]string)
+	if t, ok := c.tableLookup[tableName]; ok {
+		for k, v := range t.SearchIndexes {
+			for _, f := range v {
+				if f.fieldName == fieldName {
+					token := string(f.tokenType)
+					tokenIndexMap[token] = append(tokenIndexMap[token], k)
+				}
+			}
+		}
+	}
+
+	var tags []string
+	for tt, indexes := range tokenIndexMap {
+		tags = append(tags, fmt.Sprintf(`%s:"%s"`, tt, strings.Join(indexes, ",")))
+	}
+
+	return strings.Join(tags, " ")
 }
 
 func fieldType(expr ast.Expr, isHandlerOutput bool) string {
@@ -530,4 +580,43 @@ func parseResourceFile(resourceFilePath string) (*ast.File, error) {
 	}
 
 	return file, nil
+}
+
+func searchExpressionFields(expression string, cols map[string]FieldMetadata) []*expressionField {
+	fieldMap := make(map[string]*expressionField)
+
+	lines := strings.Split(expression, "\n")
+	for _, l := range lines {
+		if matches := tokenizeRegex.FindAllStringSubmatch(l, -1); len(matches) > 0 && len(matches[0]) > 2 {
+			searchType := matches[0][1]
+
+			var tokenType resource.SearchType
+			switch searchType {
+			case "SUBSTRING":
+				tokenType = resource.SubString
+			case "FULLTEXT":
+				tokenType = resource.FullText
+			case "NGRAMS":
+				tokenType = resource.Ngram
+			}
+
+			fieldName := matches[0][2]
+			colKeys := maps.Keys(cols)
+			for k := range colKeys {
+				if strings.Contains(fieldName, k) {
+					fieldName = k
+					break
+				}
+			}
+
+			if _, ok := fieldMap[fieldName]; !ok && tokenType != "" {
+				fieldMap[fieldName] = &expressionField{
+					tokenType: tokenType,
+					fieldName: fieldName,
+				}
+			}
+		}
+	}
+
+	return slices.Collect(maps.Values(fieldMap))
 }

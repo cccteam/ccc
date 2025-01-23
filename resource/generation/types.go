@@ -1,6 +1,11 @@
 package generation
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+
+	"github.com/cccteam/ccc/resource"
+)
 
 var baseTypes = []string{
 	"bool",
@@ -13,6 +18,8 @@ var baseTypes = []string{
 	"complex64", "complex128",
 	"error",
 }
+
+var tokenizeRegex = regexp.MustCompile(`TOKENIZE_([^)]+)\(([^)]+)\)`)
 
 const (
 	genPrefix = "zz_gen"
@@ -67,6 +74,7 @@ type generatedType struct {
 	IsView                bool
 	HasCompoundPrimaryKey bool
 	Fields                []*typeField
+	SearchIndexes         []*searchIndex
 }
 
 type typeField struct {
@@ -89,6 +97,11 @@ type fieldTagInfo struct {
 	SpannerColumn string
 }
 
+type searchIndex struct {
+	Name       string
+	SearchType string
+}
+
 type FieldMetadata struct {
 	ColumnName         string
 	ConstraintTypes    []ConstraintType
@@ -105,25 +118,27 @@ type FieldMetadata struct {
 }
 
 type InformationSchemaResult struct {
-	TableName          string  `spanner:"TABLE_NAME"`
-	ColumnName         string  `spanner:"COLUMN_NAME"`
-	ConstraintName     *string `spanner:"CONSTRAINT_NAME"`
-	IsPrimaryKey       bool    `spanner:"IS_PRIMARY_KEY"`
-	IsForeignKey       bool    `spanner:"IS_FOREIGN_KEY"`
-	ReferencedTable    *string `spanner:"REFERENCED_TABLE"`
-	ReferencedColumn   *string `spanner:"REFERENCED_COLUMN"`
-	SpannerType        string  `spanner:"SPANNER_TYPE"`
-	IsNullable         bool    `spanner:"IS_NULLABLE"`
-	IsView             bool    `spanner:"IS_VIEW"`
-	IsIndex            bool    `spanner:"IS_INDEX"`
-	IsUniqueIndex      bool    `spanner:"IS_UNIQUE_INDEX"`
-	OrdinalPosition    int64   `spanner:"ORDINAL_POSITION"`
-	KeyOrdinalPosition int64   `spanner:"KEY_ORDINAL_POSITION"`
+	TableName            string  `spanner:"TABLE_NAME"`
+	ColumnName           string  `spanner:"COLUMN_NAME"`
+	ConstraintName       *string `spanner:"CONSTRAINT_NAME"`
+	IsPrimaryKey         bool    `spanner:"IS_PRIMARY_KEY"`
+	IsForeignKey         bool    `spanner:"IS_FOREIGN_KEY"`
+	ReferencedTable      *string `spanner:"REFERENCED_TABLE"`
+	ReferencedColumn     *string `spanner:"REFERENCED_COLUMN"`
+	SpannerType          string  `spanner:"SPANNER_TYPE"`
+	IsNullable           bool    `spanner:"IS_NULLABLE"`
+	IsView               bool    `spanner:"IS_VIEW"`
+	IsIndex              bool    `spanner:"IS_INDEX"`
+	IsUniqueIndex        bool    `spanner:"IS_UNIQUE_INDEX"`
+	GenerationExpression *string `spanner:"GENERATION_EXPRESSION"`
+	OrdinalPosition      int64   `spanner:"ORDINAL_POSITION"`
+	KeyOrdinalPosition   int64   `spanner:"KEY_ORDINAL_POSITION"`
 }
 
 type TableMetadata struct {
-	Columns map[string]FieldMetadata
-	IsView  bool
+	Columns       map[string]FieldMetadata
+	SearchIndexes map[string][]*expressionField
+	IsView        bool
 }
 
 type generationOption struct {
@@ -191,6 +206,11 @@ func (r generatedResource) DataType() string {
 
 func (r generatedResource) DisplayType() string {
 	return r.dataType.String()
+}
+
+type expressionField struct {
+	tokenType resource.SearchType
+	fieldName string
 }
 
 func generatedFileName(name string) string {

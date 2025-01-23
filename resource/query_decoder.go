@@ -20,24 +20,29 @@ type (
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	fieldMapper       *FieldMapper
+	searchKeys        *SearchKeys
 	resourceSet       *ResourceSet[Resource, Request]
 	permissionChecker accesstypes.Enforcer
 	domainFromCtx     DomainFromCtx
 	userFromCtx       UserFromCtx
 }
 
-func NewQueryDecoder[Resource Resourcer, Request any](rSet *ResourceSet[Resource, Request], permissionChecker accesstypes.Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (*QueryDecoder[Resource, Request], error) {
-	target := new(Request)
+func NewQueryDecoder[Res Resourcer, Req any](resSet *ResourceSet[Res, Req], permChecker accesstypes.Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (*QueryDecoder[Res, Req], error) {
+	var req Req
+	var res Res
 
-	m, err := NewFieldMapper(target)
+	mapper, err := NewFieldMapper(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	return &QueryDecoder[Resource, Request]{
-		fieldMapper:       m,
-		resourceSet:       rSet,
-		permissionChecker: permissionChecker,
+	searchKeys := NewSearchKeys[Req](res)
+
+	return &QueryDecoder[Res, Req]{
+		fieldMapper:       mapper,
+		searchKeys:        searchKeys,
+		resourceSet:       resSet,
+		permissionChecker: permChecker,
 		domainFromCtx:     domainFromCtx,
 		userFromCtx:       userFromCtx,
 	}, nil
@@ -52,6 +57,14 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
 	for _, field := range fields {
 		qSet.AddField(field)
+	}
+
+	set, err := parseSearchParam(d.searchKeys, request.URL.Query())
+	if err != nil {
+		return nil, err
+	}
+	if set != nil {
+		qSet.SetSearchParam(set)
 	}
 
 	return qSet, nil
@@ -101,4 +114,32 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParam
 	}
 
 	return fields, nil
+}
+
+func parseSearchParam(searchKeys *SearchKeys, queryParams url.Values) (searchSet *SearchSet, err error) {
+	if searchKeys == nil || len(queryParams) == 0 {
+		return nil, nil
+	}
+
+	var key SearchKey
+	for searchKey := range searchKeys.keys {
+		if len(queryParams[string(searchKey)]) == 0 {
+			continue
+		}
+
+		if key != "" {
+			return nil, errors.New("only one search key is allowed")
+		}
+
+		if len(queryParams[string(searchKey)]) > 1 {
+			return nil, errors.New("only one search parameter is allowed")
+		}
+
+		key = SearchKey(searchKey)
+	}
+
+	typ := searchKeys.keys[key]
+	val := queryParams.Get(string(key))
+
+	return NewSearchSet(typ, key, val), nil
 }
