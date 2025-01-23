@@ -7,11 +7,20 @@ const (
 	PostgresDBType DBType = "postgres"
 )
 
-type (
-	Columns string
-	Where   string
-	Stmt    string
+type SearchType string
+
+const (
+	SubString SearchType = "substring"
+	FullText  SearchType = "fulltext"
+	Ngram     SearchType = "ngram"
 )
+
+type Statement struct {
+	Sql    string
+	Params map[string]any
+}
+
+type Columns string
 
 type Config struct {
 	DBType              DBType

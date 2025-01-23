@@ -4,7 +4,7 @@ package resource
 import (
 	"fmt"
 	"maps"
-	reflect "reflect"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"

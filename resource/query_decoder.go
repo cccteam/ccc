@@ -17,6 +17,7 @@ type (
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	fieldMapper       *FieldMapper
+	searchKeys        *SearchKeys
 	resourceSet       *ResourceSet[Resource, Request]
 	permissionChecker accesstypes.Enforcer
 	domainFromCtx     DomainFromCtx
@@ -24,7 +25,8 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 }
 
 func NewQueryDecoder[Resource Resourcer, Request any](rSet *ResourceSet[Resource, Request], permissionChecker accesstypes.Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (*QueryDecoder[Resource, Request], error) {
-	target := new(Request)
+	var target Request
+	var res Resource
 
 	m, err := NewFieldMapper(target)
 	if err != nil {
@@ -33,6 +35,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](rSet *ResourceSet[Resource
 
 	return &QueryDecoder[Resource, Request]{
 		fieldMapper:       m,
+		searchKeys:        NewSearchKeys(res),
 		resourceSet:       rSet,
 		permissionChecker: permissionChecker,
 		domainFromCtx:     domainFromCtx,
@@ -50,6 +53,8 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 	for _, field := range fields {
 		qSet.AddField(field)
 	}
+
+	qSet.search = parseQuery(d.searchKeys, request)
 
 	return qSet, nil
 }
@@ -81,4 +86,20 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context) ([]accesst
 	}
 
 	return fields, nil
+}
+
+func parseQuery(searchKeys *SearchKeys, request *http.Request) *searchSet {
+	if searchKeys == nil {
+		return nil
+	}
+
+	for typ, keys := range searchKeys.keys {
+		for _, key := range keys {
+			if val := request.URL.Query().Get(key); val != "" {
+				return newSearchSet(typ, key, val)
+			}
+		}
+	}
+
+	return nil
 }

@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 type QuerySet[Resource Resourcer] struct {
 	keys   *fieldSet
+	search *searchSet
 	fields []accesstypes.Field
 	rMeta  *ResourceMetadata[Resource]
 }
@@ -92,18 +94,18 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 }
 
 // Where translates the the fields to database struct tags in databaseType when building the where clause
-func (q *QuerySet[Resource]) Where() (where Where, params map[string]any, err error) {
+func (q *QuerySet[Resource]) Where() (Statement, error) {
 	parts := q.KeySet().Parts()
 	if len(parts) == 0 {
-		return "", nil, nil
+		return Statement{}, nil
 	}
 
 	builder := strings.Builder{}
-	params = make(map[string]any, len(parts))
+	params := make(map[string]any, len(parts))
 	for _, part := range parts {
 		c, ok := q.rMeta.fieldMap[part.Key]
 		if !ok {
-			return "", nil, errors.Newf("field %s not found in struct", part.Key)
+			return Statement{}, errors.Newf("field %s not found in struct", part.Key)
 		}
 		key := c.tag
 		switch q.rMeta.dbType {
@@ -112,12 +114,15 @@ func (q *QuerySet[Resource]) Where() (where Where, params map[string]any, err er
 		case PostgresDBType:
 			builder.WriteString(fmt.Sprintf(` AND "%s" = @%s`, key, strings.ToLower(key)))
 		default:
-			return "", nil, errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
+			return Statement{}, errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
 		}
 		params[strings.ToLower(key)] = part.Value
 	}
 
-	return Where("WHERE " + builder.String()[5:]), params, nil
+	return Statement{
+		Sql:    "WHERE " + builder.String()[5:],
+		Params: params,
+	}, nil
 }
 
 func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
@@ -125,12 +130,20 @@ func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 		return spanner.Statement{}, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
+	if q.search != nil {
+		return q.spannerSearchStmt()
+	}
+
+	return q.spannerIndexStmt()
+}
+
+func (q *QuerySet[Resource]) spannerIndexStmt() (spanner.Statement, error) {
 	columns, err := q.Columns()
 	if err != nil {
 		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	where, params, err := q.Where()
+	where, err := q.Where()
 	if err != nil {
 		return spanner.Statement{}, errors.Wrap(err, "patcher.Where()")
 	}
@@ -139,38 +152,73 @@ func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 			SELECT
 				%s
 			FROM %s 
-			%s`, columns, q.Resource(), where,
+			%s`, columns, q.Resource(), where.Sql,
 	))
-	for param, value := range params {
-		stmt.Params[param] = value
-	}
+	maps.Insert(stmt.Params, maps.All(where.Params))
 
 	return stmt, nil
 }
 
-func (q *QuerySet[Resource]) PostgresStmt() (stmt Stmt, params map[string]any, err error) {
+func (q *QuerySet[Resource]) spannerSearchStmt() (spanner.Statement, error) {
+	columns, err := q.Columns()
+	if err != nil {
+		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
+	}
+
+	var search Statement
+	var score Statement
+
+	query := parseSpannerQuery(q.search.paramVal)
+	switch q.search.searchType {
+	case SubString:
+		search = query.parseToSearchSubstring(q.search.paramKey)
+		score = query.parseToNgramScore(q.search.paramKey)
+	case FullText:
+		return spanner.Statement{}, errors.New("FullText search is not yet implemented")
+	case Ngram:
+		return spanner.Statement{}, errors.New("Ngram search is not yet implemented")
+	}
+
+	stmt := spanner.NewStatement(fmt.Sprintf(`
+			SELECT
+				%s
+			FROM %s 
+			WHERE %s
+			ORDER BY %s DESC`,
+		columns, q.Resource(), search.Sql, score.Sql))
+
+	maps.Insert(stmt.Params, maps.All(search.Params))
+	maps.Insert(stmt.Params, maps.All(score.Params))
+
+	return stmt, nil
+}
+
+func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
 	if q.rMeta.dbType != PostgresDBType {
-		return "", nil, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", PostgresDBType, q.rMeta.dbType)
+		return Statement{}, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", PostgresDBType, q.rMeta.dbType)
 	}
 
 	columns, err := q.Columns()
 	if err != nil {
-		return "", nil, errors.Wrap(err, "QuerySet.Columns()")
+		return Statement{}, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	where, params, err := q.Where()
+	where, err := q.Where()
 	if err != nil {
-		return "", nil, errors.Wrap(err, "patcher.Where()")
+		return Statement{}, errors.Wrap(err, "patcher.Where()")
 	}
 
-	s := fmt.Sprintf(`
+	sql := fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s 
-			%s`, columns, q.Resource(), where,
+			%s`, columns, q.Resource(), where.Sql,
 	)
 
-	return Stmt(s), params, nil
+	return Statement{
+		Sql:    sql,
+		Params: where.Params,
+	}, nil
 }
 
 func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, txn *spanner.ReadOnlyTransaction, dst any) error {
