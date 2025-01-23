@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -44,7 +45,21 @@ func (c *Client) runHandlerGeneration() error {
 		handlerErrors = errors.Join(handlerErrors, e)
 	}
 
-	return handlerErrors
+	if handlerErrors != nil {
+		return handlerErrors
+	}
+
+	if c.routesDestination != "" {
+		if err := c.writeRoutes(generatedRoutesMap); err != nil {
+			return errors.Wrap(err, "c.writeRoutes()")
+		}
+
+		if err := c.writeRouterTests(generatedRoutesMap); err != nil {
+			return errors.Wrap(err, "c.writeRouterTests()")
+		}
+	}
+
+	return nil
 }
 
 func (c *Client) generateHandlers(structName string) error {
@@ -120,6 +135,38 @@ func (c *Client) handlerContent(handler *generatedHandler, generated *generatedT
 	}
 
 	return buf.Bytes(), nil
+}
+
+func (c *Client) writeRouterTests(generatedRoutes map[string][]generatedRoute) error {
+	destinationFile := filepath.Join(c.routerDestination, routerTestFilename)
+
+	file, err := os.OpenFile(destinationFile, os.O_RDWR|os.O_CREATE, 0o644)
+	if err != nil {
+		return errors.Wrap(err, "os.OpenFile()")
+	}
+	defer file.Close()
+
+	tmpl, err := template.New("routes").Funcs(c.templateFuncs()).Parse(routerTestTemplate)
+	if err != nil {
+		return errors.Wrap(err, "template.New().Parse()")
+	}
+
+	buf := bytes.NewBuffer([]byte{})
+	if err := tmpl.Execute(buf, map[string]any{
+		"Source":    c.resourceFilePath,
+		"Package":   "router",
+		"RoutesMap": generatedRoutes,
+	}); err != nil {
+		return errors.Wrap(err, "tmpl.Execute()")
+	}
+
+	log.Println("Generating router tests")
+
+	if err := c.writeBytesToFile(destinationFile, file, buf.Bytes()); err != nil {
+		return errors.Wrap(err, "c.writeBytesToFile()")
+	}
+
+	return nil
 }
 
 func (c *Client) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {

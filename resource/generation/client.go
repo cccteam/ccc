@@ -362,6 +362,7 @@ func (c *Client) templateFuncs() map[string]any {
 		"Camel":     c.caser.ToCamel,
 		"Kebab":     c.caser.ToKebab,
 		"Lower":     strings.ToLower,
+		"ToUpper":   strings.ToUpper,
 		"PrimaryKeyTypeIsUUID": func(fields []*typeField) bool {
 			for _, f := range fields {
 				if f.IsPrimaryKey {
@@ -427,6 +428,24 @@ func (c *Client) templateFuncs() map[string]any {
 			default:
 				return ""
 			}
+		},
+		"DetermineTestURL": func(structName string, route generatedRoute) string {
+			if strings.EqualFold(route.Method, "get") && strings.HasSuffix(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(structName))) {
+				return fmt.Sprintf("%s/%s/%s",
+					c.routePrefix,
+					c.caser.ToKebab(c.pluralize(structName)),
+					strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(structName))),
+				)
+			}
+
+			return route.Path
+		},
+		"DetermineParameters": func(structName string, route generatedRoute) string {
+			if strings.EqualFold(route.Method, "get") && strings.HasSuffix(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(structName))) {
+				return fmt.Sprintf(`map[string]string{"%s": "%s"}`, strcase.ToGoCamel(structName+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(structName))))
+			}
+
+			return "map[string]string{}"
 		},
 	}
 

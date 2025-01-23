@@ -67,6 +67,8 @@ const (
 	querySetOutputFilename      = "types.go"
 	resourceInterfaceOutputName = "resources_iface"
 	resourcesTestFileName       = "resource_types_test.go"
+	routesFilename              = "generated_routes.go"
+	routerTestFilename          = "generated_routes_test.go"
 )
 
 type generatedType struct {
