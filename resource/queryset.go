@@ -15,9 +15,10 @@ import (
 )
 
 type QuerySet[Resource Resourcer] struct {
-	keys   *fieldSet
-	fields []accesstypes.Field
-	rMeta  *ResourceMetadata[Resource]
+	keys        *fieldSet
+	searchQuery string
+	fields      []accesstypes.Field
+	rMeta       *ResourceMetadata[Resource]
 }
 
 func NewQuerySet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *QuerySet[Resource] {
@@ -51,6 +52,10 @@ func (q *QuerySet[Resource]) SetKey(field accesstypes.Field, value any) {
 
 func (q *QuerySet[Resource]) Key(field accesstypes.Field) any {
 	return q.keys.Get(field)
+}
+
+func (q *QuerySet[Resource]) SearchQuery() string {
+	return q.searchQuery
 }
 
 func (q *QuerySet[Resource]) Len() int {
@@ -125,6 +130,66 @@ func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 		return spanner.Statement{}, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
+	if q.searchQuery == "" {
+		return q.spannerIndexStmt()
+	}
+
+	return q.spannerSearchStmt()
+}
+
+func (q *QuerySet[Resource]) spannerSearchStmt() (spanner.Statement, error) {
+	columns, err := q.Columns()
+	if err != nil {
+		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
+	}
+
+	substringSearch := parseSearchExpr(q.SearchQuery())
+
+	stmt := spanner.NewStatement(fmt.Sprintf(`
+			SELECT
+				%s
+			FROM %s 
+			WHERE %s
+			ORDER BY %s DESC`,
+		columns, q.Resource(), substringSearch.sql, substringSearch.sql))
+
+	stmt.Params = substringSearch.params
+
+	return stmt, nil
+}
+
+type searchExpr struct {
+	sql    string
+	params map[string]any
+}
+
+func parseSearchExpr(query string) searchExpr {
+	const (
+		or    = ","
+		sqlOr = "OR"
+	)
+
+	terms := strings.Split(query, or)
+
+	exprs := make([]string, 0, len(terms))
+	params := make(map[string]any, len(terms))
+	for i, term := range terms {
+		param := fmt.Sprintf("t%d", i)
+		params[param] = term
+
+		expr := fmt.Sprintf("SEARCH_SUBSTRING(SearchTokens, @%s)", param)
+
+		exprs = append(exprs, sqlOr)
+		exprs = append(exprs, expr)
+	}
+
+	return searchExpr{
+		sql:    strings.Join(exprs[1:], " "),
+		params: params,
+	}
+}
+
+func (q *QuerySet[Resource]) spannerIndexStmt() (spanner.Statement, error) {
 	columns, err := q.Columns()
 	if err != nil {
 		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
@@ -191,6 +256,8 @@ func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, txn *spanner.ReadO
 }
 
 func (q *QuerySet[Resource]) SpannerList(ctx context.Context, txn *spanner.ReadOnlyTransaction, dst any) error {
+	fmt.Println(q.searchQuery)
+
 	stmt, err := q.SpannerStmt()
 	if err != nil {
 		return errors.Wrap(err, "patcher.Stmt()")

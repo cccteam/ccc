@@ -51,6 +51,9 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 		qSet.AddField(field)
 	}
 
+	// TODO(bswaney): make constant configurable, also get keywise params, etc
+	qSet.searchQuery = request.URL.Query().Get("search")
+
 	return qSet, nil
 }
 
