@@ -23,15 +23,18 @@ import (
 )
 
 type GenerationClient struct {
-	resourceSource     string
-	spannerDestination string
-	handlerDestination string
-	db                 *cloudspanner.Client
-	caser              *strcase.Caser
-	tableLookup        map[string]*TableMetadata
-	handlerOptions     map[string]map[HandlerType][]OptionType
-	pluralOverrides    map[string]string
-	cleanup            func()
+	resourceSource           string
+	spannerDestination       string
+	handlerDestination       string
+	routesDestination        string
+	routesDestinationPackage string
+	db                       *cloudspanner.Client
+	caser                    *strcase.Caser
+	tableLookup              map[string]*TableMetadata
+	handlerOptions           map[string]map[HandlerType][]OptionType
+	pluralOverrides          map[string]string
+	routePrefix              string
+	cleanup                  func()
 }
 
 func New(ctx context.Context, config *Config) (*GenerationClient, error) {
@@ -72,14 +75,17 @@ func New(ctx context.Context, config *Config) (*GenerationClient, error) {
 	}
 
 	c := &GenerationClient{
-		resourceSource:     config.ResourceSource,
-		spannerDestination: config.SpannerDestination,
-		handlerDestination: config.HandlerDestination,
-		handlerOptions:     handlerOpts,
-		pluralOverrides:    config.PluralOverrides,
-		db:                 db.Client,
-		cleanup:            cleanupFunc,
-		caser:              strcase.NewCaser(false, config.CaserGoInitialisms, nil),
+		resourceSource:           config.ResourceSource,
+		spannerDestination:       config.SpannerDestination,
+		handlerDestination:       config.HandlerDestination,
+		routesDestination:        config.RoutesDestination,
+		routesDestinationPackage: config.RoutesDestinationPackage,
+		routePrefix:              config.RoutePrefix,
+		handlerOptions:           handlerOpts,
+		pluralOverrides:          config.PluralOverrides,
+		db:                       db.Client,
+		cleanup:                  cleanupFunc,
+		caser:                    strcase.NewCaser(false, config.CaserGoInitialisms, nil),
 	}
 
 	c.tableLookup, err = c.createTableLookup(ctx)
