@@ -71,7 +71,7 @@ func (c *GenerationClient) generateResourceTests(types []*generatedType) error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(c.spannerDestination, resourcesTestFilename)
+	destinationFile := filepath.Join(c.spannerDestination, resourcesTestFileName)
 
 	file, err := os.Create(destinationFile)
 	if err != nil {

@@ -15,7 +15,6 @@ import (
 	"text/template"
 
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -25,50 +24,19 @@ func (c *GenerationClient) RunHandlerGeneration() error {
 		return errors.Wrap(err, "c.structsFromSource()")
 	}
 
-	generatedRoutesMap := make(map[string][]generatedRoute)
-
 	for _, s := range structs {
-		generatedHandlerTypes, err := c.generateHandlers(s)
-		if err != nil {
+		if err := c.generateHandlers(s); err != nil {
 			return errors.Wrap(err, "c.generateHandlers()")
-		}
-
-		for _, ht := range generatedHandlerTypes {
-			handler := c.handlerName(s, ht)
-			path := fmt.Sprintf("%s/%s", c.routePrefix, c.caser.ToKebab(c.pluralize(s)))
-			if ht == Read {
-				path = fmt.Sprintf("%s/{%s}", path, strcase.ToGoCamel(s+"ID"))
-			}
-
-			var method string
-			switch ht {
-			case Read, List:
-				method = "Get"
-			case Patch:
-				method = "Patch"
-			}
-
-			generatedRoutesMap[s] = append(generatedRoutesMap[s], generatedRoute{
-				Method:      method,
-				Path:        path,
-				HandlerFunc: handler,
-			})
-		}
-	}
-
-	if c.routesDestination != "" {
-		if err := c.writeRoutes(generatedRoutesMap); err != nil {
-			return errors.Wrap(err, "c.writeRoutes()")
 		}
 	}
 
 	return nil
 }
 
-func (c *GenerationClient) generateHandlers(structName string) ([]HandlerType, error) {
+func (c *GenerationClient) generateHandlers(structName string) error {
 	generatedType, err := c.parseTypeForHandlerGeneration(structName)
 	if err != nil {
-		return nil, errors.Wrap(err, "generatedType()")
+		return errors.Wrap(err, "generatedType()")
 	}
 
 	handlers := []*generatedHandler{
@@ -102,49 +70,44 @@ func (c *GenerationClient) generateHandlers(structName string) ([]HandlerType, e
 
 	file, err := os.OpenFile(destinationFilePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
-		return nil, errors.Wrap(err, "os.OpenFile()")
+		return errors.Wrap(err, "os.OpenFile()")
 	}
 	defer file.Close()
 
 	fileData, err := io.ReadAll(file)
 	if err != nil {
-		return nil, errors.Wrap(err, "io.ReadAll()")
+		return errors.Wrap(err, "io.ReadAll()")
 	}
 
 	if len(fileData) == 0 {
 		fileData = []byte("package app\n")
 	}
 
-	generatedHandlerTypes := make([]HandlerType, 0)
 	for _, h := range handlers {
 		functionName := c.handlerName(structName, h.handlerType)
 
 		_, skipGeneration := opts[h.handlerType][NoGenerate]
 		fileData, err = c.replaceHandlerFileContent(fileData, functionName, h, generatedType, skipGeneration)
 		if err != nil {
-			return nil, errors.Wrap(err, "c.replaceHandlerFileContent()")
-		}
-
-		if !skipGeneration {
-			generatedHandlerTypes = append(generatedHandlerTypes, h.handlerType)
+			return err
 		}
 	}
 
 	if len(bytes.TrimPrefix(fileData, []byte("package app\n"))) > 0 {
 		if err := c.writeBytesToFile(c.handlerDestination, file, fileData); err != nil {
-			return nil, errors.Wrap(err, "c.writeBytesToFile()")
+			return err
 		}
 	} else {
 		if err := file.Close(); err != nil {
-			return nil, errors.Wrap(err, "file.Close()")
+			return errors.Wrap(err, "file.Close()")
 		}
 
 		if err := os.Remove(destinationFilePath); err != nil {
-			return nil, errors.Wrap(err, "os.Remove()")
+			return errors.Wrap(err, "os.Remove()")
 		}
 	}
 
-	return generatedHandlerTypes, nil
+	return nil
 }
 
 func (c *GenerationClient) replaceHandlerFileContent(existingContent []byte, resultFunctionName string, handler *generatedHandler, generated *generatedType, emptyContent bool) ([]byte, error) {
@@ -176,7 +139,7 @@ func (c *GenerationClient) replaceHandlerFileContent(existingContent []byte, res
 
 func (c *GenerationClient) writeHandler(functionName string, existingContent, newFunctionContent []byte) ([]byte, error) {
 	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, "", existingContent, parser.AllErrors|parser.SkipObjectResolution)
+	node, err := parser.ParseFile(fset, "", existingContent, parser.AllErrors)
 	if err != nil {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}
@@ -201,38 +164,6 @@ func (c *GenerationClient) writeHandler(functionName string, existingContent, ne
 	endOffset := fset.Position(end).Offset
 
 	return joinBytes(existingContent[:startOffset], newFunctionContent, existingContent[endOffset:]), nil
-}
-
-func (c *GenerationClient) writeRoutes(generatedRoutes map[string][]generatedRoute) error {
-	destinationFile := filepath.Join(c.routesDestination, routesFilename)
-
-	file, err := os.OpenFile(destinationFile, os.O_RDWR|os.O_CREATE, 0o644)
-	if err != nil {
-		return errors.Wrap(err, "os.OpenFile()")
-	}
-	defer file.Close()
-
-	tmpl, err := template.New("routes").Funcs(c.templateFuncs()).Parse(routesTemplate)
-	if err != nil {
-		return errors.Wrap(err, "template.New().Parse()")
-	}
-
-	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, map[string]any{
-		"Source":    c.resourceSource,
-		"Package":   c.routesDestinationPackage,
-		"RoutesMap": generatedRoutes,
-	}); err != nil {
-		return errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	log.Println("Generating route handlers")
-
-	if err := c.writeBytesToFile(destinationFile, file, buf.Bytes()); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
-	}
-
-	return nil
 }
 
 func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {
@@ -314,40 +245,6 @@ declLoop:
 	return generatedStruct, nil
 }
 
-func (c *GenerationClient) handlerName(structName string, handlerType HandlerType) string {
-	var functionName string
-	switch handlerType {
-	case List:
-		functionName = c.pluralize(structName)
-	case Read:
-		functionName = structName
-	case Patch:
-		functionName = "Patch" + c.pluralize(structName)
-	}
-
-	return functionName
-}
-
-func (c *GenerationClient) structRoute(structName string, handlerType HandlerType) string {
-	handler := c.handlerName(structName, handlerType)
-	route := fmt.Sprintf("%s/%s", c.routePrefix, c.caser.ToKebab(c.pluralize(structName)))
-
-	switch handlerType {
-	case List:
-		return fmt.Sprintf("r.Get(\"%s\", h.%s())", route, handler)
-	case Read:
-		return fmt.Sprintf("r.Get(\"%s/{%s}\", h.%s())", route, strcase.ToGoCamel(structName+"ID"), handler)
-	case Patch:
-		return fmt.Sprintf("r.Patch(%q, h.%s())", route, handler)
-	}
-
-	return ""
-}
-
-func joinBytes(p ...[]byte) []byte {
-	return bytes.Join(p, []byte(""))
-}
-
 func parseTags(field *typeField, fieldTag reflect.StructTag) {
 	if perms := fieldTag.Get("perm"); perms != "" {
 		if strings.Contains(perms, string(accesstypes.Read)) {
@@ -378,4 +275,22 @@ func parseTags(field *typeField, fieldTag reflect.StructTag) {
 	if conditions := fieldTag.Get("conditions"); conditions != "" {
 		field.Conditions = strings.Split(conditions, ",")
 	}
+}
+
+func (c *GenerationClient) handlerName(structName string, handlerType HandlerType) string {
+	var functionName string
+	switch handlerType {
+	case List:
+		functionName = c.pluralize(structName)
+	case Read:
+		functionName = structName
+	case Patch:
+		functionName = "Patch" + c.pluralize(structName)
+	}
+
+	return functionName
+}
+
+func joinBytes(p ...[]byte) []byte {
+	return bytes.Join(p, []byte(""))
 }

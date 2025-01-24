@@ -12,8 +12,6 @@ var baseTypes = []string{
 	"error",
 }
 
-const routeGenerationDeclaration = "generation:routes"
-
 type ConstraintType string
 
 const (
@@ -46,21 +44,17 @@ const (
 const (
 	querySetOutputFilename          = "types.go"
 	resourceInterfaceOutputFilename = "resources_iface.go"
-	resourcesTestFilename           = "generated_resources_test.go"
-	routesFilename                  = "generated_routes.go"
+	resourcesTestFileName           = "generated_resources_test.go"
 )
 
 type Config struct {
-	ResourceSource           string
-	SpannerDestination       string
-	HandlerDestination       string
-	RoutesDestination        string
-	RoutesDestinationPackage string
-	RoutePrefix              string
-	Migrations               string
-	PluralOverrides          map[string]string
-	CaserGoInitialisms       map[string]bool
-	IgnoredHandlers          map[string][]HandlerType
+	ResourceSource     string
+	HandlerDestination string
+	SpannerDestination string
+	Migrations         string
+	PluralOverrides    map[string]string
+	CaserGoInitialisms map[string]bool
+	IgnoredHandlers    map[string][]HandlerType
 }
 
 type generatedType struct {
@@ -117,10 +111,4 @@ type generationOption struct {
 type generatedHandler struct {
 	template    string
 	handlerType HandlerType
-}
-
-type generatedRoute struct {
-	Method      string
-	Path        string
-	HandlerFunc string
 }
