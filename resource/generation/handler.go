@@ -2,16 +2,17 @@ package generation
 
 import (
 	"bytes"
+	errs "errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -24,9 +25,47 @@ func (c *GenerationClient) RunHandlerGeneration() error {
 		return errors.Wrap(err, "c.structsFromSource()")
 	}
 
+	if err := removeGeneratedFiles(c.spannerDestination, Suffix); err != nil {
+		return errors.Wrap(err, "removeGeneratedFiles()")
+	}
+
+	var (
+		handlerErrors error
+		wg            sync.WaitGroup
+	)
+	// todo(jkyte): There's an issue with imports.Process() causing the generateHandlers() processto run for around 8s for each struct
 	for _, s := range structs {
-		if err := c.generateHandlers(s); err != nil {
-			return errors.Wrap(err, "c.generateHandlers()")
+		wg.Add(1)
+		go func(structName string) {
+			if err := c.generateHandlers(structName); err != nil {
+				handlerErrors = errs.Join(handlerErrors, err)
+			}
+			wg.Done()
+		}(s)
+	}
+
+	wg.Wait()
+
+	return handlerErrors
+}
+
+func (c *GenerationClient) removeHandlerDestinationFiles() error {
+	dir, err := os.Open(c.handlerDestination)
+	if err != nil {
+		return errors.Wrap(err, "os.Open()")
+	}
+	defer dir.Close()
+
+	files, err := dir.Readdirnames(0)
+	if err != nil {
+		return errors.Wrap(err, "dir.Readdirnames()")
+	}
+
+	for _, f := range files {
+		if strings.HasSuffix(f, "_generated.go") {
+			if err := os.Remove(filepath.Join(c.handlerDestination, f)); err != nil {
+				return errors.Wrap(err, "os.Remove()")
+			}
 		}
 	}
 
@@ -39,7 +78,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		return errors.Wrap(err, "generatedType()")
 	}
 
-	handlers := []*generatedHandler{
+	generatedHandlers := []*generatedHandler{
 		{
 			template:    listTemplate,
 			handlerType: List,
@@ -51,7 +90,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 	}
 
 	if md, ok := c.tableLookup[c.pluralize(structName)]; ok && !md.IsView {
-		handlers = append(handlers, &generatedHandler{
+		generatedHandlers = append(generatedHandlers, &generatedHandler{
 			template:    patchTemplate,
 			handlerType: Patch,
 		})
@@ -65,105 +104,65 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		}
 	}
 
-	fileName := fmt.Sprintf("%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
-	destinationFilePath := filepath.Join(c.handlerDestination, fileName)
+	var handlerData []byte
+	for _, h := range generatedHandlers {
+		if _, skipGeneration := opts[h.handlerType][NoGenerate]; !skipGeneration {
+			data, err := c.handlerContent(h, generatedType)
+			if err != nil {
+				return errors.Wrap(err, "replaceHandlerFileContent()")
+			}
 
-	file, err := os.OpenFile(destinationFilePath, os.O_RDWR|os.O_CREATE, 0o644)
-	if err != nil {
-		return errors.Wrap(err, "os.OpenFile()")
-	}
-	defer file.Close()
-
-	fileData, err := io.ReadAll(file)
-	if err != nil {
-		return errors.Wrap(err, "io.ReadAll()")
+			handlerData = append(handlerData, joinBytes(data, []byte("\n\n"))...)
+		}
 	}
 
-	if len(fileData) == 0 {
-		fileData = []byte("package app\n")
-	}
+	if len(handlerData) > 0 {
+		fileName := fmt.Sprintf("%s_generated.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+		destinationFilePath := filepath.Join(c.handlerDestination, fileName)
 
-	for _, h := range handlers {
-		functionName := c.handlerName(structName, h.handlerType)
-
-		_, skipGeneration := opts[h.handlerType][NoGenerate]
-		fileData, err = c.replaceHandlerFileContent(fileData, functionName, h, generatedType, skipGeneration)
+		file, err := os.OpenFile(destinationFilePath, os.O_RDWR|os.O_CREATE, 0o644)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "os.OpenFile()")
 		}
-	}
+		defer file.Close()
 
-	if len(bytes.TrimPrefix(fileData, []byte("package app\n"))) > 0 {
-		if err := c.writeBytesToFile(c.handlerDestination, file, fileData); err != nil {
-			return err
-		}
-	} else {
-		if err := file.Close(); err != nil {
-			return errors.Wrap(err, "file.Close()")
+		tmpl, err := template.New("handlers").Funcs(c.templateFuncs()).Parse(handlerHeaderTemplate)
+		if err != nil {
+			return errors.Wrap(err, "template.New().Parse()")
 		}
 
-		if err := os.Remove(destinationFilePath); err != nil {
-			return errors.Wrap(err, "os.Remove()")
+		buf := bytes.NewBuffer([]byte{})
+		if err := tmpl.Execute(buf, map[string]any{
+			"Source":   c.resourceSource,
+			"Handlers": string(handlerData),
+		}); err != nil {
+			return errors.Wrap(err, "tmpl.Execute()")
+		}
+
+		if err := c.writeBytesToFile(destinationFilePath, file, buf.Bytes()); err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
-func (c *GenerationClient) replaceHandlerFileContent(existingContent []byte, resultFunctionName string, handler *generatedHandler, generated *generatedType, emptyContent bool) ([]byte, error) {
-	var newFunctionContent []byte
+func (c *GenerationClient) handlerContent(handler *generatedHandler, generated *generatedType) ([]byte, error) {
+	log.Printf("Generating handler: %v\n", c.handlerName(generated.Name, handler.handlerType))
 
-	if !emptyContent {
-		tmpl, err := template.New("handler").Funcs(c.templateFuncs()).Parse(handler.template)
-		if err != nil {
-			return nil, errors.Wrap(err, "template.New().Parse()")
-		}
-
-		buf := bytes.NewBuffer([]byte{})
-		if err := tmpl.Execute(buf, map[string]any{
-			"Type": generated,
-		}); err != nil {
-			return nil, errors.Wrap(err, "tmpl.Execute()")
-		}
-
-		newFunctionContent = buf.Bytes()
-	}
-
-	newContent, err := c.writeHandler(resultFunctionName, existingContent, newFunctionContent)
+	tmpl, err := template.New("handler").Funcs(c.templateFuncs()).Parse(handler.template)
 	if err != nil {
-		return nil, errors.Wrap(err, "replaceFunction()")
+		return nil, errors.Wrap(err, "template.New().Parse()")
 	}
 
-	return newContent, nil
-}
-
-func (c *GenerationClient) writeHandler(functionName string, existingContent, newFunctionContent []byte) ([]byte, error) {
-	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, "", existingContent, parser.AllErrors)
-	if err != nil {
-		return nil, errors.Wrap(err, "parser.ParseFile()")
+	buf := bytes.NewBuffer([]byte{})
+	if err := tmpl.Execute(buf, map[string]any{
+		"Type": generated,
+	}); err != nil {
+		return nil, errors.Wrap(err, "tmpl.Execute()")
 	}
 
-	var start, end token.Pos
-	for _, decl := range node.Decls {
-		if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl.Name.Name == functionName {
-			start = funcDecl.Pos()
-			end = funcDecl.End()
-
-			break
-		}
-	}
-
-	log.Printf("Generating handler: %v\n", functionName)
-
-	if start == token.NoPos || end == token.NoPos {
-		return joinBytes(existingContent, []byte("\n\n"), newFunctionContent), nil
-	}
-
-	startOffset := fset.Position(start).Offset
-	endOffset := fset.Position(end).Offset
-
-	return joinBytes(existingContent[:startOffset], newFunctionContent, existingContent[endOffset:]), nil
+	return buf.Bytes(), nil
 }
 
 func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {

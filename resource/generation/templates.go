@@ -239,7 +239,8 @@ const (
 // Source: {{ .Source }}
 
 package app
-`
+
+{{ .Handlers }}`
 
 	listTemplate = `func (a *App) {{ Pluralize .Type.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Type.Name }} struct {
