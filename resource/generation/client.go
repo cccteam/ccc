@@ -40,7 +40,7 @@ func New(ctx context.Context, config *Config) (*GenerationClient, error) {
 		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
 	}
 
-	db, err := spannerContainer.CreateDatabase(ctx, "spannergen")
+	db, err := spannerContainer.CreateDatabase(ctx, "resourcegeneration")
 	if err != nil {
 		return nil, errors.Wrap(err, "container.CreateDatabase()")
 	}
