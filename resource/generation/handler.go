@@ -25,7 +25,7 @@ func (c *GenerationClient) RunHandlerGeneration() error {
 		return errors.Wrap(err, "c.structsFromSource()")
 	}
 
-	if err := removeGeneratedFiles(c.spannerDestination, Suffix); err != nil {
+	if err := removeGeneratedFiles(c.handlerDestination, Suffix); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 

@@ -333,6 +333,9 @@ func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) er
 	}
 
 	for _, f := range files {
+		if !strings.HasSuffix(f, ".go") {
+			continue
+		}
 		switch method {
 		case Suffix:
 			if err := removeGeneratedFileBySuffix(directory, f); err != nil {
