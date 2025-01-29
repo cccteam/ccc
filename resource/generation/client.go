@@ -33,8 +33,9 @@ type GenerationClient struct {
 	tableLookup        map[string]*TableMetadata
 	handlerOptions     map[string]map[HandlerType][]OptionType
 	pluralOverrides    map[string]string
-	muAlign            sync.Mutex
 	cleanup            func()
+
+	muAlign sync.Mutex
 }
 
 func New(ctx context.Context, config *Config) (*GenerationClient, error) {
@@ -176,11 +177,12 @@ func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, d
 		return errors.Wrap(err, "imports.Process()")
 	}
 
+	// align package is not concurrent safe
 	c.muAlign.Lock()
 	defer c.muAlign.Unlock()
 
 	align.Init(bytes.NewReader(data))
-	alignedData, err := align.Do()
+	data, err = align.Do()
 	if err != nil {
 		return errors.Wrap(err, "align.Do()")
 	}
@@ -191,7 +193,7 @@ func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, d
 	if _, err := file.Seek(0, 0); err != nil {
 		return errors.Wrap(err, "file.Seek()")
 	}
-	if _, err := file.Write(alignedData); err != nil {
+	if _, err := file.Write(data); err != nil {
 		return errors.Wrap(err, "file.Write()")
 	}
 
