@@ -110,7 +110,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		}
 	}
 
-	var handlerData []byte
+	var handlerData [][]byte
 	for _, h := range generatedHandlers {
 		if _, skipGeneration := opts[h.handlerType][NoGenerate]; !skipGeneration {
 			data, err := c.handlerContent(h, generatedType)
@@ -118,7 +118,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 				return errors.Wrap(err, "replaceHandlerFileContent()")
 			}
 
-			handlerData = append(handlerData, joinBytes(data, []byte("\n\n"))...)
+			handlerData = append(handlerData, data)
 		}
 	}
 
@@ -140,7 +140,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 		buf := bytes.NewBuffer(nil)
 		if err := tmpl.Execute(buf, map[string]any{
 			"Source":   c.resourceSource,
-			"Handlers": string(handlerData),
+			"Handlers": string(bytes.Join(handlerData, []byte("\n\n"))),
 		}); err != nil {
 			return errors.Wrap(err, "tmpl.Execute()")
 		}
