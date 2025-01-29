@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.9](https://github.com/cccteam/ccc/compare/resource/v0.0.8...resource/v0.0.9) (2025-01-29)
+
+
+### Bug Fixes
+
+* Fixed compound table and pluralization issues ([#168](https://github.com/cccteam/ccc/issues/168)) ([7091a1c](https://github.com/cccteam/ccc/commit/7091a1c97aab69238776d04677b846e2e0ebf670))
+
 ## [0.0.8](https://github.com/cccteam/ccc/compare/resource/v0.0.7...resource/v0.0.8) (2025-01-15)
 
 
