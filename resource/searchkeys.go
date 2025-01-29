@@ -10,7 +10,15 @@ type SearchKeys struct {
 }
 
 func NewSearchKeys[Resource Resourcer](res Resource) *SearchKeys {
-	searchTypes := []SearchType{FullText, Ngram, SubString}
+	var searchTypes []SearchType
+
+	switch res.DefaultConfig().DBType {
+	case SpannerDBType:
+		searchTypes = []SearchType{FullText, Ngram, SubString}
+	case PostgresDBType:
+		// not yet implemented
+		searchTypes = []SearchType{}
+	}
 
 	keys := make(map[SearchType][]string, 0)
 	for _, structField := range reflect.VisibleFields(reflect.TypeOf(res)) {
