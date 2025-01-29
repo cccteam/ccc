@@ -25,15 +25,16 @@ import (
 )
 
 type GenerationClient struct {
-	resourceSource     string
-	spannerDestination string
-	handlerDestination string
-	db                 *cloudspanner.Client
-	caser              *strcase.Caser
-	tableLookup        map[string]*TableMetadata
-	handlerOptions     map[string]map[HandlerType][]OptionType
-	pluralOverrides    map[string]string
-	cleanup            func()
+	resourceSource        string
+	spannerDestination    string
+	handlerDestination    string
+	typescriptDestination string
+	db                    *cloudspanner.Client
+	caser                 *strcase.Caser
+	tableLookup           map[string]*TableMetadata
+	handlerOptions        map[string]map[HandlerType][]OptionType
+	pluralOverrides       map[string]string
+	cleanup               func()
 
 	muAlign sync.Mutex
 }
