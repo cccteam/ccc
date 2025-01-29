@@ -55,29 +55,6 @@ func (c *GenerationClient) RunHandlerGeneration() error {
 	return handlerErrors
 }
 
-func (c *GenerationClient) removeHandlerDestinationFiles() error {
-	dir, err := os.Open(c.handlerDestination)
-	if err != nil {
-		return errors.Wrap(err, "os.Open()")
-	}
-	defer dir.Close()
-
-	files, err := dir.Readdirnames(0)
-	if err != nil {
-		return errors.Wrap(err, "dir.Readdirnames()")
-	}
-
-	for _, f := range files {
-		if strings.HasSuffix(f, "_generated.go") {
-			if err := os.Remove(filepath.Join(c.handlerDestination, f)); err != nil {
-				return errors.Wrap(err, "os.Remove()")
-			}
-		}
-	}
-
-	return nil
-}
-
 func (c *GenerationClient) generateHandlers(structName string) error {
 	generatedType, err := c.parseTypeForHandlerGeneration(structName)
 	if err != nil {
