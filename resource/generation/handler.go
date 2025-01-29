@@ -2,7 +2,6 @@ package generation
 
 import (
 	"bytes"
-	errs "errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -30,19 +29,26 @@ func (c *GenerationClient) RunHandlerGeneration() error {
 	}
 
 	var (
-		handlerErrors error
-		wg            sync.WaitGroup
+		errChan = make(chan error)
+		wg      sync.WaitGroup
 	)
 	// todo(jkyte): There's an issue with imports.Process() causing the generateHandlers() processto run for around 8s for each struct
 	for _, s := range structs {
 		wg.Add(1)
 		go func(structName string) {
 			if err := c.generateHandlers(structName); err != nil {
-				handlerErrors = errs.Join(handlerErrors, err)
+				errChan <- err
 			}
 			wg.Done()
 		}(s)
 	}
+
+	var handlerErrors error
+	go func() {
+		for e := range errChan {
+			handlerErrors = errors.Join(handlerErrors, e)
+		}
+	}()
 
 	wg.Wait()
 
@@ -131,7 +137,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 			return errors.Wrap(err, "template.New().Parse()")
 		}
 
-		buf := bytes.NewBuffer([]byte{})
+		buf := bytes.NewBuffer(nil)
 		if err := tmpl.Execute(buf, map[string]any{
 			"Source":   c.resourceSource,
 			"Handlers": string(handlerData),

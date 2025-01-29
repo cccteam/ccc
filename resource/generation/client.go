@@ -13,6 +13,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	cloudspanner "cloud.google.com/go/spanner"
 	initiator "github.com/cccteam/db-initiator"
@@ -32,6 +33,7 @@ type GenerationClient struct {
 	tableLookup        map[string]*TableMetadata
 	handlerOptions     map[string]map[HandlerType][]OptionType
 	pluralOverrides    map[string]string
+	muAlign            sync.Mutex
 	cleanup            func()
 }
 
@@ -174,8 +176,11 @@ func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, d
 		return errors.Wrap(err, "imports.Process()")
 	}
 
+	c.muAlign.Lock()
+	defer c.muAlign.Unlock()
+
 	align.Init(bytes.NewReader(data))
-	data, err = align.Do()
+	alignedData, err := align.Do()
 	if err != nil {
 		return errors.Wrap(err, "align.Do()")
 	}
@@ -186,7 +191,7 @@ func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, d
 	if _, err := file.Seek(0, 0); err != nil {
 		return errors.Wrap(err, "file.Seek()")
 	}
-	if _, err := file.Write(data); err != nil {
+	if _, err := file.Write(alignedData); err != nil {
 		return errors.Wrap(err, "file.Write()")
 	}
 
