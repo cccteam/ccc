@@ -125,7 +125,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 
 		log.Printf("Generating handler file: %s", fileName)
 
-		if err := c.writeBytesToFile(destinationFilePath, file, buf.Bytes(), true); err != nil {
+		if err := c.writeBytesToFile(destinationFilePath, file, buf.Bytes()); err != nil {
 			return err
 		}
 	}
