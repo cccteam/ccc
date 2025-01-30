@@ -14,6 +14,10 @@ type Link struct {
 	DisplayName string   `json:"displayName"`
 }
 
+func (l *Link) EncodeSpanner() (any, error) {
+	return spanner.NullJSON{Valid: true, Value: l}, nil
+}
+
 func (l *Link) DecodeSpanner(val any) error {
 	var jsonVal spanner.NullJSON
 	switch t := val.(type) {
