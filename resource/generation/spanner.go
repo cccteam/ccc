@@ -61,7 +61,7 @@ func (c *Client) generateResourceInterfaces(types []*generatedType) error {
 	}
 	defer file.Close()
 
-	if err := c.writeBytesToFile(destinationFile, file, output, true); err != nil {
+	if err := c.writeBytesToFile(destinationFile, file, output); err != nil {
 		return errors.Wrap(err, "c.writeBytesToFile()")
 	}
 
@@ -115,7 +115,7 @@ func (c *Client) generatePatcherTypes(generatedType *generatedType) error {
 	}
 	defer file.Close()
 
-	if err := c.writeBytesToFile(destinationFilePath, file, output, true); err != nil {
+	if err := c.writeBytesToFile(destinationFilePath, file, output); err != nil {
 		return errors.Wrap(err, "c.writeBytesToFile()")
 	}
 
