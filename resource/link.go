@@ -38,6 +38,15 @@ func (l *Link) DecodeSpanner(val any) error {
 	return nil
 }
 
+func (l *Link) MarshalJSON() ([]byte, error) {
+	b, err := json.Marshal(l)
+	if err != nil {
+		return nil, errors.Wrap(err, "json.Marshal()")
+	}
+
+	return b, nil
+}
+
 func (l *Link) UnmarshalJSON(data []byte) error {
 	var link *Link
 	if err := json.Unmarshal(data, &link); err != nil {
