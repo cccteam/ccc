@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 )
 
@@ -23,4 +24,10 @@ type DiffElem struct {
 type cacheEntry struct {
 	index int
 	tag   string
+}
+
+type Link struct {
+	ID       ccc.UUID `json:"id"`
+	Resource string   `json:"resource"`
+	Name     string   `json:"name"`
 }
