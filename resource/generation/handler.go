@@ -32,7 +32,6 @@ func (c *GenerationClient) RunHandlerGeneration() error {
 		errChan = make(chan error)
 		wg      sync.WaitGroup
 	)
-	// todo(jkyte): There's an issue with imports.Process() causing the generateHandlers() processto run for around 8s for each struct
 	for _, s := range structs {
 		wg.Add(1)
 		go func(structName string) {
@@ -66,17 +65,19 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 			template:    listTemplate,
 			handlerType: List,
 		},
-		{
-			template:    readTemplate,
-			handlerType: Read,
-		},
 	}
 
 	if md, ok := c.tableLookup[c.pluralize(structName)]; ok && !md.IsView {
-		generatedHandlers = append(generatedHandlers, &generatedHandler{
-			template:    patchTemplate,
-			handlerType: Patch,
-		})
+		generatedHandlers = append(generatedHandlers, []*generatedHandler{
+			{
+				template:    readTemplate,
+				handlerType: Read,
+			},
+			{
+				template:    patchTemplate,
+				handlerType: Patch,
+			},
+		}...)
 	}
 
 	opts := make(map[HandlerType]map[OptionType]any)
@@ -122,6 +123,8 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 			return errors.Wrap(err, "tmpl.Execute()")
 		}
 
+		log.Printf("Generating handler file: %s", fileName)
+
 		if err := c.writeBytesToFile(destinationFilePath, file, buf.Bytes()); err != nil {
 			return err
 		}
@@ -131,8 +134,6 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 }
 
 func (c *GenerationClient) handlerContent(handler *generatedHandler, generated *generatedType) ([]byte, error) {
-	log.Printf("Generating handler: %v\n", c.handlerName(generated.Name, handler.handlerType))
-
 	tmpl, err := template.New("handler").Funcs(c.templateFuncs()).Parse(handler.template)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.New().Parse()")
