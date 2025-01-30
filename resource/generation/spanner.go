@@ -170,10 +170,16 @@ func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, erro
 				fields = append(fields, c.typeFieldFromAstField(table, f, &isCompoundTable))
 			}
 
+			var isView bool
+			if table, ok := c.tableLookup[tableName]; ok {
+				isView = table.IsView
+			}
+
 			typeList = append(typeList, &generatedType{
 				Name:            ts.Name.Name,
 				Fields:          fields,
 				IsCompoundTable: isCompoundTable == (len(fields) > 1),
+				IsView:          isView,
 			})
 		}
 	}
