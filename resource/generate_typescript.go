@@ -83,11 +83,11 @@ func (s *Collection) GenerateTypeScript(dst string) error {
 	tsFile := template.Must(template.New("").Parse(tmpl))
 
 	if err := tsFile.Execute(f, TSGenerator{
-		Permissions:         s.permissions(),
-		Resources:           s.resources(),
-		ResourceTags:        s.tags(),
-		ResourcePermissions: s.resourcePermissions(),
-		Domains:             s.domains(),
+		Permissions:         s.TSPermissions(),
+		Resources:           s.TSResources(),
+		ResourceTags:        s.TSTags(),
+		ResourcePermissions: s.TSResourcePermissions(),
+		Domains:             s.TSDomains(),
 	}); err != nil {
 		return errors.Wrap(err, "template.Template.Execute()")
 	}
