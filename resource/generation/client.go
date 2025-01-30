@@ -166,28 +166,25 @@ func (c *GenerationClient) createLookupMapForQuery(ctx context.Context, qry stri
 	return m, nil
 }
 
-func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
-	if goFormat {
-		var err error
-		data, err = format.Source(data)
-		if err != nil {
-			return errors.Wrap(err, "format.Source()")
-		}
+func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, data []byte) error {
+	data, err := format.Source(data)
+	if err != nil {
+		return errors.Wrap(err, "format.Source()")
+	}
 
-		data, err = imports.Process(destination, data, nil)
-		if err != nil {
-			return errors.Wrap(err, "imports.Process()")
-		}
+	data, err = imports.Process(destination, data, nil)
+	if err != nil {
+		return errors.Wrap(err, "imports.Process()")
+	}
 
-		// align package is not concurrent safe
-		c.muAlign.Lock()
-		defer c.muAlign.Unlock()
+	// align package is not concurrent safe
+	c.muAlign.Lock()
+	defer c.muAlign.Unlock()
 
-		align.Init(bytes.NewReader(data))
-		data, err = align.Do()
-		if err != nil {
-			return errors.Wrap(err, "align.Do()")
-		}
+	align.Init(bytes.NewReader(data))
+	data, err = align.Do()
+	if err != nil {
+		return errors.Wrap(err, "align.Do()")
 	}
 
 	if err := file.Truncate(0); err != nil {
