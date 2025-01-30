@@ -1,5 +1,9 @@
 package generation
 
+import (
+	"github.com/cccteam/ccc/resource"
+)
+
 var baseTypes = []string{
 	"bool",
 	"string",
@@ -57,13 +61,15 @@ const (
 )
 
 type Config struct {
-	ResourceSource     string
-	HandlerDestination string
-	SpannerDestination string
-	Migrations         string
-	PluralOverrides    map[string]string
-	CaserGoInitialisms map[string]bool
-	IgnoredHandlers    map[string][]HandlerType
+	ResourceSource        string
+	HandlerDestination    string
+	TypescriptDestination string
+	SpannerDestination    string
+	Migrations            string
+	ResourceCollection    *resource.Collection
+	PluralOverrides       map[string]string
+	CaserGoInitialisms    map[string]bool
+	IgnoredHandlers       map[string][]HandlerType
 }
 
 type generatedType struct {

@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
 	"github.com/ettle/strcase"
@@ -31,6 +32,7 @@ type GenerationClient struct {
 	typescriptDestination string
 	db                    *cloudspanner.Client
 	caser                 *strcase.Caser
+	resourceCollection    *resource.Collection
 	tableLookup           map[string]*TableMetadata
 	handlerOptions        map[string]map[HandlerType][]OptionType
 	pluralOverrides       map[string]string
@@ -77,14 +79,16 @@ func New(ctx context.Context, config *Config) (*GenerationClient, error) {
 	}
 
 	c := &GenerationClient{
-		resourceSource:     config.ResourceSource,
-		spannerDestination: config.SpannerDestination,
-		handlerDestination: config.HandlerDestination,
-		handlerOptions:     handlerOpts,
-		pluralOverrides:    config.PluralOverrides,
-		db:                 db.Client,
-		cleanup:            cleanupFunc,
-		caser:              strcase.NewCaser(false, config.CaserGoInitialisms, nil),
+		resourceSource:        config.ResourceSource,
+		spannerDestination:    config.SpannerDestination,
+		handlerDestination:    config.HandlerDestination,
+		typescriptDestination: config.TypescriptDestination,
+		handlerOptions:        handlerOpts,
+		pluralOverrides:       config.PluralOverrides,
+		db:                    db.Client,
+		cleanup:               cleanupFunc,
+		caser:                 strcase.NewCaser(false, config.CaserGoInitialisms, nil),
+		resourceCollection:    config.ResourceCollection,
 	}
 
 	c.tableLookup, err = c.createTableLookup(ctx)
@@ -344,9 +348,10 @@ func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) er
 	}
 
 	for _, f := range files {
-		if !strings.HasSuffix(f, ".go") {
+		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") {
 			continue
 		}
+		
 		switch method {
 		case Suffix:
 			if err := removeGeneratedFileBySuffix(directory, f); err != nil {
