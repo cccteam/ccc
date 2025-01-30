@@ -14,7 +14,6 @@ import (
 
 type Resource interface {
 	resource.Resourcer
-
 {{ FormatResourceInterfaceTypes .Types }}
 }`
 
