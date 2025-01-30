@@ -286,6 +286,47 @@ func (c *GenerationClient) templateFuncs() map[string]any {
 
 			return val
 		},
+		"Mod": func(i, j int) bool {
+			return i%j == 0
+		},
+		"FormatResourceInterfaceTypes": func(types []*generatedType) string {
+			var typeNames [][]string
+			for i, t := range types {
+				if i == 0 || i%5 == 0 {
+					typeNames = append(typeNames, []string{})
+				}
+
+				typeNames[len(typeNames)-1] = append(typeNames[len(typeNames)-1], t.Name)
+			}
+
+			maxColumnWidths := make([]int, len(typeNames[0]))
+			for _, row := range typeNames {
+				for i, cell := range row {
+					if len(cell) > maxColumnWidths[i] {
+						maxColumnWidths[i] = len(cell)
+					}
+				}
+			}
+
+			var sb strings.Builder
+			for i, row := range typeNames {
+				if i != 0 {
+					sb.WriteString("\t")
+				}
+				for j, cell := range row {
+					line := fmt.Sprintf("%-*s | ", maxColumnWidths[j], cell)
+					if i == len(typeNames)-1 && j == len(row)-1 {
+						line = cell
+					}
+					sb.WriteString(line)
+				}
+				if i != len(typeNames)-1 {
+					sb.WriteString("\n")
+				}
+			}
+
+			return sb.String()
+		},
 	}
 
 	return templateFuncs
