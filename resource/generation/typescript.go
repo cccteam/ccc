@@ -15,7 +15,7 @@ import (
 )
 
 func (c *GenerationClient) runTypescriptPermissionGeneration() error {
-	// todo rc.GenerateTypescript
+	c.rc.GenerateTypeScript(filepath.Join(c.typescriptDestination, "resources.ts"))
 
 	return nil
 }
