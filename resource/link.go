@@ -19,20 +19,15 @@ func (l Link) EncodeSpanner() (any, error) {
 }
 
 func (l *Link) DecodeSpanner(val any) error {
-	var jsonVal spanner.NullJSON
+	var jsonVal string
 	switch t := val.(type) {
-	case spanner.NullJSON:
+	case string:
 		jsonVal = t
 	default:
 		return errors.Newf("failed to parse %+v (type %T) as Link", val, val)
 	}
 
-	bytes, err := jsonVal.MarshalJSON()
-	if err != nil {
-		return errors.Wrap(err, "jsonVal.MarshalJSON()")
-	}
-
-	if err := l.UnmarshalJSON(bytes); err != nil {
+	if err := l.UnmarshalJSON([]byte(jsonVal)); err != nil {
 		return errors.Wrap(err, "l.MarshalJSON()")
 	}
 
@@ -52,9 +47,12 @@ func (l *Link) UnmarshalJSON(data []byte) error {
 	if data == nil {
 		return nil
 	}
+	if string(data) == "null" {
+		return nil
+	}
 
 	var link *Link
-	if err := json.Unmarshal(data, &link); err != nil {
+	if err := json.Unmarshal(data, link); err != nil {
 		return errors.Wrap(err, "json.Unmarshal()")
 	}
 
