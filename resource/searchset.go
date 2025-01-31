@@ -6,10 +6,10 @@ type searchSet struct {
 	paramVal   string
 }
 
-func newSearchSet(typ SearchType, key, value string) *searchSet {
+func newSearchSet(typ SearchType, key, val string) *searchSet {
 	return &searchSet{
 		searchType: typ,
 		paramKey:   key,
-		paramVal:   value,
+		paramVal:   val,
 	}
 }

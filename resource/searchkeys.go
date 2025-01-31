@@ -16,7 +16,6 @@ func NewSearchKeys[Resource Resourcer](res Resource) *SearchKeys {
 	case SpannerDBType:
 		searchTypes = []SearchType{FullText, Ngram, SubString}
 	case PostgresDBType:
-		// not yet implemented
 		searchTypes = []SearchType{}
 	}
 
