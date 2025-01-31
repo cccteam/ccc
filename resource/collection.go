@@ -121,7 +121,7 @@ func (s *Collection) IsResourceImmutable(scope accesstypes.PermissionScope, res 
 	return ok
 }
 
-func (s *Collection) TSPermissions() []accesstypes.Permission {
+func (s *Collection) Permissions() []accesstypes.Permission {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -143,7 +143,7 @@ func (s *Collection) TSPermissions() []accesstypes.Permission {
 	return slices.Compact(permissions)
 }
 
-func (s *Collection) TSResources() []accesstypes.Resource {
+func (s *Collection) Resources() []accesstypes.Resource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

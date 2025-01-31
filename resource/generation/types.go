@@ -1,7 +1,6 @@
 package generation
 
 import (
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 )
 
@@ -130,8 +129,7 @@ type generatedHandler struct {
 }
 
 type generatedResource struct {
-	Name        string
-	Fields      []*generatedResource
-	DataType    string
-	Permissions []accesstypes.Permission
+	Name     string
+	Fields   []*generatedResource
+	DataType string
 }

@@ -7,49 +7,61 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *GenerationClient) RunTypescriptGeneration() error {
-	if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
+func (c *GenerationClient) RunTypescriptPermissionGeneration(rc *resource.Collection, targetDir string) error {
+	// todo rc.GenerateTypescript
+
+	return nil
+}
+
+func (c *GenerationClient) RunTypescriptMetadataGeneration(rc *resource.Collection, targetDir string) error {
+	if err := removeGeneratedFiles(targetDir, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
-	log.Println("Generating resources.ts file")
+	log.Println("Generating resource metadata file")
 
-	if err := c.generateTypescriptResources(); err != nil {
+	if err := c.generateTypescriptMetadata(rc, targetDir); err != nil {
 		return errors.Wrap(err, "generateTypescriptResources")
 	}
 
 	return nil
 }
 
-func (c *GenerationClient) generateTypescriptResources() error {
-	structs, err := c.structsFromSource()
+func (c *GenerationClient) generateTypescriptMetadata(rc *resource.Collection, targetDir string) error {
+	routerResources := rc.Resources()
+	structNames, err := c.structsFromSource()
 	if err != nil {
 		return errors.Wrap(err, "c.structsFromSource()")
 	}
 
 	var genResources []*generatedResource
-	for _, s := range structs {
-		genResource, err := c.parseStructForTypescriptGeneration(s)
-		if err != nil {
-			return errors.Wrap(err, "generatedType()")
-		}
+	for _, s := range structNames {
+		s = c.pluralize(s) // Router resources are already pluralized but the resourcetype.go structs are not
 
-		genResources = append(genResources, genResource)
+		// We only want to generate metadata for Resources that are registered in the Router
+		if slices.Contains(routerResources, accesstypes.Resource(s)) {
+			genResource, err := c.parseStructForTypescriptGeneration(s)
+			if err != nil {
+				return errors.Wrap(err, "generatedType()")
+			}
+
+			genResources = append(genResources, genResource)
+		}
 	}
 
-	output, err := c.generateTemplateOutput(newTypescriptTemplate, map[string]any{
+	output, err := c.generateTemplateOutput(typescriptMetadataTemplate, map[string]any{
 		"Resources": genResources,
 	})
 
-	destinationFilePath := filepath.Join(c.typescriptDestination, "resources2.ts")
+	destinationFilePath := filepath.Join(targetDir, "resources2.ts")
 
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
@@ -113,16 +125,6 @@ declLoop:
 					DataType: typescriptType(f.Type),
 				}
 
-				if f.Tag != nil {
-					tag := f.Tag.Value[1 : len(f.Tag.Value)-1]
-					structTag := reflect.StructTag(tag)
-
-					if perm := structTag.Get("perm"); perm != "" {
-						addPermToResource(field, perm)
-						addPermToResource(resource, perm)
-					}
-				}
-
 				fields = append(fields, field)
 			}
 
@@ -157,36 +159,5 @@ func typescriptType(t ast.Expr) string {
 		return typescriptType(t.X)
 	default:
 		return "todo"
-	}
-}
-
-func parsePermTag(perm string) accesstypes.Permission {
-	switch perm {
-	case string(accesstypes.Create):
-		return accesstypes.Create
-	case string(accesstypes.Read):
-		return accesstypes.Read
-	case string(accesstypes.List):
-		return accesstypes.List
-	case string(accesstypes.Update):
-		return accesstypes.Update
-	case string(accesstypes.Delete):
-		return accesstypes.Delete
-	default:
-		log.Fatalf("unspoorted perm: %s", perm)
-		return accesstypes.Create
-	}
-}
-
-func addPermToResource(resource *generatedResource, perm string) {
-	if strings.Contains(perm, ",") {
-		permList := strings.Split(perm, ",")
-		for _, perm := range permList {
-			addPermToResource(resource, perm)
-		}
-	} else {
-		if !slices.Contains(resource.Permissions, parsePermTag(perm)) {
-			resource.Permissions = append(resource.Permissions, parsePermTag(perm))
-		}
 	}
 }

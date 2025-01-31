@@ -16,7 +16,6 @@ import (
 	"sync"
 
 	cloudspanner "cloud.google.com/go/spanner"
-	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
 	"github.com/ettle/strcase"
@@ -26,17 +25,15 @@ import (
 )
 
 type GenerationClient struct {
-	resourceSource        string
-	spannerDestination    string
-	handlerDestination    string
-	typescriptDestination string
-	db                    *cloudspanner.Client
-	caser                 *strcase.Caser
-	resourceCollection    *resource.Collection
-	tableLookup           map[string]*TableMetadata
-	handlerOptions        map[string]map[HandlerType][]OptionType
-	pluralOverrides       map[string]string
-	cleanup               func()
+	resourceSource     string
+	spannerDestination string
+	handlerDestination string
+	db                 *cloudspanner.Client
+	caser              *strcase.Caser
+	tableLookup        map[string]*TableMetadata
+	handlerOptions     map[string]map[HandlerType][]OptionType
+	pluralOverrides    map[string]string
+	cleanup            func()
 
 	muAlign sync.Mutex
 }
@@ -79,16 +76,14 @@ func New(ctx context.Context, config *Config) (*GenerationClient, error) {
 	}
 
 	c := &GenerationClient{
-		resourceSource:        config.ResourceSource,
-		spannerDestination:    config.SpannerDestination,
-		handlerDestination:    config.HandlerDestination,
-		typescriptDestination: config.TypescriptDestination,
-		handlerOptions:        handlerOpts,
-		pluralOverrides:       config.PluralOverrides,
-		db:                    db.Client,
-		cleanup:               cleanupFunc,
-		caser:                 strcase.NewCaser(false, config.CaserGoInitialisms, nil),
-		resourceCollection:    config.ResourceCollection,
+		resourceSource:     config.ResourceSource,
+		spannerDestination: config.SpannerDestination,
+		handlerDestination: config.HandlerDestination,
+		handlerOptions:     handlerOpts,
+		pluralOverrides:    config.PluralOverrides,
+		db:                 db.Client,
+		cleanup:            cleanupFunc,
+		caser:              strcase.NewCaser(false, config.CaserGoInitialisms, nil),
 	}
 
 	c.tableLookup, err = c.createTableLookup(ctx)
@@ -351,7 +346,7 @@ func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) er
 		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") {
 			continue
 		}
-		
+
 		switch method {
 		case Suffix:
 			if err := removeGeneratedFileBySuffix(directory, f); err != nil {
