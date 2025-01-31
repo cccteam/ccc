@@ -121,7 +121,7 @@ func (s *Collection) IsResourceImmutable(scope accesstypes.PermissionScope, res 
 	return ok
 }
 
-func (s *Collection) Permissions() []accesstypes.Permission {
+func (s *Collection) permissions() []accesstypes.Permission {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -159,7 +159,7 @@ func (s *Collection) Resources() []accesstypes.Resource {
 	return slices.Compact(resources)
 }
 
-func (s *Collection) TSTags() map[accesstypes.Resource][]accesstypes.Tag {
+func (s *Collection) tags() map[accesstypes.Resource][]accesstypes.Tag {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -177,7 +177,7 @@ func (s *Collection) TSTags() map[accesstypes.Resource][]accesstypes.Tag {
 	return resourcetags
 }
 
-func (s *Collection) TSResourcePermissions() permissionMap {
+func (s *Collection) resourcePermissions() permissionMap {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -220,7 +220,7 @@ func (s *Collection) TSResourcePermissions() permissionMap {
 	return permMap
 }
 
-func (s *Collection) TSDomains() []accesstypes.PermissionScope {
+func (s *Collection) domains() []accesstypes.PermissionScope {
 	domains := make([]accesstypes.PermissionScope, 0, len(s.resourceStore))
 	for domain := range s.resourceStore {
 		domains = append(domains, domain)
