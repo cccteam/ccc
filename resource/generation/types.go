@@ -72,6 +72,8 @@ type Config struct {
 	IgnoredHandlers       map[string][]HandlerType
 }
 
+type GenerationClientOption func(*GenerationClient) error
+
 type generatedType struct {
 	Name            string
 	IsView          bool

@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
 	"github.com/ettle/strcase"
@@ -25,20 +26,27 @@ import (
 )
 
 type GenerationClient struct {
-	resourceSource     string
-	spannerDestination string
-	handlerDestination string
-	db                 *cloudspanner.Client
-	caser              *strcase.Caser
-	tableLookup        map[string]*TableMetadata
-	handlerOptions     map[string]map[HandlerType][]OptionType
-	pluralOverrides    map[string]string
-	cleanup            func()
+	genSpanner            func() error
+	genHandlers           func() error
+	genTypescriptPerm     func() error
+	genTypescriptMeta     func() error
+	resourceSource        string
+	spannerDestination    string
+	handlerDestination    string
+	typescriptDestination string
+	rc                    *resource.Collection
+	db                    *cloudspanner.Client
+	dbInitiator           *initiator.SpannerDB
+	caser                 *strcase.Caser
+	tableLookup           map[string]*TableMetadata
+	handlerOptions        map[string]map[HandlerType][]OptionType
+	pluralOverrides       map[string]string
+	cleanup               func()
 
 	muAlign sync.Mutex
 }
 
-func New(ctx context.Context, config *Config) (*GenerationClient, error) {
+func New(ctx context.Context, generatorOptions ...GenerationClientOption) (*GenerationClient, error) {
 	spannerContainer, err := initiator.NewSpannerContainer(ctx, "latest")
 	if err != nil {
 		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
@@ -59,31 +67,24 @@ func New(ctx context.Context, config *Config) (*GenerationClient, error) {
 		}
 	}
 
-	if config.Migrations != "" {
-		if err := db.MigrateUp(config.Migrations); err != nil {
-			return nil, errors.Wrap(err, "db.MigrateUp()")
-		}
-	}
-
-	handlerOpts := make(map[string]map[HandlerType][]OptionType)
-	for structName, handlerTypes := range config.IgnoredHandlers {
-		for _, handlerType := range handlerTypes {
-			if _, ok := handlerOpts[structName]; !ok {
-				handlerOpts[structName] = make(map[HandlerType][]OptionType)
-			}
-			handlerOpts[structName][handlerType] = append(handlerOpts[structName][handlerType], NoGenerate)
-		}
-	}
-
 	c := &GenerationClient{
-		resourceSource:     config.ResourceSource,
-		spannerDestination: config.SpannerDestination,
-		handlerDestination: config.HandlerDestination,
-		handlerOptions:     handlerOpts,
-		pluralOverrides:    config.PluralOverrides,
-		db:                 db.Client,
-		cleanup:            cleanupFunc,
-		caser:              strcase.NewCaser(false, config.CaserGoInitialisms, nil),
+		dbInitiator: db,
+		cleanup:     cleanupFunc,
+		caser:       strcase.NewCaser(false, nil, nil),
+	}
+
+	for _, optionFunc := range generatorOptions {
+		if err := optionFunc(c); err != nil {
+			return nil, err
+		}
+	}
+
+	c.db = db.Client
+
+	if c.genSpanner != nil || c.genHandlers != nil || c.genTypescriptMeta != nil {
+		if c.resourceSource == "" {
+			return nil, errors.New("resourceSource is required for these generators")
+		}
 	}
 
 	c.tableLookup, err = c.createTableLookup(ctx)
@@ -96,6 +97,128 @@ func New(ctx context.Context, config *Config) (*GenerationClient, error) {
 
 func (c *GenerationClient) Close() {
 	c.cleanup()
+}
+
+func ResourceSource(resourceSource string) GenerationClientOption {
+	return func(c *GenerationClient) error {
+		c.resourceSource = resourceSource
+
+		return nil
+	}
+}
+
+func Spanner(targetDir string) GenerationClientOption {
+	return func(c *GenerationClient) error {
+		c.genSpanner = func() error {
+			return c.RunSpannerGeneration()
+		}
+
+		c.spannerDestination = targetDir
+
+		return nil
+	}
+}
+
+func Handlers(targetDir string, overrides map[string][]HandlerType) GenerationClientOption {
+	return func(c *GenerationClient) error {
+		c.genHandlers = func() error {
+			return c.RunHandlerGeneration()
+		}
+
+		c.handlerDestination = targetDir
+
+		if overrides != nil {
+			c.handlerOptions = make(map[string]map[HandlerType][]OptionType)
+
+			for structName, handlerTypes := range overrides {
+				for _, handlerType := range handlerTypes {
+					if _, ok := c.handlerOptions[structName]; !ok {
+						c.handlerOptions[structName] = make(map[HandlerType][]OptionType)
+					}
+					c.handlerOptions[structName][handlerType] = append(c.handlerOptions[structName][handlerType], NoGenerate)
+				}
+			}
+
+		}
+
+		return nil
+	}
+}
+
+func TypescriptPermission(rc *resource.Collection, targetDir string) GenerationClientOption {
+	return func(c *GenerationClient) error {
+		c.genTypescriptPerm = func() error {
+			return c.runTypescriptPermissionGeneration()
+		}
+
+		c.rc = rc
+		c.typescriptDestination = targetDir
+
+		return nil
+	}
+}
+
+func TypescriptMetadata(rc *resource.Collection, targetDir string) GenerationClientOption {
+	return func(c *GenerationClient) error {
+		c.genTypescriptMeta = func() error {
+			return c.runTypescriptMetadataGeneration()
+		}
+
+		c.rc = rc
+		c.typescriptDestination = targetDir
+
+		return nil
+	}
+}
+
+func Migrations(filepath string) GenerationClientOption {
+	return func(c *GenerationClient) error {
+		if err := c.dbInitiator.MigrateUp(filepath); err != nil {
+			return errors.Wrap(err, "db.MigrateUp()")
+		}
+
+		return nil
+	}
+}
+
+func PluralOverrides(overrides map[string]string) GenerationClientOption {
+	return func(c *GenerationClient) error {
+		c.pluralOverrides = overrides
+
+		return nil
+	}
+}
+
+func CaserInitialismOverrides(overrides map[string]bool) GenerationClientOption {
+	return func(c *GenerationClient) error {
+		c.caser = strcase.NewCaser(false, overrides, nil)
+
+		return nil
+	}
+}
+
+func (c *GenerationClient) RunGeneration() error {
+	if c.genSpanner != nil {
+		if err := c.genSpanner(); err != nil {
+			return errors.Wrap(err, "c.genSpanner()")
+		}
+	}
+	if c.genHandlers != nil {
+		if err := c.genHandlers(); err != nil {
+			return errors.Wrap(err, "c.genHandlers()")
+		}
+	}
+	if c.genTypescriptPerm != nil {
+		if err := c.genTypescriptPerm(); err != nil {
+			return errors.Wrap(err, "c.genTypescriptPerm()")
+		}
+	}
+	if c.genTypescriptMeta != nil {
+		if err := c.genTypescriptMeta(); err != nil {
+			return errors.Wrap(err, "c.genTypescriptMeta()")
+		}
+	}
+	return nil
 }
 
 func (c *GenerationClient) createTableLookup(ctx context.Context) (map[string]*TableMetadata, error) {

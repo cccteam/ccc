@@ -11,32 +11,31 @@ import (
 	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/ccc/resource"
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *GenerationClient) RunTypescriptPermissionGeneration(rc *resource.Collection, targetDir string) error {
+func (c *GenerationClient) runTypescriptPermissionGeneration() error {
 	// todo rc.GenerateTypescript
 
 	return nil
 }
 
-func (c *GenerationClient) RunTypescriptMetadataGeneration(rc *resource.Collection, targetDir string) error {
-	if err := removeGeneratedFiles(targetDir, HeaderComment); err != nil {
+func (c *GenerationClient) runTypescriptMetadataGeneration() error {
+	if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
 	log.Println("Generating resource metadata file")
 
-	if err := c.generateTypescriptMetadata(rc, targetDir); err != nil {
+	if err := c.generateTypescriptMetadata(); err != nil {
 		return errors.Wrap(err, "generateTypescriptResources")
 	}
 
 	return nil
 }
 
-func (c *GenerationClient) generateTypescriptMetadata(rc *resource.Collection, targetDir string) error {
-	routerResources := rc.Resources()
+func (c *GenerationClient) generateTypescriptMetadata() error {
+	routerResources := c.rc.Resources()
 	structNames, err := c.structsFromSource()
 	if err != nil {
 		return errors.Wrap(err, "c.structsFromSource()")
@@ -44,24 +43,27 @@ func (c *GenerationClient) generateTypescriptMetadata(rc *resource.Collection, t
 
 	var genResources []*generatedResource
 	for _, s := range structNames {
-		s = c.pluralize(s) // Router resources are already pluralized but the resourcetype.go structs are not
-
 		// We only want to generate metadata for Resources that are registered in the Router
-		if slices.Contains(routerResources, accesstypes.Resource(s)) {
+		if slices.Contains(routerResources, accesstypes.Resource(c.pluralize(s))) {
 			genResource, err := c.parseStructForTypescriptGeneration(s)
 			if err != nil {
 				return errors.Wrap(err, "generatedType()")
 			}
 
 			genResources = append(genResources, genResource)
+
+			log.Printf("resource: %s, len(fields): %d", genResource.Name, len(genResource.Fields))
 		}
 	}
 
 	output, err := c.generateTemplateOutput(typescriptMetadataTemplate, map[string]any{
 		"Resources": genResources,
 	})
+	if err != nil {
+		return errors.Wrap(err, "generateTemplateOutput()")
+	}
 
-	destinationFilePath := filepath.Join(targetDir, "resources2.ts")
+	destinationFilePath := filepath.Join(c.typescriptDestination, "resources2.ts")
 
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
@@ -116,6 +118,7 @@ declLoop:
 
 			var fields []*generatedResource
 			for _, f := range st.Fields.List {
+
 				if len(f.Names) == 0 {
 					continue
 				}
