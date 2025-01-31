@@ -116,16 +116,10 @@ declLoop:
 				if f.Tag != nil {
 					tag := f.Tag.Value[1 : len(f.Tag.Value)-1]
 					structTag := reflect.StructTag(tag)
+
 					if perm := structTag.Get("perm"); perm != "" {
-						if strings.Contains(perm, ",") {
-							permList := strings.Split(perm, ",")
-							for _, p := range permList {
-								field.Permissions = append(field.Permissions, parsePermTag(p))
-								if !slices.Contains(resource.Permissions, field.Permissions[len(field.Permissions)-1]) {
-									resource.Permissions = append(resource.Permissions, field.Permissions[len(field.Permissions)-1])
-								}
-							}
-						}
+						addPermToResource(field, perm)
+						addPermToResource(resource, perm)
 					}
 				}
 
@@ -181,5 +175,18 @@ func parsePermTag(perm string) accesstypes.Permission {
 	default:
 		log.Fatalf("unspoorted perm: %s", perm)
 		return accesstypes.Create
+	}
+}
+
+func addPermToResource(resource *generatedResource, perm string) {
+	if strings.Contains(perm, ",") {
+		permList := strings.Split(perm, ",")
+		for _, perm := range permList {
+			addPermToResource(resource, perm)
+		}
+	} else {
+		if !slices.Contains(resource.Permissions, parsePermTag(perm)) {
+			resource.Permissions = append(resource.Permissions, parsePermTag(perm))
+		}
 	}
 }
