@@ -14,7 +14,7 @@ type Link struct {
 	DisplayName string   `json:"displayName"`
 }
 
-func (l *Link) EncodeSpanner() (any, error) {
+func (l Link) EncodeSpanner() (any, error) {
 	return spanner.NullJSON{Valid: true, Value: l}, nil
 }
 
@@ -35,10 +35,11 @@ func (l *Link) DecodeSpanner(val any) error {
 	if err := l.UnmarshalJSON(bytes); err != nil {
 		return errors.Wrap(err, "l.MarshalJSON()")
 	}
+
 	return nil
 }
 
-func (l *Link) MarshalJSON() ([]byte, error) {
+func (l Link) MarshalJSON() ([]byte, error) {
 	b, err := json.Marshal(l)
 	if err != nil {
 		return nil, errors.Wrap(err, "json.Marshal()")
@@ -48,6 +49,10 @@ func (l *Link) MarshalJSON() ([]byte, error) {
 }
 
 func (l *Link) UnmarshalJSON(data []byte) error {
+	if data == nil {
+		return nil
+	}
+
 	var link *Link
 	if err := json.Unmarshal(data, &link); err != nil {
 		return errors.Wrap(err, "json.Unmarshal()")
@@ -62,4 +67,8 @@ func (l *Link) UnmarshalJSON(data []byte) error {
 	l.DisplayName = link.DisplayName
 
 	return nil
+}
+
+func (l Link) IsNull() bool {
+	return l.ID.IsNil()
 }
