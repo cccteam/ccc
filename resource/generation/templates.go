@@ -452,7 +452,7 @@ export function requiresPermission(resource: Resource, permission: Permission): 
 	typescriptMetadataTemplate = `{{ if .Header }}{{ .Header }}{{ else }}// Begin Metadata{{ end }}
 	{{- $resources := .Resources }}
 	{{- range $resource := $resources }}
-	export interface {{ $resource.Name }} {
+	export interface {{ Pluralize $resource.Name }} {
 	{{- range $field := $resource.Fields }}
 		{{ Camel $field.Name }}: {{ $field.DataType }};
 	{{- end }}
@@ -461,7 +461,7 @@ export function requiresPermission(resource: Resource, permission: Permission): 
 
 	const resourceMap: ResourceMap = {
 		{{- range $resource := $resources }}
-		[Resources.{{ $resource.Name }}]: {
+		[Resources.{{ Pluralize $resource.Name }}]: {
 			route: 'to-do',
 			fields: [
 				{{- range $field := $resource.Fields }}
