@@ -480,10 +480,7 @@ export function requiresPermission(resource: Resource, permission: Permission): 
 			console.error('Resource not found in resourceMap:', resource);
 			return {} as ResourceMeta;
 		}
-	}
-	
-	
-	`
+	}`
 )
 
 func fieldAccessors(patchType PatchType) string {
