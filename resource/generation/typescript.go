@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"bytes"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -9,23 +10,54 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"text/template"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
 )
 
 func (c *GenerationClient) runTypescriptPermissionGeneration() error {
-	c.rc.GenerateTypeScript(filepath.Join(c.typescriptDestination, "resources.ts"))
+	templateData := c.rc.TypescriptData()
+
+	if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
+		return errors.Wrap(err, "removeGeneratedFiles()")
+	}
+
+	output, err := c.generateTemplateOutput(typescriptPermissionTemplate, map[string]any{
+		"Header":              typescriptTemplateHeader,
+		"Permissions":         templateData.Permissions,
+		"Resources":           templateData.Resources,
+		"ResourceTags":        templateData.ResourceTags,
+		"ResourcePermissions": templateData.ResourcePermissions,
+		"Domains":             templateData.Domains,
+		"Metadata":            c.metadataTemplate,
+	})
+	if err != nil {
+		return errors.Wrap(err, "c.generateTemplateOutput()")
+	}
+	destinationFilePath := filepath.Join(c.typescriptDestination, "resources.ts")
+
+	file, err := os.Create(destinationFilePath)
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	if err := c.writeBytesToFile(destinationFilePath, file, output, false); err != nil {
+		return errors.Wrap(err, "c.writeBytesToFile()")
+	}
+
+	log.Printf("Generated Permissions: %s\n", file.Name())
 
 	return nil
 }
 
 func (c *GenerationClient) runTypescriptMetadataGeneration() error {
-	if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
-		return errors.Wrap(err, "removeGeneratedFiles()")
+	if c.genTypescriptPerm == nil {
+		if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
+			return errors.Wrap(err, "removeGeneratedFiles()")
+		}
 	}
-
-	log.Println("Generating resource metadata file")
 
 	if err := c.generateTypescriptMetadata(); err != nil {
 		return errors.Wrap(err, "generateTypescriptResources")
@@ -51,19 +83,29 @@ func (c *GenerationClient) generateTypescriptMetadata() error {
 			}
 
 			genResources = append(genResources, genResource)
-
-			log.Printf("resource: %s, len(fields): %d", genResource.Name, len(genResource.Fields))
 		}
+	}
+
+	var header string
+	if c.genTypescriptPerm == nil {
+		header = typescriptTemplateHeader
 	}
 
 	output, err := c.generateTemplateOutput(typescriptMetadataTemplate, map[string]any{
 		"Resources": genResources,
+		"Header":    header,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFilePath := filepath.Join(c.typescriptDestination, "resources2.ts")
+	if c.genTypescriptPerm != nil {
+		c.metadataTemplate = output
+
+		return nil
+	}
+
+	destinationFilePath := filepath.Join(c.typescriptDestination, "resources.ts")
 
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
@@ -163,4 +205,18 @@ func typescriptType(t ast.Expr) string {
 	default:
 		return "todo"
 	}
+}
+
+func (c *GenerationClient) generateTypescriptTemplate(fileTemplate string, data map[string]any) ([]byte, error) {
+	tmpl, err := template.New(fileTemplate).Funcs(c.templateFuncs()).Parse(fileTemplate)
+	if err != nil {
+		return nil, errors.Wrap(err, "template.Parse()")
+	}
+
+	buf := bytes.NewBuffer([]byte{})
+	if err := tmpl.Execute(buf, data); err != nil {
+		return nil, errors.Wrap(err, "tmpl.Execute()")
+	}
+
+	return buf.Bytes(), nil
 }

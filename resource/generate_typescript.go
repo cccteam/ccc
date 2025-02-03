@@ -8,7 +8,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-type TSGenerator struct {
+type TypescriptData struct {
 	Permissions         []accesstypes.Permission
 	Resources           []accesstypes.Resource
 	ResourceTags        map[accesstypes.Resource][]accesstypes.Tag
@@ -73,6 +73,16 @@ export function requiresPermission(resource: Resource, permission: Permission): 
 }
 `
 
+func (c *Collection) TypescriptData() TypescriptData {
+	return TypescriptData{
+		Permissions:         c.permissions(),
+		Resources:           c.Resources(),
+		ResourceTags:        c.tags(),
+		ResourcePermissions: c.resourcePermissions(),
+		Domains:             c.domains(),
+	}
+}
+
 func (s *Collection) GenerateTypeScript(dst string) error {
 	f, err := os.Create(dst)
 	if err != nil {
@@ -82,12 +92,12 @@ func (s *Collection) GenerateTypeScript(dst string) error {
 
 	tsFile := template.Must(template.New("").Parse(tmpl))
 
-	if err := tsFile.Execute(f, TSGenerator{
-		Permissions:         s.Permissions(),
+	if err := tsFile.Execute(f, TypescriptData{
+		Permissions:         s.permissions(),
 		Resources:           s.Resources(),
-		ResourceTags:        s.TSTags(),
-		ResourcePermissions: s.TSResourcePermissions(),
-		Domains:             s.TSDomains(),
+		ResourceTags:        s.tags(),
+		ResourcePermissions: s.resourcePermissions(),
+		Domains:             s.domains(),
 	}); err != nil {
 		return errors.Wrap(err, "template.Template.Execute()")
 	}

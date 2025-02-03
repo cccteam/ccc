@@ -41,6 +41,7 @@ type GenerationClient struct {
 	tableLookup           map[string]*TableMetadata
 	handlerOptions        map[string]map[HandlerType][]OptionType
 	pluralOverrides       map[string]string
+	metadataTemplate      []byte
 	cleanup               func()
 
 	muAlign sync.Mutex
@@ -208,14 +209,14 @@ func (c *GenerationClient) RunGeneration() error {
 			return errors.Wrap(err, "c.genHandlers()")
 		}
 	}
-	if c.genTypescriptPerm != nil {
-		if err := c.genTypescriptPerm(); err != nil {
-			return errors.Wrap(err, "c.genTypescriptPerm()")
-		}
-	}
 	if c.genTypescriptMeta != nil {
 		if err := c.genTypescriptMeta(); err != nil {
 			return errors.Wrap(err, "c.genTypescriptMeta()")
+		}
+	}
+	if c.genTypescriptPerm != nil {
+		if err := c.genTypescriptPerm(); err != nil {
+			return errors.Wrap(err, "c.genTypescriptPerm()")
 		}
 	}
 	return nil
