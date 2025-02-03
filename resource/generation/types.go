@@ -1,9 +1,5 @@
 package generation
 
-import (
-	"github.com/cccteam/ccc/resource"
-)
-
 var baseTypes = []string{
 	"bool",
 	"string",
@@ -59,18 +55,6 @@ const (
 	resourceInterfaceOutputFilename = "resources_iface.go"
 	resourcesTestFileName           = "generated_resources_test.go"
 )
-
-type Config struct {
-	ResourceSource        string
-	HandlerDestination    string
-	TypescriptDestination string
-	SpannerDestination    string
-	Migrations            string
-	ResourceCollection    *resource.Collection
-	PluralOverrides       map[string]string
-	CaserGoInitialisms    map[string]bool
-	IgnoredHandlers       map[string][]HandlerType
-}
 
 type GenerationClientOption func(*GenerationClient) error
 
