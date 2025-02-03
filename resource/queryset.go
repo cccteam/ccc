@@ -250,3 +250,13 @@ func (q *QuerySet[Resource]) SpannerList(ctx context.Context, txn *spanner.ReadO
 
 	return nil
 }
+
+func (q *QuerySet[Resource]) SetSearchParam(searchKeys SearchType, queryParams, v string) error {
+	q.search = &searchSet{
+		searchType: searchKeys,
+		paramKey:   queryParams,
+		paramVal:   v,
+	}
+
+	return nil
+}

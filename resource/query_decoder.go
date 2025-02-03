@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"net/http"
+	"net/url"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
@@ -54,7 +55,16 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 		qSet.AddField(field)
 	}
 
-	qSet.search = parseQuery(d.searchKeys, request)
+	set, err := parseSearchParam(d.searchKeys, request.URL.Query())
+	if err != nil {
+		return nil, err
+	}
+
+	if set != nil {
+		if err := qSet.SetSearchParam(set.searchType, set.paramKey, set.paramVal); err != nil {
+			return nil, errors.Wrap(err, "SetSearchParam()")
+		}
+	}
 
 	return qSet, nil
 }
@@ -88,18 +98,23 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context) ([]accesst
 	return fields, nil
 }
 
-func parseQuery(searchKeys *SearchKeys, request *http.Request) *searchSet {
+func parseSearchParam(searchKeys *SearchKeys, queryParams url.Values) (*searchSet, error) {
 	if searchKeys == nil {
-		return nil
+		return nil, nil
 	}
+
+	var search *searchSet
 
 	for typ, keys := range searchKeys.keys {
 		for _, key := range keys {
-			if val := request.URL.Query().Get(key); val != "" {
-				return newSearchSet(typ, key, val)
+			if val := queryParams.Get(key); val != "" {
+				if search != nil {
+					return nil, errors.New("only one search parameter is allowed")
+				}
+				search = newSearchSet(typ, key, val)
 			}
 		}
 	}
 
-	return nil
+	return search, nil
 }
