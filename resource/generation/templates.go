@@ -462,7 +462,7 @@ export function requiresPermission(resource: Resource, permission: Permission): 
 	const resourceMap: ResourceMap = {
 		{{- range $resource := $resources }}
 		[Resources.{{ Pluralize $resource.Name }}]: {
-			route: '{{ Kebab $resource.Name }}',
+			route: '{{ Kebab (Pluralize $resource.Name) }}',
 			fields: [
 				{{- range $field := $resource.Fields }}
 				{ fieldName: '{{ Camel $field.Name }}', dataType: '{{ $field.DataType }}', required: false },
