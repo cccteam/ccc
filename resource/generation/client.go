@@ -70,6 +70,7 @@ func New(ctx context.Context, generatorOptions ...GenerationClientOption) (*Gene
 
 	c := &GenerationClient{
 		dbInitiator: db,
+		db:          db.Client,
 		cleanup:     cleanupFunc,
 		caser:       strcase.NewCaser(false, nil, nil),
 	}
@@ -79,8 +80,6 @@ func New(ctx context.Context, generatorOptions ...GenerationClientOption) (*Gene
 			return nil, err
 		}
 	}
-
-	c.db = db.Client
 
 	if c.genSpanner != nil || c.genHandlers != nil || c.genTypescriptMeta != nil {
 		if c.resourceSource == "" {
