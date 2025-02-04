@@ -24,3 +24,11 @@ type cacheEntry struct {
 	index int
 	tag   string
 }
+
+type TypescriptData struct {
+	Permissions         []accesstypes.Permission
+	Resources           []accesstypes.Resource
+	ResourceTags        map[accesstypes.Resource][]accesstypes.Tag
+	ResourcePermissions permissionMap
+	Domains             []accesstypes.PermissionScope
+}

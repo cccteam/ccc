@@ -274,3 +274,13 @@ func (s *Collection) Scope(resource accesstypes.Resource) accesstypes.Permission
 
 	return ""
 }
+
+func (c *Collection) TypescriptData() TypescriptData {
+	return TypescriptData{
+		Permissions:         c.permissions(),
+		Resources:           c.Resources(),
+		ResourceTags:        c.tags(),
+		ResourcePermissions: c.resourcePermissions(),
+		Domains:             c.domains(),
+	}
+}
