@@ -25,20 +25,23 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	userFromCtx       UserFromCtx
 }
 
-func NewQueryDecoder[Resource Resourcer, Request any](rSet *ResourceSet[Resource, Request], permissionChecker accesstypes.Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (*QueryDecoder[Resource, Request], error) {
-	var target Request
-	var res Resource
+func NewQueryDecoder[Res Resourcer, Req any](resSet *ResourceSet[Res, Req], permChecker accesstypes.Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (*QueryDecoder[Res, Req], error) {
+	// TODO(bswaney): Evaluate the structure of this function, something seems a little hacky
+	var req Req
+	var res Res
 
-	m, err := NewFieldMapper(target)
+	m, err := NewFieldMapper(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	return &QueryDecoder[Resource, Request]{
+	searchKeys := NewSearchKeys[Req](res)
+
+	return &QueryDecoder[Res, Req]{
 		fieldMapper:       m,
-		searchKeys:        NewSearchKeys(res),
-		resourceSet:       rSet,
-		permissionChecker: permissionChecker,
+		searchKeys:        searchKeys,
+		resourceSet:       resSet,
+		permissionChecker: permChecker,
 		domainFromCtx:     domainFromCtx,
 		userFromCtx:       userFromCtx,
 	}, nil

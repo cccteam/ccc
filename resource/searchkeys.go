@@ -9,7 +9,7 @@ type SearchKeys struct {
 	keys map[SearchType][]string
 }
 
-func NewSearchKeys[Resource Resourcer](res Resource) *SearchKeys {
+func NewSearchKeys[Req any](res Resourcer) *SearchKeys {
 	var searchTypes []SearchType
 
 	switch res.DefaultConfig().DBType {
@@ -20,7 +20,7 @@ func NewSearchKeys[Resource Resourcer](res Resource) *SearchKeys {
 	}
 
 	keys := make(map[SearchType][]string, 0)
-	for _, structField := range reflect.VisibleFields(reflect.TypeOf(res)) {
+	for _, structField := range reflect.VisibleFields(reflect.TypeFor[Req]()) {
 		for _, searchType := range searchTypes {
 			keyList := structField.Tag.Get(string(searchType))
 			if keyList == "" {
