@@ -36,7 +36,6 @@ type GenerationClient struct {
 	typescriptDestination string
 	rc                    *resource.Collection
 	db                    *cloudspanner.Client
-	dbInitiator           *initiator.SpannerDB
 	caser                 *strcase.Caser
 	tableLookup           map[string]*TableMetadata
 	handlerOptions        map[string]map[HandlerType][]OptionType
@@ -47,7 +46,7 @@ type GenerationClient struct {
 	muAlign sync.Mutex
 }
 
-func New(ctx context.Context, generatorOptions ...GenerationClientOption) (*GenerationClient, error) {
+func New(ctx context.Context, resourceSource, migrationsSource string, generatorOptions ...GenerationClientOption) (*GenerationClient, error) {
 	spannerContainer, err := initiator.NewSpannerContainer(ctx, "latest")
 	if err != nil {
 		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
@@ -68,22 +67,20 @@ func New(ctx context.Context, generatorOptions ...GenerationClientOption) (*Gene
 		}
 	}
 
+	if err := db.MigrateUp(migrationsSource); err != nil {
+		return nil, errors.Wrap(err, "db.MigrateUp()")
+	}
+
 	c := &GenerationClient{
-		dbInitiator: db,
-		db:          db.Client,
-		cleanup:     cleanupFunc,
-		caser:       strcase.NewCaser(false, nil, nil),
+		db:             db.Client,
+		resourceSource: resourceSource,
+		cleanup:        cleanupFunc,
+		caser:          strcase.NewCaser(false, nil, nil),
 	}
 
 	for _, optionFunc := range generatorOptions {
 		if err := optionFunc(c); err != nil {
 			return nil, err
-		}
-	}
-
-	if c.genSpanner != nil || c.genHandlers != nil || c.genTypescriptMeta != nil {
-		if c.resourceSource == "" {
-			return nil, errors.New("resourceSource is required for these generators")
 		}
 	}
 
@@ -97,14 +94,6 @@ func New(ctx context.Context, generatorOptions ...GenerationClientOption) (*Gene
 
 func (c *GenerationClient) Close() {
 	c.cleanup()
-}
-
-func ResourceSource(resourceSource string) GenerationClientOption {
-	return func(c *GenerationClient) error {
-		c.resourceSource = resourceSource
-
-		return nil
-	}
 }
 
 func Spanner(targetDir string) GenerationClientOption {
@@ -166,16 +155,6 @@ func TypescriptMetadata(rc *resource.Collection, targetDir string) GenerationCli
 
 		c.rc = rc
 		c.typescriptDestination = targetDir
-
-		return nil
-	}
-}
-
-func Migrations(filepath string) GenerationClientOption {
-	return func(c *GenerationClient) error {
-		if err := c.dbInitiator.MigrateUp(filepath); err != nil {
-			return errors.Wrap(err, "db.MigrateUp()")
-		}
 
 		return nil
 	}
