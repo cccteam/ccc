@@ -3,8 +3,6 @@ package generation
 import (
 	"bytes"
 	"go/ast"
-	"go/parser"
-	"go/token"
 	"log"
 	"os"
 	"path/filepath"
@@ -68,13 +66,9 @@ func (c *Client) runTypescriptMetadataGeneration() error {
 
 func (c *Client) generateTypescriptMetadata() error {
 	routerResources := c.rc.Resources()
-	structNames, err := c.structsFromSource()
-	if err != nil {
-		return errors.Wrap(err, "c.structsFromSource()")
-	}
 
 	var genResources []*generatedResource
-	for _, s := range structNames {
+	for _, s := range c.structNames {
 		// We only want to generate metadata for Resources that are registered in the Router
 		if slices.Contains(routerResources, accesstypes.Resource(c.pluralize(s))) {
 			genResource, err := c.parseStructForTypescriptGeneration(s)
@@ -121,20 +115,10 @@ func (c *Client) generateTypescriptMetadata() error {
 }
 
 func (c *Client) parseStructForTypescriptGeneration(structName string) (*generatedResource, error) {
-	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceFilePath, nil, parser.SkipObjectResolution)
-	if err != nil {
-		return nil, errors.Wrap(err, "parser.ParseFile()")
-	}
-
-	if parse == nil {
-		return nil, errors.New("unable to parse file")
-	}
-
 	resource := &generatedResource{Name: structName}
 
 declLoop:
-	for _, decl := range parse.Decls {
+	for _, decl := range c.resourceTree.Decls {
 		gd, ok := decl.(*ast.GenDecl)
 		if !ok {
 			continue

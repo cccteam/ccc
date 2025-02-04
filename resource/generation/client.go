@@ -31,12 +31,14 @@ type Client struct {
 	genTypescriptPerm     func() error
 	genTypescriptMeta     func() error
 	resourceFilePath      string
+	resourceTree          *ast.File
 	resourceDestination   string
 	handlerDestination    string
 	typescriptDestination string
 	rc                    *resource.Collection
 	db                    *cloudspanner.Client
 	caser                 *strcase.Caser
+	structNames           []string
 	tableLookup           map[string]*TableMetadata
 	handlerOptions        map[string]map[HandlerType][]OptionType
 	pluralOverrides       map[string]string
@@ -71,12 +73,21 @@ func New(ctx context.Context, resourceFilePath, migrationSourceURL string, gener
 		return nil, errors.Wrap(err, "db.MigrateUp()")
 	}
 
+	resourceTree, err := parseResourceFile(resourceFilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	structs := structsFromSource(resourceTree)
+
 	c := &Client{
 		db:                  db.Client,
 		resourceFilePath:    resourceFilePath,
+		resourceTree:        resourceTree,
 		resourceDestination: filepath.Dir(resourceFilePath),
 		cleanup:             cleanupFunc,
 		caser:               strcase.NewCaser(false, nil, nil),
+		structNames:         structs,
 	}
 
 	for _, optionFunc := range generatorOptions {
@@ -225,19 +236,9 @@ func (c *Client) writeBytesToFile(destination string, file *os.File, data []byte
 	return nil
 }
 
-func (c *Client) structsFromSource() ([]string, error) {
-	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceFilePath, nil, 0)
-	if err != nil {
-		return nil, errors.Wrap(err, "parser.ParseFile()")
-	}
-
-	if parse == nil || parse.Scope == nil {
-		return nil, errors.New("unable to parse file")
-	}
-
+func structsFromSource(resourceTree *ast.File) []string {
 	structs := make([]string, 0)
-	for k, v := range parse.Scope.Objects {
+	for k, v := range resourceTree.Scope.Objects {
 		spec, ok := v.Decl.(*ast.TypeSpec)
 		if !ok {
 			continue
@@ -251,7 +252,7 @@ func (c *Client) structsFromSource() ([]string, error) {
 		return structs[i] < structs[j]
 	})
 
-	return structs, nil
+	return structs
 }
 
 func (c *Client) templateFuncs() map[string]any {
@@ -438,4 +439,17 @@ func formatResourceInterfaceTypes(types []*generatedType) string {
 	}
 
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
+}
+
+func parseResourceFile(resourceFilePath string) (*ast.File, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, resourceFilePath, nil, 0)
+	if err != nil {
+		return nil, errors.Wrap(err, "parser.ParseFile()")
+	}
+	if file == nil {
+		return nil, errors.Newf("unable to parse `%s`", resourceFilePath)
+	}
+
+	return file, nil
 }

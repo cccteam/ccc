@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
-	"go/parser"
-	"go/token"
 	"log"
 	"os"
 	"path/filepath"
@@ -19,11 +17,6 @@ import (
 )
 
 func (c *Client) runHandlerGeneration() error {
-	structs, err := c.structsFromSource()
-	if err != nil {
-		return errors.Wrap(err, "c.structsFromSource()")
-	}
-
 	if err := removeGeneratedFiles(c.handlerDestination, Suffix); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
@@ -32,7 +25,7 @@ func (c *Client) runHandlerGeneration() error {
 		errChan = make(chan error)
 		wg      sync.WaitGroup
 	)
-	for _, s := range structs {
+	for _, s := range c.structNames {
 		wg.Add(1)
 		go func(structName string) {
 			if err := c.generateHandlers(structName); err != nil {
@@ -151,20 +144,10 @@ func (c *Client) handlerContent(handler *generatedHandler, generated *generatedT
 }
 
 func (c *Client) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {
-	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceFilePath, nil, parser.SkipObjectResolution)
-	if err != nil {
-		return nil, errors.Wrap(err, "parser.ParseFile()")
-	}
-
-	if parse == nil {
-		return nil, errors.New("unable to parse file")
-	}
-
 	generatedStruct := &generatedType{IsCompoundTable: true}
 
 declLoop:
-	for _, decl := range parse.Decls {
+	for _, decl := range c.resourceTree.Decls {
 		gd, ok := decl.(*ast.GenDecl)
 		if !ok {
 			continue

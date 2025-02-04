@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
-	"go/parser"
-	"go/token"
 	"log"
 	"os"
 	"path/filepath"
@@ -123,18 +121,8 @@ func (c *Client) generatePatcherTypes(generatedType *generatedType) error {
 }
 
 func (c *Client) buildPatcherTypesFromSource() ([]*generatedType, error) {
-	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceFilePath, nil, parser.SkipObjectResolution)
-	if err != nil {
-		return nil, errors.Wrap(err, "parser.ParseFile()")
-	}
-
-	if parse == nil {
-		return nil, errors.New("unable to parse file")
-	}
-
 	typeList := make([]*generatedType, 0)
-	for _, d := range parse.Decls {
+	for _, d := range c.resourceTree.Decls {
 		gd, ok := d.(*ast.GenDecl)
 		if !ok {
 			continue
