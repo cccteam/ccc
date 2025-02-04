@@ -10,7 +10,7 @@ type GenerationClientOption func(*GenerationClient) error
 func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) GenerationClientOption {
 	return func(c *GenerationClient) error {
 		c.genHandlers = func() error {
-			return c.RunHandlerGeneration()
+			return c.runHandlerGeneration()
 		}
 
 		c.handlerDestination = targetDir

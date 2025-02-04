@@ -18,7 +18,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *GenerationClient) RunHandlerGeneration() error {
+func (c *GenerationClient) runHandlerGeneration() error {
 	structs, err := c.structsFromSource()
 	if err != nil {
 		return errors.Wrap(err, "c.structsFromSource()")
