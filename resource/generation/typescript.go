@@ -226,14 +226,4 @@ func (c *Client) generateTypescriptTemplate(fileTemplate string, data map[string
 	return buf.Bytes(), nil
 }
 
-func (r generatedResource) DataType() string {
-	if string(r.dataType) == "uuid" {
-		return "string"
-	}
 
-	return string(r.dataType)
-}
-
-func (r generatedResource) MetaType() string {
-	return string(r.dataType)
-}

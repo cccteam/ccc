@@ -118,3 +118,15 @@ type generatedResource struct {
 	dataType string
 	Required bool
 }
+
+func (r generatedResource) DataType() string {
+	if r.dataType == "uuid" {
+		return "string"
+	}
+
+	return r.dataType
+}
+
+func (r generatedResource) MetaType() string {
+	return r.dataType
+}
