@@ -71,7 +71,7 @@ func (l Link) IsNull() bool {
 }
 
 type NullLink struct {
-	Link
+	Link  Link
 	Valid bool
 }
 
