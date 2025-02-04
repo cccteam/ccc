@@ -71,10 +71,11 @@ func New(ctx context.Context, resourceFilePath, migrationSourceURL string, gener
 	}
 
 	c := &GenerationClient{
-		db:               db.Client,
-		resourceFilePath: resourceFilePath,
-		cleanup:          cleanupFunc,
-		caser:            strcase.NewCaser(false, nil, nil),
+		db:                  db.Client,
+		resourceFilePath:    resourceFilePath,
+		resourceDestination: filepath.Dir(resourceFilePath),
+		cleanup:             cleanupFunc,
+		caser:               strcase.NewCaser(false, nil, nil),
 	}
 
 	for _, optionFunc := range generatorOptions {
