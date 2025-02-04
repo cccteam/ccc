@@ -118,4 +118,5 @@ type generatedResource struct {
 	Name     string
 	Fields   []*generatedResource
 	DataType string
+	Required bool
 }

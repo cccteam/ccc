@@ -153,7 +153,7 @@ declLoop:
 				continue
 			}
 
-			_, ok = c.tableLookup[c.pluralize(structName)]
+			tableMeta, ok := c.tableLookup[c.pluralize(structName)]
 			if !ok {
 				return nil, errors.Newf("table not found: %s", c.pluralize(structName))
 			}
@@ -165,9 +165,12 @@ declLoop:
 					continue
 				}
 
+				nullable := tableMeta.Columns[f.Names[0].Name].IsNullable
+
 				field := &generatedResource{
 					Name:     f.Names[0].Name,
 					DataType: typescriptType(f.Type),
+					Required: !nullable,
 				}
 
 				fields = append(fields, field)

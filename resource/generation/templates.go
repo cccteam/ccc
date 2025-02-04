@@ -465,7 +465,7 @@ export function requiresPermission(resource: Resource, permission: Permission): 
 			route: '{{ Kebab (Pluralize $resource.Name) }}',
 			fields: [
 				{{- range $field := $resource.Fields }}
-				{ fieldName: '{{ Camel $field.Name }}', dataType: '{{ Lower $field.DataType }}', required: false },
+				{ fieldName: '{{ Camel $field.Name }}', dataType: '{{ Lower $field.DataType }}', required: {{ $field.Required }} },
 				{{- end }}
 			],
 		},
