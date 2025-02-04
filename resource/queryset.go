@@ -17,7 +17,7 @@ import (
 
 type QuerySet[Resource Resourcer] struct {
 	keys   *fieldSet
-	search *searchSet
+	search *SearchSet
 	fields []accesstypes.Field
 	rMeta  *ResourceMetadata[Resource]
 }
@@ -168,11 +168,11 @@ func (q *QuerySet[Resource]) spannerSearchStmt() (spanner.Statement, error) {
 	var search Statement
 	var score Statement
 
-	query := parseSpannerQuery(q.search.paramVal)
-	switch q.search.searchType {
+	query := parseSpannerQuery(q.search.searchVal)
+	switch q.search.searchTyp {
 	case SubString:
-		search = query.parseToSearchSubstring(q.search.paramKey)
-		score = query.parseToNgramScore(q.search.paramKey)
+		search = query.parseToSearchSubstring(q.search.searchKey)
+		score = query.parseToNgramScore(q.search.searchKey)
 	case FullText:
 		return spanner.Statement{}, errors.New("FullText search is not yet implemented")
 	case Ngram:
@@ -251,12 +251,6 @@ func (q *QuerySet[Resource]) SpannerList(ctx context.Context, txn *spanner.ReadO
 	return nil
 }
 
-func (q *QuerySet[Resource]) SetSearchParam(searchKeys SearchType, queryParams, v string) error {
-	q.search = &searchSet{
-		searchType: searchKeys,
-		paramKey:   queryParams,
-		paramVal:   v,
-	}
-
-	return nil
+func (q *QuerySet[Resource]) SetSearchParam(searchSet *SearchSet) {
+	q.search = searchSet
 }

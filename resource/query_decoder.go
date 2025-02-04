@@ -62,13 +62,9 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 	if err != nil {
 		return nil, err
 	}
-
 	if set != nil {
-		if err := qSet.SetSearchParam(set.searchType, set.paramKey, set.paramVal); err != nil {
-			return nil, errors.Wrap(err, "SetSearchParam()")
-		}
+		qSet.SetSearchParam(set)
 	}
-
 	return qSet, nil
 }
 
@@ -101,12 +97,12 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context) ([]accesst
 	return fields, nil
 }
 
-func parseSearchParam(searchKeys *SearchKeys, queryParams url.Values) (*searchSet, error) {
+func parseSearchParam(searchKeys *SearchKeys, queryParams url.Values) (*SearchSet, error) {
 	if searchKeys == nil {
 		return nil, nil
 	}
 
-	var search *searchSet
+	var search *SearchSet
 
 	for typ, keys := range searchKeys.keys {
 		for _, key := range keys {
@@ -114,7 +110,7 @@ func parseSearchParam(searchKeys *SearchKeys, queryParams url.Values) (*searchSe
 				if search != nil {
 					return nil, errors.New("only one search parameter is allowed")
 				}
-				search = newSearchSet(typ, key, val)
+				search = NewSearchSet(typ, key, val)
 			}
 		}
 	}
