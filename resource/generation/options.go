@@ -7,18 +7,6 @@ import (
 
 type GenerationClientOption func(*GenerationClient) error
 
-func GenerateResources(targetDir string) GenerationClientOption {
-	return func(c *GenerationClient) error {
-		c.genResources = func() error {
-			return c.RunResourcesGeneration()
-		}
-
-		c.spannerDestination = targetDir
-
-		return nil
-	}
-}
-
 func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) GenerationClientOption {
 	return func(c *GenerationClient) error {
 		c.genHandlers = func() error {

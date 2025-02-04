@@ -17,8 +17,8 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *GenerationClient) RunResourcesGeneration() error {
-	if err := removeGeneratedFiles(c.spannerDestination, HeaderComment); err != nil {
+func (c *GenerationClient) runResourcesGeneration() error {
+	if err := removeGeneratedFiles(c.resourceDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
@@ -53,7 +53,7 @@ func (c *GenerationClient) generateResourceInterfaces(types []*generatedType) er
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(c.spannerDestination, resourceInterfaceOutputFilename)
+	destinationFile := filepath.Join(c.resourceDestination, resourceInterfaceOutputFilename)
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -77,7 +77,7 @@ func (c *GenerationClient) generateResourceTests(types []*generatedType) error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(c.spannerDestination, resourcesTestFileName)
+	destinationFile := filepath.Join(c.resourceDestination, resourcesTestFileName)
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -94,7 +94,7 @@ func (c *GenerationClient) generateResourceTests(types []*generatedType) error {
 
 func (c *GenerationClient) generatePatcherTypes(generatedType *generatedType) error {
 	fileName := fmt.Sprintf("%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
-	destinationFilePath := filepath.Join(c.spannerDestination, fileName)
+	destinationFilePath := filepath.Join(c.resourceDestination, fileName)
 
 	log.Printf("Generating spanner file: %v\n", fileName)
 

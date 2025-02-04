@@ -26,12 +26,11 @@ import (
 )
 
 type GenerationClient struct {
-	genResources          func() error
 	genHandlers           func() error
 	genTypescriptPerm     func() error
 	genTypescriptMeta     func() error
 	resourceFilePath      string
-	spannerDestination    string
+	resourceDestination   string
 	handlerDestination    string
 	typescriptDestination string
 	rc                    *resource.Collection
@@ -97,11 +96,10 @@ func (c *GenerationClient) Close() {
 }
 
 func (c *GenerationClient) RunGeneration() error {
-	if c.genResources != nil {
-		if err := c.genResources(); err != nil {
-			return errors.Wrap(err, "c.genResources()")
-		}
+	if err := c.runResourcesGeneration(); err != nil {
+		return errors.Wrap(err, "c.genResources()")
 	}
+
 	if c.genHandlers != nil {
 		if err := c.genHandlers(); err != nil {
 			return errors.Wrap(err, "c.genHandlers()")
