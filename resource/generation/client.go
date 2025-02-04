@@ -26,7 +26,7 @@ import (
 )
 
 type GenerationClient struct {
-	genSpanner            func() error
+	genResources          func() error
 	genHandlers           func() error
 	genTypescriptPerm     func() error
 	genTypescriptMeta     func() error
@@ -96,10 +96,10 @@ func (c *GenerationClient) Close() {
 	c.cleanup()
 }
 
-func Spanner(targetDir string) GenerationClientOption {
+func Resources(targetDir string) GenerationClientOption {
 	return func(c *GenerationClient) error {
-		c.genSpanner = func() error {
-			return c.RunSpannerGeneration()
+		c.genResources = func() error {
+			return c.RunResourcesGeneration()
 		}
 
 		c.spannerDestination = targetDir
@@ -177,9 +177,9 @@ func CaserInitialismOverrides(overrides map[string]bool) GenerationClientOption 
 }
 
 func (c *GenerationClient) RunGeneration() error {
-	if c.genSpanner != nil {
-		if err := c.genSpanner(); err != nil {
-			return errors.Wrap(err, "c.genSpanner()")
+	if c.genResources != nil {
+		if err := c.genResources(); err != nil {
+			return errors.Wrap(err, "c.genResources()")
 		}
 	}
 	if c.genHandlers != nil {

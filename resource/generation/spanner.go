@@ -17,7 +17,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *GenerationClient) RunSpannerGeneration() error {
+func (c *GenerationClient) RunResourcesGeneration() error {
 	if err := removeGeneratedFiles(c.spannerDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
