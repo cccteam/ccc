@@ -5,10 +5,10 @@ import (
 	"github.com/ettle/strcase"
 )
 
-type GenerationClientOption func(*GenerationClient) error
+type ClientOption func(*Client) error
 
-func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) GenerationClientOption {
-	return func(c *GenerationClient) error {
+func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) ClientOption {
+	return func(c *Client) error {
 		c.genHandlers = func() error {
 			return c.runHandlerGeneration()
 		}
@@ -33,8 +33,8 @@ func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) Gene
 	}
 }
 
-func GenerateTypescriptPermission(rc *resource.Collection, targetDir string) GenerationClientOption {
-	return func(c *GenerationClient) error {
+func GenerateTypescriptPermission(rc *resource.Collection, targetDir string) ClientOption {
+	return func(c *Client) error {
 		c.genTypescriptPerm = func() error {
 			return c.runTypescriptPermissionGeneration()
 		}
@@ -46,8 +46,8 @@ func GenerateTypescriptPermission(rc *resource.Collection, targetDir string) Gen
 	}
 }
 
-func GenerateTypescriptMetadata(rc *resource.Collection, targetDir string) GenerationClientOption {
-	return func(c *GenerationClient) error {
+func GenerateTypescriptMetadata(rc *resource.Collection, targetDir string) ClientOption {
+	return func(c *Client) error {
 		c.genTypescriptMeta = func() error {
 			return c.runTypescriptMetadataGeneration()
 		}
@@ -59,16 +59,16 @@ func GenerateTypescriptMetadata(rc *resource.Collection, targetDir string) Gener
 	}
 }
 
-func WithPluralOverrides(overrides map[string]string) GenerationClientOption {
-	return func(c *GenerationClient) error {
+func WithPluralOverrides(overrides map[string]string) ClientOption {
+	return func(c *Client) error {
 		c.pluralOverrides = overrides
 
 		return nil
 	}
 }
 
-func CaserInitialismOverrides(overrides map[string]bool) GenerationClientOption {
-	return func(c *GenerationClient) error {
+func CaserInitialismOverrides(overrides map[string]bool) ClientOption {
+	return func(c *Client) error {
 		c.caser = strcase.NewCaser(false, overrides, nil)
 
 		return nil

@@ -25,7 +25,7 @@ import (
 	"golang.org/x/tools/imports"
 )
 
-type GenerationClient struct {
+type Client struct {
 	genHandlers           func() error
 	genTypescriptPerm     func() error
 	genTypescriptMeta     func() error
@@ -45,7 +45,7 @@ type GenerationClient struct {
 	muAlign sync.Mutex
 }
 
-func New(ctx context.Context, resourceFilePath, migrationSourceURL string, generatorOptions ...GenerationClientOption) (*GenerationClient, error) {
+func New(ctx context.Context, resourceFilePath, migrationSourceURL string, generatorOptions ...ClientOption) (*Client, error) {
 	spannerContainer, err := initiator.NewSpannerContainer(ctx, "latest")
 	if err != nil {
 		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
@@ -70,7 +70,7 @@ func New(ctx context.Context, resourceFilePath, migrationSourceURL string, gener
 		return nil, errors.Wrap(err, "db.MigrateUp()")
 	}
 
-	c := &GenerationClient{
+	c := &Client{
 		db:                  db.Client,
 		resourceFilePath:    resourceFilePath,
 		resourceDestination: filepath.Dir(resourceFilePath),
@@ -92,15 +92,14 @@ func New(ctx context.Context, resourceFilePath, migrationSourceURL string, gener
 	return c, nil
 }
 
-func (c *GenerationClient) Close() {
+func (c *Client) Close() {
 	c.cleanup()
 }
 
-func (c *GenerationClient) RunGeneration() error {
+func (c *Client) RunGeneration() error {
 	if err := c.runResourcesGeneration(); err != nil {
 		return errors.Wrap(err, "c.genResources()")
 	}
-
 	if c.genHandlers != nil {
 		if err := c.genHandlers(); err != nil {
 			return errors.Wrap(err, "c.genHandlers()")
@@ -116,10 +115,11 @@ func (c *GenerationClient) RunGeneration() error {
 			return errors.Wrap(err, "c.genTypescriptPerm()")
 		}
 	}
+
 	return nil
 }
 
-func (c *GenerationClient) createTableLookup(ctx context.Context) (map[string]*TableMetadata, error) {
+func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetadata, error) {
 	qry := `SELECT DISTINCT
 		c.TABLE_NAME,
 		c.COLUMN_NAME,
@@ -146,7 +146,7 @@ func (c *GenerationClient) createTableLookup(ctx context.Context) (map[string]*T
 	return c.createLookupMapForQuery(ctx, qry)
 }
 
-func (c *GenerationClient) createLookupMapForQuery(ctx context.Context, qry string) (map[string]*TableMetadata, error) {
+func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[string]*TableMetadata, error) {
 	stmt := cloudspanner.Statement{SQL: qry}
 
 	var result []InformationSchemaResult
@@ -187,7 +187,7 @@ func (c *GenerationClient) createLookupMapForQuery(ctx context.Context, qry stri
 	return m, nil
 }
 
-func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
+func (c *Client) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
 	if goFormat {
 		var err error
 		data, err = format.Source(data)
@@ -224,7 +224,7 @@ func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, d
 	return nil
 }
 
-func (c *GenerationClient) structsFromSource() ([]string, error) {
+func (c *Client) structsFromSource() ([]string, error) {
 	tk := token.NewFileSet()
 	parse, err := parser.ParseFile(tk, c.resourceFilePath, nil, 0)
 	if err != nil {
@@ -253,7 +253,7 @@ func (c *GenerationClient) structsFromSource() ([]string, error) {
 	return structs, nil
 }
 
-func (c *GenerationClient) templateFuncs() map[string]any {
+func (c *Client) templateFuncs() map[string]any {
 	templateFuncs := map[string]any{
 		"Pluralize": c.pluralize,
 		"GoCamel":   strcase.ToGoCamel,
@@ -318,7 +318,7 @@ func (c *GenerationClient) templateFuncs() map[string]any {
 	return templateFuncs
 }
 
-func (c *GenerationClient) pluralize(value string) string {
+func (c *Client) pluralize(value string) string {
 	if plural, ok := c.pluralOverrides[value]; ok {
 		return plural
 	}

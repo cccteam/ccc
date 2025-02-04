@@ -16,7 +16,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *GenerationClient) runTypescriptPermissionGeneration() error {
+func (c *Client) runTypescriptPermissionGeneration() error {
 	templateData := c.rc.TypescriptData()
 
 	if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
@@ -52,7 +52,7 @@ func (c *GenerationClient) runTypescriptPermissionGeneration() error {
 	return nil
 }
 
-func (c *GenerationClient) runTypescriptMetadataGeneration() error {
+func (c *Client) runTypescriptMetadataGeneration() error {
 	if c.genTypescriptPerm == nil {
 		if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
 			return errors.Wrap(err, "removeGeneratedFiles()")
@@ -66,7 +66,7 @@ func (c *GenerationClient) runTypescriptMetadataGeneration() error {
 	return nil
 }
 
-func (c *GenerationClient) generateTypescriptMetadata() error {
+func (c *Client) generateTypescriptMetadata() error {
 	routerResources := c.rc.Resources()
 	structNames, err := c.structsFromSource()
 	if err != nil {
@@ -120,7 +120,7 @@ func (c *GenerationClient) generateTypescriptMetadata() error {
 	return nil
 }
 
-func (c *GenerationClient) parseStructForTypescriptGeneration(structName string) (*generatedResource, error) {
+func (c *Client) parseStructForTypescriptGeneration(structName string) (*generatedResource, error) {
 	tk := token.NewFileSet()
 	parse, err := parser.ParseFile(tk, c.resourceFilePath, nil, parser.SkipObjectResolution)
 	if err != nil {
@@ -212,7 +212,7 @@ func typescriptType(t ast.Expr) string {
 	}
 }
 
-func (c *GenerationClient) generateTypescriptTemplate(fileTemplate string, data map[string]any) ([]byte, error) {
+func (c *Client) generateTypescriptTemplate(fileTemplate string, data map[string]any) ([]byte, error) {
 	tmpl, err := template.New(fileTemplate).Funcs(c.templateFuncs()).Parse(fileTemplate)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.Parse()")

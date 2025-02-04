@@ -18,7 +18,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *GenerationClient) runHandlerGeneration() error {
+func (c *Client) runHandlerGeneration() error {
 	structs, err := c.structsFromSource()
 	if err != nil {
 		return errors.Wrap(err, "c.structsFromSource()")
@@ -54,7 +54,7 @@ func (c *GenerationClient) runHandlerGeneration() error {
 	return handlerErrors
 }
 
-func (c *GenerationClient) generateHandlers(structName string) error {
+func (c *Client) generateHandlers(structName string) error {
 	generatedType, err := c.parseTypeForHandlerGeneration(structName)
 	if err != nil {
 		return errors.Wrap(err, "generatedType()")
@@ -133,7 +133,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 	return nil
 }
 
-func (c *GenerationClient) handlerContent(handler *generatedHandler, generated *generatedType) ([]byte, error) {
+func (c *Client) handlerContent(handler *generatedHandler, generated *generatedType) ([]byte, error) {
 	tmpl, err := template.New("handler").Funcs(c.templateFuncs()).Parse(handler.template)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.New().Parse()")
@@ -149,7 +149,7 @@ func (c *GenerationClient) handlerContent(handler *generatedHandler, generated *
 	return buf.Bytes(), nil
 }
 
-func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {
+func (c *Client) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {
 	tk := token.NewFileSet()
 	parse, err := parser.ParseFile(tk, c.resourceFilePath, nil, parser.SkipObjectResolution)
 	if err != nil {
@@ -260,7 +260,7 @@ func parseTags(field *typeField, fieldTag reflect.StructTag) {
 	}
 }
 
-func (c *GenerationClient) handlerName(structName string, handlerType HandlerType) string {
+func (c *Client) handlerName(structName string, handlerType HandlerType) string {
 	var functionName string
 	switch handlerType {
 	case List:
