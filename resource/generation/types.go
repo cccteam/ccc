@@ -115,6 +115,6 @@ type generatedHandler struct {
 type generatedResource struct {
 	Name     string
 	Fields   []*generatedResource
-	DataType string
+	dataType string
 	Required bool
 }

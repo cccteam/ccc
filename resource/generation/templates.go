@@ -465,7 +465,7 @@ const resourceMap: ResourceMap = {
     route: '{{ Kebab (Pluralize $resource.Name) }}',
     fields: [
       {{- range $field := $resource.Fields }}
-      { fieldName: '{{ Camel $field.Name }}', dataType: '{{ Lower $field.DataType }}', required: {{ $field.Required }} },
+      { fieldName: '{{ Camel $field.Name }}', dataType: '{{ Lower $field.MetaType }}', required: {{ $field.Required }} },
       {{- end }}
     ],
   },

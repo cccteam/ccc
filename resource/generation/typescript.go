@@ -169,7 +169,7 @@ declLoop:
 
 				field := &generatedResource{
 					Name:     f.Names[0].Name,
-					DataType: typescriptType(f.Type),
+					dataType: typescriptType(f.Type),
 					Required: !nullable,
 				}
 
@@ -224,4 +224,16 @@ func (c *Client) generateTypescriptTemplate(fileTemplate string, data map[string
 	}
 
 	return buf.Bytes(), nil
+}
+
+func (r generatedResource) DataType() string {
+	if string(r.dataType) == "uuid" {
+		return "string"
+	}
+
+	return string(r.dataType)
+}
+
+func (r generatedResource) MetaType() string {
+	return string(r.dataType)
 }
