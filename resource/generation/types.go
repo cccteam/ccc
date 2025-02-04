@@ -56,8 +56,6 @@ const (
 	resourcesTestFileName           = "generated_resources_test.go"
 )
 
-type GenerationClientOption func(*GenerationClient) error
-
 type generatedType struct {
 	Name            string
 	IsView          bool
