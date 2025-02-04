@@ -190,7 +190,7 @@ func typescriptType(t ast.Expr) string {
 			return "boolean"
 		case strings.Contains(t.Name, "string"), strings.Contains(t.Name, "UUID"):
 			return "string"
-		case strings.Contains(t.Name, "int"), strings.Contains(t.Name, "float"):
+		case strings.Contains(t.Name, "int"), strings.Contains(t.Name, "float"), strings.Contains(t.Name, "Decimal"):
 			return "number"
 		case strings.Contains(t.Name, "Time"):
 			return "date"
