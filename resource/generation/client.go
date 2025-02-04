@@ -270,7 +270,8 @@ func (c *GenerationClient) createLookupMapForQuery(ctx context.Context, qry stri
 
 func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
 	if goFormat {
-		data, err := format.Source(data)
+		var err error
+		data, err = format.Source(data)
 		if err != nil {
 			return errors.Wrap(err, "format.Source()")
 		}
