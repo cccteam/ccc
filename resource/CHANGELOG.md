@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.10](https://github.com/cccteam/ccc/compare/resource/v0.0.9...resource/v0.0.10) (2025-02-04)
+
+
+### Features
+
+* typescript generation augmented ([#175](https://github.com/cccteam/ccc/issues/175)) ([d2f1ccd](https://github.com/cccteam/ccc/commit/d2f1ccd27a92d8f3e503b27c8dbb3179dbcbfb7d))
+* Virtual resource generation and resource interface formatting ([#172](https://github.com/cccteam/ccc/issues/172)) ([a3e6747](https://github.com/cccteam/ccc/commit/a3e6747886a67f5bafe2f4540fc67a860bb50f1b))
+
 ## [0.0.9](https://github.com/cccteam/ccc/compare/resource/v0.0.8...resource/v0.0.9) (2025-01-29)
 
 
