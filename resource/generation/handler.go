@@ -42,14 +42,15 @@ func (c *Client) runHandlerGeneration() error {
 		}(s)
 	}
 
-	var handlerErrors error
 	go func() {
-		for e := range errChan {
-			handlerErrors = errors.Join(handlerErrors, e)
-		}
+		wg.Wait()
+		close(errChan)
 	}()
 
-	wg.Wait()
+	var handlerErrors error
+	for e := range errChan {
+		handlerErrors = errors.Join(handlerErrors, e)
+	}
 
 	return handlerErrors
 }
