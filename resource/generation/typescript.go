@@ -189,9 +189,11 @@ func typescriptType(t ast.Expr) string {
 	switch t := t.(type) {
 	case *ast.Ident:
 		switch {
+		case strings.Contains(t.Name, "UUID"):
+			return "uuid"
 		case strings.Contains(t.Name, "bool"):
 			return "boolean"
-		case strings.Contains(t.Name, "string"), strings.Contains(t.Name, "UUID"):
+		case strings.Contains(t.Name, "string"):
 			return "string"
 		case strings.Contains(t.Name, "int"), strings.Contains(t.Name, "float"), strings.Contains(t.Name, "Decimal"):
 			return "number"
