@@ -46,7 +46,7 @@ func (c *GenerationClient) RunResourcesGeneration() error {
 
 func (c *GenerationClient) generateResourceInterfaces(types []*generatedType) error {
 	output, err := c.generateTemplateOutput(resourcesInterfaceTemplate, map[string]any{
-		"Source": c.resourceSource,
+		"Source": c.resourceFilePath,
 		"Types":  types,
 	})
 	if err != nil {
@@ -70,7 +70,7 @@ func (c *GenerationClient) generateResourceInterfaces(types []*generatedType) er
 
 func (c *GenerationClient) generateResourceTests(types []*generatedType) error {
 	output, err := c.generateTemplateOutput(resourcesTestTemplate, map[string]any{
-		"Source": c.resourceSource,
+		"Source": c.resourceFilePath,
 		"Types":  types,
 	})
 	if err != nil {
@@ -99,7 +99,7 @@ func (c *GenerationClient) generatePatcherTypes(generatedType *generatedType) er
 	log.Printf("Generating spanner file: %v\n", fileName)
 
 	output, err := c.generateTemplateOutput(resourceFileTemplate, map[string]any{
-		"Source":          c.resourceSource,
+		"Source":          c.resourceFilePath,
 		"Name":            generatedType.Name,
 		"IsView":          generatedType.IsView,
 		"Fields":          generatedType.Fields,
@@ -124,7 +124,7 @@ func (c *GenerationClient) generatePatcherTypes(generatedType *generatedType) er
 
 func (c *GenerationClient) buildPatcherTypesFromSource() ([]*generatedType, error) {
 	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceSource, nil, parser.SkipObjectResolution)
+	parse, err := parser.ParseFile(tk, c.resourceFilePath, nil, parser.SkipObjectResolution)
 	if err != nil {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}

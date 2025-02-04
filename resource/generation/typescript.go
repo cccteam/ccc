@@ -122,7 +122,7 @@ func (c *GenerationClient) generateTypescriptMetadata() error {
 
 func (c *GenerationClient) parseStructForTypescriptGeneration(structName string) (*generatedResource, error) {
 	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceSource, nil, parser.SkipObjectResolution)
+	parse, err := parser.ParseFile(tk, c.resourceFilePath, nil, parser.SkipObjectResolution)
 	if err != nil {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}

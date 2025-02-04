@@ -7,7 +7,7 @@ import (
 
 type GenerationClientOption func(*GenerationClient) error
 
-func Resources(targetDir string) GenerationClientOption {
+func GenerateResources(targetDir string) GenerationClientOption {
 	return func(c *GenerationClient) error {
 		c.genResources = func() error {
 			return c.RunResourcesGeneration()
@@ -19,7 +19,7 @@ func Resources(targetDir string) GenerationClientOption {
 	}
 }
 
-func Handlers(targetDir string, overrides map[string][]HandlerType) GenerationClientOption {
+func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) GenerationClientOption {
 	return func(c *GenerationClient) error {
 		c.genHandlers = func() error {
 			return c.RunHandlerGeneration()
@@ -45,7 +45,7 @@ func Handlers(targetDir string, overrides map[string][]HandlerType) GenerationCl
 	}
 }
 
-func TypescriptPermission(rc *resource.Collection, targetDir string) GenerationClientOption {
+func GenerateTypescriptPermission(rc *resource.Collection, targetDir string) GenerationClientOption {
 	return func(c *GenerationClient) error {
 		c.genTypescriptPerm = func() error {
 			return c.runTypescriptPermissionGeneration()
@@ -58,7 +58,7 @@ func TypescriptPermission(rc *resource.Collection, targetDir string) GenerationC
 	}
 }
 
-func TypescriptMetadata(rc *resource.Collection, targetDir string) GenerationClientOption {
+func GenerateTypescriptMetadata(rc *resource.Collection, targetDir string) GenerationClientOption {
 	return func(c *GenerationClient) error {
 		c.genTypescriptMeta = func() error {
 			return c.runTypescriptMetadataGeneration()
@@ -71,7 +71,7 @@ func TypescriptMetadata(rc *resource.Collection, targetDir string) GenerationCli
 	}
 }
 
-func PluralOverrides(overrides map[string]string) GenerationClientOption {
+func WithPluralOverrides(overrides map[string]string) GenerationClientOption {
 	return func(c *GenerationClient) error {
 		c.pluralOverrides = overrides
 

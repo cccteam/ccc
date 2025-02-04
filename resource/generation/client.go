@@ -30,7 +30,7 @@ type GenerationClient struct {
 	genHandlers           func() error
 	genTypescriptPerm     func() error
 	genTypescriptMeta     func() error
-	resourceSource        string
+	resourceFilePath      string
 	spannerDestination    string
 	handlerDestination    string
 	typescriptDestination string
@@ -46,7 +46,7 @@ type GenerationClient struct {
 	muAlign sync.Mutex
 }
 
-func New(ctx context.Context, resourceSource, migrationsSource string, generatorOptions ...GenerationClientOption) (*GenerationClient, error) {
+func New(ctx context.Context, resourceFilePath, migrationSourceURL string, generatorOptions ...GenerationClientOption) (*GenerationClient, error) {
 	spannerContainer, err := initiator.NewSpannerContainer(ctx, "latest")
 	if err != nil {
 		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
@@ -67,15 +67,15 @@ func New(ctx context.Context, resourceSource, migrationsSource string, generator
 		}
 	}
 
-	if err := db.MigrateUp(migrationsSource); err != nil {
+	if err := db.MigrateUp(migrationSourceURL); err != nil {
 		return nil, errors.Wrap(err, "db.MigrateUp()")
 	}
 
 	c := &GenerationClient{
-		db:             db.Client,
-		resourceSource: resourceSource,
-		cleanup:        cleanupFunc,
-		caser:          strcase.NewCaser(false, nil, nil),
+		db:               db.Client,
+		resourceFilePath: resourceFilePath,
+		cleanup:          cleanupFunc,
+		caser:            strcase.NewCaser(false, nil, nil),
 	}
 
 	for _, optionFunc := range generatorOptions {
@@ -227,7 +227,7 @@ func (c *GenerationClient) writeBytesToFile(destination string, file *os.File, d
 
 func (c *GenerationClient) structsFromSource() ([]string, error) {
 	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceSource, nil, 0)
+	parse, err := parser.ParseFile(tk, c.resourceFilePath, nil, 0)
 	if err != nil {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}

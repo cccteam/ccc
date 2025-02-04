@@ -117,7 +117,7 @@ func (c *GenerationClient) generateHandlers(structName string) error {
 
 		buf := bytes.NewBuffer(nil)
 		if err := tmpl.Execute(buf, map[string]any{
-			"Source":   c.resourceSource,
+			"Source":   c.resourceFilePath,
 			"Handlers": string(bytes.Join(handlerData, []byte("\n\n"))),
 		}); err != nil {
 			return errors.Wrap(err, "tmpl.Execute()")
@@ -151,7 +151,7 @@ func (c *GenerationClient) handlerContent(handler *generatedHandler, generated *
 
 func (c *GenerationClient) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {
 	tk := token.NewFileSet()
-	parse, err := parser.ParseFile(tk, c.resourceSource, nil, parser.SkipObjectResolution)
+	parse, err := parser.ParseFile(tk, c.resourceFilePath, nil, parser.SkipObjectResolution)
 	if err != nil {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}
