@@ -26,7 +26,6 @@ func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) Clie
 					c.handlerOptions[structName][handlerType] = append(c.handlerOptions[structName][handlerType], NoGenerate)
 				}
 			}
-
 		}
 
 		return nil

@@ -160,7 +160,6 @@ declLoop:
 
 			var fields []*generatedResource
 			for _, f := range st.Fields.List {
-
 				if len(f.Names) == 0 {
 					continue
 				}
@@ -201,15 +200,16 @@ func typescriptType(t ast.Expr) string {
 			return "Date"
 		default:
 			log.Panicf("type `%s` is not supported (yet)", t.Name)
-			return "todo"
 		}
 	case *ast.SelectorExpr:
 		return typescriptType(t.Sel)
 	case *ast.StarExpr:
 		return typescriptType(t.X)
 	default:
-		return "todo"
+		log.Panicf("type at pos `%d` is not supported (yet)", t.Pos())
 	}
+
+	return ""
 }
 
 func (c *Client) generateTypescriptTemplate(fileTemplate string, data map[string]any) ([]byte, error) {

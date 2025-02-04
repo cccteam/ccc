@@ -8,10 +8,13 @@ linters-settings:
           - $all
         allow:
           - $gostd
+          - cloud.google.com/go/spanner
           - github.com/cccteam
+          - github.com/ettle/strcase
           - github.com/go-playground/errors/v5
           - github.com/gofrs/uuid
           - github.com/google/go-cmp/cmp
+          - github.com/momaek/formattag/align
   funlen:
     lines: 100
     statements: 50
@@ -86,7 +89,7 @@ linters:
     - errcheck # Errcheck is a program for checking for unchecked errors in go programs. These unchecked errors can be critical bugs in some cases [fast: false, auto-fix: false]
     - errorlint # errorlint is a linter for that can be used to find code that will cause problems with the error wrapping scheme introduced in Go 1.13. [fast: false, auto-fix: false]
     - exhaustive # check exhaustiveness of enum switch statements [fast: false, auto-fix: false]
-    - exportloopref # checks for pointers to enclosing loop variables [fast: false, auto-fix: false]
+    - copyloopvar
     - forcetypeassert # finds forced type assertions [fast: true, auto-fix: false]
     - funlen # Tool for detection of long functions [fast: true, auto-fix: false]
     - gochecknoinits # Checks that no init functions are present in Go code [fast: true, auto-fix: false]

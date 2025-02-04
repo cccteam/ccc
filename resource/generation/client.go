@@ -1,3 +1,4 @@
+// package generation provides the ability to generate resource, handler, and typescript permissions and metadata code from a resource file.
 package generation
 
 import (
