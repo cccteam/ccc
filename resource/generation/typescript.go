@@ -193,7 +193,7 @@ func typescriptType(t ast.Expr) string {
 		case strings.Contains(t.Name, "int"), strings.Contains(t.Name, "float"), strings.Contains(t.Name, "Decimal"):
 			return "number"
 		case strings.Contains(t.Name, "Time"):
-			return "date"
+			return "Date"
 		default:
 			log.Panicf("type `%s` is not supported (yet)", t.Name)
 			return "todo"

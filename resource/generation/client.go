@@ -340,6 +340,7 @@ func (c *GenerationClient) templateFuncs() map[string]any {
 		"GoCamel":   strcase.ToGoCamel,
 		"Camel":     c.caser.ToCamel,
 		"Kebab":     c.caser.ToKebab,
+		"Lower":     strings.ToLower,
 		"PrimaryKeyTypeIsUUID": func(fields []*typeField) bool {
 			for _, f := range fields {
 				if f.IsPrimaryKey {
