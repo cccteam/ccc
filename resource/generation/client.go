@@ -363,7 +363,7 @@ func (c *Client) formatTokenTags(tableName, fieldName string) string {
 		for k, v := range t.SearchIndexes {
 			for _, f := range v {
 				if f.fieldName == fieldName {
-					tokenIndexMap[string(f.tokenType)] = append(tokenIndexMap[string(f.tokenType)], k)
+					tokenIndexMap[f.tokenType] = append(tokenIndexMap[f.tokenType], k)
 					continue
 				}
 			}
@@ -503,14 +503,15 @@ func searchExpressionFields(expression string, cols map[string]FieldMetadata) []
 	for i := 1; i < len(lines)-1; i++ {
 		l := lines[i]
 		if matches := tokenizeRegex.FindAllStringSubmatch(l, -1); len(matches) > 0 && len(matches[0]) > 1 {
-			var tokenType resource.SearchType
+			// todo(jkyte): use resource.SearchType when it's available
+			var tokenType string
 			switch {
 			case strings.Contains(l, "SUBSTRING"):
-				tokenType = resource.SubString
+				tokenType = "substring"
 			case strings.Contains(l, "FULLTEXT"):
-				tokenType = resource.FullText
+				tokenType = "fulltext"
 			case strings.Contains(l, "NGRAMS"):
-				tokenType = resource.Ngram
+				tokenType = "ngram"
 			}
 
 			fieldName := matches[0][1]

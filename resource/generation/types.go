@@ -2,8 +2,6 @@ package generation
 
 import (
 	"regexp"
-
-	"github.com/cccteam/ccc/resource"
 )
 
 var baseTypes = []string{
@@ -149,6 +147,6 @@ func (r generatedResource) MetaType() string {
 }
 
 type expressionField struct {
-	tokenType resource.SearchType
+	tokenType string
 	fieldName string
 }
