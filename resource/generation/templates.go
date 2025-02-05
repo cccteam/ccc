@@ -72,6 +72,17 @@ func (q *{{ $TypeName }}Query) {{ .Name }}() {{ .Type }} {
 {{ end }}
 {{ end }}
 
+{{ if ne (len .SearchIndexes) 0 }}
+{{ range .SearchIndexes }}
+func (q *{{ $TypeName }}Query) SearchBy{{ .Name }}(v string) *{{ $TypeName }}Query {
+	searchSet := resource.NewSearchSet({{ ResourceSearchType .SearchType }}, "{{ .Name }}", v)
+	q.qSet.SetSearchParam(searchSet)
+
+	return q
+}
+{{ end }}
+{{ end }}
+
 func (q *{{ .Name }}Query) Query() *resource.QuerySet[{{ .Name }}] {
 	return q.qSet
 }

@@ -67,6 +67,7 @@ type generatedType struct {
 	IsView          bool
 	IsCompoundTable bool
 	Fields          []*typeField
+	SearchIndexes   []*searchIndex
 }
 
 type typeField struct {
@@ -82,6 +83,11 @@ type typeField struct {
 	ListPerm       string
 	PatchPerm      string
 	Conditions     []string
+}
+
+type searchIndex struct {
+	Name       string
+	SearchType string
 }
 
 type FieldMetadata struct {

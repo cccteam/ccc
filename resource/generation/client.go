@@ -336,6 +336,18 @@ func (c *Client) templateFuncs() map[string]any {
 		},
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
 		"FormatTokenTag":               c.formatTokenTags,
+		"ResourceSearchType": func(searchType string) string {
+			switch searchType {
+			case "SUBSTRING":
+				return "resource.SubString"
+			case "FULLTEXT":
+				return "resource.FullText"
+			case "NGRAMS":
+				return "resource.Ngram"
+			default:
+				return ""
+			}
+		},
 	}
 
 	return templateFuncs
