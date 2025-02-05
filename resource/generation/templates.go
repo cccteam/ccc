@@ -244,7 +244,7 @@ package app
 
 	listTemplate = `func (a *App) {{ Pluralize .Type.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Type.Name }} struct {
-		{{ range .Type.Fields }}{{ .Name }} {{ .Type }} ` + "`json:\"{{ DetermineJSONTag . false }}\"{{ FormatPerm .ListPerm }}{{ FormatQueryTag .QueryTag }}`" + `
+		{{ range .Type.Fields }}{{ .Name }} {{ .Type }} ` + "`json:\"{{ DetermineJSONTag . false }}\"{{ if eq .IsIndex true }}index:\"true\"{{end}}{{ FormatPerm .ListPerm }}{{ FormatQueryTag .QueryTag }}`" + `
 		{{ end }}
 	}
 
@@ -277,7 +277,7 @@ package app
 
 	readTemplate = `func (a *App) {{ .Type.Name }}() http.HandlerFunc {
 	type response struct {
-		{{ range .Type.Fields }}{{ .Name }} {{ .Type }} ` + "`json:\"{{ DetermineJSONTag . false }}\"{{ FormatPerm .ReadPerm }}{{ FormatQueryTag .QueryTag }}`" + `
+		{{ range .Type.Fields }}{{ .Name }} {{ .Type }} ` + "`json:\"{{ DetermineJSONTag . false }}\"{{ if eq .IsUniqueIndex true }}index:\"true\"{{end}}{{ FormatPerm .ReadPerm }}{{ FormatQueryTag .QueryTag }}`" + `
 		{{ end }}
 	}
 

@@ -200,6 +200,7 @@ func (c *Client) typeFieldFromAstField(tableMetadata *TableMetadata, f *ast.Fiel
 	if data, ok := tableMetadata.Columns[column]; ok {
 		field.IsPrimaryKey = data.ConstraintType == PrimaryKey
 		field.IsIndex = data.IsIndex
+		field.IsUniqueIndex = data.IsUniqueIndex
 
 		if data.ConstraintType != PrimaryKey && data.ConstraintType != ForeignKey {
 			*isCompoundTable = false

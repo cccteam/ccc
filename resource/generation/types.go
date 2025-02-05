@@ -69,6 +69,7 @@ type typeField struct {
 	Tag            string
 	IsPrimaryKey   bool
 	IsIndex        bool
+	IsUniqueIndex  bool
 	QueryTag       string
 	ConstraintType string
 	ReadPerm       string
@@ -83,6 +84,7 @@ type FieldMetadata struct {
 	SpannerType    string
 	IsNullable     bool
 	IsIndex        bool
+	IsUniqueIndex  bool
 }
 
 type InformationSchemaResult struct {
@@ -94,6 +96,7 @@ type InformationSchemaResult struct {
 	IsNullable      bool    `spanner:"IS_NULLABLE"`
 	IsView          bool    `spanner:"IS_VIEW"`
 	IsIndex         bool    `spanner:"IS_INDEX"`
+	IsUniqueIndex   bool    `spanner:"IS_UNIQUE_INDEX"`
 	OrdinalPosition int64   `spanner:"ORDINAL_POSITION"`
 }
 

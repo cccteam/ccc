@@ -140,7 +140,8 @@ func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 		c.SPANNER_TYPE,
 		tc.CONSTRAINT_TYPE,
 		(t.TABLE_NAME IS NULL AND v.TABLE_NAME IS NOT NULL) as IS_VIEW,
-		ic.INDEX_NAME IS NOT NULL as IS_INDEX,
+		ic.INDEX_NAME IS NOT NULL AS IS_INDEX,
+		COALESCE(i.IS_UNIQUE, false) AS IS_UNIQUE_INDEX,
 		c.ORDINAL_POSITION
 	FROM INFORMATION_SCHEMA.COLUMNS c
 		LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
@@ -152,6 +153,8 @@ func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 		LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
 		LEFT JOIN INFORMATION_SCHEMA.INDEX_COLUMNS ic ON c.COLUMN_NAME = ic.COLUMN_NAME
 			AND c.TABLE_NAME = ic.TABLE_NAME
+		LEFT JOIN INFORMATION_SCHEMA.INDEXES i ON ic.INDEX_NAME = i.INDEX_NAME 
+			AND c.TABLE_NAME = i.TABLE_NAME 
 	WHERE c.TABLE_SCHEMA != 'INFORMATION_SCHEMA'
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
 
@@ -190,6 +193,7 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 				IsNullable:     r.IsNullable,
 				ConstraintType: ct,
 				IsIndex:        r.IsIndex,
+				IsUniqueIndex:  r.IsUniqueIndex,
 			}
 		}
 
