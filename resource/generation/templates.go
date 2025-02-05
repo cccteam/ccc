@@ -243,8 +243,9 @@ package app
 {{ .Handlers }}`
 
 	listTemplate = `func (a *App) {{ Pluralize .Type.Name }}() http.HandlerFunc {
+	{{ $StructName := Pluralize .Type.Name -}}
 	type {{ GoCamel .Type.Name }} struct {
-		{{ range .Type.Fields }}{{ .Name }} {{ .Type }} ` + "`json:\"{{ DetermineJSONTag . false }}\"{{ if eq .IsIndex true }}index:\"true\"{{end}}{{ FormatPerm .ListPerm }}{{ FormatQueryTag .QueryTag }}`" + `
+		{{ range .Type.Fields }}{{ .Name }} {{ .Type }} ` + "`json:\"{{ DetermineJSONTag . false }}\"{{ if eq .IsIndex true }}index:\"true\"{{end}}{{ FormatPerm .ListPerm }}{{ FormatQueryTag .QueryTag }}{{ FormatTokenTag $StructName .Name }}`" + `
 		{{ end }}
 	}
 
@@ -276,8 +277,9 @@ package app
 }`
 
 	readTemplate = `func (a *App) {{ .Type.Name }}() http.HandlerFunc {
+	{{ $StructName := Pluralize .Type.Name -}}
 	type response struct {
-		{{ range .Type.Fields }}{{ .Name }} {{ .Type }} ` + "`json:\"{{ DetermineJSONTag . false }}\"{{ if eq .IsUniqueIndex true }}index:\"true\"{{end}}{{ FormatPerm .ReadPerm }}{{ FormatQueryTag .QueryTag }}`" + `
+		{{ range .Type.Fields }}{{ .Name }} {{ .Type }} ` + "`json:\"{{ DetermineJSONTag . false }}\"{{ if eq .IsUniqueIndex true }}index:\"true\"{{end}}{{ FormatPerm .ReadPerm }}{{ FormatQueryTag .QueryTag }}{{ FormatTokenTag $StructName .Name }}`" + `
 		{{ end }}
 	}
 

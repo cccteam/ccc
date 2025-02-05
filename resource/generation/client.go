@@ -9,6 +9,8 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"log"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -163,6 +165,8 @@ func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 }
 
 func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[string]*TableMetadata, error) {
+	log.Println("Creating spanner table lookup...")
+
 	stmt := cloudspanner.Statement{SQL: qry}
 
 	var result []InformationSchemaResult
@@ -177,16 +181,16 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 		table, ok := m[tableName]
 		if !ok || table.Columns == nil {
 			table = &TableMetadata{
-				Columns:        make(map[string]FieldMetadata),
-				SearchIndicies: make(map[string][]*expressionField),
-				IsView:         r.IsView,
+				Columns:       make(map[string]FieldMetadata),
+				SearchIndexes: make(map[string][]*expressionField),
+				IsView:        r.IsView,
 			}
 		}
 
 		if r.SpannerType == "TOKENLIST" {
 			if r.GenerationExpression != nil {
-				for _, f := range searchExpressionFields(*r.GenerationExpression) {
-					table.SearchIndicies[r.ColumnName] = append(table.SearchIndicies[r.ColumnName], f)
+				for _, f := range searchExpressionFields(*r.GenerationExpression, table.Columns) {
+					table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], f)
 				}
 
 				continue
@@ -331,6 +335,7 @@ func (c *Client) templateFuncs() map[string]any {
 			return val
 		},
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
+		"FormatTokenTag":               c.formatTokenTags,
 	}
 
 	return templateFuncs
@@ -350,6 +355,27 @@ func (c *Client) pluralize(value string) string {
 	default:
 		return value + "s"
 	}
+}
+
+func (c *GenerationClient) formatTokenTags(tableName, fieldName string) string {
+	tokenIndexMap := make(map[string][]string)
+	if t, ok := c.tableLookup[tableName]; ok {
+		for k, v := range t.SearchIndexes {
+			for _, f := range v {
+				if f.fieldName == fieldName {
+					tokenIndexMap[string(f.tokenType)] = append(tokenIndexMap[string(f.tokenType)], k)
+					continue
+				}
+			}
+		}
+	}
+
+	var tags []string
+	for tt, indexes := range tokenIndexMap {
+		tags = append(tags, fmt.Sprintf(`%s:"%s"`, tt, strings.Join(indexes, ",")))
+	}
+
+	return strings.Join(tags, " ")
 }
 
 func fieldType(expr ast.Expr, isHandlerOutput bool) string {
@@ -470,8 +496,8 @@ func parseResourceFile(resourceFilePath string) (*ast.File, error) {
 	return file, nil
 }
 
-func searchExpressionFields(expression string) []*expressionField {
-	var fields []*expressionField
+func searchExpressionFields(expression string, cols map[string]FieldMetadata) []*expressionField {
+	fieldMap := make(map[string]*expressionField)
 
 	lines := strings.Split(expression, "\n")
 	for i := 1; i < len(lines)-1; i++ {
@@ -487,17 +513,23 @@ func searchExpressionFields(expression string) []*expressionField {
 				tokenType = resource.Ngram
 			}
 
-			// todo: this needs to be sanitized in case there a wrapped value like SUBSTR(...)
 			fieldName := matches[0][1]
+			colKeys := maps.Keys(cols)
+			for k := range colKeys {
+				if strings.Contains(fieldName, k) {
+					fieldName = k
+					break
+				}
+			}
 
-			if tokenType != "" {
-				fields = append(fields, &expressionField{
+			if _, ok := fieldMap[fieldName]; !ok && tokenType != "" {
+				fieldMap[fieldName] = &expressionField{
 					tokenType: tokenType,
 					fieldName: fieldName,
-				})
+				}
 			}
 		}
 	}
 
-	return fields
+	return slices.Collect(maps.Values(fieldMap))
 }

@@ -110,9 +110,9 @@ type InformationSchemaResult struct {
 }
 
 type TableMetadata struct {
-	Columns        map[string]FieldMetadata
-	SearchIndicies map[string][]*expressionField
-	IsView         bool
+	Columns       map[string]FieldMetadata
+	SearchIndexes map[string][]*expressionField
+	IsView        bool
 }
 
 type generationOption struct {
