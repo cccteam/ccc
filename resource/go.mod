@@ -6,9 +6,9 @@ require (
 	cloud.google.com/go/spanner v1.75.0
 	github.com/cccteam/ccc v0.2.9
 	github.com/cccteam/ccc/accesstypes v0.5.0
-	github.com/cccteam/db-initiator v0.2.4
-	github.com/cccteam/httpio v0.7.5
-	github.com/cccteam/session v0.4.3
+	github.com/cccteam/db-initiator v0.2.5
+	github.com/cccteam/httpio v0.7.6
+	github.com/cccteam/session v0.5.2
 	github.com/cccteam/spxscan v0.0.3
 	github.com/ettle/strcase v0.2.0
 	github.com/go-chi/chi/v5 v5.2.1
