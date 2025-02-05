@@ -16,7 +16,7 @@ var baseTypes = []string{
 	"error",
 }
 
-var tokenizeRegex = regexp.MustCompile(`TOKENIZE_SUBSTRING\(([^)]+)\)`)
+var tokenizeRegex = regexp.MustCompile(`TOKENIZE_([^)]+)\(([^)]+)\)`)
 
 type ConstraintType string
 

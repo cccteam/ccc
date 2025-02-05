@@ -364,7 +364,6 @@ func (c *Client) formatTokenTags(tableName, fieldName string) string {
 			for _, f := range v {
 				if f.fieldName == fieldName {
 					tokenIndexMap[f.tokenType] = append(tokenIndexMap[f.tokenType], k)
-					continue
 				}
 			}
 		}
@@ -502,19 +501,21 @@ func searchExpressionFields(expression string, cols map[string]FieldMetadata) []
 	lines := strings.Split(expression, "\n")
 	for i := 1; i < len(lines)-1; i++ {
 		l := lines[i]
-		if matches := tokenizeRegex.FindAllStringSubmatch(l, -1); len(matches) > 0 && len(matches[0]) > 1 {
+		if matches := tokenizeRegex.FindAllStringSubmatch(l, -1); len(matches) > 0 && len(matches[0]) > 2 {
+			searchType := matches[0][1]
+
 			// todo(jkyte): use resource.SearchType when it's available
 			var tokenType string
-			switch {
-			case strings.Contains(l, "SUBSTRING"):
+			switch searchType {
+			case "SUBSTRING":
 				tokenType = "substring"
-			case strings.Contains(l, "FULLTEXT"):
+			case "FULLTEXT":
 				tokenType = "fulltext"
-			case strings.Contains(l, "NGRAMS"):
+			case "NGRAMS":
 				tokenType = "ngram"
 			}
 
-			fieldName := matches[0][1]
+			fieldName := matches[0][2]
 			colKeys := maps.Keys(cols)
 			for k := range colKeys {
 				if strings.Contains(fieldName, k) {
