@@ -89,10 +89,14 @@ func (nl *NullLink) DecodeSpanner(val any) error {
 		jsonVal = t
 	case *string:
 		if t == nil {
+			nl.Valid = false
+
 			return nil
 		}
 		jsonVal = *t
 	case nil:
+		nl.Valid = false
+
 		return nil
 	default:
 		return errors.Newf("failed to parse %+v (type %T) as NullLink", val, val)
@@ -120,10 +124,13 @@ func (nl NullLink) MarshalJSON() ([]byte, error) {
 
 func (nl *NullLink) UnmarshalJSON(data []byte) error {
 	if data == nil {
+		nl.Valid = false
+
 		return nil
 	}
 	if string(data) == "null" {
 		nl.Valid = false
+
 		return nil
 	}
 
