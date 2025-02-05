@@ -188,15 +188,18 @@ func typescriptType(t ast.Expr) string {
 	switch t := t.(type) {
 	case *ast.Ident:
 		switch {
-		case strings.Contains(t.Name, "UUID"):
+		case t.Name == "Link", t.Name == "NullLink":
+			return "link"
+		case t.Name == "UUID", t.Name == "NullUUID":
 			return "uuid"
-		case strings.Contains(t.Name, "bool"):
+		case t.Name == "bool":
 			return "boolean"
-		case strings.Contains(t.Name, "string"):
+		case t.Name == "string":
 			return "string"
-		case strings.Contains(t.Name, "int"), strings.Contains(t.Name, "float"), strings.Contains(t.Name, "Decimal"):
+		case strings.HasPrefix(t.Name, "int"), strings.HasPrefix(t.Name, "uint"),
+			strings.HasPrefix(t.Name, "float"), t.Name == "Decimal", t.Name == "NullDecimal":
 			return "number"
-		case strings.Contains(t.Name, "Time"):
+		case t.Name == "Time", t.Name == "NullTime":
 			return "Date"
 		default:
 			log.Panicf("type `%s` is not supported (yet)", t.Name)
@@ -225,5 +228,3 @@ func (c *Client) generateTypescriptTemplate(fileTemplate string, data map[string
 
 	return buf.Bytes(), nil
 }
-
-
