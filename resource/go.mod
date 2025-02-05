@@ -10,6 +10,7 @@ require (
 	github.com/cccteam/httpio v0.7.6
 	github.com/cccteam/session v0.5.2
 	github.com/cccteam/spxscan v0.0.3
+	github.com/cloudspannerecosystem/memefish v0.0.0-20241203074241-66dfc61aa2dd
 	github.com/ettle/strcase v0.2.0
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/go-playground/errors/v5 v5.4.0

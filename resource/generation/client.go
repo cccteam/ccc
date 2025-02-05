@@ -142,6 +142,7 @@ func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 		(t.TABLE_NAME IS NULL AND v.TABLE_NAME IS NOT NULL) as IS_VIEW,
 		ic.INDEX_NAME IS NOT NULL AS IS_INDEX,
 		COALESCE(i.IS_UNIQUE, false) AS IS_UNIQUE_INDEX,
+		c.GENERATION_EXPRESSION,
 		c.ORDINAL_POSITION
 	FROM INFORMATION_SCHEMA.COLUMNS c
 		LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
@@ -176,8 +177,19 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 		table, ok := m[tableName]
 		if !ok || table.Columns == nil {
 			table = &TableMetadata{
-				Columns: make(map[string]FieldMetadata),
-				IsView:  r.IsView,
+				Columns:        make(map[string]FieldMetadata),
+				SearchIndicies: make(map[string][]*expressionField),
+				IsView:         r.IsView,
+			}
+		}
+
+		if r.SpannerType == "TOKENLIST" {
+			if r.GenerationExpression != nil {
+				for _, f := range searchExpressionFields(*r.GenerationExpression) {
+					table.SearchIndicies[r.ColumnName] = append(table.SearchIndicies[r.ColumnName], f)
+				}
+
+				continue
 			}
 		}
 
@@ -456,4 +468,36 @@ func parseResourceFile(resourceFilePath string) (*ast.File, error) {
 	}
 
 	return file, nil
+}
+
+func searchExpressionFields(expression string) []*expressionField {
+	var fields []*expressionField
+
+	lines := strings.Split(expression, "\n")
+	for i := 1; i < len(lines)-1; i++ {
+		l := lines[i]
+		if matches := tokenizeRegex.FindAllStringSubmatch(l, -1); len(matches) > 0 && len(matches[0]) > 1 {
+			var tokenType resource.SearchType
+			switch {
+			case strings.Contains(l, "SUBSTRING"):
+				tokenType = resource.SubString
+			case strings.Contains(l, "FULLTEXT"):
+				tokenType = resource.FullText
+			case strings.Contains(l, "NGRAMS"):
+				tokenType = resource.Ngram
+			}
+
+			// todo: this needs to be sanitized in case there a wrapped value like SUBSTR(...)
+			fieldName := matches[0][1]
+
+			if tokenType != "" {
+				fields = append(fields, &expressionField{
+					tokenType: tokenType,
+					fieldName: fieldName,
+				})
+			}
+		}
+	}
+
+	return fields
 }
