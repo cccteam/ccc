@@ -357,7 +357,7 @@ func (c *Client) pluralize(value string) string {
 	}
 }
 
-func (c *GenerationClient) formatTokenTags(tableName, fieldName string) string {
+func (c *Client) formatTokenTags(tableName, fieldName string) string {
 	tokenIndexMap := make(map[string][]string)
 	if t, ok := c.tableLookup[tableName]; ok {
 		for k, v := range t.SearchIndexes {
