@@ -6,7 +6,7 @@ import (
 )
 
 type SearchKeys struct {
-	keys map[SearchType][]string
+	keys map[SearchKey]SearchType
 }
 
 func NewSearchKeys[Req any](res Resourcer) *SearchKeys {
@@ -19,7 +19,7 @@ func NewSearchKeys[Req any](res Resourcer) *SearchKeys {
 		searchTypes = []SearchType{}
 	}
 
-	keys := make(map[SearchType][]string, 0)
+	keys := make(map[SearchKey]SearchType, 0)
 	for _, structField := range reflect.VisibleFields(reflect.TypeFor[Req]()) {
 		for _, searchType := range searchTypes {
 			keyList := structField.Tag.Get(string(searchType))
@@ -27,13 +27,24 @@ func NewSearchKeys[Req any](res Resourcer) *SearchKeys {
 				continue
 			}
 
-			keys[searchType] = append(keys[searchType], splitSearchKeys(keyList)...)
+			for _, key := range splitSearchKeys(keyList) {
+				keys[key] = searchType
+			}
 		}
 	}
 
-	return &SearchKeys{keys: keys}
+	return &SearchKeys{
+		keys: keys,
+	}
 }
 
-func splitSearchKeys(keys string) []string {
-	return strings.Split(keys, ",")
+func splitSearchKeys(keys string) []SearchKey {
+	split := strings.Split(keys, ",")
+
+	searchKeys := make([]SearchKey, 0, len(split))
+	for _, str := range split {
+		searchKeys = append(searchKeys, SearchKey(str))
+	}
+
+	return searchKeys
 }

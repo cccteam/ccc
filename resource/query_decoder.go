@@ -30,7 +30,7 @@ func NewQueryDecoder[Res Resourcer, Req any](resSet *ResourceSet[Res, Req], perm
 	var req Req
 	var res Res
 
-	m, err := NewFieldMapper(req)
+	mapper, err := NewFieldMapper(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
@@ -38,7 +38,7 @@ func NewQueryDecoder[Res Resourcer, Req any](resSet *ResourceSet[Res, Req], perm
 	searchKeys := NewSearchKeys[Req](res)
 
 	return &QueryDecoder[Res, Req]{
-		fieldMapper:       m,
+		fieldMapper:       mapper,
 		searchKeys:        searchKeys,
 		resourceSet:       resSet,
 		permissionChecker: permChecker,
@@ -97,23 +97,30 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context) ([]accesst
 	return fields, nil
 }
 
-func parseSearchParam(searchKeys *SearchKeys, queryParams url.Values) (*SearchSet, error) {
-	if searchKeys == nil {
+func parseSearchParam(searchKeys *SearchKeys, queryParams url.Values) (searchSet *SearchSet, err error) {
+	if searchKeys == nil || len(queryParams) == 0 {
 		return nil, nil
 	}
 
-	var search *SearchSet
-
-	for typ, keys := range searchKeys.keys {
-		for _, key := range keys {
-			if val := queryParams.Get(key); val != "" {
-				if search != nil {
-					return nil, errors.New("only one search parameter is allowed")
-				}
-				search = NewSearchSet(typ, key, val)
-			}
+	var key SearchKey
+	for searchKey := range searchKeys.keys {
+		if len(queryParams[string(searchKey)]) == 0 {
+			continue
 		}
+
+		if key != "" {
+			return nil, errors.New("only one search key is allowed")
+		}
+
+		if len(queryParams[string(searchKey)]) > 1 {
+			return nil, errors.New("only one search parameter is allowed")
+		}
+
+		key = SearchKey(searchKey)
 	}
 
-	return search, nil
+	typ := searchKeys.keys[key]
+	val := queryParams.Get(string(key))
+
+	return NewSearchSet(typ, key, val), nil
 }

@@ -11,7 +11,7 @@ func Test_spannerQueryParser_parseToSearchSubstring(t *testing.T) {
 	tests := []struct {
 		name      string
 		query     string
-		tokenlist string
+		tokenlist SearchKey
 		want      Statement
 	}{
 		{
@@ -76,7 +76,7 @@ func Test_spannerQueryParser_parseToNgramScore(t *testing.T) {
 	tests := []struct {
 		name      string
 		query     string
-		tokenlist string
+		tokenlist SearchKey
 		want      Statement
 	}{
 		{

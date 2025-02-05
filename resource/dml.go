@@ -7,7 +7,10 @@ const (
 	PostgresDBType DBType = "postgres"
 )
 
-type SearchType string
+type (
+	SearchType string
+	SearchKey  string
+)
 
 const (
 	SubString SearchType = "substring"

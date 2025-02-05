@@ -2,11 +2,11 @@ package resource
 
 type SearchSet struct {
 	searchTyp SearchType
-	searchKey string
+	searchKey SearchKey
 	searchVal string
 }
 
-func NewSearchSet(searchTyp SearchType, searchKey, searchVal string) *SearchSet {
+func NewSearchSet(searchTyp SearchType, searchKey SearchKey, searchVal string) *SearchSet {
 	return &SearchSet{
 		searchTyp: searchTyp,
 		searchKey: searchKey,
