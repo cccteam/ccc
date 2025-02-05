@@ -3,7 +3,6 @@ package resource
 import (
 	"encoding/json"
 
-	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/go-playground/errors/v5"
 )
@@ -15,7 +14,7 @@ type Link struct {
 }
 
 func (l Link) EncodeSpanner() (any, error) {
-	return spanner.NullJSON{Valid: true, Value: l}, nil
+	return l.MarshalJSON()
 }
 
 func (l *Link) DecodeSpanner(val any) error {
@@ -80,7 +79,7 @@ func (nl NullLink) EncodeSpanner() (any, error) {
 		return nil, nil
 	}
 
-	return spanner.NullJSON{Valid: nl.Valid, Value: nl.Link}, nil
+	return nl.Link.MarshalJSON()
 }
 
 func (nl *NullLink) DecodeSpanner(val any) error {
