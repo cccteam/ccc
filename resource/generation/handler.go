@@ -191,6 +191,8 @@ declLoop:
 					if md, ok := table.Columns[spannerCol]; ok {
 						field.ConstraintType = string(md.ConstraintType)
 						field.IsPrimaryKey = md.ConstraintType == PrimaryKey
+						field.IsIndex = md.IsIndex
+						field.IsUniqueIndex = md.IsUniqueIndex
 					}
 				}
 
