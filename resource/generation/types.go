@@ -124,6 +124,10 @@ func (r generatedResource) DataType() string {
 		return "string"
 	}
 
+	if r.dataType == "link" {
+		return "Link"
+	}
+
 	return r.dataType
 }
 
