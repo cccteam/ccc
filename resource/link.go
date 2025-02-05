@@ -8,9 +8,9 @@ import (
 )
 
 type Link struct {
-	ID          ccc.UUID `json:"id"`
-	Resource    string   `json:"resource"`
-	DisplayName string   `json:"displayName"`
+	ID       ccc.UUID `json:"id"`
+	Resource string   `json:"resource"`
+	Text     string   `json:"text"`
 }
 
 func (l Link) EncodeSpanner() (any, error) {
