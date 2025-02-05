@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.0.11](https://github.com/cccteam/ccc/compare/resource/v0.0.10...resource/v0.0.11) (2025-02-05)
+
+
+### Features
+
+* Added index tags to generated handlers ([#185](https://github.com/cccteam/ccc/issues/185)) ([a00f0d8](https://github.com/cccteam/ccc/commit/a00f0d8474a5ce257ee071d3c541fe055389014b))
+* Added Link type for virtual resources ([#174](https://github.com/cccteam/ccc/issues/174)) ([90a3043](https://github.com/cccteam/ccc/commit/90a3043894686c0257092508121c8bfa16c185c8))
+
+
+### Code Refactoring
+
+* Parse resource file & AST one time ([#177](https://github.com/cccteam/ccc/issues/177)) ([cfec4cb](https://github.com/cccteam/ccc/commit/cfec4cb7d13fdda7c6de9ad98f6f608d3dc744a1))
+
+
+### Code Upgrade
+
+* ccc and sub repos GO version to `1.23.6` and all dependencies except CCC authored packages ([#178](https://github.com/cccteam/ccc/issues/178)) ([117a49d](https://github.com/cccteam/ccc/commit/117a49d3740b461d1b295047cdeaf85b4cacb53f))
+
 ## [0.0.10](https://github.com/cccteam/ccc/compare/resource/v0.0.9...resource/v0.0.10) (2025-02-04)
 
 
