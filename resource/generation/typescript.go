@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"text/template"
@@ -147,13 +148,23 @@ declLoop:
 				if len(f.Names) == 0 {
 					continue
 				}
+				var tag string
+				if f.Tag != nil {
+					tag = f.Tag.Value
+				}
 
-				nullable := tableMeta.Columns[f.Names[0].Name].IsNullable
+				column := reflect.StructTag(strings.Trim(tag, "`")).Get("spanner")
 
-				field := &generatedResource{
-					Name:     f.Names[0].Name,
-					dataType: typescriptType(f.Type),
-					Required: !nullable,
+				field := &generatedResource{Name: column}
+				fieldMeta := tableMeta.Columns[column]
+				field.dataType = typescriptType(f.Type)
+				field.Required = !fieldMeta.IsNullable
+
+				if slices.Contains(fieldMeta.ConstraintTypes, ForeignKey) {
+					field.IsForeignKey = true
+					field.dataType = "enumerated"
+					field.ReferencedResource = fieldMeta.ReferencedTable
+					field.ReferencedColumn = fieldMeta.ReferencedColumn
 				}
 
 				fields = append(fields, field)

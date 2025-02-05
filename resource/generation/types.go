@@ -90,26 +90,30 @@ type fieldTagInfo struct {
 }
 
 type FieldMetadata struct {
-	ColumnName      string
-	ConstraintTypes []ConstraintType
-	IsPrimaryKey    bool
-	SpannerType     string
-	IsNullable      bool
-	IsIndex         bool
-	IsUniqueIndex   bool
+	ColumnName       string
+	ConstraintTypes  []ConstraintType
+	IsPrimaryKey     bool
+	SpannerType      string
+	IsNullable       bool
+	IsIndex          bool
+	IsUniqueIndex    bool
+	ReferencedTable  string
+	ReferencedColumn string
 }
 
 type InformationSchemaResult struct {
-	TableName       string  `spanner:"TABLE_NAME"`
-	ColumnName      string  `spanner:"COLUMN_NAME"`
-	ConstraintName  *string `spanner:"CONSTRAINT_NAME"`
-	ConstraintType  *string `spanner:"CONSTRAINT_TYPE"`
-	SpannerType     string  `spanner:"SPANNER_TYPE"`
-	IsNullable      bool    `spanner:"IS_NULLABLE"`
-	IsView          bool    `spanner:"IS_VIEW"`
-	IsIndex         bool    `spanner:"IS_INDEX"`
-	IsUniqueIndex   bool    `spanner:"IS_UNIQUE_INDEX"`
-	OrdinalPosition int64   `spanner:"ORDINAL_POSITION"`
+	TableName        string  `spanner:"TABLE_NAME"`
+	ColumnName       string  `spanner:"COLUMN_NAME"`
+	ConstraintName   *string `spanner:"CONSTRAINT_NAME"`
+	ConstraintType   *string `spanner:"CONSTRAINT_TYPE"`
+	ReferencedTable  *string `spanner:"REFERENCED_TABLE"`
+	ReferencedColumn *string `spanner:"REFERENCED_COLUMN"`
+	SpannerType      string  `spanner:"SPANNER_TYPE"`
+	IsNullable       bool    `spanner:"IS_NULLABLE"`
+	IsView           bool    `spanner:"IS_VIEW"`
+	IsIndex          bool    `spanner:"IS_INDEX"`
+	IsUniqueIndex    bool    `spanner:"IS_UNIQUE_INDEX"`
+	OrdinalPosition  int64   `spanner:"ORDINAL_POSITION"`
 }
 
 type TableMetadata struct {
@@ -128,14 +132,17 @@ type generatedHandler struct {
 }
 
 type generatedResource struct {
-	Name     string
-	Fields   []*generatedResource
-	dataType string
-	Required bool
+	Name               string
+	Fields             []*generatedResource
+	dataType           string
+	Required           bool
+	IsForeignKey       bool
+	ReferencedResource string
+	ReferencedColumn   string
 }
 
 func (r generatedResource) DataType() string {
-	if r.dataType == "uuid" {
+	if r.dataType == "uuid" || r.dataType == "enumerated" {
 		return "string"
 	}
 

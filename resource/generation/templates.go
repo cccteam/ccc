@@ -465,13 +465,22 @@ const resourceMap: ResourceMap = {
     route: '{{ Kebab (Pluralize $resource.Name) }}',
     fields: [
       {{- range $field := $resource.Fields }}
+      {{- if $field.IsForeignKey }}
+      {
+        fieldName: '{{ Camel $field.Name }}',
+        dataType: '{{ Lower $field.MetaType }}',
+        required: {{ $field.Required }},
+        enumeratedResource: Resources.{{ $field.ReferencedResource }},
+      },
+      {{- else }}
       { fieldName: '{{ Camel $field.Name }}', dataType: '{{ Lower $field.MetaType }}', required: {{ $field.Required }} },
+      {{- end }}
       {{- end }}
     ],
   },
 
   {{- end }}
-}
+};
 
 export function resourceMeta(resource: Resource): ResourceMeta {
   if (resourceMap[resource] !== undefined) {
