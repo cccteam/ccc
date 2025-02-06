@@ -511,8 +511,7 @@ func searchExpressionFields(expression string, cols map[string]FieldMetadata) []
 	fieldMap := make(map[string]*expressionField)
 
 	lines := strings.Split(expression, "\n")
-	for i := 1; i < len(lines)-1; i++ {
-		l := lines[i]
+	for _, l := range lines {
 		if matches := tokenizeRegex.FindAllStringSubmatch(l, -1); len(matches) > 0 && len(matches[0]) > 2 {
 			searchType := matches[0][1]
 
