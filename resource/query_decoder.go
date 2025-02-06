@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -42,7 +43,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](rSet *ResourceSet[Resource
 }
 
 func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QuerySet[Resource], error) {
-	fields, err := d.fields(request)
+	fields, err := d.fields(request.Context(), request.URL.Query())
 	if err != nil {
 		return nil, err
 	}
@@ -55,11 +56,10 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) fields(req *http.Request) ([]accesstypes.Field, error) {
-	ctx := req.Context()
+func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParams url.Values) ([]accesstypes.Field, error) {
 	domain, user := d.domainFromCtx(ctx), d.userFromCtx(ctx)
 
-	cols := strings.Split(req.URL.Query().Get("columns"), ",")
+	cols := strings.Split(queryParams.Get("columns"), ",")
 	columnMap := make(map[string]struct{}, len(cols))
 	for _, c := range cols {
 		columnMap[c] = struct{}{}
