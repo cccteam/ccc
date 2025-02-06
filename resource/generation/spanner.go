@@ -231,7 +231,7 @@ func (c *Client) buildTableSearchIndexes(tableName string) []*searchIndex {
 	if t, ok := c.tableLookup[tableName]; ok {
 		for index, fields := range t.SearchIndexes {
 			for _, f := range fields {
-				typeIndexMap[f.tokenType] = index
+				typeIndexMap[string(f.tokenType)] = index
 			}
 		}
 	}
