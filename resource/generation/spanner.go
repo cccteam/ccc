@@ -102,6 +102,7 @@ func (c *Client) generatePatcherTypes(generatedType *generatedType) error {
 		"IsView":          generatedType.IsView,
 		"Fields":          generatedType.Fields,
 		"IsCompoundTable": generatedType.IsCompoundTable,
+		"SearchIndexes":   generatedType.SearchIndexes,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
