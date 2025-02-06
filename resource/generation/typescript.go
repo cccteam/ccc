@@ -18,24 +18,24 @@ import (
 func (c *Client) runTypescriptPermissionGeneration() error {
 	templateData := c.rc.TypescriptData()
 
-	if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
-		return errors.Wrap(err, "removeGeneratedFiles()")
+	if c.genTypescriptMeta == nil {
+		if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
+			return errors.Wrap(err, "removeGeneratedFiles()")
+		}
 	}
 
 	output, err := c.generateTemplateOutput(typescriptPermissionTemplate, map[string]any{
-		"Header":              typescriptTemplateHeader,
 		"Permissions":         templateData.Permissions,
 		"Resources":           templateData.Resources,
 		"ResourceTags":        templateData.ResourceTags,
 		"ResourcePermissions": templateData.ResourcePermissions,
 		"Domains":             templateData.Domains,
-		"Metadata":            c.metadataTemplate,
 	})
 	if err != nil {
 		return errors.Wrap(err, "c.generateTemplateOutput()")
 	}
-	destinationFilePath := filepath.Join(c.typescriptDestination, "resources.ts")
 
+	destinationFilePath := filepath.Join(c.typescriptDestination, "resourcePermissions.ts")
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
@@ -52,10 +52,8 @@ func (c *Client) runTypescriptPermissionGeneration() error {
 }
 
 func (c *Client) runTypescriptMetadataGeneration() error {
-	if c.genTypescriptPerm == nil {
-		if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
-			return errors.Wrap(err, "removeGeneratedFiles()")
-		}
+	if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
+		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
 	if err := c.generateTypescriptMetadata(); err != nil {
@@ -81,27 +79,14 @@ func (c *Client) generateTypescriptMetadata() error {
 		}
 	}
 
-	var header string
-	if c.genTypescriptPerm == nil {
-		header = typescriptTemplateHeader
-	}
-
 	output, err := c.generateTemplateOutput(typescriptMetadataTemplate, map[string]any{
 		"Resources": genResources,
-		"Header":    header,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	if c.genTypescriptPerm != nil {
-		c.metadataTemplate = output
-
-		return nil
-	}
-
 	destinationFilePath := filepath.Join(c.typescriptDestination, "resources.ts")
-
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
@@ -111,6 +96,8 @@ func (c *Client) generateTypescriptMetadata() error {
 	if err := c.writeBytesToFile(destinationFilePath, file, output, false); err != nil {
 		return errors.Wrap(err, "c.writeBytesToFile()")
 	}
+
+	log.Printf("Generated Resource Metadata: %s\n", file.Name())
 
 	return nil
 }

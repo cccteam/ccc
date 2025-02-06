@@ -42,7 +42,6 @@ type Client struct {
 	tableLookup           map[string]*TableMetadata
 	handlerOptions        map[string]map[HandlerType][]OptionType
 	pluralOverrides       map[string]string
-	metadataTemplate      []byte
 	cleanup               func()
 
 	muAlign sync.Mutex
