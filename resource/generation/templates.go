@@ -454,7 +454,7 @@ export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
   {{ Camel $field.Name }}: {{ $field.DataType }};
 {{- end }}
-};
+}
 {{ end }}
 const resourceMap: ResourceMap = {
   {{- range $resource := $resources }}
@@ -477,7 +477,7 @@ const resourceMap: ResourceMap = {
   },
 
   {{- end }}
-};
+}
 
 export function resourceMeta(resource: Resource): ResourceMeta {
   if (resourceMap[resource] !== undefined) {
