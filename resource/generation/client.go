@@ -378,8 +378,8 @@ func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) er
 		}
 
 		switch method {
-		case Suffix:
-			if err := removeGeneratedFileBySuffix(directory, f); err != nil {
+		case FileName:
+			if err := removeGeneratedFileByName(directory, f); err != nil {
 				return errors.Wrap(err, "removeGeneratedFileBySuffix()")
 			}
 		case HeaderComment:
@@ -392,8 +392,8 @@ func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) er
 	return nil
 }
 
-func removeGeneratedFileBySuffix(directory, file string) error {
-	if strings.HasSuffix(file, "_generated.go") {
+func removeGeneratedFileByName(directory, file string) error {
+	if strings.Contains(file, "generated") {
 		fp := filepath.Join(directory, file)
 		if err := os.Remove(fp); err != nil {
 			return errors.Wrap(err, "os.Remove()")

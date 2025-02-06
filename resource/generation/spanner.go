@@ -91,7 +91,7 @@ func (c *Client) generateResourceTests(types []*generatedType) error {
 }
 
 func (c *Client) generatePatcherTypes(generatedType *generatedType) error {
-	fileName := fmt.Sprintf("%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+	fileName := fmt.Sprintf("generated_%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
 	destinationFilePath := filepath.Join(c.resourceDestination, fileName)
 
 	log.Printf("Generating spanner file: %v\n", fileName)

@@ -17,7 +17,7 @@ import (
 )
 
 func (c *Client) runHandlerGeneration() error {
-	if err := removeGeneratedFiles(c.handlerDestination, Suffix); err != nil {
+	if err := removeGeneratedFiles(c.handlerDestination, FileName); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
@@ -95,7 +95,7 @@ func (c *Client) generateHandlers(structName string) error {
 	}
 
 	if len(handlerData) > 0 {
-		fileName := fmt.Sprintf("%s_generated.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+		fileName := fmt.Sprintf("generated_%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
 		destinationFilePath := filepath.Join(c.handlerDestination, fileName)
 
 		file, err := os.OpenFile(destinationFilePath, os.O_RDWR|os.O_CREATE, 0o644)
