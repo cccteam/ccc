@@ -75,8 +75,8 @@ func Test_spannerQueryParser_parseToSearchSubstring(t *testing.T) {
 			s := spannerQueryParser{
 				query: tt.query,
 			}
-			if got := s.parseToSearchSubstring(tt.tokenlist); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("spannerQueryParser.parseToSearchSubstring() = %v, want %v", got, tt.want)
+			if got := s.parseToSearchSubstring(tt.tokenlist); !reflect.DeepEqual(*got, tt.want) {
+				t.Errorf("spannerQueryParser.parseToSearchSubstring() = %v, want %v", *got, tt.want)
 			}
 
 			got := s.parseToSearchSubstring(tt.tokenlist)
@@ -140,8 +140,8 @@ func Test_spannerQueryParser_parseToNgramScore(t *testing.T) {
 			s := spannerQueryParser{
 				query: tt.query,
 			}
-			if got := s.parseToNgramScore(tt.tokenlist); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("spannerQueryParser.parseToNgramScore() = %v, want %v", got, tt.want)
+			if got := s.parseToNgramScore(tt.tokenlist); !reflect.DeepEqual(*got, tt.want) {
+				t.Errorf("spannerQueryParser.parseToNgramScore() = %v, want %v", *got, tt.want)
 			}
 
 			got := s.parseToNgramScore(tt.tokenlist)

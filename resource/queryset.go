@@ -125,9 +125,9 @@ func (q *QuerySet[Resource]) Where() (Statement, error) {
 	}, nil
 }
 
-func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
+func (q *QuerySet[Resource]) SpannerStmt() (*spanner.Statement, error) {
 	if q.rMeta.dbType != SpannerDBType {
-		return spanner.Statement{}, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
+		return nil, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
 	if q.search != nil {
@@ -137,15 +137,15 @@ func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 	return q.spannerIndexStmt()
 }
 
-func (q *QuerySet[Resource]) spannerIndexStmt() (spanner.Statement, error) {
+func (q *QuerySet[Resource]) spannerIndexStmt() (*spanner.Statement, error) {
 	columns, err := q.Columns()
 	if err != nil {
-		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
+		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
 	where, err := q.Where()
 	if err != nil {
-		return spanner.Statement{}, errors.Wrap(err, "patcher.Where()")
+		return nil, errors.Wrap(err, "patcher.Where()")
 	}
 
 	stmt := spanner.NewStatement(fmt.Sprintf(`
@@ -156,17 +156,17 @@ func (q *QuerySet[Resource]) spannerIndexStmt() (spanner.Statement, error) {
 	))
 	maps.Insert(stmt.Params, maps.All(where.Params))
 
-	return stmt, nil
+	return &stmt, nil
 }
 
-func (q *QuerySet[Resource]) spannerSearchStmt() (spanner.Statement, error) {
+func (q *QuerySet[Resource]) spannerSearchStmt() (*spanner.Statement, error) {
 	columns, err := q.Columns()
 	if err != nil {
-		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
+		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	var search Statement
-	var score Statement
+	var search *Statement
+	var score *Statement
 
 	query := parseSpannerQuery(q.search.searchVal)
 	switch q.search.searchTyp {
@@ -174,9 +174,9 @@ func (q *QuerySet[Resource]) spannerSearchStmt() (spanner.Statement, error) {
 		search = query.parseToSearchSubstring(q.search.searchKey)
 		score = query.parseToNgramScore(q.search.searchKey)
 	case FullText:
-		return spanner.Statement{}, errors.New("FullText search is not yet implemented")
+		return nil, errors.New("FullText search is not yet implemented")
 	case Ngram:
-		return spanner.Statement{}, errors.New("Ngram search is not yet implemented")
+		return nil, errors.New("Ngram search is not yet implemented")
 	}
 
 	stmt := spanner.NewStatement(fmt.Sprintf(`
@@ -190,22 +190,22 @@ func (q *QuerySet[Resource]) spannerSearchStmt() (spanner.Statement, error) {
 	maps.Insert(stmt.Params, maps.All(search.Params))
 	maps.Insert(stmt.Params, maps.All(score.Params))
 
-	return stmt, nil
+	return &stmt, nil
 }
 
-func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
+func (q *QuerySet[Resource]) PostgresStmt() (*Statement, error) {
 	if q.rMeta.dbType != PostgresDBType {
-		return Statement{}, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", PostgresDBType, q.rMeta.dbType)
+		return nil, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", PostgresDBType, q.rMeta.dbType)
 	}
 
 	columns, err := q.Columns()
 	if err != nil {
-		return Statement{}, errors.Wrap(err, "QuerySet.Columns()")
+		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
 	where, err := q.Where()
 	if err != nil {
-		return Statement{}, errors.Wrap(err, "patcher.Where()")
+		return nil, errors.Wrap(err, "patcher.Where()")
 	}
 
 	sql := fmt.Sprintf(`
@@ -215,7 +215,7 @@ func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
 			%s`, columns, q.Resource(), where.Sql,
 	)
 
-	return Statement{
+	return &Statement{
 		Sql:    sql,
 		Params: where.Params,
 	}, nil
@@ -226,8 +226,11 @@ func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, txn *spanner.ReadO
 	if err != nil {
 		return errors.Wrap(err, "patcher.Stmt()")
 	}
+	if stmt == nil {
+		return errors.New("QuerySet.SpannerStmt() returned unexpected nil *spanner.Statement")
+	}
 
-	if err := spxscan.Get(ctx, txn, dst, stmt); err != nil {
+	if err := spxscan.Get(ctx, txn, dst, *stmt); err != nil {
 		if errors.Is(err, spxscan.ErrNotFound) {
 			return httpio.NewNotFoundMessagef("%s (%s) not found", q.Resource(), q.KeySet().String())
 		}
@@ -243,8 +246,11 @@ func (q *QuerySet[Resource]) SpannerList(ctx context.Context, txn *spanner.ReadO
 	if err != nil {
 		return errors.Wrap(err, "patcher.Stmt()")
 	}
+	if stmt == nil {
+		return errors.New("QuerySet.SpannerStmt() returned unexpected nil *spanner.Statement")
+	}
 
-	if err := spxscan.Select(ctx, txn, dst, stmt); err != nil {
+	if err := spxscan.Select(ctx, txn, dst, *stmt); err != nil {
 		return errors.Wrap(err, "spxscan.Get()")
 	}
 

@@ -13,7 +13,7 @@ func parseSpannerQuery(query string) *spannerQueryParser {
 	return &spannerQueryParser{query: query}
 }
 
-func (s spannerQueryParser) parseToSearchSubstring(tokenlist SearchKey) Statement {
+func (s spannerQueryParser) parseToSearchSubstring(tokenlist SearchKey) *Statement {
 	terms := strings.Split(s.query, " ")
 
 	exprs := make([]string, 0, len(terms))
@@ -27,13 +27,13 @@ func (s spannerQueryParser) parseToSearchSubstring(tokenlist SearchKey) Statemen
 	}
 	sql := strings.Join(exprs, " AND ")
 
-	return Statement{
+	return &Statement{
 		Sql:    sql,
 		Params: params,
 	}
 }
 
-func (s spannerQueryParser) parseToNgramScore(tokenlist SearchKey) Statement {
+func (s spannerQueryParser) parseToNgramScore(tokenlist SearchKey) *Statement {
 	terms := strings.Split(s.query, " ")
 
 	exprs := make([]string, 0, len(terms))
@@ -46,7 +46,7 @@ func (s spannerQueryParser) parseToNgramScore(tokenlist SearchKey) Statement {
 	}
 	sql := strings.Join(exprs, " + ")
 
-	return Statement{
+	return &Statement{
 		Sql:    sql,
 		Params: params,
 	}
