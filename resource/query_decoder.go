@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
@@ -41,7 +42,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](rSet *ResourceSet[Resource
 }
 
 func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QuerySet[Resource], error) {
-	fields, err := d.fields(request.Context())
+	fields, err := d.fields(request)
 	if err != nil {
 		return nil, err
 	}
@@ -54,8 +55,15 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context) ([]accesstypes.Field, error) {
+func (d *QueryDecoder[Resource, Request]) fields(req *http.Request) ([]accesstypes.Field, error) {
+	ctx := req.Context()
 	domain, user := d.domainFromCtx(ctx), d.userFromCtx(ctx)
+
+	cols := strings.Split(req.URL.Query().Get("columns"), ",")
+	columnMap := make(map[string]struct{}, len(cols))
+	for _, c := range cols {
+		columnMap[c] = struct{}{}
+	}
 
 	if ok, _, err := d.permissionChecker.RequireResources(ctx, user, domain, d.resourceSet.Permission(), d.resourceSet.BaseResource()); err != nil {
 		return nil, errors.Wrap(err, "accesstypes.Enforcer.RequireResources()")
@@ -65,6 +73,12 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context) ([]accesst
 
 	fields := make([]accesstypes.Field, 0, d.fieldMapper.Len())
 	for _, field := range d.fieldMapper.Fields() {
+		if len(columnMap) > 0 {
+			if _, ok := columnMap[string(field)]; !ok {
+				continue
+			}
+		}
+
 		if !d.resourceSet.PermissionRequired(field, d.resourceSet.Permission()) {
 			fields = append(fields, field)
 		} else {
