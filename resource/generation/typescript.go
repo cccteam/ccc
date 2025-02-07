@@ -105,6 +105,8 @@ func (c *Client) generateTypescriptMetadata() error {
 func (c *Client) parseStructForTypescriptGeneration(structName string) (*generatedResource, error) {
 	resource := &generatedResource{Name: structName}
 
+	routerResources := c.rc.Resources()
+
 declLoop:
 	for _, decl := range c.resourceTree.Decls {
 		gd, ok := decl.(*ast.GenDecl)
@@ -167,7 +169,7 @@ declLoop:
 				field.dataType = dataType
 				field.Required = !fieldMeta.IsNullable
 
-				if fieldMeta.IsForeignKey {
+				if fieldMeta.IsForeignKey && slices.Contains(routerResources, accesstypes.Resource(fieldMeta.ReferencedTable)) {
 					field.IsForeignKey = true
 					field.dataType = "enumerated"
 					field.ReferencedResource = fieldMeta.ReferencedTable
