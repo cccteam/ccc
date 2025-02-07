@@ -131,42 +131,68 @@ func (c *Client) RunGeneration() error {
 }
 
 func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetadata, error) {
-	qry := `SELECT DISTINCT
+	qry := `WITH DEPENDENCIES AS (
+	SELECT DISTINCT
+		kcu1.TABLE_NAME, 
+		kcu1.COLUMN_NAME, 
+		(SUM(CASE tc.CONSTRAINT_TYPE WHEN 'PRIMARY KEY' THEN 1 ELSE 0 END)) AS IS_PRIMARY_KEY,
+		(SUM(CASE tc.CONSTRAINT_TYPE WHEN 'FOREIGN KEY' THEN 1 ELSE 0 END)) AS IS_FOREIGN_KEY,
+		(CASE MIN(CASE 
+				WHEN kcu4.TABLE_NAME IS NOT NULL THEN 1
+				WHEN kcu2.TABLE_NAME IS NOT NULL THEN 2
+				ELSE 3
+				END)
+		WHEN 1 THEN MAX(kcu4.TABLE_NAME)
+		WHEN 2 THEN MAX(kcu2.TABLE_NAME)
+		ELSE NULL
+		END) AS REFERENCED_TABLE,
+		(CASE MIN(CASE 
+				WHEN kcu4.COLUMN_NAME IS NOT NULL THEN 1
+				WHEN kcu2.COLUMN_NAME IS NOT NULL THEN 2
+				ELSE 3
+				END)
+		WHEN 1 THEN MAX(kcu4.COLUMN_NAME)
+		WHEN 2 THEN MAX(kcu2.COLUMN_NAME)
+		ELSE NULL
+		END) AS REFERENCED_COLUMN
+	FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu1 -- All columns that are Primary Key or Foreign Key
+	JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON tc.CONSTRAINT_NAME = kcu1.CONSTRAINT_NAME -- Identify whether column is Primary Key or Foreign Key
+	LEFT JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_NAME = kcu1.CONSTRAINT_NAME -- All unique constraints (e.g. PK_Persons) referenced by foreign key constraints (e.g. FK_PersonPhones_PersonId)
+	LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu2 ON kcu2.CONSTRAINT_NAME = rc.UNIQUE_CONSTRAINT_NAME -- Table & Column belonging to referenced unique constraint (e.g. Persons, Id)
+	LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu3 ON kcu3.TABLE_NAME = kcu2.TABLE_NAME AND kcu3.COLUMN_NAME = kcu2.COLUMN_NAME
+	LEFT JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc2 ON rc2.CONSTRAINT_NAME = kcu3.CONSTRAINT_NAME
+	LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu4 ON kcu4.CONSTRAINT_NAME = rc2.UNIQUE_CONSTRAINT_NAME -- Table & Column belonging to 1-jump referenced unique constraint (e.g. DoeInstitutions, Id)
+	WHERE
+		kcu1.CONSTRAINT_SCHEMA != 'INFORMATION_SCHEMA'
+		AND tc.CONSTRAINT_TYPE IN ('PRIMARY KEY', 'FOREIGN KEY')
+		AND (CAST(kcu1.POSITION_IN_UNIQUE_CONSTRAINT AS STRING) = '1' OR kcu1.POSITION_IN_UNIQUE_CONSTRAINT IS NULL)
+		AND (kcu2.ORDINAL_POSITION < 2 OR kcu2.ORDINAL_POSITION IS NULL)
+	GROUP BY kcu1.TABLE_NAME, kcu1.COLUMN_NAME
+	)
+	SELECT DISTINCT
 		c.TABLE_NAME,
 		c.COLUMN_NAME,
 		(c.IS_NULLABLE = 'YES') AS IS_NULLABLE,
 		c.SPANNER_TYPE,
-		(CASE MIN(CASE tc.CONSTRAINT_TYPE -- Doe Tables' primary key is also a foreign key, this selects it solely as a primary key
-					WHEN 'PRIMARY KEY' THEN 1
-					WHEN 'FOREIGN KEY' THEN 2
-					ELSE 3
-				END)
-			WHEN 1 THEN 'PRIMARY KEY'
-			WHEN 2 THEN 'FOREIGN KEY'
-			ELSE NULL
-		END) AS CONSTRAINT_TYPE,
-		(CASE ANY_VALUE(CONSTRAINT_TYPE) WHEN 'PRIMARY KEY' THEN NULL ELSE ANY_VALUE(kcu2.TABLE_NAME) END) AS REFERENCED_TABLE,
-		(CASE ANY_VALUE(CONSTRAINT_TYPE) WHEN 'PRIMARY KEY' THEN NULL ELSE ANY_VALUE(kcu2.COLUMN_NAME) END) AS REFERENCED_COLUMN,
+		(d.IS_PRIMARY_KEY > 0 and d.IS_PRIMARY_KEY IS NOT NULL) as IS_PRIMARY_KEY,
+		(d.IS_FOREIGN_KEY > 0 and d.IS_FOREIGN_KEY IS NOT NULL) as IS_FOREIGN_KEY,
+		d.REFERENCED_TABLE,
+		d.REFERENCED_COLUMN,
 		(t.TABLE_NAME IS NULL AND v.TABLE_NAME IS NOT NULL) as IS_VIEW,
 		ic.INDEX_NAME IS NOT NULL AS IS_INDEX,
-		COALESCE(i.IS_UNIQUE, false) AS IS_UNIQUE_INDEX,
+		MAX(COALESCE(i.IS_UNIQUE, false)) AS IS_UNIQUE_INDEX,
 		c.ORDINAL_POSITION
 	FROM INFORMATION_SCHEMA.COLUMNS c
 		LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
 			AND t.TABLE_TYPE = 'BASE TABLE'
 		LEFT JOIN INFORMATION_SCHEMA.VIEWS v ON c.TABLE_NAME = v.TABLE_NAME
-		LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu ON c.COLUMN_NAME = kcu.COLUMN_NAME
-			AND c.TABLE_NAME = kcu.TABLE_NAME
-		LEFT JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME 
-		LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu2 ON rc.UNIQUE_CONSTRAINT_NAME = kcu2.CONSTRAINT_NAME 
-		LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
-			AND (tc.CONSTRAINT_TYPE ='PRIMARY KEY' OR tc.CONSTRAINT_TYPE = 'FOREIGN KEY' OR tc.CONSTRAINT_TYPE IS NULL)
+		LEFT JOIN DEPENDENCIES d ON c.TABLE_NAME = d.TABLE_NAME
+			AND c.COLUMN_NAME = d.COLUMN_NAME
 		LEFT JOIN INFORMATION_SCHEMA.INDEX_COLUMNS ic ON c.COLUMN_NAME = ic.COLUMN_NAME
 			AND c.TABLE_NAME = ic.TABLE_NAME
 		LEFT JOIN INFORMATION_SCHEMA.INDEXES i ON ic.INDEX_NAME = i.INDEX_NAME 
-			AND c.TABLE_NAME = i.TABLE_NAME 
 	WHERE c.TABLE_SCHEMA != 'INFORMATION_SCHEMA'
-	GROUP BY c.TABLE_NAME, c.COLUMN_NAME, IS_NULLABLE, c.SPANNER_TYPE, IS_VIEW, IS_INDEX, IS_UNIQUE_INDEX, c.ORDINAL_POSITION 
+	GROUP BY c.TABLE_NAME, c.COLUMN_NAME, IS_NULLABLE, c.SPANNER_TYPE, d.IS_PRIMARY_KEY, d.IS_FOREIGN_KEY, d.REFERENCED_COLUMN, d.REFERENCED_TABLE, IS_VIEW, IS_INDEX, c.ORDINAL_POSITION
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
 
 	return c.createLookupMapForQuery(ctx, qry)
@@ -192,11 +218,6 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 			}
 		}
 
-		var ct ConstraintType
-		if r.ConstraintType != nil {
-			ct = ConstraintType(*r.ConstraintType)
-		}
-
 		column, ok := table.Columns[r.ColumnName]
 		if !ok {
 			column = FieldMetadata{
@@ -205,11 +226,19 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 			}
 		}
 
-		if ct == PrimaryKey {
+		if r.IsPrimaryKey {
 			column.IsPrimaryKey = true
+			if !slices.Contains(column.ConstraintTypes, PrimaryKey) {
+				column.ConstraintTypes = append(column.ConstraintTypes, PrimaryKey)
+			}
 		}
 
-		if ct == ForeignKey {
+		if r.IsForeignKey {
+			column.IsForeignKey = true
+			if !slices.Contains(column.ConstraintTypes, ForeignKey) {
+				column.ConstraintTypes = append(column.ConstraintTypes, ForeignKey)
+			}
+
 			if r.ReferencedTable != nil {
 				column.ReferencedTable = *r.ReferencedTable
 			}
@@ -221,10 +250,6 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 
 		if r.IsNullable {
 			column.IsNullable = true
-		}
-
-		if !slices.Contains(column.ConstraintTypes, ct) {
-			column.ConstraintTypes = append(column.ConstraintTypes, ct)
 		}
 
 		if r.IsIndex {

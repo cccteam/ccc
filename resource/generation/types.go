@@ -93,6 +93,7 @@ type FieldMetadata struct {
 	ColumnName       string
 	ConstraintTypes  []ConstraintType
 	IsPrimaryKey     bool
+	IsForeignKey     bool
 	SpannerType      string
 	IsNullable       bool
 	IsIndex          bool
@@ -105,7 +106,8 @@ type InformationSchemaResult struct {
 	TableName        string  `spanner:"TABLE_NAME"`
 	ColumnName       string  `spanner:"COLUMN_NAME"`
 	ConstraintName   *string `spanner:"CONSTRAINT_NAME"`
-	ConstraintType   *string `spanner:"CONSTRAINT_TYPE"`
+	IsPrimaryKey     bool    `spanner:"IS_PRIMARY_KEY"`
+	IsForeignKey     bool    `spanner:"IS_FOREIGN_KEY"`
 	ReferencedTable  *string `spanner:"REFERENCED_TABLE"`
 	ReferencedColumn *string `spanner:"REFERENCED_COLUMN"`
 	SpannerType      string  `spanner:"SPANNER_TYPE"`

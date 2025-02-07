@@ -115,14 +115,15 @@ declLoop:
 		for _, s := range gd.Specs {
 			spec, ok := s.(*ast.TypeSpec)
 			if !ok {
-				return nil, errors.Newf("parseStructForTypescriptGeneration: could not reflect typespec in struct %s", structName)
+				continue
 			}
 			if spec.Name == nil {
 				return nil, errors.Newf("parseStructForTypescriptGeneration: reflected struct has no identifier %s", structName)
 			}
 			if spec.Name.Name != structName {
-				return nil, errors.Newf("parseStructForTypescriptGeneration: reflected struct's name `%s` does not match input structName `%s`", spec.Name.Name, structName)
+				continue
 			}
+
 			st, ok := spec.Type.(*ast.StructType)
 			if !ok {
 				return nil, errors.Newf("parseStructForTypescriptGeneration: could not reflect structtype for struct `%s`", structName)
@@ -166,7 +167,7 @@ declLoop:
 				field.dataType = dataType
 				field.Required = !fieldMeta.IsNullable
 
-				if slices.Contains(fieldMeta.ConstraintTypes, ForeignKey) {
+				if fieldMeta.IsForeignKey {
 					field.IsForeignKey = true
 					field.dataType = "enumerated"
 					field.ReferencedResource = fieldMeta.ReferencedTable
