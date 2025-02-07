@@ -341,7 +341,7 @@ func (f *fieldInfo) IsView() bool {
 }
 
 type expressionField struct {
-	tokenType resource.SearchType
+	tokenType resource.FilterType
 	fieldName string
 }
 

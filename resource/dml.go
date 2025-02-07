@@ -8,14 +8,16 @@ const (
 )
 
 type (
-	SearchType string
-	SearchKey  string
+	FilterType string
+	FilterKey  string
 )
 
 const (
-	SubString SearchType = "substring"
-	FullText  SearchType = "fulltext"
-	Ngram     SearchType = "ngram"
+	Index         FilterType = "index"
+	DefinedSubset FilterType = "namedindex"
+	SubString     FilterType = "substring"
+	FullText      FilterType = "fulltext"
+	Ngram         FilterType = "ngram"
 )
 
 type Statement struct {

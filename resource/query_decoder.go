@@ -20,25 +20,25 @@ type (
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	fieldMapper       *FieldMapper
-	searchKeys        *SearchKeys
+	filterKeys        *FilterKeys
 	resourceSet       *ResourceSet[Resource, Request]
 	permissionChecker accesstypes.Enforcer
 	domainFromCtx     DomainFromCtx
 	userFromCtx       UserFromCtx
 }
 
-func NewQueryDecoder[Res Resourcer, Req any](resSet *ResourceSet[Res, Req], permChecker accesstypes.Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (*QueryDecoder[Res, Req], error) {
-	var req Req
-	var res Res
+func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource, Request], permChecker accesstypes.Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (*QueryDecoder[Resource, Request], error) {
+	var req Request
+	var res Resource
 
 	mapper, err := NewFieldMapper(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	return &QueryDecoder[Res, Req]{
+	return &QueryDecoder[Resource, Request]{
 		fieldMapper:       mapper,
-		searchKeys:        NewSearchKeys[Req](res),
+		filterKeys:        NewFilterKeys[Request](res),
 		resourceSet:       resSet,
 		permissionChecker: permChecker,
 		domainFromCtx:     domainFromCtx,
@@ -57,12 +57,12 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 		qSet.AddField(field)
 	}
 
-	set, err := parseSearchParam(d.searchKeys, request.URL.Query())
+	set, err := parseFilterParam(d.filterKeys, request.URL.Query())
 	if err != nil {
 		return nil, err
 	}
 	if set != nil {
-		qSet.SetSearchParam(set)
+		qSet.SetFilterParam(set)
 	}
 
 	return qSet, nil
@@ -114,12 +114,12 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParam
 	return fields, nil
 }
 
-func parseSearchParam(searchKeys *SearchKeys, queryParams url.Values) (searchSet *SearchSet, err error) {
+func parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (searchSet *FilterSet, err error) {
 	if searchKeys == nil || len(queryParams) == 0 {
 		return nil, nil
 	}
 
-	var key SearchKey
+	var key FilterKey
 	for searchKey := range searchKeys.keys {
 		if len(queryParams[string(searchKey)]) == 0 {
 			continue
@@ -143,5 +143,5 @@ func parseSearchParam(searchKeys *SearchKeys, queryParams url.Values) (searchSet
 	typ := searchKeys.keys[key]
 	val := queryParams.Get(string(key))
 
-	return NewSearchSet(typ, key, val), nil
+	return NewFilterSet(typ, key, val), nil
 }

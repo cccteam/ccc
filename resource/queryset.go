@@ -17,7 +17,7 @@ import (
 
 type QuerySet[Resource Resourcer] struct {
 	keys   *fieldSet
-	search *SearchSet
+	filter *FilterSet
 	fields []accesstypes.Field
 	rMeta  *ResourceMetadata[Resource]
 }
@@ -94,10 +94,10 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 }
 
 // Where translates the the fields to database struct tags in databaseType when building the where clause
-func (q *QuerySet[Resource]) Where() (Statement, error) {
+func (q *QuerySet[Resource]) Where() (*Statement, error) {
 	parts := q.KeySet().Parts()
 	if len(parts) == 0 {
-		return Statement{}, nil
+		return nil, nil
 	}
 
 	builder := strings.Builder{}
@@ -105,7 +105,7 @@ func (q *QuerySet[Resource]) Where() (Statement, error) {
 	for _, part := range parts {
 		c, ok := q.rMeta.fieldMap[part.Key]
 		if !ok {
-			return Statement{}, errors.Newf("field %s not found in struct", part.Key)
+			return nil, errors.Newf("field %s not found in struct", part.Key)
 		}
 		key := c.tag
 		switch q.rMeta.dbType {
@@ -114,12 +114,12 @@ func (q *QuerySet[Resource]) Where() (Statement, error) {
 		case PostgresDBType:
 			builder.WriteString(fmt.Sprintf(` AND "%s" = @%s`, key, strings.ToLower(key)))
 		default:
-			return Statement{}, errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
+			return nil, errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
 		}
 		params[strings.ToLower(key)] = part.Value
 	}
 
-	return Statement{
+	return &Statement{
 		Sql:    "WHERE " + builder.String()[5:],
 		Params: params,
 	}, nil
@@ -130,13 +130,14 @@ func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 		return spanner.Statement{}, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
-	if q.search != nil {
-		return q.spannerSearchStmt()
+	if q.filter != nil {
+		return q.spannerFilterStmt()
 	}
 
 	return q.spannerIndexStmt()
 }
 
+// TODO(bswaney): collapse this into the spanner filter stmt so that we can use the general case
 func (q *QuerySet[Resource]) spannerIndexStmt() (spanner.Statement, error) {
 	columns, err := q.Columns()
 	if err != nil {
@@ -159,20 +160,25 @@ func (q *QuerySet[Resource]) spannerIndexStmt() (spanner.Statement, error) {
 	return stmt, nil
 }
 
-func (q *QuerySet[Resource]) spannerSearchStmt() (spanner.Statement, error) {
+func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 	columns, err := q.Columns()
 	if err != nil {
 		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	var search *Statement
+	var filter *Statement
 	var score *Statement
 
-	query := parseSpannerQuery(q.search.searchVal)
-	switch q.search.searchTyp {
+	query := parseSpannerQuery(q.filter.filterVal)
+	switch q.filter.filterTyp {
+	case Index:
+		filter = query.parseToIndexFilter(q.filter.filterKey)
+		score = &Statement{Sql: string(q.filter.filterKey)} // TODO(bswaney): fix this so that the order by is optional
+	case DefinedSubset:
+		return spanner.Statement{}, errors.New("DefinedSubset filtering is not yet implemented")
 	case SubString:
-		search = query.parseToSearchSubstring(q.search.searchKey)
-		score = query.parseToNgramScore(q.search.searchKey)
+		filter = query.parseToSearchSubstring(q.filter.filterKey)
+		score = query.parseToNgramScore(q.filter.filterKey)
 	case FullText:
 		return spanner.Statement{}, errors.New("FullText search is not yet implemented")
 	case Ngram:
@@ -185,9 +191,9 @@ func (q *QuerySet[Resource]) spannerSearchStmt() (spanner.Statement, error) {
 			FROM %s 
 			WHERE %s
 			ORDER BY %s DESC`,
-		columns, q.Resource(), search.Sql, score.Sql))
+		columns, q.Resource(), filter.Sql, score.Sql))
 
-	maps.Insert(stmt.Params, maps.All(search.Params))
+	maps.Insert(stmt.Params, maps.All(filter.Params))
 	maps.Insert(stmt.Params, maps.All(score.Params))
 
 	return stmt, nil
@@ -251,6 +257,6 @@ func (q *QuerySet[Resource]) SpannerList(ctx context.Context, txn *spanner.ReadO
 	return nil
 }
 
-func (q *QuerySet[Resource]) SetSearchParam(searchSet *SearchSet) {
-	q.search = searchSet
+func (q *QuerySet[Resource]) SetFilterParam(filterSet *FilterSet) {
+	q.filter = filterSet
 }
