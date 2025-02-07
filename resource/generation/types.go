@@ -59,7 +59,7 @@ const (
 const (
 	querySetOutputFilename      = "types.go"
 	resourceInterfaceOutputName = "resources_iface"
-	resourcesTestName           = "resources_test"
+	resourcesTestFileName       = "resource_types_test.go"
 )
 
 type generatedType struct {
