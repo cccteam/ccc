@@ -1,5 +1,7 @@
 package generation
 
+import "fmt"
+
 var baseTypes = []string{
 	"bool",
 	"string",
@@ -11,6 +13,10 @@ var baseTypes = []string{
 	"complex64", "complex128",
 	"error",
 }
+
+const (
+	genPrefix = "zz_gen"
+)
 
 type ConstraintType string
 
@@ -51,9 +57,9 @@ const (
 )
 
 const (
-	querySetOutputFilename          = "types.go"
-	resourceInterfaceOutputFilename = "generated_resources_iface.go"
-	resourcesTestFileName           = "generated_resources_test.go"
+	querySetOutputFilename      = "types.go"
+	resourceInterfaceOutputName = "resources_iface"
+	resourcesTestName           = "resources_test"
 )
 
 type generatedType struct {
@@ -136,4 +142,8 @@ func (r generatedResource) DataType() string {
 
 func (r generatedResource) MetaType() string {
 	return r.dataType
+}
+
+func generatedFileName(name string) string {
+	return fmt.Sprintf("%s_%s.go", genPrefix, name)
 }

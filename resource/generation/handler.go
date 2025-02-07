@@ -95,7 +95,7 @@ func (c *Client) generateHandlers(structName string) error {
 	}
 
 	if len(handlerData) > 0 {
-		fileName := fmt.Sprintf("generated_%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+		fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
 		destinationFilePath := filepath.Join(c.handlerDestination, fileName)
 
 		file, err := os.OpenFile(destinationFilePath, os.O_RDWR|os.O_CREATE, 0o644)

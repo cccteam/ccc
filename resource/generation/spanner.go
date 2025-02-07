@@ -2,7 +2,6 @@ package generation
 
 import (
 	"bytes"
-	"fmt"
 	"go/ast"
 	"log"
 	"os"
@@ -51,7 +50,7 @@ func (c *Client) generateResourceInterfaces(types []*generatedType) error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(c.resourceDestination, resourceInterfaceOutputFilename)
+	destinationFile := filepath.Join(c.resourceDestination, generatedFileName(resourceInterfaceOutputName))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -75,7 +74,7 @@ func (c *Client) generateResourceTests(types []*generatedType) error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(c.resourceDestination, resourcesTestFileName)
+	destinationFile := filepath.Join(c.resourceDestination, generatedFileName(resourcesTestName))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -91,8 +90,8 @@ func (c *Client) generateResourceTests(types []*generatedType) error {
 }
 
 func (c *Client) generatePatcherTypes(generatedType *generatedType) error {
-	fileName := fmt.Sprintf("generated_%s.go", strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
-	destinationFilePath := filepath.Join(c.resourceDestination, fileName)
+	fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+	destinationFilePath := filepath.Join(c.resourceDestination)
 
 	log.Printf("Generating spanner file: %v\n", fileName)
 
