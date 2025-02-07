@@ -174,7 +174,7 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 		tableName := r.TableName
 
 		table, ok := m[tableName]
-		if !ok || table.Columns == nil {
+		if !ok {
 			table = &TableMetadata{
 				Columns: make(map[string]FieldMetadata),
 				IsView:  r.IsView,
@@ -186,17 +186,35 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 			ct = ConstraintType(*r.ConstraintType)
 		}
 
-		if _, ok := table.Columns[r.ColumnName]; !ok {
-			table.Columns[r.ColumnName] = FieldMetadata{
-				ColumnName:     r.ColumnName,
-				SpannerType:    r.SpannerType,
-				IsNullable:     r.IsNullable,
-				ConstraintType: ct,
-				IsIndex:        r.IsIndex,
-				IsUniqueIndex:  r.IsUniqueIndex,
+		column, ok := table.Columns[r.ColumnName]
+		if !ok {
+			column = FieldMetadata{
+				ColumnName:  r.ColumnName,
+				SpannerType: r.SpannerType,
 			}
 		}
 
+		if ct == PrimaryKey {
+			column.IsPrimaryKey = true
+		}
+
+		if r.IsNullable {
+			column.IsNullable = true
+		}
+
+		if !slices.Contains(column.ConstraintTypes, ct) {
+			column.ConstraintTypes = append(column.ConstraintTypes, ct)
+		}
+
+		if r.IsIndex {
+			column.IsIndex = true
+		}
+
+		if r.IsUniqueIndex {
+			column.IsUniqueIndex = true
+		}
+
+		table.Columns[r.ColumnName] = column
 		m[tableName] = table
 	}
 
@@ -208,12 +226,12 @@ func (c *Client) writeBytesToFile(destination string, file *os.File, data []byte
 		var err error
 		data, err = format.Source(data)
 		if err != nil {
-			return errors.Wrap(err, "format.Source()")
+			return errors.Wrapf(err, "format.Source(): file: %s", file.Name())
 		}
 
 		data, err = imports.Process(destination, data, nil)
 		if err != nil {
-			return errors.Wrap(err, "imports.Process()")
+			return errors.Wrapf(err, "imports.Process(): file: %s", file.Name())
 		}
 
 		// align package is not concurrent safe
@@ -223,18 +241,18 @@ func (c *Client) writeBytesToFile(destination string, file *os.File, data []byte
 		align.Init(bytes.NewReader(data))
 		data, err = align.Do()
 		if err != nil {
-			return errors.Wrap(err, "align.Do()")
+			return errors.Wrapf(err, "align.Do(): file: %s", file.Name())
 		}
 	}
 
 	if err := file.Truncate(0); err != nil {
-		return errors.Wrap(err, "file.Truncate()")
+		return errors.Wrapf(err, "file.Truncate(): file: %s", file.Name())
 	}
 	if _, err := file.Seek(0, 0); err != nil {
-		return errors.Wrap(err, "file.Seek()")
+		return errors.Wrapf(err, "file.Seek(): file: %s", file.Name())
 	}
 	if _, err := file.Write(data); err != nil {
-		return errors.Wrap(err, "file.Write()")
+		return errors.Wrapf(err, "file.Write(): file: %s", file.Name())
 	}
 
 	return nil

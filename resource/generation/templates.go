@@ -99,7 +99,7 @@ type {{ .Name }}CreatePatch struct {
 }
 
 {{ $PrimaryKeyIsUUID := PrimaryKeyTypeIsUUID .Fields }}
-{{ if and (eq .IsCompoundTable false) (eq $PrimaryKeyIsUUID true) }}
+{{ if and (eq .HasCompoundPrimaryKey false) (eq $PrimaryKeyIsUUID true) }}
 func New{{ .Name }}CreatePatchFromPatchSet(patchSet *resource.PatchSet[{{ .Name }}]) (*{{ .Name }}CreatePatch, error) {
 	id, err := ccc.NewUUID()
 	if err != nil {

@@ -96,11 +96,11 @@ func (c *Client) generatePatcherTypes(generatedType *generatedType) error {
 	log.Printf("Generating spanner file: %v\n", fileName)
 
 	output, err := c.generateTemplateOutput(resourceFileTemplate, map[string]any{
-		"Source":          c.resourceFilePath,
-		"Name":            generatedType.Name,
-		"IsView":          generatedType.IsView,
-		"Fields":          generatedType.Fields,
-		"IsCompoundTable": generatedType.IsCompoundTable,
+		"Source":                c.resourceFilePath,
+		"Name":                  generatedType.Name,
+		"IsView":                generatedType.IsView,
+		"Fields":                generatedType.Fields,
+		"HasCompoundPrimaryKey": generatedType.HasCompoundPrimaryKey,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -137,24 +137,33 @@ func (c *Client) buildPatcherTypesFromSource() ([]*generatedType, error) {
 				continue
 			}
 			if st.Fields == nil {
-				continue
+				return nil, errors.Newf("struct %s has no fields", ts.Name.Name)
 			}
 
-			isCompoundTable := true
 			tableName := c.pluralize(ts.Name.Name)
 
 			table, ok := c.tableLookup[tableName]
-			if !ok || table == nil {
+			if !ok {
 				return nil, errors.Newf("table not found: %s", tableName)
 			}
 
 			fields := make([]*typeField, 0)
-			for _, f := range st.Fields.List {
-				if len(f.Names) == 0 {
-					continue
+			var pkCount int
+			for i, astField := range st.Fields.List {
+				if len(astField.Names) == 0 {
+					return nil, errors.Newf("field at index (%d) has no name in struct (%s)", i, ts.Name.Name)
 				}
 
-				fields = append(fields, c.typeFieldFromAstField(table, f, &isCompoundTable))
+				f, err := c.typeFieldFromAstField(table, astField)
+				if err != nil {
+					return nil, errors.Wrapf(err, "c.typeFieldFromAstField(): table: %s", tableName)
+				}
+
+				if f.IsPrimaryKey {
+					pkCount++
+				}
+
+				fields = append(fields, f)
 			}
 
 			var isView bool
@@ -163,10 +172,10 @@ func (c *Client) buildPatcherTypesFromSource() ([]*generatedType, error) {
 			}
 
 			typeList = append(typeList, &generatedType{
-				Name:            ts.Name.Name,
-				Fields:          fields,
-				IsCompoundTable: isCompoundTable == (len(fields) > 1),
-				IsView:          isView,
+				Name:                  ts.Name.Name,
+				Fields:                fields,
+				HasCompoundPrimaryKey: pkCount > 1,
+				IsView:                isView,
 			})
 		}
 	}
@@ -178,7 +187,7 @@ func (c *Client) buildPatcherTypesFromSource() ([]*generatedType, error) {
 	return typeList, nil
 }
 
-func (c *Client) typeFieldFromAstField(tableMetadata *TableMetadata, f *ast.Field, isCompoundTable *bool) *typeField {
+func (c *Client) typeFieldFromAstField(tableMetadata *TableMetadata, f *ast.Field) (*typeField, error) {
 	field := &typeField{
 		Name: f.Names[0].Name,
 	}
@@ -190,23 +199,26 @@ func (c *Client) typeFieldFromAstField(tableMetadata *TableMetadata, f *ast.Fiel
 	}
 
 	if field.Tag == "" {
-		return field
+		return nil, errors.Newf("spanner tag not found for field: %s", field.Name)
 	}
 
-	structTag := reflect.StructTag(field.Tag[1 : len(field.Tag)-1])
+	structTag := reflect.StructTag(strings.Trim(field.Tag, "`"))
 	column := structTag.Get("spanner")
 
-	if data, ok := tableMetadata.Columns[column]; ok {
-		field.IsPrimaryKey = data.ConstraintType == PrimaryKey
-		field.IsIndex = data.IsIndex
-		field.IsUniqueIndex = data.IsUniqueIndex
-
-		if data.ConstraintType != PrimaryKey && data.ConstraintType != ForeignKey {
-			*isCompoundTable = false
-		}
+	if column == "" {
+		return nil, errors.Newf("spanner tag not found for field: %s", field.Name)
 	}
 
-	return field
+	data, ok := tableMetadata.Columns[column]
+	if !ok {
+		return nil, errors.Newf("column (%s) not found", column)
+	}
+
+	field.IsPrimaryKey = data.IsPrimaryKey
+	field.IsIndex = data.IsIndex
+	field.IsUniqueIndex = data.IsUniqueIndex
+
+	return field, nil
 }
 
 func (c *Client) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {

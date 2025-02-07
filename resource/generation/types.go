@@ -63,34 +63,35 @@ const (
 )
 
 type generatedType struct {
-	Name            string
-	IsView          bool
-	IsCompoundTable bool
-	Fields          []*typeField
+	Name                  string
+	IsView                bool
+	HasCompoundPrimaryKey bool
+	Fields                []*typeField
 }
 
 type typeField struct {
-	Name           string
-	Type           string
-	Tag            string
-	IsPrimaryKey   bool
-	IsIndex        bool
-	IsUniqueIndex  bool
-	QueryTag       string
-	ConstraintType string
-	ReadPerm       string
-	ListPerm       string
-	PatchPerm      string
-	Conditions     []string
+	Name            string
+	Type            string
+	Tag             string
+	IsPrimaryKey    bool
+	IsIndex         bool
+	IsUniqueIndex   bool
+	QueryTag        string
+	ConstraintTypes []ConstraintType
+	ReadPerm        string
+	ListPerm        string
+	PatchPerm       string
+	Conditions      []string
 }
 
 type FieldMetadata struct {
-	ConstraintType ConstraintType
-	ColumnName     string
-	SpannerType    string
-	IsNullable     bool
-	IsIndex        bool
-	IsUniqueIndex  bool
+	ColumnName      string
+	ConstraintTypes []ConstraintType
+	IsPrimaryKey    bool
+	SpannerType     string
+	IsNullable      bool
+	IsIndex         bool
+	IsUniqueIndex   bool
 }
 
 type InformationSchemaResult struct {
