@@ -76,12 +76,17 @@ type typeField struct {
 	IsPrimaryKey    bool
 	IsIndex         bool
 	IsUniqueIndex   bool
-	QueryTag        string
 	ConstraintTypes []ConstraintType
-	ReadPerm        string
-	ListPerm        string
-	PatchPerm       string
-	Conditions      []string
+	fieldTagInfo
+}
+
+type fieldTagInfo struct {
+	QueryTag      string
+	ReadPerm      string
+	ListPerm      string
+	PatchPerm     string
+	Conditions    []string
+	SpannerColumn string
 }
 
 type FieldMetadata struct {

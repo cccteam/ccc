@@ -166,7 +166,7 @@ declLoop:
 			}
 
 			if st.Fields == nil {
-				return nil, errors.Newf("no fields found for struct: %s", structName)
+				return nil, errors.Newf("no fields found for struct (%s)", structName)
 			}
 
 			table, ok := c.tableLookup[c.pluralize(structName)]
@@ -177,7 +177,7 @@ declLoop:
 			var fields []*typeField
 			for i, f := range st.Fields.List {
 				if len(f.Names) == 0 {
-					return nil, errors.Newf("field name not found for struct: %s at index %d", structName, i)
+					return nil, errors.Newf("field name not found for struct (%s) at index (%d)", structName, i)
 				}
 
 				field := &typeField{
@@ -186,21 +186,18 @@ declLoop:
 				}
 
 				if f.Tag == nil {
-					return nil, errors.Newf("field tag not found for struct: %s at index %d", structName, i)
+					return nil, errors.Newf("field tag not found for struct (%s) at index (%d)", structName, i)
 				}
 
-				field.Tag = strings.Trim(f.Tag.Value, "`")
-				structTag := reflect.StructTag(field.Tag)
-				field = parseTags(field, structTag)
-
-				spannerCol := structTag.Get("spanner")
-				if spannerCol == "" {
-					return nil, errors.Newf("spanner tag not found for struct: %s at index %d", structName, i)
+				fieldTagInfo, err := parseTags(f.Tag.Value)
+				if err != nil {
+					return nil, errors.Wrapf(err, "parseTags(): struct (%s) at index (%d)", structName, i)
 				}
+				field.fieldTagInfo = fieldTagInfo
 
-				md, ok := table.Columns[spannerCol]
+				md, ok := table.Columns[field.SpannerColumn]
 				if !ok {
-					return nil, errors.Newf("column (%s) not found for table (%s)", spannerCol, c.pluralize(structName))
+					return nil, errors.Newf("column (%s) not found for table (%s)", field.SpannerColumn, c.pluralize(structName))
 				}
 
 				field.ConstraintTypes = md.ConstraintTypes
@@ -226,7 +223,15 @@ declLoop:
 	return &generatedStruct, nil
 }
 
-func parseTags(field *typeField, fieldTag reflect.StructTag) *typeField {
+func parseTags(tag string) (fieldTagInfo, error) {
+	var field fieldTagInfo
+	fieldTag := reflect.StructTag(strings.Trim(tag, "`"))
+
+	field.SpannerColumn = fieldTag.Get("spanner")
+	if field.SpannerColumn == "" {
+		return fieldTagInfo{}, errors.Newf("spanner tag not found")
+	}
+
 	if perms := fieldTag.Get("perm"); perms != "" {
 		if strings.Contains(perms, string(accesstypes.Read)) {
 			field.ReadPerm = string(accesstypes.Read)
@@ -257,7 +262,7 @@ func parseTags(field *typeField, fieldTag reflect.StructTag) *typeField {
 		field.Conditions = strings.Split(conditions, ",")
 	}
 
-	return field
+	return field, nil
 }
 
 func (c *Client) handlerName(structName string, handlerType HandlerType) string {
