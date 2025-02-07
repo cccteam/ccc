@@ -15,7 +15,7 @@ import (
 )
 
 func (c *Client) runResourcesGeneration() error {
-	if err := removeGeneratedFiles(c.resourceDestination, HeaderComment); err != nil {
+	if err := removeGeneratedFiles(c.resourceDestination, FileName); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
@@ -91,7 +91,7 @@ func (c *Client) generateResourceTests(types []*generatedType) error {
 
 func (c *Client) generatePatcherTypes(generatedType *generatedType) error {
 	fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
-	destinationFilePath := filepath.Join(c.resourceDestination)
+	destinationFilePath := filepath.Join(c.resourceDestination, fileName)
 
 	log.Printf("Generating spanner file: %v\n", fileName)
 
