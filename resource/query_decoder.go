@@ -73,10 +73,8 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParam
 
 	fields := make([]accesstypes.Field, 0, d.fieldMapper.Len())
 	for _, field := range d.fieldMapper.Fields() {
-		if len(columnMap) > 0 {
-			if _, ok := columnMap[string(field)]; !ok {
-				continue
-			}
+		if _, ok := columnMap[string(field)]; !ok {
+			continue
 		}
 
 		if !d.resourceSet.PermissionRequired(field, d.resourceSet.Permission()) {
