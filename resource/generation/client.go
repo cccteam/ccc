@@ -378,7 +378,7 @@ func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) er
 		}
 
 		switch method {
-		case FileName:
+		case Prefix:
 			if err := removeGeneratedFileByPrefix(directory, f); err != nil {
 				return errors.Wrap(err, "removeGeneratedFileByPrefix()")
 			}
