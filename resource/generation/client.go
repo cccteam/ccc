@@ -372,6 +372,10 @@ func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) er
 		return errors.Wrap(err, "dir.Readdirnames()")
 	}
 
+	if err := dir.Close(); err != nil {
+		return errors.Wrap(err, "dir.Close()")
+	}
+
 	for _, f := range files {
 		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") {
 			continue
