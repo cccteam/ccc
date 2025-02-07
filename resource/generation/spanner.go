@@ -15,7 +15,7 @@ import (
 )
 
 func (c *Client) runResourcesGeneration() error {
-	if err := removeGeneratedFiles(c.resourceDestination, Prefix); err != nil {
+	if err := removeGeneratedFiles(c.resourceDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 

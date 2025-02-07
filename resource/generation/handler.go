@@ -17,7 +17,7 @@ import (
 )
 
 func (c *Client) runHandlerGeneration() error {
-	if err := removeGeneratedFiles(c.handlerDestination, Prefix); err != nil {
+	if err := removeGeneratedFiles(c.handlerDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
