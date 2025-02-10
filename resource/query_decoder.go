@@ -65,6 +65,7 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParam
 		for _, c := range strings.Split(cols, ",") {
 			columnMap[c] = struct{}{}
 		}
+		// TODO(jwatson): validate that the columns are valid and translate them to fields here
 	}
 
 	if ok, _, err := d.permissionChecker.RequireResources(ctx, user, domain, d.resourceSet.Permission(), d.resourceSet.BaseResource()); err != nil {
