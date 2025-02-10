@@ -59,13 +59,26 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParams url.Values) ([]accesstypes.Field, error) {
 	domain, user := d.domainFromCtx(ctx), d.userFromCtx(ctx)
 
-	var columnMap map[string]struct{}
+	fieldMap := d.resourceSet.ResourceMetadata().fieldMap
+
+	var columnMap map[string]accesstypes.Field
 	if cols := queryParams.Get(columnsQueryKey); cols != "" {
-		columnMap = make(map[string]struct{})
+		columnMap = make(map[string]accesstypes.Field)
 		for _, c := range strings.Split(cols, ",") {
-			columnMap[c] = struct{}{}
+			columnMap[c] = ""
 		}
-		// TODO(jwatson): validate that the columns are valid and translate them to fields here
+
+		for field, cache := range fieldMap {
+			if _, ok := columnMap[cache.tag]; ok {
+				columnMap[cache.tag] = field
+			}
+		}
+	}
+
+	for col, field := range columnMap {
+		if _, found := fieldMap[field]; !found || field == "" {
+			return nil, httpio.NewBadRequestMessagef("unknown field: %s", col)
+		}
 	}
 
 	if ok, _, err := d.permissionChecker.RequireResources(ctx, user, domain, d.resourceSet.Permission(), d.resourceSet.BaseResource()); err != nil {
@@ -77,7 +90,7 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParam
 	fields := make([]accesstypes.Field, 0, d.fieldMapper.Len())
 	for _, field := range d.fieldMapper.Fields() {
 		if len(columnMap) > 0 {
-			if _, found := columnMap[d.resourceSet.ResourceMetadata().fieldMap[field].tag]; !found {
+			if _, found := columnMap[fieldMap[field].tag]; !found {
 				continue
 			}
 		}
