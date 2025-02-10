@@ -120,7 +120,7 @@ declLoop:
 				continue
 			}
 			if spec.Name == nil {
-				return nil, errors.Newf("parseStructForTypescriptGeneration: reflected struct has no identifier %s", structName)
+				return nil, errors.Newf("parseStructForTypescriptGeneration: reflected typespec has no identifier %v+", spec)
 			}
 			if spec.Name.Name != structName {
 				continue
@@ -128,39 +128,39 @@ declLoop:
 
 			st, ok := spec.Type.(*ast.StructType)
 			if !ok {
-				return nil, errors.Newf("parseStructForTypescriptGeneration: could not reflect structtype for struct `%s`", structName)
+				return nil, errors.Newf("parseStructForTypescriptGeneration(): could not cast ast.Expr to *ast.StructType for typespect %v+, struct `%s`", spec, structName)
 			}
 			if st.Fields == nil {
-				return nil, errors.Newf("parseStructForTypescriptGeneration: reflected structtype %s has no fields", structName)
+				return nil, errors.Newf("parseStructForTypescriptGeneration(): reflected structtype `%s` has no fields", structName)
 			}
 
 			tableMeta, ok := c.tableLookup[c.pluralize(structName)]
 			if !ok {
-				return nil, errors.Newf("table not found: %s", c.pluralize(structName))
+				return nil, errors.Newf("parseStructForTypescriptGeneration(): table `%s` not found in tablemetadata", c.pluralize(structName))
 			}
 
 			var fields []*generatedResource
 			for _, astField := range st.Fields.List {
 				if len(astField.Names) == 0 {
-					return nil, errors.Newf("parseStructForTypescriptGeneration: astField has no identifier in struct %s", structName)
+					return nil, errors.Newf("parseStructForTypescriptGeneration(): *ast.Field at pos `%d` has no identifier in struct %s", astField.Pos(), structName)
 				}
 				var tag string
 				if astField.Tag != nil {
 					tag = astField.Tag.Value
 				}
 				if tag == "" {
-					return nil, errors.Newf("parseStructForTypescriptGeneration: astField.Tag is empty in %s", structName)
+					return nil, errors.Newf("parseStructForTypescriptGeneration(): *ast.Field.Tag is empty in struct `%s`", structName)
 				}
 
 				column := reflect.StructTag(strings.Trim(tag, "`")).Get("spanner")
 				if column == "" {
-					return nil, errors.Newf("parseStructForTypescriptGeneration: could not get spanner value from tag %s in struct %s", tag, structName)
+					return nil, errors.Newf("parseStructForTypescriptGeneration(): could not get spanner value from tag `%s` in struct `%s`", tag, structName)
 				}
 
 				field := &generatedResource{Name: column}
 				fieldMeta, ok := tableMeta.Columns[column]
 				if !ok {
-					return nil, errors.Newf("parseStructForTypescriptGeneration: fieldMeta returned no info for column %s in struct %s", column, structName)
+					return nil, errors.Newf("parseStructForTypescriptGeneration: fieldMeta returned no info for column `%s` in struct `%s`", column, structName)
 				}
 				dataType, err := typescriptType(astField.Type)
 				if err != nil {
