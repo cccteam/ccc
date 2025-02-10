@@ -61,9 +61,8 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParam
 
 	fieldMap := d.resourceSet.ResourceMetadata().fieldMap
 
-	var columnMap map[string]accesstypes.Field
+	columnMap := make(map[string]accesstypes.Field)
 	if cols := queryParams.Get(columnsQueryKey); cols != "" {
-		columnMap = make(map[string]accesstypes.Field)
 		for _, c := range strings.Split(cols, ",") {
 			columnMap[c] = ""
 		}
