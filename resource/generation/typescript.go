@@ -173,7 +173,7 @@ declLoop:
 
 				if fieldMeta.IsForeignKey && slices.Contains(routerResources, accesstypes.Resource(fieldMeta.ReferencedTable)) {
 					field.IsForeignKey = fieldMeta.IsForeignKey
-					field.dataType = "enumerated"
+					field.dataType = enumerated
 					field.ReferencedResource = fieldMeta.ReferencedTable
 					field.ReferencedColumn = fieldMeta.ReferencedColumn
 				}
@@ -190,32 +190,32 @@ declLoop:
 	return resource, nil
 }
 
-func typescriptType(t ast.Expr) (string, error) {
+func typescriptType(t ast.Expr) (tsType, error) {
 	switch t := t.(type) {
 	case *ast.Ident:
 		switch {
 		case t.Name == "Link", t.Name == "NullLink":
-			return "link", nil
+			return link, nil
 		case t.Name == "UUID", t.Name == "NullUUID":
-			return "uuid", nil
+			return uuid, nil
 		case t.Name == "bool":
-			return "boolean", nil
+			return boolean, nil
 		case t.Name == "string":
-			return "string", nil
+			return str, nil
 		case strings.HasPrefix(t.Name, "int"), strings.HasPrefix(t.Name, "uint"),
 			strings.HasPrefix(t.Name, "float"), t.Name == "Decimal", t.Name == "NullDecimal":
-			return "number", nil
+			return number, nil
 		case t.Name == "Time", t.Name == "NullTime":
-			return "Date", nil
+			return date, nil
 		default:
-			return "", errors.Newf("typescriptType: unhandled type `%s`", t.Name)
+			return -1, errors.Newf("typescriptType: unhandled type `%s`", t.Name)
 		}
 	case *ast.SelectorExpr:
 		return typescriptType(t.Sel)
 	case *ast.StarExpr:
 		return typescriptType(t.X)
 	default:
-		return "", errors.Newf("typescriptType: unhandled type at field[%d]", t.Pos())
+		return -1, errors.Newf("typescriptType: unhandled type at field[%d]", t.Pos())
 	}
 }
 

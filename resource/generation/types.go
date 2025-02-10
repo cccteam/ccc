@@ -135,11 +135,43 @@ type generatedHandler struct {
 	template    string
 	handlerType HandlerType
 }
+type tsType int
+
+const (
+	link tsType = iota
+	uuid
+	boolean
+	str
+	number
+	date
+	enumerated
+)
+
+func (t tsType) String() string {
+	switch t {
+	case link:
+		return "Link"
+	case uuid:
+		return "uuid"
+	case boolean:
+		return "boolean"
+	case str:
+		return "string"
+	case number:
+		return "number"
+	case date:
+		return "Date"
+	case enumerated:
+		return "enumerated"
+	}
+
+	return "string"
+}
 
 type generatedResource struct {
 	Name               string
 	Fields             []*generatedResource
-	dataType           string
+	dataType           tsType
 	Required           bool
 	IsPrimaryKey       bool
 	IsForeignKey       bool
@@ -150,19 +182,15 @@ type generatedResource struct {
 }
 
 func (r generatedResource) DataType() string {
-	if r.dataType == "uuid" || r.dataType == "enumerated" {
-		return "string"
+	if r.dataType == uuid || r.dataType == enumerated {
+		return str.String()
 	}
 
-	if r.dataType == "link" {
-		return "Link"
-	}
-
-	return r.dataType
+	return r.dataType.String()
 }
 
 func (r generatedResource) DisplayType() string {
-	return r.dataType
+	return r.dataType.String()
 }
 
 func generatedFileName(name string) string {
