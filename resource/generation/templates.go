@@ -463,16 +463,7 @@ const resourceMap: ResourceMap = {
     route: '{{ Kebab (Pluralize $resource.Name) }}',
     fields: [
       {{- range $field := $resource.Fields }}
-      {{- if $field.IsForeignKey }}
-      {
-        fieldName: '{{ Camel $field.Name }}',
-        dataType: '{{ Lower $field.MetaType }}',
-        required: {{ $field.Required }},
-        enumeratedResource: Resources.{{ $field.ReferencedResource }},
-      },
-      {{- else }}
-      { fieldName: '{{ Camel $field.Name }}', dataType: '{{ Lower $field.MetaType }}', required: {{ $field.Required }} },
-      {{- end }}
+      { fieldName: '{{ Camel $field.Name }}', primaryKey: {{ $field.IsPrimaryKey }}, keyOrdinal: {{ $field.Ordinality }}, dataType: '{{ Lower $field.MetaType }}', required: {{ $field.Required }}{{ if $field.IsForeignKey }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
       {{- end }}
     ],
   },
