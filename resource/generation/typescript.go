@@ -169,10 +169,10 @@ declLoop:
 				field.dataType = dataType
 				field.Required = !fieldMeta.IsNullable
 				field.IsPrimaryKey = fieldMeta.IsPrimaryKey
-				field.IsForeignKey = fieldMeta.IsForeignKey
 				field.KeyOrdinalPosition = fieldMeta.KeyOrdinalPosition
 
 				if fieldMeta.IsForeignKey && slices.Contains(routerResources, accesstypes.Resource(fieldMeta.ReferencedTable)) {
+					field.IsForeignKey = fieldMeta.IsForeignKey
 					field.dataType = "enumerated"
 					field.ReferencedResource = fieldMeta.ReferencedTable
 					field.ReferencedColumn = fieldMeta.ReferencedColumn
