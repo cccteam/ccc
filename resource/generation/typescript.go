@@ -167,7 +167,11 @@ declLoop:
 					return nil, err
 				}
 				field.dataType = dataType
-				field.Required = !fieldMeta.IsNullable
+
+				if !fieldMeta.IsNullable && dataType != uuid && !fieldMeta.IsPrimaryKey { // Primary Key UUIDs are not required for resource creation because the backend generates them
+					field.Required = true
+				}
+
 				field.IsPrimaryKey = fieldMeta.IsPrimaryKey
 				field.KeyOrdinalPosition = fieldMeta.KeyOrdinalPosition
 
