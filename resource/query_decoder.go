@@ -59,10 +59,12 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParams url.Values) ([]accesstypes.Field, error) {
 	domain, user := d.domainFromCtx(ctx), d.userFromCtx(ctx)
 
-	cols := strings.Split(queryParams.Get("columns"), ",")
-	columnMap := make(map[string]struct{}, len(cols))
-	for _, c := range cols {
-		columnMap[c] = struct{}{}
+	var columnMap map[string]struct{}
+	if cols := queryParams.Get(columnsQueryKey); cols != "" {
+		columnMap = make(map[string]struct{})
+		for _, c := range strings.Split(cols, ",") {
+			columnMap[c] = struct{}{}
+		}
 	}
 
 	if ok, _, err := d.permissionChecker.RequireResources(ctx, user, domain, d.resourceSet.Permission(), d.resourceSet.BaseResource()); err != nil {
@@ -73,8 +75,12 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParam
 
 	fields := make([]accesstypes.Field, 0, d.fieldMapper.Len())
 	for _, field := range d.fieldMapper.Fields() {
-		if _, ok := columnMap[string(field)]; !ok {
-			continue
+		if len(columnMap) > 0 {
+			if md := d.resourceSet.ResourceMetadata(); md != nil {
+				if _, ok := columnMap[md.fieldMap[field].tag]; !ok {
+					continue
+				}
+			}
 		}
 
 		if !d.resourceSet.PermissionRequired(field, d.resourceSet.Permission()) {

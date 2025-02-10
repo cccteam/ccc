@@ -32,3 +32,7 @@ type TypescriptData struct {
 	ResourcePermissions permissionMap
 	Domains             []accesstypes.PermissionScope
 }
+
+const (
+	columnsQueryKey = "columns"
+)
