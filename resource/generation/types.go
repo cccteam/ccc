@@ -98,6 +98,7 @@ type FieldMetadata struct {
 	IsNullable       bool
 	IsIndex          bool
 	IsUniqueIndex    bool
+	OrdinalPosition  int64
 	ReferencedTable  string
 	ReferencedColumn string
 }
@@ -138,7 +139,9 @@ type generatedResource struct {
 	Fields             []*generatedResource
 	dataType           string
 	Required           bool
+	IsPrimaryKey       bool
 	IsForeignKey       bool
+	Ordinality         int64
 	ReferencedResource string
 	ReferencedColumn   string
 }

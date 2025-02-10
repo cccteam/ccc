@@ -221,8 +221,9 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 		column, ok := table.Columns[r.ColumnName]
 		if !ok {
 			column = FieldMetadata{
-				ColumnName:  r.ColumnName,
-				SpannerType: r.SpannerType,
+				ColumnName:      r.ColumnName,
+				SpannerType:     r.SpannerType,
+				OrdinalPosition: r.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
 			}
 		}
 
