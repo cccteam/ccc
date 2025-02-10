@@ -118,7 +118,7 @@ type InformationSchemaResult struct {
 	IsIndex            bool    `spanner:"IS_INDEX"`
 	IsUniqueIndex      bool    `spanner:"IS_UNIQUE_INDEX"`
 	OrdinalPosition    int64   `spanner:"ORDINAL_POSITION"`
-	KeyOrdinalPosition *int64  `spanner:"KEY_ORDINAL_POSITION"`
+	KeyOrdinalPosition int64   `spanner:"KEY_ORDINAL_POSITION"`
 }
 
 type TableMetadata struct {

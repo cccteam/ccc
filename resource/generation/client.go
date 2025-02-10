@@ -183,7 +183,7 @@ func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 		ic.INDEX_NAME IS NOT NULL AS IS_INDEX,
 		MAX(COALESCE(i.IS_UNIQUE, false)) AS IS_UNIQUE_INDEX,
 		c.ORDINAL_POSITION,
-		d.KEY_ORDINAL_POSITION
+		COALESCE(d.KEY_ORDINAL_POSITION, 1) AS KEY_ORDINAL_POSITION,
 	FROM INFORMATION_SCHEMA.COLUMNS c
 		LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
 			AND t.TABLE_TYPE = 'BASE TABLE'
@@ -225,9 +225,10 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 		column, ok := table.Columns[r.ColumnName]
 		if !ok {
 			column = FieldMetadata{
-				ColumnName:      r.ColumnName,
-				SpannerType:     r.SpannerType,
-				OrdinalPosition: r.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
+				ColumnName:         r.ColumnName,
+				SpannerType:        r.SpannerType,
+				OrdinalPosition:    r.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
+				KeyOrdinalPosition: r.KeyOrdinalPosition - 1,
 			}
 		}
 
@@ -251,10 +252,6 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 			if r.ReferencedColumn != nil {
 				column.ReferencedColumn = *r.ReferencedColumn
 			}
-		}
-
-		if r.KeyOrdinalPosition != nil {
-			column.KeyOrdinalPosition = *r.KeyOrdinalPosition - 1
 		}
 
 		if r.IsNullable {
