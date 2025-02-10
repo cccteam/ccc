@@ -168,9 +168,11 @@ declLoop:
 				}
 				field.dataType = dataType
 				field.Required = !fieldMeta.IsNullable
+				field.IsPrimaryKey = fieldMeta.IsPrimaryKey
+				field.IsForeignKey = fieldMeta.IsForeignKey
+				field.Ordinality = fieldMeta.OrdinalPosition
 
 				if fieldMeta.IsForeignKey && slices.Contains(routerResources, accesstypes.Resource(fieldMeta.ReferencedTable)) {
-					field.IsForeignKey = true
 					field.dataType = "enumerated"
 					field.ReferencedResource = fieldMeta.ReferencedTable
 					field.ReferencedColumn = fieldMeta.ReferencedColumn
