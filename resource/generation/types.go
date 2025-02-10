@@ -90,33 +90,35 @@ type fieldTagInfo struct {
 }
 
 type FieldMetadata struct {
-	ColumnName       string
-	ConstraintTypes  []ConstraintType
-	IsPrimaryKey     bool
-	IsForeignKey     bool
-	SpannerType      string
-	IsNullable       bool
-	IsIndex          bool
-	IsUniqueIndex    bool
-	OrdinalPosition  int64
-	ReferencedTable  string
-	ReferencedColumn string
+	ColumnName         string
+	ConstraintTypes    []ConstraintType
+	IsPrimaryKey       bool
+	IsForeignKey       bool
+	SpannerType        string
+	IsNullable         bool
+	IsIndex            bool
+	IsUniqueIndex      bool
+	OrdinalPosition    int64
+	KeyOrdinalPosition int64
+	ReferencedTable    string
+	ReferencedColumn   string
 }
 
 type InformationSchemaResult struct {
-	TableName        string  `spanner:"TABLE_NAME"`
-	ColumnName       string  `spanner:"COLUMN_NAME"`
-	ConstraintName   *string `spanner:"CONSTRAINT_NAME"`
-	IsPrimaryKey     bool    `spanner:"IS_PRIMARY_KEY"`
-	IsForeignKey     bool    `spanner:"IS_FOREIGN_KEY"`
-	ReferencedTable  *string `spanner:"REFERENCED_TABLE"`
-	ReferencedColumn *string `spanner:"REFERENCED_COLUMN"`
-	SpannerType      string  `spanner:"SPANNER_TYPE"`
-	IsNullable       bool    `spanner:"IS_NULLABLE"`
-	IsView           bool    `spanner:"IS_VIEW"`
-	IsIndex          bool    `spanner:"IS_INDEX"`
-	IsUniqueIndex    bool    `spanner:"IS_UNIQUE_INDEX"`
-	OrdinalPosition  int64   `spanner:"ORDINAL_POSITION"`
+	TableName          string  `spanner:"TABLE_NAME"`
+	ColumnName         string  `spanner:"COLUMN_NAME"`
+	ConstraintName     *string `spanner:"CONSTRAINT_NAME"`
+	IsPrimaryKey       bool    `spanner:"IS_PRIMARY_KEY"`
+	IsForeignKey       bool    `spanner:"IS_FOREIGN_KEY"`
+	ReferencedTable    *string `spanner:"REFERENCED_TABLE"`
+	ReferencedColumn   *string `spanner:"REFERENCED_COLUMN"`
+	SpannerType        string  `spanner:"SPANNER_TYPE"`
+	IsNullable         bool    `spanner:"IS_NULLABLE"`
+	IsView             bool    `spanner:"IS_VIEW"`
+	IsIndex            bool    `spanner:"IS_INDEX"`
+	IsUniqueIndex      bool    `spanner:"IS_UNIQUE_INDEX"`
+	OrdinalPosition    int64   `spanner:"ORDINAL_POSITION"`
+	KeyOrdinalPosition *int64  `spanner:"KEY_ORDINAL_POSITION"`
 }
 
 type TableMetadata struct {
@@ -141,7 +143,8 @@ type generatedResource struct {
 	Required           bool
 	IsPrimaryKey       bool
 	IsForeignKey       bool
-	Ordinality         int64
+	OrdinalPosition    int64
+	KeyOrdinalPosition int64
 	ReferencedResource string
 	ReferencedColumn   string
 }
@@ -158,7 +161,7 @@ func (r generatedResource) DataType() string {
 	return r.dataType
 }
 
-func (r generatedResource) MetaType() string {
+func (r generatedResource) DisplayType() string {
 	return r.dataType
 }
 
