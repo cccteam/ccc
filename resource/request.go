@@ -79,17 +79,13 @@ func Operations(r *http.Request, pattern string) iter.Seq2[*Operation, error] {
 				return
 			}
 
-			if method == http.MethodPost && op.Path != "" {
-				_, err := ccc.UUIDFromString(strings.TrimPrefix(op.Path, "/"))
-				if err == nil {
-					yield(nil, errors.Newf("path contains content on a resource with an internally generated key, path = %s", op.Path))
+			ctx, err := withParams(r.Context(), method, pattern, op.Path)
+			if err != nil {
+				yield(nil, err)
 
-					return
-				}
+				return
 			}
 
-			ctx := r.Context()
-			ctx = withParams(ctx, method, pattern, op.Path)
 			r2, err := http.NewRequestWithContext(ctx, method, op.Path, bytes.NewReader([]byte(op.Value)))
 			if err != nil {
 				yield(nil, err)
@@ -129,9 +125,20 @@ func httpMethod(op string) (string, error) {
 	}
 }
 
-func withParams(ctx context.Context, method, pattern, path string) context.Context {
+func withParams(ctx context.Context, method, pattern, path string) (context.Context, error) {
 	switch method {
-	case http.MethodPatch, http.MethodDelete, http.MethodPost:
+	case http.MethodPost:
+		if path != "" {
+			_, err := ccc.UUIDFromString(strings.TrimPrefix(path, "/"))
+			if err == nil {
+				return nil, errors.Newf("path contains content on a resource with an internally generated key, method = %s, path = %s", method, path)
+			}
+		} else {
+			return ctx, nil
+		}
+
+		fallthrough
+	case http.MethodPatch, http.MethodDelete:
 		var chiContext *chi.Context
 		r := chi.NewRouter()
 		r.Handle(pattern, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -142,7 +149,7 @@ func withParams(ctx context.Context, method, pattern, path string) context.Conte
 		ctx = context.WithValue(ctx, chi.RouteCtxKey, chiContext)
 	}
 
-	return ctx
+	return ctx, nil
 }
 
 func permissionFromType(typ OperationType) accesstypes.Permission {
