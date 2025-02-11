@@ -327,7 +327,7 @@ package app
 		var resp response
 		{{- end }}
 
-		for op, err := range resource.Operations(r, "/{id}") {
+		for op, err := range resource.Operations(r, "/{id}"{{- if ne $PrimaryKeyType "ccc.UUID"  }}, resource.RequireCreatePath(){{- end }}) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
