@@ -128,7 +128,7 @@ func httpMethod(op string) (string, error) {
 func withParams(ctx context.Context, method, pattern, path string) (context.Context, error) {
 	switch method {
 	case http.MethodPost:
-		if path != "" {
+		if path != "/" {
 			_, err := ccc.UUIDFromString(strings.TrimPrefix(path, "/"))
 			if err == nil {
 				return nil, errors.Newf("path contains content on a resource with an internally generated key, method = %s, path = %s", method, path)
