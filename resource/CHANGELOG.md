@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.12](https://github.com/cccteam/ccc/compare/resource/v0.0.11...resource/v0.0.12) (2025-02-11)
+
+
+### Features
+
+* generate enumerated resource fields in typescript metadata ([#186](https://github.com/cccteam/ccc/issues/186)) ([d8097d9](https://github.com/cccteam/ccc/commit/d8097d90a212a50bf17fafd065e2b6a188215742))
+* primary key and ordinal position fields in typescript metadata ([#192](https://github.com/cccteam/ccc/issues/192)) ([f3dd430](https://github.com/cccteam/ccc/commit/f3dd430ad0cee7b18fc5660bd031344e165d2646))
+
+
+### Bug Fixes
+
+* Add options to resource.Operations() to better define path requirements ([#193](https://github.com/cccteam/ccc/issues/193)) ([f02b1bf](https://github.com/cccteam/ccc/commit/f02b1bf6eced75f7226af23285576d919df70667))
+* Changed generated suffix to prefix for all generated files ([#187](https://github.com/cccteam/ccc/issues/187)) ([71f06d6](https://github.com/cccteam/ccc/commit/71f06d6b90b98122dbf6bee2098db9837d012184))
+* Fix bugs around querying PrimaryKeys ([#191](https://github.com/cccteam/ccc/issues/191)) ([74f203a](https://github.com/cccteam/ccc/commit/74f203ad957d8fa7f85846696a194198890bd7c8))
+
 ## [0.0.11](https://github.com/cccteam/ccc/compare/resource/v0.0.10...resource/v0.0.11) (2025-02-05)
 
 
