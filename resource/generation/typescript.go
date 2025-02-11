@@ -168,7 +168,11 @@ declLoop:
 				}
 				field.dataType = dataType
 
-				if !fieldMeta.IsNullable && dataType != uuid && !fieldMeta.IsPrimaryKey { // Primary Key UUIDs are not required for resource creation because the backend generates them
+				if fieldMeta.IsPrimaryKey { // Primary Key UUIDs are not required for resource creation because the backend generates them
+					if dataType != uuid {
+						field.Required = true
+					}
+				} else if !fieldMeta.IsNullable {
 					field.Required = true
 				}
 
