@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/go-chi/chi/v5"
@@ -76,6 +77,15 @@ func Operations(r *http.Request, pattern string) iter.Seq2[*Operation, error] {
 				yield(nil, err)
 
 				return
+			}
+
+			if method == http.MethodPost && op.Path != "" {
+				_, err := ccc.UUIDFromString(strings.TrimPrefix(op.Path, "/"))
+				if err == nil {
+					yield(nil, errors.Newf("path contains content on a resource with an internally generated key, path = %s", op.Path))
+
+					return
+				}
 			}
 
 			ctx := r.Context()
