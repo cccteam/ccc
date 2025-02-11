@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/go-chi/chi/v5"
@@ -36,7 +35,26 @@ type patchOperation struct {
 	Value json.RawMessage `json:"value"`
 }
 
-func Operations(r *http.Request, pattern string) iter.Seq2[*Operation, error] {
+type options struct {
+	requireCreatePath bool
+}
+
+type Option func(opt options) options
+
+func RequireCreatePath() Option {
+	return func(o options) options {
+		o.requireCreatePath = true
+
+		return o
+	}
+}
+
+func Operations(r *http.Request, pattern string, opts ...Option) iter.Seq2[*Operation, error] {
+	var o options
+	for _, opt := range opts {
+		o = opt(o)
+	}
+
 	return func(yield func(r *Operation, err error) bool) {
 		if !strings.HasPrefix(pattern, "/") {
 			yield(nil, errors.New("pattern must start with /"))
@@ -79,7 +97,7 @@ func Operations(r *http.Request, pattern string) iter.Seq2[*Operation, error] {
 				return
 			}
 
-			ctx, err := withParams(r.Context(), method, pattern, op.Path)
+			ctx, err := withParams(r.Context(), method, pattern, op.Path, o.requireCreatePath)
 			if err != nil {
 				yield(nil, err)
 
@@ -125,26 +143,38 @@ func httpMethod(op string) (string, error) {
 	}
 }
 
-func withParams(ctx context.Context, method, pattern, path string) (context.Context, error) {
+func withParams(ctx context.Context, method, pattern, path string, requireCreatePath bool) (context.Context, error) {
 	switch method {
 	case http.MethodPost:
-		if path != "/" {
-			_, err := ccc.UUIDFromString(strings.TrimPrefix(path, "/"))
-			if err == nil {
-				return nil, errors.Newf("path contains content on a resource with an internally generated key, method = %s, path = %s", method, path)
-			}
-		} else {
+		p := strings.TrimPrefix(path, "/")
+		if requireCreatePath && p == "" {
+			return ctx, httpio.NewBadRequestMessage("path is required for create operation")
+		}
+
+		if !requireCreatePath && p != "" {
+			return ctx, httpio.NewBadRequestMessage("path is not allowed for create operation")
+		}
+
+		if p == "" {
 			return ctx, nil
 		}
 
 		fallthrough
 	case http.MethodPatch, http.MethodDelete:
+		if path == "" {
+			return ctx, httpio.NewBadRequestMessage("path is required for patch and delete operations")
+		}
+
 		var chiContext *chi.Context
 		r := chi.NewRouter()
 		r.Handle(pattern, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			chiContext = chi.RouteContext(r.Context())
 		}))
-		r.ServeHTTP(nil, &http.Request{Method: method, URL: &url.URL{Path: path}})
+		r.ServeHTTP(nil, &http.Request{Method: method, Header: make(map[string][]string), URL: &url.URL{Path: path}})
+
+		if chiContext == nil {
+			return ctx, httpio.NewBadRequestMessagef("path %q does not match pattern %q", path, pattern)
+		}
 
 		ctx = context.WithValue(ctx, chi.RouteCtxKey, chiContext)
 	}
