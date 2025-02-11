@@ -121,7 +121,7 @@ func httpMethod(op string) (string, error) {
 
 func withParams(ctx context.Context, method, pattern, path string) context.Context {
 	switch method {
-	case http.MethodPatch, http.MethodDelete:
+	case http.MethodPatch, http.MethodDelete, http.MethodPost:
 		var chiContext *chi.Context
 		r := chi.NewRouter()
 		r.Handle(pattern, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
