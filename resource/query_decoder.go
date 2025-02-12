@@ -59,10 +59,11 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParams url.Values) ([]accesstypes.Field, error) {
 	domain, user := d.domainFromCtx(ctx), d.userFromCtx(ctx)
 
+	// BUG: This is a map of Resource fields to spanner tags, not Request fields to json tags...
 	fieldMap := d.resourceSet.ResourceMetadata().fieldMap
 
 	columnMap := make(map[string]accesstypes.Field)
-	if cols := queryParams.Get(columnsQueryKey); cols != "" {
+	if cols := queryParams.Get("columns"); cols != "" {
 		for _, c := range strings.Split(cols, ",") {
 			columnMap[c] = ""
 		}
