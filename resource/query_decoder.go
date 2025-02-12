@@ -8,6 +8,7 @@ import (
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
+	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -59,7 +60,6 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParams url.Values) ([]accesstypes.Field, error) {
 	domain, user := d.domainFromCtx(ctx), d.userFromCtx(ctx)
 
-	// BUG: This is a map of Resource fields to spanner tags, not Request fields to json tags...
 	fieldMap := d.resourceSet.ResourceMetadata().fieldMap
 
 	columnMap := make(map[string]accesstypes.Field)
@@ -69,8 +69,8 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParam
 		}
 
 		for field, cache := range fieldMap {
-			if _, ok := columnMap[cache.tag]; ok {
-				columnMap[cache.tag] = field
+			if _, ok := columnMap[strcase.ToCamel(cache.tag)]; ok {
+				columnMap[strcase.ToCamel(cache.tag)] = field
 			}
 		}
 	}
@@ -90,7 +90,7 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParam
 	fields := make([]accesstypes.Field, 0, d.fieldMapper.Len())
 	for _, field := range d.fieldMapper.Fields() {
 		if len(columnMap) > 0 {
-			if _, found := columnMap[fieldMap[field].tag]; !found {
+			if _, found := columnMap[strcase.ToCamel(fieldMap[field].tag)]; !found {
 				continue
 			}
 		}
