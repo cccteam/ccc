@@ -58,7 +58,7 @@ func TestQueryDecoder_fields(t *testing.T) {
 			want: []accesstypes.Field{"ID", "Description"},
 		},
 		{
-			name: "column with description",
+			name: "columns with description",
 			args: args{
 				rSet:  ccc.Must(NewResourceSet[testResource, testRequest](accesstypes.Read)),
 				query: url.Values{"columns": []string{"description"}},
@@ -69,7 +69,7 @@ func TestQueryDecoder_fields(t *testing.T) {
 			want: []accesstypes.Field{"Description"},
 		},
 		{
-			name: "column with description",
+			name: "columns with invlaid column",
 			args: args{
 				rSet:  ccc.Must(NewResourceSet[testResource, testRequest](accesstypes.Read)),
 				query: url.Values{"columns": []string{"nonexistent"}},
@@ -88,7 +88,7 @@ func TestQueryDecoder_fields(t *testing.T) {
 			tt.prepare(enforcer)
 
 			d, err := NewQueryDecoder(tt.args.rSet, enforcer, func(context.Context) accesstypes.Domain { return "" }, func(context.Context) accesstypes.User { return "" })
-			if (err != nil) != tt.wantErr {
+			if (err != nil) != false {
 				t.Fatalf("NewQueryDecoder() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
