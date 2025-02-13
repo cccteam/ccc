@@ -45,11 +45,7 @@ func (c *Client) runHandlerGeneration() error {
 		handlerErrors = errors.Join(handlerErrors, e)
 	}
 
-	if handlerErrors != nil {
-		return handlerErrors
-	}
-
-	return nil
+	return handlerErrors
 }
 
 func (c *Client) generateHandlers(structName string) error {
