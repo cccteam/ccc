@@ -225,6 +225,7 @@ type generatedResource struct {
 type ResourceInfo struct {
 	Name                  string
 	Fields                []FieldInfo
+	SearchIndexes         []*searchIndex
 	IsView                bool // Determines how CreatePatch is rendered in resource generation.
 	HasCompoundPrimaryKey bool // Determines how CreatePatchSet is rendered in resource generation.
 }

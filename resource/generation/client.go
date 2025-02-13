@@ -31,6 +31,7 @@ type Client struct {
 	genTypescriptMeta     func() error
 	genRoutes             func() error
 	resourceFilePath      string
+	resources             []*ResourceInfo
 	resourceTree          *ast.File
 	resourceDestination   string
 	handlerDestination    string
@@ -51,7 +52,7 @@ type Client struct {
 	muAlign sync.Mutex
 }
 
-func New(ctx context.Context, resourceFilePath, migrationSourceURL string, generatorOptions ...ClientOption) (*Client, error) {
+func New(ctx context.Context, resourceDirectory, migrationSourceURL string, generatorOptions ...ClientOption) (*Client, error) {
 	spannerContainer, err := initiator.NewSpannerContainer(ctx, "latest")
 	if err != nil {
 		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
@@ -76,21 +77,12 @@ func New(ctx context.Context, resourceFilePath, migrationSourceURL string, gener
 		return nil, errors.Wrap(err, "db.MigrateUp()")
 	}
 
-	resourceTree, err := parseResourceFile(resourceFilePath)
-	if err != nil {
-		return nil, err
-	}
-
-	structs := structsFromSource(resourceTree)
-
 	c := &Client{
 		db:                  db.Client,
-		resourceFilePath:    resourceFilePath,
-		resourceTree:        resourceTree,
-		resourceDestination: filepath.Dir(resourceFilePath),
+		resourceFilePath:    resourceDirectory,
+		resourceDestination: filepath.Dir(resourceDirectory),
 		cleanup:             cleanupFunc,
 		caser:               strcase.NewCaser(false, nil, nil),
-		structNames:         structs,
 	}
 
 	for _, optionFunc := range generatorOptions {
@@ -102,6 +94,21 @@ func New(ctx context.Context, resourceFilePath, migrationSourceURL string, gener
 	c.tableLookup, err = c.createTableLookup(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "c.createTableLookup()")
+	}
+
+	err = removeGeneratedFiles(resourceDirectory, Prefix)
+	if err != nil {
+		return nil, errors.Wrap(err, "removeGeneratedFilesInNewClient()")
+	}
+
+	pkg, err := loadPackageTypes(resourceDirectory)
+	if err != nil {
+		return nil, err
+	}
+
+	c.resources, err = c.extractResourceTypes(pkg)
+	if err != nil {
+		return nil, err
 	}
 
 	return c, nil
@@ -603,21 +610,21 @@ func removeGeneratedFileByHeaderComment(directory, file string) error {
 	return nil
 }
 
-func formatResourceInterfaceTypes(types []*generatedType) string {
-	var typeNames [][]string
-	var typeNamesLen int
-	for i, t := range types {
-		typeNamesLen += len(t.Name)
-		if i == 0 || typeNamesLen > 80 {
-			typeNamesLen = len(t.Name)
-			typeNames = append(typeNames, []string{})
+func formatResourceInterfaceTypes(resources []*ResourceInfo) string {
+	var resourceNames [][]string
+	var resourceNamesLen int
+	for i, t := range resources {
+		resourceNamesLen += len(t.Name)
+		if i == 0 || resourceNamesLen > 80 {
+			resourceNamesLen = len(t.Name)
+			resourceNames = append(resourceNames, []string{})
 		}
 
-		typeNames[len(typeNames)-1] = append(typeNames[len(typeNames)-1], t.Name)
+		resourceNames[len(resourceNames)-1] = append(resourceNames[len(resourceNames)-1], t.Name)
 	}
 
 	var sb strings.Builder
-	for _, row := range typeNames {
+	for _, row := range resourceNames {
 		sb.WriteString("\n\t")
 		for _, cell := range row {
 			line := fmt.Sprintf("%s | ", cell)

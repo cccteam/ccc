@@ -10,7 +10,7 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
-		types []*generatedType
+		types []*ResourceInfo
 	}
 	tests := []struct {
 		name string
@@ -20,14 +20,14 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 		{
 			name: "empty",
 			args: args{
-				types: []*generatedType{},
+				types: []*ResourceInfo{},
 			},
 			want: "",
 		},
 		{
 			name: "One type",
 			args: args{
-				types: []*generatedType{
+				types: []*ResourceInfo{
 					{Name: "Resource1"},
 				},
 			},
@@ -36,7 +36,7 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 		{
 			name: "many type",
 			args: args{
-				types: []*generatedType{
+				types: []*ResourceInfo{
 					{Name: "Resource1"},
 					{Name: "MyResource1"},
 					{Name: "YourResource1"},
@@ -67,7 +67,7 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 func Test_searchExpressionFields(t *testing.T) {
 	type args struct {
 		expression string
-		cols       map[string]FieldMetadata
+		cols       map[string]ColumnMeta
 	}
 	tests := []struct {
 		name    string
@@ -85,7 +85,7 @@ func Test_searchExpressionFields(t *testing.T) {
 								(TOKENIZE_SUBSTRING(SUBSTR(Ssn, -4))),
 								(TOKENIZE_SUBSTRING(Ssn))
 							])`,
-				cols: map[string]FieldMetadata{
+				cols: map[string]ColumnMeta{
 					"FirstName":      {},
 					"LastName":       {},
 					"FormerLastName": {},
@@ -103,7 +103,7 @@ func Test_searchExpressionFields(t *testing.T) {
 			name: "success single line",
 			args: args{
 				expression: "TOKENLIST_CONCAT([(TOKENIZE_SUBSTRING(FirstName)),(TOKENIZE_SUBSTRING(LastName)),(TOKENIZE_SUBSTRING(FormerLastName)),(TOKENIZE_SUBSTRING(SUBSTR(Ssn, -4))),(TOKENIZE_SUBSTRING(Ssn))])",
-				cols: map[string]FieldMetadata{
+				cols: map[string]ColumnMeta{
 					"FirstName":      {},
 					"LastName":       {},
 					"FormerLastName": {},

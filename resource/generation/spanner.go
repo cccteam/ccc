@@ -15,36 +15,27 @@ import (
 )
 
 func (c *Client) runResourcesGeneration() error {
-	if err := removeGeneratedFiles(c.resourceDestination, HeaderComment); err != nil {
-		return errors.Wrap(err, "removeGeneratedFiles()")
-	}
-
-	types, err := c.buildPatcherTypesFromSource()
-	if err != nil {
-		return errors.Wrap(err, "c.buildPatcherTypesFromSource()")
-	}
-
-	if err := c.generateResourceInterfaces(types); err != nil {
+	if err := c.generateResourceInterfaces(); err != nil {
 		return errors.Wrap(err, "c.generateResourceInterfaces()")
 	}
 
-	for _, t := range types {
-		if err := c.generatePatcherTypes(t); err != nil {
+	for _, resource := range c.resources {
+		if err := c.generatePatcherTypes(resource); err != nil {
 			return errors.Wrap(err, "c.generatePatcherTypes()")
 		}
 	}
 
-	if err := c.generateResourceTests(types); err != nil {
+	if err := c.generateResourceTests(); err != nil {
 		return errors.Wrap(err, "c.generateResourceTests()")
 	}
 
 	return nil
 }
 
-func (c *Client) generateResourceInterfaces(types []*generatedType) error {
+func (c *Client) generateResourceInterfaces() error {
 	output, err := c.generateTemplateOutput(resourcesInterfaceTemplate, map[string]any{
 		"Source": c.resourceFilePath,
-		"Types":  types,
+		"Types":  c.resources,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -65,10 +56,10 @@ func (c *Client) generateResourceInterfaces(types []*generatedType) error {
 	return nil
 }
 
-func (c *Client) generateResourceTests(types []*generatedType) error {
+func (c *Client) generateResourceTests() error {
 	output, err := c.generateTemplateOutput(resourcesTestTemplate, map[string]any{
 		"Source": c.resourceFilePath,
-		"Types":  types,
+		"Types":  c.resources,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -89,19 +80,19 @@ func (c *Client) generateResourceTests(types []*generatedType) error {
 	return nil
 }
 
-func (c *Client) generatePatcherTypes(generatedType *generatedType) error {
-	fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+func (c *Client) generatePatcherTypes(resource *ResourceInfo) error {
+	fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(resource.Name))))
 	destinationFilePath := filepath.Join(c.resourceDestination, fileName)
 
 	log.Printf("Generating resource file: %v\n", fileName)
 
 	output, err := c.generateTemplateOutput(resourceFileTemplate, map[string]any{
 		"Source":                c.resourceFilePath,
-		"Name":                  generatedType.Name,
-		"IsView":                generatedType.IsView,
-		"Fields":                generatedType.Fields,
-		"HasCompoundPrimaryKey": generatedType.HasCompoundPrimaryKey,
-		"SearchIndexes":         generatedType.SearchIndexes,
+		"Name":                  resource.Name,
+		"IsView":                resource.IsView,
+		"Fields":                resource.Fields,
+		"HasCompoundPrimaryKey": resource.HasCompoundPrimaryKey,
+		"SearchIndexes":         resource.SearchIndexes,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
