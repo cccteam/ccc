@@ -31,12 +31,14 @@ type Client struct {
 	genHandlers           func() error
 	genTypescriptPerm     func() error
 	genTypescriptMeta     func() error
+	genRoutes             func() error
 	resourceFilePath      string
 	resourceTree          *ast.File
 	resourceDestination   string
 	handlerDestination    string
 	typescriptDestination string
 	routerDestination     string
+	routerPackage         string
 	routePrefix           string
 	rc                    *resource.Collection
 	db                    *cloudspanner.Client
@@ -117,6 +119,11 @@ func (c *Client) RunGeneration() error {
 	if c.genHandlers != nil {
 		if err := c.genHandlers(); err != nil {
 			return errors.Wrap(err, "c.genHandlers()")
+		}
+	}
+	if c.genRoutes != nil {
+		if err := c.genRoutes(); err != nil {
+			return errors.Wrap(err, "c.genRoutes()")
 		}
 	}
 	if c.genTypescriptMeta != nil {
@@ -362,6 +369,7 @@ func (c *Client) templateFuncs() map[string]any {
 		"Pluralize": c.pluralize,
 		"GoCamel":   strcase.ToGoCamel,
 		"Camel":     c.caser.ToCamel,
+		"Pascal":    c.caser.ToPascal,
 		"Kebab":     c.caser.ToKebab,
 		"Lower":     strings.ToLower,
 		"ToUpper":   strings.ToUpper,

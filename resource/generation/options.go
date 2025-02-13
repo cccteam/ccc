@@ -58,6 +58,20 @@ func GenerateTypescriptMetadata(rc *resource.Collection, targetDir string) Clien
 	}
 }
 
+func GenerateRoutes(targetDir, targetPackage, routePrefix string) ClientOption {
+	return func(c *Client) error {
+		c.genRoutes = func() error {
+			return c.runRouteGeneration()
+		}
+
+		c.routerDestination = targetDir
+		c.routerPackage = targetPackage
+		c.routePrefix = routePrefix
+
+		return nil
+	}
+}
+
 func WithPluralOverrides(overrides map[string]string) ClientOption {
 	return func(c *Client) error {
 		c.pluralOverrides = overrides

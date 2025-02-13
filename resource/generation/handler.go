@@ -13,7 +13,6 @@ import (
 	"text/template"
 
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -48,42 +47,6 @@ func (c *Client) runHandlerGeneration() error {
 
 	if handlerErrors != nil {
 		return handlerErrors
-	}
-
-	if c.routerDestination != "" {
-		generatedRoutesMap := make(map[string][]generatedRoute)
-
-		for _, s := range c.structNames {
-			opts := make(map[HandlerType]map[OptionType]any)
-			for handlerType, options := range c.handlerOptions[s] {
-				opts[handlerType] = make(map[OptionType]any)
-				for _, option := range options {
-					opts[handlerType][option] = struct{}{}
-				}
-			}
-			for _, h := range []HandlerType{List, Read, Patch} {
-				if _, skipGeneration := opts[h][NoGenerate]; !skipGeneration {
-					path := fmt.Sprintf("%s/%s", c.routePrefix, strcase.ToKebab(c.pluralize(s)))
-					if h == Read {
-						path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(s+"ID"))
-					}
-
-					generatedRoutesMap[s] = append(generatedRoutesMap[s], generatedRoute{
-						Method:      h.Method(),
-						Path:        path,
-						HandlerFunc: c.handlerName(s, h),
-					})
-				}
-			}
-		}
-
-		if err := c.writeRoutes(generatedRoutesMap); err != nil {
-			return errors.Wrap(err, "c.writeRoutes()")
-		}
-
-		if err := c.writeRouterTests(generatedRoutesMap); err != nil {
-			return errors.Wrap(err, "c.writeRouterTests()")
-		}
 	}
 
 	return nil
@@ -182,70 +145,6 @@ func (c *Client) handlerContent(handler *generatedHandler, generated *generatedT
 	}
 
 	return buf.Bytes(), nil
-}
-
-func (c *Client) writeRoutes(generatedRoutes map[string][]generatedRoute) error {
-	destinationFile := filepath.Join(c.routerDestination, generatedFileName(routesName))
-
-	file, err := os.OpenFile(destinationFile, os.O_RDWR|os.O_CREATE, 0o644)
-	if err != nil {
-		return errors.Wrap(err, "os.OpenFile()")
-	}
-	defer file.Close()
-
-	tmpl, err := template.New("routes").Funcs(c.templateFuncs()).Parse(routesTemplate)
-	if err != nil {
-		return errors.Wrap(err, "template.New().Parse()")
-	}
-
-	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, map[string]any{
-		"Source":    c.resourceFilePath,
-		"Package":   "router",
-		"RoutesMap": generatedRoutes,
-	}); err != nil {
-		return errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	log.Println("Generating router tests")
-
-	if err := c.writeBytesToFile(destinationFile, file, buf.Bytes(), true); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
-	}
-
-	return nil
-}
-
-func (c *Client) writeRouterTests(generatedRoutes map[string][]generatedRoute) error {
-	destinationFile := filepath.Join(c.routerDestination, generatedFileName(routerTestName))
-
-	file, err := os.OpenFile(destinationFile, os.O_RDWR|os.O_CREATE, 0o644)
-	if err != nil {
-		return errors.Wrap(err, "os.OpenFile()")
-	}
-	defer file.Close()
-
-	tmpl, err := template.New("routertests").Funcs(c.templateFuncs()).Parse(routerTestTemplate)
-	if err != nil {
-		return errors.Wrap(err, "template.New().Parse()")
-	}
-
-	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, map[string]any{
-		"Source":    c.resourceFilePath,
-		"Package":   "router",
-		"RoutesMap": generatedRoutes,
-	}); err != nil {
-		return errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	log.Println("Generating router tests")
-
-	if err := c.writeBytesToFile(destinationFile, file, buf.Bytes(), true); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
-	}
-
-	return nil
 }
 
 func (c *Client) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {
