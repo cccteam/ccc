@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/format"
-	"go/parser"
-	"go/token"
 	"log"
 	"os"
 	"path/filepath"
@@ -47,6 +45,7 @@ type Client struct {
 	tableLookup           map[string]*TableMetadata
 	handlerOptions        map[string]map[HandlerType][]OptionType
 	pluralOverrides       map[string]string
+	typescriptOverrides   map[string]string
 	cleanup               func()
 
 	muAlign sync.Mutex
@@ -228,7 +227,7 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 		table, ok := m[r.TableName]
 		if !ok {
 			table = &TableMetadata{
-				Columns:       make(map[string]FieldMetadata),
+				Columns:       make(map[string]ColumnMeta),
 				SearchIndexes: make(map[string][]*expressionField),
 				IsView:        r.IsView,
 			}
@@ -240,7 +239,7 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 
 		column, ok := table.Columns[r.ColumnName]
 		if !ok {
-			column = FieldMetadata{
+			column = ColumnMeta{
 				ColumnName:         r.ColumnName,
 				SpannerType:        r.SpannerType,
 				OrdinalPosition:    r.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
@@ -249,6 +248,7 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 		}
 
 		if r.IsPrimaryKey {
+			table.PkCount++
 			column.IsPrimaryKey = true
 			if !slices.Contains(column.ConstraintTypes, PrimaryKey) {
 				column.ConstraintTypes = append(column.ConstraintTypes, PrimaryKey)
@@ -302,6 +302,12 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 			for _, f := range expressionFields {
 				table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], f)
 			}
+		}
+	}
+
+	for _, structName := range c.structNames {
+		if _, ok := m[c.pluralize(structName)]; !ok {
+			return nil, errors.Newf("structName `%s` not in TableMetadata as `%s`", structName, c.pluralize(structName))
 		}
 	}
 
@@ -622,20 +628,7 @@ func formatResourceInterfaceTypes(types []*generatedType) string {
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
 }
 
-func parseResourceFile(resourceFilePath string) (*ast.File, error) {
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, resourceFilePath, nil, 0)
-	if err != nil {
-		return nil, errors.Wrap(err, "parser.ParseFile()")
-	}
-	if file == nil {
-		return nil, errors.Newf("unable to parse `%s`", resourceFilePath)
-	}
-
-	return file, nil
-}
-
-func searchExpressionFields(expression string, cols map[string]FieldMetadata) ([]*expressionField, error) {
+func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*expressionField, error) {
 	var flds []*expressionField
 
 	for _, match := range tokenizeRegex.FindAllStringSubmatch(expression, -1) {

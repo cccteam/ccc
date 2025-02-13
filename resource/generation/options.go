@@ -87,3 +87,11 @@ func CaserInitialismOverrides(overrides map[string]bool) ClientOption {
 		return nil
 	}
 }
+
+func WithTypescriptOverrides(overrides map[string]string) ClientOption {
+	return func(c *Client) error {
+		c.typescriptOverrides = overrides
+
+		return nil
+	}
+}

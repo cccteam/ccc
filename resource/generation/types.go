@@ -2,9 +2,14 @@ package generation
 
 import (
 	"fmt"
+	"go/types"
 	"regexp"
+	"slices"
+	"strings"
 
 	"github.com/cccteam/ccc/resource"
+
+	"github.com/ettle/strcase"
 )
 
 var baseTypes = []string{
@@ -115,7 +120,7 @@ type searchIndex struct {
 	SearchType string
 }
 
-type FieldMetadata struct {
+type ColumnMeta struct {
 	ColumnName         string
 	ConstraintTypes    []ConstraintType
 	IsPrimaryKey       bool
@@ -149,9 +154,10 @@ type InformationSchemaResult struct {
 }
 
 type TableMetadata struct {
-	Columns       map[string]FieldMetadata
+	Columns       map[string]ColumnMeta
 	SearchIndexes map[string][]*expressionField
 	IsView        bool
+	PkCount       int
 }
 
 type generationOption struct {
@@ -170,10 +176,10 @@ type generatedRoute struct {
 	HandlerFunc string
 }
 
-type tsType int
+type _tsType int
 
 const (
-	link tsType = iota
+	link _tsType = iota
 	uuid
 	boolean
 	str
@@ -182,7 +188,7 @@ const (
 	enumerated
 )
 
-func (t tsType) String() string {
+func (t _tsType) String() string {
 	switch t {
 	case link:
 		return "Link"
@@ -206,7 +212,7 @@ func (t tsType) String() string {
 type generatedResource struct {
 	Name               string
 	Fields             []*generatedResource
-	dataType           tsType
+	dataType           _tsType
 	Required           bool
 	IsPrimaryKey       bool
 	IsForeignKey       bool
@@ -214,6 +220,100 @@ type generatedResource struct {
 	KeyOrdinalPosition int64
 	ReferencedResource string
 	ReferencedColumn   string
+}
+
+type ResourceInfo struct {
+	Name                  string
+	Fields                []FieldInfo
+	IsView                bool // Determines how CreatePatch is rendered in resource generation.
+	HasCompoundPrimaryKey bool // Determines how CreatePatchSet is rendered in resource generation.
+}
+
+type FieldInfo struct {
+	parent             *ResourceInfo
+	Name               string
+	GoType             string
+	typescriptType     string
+	query              string   //
+	Conditions         []string // Contains auxillary tags like `immutable`. Determines JSON tag in handler generation.
+	permissions        []string
+	Required           bool
+	IsPrimaryKey       bool
+	IsForeignKey       bool
+	IsIndex            bool
+	IsUniqueIndex      bool
+	OrdinalPosition    int64 // Position of column in the table definition
+	KeyOrdinalPosition int64 // Position of primary or foreign key in a compound key definition
+	IsEnumerated       bool
+	ReferencedResource string
+	ReferencedField    string
+}
+
+func (f FieldInfo) TypescriptDataType() string {
+	if f.typescriptType == "uuid" {
+		return "string"
+	}
+
+	return f.typescriptType
+}
+
+func (f FieldInfo) TypescriptDisplayType() string {
+	if f.IsEnumerated {
+		return "enumerated"
+	}
+	return f.typescriptType
+}
+
+func (f FieldInfo) JsonTag() string {
+	caser := strcase.NewCaser(false, nil, nil)
+	return fmt.Sprintf("json:%q", caser.ToCamel(f.Name)+",omitempty")
+}
+
+func (f FieldInfo) IsImmutable() bool {
+	return slices.Contains(f.Conditions, "immutable")
+}
+
+func (f FieldInfo) Query() string {
+	if f.query != "" {
+		return fmt.Sprintf("query:%q", f.query)
+	}
+
+	return ""
+}
+
+func (f FieldInfo) ReadPerm() string {
+	if slices.Contains(f.permissions, "Read") {
+		return fmt.Sprintf("perm:%q", "Read")
+	}
+
+	return ""
+}
+
+func (f FieldInfo) ListPerm() string {
+	if slices.Contains(f.permissions, "List") {
+		return fmt.Sprintf("perm:%q", "List")
+	}
+
+	return ""
+}
+
+func (f FieldInfo) PatchPerm() string {
+	var patches []string
+	for _, perm := range f.permissions {
+		if perm != "Read" && perm != "List" {
+			patches = append(patches, perm)
+		}
+	}
+
+	if len(patches) != 0 {
+		return fmt.Sprintf("perm:%q", strings.Join(patches, ","))
+	}
+
+	return ""
+}
+
+func (f FieldInfo) IsView() bool {
+	return f.parent.IsView
 }
 
 func (r generatedResource) DataType() string {
@@ -235,4 +335,8 @@ type expressionField struct {
 
 func generatedFileName(name string) string {
 	return fmt.Sprintf("%s_%s.go", genPrefix, name)
+}
+
+type intermediateStruct struct {
+	types.Struct
 }

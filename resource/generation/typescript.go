@@ -198,7 +198,7 @@ declLoop:
 	return resource, nil
 }
 
-func typescriptType(t ast.Expr) (tsType, error) {
+func typescriptType(t ast.Expr) (_tsType, error) {
 	switch t := t.(type) {
 	case *ast.Ident:
 		switch {
