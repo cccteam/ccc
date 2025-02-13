@@ -51,14 +51,12 @@ func (c *Client) runRouteGeneration() error {
 	if len(generatedRoutesMap) > 0 {
 		routesDestination := filepath.Join(c.routerDestination, generatedFileName(routesName))
 		log.Printf("Generating routes file: %s\n", routesDestination)
-
 		if err := c.writeGeneratedRouterFile(routesDestination, routesTemplate, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRoutes()")
 		}
 
 		routerTestsDestination := filepath.Join(c.routerDestination, generatedFileName(routerTestName))
 		log.Printf("Generating router tests file: %s\n", routerTestsDestination)
-
 		if err := c.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRouterTests()")
 		}
