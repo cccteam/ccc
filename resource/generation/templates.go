@@ -538,8 +538,7 @@ export function resourceMeta(resource: Resource): ResourceMeta {
 	func generatedRouterTests() []*generatedRouterTest {
 		routerTests := []*generatedRouterTest {
 			{{ range $Struct, $Routes := .RoutesMap }}{{ range $Routes }}{
-				url: "{{ DetermineTestURL $Struct . }}",
-				method: "{{ ToUpper .Method }}",
+				url: "{{ DetermineTestURL $Struct . }}", method: "{{ MethodToHttpConst .Method }}",
 				handlerFunc: "{{ .HandlerFunc }}",
 				parameters: {{ DetermineParameters $Struct . }},
 			},

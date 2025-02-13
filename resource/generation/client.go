@@ -449,6 +449,18 @@ func (c *Client) templateFuncs() map[string]any {
 
 			return "map[string]string{}"
 		},
+		"MethodToHttpConst": func(method string) string {
+			switch method {
+			case "GET":
+				return "http.MethodGet"
+			case "POST":
+				return "http.MethodPost"
+			case "PATCH":
+				return "http.MethodPatch"
+			}
+
+			return ""
+		},
 	}
 
 	return templateFuncs

@@ -40,6 +40,17 @@ const (
 	Patch HandlerType = "patch"
 )
 
+func (h HandlerType) Method() string {
+	switch h {
+	case Read, List:
+		return "GET"
+	case Patch:
+		return "PATCH"
+	}
+
+	return ""
+}
+
 type OptionType string
 
 const (
@@ -67,8 +78,8 @@ const (
 	querySetOutputFilename      = "types.go"
 	resourceInterfaceOutputName = "resources_iface"
 	resourcesTestFileName       = "resource_types_test.go"
-	routesFilename              = "generated_routes.go"
-	routerTestFilename          = "generated_routes_test.go"
+	routesName                  = "routes"
+	routerTestName              = "routes_test"
 )
 
 type generatedType struct {
