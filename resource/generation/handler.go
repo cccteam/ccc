@@ -49,7 +49,7 @@ func (c *Client) runHandlerGeneration() error {
 		return handlerErrors
 	}
 
-	if c.routesDestination != "" {
+	if c.routerDestination != "" {
 		if err := c.writeRoutes(generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRoutes()")
 		}
@@ -65,7 +65,7 @@ func (c *Client) runHandlerGeneration() error {
 func (c *Client) generateHandlers(structName string) error {
 	generatedType, err := c.parseTypeForHandlerGeneration(structName)
 	if err != nil {
-		return nil, errors.Wrap(err, "generatedType()")
+		return errors.Wrap(err, "generatedType()")
 	}
 
 	generatedHandlers := []*generatedHandler{
@@ -116,9 +116,29 @@ func (c *Client) generateHandlers(structName string) error {
 		if err != nil {
 			return errors.Wrap(err, "os.OpenFile()")
 		}
+		defer file.Close()
+
+		tmpl, err := template.New("handlers").Funcs(c.templateFuncs()).Parse(handlerHeaderTemplate)
+		if err != nil {
+			return errors.Wrap(err, "template.New().Parse()")
+		}
+
+		buf := bytes.NewBuffer(nil)
+		if err := tmpl.Execute(buf, map[string]any{
+			"Source":   c.resourceFilePath,
+			"Handlers": string(bytes.Join(handlerData, []byte("\n\n"))),
+		}); err != nil {
+			return errors.Wrap(err, "tmpl.Execute()")
+		}
+
+		log.Printf("Generating handler file: %s", fileName)
+
+		if err := c.writeBytesToFile(destinationFilePath, file, buf.Bytes(), true); err != nil {
+			return err
+		}
 	}
 
-	return generatedHandlerTypes, nil
+	return nil
 }
 
 func (c *Client) handlerContent(handler *generatedHandler, generated *generatedType) ([]byte, error) {
@@ -162,7 +182,7 @@ func (c *Client) writeRouterTests(generatedRoutes map[string][]generatedRoute) e
 
 	log.Println("Generating router tests")
 
-	if err := c.writeBytesToFile(destinationFile, file, buf.Bytes()); err != nil {
+	if err := c.writeBytesToFile(destinationFile, file, buf.Bytes(), true); err != nil {
 		return errors.Wrap(err, "c.writeBytesToFile()")
 	}
 

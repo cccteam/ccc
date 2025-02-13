@@ -36,6 +36,8 @@ type Client struct {
 	resourceDestination   string
 	handlerDestination    string
 	typescriptDestination string
+	routerDestination     string
+	routePrefix           string
 	rc                    *resource.Collection
 	db                    *cloudspanner.Client
 	caser                 *strcase.Caser
