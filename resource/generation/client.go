@@ -386,7 +386,7 @@ func (c *Client) templateFuncs() map[string]any {
 		"Pascal":    c.caser.ToPascal,
 		"Kebab":     c.caser.ToKebab,
 		"Lower":     strings.ToLower,
-		"PrimaryKeyTypeIsUUID": func(fields []FieldInfo) bool {
+		"PrimaryKeyTypeIsUUID": func(fields []*FieldInfo) bool {
 			for _, f := range fields {
 				if f.IsPrimaryKey {
 					return f.GoType == "ccc.UUID"
@@ -402,7 +402,7 @@ func (c *Client) templateFuncs() map[string]any {
 
 			return ` perm:"` + s + `"`
 		},
-		"PrimaryKeyType": func(fields []FieldInfo) string {
+		"PrimaryKeyType": func(fields []*FieldInfo) string {
 			for _, f := range fields {
 				if f.IsPrimaryKey {
 					return f.GoType
@@ -501,30 +501,10 @@ func (c *Client) formatTokenTags(tableName, fieldName string) string {
 
 	var tags []string
 	for tt, indexes := range tokenIndexMap {
-		tags = append(tags, fmt.Sprintf(`%s:"%s"`, tt, strings.Join(indexes, ",")))
+		tags = append(tags, fmt.Sprintf(`%s:%q`, tt, strings.Join(indexes, ",")))
 	}
 
 	return strings.Join(tags, " ")
-}
-
-func fieldType(expr ast.Expr, isHandlerOutput bool) string {
-	switch t := expr.(type) {
-	case *ast.Ident:
-		switch {
-		case slices.Contains(baseTypes, t.Name) || !isHandlerOutput:
-			return t.Name
-		default:
-			return fmt.Sprintf("resources.%s", t.Name)
-		}
-	case *ast.SelectorExpr:
-		return fmt.Sprintf("%s.%s", t.X, t.Sel.Name)
-	case *ast.StarExpr:
-		return "*" + fieldType(t.X, isHandlerOutput)
-	case *ast.ArrayType:
-		return "[]" + fieldType(t.Elt, isHandlerOutput)
-	default:
-		panic(fmt.Sprintf("unknown type: %T", t))
-	}
 }
 
 func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) error {

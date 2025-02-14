@@ -2,16 +2,11 @@ package generation
 
 import (
 	"bytes"
-	"go/ast"
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
-	"slices"
-	"strings"
 	"text/template"
 
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -85,131 +80,6 @@ func (c *Client) generateTypescriptMetadata() error {
 	log.Printf("Generated Resource Metadata: %s\n", file.Name())
 
 	return nil
-}
-
-func (c *Client) parseStructForTypescriptGeneration(structName string) (*generatedResource, error) {
-	resource := &generatedResource{Name: structName}
-
-	routerResources := c.rc.Resources()
-
-declLoop:
-	for _, decl := range c.resourceTree.Decls {
-		gd, ok := decl.(*ast.GenDecl)
-		if !ok {
-			continue
-		}
-
-		for _, s := range gd.Specs {
-			spec, ok := s.(*ast.TypeSpec)
-			if !ok {
-				continue
-			}
-			if spec.Name == nil {
-				return nil, errors.Newf("parseStructForTypescriptGeneration: reflected typespec has no identifier %v+", spec)
-			}
-			if spec.Name.Name != structName {
-				continue
-			}
-
-			st, ok := spec.Type.(*ast.StructType)
-			if !ok {
-				return nil, errors.Newf("parseStructForTypescriptGeneration(): could not cast ast.Expr to *ast.StructType for typespect %v+, struct `%s`", spec, structName)
-			}
-			if st.Fields == nil {
-				return nil, errors.Newf("parseStructForTypescriptGeneration(): reflected structtype `%s` has no fields", structName)
-			}
-
-			tableMeta, ok := c.tableLookup[c.pluralize(structName)]
-			if !ok {
-				return nil, errors.Newf("parseStructForTypescriptGeneration(): table `%s` not found in tablemetadata", c.pluralize(structName))
-			}
-
-			var fields []*generatedResource
-			for _, astField := range st.Fields.List {
-				if len(astField.Names) == 0 {
-					return nil, errors.Newf("parseStructForTypescriptGeneration(): *ast.Field at pos `%d` has no identifier in struct %s", astField.Pos(), structName)
-				}
-				var tag string
-				if astField.Tag != nil {
-					tag = astField.Tag.Value
-				}
-				if tag == "" {
-					return nil, errors.Newf("parseStructForTypescriptGeneration(): *ast.Field.Tag is empty in struct `%s`", structName)
-				}
-
-				column := reflect.StructTag(strings.Trim(tag, "`")).Get("spanner")
-				if column == "" {
-					return nil, errors.Newf("parseStructForTypescriptGeneration(): could not get spanner value from tag `%s` in struct `%s`", tag, structName)
-				}
-
-				field := &generatedResource{Name: column}
-				fieldMeta, ok := tableMeta.Columns[column]
-				if !ok {
-					return nil, errors.Newf("parseStructForTypescriptGeneration: fieldMeta returned no info for column `%s` in struct `%s`", column, structName)
-				}
-				dataType, err := typescriptType(astField.Type)
-				if err != nil {
-					return nil, err
-				}
-				field.dataType = dataType
-
-				if fieldMeta.IsPrimaryKey { // Primary Key UUIDs are not required for resource creation because the backend generates them
-					if dataType != uuid {
-						field.Required = true
-					}
-				} else if !fieldMeta.IsNullable {
-					field.Required = true
-				}
-
-				field.IsPrimaryKey = fieldMeta.IsPrimaryKey
-				field.KeyOrdinalPosition = fieldMeta.KeyOrdinalPosition
-
-				if fieldMeta.IsForeignKey && slices.Contains(routerResources, accesstypes.Resource(fieldMeta.ReferencedTable)) {
-					field.IsForeignKey = fieldMeta.IsForeignKey
-					field.dataType = enumerated
-					field.ReferencedResource = fieldMeta.ReferencedTable
-					field.ReferencedColumn = fieldMeta.ReferencedColumn
-				}
-
-				fields = append(fields, field)
-			}
-
-			resource.Fields = fields
-
-			break declLoop
-		}
-	}
-
-	return resource, nil
-}
-
-func typescriptType(t ast.Expr) (_tsType, error) {
-	switch t := t.(type) {
-	case *ast.Ident:
-		switch {
-		case t.Name == "Link", t.Name == "NullLink":
-			return link, nil
-		case t.Name == "UUID", t.Name == "NullUUID":
-			return uuid, nil
-		case t.Name == "bool":
-			return boolean, nil
-		case t.Name == "string":
-			return str, nil
-		case strings.HasPrefix(t.Name, "int"), strings.HasPrefix(t.Name, "uint"),
-			strings.HasPrefix(t.Name, "float"), t.Name == "Decimal", t.Name == "NullDecimal":
-			return number, nil
-		case t.Name == "Time", t.Name == "NullTime":
-			return date, nil
-		default:
-			return -1, errors.Newf("typescriptType: unhandled type `%s`", t.Name)
-		}
-	case *ast.SelectorExpr:
-		return typescriptType(t.Sel)
-	case *ast.StarExpr:
-		return typescriptType(t.X)
-	default:
-		return -1, errors.Newf("typescriptType: unhandled type at field[%d]", t.Pos())
-	}
 }
 
 func (c *Client) generateTypescriptTemplate(fileTemplate string, data map[string]any) ([]byte, error) {

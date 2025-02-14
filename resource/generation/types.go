@@ -2,7 +2,6 @@ package generation
 
 import (
 	"fmt"
-	"go/types"
 	"regexp"
 	"slices"
 	"strings"
@@ -11,18 +10,6 @@ import (
 
 	"github.com/ettle/strcase"
 )
-
-var baseTypes = []string{
-	"bool",
-	"string",
-	"int", "int8", "int16", "int32", "int64",
-	"float32", "float64",
-	"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
-	"byte",
-	"rune",
-	"complex64", "complex128",
-	"error",
-}
 
 var tokenizeRegex = regexp.MustCompile(`(TOKENIZE_[^)]+)\(([^)]+)\)`)
 
@@ -87,52 +74,9 @@ const (
 	routerTestName              = "routes_test"
 )
 
-type generatedType struct {
-	Name                  string
-	IsView                bool
-	HasCompoundPrimaryKey bool
-	Fields                []*typeField
-	SearchIndexes         []*searchIndex
-}
-
-type typeField struct {
-	Name            string
-	Type            string
-	Tag             string
-	IsPrimaryKey    bool
-	IsIndex         bool
-	IsUniqueIndex   bool
-	ConstraintTypes []ConstraintType
-	fieldTagInfo
-}
-
-type fieldTagInfo struct {
-	QueryTag      string
-	ReadPerm      string
-	ListPerm      string
-	PatchPerm     string
-	Conditions    []string
-	SpannerColumn string
-}
-
 type searchIndex struct {
 	Name       string
 	SearchType string
-}
-
-type ColumnMeta struct {
-	ColumnName         string
-	ConstraintTypes    []ConstraintType
-	IsPrimaryKey       bool
-	IsForeignKey       bool
-	SpannerType        string
-	IsNullable         bool
-	IsIndex            bool
-	IsUniqueIndex      bool
-	OrdinalPosition    int64
-	KeyOrdinalPosition int64
-	ReferencedTable    string
-	ReferencedColumn   string
 }
 
 type InformationSchemaResult struct {
@@ -160,6 +104,21 @@ type TableMetadata struct {
 	PkCount       int
 }
 
+type ColumnMeta struct {
+	ColumnName         string
+	ConstraintTypes    []ConstraintType
+	IsPrimaryKey       bool
+	IsForeignKey       bool
+	SpannerType        string
+	IsNullable         bool
+	IsIndex            bool
+	IsUniqueIndex      bool
+	OrdinalPosition    int64
+	KeyOrdinalPosition int64
+	ReferencedTable    string
+	ReferencedColumn   string
+}
+
 type generationOption struct {
 	option  OptionType
 	handler HandlerType
@@ -176,55 +135,10 @@ type generatedRoute struct {
 	HandlerFunc string
 }
 
-type _tsType int
-
-const (
-	link _tsType = iota
-	uuid
-	boolean
-	str
-	number
-	date
-	enumerated
-)
-
-func (t _tsType) String() string {
-	switch t {
-	case link:
-		return "Link"
-	case uuid:
-		return "uuid"
-	case boolean:
-		return "boolean"
-	case str:
-		return "string"
-	case number:
-		return "number"
-	case date:
-		return "Date"
-	case enumerated:
-		return "enumerated"
-	}
-
-	return "string"
-}
-
-type generatedResource struct {
-	Name               string
-	Fields             []*generatedResource
-	dataType           _tsType
-	Required           bool
-	IsPrimaryKey       bool
-	IsForeignKey       bool
-	OrdinalPosition    int64
-	KeyOrdinalPosition int64
-	ReferencedResource string
-	ReferencedColumn   string
-}
 
 type ResourceInfo struct {
 	Name                  string
-	Fields                []FieldInfo
+	Fields                []*FieldInfo
 	SearchIndexes         []*searchIndex
 	IsView                bool // Determines how CreatePatch is rendered in resource generation.
 	HasCompoundPrimaryKey bool // Determines how CreatePatchSet is rendered in resource generation.
@@ -237,7 +151,7 @@ type FieldInfo struct {
 	GoType             string
 	typescriptType     string
 	query              string   //
-	Conditions         []string // Contains auxillary tags like `immutable`. Determines JSON tag in handler generation.
+	Conditions         []string // Contains auxiliary tags like `immutable`. Determines JSON tag in handler generation.
 	permissions        []string
 	Required           bool
 	IsPrimaryKey       bool
@@ -251,7 +165,7 @@ type FieldInfo struct {
 	ReferencedField    string
 }
 
-func (f FieldInfo) TypescriptDataType() string {
+func (f *FieldInfo) TypescriptDataType() string {
 	if f.typescriptType == "uuid" {
 		return "string"
 	}
@@ -259,14 +173,15 @@ func (f FieldInfo) TypescriptDataType() string {
 	return f.typescriptType
 }
 
-func (f FieldInfo) TypescriptDisplayType() string {
+func (f *FieldInfo) TypescriptDisplayType() string {
 	if f.IsEnumerated {
 		return "enumerated"
 	}
+
 	return f.typescriptType
 }
 
-func (f FieldInfo) JSONTag() string {
+func (f *FieldInfo) JSONTag() string {
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(f.Name)
 
@@ -277,7 +192,7 @@ func (f FieldInfo) JSONTag() string {
 	return fmt.Sprintf("json:%q", camelCaseName)
 }
 
-func (f FieldInfo) JSONTagForPatch() string {
+func (f *FieldInfo) JSONTagForPatch() string {
 	if f.IsPrimaryKey || f.IsImmutable() {
 		return fmt.Sprintf("json:%q", "-")
 	}
@@ -288,7 +203,7 @@ func (f FieldInfo) JSONTagForPatch() string {
 	return fmt.Sprintf("json:%q", camelCaseName)
 }
 
-func (f FieldInfo) IndexTag() string {
+func (f *FieldInfo) IndexTag() string {
 	if f.IsIndex {
 		return `index:"true"`
 	}
@@ -296,7 +211,7 @@ func (f FieldInfo) IndexTag() string {
 	return ""
 }
 
-func (f FieldInfo) UniqueIndexTag() string {
+func (f *FieldInfo) UniqueIndexTag() string {
 	if f.IsUniqueIndex {
 		return `index:"true"`
 	}
@@ -304,11 +219,11 @@ func (f FieldInfo) UniqueIndexTag() string {
 	return ""
 }
 
-func (f FieldInfo) IsImmutable() bool {
+func (f *FieldInfo) IsImmutable() bool {
 	return slices.Contains(f.Conditions, "immutable")
 }
 
-func (f FieldInfo) QueryTag() string {
+func (f *FieldInfo) QueryTag() string {
 	if f.query != "" {
 		return fmt.Sprintf("query:%q", f.query)
 	}
@@ -316,7 +231,7 @@ func (f FieldInfo) QueryTag() string {
 	return ""
 }
 
-func (f FieldInfo) ReadPermTag() string {
+func (f *FieldInfo) ReadPermTag() string {
 	if slices.Contains(f.permissions, "Read") {
 		return fmt.Sprintf("perm:%q", "Read")
 	}
@@ -324,7 +239,7 @@ func (f FieldInfo) ReadPermTag() string {
 	return ""
 }
 
-func (f FieldInfo) ListPermTag() string {
+func (f *FieldInfo) ListPermTag() string {
 	if slices.Contains(f.permissions, "List") {
 		return fmt.Sprintf("perm:%q", "List")
 	}
@@ -332,7 +247,7 @@ func (f FieldInfo) ListPermTag() string {
 	return ""
 }
 
-func (f FieldInfo) PatchPermTag() string {
+func (f *FieldInfo) PatchPermTag() string {
 	var patches []string
 	for _, perm := range f.permissions {
 		if perm != "Read" && perm != "List" {
@@ -347,20 +262,8 @@ func (f FieldInfo) PatchPermTag() string {
 	return ""
 }
 
-func (f FieldInfo) IsView() bool {
+func (f *FieldInfo) IsView() bool {
 	return f.Parent.IsView
-}
-
-func (r generatedResource) DataType() string {
-	if r.dataType == uuid || r.dataType == enumerated {
-		return str.String()
-	}
-
-	return r.dataType.String()
-}
-
-func (r generatedResource) DisplayType() string {
-	return r.dataType.String()
 }
 
 type expressionField struct {
@@ -370,8 +273,4 @@ type expressionField struct {
 
 func generatedFileName(name string) string {
 	return fmt.Sprintf("%s_%s.go", genPrefix, name)
-}
-
-type intermediateStruct struct {
-	types.Struct
 }

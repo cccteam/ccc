@@ -51,8 +51,8 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 		routerResources = c.rc.Resources()
 	}
 
-	var resources []*ResourceInfo
-	for _, name := range scope.Names() {
+	resources := make([]*ResourceInfo, scope.Len())
+	for i, name := range scope.Names() {
 		object := scope.Lookup(name)
 		if object == nil {
 			return nil, errors.Newf("package `%s` in an invalid state: `%s` from scope.Names() not found in scope.Lookup()", pkg.Name(), name)
@@ -84,13 +84,13 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 
 		resource.SearchIndexes = c.buildTableSearchIndexes(c.pluralize(object.Name()))
 
-		for i := range structType.NumFields() {
-			field := structType.Field(i)
+		for j := range structType.NumFields() {
+			field := structType.Field(j)
 			if field == nil || !field.IsField() || field.Embedded() {
-				return nil, errors.Newf("invalid field[%d] in struct `%s` at %s:%v", i, object.Name(), pkg.Name(), object.Pos())
+				return nil, errors.Newf("invalid field[%d] in struct `%s` at %s:%v", j, object.Name(), pkg.Name(), object.Pos())
 			}
 
-			structTag := reflect.StructTag(structType.Tag(i))
+			structTag := reflect.StructTag(structType.Tag(j))
 
 			query := structTag.Get("query")
 			var conditions []string
@@ -159,14 +159,14 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 				ReferencedField:    spannerColumn.ReferencedColumn,
 			}
 
-			resource.Fields = append(resource.Fields, fieldInfo)
+			resource.Fields = append(resource.Fields, &fieldInfo)
 		}
 
 		if len(resource.Fields) == 0 {
 			return nil, errors.Newf("struct `%s` has no fields at %s:%v", object.Name(), pkg.Name(), object.Pos())
 		}
 
-		resources = append(resources, &resource)
+		resources[i] = &resource
 	}
 
 	return resources, nil
@@ -192,7 +192,7 @@ func decodeToTypescriptType(typ types.Type, typescriptOverrides map[string]strin
 		return "", errors.Newf("received nil type")
 	}
 
-	// `types.BasicInfo` is a set of bit flags that describe properies of a basic type.
+	// `types.BasicInfo` is a set of bit flags that describe properties of a basic type.
 	// Using bitwise-AND we can check if any basic type has a given property.
 	// Defined as a closure because it returns TypeScript types
 	decodeBasicType := func(basicType *types.Basic) (string, error) {
@@ -248,6 +248,7 @@ func decodeToGoType(typ types.Type) (string, error) {
 		return types.TypeString(t, _qualifier), nil
 	case *types.Pointer:
 		str, err := decodeToGoType(t.Elem())
+
 		return "*" + str, err
 	default:
 		return "", errors.Newf("`%s` is an unsupported type", t.String())

@@ -2,17 +2,13 @@ package generation
 
 import (
 	"bytes"
-	"fmt"
-	"go/ast"
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 	"text/template"
 
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -45,7 +41,11 @@ func (c *Client) runHandlerGeneration() error {
 		handlerErrors = errors.Join(handlerErrors, e)
 	}
 
-	return handlerErrors
+	if handlerErrors != nil {
+		return errors.Wrap(handlerErrors, "runHandlerGeneration()")
+	}
+
+	return nil
 }
 
 func (c *Client) generateHandlers(resource *ResourceInfo) error {
@@ -136,130 +136,6 @@ func (c *Client) handlerContent(handler *generatedHandler, resource *ResourceInf
 	}
 
 	return buf.Bytes(), nil
-}
-
-func (c *Client) parseTypeForHandlerGeneration(structName string) (*generatedType, error) {
-	var generatedStruct generatedType
-	var pkeyCount int
-
-declLoop:
-	for _, decl := range c.resourceTree.Decls {
-		gd, ok := decl.(*ast.GenDecl)
-		if !ok {
-			continue
-		}
-
-		for _, s := range gd.Specs {
-			spec, ok := s.(*ast.TypeSpec)
-			if !ok || spec.Name == nil || spec.Name.Name != structName {
-				continue
-			}
-
-			st, ok := spec.Type.(*ast.StructType)
-			if !ok {
-				continue
-			}
-
-			if st.Fields == nil {
-				return nil, errors.Newf("no fields found for struct (%s)", structName)
-			}
-
-			table, ok := c.tableLookup[c.pluralize(structName)]
-			if !ok {
-				return nil, errors.Newf("table not found: %s", c.pluralize(structName))
-			}
-
-			var fields []*typeField
-			for i, f := range st.Fields.List {
-				if len(f.Names) == 0 {
-					return nil, errors.Newf("field name not found for struct (%s) at index (%d)", structName, i)
-				}
-
-				field := &typeField{
-					Name: f.Names[0].Name,
-					Type: fieldType(f.Type, true),
-				}
-
-				if f.Tag == nil {
-					return nil, errors.Newf("field tag not found for struct (%s) at index (%d)", structName, i)
-				}
-
-				field.Tag = f.Tag.Value
-
-				fieldTagInfo, err := parseTags(f.Tag.Value)
-				if err != nil {
-					return nil, errors.Wrapf(err, "parseTags(): struct (%s) at index (%d)", structName, i)
-				}
-				field.fieldTagInfo = fieldTagInfo
-
-				md, ok := table.Columns[field.SpannerColumn]
-				if !ok {
-					return nil, errors.Newf("column (%s) not found for table (%s)", field.SpannerColumn, c.pluralize(structName))
-				}
-
-				field.ConstraintTypes = md.ConstraintTypes
-				field.IsPrimaryKey = md.IsPrimaryKey
-				field.IsIndex = md.IsIndex
-				field.IsUniqueIndex = md.IsUniqueIndex
-
-				if field.IsPrimaryKey {
-					pkeyCount++
-				}
-
-				fields = append(fields, field)
-			}
-
-			generatedStruct.HasCompoundPrimaryKey = pkeyCount > 1
-			generatedStruct.Name = structName
-			generatedStruct.Fields = fields
-
-			break declLoop
-		}
-	}
-
-	return &generatedStruct, nil
-}
-
-func parseTags(tag string) (fieldTagInfo, error) {
-	var field fieldTagInfo
-	fieldTag := reflect.StructTag(strings.Trim(tag, "`"))
-
-	field.SpannerColumn = strings.Split(fieldTag.Get("spanner"), ",")[0]
-	if field.SpannerColumn == "" {
-		return fieldTagInfo{}, errors.Newf("spanner tag not found")
-	}
-
-	if perms := fieldTag.Get("perm"); perms != "" {
-		if strings.Contains(perms, string(accesstypes.Read)) {
-			field.ReadPerm = string(accesstypes.Read)
-		}
-		if strings.Contains(perms, string(accesstypes.List)) {
-			field.ListPerm = string(accesstypes.List)
-		}
-
-		permList := strings.Split(perms, ",")
-		var patchPerms []string
-		for _, p := range permList {
-			if p == string(accesstypes.Read) || p == string(accesstypes.List) {
-				continue
-			}
-
-			patchPerms = append(patchPerms, p)
-		}
-		if len(patchPerms) > 0 {
-			field.PatchPerm = strings.Join(patchPerms, ",")
-		}
-	}
-
-	if query := fieldTag.Get("query"); query != "" {
-		field.QueryTag = fmt.Sprintf("query:%q", query)
-	}
-
-	if conditions := fieldTag.Get("conditions"); conditions != "" {
-		field.Conditions = strings.Split(conditions, ",")
-	}
-
-	return field, nil
 }
 
 func (c *Client) handlerName(structName string, handlerType HandlerType) string {

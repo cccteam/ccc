@@ -486,7 +486,8 @@ const resourceMap: ResourceMap = {
     route: '{{ Kebab (Pluralize $resource.Name) }}',
     fields: [
       {{- range $field := $resource.Fields }}
-      { fieldName: '{{ Camel $field.Name }}', {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} },{{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.Required }}{{ if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
+      { fieldName: '{{ Camel $field.Name }}', {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.Required -}}
+	  {{- if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
       {{- end }}
     ],
   },
