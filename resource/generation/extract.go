@@ -105,12 +105,12 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 
 			typescriptType, err := decodeToTypescriptType(field.Type(), c.typescriptOverrides)
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "could not decode typescript type for field `%s` in struct `%s` at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
 			}
 
 			goType, err := decodeToGoType(field.Type())
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "could not decode go type for field `%s` in struct `%s` at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
 			}
 
 			// BEGIN spanner related stuff
