@@ -25,11 +25,11 @@ func parseResourceFile(filePath string) (*ast.File, error) {
 }
 
 // Loads and type checks a package. Returns any errors encountered during
-// loading or typechecking, otherwise returns the package's type data.
+// loading or typechecking, otherwise returns the package's data.
 // Useful for static type analysis with the [types] package instead of
 // manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
-func loadPackageTypes(directoryPath string) (*types.Package, error) {
-	cfg := &packages.Config{Mode: packages.NeedTypes}
+func loadPackage(directoryPath string) (*packages.Package, error) {
+	cfg := &packages.Config{Mode: packages.NeedTypes | packages.NeedFiles}
 	pkgs, err := packages.Load(cfg, directoryPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "packages.Load()")
@@ -39,7 +39,11 @@ func loadPackageTypes(directoryPath string) (*types.Package, error) {
 		return nil, errors.New("no packages loaded")
 	}
 
-	return pkgs[0].Types, nil
+	if len(pkgs[0].GoFiles) == 0 || pkgs[0].GoFiles[0] == "" {
+		return nil, errors.New("no files loaded")
+	}
+
+	return pkgs[0], nil
 }
 
 // We can iterate over the declarations at the package level a single time

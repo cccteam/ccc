@@ -52,7 +52,7 @@ type Client struct {
 	muAlign sync.Mutex
 }
 
-func New(ctx context.Context, resourceDirectory, migrationSourceURL string, generatorOptions ...ClientOption) (*Client, error) {
+func New(ctx context.Context, resourcePackageDir, migrationSourceURL string, generatorOptions ...ClientOption) (*Client, error) {
 	spannerContainer, err := initiator.NewSpannerContainer(ctx, "latest")
 	if err != nil {
 		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
@@ -79,8 +79,7 @@ func New(ctx context.Context, resourceDirectory, migrationSourceURL string, gene
 
 	c := &Client{
 		db:                  db.Client,
-		resourceFilePath:    resourceDirectory,
-		resourceDestination: filepath.Dir(resourceDirectory),
+		resourceDestination: resourcePackageDir,
 		cleanup:             cleanupFunc,
 		caser:               strcase.NewCaser(false, nil, nil),
 	}
@@ -96,17 +95,19 @@ func New(ctx context.Context, resourceDirectory, migrationSourceURL string, gene
 		return nil, errors.Wrap(err, "c.createTableLookup()")
 	}
 
-	err = removeGeneratedFiles(resourceDirectory, Prefix)
+	err = removeGeneratedFiles(resourcePackageDir, Prefix)
 	if err != nil {
 		return nil, errors.Wrap(err, "removeGeneratedFilesInNewClient()")
 	}
 
-	pkg, err := loadPackageTypes(resourceDirectory)
+	pkg, err := loadPackage(resourcePackageDir)
 	if err != nil {
 		return nil, err
 	}
 
-	c.resources, err = c.extractResourceTypes(pkg)
+	c.resourceFilePath = filepath.Join(resourcePackageDir, filepath.Base(pkg.GoFiles[0]))
+
+	c.resources, err = c.extractResourceTypes(pkg.Types)
 	if err != nil {
 		return nil, err
 	}
