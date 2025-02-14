@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
@@ -621,4 +622,13 @@ func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*e
 	}
 
 	return flds, nil
+}
+
+func (c *Client) isResourceRegisteredInRouter(resourceName string) bool {
+	if c.rc != nil {
+		routerResources := c.rc.Resources()
+		return slices.Contains(routerResources, accesstypes.Resource(c.pluralize(resourceName)))
+	}
+
+	return false
 }
