@@ -231,8 +231,9 @@ type ResourceInfo struct {
 }
 
 type FieldInfo struct {
-	parent             *ResourceInfo
+	Parent             *ResourceInfo
 	Name               string
+	SpannerName        string
 	GoType             string
 	typescriptType     string
 	query              string   //
@@ -314,7 +315,7 @@ func (f FieldInfo) PatchPerm() string {
 }
 
 func (f FieldInfo) IsView() bool {
-	return f.parent.IsView
+	return f.Parent.IsView
 }
 
 func (r generatedResource) DataType() string {

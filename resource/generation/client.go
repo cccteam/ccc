@@ -385,10 +385,10 @@ func (c *Client) templateFuncs() map[string]any {
 		"Pascal":    c.caser.ToPascal,
 		"Kebab":     c.caser.ToKebab,
 		"Lower":     strings.ToLower,
-		"PrimaryKeyTypeIsUUID": func(fields []*typeField) bool {
+		"PrimaryKeyTypeIsUUID": func(fields []FieldInfo) bool {
 			for _, f := range fields {
 				if f.IsPrimaryKey {
-					return f.Type == "ccc.UUID"
+					return f.GoType == "ccc.UUID"
 				}
 			}
 
@@ -401,10 +401,10 @@ func (c *Client) templateFuncs() map[string]any {
 
 			return ` perm:"` + s + `"`
 		},
-		"PrimaryKeyType": func(fields []*typeField) string {
+		"PrimaryKeyType": func(fields []*FieldInfo) string {
 			for _, f := range fields {
 				if f.IsPrimaryKey {
-					return f.Type
+					return f.GoType
 				}
 			}
 

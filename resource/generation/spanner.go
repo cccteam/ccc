@@ -87,12 +87,8 @@ func (c *Client) generatePatcherTypes(resource *ResourceInfo) error {
 	log.Printf("Generating resource file: %v\n", fileName)
 
 	output, err := c.generateTemplateOutput(resourceFileTemplate, map[string]any{
-		"Source":                c.resourceFilePath,
-		"Name":                  resource.Name,
-		"IsView":                resource.IsView,
-		"Fields":                resource.Fields,
-		"HasCompoundPrimaryKey": resource.HasCompoundPrimaryKey,
-		"SearchIndexes":         resource.SearchIndexes,
+		"Source":   c.resourceFilePath,
+		"Resource": resource,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
