@@ -34,7 +34,7 @@ func (c *Client) runRouteGeneration() error {
 
 		for _, h := range handlerTypes {
 			if _, skipGeneration := opts[h][NoGenerate]; !skipGeneration {
-				path := fmt.Sprintf("%s/%s", c.routePrefix, strcase.ToKebab(c.pluralize(s)))
+				path := fmt.Sprintf("/%s/%s", c.routePrefix, strcase.ToKebab(c.pluralize(s)))
 				if h == Read {
 					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(s+"ID"))
 				}
