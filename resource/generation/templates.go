@@ -509,7 +509,7 @@ export function resourceMeta(resource: Resource): ResourceMeta {
 		{{ end -}}
 	}
 
-	func generatedHandlerGroups(r chi.Router, h GeneratedHandlers) {
+	func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 		{{ range $Struct, $Routes := .RoutesMap }}{{ range $Routes }}r.{{ Pascal .Method }}("{{ .Path }}", h.{{ .HandlerFunc }}())
 		{{ end }}
 		{{ end -}}
