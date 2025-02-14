@@ -266,16 +266,49 @@ func (f FieldInfo) TypescriptDisplayType() string {
 	return f.typescriptType
 }
 
-func (f FieldInfo) JsonTag() string {
+func (f FieldInfo) JSONTag() string {
 	caser := strcase.NewCaser(false, nil, nil)
-	return fmt.Sprintf("json:%q", caser.ToCamel(f.Name)+",omitempty")
+	camelCaseName := caser.ToCamel(f.Name)
+
+	if !f.IsPrimaryKey {
+		return fmt.Sprintf("json:%q", camelCaseName+",omitempty")
+	}
+
+	return fmt.Sprintf("json:%q", camelCaseName)
+}
+
+func (f FieldInfo) JSONTagForPatch() string {
+	if f.IsPrimaryKey || f.IsImmutable() {
+		return fmt.Sprintf("json:%q", "-")
+	}
+
+	caser := strcase.NewCaser(false, nil, nil)
+	camelCaseName := caser.ToCamel(f.Name)
+
+	return fmt.Sprintf("json:%q", camelCaseName)
+}
+
+func (f FieldInfo) IndexTag() string {
+	if f.IsIndex {
+		return `index:"true"`
+	}
+
+	return ""
+}
+
+func (f FieldInfo) UniqueIndexTag() string {
+	if f.IsUniqueIndex {
+		return `index:"true"`
+	}
+
+	return ""
 }
 
 func (f FieldInfo) IsImmutable() bool {
 	return slices.Contains(f.Conditions, "immutable")
 }
 
-func (f FieldInfo) Query() string {
+func (f FieldInfo) QueryTag() string {
 	if f.query != "" {
 		return fmt.Sprintf("query:%q", f.query)
 	}
@@ -283,7 +316,7 @@ func (f FieldInfo) Query() string {
 	return ""
 }
 
-func (f FieldInfo) ReadPerm() string {
+func (f FieldInfo) ReadPermTag() string {
 	if slices.Contains(f.permissions, "Read") {
 		return fmt.Sprintf("perm:%q", "Read")
 	}
@@ -291,7 +324,7 @@ func (f FieldInfo) ReadPerm() string {
 	return ""
 }
 
-func (f FieldInfo) ListPerm() string {
+func (f FieldInfo) ListPermTag() string {
 	if slices.Contains(f.permissions, "List") {
 		return fmt.Sprintf("perm:%q", "List")
 	}
@@ -299,7 +332,7 @@ func (f FieldInfo) ListPerm() string {
 	return ""
 }
 
-func (f FieldInfo) PatchPerm() string {
+func (f FieldInfo) PatchPermTag() string {
 	var patches []string
 	for _, perm := range f.permissions {
 		if perm != "Read" && perm != "List" {

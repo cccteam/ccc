@@ -262,19 +262,19 @@ package app
 
 {{ .Handlers }}`
 
-	listTemplate = `func (a *App) {{ Pluralize .Type.Name }}() http.HandlerFunc {
-	{{ $StructName := Pluralize .Type.Name -}}
-	type {{ GoCamel .Type.Name }} struct {
-		{{ range .Type.Fields }}{{ .Name }} {{ .Type }} ` + "`json:\"{{ DetermineJSONTag . false }}\"{{ if eq .IsIndex true }}index:\"true\"{{end}}{{ FormatPerm .ListPerm }}{{ FormatQueryTag .QueryTag }}{{ FormatTokenTag $StructName .SpannerColumn }}`" + `
-		{{ end }}
+	listTemplate = `func (a *App) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
+	type {{ GoCamel .Resource.Name }} struct {
+		{{- range $field := .Resource.Fields }}
+		{{ $field.Name }} {{ $field.GoType}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag}} {{ $field.ListPermTag }} {{ $field.QueryTag }} {{FormatTokenTag (Pluralize $field.Parent.Name) $field.SpannerName}}`" + `
+		{{- end }}
 	}
 
-	type response []*{{ GoCamel .Type.Name }}
+	type response []*{{ GoCamel .Resource.Name }}
 
-	decoder := NewQueryDecoder[resources.{{ .Type.Name }}, {{ GoCamel .Type.Name }}](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](a, accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ Pluralize .Type.Name }}()")
+		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ Pluralize .Resource.Name }}()")
 		defer span.End()
 
 		querySet, err := decoder.Decode(r)
@@ -282,41 +282,41 @@ package app
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		rows, err := spanner.List(ctx, a.businessLayer.DB(), resources.New{{ .Type.Name }}QueryFromQuerySet(querySet))
+		rows, err := spanner.List(ctx, a.businessLayer.DB(), resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
 		resp := make(response, 0, len(rows))
 		for _, r := range rows {
-			resp = append(resp, (*{{ GoCamel .Type.Name }})(r))
+			resp = append(resp, (*{{ GoCamel .Resource.Name }})(r))
 		}
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})
 }`
 
-	readTemplate = `func (a *App) {{ .Type.Name }}() http.HandlerFunc {
-	{{ $StructName := Pluralize .Type.Name -}}
+	readTemplate = `func (a *App) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
-		{{ range .Type.Fields }}{{ .Name }} {{ .Type }} ` + "`json:\"{{ DetermineJSONTag . false }}\"{{ if eq .IsUniqueIndex true }}index:\"true\"{{end}}{{ FormatPerm .ReadPerm }}{{ FormatQueryTag .QueryTag }}{{ FormatTokenTag $StructName .SpannerColumn }}`" + `
-		{{ end }}
+		{{- range $field := .Resource.Fields }}
+		{{ $field.Name }} {{ $field.GoType}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.QueryTag }} {{ FormatTokenTag (Pluralize $field.Parent.Name) $field.SpannerName }}`" + `
+		{{- end }}
 	}
 
-	decoder := NewQueryDecoder[resources.{{ .Type.Name }}, response](a, accesstypes.Read)
+	decoder := NewQueryDecoder[resources.{{ .Resource.Name }}, response](a, accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ .Type.Name }}()")
+		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ .Resource.Name }}()")
 		defer span.End()
 
-		id := httpio.Param[{{ PrimaryKeyType .Type.Fields }}](r, router.{{ .Type.Name }}ID)
+		id := httpio.Param[{{ PrimaryKeyType .Resource.Fields }}](r, router.{{ .Resource.Name }}ID)
 
 		querySet, err := decoder.Decode(r)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		row, err := spanner.Read(ctx, a.businessLayer.DB(), resources.New{{ .Type.Name }}QueryFromQuerySet(querySet).SetID(id))
+		row, err := spanner.Read(ctx, a.businessLayer.DB(), resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).SetID(id))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -325,31 +325,32 @@ package app
 	})
 }`
 
-	patchTemplate = `func (a *App) Patch{{ Pluralize .Type.Name }}() http.HandlerFunc {
+	patchTemplate = `func (a *App) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type request struct {
-		{{ range .Type.Fields }}{{ .Name }} {{ .Type }} ` + "`json:\"{{ DetermineJSONTag . true }}\"{{ FormatPerm .PatchPerm }}{{ FormatQueryTag .QueryTag }}`" + `
-		{{ end }}
+		{{- range $field := .Resource.Fields }}
+		{{ $field.Name }} {{ $field.GoType}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
+		{{- end }}
 	}
 	
-	{{ $PrimaryKeyType := PrimaryKeyType .Type.Fields }}
+	{{ $PrimaryKeyType := PrimaryKeyType .Resource.Fields }}
 	{{- if eq $PrimaryKeyType "ccc.UUID"  }}
 	type response struct {
 		IDs []ccc.UUID ` + "`json:\"iDs\"`" + `
 	}
 	{{- end }}
 
-	decoder := NewDecoder[resources.{{ .Type.Name }}, request](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+	decoder := NewDecoder[resources.{{ .Resource.Name }}, request](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "App.Patch{{ Pluralize .Type.Name }}()")
+		ctx, span := otel.Tracer(name).Start(r.Context(), "App.Patch{{ Pluralize .Resource.Name }}()")
 		defer span.End()
 
 		var patches []resource.SpannerBufferer
-		{{- if eq $PrimaryKeyType "ccc.UUID"  }}
+		{{- if eq $PrimaryKeyType "ccc.UUID" }}
 		var resp response
 		{{- end }}
 
-		for op, err := range resource.Operations(r, "/{id}"{{- if ne $PrimaryKeyType "ccc.UUID"  }}, resource.RequireCreatePath(){{- end }}) {
+		for op, err := range resource.Operations(r, "/{id}"{{- if ne $PrimaryKeyType "ccc.UUID" }}, resource.RequireCreatePath(){{- end }}) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -362,7 +363,7 @@ package app
 			switch op.Type {
 			case resource.OperationCreate:
 				{{- if eq $PrimaryKeyType "ccc.UUID" }}
-				patch, err := resources.New{{ .Type.Name }}CreatePatchFromPatchSet(patchSet)
+				patch, err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet)
 				if err != nil {
 					return httpio.NewEncoder(w).ClientMessage(ctx, err)
 				}
@@ -370,19 +371,19 @@ package app
 				resp.IDs = append(resp.IDs, patch.ID())
 				{{- else }}
 				id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
-				patches = append(patches, resources.New{{ .Type.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet())
+				patches = append(patches, resources.New{{ .Resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet())
 				{{- end }}
 			case resource.OperationUpdate:
 				id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
-				patches = append(patches, resources.New{{ .Type.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet())
+				patches = append(patches, resources.New{{ .Resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet())
 			case resource.OperationDelete:
 				id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
-				patches = append(patches, resources.New{{ .Type.Name }}DeletePatch(id).PatchSet())
+				patches = append(patches, resources.New{{ .Resource.Name }}DeletePatch(id).PatchSet())
 			}
 		}
 
 		if err := a.businessLayer.DB().Patch(ctx, resource.UserEvent(ctx), patches...); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, spanner.HandleError[resources.{{ .Type.Name }}](err))
+			return httpio.NewEncoder(w).ClientMessage(ctx, spanner.HandleError[resources.{{ .Resource.Name }}](err))
 		}
 
 		{{ if eq $PrimaryKeyType "ccc.UUID"  }}

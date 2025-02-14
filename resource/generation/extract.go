@@ -78,6 +78,8 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 			resource.HasCompoundPrimaryKey = true
 		}
 
+		resource.SearchIndexes = c.buildTableSearchIndexes(c.pluralize(object.Name()))
+
 		for i := range structType.NumFields() {
 			field := structType.Field(i)
 			if field == nil || !field.IsField() || field.Embedded() {
@@ -87,8 +89,15 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 			structTag := reflect.StructTag(structType.Tag(i))
 
 			query := structTag.Get("query")
-			conditions := strings.Split(structTag.Get("conditions"), ",")
-			permissions := strings.Split(structTag.Get("perm"), ",")
+			var conditions []string
+			if structTag.Get("conditions") != "" {
+				conditions = strings.Split(structTag.Get("conditions"), ",")
+			}
+
+			var permissions []string
+			if structTag.Get("perm") != "" {
+				permissions = strings.Split(structTag.Get("perm"), ",")
+			}
 
 			typescriptType, err := decodeToTypescriptType(field.Type(), c.typescriptOverrides)
 			if err != nil {

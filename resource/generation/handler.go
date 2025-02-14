@@ -25,14 +25,14 @@ func (c *Client) runHandlerGeneration() error {
 		errChan = make(chan error)
 		wg      sync.WaitGroup
 	)
-	for _, s := range c.structNames {
+	for _, resource := range c.resources {
 		wg.Add(1)
-		go func(structName string) {
-			if err := c.generateHandlers(structName); err != nil {
+		go func(resource *ResourceInfo) {
+			if err := c.generateHandlers(resource); err != nil {
 				errChan <- err
 			}
 			wg.Done()
-		}(s)
+		}(resource)
 	}
 
 	go func() {
@@ -48,12 +48,7 @@ func (c *Client) runHandlerGeneration() error {
 	return handlerErrors
 }
 
-func (c *Client) generateHandlers(structName string) error {
-	generatedType, err := c.parseTypeForHandlerGeneration(structName)
-	if err != nil {
-		return errors.Wrap(err, "generatedType()")
-	}
-
+func (c *Client) generateHandlers(resource *ResourceInfo) error {
 	generatedHandlers := []*generatedHandler{
 		{
 			template:    listTemplate,
@@ -61,7 +56,7 @@ func (c *Client) generateHandlers(structName string) error {
 		},
 	}
 
-	if md, ok := c.tableLookup[c.pluralize(structName)]; ok && !md.IsView {
+	if !resource.IsView {
 		generatedHandlers = append(generatedHandlers, []*generatedHandler{
 			{
 				template:    readTemplate,
@@ -75,7 +70,7 @@ func (c *Client) generateHandlers(structName string) error {
 	}
 
 	opts := make(map[HandlerType]map[OptionType]any)
-	for handlerType, options := range c.handlerOptions[structName] {
+	for handlerType, options := range c.handlerOptions[resource.Name] {
 		opts[handlerType] = make(map[OptionType]any)
 		for _, option := range options {
 			opts[handlerType][option] = struct{}{}
@@ -85,7 +80,7 @@ func (c *Client) generateHandlers(structName string) error {
 	var handlerData [][]byte
 	for _, h := range generatedHandlers {
 		if _, skipGeneration := opts[h.handlerType][NoGenerate]; !skipGeneration {
-			data, err := c.handlerContent(h, generatedType)
+			data, err := c.handlerContent(h, resource)
 			if err != nil {
 				return errors.Wrap(err, "replaceHandlerFileContent()")
 			}
@@ -95,7 +90,7 @@ func (c *Client) generateHandlers(structName string) error {
 	}
 
 	if len(handlerData) > 0 {
-		fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
+		fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(resource.Name))))
 		destinationFilePath := filepath.Join(c.handlerDestination, fileName)
 
 		file, err := os.Create(destinationFilePath)
@@ -127,7 +122,7 @@ func (c *Client) generateHandlers(structName string) error {
 	return nil
 }
 
-func (c *Client) handlerContent(handler *generatedHandler, generated *generatedType) ([]byte, error) {
+func (c *Client) handlerContent(handler *generatedHandler, resource *ResourceInfo) ([]byte, error) {
 	tmpl, err := template.New("handler").Funcs(c.templateFuncs()).Parse(handler.template)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.New().Parse()")
@@ -135,7 +130,7 @@ func (c *Client) handlerContent(handler *generatedHandler, generated *generatedT
 
 	buf := bytes.NewBuffer([]byte{})
 	if err := tmpl.Execute(buf, map[string]any{
-		"Type": generated,
+		"Resource": resource,
 	}); err != nil {
 		return nil, errors.Wrap(err, "tmpl.Execute()")
 	}

@@ -402,7 +402,7 @@ func (c *Client) templateFuncs() map[string]any {
 
 			return ` perm:"` + s + `"`
 		},
-		"PrimaryKeyType": func(fields []*FieldInfo) string {
+		"PrimaryKeyType": func(fields []FieldInfo) string {
 			for _, f := range fields {
 				if f.IsPrimaryKey {
 					return f.GoType
@@ -417,26 +417,6 @@ func (c *Client) templateFuncs() map[string]any {
 			}
 
 			return ""
-		},
-		"DetermineJSONTag": func(field *typeField, isPatch bool) string {
-			if isPatch {
-				if field.IsPrimaryKey {
-					return "-"
-				}
-
-				for _, c := range field.Conditions {
-					if c == "immutable" {
-						return "-"
-					}
-				}
-			}
-
-			val := c.caser.ToCamel(field.Name)
-			if !field.IsPrimaryKey && !isPatch {
-				val += ",omitempty"
-			}
-
-			return val
 		},
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
 		"FormatTokenTag":               c.formatTokenTags,
@@ -641,7 +621,7 @@ func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*e
 
 	for _, match := range tokenizeRegex.FindAllStringSubmatch(expression, -1) {
 		if len(match) != 3 {
-			return nil, errors.Newf("unexpected number of matches: %d", len(match))
+			return nil, errors.Newf("expression `%s` has unexpected number of matches: `%d` (expected 3)", expression, len(match))
 		}
 
 		var tokenType resource.SearchType

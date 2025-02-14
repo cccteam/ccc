@@ -11,6 +11,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/cccteam/ccc/resource"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -225,11 +226,11 @@ func (c *Client) generateTemplateOutput(fileTemplate string, data map[string]any
 }
 
 func (c *Client) buildTableSearchIndexes(tableName string) []*searchIndex {
-	typeIndexMap := make(map[string]string)
-	if t, ok := c.tableLookup[tableName]; ok {
-		for index, fields := range t.SearchIndexes {
-			for _, f := range fields {
-				typeIndexMap[string(f.tokenType)] = index
+	typeIndexMap := make(map[resource.SearchType]string)
+	if tableMeta, ok := c.tableLookup[tableName]; ok {
+		for tokenListColumn, expressionFields := range tableMeta.SearchIndexes {
+			for _, exprField := range expressionFields {
+				typeIndexMap[exprField.tokenType] = tokenListColumn
 			}
 		}
 	}
@@ -238,7 +239,7 @@ func (c *Client) buildTableSearchIndexes(tableName string) []*searchIndex {
 	for tokenType, indexName := range typeIndexMap {
 		indexes = append(indexes, &searchIndex{
 			Name:       indexName,
-			SearchType: tokenType,
+			SearchType: string(tokenType),
 		})
 	}
 
