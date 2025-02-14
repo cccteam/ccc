@@ -65,6 +65,10 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 
 		resource := ResourceInfo{Name: object.Name()}
 
+		if !slices.Contains(routerResources, accesstypes.Resource(c.pluralize(object.Name()))) {
+			return nil, errors.Newf("struct `%s` at %s:%d is not registered in router (routerResources=%v)", object.Name(), pkg.Name(), object.Pos(), routerResources)
+		}
+
 		spannerTable, ok := c.tableLookup[c.pluralize(object.Name())]
 		if !ok {
 			return nil, errors.Newf("struct `%s` at %s:%d is not in tableMeta", object.Name(), pkg.Name(), object.Pos())

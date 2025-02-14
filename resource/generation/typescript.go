@@ -64,23 +64,8 @@ func (c *Client) runTypescriptMetadataGeneration() error {
 }
 
 func (c *Client) generateTypescriptMetadata() error {
-	routerResources := c.rc.Resources()
-
-	var genResources []*generatedResource
-	for _, s := range c.structNames {
-		// We only want to generate metadata for Resources that are registered in the Router
-		if slices.Contains(routerResources, accesstypes.Resource(c.pluralize(s))) {
-			genResource, err := c.parseStructForTypescriptGeneration(s)
-			if err != nil {
-				return errors.Wrap(err, "generatedType()")
-			}
-
-			genResources = append(genResources, genResource)
-		}
-	}
-
 	output, err := c.generateTemplateOutput(typescriptMetadataTemplate, map[string]any{
-		"Resources": genResources,
+		"Resources": c.resources,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

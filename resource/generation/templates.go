@@ -476,7 +476,7 @@ import { Resources } from './resourcePermissions';
 {{ range $resource := $resources }}
 export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
-  {{ Camel $field.Name }}: {{ $field.DataType }};
+  {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
 {{- end }}
 }
 {{ end }}
@@ -486,7 +486,7 @@ const resourceMap: ResourceMap = {
     route: '{{ Kebab (Pluralize $resource.Name) }}',
     fields: [
       {{- range $field := $resource.Fields }}
-      { fieldName: '{{ Camel $field.Name }}', {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} },{{- end }} displayType: '{{ Lower $field.DisplayType }}', required: {{ $field.Required }}{{ if $field.IsForeignKey }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
+      { fieldName: '{{ Camel $field.Name }}', {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} },{{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.Required }}{{ if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
       {{- end }}
     ],
   },
