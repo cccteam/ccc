@@ -405,8 +405,8 @@ package app
 	func TestClient_Resources(t *testing.T) {
 		t.Parallel()
 
-		{{ range .Types }}
-		RunResourceTestsFor[resources.{{ .Name }}](t)
+		{{ range $resource := .Resources }}
+		RunResourceTestsFor[resources.{{ $resource.Name }}](t)
 		{{- end }}
 	}`
 

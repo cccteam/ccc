@@ -58,8 +58,8 @@ func (c *Client) generateResourceInterfaces() error {
 
 func (c *Client) generateResourceTests() error {
 	output, err := c.generateTemplateOutput(resourcesTestTemplate, map[string]any{
-		"Source": c.resourceFilePath,
-		"Types":  c.resources,
+		"Source":    c.resourceFilePath,
+		"Resources": c.resources,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
