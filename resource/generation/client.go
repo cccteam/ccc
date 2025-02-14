@@ -624,11 +624,6 @@ func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*e
 	return flds, nil
 }
 
-func (c *Client) isResourceRegisteredInRouter(resourceName string) bool {
-	if c.rc != nil {
-		routerResources := c.rc.Resources()
-		return slices.Contains(routerResources, accesstypes.Resource(c.pluralize(resourceName)))
-	}
-
-	return false
+func (c *Client) isResourceRegisteredInRouter(resourceName string, routerResources []accesstypes.Resource) bool {
+	return slices.Contains(routerResources, accesstypes.Resource(c.pluralize(resourceName)))
 }

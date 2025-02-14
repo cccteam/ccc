@@ -65,7 +65,7 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 
 		resource := ResourceInfo{Name: object.Name()}
 
-		if !c.isResourceRegisteredInRouter(object.Name()) {
+		if !c.isResourceRegisteredInRouter(object.Name(), routerResources) {
 			return nil, errors.Newf("struct `%s` at %s:%d is not registered in router (routerResources=%v)", object.Name(), pkg.Name(), object.Pos(), routerResources)
 		}
 
