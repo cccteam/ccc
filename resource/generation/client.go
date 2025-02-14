@@ -42,7 +42,6 @@ type Client struct {
 	rc                    *resource.Collection
 	db                    *cloudspanner.Client
 	caser                 *strcase.Caser
-	structNames           []string
 	tableLookup           map[string]*TableMetadata
 	handlerOptions        map[string]map[HandlerType][]OptionType
 	pluralOverrides       map[string]string
@@ -310,12 +309,6 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 			for _, f := range expressionFields {
 				table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], f)
 			}
-		}
-	}
-
-	for _, structName := range c.structNames {
-		if _, ok := m[c.pluralize(structName)]; !ok {
-			return nil, errors.Newf("structName `%s` not in TableMetadata as `%s`", structName, c.pluralize(structName))
 		}
 	}
 
