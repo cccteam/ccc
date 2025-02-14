@@ -1,9 +1,6 @@
 package generation
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"go/types"
 	"reflect"
 	"slices"
@@ -13,16 +10,6 @@ import (
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/tools/go/packages"
 )
-
-func parseResourceFile(filePath string) (*ast.File, error) {
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, filePath, nil, parser.SkipObjectResolution)
-	if err != nil {
-		return nil, errors.Wrap(err, "parser.ParseFile()")
-	}
-
-	return file, nil
-}
 
 // Loads and type checks a package. Returns any errors encountered during
 // loading or typechecking, otherwise returns the package's data.
@@ -60,12 +47,11 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 	}
 
 	var routerResources []accesstypes.Resource
-	if c.rc != nil {
+	if c.rc != nil { // Router Resources gives us visibility into which resources have been registered in the app router
 		routerResources = c.rc.Resources()
 	}
 
 	var resources []*ResourceInfo
-
 	for _, name := range scope.Names() {
 		object := scope.Lookup(name)
 		if object == nil {
@@ -100,11 +86,6 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 
 			structTag := reflect.StructTag(structType.Tag(i))
 
-			spannerColumnName := structTag.Get("spanner")
-			if spannerColumnName == "" {
-				return nil, errors.Newf("field `%s` in struct `%s` at %s:%d must include `spanner:\"<column name>\" struct tag", field.Name(), object.Name(), pkg.Name(), field.Pos())
-			}
-
 			query := structTag.Get("query")
 			conditions := strings.Split(structTag.Get("conditions"), ",")
 			permissions := strings.Split(structTag.Get("perm"), ",")
@@ -119,18 +100,22 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 				return nil, err
 			}
 
-			// BEGIN spanner stuff
+			// BEGIN spanner related stuff
+			spannerColumnName := structTag.Get("spanner")
+			if spannerColumnName == "" {
+				return nil, errors.Newf("field `%s` in struct `%s` at %s:%d must include `spanner:\"<column name>\" struct tag", field.Name(), object.Name(), pkg.Name(), field.Pos())
+			}
+
 			spannerColumn, ok := spannerTable.Columns[spannerColumnName]
 			if !ok {
 				return nil, errors.Newf("field `%s` in struct `%s` at %s:%d is not in tableMeta", field.Name(), object.Name(), pkg.Name(), field.Pos())
 			}
 
 			var isRequiredForCreate bool
-			if spannerColumn.IsPrimaryKey {
-				if typescriptType != "uuid" {
-					isRequiredForCreate = true
-				}
-			} else if !spannerColumn.IsNullable {
+			if spannerColumn.IsPrimaryKey && typescriptType != "uuid" {
+				isRequiredForCreate = true
+			}
+			if !spannerColumn.IsPrimaryKey && !spannerColumn.IsNullable {
 				isRequiredForCreate = true
 			}
 
@@ -138,8 +123,7 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 			if spannerColumn.IsForeignKey && slices.Contains(routerResources, accesstypes.Resource(spannerColumn.ReferencedTable)) {
 				isEnumerated = true
 			}
-
-			// END spanner stuff
+			// END spanner related stuff
 
 			fieldInfo := FieldInfo{
 				Parent:             &resource,
