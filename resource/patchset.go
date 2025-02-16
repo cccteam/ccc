@@ -409,12 +409,9 @@ func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn *spanner.R
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
 	}
-	if stmt == nil {
-		return nil, errors.New("QuerySet.SpannerStmt() returned unexpected nil *spanner.Statement")
-	}
 
 	oldValues := new(Resource)
-	if err := spxscan.Get(ctx, txn, oldValues, *stmt); err != nil {
+	if err := spxscan.Get(ctx, txn, oldValues, stmt); err != nil {
 		if errors.Is(err, spxscan.ErrNotFound) {
 			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().String())
 		}
@@ -439,12 +436,9 @@ func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn *spanner.Rea
 	if err != nil {
 		return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")
 	}
-	if stmt == nil {
-		return nil, errors.New("QuerySet.SpannerStmt() returned unexpected nil *spanner.Statement")
-	}
 
 	oldValues := new(Resource)
-	if err := spxscan.Get(ctx, txn, oldValues, *stmt); err != nil {
+	if err := spxscan.Get(ctx, txn, oldValues, stmt); err != nil {
 		if errors.Is(err, spxscan.ErrNotFound) {
 			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().String())
 		}
