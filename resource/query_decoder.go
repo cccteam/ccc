@@ -36,11 +36,9 @@ func NewQueryDecoder[Res Resourcer, Req any](resSet *ResourceSet[Res, Req], perm
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	searchKeys := NewSearchKeys[Req](res)
-
 	return &QueryDecoder[Res, Req]{
 		fieldMapper:       mapper,
-		searchKeys:        searchKeys,
+		searchKeys:        NewSearchKeys[Req](res),
 		resourceSet:       resSet,
 		permissionChecker: permChecker,
 		domainFromCtx:     domainFromCtx,
