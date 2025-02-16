@@ -63,3 +63,72 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 		})
 	}
 }
+
+func Test_searchExpressionFields(t *testing.T) {
+	type args struct {
+		expression string
+		cols       map[string]FieldMetadata
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []*expressionField
+		wantErr bool
+	}{
+		{
+			name: "success multi line",
+			args: args{
+				expression: `TOKENLIST_CONCAT([
+								(TOKENIZE_SUBSTRING(FirstName)),
+								(TOKENIZE_SUBSTRING(LastName)),
+								(TOKENIZE_SUBSTRING(FormerLastName)),
+								(TOKENIZE_SUBSTRING(SUBSTR(Ssn, -4))),
+								(TOKENIZE_SUBSTRING(Ssn))
+							])`,
+				cols: map[string]FieldMetadata{
+					"FirstName":      {},
+					"LastName":       {},
+					"FormerLastName": {},
+					"Ssn":            {},
+				},
+			},
+			want: []*expressionField{
+				{tokenType: "substring", fieldName: "FirstName"},
+				{tokenType: "substring", fieldName: "LastName"},
+				{tokenType: "substring", fieldName: "FormerLastName"},
+				{tokenType: "substring", fieldName: "Ssn"},
+			},
+		},
+		{
+			name: "success single line",
+			args: args{
+				expression: "TOKENLIST_CONCAT([(TOKENIZE_SUBSTRING(FirstName)),(TOKENIZE_SUBSTRING(LastName)),(TOKENIZE_SUBSTRING(FormerLastName)),(TOKENIZE_SUBSTRING(SUBSTR(Ssn, -4))),(TOKENIZE_SUBSTRING(Ssn))])",
+				cols: map[string]FieldMetadata{
+					"FirstName":      {},
+					"LastName":       {},
+					"FormerLastName": {},
+					"Ssn":            {},
+				},
+			},
+			want: []*expressionField{
+				{tokenType: "substring", fieldName: "FirstName"},
+				{tokenType: "substring", fieldName: "LastName"},
+				{tokenType: "substring", fieldName: "FormerLastName"},
+				{tokenType: "substring", fieldName: "Ssn"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := searchExpressionFields(tt.args.expression, tt.args.cols)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("searchExpressionFields() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(expressionField{})); diff != "" {
+				t.Errorf("searchExpressionFields() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

@@ -10,7 +10,6 @@ import (
 	"go/parser"
 	"go/token"
 	"log"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -217,9 +216,7 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 
 	m := make(map[string]*TableMetadata)
 	for _, r := range result {
-		tableName := r.TableName
-
-		table, ok := m[tableName]
+		table, ok := m[r.TableName]
 		if !ok {
 			table = &TableMetadata{
 				Columns:       make(map[string]FieldMetadata),
@@ -228,14 +225,8 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 			}
 		}
 
-		if r.SpannerType == "TOKENLIST" {
-			if r.GenerationExpression != nil {
-				for _, f := range searchExpressionFields(*r.GenerationExpression, table.Columns) {
-					table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], f)
-				}
-
-				continue
-			}
+		if r.SpannerType == "TOKENLIST" || strings.HasSuffix(r.ColumnName, "_HIDDEN") {
+			continue
 		}
 
 		column, ok := table.Columns[r.ColumnName]
@@ -283,7 +274,26 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 		}
 
 		table.Columns[r.ColumnName] = column
-		m[tableName] = table
+		m[r.TableName] = table
+	}
+
+	for _, r := range result {
+		table := m[r.TableName]
+
+		if r.SpannerType == "TOKENLIST" {
+			if r.GenerationExpression == nil {
+				return nil, errors.Newf("generation expression not found for tokenlist column: %s", r.ColumnName)
+			}
+
+			expressionFields, err := searchExpressionFields(*r.GenerationExpression, table.Columns)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, f := range expressionFields {
+				table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], f)
+			}
+		}
 	}
 
 	return m, nil
@@ -582,41 +592,36 @@ func parseResourceFile(resourceFilePath string) (*ast.File, error) {
 	return file, nil
 }
 
-func searchExpressionFields(expression string, cols map[string]FieldMetadata) []*expressionField {
-	fieldMap := make(map[string]*expressionField)
+func searchExpressionFields(expression string, cols map[string]FieldMetadata) ([]*expressionField, error) {
+	var flds []*expressionField
 
-	lines := strings.Split(expression, "\n")
-	for _, l := range lines {
-		if matches := tokenizeRegex.FindAllStringSubmatch(l, -1); len(matches) > 0 && len(matches[0]) > 2 {
-			searchType := matches[0][1]
-
-			var tokenType resource.SearchType
-			switch searchType {
-			case "SUBSTRING":
-				tokenType = resource.SubString
-			case "FULLTEXT":
-				tokenType = resource.FullText
-			case "NGRAMS":
-				tokenType = resource.Ngram
-			}
-
-			fieldName := matches[0][2]
-			colKeys := maps.Keys(cols)
-			for k := range colKeys {
-				if strings.Contains(fieldName, k) {
-					fieldName = k
-					break
-				}
-			}
-
-			if _, ok := fieldMap[fieldName]; !ok && tokenType != "" {
-				fieldMap[fieldName] = &expressionField{
-					tokenType: tokenType,
-					fieldName: fieldName,
-				}
-			}
+	for _, match := range tokenizeRegex.FindAllStringSubmatch(expression, -1) {
+		if len(match) != 3 {
+			return nil, errors.Newf("unexpected number of matches: %d", len(match))
 		}
+
+		var tokenType resource.SearchType
+		switch match[1] {
+		case "TOKENIZE_SUBSTRING":
+			tokenType = resource.SubString
+		case "TOKENIZE_FULLTEXT":
+			tokenType = resource.FullText
+		case "TOKENIZE_NGRAMS":
+			tokenType = resource.Ngram
+		default:
+			continue
+		}
+
+		fieldName := match[2]
+		if _, ok := cols[fieldName]; !ok {
+			return nil, errors.Newf("column parsed from expression was not found in table: %s", fieldName)
+		}
+
+		flds = append(flds, &expressionField{
+			tokenType: tokenType,
+			fieldName: fieldName,
+		})
 	}
 
-	return slices.Collect(maps.Values(fieldMap))
+	return flds, nil
 }

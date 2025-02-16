@@ -19,7 +19,7 @@ var baseTypes = []string{
 	"error",
 }
 
-var tokenizeRegex = regexp.MustCompile(`TOKENIZE_([^)]+)\(([^)]+)\)`)
+var tokenizeRegex = regexp.MustCompile(`(TOKENIZE_[^)]+)\(([^)]+)\)`)
 
 const (
 	genPrefix = "zz_gen"
