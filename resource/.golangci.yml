@@ -142,7 +142,6 @@ linters:
     # - gomnd # An analyzer to detect magic numbers. [fast: true, auto-fix: false]
     # - gomodguard # Allow and block list linter for direct Go module dependencies. This is different from depguard where there are different block types for example version constraints and module recommendations. [fast: true, auto-fix: false]
     # - interfacer # Linter that suggests narrower interface types [fast: false, auto-fix: false]
-    # - maligned # Tool to detect Go structs that would take less memory if their fields were sorted [fast: false, auto-fix: false]
     # - promlinter # Check Prometheus metrics naming via promlint [fast: true, auto-fix: false]
     # - scopelint # Scopelint checks for unpinned variables in go programs [fast: true, auto-fix: false]
     # - testpackage # linter that makes you use a separate _test package [fast: true, auto-fix: false]
