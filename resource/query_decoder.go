@@ -135,7 +135,11 @@ func parseSearchParam(searchKeys *SearchKeys, queryParams url.Values) (searchSet
 			return nil, errors.New("only one search parameter is allowed")
 		}
 
-		key = SearchKey(searchKey)
+		key = searchKey
+	}
+
+	if key == "" {
+		return nil, nil
 	}
 
 	typ := searchKeys.keys[key]
