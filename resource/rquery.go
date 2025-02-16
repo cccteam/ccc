@@ -25,7 +25,7 @@ func (s spannerQueryParser) parseToSearchSubstring(tokenlist SearchKey) *Stateme
 
 		exprs = append(exprs, fmt.Sprintf("SEARCH_SUBSTRING(%s, @%s)", tokenlist, param))
 	}
-	sql := strings.Join(exprs, " AND ")
+	sql := strings.Join(exprs, " OR ")
 
 	return &Statement{
 		Sql:    sql,
