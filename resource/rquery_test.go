@@ -24,11 +24,11 @@ func Test_spannerQueryParser_parseToSearchSubstring(t *testing.T) {
 			},
 		},
 		{
-			name:      "elem AND elem",
+			name:      "elem OR elem",
 			query:     "mike john",
 			tokenlist: "NameTokens",
 			want: Statement{
-				Sql: "SEARCH_SUBSTRING(NameTokens, @searchsubstringterm0) AND SEARCH_SUBSTRING(NameTokens, @searchsubstringterm1)",
+				Sql: "SEARCH_SUBSTRING(NameTokens, @searchsubstringterm0) OR SEARCH_SUBSTRING(NameTokens, @searchsubstringterm1)",
 				Params: map[string]any{
 					"searchsubstringterm0": "mike",
 					"searchsubstringterm1": "john",
@@ -36,11 +36,11 @@ func Test_spannerQueryParser_parseToSearchSubstring(t *testing.T) {
 			},
 		},
 		{
-			name:      "elem AND elem AND elem",
+			name:      "elem OR elem OR elem",
 			query:     "mike john bill",
 			tokenlist: "NameTokens",
 			want: Statement{
-				Sql: "SEARCH_SUBSTRING(NameTokens, @searchsubstringterm0) AND SEARCH_SUBSTRING(NameTokens, @searchsubstringterm1) AND SEARCH_SUBSTRING(NameTokens, @searchsubstringterm2)",
+				Sql: "SEARCH_SUBSTRING(NameTokens, @searchsubstringterm0) OR SEARCH_SUBSTRING(NameTokens, @searchsubstringterm1) OR SEARCH_SUBSTRING(NameTokens, @searchsubstringterm2)",
 				Params: map[string]any{
 					"searchsubstringterm0": "mike",
 					"searchsubstringterm1": "john",
