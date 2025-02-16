@@ -189,6 +189,8 @@ declLoop:
 					return nil, errors.Newf("field tag not found for struct (%s) at index (%d)", structName, i)
 				}
 
+				field.Tag = f.Tag.Value
+
 				fieldTagInfo, err := parseTags(f.Tag.Value)
 				if err != nil {
 					return nil, errors.Wrapf(err, "parseTags(): struct (%s) at index (%d)", structName, i)
@@ -227,7 +229,7 @@ func parseTags(tag string) (fieldTagInfo, error) {
 	var field fieldTagInfo
 	fieldTag := reflect.StructTag(strings.Trim(tag, "`"))
 
-	field.SpannerColumn = fieldTag.Get("spanner")
+	field.SpannerColumn = strings.Split(fieldTag.Get("spanner"), ",")[0]
 	if field.SpannerColumn == "" {
 		return fieldTagInfo{}, errors.Newf("spanner tag not found")
 	}

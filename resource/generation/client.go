@@ -451,13 +451,16 @@ func (c *Client) pluralize(value string) string {
 
 func (c *Client) formatTokenTags(tableName, fieldName string) string {
 	tokenIndexMap := make(map[string][]string)
-	if t, ok := c.tableLookup[tableName]; ok {
-		for k, v := range t.SearchIndexes {
-			for _, f := range v {
-				if f.fieldName == fieldName {
-					token := string(f.tokenType)
-					tokenIndexMap[token] = append(tokenIndexMap[token], k)
-				}
+	t, ok := c.tableLookup[tableName]
+	if !ok {
+		panic(fmt.Sprintf("table not found: %s", tableName))
+	}
+
+	for k, v := range t.SearchIndexes {
+		for _, f := range v {
+			if f.fieldName == fieldName {
+				token := string(f.tokenType)
+				tokenIndexMap[token] = append(tokenIndexMap[token], k)
 			}
 		}
 	}
