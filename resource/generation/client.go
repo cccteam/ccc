@@ -240,7 +240,20 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 			}
 		}
 
-		if r.SpannerType == "TOKENLIST" || strings.HasSuffix(r.ColumnName, "_HIDDEN") {
+		if r.SpannerType == "TOKENLIST" {
+			if r.GenerationExpression == nil {
+				return nil, errors.Newf("generation expression not found for tokenlist column=`%s` table=`%s`", r.ColumnName, r.TableName)
+			}
+
+			expressionFields, err := searchExpressionFields(*r.GenerationExpression)
+			if err != nil {
+				return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
+			}
+
+			for _, f := range expressionFields {
+				table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], f)
+			}
+
 			continue
 		}
 
@@ -291,25 +304,6 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 
 		table.Columns[r.ColumnName] = column
 		m[r.TableName] = table
-	}
-
-	for _, r := range result {
-		table := m[r.TableName]
-
-		if r.SpannerType == "TOKENLIST" {
-			if r.GenerationExpression == nil {
-				return nil, errors.Newf("generation expression not found for tokenlist column: %s", r.ColumnName)
-			}
-
-			expressionFields, err := searchExpressionFields(*r.GenerationExpression, table.Columns)
-			if err != nil {
-				return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
-			}
-
-			for _, f := range expressionFields {
-				table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], f)
-			}
-		}
 	}
 
 	return m, nil
@@ -570,7 +564,7 @@ func formatResourceInterfaceTypes(resources []*ResourceInfo) string {
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
 }
 
-func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*expressionField, error) {
+func searchExpressionFields(expression string) ([]*expressionField, error) {
 	var flds []*expressionField
 
 	for _, match := range tokenizeRegex.FindAllStringSubmatch(expression, -1) {
@@ -590,14 +584,9 @@ func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*e
 			continue
 		}
 
-		fieldName := match[2]
-		if _, ok := cols[fieldName]; !ok {
-			return nil, errors.Newf("column `%s` in expression `%s` was not found in table", fieldName, match[0])
-		}
-
 		flds = append(flds, &expressionField{
 			tokenType: tokenType,
-			fieldName: fieldName,
+			fieldName: match[2],
 		})
 	}
 
