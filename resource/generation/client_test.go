@@ -122,7 +122,7 @@ func Test_searchExpressionFields(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := searchExpressionFields(tt.args.expression, tt.args.cols)
+			got, err := searchExpressionFields(tt.args.expression)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("searchExpressionFields() error = %v, wantErr %v", err, tt.wantErr)
 			}
