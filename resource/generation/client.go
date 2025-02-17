@@ -372,7 +372,6 @@ func (c *Client) templateFuncs() map[string]any {
 		"Pascal":    c.caser.ToPascal,
 		"Kebab":     c.caser.ToKebab,
 		"Lower":     strings.ToLower,
-		"ToUpper":   strings.ToUpper,
 		"PrimaryKeyTypeIsUUID": func(fields []*typeField) bool {
 			for _, f := range fields {
 				if f.IsPrimaryKey {

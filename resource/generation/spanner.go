@@ -93,7 +93,7 @@ func (c *Client) generatePatcherTypes(generatedType *generatedType) error {
 	fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
 	destinationFilePath := filepath.Join(c.resourceDestination, fileName)
 
-	log.Printf("Generating resouce file: %v\n", fileName)
+	log.Printf("Generating resource file: %v\n", fileName)
 
 	output, err := c.generateTemplateOutput(resourceFileTemplate, map[string]any{
 		"Source":                c.resourceFilePath,

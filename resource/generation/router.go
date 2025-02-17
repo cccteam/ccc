@@ -66,9 +66,9 @@ func (c *Client) runRouteGeneration() error {
 }
 
 func (c *Client) writeGeneratedRouterFile(destinationFile, templateContent string, generatedRoutes map[string][]generatedRoute) error {
-	file, err := os.OpenFile(destinationFile, os.O_RDWR|os.O_CREATE, 0o644)
+	file, err := os.Create(destinationFile)
 	if err != nil {
-		return errors.Wrap(err, "os.OpenFile()")
+		return errors.Wrap(err, "os.Create()")
 	}
 	defer file.Close()
 

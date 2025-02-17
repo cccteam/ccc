@@ -98,9 +98,9 @@ func (c *Client) generateHandlers(structName string) error {
 		fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(generatedType.Name))))
 		destinationFilePath := filepath.Join(c.handlerDestination, fileName)
 
-		file, err := os.OpenFile(destinationFilePath, os.O_RDWR|os.O_CREATE, 0o644)
+		file, err := os.Create(destinationFilePath)
 		if err != nil {
-			return errors.Wrap(err, "os.OpenFile()")
+			return errors.Wrap(err, "os.Create()")
 		}
 		defer file.Close()
 
