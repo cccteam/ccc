@@ -1,5 +1,5 @@
 // otelspanname is a custom linter that checks if otel span names match function names.
-package otelspanname
+package main
 
 import (
 	"go/ast"
