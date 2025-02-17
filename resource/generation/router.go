@@ -18,9 +18,9 @@ func (c *Client) runRouteGeneration() error {
 	}
 
 	generatedRoutesMap := make(map[string][]generatedRoute)
-	for _, s := range c.structNames {
+	for _, resource := range c.resources {
 		opts := make(map[HandlerType]map[OptionType]any)
-		for handlerType, options := range c.handlerOptions[s] {
+		for handlerType, options := range c.handlerOptions[resource.Name] {
 			opts[handlerType] = make(map[OptionType]any)
 			for _, option := range options {
 				opts[handlerType][option] = struct{}{}
@@ -28,21 +28,21 @@ func (c *Client) runRouteGeneration() error {
 		}
 
 		handlerTypes := []HandlerType{List}
-		if md, ok := c.tableLookup[c.pluralize(s)]; ok && !md.IsView {
+		if md, ok := c.tableLookup[c.pluralize(resource.Name)]; ok && !md.IsView {
 			handlerTypes = append(handlerTypes, Read, Patch)
 		}
 
 		for _, h := range handlerTypes {
 			if _, skipGeneration := opts[h][NoGenerate]; !skipGeneration {
-				path := fmt.Sprintf("/%s/%s", c.routePrefix, strcase.ToKebab(c.pluralize(s)))
+				path := fmt.Sprintf("/%s/%s", c.routePrefix, strcase.ToKebab(c.pluralize(resource.Name)))
 				if h == Read {
-					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(s+"ID"))
+					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name+"ID"))
 				}
 
-				generatedRoutesMap[s] = append(generatedRoutesMap[s], generatedRoute{
+				generatedRoutesMap[resource.Name] = append(generatedRoutesMap[resource.Name], generatedRoute{
 					Method:      h.Method(),
 					Path:        path,
-					HandlerFunc: c.handlerName(s, h),
+					HandlerFunc: c.handlerName(resource.Name, h),
 				})
 			}
 		}
