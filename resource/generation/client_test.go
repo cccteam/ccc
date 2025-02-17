@@ -65,6 +65,7 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 }
 
 func Test_searchExpressionFields(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		expression string
 		cols       map[string]ColumnMeta
@@ -119,7 +120,6 @@ func Test_searchExpressionFields(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := searchExpressionFields(tt.args.expression)

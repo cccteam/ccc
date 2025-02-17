@@ -78,15 +78,15 @@ func (c *Client) generateResourceTests() error {
 	return nil
 }
 
-func (c *Client) generatePatcherTypes(resource *ResourceInfo) error {
-	fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(resource.Name))))
+func (c *Client) generatePatcherTypes(res *ResourceInfo) error {
+	fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(res.Name))))
 	destinationFilePath := filepath.Join(c.resourceDestination, fileName)
 
 	log.Printf("Generating resource file: %v\n", fileName)
 
 	output, err := c.generateTemplateOutput(resourceFileTemplate, map[string]any{
 		"Source":   c.resourceFilePath,
-		"Resource": resource,
+		"Resource": res,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

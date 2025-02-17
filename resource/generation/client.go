@@ -250,9 +250,7 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 				return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
 			}
 
-			for _, f := range expressionFields {
-				table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], f)
-			}
+			table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], expressionFields...)
 
 			continue
 		}
@@ -413,7 +411,7 @@ func (c *Client) templateFuncs() map[string]any {
 		},
 		"DetermineParameters": func(structName string, route generatedRoute) string {
 			if strings.EqualFold(route.Method, "get") && strings.HasSuffix(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(structName))) {
-				return fmt.Sprintf(`map[string]string{"%s": "%s"}`, strcase.ToGoCamel(structName+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(structName))))
+				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(structName+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(structName))))
 			}
 
 			return "map[string]string{}"
