@@ -304,7 +304,7 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 
 			expressionFields, err := searchExpressionFields(*r.GenerationExpression, table.Columns)
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
 			}
 
 			for _, f := range expressionFields {
@@ -612,7 +612,7 @@ func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*e
 
 		fieldName := match[2]
 		if _, ok := cols[fieldName]; !ok {
-			return nil, errors.Newf("column parsed from expression was not found in table: %s", fieldName)
+			return nil, errors.Newf("column `%s` in expression `%s` was not found in table", fieldName, match[0])
 		}
 
 		flds = append(flds, &expressionField{
