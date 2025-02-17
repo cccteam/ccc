@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 
@@ -351,25 +350,6 @@ func (c *Client) writeBytesToFile(destination string, file *os.File, data []byte
 	}
 
 	return nil
-}
-
-func structsFromSource(resourceTree *ast.File) []string {
-	structs := make([]string, 0)
-	for k, v := range resourceTree.Scope.Objects {
-		spec, ok := v.Decl.(*ast.TypeSpec)
-		if !ok {
-			continue
-		}
-		if _, ok := spec.Type.(*ast.StructType); ok {
-			structs = append(structs, k)
-		}
-	}
-
-	sort.Slice(structs, func(i, j int) bool {
-		return structs[i] < structs[j]
-	})
-
-	return structs
 }
 
 func (c *Client) templateFuncs() map[string]any {
