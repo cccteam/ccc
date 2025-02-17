@@ -464,9 +464,9 @@ func (c *Client) templateFuncs() map[string]any {
 				return "http.MethodPost"
 			case "PATCH":
 				return "http.MethodPatch"
+			default:
+				panic(fmt.Sprintf("MethodToHttpConst: unknown method: %s", method))
 			}
-
-			return ""
 		},
 	}
 

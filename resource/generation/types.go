@@ -46,9 +46,9 @@ func (h HandlerType) Method() string {
 		return "GET"
 	case Patch:
 		return "PATCH"
+	default:
+		panic(fmt.Sprintf("Method(): unknown handler type: %s", h))
 	}
-
-	return ""
 }
 
 type OptionType string
