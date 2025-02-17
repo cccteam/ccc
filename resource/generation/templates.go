@@ -72,8 +72,9 @@ func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.GoType }} 
 {{ end }}
 
 {{ if ne (len .Resource.SearchIndexes) 0 }}
+{{ $resource := .Resource }}
 {{ range $searchIndex := .Resource.SearchIndexes }}
-func (q *{{ .Resource.Name }}Query) SearchBy{{ $searchIndex.Name }}(v string) *{{ .Resource.Name }}Query {
+func (q *{{ $resource.Name }}Query) SearchBy{{ $searchIndex.Name }}(v string) *{{ $resource.Name }}Query {
 	searchSet := resource.NewSearchSet({{ ResourceSearchType $searchIndex.SearchType }}, "{{ $searchIndex.Name }}", v)
 	q.qSet.SetSearchParam(searchSet)
 
