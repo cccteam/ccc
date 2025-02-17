@@ -528,7 +528,7 @@ export function resourceMeta(resource: Resource): ResourceMeta {
 		parameters map[string]string
 	}
 
-	func generatedKeys() []string {
+	func generatedRouteParameters() []string {
 		keys := []string {
 			{{ range $Struct, $Routes := .RoutesMap }}"{{ GoCamel $Struct }}ID",
 			{{ end }}
@@ -550,7 +550,7 @@ export function resourceMeta(resource: Resource): ResourceMeta {
 		return routerTests
 	}
 
-	func generatedRecorderCalls(e *mock_router.MockHandlersMockRecorder, rec *callRecorder) {
+	func generatedExpectCalls(e *mock_router.MockHandlersMockRecorder, rec *callRecorder) {
 		{{ range $Struct, $Routes := .RoutesMap }}{{ range $Routes }}e.{{ .HandlerFunc }}().Times(1).Return(rec.RecordHandlerCall("{{ .HandlerFunc }}"))
 		{{ end }}{{- end -}}
 	}
