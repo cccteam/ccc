@@ -28,7 +28,7 @@ func (c *Client) runRouteGeneration() error {
 		}
 
 		handlerTypes := []HandlerType{List}
-		if md, ok := c.tableLookup[c.pluralize(resource.Name)]; ok && !md.IsView {
+		if !resource.IsView {
 			handlerTypes = append(handlerTypes, Read, Patch)
 		}
 
