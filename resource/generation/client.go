@@ -441,7 +441,7 @@ func (c *Client) templateFuncs() map[string]any {
 		},
 		"DetermineTestURL": func(structName string, route generatedRoute) string {
 			if strings.EqualFold(route.Method, "get") && strings.HasSuffix(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(structName))) {
-				return fmt.Sprintf("%s/%s/%s",
+				return fmt.Sprintf("/%s/%s/%s",
 					c.routePrefix,
 					c.caser.ToKebab(c.pluralize(structName)),
 					strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(structName))),
