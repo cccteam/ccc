@@ -9,6 +9,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
+//go:generate go build -buildmode=plugin -o otelspanname.so otelspanname.go
+
 func New(conf any) ([]*analysis.Analyzer, error) {
 	return []*analysis.Analyzer{{
 		Name: "otelspanname",
