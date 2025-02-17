@@ -38,7 +38,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 				}
 
 				// Ensure function call is `Start(ctx, "...")`
-				if !isOtelStartCall(pass, callExpr) {
+				if !isOtelStartCall(callExpr) {
 					return true
 				}
 
@@ -52,6 +52,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 					return true
 				}
 
+				// Extract just the function name from the span name
 				spanSplit := strings.Split(strings.Trim(spanArg.Value, "\""), ".")
 				if len(spanSplit) == 0 {
 					return true
@@ -59,7 +60,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 
 				spanName := spanSplit[len(spanSplit)-1]
 
-				// Check if the span name matches expected format
+				// Check if the function name matches expected format
 				expectedSpanName := funcName + "()"
 				if spanName != expectedSpanName {
 					pass.Reportf(spanArg.Pos(), "Incorrect span name: expected %q, found %q", expectedSpanName, spanName)
@@ -76,7 +77,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 }
 
 // Checks if the function call is `otel.Tracer(...).Start(ctx, "...")`
-func isOtelStartCall(_ *analysis.Pass, callExpr *ast.CallExpr) bool {
+func isOtelStartCall(callExpr *ast.CallExpr) bool {
 	selector, ok := callExpr.Fun.(*ast.SelectorExpr)
 	if !ok || selector.Sel == nil || selector.Sel.Name != "Start" {
 		return false
