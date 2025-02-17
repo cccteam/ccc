@@ -135,13 +135,31 @@ type generatedRoute struct {
 	HandlerFunc string
 }
 
-
 type ResourceInfo struct {
 	Name                  string
 	Fields                []*FieldInfo
-	SearchIndexes         []*searchIndex
-	IsView                bool // Determines how CreatePatch is rendered in resource generation.
-	HasCompoundPrimaryKey bool // Determines how CreatePatchSet is rendered in resource generation.
+	searchIndexes         map[string][]*expressionField // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
+	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.
+	HasCompoundPrimaryKey bool                          // Determines how CreatePatchSet is rendered in resource generation.
+}
+
+func (r *ResourceInfo) SearchIndexes() []*searchIndex {
+	typeIndexMap := make(map[resource.SearchType]string)
+	for searchIndex, expressionFields := range r.searchIndexes {
+		for _, exprField := range expressionFields {
+			typeIndexMap[exprField.tokenType] = searchIndex
+		}
+	}
+
+	var indexes []*searchIndex
+	for tokenType, indexName := range typeIndexMap {
+		indexes = append(indexes, &searchIndex{
+			Name:       indexName,
+			SearchType: string(tokenType),
+		})
+	}
+
+	return indexes
 }
 
 type FieldInfo struct {

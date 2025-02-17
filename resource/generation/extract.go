@@ -82,7 +82,7 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 			resource.HasCompoundPrimaryKey = true
 		}
 
-		resource.SearchIndexes = c.buildTableSearchIndexes(c.pluralize(object.Name()))
+		resource.searchIndexes = spannerTable.SearchIndexes
 
 		for j := range structType.NumFields() {
 			field := structType.Field(j)
