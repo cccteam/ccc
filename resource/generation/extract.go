@@ -141,6 +141,7 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 			fieldInfo := FieldInfo{
 				Parent:             &resource,
 				Name:               field.Name(),
+				SpannerName:        spannerColumnName,
 				GoType:             goType,
 				typescriptType:     typescriptType,
 				query:              query,

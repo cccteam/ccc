@@ -147,6 +147,7 @@ type ResourceInfo struct {
 type FieldInfo struct {
 	Parent             *ResourceInfo
 	Name               string
+	SpannerName        string
 	GoType             string
 	typescriptType     string
 	query              string   //
