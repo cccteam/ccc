@@ -155,7 +155,7 @@ type resourceInfo struct {
 }
 
 func (r *resourceInfo) SearchIndexes() []*searchIndex {
-	typeIndexMap := make(map[resource.SearchType]string)
+	typeIndexMap := make(map[resource.FilterType]string)
 	for searchIndex, expressionFields := range r.searchIndexes {
 		for _, exprField := range expressionFields {
 			typeIndexMap[exprField.tokenType] = searchIndex

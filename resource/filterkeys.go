@@ -14,7 +14,7 @@ func NewFilterKeys[Req any](res Resourcer) *FilterKeys {
 
 	switch res.DefaultConfig().DBType {
 	case SpannerDBType:
-		filterTypes = []FilterType{Index, DefinedSubset, FullText, Ngram, SubString}
+		filterTypes = []FilterType{Index, FullText, Ngram, SubString}
 	case PostgresDBType:
 		filterTypes = []FilterType{}
 	}

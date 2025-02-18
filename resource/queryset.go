@@ -97,7 +97,7 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 func (q *QuerySet[Resource]) Where() (*Statement, error) {
 	parts := q.KeySet().Parts()
 	if len(parts) == 0 {
-		return nil, nil
+		return &Statement{}, nil
 	}
 
 	builder := strings.Builder{}
@@ -167,18 +167,15 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 	}
 
 	var filter *Statement
-	var score *Statement
+	var orderBy *Statement
 
 	query := parseSpannerQuery(q.filter.filterVal)
 	switch q.filter.filterTyp {
 	case Index:
 		filter = query.parseToIndexFilter(q.filter.filterKey)
-		score = &Statement{Sql: string(q.filter.filterKey)} // TODO(bswaney): fix this so that the order by is optional
-	case DefinedSubset:
-		return spanner.Statement{}, errors.New("DefinedSubset filtering is not yet implemented")
 	case SubString:
 		filter = query.parseToSearchSubstring(q.filter.filterKey)
-		score = query.parseToNgramScore(q.filter.filterKey)
+		orderBy = query.parseToNgramScore(q.filter.filterKey)
 	case FullText:
 		return spanner.Statement{}, errors.New("FullText search is not yet implemented")
 	case Ngram:
@@ -189,12 +186,15 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 			SELECT
 				%s
 			FROM %s 
-			WHERE %s
-			ORDER BY %s DESC`,
-		columns, q.Resource(), filter.Sql, score.Sql))
+			WHERE %s`,
+		columns, q.Resource(), filter.Sql))
 
+	if orderBy != nil {
+		stmt.SQL = fmt.Sprintf("%s\nORDER BY %s", stmt.SQL, orderBy.Sql)
+
+		maps.Insert(stmt.Params, maps.All(orderBy.Params))
+	}
 	maps.Insert(stmt.Params, maps.All(filter.Params))
-	maps.Insert(stmt.Params, maps.All(score.Params))
 
 	return stmt, nil
 }

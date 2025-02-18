@@ -114,6 +114,7 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParam
 	return fields, nil
 }
 
+// TODO(bswaney): Review this for correctness
 func parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (searchSet *FilterSet, err error) {
 	if searchKeys == nil || len(queryParams) == 0 {
 		return nil, nil

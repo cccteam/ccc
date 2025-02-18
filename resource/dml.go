@@ -13,11 +13,10 @@ type (
 )
 
 const (
-	Index         FilterType = "index"
-	DefinedSubset FilterType = "namedindex"
-	SubString     FilterType = "substring"
-	FullText      FilterType = "fulltext"
-	Ngram         FilterType = "ngram"
+	Index     FilterType = "index"
+	SubString FilterType = "substring"
+	FullText  FilterType = "fulltext"
+	Ngram     FilterType = "ngram"
 )
 
 type Statement struct {

@@ -120,7 +120,7 @@ func (r *ResourceGenerator) generateTemplateOutput(fileTemplate string, data map
 }
 
 func (c *client) buildTableSearchIndexes(tableName string) []*searchIndex {
-	typeIndexMap := make(map[resource.SearchType]string)
+	typeIndexMap := make(map[resource.FilterType]string)
 	if tableMeta, ok := c.tableLookup[tableName]; ok {
 		for tokenListColumn, expressionFields := range tableMeta.SearchIndexes {
 			for _, exprField := range expressionFields {
