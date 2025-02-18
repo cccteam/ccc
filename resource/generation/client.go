@@ -26,29 +26,29 @@ import (
 )
 
 type Client struct {
-	genHandlers            func() error
-	genTypescriptPerm      func() error
-	genTypescriptMeta      func() error
-	genRoutes              func() error
-	resourceFilePath       string
-	resources              []*ResourceInfo
-	resourceTree           *ast.File
-	handlerPackageName     string
-	resourceDestination    string
-	handlerDestination     string
-	typescriptDestination  string
-	routerDestination      string
-	routerPackage          string
-	routePrefix            string
-	rc                     *resource.Collection
-	db                     *cloudspanner.Client
-	caser                  *strcase.Caser
-	tableLookup            map[string]*TableMetadata
-	handlerOptions         map[string]map[HandlerType][]OptionType
-	pluralOverrides        map[string]string
-	typescriptOverrides    map[string]string
-	consolidatedPatchTypes []string
-	cleanup                func()
+	genHandlers               func() error
+	genTypescriptPerm         func() error
+	genTypescriptMeta         func() error
+	genRoutes                 func() error
+	resourceFilePath          string
+	resources                 []*ResourceInfo
+	resourceTree              *ast.File
+	handlerPackageName        string
+	resourceDestination       string
+	handlerDestination        string
+	typescriptDestination     string
+	routerDestination         string
+	routerPackage             string
+	routePrefix               string
+	rc                        *resource.Collection
+	db                        *cloudspanner.Client
+	caser                     *strcase.Caser
+	tableLookup               map[string]*TableMetadata
+	handlerOptions            map[string]map[HandlerType][]OptionType
+	pluralOverrides           map[string]string
+	typescriptOverrides       map[string]string
+	consolidatedResourceNames []string
+	cleanup                   func()
 
 	muAlign sync.Mutex
 }

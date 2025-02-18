@@ -97,9 +97,9 @@ func WithTypescriptOverrides(overrides map[string]string) ClientOption {
 	}
 }
 
-func WithConsolidatedPatchTypes(structs ...string) ClientOption {
+func WithConsolidatedPatchTypes(resources ...string) ClientOption {
 	return func(c *Client) error {
-		c.consolidatedPatchTypes = structs
+		c.consolidatedResourceNames = resources
 
 		return nil
 	}
