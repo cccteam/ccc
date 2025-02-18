@@ -401,7 +401,7 @@ import (
 			return httpio.NewEncoder(w).ClientMessage(ctx, spanner.HandleError[resources.{{ .Resource.Name }}](err))
 		}
 
-		{{ if eq $PrimaryKeyType "ccc.UUID"  }}    
+		{{ if eq $PrimaryKeyType "ccc.UUID"  }}
 		return httpio.NewEncoder(w).Ok(resp)
 		{{ else }}
 		return httpio.NewEncoder(w).Ok(nil)
