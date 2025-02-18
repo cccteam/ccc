@@ -265,9 +265,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/AscendiumApps/{{.PackageName}}/app/router"
-	"github.com/AscendiumApps/{{.PackageName}}/spanner"
-	"github.com/AscendiumApps/{{.PackageName}}/spanner/resources"
+	"{{.PackageName}}/app/router"
+	"{{.PackageName}}/spanner"
+	"{{.PackageName}}/spanner/resources"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"

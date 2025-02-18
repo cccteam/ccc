@@ -18,8 +18,8 @@ func (c *Client) runResourcesGeneration() error {
 	}
 
 	for _, resource := range c.resources {
-		if err := c.generatePatcherTypes(resource); err != nil {
-			return errors.Wrap(err, "c.generatePatcherTypes()")
+		if err := c.generateResources(resource); err != nil {
+			return errors.Wrap(err, "c.generateResources()")
 		}
 	}
 
@@ -78,7 +78,7 @@ func (c *Client) generateResourceTests() error {
 	return nil
 }
 
-func (c *Client) generatePatcherTypes(res *ResourceInfo) error {
+func (c *Client) generateResources(res *ResourceInfo) error {
 	fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(res.Name))))
 	destinationFilePath := filepath.Join(c.resourceDestination, fileName)
 
