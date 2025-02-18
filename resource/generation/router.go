@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"text/template"
 
 	"github.com/ettle/strcase"
@@ -29,7 +30,11 @@ func (c *Client) runRouteGeneration() error {
 
 		handlerTypes := []HandlerType{List}
 		if !resource.IsView {
-			handlerTypes = append(handlerTypes, Read, Patch)
+			handlerTypes = append(handlerTypes, Read)
+
+			if !slices.Contains(c.consolidatedPatchTypes, resource.Name) {
+				handlerTypes = append(handlerTypes, Patch)
+			}
 		}
 
 		for _, h := range handlerTypes {
@@ -49,13 +54,13 @@ func (c *Client) runRouteGeneration() error {
 	}
 
 	if len(generatedRoutesMap) > 0 {
-		routesDestination := filepath.Join(c.routerDestination, generatedFileName(routesName))
+		routesDestination := filepath.Join(c.routerDestination, generatedFileName(routesOutputName))
 		log.Printf("Generating routes file: %s\n", routesDestination)
 		if err := c.writeGeneratedRouterFile(routesDestination, routesTemplate, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRoutes()")
 		}
 
-		routerTestsDestination := filepath.Join(c.routerDestination, generatedFileName(routerTestName))
+		routerTestsDestination := filepath.Join(c.routerDestination, generatedFileName(routerTestOutputName))
 		log.Printf("Generating router tests file: %s\n", routerTestsDestination)
 		if err := c.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRouterTests()")

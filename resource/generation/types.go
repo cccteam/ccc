@@ -67,11 +67,12 @@ const (
 )
 
 const (
-	querySetOutputFilename      = "types.go"
-	resourceInterfaceOutputName = "resources_iface"
-	resourcesTestFileName       = "resource_types_test.go"
-	routesName                  = "routes"
-	routerTestName              = "routes_test"
+	querySetOutputFileName        = "types.go"
+	resourceInterfaceOutputName   = "resources_iface"
+	resourcesTestFileName         = "resource_types_test.go"
+	routesOutputName              = "routes"
+	routerTestOutputName          = "routes_test"
+	consolidatedHandlerOutputName = "consolidated_handler"
 )
 
 type searchIndex struct {
