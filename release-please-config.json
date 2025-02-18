@@ -26,7 +26,7 @@
     ".": {
       "package-name": "ccc",
       "include-component-in-tag": false,
-      "exclude-paths": ["accesstypes", "resource", "pkg", "sns"]
+      "exclude-paths": ["accesstypes", "resource", "pkg", "sns", "lint"]
     },
     "accesstypes": {
       "package-name": "accesstypes"
@@ -39,6 +39,9 @@
     },
     "sns": {
       "package-name": "sns"
+    },
+    "lint": {
+      "package-name": "lint"
     }
   }
 }

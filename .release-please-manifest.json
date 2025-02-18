@@ -3,5 +3,6 @@
   "sns": "0.2.4",
   "accesstypes": "0.5.0",
   "pkg": "0.0.2",
-  "resource": "0.0.12"
+  "resource": "0.0.12",
+  "lint": "0.0.1"
 }
