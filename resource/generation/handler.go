@@ -33,7 +33,7 @@ func (c *Client) runHandlerGeneration() error {
 			wg.Done()
 		}(resource)
 
-		if slices.Contains(c.consolidatedResourceNames, resource.Name) {
+		if slices.Contains(c.consolidatedResourceNames, resource.Name) != c.consolidateAll {
 			consolidatedResources = append(consolidatedResources, resource)
 		}
 	}
@@ -75,7 +75,7 @@ func (c *Client) generateHandlers(resource *ResourceInfo) error {
 			handlerType: Read,
 		})
 
-		if !slices.Contains(c.consolidatedResourceNames, resource.Name) {
+		if slices.Contains(c.consolidatedResourceNames, resource.Name) == c.consolidateAll {
 			generatedHandlers = append(generatedHandlers, &generatedHandler{
 				template:    patchTemplate,
 				handlerType: Patch,

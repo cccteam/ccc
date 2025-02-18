@@ -32,7 +32,7 @@ func (c *Client) runRouteGeneration() error {
 		if !resource.IsView {
 			handlerTypes = append(handlerTypes, Read)
 
-			if !slices.Contains(c.consolidatedResourceNames, resource.Name) {
+			if slices.Contains(c.consolidatedResourceNames, resource.Name) == c.consolidateAll {
 				handlerTypes = append(handlerTypes, Patch)
 			}
 		}

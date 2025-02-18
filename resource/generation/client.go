@@ -48,6 +48,7 @@ type Client struct {
 	pluralOverrides           map[string]string
 	typescriptOverrides       map[string]string
 	consolidatedResourceNames []string
+	consolidateAll            bool
 	cleanup                   func()
 
 	muAlign sync.Mutex
