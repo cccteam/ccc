@@ -261,6 +261,20 @@ const (
 
 package app
 
+import (
+	"net/http"
+	"time"
+
+	"github.com/AscendiumApps/ga-lite-app/app/router"
+	"github.com/AscendiumApps/ga-lite-app/spanner"
+	"github.com/AscendiumApps/ga-lite-app/spanner/resources"
+	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/httpio"
+	"go.opentelemetry.io/otel"
+)
+	
 {{ .Handlers }}`
 
 	listTemplate = `func (a *App) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
