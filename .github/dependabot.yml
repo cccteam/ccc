@@ -37,6 +37,14 @@ updates:
         patterns:
           - '*'
   - package-ecosystem: 'gomod'
+    directory: '/pkg'
+    schedule:
+      interval: 'weekly'
+    groups:
+      go-dependencies:
+        patterns:
+          - '*'
+  - package-ecosystem: 'gomod'
     directory: '/sns'
     schedule:
       interval: 'weekly'
