@@ -26,13 +26,16 @@
     ".": {
       "package-name": "ccc",
       "include-component-in-tag": false,
-      "exclude-paths": ["accesstypes", "resource", "sns"]
+      "exclude-paths": ["accesstypes", "resource", "pkg", "sns"]
     },
     "accesstypes": {
       "package-name": "accesstypes"
     },
     "resource": {
       "package-name": "resource"
+    },
+    "pkg": {
+      "package-name": "pkg"
     },
     "sns": {
       "package-name": "sns"
