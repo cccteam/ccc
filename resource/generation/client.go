@@ -33,6 +33,7 @@ type Client struct {
 	resourceFilePath      string
 	resources             []*ResourceInfo
 	resourceTree          *ast.File
+	handlerPackageName    string
 	resourceDestination   string
 	handlerDestination    string
 	typescriptDestination string

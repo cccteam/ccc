@@ -106,8 +106,9 @@ func (c *Client) generateHandlers(resource *ResourceInfo) error {
 
 		buf := bytes.NewBuffer(nil)
 		if err := tmpl.Execute(buf, map[string]any{
-			"Source":   c.resourceFilePath,
-			"Handlers": string(bytes.Join(handlerData, []byte("\n\n"))),
+			"Source":      c.resourceFilePath,
+			"PackageName": c.handlerPackageName,
+			"Handlers":    string(bytes.Join(handlerData, []byte("\n\n"))),
 		}); err != nil {
 			return errors.Wrap(err, "tmpl.Execute()")
 		}
