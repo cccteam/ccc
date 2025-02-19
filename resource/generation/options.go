@@ -7,7 +7,11 @@ import (
 	"github.com/ettle/strcase"
 )
 
-type ClientOption func(*Client) error
+type (
+	ClientOption     func(*Client) error
+	ResourceOption   func(*Client) error
+	TypescriptOption func(*Client) error
+)
 
 func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) ClientOption {
 	return func(c *Client) error {

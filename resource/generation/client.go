@@ -26,6 +26,30 @@ import (
 	"golang.org/x/tools/imports"
 )
 
+type ResourceGenerator struct {
+	*Client
+}
+
+func NewResourceGenerator(ctx context.Context, options ...ResourceOption) *ResourceGenerator {
+	return &ResourceGenerator{}
+}
+
+func (r *ResourceGenerator) Generate() error {
+	return nil
+}
+
+type TypescriptGenerator struct {
+	*Client
+}
+
+func NewTypescriptGenerator(ctx context.Context, options ...TypescriptOption) *TypescriptGenerator {
+	return &TypescriptGenerator{}
+}
+
+func (t *TypescriptGenerator) Generate() error {
+	return nil
+}
+
 type Client struct {
 	genHandlers               bool
 	genTypescriptPerm         bool
