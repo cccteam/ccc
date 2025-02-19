@@ -51,6 +51,7 @@ type Client struct {
 	typescriptOverrides       map[string]string
 	consolidatedResourceNames []string
 	consolidateAll            bool
+	consolidatedRoute         string
 	cleanup                   func()
 
 	muAlign sync.Mutex
