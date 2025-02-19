@@ -33,6 +33,7 @@ type Client struct {
 	resourceFilePath      string
 	resources             []*ResourceInfo
 	resourceTree          *ast.File
+	handlerPackageName    string
 	resourceDestination   string
 	handlerDestination    string
 	typescriptDestination string
@@ -94,8 +95,7 @@ func New(ctx context.Context, resourcePackageDir, migrationSourceURL string, gen
 		return nil, errors.Wrap(err, "c.createTableLookup()")
 	}
 
-	err = removeGeneratedFiles(resourcePackageDir, Prefix)
-	if err != nil {
+	if err := removeGeneratedFiles(resourcePackageDir, Prefix); err != nil {
 		return nil, errors.Wrap(err, "removeGeneratedFilesInNewClient()")
 	}
 
