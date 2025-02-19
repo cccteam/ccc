@@ -1,6 +1,10 @@
 name: Security Scan
 
 on:
+  push:
+    branches:
+      - testing/mono-repo
+      - testing/mono-repo-workflow
   schedule:
     - cron: '0 14 * * *' # Daily at 8:00 AM CDT
   workflow_dispatch:
