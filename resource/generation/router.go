@@ -18,6 +18,8 @@ func (c *Client) runRouteGeneration() error {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
+	hasConsolidatedHandler := false
+
 	generatedRoutesMap := make(map[string][]generatedRoute)
 	for _, resource := range c.resources {
 		opts := make(map[HandlerType]map[OptionType]any)
@@ -51,18 +53,22 @@ func (c *Client) runRouteGeneration() error {
 				})
 			}
 		}
+
+		if !resource.IsView && slices.Contains(c.consolidatedResourceNames, resource.Name) != c.consolidateAll {
+			hasConsolidatedHandler = true
+		}
 	}
 
 	if len(generatedRoutesMap) > 0 {
 		routesDestination := filepath.Join(c.routerDestination, generatedFileName(routesOutputName))
 		log.Printf("Generating routes file: %s\n", routesDestination)
-		if err := c.writeGeneratedRouterFile(routesDestination, routesTemplate, generatedRoutesMap); err != nil {
+		if err := c.writeGeneratedRouterFile(routesDestination, routesTemplate, generatedRoutesMap, hasConsolidatedHandler); err != nil {
 			return errors.Wrap(err, "c.writeRoutes()")
 		}
 
 		routerTestsDestination := filepath.Join(c.routerDestination, generatedFileName(routerTestOutputName))
 		log.Printf("Generating router tests file: %s\n", routerTestsDestination)
-		if err := c.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, generatedRoutesMap); err != nil {
+		if err := c.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, generatedRoutesMap, hasConsolidatedHandler); err != nil {
 			return errors.Wrap(err, "c.writeRouterTests()")
 		}
 	}
@@ -70,7 +76,7 @@ func (c *Client) runRouteGeneration() error {
 	return nil
 }
 
-func (c *Client) writeGeneratedRouterFile(destinationFile, templateContent string, generatedRoutes map[string][]generatedRoute) error {
+func (c *Client) writeGeneratedRouterFile(destinationFile, templateContent string, generatedRoutes map[string][]generatedRoute, hasConsolidatedHandler bool) error {
 	file, err := os.Create(destinationFile)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
@@ -84,9 +90,10 @@ func (c *Client) writeGeneratedRouterFile(destinationFile, templateContent strin
 
 	buf := bytes.NewBuffer([]byte{})
 	if err := tmpl.Execute(buf, map[string]any{
-		"Source":    c.resourceFilePath,
-		"Package":   c.routerPackage,
-		"RoutesMap": generatedRoutes,
+		"Source":                 c.resourceFilePath,
+		"Package":                c.routerPackage,
+		"RoutesMap":              generatedRoutes,
+		"HasConsolidatedHandler": hasConsolidatedHandler,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
