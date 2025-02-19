@@ -11,7 +11,7 @@ on:
 
 jobs:
   security_scan:
-    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@v5.2.0
+    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@golangci-lint-workspace
     with:
       execute-trivy-scan: false
     secrets:
