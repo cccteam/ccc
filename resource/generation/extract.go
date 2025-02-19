@@ -65,6 +65,7 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 
 		resource := ResourceInfo{Name: object.Name()}
 
+		// FIXME(jwatson): This can not be done here when we seperate the typescript generation
 		if !c.isResourceRegisteredInRouter(object.Name(), routerResources) {
 			return nil, errors.Newf("struct `%s` at %s:%d is not registered in router (routerResources=%v)", object.Name(), pkg.Name(), object.Pos(), routerResources)
 		}
