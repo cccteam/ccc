@@ -3,6 +3,7 @@ package generation
 import (
 	"go/types"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -56,22 +57,19 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 			continue
 		}
 
-		resource := ResourceInfo{Name: object.Name()}
-
-		spannerTable, ok := c.tableLookup[c.pluralize(object.Name())]
+		resourceName := object.Name()
+		spannerTable, ok := c.tableLookup[c.pluralize(resourceName)]
 		if !ok {
 			return nil, errors.Newf("struct `%s` at %s:%d is not in tableMeta", object.Name(), pkg.Name(), object.Pos())
 		}
 
-		if spannerTable.IsView {
-			resource.IsView = true
+		resource := &ResourceInfo{
+			Name:                  resourceName,
+			IsView:                spannerTable.IsView,
+			HasCompoundPrimaryKey: spannerTable.PkCount > 1,
+			searchIndexes:         spannerTable.SearchIndexes,
+			IsConsolidated:        !spannerTable.IsView && slices.Contains(c.consolidatedResourceNames, resourceName) != c.consolidateAll,
 		}
-
-		if spannerTable.PkCount > 1 {
-			resource.HasCompoundPrimaryKey = true
-		}
-
-		resource.searchIndexes = spannerTable.SearchIndexes
 
 		for j := range structType.NumFields() {
 			field := structType.Field(j)
@@ -132,8 +130,8 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 			}
 			// END spanner related stuff
 
-			fieldInfo := FieldInfo{
-				Parent:             &resource,
+			fieldInfo := &FieldInfo{
+				Parent:             resource,
 				Name:               field.Name(),
 				SpannerName:        spannerColumnName,
 				GoType:             goType,
@@ -153,14 +151,14 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 				ReferencedField:    spannerColumn.ReferencedColumn,
 			}
 
-			resource.Fields = append(resource.Fields, &fieldInfo)
+			resource.Fields = append(resource.Fields, fieldInfo)
 		}
 
 		if len(resource.Fields) == 0 {
 			return nil, errors.Newf("struct `%s` has no fields at %s:%v", object.Name(), pkg.Name(), object.Pos())
 		}
 
-		resources[i] = &resource
+		resources[i] = resource
 	}
 
 	return resources, nil

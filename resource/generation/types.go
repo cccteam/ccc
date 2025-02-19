@@ -142,6 +142,7 @@ type ResourceInfo struct {
 	searchIndexes         map[string][]*expressionField // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
 	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.
 	HasCompoundPrimaryKey bool                          // Determines how CreatePatchSet is rendered in resource generation.
+	IsConsolidated        bool
 }
 
 func (r *ResourceInfo) SearchIndexes() []*searchIndex {

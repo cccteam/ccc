@@ -60,7 +60,8 @@ func (c *Client) runTypescriptMetadataGeneration() error {
 
 func (c *Client) generateTypescriptMetadata() error {
 	output, err := c.generateTemplateOutput(typescriptMetadataTemplate, map[string]any{
-		"Resources": c.resources,
+		"Resources":         c.resources,
+		"ConsolidatedRoute": c.consolidatedRoute,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
