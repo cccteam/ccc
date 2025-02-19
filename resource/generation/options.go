@@ -96,18 +96,20 @@ func WithTypescriptOverrides(overrides map[string]string) ClientOption {
 	}
 }
 
-func WithConsolidatedHandlers(resources ...string) ClientOption {
+func WithConsolidatedHandlers(route string, resources ...string) ClientOption {
 	return func(c *Client) error {
 		c.consolidatedResourceNames = resources
+		c.consolidatedRoute = route
 		c.consolidateAll = false
 
 		return nil
 	}
 }
 
-func WithoutConsolidatedHandlers(resources ...string) ClientOption {
+func WithoutConsolidatedHandlers(route string, resources ...string) ClientOption {
 	return func(c *Client) error {
 		c.consolidatedResourceNames = resources
+		c.consolidatedRoute = route
 		c.consolidateAll = true
 
 		return nil

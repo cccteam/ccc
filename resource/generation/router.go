@@ -94,6 +94,8 @@ func (c *Client) writeGeneratedRouterFile(destinationFile, templateContent strin
 		"Package":                c.routerPackage,
 		"RoutesMap":              generatedRoutes,
 		"HasConsolidatedHandler": hasConsolidatedHandler,
+		"RoutePrefix":            c.routePrefix,
+		"ConsolidatedRoute":      c.consolidatedRoute,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
