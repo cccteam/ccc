@@ -26,28 +26,30 @@ import (
 )
 
 type Client struct {
-	genHandlers           func() error
-	genTypescriptPerm     func() error
-	genTypescriptMeta     func() error
-	genRoutes             func() error
-	resourceFilePath      string
-	resources             []*ResourceInfo
-	resourceTree          *ast.File
-	handlerPackageName    string
-	resourceDestination   string
-	handlerDestination    string
-	typescriptDestination string
-	routerDestination     string
-	routerPackage         string
-	routePrefix           string
-	rc                    *resource.Collection
-	db                    *cloudspanner.Client
-	caser                 *strcase.Caser
-	tableLookup           map[string]*TableMetadata
-	handlerOptions        map[string]map[HandlerType][]OptionType
-	pluralOverrides       map[string]string
-	typescriptOverrides   map[string]string
-	cleanup               func()
+	genHandlers               func() error
+	genTypescriptPerm         func() error
+	genTypescriptMeta         func() error
+	genRoutes                 func() error
+	resourceFilePath          string
+	resources                 []*ResourceInfo
+	resourceTree              *ast.File
+	handlerPackageName        string
+	resourceDestination       string
+	handlerDestination        string
+	typescriptDestination     string
+	routerDestination         string
+	routerPackage             string
+	routePrefix               string
+	rc                        *resource.Collection
+	db                        *cloudspanner.Client
+	caser                     *strcase.Caser
+	tableLookup               map[string]*TableMetadata
+	handlerOptions            map[string]map[HandlerType][]OptionType
+	pluralOverrides           map[string]string
+	typescriptOverrides       map[string]string
+	consolidatedResourceNames []string
+	consolidateAll            bool
+	cleanup                   func()
 
 	muAlign sync.Mutex
 }
@@ -122,14 +124,14 @@ func (c *Client) RunGeneration() error {
 	if err := c.runResourcesGeneration(); err != nil {
 		return errors.Wrap(err, "c.genResources()")
 	}
-	if c.genHandlers != nil {
-		if err := c.genHandlers(); err != nil {
-			return errors.Wrap(err, "c.genHandlers()")
-		}
-	}
 	if c.genRoutes != nil {
 		if err := c.genRoutes(); err != nil {
 			return errors.Wrap(err, "c.genRoutes()")
+		}
+	}
+	if c.genHandlers != nil {
+		if err := c.genHandlers(); err != nil {
+			return errors.Wrap(err, "c.genHandlers()")
 		}
 	}
 	if c.genTypescriptMeta != nil {

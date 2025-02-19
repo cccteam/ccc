@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"text/template"
@@ -18,8 +19,10 @@ func (c *Client) runHandlerGeneration() error {
 	}
 
 	var (
+		consolidatedResources []*ResourceInfo
+		wg                    sync.WaitGroup
+
 		errChan = make(chan error)
-		wg      sync.WaitGroup
 	)
 	for _, resource := range c.resources {
 		wg.Add(1)
@@ -29,6 +32,10 @@ func (c *Client) runHandlerGeneration() error {
 			}
 			wg.Done()
 		}(resource)
+
+		if !resource.IsView && slices.Contains(c.consolidatedResourceNames, resource.Name) != c.consolidateAll {
+			consolidatedResources = append(consolidatedResources, resource)
+		}
 	}
 
 	go func() {
@@ -45,6 +52,12 @@ func (c *Client) runHandlerGeneration() error {
 		return errors.Wrap(handlerErrors, "runHandlerGeneration()")
 	}
 
+	if len(consolidatedResources) > 0 {
+		if err := c.generateConsolidatedPatchHandler(consolidatedResources); err != nil {
+			return errors.Wrap(err, "generateConsolidatedPatchHandler()")
+		}
+	}
+
 	return nil
 }
 
@@ -57,16 +70,17 @@ func (c *Client) generateHandlers(resource *ResourceInfo) error {
 	}
 
 	if !resource.IsView {
-		generatedHandlers = append(generatedHandlers, []*generatedHandler{
-			{
-				template:    readTemplate,
-				handlerType: Read,
-			},
-			{
+		generatedHandlers = append(generatedHandlers, &generatedHandler{
+			template:    readTemplate,
+			handlerType: Read,
+		})
+
+		if slices.Contains(c.consolidatedResourceNames, resource.Name) == c.consolidateAll {
+			generatedHandlers = append(generatedHandlers, &generatedHandler{
 				template:    patchTemplate,
 				handlerType: Patch,
-			},
-		}...)
+			})
+		}
 	}
 
 	opts := make(map[HandlerType]map[OptionType]any)
@@ -118,6 +132,39 @@ func (c *Client) generateHandlers(resource *ResourceInfo) error {
 		if err := c.writeBytesToFile(destinationFilePath, file, buf.Bytes(), true); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (c *Client) generateConsolidatedPatchHandler(resources []*ResourceInfo) error {
+	fileName := generatedFileName(consolidatedHandlerOutputName)
+	destinationFilePath := filepath.Join(c.handlerDestination, fileName)
+
+	file, err := os.Create(destinationFilePath)
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	tmpl, err := template.New("consolidatedHandler").Funcs(c.templateFuncs()).Parse(consolidatedPatchTemplate)
+	if err != nil {
+		return errors.Wrap(err, "template.New().Parse()")
+	}
+
+	buf := bytes.NewBuffer(nil)
+	if err := tmpl.Execute(buf, map[string]any{
+		"Source":      c.resourceFilePath,
+		"PackageName": c.handlerPackageName,
+		"Resources":   resources,
+	}); err != nil {
+		return errors.Wrap(err, "tmpl.Execute()")
+	}
+
+	log.Printf("Generating consolidated handler file: %s", fileName)
+
+	if err := c.writeBytesToFile(destinationFilePath, file, buf.Bytes(), true); err != nil {
+		return err
 	}
 
 	return nil
