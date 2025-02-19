@@ -27,10 +27,10 @@ import (
 )
 
 type Client struct {
-	genHandlers               func() error
-	genTypescriptPerm         func() error
-	genTypescriptMeta         func() error
-	genRoutes                 func() error
+	genHandlers               bool
+	genTypescriptPerm         bool
+	genTypescriptMeta         bool
+	genRoutes                 bool
 	resourceFilePath          string
 	resources                 []*ResourceInfo
 	resourceTree              *ast.File
@@ -42,6 +42,7 @@ type Client struct {
 	routerPackage             string
 	routePrefix               string
 	rc                        *resource.Collection
+	routerResources           []accesstypes.Resource
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser
 	tableLookup               map[string]*TableMetadata
@@ -135,24 +136,24 @@ func (c *Client) RunGeneration() error {
 	if err := c.runResourcesGeneration(); err != nil {
 		return errors.Wrap(err, "c.genResources()")
 	}
-	if c.genRoutes != nil {
-		if err := c.genRoutes(); err != nil {
-			return errors.Wrap(err, "c.genRoutes()")
+	if c.genRoutes {
+		if err := c.runRouteGeneration(); err != nil {
+			return err
 		}
 	}
-	if c.genHandlers != nil {
-		if err := c.genHandlers(); err != nil {
-			return errors.Wrap(err, "c.genHandlers()")
+	if c.genHandlers {
+		if err := c.runHandlerGeneration(); err != nil {
+			return err
 		}
 	}
-	if c.genTypescriptMeta != nil {
-		if err := c.genTypescriptMeta(); err != nil {
-			return errors.Wrap(err, "c.genTypescriptMeta()")
+	if c.genTypescriptMeta {
+		if err := c.runTypescriptMetadataGeneration(); err != nil {
+			return err
 		}
 	}
-	if c.genTypescriptPerm != nil {
-		if err := c.genTypescriptPerm(); err != nil {
-			return errors.Wrap(err, "c.genTypescriptPerm()")
+	if c.genTypescriptPerm {
+		if err := c.runTypescriptPermissionGeneration(); err != nil {
+			return err
 		}
 	}
 
@@ -615,6 +616,7 @@ func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*e
 	return flds, nil
 }
 
-func (c *Client) isResourceRegisteredInRouter(resourceName string, routerResources []accesstypes.Resource) bool {
-	return slices.Contains(routerResources, accesstypes.Resource(c.pluralize(resourceName)))
+// The resourceName should already be pluralized
+func (c *Client) isResourceInAppRouter(resourceName string) bool {
+	return slices.Contains(c.routerResources, accesstypes.Resource(resourceName))
 }

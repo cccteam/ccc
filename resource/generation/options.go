@@ -1,6 +1,8 @@
 package generation
 
 import (
+	"errors"
+
 	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
 )
@@ -9,10 +11,7 @@ type ClientOption func(*Client) error
 
 func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) ClientOption {
 	return func(c *Client) error {
-		c.genHandlers = func() error {
-			return c.runHandlerGeneration()
-		}
-
+		c.genHandlers = true
 		c.handlerDestination = targetDir
 
 		if overrides != nil {
@@ -34,11 +33,13 @@ func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) Clie
 
 func GenerateTypescriptPermission(rc *resource.Collection, targetDir string) ClientOption {
 	return func(c *Client) error {
-		c.genTypescriptPerm = func() error {
-			return c.runTypescriptPermissionGeneration()
+		if rc == nil {
+			return errors.New("resource collection cannot be nil")
 		}
 
+		c.genTypescriptPerm = true
 		c.rc = rc
+		c.routerResources = rc.Resources()
 		c.typescriptDestination = targetDir
 
 		return nil
@@ -47,11 +48,13 @@ func GenerateTypescriptPermission(rc *resource.Collection, targetDir string) Cli
 
 func GenerateTypescriptMetadata(rc *resource.Collection, targetDir string) ClientOption {
 	return func(c *Client) error {
-		c.genTypescriptMeta = func() error {
-			return c.runTypescriptMetadataGeneration()
+		if rc == nil {
+			return errors.New("resource collection cannot be nil")
 		}
 
+		c.genTypescriptMeta = true
 		c.rc = rc
+		c.routerResources = rc.Resources()
 		c.typescriptDestination = targetDir
 
 		return nil
@@ -60,10 +63,7 @@ func GenerateTypescriptMetadata(rc *resource.Collection, targetDir string) Clien
 
 func GenerateRoutes(targetDir, targetPackage, routePrefix string) ClientOption {
 	return func(c *Client) error {
-		c.genRoutes = func() error {
-			return c.runRouteGeneration()
-		}
-
+		c.genRoutes = true
 		c.routerDestination = targetDir
 		c.routerPackage = targetPackage
 		c.routePrefix = routePrefix
