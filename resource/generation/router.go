@@ -15,7 +15,7 @@ import (
 
 func (c *Client) runRouteGeneration() error {
 	if err := removeGeneratedFiles(c.routerDestination, Prefix); err != nil {
-		return errors.Wrap(err, "removeGeneratedFiles()")
+		return err
 	}
 
 	hasConsolidatedHandler := false

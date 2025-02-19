@@ -13,7 +13,7 @@ import (
 func (c *Client) runTypescriptPermissionGeneration() error {
 	templateData := c.rc.TypescriptData()
 
-	if c.genTypescriptMeta == nil {
+	if !c.genTypescriptMeta {
 		if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
 			return errors.Wrap(err, "removeGeneratedFiles()")
 		}
