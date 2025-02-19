@@ -154,8 +154,9 @@ func (c *Client) generateConsolidatedPatchHandler(resources []*ResourceInfo) err
 
 	buf := bytes.NewBuffer(nil)
 	if err := tmpl.Execute(buf, map[string]any{
-		"Source":    c.resourceFilePath,
-		"Resources": resources,
+		"Source":      c.resourceFilePath,
+		"PackageName": c.handlerPackageName,
+		"Resources":   resources,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
