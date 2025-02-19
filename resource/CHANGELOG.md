@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.0.13](https://github.com/cccteam/ccc/compare/resource/v0.0.12...resource/v0.0.13) (2025-02-19)
+
+
+### Features
+
+* Added columns query param to filter struct fields ([#188](https://github.com/cccteam/ccc/issues/188)) ([b31ef18](https://github.com/cccteam/ccc/commit/b31ef18188e329a154a4e04e1145b8a4c32778ed))
+* Added generation for consolidated handler for many resources ([#203](https://github.com/cccteam/ccc/issues/203)) ([83376d1](https://github.com/cccteam/ccc/commit/83376d1b1614ac01e706b8c4c152bcfc1debab5d))
+* Added generation for routes and router tests for plugin into existing backend structure ([#195](https://github.com/cccteam/ccc/issues/195)) ([b9cf171](https://github.com/cccteam/ccc/commit/b9cf1717f48875108fbf4afc1837b579b7a7d0a9))
+* consolidate-parsing ([#196](https://github.com/cccteam/ccc/issues/196)) ([54a5779](https://github.com/cccteam/ccc/commit/54a57792324ff128f6624d0606c31b1d6743f0f0))
+* make resource generation independent of typescript generation ([#211](https://github.com/cccteam/ccc/issues/211)) ([268fe41](https://github.com/cccteam/ccc/commit/268fe4164496cce2cc8fd48b363d2298ef63372e))
+* move pkg info and directory change into generator ([#208](https://github.com/cccteam/ccc/issues/208)) ([48fd62a](https://github.com/cccteam/ccc/commit/48fd62a4d4288e0f7c9408bd8881e1f1f8fda70b))
+* text search support ([#169](https://github.com/cccteam/ccc/issues/169)) ([5c2ab80](https://github.com/cccteam/ccc/commit/5c2ab8037ba978169f5db0439d74a859d441670c))
+
+
+### Bug Fixes
+
+* Bake imports into handler template ([#207](https://github.com/cccteam/ccc/issues/207)) ([6e46537](https://github.com/cccteam/ccc/commit/6e46537f273d0d809f1ddcd393afec74d1055f16))
+
 ## [0.0.12](https://github.com/cccteam/ccc/compare/resource/v0.0.11...resource/v0.0.12) (2025-02-11)
 
 
