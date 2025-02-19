@@ -42,6 +42,7 @@ type Client struct {
 	routerPackage             string
 	routePrefix               string
 	rc                        *resource.Collection
+	routerResources           []accesstypes.Resource
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser
 	tableLookup               map[string]*TableMetadata
@@ -615,6 +616,7 @@ func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*e
 	return flds, nil
 }
 
-func (c *Client) isResourceRegisteredInRouter(resourceName string, routerResources []accesstypes.Resource) bool {
-	return slices.Contains(routerResources, accesstypes.Resource(c.pluralize(resourceName)))
+// The resourceName should already be pluralized
+func (c *Client) isResourceInAppRouter(resourceName string) bool {
+	return slices.Contains(c.routerResources, accesstypes.Resource(resourceName))
 }

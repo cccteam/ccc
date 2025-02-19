@@ -1,6 +1,8 @@
 package generation
 
 import (
+	"errors"
+
 	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
 )
@@ -31,9 +33,13 @@ func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) Clie
 
 func GenerateTypescriptPermission(rc *resource.Collection, targetDir string) ClientOption {
 	return func(c *Client) error {
-		c.genTypescriptPerm = true
+		if rc == nil {
+			return errors.New("resource collection cannot be nil")
+		}
 
+		c.genTypescriptPerm = true
 		c.rc = rc
+		c.routerResources = rc.Resources()
 		c.typescriptDestination = targetDir
 
 		return nil
@@ -42,8 +48,13 @@ func GenerateTypescriptPermission(rc *resource.Collection, targetDir string) Cli
 
 func GenerateTypescriptMetadata(rc *resource.Collection, targetDir string) ClientOption {
 	return func(c *Client) error {
+		if rc == nil {
+			return errors.New("resource collection cannot be nil")
+		}
+
 		c.genTypescriptMeta = true
 		c.rc = rc
+		c.routerResources = rc.Resources()
 		c.typescriptDestination = targetDir
 
 		return nil

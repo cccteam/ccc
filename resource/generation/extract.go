@@ -3,10 +3,8 @@ package generation
 import (
 	"go/types"
 	"reflect"
-	"slices"
 	"strings"
 
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/tools/go/packages"
 )
@@ -46,11 +44,6 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 		return nil, errors.Newf("package `%s` has invalid scope", pkg.Name())
 	}
 
-	var routerResources []accesstypes.Resource
-	if c.rc != nil { // Router Resources gives us visibility into which resources have been registered in the app router
-		routerResources = c.rc.Resources()
-	}
-
 	resources := make([]*ResourceInfo, scope.Len())
 	for i, name := range scope.Names() {
 		object := scope.Lookup(name)
@@ -64,11 +57,6 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 		}
 
 		resource := ResourceInfo{Name: object.Name()}
-
-		// FIXME(jwatson): This can not be done here when we seperate the typescript generation
-		if !c.isResourceRegisteredInRouter(object.Name(), routerResources) {
-			return nil, errors.Newf("struct `%s` at %s:%d is not registered in router (routerResources=%v)", object.Name(), pkg.Name(), object.Pos(), routerResources)
-		}
 
 		spannerTable, ok := c.tableLookup[c.pluralize(object.Name())]
 		if !ok {
@@ -104,11 +92,6 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 				permissions = strings.Split(structTag.Get("perm"), ",")
 			}
 
-			typescriptType, err := decodeToTypescriptType(field.Type(), c.typescriptOverrides)
-			if err != nil {
-				return nil, errors.Wrapf(err, "could not decode typescript type for field `%s` in struct `%s` at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
-			}
-
 			goType, err := decodeToGoType(field.Type())
 			if err != nil {
 				return nil, errors.Wrapf(err, "could not decode go type for field `%s` in struct `%s` at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
@@ -125,17 +108,27 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 				return nil, errors.Newf("field `%s` in struct `%s` at %s:%d is not in tableMeta", field.Name(), object.Name(), pkg.Name(), field.Pos())
 			}
 
-			var isRequiredForCreate bool
-			if spannerColumn.IsPrimaryKey && typescriptType != "uuid" {
-				isRequiredForCreate = true
-			}
-			if !spannerColumn.IsPrimaryKey && !spannerColumn.IsNullable {
-				isRequiredForCreate = true
-			}
+			var (
+				typescriptType      string
+				isRequiredForCreate bool
+				isEnumerated        bool
+			)
+			if c.genTypescriptPerm || c.genTypescriptMeta {
+				typescriptType, err = decodeToTypescriptType(field.Type(), c.typescriptOverrides)
+				if err != nil {
+					return nil, errors.Wrapf(err, "could not decode typescript type for field `%s` in struct `%s` at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
+				}
 
-			var isEnumerated bool
-			if spannerColumn.IsForeignKey && slices.Contains(routerResources, accesstypes.Resource(spannerColumn.ReferencedTable)) {
-				isEnumerated = true
+				if spannerColumn.IsPrimaryKey && typescriptType != "uuid" {
+					isRequiredForCreate = true
+				}
+				if !spannerColumn.IsPrimaryKey && !spannerColumn.IsNullable {
+					isRequiredForCreate = true
+				}
+
+				if spannerColumn.IsForeignKey && c.isResourceInAppRouter(spannerColumn.ReferencedTable) {
+					isEnumerated = true
+				}
 			}
 			// END spanner related stuff
 
