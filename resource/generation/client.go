@@ -124,14 +124,14 @@ func (c *Client) RunGeneration() error {
 	if err := c.runResourcesGeneration(); err != nil {
 		return errors.Wrap(err, "c.genResources()")
 	}
-	if c.genHandlers != nil {
-		if err := c.genHandlers(); err != nil {
-			return errors.Wrap(err, "c.genHandlers()")
-		}
-	}
 	if c.genRoutes != nil {
 		if err := c.genRoutes(); err != nil {
 			return errors.Wrap(err, "c.genRoutes()")
+		}
+	}
+	if c.genHandlers != nil {
+		if err := c.genHandlers(); err != nil {
+			return errors.Wrap(err, "c.genHandlers()")
 		}
 	}
 	if c.genTypescriptMeta != nil {
