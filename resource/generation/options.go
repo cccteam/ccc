@@ -7,13 +7,12 @@ import (
 
 type ClientOption func(*Client) error
 
-func GenerateHandlers(targetDir, packageName string, overrides map[string][]HandlerType) ClientOption {
+func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) ClientOption {
 	return func(c *Client) error {
 		c.genHandlers = func() error {
 			return c.runHandlerGeneration()
 		}
 
-		c.handlerPackageName = packageName
 		c.handlerDestination = targetDir
 
 		if overrides != nil {

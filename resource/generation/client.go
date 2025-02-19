@@ -16,6 +16,7 @@ import (
 
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/pkg"
 	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
@@ -33,7 +34,7 @@ type Client struct {
 	resourceFilePath          string
 	resources                 []*ResourceInfo
 	resourceTree              *ast.File
-	handlerPackageName        string
+	packageName               string
 	resourceDestination       string
 	handlerDestination        string
 	typescriptDestination     string
@@ -55,6 +56,15 @@ type Client struct {
 }
 
 func New(ctx context.Context, resourcePackageDir, migrationSourceURL string, generatorOptions ...ClientOption) (*Client, error) {
+	pkgInfo, err := pkg.Info()
+	if err != nil {
+		return nil, errors.Wrap(err, "pkg.Info()")
+	}
+
+	if err := os.Chdir(pkgInfo.AbsolutePath); err != nil {
+		return nil, errors.Wrap(err, "os.Chdir()")
+	}
+
 	spannerContainer, err := initiator.NewSpannerContainer(ctx, "latest")
 	if err != nil {
 		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
@@ -82,6 +92,7 @@ func New(ctx context.Context, resourcePackageDir, migrationSourceURL string, gen
 	c := &Client{
 		db:                  db.Client,
 		resourceDestination: resourcePackageDir,
+		packageName:         pkgInfo.PackageName,
 		cleanup:             cleanupFunc,
 		caser:               strcase.NewCaser(false, nil, nil),
 	}
