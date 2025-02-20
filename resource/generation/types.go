@@ -178,6 +178,7 @@ type FieldInfo struct {
 	IsForeignKey       bool
 	IsIndex            bool
 	IsUniqueIndex      bool
+	IsNullable bool
 	OrdinalPosition    int64 // Position of column in the table definition
 	KeyOrdinalPosition int64 // Position of primary or foreign key in a compound key definition
 	IsEnumerated       bool

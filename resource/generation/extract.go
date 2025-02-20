@@ -88,51 +88,59 @@ func (c *Client) extractResourceTypes(pkg *types.Package, mode extractionMode) e
 				return errors.Newf("invalid field[%d] in struct `%s` at %s:%v", j, object.Name(), pkg.Name(), object.Pos())
 			}
 
+			fieldInfo := &FieldInfo{
+				Parent: resource,
+				Name:   field.Name(),
+			}
+
 			structTag := reflect.StructTag(structType.Tag(j))
 
-			query := structTag.Get("query")
-			var conditions []string
+			fieldInfo.query = structTag.Get("query")
 			if structTag.Get("conditions") != "" {
-				conditions = strings.Split(structTag.Get("conditions"), ",")
+				fieldInfo.Conditions = strings.Split(structTag.Get("conditions"), ",")
 			}
 
-			var permissions []string
 			if structTag.Get("perm") != "" {
-				permissions = strings.Split(structTag.Get("perm"), ",")
+				fieldInfo.permissions = strings.Split(structTag.Get("perm"), ",")
 			}
 
-			goType, err := decodeToGoType(field.Type())
+			var err error
+			fieldInfo.GoType, err = decodeToGoType(field.Type())
 			if err != nil {
 				return errors.Wrapf(err, "could not decode go type for field `%s` in struct `%s` at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
 			}
 
 			// BEGIN spanner related stuff
-			spannerColumnName := structTag.Get("spanner")
-			if spannerColumnName == "" {
+			fieldInfo.SpannerName = structTag.Get("spanner")
+			if fieldInfo.SpannerName == "" {
 				return errors.Newf("field `%s` in struct `%s` at %s:%d must include `spanner:\"<column name>\" struct tag", field.Name(), object.Name(), pkg.Name(), field.Pos())
 			}
 
-			spannerColumn, ok := spannerTable.Columns[spannerColumnName]
-			if !ok {
+			if spannerColumn, ok := spannerTable.Columns[fieldInfo.SpannerName]; !ok {
 				return errors.Newf("field `%s` in struct `%s` at %s:%d is not in tableMeta", field.Name(), object.Name(), pkg.Name(), field.Pos())
+			} else {
+				fieldInfo.IsPrimaryKey = spannerColumn.IsPrimaryKey
+				fieldInfo.IsForeignKey = spannerColumn.IsForeignKey
+				fieldInfo.IsNullable = spannerColumn.IsNullable
+				fieldInfo.IsIndex = spannerColumn.IsIndex
+				fieldInfo.IsUniqueIndex = spannerColumn.IsUniqueIndex
+				fieldInfo.OrdinalPosition = spannerColumn.OrdinalPosition
+				fieldInfo.KeyOrdinalPosition = spannerColumn.KeyOrdinalPosition
+				fieldInfo.ReferencedResource = spannerColumn.ReferencedTable
+				fieldInfo.ReferencedField = spannerColumn.ReferencedColumn
 			}
 
-			var (
-				typescriptType      string
-				isRequiredForCreate bool
-				isEnumerated        bool
-			)
 			if mode == extractTypescript {
-				typescriptType, err = decodeToTypescriptType(field.Type(), c.typescriptOverrides)
+				fieldInfo.typescriptType, err = decodeToTypescriptType(field.Type(), c.typescriptOverrides)
 				if err != nil {
 					return errors.Wrapf(err, "could not decode typescript type for field `%s` in struct `%s` at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
 				}
 
-				if spannerColumn.IsPrimaryKey && typescriptType != "uuid" {
-					isRequiredForCreate = true
+				if fieldInfo.IsPrimaryKey && fieldInfo.typescriptType != "uuid" {
+					fieldInfo.Required = true
 				}
-				if !spannerColumn.IsPrimaryKey && !spannerColumn.IsNullable {
-					isRequiredForCreate = true
+				if !fieldInfo.IsPrimaryKey && !fieldInfo.IsNullable {
+					fieldInfo.Required = true
 				}
 
 				// FIXME(jrowland): gotta figure out how to make this typescript only
@@ -141,27 +149,6 @@ func (c *Client) extractResourceTypes(pkg *types.Package, mode extractionMode) e
 				// }
 			}
 			// END spanner related stuff
-
-			fieldInfo := &FieldInfo{
-				Parent:             resource,
-				Name:               field.Name(),
-				SpannerName:        spannerColumnName,
-				GoType:             goType,
-				typescriptType:     typescriptType,
-				query:              query,
-				Conditions:         conditions,
-				permissions:        permissions,
-				Required:           isRequiredForCreate,
-				IsPrimaryKey:       spannerColumn.IsPrimaryKey,
-				IsForeignKey:       spannerColumn.IsForeignKey,
-				IsIndex:            spannerColumn.IsIndex,
-				IsUniqueIndex:      spannerColumn.IsUniqueIndex,
-				OrdinalPosition:    spannerColumn.OrdinalPosition,
-				KeyOrdinalPosition: spannerColumn.KeyOrdinalPosition,
-				IsEnumerated:       isEnumerated,
-				ReferencedResource: spannerColumn.ReferencedTable,
-				ReferencedField:    spannerColumn.ReferencedColumn,
-			}
 
 			resource.Fields = append(resource.Fields, fieldInfo)
 		}
