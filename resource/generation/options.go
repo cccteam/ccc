@@ -2,6 +2,7 @@ package generation
 
 import (
 	"github.com/ettle/strcase"
+	"github.com/go-playground/errors/v5"
 )
 
 type (
@@ -79,6 +80,9 @@ func WithConsolidatedHandlers[G ResourceGenerator | TypescriptGenerator](route s
 	return func(g *G) error {
 		switch g := any(g).(type) {
 		case *ResourceGenerator:
+			if !consolidateAll && len(resources) == 0 {
+				return errors.New("at least one resource is required if not consolidating all handlers")
+			}
 			g.consolidatedResourceNames = resources
 			g.consolidatedRoute = route
 			g.consolidateAll = consolidateAll
