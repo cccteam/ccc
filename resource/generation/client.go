@@ -26,6 +26,7 @@ import (
 )
 
 type ResourceGenerator struct {
+	*client
 	genHandlers         bool
 	genRoutes           bool
 	resourceDestination string
@@ -33,7 +34,6 @@ type ResourceGenerator struct {
 	routerDestination   string
 	routerPackage       string
 	routePrefix         string
-	*client
 }
 
 func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSourceURL string, options ...ResourceOption) (*ResourceGenerator, error) {
@@ -81,12 +81,12 @@ func (r *ResourceGenerator) Generate() error {
 }
 
 type TypescriptGenerator struct {
+	*client
 	genTypescriptPerm     bool
 	genTypescriptMeta     bool
 	typescriptDestination string
 	rc                    *resource.Collection
 	routerResources       []accesstypes.Resource
-	*client
 }
 
 type TSGenMode int
