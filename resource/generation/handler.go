@@ -186,7 +186,7 @@ func (r *ResourceGenerator) handlerContent(handler *generatedHandler, resource *
 	return buf.Bytes(), nil
 }
 
-func (c *Client) handlerName(structName string, handlerType HandlerType) string {
+func (c *client) handlerName(structName string, handlerType HandlerType) string {
 	var functionName string
 	switch handlerType {
 	case List:

@@ -115,7 +115,7 @@ func extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, error) {
 	return resources, nil
 }
 
-func (c *Client) syncWithSpannerMetadata(extractedResources []*ResourceInfo) ([]*ResourceInfo, error) {
+func (c *client) syncWithSpannerMetadata(extractedResources []*ResourceInfo) ([]*ResourceInfo, error) {
 	if len(extractedResources) == 0 {
 		return nil, errors.New("no resources to sync with spanner")
 	}

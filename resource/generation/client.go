@@ -33,7 +33,7 @@ type ResourceGenerator struct {
 	routerDestination   string
 	routerPackage       string
 	routePrefix         string
-	*Client
+	*client
 }
 
 func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSourceURL string, options ...ResourceOption) (*ResourceGenerator, error) {
@@ -42,7 +42,7 @@ func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSource
 	if c, err := new(ctx, resourceFilePath, migrationSourceURL); err != nil {
 		return nil, err
 	} else {
-		r.Client = c
+		r.client = c
 	}
 
 	for _, optionFunc := range options {
@@ -86,7 +86,7 @@ type TypescriptGenerator struct {
 	typescriptDestination string
 	rc                    *resource.Collection
 	routerResources       []accesstypes.Resource
-	*Client
+	*client
 }
 
 type TSGenMode int
@@ -125,7 +125,7 @@ func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSour
 	if c, err := new(ctx, resourceFilePath, migrationSourceURL); err != nil {
 		return nil, err
 	} else {
-		t.Client = c
+		t.client = c
 	}
 
 	for _, optionFunc := range options {
@@ -163,7 +163,7 @@ func (t *TypescriptGenerator) Generate() error {
 	return nil
 }
 
-type Client struct {
+type client struct {
 	resourceFilePath string
 	resources        []*ResourceInfo
 	packageName      string
@@ -182,7 +182,7 @@ type Client struct {
 	muAlign sync.Mutex
 }
 
-func new(ctx context.Context, resourceFilePath, migrationSourceURL string) (*Client, error) {
+func new(ctx context.Context, resourceFilePath, migrationSourceURL string) (*client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -218,7 +218,7 @@ func new(ctx context.Context, resourceFilePath, migrationSourceURL string) (*Cli
 		return nil, errors.Wrap(err, "db.MigrateUp()")
 	}
 
-	c := &Client{
+	c := &client{
 		resourceFilePath: resourceFilePath,
 		db:               db.Client,
 		packageName:      pkgInfo.PackageName,
@@ -234,7 +234,7 @@ func new(ctx context.Context, resourceFilePath, migrationSourceURL string) (*Cli
 	return c, nil
 }
 
-func (c *Client) extract() error {
+func (c *client) extract() error {
 	pkg, err := loadPackage(c.resourceFilePath)
 	if err != nil {
 		return err
@@ -255,11 +255,11 @@ func (c *Client) extract() error {
 	return nil
 }
 
-func (c *Client) Close() {
+func (c *client) Close() {
 	c.cleanup()
 }
 
-func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetadata, error) {
+func (c *client) createTableLookup(ctx context.Context) (map[string]*TableMetadata, error) {
 	qry := `WITH DEPENDENCIES AS (
 		SELECT DISTINCT
 			kcu1.TABLE_NAME, 
@@ -332,7 +332,7 @@ func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 	return c.createLookupMapForQuery(ctx, qry)
 }
 
-func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[string]*TableMetadata, error) {
+func (c *client) createLookupMapForQuery(ctx context.Context, qry string) (map[string]*TableMetadata, error) {
 	log.Println("Creating spanner table lookup...")
 
 	stmt := cloudspanner.Statement{SQL: qry}
@@ -426,7 +426,7 @@ func (c *Client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 	return m, nil
 }
 
-func (c *Client) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
+func (c *client) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
 	if goFormat {
 		var err error
 		data, err = format.Source(data)
@@ -552,7 +552,7 @@ func (r *ResourceGenerator) templateFuncs() map[string]any {
 	return templateFuncs
 }
 
-func (c *Client) pluralize(value string) string {
+func (c *client) pluralize(value string) string {
 	if plural, ok := c.pluralOverrides[value]; ok {
 		return plural
 	}
@@ -568,7 +568,7 @@ func (c *Client) pluralize(value string) string {
 	}
 }
 
-func (c *Client) formatTokenTags(tableName, fieldName string) string {
+func (c *client) formatTokenTags(tableName, fieldName string) string {
 	tokenIndexMap := make(map[string][]string)
 	t, ok := c.tableLookup[tableName]
 	if !ok {
