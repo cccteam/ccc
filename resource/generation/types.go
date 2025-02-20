@@ -169,6 +169,26 @@ func (r *ResourceInfo) SearchIndexes() []*searchIndex {
 	return indexes
 }
 
+func (r *ResourceInfo) PrimaryKeyIsUUID() bool {
+	for _, f := range r.Fields {
+		if f.IsPrimaryKey {
+			return f.GoType == "ccc.UUID"
+		}
+	}
+
+	return false
+}
+
+func (r *ResourceInfo) PrimaryKeyType() string {
+	for _, f := range r.Fields {
+		if f.IsPrimaryKey {
+			return f.GoType
+		}
+	}
+
+	return ""
+}
+
 type FieldInfo struct {
 	Parent             *ResourceInfo
 	Name               string

@@ -465,44 +465,12 @@ func (c *client) writeBytesToFile(destination string, file *os.File, data []byte
 
 func (r *ResourceGenerator) templateFuncs() map[string]any {
 	templateFuncs := map[string]any{
-		"Pluralize": r.pluralize,
-		"GoCamel":   strcase.ToGoCamel,
-		"Camel":     r.caser.ToCamel,
-		"Pascal":    r.caser.ToPascal,
-		"Kebab":     r.caser.ToKebab,
-		"Lower":     strings.ToLower,
-		"PrimaryKeyTypeIsUUID": func(fields []*FieldInfo) bool {
-			for _, f := range fields {
-				if f.IsPrimaryKey {
-					return f.GoType == "ccc.UUID"
-				}
-			}
-
-			return false
-		},
-		"FormatPerm": func(s string) string {
-			if s == "" {
-				return ""
-			}
-
-			return ` perm:"` + s + `"`
-		},
-		"PrimaryKeyType": func(fields []*FieldInfo) string {
-			for _, f := range fields {
-				if f.IsPrimaryKey {
-					return f.GoType
-				}
-			}
-
-			return ""
-		},
-		"FormatQueryTag": func(query string) string {
-			if query != "" {
-				return " " + query
-			}
-
-			return ""
-		},
+		"Pluralize":                    r.pluralize,
+		"GoCamel":                      strcase.ToGoCamel,
+		"Camel":                        r.caser.ToCamel,
+		"Pascal":                       r.caser.ToPascal,
+		"Kebab":                        r.caser.ToKebab,
+		"Lower":                        strings.ToLower,
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
 		"FormatTokenTag":               r.formatTokenTags,
 		"ResourceSearchType": func(searchType string) string {
@@ -535,16 +503,16 @@ func (r *ResourceGenerator) templateFuncs() map[string]any {
 
 			return "map[string]string{}"
 		},
-		"MethodToHttpConst": func(method string) string {
+		"MethodToHttpConst": func(method string) (string, error) {
 			switch method {
 			case "GET":
-				return "http.MethodGet"
+				return "http.MethodGet", nil
 			case "POST":
-				return "http.MethodPost"
+				return "http.MethodPost", nil
 			case "PATCH":
-				return "http.MethodPatch"
+				return "http.MethodPatch", nil
 			default:
-				panic(fmt.Sprintf("MethodToHttpConst: unknown method: %s", method))
+				return "", errors.Newf("MethodToHttpConst: unknown method: %s", method)
 			}
 		},
 	}

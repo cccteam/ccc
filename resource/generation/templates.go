@@ -110,7 +110,7 @@ type {{ .Resource.Name }}CreatePatch struct {
 	patchSet *resource.PatchSet[{{ .Resource.Name }}]
 }
 
-{{ $PrimaryKeyIsUUID := PrimaryKeyTypeIsUUID .Resource.Fields }}
+{{ $PrimaryKeyIsUUID := .Resource.PrimaryKeyIsUUID }}
 {{ if and (eq .Resource.HasCompoundPrimaryKey false) (eq $PrimaryKeyIsUUID true) }}
 func New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet *resource.PatchSet[{{ .Resource.Name }}]) (*{{ .Resource.Name }}CreatePatch, error) {
 	id, err := ccc.NewUUID()
@@ -325,7 +325,7 @@ import (
 		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ .Resource.Name }}()")
 		defer span.End()
 
-		id := httpio.Param[{{ PrimaryKeyType .Resource.Fields }}](r, router.{{ .Resource.Name }}ID)
+		id := httpio.Param[{{ .Resource.PrimaryKeyType }}](r, router.{{ .Resource.Name }}ID)
 
 		querySet, err := decoder.Decode(r)
 		if err != nil {
@@ -348,8 +348,9 @@ import (
 		{{- end }}
 	}
 	
-	{{ $PrimaryKeyType := PrimaryKeyType .Resource.Fields }}
-	{{- if eq $PrimaryKeyType "ccc.UUID"  }}
+	{{ $PrimaryKeyIsUUID := .Resource.PrimaryKeyIsUUID }}
+	{{ $PrimaryKeyType := .Resource.PrimaryKeyType }}
+	{{- if $PrimaryKeyIsUUID }}
 	type response struct {
 		IDs []ccc.UUID ` + "`json:\"iDs\"`" + `
 	}
@@ -362,11 +363,11 @@ import (
 		defer span.End()
 
 		var patches []resource.SpannerBufferer
-		{{- if eq $PrimaryKeyType "ccc.UUID" }}
+		{{- if $PrimaryKeyIsUUID }}
 		var resp response
 		{{- end }}
 
-		for op, err := range resource.Operations(r, "/{id}"{{- if ne $PrimaryKeyType "ccc.UUID" }}, resource.RequireCreatePath(){{- end }}) {
+		for op, err := range resource.Operations(r, "/{id}"{{- if eq false $PrimaryKeyIsUUID }}, resource.RequireCreatePath(){{- end }}) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -378,7 +379,7 @@ import (
 			
 			switch op.Type {
 			case resource.OperationCreate:
-				{{- if eq $PrimaryKeyType "ccc.UUID" }}
+				{{- if $PrimaryKeyIsUUID }}
 				patch, err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet)
 				if err != nil {
 					return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -402,7 +403,7 @@ import (
 			return httpio.NewEncoder(w).ClientMessage(ctx, spanner.HandleError[resources.{{ .Resource.Name }}](err))
 		}
 
-		{{ if eq $PrimaryKeyType "ccc.UUID"  }}
+		{{ if $PrimaryKeyIsUUID  }}
 		return httpio.NewEncoder(w).Ok(resp)
 		{{ else }}
 		return httpio.NewEncoder(w).Ok(nil)
@@ -457,7 +458,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 			
 			switch httpio.Param[string](op.Req, "resource") {
 				{{- range $resource := .Resources -}}
-				{{- $primaryKeyType := PrimaryKeyType .Fields}}
+				{{- $primaryKeyType := $resource.PrimaryKeyType }}
 				case "{{ Kebab (Pluralize $resource.Name) }}":
 					patchSet, err := {{ GoCamel $resource.Name}}Decoder.DecodeOperation(op)
 					if err != nil {
@@ -466,7 +467,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 					switch op.Type {
 					case resource.OperationCreate:
-						{{- if eq $primaryKeyType "ccc.UUID" }}
+						{{- if $resource.PrimaryKeyIsUUID }}
 						patch, err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet(patchSet)
 						if err != nil {
 							return httpio.NewEncoder(w).ClientMessage(ctx, err)
