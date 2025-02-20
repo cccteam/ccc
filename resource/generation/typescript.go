@@ -2,14 +2,11 @@ package generation
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"text/template"
 
-	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -73,84 +70,6 @@ func (t *TypescriptGenerator) generateTemplateOutput(fileTemplate string, data m
 	}
 
 	return buf.Bytes(), nil
-}
-
-func (t *TypescriptGenerator) templateFuncs() map[string]any {
-	templateFuncs := map[string]any{
-		"Pluralize": t.pluralize,
-		"GoCamel":   strcase.ToGoCamel,
-		"Camel":     t.caser.ToCamel,
-		"Pascal":    t.caser.ToPascal,
-		"Kebab":     t.caser.ToKebab,
-		"Lower":     strings.ToLower,
-		"PrimaryKeyTypeIsUUID": func(fields []*FieldInfo) bool {
-			for _, f := range fields {
-				if f.IsPrimaryKey {
-					return f.GoType == "ccc.UUID"
-				}
-			}
-
-			return false
-		},
-		"FormatPerm": func(s string) string {
-			if s == "" {
-				return ""
-			}
-
-			return ` perm:"` + s + `"`
-		},
-		"PrimaryKeyType": func(fields []*FieldInfo) string {
-			for _, f := range fields {
-				if f.IsPrimaryKey {
-					return f.GoType
-				}
-			}
-
-			return ""
-		},
-		"FormatQueryTag": func(query string) string {
-			if query != "" {
-				return " " + query
-			}
-
-			return ""
-		},
-		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
-		"FormatTokenTag":               t.formatTokenTags,
-		"ResourceSearchType": func(searchType string) string {
-			switch strings.ToUpper(searchType) {
-			case "SUBSTRING":
-				return "resource.SubString"
-			case "FULLTEXT":
-				return "resource.FullText"
-			case "NGRAMS":
-				return "resource.Ngram"
-			default:
-				return ""
-			}
-		},
-		"DetermineParameters": func(structName string, route generatedRoute) string {
-			if strings.EqualFold(route.Method, "get") && strings.HasSuffix(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(structName))) {
-				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(structName+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", t.caser.ToPascal(structName))))
-			}
-
-			return "map[string]string{}"
-		},
-		"MethodToHttpConst": func(method string) string {
-			switch method {
-			case "GET":
-				return "http.MethodGet"
-			case "POST":
-				return "http.MethodPost"
-			case "PATCH":
-				return "http.MethodPatch"
-			default:
-				panic(fmt.Sprintf("MethodToHttpConst: unknown method: %s", method))
-			}
-		},
-	}
-
-	return templateFuncs
 }
 
 func (t *TypescriptGenerator) generateTypescriptMetadata() error {

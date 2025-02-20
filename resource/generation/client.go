@@ -463,13 +463,13 @@ func (c *client) writeBytesToFile(destination string, file *os.File, data []byte
 	return nil
 }
 
-func (r *ResourceGenerator) templateFuncs() map[string]any {
+func (c *client) templateFuncs() map[string]any {
 	templateFuncs := map[string]any{
-		"Pluralize":                    r.pluralize,
+		"Pluralize":                    c.pluralize,
 		"GoCamel":                      strcase.ToGoCamel,
-		"Camel":                        r.caser.ToCamel,
-		"Pascal":                       r.caser.ToPascal,
-		"Kebab":                        r.caser.ToKebab,
+		"Camel":                        c.caser.ToCamel,
+		"Pascal":                       c.caser.ToPascal,
+		"Kebab":                        c.caser.ToKebab,
 		"Lower":                        strings.ToLower,
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
 		"ResourceSearchType": func(searchType string) string {
@@ -484,12 +484,12 @@ func (r *ResourceGenerator) templateFuncs() map[string]any {
 				return ""
 			}
 		},
-		"DetermineTestURL": func(structName string, route generatedRoute) string {
+		"DetermineTestURL": func(structName, routePrefix string, route generatedRoute) string {
 			if strings.EqualFold(route.Method, "get") && strings.HasSuffix(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(structName))) {
 				return fmt.Sprintf("/%s/%s/%s",
-					r.routePrefix,
-					r.caser.ToKebab(r.pluralize(structName)),
-					strcase.ToGoCamel(fmt.Sprintf("test%sID", r.caser.ToPascal(structName))),
+					routePrefix,
+					c.caser.ToKebab(c.pluralize(structName)),
+					strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(structName))),
 				)
 			}
 
@@ -497,7 +497,7 @@ func (r *ResourceGenerator) templateFuncs() map[string]any {
 		},
 		"DetermineParameters": func(structName string, route generatedRoute) string {
 			if strings.EqualFold(route.Method, "get") && strings.HasSuffix(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(structName))) {
-				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(structName+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", r.caser.ToPascal(structName))))
+				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(structName+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(structName))))
 			}
 
 			return "map[string]string{}"

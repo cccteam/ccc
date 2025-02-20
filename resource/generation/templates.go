@@ -669,12 +669,13 @@ func generatedRouteParameters() []string {
 	return keys
 }
 
+{{ $routePrefix := .RoutePrefix -}}
 func generatedRouterTests() []*generatedRouterTest {
 	routerTests := []*generatedRouterTest {
-		{{ range $Struct, $Routes := .RoutesMap }}{{ range $Routes }}{
-			url: "{{ DetermineTestURL $Struct . }}", method: {{ MethodToHttpConst .Method }},
-			handlerFunc: "{{ .HandlerFunc }}",
-			parameters: {{ DetermineParameters $Struct . }},
+		{{ range $Struct, $Routes := .RoutesMap }}{{ range $route := $Routes }}{
+			url: "{{ DetermineTestURL $Struct $routePrefix $route }}", method: {{ MethodToHttpConst $route.Method }},
+			handlerFunc: "{{ $route.HandlerFunc }}",
+			parameters: {{ DetermineParameters $Struct $route }},
 		},
 		{{ end }}{{ end }}
 		{{- if eq .HasConsolidatedHandler true -}}
