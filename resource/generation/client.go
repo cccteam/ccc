@@ -39,11 +39,11 @@ type ResourceGenerator struct {
 func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSourceURL string, options ...ResourceOption) (*ResourceGenerator, error) {
 	r := &ResourceGenerator{resourceDestination: filepath.Dir(resourceFilePath)}
 
-	if c, err := new(ctx, resourceFilePath, migrationSourceURL); err != nil {
+	c, err := newClient(ctx, resourceFilePath, migrationSourceURL)
+	if err != nil {
 		return nil, err
-	} else {
-		r.client = c
 	}
+	r.client = c
 
 	for _, optionFunc := range options {
 		if optionFunc != nil {
@@ -99,7 +99,7 @@ const (
 	TSMeta
 )
 
-func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSourceURL, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TypescriptOption) (*TypescriptGenerator, error) {
+func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSourceURL, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TSOption) (*TypescriptGenerator, error) {
 	if rc == nil {
 		return nil, errors.New("resource collection cannot be nil")
 	}
@@ -119,14 +119,14 @@ func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSour
 	case mode&TSMeta > 0:
 		t.genTypescriptMeta = true
 	default:
-		errors.Newf("invalid typescript generation mode: %d", mode)
+		return nil, errors.Newf("invalid typescript generation mode: %d", mode)
 	}
 
-	if c, err := new(ctx, resourceFilePath, migrationSourceURL); err != nil {
+	c, err := newClient(ctx, resourceFilePath, migrationSourceURL)
+	if err != nil {
 		return nil, err
-	} else {
-		t.client = c
 	}
+	t.client = c
 
 	for _, optionFunc := range options {
 		if optionFunc != nil {
@@ -164,10 +164,9 @@ func (t *TypescriptGenerator) Generate() error {
 }
 
 type client struct {
-	resourceFilePath string
-	resources        []*ResourceInfo
-	packageName      string
-
+	resourceFilePath          string
+	resources                 []*resourceInfo
+	packageName               string
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser
 	tableLookup               map[string]*TableMetadata
@@ -182,7 +181,7 @@ type client struct {
 	muAlign sync.Mutex
 }
 
-func new(ctx context.Context, resourceFilePath, migrationSourceURL string) (*client, error) {
+func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string) (*client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -235,12 +234,12 @@ func new(ctx context.Context, resourceFilePath, migrationSourceURL string) (*cli
 }
 
 func (c *client) extract() error {
-	pkg, err := loadPackage(c.resourceFilePath)
+	resourcePkg, err := loadPackage(c.resourceFilePath)
 	if err != nil {
 		return err
 	}
 
-	extractedResources, err := extractResourceTypes(pkg.Types)
+	extractedResources, err := extractResourceTypes(resourcePkg.Types)
 	if err != nil {
 		return err
 	}
@@ -287,7 +286,8 @@ func (c *client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 			END) AS REFERENCED_COLUMN
 		FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu1 -- All columns that are Primary Key or Foreign Key
 		JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON tc.CONSTRAINT_NAME = kcu1.CONSTRAINT_NAME -- Identify whether column is Primary Key or Foreign Key
-		LEFT JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_NAME = kcu1.CONSTRAINT_NAME -- All unique constraints (e.g. PK_Persons) referenced by foreign key constraints (e.g. FK_PersonPhones_PersonId)
+		-- All unique constraints (e.g. PK_Persons) referenced by foreign key constraints (e.g. FK_PersonPhones_PersonId)
+		LEFT JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_NAME = kcu1.CONSTRAINT_NAME 
 		LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu2 ON kcu2.CONSTRAINT_NAME = rc.UNIQUE_CONSTRAINT_NAME -- Table & Column belonging to referenced unique constraint (e.g. Persons, Id)
 			AND kcu2.ORDINAL_POSITION = kcu1.ORDINAL_POSITION
 		LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu3 ON kcu3.TABLE_NAME = kcu2.TABLE_NAME AND kcu3.COLUMN_NAME = kcu2.COLUMN_NAME
@@ -326,7 +326,9 @@ func (c *client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 	WHERE 
 		c.TABLE_SCHEMA != 'INFORMATION_SCHEMA'
 		AND c.COLUMN_NAME NOT LIKE '%_HIDDEN'
-	GROUP BY c.TABLE_NAME, c.COLUMN_NAME, IS_NULLABLE, c.SPANNER_TYPE, d.IS_PRIMARY_KEY, d.IS_FOREIGN_KEY, d.REFERENCED_COLUMN, d.REFERENCED_TABLE, IS_VIEW, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION
+	GROUP BY c.TABLE_NAME, c.COLUMN_NAME, IS_NULLABLE, c.SPANNER_TYPE,
+	d.IS_PRIMARY_KEY, d.IS_FOREIGN_KEY, d.REFERENCED_COLUMN, d.REFERENCED_TABLE,
+	IS_VIEW, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
 
 	return c.createLookupMapForQuery(ctx, qry)
@@ -407,20 +409,22 @@ func (c *client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 	}
 
 	for _, r := range result {
-		if r.SpannerType == "TOKENLIST" {
-			table := m[r.TableName]
-
-			if r.GenerationExpression == nil {
-				return nil, errors.Newf("generation expression not found for tokenlist column=`%s` table=`%s`", r.ColumnName, r.TableName)
-			}
-
-			expressionFields, err := searchExpressionFields(*r.GenerationExpression, table.Columns)
-			if err != nil {
-				return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
-			}
-
-			table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], expressionFields...)
+		if r.SpannerType != "TOKENLIST" {
+			continue
 		}
+
+		table := m[r.TableName]
+
+		if r.GenerationExpression == nil {
+			return nil, errors.Newf("generation expression not found for tokenlist column=`%s` table=`%s`", r.ColumnName, r.TableName)
+		}
+
+		expressionFields, err := searchExpressionFields(*r.GenerationExpression, table.Columns)
+		if err != nil {
+			return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
+		}
+
+		table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], expressionFields...)
 	}
 
 	return m, nil
@@ -599,7 +603,7 @@ func removeGeneratedFileByHeaderComment(directory, file string) error {
 	return nil
 }
 
-func formatResourceInterfaceTypes(resources []*ResourceInfo) string {
+func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	var resourceNames [][]string
 	var resourceNamesLen int
 	for i, t := range resources {

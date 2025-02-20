@@ -10,7 +10,7 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
-		types []*ResourceInfo
+		types []*resourceInfo
 	}
 	tests := []struct {
 		name string
@@ -20,14 +20,14 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 		{
 			name: "empty",
 			args: args{
-				types: []*ResourceInfo{},
+				types: []*resourceInfo{},
 			},
 			want: "",
 		},
 		{
 			name: "One type",
 			args: args{
-				types: []*ResourceInfo{
+				types: []*resourceInfo{
 					{Name: "Resource1"},
 				},
 			},
@@ -36,7 +36,7 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 		{
 			name: "many type",
 			args: args{
-				types: []*ResourceInfo{
+				types: []*resourceInfo{
 					{Name: "Resource1"},
 					{Name: "MyResource1"},
 					{Name: "YourResource1"},

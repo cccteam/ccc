@@ -38,7 +38,7 @@ func loadPackage(packagePattern string) (*packages.Package, error) {
 // We can iterate over the declarations at the package level a single time
 // to extract all the data necessary for generation. Any new data that needs
 // to be added to the struct definitions can be extracted here.
-func extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, error) {
+func extractResourceTypes(pkg *types.Package) ([]*resourceInfo, error) {
 	log.Println("Starting resource extraction...")
 	if pkg == nil {
 		return nil, errors.New("package is nil")
@@ -49,7 +49,7 @@ func extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, error) {
 		return nil, errors.Newf("package %q has invalid scope", pkg.Name())
 	}
 
-	resources := make([]*ResourceInfo, scope.Len())
+	resources := make([]*resourceInfo, scope.Len())
 	for i, name := range scope.Names() {
 		object := scope.Lookup(name)
 		if object == nil {
@@ -61,7 +61,7 @@ func extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, error) {
 			continue
 		}
 
-		resource := &ResourceInfo{
+		resource := &resourceInfo{
 			Name:         object.Name(),
 			_packageName: pkg.Name(),
 			_position:    int(object.Pos()),
@@ -73,7 +73,7 @@ func extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, error) {
 				return nil, errors.Newf("invalid field[%d] in struct %q at %s:%v", j, object.Name(), pkg.Name(), object.Pos())
 			}
 
-			fieldInfo := &FieldInfo{
+			fieldInfo := &fieldInfo{
 				Parent:     resource,
 				Name:       field.Name(),
 				parsedType: field.Type(),
@@ -115,7 +115,7 @@ func extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, error) {
 	return resources, nil
 }
 
-func (c *client) syncWithSpannerMetadata(extractedResources []*ResourceInfo) ([]*ResourceInfo, error) {
+func (c *client) syncWithSpannerMetadata(extractedResources []*resourceInfo) ([]*resourceInfo, error) {
 	if len(extractedResources) == 0 {
 		return nil, errors.New("no resources to sync with spanner")
 	}
@@ -150,9 +150,7 @@ func (c *client) syncWithSpannerMetadata(extractedResources []*ResourceInfo) ([]
 			fieldInfo.KeyOrdinalPosition = spannerColumn.KeyOrdinalPosition
 			fieldInfo.ReferencedResource = spannerColumn.ReferencedTable
 			fieldInfo.ReferencedField = spannerColumn.ReferencedColumn
-
 		}
-
 	}
 
 	return extractedResources, nil

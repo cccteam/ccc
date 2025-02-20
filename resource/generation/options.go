@@ -6,8 +6,8 @@ import (
 )
 
 type (
-	ResourceOption   func(*ResourceGenerator) error
-	TypescriptOption func(*TypescriptGenerator) error
+	ResourceOption func(*ResourceGenerator) error
+	TSOption       func(*TypescriptGenerator) error
 )
 
 func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) ResourceOption {
@@ -43,7 +43,7 @@ func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption
 	}
 }
 
-func WithTypescriptOverrides(overrides map[string]string) TypescriptOption {
+func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	return func(t *TypescriptGenerator) error {
 		t.typescriptOverrides = overrides
 
@@ -60,6 +60,7 @@ func WithPluralOverrides[G ResourceGenerator | TypescriptGenerator](overrides ma
 		case *TypescriptGenerator:
 			g.pluralOverrides = overrides
 		}
+
 		return nil
 	}
 }
@@ -72,6 +73,7 @@ func CaserInitialismOverrides[G ResourceGenerator | TypescriptGenerator](overrid
 		case *TypescriptGenerator:
 			g.caser = strcase.NewCaser(false, overrides, nil)
 		}
+
 		return nil
 	}
 }
@@ -91,6 +93,7 @@ func WithConsolidatedHandlers[G ResourceGenerator | TypescriptGenerator](route s
 			g.consolidatedRoute = route
 			g.consolidateAll = consolidateAll
 		}
+
 		return nil
 	}
 }

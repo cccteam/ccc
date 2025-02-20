@@ -78,7 +78,7 @@ func (r *ResourceGenerator) generateResourceTests() error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateResources(res *ResourceInfo) error {
+func (r *ResourceGenerator) generateResources(res *resourceInfo) error {
 	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name))))
 	destinationFilePath := filepath.Join(r.resourceDestination, fileName)
 

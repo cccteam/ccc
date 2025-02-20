@@ -19,14 +19,14 @@ func (r *ResourceGenerator) runHandlerGeneration() error {
 	}
 
 	var (
-		consolidatedResources []*ResourceInfo
+		consolidatedResources []*resourceInfo
 		wg                    sync.WaitGroup
 
 		errChan = make(chan error)
 	)
 	for _, resource := range r.resources {
 		wg.Add(1)
-		go func(resource *ResourceInfo) {
+		go func(resource *resourceInfo) {
 			if err := r.generateHandlers(resource); err != nil {
 				errChan <- err
 			}
@@ -61,7 +61,7 @@ func (r *ResourceGenerator) runHandlerGeneration() error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateHandlers(resource *ResourceInfo) error {
+func (r *ResourceGenerator) generateHandlers(resource *resourceInfo) error {
 	generatedHandlers := []*generatedHandler{
 		{
 			template:    listTemplate,
@@ -137,7 +137,7 @@ func (r *ResourceGenerator) generateHandlers(resource *ResourceInfo) error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateConsolidatedPatchHandler(resources []*ResourceInfo) error {
+func (r *ResourceGenerator) generateConsolidatedPatchHandler(resources []*resourceInfo) error {
 	fileName := generatedFileName(consolidatedHandlerOutputName)
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
@@ -170,7 +170,7 @@ func (r *ResourceGenerator) generateConsolidatedPatchHandler(resources []*Resour
 	return nil
 }
 
-func (r *ResourceGenerator) handlerContent(handler *generatedHandler, resource *ResourceInfo) ([]byte, error) {
+func (r *ResourceGenerator) handlerContent(handler *generatedHandler, resource *resourceInfo) ([]byte, error) {
 	tmpl, err := template.New("handler").Funcs(r.templateFuncs()).Parse(handler.template)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.New().Parse()")

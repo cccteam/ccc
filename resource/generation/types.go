@@ -137,9 +137,9 @@ type generatedRoute struct {
 	HandlerFunc string
 }
 
-type ResourceInfo struct {
+type resourceInfo struct {
 	Name                  string
-	Fields                []*FieldInfo
+	Fields                []*fieldInfo
 	searchIndexes         map[string][]*expressionField // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
 	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.
 	HasCompoundPrimaryKey bool                          // Determines how CreatePatchSet is rendered in resource generation.
@@ -150,7 +150,7 @@ type ResourceInfo struct {
 	_position    int
 }
 
-func (r *ResourceInfo) SearchIndexes() []*searchIndex {
+func (r *resourceInfo) SearchIndexes() []*searchIndex {
 	typeIndexMap := make(map[resource.SearchType]string)
 	for searchIndex, expressionFields := range r.searchIndexes {
 		for _, exprField := range expressionFields {
@@ -169,7 +169,7 @@ func (r *ResourceInfo) SearchIndexes() []*searchIndex {
 	return indexes
 }
 
-func (r *ResourceInfo) PrimaryKeyIsUUID() bool {
+func (r *resourceInfo) PrimaryKeyIsUUID() bool {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
 			return f.GoType == "ccc.UUID"
@@ -179,7 +179,7 @@ func (r *ResourceInfo) PrimaryKeyIsUUID() bool {
 	return false
 }
 
-func (r *ResourceInfo) PrimaryKeyType() string {
+func (r *resourceInfo) PrimaryKeyType() string {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
 			return f.GoType
@@ -189,8 +189,8 @@ func (r *ResourceInfo) PrimaryKeyType() string {
 	return ""
 }
 
-type FieldInfo struct {
-	Parent             *ResourceInfo
+type fieldInfo struct {
+	Parent             *resourceInfo
 	Name               string
 	SpannerName        string
 	GoType             string
@@ -217,7 +217,7 @@ type FieldInfo struct {
 	_position int
 }
 
-func (f *FieldInfo) TypescriptDataType() string {
+func (f *fieldInfo) TypescriptDataType() string {
 	if f.typescriptType == "uuid" {
 		return "string"
 	}
@@ -225,7 +225,7 @@ func (f *FieldInfo) TypescriptDataType() string {
 	return f.typescriptType
 }
 
-func (f *FieldInfo) TypescriptDisplayType() string {
+func (f *fieldInfo) TypescriptDisplayType() string {
 	if f.IsEnumerated {
 		return "enumerated"
 	}
@@ -233,7 +233,7 @@ func (f *FieldInfo) TypescriptDisplayType() string {
 	return f.typescriptType
 }
 
-func (f *FieldInfo) JSONTag() string {
+func (f *fieldInfo) JSONTag() string {
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(f.Name)
 
@@ -244,7 +244,7 @@ func (f *FieldInfo) JSONTag() string {
 	return fmt.Sprintf("json:%q", camelCaseName)
 }
 
-func (f *FieldInfo) JSONTagForPatch() string {
+func (f *fieldInfo) JSONTagForPatch() string {
 	if f.IsPrimaryKey || f.IsImmutable() {
 		return fmt.Sprintf("json:%q", "-")
 	}
@@ -255,7 +255,7 @@ func (f *FieldInfo) JSONTagForPatch() string {
 	return fmt.Sprintf("json:%q", camelCaseName)
 }
 
-func (f *FieldInfo) IndexTag() string {
+func (f *fieldInfo) IndexTag() string {
 	if f.IsIndex {
 		return `index:"true"`
 	}
@@ -263,7 +263,7 @@ func (f *FieldInfo) IndexTag() string {
 	return ""
 }
 
-func (f *FieldInfo) UniqueIndexTag() string {
+func (f *fieldInfo) UniqueIndexTag() string {
 	if f.IsUniqueIndex {
 		return `index:"true"`
 	}
@@ -271,11 +271,11 @@ func (f *FieldInfo) UniqueIndexTag() string {
 	return ""
 }
 
-func (f *FieldInfo) IsImmutable() bool {
+func (f *fieldInfo) IsImmutable() bool {
 	return slices.Contains(f.Conditions, "immutable")
 }
 
-func (f *FieldInfo) QueryTag() string {
+func (f *fieldInfo) QueryTag() string {
 	if f.query != "" {
 		return fmt.Sprintf("query:%q", f.query)
 	}
@@ -283,7 +283,7 @@ func (f *FieldInfo) QueryTag() string {
 	return ""
 }
 
-func (f *FieldInfo) ReadPermTag() string {
+func (f *fieldInfo) ReadPermTag() string {
 	if slices.Contains(f.permissions, "Read") {
 		return fmt.Sprintf("perm:%q", "Read")
 	}
@@ -291,7 +291,7 @@ func (f *FieldInfo) ReadPermTag() string {
 	return ""
 }
 
-func (f *FieldInfo) ListPermTag() string {
+func (f *fieldInfo) ListPermTag() string {
 	if slices.Contains(f.permissions, "List") {
 		return fmt.Sprintf("perm:%q", "List")
 	}
@@ -299,7 +299,7 @@ func (f *FieldInfo) ListPermTag() string {
 	return ""
 }
 
-func (f *FieldInfo) PatchPermTag() string {
+func (f *fieldInfo) PatchPermTag() string {
 	var patches []string
 	for _, perm := range f.permissions {
 		if perm != "Read" && perm != "List" {
@@ -314,7 +314,7 @@ func (f *FieldInfo) PatchPermTag() string {
 	return ""
 }
 
-func (f *FieldInfo) SearchIndexTags() string {
+func (f *fieldInfo) SearchIndexTags() string {
 	typeIndexMap := make(map[resource.SearchType][]string)
 	for searchIndex, expressionFields := range f.Parent.searchIndexes {
 		for _, exprField := range expressionFields {
@@ -332,7 +332,7 @@ func (f *FieldInfo) SearchIndexTags() string {
 	return strings.Join(tags, " ")
 }
 
-func (f *FieldInfo) IsView() bool {
+func (f *fieldInfo) IsView() bool {
 	return f.Parent.IsView
 }
 

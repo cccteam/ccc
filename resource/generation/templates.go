@@ -139,7 +139,9 @@ func New{{ .Resource.Name }}CreatePatch() (*{{ .Resource.Name }}CreatePatch, err
 }
 {{ else }}
 func New{{ .Resource.Name }}CreatePatchFromPatchSet(
-{{- range $field := .Resource.Fields }}{{ if $field.IsPrimaryKey }}{{ GoCamel $field.Name }} {{ $field.GoType }},{{ end }}{{ end }} patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}CreatePatch {
+{{- range $field := .Resource.Fields -}}
+{{ if $field.IsPrimaryKey }}{{ GoCamel $field.Name }} {{ $field.GoType }},{{ end }}
+{{- end }} patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}CreatePatch {
 	patchSet.
 	{{ range $field := .Resource.Fields }}
 	{{ if $field.IsPrimaryKey }}
@@ -593,7 +595,9 @@ const resourceMap: ResourceMap = {
     {{- end }}
     fields: [
       {{- range $field := $resource.Fields }}
-      { fieldName: '{{ Camel $field.Name }}', {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.Required }}, isIndex: {{ $field.IsIndex -}}
+      { fieldName: '{{ Camel $field.Name }}', 
+       {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
+       {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.Required }}, isIndex: {{ $field.IsIndex -}}
       {{- if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
       {{- end }}
     ],
