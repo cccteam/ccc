@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"go/ast"
 	"go/format"
 	"log"
 	"os"
@@ -27,18 +26,65 @@ import (
 )
 
 type ResourceGenerator struct {
+	genHandlers         bool
+	genRoutes           bool
+	resourceDestination string
+	handlerDestination  string
+	routerDestination   string
+	routerPackage       string
+	routePrefix         string
 	*Client
 }
 
-func NewResourceGenerator(ctx context.Context, options ...ResourceOption) *ResourceGenerator {
-	return &ResourceGenerator{}
+func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSourceURL string, options ...ResourceOption) (*ResourceGenerator, error) {
+	r := &ResourceGenerator{resourceDestination: filepath.Dir(resourceFilePath)}
+
+	if c, err := new(ctx, resourceFilePath, migrationSourceURL); err != nil {
+		return nil, err
+	} else {
+		r.Client = c
+	}
+
+	for _, optionFunc := range options {
+		if optionFunc != nil {
+			if err := optionFunc(r); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if err := r.extract(extractResources); err != nil {
+		return nil, err
+	}
+
+	return r, nil
 }
 
 func (r *ResourceGenerator) Generate() error {
+	if err := r.runResourcesGeneration(); err != nil {
+		return errors.Wrap(err, "c.genResources()")
+	}
+
+	if r.genRoutes {
+		if err := r.runRouteGeneration(); err != nil {
+			return err
+		}
+	}
+	if r.genHandlers {
+		if err := r.runHandlerGeneration(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 type TypescriptGenerator struct {
+	genTypescriptPerm     bool
+	genTypescriptMeta     bool
+	typescriptDestination string
+	rc                    *resource.Collection
+	routerResources       []accesstypes.Resource
 	*Client
 }
 
@@ -51,22 +97,10 @@ func (t *TypescriptGenerator) Generate() error {
 }
 
 type Client struct {
-	genHandlers               bool
-	genTypescriptPerm         bool
-	genTypescriptMeta         bool
-	genRoutes                 bool
-	resourceFilePath          string
-	resources                 []*ResourceInfo
-	resourceTree              *ast.File
-	packageName               string
-	resourceDestination       string
-	handlerDestination        string
-	typescriptDestination     string
-	routerDestination         string
-	routerPackage             string
-	routePrefix               string
-	rc                        *resource.Collection
-	routerResources           []accesstypes.Resource
+	resourceFilePath string
+	resources        []*ResourceInfo
+	packageName      string
+
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser
 	tableLookup               map[string]*TableMetadata
@@ -81,7 +115,7 @@ type Client struct {
 	muAlign sync.Mutex
 }
 
-func New(ctx context.Context, resourcePackageDir, migrationSourceURL string, generatorOptions ...ClientOption) (*Client, error) {
+func new(ctx context.Context, resourceFilePath, migrationSourceURL string) (*Client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -116,17 +150,11 @@ func New(ctx context.Context, resourcePackageDir, migrationSourceURL string, gen
 	}
 
 	c := &Client{
-		db:                  db.Client,
-		resourceDestination: resourcePackageDir,
-		packageName:         pkgInfo.PackageName,
-		cleanup:             cleanupFunc,
-		caser:               strcase.NewCaser(false, nil, nil),
-	}
-
-	for _, optionFunc := range generatorOptions {
-		if err := optionFunc(c); err != nil {
-			return nil, err
-		}
+		resourceFilePath: resourceFilePath,
+		db:               db.Client,
+		packageName:      pkgInfo.PackageName,
+		cleanup:          cleanupFunc,
+		caser:            strcase.NewCaser(false, nil, nil),
 	}
 
 	c.tableLookup, err = c.createTableLookup(ctx)
@@ -134,55 +162,24 @@ func New(ctx context.Context, resourcePackageDir, migrationSourceURL string, gen
 		return nil, errors.Wrap(err, "c.createTableLookup()")
 	}
 
-	if err := removeGeneratedFiles(resourcePackageDir, Prefix); err != nil {
-		return nil, errors.Wrap(err, "removeGeneratedFilesInNewClient()")
-	}
-
-	pkg, err := loadPackage(resourcePackageDir)
-	if err != nil {
-		return nil, err
-	}
-
-	c.resourceFilePath = filepath.Join(resourcePackageDir, filepath.Base(pkg.GoFiles[0]))
-
-	c.resources, err = c.extractResourceTypes(pkg.Types)
-	if err != nil {
-		return nil, err
-	}
-
 	return c, nil
+}
+
+func (c *Client) extract(mode extractionMode) error {
+	pkg, err := loadPackage(c.resourceFilePath)
+	if err != nil {
+		return err
+	}
+
+	if err := c.extractResourceTypes(pkg.Types, mode); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *Client) Close() {
 	c.cleanup()
-}
-
-func (c *Client) RunGeneration() error {
-	if err := c.runResourcesGeneration(); err != nil {
-		return errors.Wrap(err, "c.genResources()")
-	}
-	if c.genRoutes {
-		if err := c.runRouteGeneration(); err != nil {
-			return err
-		}
-	}
-	if c.genHandlers {
-		if err := c.runHandlerGeneration(); err != nil {
-			return err
-		}
-	}
-	if c.genTypescriptMeta {
-		if err := c.runTypescriptMetadataGeneration(); err != nil {
-			return err
-		}
-	}
-	if c.genTypescriptPerm {
-		if err := c.runTypescriptPermissionGeneration(); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (c *Client) createTableLookup(ctx context.Context) (map[string]*TableMetadata, error) {
@@ -389,13 +386,13 @@ func (c *Client) writeBytesToFile(destination string, file *os.File, data []byte
 	return nil
 }
 
-func (c *Client) templateFuncs() map[string]any {
+func (r *ResourceGenerator) templateFuncs() map[string]any {
 	templateFuncs := map[string]any{
-		"Pluralize": c.pluralize,
+		"Pluralize": r.pluralize,
 		"GoCamel":   strcase.ToGoCamel,
-		"Camel":     c.caser.ToCamel,
-		"Pascal":    c.caser.ToPascal,
-		"Kebab":     c.caser.ToKebab,
+		"Camel":     r.caser.ToCamel,
+		"Pascal":    r.caser.ToPascal,
+		"Kebab":     r.caser.ToKebab,
 		"Lower":     strings.ToLower,
 		"PrimaryKeyTypeIsUUID": func(fields []*FieldInfo) bool {
 			for _, f := range fields {
@@ -430,7 +427,7 @@ func (c *Client) templateFuncs() map[string]any {
 			return ""
 		},
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
-		"FormatTokenTag":               c.formatTokenTags,
+		"FormatTokenTag":               r.formatTokenTags,
 		"ResourceSearchType": func(searchType string) string {
 			switch strings.ToUpper(searchType) {
 			case "SUBSTRING":
@@ -446,9 +443,9 @@ func (c *Client) templateFuncs() map[string]any {
 		"DetermineTestURL": func(structName string, route generatedRoute) string {
 			if strings.EqualFold(route.Method, "get") && strings.HasSuffix(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(structName))) {
 				return fmt.Sprintf("/%s/%s/%s",
-					c.routePrefix,
-					c.caser.ToKebab(c.pluralize(structName)),
-					strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(structName))),
+					r.routePrefix,
+					r.caser.ToKebab(r.pluralize(structName)),
+					strcase.ToGoCamel(fmt.Sprintf("test%sID", r.caser.ToPascal(structName))),
 				)
 			}
 
@@ -456,7 +453,7 @@ func (c *Client) templateFuncs() map[string]any {
 		},
 		"DetermineParameters": func(structName string, route generatedRoute) string {
 			if strings.EqualFold(route.Method, "get") && strings.HasSuffix(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(structName))) {
-				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(structName+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(structName))))
+				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(structName+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", r.caser.ToPascal(structName))))
 			}
 
 			return "map[string]string{}"
@@ -642,6 +639,6 @@ func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*e
 }
 
 // The resourceName should already be pluralized
-func (c *Client) isResourceInAppRouter(resourceName string) bool {
-	return slices.Contains(c.routerResources, accesstypes.Resource(resourceName))
+func (t *TypescriptGenerator) isResourceInAppRouter(resourceName string) bool {
+	return slices.Contains(t.routerResources, accesstypes.Resource(resourceName))
 }

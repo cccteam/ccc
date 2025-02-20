@@ -32,24 +32,32 @@ func loadPackage(directoryPath string) (*packages.Package, error) {
 	return pkgs[0], nil
 }
 
+type extractionMode int
+
+const (
+	extractResources extractionMode = 1 << iota
+
+	extractTypescript
+)
+
 // We can iterate over the declarations at the package level a single time
 // to extract all the data necessary for generation. Any new data that needs
 // to be added to the struct definitions can be extracted here.
-func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, error) {
+func (c *Client) extractResourceTypes(pkg *types.Package, mode extractionMode) error {
 	if pkg == nil {
-		return nil, errors.New("package is nil")
+		return errors.New("package is nil")
 	}
 
 	scope := pkg.Scope() // The package scope holds all the objects declared at package level (TypeNames, Consts, Vars, and Funcs)
 	if scope == nil || len(scope.Names()) == 0 {
-		return nil, errors.Newf("package `%s` has invalid scope", pkg.Name())
+		return errors.Newf("package `%s` has invalid scope", pkg.Name())
 	}
 
 	resources := make([]*ResourceInfo, scope.Len())
 	for i, name := range scope.Names() {
 		object := scope.Lookup(name)
 		if object == nil {
-			return nil, errors.Newf("package `%s` in an invalid state: `%s` from scope.Names() not found in scope.Lookup()", pkg.Name(), name)
+			return errors.Newf("package `%s` in an invalid state: `%s` from scope.Names() not found in scope.Lookup()", pkg.Name(), name)
 		}
 
 		structType := decodeToStructType(object.Type())
@@ -60,7 +68,7 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 		resourceName := object.Name()
 		spannerTable, ok := c.tableLookup[c.pluralize(resourceName)]
 		if !ok {
-			return nil, errors.Newf("struct `%s` at %s:%d is not in tableMeta", object.Name(), pkg.Name(), object.Pos())
+			return errors.Newf("struct `%s` at %s:%d is not in tableMeta", object.Name(), pkg.Name(), object.Pos())
 		}
 
 		resource := &ResourceInfo{
@@ -74,7 +82,7 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 		for j := range structType.NumFields() {
 			field := structType.Field(j)
 			if field == nil || !field.IsField() || field.Embedded() {
-				return nil, errors.Newf("invalid field[%d] in struct `%s` at %s:%v", j, object.Name(), pkg.Name(), object.Pos())
+				return errors.Newf("invalid field[%d] in struct `%s` at %s:%v", j, object.Name(), pkg.Name(), object.Pos())
 			}
 
 			structTag := reflect.StructTag(structType.Tag(j))
@@ -92,18 +100,18 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 
 			goType, err := decodeToGoType(field.Type())
 			if err != nil {
-				return nil, errors.Wrapf(err, "could not decode go type for field `%s` in struct `%s` at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
+				return errors.Wrapf(err, "could not decode go type for field `%s` in struct `%s` at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
 			}
 
 			// BEGIN spanner related stuff
 			spannerColumnName := structTag.Get("spanner")
 			if spannerColumnName == "" {
-				return nil, errors.Newf("field `%s` in struct `%s` at %s:%d must include `spanner:\"<column name>\" struct tag", field.Name(), object.Name(), pkg.Name(), field.Pos())
+				return errors.Newf("field `%s` in struct `%s` at %s:%d must include `spanner:\"<column name>\" struct tag", field.Name(), object.Name(), pkg.Name(), field.Pos())
 			}
 
 			spannerColumn, ok := spannerTable.Columns[spannerColumnName]
 			if !ok {
-				return nil, errors.Newf("field `%s` in struct `%s` at %s:%d is not in tableMeta", field.Name(), object.Name(), pkg.Name(), field.Pos())
+				return errors.Newf("field `%s` in struct `%s` at %s:%d is not in tableMeta", field.Name(), object.Name(), pkg.Name(), field.Pos())
 			}
 
 			var (
@@ -111,10 +119,10 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 				isRequiredForCreate bool
 				isEnumerated        bool
 			)
-			if c.genTypescriptPerm || c.genTypescriptMeta {
+			if mode == extractTypescript {
 				typescriptType, err = decodeToTypescriptType(field.Type(), c.typescriptOverrides)
 				if err != nil {
-					return nil, errors.Wrapf(err, "could not decode typescript type for field `%s` in struct `%s` at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
+					return errors.Wrapf(err, "could not decode typescript type for field `%s` in struct `%s` at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
 				}
 
 				if spannerColumn.IsPrimaryKey && typescriptType != "uuid" {
@@ -124,9 +132,10 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 					isRequiredForCreate = true
 				}
 
-				if spannerColumn.IsForeignKey && c.isResourceInAppRouter(spannerColumn.ReferencedTable) {
-					isEnumerated = true
-				}
+				// FIXME(jrowland): gotta figure out how to make this typescript only
+				// if spannerColumn.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(spannerColumn.ReferencedTable)) {
+				// 	isEnumerated = true
+				// }
 			}
 			// END spanner related stuff
 
@@ -155,13 +164,15 @@ func (c *Client) extractResourceTypes(pkg *types.Package) ([]*ResourceInfo, erro
 		}
 
 		if len(resource.Fields) == 0 {
-			return nil, errors.Newf("struct `%s` has no fields at %s:%v", object.Name(), pkg.Name(), object.Pos())
+			return errors.Newf("struct `%s` has no fields at %s:%v", object.Name(), pkg.Name(), object.Pos())
 		}
 
 		resources[i] = resource
 	}
 
-	return resources, nil
+	c.resources = resources
+
+	return nil
 }
 
 // The [types.Type] interface can be one of 14 concrete types:
