@@ -314,6 +314,24 @@ func (f *FieldInfo) PatchPermTag() string {
 	return ""
 }
 
+func (f *FieldInfo) SearchIndexTags() string {
+	typeIndexMap := make(map[resource.SearchType][]string)
+	for searchIndex, expressionFields := range f.Parent.searchIndexes {
+		for _, exprField := range expressionFields {
+			if f.SpannerName == exprField.fieldName {
+				typeIndexMap[exprField.tokenType] = append(typeIndexMap[exprField.tokenType], searchIndex)
+			}
+		}
+	}
+
+	var tags []string
+	for tokenType, indexes := range typeIndexMap {
+		tags = append(tags, fmt.Sprintf("%s:%q", tokenType, strings.Join(indexes, ",")))
+	}
+
+	return strings.Join(tags, " ")
+}
+
 func (f *FieldInfo) IsView() bool {
 	return f.Parent.IsView
 }

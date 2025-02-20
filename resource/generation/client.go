@@ -472,7 +472,6 @@ func (r *ResourceGenerator) templateFuncs() map[string]any {
 		"Kebab":                        r.caser.ToKebab,
 		"Lower":                        strings.ToLower,
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
-		"FormatTokenTag":               r.formatTokenTags,
 		"ResourceSearchType": func(searchType string) string {
 			switch strings.ToUpper(searchType) {
 			case "SUBSTRING":
@@ -534,30 +533,6 @@ func (c *client) pluralize(value string) string {
 	default:
 		return value + "s"
 	}
-}
-
-func (c *client) formatTokenTags(tableName, fieldName string) string {
-	tokenIndexMap := make(map[string][]string)
-	t, ok := c.tableLookup[tableName]
-	if !ok {
-		panic(fmt.Sprintf("table not found: %s", tableName))
-	}
-
-	for k, v := range t.SearchIndexes {
-		for _, f := range v {
-			if f.fieldName == fieldName {
-				token := string(f.tokenType)
-				tokenIndexMap[token] = append(tokenIndexMap[token], k)
-			}
-		}
-	}
-
-	var tags []string
-	for tt, indexes := range tokenIndexMap {
-		tags = append(tags, fmt.Sprintf(`%s:%q`, tt, strings.Join(indexes, ",")))
-	}
-
-	return strings.Join(tags, " ")
 }
 
 func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) error {
