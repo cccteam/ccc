@@ -2,6 +2,7 @@ package generation
 
 import (
 	"fmt"
+	"go/types"
 	"regexp"
 	"slices"
 	"strings"
@@ -143,6 +144,10 @@ type ResourceInfo struct {
 	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.
 	HasCompoundPrimaryKey bool                          // Determines how CreatePatchSet is rendered in resource generation.
 	IsConsolidated        bool
+
+	// debugging info
+	_packageName string
+	_position    int
 }
 
 func (r *ResourceInfo) SearchIndexes() []*searchIndex {
@@ -178,12 +183,18 @@ type FieldInfo struct {
 	IsForeignKey       bool
 	IsIndex            bool
 	IsUniqueIndex      bool
-	IsNullable bool
+	IsNullable         bool
 	OrdinalPosition    int64 // Position of column in the table definition
 	KeyOrdinalPosition int64 // Position of primary or foreign key in a compound key definition
 	IsEnumerated       bool
 	ReferencedResource string
 	ReferencedField    string
+
+	// parsing info
+	parsedType types.Type
+
+	// debugging info
+	_position int
 }
 
 func (f *FieldInfo) TypescriptDataType() string {

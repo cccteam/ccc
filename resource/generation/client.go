@@ -53,7 +53,7 @@ func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSource
 		}
 	}
 
-	if err := r.extract(extractResources); err != nil {
+	if err := r.extract(); err != nil {
 		return nil, err
 	}
 
@@ -136,7 +136,11 @@ func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSour
 		}
 	}
 
-	if err := t.extract(extractTypescript); err != nil {
+	if err := t.extract(); err != nil {
+		return nil, err
+	}
+
+	if err := t.addTypescriptTypes(); err != nil {
 		return nil, err
 	}
 
@@ -230,15 +234,23 @@ func new(ctx context.Context, resourceFilePath, migrationSourceURL string) (*Cli
 	return c, nil
 }
 
-func (c *Client) extract(mode extractionMode) error {
+func (c *Client) extract() error {
 	pkg, err := loadPackage(c.resourceFilePath)
 	if err != nil {
 		return err
 	}
 
-	if err := c.extractResourceTypes(pkg.Types, mode); err != nil {
+	extractedResources, err := extractResourceTypes(pkg.Types)
+	if err != nil {
 		return err
 	}
+
+	syncedResources, err := c.syncWithSpannerMetadata(extractedResources)
+	if err != nil {
+		return err
+	}
+
+	c.resources = syncedResources
 
 	return nil
 }
