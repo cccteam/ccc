@@ -2,6 +2,7 @@ package generation
 
 import (
 	"go/types"
+	"log"
 	"reflect"
 	"slices"
 	"strings"
@@ -14,9 +15,10 @@ import (
 // loading or typechecking, otherwise returns the package's data.
 // Useful for static type analysis with the [types] package instead of
 // manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
-func loadPackage(directoryPath string) (*packages.Package, error) {
+func loadPackage(packagePattern string) (*packages.Package, error) {
+	log.Printf("Loading file(s) at %q...\n", packagePattern)
 	cfg := &packages.Config{Mode: packages.NeedTypes | packages.NeedFiles}
-	pkgs, err := packages.Load(cfg, directoryPath)
+	pkgs, err := packages.Load(cfg, packagePattern)
 	if err != nil {
 		return nil, errors.Wrap(err, "packages.Load()")
 	}
@@ -44,6 +46,7 @@ const (
 // to extract all the data necessary for generation. Any new data that needs
 // to be added to the struct definitions can be extracted here.
 func (c *Client) extractResourceTypes(pkg *types.Package, mode extractionMode) error {
+	log.Println("Starting resource extraction...")
 	if pkg == nil {
 		return errors.New("package is nil")
 	}

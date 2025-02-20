@@ -61,6 +61,7 @@ func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSource
 }
 
 func (r *ResourceGenerator) Generate() error {
+	log.Println("Starting ResourceGenerator Generation")
 	if err := r.runResourcesGeneration(); err != nil {
 		return errors.Wrap(err, "c.genResources()")
 	}
@@ -88,11 +89,73 @@ type TypescriptGenerator struct {
 	*Client
 }
 
-func NewTypescriptGenerator(ctx context.Context, options ...TypescriptOption) *TypescriptGenerator {
-	return &TypescriptGenerator{}
+type TSGenMode int
+
+const (
+	// Adds permission.ts to generator output
+	TSPerm TSGenMode = 1 << iota
+
+	// Adds resource.ts to generator output
+	TSMeta
+)
+
+func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSourceURL, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TypescriptOption) (*TypescriptGenerator, error) {
+	if rc == nil {
+		return nil, errors.New("resource collection cannot be nil")
+	}
+
+	t := &TypescriptGenerator{
+		rc:                    rc,
+		routerResources:       rc.Resources(),
+		typescriptDestination: targetDir,
+	}
+
+	switch {
+	case mode&(TSPerm|TSMeta) > 0:
+		t.genTypescriptPerm = true
+		t.genTypescriptMeta = true
+	case mode&TSPerm > 0:
+		t.genTypescriptPerm = true
+	case mode&TSMeta > 0:
+		t.genTypescriptMeta = true
+	default:
+		errors.Newf("invalid typescript generation mode: %d", mode)
+	}
+
+	if c, err := new(ctx, resourceFilePath, migrationSourceURL); err != nil {
+		return nil, err
+	} else {
+		t.Client = c
+	}
+
+	for _, optionFunc := range options {
+		if optionFunc != nil {
+			if err := optionFunc(t); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if err := t.extract(extractTypescript); err != nil {
+		return nil, err
+	}
+
+	return t, nil
 }
 
 func (t *TypescriptGenerator) Generate() error {
+	log.Println("Starting TypescriptGenerator Generation")
+	if t.genTypescriptMeta {
+		if err := t.runTypescriptMetadataGeneration(); err != nil {
+			return err
+		}
+	}
+	if t.genTypescriptPerm {
+		if err := t.runTypescriptPermissionGeneration(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -125,6 +188,7 @@ func new(ctx context.Context, resourceFilePath, migrationSourceURL string) (*Cli
 		return nil, errors.Wrap(err, "os.Chdir()")
 	}
 
+	log.Println("Starting Spanner Container...")
 	spannerContainer, err := initiator.NewSpannerContainer(ctx, "latest")
 	if err != nil {
 		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
@@ -145,6 +209,7 @@ func new(ctx context.Context, resourceFilePath, migrationSourceURL string) (*Cli
 		}
 	}
 
+	log.Println("Starting Spanner Migration...")
 	if err := db.MigrateUp(migrationSourceURL); err != nil {
 		return nil, errors.Wrap(err, "db.MigrateUp()")
 	}
