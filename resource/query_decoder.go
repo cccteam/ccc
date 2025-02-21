@@ -159,7 +159,7 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 			}
 			key = FilterKey(string(cache.tag)) // database column name
 		default:
-			return nil, queryParams, httpio.NewBadRequestMessagef("unImplemented search type: %s", searchKeys.keys[searchKey])
+			return nil, queryParams, httpio.NewBadRequestMessagef("search type not implemented: %s", searchKeys.keys[searchKey])
 		}
 
 		typ = searchKeys.keys[searchKey]
