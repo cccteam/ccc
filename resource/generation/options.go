@@ -1,6 +1,8 @@
 package generation
 
 import (
+	"maps"
+
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
@@ -45,7 +47,9 @@ func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption
 
 func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	return func(t *TypescriptGenerator) error {
-		t.typescriptOverrides = overrides
+		tempMap := maps.Clone(_defaultTypescriptOverrides)
+		maps.Copy(tempMap, overrides)
+		t.typescriptOverrides = tempMap
 
 		return nil
 	}
@@ -55,10 +59,14 @@ func WithPluralOverrides[G ResourceGenerator | TypescriptGenerator](overrides ma
 	return func(g *G) error {
 		switch g := any(g).(type) {
 		case *ResourceGenerator:
-			g.pluralOverrides = overrides
+			tempMap := maps.Clone(_defaultPluralOverrides)
+			maps.Copy(tempMap, overrides)
+			g.pluralOverrides = tempMap
 
 		case *TypescriptGenerator:
-			g.pluralOverrides = overrides
+			tempMap := maps.Clone(_defaultPluralOverrides)
+			maps.Copy(tempMap, overrides)
+			g.pluralOverrides = tempMap
 		}
 
 		return nil
@@ -97,4 +105,12 @@ func WithConsolidatedHandlers[G ResourceGenerator | TypescriptGenerator](route s
 
 		return nil
 	}
+}
+
+func addToMap[K comparable, V any](destination, src map[K]V) map[K]V {
+	for k, v := range src {
+		destination[k] = v
+	}
+
+	return destination
 }

@@ -3,11 +3,15 @@ package generation
 import (
 	"fmt"
 	"go/types"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/resource"
+	"github.com/shopspring/decimal"
 
 	"github.com/ettle/strcase"
 )
@@ -359,4 +363,20 @@ const (
 
 	// Adds resource.ts to generator output
 	TSMeta
+)
+
+var (
+	_defaultPluralOverrides = map[string]string{
+		"LenderBranch": "LenderBranches",
+	}
+
+	_defaultTypescriptOverrides = map[string]string{
+		reflect.TypeOf(ccc.UUID{}).String():            "uuid",
+		reflect.TypeOf(ccc.NullUUID{}).String():        "uuid",
+		reflect.TypeOf(resource.Link{}).String():       "Link",
+		reflect.TypeOf(resource.NullLink{}).String():   "Link",
+		reflect.TypeOf(decimal.Decimal{}).String():     "number",
+		reflect.TypeOf(decimal.NullDecimal{}).String(): "number",
+		reflect.TypeOf(time.Time{}).String():           "Date",
+	}
 )

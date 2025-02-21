@@ -53,6 +53,10 @@ func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSource
 		}
 	}
 
+	if r.pluralOverrides == nil {
+		r.pluralOverrides = _defaultPluralOverrides
+	}
+
 	if err := r.extract(); err != nil {
 		return nil, err
 	}
@@ -123,6 +127,14 @@ func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSour
 				return nil, err
 			}
 		}
+	}
+
+	if t.pluralOverrides == nil {
+		t.pluralOverrides = _defaultPluralOverrides
+	}
+
+	if t.typescriptOverrides == nil {
+		t.typescriptOverrides = _defaultTypescriptOverrides
 	}
 
 	if err := t.extract(); err != nil {
