@@ -107,10 +107,15 @@ func WithConsolidatedHandlers[G ResourceGenerator | TypescriptGenerator](route s
 	}
 }
 
-func addToMap[K comparable, V any](destination, src map[K]V) map[K]V {
-	for k, v := range src {
-		destination[k] = v
-	}
+func WithRPC[G ResourceGenerator | TypescriptGenerator](rpcPackageDir string) func(*G) error {
+	return func(g *G) error {
+		switch g := any(g).(type) {
+		case *ResourceGenerator:
+			g.rpcPackageDir = rpcPackageDir
+		case *TypescriptGenerator:
+			g.rpcPackageDir = rpcPackageDir
+		}
 
-	return destination
+		return nil
+	}
 }

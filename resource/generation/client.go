@@ -176,6 +176,7 @@ type client struct {
 	consolidatedResourceNames []string
 	consolidateAll            bool
 	consolidatedRoute         string
+	rpcPackageDir             string
 	cleanup                   func()
 
 	muAlign sync.Mutex
