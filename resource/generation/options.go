@@ -80,11 +80,12 @@ func CaserInitialismOverrides[G ResourceGenerator | TypescriptGenerator](overrid
 
 func WithConsolidatedHandlers[G ResourceGenerator | TypescriptGenerator](route string, consolidateAll bool, resources ...string) func(*G) error {
 	return func(g *G) error {
+		if !consolidateAll && len(resources) == 0 {
+			return errors.New("at least one resource is required if not consolidating all handlers")
+		}
+
 		switch g := any(g).(type) {
 		case *ResourceGenerator:
-			if !consolidateAll && len(resources) == 0 {
-				return errors.New("at least one resource is required if not consolidating all handlers")
-			}
 			g.consolidatedResourceNames = resources
 			g.consolidatedRoute = route
 			g.consolidateAll = consolidateAll
