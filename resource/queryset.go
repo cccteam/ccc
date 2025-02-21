@@ -188,13 +188,13 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 			FROM %s 
 			WHERE %s`,
 		columns, q.Resource(), filter.Sql))
+	maps.Insert(stmt.Params, maps.All(filter.Params))
 
 	if orderBy != nil {
 		stmt.SQL = fmt.Sprintf("%s\nORDER BY %s", stmt.SQL, orderBy.Sql)
 
 		maps.Insert(stmt.Params, maps.All(orderBy.Params))
 	}
-	maps.Insert(stmt.Params, maps.All(filter.Params))
 
 	return stmt, nil
 }
