@@ -53,9 +53,7 @@ func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSource
 		}
 	}
 
-	if r.pluralOverrides == nil {
-		r.pluralOverrides = _defaultPluralOverrides
-	}
+	r.resolveDefaultOptions()
 
 	if err := r.extract(); err != nil {
 		return nil, err
@@ -82,6 +80,12 @@ func (r *ResourceGenerator) Generate() error {
 	}
 
 	return nil
+}
+
+func (r *ResourceGenerator) resolveDefaultOptions() {
+	if r.pluralOverrides == nil {
+		r.pluralOverrides = defaultPluralOverrides()
+	}
 }
 
 type TypescriptGenerator struct {
@@ -129,13 +133,7 @@ func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSour
 		}
 	}
 
-	if t.pluralOverrides == nil {
-		t.pluralOverrides = _defaultPluralOverrides
-	}
-
-	if t.typescriptOverrides == nil {
-		t.typescriptOverrides = _defaultTypescriptOverrides
-	}
+	t.resolveDefaultOptions()
 
 	if err := t.extract(); err != nil {
 		return nil, err
@@ -162,6 +160,16 @@ func (t *TypescriptGenerator) Generate() error {
 	}
 
 	return nil
+}
+
+func (t *TypescriptGenerator) resolveDefaultOptions() {
+	if t.pluralOverrides == nil {
+		t.pluralOverrides = defaultPluralOverrides()
+	}
+
+	if t.typescriptOverrides == nil {
+		t.typescriptOverrides = defaultTypescriptOverrides()
+	}
 }
 
 type client struct {

@@ -2,9 +2,14 @@ package generation
 
 import (
 	"maps"
+	"reflect"
+	"time"
 
+	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
+	"github.com/shopspring/decimal"
 )
 
 type (
@@ -47,7 +52,7 @@ func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption
 
 func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	return func(t *TypescriptGenerator) error {
-		tempMap := maps.Clone(_defaultTypescriptOverrides)
+		tempMap := defaultTypescriptOverrides()
 		maps.Copy(tempMap, overrides)
 		t.typescriptOverrides = tempMap
 
@@ -57,15 +62,14 @@ func WithTypescriptOverrides(overrides map[string]string) TSOption {
 
 func WithPluralOverrides[G ResourceGenerator | TypescriptGenerator](overrides map[string]string) func(*G) error {
 	return func(g *G) error {
+		tempMap := defaultPluralOverrides()
+		maps.Copy(tempMap, overrides)
+
 		switch g := any(g).(type) {
 		case *ResourceGenerator:
-			tempMap := maps.Clone(_defaultPluralOverrides)
-			maps.Copy(tempMap, overrides)
 			g.pluralOverrides = tempMap
 
 		case *TypescriptGenerator:
-			tempMap := maps.Clone(_defaultPluralOverrides)
-			maps.Copy(tempMap, overrides)
 			g.pluralOverrides = tempMap
 		}
 
@@ -117,5 +121,23 @@ func WithRPC[G ResourceGenerator | TypescriptGenerator](rpcPackageDir string) fu
 		}
 
 		return nil
+	}
+}
+
+func defaultPluralOverrides() map[string]string {
+	return map[string]string{
+		"LenderBranch": "LenderBranches",
+	}
+}
+
+func defaultTypescriptOverrides() map[string]string {
+	return map[string]string{
+		reflect.TypeOf(ccc.UUID{}).String():            "uuid",
+		reflect.TypeOf(ccc.NullUUID{}).String():        "uuid",
+		reflect.TypeOf(resource.Link{}).String():       "Link",
+		reflect.TypeOf(resource.NullLink{}).String():   "Link",
+		reflect.TypeOf(decimal.Decimal{}).String():     "number",
+		reflect.TypeOf(decimal.NullDecimal{}).String(): "number",
+		reflect.TypeOf(time.Time{}).String():           "Date",
 	}
 }
