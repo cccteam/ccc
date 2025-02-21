@@ -90,16 +90,6 @@ type TypescriptGenerator struct {
 	routerResources       []accesstypes.Resource
 }
 
-type TSGenMode int
-
-const (
-	// Adds permission.ts to generator output
-	TSPerm TSGenMode = 1 << iota
-
-	// Adds resource.ts to generator output
-	TSMeta
-)
-
 func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSourceURL, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TSOption) (*TypescriptGenerator, error) {
 	if rc == nil {
 		return nil, errors.New("resource collection cannot be nil")
@@ -111,16 +101,14 @@ func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSour
 		typescriptDestination: targetDir,
 	}
 
-	switch {
-	case mode&(TSPerm|TSMeta) > 0:
+	switch mode {
+	case TSPerm | TSMeta:
 		t.genTypescriptPerm = true
 		t.genTypescriptMeta = true
-	case mode&TSPerm > 0:
+	case TSPerm:
 		t.genTypescriptPerm = true
-	case mode&TSMeta > 0:
+	case TSMeta:
 		t.genTypescriptMeta = true
-	default:
-		return nil, errors.Newf("invalid typescript generation mode: %d", mode)
 	}
 
 	c, err := newClient(ctx, resourceFilePath, migrationSourceURL)

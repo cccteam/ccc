@@ -344,3 +344,19 @@ type expressionField struct {
 func generatedFileName(name string) string {
 	return fmt.Sprintf("%s_%s.go", genPrefix, name)
 }
+
+type TSGenMode interface {
+	mode()
+}
+
+type tsGenMode int
+
+func (t tsGenMode) mode() {}
+
+const (
+	// Adds permission.ts to generator output
+	TSPerm tsGenMode = 1 << iota
+
+	// Adds resource.ts to generator output
+	TSMeta
+)
