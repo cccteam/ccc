@@ -33,7 +33,7 @@ func (r *ResourceGenerator) runHandlerGeneration() error {
 			wg.Done()
 		}(resource)
 
-		if !resource.IsView && slices.Contains(r.consolidatedResourceNames, resource.Name) != r.consolidateAll {
+		if resource.IsConsolidated {
 			consolidatedResources = append(consolidatedResources, resource)
 		}
 	}
