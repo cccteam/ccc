@@ -1,28 +1,31 @@
 package generation
 
 import (
-	"errors"
+	"maps"
 
-	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
+	"github.com/go-playground/errors/v5"
 )
 
-type ClientOption func(*Client) error
+type (
+	ResourceOption func(*ResourceGenerator) error
+	TSOption       func(*TypescriptGenerator) error
+)
 
-func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) ClientOption {
-	return func(c *Client) error {
-		c.genHandlers = true
-		c.handlerDestination = targetDir
+func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) ResourceOption {
+	return func(r *ResourceGenerator) error {
+		r.genHandlers = true
+		r.handlerDestination = targetDir
 
 		if overrides != nil {
-			c.handlerOptions = make(map[string]map[HandlerType][]OptionType)
+			r.handlerOptions = make(map[string]map[HandlerType][]OptionType)
 
 			for structName, handlerTypes := range overrides {
 				for _, handlerType := range handlerTypes {
-					if _, ok := c.handlerOptions[structName]; !ok {
-						c.handlerOptions[structName] = make(map[HandlerType][]OptionType)
+					if _, ok := r.handlerOptions[structName]; !ok {
+						r.handlerOptions[structName] = make(map[HandlerType][]OptionType)
 					}
-					c.handlerOptions[structName][handlerType] = append(c.handlerOptions[structName][handlerType], NoGenerate)
+					r.handlerOptions[structName][handlerType] = append(r.handlerOptions[structName][handlerType], NoGenerate)
 				}
 			}
 		}
@@ -31,87 +34,83 @@ func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) Clie
 	}
 }
 
-func GenerateTypescriptPermission(rc *resource.Collection, targetDir string) ClientOption {
-	return func(c *Client) error {
-		if rc == nil {
-			return errors.New("resource collection cannot be nil")
+func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption {
+	return func(r *ResourceGenerator) error {
+		r.genRoutes = true
+		r.routerDestination = targetDir
+		r.routerPackage = targetPackage
+		r.routePrefix = routePrefix
+
+		return nil
+	}
+}
+
+func WithTypescriptOverrides(overrides map[string]string) TSOption {
+	return func(t *TypescriptGenerator) error {
+		tempMap := maps.Clone(_defaultTypescriptOverrides)
+		maps.Copy(tempMap, overrides)
+		t.typescriptOverrides = tempMap
+
+		return nil
+	}
+}
+
+func WithPluralOverrides[G ResourceGenerator | TypescriptGenerator](overrides map[string]string) func(*G) error {
+	return func(g *G) error {
+		switch g := any(g).(type) {
+		case *ResourceGenerator:
+			tempMap := maps.Clone(_defaultPluralOverrides)
+			maps.Copy(tempMap, overrides)
+			g.pluralOverrides = tempMap
+
+		case *TypescriptGenerator:
+			tempMap := maps.Clone(_defaultPluralOverrides)
+			maps.Copy(tempMap, overrides)
+			g.pluralOverrides = tempMap
 		}
 
-		c.genTypescriptPerm = true
-		c.rc = rc
-		c.routerResources = rc.Resources()
-		c.typescriptDestination = targetDir
-
 		return nil
 	}
 }
 
-func GenerateTypescriptMetadata(rc *resource.Collection, targetDir string) ClientOption {
-	return func(c *Client) error {
-		if rc == nil {
-			return errors.New("resource collection cannot be nil")
+func CaserInitialismOverrides[G ResourceGenerator | TypescriptGenerator](overrides map[string]bool) func(*G) error {
+	return func(g *G) error {
+		switch g := any(g).(type) {
+		case *ResourceGenerator:
+			g.caser = strcase.NewCaser(false, overrides, nil)
+		case *TypescriptGenerator:
+			g.caser = strcase.NewCaser(false, overrides, nil)
 		}
 
-		c.genTypescriptMeta = true
-		c.rc = rc
-		c.routerResources = rc.Resources()
-		c.typescriptDestination = targetDir
+		return nil
+	}
+}
+
+func WithConsolidatedHandlers[G ResourceGenerator | TypescriptGenerator](route string, consolidateAll bool, resources ...string) func(*G) error {
+	return func(g *G) error {
+		if !consolidateAll && len(resources) == 0 {
+			return errors.New("at least one resource is required if not consolidating all handlers")
+		}
+
+		switch g := any(g).(type) {
+		case *ResourceGenerator:
+			g.consolidatedResourceNames = resources
+			g.consolidatedRoute = route
+			g.consolidateAll = consolidateAll
+		case *TypescriptGenerator:
+			g.consolidatedResourceNames = resources
+			g.consolidatedRoute = route
+			g.consolidateAll = consolidateAll
+		}
 
 		return nil
 	}
 }
 
-func GenerateRoutes(targetDir, targetPackage, routePrefix string) ClientOption {
-	return func(c *Client) error {
-		c.genRoutes = true
-		c.routerDestination = targetDir
-		c.routerPackage = targetPackage
-		c.routePrefix = routePrefix
-
-		return nil
+func addToMap[K comparable, V any](destination, src map[K]V) map[K]V {
+	for k, v := range src {
+		destination[k] = v
 	}
-}
 
-func WithPluralOverrides(overrides map[string]string) ClientOption {
-	return func(c *Client) error {
-		c.pluralOverrides = overrides
-
-		return nil
-	}
-}
-
-func CaserInitialismOverrides(overrides map[string]bool) ClientOption {
-	return func(c *Client) error {
-		c.caser = strcase.NewCaser(false, overrides, nil)
-
-		return nil
-	}
-}
-
-func WithTypescriptOverrides(overrides map[string]string) ClientOption {
-	return func(c *Client) error {
-		c.typescriptOverrides = overrides
-
-		return nil
-	}
-}
-
-func WithConsolidatedHandlers(route string, resources ...string) ClientOption {
-	return func(c *Client) error {
-		c.consolidatedResourceNames = resources
-		c.consolidatedRoute = route
-		c.consolidateAll = false
-
-		return nil
-	}
-}
-
-func WithoutConsolidatedHandlers(route string, resources ...string) ClientOption {
-	return func(c *Client) error {
-		c.consolidatedResourceNames = resources
-		c.consolidatedRoute = route
-		c.consolidateAll = true
-
-		return nil
-	}
+	return destination
 }

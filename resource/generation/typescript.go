@@ -10,16 +10,16 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *Client) runTypescriptPermissionGeneration() error {
-	templateData := c.rc.TypescriptData()
+func (t *TypescriptGenerator) runTypescriptPermissionGeneration() error {
+	templateData := t.rc.TypescriptData()
 
-	if !c.genTypescriptMeta {
-		if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
+	if !t.genTypescriptMeta {
+		if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 			return errors.Wrap(err, "removeGeneratedFiles()")
 		}
 	}
 
-	output, err := c.generateTemplateOutput(typescriptPermissionTemplate, map[string]any{
+	output, err := t.generateTemplateOutput(typescriptPermissionTemplate, map[string]any{
 		"Permissions":         templateData.Permissions,
 		"Resources":           templateData.Resources,
 		"ResourceTags":        templateData.ResourceTags,
@@ -30,14 +30,14 @@ func (c *Client) runTypescriptPermissionGeneration() error {
 		return errors.Wrap(err, "c.generateTemplateOutput()")
 	}
 
-	destinationFilePath := filepath.Join(c.typescriptDestination, "resourcePermissions.ts")
+	destinationFilePath := filepath.Join(t.typescriptDestination, "resourcePermissions.ts")
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
 	}
 	defer file.Close()
 
-	if err := c.writeBytesToFile(destinationFilePath, file, output, false); err != nil {
+	if err := t.writeBytesToFile(destinationFilePath, file, output, false); err != nil {
 		return errors.Wrap(err, "c.writeBytesToFile()")
 	}
 
@@ -46,35 +46,49 @@ func (c *Client) runTypescriptPermissionGeneration() error {
 	return nil
 }
 
-func (c *Client) runTypescriptMetadataGeneration() error {
-	if err := removeGeneratedFiles(c.typescriptDestination, HeaderComment); err != nil {
+func (t *TypescriptGenerator) runTypescriptMetadataGeneration() error {
+	if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
-	if err := c.generateTypescriptMetadata(); err != nil {
+	if err := t.generateTypescriptMetadata(); err != nil {
 		return errors.Wrap(err, "generateTypescriptResources")
 	}
 
 	return nil
 }
 
-func (c *Client) generateTypescriptMetadata() error {
-	output, err := c.generateTemplateOutput(typescriptMetadataTemplate, map[string]any{
-		"Resources":         c.resources,
-		"ConsolidatedRoute": c.consolidatedRoute,
+func (t *TypescriptGenerator) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
+	tmpl, err := template.New(fileTemplate).Funcs(t.templateFuncs()).Parse(fileTemplate)
+	if err != nil {
+		return nil, errors.Wrap(err, "template.Parse()")
+	}
+
+	buf := bytes.NewBuffer([]byte{})
+	if err := tmpl.Execute(buf, data); err != nil {
+		return nil, errors.Wrap(err, "tmpl.Execute()")
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (t *TypescriptGenerator) generateTypescriptMetadata() error {
+	output, err := t.generateTemplateOutput(typescriptMetadataTemplate, map[string]any{
+		"Resources":         t.resources,
+		"ConsolidatedRoute": t.consolidatedRoute,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFilePath := filepath.Join(c.typescriptDestination, "resources.ts")
+	destinationFilePath := filepath.Join(t.typescriptDestination, "resources.ts")
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
 	}
 	defer file.Close()
 
-	if err := c.writeBytesToFile(destinationFilePath, file, output, false); err != nil {
+	if err := t.writeBytesToFile(destinationFilePath, file, output, false); err != nil {
 		return errors.Wrap(err, "c.writeBytesToFile()")
 	}
 
@@ -83,8 +97,8 @@ func (c *Client) generateTypescriptMetadata() error {
 	return nil
 }
 
-func (c *Client) generateTypescriptTemplate(fileTemplate string, data map[string]any) ([]byte, error) {
-	tmpl, err := template.New(fileTemplate).Funcs(c.templateFuncs()).Parse(fileTemplate)
+func (t *TypescriptGenerator) generateTypescriptTemplate(fileTemplate string, data map[string]any) ([]byte, error) {
+	tmpl, err := template.New(fileTemplate).Funcs(t.templateFuncs()).Parse(fileTemplate)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.Parse()")
 	}

@@ -12,34 +12,34 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *Client) runResourcesGeneration() error {
-	if err := c.generateResourceInterfaces(); err != nil {
+func (r *ResourceGenerator) runResourcesGeneration() error {
+	if err := r.generateResourceInterfaces(); err != nil {
 		return errors.Wrap(err, "c.generateResourceInterfaces()")
 	}
 
-	for _, resource := range c.resources {
-		if err := c.generateResources(resource); err != nil {
+	for _, resource := range r.resources {
+		if err := r.generateResources(resource); err != nil {
 			return errors.Wrap(err, "c.generateResources()")
 		}
 	}
 
-	if err := c.generateResourceTests(); err != nil {
+	if err := r.generateResourceTests(); err != nil {
 		return errors.Wrap(err, "c.generateResourceTests()")
 	}
 
 	return nil
 }
 
-func (c *Client) generateResourceInterfaces() error {
-	output, err := c.generateTemplateOutput(resourcesInterfaceTemplate, map[string]any{
-		"Source": c.resourceFilePath,
-		"Types":  c.resources,
+func (r *ResourceGenerator) generateResourceInterfaces() error {
+	output, err := r.generateTemplateOutput(resourcesInterfaceTemplate, map[string]any{
+		"Source": r.resourceFilePath,
+		"Types":  r.resources,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(c.resourceDestination, generatedFileName(resourceInterfaceOutputName))
+	destinationFile := filepath.Join(r.resourceDestination, generatedFileName(resourceInterfaceOutputName))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -47,23 +47,23 @@ func (c *Client) generateResourceInterfaces() error {
 	}
 	defer file.Close()
 
-	if err := c.writeBytesToFile(destinationFile, file, output, true); err != nil {
+	if err := r.writeBytesToFile(destinationFile, file, output, true); err != nil {
 		return errors.Wrap(err, "c.writeBytesToFile()")
 	}
 
 	return nil
 }
 
-func (c *Client) generateResourceTests() error {
-	output, err := c.generateTemplateOutput(resourcesTestTemplate, map[string]any{
-		"Source":    c.resourceFilePath,
-		"Resources": c.resources,
+func (r *ResourceGenerator) generateResourceTests() error {
+	output, err := r.generateTemplateOutput(resourcesTestTemplate, map[string]any{
+		"Source":    r.resourceFilePath,
+		"Resources": r.resources,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(c.resourceDestination, resourcesTestFileName)
+	destinationFile := filepath.Join(r.resourceDestination, resourcesTestFileName)
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -71,21 +71,21 @@ func (c *Client) generateResourceTests() error {
 	}
 	defer file.Close()
 
-	if err := c.writeBytesToFile(destinationFile, file, output, true); err != nil {
+	if err := r.writeBytesToFile(destinationFile, file, output, true); err != nil {
 		return errors.Wrap(err, "c.writeBytesToFile()")
 	}
 
 	return nil
 }
 
-func (c *Client) generateResources(res *ResourceInfo) error {
-	fileName := generatedFileName(strings.ToLower(c.caser.ToSnake(c.pluralize(res.Name))))
-	destinationFilePath := filepath.Join(c.resourceDestination, fileName)
+func (r *ResourceGenerator) generateResources(res *resourceInfo) error {
+	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name))))
+	destinationFilePath := filepath.Join(r.resourceDestination, fileName)
 
 	log.Printf("Generating resource file: %v\n", fileName)
 
-	output, err := c.generateTemplateOutput(resourceFileTemplate, map[string]any{
-		"Source":   c.resourceFilePath,
+	output, err := r.generateTemplateOutput(resourceFileTemplate, map[string]any{
+		"Source":   r.resourceFilePath,
 		"Resource": res,
 	})
 	if err != nil {
@@ -98,15 +98,15 @@ func (c *Client) generateResources(res *ResourceInfo) error {
 	}
 	defer file.Close()
 
-	if err := c.writeBytesToFile(destinationFilePath, file, output, true); err != nil {
+	if err := r.writeBytesToFile(destinationFilePath, file, output, true); err != nil {
 		return errors.Wrap(err, "c.writeBytesToFile()")
 	}
 
 	return nil
 }
 
-func (c *Client) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
-	tmpl, err := template.New(fileTemplate).Funcs(c.templateFuncs()).Parse(fileTemplate)
+func (r *ResourceGenerator) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
+	tmpl, err := template.New(fileTemplate).Funcs(r.templateFuncs()).Parse(fileTemplate)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.Parse()")
 	}
@@ -119,7 +119,7 @@ func (c *Client) generateTemplateOutput(fileTemplate string, data map[string]any
 	return buf.Bytes(), nil
 }
 
-func (c *Client) buildTableSearchIndexes(tableName string) []*searchIndex {
+func (c *client) buildTableSearchIndexes(tableName string) []*searchIndex {
 	typeIndexMap := make(map[resource.SearchType]string)
 	if tableMeta, ok := c.tableLookup[tableName]; ok {
 		for tokenListColumn, expressionFields := range tableMeta.SearchIndexes {
