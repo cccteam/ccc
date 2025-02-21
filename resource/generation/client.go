@@ -85,6 +85,7 @@ type TypescriptGenerator struct {
 	genTypescriptPerm     bool
 	genTypescriptMeta     bool
 	typescriptDestination string
+	typescriptOverrides   map[string]string
 	rc                    *resource.Collection
 	routerResources       []accesstypes.Resource
 }
@@ -172,7 +173,6 @@ type client struct {
 	tableLookup               map[string]*TableMetadata
 	handlerOptions            map[string]map[HandlerType][]OptionType
 	pluralOverrides           map[string]string
-	typescriptOverrides       map[string]string
 	consolidatedResourceNames []string
 	consolidateAll            bool
 	consolidatedRoute         string
