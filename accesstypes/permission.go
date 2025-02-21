@@ -16,6 +16,7 @@ const (
 	List           Permission = "List"
 	Update         Permission = "Update"
 	Delete         Permission = "Delete"
+	Execute        Permission = "Execute"
 )
 
 type (
