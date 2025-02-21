@@ -14,7 +14,7 @@ func parseSpannerQuery(query string) *spannerQueryParser {
 }
 
 func (s spannerQueryParser) parseToIndexFilter(column FilterKey) *Statement {
-	terms := strings.Split(s.query, " ")
+	terms := strings.Split(s.query, "|")
 
 	exprs := make([]string, 0, len(terms))
 	params := make(map[string]any, len(terms))
@@ -25,7 +25,7 @@ func (s spannerQueryParser) parseToIndexFilter(column FilterKey) *Statement {
 
 		exprs = append(exprs, fmt.Sprintf("(%s = @%s)", column, param))
 	}
-	sql := strings.Join(exprs, " AND ")
+	sql := strings.Join(exprs, " OR ")
 
 	return &Statement{
 		Sql:    sql,
