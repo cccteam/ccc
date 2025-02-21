@@ -1,7 +1,7 @@
 package sqlbuilder
 
 import (
-	"io"
+	"errors"
 )
 
 var _ Statement = &IdentifierStmt{}
@@ -20,10 +20,10 @@ func (s IdentifierStmt) SqlType() SqlType {
 	return SqlIdentifier
 }
 
-func (s IdentifierStmt) WriteSql(w io.StringWriter) (int, error) {
-	return w.WriteString(s.name)
-}
+func (s IdentifierStmt) Sql() (string, error) {
+	if s.name == "" {
+		return s.name, errors.New("empty identifier")
+	}
 
-func (s IdentifierStmt) Error() error {
-	return nil
+	return s.name, nil
 }

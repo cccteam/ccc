@@ -1,14 +1,12 @@
 package sqlbuilder
 
 import (
-	"io"
 	"slices"
 )
 
 type Statement interface {
 	SqlType() SqlType
-	WriteSql(io.StringWriter) (int, error)
-	Error() error
+	Sql() (sql string, err error)
 }
 
 type SqlType string

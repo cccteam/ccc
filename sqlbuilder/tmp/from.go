@@ -1,8 +1,6 @@
 package sqlbuilder
 
 import (
-	"io"
-
 	"github.com/go-playground/errors/v5"
 )
 
@@ -49,7 +47,7 @@ func (s FromStmt) SqlType() SqlType {
 	return SqlColumns
 }
 
-func (s FromStmt) WriteSql(w io.StringWriter) (n int, err error) {
+func (s FromStmt) Sql() (string, error) {
 	return 0, nil
 }
 
