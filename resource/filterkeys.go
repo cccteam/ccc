@@ -27,9 +27,26 @@ func NewFilterKeys[Req any](res Resourcer) *FilterKeys {
 				continue
 			}
 
-			for _, key := range splitFilterKeys(keyList) {
-				keys[key] = filterType
+			switch filterType {
+			case Index:
+				if keyList != "true" {
+					continue
+				}
+
+				raw := structField.Tag.Get("json")
+				jsonTag, _, _ := strings.Cut(raw, ",")
+				if jsonTag == "" {
+					panic("don't ask blaine  ¯\\_(ツ)_/¯")
+				}
+
+				keys[FilterKey(jsonTag)] = filterType
+
+			case Ngram, SubString, FullText:
+				for _, key := range splitFilterKeys(keyList) {
+					keys[key] = filterType
+				}
 			}
+
 		}
 	}
 
