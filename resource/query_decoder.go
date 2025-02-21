@@ -36,9 +36,14 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
+	filterKeys, err := NewFilterKeys[Request](res)
+	if err != nil {
+		return nil, err
+	}
+
 	return &QueryDecoder[Resource, Request]{
 		fieldMapper:       mapper,
-		filterKeys:        NewFilterKeys[Request](res),
+		filterKeys:        filterKeys,
 		resourceSet:       resSet,
 		permissionChecker: permChecker,
 		domainFromCtx:     domainFromCtx,
@@ -47,40 +52,27 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 }
 
 func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QuerySet[Resource], error) {
-	fields, err := d.fields(request.Context(), request.URL.Query())
+	columns, filterSet, err := d.parseQuery(request.URL.Query())
+	if err != nil {
+		return nil, err
+	}
+
+	fields, err := d.fields(request.Context(), columns)
 	if err != nil {
 		return nil, err
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
+	qSet.SetFilterParam(filterSet)
 	for _, field := range fields {
 		qSet.AddField(field)
-	}
-
-	set, err := parseFilterParam(d.filterKeys, request.URL.Query())
-	if err != nil {
-		return nil, err
-	}
-	if set != nil {
-		qSet.SetFilterParam(set)
 	}
 
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParams url.Values) ([]accesstypes.Field, error) {
+func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, columnFields []accesstypes.Field) ([]accesstypes.Field, error) {
 	domain, user := d.domainFromCtx(ctx), d.userFromCtx(ctx)
-
-	var columnFields []accesstypes.Field
-	if cols := queryParams.Get("columns"); cols != "" {
-		for _, column := range strings.Split(cols, ",") {
-			if field, found := d.fieldMapper.StructFieldName(column); found {
-				columnFields = append(columnFields, field)
-			} else {
-				return nil, httpio.NewBadRequestMessagef("unknown column: %s", column)
-			}
-		}
-	}
 
 	if ok, _, err := d.permissionChecker.RequireResources(ctx, user, domain, d.resourceSet.Permission(), d.resourceSet.BaseResource()); err != nil {
 		return nil, errors.Wrap(err, "accesstypes.Enforcer.RequireResources()")
@@ -114,35 +106,72 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, queryParam
 	return fields, nil
 }
 
-// TODO(bswaney): Review this for correctness
-func parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (searchSet *FilterSet, err error) {
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, filterSet *FilterSet, err error) {
+	if cols := query.Get("columns"); cols != "" {
+		for _, column := range strings.Split(cols, ",") {
+			if field, found := d.fieldMapper.StructFieldName(column); found {
+				columnFields = append(columnFields, field)
+			} else {
+				return nil, nil, httpio.NewBadRequestMessagef("unknown column: %s", column)
+			}
+		}
+
+		delete(query, "columns")
+	}
+
+	filterSet, query, err = d.parseFilterParam(d.filterKeys, query)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(query) > 0 {
+		return nil, nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
+	}
+
+	return columnFields, filterSet, nil
+}
+
+func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (searchSet *FilterSet, query url.Values, err error) {
 	if searchKeys == nil || len(queryParams) == 0 {
-		return nil, nil
+		return nil, queryParams, nil
 	}
 
 	var key FilterKey
+	var typ FilterType
+	var val string
 	for searchKey := range searchKeys.keys {
 		if len(queryParams[string(searchKey)]) == 0 {
 			continue
 		}
 
-		if key != "" {
-			return nil, errors.New("only one search key is allowed")
-		}
-
 		if len(queryParams[string(searchKey)]) > 1 {
-			return nil, errors.New("only one search parameter is allowed")
+			return nil, queryParams, httpio.NewBadRequestMessagef("only one search parameter is allowed, found: %v", queryParams[string(searchKey)])
 		}
 
-		key = searchKey
+		switch searchKeys.keys[searchKey] {
+		case SubString, Ngram, FullText:
+			key = searchKey // database column name
+		case Index:
+			field, _ := d.fieldMapper.StructFieldName(string(searchKey))
+			cache, found := d.resourceSet.ResourceMetadata().fieldMap[field]
+			if !found {
+				return nil, queryParams, httpio.NewBadRequestMessagef("field %s not found in metadata", field)
+			}
+			key = FilterKey(string(cache.tag)) // database column name
+		default:
+			return nil, queryParams, httpio.NewBadRequestMessagef("unImplemented search type: %s", searchKeys.keys[searchKey])
+		}
+
+		typ = searchKeys.keys[searchKey]
+		val = queryParams.Get(string(searchKey))
+		delete(queryParams, string(searchKey))
+
+		break
 	}
 
 	if key == "" {
-		return nil, nil
+		return nil, queryParams, nil
 	}
 
-	typ := searchKeys.keys[key]
-	val := queryParams.Get(string(key))
-
-	return NewFilterSet(typ, key, val), nil
+	return NewFilterSet(typ, key, val), queryParams, nil
 }
