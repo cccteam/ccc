@@ -3,13 +3,15 @@ package resource
 import (
 	"reflect"
 	"strings"
+
+	"github.com/go-playground/errors/v5"
 )
 
 type FilterKeys struct {
 	keys map[FilterKey]FilterType
 }
 
-func NewFilterKeys[Req any](res Resourcer) *FilterKeys {
+func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
 	var filterTypes []FilterType
 
 	switch res.DefaultConfig().DBType {
@@ -36,7 +38,7 @@ func NewFilterKeys[Req any](res Resourcer) *FilterKeys {
 				raw := structField.Tag.Get("json")
 				jsonTag, _, _ := strings.Cut(raw, ",")
 				if jsonTag == "" {
-					panic("don't ask blaine  ¯\\_(ツ)_/¯")
+					return nil, errors.Newf("struct field %s, does not have a json tag", structField.Name)
 				}
 
 				keys[FilterKey(jsonTag)] = filterType
@@ -50,9 +52,7 @@ func NewFilterKeys[Req any](res Resourcer) *FilterKeys {
 		}
 	}
 
-	return &FilterKeys{
-		keys: keys,
-	}
+	return &FilterKeys{keys: keys}, nil
 }
 
 func splitFilterKeys(keys string) []FilterKey {
