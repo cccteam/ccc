@@ -45,15 +45,9 @@ func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSource
 	}
 	r.client = c
 
-	for _, optionFunc := range options {
-		if optionFunc != nil {
-			if err := optionFunc(r); err != nil {
-				return nil, err
-			}
-		}
+	if err := resolveOptions(r, options); err != nil {
+		return nil, err
 	}
-
-	r.resolveDefaultOptions()
 
 	if err := r.extract(); err != nil {
 		return nil, err
@@ -80,12 +74,6 @@ func (r *ResourceGenerator) Generate() error {
 	}
 
 	return nil
-}
-
-func (r *ResourceGenerator) resolveDefaultOptions() {
-	if r.pluralOverrides == nil {
-		r.pluralOverrides = defaultPluralOverrides()
-	}
 }
 
 type TypescriptGenerator struct {
@@ -125,15 +113,9 @@ func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSour
 	}
 	t.client = c
 
-	for _, optionFunc := range options {
-		if optionFunc != nil {
-			if err := optionFunc(t); err != nil {
-				return nil, err
-			}
-		}
+	if err := resolveOptions(t, options); err != nil {
+		return nil, err
 	}
-
-	t.resolveDefaultOptions()
 
 	if err := t.extract(); err != nil {
 		return nil, err
@@ -160,16 +142,6 @@ func (t *TypescriptGenerator) Generate() error {
 	}
 
 	return nil
-}
-
-func (t *TypescriptGenerator) resolveDefaultOptions() {
-	if t.pluralOverrides == nil {
-		t.pluralOverrides = defaultPluralOverrides()
-	}
-
-	if t.typescriptOverrides == nil {
-		t.typescriptOverrides = defaultTypescriptOverrides()
-	}
 }
 
 type client struct {

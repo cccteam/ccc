@@ -124,6 +124,33 @@ func WithRPC[G ResourceGenerator | TypescriptGenerator](rpcPackageDir string) fu
 	}
 }
 
+func resolveOptions[G *ResourceGenerator | *TypescriptGenerator, O ~func(G) error](generator G, options []O) error {
+	for _, optionFunc := range options {
+		if optionFunc != nil {
+			if err := optionFunc(generator); err != nil {
+				return err
+			}
+		}
+	}
+
+	switch g := any(generator).(type) {
+	case *ResourceGenerator:
+		if g.pluralOverrides == nil {
+			g.pluralOverrides = defaultPluralOverrides()
+		}
+
+	case *TypescriptGenerator:
+		if g.pluralOverrides == nil {
+			g.pluralOverrides = defaultPluralOverrides()
+		}
+		if g.typescriptOverrides == nil {
+			g.typescriptOverrides = defaultTypescriptOverrides()
+		}
+	}
+
+	return nil
+}
+
 func defaultPluralOverrides() map[string]string {
 	return map[string]string{
 		"LenderBranch": "LenderBranches",
