@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.14](https://github.com/cccteam/ccc/compare/resource/v0.0.13...resource/v0.0.14) (2025-02-22)
+
+
+### Features
+
+* generalized the search functionality to allow filtering of any kind ([#197](https://github.com/cccteam/ccc/issues/197)) ([0b59a5e](https://github.com/cccteam/ccc/commit/0b59a5e088ce87783f1964b0c0ec939697f6a725))
+
+
+### Bug Fixes
+
+* Add missing fix ([#217](https://github.com/cccteam/ccc/issues/217)) ([e06f64a](https://github.com/cccteam/ccc/commit/e06f64ac1af402f993a99e23075c469c680392cb))
+
+
+### Code Refactoring
+
+* split resource and typescript generators ([#214](https://github.com/cccteam/ccc/issues/214)) ([85d281b](https://github.com/cccteam/ccc/commit/85d281b3b5632f2b603b78e3a416982ce41d413e))
+
 ## [0.0.13](https://github.com/cccteam/ccc/compare/resource/v0.0.12...resource/v0.0.13) (2025-02-19)
 
 
