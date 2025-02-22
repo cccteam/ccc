@@ -283,7 +283,7 @@ func Test_tagToFieldMap(t *testing.T) {
 			name: "tagToFieldMap with comma in tag",
 			args: args{
 				v: struct {
-					Field1 string `json:"field1,omitempty"`
+					Field1 string `json:"field1,omitzero"`
 					Field2 string `json:"field2"`
 				}{},
 			},
