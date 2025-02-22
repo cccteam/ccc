@@ -319,7 +319,7 @@ func (f *fieldInfo) PatchPermTag() string {
 }
 
 func (f *fieldInfo) SearchIndexTags() string {
-	typeIndexMap := make(map[resource.SearchType][]string)
+	typeIndexMap := make(map[resource.FilterType][]string)
 	for searchIndex, expressionFields := range f.Parent.searchIndexes {
 		for _, exprField := range expressionFields {
 			if f.SpannerName == exprField.fieldName {
