@@ -242,7 +242,7 @@ func (f *fieldInfo) JSONTag() string {
 	camelCaseName := caser.ToCamel(f.Name)
 
 	if !f.IsPrimaryKey {
-		return fmt.Sprintf("json:%q", camelCaseName+",omitempty")
+		return fmt.Sprintf("json:%q", camelCaseName+",omitzero")
 	}
 
 	return fmt.Sprintf("json:%q", camelCaseName)

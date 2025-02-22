@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/resource
 
-go 1.23.6
+go 1.24.0
 
 require (
 	cloud.google.com/go/spanner v1.75.0
@@ -16,6 +16,7 @@ require (
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.6.0
 	github.com/momaek/formattag v0.0.10
+	github.com/shopspring/decimal v1.4.0
 	go.uber.org/mock v0.5.0
 	golang.org/x/tools v0.29.0
 )
@@ -90,7 +91,6 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
-	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/testcontainers/testcontainers-go v0.35.0 // indirect
