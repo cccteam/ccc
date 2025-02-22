@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"net/url"
 	"testing"
 
 	"github.com/cccteam/ccc"
@@ -36,8 +35,8 @@ func TestQueryDecoder_fields(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
-		rSet  *ResourceSet[testResource, testRequest]
-		query url.Values
+		rSet    *ResourceSet[testResource, testRequest]
+		columns []accesstypes.Field
 	}
 	tests := []struct {
 		name    string
@@ -49,8 +48,7 @@ func TestQueryDecoder_fields(t *testing.T) {
 		{
 			name: "empty query",
 			args: args{
-				rSet:  ccc.Must(NewResourceSet[testResource, testRequest](accesstypes.Read)),
-				query: url.Values{},
+				rSet: ccc.Must(NewResourceSet[testResource, testRequest](accesstypes.Read)),
 			},
 			prepare: func(enforcer *mock_accesstypes.MockEnforcer) {
 				enforcer.EXPECT().RequireResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil, nil).AnyTimes()
@@ -60,8 +58,8 @@ func TestQueryDecoder_fields(t *testing.T) {
 		{
 			name: "columns with description",
 			args: args{
-				rSet:  ccc.Must(NewResourceSet[testResource, testRequest](accesstypes.Read)),
-				query: url.Values{"columns": []string{"description"}},
+				rSet:    ccc.Must(NewResourceSet[testResource, testRequest](accesstypes.Read)),
+				columns: []accesstypes.Field{"Description"},
 			},
 			prepare: func(enforcer *mock_accesstypes.MockEnforcer) {
 				enforcer.EXPECT().RequireResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil, nil).AnyTimes()
@@ -71,8 +69,8 @@ func TestQueryDecoder_fields(t *testing.T) {
 		{
 			name: "columns with invlaid column",
 			args: args{
-				rSet:  ccc.Must(NewResourceSet[testResource, testRequest](accesstypes.Read)),
-				query: url.Values{"columns": []string{"nonexistent"}},
+				rSet:    ccc.Must(NewResourceSet[testResource, testRequest](accesstypes.Read)),
+				columns: []accesstypes.Field{"nonexistent"},
 			},
 			prepare: func(enforcer *mock_accesstypes.MockEnforcer) {
 				enforcer.EXPECT().RequireResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil, nil).AnyTimes()
@@ -95,7 +93,7 @@ func TestQueryDecoder_fields(t *testing.T) {
 			ctx, done := context.WithCancel(context.Background())
 			defer done()
 
-			got, err := d.fields(ctx, tt.args.query)
+			got, err := d.fields(ctx, tt.args.columns)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("fields() error = %v, wantErr %v", err, tt.wantErr)
 			}
