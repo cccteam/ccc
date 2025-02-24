@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"go/types"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -11,6 +12,14 @@ import (
 
 	"github.com/ettle/strcase"
 )
+
+type generator interface {
+	*ResourceGenerator | *TypescriptGenerator
+	packages() []string
+	lookupTable(string) (*tableMetadata, error)
+	isConsolidated(*resourceInfo) bool
+	setResources([]*resourceInfo)
+}
 
 var tokenizeRegex = regexp.MustCompile(`(TOKENIZE_[^)]+)\(([^)]+)\)`)
 
@@ -99,7 +108,7 @@ type InformationSchemaResult struct {
 	KeyOrdinalPosition   int64   `spanner:"KEY_ORDINAL_POSITION"`
 }
 
-type TableMetadata struct {
+type tableMetadata struct {
 	Columns       map[string]ColumnMeta
 	SearchIndexes map[string][]*expressionField
 	IsView        bool
@@ -137,17 +146,36 @@ type generatedRoute struct {
 	HandlerFunc string
 }
 
-type resourceInfo struct {
-	Name                  string
-	Fields                []*fieldInfo
-	searchIndexes         map[string][]*expressionField // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
-	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.
-	HasCompoundPrimaryKey bool                          // Determines how CreatePatchSet is rendered in resource generation.
-	IsConsolidated        bool
+type parsedStruct struct {
+	name   string
+	fields []structField
+
+	// debugging info
+	packageName string
+	position    int
+}
+
+type structField struct {
+	// Parent         *parsedStruct
+	Name string
+	Type string
+	tags reflect.StructTag
+
+	// parsing info
+	parsedType types.Type
 
 	// debugging info
 	_packageName string
 	_position    int
+}
+
+type resourceInfo struct {
+	Name                  string
+	Fields                []*resourceField
+	searchIndexes         map[string][]*expressionField // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
+	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.
+	HasCompoundPrimaryKey bool                          // Determines how CreatePatchSet is rendered in resource generation.
+	IsConsolidated        bool
 }
 
 func (r *resourceInfo) SearchIndexes() []*searchIndex {
@@ -172,7 +200,7 @@ func (r *resourceInfo) SearchIndexes() []*searchIndex {
 func (r *resourceInfo) PrimaryKeyIsUUID() bool {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
-			return f.GoType == "ccc.UUID"
+			return f.Type == "ccc.UUID"
 		}
 	}
 
@@ -182,23 +210,18 @@ func (r *resourceInfo) PrimaryKeyIsUUID() bool {
 func (r *resourceInfo) PrimaryKeyType() string {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
-			return f.GoType
+			return f.Type
 		}
 	}
 
 	return ""
 }
 
-type fieldInfo struct {
-	Parent             *resourceInfo
-	Name               string
-	SpannerName        string
-	GoType             string
-	typescriptType     string
-	query              string   //
-	Conditions         []string // Contains auxiliary tags like `immutable`. Determines JSON tag in handler generation.
-	permissions        []string
-	Required           bool
+type resourceField struct {
+	*structField
+	Parent         *resourceInfo
+	typescriptType string
+	// Spanner stuff
 	IsPrimaryKey       bool
 	IsForeignKey       bool
 	IsIndex            bool
@@ -209,15 +232,9 @@ type fieldInfo struct {
 	IsEnumerated       bool
 	ReferencedResource string
 	ReferencedField    string
-
-	// parsing info
-	parsedType types.Type
-
-	// debugging info
-	_position int
 }
 
-func (f *fieldInfo) TypescriptDataType() string {
+func (f *resourceField) TypescriptDataType() string {
 	if f.typescriptType == "uuid" {
 		return "string"
 	}
@@ -225,7 +242,7 @@ func (f *fieldInfo) TypescriptDataType() string {
 	return f.typescriptType
 }
 
-func (f *fieldInfo) TypescriptDisplayType() string {
+func (f *resourceField) TypescriptDisplayType() string {
 	if f.IsEnumerated {
 		return "enumerated"
 	}
@@ -233,7 +250,7 @@ func (f *fieldInfo) TypescriptDisplayType() string {
 	return f.typescriptType
 }
 
-func (f *fieldInfo) JSONTag() string {
+func (f *resourceField) JSONTag() string {
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(f.Name)
 
@@ -244,7 +261,7 @@ func (f *fieldInfo) JSONTag() string {
 	return fmt.Sprintf("json:%q", camelCaseName)
 }
 
-func (f *fieldInfo) JSONTagForPatch() string {
+func (f *resourceField) JSONTagForPatch() string {
 	if f.IsPrimaryKey || f.IsImmutable() {
 		return fmt.Sprintf("json:%q", "-")
 	}
@@ -255,7 +272,7 @@ func (f *fieldInfo) JSONTagForPatch() string {
 	return fmt.Sprintf("json:%q", camelCaseName)
 }
 
-func (f *fieldInfo) IndexTag() string {
+func (f *resourceField) IndexTag() string {
 	if f.IsIndex {
 		return `index:"true"`
 	}
@@ -263,7 +280,7 @@ func (f *fieldInfo) IndexTag() string {
 	return ""
 }
 
-func (f *fieldInfo) UniqueIndexTag() string {
+func (f *resourceField) UniqueIndexTag() string {
 	if f.IsUniqueIndex {
 		return `index:"true"`
 	}
@@ -271,37 +288,66 @@ func (f *fieldInfo) UniqueIndexTag() string {
 	return ""
 }
 
-func (f *fieldInfo) IsImmutable() bool {
-	return slices.Contains(f.Conditions, "immutable")
-}
-
-func (f *fieldInfo) QueryTag() string {
-	if f.query != "" {
-		return fmt.Sprintf("query:%q", f.query)
+func (f *resourceField) IsImmutable() bool {
+	tag, ok := f.tags.Lookup("conditions")
+	if !ok {
+		return false
 	}
 
-	return ""
+	conditions := strings.Split(tag, ",")
+
+	return slices.Contains(conditions, "immutable")
 }
 
-func (f *fieldInfo) ReadPermTag() string {
-	if slices.Contains(f.permissions, "Read") {
+func (f *resourceField) QueryTag() string {
+	query, ok := f.tags.Lookup("query")
+	if !ok {
+		return ""
+	}
+
+	return fmt.Sprintf("query:%q", query)
+}
+
+func (f *resourceField) ReadPermTag() string {
+	tag, ok := f.tags.Lookup("perm")
+	if !ok {
+		return ""
+	}
+
+	permissions := strings.Split(tag, ",")
+
+	if slices.Contains(permissions, "Read") {
 		return fmt.Sprintf("perm:%q", "Read")
 	}
 
 	return ""
 }
 
-func (f *fieldInfo) ListPermTag() string {
-	if slices.Contains(f.permissions, "List") {
+func (f *resourceField) ListPermTag() string {
+	tag, ok := f.tags.Lookup("perm")
+	if !ok {
+		return ""
+	}
+
+	permissions := strings.Split(tag, ",")
+
+	if slices.Contains(permissions, "List") {
 		return fmt.Sprintf("perm:%q", "List")
 	}
 
 	return ""
 }
 
-func (f *fieldInfo) PatchPermTag() string {
+func (f *resourceField) PatchPermTag() string {
+	tag, ok := f.tags.Lookup("perm")
+	if !ok {
+		return ""
+	}
+
+	permissions := strings.Split(tag, ",")
+
 	var patches []string
-	for _, perm := range f.permissions {
+	for _, perm := range permissions {
 		if perm != "Read" && perm != "List" {
 			patches = append(patches, perm)
 		}
@@ -314,11 +360,11 @@ func (f *fieldInfo) PatchPermTag() string {
 	return ""
 }
 
-func (f *fieldInfo) SearchIndexTags() string {
+func (f *resourceField) SearchIndexTags() string {
 	typeIndexMap := make(map[resource.FilterType][]string)
 	for searchIndex, expressionFields := range f.Parent.searchIndexes {
 		for _, exprField := range expressionFields {
-			if f.SpannerName == exprField.fieldName {
+			if f.tags.Get("spanner") == exprField.fieldName {
 				typeIndexMap[exprField.tokenType] = append(typeIndexMap[exprField.tokenType], searchIndex)
 			}
 		}
@@ -332,8 +378,20 @@ func (f *fieldInfo) SearchIndexTags() string {
 	return strings.Join(tags, " ")
 }
 
-func (f *fieldInfo) IsView() bool {
+func (f *resourceField) IsView() bool {
 	return f.Parent.IsView
+}
+
+func (f *resourceField) IsRequired() bool {
+	if f.IsPrimaryKey && f.Type != "ccc.UUID" {
+		return true
+	}
+
+	if !f.IsPrimaryKey && !f.IsNullable {
+		return true
+	}
+
+	return false
 }
 
 type expressionField struct {

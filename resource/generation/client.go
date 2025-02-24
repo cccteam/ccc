@@ -49,7 +49,7 @@ func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSource
 		return nil, err
 	}
 
-	if err := r.extract(); err != nil {
+	if err := extractResources(r); err != nil {
 		return nil, err
 	}
 
@@ -117,11 +117,7 @@ func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSour
 		return nil, err
 	}
 
-	if err := t.extract(); err != nil {
-		return nil, err
-	}
-
-	if err := t.addTypescriptTypes(); err != nil {
+	if err := extractResources(t); err != nil {
 		return nil, err
 	}
 
@@ -145,12 +141,13 @@ func (t *TypescriptGenerator) Generate() error {
 }
 
 type client struct {
+	loadPackages              []string
 	resourceFilePath          string
 	resources                 []*resourceInfo
 	packageName               string
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser
-	tableLookup               map[string]*TableMetadata
+	tableMap                  map[string]*tableMetadata
 	handlerOptions            map[string]map[HandlerType][]OptionType
 	pluralOverrides           map[string]string
 	consolidatedResourceNames []string
@@ -199,6 +196,7 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string)
 	}
 
 	c := &client{
+		loadPackages:     []string{resourceFilePath},
 		resourceFilePath: resourceFilePath,
 		db:               db.Client,
 		packageName:      pkgInfo.PackageName,
@@ -206,40 +204,19 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string)
 		caser:            strcase.NewCaser(false, nil, nil),
 	}
 
-	c.tableLookup, err = c.createTableLookup(ctx)
+	c.tableMap, err = c.newTableMap(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "c.createTableLookup()")
+		return nil, errors.Wrap(err, "c.newTableMap()")
 	}
 
 	return c, nil
-}
-
-func (c *client) extract() error {
-	resourcePkg, err := loadPackage(c.resourceFilePath)
-	if err != nil {
-		return err
-	}
-
-	extractedResources, err := extractResourceTypes(resourcePkg.Types)
-	if err != nil {
-		return err
-	}
-
-	syncedResources, err := c.syncWithSpannerMetadata(extractedResources)
-	if err != nil {
-		return err
-	}
-
-	c.resources = syncedResources
-
-	return nil
 }
 
 func (c *client) Close() {
 	c.cleanup()
 }
 
-func (c *client) createTableLookup(ctx context.Context) (map[string]*TableMetadata, error) {
+func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, error) {
 	qry := `WITH DEPENDENCIES AS (
 		SELECT DISTINCT
 			kcu1.TABLE_NAME, 
@@ -312,10 +289,10 @@ func (c *client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 	IS_VIEW, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
 
-	return c.createLookupMapForQuery(ctx, qry)
+	return c.createTableMapUsingQuery(ctx, qry)
 }
 
-func (c *client) createLookupMapForQuery(ctx context.Context, qry string) (map[string]*TableMetadata, error) {
+func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[string]*tableMetadata, error) {
 	log.Println("Creating spanner table lookup...")
 
 	stmt := cloudspanner.Statement{SQL: qry}
@@ -325,11 +302,11 @@ func (c *client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 		return nil, errors.Wrap(err, "spxscan.Select()")
 	}
 
-	m := make(map[string]*TableMetadata)
+	m := make(map[string]*tableMetadata)
 	for _, r := range result {
 		table, ok := m[r.TableName]
 		if !ok {
-			table = &TableMetadata{
+			table = &tableMetadata{
 				Columns:       make(map[string]ColumnMeta),
 				SearchIndexes: make(map[string][]*expressionField),
 				IsView:        r.IsView,
@@ -409,6 +386,27 @@ func (c *client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 	}
 
 	return m, nil
+}
+
+func (c *client) packages() []string {
+	return c.loadPackages
+}
+
+func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
+	table, ok := c.tableMap[c.pluralize(resourceName)]
+	if !ok {
+		return nil, errors.Newf("resourceName %q pluralized as %q not in tableMetadata", resourceName, c.pluralize(resourceName))
+	}
+
+	return table, nil
+}
+
+func (c *client) isConsolidated(resource *resourceInfo) bool {
+	return !resource.IsView && slices.Contains(c.consolidatedResourceNames, resource.Name) != c.consolidateAll
+}
+
+func (c *client) setResources(resources []*resourceInfo) {
+	c.resources = resources
 }
 
 func (c *client) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
@@ -509,15 +507,22 @@ func (c *client) pluralize(value string) string {
 		return plural
 	}
 
+	var pluralValue string
 	toLower := strings.ToLower(value)
 	switch {
 	case strings.HasSuffix(toLower, "y"):
-		return value[:len(value)-1] + "ies"
+		pluralValue = value[:len(value)-1] + "ies"
 	case strings.HasSuffix(toLower, "s"):
-		return value + "es"
+		pluralValue = value + "es"
 	default:
-		return value + "s"
+		pluralValue = value + "s"
 	}
+
+	c.pluralOverrides[value] = pluralValue
+	// This should prevent any accidental double-pluralizations
+	c.pluralOverrides[pluralValue] = pluralValue
+
+	return pluralValue
 }
 
 func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) error {
@@ -587,14 +592,14 @@ func removeGeneratedFileByHeaderComment(directory, file string) error {
 func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	var resourceNames [][]string
 	var resourceNamesLen int
-	for i, t := range resources {
-		resourceNamesLen += len(t.Name)
+	for i, resource := range resources {
+		resourceNamesLen += len(resource.Name)
 		if i == 0 || resourceNamesLen > 80 {
-			resourceNamesLen = len(t.Name)
+			resourceNamesLen = len(resource.Name)
 			resourceNames = append(resourceNames, []string{})
 		}
 
-		resourceNames[len(resourceNames)-1] = append(resourceNames[len(resourceNames)-1], t.Name)
+		resourceNames[len(resourceNames)-1] = append(resourceNames[len(resourceNames)-1], resource.Name)
 	}
 
 	var sb strings.Builder

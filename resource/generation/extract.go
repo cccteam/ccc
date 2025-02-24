@@ -5,7 +5,6 @@ import (
 	"log"
 	"reflect"
 	"slices"
-	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
@@ -54,169 +53,184 @@ func loadPackages(packagePattern ...string) (map[string]*types.Package, error) {
 // We can iterate over the declarations at the package level a single time
 // to extract all the data necessary for generation. Any new data that needs
 // to be added to the struct definitions can be extracted here.
-func extractResourceTypes(pkg *types.Package) ([]*resourceInfo, error) {
-	log.Println("Starting resource extraction...")
+func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 	if pkg == nil {
 		return nil, errors.New("package is nil")
 	}
+
+	log.Printf("Parsing structs from package %q...", pkg.Name())
 
 	scope := pkg.Scope() // The package scope holds all the objects declared at package level (TypeNames, Consts, Vars, and Funcs)
 	if scope == nil || len(scope.Names()) == 0 {
 		return nil, errors.Newf("package %q has invalid scope", pkg.Name())
 	}
 
-	resources := make([]*resourceInfo, scope.Len())
+	parsedStructs := make([]parsedStruct, scope.Len())
 	for i, name := range scope.Names() {
 		object := scope.Lookup(name)
 		if object == nil {
 			return nil, errors.Newf("package %q in an invalid state: %q from scope.Names() not found in scope.Lookup()", pkg.Name(), name)
 		}
 
-		structType := decodeToStructType(object.Type())
-		if structType == nil {
+		structType, ok := decodeToType[*types.Struct](object.Type())
+		if !ok {
 			continue
 		}
 
-		resource := &resourceInfo{
-			Name:         object.Name(),
-			_packageName: pkg.Name(),
-			_position:    int(object.Pos()),
+		pStruct := parsedStruct{
+			name:        object.Name(),
+			packageName: pkg.Name(),
+			position:    int(object.Pos()),
 		}
 
 		for j := range structType.NumFields() {
 			field := structType.Field(j)
-			if field == nil || !field.IsField() || field.Embedded() {
-				return nil, errors.Newf("invalid field[%d] in struct %q at %s:%v", j, object.Name(), pkg.Name(), object.Pos())
+			if field == nil {
+				return nil, errors.Newf("nil field[%d] in struct %q at %s:%v", j, object.Name(), pkg.Name(), object.Pos())
 			}
 
-			fieldInfo := &fieldInfo{
-				Parent:     resource,
-				Name:       field.Name(),
-				parsedType: field.Type(),
-				_position:  int(field.Pos()),
+			if field.Embedded() {
+				return nil, errors.Newf("embedded fields are not supported yet")
 			}
 
-			structTag := reflect.StructTag(structType.Tag(j))
-
-			fieldInfo.query = structTag.Get("query")
-			if structTag.Get("conditions") != "" {
-				fieldInfo.Conditions = strings.Split(structTag.Get("conditions"), ",")
+			fieldInfo := structField{
+				Name:         field.Name(),
+				Type:         typeStringer(field.Type()),
+				parsedType:   field.Type(),
+				tags:         reflect.StructTag(structType.Tag(j)),
+				_packageName: field.Pkg().Name(),
+				_position:    int(field.Pos()),
 			}
 
-			if structTag.Get("perm") != "" {
-				fieldInfo.permissions = strings.Split(structTag.Get("perm"), ",")
-			}
-
-			var err error
-			fieldInfo.GoType, err = decodeToGoType(field.Type())
-			if err != nil {
-				return nil, errors.Wrapf(err, "could not decode go type for field %q in struct %q at %s:%v", field.Name(), object.Name(), pkg.Name(), object.Pos())
-			}
-
-			fieldInfo.SpannerName = structTag.Get("spanner")
-			if fieldInfo.SpannerName == "" {
-				return nil, errors.Newf("field %q in struct %q at %s:%d must include `spanner:\"<column name>\" struct tag", field.Name(), object.Name(), pkg.Name(), field.Pos())
-			}
-
-			resource.Fields = append(resource.Fields, fieldInfo)
+			pStruct.fields = append(pStruct.fields, fieldInfo)
 		}
 
-		if len(resource.Fields) == 0 {
-			return nil, errors.Newf("struct %q has no fields at %s:%v", object.Name(), pkg.Name(), object.Pos())
+		parsedStructs[i] = pStruct
+	}
+
+	return parsedStructs, nil
+}
+
+func structToResource(pStruct *parsedStruct, lookupTable func(string) (*tableMetadata, error)) (*resourceInfo, error) {
+	if pStruct == nil {
+		return nil, errors.New("resourceinfo cannot be nil")
+	}
+
+	if lookupTable == nil {
+		return nil, errors.New("lookupTable cannot be nil")
+	}
+
+	table, err := lookupTable(pStruct.name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "struct %q at %s:%d is not in lookupTable", pStruct.name, pStruct.packageName, pStruct.position)
+	}
+
+	resource := &resourceInfo{
+		Name:                  pStruct.name,
+		Fields:                make([]*resourceField, len(pStruct.fields)),
+		IsView:                table.IsView,
+		HasCompoundPrimaryKey: table.PkCount > 1,
+		searchIndexes:         table.SearchIndexes,
+	}
+
+	for i, field := range pStruct.fields {
+		tableColumn, ok := table.Columns[field.tags.Get("spanner")]
+		if !ok {
+			return nil, errors.Newf("field %q in struct %q[%d] at %s:%d is not in tableMeta", field.Name, resource.Name, i, field._packageName, field._position)
 		}
+
+		resource.Fields[i] = &resourceField{
+			structField:        &field,
+			Parent:             resource,
+			IsPrimaryKey:       tableColumn.IsPrimaryKey,
+			IsForeignKey:       tableColumn.IsForeignKey,
+			IsIndex:            tableColumn.IsIndex,
+			IsUniqueIndex:      tableColumn.IsUniqueIndex,
+			IsNullable:         tableColumn.IsNullable,
+			OrdinalPosition:    tableColumn.OrdinalPosition,
+			KeyOrdinalPosition: tableColumn.KeyOrdinalPosition,
+			ReferencedResource: tableColumn.ReferencedTable,
+			ReferencedField:    tableColumn.ReferencedColumn,
+		}
+	}
+
+	return resource, nil
+}
+
+func extractResources[Generator generator](g Generator) error {
+	packageMap, err := loadPackages(g.packages()...)
+	if err != nil {
+		return err
+	}
+
+	resourceStructs, err := parseStructs(packageMap["resources"])
+	if err != nil {
+		return err
+	}
+
+	resources := make([]*resourceInfo, len(resourceStructs))
+	for i, pStruct := range resourceStructs {
+		resource, err := structToResource(&pStruct, g.lookupTable)
+		if err != nil {
+			return err
+		}
+
+		resource.IsConsolidated = g.isConsolidated(resource)
 
 		resources[i] = resource
 	}
 
-	return resources, nil
-}
-
-func (c *client) syncWithSpannerMetadata(extractedResources []*resourceInfo) ([]*resourceInfo, error) {
-	if len(extractedResources) == 0 {
-		return nil, errors.New("no resources to sync with spanner")
-	}
-
-	for _, resource := range extractedResources {
-		if resource == nil {
-			return nil, errors.New("nil resources cannot be synced with spanner metadata")
-		}
-
-		spannerTable, ok := c.tableLookup[c.pluralize(resource.Name)]
-		if !ok {
-			return nil, errors.Newf("struct %q at %s:%d is not in tableMeta", resource.Name, resource._packageName, resource._position)
-		}
-
-		resource.IsView = spannerTable.IsView
-		resource.HasCompoundPrimaryKey = spannerTable.PkCount > 1
-		resource.searchIndexes = spannerTable.SearchIndexes
-		resource.IsConsolidated = !spannerTable.IsView && slices.Contains(c.consolidatedResourceNames, resource.Name) != c.consolidateAll
-
-		for _, fieldInfo := range resource.Fields {
-			spannerColumn, ok := spannerTable.Columns[fieldInfo.SpannerName]
-			if !ok {
-				return nil, errors.Newf("field %q in struct %q at %s:%d is not in tableMeta", fieldInfo.Name, resource.Name, resource._packageName, fieldInfo._position)
-			}
-
-			fieldInfo.IsPrimaryKey = spannerColumn.IsPrimaryKey
-			fieldInfo.IsForeignKey = spannerColumn.IsForeignKey
-			fieldInfo.IsNullable = spannerColumn.IsNullable
-			fieldInfo.IsIndex = spannerColumn.IsIndex
-			fieldInfo.IsUniqueIndex = spannerColumn.IsUniqueIndex
-			fieldInfo.OrdinalPosition = spannerColumn.OrdinalPosition
-			fieldInfo.KeyOrdinalPosition = spannerColumn.KeyOrdinalPosition
-			fieldInfo.ReferencedResource = spannerColumn.ReferencedTable
-			fieldInfo.ReferencedField = spannerColumn.ReferencedColumn
+	switch t := any(g).(type) {
+	case *ResourceGenerator:
+		// todo handle RPC generation
+	case *TypescriptGenerator:
+		resources, err = setTypescriptInfo(resources, t.routerResources, t.typescriptOverrides)
+		if err != nil {
+			return err
 		}
 	}
 
-	return extractedResources, nil
-}
-
-func (t *TypescriptGenerator) addTypescriptTypes() error {
-	for _, resource := range t.resources {
-		if resource == nil {
-			return errors.New("cannot extract typescript types from nil resources")
-		}
-
-		for _, fieldInfo := range resource.Fields {
-			var err error
-			fieldInfo.typescriptType, err = decodeToTypescriptType(fieldInfo.parsedType, t.typescriptOverrides)
-			if err != nil {
-				return errors.Wrapf(err, "could not decode typescript type for field %q in struct %q at %s:%v", fieldInfo.Name, resource.Name, resource._packageName, fieldInfo._position)
-			}
-
-			if fieldInfo.IsPrimaryKey && fieldInfo.typescriptType != "uuid" {
-				fieldInfo.Required = true
-			}
-
-			if !fieldInfo.IsPrimaryKey && !fieldInfo.IsNullable {
-				fieldInfo.Required = true
-			}
-
-			if fieldInfo.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(fieldInfo.ReferencedResource)) {
-				fieldInfo.IsEnumerated = true
-			}
-		}
-	}
+	g.setResources(resources)
 
 	return nil
+}
+
+func setTypescriptInfo(resources []*resourceInfo, routerResources []accesstypes.Resource, overrides map[string]string) ([]*resourceInfo, error) {
+	for _, resource := range resources {
+		for _, field := range resource.Fields {
+			var err error
+			field.typescriptType, err = decodeToTypescriptType(field.parsedType, overrides)
+			if err != nil {
+				return nil, errors.Wrapf(err, "could not decode typescript type for field %q in struct %q at %s:%v", field.Name, resource.Name, field._packageName, field._position)
+			}
+
+			if field.IsForeignKey && slices.Contains(routerResources, accesstypes.Resource(field.ReferencedResource)) {
+				field.IsEnumerated = true
+			}
+		}
+	}
+
+	return resources, nil
 }
 
 // The [types.Type] interface can be one of 14 concrete types:
 // https://github.com/golang/example/tree/master/gotypes#types
 // Types can be safely and deterministically decoded from this interface,
 // and support can easily be expanded to other types in our [resources] package
-func decodeToStructType(typ types.Type) *types.Struct {
-	switch t := typ.(type) {
+func decodeToType[T types.Type](v types.Type) (T, bool) {
+	switch t := v.(type) {
 	case *types.Named:
-		return decodeToStructType(t.Underlying())
-	case *types.Struct:
-		return t
+		return decodeToType[T](t.Underlying())
+	case T:
+		return t, true
 	default:
-		return nil
+		var zero T
+
+		return zero, false
 	}
 }
 
+// TODO: replace decodeToTypescriptType with typeStringer & overrides check
 func decodeToTypescriptType(typ types.Type, typescriptOverrides map[string]string) (string, error) {
 	if typ == nil {
 		return "", errors.Newf("received nil type")
@@ -240,7 +254,7 @@ func decodeToTypescriptType(typ types.Type, typescriptOverrides map[string]strin
 
 	decodeNamedType := func(namedType *types.Named) (string, error) {
 		// Qualifies a named type with its package: `package.TypeName`
-		qualifiedTypeString := types.TypeString(namedType, _qualifier)
+		qualifiedTypeString := typeStringer(namedType)
 
 		overrideTypeString, ok := typescriptOverrides[qualifiedTypeString]
 		if !ok {
@@ -262,35 +276,16 @@ func decodeToTypescriptType(typ types.Type, typescriptOverrides map[string]strin
 	}
 }
 
-// We are reading Go types and converting them to Go types, not much is needed
-// in the way of type checking because we can just print the type string and
-// the [goimports] package will ensure qualified named types have their dependencies
-func decodeToGoType(typ types.Type) (string, error) {
-	if typ == nil {
-		return "", errors.Newf("received nil type")
-	}
-
-	switch t := typ.(type) {
-	case *types.Basic:
-		return t.String(), nil
-	case *types.Named:
-		// Qualifies a named type with its package: `package.TypeName`
-		return types.TypeString(t, _qualifier), nil
-	case *types.Pointer:
-		str, err := decodeToGoType(t.Elem())
-
-		return "*" + str, err
-	default:
-		return "", errors.Newf("%q is an unsupported type", t.String())
-	}
-}
-
 // Necessary for qualifying type names with the package they're imported from
 // e.g. `ccc.UUID`
-func _qualifier(p *types.Package) string {
-	if p == nil {
-		return ""
+func typeStringer(t types.Type) string {
+	qualifier := func(p *types.Package) string {
+		if p == nil {
+			return ""
+		}
+
+		return p.Name()
 	}
 
-	return p.Name()
+	return types.TypeString(t, qualifier)
 }

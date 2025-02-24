@@ -58,14 +58,14 @@ func New{{ .Resource.Name }}QueryFromQuerySet(qSet *resource.QuerySet[{{ .Resour
 
 {{ range $field := .Resource.Fields }}
 {{ if $field.IsIndex }}
-func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ .GoType }}) *{{ $field.Parent.Name }}Query {
+func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ .Type }}) *{{ $field.Parent.Name }}Query {
 	q.qSet.SetKey("{{ $field.Name }}", v)
 
 	return q
 }
 
-func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.GoType }} {
-	v, _ := q.qSet.Key("{{ $field.Name }}").({{ $field.GoType }})
+func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.Type }} {
+	v, _ := q.qSet.Key("{{ $field.Name }}").({{ $field.Type }})
 
 	return v
 }
@@ -140,7 +140,7 @@ func New{{ .Resource.Name }}CreatePatch() (*{{ .Resource.Name }}CreatePatch, err
 {{ else }}
 func New{{ .Resource.Name }}CreatePatchFromPatchSet(
 {{- range $field := .Resource.Fields -}}
-{{ if $field.IsPrimaryKey }}{{ GoCamel $field.Name }} {{ $field.GoType }},{{ end }}
+{{ if $field.IsPrimaryKey }}{{ GoCamel $field.Name }} {{ $field.Type }},{{ end }}
 {{- end }} patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}CreatePatch {
 	patchSet.
 	{{ range $field := .Resource.Fields }}
@@ -155,7 +155,7 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(
 
 func New{{ .Resource.Name }}CreatePatch(
 {{- range $isNotFirstIteration, $field := .Resource.Fields }}
-{{- if $field.IsPrimaryKey }}{{- if $isNotFirstIteration }}, {{ end }}{{ GoCamel $field.Name }} {{ $field.GoType }}{{ end }}{{ end }}) *{{ .Resource.Name }}CreatePatch {
+{{- if $field.IsPrimaryKey }}{{- if $isNotFirstIteration }}, {{ end }}{{ GoCamel $field.Name }} {{ $field.Type }}{{ end }}{{ end }}) *{{ .Resource.Name }}CreatePatch {
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
 	{{ range $field := .Resource.Fields }}
 	{{ if $field.IsPrimaryKey }}
@@ -181,7 +181,7 @@ type {{ .Resource.Name }}UpdatePatch struct {
 func New{{ .Resource.Name }}UpdatePatchFromPatchSet(
 {{- range $field := .Resource.Fields -}}
 	{{- if $field.IsPrimaryKey -}}
-		{{- GoCamel $field.Name }} {{ $field.GoType }},
+		{{- GoCamel $field.Name }} {{ $field.Type }},
 	{{- end -}}
 {{- end -}}
 patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}UpdatePatch {
@@ -200,7 +200,7 @@ func New{{ .Resource.Name }}UpdatePatch(
 {{- range $isNotFirstIteration, $field := .Resource.Fields -}}
 	{{- if $field.IsPrimaryKey }}
 		{{- if $isNotFirstIteration }}, {{ end -}}
-		{{- GoCamel $field.Name }} {{ $field.GoType -}}
+		{{- GoCamel $field.Name }} {{ $field.Type -}}
 	{{- end -}}
 {{- end }}) *{{ .Resource.Name }}UpdatePatch {
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
@@ -228,7 +228,7 @@ func New{{ .Resource.Name }}DeletePatch(
 {{- range $isNotFirstIteration, $field := .Resource.Fields }}
 	{{- if $field.IsPrimaryKey -}}
 		{{- if $isNotFirstIteration }}, {{ end -}}
-		{{- GoCamel $field.Name }} {{ $field.GoType -}}
+		{{- GoCamel $field.Name }} {{ $field.Type -}}
 	{{- end -}}
 {{- end }}) *{{ .Resource.Name }}DeletePatch {
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
@@ -248,8 +248,8 @@ func (p *{{ .Resource.Name }}DeletePatch) PatchSet() *resource.PatchSet[{{ .Reso
 
 {{ range $field := .Resource.Fields }}
 {{ if $field.IsPrimaryKey }} 
-func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.GoType }} {
-	v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.GoType }}) 
+func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.Type }} {
+	v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.Type }}) 
 
 	return v
 }
@@ -283,7 +283,7 @@ import (
 	listTemplate = `func (a *App) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.GoType}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag}} {{ $field.ListPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag}} {{ $field.ListPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
 		{{- end }}
 	}
 
@@ -317,7 +317,7 @@ import (
 	readTemplate = `func (a *App) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.GoType}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
 		{{- end }}
 	}
 
@@ -346,7 +346,7 @@ import (
 	patchTemplate = `func (a *App) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type request struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.GoType}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
 		{{- end }}
 	}
 	
@@ -436,7 +436,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 	{{- range $resource := .Resources }}
 	type {{ GoCamel $resource.Name }}Request struct {
 		{{- range $field := .Fields }}
-		{{ $field.Name }} {{ $field.GoType}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
 		{{- end }}
 	}
 	{{ GoCamel $resource.Name}}Decoder := NewDecoder[resources.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
@@ -597,7 +597,7 @@ const resourceMap: ResourceMap = {
       {{- range $field := $resource.Fields }}
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
-       {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.Required }}, isIndex: {{ $field.IsIndex -}}
+       {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex -}}
       {{- if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
       {{- end }}
     ],
@@ -704,18 +704,18 @@ func fieldAccessors(patchType PatchType) string {
 	return fmt.Sprintf(`
 		{{- range $field := .Resource.Fields }}
 		{{ if eq false $field.IsPrimaryKey }}
-		func (p *{{ $field.Parent.Name }}%[1]sPatch) Set{{ $field.Name }}(v {{ $field.GoType }}) *{{ $field.Parent.Name }}%[1]sPatch {
+		func (p *{{ $field.Parent.Name }}%[1]sPatch) Set{{ $field.Name }}(v {{ $field.Type }}) *{{ $field.Parent.Name }}%[1]sPatch {
 			p.patchSet.Set("{{ $field.Name }}", v)
 
 			return p
 		}
 		{{ end }}
 
-		func (p *{{ $field.Parent.Name }}%[1]sPatch) {{ $field.Name }}() {{ $field.GoType }} {
+		func (p *{{ $field.Parent.Name }}%[1]sPatch) {{ $field.Name }}() {{ $field.Type }} {
 		{{ if $field.IsPrimaryKey -}} 
-			v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.GoType}})
+			v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.Type}})
 		{{ else -}} 
-			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ $field.GoType}}) 
+			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ $field.Type}}) 
 		{{ end }}
 
 			return v
