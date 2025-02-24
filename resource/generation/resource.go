@@ -31,7 +31,7 @@ func (r *ResourceGenerator) runResourcesGeneration() error {
 }
 
 func (r *ResourceGenerator) generateResourceInterfaces() error {
-	output, err := r.generateTemplateOutput(resourcesInterfaceTemplate, map[string]any{
+	output, err := r.generateTemplateOutput("resourcesInterfaceTemplate", resourcesInterfaceTemplate, map[string]any{
 		"Source": r.resourceFilePath,
 		"Types":  r.resources,
 	})
@@ -55,7 +55,7 @@ func (r *ResourceGenerator) generateResourceInterfaces() error {
 }
 
 func (r *ResourceGenerator) generateResourceTests() error {
-	output, err := r.generateTemplateOutput(resourcesTestTemplate, map[string]any{
+	output, err := r.generateTemplateOutput("resourcesTestTemplate", resourcesTestTemplate, map[string]any{
 		"Source":    r.resourceFilePath,
 		"Resources": r.resources,
 	})
@@ -84,7 +84,7 @@ func (r *ResourceGenerator) generateResources(res *resourceInfo) error {
 
 	log.Printf("Generating resource file: %v\n", fileName)
 
-	output, err := r.generateTemplateOutput(resourceFileTemplate, map[string]any{
+	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
 		"Source":   r.resourceFilePath,
 		"Resource": res,
 	})
@@ -105,8 +105,8 @@ func (r *ResourceGenerator) generateResources(res *resourceInfo) error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
-	tmpl, err := template.New(fileTemplate).Funcs(r.templateFuncs()).Parse(fileTemplate)
+func (r *ResourceGenerator) generateTemplateOutput(templateName, fileTemplate string, data map[string]any) ([]byte, error) {
+	tmpl, err := template.New(templateName).Funcs(r.templateFuncs()).Parse(fileTemplate)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.Parse()")
 	}
