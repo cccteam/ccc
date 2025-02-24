@@ -16,10 +16,10 @@ import (
 // loading or typechecking, otherwise returns the package's data.
 // Useful for static type analysis with the [types] package instead of
 // manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
-func loadPackage(packagePattern string) (*packages.Package, error) {
-	log.Printf("Loading file(s) at %q...\n", packagePattern)
+func loadPackages(packagePattern ...string) (map[string]*types.Package, error) {
+	log.Printf("Loading packages %v...\n", packagePattern)
 	cfg := &packages.Config{Mode: packages.NeedTypes | packages.NeedFiles}
-	pkgs, err := packages.Load(cfg, packagePattern)
+	pkgs, err := packages.Load(cfg, packagePattern...)
 	if err != nil {
 		return nil, errors.Wrap(err, "packages.Load()")
 	}
@@ -28,11 +28,27 @@ func loadPackage(packagePattern string) (*packages.Package, error) {
 		return nil, errors.New("no packages loaded")
 	}
 
-	if len(pkgs[0].GoFiles) == 0 || pkgs[0].GoFiles[0] == "" {
-		return nil, errors.New("no files loaded")
+	packMap := make(map[string]*types.Package, len(packagePattern))
+	for _, pkg := range pkgs {
+		if len(pkg.Errors) > 0 {
+			return nil, errors.Wrap(pkg.Errors[0], "packages.Load() package error:")
+		}
+		if len(pkg.TypeErrors) > 0 {
+			return nil, errors.Wrap(pkg.TypeErrors[0], "packages.Load() type error:")
+		}
+
+		if len(pkg.GoFiles) == 0 || pkg.GoFiles[0] == "" {
+			return nil, errors.New("no files loaded")
+		}
+
+		if pkg.Types == nil {
+			return nil, errors.New("package types not loaded")
+		}
+
+		packMap[pkg.Types.Name()] = pkg.Types
 	}
 
-	return pkgs[0], nil
+	return packMap, nil
 }
 
 // We can iterate over the declarations at the package level a single time
