@@ -13,6 +13,10 @@ import (
 )
 
 func (r *ResourceGenerator) runResourcesGeneration() error {
+	if err := removeGeneratedFiles(r.resourceDestination, Prefix); err != nil {
+		return err
+	}
+
 	if err := r.generateResourceInterfaces(); err != nil {
 		return errors.Wrap(err, "c.generateResourceInterfaces()")
 	}
