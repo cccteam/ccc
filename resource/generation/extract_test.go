@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func Test_loadPackages(t *testing.T) {
+func Test_loadPackageMap(t *testing.T) {
 	type args struct {
 		packagePatterns []string
 	}
@@ -41,11 +41,17 @@ func Test_loadPackages(t *testing.T) {
 			WantPackageNames: []string{"resources", "otherresources"},
 			wantErr:          false,
 		},
+		{
+			name:             "loads 2 packages by by name and filename",
+			args:             args{packagePatterns: []string{"testdata/resources/res1.go", "./testdata/otherresources"}},
+			WantPackageNames: []string{"resources", "otherresources"},
+			wantErr:          false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			packageMap, err := loadPackages(tt.args.packagePatterns...)
+			packageMap, err := loadPackageMap(tt.args.packagePatterns...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("loadPackages() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -117,7 +123,7 @@ func Test_parseStructs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			pkgMap, err := loadPackages(tt.args.packagePath)
+			pkgMap, err := loadPackageMap(tt.args.packagePath)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("loadPackages() error = %v, wantErr %v", err, tt.wantErr)
 				return

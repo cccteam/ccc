@@ -58,7 +58,7 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 func (r *resourceGenerator) Generate() error {
 	log.Println("Starting ResourceGenerator Generation")
 
-	packageMap, err := loadPackages(r.loadPackages...)
+	packageMap, err := loadPackageMap(r.loadPackages...)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 func (t *typescriptGenerator) Generate() error {
 	log.Println("Starting TypescriptGenerator Generation")
 
-	packageMap, err := loadPackages(t.loadPackages...)
+	packageMap, err := loadPackageMap(t.loadPackages...)
 	if err != nil {
 		return err
 	}

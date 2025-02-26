@@ -4,6 +4,7 @@ import (
 	"go/types"
 	"log"
 	"reflect"
+	"strings"
 
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/tools/go/packages"
@@ -13,10 +14,50 @@ import (
 // loading or typechecking, otherwise returns the package's data.
 // Useful for static type analysis with the [types] package instead of
 // manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
-func loadPackages(packagePattern ...string) (map[string]*types.Package, error) {
-	log.Printf("Loading packages %v...\n", packagePattern)
-	cfg := &packages.Config{Mode: packages.NeedTypes | packages.NeedFiles}
-	pkgs, err := packages.Load(cfg, packagePattern...)
+func loadPackageMap(packagePatterns ...string) (map[string]*types.Package, error) {
+	log.Printf("Loading packages %v...\n", packagePatterns)
+
+	files := []string{}
+	directories := []string{}
+
+	for _, pattern := range packagePatterns {
+		if strings.HasSuffix(pattern, ".go") {
+			files = append(files, pattern)
+		} else {
+			directories = append(directories, pattern)
+		}
+	}
+
+	packMap := make(map[string]*types.Package, len(packagePatterns))
+
+	if len(files) > 0 {
+		pkgs, err := loadPackages(files...)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, pkg := range pkgs {
+			packMap[pkg.Name] = pkg.Types
+		}
+	}
+
+	if len(directories) > 0 {
+		pkgs, err := loadPackages(directories...)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, pkg := range pkgs {
+			packMap[pkg.Name] = pkg.Types
+		}
+	}
+
+	return packMap, nil
+}
+
+func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
+	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedFiles}
+	pkgs, err := packages.Load(cfg, packagePatterns...)
 	if err != nil {
 		return nil, errors.Wrap(err, "packages.Load()")
 	}
@@ -25,7 +66,6 @@ func loadPackages(packagePattern ...string) (map[string]*types.Package, error) {
 		return nil, errors.New("no packages loaded")
 	}
 
-	packMap := make(map[string]*types.Package, len(packagePattern))
 	for _, pkg := range pkgs {
 		if len(pkg.Errors) > 0 {
 			return nil, errors.Wrap(pkg.Errors[0], "packages.Load() package error:")
@@ -35,17 +75,15 @@ func loadPackages(packagePattern ...string) (map[string]*types.Package, error) {
 		}
 
 		if len(pkg.GoFiles) == 0 || pkg.GoFiles[0] == "" {
-			return nil, errors.New("no files loaded")
+			return nil, errors.Newf("package %q: no files loaded", pkg.Name)
 		}
 
 		if pkg.Types == nil {
-			return nil, errors.New("package types not loaded")
+			return nil, errors.Newf("package %q: types not loaded", pkg.Name)
 		}
-
-		packMap[pkg.Types.Name()] = pkg.Types
 	}
 
-	return packMap, nil
+	return pkgs, nil
 }
 
 // We can iterate over the declarations at the package level a single time
