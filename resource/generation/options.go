@@ -145,13 +145,15 @@ func WithRPC[Opt Option](rpcPackageDir string) Opt {
 	switch t := any(&opt).(type) {
 	case *ResourceOption:
 		*t = func(r *resourceGenerator) error {
-			r.rpcPackageDir = rpcPackageDir
+			r.genRPCMethods = true
+			r.loadPackages = append(r.loadPackages, rpcPackageDir)
 
 			return nil
 		}
 	case *TSOption:
 		*t = func(t *typescriptGenerator) error {
-			t.rpcPackageDir = rpcPackageDir
+			t.genRPCMethods = true
+			t.loadPackages = append(t.loadPackages, rpcPackageDir)
 
 			return nil
 		}

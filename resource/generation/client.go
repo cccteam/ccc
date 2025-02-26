@@ -74,6 +74,9 @@ func (r *resourceGenerator) Generate() error {
 
 	r.resources = resources
 
+	if r.genRPCMethods {
+	}
+
 	if err := r.runResourcesGeneration(); err != nil {
 		return errors.Wrap(err, "c.genResources()")
 	}
@@ -166,6 +169,9 @@ func (t *typescriptGenerator) Generate() error {
 
 	t.resources = resources
 
+	if t.genRPCMethods {
+	}
+
 	if t.genMetadata {
 		if err := t.runTypescriptMetadataGeneration(); err != nil {
 			return err
@@ -193,6 +199,7 @@ type client struct {
 	consolidatedResourceNames []string
 	consolidateAll            bool
 	consolidatedRoute         string
+	genRPCMethods             bool
 	rpcPackageDir             string
 	cleanup                   func()
 
