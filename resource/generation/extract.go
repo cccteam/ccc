@@ -115,6 +115,7 @@ func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 
 		pStruct := parsedStruct{
 			name:        object.Name(),
+			methodSets:  structMethods(object.Type()),
 			packageName: pkg.Name(),
 			position:    int(object.Pos()),
 		}
@@ -145,6 +146,16 @@ func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 	}
 
 	return parsedStructs, nil
+}
+
+func structMethods(s types.Type) []*types.MethodSet {
+	var methodSet []*types.MethodSet
+
+	for _, t := range []types.Type{s, types.NewPointer(s)} {
+		methodSet = append(methodSet, types.NewMethodSet(t))
+	}
+
+	return methodSet
 }
 
 func (c *client) structToResource(pStruct *parsedStruct) (*resourceInfo, error) {
@@ -206,6 +217,43 @@ func (c *client) extractResources(pkg *types.Package) ([]*resourceInfo, error) {
 	}
 
 	return resources, nil
+}
+
+func extractRPCMethods(pkg *types.Package) ([]parsedStruct, error) {
+	parsedStructs, err := parseStructs(pkg)
+	if err != nil {
+		return nil, err
+	}
+
+	var rpcStructs []parsedStruct
+
+	for _, pStruct := range parsedStructs {
+		if len(pStruct.methodSets) == 0 {
+			continue
+		}
+
+		var (
+			hasMethod  bool
+			hasExecute bool
+		)
+
+		for _, methodSet := range pStruct.methodSets {
+			for method := range methodSet.Methods() {
+				if method.Obj().Name() == "Method" {
+					hasMethod = true
+				}
+				if method.Obj().Name() == "Execute" {
+					hasExecute = true
+				}
+			}
+		}
+
+		if hasMethod && hasExecute {
+			rpcStructs = append(rpcStructs, pStruct)
+		}
+	}
+
+	return rpcStructs, nil
 }
 
 // The [types.Type] interface can be one of 14 concrete types:

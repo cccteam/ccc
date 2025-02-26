@@ -144,8 +144,9 @@ type generatedRoute struct {
 }
 
 type parsedStruct struct {
-	name   string
-	fields []structField
+	name       string
+	fields     []structField
+	methodSets []*types.MethodSet
 
 	// debugging info
 	packageName string
