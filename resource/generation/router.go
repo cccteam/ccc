@@ -13,7 +13,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (r *ResourceGenerator) runRouteGeneration() error {
+func (r *resourceGenerator) runRouteGeneration() error {
 	if err := removeGeneratedFiles(r.routerDestination, Prefix); err != nil {
 		return err
 	}
@@ -76,7 +76,7 @@ func (r *ResourceGenerator) runRouteGeneration() error {
 	return nil
 }
 
-func (r *ResourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, generatedRoutes map[string][]generatedRoute, hasConsolidatedHandler bool) error {
+func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, generatedRoutes map[string][]generatedRoute, hasConsolidatedHandler bool) error {
 	file, err := os.Create(destinationFile)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")

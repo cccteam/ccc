@@ -4,9 +4,7 @@ import (
 	"go/types"
 	"log"
 	"reflect"
-	"slices"
 
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/tools/go/packages"
 )
@@ -111,16 +109,12 @@ func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 	return parsedStructs, nil
 }
 
-func structToResource(pStruct *parsedStruct, lookupTable func(string) (*tableMetadata, error)) (*resourceInfo, error) {
+func (c *client) structToResource(pStruct *parsedStruct) (*resourceInfo, error) {
 	if pStruct == nil {
 		return nil, errors.New("resourceinfo cannot be nil")
 	}
 
-	if lookupTable == nil {
-		return nil, errors.New("lookupTable cannot be nil")
-	}
-
-	table, err := lookupTable(pStruct.name)
+	table, err := c.lookupTable(pStruct.name)
 	if err != nil {
 		return nil, errors.Wrapf(err, "struct %q at %s:%d is not in lookupTable", pStruct.name, pStruct.packageName, pStruct.position)
 	}
@@ -157,57 +151,20 @@ func structToResource(pStruct *parsedStruct, lookupTable func(string) (*tableMet
 	return resource, nil
 }
 
-func extractResources[Generator generator](g Generator) error {
-	packageMap, err := loadPackages(g.packages()...)
+func (c *client) extractResources(pkg *types.Package) ([]*resourceInfo, error) {
+	resourceStructs, err := parseStructs(pkg)
 	if err != nil {
-		return err
-	}
-
-	resourceStructs, err := parseStructs(packageMap["resources"])
-	if err != nil {
-		return err
+		return nil, err
 	}
 
 	resources := make([]*resourceInfo, len(resourceStructs))
 	for i, pStruct := range resourceStructs {
-		resource, err := structToResource(&pStruct, g.lookupTable)
+		resource, err := c.structToResource(&pStruct)
 		if err != nil {
-			return err
+			return nil, err
 		}
-
-		resource.IsConsolidated = g.isConsolidated(resource)
 
 		resources[i] = resource
-	}
-
-	switch t := any(g).(type) {
-	case *ResourceGenerator:
-		// todo handle RPC generation
-	case *TypescriptGenerator:
-		resources, err = setTypescriptInfo(resources, t.routerResources, t.typescriptOverrides)
-		if err != nil {
-			return err
-		}
-	}
-
-	g.setResources(resources)
-
-	return nil
-}
-
-func setTypescriptInfo(resources []*resourceInfo, routerResources []accesstypes.Resource, overrides map[string]string) ([]*resourceInfo, error) {
-	for _, resource := range resources {
-		for _, field := range resource.Fields {
-			var err error
-			field.typescriptType, err = decodeToTypescriptType(field.parsedType, overrides)
-			if err != nil {
-				return nil, errors.Wrapf(err, "could not decode typescript type for field %q in struct %q at %s:%v", field.Name, resource.Name, field._packageName, field._position)
-			}
-
-			if field.IsForeignKey && slices.Contains(routerResources, accesstypes.Resource(field.ReferencedResource)) {
-				field.IsEnumerated = true
-			}
-		}
 	}
 
 	return resources, nil

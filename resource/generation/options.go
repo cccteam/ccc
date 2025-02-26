@@ -13,12 +13,15 @@ import (
 )
 
 type (
-	ResourceOption func(*ResourceGenerator) error
-	TSOption       func(*TypescriptGenerator) error
+	Option interface {
+		ResourceOption | TSOption
+	}
+	ResourceOption = func(*resourceGenerator) error
+	TSOption       = func(*typescriptGenerator) error
 )
 
 func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) ResourceOption {
-	return func(r *ResourceGenerator) error {
+	return func(r *resourceGenerator) error {
 		r.genHandlers = true
 		r.handlerDestination = targetDir
 
@@ -40,7 +43,7 @@ func GenerateHandlers(targetDir string, overrides map[string][]HandlerType) Reso
 }
 
 func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption {
-	return func(r *ResourceGenerator) error {
+	return func(r *resourceGenerator) error {
 		r.genRoutes = true
 		r.routerDestination = targetDir
 		r.routerPackage = targetPackage
@@ -51,7 +54,7 @@ func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption
 }
 
 func WithTypescriptOverrides(overrides map[string]string) TSOption {
-	return func(t *TypescriptGenerator) error {
+	return func(t *typescriptGenerator) error {
 		tempMap := defaultTypescriptOverrides()
 		maps.Copy(tempMap, overrides)
 		t.typescriptOverrides = tempMap
@@ -60,71 +63,104 @@ func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	}
 }
 
-func WithPluralOverrides[G ResourceGenerator | TypescriptGenerator](overrides map[string]string) func(*G) error {
-	return func(g *G) error {
-		tempMap := defaultPluralOverrides()
-		maps.Copy(tempMap, overrides)
+func WithPluralOverrides[Opt Option](overrides map[string]string) Opt {
+	tempMap := defaultPluralOverrides()
+	maps.Copy(tempMap, overrides)
 
-		switch g := any(g).(type) {
-		case *ResourceGenerator:
-			g.pluralOverrides = tempMap
+	var opt Opt
 
-		case *TypescriptGenerator:
-			g.pluralOverrides = tempMap
+	switch t := any(&opt).(type) {
+	case *ResourceOption:
+		*t = func(r *resourceGenerator) error {
+			r.pluralOverrides = tempMap
+
+			return nil
 		}
+	case *TSOption:
+		*t = func(t *typescriptGenerator) error {
+			t.pluralOverrides = tempMap
 
-		return nil
+			return nil
+		}
 	}
+
+	return opt
 }
 
-func CaserInitialismOverrides[G ResourceGenerator | TypescriptGenerator](overrides map[string]bool) func(*G) error {
-	return func(g *G) error {
-		switch g := any(g).(type) {
-		case *ResourceGenerator:
-			g.caser = strcase.NewCaser(false, overrides, nil)
-		case *TypescriptGenerator:
-			g.caser = strcase.NewCaser(false, overrides, nil)
-		}
+func CaserInitialismOverrides[Opt Option](overrides map[string]bool) Opt {
+	var opt Opt
 
-		return nil
+	switch t := any(&opt).(type) {
+	case *ResourceOption:
+		*t = func(r *resourceGenerator) error {
+			r.caser = strcase.NewCaser(false, overrides, nil)
+
+			return nil
+		}
+	case *TSOption:
+		*t = func(t *typescriptGenerator) error {
+			t.caser = strcase.NewCaser(false, overrides, nil)
+
+			return nil
+		}
 	}
+
+	return opt
 }
 
-func WithConsolidatedHandlers[G ResourceGenerator | TypescriptGenerator](route string, consolidateAll bool, resources ...string) func(*G) error {
-	return func(g *G) error {
-		if !consolidateAll && len(resources) == 0 {
-			return errors.New("at least one resource is required if not consolidating all handlers")
-		}
+func WithConsolidatedHandlers[Opt Option](route string, consolidateAll bool, resources ...string) Opt {
+	var opt Opt
 
-		switch g := any(g).(type) {
-		case *ResourceGenerator:
-			g.consolidatedResourceNames = resources
-			g.consolidatedRoute = route
-			g.consolidateAll = consolidateAll
-		case *TypescriptGenerator:
-			g.consolidatedResourceNames = resources
-			g.consolidatedRoute = route
-			g.consolidateAll = consolidateAll
-		}
+	switch t := any(&opt).(type) {
+	case *ResourceOption:
+		*t = func(r *resourceGenerator) error {
+			if !consolidateAll && len(resources) == 0 {
+				return errors.New("at least one resource is required if not consolidating all handlers")
+			}
+			r.consolidatedResourceNames = resources
+			r.consolidatedRoute = route
+			r.consolidateAll = consolidateAll
 
-		return nil
+			return nil
+		}
+	case *TSOption:
+		*t = func(t *typescriptGenerator) error {
+			if !consolidateAll && len(resources) == 0 {
+				return errors.New("at least one resource is required if not consolidating all handlers")
+			}
+			t.consolidatedResourceNames = resources
+			t.consolidatedRoute = route
+			t.consolidateAll = consolidateAll
+
+			return nil
+		}
 	}
+
+	return opt
 }
 
-func WithRPC[G ResourceGenerator | TypescriptGenerator](rpcPackageDir string) func(*G) error {
-	return func(g *G) error {
-		switch g := any(g).(type) {
-		case *ResourceGenerator:
-			g.rpcPackageDir = rpcPackageDir
-		case *TypescriptGenerator:
-			g.rpcPackageDir = rpcPackageDir
-		}
+func WithRPC[Opt Option](rpcPackageDir string) Opt {
+	var opt Opt
 
-		return nil
+	switch t := any(&opt).(type) {
+	case *ResourceOption:
+		*t = func(r *resourceGenerator) error {
+			r.rpcPackageDir = rpcPackageDir
+
+			return nil
+		}
+	case *TSOption:
+		*t = func(t *typescriptGenerator) error {
+			t.rpcPackageDir = rpcPackageDir
+
+			return nil
+		}
 	}
+
+	return opt
 }
 
-func resolveOptions[G *ResourceGenerator | *TypescriptGenerator, O ~func(G) error](generator G, options []O) error {
+func resolveOptions[G Generator, Opt ~func(G) error](generator G, options []Opt) error {
 	for _, optionFunc := range options {
 		if optionFunc != nil {
 			if err := optionFunc(generator); err != nil {
@@ -134,12 +170,12 @@ func resolveOptions[G *ResourceGenerator | *TypescriptGenerator, O ~func(G) erro
 	}
 
 	switch g := any(generator).(type) {
-	case *ResourceGenerator:
+	case *resourceGenerator:
 		if g.pluralOverrides == nil {
 			g.pluralOverrides = defaultPluralOverrides()
 		}
 
-	case *TypescriptGenerator:
+	case *typescriptGenerator:
 		if g.pluralOverrides == nil {
 			g.pluralOverrides = defaultPluralOverrides()
 		}

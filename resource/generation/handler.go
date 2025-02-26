@@ -13,7 +13,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (r *ResourceGenerator) runHandlerGeneration() error {
+func (r *resourceGenerator) runHandlerGeneration() error {
 	if err := removeGeneratedFiles(r.handlerDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
@@ -61,7 +61,7 @@ func (r *ResourceGenerator) runHandlerGeneration() error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateHandlers(resource *resourceInfo) error {
+func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
 	generatedHandlers := []*generatedHandler{
 		{
 			template:    listTemplate,
@@ -137,7 +137,7 @@ func (r *ResourceGenerator) generateHandlers(resource *resourceInfo) error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateConsolidatedPatchHandler(resources []*resourceInfo) error {
+func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resourceInfo) error {
 	fileName := generatedFileName(consolidatedHandlerOutputName)
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
@@ -170,7 +170,7 @@ func (r *ResourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 	return nil
 }
 
-func (r *ResourceGenerator) handlerContent(handler *generatedHandler, resource *resourceInfo) ([]byte, error) {
+func (r *resourceGenerator) handlerContent(handler *generatedHandler, resource *resourceInfo) ([]byte, error) {
 	tmpl, err := template.New("handler").Funcs(r.templateFuncs()).Parse(handler.template)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.New().Parse()")

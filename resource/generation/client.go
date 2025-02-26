@@ -25,7 +25,7 @@ import (
 	"golang.org/x/tools/imports"
 )
 
-type ResourceGenerator struct {
+type resourceGenerator struct {
 	*client
 	genHandlers         bool
 	genRoutes           bool
@@ -36,28 +36,44 @@ type ResourceGenerator struct {
 	routePrefix         string
 }
 
-func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSourceURL string, options ...ResourceOption) (*ResourceGenerator, error) {
-	r := &ResourceGenerator{resourceDestination: filepath.Dir(resourceFilePath)}
+func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, options ...ResourceOption) (Generator, error) {
+	r := &resourceGenerator{
+		resourceDestination: filepath.Dir(resourceSourcePath),
+	}
 
-	c, err := newClient(ctx, resourceFilePath, migrationSourceURL)
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL)
 	if err != nil {
 		return nil, err
 	}
+
 	r.client = c
 
 	if err := resolveOptions(r, options); err != nil {
 		return nil, err
 	}
 
-	if err := extractResources(r); err != nil {
-		return nil, err
-	}
-
 	return r, nil
 }
 
-func (r *ResourceGenerator) Generate() error {
+func (r *resourceGenerator) Generate() error {
 	log.Println("Starting ResourceGenerator Generation")
+
+	packageMap, err := loadPackages(r.loadPackages...)
+	if err != nil {
+		return err
+	}
+
+	resources, err := r.extractResources(packageMap["resources"])
+	if err != nil {
+		return err
+	}
+
+	for _, resource := range resources {
+		resource.IsConsolidated = r.isConsolidated(resource)
+	}
+
+	r.resources = resources
+
 	if err := r.runResourcesGeneration(); err != nil {
 		return errors.Wrap(err, "c.genResources()")
 	}
@@ -76,62 +92,86 @@ func (r *ResourceGenerator) Generate() error {
 	return nil
 }
 
-type TypescriptGenerator struct {
+type typescriptGenerator struct {
 	*client
-	genTypescriptPerm     bool
-	genTypescriptMeta     bool
+	genPermission         bool
+	genMetadata           bool
 	typescriptDestination string
 	typescriptOverrides   map[string]string
 	rc                    *resource.Collection
 	routerResources       []accesstypes.Resource
 }
 
-func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSourceURL, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TSOption) (*TypescriptGenerator, error) {
+func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TSOption) (Generator, error) {
 	if rc == nil {
 		return nil, errors.New("resource collection cannot be nil")
 	}
 
-	t := &TypescriptGenerator{
+	var (
+		genPermission bool
+		genMetadata   bool
+	)
+	switch mode {
+	case TSPerm | TSMeta:
+		genPermission = true
+		genMetadata = true
+	case TSPerm:
+		genPermission = true
+	case TSMeta:
+		genMetadata = true
+	}
+
+	t := &typescriptGenerator{
 		rc:                    rc,
 		routerResources:       rc.Resources(),
 		typescriptDestination: targetDir,
+		genPermission:         genPermission,
+		genMetadata:           genMetadata,
 	}
 
-	switch mode {
-	case TSPerm | TSMeta:
-		t.genTypescriptPerm = true
-		t.genTypescriptMeta = true
-	case TSPerm:
-		t.genTypescriptPerm = true
-	case TSMeta:
-		t.genTypescriptMeta = true
-	}
-
-	c, err := newClient(ctx, resourceFilePath, migrationSourceURL)
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL)
 	if err != nil {
 		return nil, err
 	}
+
 	t.client = c
 
 	if err := resolveOptions(t, options); err != nil {
 		return nil, err
 	}
 
-	if err := extractResources(t); err != nil {
-		return nil, err
-	}
-
 	return t, nil
 }
 
-func (t *TypescriptGenerator) Generate() error {
+func (t *typescriptGenerator) Generate() error {
 	log.Println("Starting TypescriptGenerator Generation")
-	if t.genTypescriptMeta {
+
+	packageMap, err := loadPackages(t.loadPackages...)
+	if err != nil {
+		return err
+	}
+
+	resources, err := t.extractResources(packageMap["resources"])
+	if err != nil {
+		return err
+	}
+
+	for _, resource := range resources {
+		resource.IsConsolidated = t.isConsolidated(resource)
+		resource, err = t.setTypescriptInfo(resource)
+		if err != nil {
+			return err
+		}
+	}
+
+	t.resources = resources
+
+	if t.genMetadata {
 		if err := t.runTypescriptMetadataGeneration(); err != nil {
 			return err
 		}
 	}
-	if t.genTypescriptPerm {
+	if t.genPermission {
 		if err := t.runTypescriptPermissionGeneration(); err != nil {
 			return err
 		}
@@ -388,10 +428,6 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 	return m, nil
 }
 
-func (c *client) packages() []string {
-	return c.loadPackages
-}
-
 func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 	table, ok := c.tableMap[c.pluralize(resourceName)]
 	if !ok {
@@ -403,10 +439,6 @@ func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 
 func (c *client) isConsolidated(resource *resourceInfo) bool {
 	return !resource.IsView && slices.Contains(c.consolidatedResourceNames, resource.Name) != c.consolidateAll
-}
-
-func (c *client) setResources(resources []*resourceInfo) {
-	c.resources = resources
 }
 
 func (c *client) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
@@ -526,6 +558,7 @@ func (c *client) pluralize(value string) string {
 }
 
 func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) error {
+	log.Printf("removing generated files in directory %q...", directory)
 	dir, err := os.Open(directory)
 	if err != nil {
 		return errors.Wrap(err, "os.Open()")
@@ -649,6 +682,6 @@ func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*e
 }
 
 // The resourceName should already be pluralized
-func (t *TypescriptGenerator) isResourceInAppRouter(resourceName string) bool {
+func (t *typescriptGenerator) isResourceInAppRouter(resourceName string) bool {
 	return slices.Contains(t.routerResources, accesstypes.Resource(resourceName))
 }

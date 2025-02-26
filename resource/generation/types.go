@@ -13,12 +13,9 @@ import (
 	"github.com/ettle/strcase"
 )
 
-type generator interface {
-	*ResourceGenerator | *TypescriptGenerator
-	packages() []string
-	lookupTable(string) (*tableMetadata, error)
-	isConsolidated(*resourceInfo) bool
-	setResources([]*resourceInfo)
+type Generator interface {
+	Generate() error
+	Close()
 }
 
 var tokenizeRegex = regexp.MustCompile(`(TOKENIZE_[^)]+)\(([^)]+)\)`)
