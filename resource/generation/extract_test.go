@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"go/types"
 	"reflect"
 	"slices"
 	"testing"
@@ -151,6 +152,41 @@ func Test_parseStructs(t *testing.T) {
 						t.Errorf("parseStructs() tags = %v, want %v", parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
 					}
 				}
+			}
+		})
+	}
+}
+
+func Test_typeStringer(t *testing.T) {
+	type args struct {
+		t types.Type
+	}
+
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "works with custom named types",
+			args: args{
+				t: types.NewNamed(types.NewTypeName(0, nil, "CamFileStatus", &types.Basic{}), &types.Basic{}, nil),
+			},
+			want: "CamFileStatus",
+		},
+		{
+			name: "basic type aliases",
+			args: args{
+				t: types.NewAlias(types.NewTypeName(0, nil, "string", &types.Basic{}), &types.Basic{}),
+			},
+			want: "string",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := typeStringer(tt.args.t); got != tt.want {
+				t.Errorf("typeStringer() = %v, want %v", got, tt.want)
 			}
 		})
 	}
