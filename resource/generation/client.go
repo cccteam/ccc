@@ -354,7 +354,7 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 		table, ok := m[r.TableName]
 		if !ok {
 			table = &tableMetadata{
-				Columns:       make(map[string]ColumnMeta),
+				Columns:       make(map[string]columnMeta),
 				SearchIndexes: make(map[string][]*expressionField),
 				IsView:        r.IsView,
 			}
@@ -366,7 +366,7 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 
 		column, ok := table.Columns[r.ColumnName]
 		if !ok {
-			column = ColumnMeta{
+			column = columnMeta{
 				ColumnName:         r.ColumnName,
 				SpannerType:        r.SpannerType,
 				OrdinalPosition:    r.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
@@ -654,7 +654,7 @@ func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
 }
 
-func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*expressionField, error) {
+func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*expressionField, error) {
 	var flds []*expressionField
 
 	for _, match := range tokenizeRegex.FindAllStringSubmatch(expression, -1) {

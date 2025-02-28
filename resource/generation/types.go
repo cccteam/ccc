@@ -106,13 +106,13 @@ type InformationSchemaResult struct {
 }
 
 type tableMetadata struct {
-	Columns       map[string]ColumnMeta
+	Columns       map[string]columnMeta
 	SearchIndexes map[string][]*expressionField
 	IsView        bool
 	PkCount       int
 }
 
-type ColumnMeta struct {
+type columnMeta struct {
 	ColumnName         string
 	ConstraintTypes    []ConstraintType
 	IsPrimaryKey       bool

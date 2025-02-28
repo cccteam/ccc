@@ -68,7 +68,7 @@ func Test_searchExpressionFields(t *testing.T) {
 	t.Parallel()
 	type args struct {
 		expression string
-		cols       map[string]ColumnMeta
+		cols       map[string]columnMeta
 	}
 	tests := []struct {
 		name    string
@@ -86,7 +86,7 @@ func Test_searchExpressionFields(t *testing.T) {
 								(TOKENIZE_SUBSTRING(SUBSTR(Ssn, -4))),
 								(TOKENIZE_SUBSTRING(Ssn))
 							])`,
-				cols: map[string]ColumnMeta{
+				cols: map[string]columnMeta{
 					"FirstName":      {},
 					"LastName":       {},
 					"FormerLastName": {},
@@ -104,7 +104,7 @@ func Test_searchExpressionFields(t *testing.T) {
 			name: "success single line",
 			args: args{
 				expression: "TOKENLIST_CONCAT([(TOKENIZE_SUBSTRING(FirstName)),(TOKENIZE_SUBSTRING(LastName)),(TOKENIZE_SUBSTRING(FormerLastName)),(TOKENIZE_SUBSTRING(SUBSTR(Ssn, -4))),(TOKENIZE_SUBSTRING(Ssn))])",
-				cols: map[string]ColumnMeta{
+				cols: map[string]columnMeta{
 					"FirstName":      {},
 					"LastName":       {},
 					"FormerLastName": {},
