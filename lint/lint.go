@@ -1,12 +1,16 @@
-// ccc-lint is a custom linter that checks if otel span names match function names.
-package ccclint
+// lint is a custom linter that checks if otel span names match function names.
+package lint
 
 import (
-	"github.com/cccteam/ccc/ccclint/errwrap"
-	"github.com/cccteam/ccc/ccclint/otelspanname"
+	"github.com/cccteam/ccc/lint/errwrap"
+	"github.com/cccteam/ccc/lint/otelspanname"
 	"github.com/golangci/plugin-module-register/register"
 	"golang.org/x/tools/go/analysis"
 )
+
+func init() {
+	register.Plugin("ccclint", New)
+}
 
 type CCCLint struct {
 	settings Settings
