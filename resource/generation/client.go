@@ -48,7 +48,12 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 
 	r.client = c
 
-	if err := resolveOptions(r, options); err != nil {
+	opts := []Option{}
+	for _, opt := range options {
+		opts = append(opts, opt)
+	}
+
+	if err := resolveOptions(r, opts); err != nil {
 		return nil, err
 	}
 
@@ -139,7 +144,12 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 
 	t.client = c
 
-	if err := resolveOptions(t, options); err != nil {
+	opts := []Option{}
+	for _, opt := range options {
+		opts = append(opts, opt)
+	}
+
+	if err := resolveOptions(t, opts); err != nil {
 		return nil, err
 	}
 
