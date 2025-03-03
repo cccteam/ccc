@@ -61,25 +61,27 @@ func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSource
 		return nil, err
 	}
 
+	Traversal(r)
+
 	return r, nil
 }
 
 func (r *ResourceGenerator) Generate() error {
-	log.Println("Starting ResourceGenerator Generation")
-	if err := r.runResourcesGeneration(); err != nil {
-		return errors.Wrap(err, "c.genResources()")
-	}
+	// log.Println("Starting ResourceGenerator Generation")
+	// if err := r.runResourcesGeneration(); err != nil {
+	// 	return errors.Wrap(err, "c.genResources()")
+	// }
 
-	if r.genRoutes {
-		if err := r.runRouteGeneration(); err != nil {
-			return err
-		}
-	}
-	if r.genHandlers {
-		if err := r.runHandlerGeneration(); err != nil {
-			return err
-		}
-	}
+	// if r.genRoutes {
+	// 	if err := r.runRouteGeneration(); err != nil {
+	// 		return err
+	// 	}
+	// }
+	// if r.genHandlers {
+	// 	if err := r.runHandlerGeneration(); err != nil {
+	// 		return err
+	// 	}
+	// }
 
 	return nil
 }
