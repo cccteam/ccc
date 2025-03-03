@@ -6,7 +6,8 @@ import (
 )
 
 type TableColumn struct {
-	table, column string
+	table  string
+	column string
 }
 
 func NewTableColumn(table, column string) TableColumn {
@@ -55,14 +56,9 @@ func (sg SQLGraph) Undirected() map[TableColumn][]TableColumn {
 	return sg.undirected
 }
 
-func (sg *SQLGraph) FindPath(root, goal TableColumn, mandatories ...TableColumn) []TableColumn {
+func (sg *SQLGraph) FindPath(root, goal TableColumn) []TableColumn {
 	if !sg.sealed {
 		sg.Seal()
-	}
-
-	mandatoryLookup := make(map[TableColumn]struct{})
-	for _, m := range mandatories {
-		mandatoryLookup[m] = struct{}{}
 	}
 
 	q := queue{}
@@ -72,30 +68,21 @@ func (sg *SQLGraph) FindPath(root, goal TableColumn, mandatories ...TableColumn)
 	parent := make(map[TableColumn]TableColumn)
 	parent[root] = zero
 
-	var mandatoriesFound int
 	for !q.Empty() {
 		current := q.Dequeue()
 
-		if _, exists := mandatoryLookup[current]; exists {
-			mandatoriesFound++
-		}
-
 		if current == goal {
-			if mandatoriesFound == len(mandatoryLookup) {
-				path := []TableColumn{}
+			path := []TableColumn{}
 
-				for current != zero {
-					path = append(path, current)
+			for current != zero {
+				path = append(path, current)
 
-					current = parent[current]
-				}
-
-				slices.Reverse(path)
-
-				return path
+				current = parent[current]
 			}
 
-			mandatoriesFound = 0
+			slices.Reverse(path)
+
+			return path
 		}
 
 		for _, w := range sg.undirected[current] {
