@@ -134,6 +134,7 @@ func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 			fieldInfo := structField{
 				Name:         field.Name(),
 				Type:         typeStringer(field.Type()),
+				IsLocalType:  strings.HasPrefix(typeStringer(field.Type()), pkg.Name()),
 				parsedType:   field.Type(),
 				tags:         reflect.StructTag(structType.Tag(j)),
 				_packageName: field.Pkg().Name(),

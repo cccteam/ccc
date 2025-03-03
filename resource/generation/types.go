@@ -169,10 +169,10 @@ type parsedStruct struct {
 }
 
 type structField struct {
-	// Parent         *parsedStruct
-	Name string
-	Type string
-	tags reflect.StructTag
+	Name        string
+	Type        string
+	tags        reflect.StructTag
+	IsLocalType bool
 
 	// parsing info
 	parsedType types.Type
