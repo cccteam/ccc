@@ -182,6 +182,25 @@ type structField struct {
 	_position    int
 }
 
+type routeMap map[string][]generatedRoute
+
+func (r routeMap) Resources() []string {
+	resources := []string{}
+resourceRange:
+	for resource := range r {
+		for _, route := range r[resource] {
+			if route.Method == "POST" {
+				continue resourceRange
+			}
+		}
+		resources = append(resources, resource)
+	}
+
+	slices.Sort(resources)
+
+	return resources
+}
+
 type resourceInfo struct {
 	Name                  string
 	Fields                []*resourceField
@@ -228,20 +247,6 @@ func (r *resourceInfo) PrimaryKeyType() string {
 	}
 
 	return ""
-}
-
-func (r *resourceInfo) handlerTypes(consolidateAll bool) []HandlerType {
-	ht := []HandlerType{List}
-
-	if !r.IsView {
-		ht = append(ht, Read)
-
-		if r.IsConsolidated == consolidateAll {
-			ht = append(ht, Patch)
-		}
-	}
-
-	return ht
 }
 
 type resourceField struct {

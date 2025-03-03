@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"slices"
 	"text/template"
 
 	"github.com/ettle/strcase"
@@ -18,57 +17,44 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		return err
 	}
 
-	hasConsolidatedHandler := false
-
-	generatedRoutesMap := make(map[string][]generatedRoute)
+	generatedRoutesMap := make(routeMap)
 	for _, resource := range r.resources {
-		opts := make(map[HandlerType]map[OptionType]any)
-		for handlerType, options := range r.handlerOptions[resource.Name] {
-			opts[handlerType] = make(map[OptionType]any)
-			for _, option := range options {
-				opts[handlerType][option] = struct{}{}
+		handlerTypes := r.resourceEndpoints(resource)
+
+		for _, ht := range handlerTypes {
+			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(resource.Name)))
+			if ht == Read {
+				path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name+"ID"))
 			}
+
+			generatedRoutesMap[resource.Name] = append(generatedRoutesMap[resource.Name], generatedRoute{
+				Method:      ht.Method(),
+				Path:        path,
+				HandlerFunc: r.handlerName(resource.Name, ht),
+			})
 		}
+	}
 
-		handlerTypes := []HandlerType{List}
-		if !resource.IsView {
-			handlerTypes = append(handlerTypes, Read)
-
-			if slices.Contains(r.consolidatedResourceNames, resource.Name) == r.consolidateAll {
-				handlerTypes = append(handlerTypes, Patch)
-			}
-		}
-
-		for _, h := range handlerTypes {
-			if _, skipGeneration := opts[h][NoGenerate]; !skipGeneration {
-				path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(resource.Name)))
-				if h == Read {
-					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name+"ID"))
-				}
-
-				generatedRoutesMap[resource.Name] = append(generatedRoutesMap[resource.Name], generatedRoute{
-					Method:      h.Method(),
-					Path:        path,
-					HandlerFunc: r.handlerName(resource.Name, h),
-				})
-			}
-		}
-
-		if !resource.IsView && slices.Contains(r.consolidatedResourceNames, resource.Name) != r.consolidateAll {
-			hasConsolidatedHandler = true
+	if r.genRPCMethods {
+		for _, rpcStruct := range r.rpcStructs {
+			generatedRoutesMap[rpcStruct.name] = []generatedRoute{{
+				Method:      "POST",
+				Path:        fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(rpcStruct.name)),
+				HandlerFunc: rpcStruct.name,
+			}}
 		}
 	}
 
 	if len(generatedRoutesMap) > 0 {
 		routesDestination := filepath.Join(r.routerDestination, generatedFileName(routesOutputName))
 		log.Printf("Generating routes file: %s\n", routesDestination)
-		if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, generatedRoutesMap, hasConsolidatedHandler); err != nil {
+		if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRoutes()")
 		}
 
 		routerTestsDestination := filepath.Join(r.routerDestination, generatedFileName(routerTestOutputName))
 		log.Printf("Generating router tests file: %s\n", routerTestsDestination)
-		if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, generatedRoutesMap, hasConsolidatedHandler); err != nil {
+		if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRouterTests()")
 		}
 	}
@@ -76,7 +62,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	return nil
 }
 
-func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, generatedRoutes map[string][]generatedRoute, hasConsolidatedHandler bool) error {
+func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, generatedRoutes routeMap) error {
 	file, err := os.Create(destinationFile)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
@@ -93,7 +79,7 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 		"Source":                 r.resourceFilePath,
 		"Package":                r.routerPackage,
 		"RoutesMap":              generatedRoutes,
-		"HasConsolidatedHandler": hasConsolidatedHandler,
+		"HasConsolidatedHandler": r.consolidatedRoute != "",
 		"RoutePrefix":            r.routePrefix,
 		"ConsolidatedRoute":      r.consolidatedRoute,
 	}); err != nil {

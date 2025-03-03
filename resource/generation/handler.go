@@ -64,24 +64,16 @@ func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
 	// TODO: generate RPC handlers
 	// also TODO: find a way to add RPC structs to resourceInfo
 
-	opts := make(map[HandlerType]map[OptionType]any)
-	for handlerType, options := range r.handlerOptions[resource.Name] {
-		opts[handlerType] = make(map[OptionType]any)
-		for _, option := range options {
-			opts[handlerType][option] = struct{}{}
-		}
-	}
+	handlerTypes := r.resourceEndpoints(resource)
 
 	var handlerData [][]byte
-	for _, handlerTyp := range resource.handlerTypes(r.consolidateAll) {
-		if _, skipGeneration := opts[handlerTyp][NoGenerate]; !skipGeneration {
-			data, err := r.handlerContent(handlerTyp, resource)
-			if err != nil {
-				return errors.Wrap(err, "replaceHandlerFileContent()")
-			}
-
-			handlerData = append(handlerData, data)
+	for _, handlerTyp := range handlerTypes {
+		data, err := r.handlerContent(handlerTyp, resource)
+		if err != nil {
+			return errors.Wrap(err, "replaceHandlerFileContent()")
 		}
+
+		handlerData = append(handlerData, data)
 	}
 
 	if len(handlerData) > 0 {

@@ -696,6 +696,34 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*e
 	return flds, nil
 }
 
+func (c *client) resourceEndpoints(resource *resourceInfo) []HandlerType {
+	handlerTypes := []HandlerType{List}
+
+	if !resource.IsView {
+		handlerTypes = append(handlerTypes, Read)
+
+		if resource.IsConsolidated == c.consolidateAll {
+			handlerTypes = append(handlerTypes, Patch)
+		}
+	}
+
+	endpointOptions, ok := c.handlerOptions[resource.Name]
+	if !ok {
+		return handlerTypes
+	}
+
+	filteredHandlerTypes := handlerTypes[:0]
+	for _, ht := range handlerTypes {
+		if slices.Contains(endpointOptions[ht], NoGenerate) {
+			continue
+		}
+
+		filteredHandlerTypes = append(filteredHandlerTypes, ht)
+	}
+
+	return filteredHandlerTypes
+}
+
 // The resourceName should already be pluralized
 func (t *typescriptGenerator) isResourceInAppRouter(resourceName string) bool {
 	return slices.Contains(t.routerResources, accesstypes.Resource(resourceName))

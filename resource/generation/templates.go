@@ -628,7 +628,7 @@ import (
 )
 
 const (
-	{{ range $Struct, $Routes := .RoutesMap }}{{ $Struct }}ID httpio.ParamType = "{{ GoCamel $Struct }}ID"
+	{{ range $Struct := .RoutesMap.Resources }}{{ $Struct }}ID httpio.ParamType = "{{ GoCamel $Struct }}ID"
 	{{ end }}
 )
 
@@ -666,7 +666,7 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string {
-		{{ range $Struct, $Routes := .RoutesMap }}"{{ GoCamel $Struct }}ID",
+		{{ range $Struct := .RoutesMap.Resources }}"{{ GoCamel $Struct }}ID",
 		{{ end }}
 	}
 
