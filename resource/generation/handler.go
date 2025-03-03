@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"text/template"
@@ -14,7 +13,7 @@ import (
 )
 
 func (r *resourceGenerator) runHandlerGeneration() error {
-	if err := removeGeneratedFiles(r.handlerDestination, HeaderComment); err != nil {
+	if err := removeGeneratedFiles(r.handlerDestination, Prefix); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
@@ -62,26 +61,8 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 }
 
 func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
-	generatedHandlers := []*generatedHandler{
-		{
-			template:    listTemplate,
-			handlerType: List,
-		},
-	}
-
-	if !resource.IsView {
-		generatedHandlers = append(generatedHandlers, &generatedHandler{
-			template:    readTemplate,
-			handlerType: Read,
-		})
-
-		if slices.Contains(r.consolidatedResourceNames, resource.Name) == r.consolidateAll {
-			generatedHandlers = append(generatedHandlers, &generatedHandler{
-				template:    patchTemplate,
-				handlerType: Patch,
-			})
-		}
-	}
+	// TODO: generate RPC handlers
+	// also TODO: find a way to add RPC structs to resourceInfo
 
 	opts := make(map[HandlerType]map[OptionType]any)
 	for handlerType, options := range r.handlerOptions[resource.Name] {
@@ -92,9 +73,9 @@ func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
 	}
 
 	var handlerData [][]byte
-	for _, h := range generatedHandlers {
-		if _, skipGeneration := opts[h.handlerType][NoGenerate]; !skipGeneration {
-			data, err := r.handlerContent(h, resource)
+	for _, handlerTyp := range resource.handlerTypes(r.consolidateAll) {
+		if _, skipGeneration := opts[handlerTyp][NoGenerate]; !skipGeneration {
+			data, err := r.handlerContent(handlerTyp, resource)
 			if err != nil {
 				return errors.Wrap(err, "replaceHandlerFileContent()")
 			}
@@ -170,8 +151,8 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 	return nil
 }
 
-func (r *resourceGenerator) handlerContent(handler *generatedHandler, resource *resourceInfo) ([]byte, error) {
-	tmpl, err := template.New("handler").Funcs(r.templateFuncs()).Parse(handler.template)
+func (r *resourceGenerator) handlerContent(handler HandlerType, resource *resourceInfo) ([]byte, error) {
+	tmpl, err := template.New("handler").Funcs(r.templateFuncs()).Parse(handler.template())
 	if err != nil {
 		return nil, errors.Wrap(err, "template.New().Parse()")
 	}

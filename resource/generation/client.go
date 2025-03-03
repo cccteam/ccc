@@ -73,10 +73,6 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
-	for _, resource := range resources {
-		resource.IsConsolidated = r.isConsolidated(resource)
-	}
-
 	r.resources = resources
 
 	if r.genRPCMethods {
@@ -170,7 +166,6 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	for _, resource := range resources {
-		resource.IsConsolidated = t.isConsolidated(resource)
 		resource, err = t.setTypescriptInfo(resource)
 		if err != nil {
 			return err
@@ -452,10 +447,6 @@ func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 	}
 
 	return table, nil
-}
-
-func (c *client) isConsolidated(resource *resourceInfo) bool {
-	return !resource.IsView && slices.Contains(c.consolidatedResourceNames, resource.Name) != c.consolidateAll
 }
 
 func (c *client) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {

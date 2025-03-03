@@ -39,6 +39,19 @@ const (
 	Patch HandlerType = "patch"
 )
 
+func (h HandlerType) template() string {
+	switch h {
+	case Read:
+		return readTemplate
+	case List:
+		return listTemplate
+	case Patch:
+		return patchTemplate
+	default:
+		panic(fmt.Sprintf("template(): unknown handler type: %s", h))
+	}
+}
+
 func (h HandlerType) Method() string {
 	switch h {
 	case Read, List:
@@ -213,6 +226,20 @@ func (r *resourceInfo) PrimaryKeyType() string {
 	}
 
 	return ""
+}
+
+func (r *resourceInfo) handlerTypes(consolidateAll bool) []HandlerType {
+	ht := []HandlerType{List}
+
+	if !r.IsView {
+		ht = append(ht, Read)
+
+		if r.IsConsolidated == consolidateAll {
+			ht = append(ht, Patch)
+		}
+	}
+
+	return ht
 }
 
 type resourceField struct {

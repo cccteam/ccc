@@ -172,8 +172,9 @@ func (c *client) structToResource(pStruct *parsedStruct) (*resourceInfo, error) 
 		Name:                  pStruct.name,
 		Fields:                make([]*resourceField, len(pStruct.fields)),
 		IsView:                table.IsView,
-		HasCompoundPrimaryKey: table.PkCount > 1,
 		searchIndexes:         table.SearchIndexes,
+		HasCompoundPrimaryKey: table.PkCount > 1,
+		IsConsolidated:        !table.IsView && slices.Contains(c.consolidatedResourceNames, pStruct.name) != c.consolidateAll,
 	}
 
 	for i, field := range pStruct.fields {
