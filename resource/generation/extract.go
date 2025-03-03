@@ -4,6 +4,7 @@ import (
 	"go/types"
 	"log"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -115,7 +116,7 @@ func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 
 		pStruct := parsedStruct{
 			name:        object.Name(),
-			methodSets:  structMethods(object.Type()),
+			methods:     structMethods(object.Type()),
 			packageName: pkg.Name(),
 			position:    int(object.Pos()),
 		}
@@ -148,14 +149,23 @@ func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 	return parsedStructs, nil
 }
 
-func structMethods(s types.Type) []*types.MethodSet {
-	var methodSet []*types.MethodSet
+func structMethods(s types.Type) []*types.Selection {
+	var methods []*types.Selection
 
+	// Need to iterate over the type and its pointer type because
+	// a method can use either as a receiver e.g. (a *app) or (a app)
 	for _, t := range []types.Type{s, types.NewPointer(s)} {
-		methodSet = append(methodSet, types.NewMethodSet(t))
+		methodSet := types.NewMethodSet(t)
+		if methodSet.Len() == 0 {
+			continue
+		}
+
+		for method := range methodSet.Methods() {
+			methods = append(methods, method)
+		}
 	}
 
-	return methodSet
+	return methods
 }
 
 func (c *client) structToResource(pStruct *parsedStruct) (*resourceInfo, error) {
@@ -220,41 +230,49 @@ func (c *client) extractResources(pkg *types.Package) ([]*resourceInfo, error) {
 	return resources, nil
 }
 
-func extractRPCMethods(pkg *types.Package) ([]parsedStruct, error) {
+func extractStructsByMethod(pkg *types.Package, methodNames ...string) ([]parsedStruct, error) {
 	parsedStructs, err := parseStructs(pkg)
 	if err != nil {
 		return nil, err
 	}
 
+	if len(methodNames) == 0 {
+		return parsedStructs, nil
+	}
+
 	var rpcStructs []parsedStruct
 
 	for _, pStruct := range parsedStructs {
-		if len(pStruct.methodSets) == 0 {
-			continue
-		}
-
-		var (
-			hasMethod  bool
-			hasExecute bool
-		)
-
-		for _, methodSet := range pStruct.methodSets {
-			for method := range methodSet.Methods() {
-				if method.Obj().Name() == "Method" {
-					hasMethod = true
-				}
-				if method.Obj().Name() == "Execute" {
-					hasExecute = true
-				}
-			}
-		}
-
-		if hasMethod && hasExecute {
+		if hasMethods(pStruct, methodNames...) {
 			rpcStructs = append(rpcStructs, pStruct)
 		}
 	}
 
+	if len(rpcStructs) == 0 {
+		return nil, errors.Newf("package %q has no structs that implement methods %v", pkg.Name(), methodNames)
+	}
+
 	return rpcStructs, nil
+}
+
+func hasMethods(pStruct parsedStruct, methodNames ...string) bool {
+	if len(pStruct.methods) < len(methodNames) {
+		return false
+	}
+
+	bools := make([]bool, len(methodNames))
+
+methods:
+	for i := range methodNames {
+		for _, method := range pStruct.methods {
+			if method.Obj().Name() == methodNames[i] {
+				bools[i] = true
+				continue methods
+			}
+		}
+	}
+
+	return !slices.Contains(bools, false)
 }
 
 // The [types.Type] interface can be one of 14 concrete types:

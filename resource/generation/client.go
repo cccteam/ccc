@@ -75,11 +75,17 @@ func (r *resourceGenerator) Generate() error {
 
 	r.resources = resources
 
-	if r.genRPCMethods {
+	if err := r.runResourcesGeneration(); err != nil {
+		return err
 	}
 
-	if err := r.runResourcesGeneration(); err != nil {
-		return errors.Wrap(err, "c.genResources()")
+	if r.genRPCMethods {
+		rpcStructs, err := extractStructsByMethod(packageMap["rpc"], rpcMethods[:]...)
+		if err != nil {
+			return err
+		}
+
+		r.rpcStructs = rpcStructs
 	}
 
 	if r.genRoutes {
@@ -195,6 +201,7 @@ type client struct {
 	loadPackages              []string
 	resourceFilePath          string
 	resources                 []*resourceInfo
+	rpcStructs                []parsedStruct
 	packageName               string
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser

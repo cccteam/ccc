@@ -192,10 +192,11 @@ func Test_typeStringer(t *testing.T) {
 	}
 }
 
-func Test_extractRPCMethods(t *testing.T) {
+func Test_extractStructsByMethod(t *testing.T) {
 	type args struct {
 		packagePath string
 		packageName string
+		methods     []string
 	}
 	tests := []struct {
 		name    string
@@ -205,7 +206,7 @@ func Test_extractRPCMethods(t *testing.T) {
 	}{
 		{
 			name:    "gets the structs with the methods",
-			args:    args{packagePath: "./testdata/rpc", packageName: "rpc"},
+			args:    args{packagePath: "./testdata/rpc", packageName: "rpc", methods: []string{"Method", "Execute"}},
 			want:    []string{"Cofveve"},
 			wantErr: false,
 		},
@@ -221,7 +222,7 @@ func Test_extractRPCMethods(t *testing.T) {
 				return
 			}
 
-			rpcStructs, err := extractRPCMethods(pkgMap[tt.args.packageName])
+			rpcStructs, err := extractStructsByMethod(pkgMap[tt.args.packageName], tt.args.methods...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("extractRPCMethods() error = %v, wantErr %v", err, tt.wantErr)
 				return

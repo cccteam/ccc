@@ -95,6 +95,8 @@ const (
 	consolidatedHandlerOutputName = "consolidated_handler"
 )
 
+var rpcMethods = [...]string{"Method", "Execute"}
+
 type searchIndex struct {
 	Name       string
 	SearchType string
@@ -157,9 +159,9 @@ type generatedRoute struct {
 }
 
 type parsedStruct struct {
-	name       string
-	fields     []structField
-	methodSets []*types.MethodSet
+	name    string
+	fields  []structField
+	methods []*types.Selection
 
 	// debugging info
 	packageName string
