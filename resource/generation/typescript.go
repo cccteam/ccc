@@ -105,9 +105,9 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 func (t *typescriptGenerator) setTypescriptInfo(resource *resourceInfo) (*resourceInfo, error) {
 	for _, field := range resource.Fields {
 		var err error
-		field.typescriptType, err = decodeToTypescriptType(field.parsedType, t.typescriptOverrides)
+		field.typescriptType, err = decodeToTypescriptType(field.tt, t.typescriptOverrides)
 		if err != nil {
-			return nil, errors.Wrapf(err, "could not decode typescript type for field %q in struct %q at %s:%v", field.Name, resource.Name, field._packageName, field._position)
+			return nil, errors.Wrapf(err, "could not decode typescript type for field %q in struct %q at %s:%v", field.Name(), resource.Name, field.PackageName(), field.Position())
 		}
 
 		if field.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {

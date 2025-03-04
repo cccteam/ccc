@@ -77,26 +77,37 @@ func Test_parseStructs(t *testing.T) {
 		packageName string
 		packagePath string
 	}
+
+	type field struct {
+		name string
+		Type string
+		tags reflect.StructTag
+	}
+
+	type structType struct {
+		name   string
+		fields []field
+	}
 	tests := []struct {
 		name    string
 		args    args
-		want    []parsedStruct
+		want    []structType
 		wantErr bool
 	}{
 		{
 			name: "parse 1 file",
 			args: args{packageName: "resources", packagePath: "testdata/resources/res1.go"},
-			want: []parsedStruct{
+			want: []structType{
 				{
 					name: "AddressType",
-					fields: []structField{
+					fields: []field{
 						{
-							Name: "ID",
+							name: "ID",
 							Type: "string",
 							tags: reflect.StructTag(`spanner:"Id"`),
 						},
 						{
-							Name: "Description",
+							name: "Description",
 							Type: "string",
 							tags: reflect.StructTag(`spanner:"description"`),
 						},
@@ -104,14 +115,14 @@ func Test_parseStructs(t *testing.T) {
 				},
 				{
 					name: "Status",
-					fields: []structField{
+					fields: []field{
 						{
-							Name: "ID",
+							name: "ID",
 							Type: "ccc.UUID",
 							tags: reflect.StructTag(`spanner:"Id"`),
 						},
 						{
-							Name: "Description",
+							name: "Description",
 							Type: "string",
 							tags: reflect.StructTag(`spanner:"description"`),
 						},
@@ -138,18 +149,18 @@ func Test_parseStructs(t *testing.T) {
 
 			for i := range parsedStructs {
 				if parsedStructs[i].name != tt.want[i].name {
-					t.Errorf("parseStructs() = %v, want %v", parsedStructs[i], tt.want[i])
+					t.Errorf("parseStructs() struct name = %s, want %v", parsedStructs[i].name, tt.want[i].name)
 				}
 
 				for j := range parsedStructs[i].fields {
-					if parsedStructs[i].fields[j].Name != tt.want[i].fields[j].Name {
-						t.Errorf("parseStructs() name = %v, want %v", parsedStructs[i].fields[j].Name, tt.want[i].fields[j].Name)
+					if parsedStructs[i].fields[j].Name() != tt.want[i].fields[j].name {
+						t.Errorf("parseStructs() field name = %v, want %v", parsedStructs[i].fields[j].Name(), tt.want[i].fields[j].name)
 					}
-					if parsedStructs[i].fields[j].Type != tt.want[i].fields[j].Type {
-						t.Errorf("parseStructs() Type = %v, want %v", parsedStructs[i].fields[j].Type, tt.want[i].fields[j].Type)
+					if parsedStructs[i].fields[j].Type() != tt.want[i].fields[j].Type {
+						t.Errorf("parseStructs() field Type = %v, want %v", parsedStructs[i].fields[j].Type(), tt.want[i].fields[j].Type)
 					}
 					if parsedStructs[i].fields[j].tags != tt.want[i].fields[j].tags {
-						t.Errorf("parseStructs() tags = %v, want %v", parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
+						t.Errorf("parseStructs() field tags = %v, want %v", parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
 					}
 				}
 			}
@@ -235,6 +246,55 @@ func Test_extractStructsByMethod(t *testing.T) {
 
 			if !reflect.DeepEqual(rpcStructNames, tt.want) {
 				t.Errorf("extractRPCMethods() = %v, want %v", rpcStructNames, tt.want)
+			}
+		})
+	}
+}
+
+func Test_localTypesFromStruct(t *testing.T) {
+	type args struct {
+		packagePath string
+		pkgName     string
+	}
+	tests := []struct {
+		name     string
+		args     args
+		want     []string
+		wantFail bool
+	}{
+		{
+			name:     "gets all local dependent types",
+			args:     args{packagePath: "./testdata/nestedtypes", pkgName: "nestedtypes"},
+			want:     []string{"nestedtypes.A", "nestedtypes.B", "nestedtypes.C"},
+			wantFail: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			pkgMap, err := loadPackageMap(tt.args.packagePath)
+			if err != nil {
+				t.Errorf("loadPackages() error = %v", err)
+				return
+			}
+
+			pkg := pkgMap[tt.args.pkgName]
+			var lastStructType *types.Struct
+			for _, name := range pkg.Scope().Names() {
+				obj := pkg.Scope().Lookup(name)
+
+				if structType, ok := decodeToType[*types.Struct](obj.Type()); ok {
+					lastStructType = structType
+				}
+			}
+
+			var typeNames []string
+			for _, localType := range localTypesFromStruct(tt.args.pkgName, lastStructType, map[string]struct{}{}) {
+				typeNames = append(typeNames, typeStringer(localType.tt))
+			}
+
+			if !slices.Equal(typeNames, tt.want) && !tt.wantFail {
+				t.Errorf("localTypeDependencies() = %v, want %v", typeNames, tt.want)
 			}
 		})
 	}

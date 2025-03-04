@@ -115,10 +115,9 @@ func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 		}
 
 		pStruct := parsedStruct{
-			name:        object.Name(),
-			methods:     structMethods(object.Type()),
-			packageName: pkg.Name(),
-			position:    int(object.Pos()),
+			parsedType: parsedType{name: object.Name(), tt: object.Type(), packageName: pkg.Name(), position: int(object.Pos())},
+			methods:    structMethods(object.Type()),
+			localTypes: localTypesFromStruct(pkg.Name(), structType, map[string]struct{}{}),
 		}
 
 		for j := range structType.NumFields() {
@@ -132,13 +131,9 @@ func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 			}
 
 			fieldInfo := structField{
-				Name:         field.Name(),
-				Type:         typeStringer(field.Type()),
-				IsLocalType:  strings.HasPrefix(typeStringer(field.Type()), pkg.Name()),
-				parsedType:   field.Type(),
-				tags:         reflect.StructTag(structType.Tag(j)),
-				_packageName: field.Pkg().Name(),
-				_position:    int(field.Pos()),
+				parsedType:  parsedType{name: field.Name(), tt: field.Type(), packageName: pkg.Name()},
+				tags:        reflect.StructTag(structType.Tag(j)),
+				isLocalType: isTypeLocalToPackage(field, pkg.Name()),
 			}
 
 			pStruct.fields = append(pStruct.fields, fieldInfo)
@@ -191,7 +186,7 @@ func (c *client) structToResource(pStruct *parsedStruct) (*resourceInfo, error) 
 	for i, field := range pStruct.fields {
 		tableColumn, ok := table.Columns[field.tags.Get("spanner")]
 		if !ok {
-			return nil, errors.Newf("field %q in struct %q[%d] at %s:%d is not in tableMeta", field.Name, resource.Name, i, field._packageName, field._position)
+			return nil, errors.Newf("field %q in struct %q[%d] at %s:%d is not in tableMeta", field.Name(), resource.Name, i, field.PackageName(), field.Position())
 		}
 
 		resource.Fields[i] = &resourceField{
@@ -282,6 +277,8 @@ methods:
 // and support can easily be expanded to other types in our [resources] package
 func decodeToType[T types.Type](v types.Type) (T, bool) {
 	switch t := v.(type) {
+	case *types.Slice:
+		return decodeToType[T](t.Elem())
 	case *types.Named:
 		return decodeToType[T](t.Underlying())
 	case T:
@@ -351,4 +348,64 @@ func typeStringer(t types.Type) string {
 	}
 
 	return types.TypeString(t, qualifier)
+}
+
+func isTypeLocalToPackage(t *types.Var, pkgName string) bool {
+	typeName := strings.TrimPrefix(typeStringer(t.Type()), "[]")
+	typeName = strings.TrimPrefix(typeName, "*")
+
+	return strings.HasPrefix(typeName, pkgName)
+}
+
+func localTypesFromStruct(pkgName string, s *types.Struct, typeMap map[string]struct{}) []parsedType {
+	var dependencies []parsedType
+	typeMap[typeStringer(s)] = struct{}{}
+
+	for field := range s.Fields() {
+		if _, ok := typeMap[typeStringer(field.Type())]; ok {
+			continue
+		}
+
+		if isTypeLocalToPackage(field, pkgName) {
+			if structType, ok := decodeToType[*types.Struct](field.Type()); ok {
+				dependencies = append(dependencies, localTypesFromStruct(pkgName, structType, typeMap)...)
+			}
+
+			pt := parsedType{
+				name:        field.Name(),
+				tt:          field.Type(),
+				packageName: pkgName,
+			}
+			dependencies = append(dependencies, pt)
+		}
+	}
+
+	return dependencies
+}
+
+func isUnderlyingTypeStruct(tt types.Type) bool {
+	switch t := tt.(type) {
+	case *types.Slice:
+		return isUnderlyingTypeStruct(t.Elem())
+	case *types.Pointer:
+		return isUnderlyingTypeStruct(t.Elem())
+	case *types.Named:
+		return isUnderlyingTypeStruct(tt.Underlying())
+	case *types.Struct:
+		return true
+	default:
+		return false
+	}
+}
+
+// Returns the underlying element type for slice and pointer types
+func unwrapType(tt types.Type) types.Type {
+	switch t := tt.(type) {
+	case *types.Slice:
+		return unwrapType(t.Elem())
+	case *types.Pointer:
+		return unwrapType(t.Elem())
+	default:
+		return t
+	}
 }

@@ -158,28 +158,129 @@ type generatedRoute struct {
 	HandlerFunc string
 }
 
-type parsedStruct struct {
-	name    string
-	fields  []structField
-	methods []*types.Selection
-
-	// debugging info
+type parsedType struct {
+	name        string
+	tt          types.Type
 	packageName string
 	position    int
 }
 
+func (p parsedType) Name() string {
+	return p.name
+}
+
+// e.g. ccc.UUID, []ccc.UUID
+func (p parsedType) Type() string {
+	return typeStringer(p.tt)
+}
+
+// Returns type without package prefix.
+// e.g. ccc.UUID -> UUID, []ccc.UUID -> []UUID
+func (p parsedType) UnqualifiedType() string {
+	qualifier := func(p *types.Package) string {
+		return ""
+	}
+
+	return types.TypeString(p.tt, qualifier)
+}
+
+// Returns unwrapped type.
+// e.g. ccc.UUID -> ccc.UUID, []ccc.UUID -> ccc.UUID
+func (p parsedType) TypeName() string {
+	return typeStringer(unwrapType(p.tt))
+}
+
+// Returns unwrapped and unqualified type as string.
+// e.g. ccc.UUID -> UUID, []ccc.UUID -> UUID
+func (p parsedType) UnqualifiedTypeName() string {
+	qualifier := func(p *types.Package) string {
+		return ""
+	}
+
+	return types.TypeString(unwrapType(p.tt), qualifier)
+}
+
+func (p parsedType) PackageName() string {
+	return p.packageName
+}
+
+func (p parsedType) Position() int {
+	return p.position
+}
+
+func (p parsedType) IsStruct() bool {
+	return isUnderlyingTypeStruct(p.tt)
+}
+
+func (p parsedType) IsIterable() bool {
+	switch p.tt.(type) {
+	case *types.Slice, *types.Array:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p parsedType) ToStructType() parsedStruct {
+	if p.IsStruct() {
+		st, _ := decodeToType[*types.Struct](p.tt)
+		pStruct := parsedStruct{
+			parsedType: p,
+			methods:    structMethods(p.tt),
+			localTypes: localTypesFromStruct(p.packageName, st, map[string]struct{}{}),
+		}
+
+		for i := range st.NumFields() {
+			field := st.Field(i)
+
+			sField := structField{
+				parsedType: parsedType{name: field.Name(), tt: field.Type(), packageName: p.packageName},
+				tags:       reflect.StructTag(st.Tag(i)),
+			}
+
+			pStruct.fields = append(pStruct.fields, sField)
+		}
+
+		return pStruct
+	}
+
+	return parsedStruct{}
+}
+
+type parsedStruct struct {
+	parsedType
+	fields     []structField
+	methods    []*types.Selection
+	localTypes []parsedType
+}
+
+func (p parsedStruct) Name() string {
+	return p.name
+}
+
+func (p parsedStruct) Fields() []structField {
+	return p.fields
+}
+
+func (p parsedStruct) LocalTypes() []parsedType {
+	return p.localTypes
+}
+
 type structField struct {
-	Name        string
-	Type        string
+	parsedType
 	tags        reflect.StructTag
-	IsLocalType bool
+	isLocalType bool
+}
 
-	// parsing info
-	parsedType types.Type
+func (s structField) JSONTag() string {
+	caser := strcase.NewCaser(false, nil, nil)
+	camelCaseName := caser.ToCamel(s.Name())
 
-	// debugging info
-	_packageName string
-	_position    int
+	return fmt.Sprintf("json:%q", camelCaseName)
+}
+
+func (s structField) IsLocalType() bool {
+	return s.isLocalType
 }
 
 type routeMap map[string][]generatedRoute
@@ -232,7 +333,7 @@ func (r *resourceInfo) SearchIndexes() []*searchIndex {
 func (r *resourceInfo) PrimaryKeyIsUUID() bool {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
-			return f.Type == "ccc.UUID"
+			return f.Type() == "ccc.UUID"
 		}
 	}
 
@@ -242,7 +343,7 @@ func (r *resourceInfo) PrimaryKeyIsUUID() bool {
 func (r *resourceInfo) PrimaryKeyType() string {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
-			return f.Type
+			return f.Type()
 		}
 	}
 
@@ -283,14 +384,13 @@ func (f *resourceField) TypescriptDisplayType() string {
 }
 
 func (f *resourceField) JSONTag() string {
-	caser := strcase.NewCaser(false, nil, nil)
-	camelCaseName := caser.ToCamel(f.Name)
-
-	if !f.IsPrimaryKey {
-		return fmt.Sprintf("json:%q", camelCaseName+",omitzero")
+	if f.IsPrimaryKey {
+		return f.structField.JSONTag()
 	}
 
-	return fmt.Sprintf("json:%q", camelCaseName)
+	caser := strcase.NewCaser(false, nil, nil)
+	camelCaseName := caser.ToCamel(f.Name())
+	return fmt.Sprintf("json:%q", camelCaseName+",omitzero")
 }
 
 func (f *resourceField) JSONTagForPatch() string {
@@ -299,7 +399,7 @@ func (f *resourceField) JSONTagForPatch() string {
 	}
 
 	caser := strcase.NewCaser(false, nil, nil)
-	camelCaseName := caser.ToCamel(f.Name)
+	camelCaseName := caser.ToCamel(f.Name())
 
 	return fmt.Sprintf("json:%q", camelCaseName)
 }
@@ -415,7 +515,7 @@ func (f *resourceField) IsView() bool {
 }
 
 func (f *resourceField) IsRequired() bool {
-	if f.IsPrimaryKey && f.Type != "ccc.UUID" {
+	if f.IsPrimaryKey && f.Type() != "ccc.UUID" {
 		return true
 	}
 
