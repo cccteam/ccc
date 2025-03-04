@@ -21,15 +21,21 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 
 	log.Println("Starting typescript resource permission generation...")
 
-	templateData := t.rc.TypescriptData()
+	routerData := t.rc.TypescriptData()
 
-	output, err := t.generateTemplateOutput(typescriptPermissionTemplate, map[string]any{
-		"Permissions":         templateData.Permissions,
-		"Resources":           templateData.Resources,
-		"ResourceTags":        templateData.ResourceTags,
-		"ResourcePermissions": templateData.ResourcePermissions,
-		"Domains":             templateData.Domains,
-	})
+	templateData := map[string]any{
+		"Permissions":         routerData.Permissions,
+		"Resources":           routerData.Resources,
+		"ResourceTags":        routerData.ResourceTags,
+		"ResourcePermissions": routerData.ResourcePermissions,
+		"Domains":             routerData.Domains,
+	}
+
+	if t.genRPCMethods {
+		templateData["RPCMethods"] = t.rpcMethods
+	}
+
+	output, err := t.generateTemplateOutput(typescriptPermissionTemplate, templateData)
 	if err != nil {
 		return errors.Wrap(err, "c.generateTemplateOutput()")
 	}

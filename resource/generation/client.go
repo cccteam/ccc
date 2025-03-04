@@ -186,6 +186,17 @@ func (t *typescriptGenerator) Generate() error {
 	t.resources = resources
 
 	if t.genRPCMethods {
+		rpcStructs, err := extractStructsByMethod(packageMap["rpc"], rpcMethods[:]...)
+		if err != nil {
+			return err
+		}
+
+		var rpcMethods []rpcMethodInfo
+		for _, s := range rpcStructs {
+			rpcMethods = append(rpcMethods, rpcMethodInfo{s})
+		}
+
+		t.rpcMethods = rpcMethods
 	}
 
 	if t.genMetadata {
