@@ -117,7 +117,7 @@ func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 		pStruct := parsedStruct{
 			parsedType: parsedType{name: object.Name(), tt: object.Type(), packageName: pkg.Name(), position: int(object.Pos())},
 			methods:    structMethods(object.Type()),
-			localTypes: localTypesFromStruct(pkg.Name(), structType, map[string]struct{}{}),
+			localTypes: localTypesFromStruct(pkg.Name(), object.Type(), map[string]struct{}{}),
 		}
 
 		for j := range structType.NumFields() {
@@ -357,18 +357,23 @@ func isTypeLocalToPackage(t *types.Var, pkgName string) bool {
 	return strings.HasPrefix(typeName, pkgName)
 }
 
-func localTypesFromStruct(pkgName string, s *types.Struct, typeMap map[string]struct{}) []parsedType {
+func localTypesFromStruct(pkgName string, tt types.Type, typeMap map[string]struct{}) []parsedType {
 	var dependencies []parsedType
-	typeMap[typeStringer(s)] = struct{}{}
+	typeMap[typeStringer(tt)] = struct{}{}
+
+	s, ok := decodeToType[*types.Struct](tt)
+	if !ok {
+		return dependencies
+	}
 
 	for field := range s.Fields() {
-		if _, ok := typeMap[typeStringer(field.Type())]; ok {
+		if _, ok := typeMap[typeStringer(unwrapType(field.Type()))]; ok {
 			continue
 		}
 
 		if isTypeLocalToPackage(field, pkgName) {
-			if structType, ok := decodeToType[*types.Struct](field.Type()); ok {
-				dependencies = append(dependencies, localTypesFromStruct(pkgName, structType, typeMap)...)
+			if _, ok := decodeToType[*types.Struct](field.Type()); ok {
+				dependencies = append(dependencies, localTypesFromStruct(pkgName, field.Type(), typeMap)...)
 			}
 
 			pt := parsedType{

@@ -227,7 +227,7 @@ func (p parsedType) ToStructType() parsedStruct {
 		pStruct := parsedStruct{
 			parsedType: p,
 			methods:    structMethods(p.tt),
-			localTypes: localTypesFromStruct(p.packageName, st, map[string]struct{}{}),
+			localTypes: localTypesFromStruct(p.packageName, p.tt, map[string]struct{}{}),
 		}
 
 		for i := range st.NumFields() {

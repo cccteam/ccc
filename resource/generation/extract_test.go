@@ -279,12 +279,12 @@ func Test_localTypesFromStruct(t *testing.T) {
 			}
 
 			pkg := pkgMap[tt.args.pkgName]
-			var lastStructType *types.Struct
+			var lastStructType types.Type
 			for _, name := range pkg.Scope().Names() {
 				obj := pkg.Scope().Lookup(name)
 
-				if structType, ok := decodeToType[*types.Struct](obj.Type()); ok {
-					lastStructType = structType
+				if _, ok := decodeToType[*types.Struct](obj.Type()); ok {
+					lastStructType = obj.Type()
 				}
 			}
 
