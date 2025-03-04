@@ -458,12 +458,12 @@ func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 
 func (c *client) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
 	if goFormat {
-		var err error
-		data, err = format.Source(data)
+		formattedData, err := format.Source(data)
 		if err != nil {
-			return errors.Wrapf(err, "format.Source(): file: %s", file.Name())
+			return errors.Wrapf(err, "format.Source(): file: %s, file content: %q", file.Name(), data)
 		}
 
+		data = formattedData
 		data, err = imports.Process(destination, data, nil)
 		if err != nil {
 			return errors.Wrapf(err, "imports.Process(): file: %s", file.Name())
