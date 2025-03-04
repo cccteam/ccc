@@ -37,6 +37,18 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		}
 	}
 
+	if r.genRPCMethods {
+		for _, rpcMethod := range r.rpcMethods {
+			wg.Add(1)
+			go func(rpcMethod rpcMethodInfo) {
+				if err := r.generateRPCHandler(rpcMethod); err != nil {
+					errChan <- err
+				}
+				wg.Done()
+			}(rpcMethod)
+		}
+	}
+
 	go func() {
 		wg.Wait()
 		close(errChan)

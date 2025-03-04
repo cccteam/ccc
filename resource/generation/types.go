@@ -302,6 +302,10 @@ resourceRange:
 	return resources
 }
 
+type rpcMethodInfo struct {
+	parsedStruct
+}
+
 type resourceInfo struct {
 	Name                  string
 	Fields                []*resourceField
