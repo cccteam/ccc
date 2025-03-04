@@ -18,7 +18,7 @@ func main() {
 
 func run() error {
 	var golangiCiLintVersion string
-	pflag.StringVarP(&golangiCiLintVersion, "golangci-lint-version", "g", "v1.64.5", "golangci-lint CLI version")
+	pflag.StringVarP(&golangiCiLintVersion, "golangci-lint-version", "g", "v1.64", "golangci-lint CLI version")
 
 	buildInfo, available := debug.ReadBuildInfo()
 	if !available {
