@@ -92,11 +92,7 @@ func (r *resourceGenerator) Generate() error {
 
 		r.rpcMethods = rpcMethods
 
-		if err := r.generateRPCInterfaces(); err != nil {
-			return err
-		}
-
-		if err := r.generateBusinessLayerInterfaces(); err != nil {
+		if err := r.runRPCGeneration(); err != nil {
 			return err
 		}
 	}
