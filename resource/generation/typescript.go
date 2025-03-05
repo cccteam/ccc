@@ -24,11 +24,12 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	routerData := t.rc.TypescriptData()
 
 	templateData := map[string]any{
-		"Permissions":         routerData.Permissions,
-		"Resources":           routerData.Resources,
-		"ResourceTags":        routerData.ResourceTags,
-		"ResourcePermissions": routerData.ResourcePermissions,
-		"Domains":             routerData.Domains,
+		"Permissions":            routerData.Permissions,
+		"ResourcePermissions":    routerData.ResourcePermissions,
+		"Resources":              routerData.Resources,
+		"ResourceTags":           routerData.ResourceTags,
+		"ResourcePermissionsMap": routerData.ResourcePermissionMap,
+		"Domains":                routerData.Domains,
 	}
 
 	if t.genRPCMethods {
