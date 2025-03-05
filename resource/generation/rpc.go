@@ -44,3 +44,52 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod rpcMethodInfo) error {
 
 	return nil
 }
+
+func (r *resourceGenerator) generateRPCInterfaces() error {
+	output, err := r.generateTemplateOutput("rpcInterfacesTemplate", rpcInterfacesTemplate, map[string]any{
+		"Source": r.resourceFilePath,
+		"Types":  r.rpcMethods,
+	})
+	if err != nil {
+		return errors.Wrap(err, "generateTemplateOutput()")
+	}
+
+	destinationFile := filepath.Join("./businesslayer/rpc", generatedFileName("rpc_iface"))
+
+	file, err := os.Create(destinationFile)
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	if err := r.writeBytesToFile(destinationFile, file, output, true); err != nil {
+		return errors.Wrap(err, "c.writeBytesToFile()")
+	}
+
+	return nil
+}
+
+func (r *resourceGenerator) generateBusinessLayerInterfaces() error {
+	output, err := r.generateTemplateOutput("businessLayerInterfaces", businesslayerInterfacesTemplate, map[string]any{
+		"Source":      r.resourceFilePath,
+		"PackageName": r.packageName,
+		"RPCMethods":  r.rpcMethods,
+	})
+	if err != nil {
+		return errors.Wrap(err, "generateTemplateOutput()")
+	}
+
+	destinationFile := filepath.Join("./businesslayer", generatedFileName("iface"))
+
+	file, err := os.Create(destinationFile)
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	if err := r.writeBytesToFile(destinationFile, file, output, true); err != nil {
+		return errors.Wrap(err, "c.writeBytesToFile()")
+	}
+
+	return nil
+}

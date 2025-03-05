@@ -91,6 +91,14 @@ func (r *resourceGenerator) Generate() error {
 		}
 
 		r.rpcMethods = rpcMethods
+
+		if err := r.generateRPCInterfaces(); err != nil {
+			return err
+		}
+
+		if err := r.generateBusinessLayerInterfaces(); err != nil {
+			return err
+		}
 	}
 
 	if r.genRoutes {
@@ -518,6 +526,7 @@ func (c *client) templateFuncs() map[string]any {
 		"Kebab":                        c.caser.ToKebab,
 		"Lower":                        strings.ToLower,
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
+		"FormatRPCInterfaceTypes":      formatRPCInterfaceTypes,
 		"ResourceSearchType": func(searchType string) string {
 			switch strings.ToUpper(searchType) {
 			case "SUBSTRING":
@@ -668,6 +677,31 @@ func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 
 	var sb strings.Builder
 	for _, row := range resourceNames {
+		sb.WriteString("\n\t")
+		for _, cell := range row {
+			line := fmt.Sprintf("%s | ", cell)
+			sb.WriteString(line)
+		}
+	}
+
+	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
+}
+
+func formatRPCInterfaceTypes(rpcMethods []rpcMethodInfo) string {
+	var names [][]string
+	var namesLength int
+	for i, rpcMethod := range rpcMethods {
+		namesLength += len(rpcMethod.Name())
+		if i == 0 || namesLength > 80 {
+			namesLength = len(rpcMethod.Name())
+			names = append(names, []string{})
+		}
+
+		names[len(names)-1] = append(names[len(names)-1], rpcMethod.Name())
+	}
+
+	var sb strings.Builder
+	for _, row := range names {
 		sb.WriteString("\n\t")
 		for _, cell := range row {
 			line := fmt.Sprintf("%s | ", cell)
