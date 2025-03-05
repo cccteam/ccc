@@ -657,13 +657,13 @@ func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	var resourceNames [][]string
 	var resourceNamesLen int
 	for i, resource := range resources {
-		resourceNamesLen += len(resource.Name)
+		resourceNamesLen += len(resource.Name())
 		if i == 0 || resourceNamesLen > 80 {
-			resourceNamesLen = len(resource.Name)
+			resourceNamesLen = len(resource.Name())
 			resourceNames = append(resourceNames, []string{})
 		}
 
-		resourceNames[len(resourceNames)-1] = append(resourceNames[len(resourceNames)-1], resource.Name)
+		resourceNames[len(resourceNames)-1] = append(resourceNames[len(resourceNames)-1], resource.Name())
 	}
 
 	var sb strings.Builder
@@ -723,7 +723,7 @@ func (c *client) resourceEndpoints(resource *resourceInfo) []HandlerType {
 		}
 	}
 
-	endpointOptions, ok := c.handlerOptions[resource.Name]
+	endpointOptions, ok := c.handlerOptions[resource.Name()]
 	if !ok {
 		return handlerTypes
 	}

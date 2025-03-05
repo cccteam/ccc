@@ -175,7 +175,7 @@ func (c *client) structToResource(pStruct *parsedStruct) (*resourceInfo, error) 
 	}
 
 	resource := &resourceInfo{
-		Name:                  pStruct.name,
+		parsedType:            pStruct.parsedType,
 		Fields:                make([]*resourceField, len(pStruct.fields)),
 		IsView:                table.IsView,
 		searchIndexes:         table.SearchIndexes,
@@ -186,7 +186,7 @@ func (c *client) structToResource(pStruct *parsedStruct) (*resourceInfo, error) 
 	for i, field := range pStruct.fields {
 		tableColumn, ok := table.Columns[field.tags.Get("spanner")]
 		if !ok {
-			return nil, errors.Newf("field %q in struct %q[%d] at %s:%d is not in tableMeta", field.Name(), resource.Name, i, field.PackageName(), field.Position())
+			return nil, errors.Newf("field %q in struct %q[%d] at %s:%d is not in tableMeta", field.Name(), resource.Name(), i, field.PackageName(), field.Position())
 		}
 
 		resource.Fields[i] = &resourceField{

@@ -315,7 +315,7 @@ type rpcMethodInfo struct {
 }
 
 type resourceInfo struct {
-	Name                  string
+	parsedType
 	Fields                []*resourceField
 	searchIndexes         map[string][]*expressionField // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
 	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.

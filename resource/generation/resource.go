@@ -83,7 +83,7 @@ func (r *resourceGenerator) generateResourceTests() error {
 }
 
 func (r *resourceGenerator) generateResources(res *resourceInfo) error {
-	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name))))
+	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
 	destinationFilePath := filepath.Join(r.resourceDestination, fileName)
 
 	log.Printf("Generating resource file: %v\n", fileName)

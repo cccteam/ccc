@@ -22,15 +22,15 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		handlerTypes := r.resourceEndpoints(resource)
 
 		for _, ht := range handlerTypes {
-			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(resource.Name)))
+			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(resource.Name())))
 			if ht == Read {
-				path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name+"ID"))
+				path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name()+"ID"))
 			}
 
-			generatedRoutesMap[resource.Name] = append(generatedRoutesMap[resource.Name], generatedRoute{
+			generatedRoutesMap[resource.Name()] = append(generatedRoutesMap[resource.Name()], generatedRoute{
 				Method:      ht.Method(),
 				Path:        path,
-				HandlerFunc: r.handlerName(resource.Name, ht),
+				HandlerFunc: r.handlerName(resource.Name(), ht),
 			})
 		}
 	}
