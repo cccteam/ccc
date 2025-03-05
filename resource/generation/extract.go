@@ -310,13 +310,7 @@ func decodeToTypescriptType(typ types.Type, typescriptOverrides map[string]strin
 		default:
 			return "", errors.Newf("%q is an unknown basic type of info/kind: %v/%v", t.String(), t.Info(), t.Kind())
 		}
-	case *types.Named:
-		if override, ok := typescriptOverrides[typeStringer(t)]; ok {
-			return override, nil
-		}
-
-		return decodeToTypescriptType(t.Underlying(), typescriptOverrides)
-	case *types.Alias:
+	case *types.Named, *types.Alias, *types.TypeParam:
 		if override, ok := typescriptOverrides[typeStringer(t)]; ok {
 			return override, nil
 		}
