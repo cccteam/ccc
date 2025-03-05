@@ -22,7 +22,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod rpcMethodInfo) error {
 	}
 	defer file.Close()
 
-	tmpl, err := template.New(fmt.Sprintf("rcpMethodTemplate:%q", rpcMethod.Name())).Funcs(r.templateFuncs()).Parse(rcpMethodTemplate)
+	tmpl, err := template.New(fmt.Sprintf("rcpHandlerTemplate:%q", rpcMethod.Name())).Funcs(r.templateFuncs()).Parse(rpcHandlerTemplate)
 	if err != nil {
 		return errors.Wrap(err, "template.New().Parse()")
 	}
