@@ -809,18 +809,18 @@ func fieldAccessors(patchType PatchType) string {
 	return fmt.Sprintf(`
 		{{- range $field := .Resource.Fields }}
 		{{ if eq false $field.IsPrimaryKey }}
-		func (p *{{ $field.Parent.Name }}%[1]sPatch) Set{{ $field.Name }}(v {{ $field.Type }}) *{{ $field.Parent.Name }}%[1]sPatch {
+		func (p *{{ $field.Parent.Name }}%[1]sPatch) Set{{ $field.Name }}(v {{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}) *{{ $field.Parent.Name }}%[1]sPatch {
 			p.patchSet.Set("{{ $field.Name }}", v)
 
 			return p
 		}
 		{{ end }}
 
-		func (p *{{ $field.Parent.Name }}%[1]sPatch) {{ $field.Name }}() {{ $field.Type }} {
+		func (p *{{ $field.Parent.Name }}%[1]sPatch) {{ $field.Name }}() {{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }} {
 		{{ if $field.IsPrimaryKey -}} 
-			v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.Type}})
+			v, _ := p.patchSet.Key("{{ $field.Name }}").({{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }})
 		{{ else -}} 
-			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ $field.Type}}) 
+			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}) 
 		{{ end }}
 
 			return v
