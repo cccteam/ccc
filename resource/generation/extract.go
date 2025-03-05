@@ -102,8 +102,8 @@ func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 		return nil, errors.Newf("package %q has invalid scope", pkg.Name())
 	}
 
-	parsedStructs := make([]parsedStruct, scope.Len())
-	for i, name := range scope.Names() {
+	var parsedStructs []parsedStruct
+	for _, name := range scope.Names() {
 		object := scope.Lookup(name)
 		if object == nil {
 			return nil, errors.Newf("package %q in an invalid state: %q from scope.Names() not found in scope.Lookup()", pkg.Name(), name)
@@ -139,7 +139,7 @@ func parseStructs(pkg *types.Package) ([]parsedStruct, error) {
 			pStruct.fields = append(pStruct.fields, fieldInfo)
 		}
 
-		parsedStructs[i] = pStruct
+		parsedStructs = append(parsedStructs, pStruct)
 	}
 
 	return parsedStructs, nil

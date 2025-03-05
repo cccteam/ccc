@@ -1,6 +1,10 @@
 package resources
 
-import "github.com/cccteam/ccc"
+import (
+	"time"
+
+	"github.com/cccteam/ccc"
+)
 
 type AddressType struct {
 	ID          string `spanner:"Id"`
@@ -26,3 +30,26 @@ const (
 )
 
 type alias = struct{}
+
+type FileRecordSet struct {
+	ID           ccc.UUID            `spanner:"Id"`
+	FileID       ccc.UUID            `spanner:"FileId"`
+	ManyIDs      []FileID            `spanner:"FileIdArray"`
+	Status       FileRecordSetStatus `spanner:"Status"`
+	ErrorDetails *string             `spanner:"ErrorDetails"`
+	UpdatedAt    *time.Time          `spanner:"UpdatedAt" conditions:"immutable"`
+}
+
+type FileID string
+
+type FileStatus string
+
+const (
+	ErrorProcessingFileStatus FileStatus = "Error Processing"
+)
+
+type FileRecordSetStatus string
+
+const (
+	ErrorRecordSetStatus FileRecordSetStatus = "Error"
+)

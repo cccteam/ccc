@@ -254,6 +254,14 @@ type parsedStruct struct {
 	localTypes []parsedType
 }
 
+func (p parsedStruct) String() string {
+	var fieldNames []string
+	for _, field := range p.fields {
+		fieldNames = append(fieldNames, field.name)
+	}
+	return fmt.Sprintf(`struct {name: %q, fields: %v}`, p.name, fieldNames)
+}
+
 func (p parsedStruct) Name() string {
 	return p.name
 }

@@ -114,6 +114,41 @@ func Test_parseStructs(t *testing.T) {
 					},
 				},
 				{
+					name: "FileRecordSet",
+					fields: []field{
+						{
+							name: "ID",
+							Type: "ccc.UUID",
+							tags: reflect.StructTag(`spanner:"Id"`),
+						},
+						{
+							name: "FileID",
+							Type: "ccc.UUID",
+							tags: reflect.StructTag(`spanner:"FileId"`),
+						},
+						{
+							name: "ManyIDs",
+							Type: "[]resources.FileID",
+							tags: reflect.StructTag(`spanner:"FileIdArray"`),
+						},
+						{
+							name: "Status",
+							Type: "resources.FileRecordSetStatus",
+							tags: reflect.StructTag(`spanner:"Status"`),
+						},
+						{
+							name: "ErrorDetails",
+							Type: "*string",
+							tags: reflect.StructTag(`spanner:"ErrorDetails"`),
+						},
+						{
+							name: "UpdatedAt",
+							Type: "*time.Time",
+							tags: reflect.StructTag(`spanner:"UpdatedAt" conditions:"immutable"`),
+						},
+					},
+				},
+				{
 					name: "Status",
 					fields: []field{
 						{
@@ -144,6 +179,11 @@ func Test_parseStructs(t *testing.T) {
 			parsedStructs, err := parseStructs(pkgMap[tt.args.packageName])
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseStructs() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if len(parsedStructs) != len(tt.want) {
+				t.Errorf("parseStructs() = %v \nwant = %v", parsedStructs, tt.want)
 				return
 			}
 
