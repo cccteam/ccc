@@ -296,43 +296,40 @@ func decodeToTypescriptType(typ types.Type, typescriptOverrides map[string]strin
 		return "", errors.Newf("received nil type")
 	}
 
-	// `types.BasicInfo` is a set of bit flags that describe properties of a basic type.
-	// Using bitwise-AND we can check if any basic type has a given property.
-	// Defined as a closure because it returns TypeScript types
-	decodeBasicType := func(basicType *types.Basic) (string, error) {
-		switch basicInfo := basicType.Info(); {
+	switch t := typ.(type) {
+	case *types.Basic:
+		switch basicInfo := t.Info(); {
 		case basicInfo&types.IsBoolean != 0:
 			return "boolean", nil
 		case basicInfo&types.IsNumeric != 0:
 			return "number", nil
 		case basicInfo&types.IsString != 0:
 			return "string", nil
+		case basicInfo&types.IsUntyped != 0:
+			return "string", nil
 		default:
-			return "", errors.Newf("%q is an unsupported basic type of info/kind: %v/%v", basicType.String(), basicType.Info(), basicType.Kind())
+			return "", errors.Newf("%q is an unknown basic type of info/kind: %v/%v", t.String(), t.Info(), t.Kind())
 		}
-	}
-
-	decodeNamedType := func(namedType *types.Named) (string, error) {
-		// Qualifies a named type with its package: `package.TypeName`
-		qualifiedTypeString := typeStringer(namedType)
-
-		overrideTypeString, ok := typescriptOverrides[qualifiedTypeString]
-		if !ok {
-			return "", errors.Newf("%q is an unsupported type not present in typescriptOverrides", qualifiedTypeString)
-		}
-
-		return overrideTypeString, nil
-	}
-
-	switch t := typ.(type) {
-	case *types.Basic:
-		return decodeBasicType(t)
 	case *types.Named:
-		return decodeNamedType(t)
+		if override, ok := typescriptOverrides[typeStringer(t)]; ok {
+			return override, nil
+		}
+
+		return decodeToTypescriptType(t.Underlying(), typescriptOverrides)
+	case *types.Alias:
+		if override, ok := typescriptOverrides[typeStringer(t)]; ok {
+			return override, nil
+		}
+
+		return decodeToTypescriptType(t.Underlying(), typescriptOverrides)
 	case *types.Pointer:
 		return decodeToTypescriptType(t.Elem(), typescriptOverrides)
+	case *types.Slice:
+		return decodeToTypescriptType(t.Elem(), typescriptOverrides)
+	case *types.Array:
+		return decodeToTypescriptType(t.Elem(), typescriptOverrides)
 	default:
-		return "", errors.Newf("%q is an unsupported type", t.String())
+		return "string", nil
 	}
 }
 
