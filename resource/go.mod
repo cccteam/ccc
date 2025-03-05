@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	cloud.google.com/go/spanner v1.75.0
 	github.com/cccteam/ccc v0.2.9
-	github.com/cccteam/ccc/accesstypes v0.5.0
+	github.com/cccteam/ccc/accesstypes v0.5.1-0.20250222014135-244851aa50b3
 	github.com/cccteam/ccc/pkg v0.0.2
 	github.com/cccteam/db-initiator v0.2.5
 	github.com/cccteam/httpio v0.7.6
