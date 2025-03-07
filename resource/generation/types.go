@@ -7,14 +7,16 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 
-	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/resource"
-	"github.com/shopspring/decimal"
 
 	"github.com/ettle/strcase"
 )
+
+type Generator interface {
+	Generate() error
+	Close()
+}
 
 var tokenizeRegex = regexp.MustCompile(`(TOKENIZE_[^)]+)\(([^)]+)\)`)
 
@@ -36,6 +38,19 @@ const (
 	Read  HandlerType = "read"
 	Patch HandlerType = "patch"
 )
+
+func (h HandlerType) template() string {
+	switch h {
+	case Read:
+		return readTemplate
+	case List:
+		return listTemplate
+	case Patch:
+		return patchTemplate
+	default:
+		panic(fmt.Sprintf("template(): unknown handler type: %s", h))
+	}
+}
 
 func (h HandlerType) Method() string {
 	switch h {
@@ -80,6 +95,8 @@ const (
 	consolidatedHandlerOutputName = "consolidated_handler"
 )
 
+var rpcMethods = [...]string{"Method", "Execute"}
+
 type searchIndex struct {
 	Name       string
 	SearchType string
@@ -103,14 +120,14 @@ type InformationSchemaResult struct {
 	KeyOrdinalPosition   int64   `spanner:"KEY_ORDINAL_POSITION"`
 }
 
-type TableMetadata struct {
-	Columns       map[string]ColumnMeta
+type tableMetadata struct {
+	Columns       map[string]columnMeta
 	SearchIndexes map[string][]*expressionField
 	IsView        bool
 	PkCount       int
 }
 
-type ColumnMeta struct {
+type columnMeta struct {
 	ColumnName         string
 	ConstraintTypes    []ConstraintType
 	IsPrimaryKey       bool
@@ -141,17 +158,169 @@ type generatedRoute struct {
 	HandlerFunc string
 }
 
+type parsedType struct {
+	name        string
+	tt          types.Type
+	packageName string
+	position    int
+}
+
+func (p parsedType) Name() string {
+	return p.name
+}
+
+// e.g. ccc.UUID, []ccc.UUID
+func (p parsedType) Type() string {
+	return typeStringer(p.tt)
+}
+
+// Returns type without package prefix.
+// e.g. ccc.UUID -> UUID, []ccc.UUID -> []UUID
+func (p parsedType) UnqualifiedType() string {
+	qualifier := func(p *types.Package) string {
+		return ""
+	}
+
+	return types.TypeString(p.tt, qualifier)
+}
+
+// Returns unwrapped type.
+// e.g. ccc.UUID -> ccc.UUID, []ccc.UUID -> ccc.UUID
+func (p parsedType) TypeName() string {
+	return typeStringer(unwrapType(p.tt))
+}
+
+// Returns unwrapped and unqualified type as string.
+// e.g. ccc.UUID -> UUID, []ccc.UUID -> UUID
+func (p parsedType) UnqualifiedTypeName() string {
+	qualifier := func(p *types.Package) string {
+		return ""
+	}
+
+	return types.TypeString(unwrapType(p.tt), qualifier)
+}
+
+func (p parsedType) PackageName() string {
+	return p.packageName
+}
+
+func (p parsedType) Position() int {
+	return p.position
+}
+
+func (p parsedType) IsStruct() bool {
+	return isUnderlyingTypeStruct(p.tt)
+}
+
+func (p parsedType) IsIterable() bool {
+	switch p.tt.(type) {
+	case *types.Slice, *types.Array:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p parsedType) ToStructType() parsedStruct {
+	if p.IsStruct() {
+		st, _ := decodeToType[*types.Struct](p.tt)
+		pStruct := parsedStruct{
+			parsedType: p,
+			methods:    structMethods(p.tt),
+			localTypes: localTypesFromStruct(p.packageName, p.tt, map[string]struct{}{}),
+		}
+
+		for i := range st.NumFields() {
+			field := st.Field(i)
+
+			sField := structField{
+				parsedType: parsedType{name: field.Name(), tt: field.Type(), packageName: p.packageName},
+				tags:       reflect.StructTag(st.Tag(i)),
+			}
+
+			pStruct.fields = append(pStruct.fields, sField)
+		}
+
+		return pStruct
+	}
+
+	return parsedStruct{}
+}
+
+type parsedStruct struct {
+	parsedType
+	fields     []structField
+	methods    []*types.Selection
+	localTypes []parsedType
+}
+
+func (p parsedStruct) String() string {
+	var fieldNames []string
+	for _, field := range p.fields {
+		fieldNames = append(fieldNames, field.name)
+	}
+	return fmt.Sprintf(`struct {name: %q, fields: %v}`, p.name, fieldNames)
+}
+
+func (p parsedStruct) Name() string {
+	return p.name
+}
+
+func (p parsedStruct) Fields() []structField {
+	return p.fields
+}
+
+func (p parsedStruct) LocalTypes() []parsedType {
+	return p.localTypes
+}
+
+type structField struct {
+	parsedType
+	tags        reflect.StructTag
+	isLocalType bool
+}
+
+func (s structField) JSONTag() string {
+	caser := strcase.NewCaser(false, nil, nil)
+	camelCaseName := caser.ToCamel(s.Name())
+
+	return fmt.Sprintf("json:%q", camelCaseName)
+}
+
+func (s structField) IsLocalType() bool {
+	return s.isLocalType
+}
+
+type routeMap map[string][]generatedRoute
+
+func (r routeMap) Resources() []string {
+	resources := []string{}
+resourceRange:
+	for resource := range r {
+		for _, route := range r[resource] {
+			if route.Method == "POST" {
+				continue resourceRange
+			}
+		}
+		resources = append(resources, resource)
+	}
+
+	slices.Sort(resources)
+
+	return resources
+}
+
+type rpcMethodInfo struct {
+	parsedStruct
+}
+
 type resourceInfo struct {
-	Name                  string
-	Fields                []*fieldInfo
+	parsedType
+	Fields                []*resourceField
 	searchIndexes         map[string][]*expressionField // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
 	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.
 	HasCompoundPrimaryKey bool                          // Determines how CreatePatchSet is rendered in resource generation.
 	IsConsolidated        bool
-
-	// debugging info
-	_packageName string
-	_position    int
 }
 
 func (r *resourceInfo) SearchIndexes() []*searchIndex {
@@ -176,7 +345,7 @@ func (r *resourceInfo) SearchIndexes() []*searchIndex {
 func (r *resourceInfo) PrimaryKeyIsUUID() bool {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
-			return f.GoType == "ccc.UUID"
+			return f.Type() == "ccc.UUID"
 		}
 	}
 
@@ -186,23 +355,18 @@ func (r *resourceInfo) PrimaryKeyIsUUID() bool {
 func (r *resourceInfo) PrimaryKeyType() string {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
-			return f.GoType
+			return f.Type()
 		}
 	}
 
 	return ""
 }
 
-type fieldInfo struct {
-	Parent             *resourceInfo
-	Name               string
-	SpannerName        string
-	GoType             string
-	typescriptType     string
-	query              string   //
-	Conditions         []string // Contains auxiliary tags like `immutable`. Determines JSON tag in handler generation.
-	permissions        []string
-	Required           bool
+type resourceField struct {
+	*structField
+	Parent         *resourceInfo
+	typescriptType string
+	// Spanner stuff
 	IsPrimaryKey       bool
 	IsForeignKey       bool
 	IsIndex            bool
@@ -213,15 +377,9 @@ type fieldInfo struct {
 	IsEnumerated       bool
 	ReferencedResource string
 	ReferencedField    string
-
-	// parsing info
-	parsedType types.Type
-
-	// debugging info
-	_position int
 }
 
-func (f *fieldInfo) TypescriptDataType() string {
+func (f *resourceField) TypescriptDataType() string {
 	if f.typescriptType == "uuid" {
 		return "string"
 	}
@@ -229,7 +387,7 @@ func (f *fieldInfo) TypescriptDataType() string {
 	return f.typescriptType
 }
 
-func (f *fieldInfo) TypescriptDisplayType() string {
+func (f *resourceField) TypescriptDisplayType() string {
 	if f.IsEnumerated {
 		return "enumerated"
 	}
@@ -237,29 +395,28 @@ func (f *fieldInfo) TypescriptDisplayType() string {
 	return f.typescriptType
 }
 
-func (f *fieldInfo) JSONTag() string {
-	caser := strcase.NewCaser(false, nil, nil)
-	camelCaseName := caser.ToCamel(f.Name)
-
-	if !f.IsPrimaryKey {
-		return fmt.Sprintf("json:%q", camelCaseName+",omitzero")
+func (f *resourceField) JSONTag() string {
+	if f.IsPrimaryKey {
+		return f.structField.JSONTag()
 	}
 
-	return fmt.Sprintf("json:%q", camelCaseName)
+	caser := strcase.NewCaser(false, nil, nil)
+	camelCaseName := caser.ToCamel(f.Name())
+	return fmt.Sprintf("json:%q", camelCaseName+",omitzero")
 }
 
-func (f *fieldInfo) JSONTagForPatch() string {
+func (f *resourceField) JSONTagForPatch() string {
 	if f.IsPrimaryKey || f.IsImmutable() {
 		return fmt.Sprintf("json:%q", "-")
 	}
 
 	caser := strcase.NewCaser(false, nil, nil)
-	camelCaseName := caser.ToCamel(f.Name)
+	camelCaseName := caser.ToCamel(f.Name())
 
 	return fmt.Sprintf("json:%q", camelCaseName)
 }
 
-func (f *fieldInfo) IndexTag() string {
+func (f *resourceField) IndexTag() string {
 	if f.IsIndex {
 		return `index:"true"`
 	}
@@ -267,7 +424,7 @@ func (f *fieldInfo) IndexTag() string {
 	return ""
 }
 
-func (f *fieldInfo) UniqueIndexTag() string {
+func (f *resourceField) UniqueIndexTag() string {
 	if f.IsUniqueIndex {
 		return `index:"true"`
 	}
@@ -275,37 +432,66 @@ func (f *fieldInfo) UniqueIndexTag() string {
 	return ""
 }
 
-func (f *fieldInfo) IsImmutable() bool {
-	return slices.Contains(f.Conditions, "immutable")
-}
-
-func (f *fieldInfo) QueryTag() string {
-	if f.query != "" {
-		return fmt.Sprintf("query:%q", f.query)
+func (f *resourceField) IsImmutable() bool {
+	tag, ok := f.tags.Lookup("conditions")
+	if !ok {
+		return false
 	}
 
-	return ""
+	conditions := strings.Split(tag, ",")
+
+	return slices.Contains(conditions, "immutable")
 }
 
-func (f *fieldInfo) ReadPermTag() string {
-	if slices.Contains(f.permissions, "Read") {
+func (f *resourceField) QueryTag() string {
+	query, ok := f.tags.Lookup("query")
+	if !ok {
+		return ""
+	}
+
+	return fmt.Sprintf("query:%q", query)
+}
+
+func (f *resourceField) ReadPermTag() string {
+	tag, ok := f.tags.Lookup("perm")
+	if !ok {
+		return ""
+	}
+
+	permissions := strings.Split(tag, ",")
+
+	if slices.Contains(permissions, "Read") {
 		return fmt.Sprintf("perm:%q", "Read")
 	}
 
 	return ""
 }
 
-func (f *fieldInfo) ListPermTag() string {
-	if slices.Contains(f.permissions, "List") {
+func (f *resourceField) ListPermTag() string {
+	tag, ok := f.tags.Lookup("perm")
+	if !ok {
+		return ""
+	}
+
+	permissions := strings.Split(tag, ",")
+
+	if slices.Contains(permissions, "List") {
 		return fmt.Sprintf("perm:%q", "List")
 	}
 
 	return ""
 }
 
-func (f *fieldInfo) PatchPermTag() string {
+func (f *resourceField) PatchPermTag() string {
+	tag, ok := f.tags.Lookup("perm")
+	if !ok {
+		return ""
+	}
+
+	permissions := strings.Split(tag, ",")
+
 	var patches []string
-	for _, perm := range f.permissions {
+	for _, perm := range permissions {
 		if perm != "Read" && perm != "List" {
 			patches = append(patches, perm)
 		}
@@ -318,11 +504,11 @@ func (f *fieldInfo) PatchPermTag() string {
 	return ""
 }
 
-func (f *fieldInfo) SearchIndexTags() string {
+func (f *resourceField) SearchIndexTags() string {
 	typeIndexMap := make(map[resource.FilterType][]string)
 	for searchIndex, expressionFields := range f.Parent.searchIndexes {
 		for _, exprField := range expressionFields {
-			if f.SpannerName == exprField.fieldName {
+			if f.tags.Get("spanner") == exprField.fieldName {
 				typeIndexMap[exprField.tokenType] = append(typeIndexMap[exprField.tokenType], searchIndex)
 			}
 		}
@@ -336,8 +522,20 @@ func (f *fieldInfo) SearchIndexTags() string {
 	return strings.Join(tags, " ")
 }
 
-func (f *fieldInfo) IsView() bool {
+func (f *resourceField) IsView() bool {
 	return f.Parent.IsView
+}
+
+func (f *resourceField) IsRequired() bool {
+	if f.IsPrimaryKey && f.Type() != "ccc.UUID" {
+		return true
+	}
+
+	if !f.IsPrimaryKey && !f.IsNullable {
+		return true
+	}
+
+	return false
 }
 
 type expressionField struct {
@@ -363,20 +561,4 @@ const (
 
 	// Adds resource.ts to generator output
 	TSMeta
-)
-
-var (
-	_defaultPluralOverrides = map[string]string{
-		"LenderBranch": "LenderBranches",
-	}
-
-	_defaultTypescriptOverrides = map[string]string{
-		reflect.TypeOf(ccc.UUID{}).String():            "uuid",
-		reflect.TypeOf(ccc.NullUUID{}).String():        "uuid",
-		reflect.TypeOf(resource.Link{}).String():       "Link",
-		reflect.TypeOf(resource.NullLink{}).String():   "Link",
-		reflect.TypeOf(decimal.Decimal{}).String():     "number",
-		reflect.TypeOf(decimal.NullDecimal{}).String(): "number",
-		reflect.TypeOf(time.Time{}).String():           "Date",
-	}
 )

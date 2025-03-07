@@ -26,9 +26,11 @@ type cacheEntry struct {
 }
 
 type TypescriptData struct {
-	Permissions         []accesstypes.Permission
-	Resources           []accesstypes.Resource
-	ResourceTags        map[accesstypes.Resource][]accesstypes.Tag
-	ResourcePermissions permissionMap
-	Domains             []accesstypes.PermissionScope
+	Permissions           []accesstypes.Permission
+	ResourcePermissions   []accesstypes.Permission
+	Resources             []accesstypes.Resource
+	RPCMethods            []accesstypes.Resource
+	ResourceTags          map[accesstypes.Resource][]accesstypes.Tag
+	ResourcePermissionMap permissionMap
+	Domains               []accesstypes.PermissionScope
 }

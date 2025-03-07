@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"text/template"
@@ -13,8 +12,8 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (r *ResourceGenerator) runHandlerGeneration() error {
-	if err := removeGeneratedFiles(r.handlerDestination, HeaderComment); err != nil {
+func (r *resourceGenerator) runHandlerGeneration() error {
+	if err := removeGeneratedFiles(r.handlerDestination, Prefix); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
@@ -35,6 +34,18 @@ func (r *ResourceGenerator) runHandlerGeneration() error {
 
 		if resource.IsConsolidated {
 			consolidatedResources = append(consolidatedResources, resource)
+		}
+	}
+
+	if r.genRPCMethods {
+		for _, rpcMethod := range r.rpcMethods {
+			wg.Add(1)
+			go func(rpcMethod rpcMethodInfo) {
+				if err := r.generateRPCHandler(rpcMethod); err != nil {
+					errChan <- err
+				}
+				wg.Done()
+			}(rpcMethod)
 		}
 	}
 
@@ -61,50 +72,21 @@ func (r *ResourceGenerator) runHandlerGeneration() error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateHandlers(resource *resourceInfo) error {
-	generatedHandlers := []*generatedHandler{
-		{
-			template:    listTemplate,
-			handlerType: List,
-		},
-	}
-
-	if !resource.IsView {
-		generatedHandlers = append(generatedHandlers, &generatedHandler{
-			template:    readTemplate,
-			handlerType: Read,
-		})
-
-		if slices.Contains(r.consolidatedResourceNames, resource.Name) == r.consolidateAll {
-			generatedHandlers = append(generatedHandlers, &generatedHandler{
-				template:    patchTemplate,
-				handlerType: Patch,
-			})
-		}
-	}
-
-	opts := make(map[HandlerType]map[OptionType]any)
-	for handlerType, options := range r.handlerOptions[resource.Name] {
-		opts[handlerType] = make(map[OptionType]any)
-		for _, option := range options {
-			opts[handlerType][option] = struct{}{}
-		}
-	}
+func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
+	handlerTypes := r.resourceEndpoints(resource)
 
 	var handlerData [][]byte
-	for _, h := range generatedHandlers {
-		if _, skipGeneration := opts[h.handlerType][NoGenerate]; !skipGeneration {
-			data, err := r.handlerContent(h, resource)
-			if err != nil {
-				return errors.Wrap(err, "replaceHandlerFileContent()")
-			}
-
-			handlerData = append(handlerData, data)
+	for _, handlerTyp := range handlerTypes {
+		data, err := r.handlerContent(handlerTyp, resource)
+		if err != nil {
+			return errors.Wrap(err, "replaceHandlerFileContent()")
 		}
+
+		handlerData = append(handlerData, data)
 	}
 
 	if len(handlerData) > 0 {
-		fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(resource.Name))))
+		fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(resource.Name()))))
 		destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
 		file, err := os.Create(destinationFilePath)
@@ -137,7 +119,7 @@ func (r *ResourceGenerator) generateHandlers(resource *resourceInfo) error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateConsolidatedPatchHandler(resources []*resourceInfo) error {
+func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resourceInfo) error {
 	fileName := generatedFileName(consolidatedHandlerOutputName)
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
@@ -170,8 +152,8 @@ func (r *ResourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 	return nil
 }
 
-func (r *ResourceGenerator) handlerContent(handler *generatedHandler, resource *resourceInfo) ([]byte, error) {
-	tmpl, err := template.New("handler").Funcs(r.templateFuncs()).Parse(handler.template)
+func (r *resourceGenerator) handlerContent(handler HandlerType, resource *resourceInfo) ([]byte, error) {
+	tmpl, err := template.New("handler").Funcs(r.templateFuncs()).Parse(handler.template())
 	if err != nil {
 		return nil, errors.Wrap(err, "template.New().Parse()")
 	}

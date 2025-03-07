@@ -25,7 +25,7 @@ import (
 	"golang.org/x/tools/imports"
 )
 
-type ResourceGenerator struct {
+type resourceGenerator struct {
 	*client
 	genHandlers         bool
 	genRoutes           bool
@@ -36,38 +36,65 @@ type ResourceGenerator struct {
 	routePrefix         string
 }
 
-func NewResourceGenerator(ctx context.Context, resourceFilePath, migrationSourceURL string, options ...ResourceOption) (*ResourceGenerator, error) {
-	r := &ResourceGenerator{resourceDestination: filepath.Dir(resourceFilePath)}
+func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, options ...ResourceOption) (Generator, error) {
+	r := &resourceGenerator{
+		resourceDestination: filepath.Dir(resourceSourcePath),
+	}
 
-	c, err := newClient(ctx, resourceFilePath, migrationSourceURL)
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL)
 	if err != nil {
 		return nil, err
 	}
+
 	r.client = c
 
-	for _, optionFunc := range options {
-		if optionFunc != nil {
-			if err := optionFunc(r); err != nil {
-				return nil, err
-			}
-		}
+	opts := []Option{}
+	for _, opt := range options {
+		opts = append(opts, opt)
 	}
 
-	if r.pluralOverrides == nil {
-		r.pluralOverrides = _defaultPluralOverrides
-	}
-
-	if err := r.extract(); err != nil {
+	if err := resolveOptions(r, opts); err != nil {
 		return nil, err
 	}
 
 	return r, nil
 }
 
-func (r *ResourceGenerator) Generate() error {
+func (r *resourceGenerator) Generate() error {
 	log.Println("Starting ResourceGenerator Generation")
+
+	packageMap, err := loadPackageMap(r.loadPackages...)
+	if err != nil {
+		return err
+	}
+
+	resources, err := r.extractResources(packageMap["resources"])
+	if err != nil {
+		return err
+	}
+
+	r.resources = resources
+
 	if err := r.runResourcesGeneration(); err != nil {
-		return errors.Wrap(err, "c.genResources()")
+		return err
+	}
+
+	if r.genRPCMethods {
+		rpcStructs, err := extractStructsByMethod(packageMap["rpc"], rpcMethods[:]...)
+		if err != nil {
+			return err
+		}
+
+		var rpcMethods []rpcMethodInfo
+		for _, s := range rpcStructs {
+			rpcMethods = append(rpcMethods, rpcMethodInfo{s})
+		}
+
+		r.rpcMethods = rpcMethods
+
+		if err := r.runRPCGeneration(); err != nil {
+			return err
+		}
 	}
 
 	if r.genRoutes {
@@ -84,78 +111,104 @@ func (r *ResourceGenerator) Generate() error {
 	return nil
 }
 
-type TypescriptGenerator struct {
+type typescriptGenerator struct {
 	*client
-	genTypescriptPerm     bool
-	genTypescriptMeta     bool
+	genPermission         bool
+	genMetadata           bool
 	typescriptDestination string
 	typescriptOverrides   map[string]string
 	rc                    *resource.Collection
 	routerResources       []accesstypes.Resource
 }
 
-func NewTypescriptGenerator(ctx context.Context, resourceFilePath, migrationSourceURL, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TSOption) (*TypescriptGenerator, error) {
+func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TSOption) (Generator, error) {
 	if rc == nil {
 		return nil, errors.New("resource collection cannot be nil")
 	}
 
-	t := &TypescriptGenerator{
+	var (
+		genPermission bool
+		genMetadata   bool
+	)
+	switch mode {
+	case TSPerm | TSMeta:
+		genPermission = true
+		genMetadata = true
+	case TSPerm:
+		genPermission = true
+	case TSMeta:
+		genMetadata = true
+	}
+
+	t := &typescriptGenerator{
 		rc:                    rc,
 		routerResources:       rc.Resources(),
 		typescriptDestination: targetDir,
+		genPermission:         genPermission,
+		genMetadata:           genMetadata,
 	}
 
-	switch mode {
-	case TSPerm | TSMeta:
-		t.genTypescriptPerm = true
-		t.genTypescriptMeta = true
-	case TSPerm:
-		t.genTypescriptPerm = true
-	case TSMeta:
-		t.genTypescriptMeta = true
-	}
-
-	c, err := newClient(ctx, resourceFilePath, migrationSourceURL)
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL)
 	if err != nil {
 		return nil, err
 	}
+
 	t.client = c
 
-	for _, optionFunc := range options {
-		if optionFunc != nil {
-			if err := optionFunc(t); err != nil {
-				return nil, err
-			}
-		}
+	opts := []Option{}
+	for _, opt := range options {
+		opts = append(opts, opt)
 	}
 
-	if t.pluralOverrides == nil {
-		t.pluralOverrides = _defaultPluralOverrides
-	}
-
-	if t.typescriptOverrides == nil {
-		t.typescriptOverrides = _defaultTypescriptOverrides
-	}
-
-	if err := t.extract(); err != nil {
-		return nil, err
-	}
-
-	if err := t.addTypescriptTypes(); err != nil {
+	if err := resolveOptions(t, opts); err != nil {
 		return nil, err
 	}
 
 	return t, nil
 }
 
-func (t *TypescriptGenerator) Generate() error {
+func (t *typescriptGenerator) Generate() error {
 	log.Println("Starting TypescriptGenerator Generation")
-	if t.genTypescriptMeta {
+
+	packageMap, err := loadPackageMap(t.loadPackages...)
+	if err != nil {
+		return err
+	}
+
+	resources, err := t.extractResources(packageMap["resources"])
+	if err != nil {
+		return err
+	}
+
+	for _, resource := range resources {
+		resource, err = t.setTypescriptInfo(resource)
+		if err != nil {
+			return err
+		}
+	}
+
+	t.resources = resources
+
+	if t.genRPCMethods {
+		rpcStructs, err := extractStructsByMethod(packageMap["rpc"], rpcMethods[:]...)
+		if err != nil {
+			return err
+		}
+
+		var rpcMethods []rpcMethodInfo
+		for _, s := range rpcStructs {
+			rpcMethods = append(rpcMethods, rpcMethodInfo{s})
+		}
+
+		t.rpcMethods = rpcMethods
+	}
+
+	if t.genMetadata {
 		if err := t.runTypescriptMetadataGeneration(); err != nil {
 			return err
 		}
 	}
-	if t.genTypescriptPerm {
+	if t.genPermission {
 		if err := t.runTypescriptPermissionGeneration(); err != nil {
 			return err
 		}
@@ -165,17 +218,21 @@ func (t *TypescriptGenerator) Generate() error {
 }
 
 type client struct {
+	loadPackages              []string
 	resourceFilePath          string
 	resources                 []*resourceInfo
+	rpcMethods                []rpcMethodInfo
 	packageName               string
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser
-	tableLookup               map[string]*TableMetadata
+	tableMap                  map[string]*tableMetadata
 	handlerOptions            map[string]map[HandlerType][]OptionType
 	pluralOverrides           map[string]string
 	consolidatedResourceNames []string
 	consolidateAll            bool
 	consolidatedRoute         string
+	genRPCMethods             bool
+	rpcPackageDir             string
 	cleanup                   func()
 
 	muAlign sync.Mutex
@@ -218,6 +275,7 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string)
 	}
 
 	c := &client{
+		loadPackages:     []string{resourceFilePath},
 		resourceFilePath: resourceFilePath,
 		db:               db.Client,
 		packageName:      pkgInfo.PackageName,
@@ -225,40 +283,19 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string)
 		caser:            strcase.NewCaser(false, nil, nil),
 	}
 
-	c.tableLookup, err = c.createTableLookup(ctx)
+	c.tableMap, err = c.newTableMap(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "c.createTableLookup()")
+		return nil, errors.Wrap(err, "c.newTableMap()")
 	}
 
 	return c, nil
-}
-
-func (c *client) extract() error {
-	resourcePkg, err := loadPackage(c.resourceFilePath)
-	if err != nil {
-		return err
-	}
-
-	extractedResources, err := extractResourceTypes(resourcePkg.Types)
-	if err != nil {
-		return err
-	}
-
-	syncedResources, err := c.syncWithSpannerMetadata(extractedResources)
-	if err != nil {
-		return err
-	}
-
-	c.resources = syncedResources
-
-	return nil
 }
 
 func (c *client) Close() {
 	c.cleanup()
 }
 
-func (c *client) createTableLookup(ctx context.Context) (map[string]*TableMetadata, error) {
+func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, error) {
 	qry := `WITH DEPENDENCIES AS (
 		SELECT DISTINCT
 			kcu1.TABLE_NAME, 
@@ -331,10 +368,10 @@ func (c *client) createTableLookup(ctx context.Context) (map[string]*TableMetada
 	IS_VIEW, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
 
-	return c.createLookupMapForQuery(ctx, qry)
+	return c.createTableMapUsingQuery(ctx, qry)
 }
 
-func (c *client) createLookupMapForQuery(ctx context.Context, qry string) (map[string]*TableMetadata, error) {
+func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[string]*tableMetadata, error) {
 	log.Println("Creating spanner table lookup...")
 
 	stmt := cloudspanner.Statement{SQL: qry}
@@ -344,12 +381,12 @@ func (c *client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 		return nil, errors.Wrap(err, "spxscan.Select()")
 	}
 
-	m := make(map[string]*TableMetadata)
+	m := make(map[string]*tableMetadata)
 	for _, r := range result {
 		table, ok := m[r.TableName]
 		if !ok {
-			table = &TableMetadata{
-				Columns:       make(map[string]ColumnMeta),
+			table = &tableMetadata{
+				Columns:       make(map[string]columnMeta),
 				SearchIndexes: make(map[string][]*expressionField),
 				IsView:        r.IsView,
 			}
@@ -361,7 +398,7 @@ func (c *client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 
 		column, ok := table.Columns[r.ColumnName]
 		if !ok {
-			column = ColumnMeta{
+			column = columnMeta{
 				ColumnName:         r.ColumnName,
 				SpannerType:        r.SpannerType,
 				OrdinalPosition:    r.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
@@ -430,12 +467,21 @@ func (c *client) createLookupMapForQuery(ctx context.Context, qry string) (map[s
 	return m, nil
 }
 
+func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
+	table, ok := c.tableMap[c.pluralize(resourceName)]
+	if !ok {
+		return nil, errors.Newf("resourceName %q pluralized as %q not in tableMetadata", resourceName, c.pluralize(resourceName))
+	}
+
+	return table, nil
+}
+
 func (c *client) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
 	if goFormat {
 		var err error
 		data, err = format.Source(data)
 		if err != nil {
-			return errors.Wrapf(err, "format.Source(): file: %s", file.Name())
+			return errors.Wrapf(err, "format.Source(): file: %s, file content: %q", file.Name(), data)
 		}
 
 		data, err = imports.Process(destination, data, nil)
@@ -476,6 +522,7 @@ func (c *client) templateFuncs() map[string]any {
 		"Kebab":                        c.caser.ToKebab,
 		"Lower":                        strings.ToLower,
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
+		"FormatRPCInterfaceTypes":      formatRPCInterfaceTypes,
 		"ResourceSearchType": func(searchType string) string {
 			switch strings.ToUpper(searchType) {
 			case "SUBSTRING":
@@ -528,18 +575,26 @@ func (c *client) pluralize(value string) string {
 		return plural
 	}
 
+	var pluralValue string
 	toLower := strings.ToLower(value)
 	switch {
 	case strings.HasSuffix(toLower, "y"):
-		return value[:len(value)-1] + "ies"
+		pluralValue = value[:len(value)-1] + "ies"
 	case strings.HasSuffix(toLower, "s"):
-		return value + "es"
+		pluralValue = value + "es"
 	default:
-		return value + "s"
+		pluralValue = value + "s"
 	}
+
+	c.pluralOverrides[value] = pluralValue
+	// This should prevent any accidental double-pluralizations
+	c.pluralOverrides[pluralValue] = pluralValue
+
+	return pluralValue
 }
 
 func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) error {
+	log.Printf("removing generated files in directory %q...", directory)
 	dir, err := os.Open(directory)
 	if err != nil {
 		return errors.Wrap(err, "os.Open()")
@@ -606,14 +661,14 @@ func removeGeneratedFileByHeaderComment(directory, file string) error {
 func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	var resourceNames [][]string
 	var resourceNamesLen int
-	for i, t := range resources {
-		resourceNamesLen += len(t.Name)
+	for i, resource := range resources {
+		resourceNamesLen += len(resource.Name())
 		if i == 0 || resourceNamesLen > 80 {
-			resourceNamesLen = len(t.Name)
+			resourceNamesLen = len(resource.Name())
 			resourceNames = append(resourceNames, []string{})
 		}
 
-		resourceNames[len(resourceNames)-1] = append(resourceNames[len(resourceNames)-1], t.Name)
+		resourceNames[len(resourceNames)-1] = append(resourceNames[len(resourceNames)-1], resource.Name())
 	}
 
 	var sb strings.Builder
@@ -628,7 +683,32 @@ func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
 }
 
-func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*expressionField, error) {
+func formatRPCInterfaceTypes(rpcMethods []rpcMethodInfo) string {
+	var names [][]string
+	var namesLength int
+	for i, rpcMethod := range rpcMethods {
+		namesLength += len(rpcMethod.Name())
+		if i == 0 || namesLength > 80 {
+			namesLength = len(rpcMethod.Name())
+			names = append(names, []string{})
+		}
+
+		names[len(names)-1] = append(names[len(names)-1], rpcMethod.Name())
+	}
+
+	var sb strings.Builder
+	for _, row := range names {
+		sb.WriteString("\n\t")
+		for _, cell := range row {
+			line := fmt.Sprintf("%s | ", cell)
+			sb.WriteString(line)
+		}
+	}
+
+	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
+}
+
+func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*expressionField, error) {
 	var flds []*expressionField
 
 	for _, match := range tokenizeRegex.FindAllStringSubmatch(expression, -1) {
@@ -662,7 +742,35 @@ func searchExpressionFields(expression string, cols map[string]ColumnMeta) ([]*e
 	return flds, nil
 }
 
+func (c *client) resourceEndpoints(resource *resourceInfo) []HandlerType {
+	handlerTypes := []HandlerType{List}
+
+	if !resource.IsView {
+		handlerTypes = append(handlerTypes, Read)
+
+		if resource.IsConsolidated == c.consolidateAll {
+			handlerTypes = append(handlerTypes, Patch)
+		}
+	}
+
+	endpointOptions, ok := c.handlerOptions[resource.Name()]
+	if !ok {
+		return handlerTypes
+	}
+
+	filteredHandlerTypes := handlerTypes[:0]
+	for _, ht := range handlerTypes {
+		if slices.Contains(endpointOptions[ht], NoGenerate) {
+			continue
+		}
+
+		filteredHandlerTypes = append(filteredHandlerTypes, ht)
+	}
+
+	return filteredHandlerTypes
+}
+
 // The resourceName should already be pluralized
-func (t *TypescriptGenerator) isResourceInAppRouter(resourceName string) bool {
+func (t *typescriptGenerator) isResourceInAppRouter(resourceName string) bool {
 	return slices.Contains(t.routerResources, accesstypes.Resource(resourceName))
 }

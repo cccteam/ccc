@@ -58,14 +58,14 @@ func New{{ .Resource.Name }}QueryFromQuerySet(qSet *resource.QuerySet[{{ .Resour
 
 {{ range $field := .Resource.Fields }}
 {{ if $field.IsIndex }}
-func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ .GoType }}) *{{ $field.Parent.Name }}Query {
+func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ .Type }}) *{{ $field.Parent.Name }}Query {
 	q.qSet.SetKey("{{ $field.Name }}", v)
 
 	return q
 }
 
-func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.GoType }} {
-	v, _ := q.qSet.Key("{{ $field.Name }}").({{ $field.GoType }})
+func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.Type }} {
+	v, _ := q.qSet.Key("{{ $field.Name }}").({{ $field.Type }})
 
 	return v
 }
@@ -140,7 +140,7 @@ func New{{ .Resource.Name }}CreatePatch() (*{{ .Resource.Name }}CreatePatch, err
 {{ else }}
 func New{{ .Resource.Name }}CreatePatchFromPatchSet(
 {{- range $field := .Resource.Fields -}}
-{{ if $field.IsPrimaryKey }}{{ GoCamel $field.Name }} {{ $field.GoType }},{{ end }}
+{{ if $field.IsPrimaryKey }}{{ GoCamel $field.Name }} {{ $field.Type }},{{ end }}
 {{- end }} patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}CreatePatch {
 	patchSet.
 	{{ range $field := .Resource.Fields }}
@@ -155,7 +155,7 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(
 
 func New{{ .Resource.Name }}CreatePatch(
 {{- range $isNotFirstIteration, $field := .Resource.Fields }}
-{{- if $field.IsPrimaryKey }}{{- if $isNotFirstIteration }}, {{ end }}{{ GoCamel $field.Name }} {{ $field.GoType }}{{ end }}{{ end }}) *{{ .Resource.Name }}CreatePatch {
+{{- if $field.IsPrimaryKey }}{{- if $isNotFirstIteration }}, {{ end }}{{ GoCamel $field.Name }} {{ $field.Type }}{{ end }}{{ end }}) *{{ .Resource.Name }}CreatePatch {
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
 	{{ range $field := .Resource.Fields }}
 	{{ if $field.IsPrimaryKey }}
@@ -181,7 +181,7 @@ type {{ .Resource.Name }}UpdatePatch struct {
 func New{{ .Resource.Name }}UpdatePatchFromPatchSet(
 {{- range $field := .Resource.Fields -}}
 	{{- if $field.IsPrimaryKey -}}
-		{{- GoCamel $field.Name }} {{ $field.GoType }},
+		{{- GoCamel $field.Name }} {{ $field.Type }},
 	{{- end -}}
 {{- end -}}
 patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}UpdatePatch {
@@ -200,7 +200,7 @@ func New{{ .Resource.Name }}UpdatePatch(
 {{- range $isNotFirstIteration, $field := .Resource.Fields -}}
 	{{- if $field.IsPrimaryKey }}
 		{{- if $isNotFirstIteration }}, {{ end -}}
-		{{- GoCamel $field.Name }} {{ $field.GoType -}}
+		{{- GoCamel $field.Name }} {{ $field.Type -}}
 	{{- end -}}
 {{- end }}) *{{ .Resource.Name }}UpdatePatch {
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
@@ -228,7 +228,7 @@ func New{{ .Resource.Name }}DeletePatch(
 {{- range $isNotFirstIteration, $field := .Resource.Fields }}
 	{{- if $field.IsPrimaryKey -}}
 		{{- if $isNotFirstIteration }}, {{ end -}}
-		{{- GoCamel $field.Name }} {{ $field.GoType -}}
+		{{- GoCamel $field.Name }} {{ $field.Type -}}
 	{{- end -}}
 {{- end }}) *{{ .Resource.Name }}DeletePatch {
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
@@ -248,8 +248,8 @@ func (p *{{ .Resource.Name }}DeletePatch) PatchSet() *resource.PatchSet[{{ .Reso
 
 {{ range $field := .Resource.Fields }}
 {{ if $field.IsPrimaryKey }} 
-func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.GoType }} {
-	v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.GoType }}) 
+func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.Type }} {
+	v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.Type }}) 
 
 	return v
 }
@@ -283,7 +283,7 @@ import (
 	listTemplate = `func (a *App) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.GoType}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag}} {{ $field.ListPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag}} {{ $field.ListPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
 		{{- end }}
 	}
 
@@ -317,7 +317,7 @@ import (
 	readTemplate = `func (a *App) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.GoType}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
 		{{- end }}
 	}
 
@@ -346,7 +346,7 @@ import (
 	patchTemplate = `func (a *App) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type request struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.GoType}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
 		{{- end }}
 	}
 	
@@ -436,7 +436,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 	{{- range $resource := .Resources }}
 	type {{ GoCamel $resource.Name }}Request struct {
 		{{- range $field := .Fields }}
-		{{ $field.Name }} {{ $field.GoType}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
 		{{- end }}
 	}
 	{{ GoCamel $resource.Name}}Decoder := NewDecoder[resources.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
@@ -519,10 +519,16 @@ func TestClient_Resources(t *testing.T) {
 	typescriptPermissionTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
 import { Domain, Permission, Resource } from '@cccteam/ccc-lib';
 {{- $permissions := .Permissions }}
+{{- $resourcePermissions := .ResourcePermissions }}
 {{- $resources := .Resources }}
 {{- $resourcetags := .ResourceTags }}
-{{- $resourcePerms := .ResourcePermissions }}
+{{- $resourcePermMap := .ResourcePermissionsMap }}
 {{- $domains := .Domains }}
+
+type Brand<K, T> = K & {
+  __brand: T;
+};
+export type Method = Brand<string, 'Method'>;
 
 export const Permissions = {
 {{- range $perm := $permissions }}
@@ -541,6 +547,15 @@ export const Resources = {
   {{ $resource }}: '{{ $resource }}' as Resource,
 {{- end}}
 };
+
+{{ with $rpcMethods := .RPCMethods -}}
+export const Methods = {
+{{- range $rpcMethod := $rpcMethods }}
+  {{ $rpcMethod.Name }}: '{{ $rpcMethod.Name }}' as Method,
+{{- end }}
+};
+{{ end -}}
+
 {{ range $resource, $tags := $resourcetags }}
 export const {{ $resource }} = {
 {{- range $_, $tag := $tags }}
@@ -548,20 +563,20 @@ export const {{ $resource }} = {
 {{- end }}
 };
 {{ end }}
-type PermissionResources = Record<Permission, boolean>;
-type PermissionMappings = Record<Resource, PermissionResources>;
+type ResourcePermissions = Record<Permission, boolean>;
+type PermissionMappings = Record<Resource, ResourcePermissions>;
 
 const Mappings: PermissionMappings = {
   {{- range $resource := $resources }}
   [Resources.{{ $resource }}]: {
-    {{- range $perm := $permissions }}
-    [Permissions.{{ $perm }}]: {{ index $resourcePerms $resource $perm }},
+    {{- range $perm := $resourcePermissions }}
+    [Permissions.{{ $perm }}]: {{ index $resourcePermMap $resource $perm }},
     {{- end }}
   },
     {{- range $tag := index $resourcetags $resource }}
   [{{$resource.ResourceWithTag $tag }}]: {
-      {{- range $perm := $permissions }}
-    [Permissions.{{ $perm }}]: {{ index $resourcePerms ($resource.ResourceWithTag $tag) $perm }},
+      {{- range $perm := $resourcePermissions }}
+    [Permissions.{{ $perm }}]: {{ index $resourcePermMap ($resource.ResourceWithTag $tag) $perm }},
       {{- end }}
   },
     {{- end }}
@@ -571,6 +586,23 @@ const Mappings: PermissionMappings = {
 export function requiresPermission(resource: Resource, permission: Permission): boolean {
   return Mappings[resource][permission];
 }
+
+{{ with $rpcMethods := .RPCMethods -}}
+type MethodPermissions = Record<Permission, boolean>;
+type MethodPermissionMappings = Record<Method, MethodPermissions>;
+
+const MethodMappings: MethodPermissionMappings = {
+  {{- range $rpcMethod := $rpcMethods }}
+  [Methods.{{ $rpcMethod.Name }}]: {
+    [Permissions.Execute]: true,
+  },
+  {{- end }}
+};
+
+export function requiresMethodPermission(resource: Method, permission: Permission): boolean {
+  return MethodMappings[resource][permission];
+}
+{{- end }}
 `
 
 	typescriptMetadataTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
@@ -597,7 +629,7 @@ const resourceMap: ResourceMap = {
       {{- range $field := $resource.Fields }}
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
-       {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.Required }}, isIndex: {{ $field.IsIndex -}}
+       {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex -}}
       {{- if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
       {{- end }}
     ],
@@ -628,7 +660,7 @@ import (
 )
 
 const (
-	{{ range $Struct, $Routes := .RoutesMap }}{{ $Struct }}ID httpio.ParamType = "{{ GoCamel $Struct }}ID"
+	{{ range $Struct := .RoutesMap.Resources }}{{ $Struct }}ID httpio.ParamType = "{{ GoCamel $Struct }}ID"
 	{{ end }}
 )
 
@@ -666,7 +698,7 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string {
-		{{ range $Struct, $Routes := .RoutesMap }}"{{ GoCamel $Struct }}ID",
+		{{ range $Struct := .RoutesMap.Resources }}"{{ GoCamel $Struct }}ID",
 		{{ end }}
 	}
 
@@ -698,24 +730,148 @@ func generatedExpectCalls(e *mock_router.MockHandlersMockRecorder, rec *callReco
 	{{ end }}{{- end -}}
 	{{- if eq .HasConsolidatedHandler true }}e.PatchResources().Times(1).Return(rec.RecordHandlerCall("PatchResources")){{ end -}}
 }`
+
+	rpcHandlerTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package app
+
+import (
+	"net/http"
+	"time"
+
+	"{{.PackageName}}/app/router"
+	"{{.PackageName}}/spanner"
+	"{{.PackageName}}/spanner/resources"
+	"{{.PackageName}}/businesslayer/rpc"
+	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/httpio"
+	"github.com/shopspring/decimal"
+	"go.opentelemetry.io/otel"
+)
+
+func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
+	{{- range $type := .RPCMethod.LocalTypes }}
+	type {{ Lower $type.UnqualifiedTypeName }} 
+	{{- if $type.IsStruct }} struct {
+		{{- range $field := $type.ToStructType.Fields }}
+		{{ $field.Name }} {{ $field.Type }} ` + "`{{ $field.JSONTag }}`" + `
+		{{- end }}
+	}
+	{{ else }} {{ $type.Type }}
+	{{ end }}
+	{{ end }}
+	type request struct {
+		{{- range $field := .RPCMethod.Fields }}
+		{{ $field.Name }} {{ if $field.IsLocalType }}{{ Lower $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }} ` + "`{{ $field.JSONTag }}`" + `
+		{{- end }}
+	}
+
+	decoder := NewRPCDecoder[{{ .RPCMethod.Type }}, request](a, accesstypes.Execute)
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error { 
+		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ .RPCMethod.Name }}()")
+		defer span.End()
+
+		params, err := decoder.Decode(r)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		
+		p := &{{ .RPCMethod.Type }}{
+			{{- range $field := .RPCMethod.Fields }}
+			{{- if not $field.IsIterable }}
+			{{ $field.Name }}: params.{{ $field.Name }},
+			{{- end -}}
+			{{- end }}
+		}
+		{{- range $field := .RPCMethod.Fields -}}
+		{{- if $field.IsIterable }}
+		for _, e := range params.{{ $field.Name }} {
+			p.{{ $field.Name }} = append(p.{{ $field.Name }}, {{ $field.TypeName }}(e))
+		}
+		{{- end }}
+		{{- end }}
+
+		if err := a.businessLayer.{{ .RPCMethod.Name }}(ctx, p); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		return httpio.NewEncoder(w).Ok(nil)
+	})
+}
+`
+
+	rpcInterfacesTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package rpc
+
+import (
+	"github.com/cccteam/ccc/resource"
+)
+
+type Method interface {
+	Method() accesstypes.Resource
+{{ FormatRPCInterfaceTypes .Types }}
+}`
+	businesslayerInterfacesTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package businesslayer
+
+import (
+	"context"
+
+	"{{.PackageName}}/businesslayer/rpc"
+)
+
+type RPCBusinessLayer interface {
+{{ range $rpcMethod := .RPCMethods -}}
+	{{ $rpcMethod.Name }}(ctx context.Context, params *{{ $rpcMethod.TypeName }}) error
+{{ end }}
+}`
+
+	rpcMethodTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
+// Source: {{ .Source }}
+
+package businesslayer
+
+import (
+	"context"
+
+	"{{.PackageName}}/businesslayer/rpc"
+	"github.com/go-playground/errors/v5"
+)
+
+func (c *Client) {{ .RPCMethod.Name }}(ctx context.Context, params *{{ .RPCMethod.TypeName }}) error {
+	if err := params.Execute(ctx, c.db); err != nil {
+		return errors.Wrap(err, "{{ .RPCMethod.TypeName }}.Execute()")
+	}
+
+	return nil
+}
+`
 )
 
 func fieldAccessors(patchType PatchType) string {
 	return fmt.Sprintf(`
 		{{- range $field := .Resource.Fields }}
 		{{ if eq false $field.IsPrimaryKey }}
-		func (p *{{ $field.Parent.Name }}%[1]sPatch) Set{{ $field.Name }}(v {{ $field.GoType }}) *{{ $field.Parent.Name }}%[1]sPatch {
+		func (p *{{ $field.Parent.Name }}%[1]sPatch) Set{{ $field.Name }}(v {{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}) *{{ $field.Parent.Name }}%[1]sPatch {
 			p.patchSet.Set("{{ $field.Name }}", v)
 
 			return p
 		}
 		{{ end }}
 
-		func (p *{{ $field.Parent.Name }}%[1]sPatch) {{ $field.Name }}() {{ $field.GoType }} {
+		func (p *{{ $field.Parent.Name }}%[1]sPatch) {{ $field.Name }}() {{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }} {
 		{{ if $field.IsPrimaryKey -}} 
-			v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.GoType}})
+			v, _ := p.patchSet.Key("{{ $field.Name }}").({{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }})
 		{{ else -}} 
-			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ $field.GoType}}) 
+			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}) 
 		{{ end }}
 
 			return v

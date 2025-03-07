@@ -28,7 +28,7 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 			name: "One type",
 			args: args{
 				types: []*resourceInfo{
-					{Name: "Resource1"},
+					{parsedType: parsedType{name: "Resource1"}},
 				},
 			},
 			want: "\tResource1",
@@ -37,17 +37,17 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 			name: "many type",
 			args: args{
 				types: []*resourceInfo{
-					{Name: "Resource1"},
-					{Name: "MyResource1"},
-					{Name: "YourResource1"},
-					{Name: "Resource2"},
-					{Name: "Resource3"},
-					{Name: "Resource4"},
-					{Name: "Resource5"},
-					{Name: "Resource6"},
-					{Name: "Resource7"},
-					{Name: "Resource8"},
-					{Name: "Resource9"},
+					{parsedType: parsedType{name: "Resource1"}},
+					{parsedType: parsedType{name: "MyResource1"}},
+					{parsedType: parsedType{name: "YourResource1"}},
+					{parsedType: parsedType{name: "Resource2"}},
+					{parsedType: parsedType{name: "Resource3"}},
+					{parsedType: parsedType{name: "Resource4"}},
+					{parsedType: parsedType{name: "Resource5"}},
+					{parsedType: parsedType{name: "Resource6"}},
+					{parsedType: parsedType{name: "Resource7"}},
+					{parsedType: parsedType{name: "Resource8"}},
+					{parsedType: parsedType{name: "Resource9"}},
 				},
 			},
 			want: "\tResource1 | MyResource1 | YourResource1 | Resource2 | Resource3 | Resource4 | Resource5 | Resource6 | \n\tResource7 | Resource8 | Resource9",
@@ -68,7 +68,7 @@ func Test_searchExpressionFields(t *testing.T) {
 	t.Parallel()
 	type args struct {
 		expression string
-		cols       map[string]ColumnMeta
+		cols       map[string]columnMeta
 	}
 	tests := []struct {
 		name    string
@@ -86,7 +86,7 @@ func Test_searchExpressionFields(t *testing.T) {
 								(TOKENIZE_SUBSTRING(SUBSTR(Ssn, -4))),
 								(TOKENIZE_SUBSTRING(Ssn))
 							])`,
-				cols: map[string]ColumnMeta{
+				cols: map[string]columnMeta{
 					"FirstName":      {},
 					"LastName":       {},
 					"FormerLastName": {},
@@ -104,7 +104,7 @@ func Test_searchExpressionFields(t *testing.T) {
 			name: "success single line",
 			args: args{
 				expression: "TOKENLIST_CONCAT([(TOKENIZE_SUBSTRING(FirstName)),(TOKENIZE_SUBSTRING(LastName)),(TOKENIZE_SUBSTRING(FormerLastName)),(TOKENIZE_SUBSTRING(SUBSTR(Ssn, -4))),(TOKENIZE_SUBSTRING(Ssn))])",
-				cols: map[string]ColumnMeta{
+				cols: map[string]columnMeta{
 					"FirstName":      {},
 					"LastName":       {},
 					"FormerLastName": {},

@@ -143,13 +143,47 @@ func (s *Collection) permissions() []accesstypes.Permission {
 	return slices.Compact(permissions)
 }
 
+func (s *Collection) resourcePermissions() []accesstypes.Permission {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	permissions := []accesstypes.Permission{}
+	for _, stores := range s.resourceStore {
+		for _, perms := range stores {
+			permissions = append(permissions, perms...)
+		}
+	}
+	for _, stores := range s.tagStore {
+		for _, tags := range stores {
+			for _, perms := range tags {
+				permissions = append(permissions, perms...)
+			}
+		}
+	}
+	slices.Sort(permissions)
+
+	filteredPermissions := permissions[:0]
+	for _, perm := range permissions {
+		if perm != accesstypes.Execute {
+			filteredPermissions = append(filteredPermissions, perm)
+		}
+	}
+	clear(permissions[len(filteredPermissions):])
+
+	return slices.Compact(filteredPermissions)
+}
+
 func (s *Collection) Resources() []accesstypes.Resource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	resources := []accesstypes.Resource{}
 	for _, stores := range s.resourceStore {
-		for resource := range stores {
+		for resource, permissions := range stores {
+			if slices.Contains(permissions, accesstypes.Execute) {
+				continue
+			}
+
 			resources = append(resources, resource)
 		}
 	}
@@ -177,7 +211,7 @@ func (s *Collection) tags() map[accesstypes.Resource][]accesstypes.Tag {
 	return resourcetags
 }
 
-func (s *Collection) resourcePermissions() permissionMap {
+func (s *Collection) resourcePermissionMap() permissionMap {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -195,6 +229,10 @@ func (s *Collection) resourcePermissions() permissionMap {
 
 	for _, store := range s.resourceStore {
 		for resource, permissions := range store {
+			if slices.Contains(permissions, accesstypes.Execute) {
+				continue
+			}
+
 			resources[resource] = struct{}{}
 			setRequiredPerms(resource, permissions)
 		}
@@ -203,6 +241,10 @@ func (s *Collection) resourcePermissions() permissionMap {
 	for _, store := range s.tagStore {
 		for resource, tagmap := range store {
 			for tag, permissions := range tagmap {
+				if slices.Contains(permissions, accesstypes.Execute) {
+					continue
+				}
+
 				resources[resource.ResourceWithTag(tag)] = struct{}{}
 				setRequiredPerms(resource.ResourceWithTag(tag), permissions)
 			}
@@ -277,10 +319,11 @@ func (s *Collection) Scope(resource accesstypes.Resource) accesstypes.Permission
 
 func (c *Collection) TypescriptData() TypescriptData {
 	return TypescriptData{
-		Permissions:         c.permissions(),
-		Resources:           c.Resources(),
-		ResourceTags:        c.tags(),
-		ResourcePermissions: c.resourcePermissions(),
-		Domains:             c.domains(),
+		Permissions:           c.permissions(),
+		ResourcePermissions:   c.resourcePermissions(),
+		Resources:             c.Resources(),
+		ResourceTags:          c.tags(),
+		ResourcePermissionMap: c.resourcePermissionMap(),
+		Domains:               c.domains(),
 	}
 }

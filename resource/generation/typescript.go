@@ -5,27 +5,38 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"text/template"
 
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
 )
 
-func (t *TypescriptGenerator) runTypescriptPermissionGeneration() error {
-	templateData := t.rc.TypescriptData()
-
-	if !t.genTypescriptMeta {
+func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
+	if !t.genMetadata {
 		if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 			return errors.Wrap(err, "removeGeneratedFiles()")
 		}
 	}
 
-	output, err := t.generateTemplateOutput(typescriptPermissionTemplate, map[string]any{
-		"Permissions":         templateData.Permissions,
-		"Resources":           templateData.Resources,
-		"ResourceTags":        templateData.ResourceTags,
-		"ResourcePermissions": templateData.ResourcePermissions,
-		"Domains":             templateData.Domains,
-	})
+	log.Println("Starting typescript resource permission generation...")
+
+	routerData := t.rc.TypescriptData()
+
+	templateData := map[string]any{
+		"Permissions":            routerData.Permissions,
+		"ResourcePermissions":    routerData.ResourcePermissions,
+		"Resources":              routerData.Resources,
+		"ResourceTags":           routerData.ResourceTags,
+		"ResourcePermissionsMap": routerData.ResourcePermissionMap,
+		"Domains":                routerData.Domains,
+	}
+
+	if t.genRPCMethods {
+		templateData["RPCMethods"] = t.rpcMethods
+	}
+
+	output, err := t.generateTemplateOutput(typescriptPermissionTemplate, templateData)
 	if err != nil {
 		return errors.Wrap(err, "c.generateTemplateOutput()")
 	}
@@ -46,7 +57,7 @@ func (t *TypescriptGenerator) runTypescriptPermissionGeneration() error {
 	return nil
 }
 
-func (t *TypescriptGenerator) runTypescriptMetadataGeneration() error {
+func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
 	if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
@@ -58,7 +69,7 @@ func (t *TypescriptGenerator) runTypescriptMetadataGeneration() error {
 	return nil
 }
 
-func (t *TypescriptGenerator) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
+func (t *typescriptGenerator) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
 	tmpl, err := template.New(fileTemplate).Funcs(t.templateFuncs()).Parse(fileTemplate)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.Parse()")
@@ -72,7 +83,8 @@ func (t *TypescriptGenerator) generateTemplateOutput(fileTemplate string, data m
 	return buf.Bytes(), nil
 }
 
-func (t *TypescriptGenerator) generateTypescriptMetadata() error {
+func (t *typescriptGenerator) generateTypescriptMetadata() error {
+	log.Println("Starting typescript metadata generation...")
 	output, err := t.generateTemplateOutput(typescriptMetadataTemplate, map[string]any{
 		"Resources":         t.resources,
 		"ConsolidatedRoute": t.consolidatedRoute,
@@ -97,16 +109,18 @@ func (t *TypescriptGenerator) generateTypescriptMetadata() error {
 	return nil
 }
 
-func (t *TypescriptGenerator) generateTypescriptTemplate(fileTemplate string, data map[string]any) ([]byte, error) {
-	tmpl, err := template.New(fileTemplate).Funcs(t.templateFuncs()).Parse(fileTemplate)
-	if err != nil {
-		return nil, errors.Wrap(err, "template.Parse()")
+func (t *typescriptGenerator) setTypescriptInfo(resource *resourceInfo) (*resourceInfo, error) {
+	for _, field := range resource.Fields {
+		var err error
+		field.typescriptType, err = decodeToTypescriptType(field.tt, t.typescriptOverrides)
+		if err != nil {
+			return nil, errors.Wrapf(err, "could not decode typescript type for field %q in struct %q at %s:%v", field.Name(), resource.Name(), field.PackageName(), field.Position())
+		}
+
+		if field.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
+			field.IsEnumerated = true
+		}
 	}
 
-	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, data); err != nil {
-		return nil, errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	return buf.Bytes(), nil
+	return resource, nil
 }

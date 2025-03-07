@@ -12,7 +12,11 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (r *ResourceGenerator) runResourcesGeneration() error {
+func (r *resourceGenerator) runResourcesGeneration() error {
+	if err := removeGeneratedFiles(r.resourceDestination, Prefix); err != nil {
+		return err
+	}
+
 	if err := r.generateResourceInterfaces(); err != nil {
 		return errors.Wrap(err, "c.generateResourceInterfaces()")
 	}
@@ -30,8 +34,8 @@ func (r *ResourceGenerator) runResourcesGeneration() error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateResourceInterfaces() error {
-	output, err := r.generateTemplateOutput(resourcesInterfaceTemplate, map[string]any{
+func (r *resourceGenerator) generateResourceInterfaces() error {
+	output, err := r.generateTemplateOutput("resourcesInterfaceTemplate", resourcesInterfaceTemplate, map[string]any{
 		"Source": r.resourceFilePath,
 		"Types":  r.resources,
 	})
@@ -54,8 +58,8 @@ func (r *ResourceGenerator) generateResourceInterfaces() error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateResourceTests() error {
-	output, err := r.generateTemplateOutput(resourcesTestTemplate, map[string]any{
+func (r *resourceGenerator) generateResourceTests() error {
+	output, err := r.generateTemplateOutput("resourcesTestTemplate", resourcesTestTemplate, map[string]any{
 		"Source":    r.resourceFilePath,
 		"Resources": r.resources,
 	})
@@ -78,13 +82,13 @@ func (r *ResourceGenerator) generateResourceTests() error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateResources(res *resourceInfo) error {
-	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name))))
+func (r *resourceGenerator) generateResources(res *resourceInfo) error {
+	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
 	destinationFilePath := filepath.Join(r.resourceDestination, fileName)
 
 	log.Printf("Generating resource file: %v\n", fileName)
 
-	output, err := r.generateTemplateOutput(resourceFileTemplate, map[string]any{
+	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
 		"Source":   r.resourceFilePath,
 		"Resource": res,
 	})
@@ -105,8 +109,8 @@ func (r *ResourceGenerator) generateResources(res *resourceInfo) error {
 	return nil
 }
 
-func (r *ResourceGenerator) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
-	tmpl, err := template.New(fileTemplate).Funcs(r.templateFuncs()).Parse(fileTemplate)
+func (r *resourceGenerator) generateTemplateOutput(templateName, fileTemplate string, data map[string]any) ([]byte, error) {
+	tmpl, err := template.New(templateName).Funcs(r.templateFuncs()).Parse(fileTemplate)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.Parse()")
 	}
@@ -121,7 +125,7 @@ func (r *ResourceGenerator) generateTemplateOutput(fileTemplate string, data map
 
 func (c *client) buildTableSearchIndexes(tableName string) []*searchIndex {
 	typeIndexMap := make(map[resource.FilterType]string)
-	if tableMeta, ok := c.tableLookup[tableName]; ok {
+	if tableMeta, ok := c.tableMap[tableName]; ok {
 		for tokenListColumn, expressionFields := range tableMeta.SearchIndexes {
 			for _, exprField := range expressionFields {
 				typeIndexMap[exprField.tokenType] = tokenListColumn
