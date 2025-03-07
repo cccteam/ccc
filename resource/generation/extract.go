@@ -364,12 +364,14 @@ func localTypesFromStruct(pkgName string, tt types.Type, typeMap map[string]stru
 
 		if isTypeLocalToPackage(field, pkgName) {
 			if _, ok := decodeToType[*types.Struct](field.Type()); ok {
-				dependencies = append(dependencies, localTypesFromStruct(pkgName, field.Type(), typeMap)...)
+				dependencies = append(dependencies, localTypesFromStruct(pkgName, unwrapType(field.Type()), typeMap)...)
+			} else {
+				typeMap[typeStringer(unwrapType(field.Type()))] = struct{}{}
 			}
 
 			pt := parsedType{
 				name:        field.Name(),
-				tt:          field.Type(),
+				tt:          unwrapType(field.Type()),
 				packageName: pkgName,
 			}
 			dependencies = append(dependencies, pt)

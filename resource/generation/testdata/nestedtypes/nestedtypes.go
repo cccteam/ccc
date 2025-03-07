@@ -11,6 +11,9 @@ type B struct {
 type C string
 
 type D struct {
-	b B
-	c C
+	b  B
+	c  C
+	c2 C
+	c3 []C
+	c4 []*C
 }
