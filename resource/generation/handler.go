@@ -73,9 +73,6 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 }
 
 func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
-	// TODO: generate RPC handlers
-	// also TODO: find a way to add RPC structs to resourceInfo
-
 	handlerTypes := r.resourceEndpoints(resource)
 
 	var handlerData [][]byte
