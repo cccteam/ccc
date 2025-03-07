@@ -2,6 +2,7 @@ package generation
 
 import (
 	"maps"
+	"path/filepath"
 	"reflect"
 	"time"
 
@@ -136,6 +137,8 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 }
 
 func WithRPC(rpcPackageDir string) option {
+	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
+
 	return func(g Generator) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
