@@ -760,10 +760,9 @@ func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
 		{{ $field.Name }} {{ $field.Type }} ` + "`{{ $field.JSONTag }}`" + `
 		{{- end }}
 	}
-	{{- else }} {{ $type.Type }}
-	{{- end -}}
-	{{- end }}
-
+	{{ else }} {{ $type.Type }}
+	{{ end }}
+	{{ end }}
 	type request struct {
 		{{- range $field := .RPCMethod.Fields }}
 		{{ $field.Name }} {{ if $field.IsLocalType }}{{ Lower $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }} ` + "`{{ $field.JSONTag }}`" + `
