@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.15](https://github.com/cccteam/ccc/compare/resource/v0.0.14...resource/v0.0.15) (2025-03-07)
+
+
+### Features
+
+* RPC endpoint generation ([#223](https://github.com/cccteam/ccc/issues/223)) ([3c6b527](https://github.com/cccteam/ccc/commit/3c6b5278ff765617999038fc868ea855196b0c4f))
+
+
+### Code Upgrade
+
+* Upgrade to use omitzero from go 1.24 ([#218](https://github.com/cccteam/ccc/issues/218)) ([244851a](https://github.com/cccteam/ccc/commit/244851aa50b36b42179e2f5606a05fedfc34c431))
+
 ## [0.0.14](https://github.com/cccteam/ccc/compare/resource/v0.0.13...resource/v0.0.14) (2025-02-22)
 
 
