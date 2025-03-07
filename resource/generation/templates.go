@@ -552,7 +552,7 @@ export const Resources = {
 export const Methods = {
 {{- range $rpcMethod := $rpcMethods }}
   {{ $rpcMethod.Name }}: '{{ $rpcMethod.Name }}' as Method,
-{{ end -}}
+{{- end }}
 };
 {{ end -}}
 
