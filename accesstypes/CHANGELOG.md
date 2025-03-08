@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.1](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.0...accesstypes/v0.5.1) (2025-03-07)
+
+
+### Features
+
+* Add Execute permission ([#215](https://github.com/cccteam/ccc/issues/215)) ([c0dafd0](https://github.com/cccteam/ccc/commit/c0dafd063c7e2bede265150b93d27122831d0e5c))
+* text search support ([#169](https://github.com/cccteam/ccc/issues/169)) ([5c2ab80](https://github.com/cccteam/ccc/commit/5c2ab8037ba978169f5db0439d74a859d441670c))
+
+
+### Code Upgrade
+
+* ccc and sub repos GO version to `1.23.6` and all dependencies except CCC authored packages ([#178](https://github.com/cccteam/ccc/issues/178)) ([117a49d](https://github.com/cccteam/ccc/commit/117a49d3740b461d1b295047cdeaf85b4cacb53f))
+
 ## [0.5.0](https://github.com/cccteam/ccc/compare/accesstypes/v0.4.1...accesstypes/v0.5.0) (2024-11-09)
 
 
