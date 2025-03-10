@@ -140,11 +140,9 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 	var typ FilterType
 	var val string
 	for searchKey := range searchKeys.keys {
-		if len(queryParams[string(searchKey)]) == 0 {
+		if l := len(queryParams[string(searchKey)]); l == 0 {
 			continue
-		}
-
-		if len(queryParams[string(searchKey)]) > 1 {
+		} else if l > 1 {
 			return nil, queryParams, httpio.NewBadRequestMessagef("only one search parameter is allowed, found: %v", queryParams[string(searchKey)])
 		}
 
@@ -165,8 +163,6 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 		typ = searchKeys.keys[searchKey]
 		val = queryParams.Get(string(searchKey))
 		delete(queryParams, string(searchKey))
-
-		break
 	}
 
 	if key == "" {
