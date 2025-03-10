@@ -16,10 +16,10 @@ import (
 )
 
 type QuerySet[Resource Resourcer] struct {
-	keys   *fieldSet
-	filter *FilterSet
-	fields []accesstypes.Field
-	rMeta  *ResourceMetadata[Resource]
+	keys    *fieldSet
+	filters []*FilterSet
+	fields  []accesstypes.Field
+	rMeta   *ResourceMetadata[Resource]
 }
 
 func NewQuerySet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *QuerySet[Resource] {
@@ -130,7 +130,7 @@ func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 		return spanner.Statement{}, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
-	if q.filter != nil {
+	if len(q.filters) > 0 {
 		return q.spannerFilterStmt()
 	}
 
@@ -166,16 +166,19 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
+	// TODO(jwatson): Need to handle multiple filters
+	qfilter := q.filters[0]
+
 	var filter *Statement
 	var orderBy *Statement
 
-	query := parseSpannerQuery(q.filter.filterVal)
-	switch q.filter.filterTyp {
+	query := parseSpannerQuery(qfilter.filterVal)
+	switch qfilter.filterTyp {
 	case Index:
-		filter = query.parseToIndexFilter(q.filter.filterKey)
+		filter = query.parseToIndexFilter(qfilter.filterKey)
 	case SubString:
-		filter = query.parseToSearchSubstring(q.filter.filterKey)
-		orderBy = query.parseToNgramScore(q.filter.filterKey)
+		filter = query.parseToSearchSubstring(qfilter.filterKey)
+		orderBy = query.parseToNgramScore(qfilter.filterKey)
 	case FullText:
 		return spanner.Statement{}, errors.New("FullText search is not yet implemented")
 	case Ngram:
@@ -258,5 +261,9 @@ func (q *QuerySet[Resource]) SpannerList(ctx context.Context, txn *spanner.ReadO
 }
 
 func (q *QuerySet[Resource]) SetFilterParam(filterSet *FilterSet) {
-	q.filter = filterSet
+	q.filters = append(q.filters, filterSet)
+}
+
+func (q *QuerySet[Resource]) SetFilterParams(filterSet []*FilterSet) {
+	q.filters = filterSet
 }

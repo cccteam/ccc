@@ -63,7 +63,7 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
-	qSet.SetFilterParam(filterSet)
+	qSet.SetFilterParams(filterSet)
 	for _, field := range fields {
 		qSet.AddField(field)
 	}
@@ -106,7 +106,7 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, columnFiel
 	return fields, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, filterSet *FilterSet, err error) {
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, filterSet []*FilterSet, err error) {
 	if cols := query.Get("columns"); cols != "" {
 		for _, column := range strings.Split(cols, ",") {
 			if field, found := d.fieldMapper.StructFieldName(column); found {
@@ -131,7 +131,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 	return columnFields, filterSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (searchSet *FilterSet, query url.Values, err error) {
+func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (searchSet []*FilterSet, query url.Values, err error) {
 	if searchKeys == nil || len(queryParams) == 0 {
 		return nil, queryParams, nil
 	}
@@ -164,9 +164,10 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 			return nil, queryParams, httpio.NewBadRequestMessagef("only one search type is allowed, found: %s and %s", typ, searchKeys.keys[searchKey])
 		}
 
-		// TODO(jwatson): Need to accumulate multiple FilterSets
 		typ = searchKeys.keys[searchKey]
 		val = queryParams.Get(string(searchKey))
+		searchSet = append(searchSet, NewFilterSet(typ, key, val))
+
 		delete(queryParams, string(searchKey))
 	}
 
@@ -174,5 +175,5 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 		return nil, queryParams, nil
 	}
 
-	return NewFilterSet(typ, key, val), queryParams, nil
+	return searchSet, queryParams, nil
 }
