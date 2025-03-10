@@ -160,6 +160,11 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 			return nil, queryParams, httpio.NewBadRequestMessagef("search type not implemented: %s", searchKeys.keys[searchKey])
 		}
 
+		if typ != "" && typ != searchKeys.keys[searchKey] {
+			return nil, queryParams, httpio.NewBadRequestMessagef("only one search type is allowed, found: %s and %s", typ, searchKeys.keys[searchKey])
+		}
+
+		// TODO(jwatson): Need to accumulate multiple FilterSets
 		typ = searchKeys.keys[searchKey]
 		val = queryParams.Get(string(searchKey))
 		delete(queryParams, string(searchKey))
