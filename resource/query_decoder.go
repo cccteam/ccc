@@ -175,5 +175,9 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 		return nil, queryParams, nil
 	}
 
+	if len(searchSet) > 1 && typ != Index {
+		return nil, queryParams, httpio.NewBadRequestMessagef("only one search paramerer is allowed for: %s", typ)
+	}
+
 	return searchSet, queryParams, nil
 }
