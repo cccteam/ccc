@@ -283,7 +283,7 @@ import (
 	listTemplate = `func (a *App) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag}} {{ $field.ListPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.ListPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
 		{{- end }}
 	}
 

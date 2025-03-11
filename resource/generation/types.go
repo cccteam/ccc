@@ -280,6 +280,15 @@ type structField struct {
 	isLocalType bool
 }
 
+func (s structField) HasTag(key, value string) bool {
+	t, ok := s.tags.Lookup(key)
+	if !ok {
+		return false
+	}
+
+	return strings.Contains(t, value)
+}
+
 func (s structField) JSONTag() string {
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(s.Name())
@@ -417,7 +426,7 @@ func (f *resourceField) JSONTagForPatch() string {
 }
 
 func (f *resourceField) IndexTag() string {
-	if f.IsIndex {
+	if f.IsIndex || f.HasTag("index", "true") {
 		return `index:"true"`
 	}
 
