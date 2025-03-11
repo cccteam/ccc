@@ -33,7 +33,7 @@ type alias = struct{}
 
 type FileRecordSet struct {
 	ID           ccc.UUID            `spanner:"Id"`
-	FileID       ccc.UUID            `spanner:"FileId"`
+	FileID       ccc.UUID            `spanner:"FileId" index:"true"`
 	ManyIDs      []FileID            `spanner:"FileIdArray"`
 	Status       FileRecordSetStatus `spanner:"Status"`
 	ErrorDetails *string             `spanner:"ErrorDetails"`

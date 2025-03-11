@@ -283,7 +283,7 @@ import (
 	listTemplate = `func (a *App) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag}} {{ $field.ListPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.ListPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
 		{{- end }}
 	}
 
@@ -686,7 +686,7 @@ package {{ .Package }}
 import (
 	"net/http"
 
-	"github.com/AscendiumApps/ga-lite-app/mock/mock_router"
+	"{{ .PackageName }}/mock/mock_router"
 )
 
 type generatedRouterTest struct {
@@ -740,10 +740,10 @@ import (
 	"net/http"
 	"time"
 
-	"{{.PackageName}}/app/router"
-	"{{.PackageName}}/spanner"
-	"{{.PackageName}}/spanner/resources"
-	"{{.PackageName}}/businesslayer/rpc"
+	"{{ .PackageName }}/app/router"
+	"{{ .PackageName }}/spanner"
+	"{{ .PackageName }}/spanner/resources"
+	"{{ .PackageName }}/businesslayer/rpc"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"

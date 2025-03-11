@@ -124,7 +124,7 @@ func Test_parseStructs(t *testing.T) {
 						{
 							name: "FileID",
 							Type: "ccc.UUID",
-							tags: reflect.StructTag(`spanner:"FileId"`),
+							tags: reflect.StructTag(`spanner:"FileId" index:"true"`),
 						},
 						{
 							name: "ManyIDs",
