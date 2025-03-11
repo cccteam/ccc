@@ -426,7 +426,11 @@ func (f *resourceField) JSONTagForPatch() string {
 }
 
 func (f *resourceField) IndexTag() string {
-	if f.IsIndex || f.HasTag("index", "true") {
+	if f.IsIndex {
+		return `index:"true"`
+	}
+
+	if f.Parent.IsView && f.HasTag("index", "true") {
 		return `index:"true"`
 	}
 
