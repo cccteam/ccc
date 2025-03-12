@@ -3,6 +3,7 @@ package generation
 import (
 	"testing"
 
+	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -28,7 +29,7 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 			name: "One type",
 			args: args{
 				types: []*resourceInfo{
-					{parsedType: parsedType{name: "Resource1"}},
+					{Type: parser.NewTestType(t, "Resource1")},
 				},
 			},
 			want: "\tResource1",
@@ -37,17 +38,17 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 			name: "many type",
 			args: args{
 				types: []*resourceInfo{
-					{parsedType: parsedType{name: "Resource1"}},
-					{parsedType: parsedType{name: "MyResource1"}},
-					{parsedType: parsedType{name: "YourResource1"}},
-					{parsedType: parsedType{name: "Resource2"}},
-					{parsedType: parsedType{name: "Resource3"}},
-					{parsedType: parsedType{name: "Resource4"}},
-					{parsedType: parsedType{name: "Resource5"}},
-					{parsedType: parsedType{name: "Resource6"}},
-					{parsedType: parsedType{name: "Resource7"}},
-					{parsedType: parsedType{name: "Resource8"}},
-					{parsedType: parsedType{name: "Resource9"}},
+					{Type: parser.NewTestType(t, "Resource1")},
+					{Type: parser.NewTestType(t, "MyResource1")},
+					{Type: parser.NewTestType(t, "YourResource1")},
+					{Type: parser.NewTestType(t, "Resource2")},
+					{Type: parser.NewTestType(t, "Resource3")},
+					{Type: parser.NewTestType(t, "Resource4")},
+					{Type: parser.NewTestType(t, "Resource5")},
+					{Type: parser.NewTestType(t, "Resource6")},
+					{Type: parser.NewTestType(t, "Resource7")},
+					{Type: parser.NewTestType(t, "Resource8")},
+					{Type: parser.NewTestType(t, "Resource9")},
 				},
 			},
 			want: "\tResource1 | MyResource1 | YourResource1 | Resource2 | Resource3 | Resource4 | Resource5 | Resource6 | \n\tResource7 | Resource8 | Resource9",

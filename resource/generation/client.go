@@ -17,6 +17,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/pkg"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/generation/parser"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
 	"github.com/ettle/strcase"
@@ -63,7 +64,7 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 func (r *resourceGenerator) Generate() error {
 	log.Println("Starting ResourceGenerator Generation")
 
-	packageMap, err := loadPackageMap(r.loadPackages...)
+	packageMap, err := parser.LoadPackages(r.loadPackages...)
 	if err != nil {
 		return err
 	}
@@ -170,7 +171,7 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 func (t *typescriptGenerator) Generate() error {
 	log.Println("Starting TypescriptGenerator Generation")
 
-	packageMap, err := loadPackageMap(t.loadPackages...)
+	packageMap, err := parser.LoadPackages(t.loadPackages...)
 	if err != nil {
 		return err
 	}

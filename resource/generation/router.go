@@ -37,10 +37,10 @@ func (r *resourceGenerator) runRouteGeneration() error {
 
 	if r.genRPCMethods {
 		for _, rpcStruct := range r.rpcMethods {
-			generatedRoutesMap[rpcStruct.name] = []generatedRoute{{
+			generatedRoutesMap[rpcStruct.Name()] = []generatedRoute{{
 				Method:      "POST",
-				Path:        fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(rpcStruct.name)),
-				HandlerFunc: rpcStruct.name,
+				Path:        fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(rpcStruct.Name())),
+				HandlerFunc: rpcStruct.Name(),
 			}}
 		}
 	}

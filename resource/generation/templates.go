@@ -758,7 +758,7 @@ func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
 	type {{ Lower $type.UnqualifiedTypeName }} 
 	{{- if $type.IsStruct }} struct {
 		{{- range $field := $type.ToStructType.Fields }}
-		{{ $field.Name }} {{ $field.Type }} ` + "`{{ $field.JSONTag }}`" + `
+		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\"`" + `
 		{{- end }}
 	}
 	{{ else }} {{ $type.Type }}
