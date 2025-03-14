@@ -46,14 +46,14 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 }
 
 func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QuerySet[Resource], error) {
-	fields, filterSet, err := d.parseQuery(request.URL.Query())
+	reqFields, filterSet, err := d.parseQuery(request.URL.Query())
 	if err != nil {
 		return nil, err
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
 	qSet.SetFilterParam(filterSet)
-	qSet.SetRequestedFields(fields)
+	qSet.SetRequestedFields(reqFields)
 
 	return qSet, nil
 }
