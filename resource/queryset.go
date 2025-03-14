@@ -16,10 +16,11 @@ import (
 )
 
 type QuerySet[Resource Resourcer] struct {
-	keys   *fieldSet
-	filter *Filter
-	fields []accesstypes.Field
-	rMeta  *ResourceMetadata[Resource]
+	keys            *fieldSet
+	filter          *Filter
+	fields          []accesstypes.Field
+	requestedFields []accesstypes.Field
+	rMeta           *ResourceMetadata[Resource]
 }
 
 func NewQuerySet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *QuerySet[Resource] {
@@ -33,6 +34,10 @@ func (q *QuerySet[Resource]) Resource() accesstypes.Resource {
 	var r Resource
 
 	return r.Resource()
+}
+
+func (q *QuerySet[Resource]) SetRequestedFields(fields []accesstypes.Field) {
+	q.requestedFields = fields
 }
 
 func (q *QuerySet[Resource]) AddField(field accesstypes.Field) *QuerySet[Resource] {
