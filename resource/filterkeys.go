@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"encoding"
 	"reflect"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 
 type FilterKeys struct {
 	keys map[FilterKey]FilterType
+	typs map[FilterKey]encoding.TextUnmarshaler
 }
 
 func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
@@ -22,6 +24,7 @@ func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
 	}
 
 	keys := make(map[FilterKey]FilterType, 0)
+	typs := make(map[FilterKey]Converter, 0)
 	for _, structField := range reflect.VisibleFields(reflect.TypeFor[Req]()) {
 		for _, filterType := range filterTypes {
 			keyList := structField.Tag.Get(string(filterType))
@@ -42,6 +45,7 @@ func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
 				}
 
 				keys[FilterKey(jsonTag)] = filterType
+				typs[FilterKey(jsonTag)] = NewConverter(structField.Type)
 
 			case Ngram, SubString, FullText:
 				for _, key := range splitFilterKeys(keyList) {
@@ -64,4 +68,13 @@ func splitFilterKeys(keys string) []FilterKey {
 	}
 
 	return filterKeys
+}
+
+type Converter = func() encoding.TextUnmarshaler
+
+func NewConverter(rTyp reflect.Type) Converter {
+	return func() encoding.TextUnmarshaler {
+	}
+
+	return nil
 }

@@ -7,21 +7,6 @@ const (
 	PostgresDBType DBType = "postgres"
 )
 
-type FilterKey string
-
-func (f FilterKey) String() string {
-	return string(f)
-}
-
-type FilterType string
-
-const (
-	Index     FilterType = "index"
-	SubString FilterType = "substring"
-	FullText  FilterType = "fulltext"
-	Ngram     FilterType = "ngram"
-)
-
 type Statement struct {
 	Sql    string
 	Params map[string]any

@@ -166,35 +166,15 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	var filter *Statement
-	var orderBy *Statement
-
-	query := parseSpannerQuery(q.filter.val)
-	switch q.filter.typ {
-	case Index:
-		filter = query.parseToIndexFilter(q.filter.key)
-	case SubString:
-		filter = query.parseToSearchSubstring(q.filter.key)
-		orderBy = query.parseToNgramScore(q.filter.key)
-	case FullText:
-		return spanner.Statement{}, errors.New("FullText search is not yet implemented")
-	case Ngram:
-		return spanner.Statement{}, errors.New("Ngram search is not yet implemented")
-	}
-
+	filter := q.filter.SpannerStmt()
 	stmt := spanner.NewStatement(fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s 
 			WHERE %s`,
 		columns, q.Resource(), filter.Sql))
-	maps.Insert(stmt.Params, maps.All(filter.Params))
 
-	if orderBy != nil {
-		stmt.SQL = fmt.Sprintf("%s\nORDER BY %s", stmt.SQL, orderBy.Sql)
-
-		maps.Insert(stmt.Params, maps.All(orderBy.Params))
-	}
+	stmt.Params = filter.Params
 
 	return stmt, nil
 }
