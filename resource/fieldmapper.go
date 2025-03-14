@@ -8,34 +8,34 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-type FieldMapper struct {
+type RequestFieldMapper struct {
 	jsonTagToFields map[string]accesstypes.Field
 	fields          []accesstypes.Field
 }
 
-func NewFieldMapper(v any) (*FieldMapper, error) {
+func NewRequestFieldMapper(v any) (*RequestFieldMapper, error) {
 	jsonTagToFields, fields, err := tagToFieldMap(v)
 	if err != nil {
 		return nil, err
 	}
 
-	return &FieldMapper{
+	return &RequestFieldMapper{
 		jsonTagToFields: jsonTagToFields,
 		fields:          fields,
 	}, nil
 }
 
-func (f *FieldMapper) StructFieldName(tag string) (accesstypes.Field, bool) {
-	fieldName, ok := f.jsonTagToFields[tag]
+func (f *RequestFieldMapper) StructFieldName(jsonTag string) (accesstypes.Field, bool) {
+	fieldName, ok := f.jsonTagToFields[jsonTag]
 
 	return fieldName, ok
 }
 
-func (f *FieldMapper) Len() int {
+func (f *RequestFieldMapper) Len() int {
 	return len(f.jsonTagToFields)
 }
 
-func (f *FieldMapper) Fields() []accesstypes.Field {
+func (f *RequestFieldMapper) Fields() []accesstypes.Field {
 	return f.fields
 }
 

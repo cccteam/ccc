@@ -1,7 +1,6 @@
 package resource
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -29,13 +28,13 @@ type (
 // Decoder is a struct that can be used for decoding http requests and validating those requests
 type Decoder[Resource Resourcer, Request any] struct {
 	validate    ValidatorFunc
-	fieldMapper *FieldMapper
+	fieldMapper *RequestFieldMapper
 	resourceSet *ResourceSet[Resource, Request]
 }
 
 func NewDecoder[Resource Resourcer, Request any](rSet *ResourceSet[Resource, Request]) (*Decoder[Resource, Request], error) {
 	target := new(Request)
-	m, err := NewFieldMapper(target)
+	m, err := NewRequestFieldMapper(target)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
@@ -53,17 +52,6 @@ func (d *Decoder[Resource, Request]) WithValidator(v ValidatorFunc) *Decoder[Res
 	return &decoder
 }
 
-func (d *Decoder[Resource, Request]) WithPermissionChecker(domainFromReq DomainFromReq, userFromReq UserFromReq, enforcer accesstypes.Enforcer) *DecoderWithPermissionChecker[Resource, Request] {
-	return &DecoderWithPermissionChecker[Resource, Request]{
-		userFromReq:   userFromReq,
-		domainFromReq: domainFromReq,
-		validate:      d.validate,
-		enforcer:      enforcer,
-		resourceSet:   d.resourceSet,
-		fieldMapper:   d.fieldMapper,
-	}
-}
-
 func (d *Decoder[Resource, Request]) Decode(request *http.Request) (*PatchSet[Resource], error) {
 	p, _, err := decodeToPatch(d.resourceSet, d.fieldMapper, request, d.validate)
 	if err != nil {
@@ -73,48 +61,8 @@ func (d *Decoder[Resource, Request]) Decode(request *http.Request) (*PatchSet[Re
 	return p, nil
 }
 
-type DecoderWithPermissionChecker[Resource Resourcer, Request any] struct {
-	userFromReq   UserFromReq
-	domainFromReq DomainFromReq
-	validate      ValidatorFunc
-	enforcer      accesstypes.Enforcer
-	resourceSet   *ResourceSet[Resource, Request]
-	fieldMapper   *FieldMapper
-}
-
-func (d *DecoderWithPermissionChecker[Resource, Request]) WithValidator(v ValidatorFunc) *DecoderWithPermissionChecker[Resource, Request] {
-	decoder := *d
-	decoder.validate = v
-
-	return &decoder
-}
-
-func (d *DecoderWithPermissionChecker[Resource, Request]) Decode(request *http.Request, perm accesstypes.Permission) (*PatchSet[Resource], error) {
-	p, _, err := decodeToPatch(d.resourceSet, d.fieldMapper, request, d.validate)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := checkPermissions(request.Context(), p.Fields(), d.enforcer, d.resourceSet, d.userFromReq(request), d.domainFromReq(request), perm); err != nil {
-		return nil, err
-	}
-
-	return p, nil
-}
-
-func (d *DecoderWithPermissionChecker[Resource, Request]) DecodeOperation(oper *Operation) (*PatchSet[Resource], error) {
-	if oper.Type == OperationDelete {
-		ctx, user, domain := oper.Req.Context(), d.userFromReq(oper.Req), d.domainFromReq(oper.Req)
-		if ok, missing, err := d.enforcer.RequireResources(ctx, user, domain, accesstypes.Delete, d.resourceSet.BaseResource()); err != nil {
-			return nil, errors.Wrap(err, "enforcer.RequireResource()")
-		} else if !ok {
-			return nil, httpio.NewForbiddenMessagef("user %s does not have %s on %s", d.userFromReq(oper.Req), accesstypes.Delete, missing)
-		}
-
-		return nil, nil
-	}
-
-	patchSet, err := d.Decode(oper.Req, permissionFromType(oper.Type))
+func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation) (*PatchSet[Resource], error) {
+	patchSet, err := d.Decode(oper.Req)
 	if err != nil {
 		return nil, errors.Wrap(err, "httpio.DecoderWithPermissionChecker[Request].Decode()")
 	}
@@ -122,7 +70,7 @@ func (d *DecoderWithPermissionChecker[Resource, Request]) DecodeOperation(oper *
 	return patchSet, nil
 }
 
-func decodeToPatch[Resource Resourcer, Request any](rSet *ResourceSet[Resource, Request], fieldMapper *FieldMapper, req *http.Request, validate ValidatorFunc) (*PatchSet[Resource], *Request, error) {
+func decodeToPatch[Resource Resourcer, Request any](rSet *ResourceSet[Resource, Request], fieldMapper *RequestFieldMapper, req *http.Request, validate ValidatorFunc) (*PatchSet[Resource], *Request, error) {
 	request := new(Request)
 	pr, pw := io.Pipe()
 	tr := io.TeeReader(req.Body, pw)
@@ -199,25 +147,4 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *ResourceSet[Resource, 
 	}
 
 	return patchSet, request, nil
-}
-
-func checkPermissions[Resource Resourcer, Request any](
-	ctx context.Context, fields []accesstypes.Field, enforcer accesstypes.Enforcer, rSet *ResourceSet[Resource, Request],
-	user accesstypes.User, domain accesstypes.Domain, perm accesstypes.Permission,
-) error {
-	resources := make([]accesstypes.Resource, 0, len(fields)+1)
-	resources = append(resources, rSet.BaseResource())
-	for _, fieldName := range fields {
-		if rSet.PermissionRequired(fieldName, perm) {
-			resources = append(resources, rSet.Resource(fieldName))
-		}
-	}
-
-	if ok, missing, err := enforcer.RequireResources(ctx, user, domain, perm, resources...); err != nil {
-		return errors.Wrap(err, "enforcer.RequireResource()")
-	} else if !ok {
-		return httpio.NewForbiddenMessagef("user %s does not have %s on %s", user, perm, missing)
-	}
-
-	return nil
 }
