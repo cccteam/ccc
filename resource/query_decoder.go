@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
-	"slices"
 	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -23,9 +22,6 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
 	filterKeys         *FilterKeys
 	resourceSet        *ResourceSet[Resource, Request]
-	permissionChecker  accesstypes.Enforcer
-	domainFromCtx      DomainFromCtx
-	userFromCtx        UserFromCtx
 }
 
 func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource, Request]) (*QueryDecoder[Resource, Request], error) {
@@ -60,41 +56,6 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 	qSet.SetRequestedFields(fields)
 
 	return qSet, nil
-}
-
-func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, columnFields []accesstypes.Field) ([]accesstypes.Field, error) {
-	domain, user := d.domainFromCtx(ctx), d.userFromCtx(ctx)
-
-	if ok, _, err := d.permissionChecker.RequireResources(ctx, user, domain, d.resourceSet.Permission(), d.resourceSet.BaseResource()); err != nil {
-		return nil, errors.Wrap(err, "accesstypes.Enforcer.RequireResources()")
-	} else if !ok {
-		return nil, httpio.NewForbiddenMessagef("user %s does not have %s permission on %s", user, d.resourceSet.Permission(), d.resourceSet.BaseResource())
-	}
-
-	fields := make([]accesstypes.Field, 0, d.requestFieldMapper.Len())
-	for _, field := range d.requestFieldMapper.Fields() {
-		if len(columnFields) > 0 {
-			if !slices.Contains(columnFields, field) {
-				continue
-			}
-		}
-
-		if !d.resourceSet.PermissionRequired(field, d.resourceSet.Permission()) {
-			fields = append(fields, field)
-		} else {
-			if hasPerm, _, err := d.permissionChecker.RequireResources(ctx, user, domain, d.resourceSet.Permission(), d.resourceSet.Resource(field)); err != nil {
-				return nil, errors.Wrap(err, "hasPermission()")
-			} else if hasPerm {
-				fields = append(fields, field)
-			}
-		}
-	}
-
-	if len(fields) == 0 {
-		return nil, httpio.NewForbiddenMessagef("user %s does not have %s permission on any fields in %s", user, d.resourceSet.Permission(), d.resourceSet.BaseResource())
-	}
-
-	return fields, nil
 }
 
 func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (fields []accesstypes.Field, filterSet *Filter, err error) {
