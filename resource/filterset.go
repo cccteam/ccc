@@ -1,15 +1,20 @@
 package resource
 
-type FilterSet struct {
-	filterTyp FilterType
-	filterKey FilterKey
-	filterVal string
+// TODO(bswaney): rename this file to filter
+
+type Filter struct {
+	typ FilterType
+	// TODO(bswaney): get rid of these two
+	key FilterKey
+	val string
+
+	// TODO(bswaney): rename to values
+	filter map[FilterKey]string
 }
 
-func NewFilterSet(filterTyp FilterType, filterKey FilterKey, filterVal string) *FilterSet {
-	return &FilterSet{
-		filterTyp: filterTyp,
-		filterKey: filterKey,
-		filterVal: filterVal,
+func NewFilter(typ FilterType, values map[FilterKey]string) *Filter {
+	return &Filter{
+		typ:    typ,
+		filter: values,
 	}
 }

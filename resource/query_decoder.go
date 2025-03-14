@@ -63,7 +63,7 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
-	qSet.SetFilterParams(filterSet)
+	qSet.SetFilterParam(filterSet)
 	for _, field := range fields {
 		qSet.AddField(field)
 	}
@@ -106,7 +106,7 @@ func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, columnFiel
 	return fields, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, filterSet []*FilterSet, err error) {
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, filterSet *Filter, err error) {
 	if cols := query.Get("columns"); cols != "" {
 		for _, column := range strings.Split(cols, ",") {
 			if field, found := d.fieldMapper.StructFieldName(column); found {
@@ -131,31 +131,35 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 	return columnFields, filterSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (searchSet []*FilterSet, query url.Values, err error) {
+func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (filter *Filter, query url.Values, err error) {
 	if searchKeys == nil || len(queryParams) == 0 {
 		return nil, queryParams, nil
 	}
 
-	var key FilterKey
+	filterValues := make(map[FilterKey]string)
 	var typ FilterType
-	var val string
 	for searchKey := range searchKeys.keys {
-		if l := len(queryParams[string(searchKey)]); l == 0 {
+		if paramCount := len(queryParams[string(searchKey)]); paramCount == 0 {
 			continue
-		} else if l > 1 {
+		} else if paramCount > 1 {
 			return nil, queryParams, httpio.NewBadRequestMessagef("only one search parameter is allowed, found: %v", queryParams[string(searchKey)])
 		}
 
 		switch searchKeys.keys[searchKey] {
 		case SubString, Ngram, FullText:
-			key = searchKey // database column name
+			filterValues[searchKey] = queryParams.Get(searchKey.String())
+
 		case Index:
-			field, _ := d.fieldMapper.StructFieldName(string(searchKey))
-			cache, found := d.resourceSet.ResourceMetadata().fieldMap[field]
+			field, _ := d.fieldMapper.StructFieldName(searchKey.String())
+			cacheEntry, found := d.resourceSet.ResourceMetadata().fieldMap[field]
 			if !found {
 				return nil, queryParams, httpio.NewBadRequestMessagef("field %s not found in metadata", field)
 			}
-			key = FilterKey(string(cache.tag)) // database column name
+
+			columnName := FilterKey(cacheEntry.tag)
+
+			filterValues[columnName] = queryParams.Get(searchKey.String())
+
 		default:
 			return nil, queryParams, httpio.NewBadRequestMessagef("search type not implemented: %s", searchKeys.keys[searchKey])
 		}
@@ -165,19 +169,17 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 		}
 
 		typ = searchKeys.keys[searchKey]
-		val = queryParams.Get(string(searchKey))
-		searchSet = append(searchSet, NewFilterSet(typ, key, val))
 
 		delete(queryParams, string(searchKey))
 	}
 
-	if key == "" {
+	if len(filterValues) == 0 {
 		return nil, queryParams, nil
 	}
 
-	if len(searchSet) > 1 && typ != Index {
-		return nil, queryParams, httpio.NewBadRequestMessagef("only one search paramerer is allowed for: %s", typ)
+	if len(filterValues) > 1 && typ != Index {
+		return nil, queryParams, httpio.NewBadRequestMessagef("only one search parameter is allowed for: %s", typ)
 	}
 
-	return searchSet, queryParams, nil
+	return NewFilter(typ, filterValues), queryParams, nil
 }

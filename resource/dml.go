@@ -7,10 +7,13 @@ const (
 	PostgresDBType DBType = "postgres"
 )
 
-type (
-	FilterType string
-	FilterKey  string
-)
+type FilterKey string
+
+func (f FilterKey) String() string {
+	return string(f)
+}
+
+type FilterType string
 
 const (
 	Index     FilterType = "index"

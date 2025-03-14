@@ -16,10 +16,10 @@ import (
 )
 
 type QuerySet[Resource Resourcer] struct {
-	keys    *fieldSet
-	filters []*FilterSet
-	fields  []accesstypes.Field
-	rMeta   *ResourceMetadata[Resource]
+	keys   *fieldSet
+	filter *Filter
+	fields []accesstypes.Field
+	rMeta  *ResourceMetadata[Resource]
 }
 
 func NewQuerySet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *QuerySet[Resource] {
@@ -130,7 +130,7 @@ func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 		return spanner.Statement{}, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
-	if len(q.filters) > 0 {
+	if q.filter != nil {
 		return q.spannerFilterStmt()
 	}
 
@@ -166,19 +166,16 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	// TODO(jwatson): Need to handle multiple filters
-	qfilter := q.filters[0]
-
 	var filter *Statement
 	var orderBy *Statement
 
-	query := parseSpannerQuery(qfilter.filterVal)
-	switch qfilter.filterTyp {
+	query := parseSpannerQuery(q.filter.val)
+	switch q.filter.typ {
 	case Index:
-		filter = query.parseToIndexFilter(qfilter.filterKey)
+		filter = query.parseToIndexFilter(q.filter.key)
 	case SubString:
-		filter = query.parseToSearchSubstring(qfilter.filterKey)
-		orderBy = query.parseToNgramScore(qfilter.filterKey)
+		filter = query.parseToSearchSubstring(q.filter.key)
+		orderBy = query.parseToNgramScore(q.filter.key)
 	case FullText:
 		return spanner.Statement{}, errors.New("FullText search is not yet implemented")
 	case Ngram:
@@ -260,10 +257,6 @@ func (q *QuerySet[Resource]) SpannerList(ctx context.Context, txn *spanner.ReadO
 	return nil
 }
 
-func (q *QuerySet[Resource]) SetFilterParam(filterSet *FilterSet) {
-	q.filters = append(q.filters, filterSet)
-}
-
-func (q *QuerySet[Resource]) SetFilterParams(filterSet []*FilterSet) {
-	q.filters = filterSet
+func (q *QuerySet[Resource]) SetFilterParam(filterSet *Filter) {
+	q.filter = filterSet
 }
