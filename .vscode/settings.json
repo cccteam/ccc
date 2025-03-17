@@ -18,10 +18,10 @@
   "go.toolsManagement.autoUpdate": true,
   "go.useLanguageServer": true,
   "go.testTimeout": "300s",
-  "[go]": {
-    "editor.defaultFormatter": "golang.go"
-  },
   "gopls": {
     "formatting.gofumpt": true
+  },
+  "[go]": {
+    "editor.defaultFormatter": "golang.go"
   }
 }
