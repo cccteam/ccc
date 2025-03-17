@@ -166,7 +166,11 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	filter := q.filter.SpannerStmt()
+	filter, err := q.filter.SpannerStmt()
+	if err != nil {
+		return spanner.Statement{}, err
+	}
+
 	stmt := spanner.NewStatement(fmt.Sprintf(`
 			SELECT
 				%s

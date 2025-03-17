@@ -5,6 +5,9 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/cccteam/httpio"
+	"github.com/go-playground/errors/v5"
 )
 
 type FilterType string
@@ -30,16 +33,16 @@ func NewFilter(typ FilterType, values map[FilterKey]string, kinds map[FilterKey]
 	}
 }
 
-func (f Filter) SpannerStmt() Statement {
+func (f Filter) SpannerStmt() (Statement, error) {
 	switch f.typ {
 	case Index:
 		return f.parseToIndexFilter()
+	default:
+		return Statement{}, errors.Newf("unsupported filter type %s", f.typ)
 	}
-
-	return Statement{}
 }
 
-func (f Filter) parseToIndexFilter() Statement {
+func (f Filter) parseToIndexFilter() (Statement, error) {
 	fragments := make([]string, 0, len(f.values))
 	params := make(map[string]any)
 
@@ -50,11 +53,11 @@ func (f Filter) parseToIndexFilter() Statement {
 		for i, term := range terms {
 			param := fmt.Sprintf("indexfilterterm%s%d", column, i)
 
-			switch f.kinds[column] {
+			switch k := f.kinds[column]; k {
 			case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
 				typed, err := strconv.Atoi(term)
 				if err != nil {
-					panic(err)
+					return Statement{}, httpio.NewBadRequestMessageWithErrorf(errors.Wrap(err, "strconv.Atoi()"), "unable to convert %s to an int kind", term)
 				}
 				params[param] = typed
 
@@ -62,7 +65,7 @@ func (f Filter) parseToIndexFilter() Statement {
 				params[param] = term
 
 			default:
-				panic("unsupported kind")
+				return Statement{}, errors.Newf("unsupported kind, %s", k.String())
 			}
 
 			exprs = append(exprs, fmt.Sprintf("(%s = @%s)", column, param))
@@ -76,7 +79,7 @@ func (f Filter) parseToIndexFilter() Statement {
 	return Statement{
 		Sql:    sql,
 		Params: params,
-	}
+	}, nil
 }
 
 // func (s Filter) parseToSearchSubstring(tokenlist FilterKey) *Statement {
