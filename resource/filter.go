@@ -2,6 +2,8 @@ package resource
 
 import (
 	"fmt"
+	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -17,12 +19,14 @@ const (
 type Filter struct {
 	typ    FilterType
 	values map[FilterKey]string
+	kinds  map[FilterKey]reflect.Kind
 }
 
-func NewFilter(typ FilterType, values map[FilterKey]string) *Filter {
+func NewFilter(typ FilterType, values map[FilterKey]string, kinds map[FilterKey]reflect.Kind) *Filter {
 	return &Filter{
 		typ:    typ,
 		values: values,
+		kinds:  kinds,
 	}
 }
 
@@ -46,7 +50,20 @@ func (f Filter) parseToIndexFilter() Statement {
 		for i, term := range terms {
 			param := fmt.Sprintf("indexfilterterm%s%d", column, i)
 
-			params[param] = term
+			switch f.kinds[column] {
+			case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
+				typed, err := strconv.Atoi(term)
+				if err != nil {
+					panic(err)
+				}
+				params[param] = typed
+
+			case reflect.String:
+				params[param] = term
+
+			default:
+				panic("unsupported kind")
+			}
 
 			exprs = append(exprs, fmt.Sprintf("(%s = @%s)", column, param))
 		}
@@ -55,9 +72,6 @@ func (f Filter) parseToIndexFilter() Statement {
 	}
 
 	sql := strings.Join(fragments, " AND ")
-
-	fmt.Println(sql)
-	fmt.Println(f.values)
 
 	return Statement{
 		Sql:    sql,
