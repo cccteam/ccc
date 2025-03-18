@@ -111,11 +111,7 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 
 func (t *typescriptGenerator) setTypescriptInfo(resource *resourceInfo) (*resourceInfo, error) {
 	for _, field := range resource.Fields {
-		var err error
-		field.typescriptType, err = decodeToTypescriptType(field.tt, t.typescriptOverrides)
-		if err != nil {
-			return nil, errors.Wrapf(err, "could not decode typescript type for field %q in struct %q at %s:%v", field.Name(), resource.Name(), field.PackageName(), field.Position())
-		}
+		field.typescriptType = t.typescriptType(*field)
 
 		if field.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
 			field.IsEnumerated = true
@@ -123,4 +119,19 @@ func (t *typescriptGenerator) setTypescriptInfo(resource *resourceInfo) (*resour
 	}
 
 	return resource, nil
+}
+
+func (t *typescriptGenerator) typescriptType(field resourceField) string {
+	var tsType string
+	if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
+		tsType = override
+	} else {
+		tsType = "string"
+	}
+
+	if field.IsIterable() {
+		tsType += "[]"
+	}
+
+	return tsType
 }

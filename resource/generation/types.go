@@ -2,13 +2,12 @@ package generation
 
 import (
 	"fmt"
-	"go/types"
-	"reflect"
 	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/generation/parser"
 
 	"github.com/ettle/strcase"
 )
@@ -158,148 +157,6 @@ type generatedRoute struct {
 	HandlerFunc string
 }
 
-type parsedType struct {
-	name        string
-	tt          types.Type
-	packageName string
-	position    int
-}
-
-func (p parsedType) Name() string {
-	return p.name
-}
-
-// e.g. ccc.UUID, []ccc.UUID
-func (p parsedType) Type() string {
-	return typeStringer(p.tt)
-}
-
-// Returns type without package prefix.
-// e.g. ccc.UUID -> UUID, []ccc.UUID -> []UUID
-func (p parsedType) UnqualifiedType() string {
-	qualifier := func(p *types.Package) string {
-		return ""
-	}
-
-	return types.TypeString(p.tt, qualifier)
-}
-
-// Returns unwrapped type.
-// e.g. ccc.UUID -> ccc.UUID, []ccc.UUID -> ccc.UUID
-func (p parsedType) TypeName() string {
-	return typeStringer(unwrapType(p.tt))
-}
-
-// Returns unwrapped and unqualified type as string.
-// e.g. ccc.UUID -> UUID, []ccc.UUID -> UUID
-func (p parsedType) UnqualifiedTypeName() string {
-	qualifier := func(p *types.Package) string {
-		return ""
-	}
-
-	return types.TypeString(unwrapType(p.tt), qualifier)
-}
-
-func (p parsedType) PackageName() string {
-	return p.packageName
-}
-
-func (p parsedType) Position() int {
-	return p.position
-}
-
-func (p parsedType) IsStruct() bool {
-	return isUnderlyingTypeStruct(p.tt)
-}
-
-func (p parsedType) IsIterable() bool {
-	switch p.tt.(type) {
-	case *types.Slice, *types.Array:
-		return true
-	default:
-		return false
-	}
-}
-
-func (p parsedType) ToStructType() parsedStruct {
-	if p.IsStruct() {
-		st, _ := decodeToType[*types.Struct](p.tt)
-		pStruct := parsedStruct{
-			parsedType: p,
-			methods:    structMethods(p.tt),
-			localTypes: localTypesFromStruct(p.packageName, p.tt, map[string]struct{}{}),
-		}
-
-		for i := range st.NumFields() {
-			field := st.Field(i)
-
-			sField := structField{
-				parsedType: parsedType{name: field.Name(), tt: field.Type(), packageName: p.packageName},
-				tags:       reflect.StructTag(st.Tag(i)),
-			}
-
-			pStruct.fields = append(pStruct.fields, sField)
-		}
-
-		return pStruct
-	}
-
-	return parsedStruct{}
-}
-
-type parsedStruct struct {
-	parsedType
-	fields     []structField
-	methods    []*types.Selection
-	localTypes []parsedType
-}
-
-func (p parsedStruct) String() string {
-	var fieldNames []string
-	for _, field := range p.fields {
-		fieldNames = append(fieldNames, field.name)
-	}
-	return fmt.Sprintf(`struct {name: %q, fields: %v}`, p.name, fieldNames)
-}
-
-func (p parsedStruct) Name() string {
-	return p.name
-}
-
-func (p parsedStruct) Fields() []structField {
-	return p.fields
-}
-
-func (p parsedStruct) LocalTypes() []parsedType {
-	return p.localTypes
-}
-
-type structField struct {
-	parsedType
-	tags        reflect.StructTag
-	isLocalType bool
-}
-
-func (s structField) HasTag(key, value string) bool {
-	t, ok := s.tags.Lookup(key)
-	if !ok {
-		return false
-	}
-
-	return strings.Contains(t, value)
-}
-
-func (s structField) JSONTag() string {
-	caser := strcase.NewCaser(false, nil, nil)
-	camelCaseName := caser.ToCamel(s.Name())
-
-	return fmt.Sprintf("json:%q", camelCaseName)
-}
-
-func (s structField) IsLocalType() bool {
-	return s.isLocalType
-}
-
 type routeMap map[string][]generatedRoute
 
 func (r routeMap) Resources() []string {
@@ -320,11 +177,32 @@ resourceRange:
 }
 
 type rpcMethodInfo struct {
-	parsedStruct
+	parser.Struct
+}
+
+func (r rpcMethodInfo) Fields() []rpcField {
+	fields := []rpcField{}
+
+	for _, parserField := range r.Struct.Fields() {
+		fields = append(fields, rpcField{parserField})
+	}
+
+	return fields
+}
+
+type rpcField struct {
+	parser.Field
+}
+
+func (r rpcField) JSONTag() string {
+	caser := strcase.NewCaser(false, nil, nil)
+	camelCaseName := caser.ToCamel(r.Name())
+
+	return fmt.Sprintf("json:%q", camelCaseName)
 }
 
 type resourceInfo struct {
-	parsedType
+	parser.Type
 	Fields                []*resourceField
 	searchIndexes         map[string][]*expressionField // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
 	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.
@@ -372,7 +250,7 @@ func (r *resourceInfo) PrimaryKeyType() string {
 }
 
 type resourceField struct {
-	*structField
+	*parser.Field
 	Parent         *resourceInfo
 	typescriptType string
 	// Spanner stuff
@@ -405,12 +283,13 @@ func (f *resourceField) TypescriptDisplayType() string {
 }
 
 func (f *resourceField) JSONTag() string {
-	if f.IsPrimaryKey {
-		return f.structField.JSONTag()
-	}
-
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(f.Name())
+
+	if f.IsPrimaryKey {
+		return fmt.Sprintf("json:%q", camelCaseName)
+	}
+
 	return fmt.Sprintf("json:%q", camelCaseName+",omitzero")
 }
 
@@ -430,8 +309,11 @@ func (f *resourceField) IndexTag() string {
 		return `index:"true"`
 	}
 
-	if f.Parent.IsView && f.HasTag("index", "true") {
-		return `index:"true"`
+	if f.Parent.IsView {
+		t, ok := f.LookupTag("index")
+		if ok && t == "true" {
+			return `index:"true"`
+		}
 	}
 
 	return ""
@@ -446,7 +328,7 @@ func (f *resourceField) UniqueIndexTag() string {
 }
 
 func (f *resourceField) IsImmutable() bool {
-	tag, ok := f.tags.Lookup("conditions")
+	tag, ok := f.LookupTag("conditions")
 	if !ok {
 		return false
 	}
@@ -457,7 +339,7 @@ func (f *resourceField) IsImmutable() bool {
 }
 
 func (f *resourceField) QueryTag() string {
-	query, ok := f.tags.Lookup("query")
+	query, ok := f.LookupTag("query")
 	if !ok {
 		return ""
 	}
@@ -466,7 +348,7 @@ func (f *resourceField) QueryTag() string {
 }
 
 func (f *resourceField) ReadPermTag() string {
-	tag, ok := f.tags.Lookup("perm")
+	tag, ok := f.LookupTag("perm")
 	if !ok {
 		return ""
 	}
@@ -481,7 +363,7 @@ func (f *resourceField) ReadPermTag() string {
 }
 
 func (f *resourceField) ListPermTag() string {
-	tag, ok := f.tags.Lookup("perm")
+	tag, ok := f.LookupTag("perm")
 	if !ok {
 		return ""
 	}
@@ -496,7 +378,7 @@ func (f *resourceField) ListPermTag() string {
 }
 
 func (f *resourceField) PatchPermTag() string {
-	tag, ok := f.tags.Lookup("perm")
+	tag, ok := f.LookupTag("perm")
 	if !ok {
 		return ""
 	}
@@ -521,7 +403,7 @@ func (f *resourceField) SearchIndexTags() string {
 	typeIndexMap := make(map[resource.FilterType][]string)
 	for searchIndex, expressionFields := range f.Parent.searchIndexes {
 		for _, exprField := range expressionFields {
-			if f.tags.Get("spanner") == exprField.fieldName {
+			if spannerTag, ok := f.LookupTag("spanner"); ok && spannerTag == exprField.fieldName {
 				typeIndexMap[exprField.tokenType] = append(typeIndexMap[exprField.tokenType], searchIndex)
 			}
 		}

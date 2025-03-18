@@ -55,7 +55,7 @@ func (r *resourceGenerator) runRPCGeneration() error {
 }
 
 func (r *resourceGenerator) generateRPCHandler(rpcMethod rpcMethodInfo) error {
-	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.name)))
+	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
 	file, err := os.Create(destinationFilePath)
@@ -88,7 +88,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod rpcMethodInfo) error {
 }
 
 func (r *resourceGenerator) generateRPCMethod(rpcMethod rpcMethodInfo) error {
-	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.name)))
+	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
 	destinationFilePath := filepath.Join("./businesslayer", fileName)
 
 	file, err := os.Create(destinationFilePath)
