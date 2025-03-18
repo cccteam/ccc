@@ -3,15 +3,14 @@ package generation
 import (
 	"testing"
 
-	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/google/go-cmp/cmp"
 )
 
-func Test_formatResourceInterfaceTypes(t *testing.T) {
+func Test_formatInterfaceTypes(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
-		types []*resourceInfo
+		types []string
 	}
 	tests := []struct {
 		name string
@@ -21,34 +20,32 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 		{
 			name: "empty",
 			args: args{
-				types: []*resourceInfo{},
+				types: []string{},
 			},
 			want: "",
 		},
 		{
 			name: "One type",
 			args: args{
-				types: []*resourceInfo{
-					{Type: parser.NewTestType(t, "Resource1")},
-				},
+				types: []string{"Resource1"},
 			},
 			want: "\tResource1",
 		},
 		{
 			name: "many type",
 			args: args{
-				types: []*resourceInfo{
-					{Type: parser.NewTestType(t, "Resource1")},
-					{Type: parser.NewTestType(t, "MyResource1")},
-					{Type: parser.NewTestType(t, "YourResource1")},
-					{Type: parser.NewTestType(t, "Resource2")},
-					{Type: parser.NewTestType(t, "Resource3")},
-					{Type: parser.NewTestType(t, "Resource4")},
-					{Type: parser.NewTestType(t, "Resource5")},
-					{Type: parser.NewTestType(t, "Resource6")},
-					{Type: parser.NewTestType(t, "Resource7")},
-					{Type: parser.NewTestType(t, "Resource8")},
-					{Type: parser.NewTestType(t, "Resource9")},
+				types: []string{
+					"Resource1",
+					"MyResource1",
+					"YourResource1",
+					"Resource2",
+					"Resource3",
+					"Resource4",
+					"Resource5",
+					"Resource6",
+					"Resource7",
+					"Resource8",
+					"Resource9",
 				},
 			},
 			want: "\tResource1 | MyResource1 | YourResource1 | Resource2 | Resource3 | Resource4 | Resource5 | Resource6 | \n\tResource7 | Resource8 | Resource9",
@@ -57,7 +54,7 @@ func Test_formatResourceInterfaceTypes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := formatResourceInterfaceTypes(tt.args.types)
+			got := formatInterfaceTypes(tt.args.types)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("formatResourceInterfaceTypes() mismatch (-want +got):\n%s", diff)
 			}

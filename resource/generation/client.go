@@ -659,21 +659,21 @@ func removeGeneratedFileByHeaderComment(directory, file string) error {
 	return nil
 }
 
-func formatResourceInterfaceTypes(resources []*resourceInfo) string {
-	var resourceNames [][]string
-	var resourceNamesLen int
-	for i, resource := range resources {
-		resourceNamesLen += len(resource.Name())
-		if i == 0 || resourceNamesLen > 80 {
-			resourceNamesLen = len(resource.Name())
-			resourceNames = append(resourceNames, []string{})
+func formatInterfaceTypes(types []string) string {
+	var typeNames [][]string
+	var typeNamesLen int
+	for i, t := range types {
+		typeNamesLen += len(t)
+		if i == 0 || typeNamesLen > 80 {
+			typeNamesLen = len(t)
+			typeNames = append(typeNames, []string{})
 		}
 
-		resourceNames[len(resourceNames)-1] = append(resourceNames[len(resourceNames)-1], resource.Name())
+		typeNames[len(typeNames)-1] = append(typeNames[len(typeNames)-1], t)
 	}
 
 	var sb strings.Builder
-	for _, row := range resourceNames {
+	for _, row := range typeNames {
 		sb.WriteString("\n\t")
 		for _, cell := range row {
 			line := fmt.Sprintf("%s | ", cell)
@@ -684,29 +684,22 @@ func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
 }
 
+func formatResourceInterfaceTypes(resources []*resourceInfo) string {
+	names := make([]string, len(resources))
+	for i, resource := range resources {
+		names[i] = resource.Name()
+	}
+
+	return formatInterfaceTypes(names)
+}
+
 func formatRPCInterfaceTypes(rpcMethods []rpcMethodInfo) string {
-	var names [][]string
-	var namesLength int
+	names := make([]string, len(rpcMethods))
 	for i, rpcMethod := range rpcMethods {
-		namesLength += len(rpcMethod.Name())
-		if i == 0 || namesLength > 80 {
-			namesLength = len(rpcMethod.Name())
-			names = append(names, []string{})
-		}
-
-		names[len(names)-1] = append(names[len(names)-1], rpcMethod.Name())
+		names[i] = rpcMethod.Name()
 	}
 
-	var sb strings.Builder
-	for _, row := range names {
-		sb.WriteString("\n\t")
-		for _, cell := range row {
-			line := fmt.Sprintf("%s | ", cell)
-			sb.WriteString(line)
-		}
-	}
-
-	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
+	return formatInterfaceTypes(names)
 }
 
 func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*expressionField, error) {
