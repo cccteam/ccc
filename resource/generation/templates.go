@@ -23,6 +23,7 @@ type Resource interface {
 package resources
 
 import (
+	"reflect"
 	"time"
 
 	"github.com/cccteam/ccc"
@@ -76,7 +77,7 @@ func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.Type }} {
 {{ $resource := .Resource }}
 {{ range $searchIndex := .Resource.SearchIndexes }}
 func (q *{{ $resource.Name }}Query) SearchBy{{ $searchIndex.Name }}(v string) *{{ $resource.Name }}Query {
-	searchSet := resource.NewFilter({{ ResourceSearchType $searchIndex.SearchType }}, map[resource.FilterKey]string{"{{ $searchIndex.Name }}": v})
+	searchSet := resource.NewFilter({{ ResourceSearchType $searchIndex.SearchType }}, map[resource.FilterKey]string{"{{ $searchIndex.Name }}": v}, nil)
 	q.qSet.SetFilterParam(searchSet)
 
 	return q

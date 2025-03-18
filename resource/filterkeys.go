@@ -45,12 +45,11 @@ func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
 
 				keys[FilterKey(jsonTag)] = filterType
 
-				if typ := structField.Type; typ.Kind() == reflect.Pointer {
-					kinds[FilterKey(structField.Name)] = typ.Elem().Kind()
-				} else {
-					kinds[FilterKey(structField.Name)] = structField.Type.Kind()
+				typ := structField.Type
+				if typ.Kind() == reflect.Pointer {
+					typ = typ.Elem()
 				}
-
+				kinds[FilterKey(structField.Name)] = typ.Kind()
 			case Ngram, SubString, FullText:
 				for _, key := range splitFilterKeys(keyList) {
 					keys[key] = filterType

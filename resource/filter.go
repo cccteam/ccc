@@ -2,6 +2,8 @@ package resource
 
 import (
 	"fmt"
+	"iter"
+	"maps"
 	"reflect"
 	"strconv"
 	"strings"
@@ -9,6 +11,12 @@ import (
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 )
+
+type FilterKey string
+
+func (f FilterKey) String() string {
+	return string(f)
+}
 
 type FilterType string
 
@@ -36,9 +44,36 @@ func NewFilter(typ FilterType, values map[FilterKey]string, kinds map[FilterKey]
 func (f Filter) SpannerStmt() (Statement, error) {
 	switch f.typ {
 	case Index:
-		return f.parseToIndexFilter()
+		statement, err := f.parseToIndexFilter()
+		if err != nil {
+			return Statement{}, err
+		}
+
+		statement.Sql = fmt.Sprintf("WHERE %s", statement.Sql)
+
+		return statement, nil
+	case SubString:
+		searchStatement, err := f.parseToSearchSubstring()
+		if err != nil {
+			return Statement{}, err
+		}
+
+		scoreStatement, err := f.parseToNgramScore()
+		if err != nil {
+			return Statement{}, err
+		}
+
+		sql := fmt.Sprintf("WHERE %s\nORDER BY %s", searchStatement.Sql, scoreStatement.Sql)
+		params := make(map[string]any, len(searchStatement.Params)+len(scoreStatement.Params))
+
+		maps.Insert(params, maps.All(searchStatement.Params))
+		maps.Insert(params, maps.All(scoreStatement.Params))
+
+		return Statement{Sql: sql, Params: params}, nil
+	case FullText, Ngram:
+		return Statement{}, errors.Newf("%s filter is not yet implemented", f.typ)
 	default:
-		return Statement{}, errors.Newf("unsupported filter type %s", f.typ)
+		return Statement{}, errors.Newf("%s filter type not supported", f.typ)
 	}
 }
 
@@ -61,7 +96,7 @@ func (f Filter) parseToIndexFilter() (Statement, error) {
 				}
 				params[param] = typed
 
-			case reflect.String:
+			case reflect.String, reflect.Struct:
 				params[param] = term
 
 			default:
@@ -82,47 +117,55 @@ func (f Filter) parseToIndexFilter() (Statement, error) {
 	}, nil
 }
 
-// func (s Filter) parseToSearchSubstring(tokenlist FilterKey) *Statement {
-// 	terms := strings.Split(s.query, " ")
+func (f Filter) parseToSearchSubstring() (Statement, error) {
+	next, stop := iter.Pull(maps.Keys(f.values))
+	tokenlist, foundOne := next()
+	if _, foundTwo := next(); !foundOne || foundTwo {
+		stop()
 
-// 	exprs := make([]string, 0, len(terms))
-// 	params := make(map[string]any, len(terms))
-// 	for i, term := range terms {
-// 		param := fmt.Sprintf("searchsubstringterm%d", i)
+		return Statement{}, errors.Newf("expected a single key value pair, got %d", len(f.values))
+	}
+	terms := strings.Split(f.values[tokenlist], " ")
 
-// 		params[param] = term
+	exprs := make([]string, 0, len(terms))
+	params := make(map[string]any, len(terms))
+	for i, term := range terms {
+		param := fmt.Sprintf("searchsubstringterm%d", i)
 
-// 		exprs = append(exprs, fmt.Sprintf("SEARCH_SUBSTRING(%s, @%s)", tokenlist, param))
-// 	}
-// 	sql := strings.Join(exprs, " OR ")
+		params[param] = term
 
-// 	return &Statement{
-// 		Sql:    sql,
-// 		Params: params,
-// 	}
-// }
+		exprs = append(exprs, fmt.Sprintf("SEARCH_SUBSTRING(%s, @%s)", tokenlist, param))
+	}
+	sql := strings.Join(exprs, " OR ")
 
-// func (s Filter) parseToNgramScore(tokenlist FilterKey) *Statement {
-// 	terms := strings.Split(s.query, " ")
+	return Statement{
+		Sql:    sql,
+		Params: params,
+	}, nil
+}
 
-// 	exprs := make([]string, 0, len(terms))
-// 	params := make(map[string]any, len(terms))
-// 	for i, term := range terms {
-// 		param := fmt.Sprintf("ngramscoreterm%d", i)
-// 		params[param] = term
+func (f Filter) parseToNgramScore() (Statement, error) {
+	next, stop := iter.Pull(maps.Keys(f.values))
+	tokenlist, foundOne := next()
+	if _, foundTwo := next(); !foundOne || foundTwo {
+		stop()
 
-// 		exprs = append(exprs, fmt.Sprintf("SCORE_NGRAMS(%s, @%s)", tokenlist, param))
-// 	}
-// 	sql := strings.Join(exprs, " + ")
+		return Statement{}, errors.Newf("expected a single key value pair, got %d", len(f.values))
+	}
+	terms := strings.Split(f.values[tokenlist], " ")
 
-// 	return &Statement{
-// 		Sql:    sql,
-// 		Params: params,
-// 	}
-// }
+	exprs := make([]string, 0, len(terms))
+	params := make(map[string]any, len(terms))
+	for i, term := range terms {
+		param := fmt.Sprintf("ngramscoreterm%d", i)
+		params[param] = term
 
-type FilterKey string
+		exprs = append(exprs, fmt.Sprintf("SCORE_NGRAMS(%s, @%s)", tokenlist, param))
+	}
+	sql := strings.Join(exprs, " + ")
 
-func (f FilterKey) String() string {
-	return string(f)
+	return Statement{
+		Sql:    sql,
+		Params: params,
+	}, nil
 }

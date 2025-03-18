@@ -28,21 +28,21 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	userFromCtx       UserFromCtx
 }
 
-func NewQueryDecoder[Rs Resourcer, Rq any](resSet *ResourceSet[Rs, Rq], permChecker accesstypes.Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (*QueryDecoder[Rs, Rq], error) {
-	var req Rq
-	var res Rs
+func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource, Request], permChecker accesstypes.Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (*QueryDecoder[Resource, Request], error) {
+	var req Request
+	var res Resource
 
 	mapper, err := NewFieldMapper(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	filterKeys, err := NewFilterKeys[Rq](res)
+	filterKeys, err := NewFilterKeys[Request](res)
 	if err != nil {
 		return nil, err
 	}
 
-	return &QueryDecoder[Rs, Rq]{
+	return &QueryDecoder[Resource, Request]{
 		fieldMapper:       mapper,
 		filterKeys:        filterKeys,
 		resourceSet:       resSet,
@@ -132,22 +132,22 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 	return columnFields, filterSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseFilterParam(filterKeys *FilterKeys, queryParams url.Values) (filter *Filter, query url.Values, err error) {
-	if filterKeys == nil || len(queryParams) == 0 {
+func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (searchSet *Filter, query url.Values, err error) {
+	if searchKeys == nil || len(queryParams) == 0 {
 		return nil, queryParams, nil
 	}
 
 	filterValues := make(map[FilterKey]string)
 	filterKinds := make(map[FilterKey]reflect.Kind)
 	var typ FilterType
-	for searchKey := range filterKeys.keys {
+	for searchKey := range searchKeys.keys {
 		if paramCount := len(queryParams[string(searchKey)]); paramCount == 0 {
 			continue
 		} else if paramCount > 1 {
 			return nil, queryParams, httpio.NewBadRequestMessagef("only one search parameter is allowed, found: %v", queryParams[string(searchKey)])
 		}
 
-		switch filterKeys.keys[searchKey] {
+		switch searchKeys.keys[searchKey] {
 		case SubString, Ngram, FullText:
 			filterValues[searchKey] = queryParams.Get(searchKey.String())
 
@@ -161,17 +161,17 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(filterKeys *FilterKey
 			columnName := FilterKey(cacheEntry.tag)
 
 			filterValues[columnName] = queryParams.Get(searchKey.String())
-			filterKinds[columnName] = filterKeys.kinds[FilterKey(field)]
+			filterKinds[columnName] = searchKeys.kinds[FilterKey(field)]
 
 		default:
-			return nil, queryParams, httpio.NewBadRequestMessagef("search type not implemented: %s", filterKeys.keys[searchKey])
+			return nil, queryParams, httpio.NewBadRequestMessagef("search type not implemented: %s", searchKeys.keys[searchKey])
 		}
 
-		if typ != "" && typ != filterKeys.keys[searchKey] {
-			return nil, queryParams, httpio.NewBadRequestMessagef("only one search type is allowed, found: %s and %s", typ, filterKeys.keys[searchKey])
+		if typ != "" && typ != searchKeys.keys[searchKey] {
+			return nil, queryParams, httpio.NewBadRequestMessagef("only one search type is allowed, found: %s and %s", typ, searchKeys.keys[searchKey])
 		}
 
-		typ = filterKeys.keys[searchKey]
+		typ = searchKeys.keys[searchKey]
 
 		delete(queryParams, string(searchKey))
 	}

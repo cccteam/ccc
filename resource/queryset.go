@@ -175,7 +175,7 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 			SELECT
 				%s
 			FROM %s 
-			WHERE %s`,
+			%s`,
 		columns, q.Resource(), filter.Sql))
 
 	stmt.Params = filter.Params
