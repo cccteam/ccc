@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.16](https://github.com/cccteam/ccc/compare/resource/v0.0.15...resource/v0.0.16) (2025-03-18)
+
+
+### Features
+
+* use parsed index tags when generating handlers for views ([#228](https://github.com/cccteam/ccc/issues/228)) ([dca43fd](https://github.com/cccteam/ccc/commit/dca43fd2cf35a5eb7c9afcdc0132bca04c8272c2))
+
+
+### Bug Fixes
+
+* Support multi field filters ([#227](https://github.com/cccteam/ccc/issues/227)) ([04b9cf6](https://github.com/cccteam/ccc/commit/04b9cf6677b45c6ac0c159be3a9af72db456bb51))
+
 ## [0.0.15](https://github.com/cccteam/ccc/compare/resource/v0.0.14...resource/v0.0.15) (2025-03-07)
 
 
