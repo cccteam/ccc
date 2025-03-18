@@ -8,7 +8,8 @@ import (
 )
 
 type FilterKeys struct {
-	keys map[FilterKey]FilterType
+	keys  map[FilterKey]FilterType
+	kinds map[FilterKey]reflect.Kind
 }
 
 func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
@@ -22,6 +23,7 @@ func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
 	}
 
 	keys := make(map[FilterKey]FilterType, 0)
+	kinds := make(map[FilterKey]reflect.Kind, 0)
 	for _, structField := range reflect.VisibleFields(reflect.TypeFor[Req]()) {
 		for _, filterType := range filterTypes {
 			keyList := structField.Tag.Get(string(filterType))
@@ -43,16 +45,20 @@ func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
 
 				keys[FilterKey(jsonTag)] = filterType
 
+				typ := structField.Type
+				if typ.Kind() == reflect.Pointer {
+					typ = typ.Elem()
+				}
+				kinds[FilterKey(structField.Name)] = typ.Kind()
 			case Ngram, SubString, FullText:
 				for _, key := range splitFilterKeys(keyList) {
 					keys[key] = filterType
 				}
 			}
-
 		}
 	}
 
-	return &FilterKeys{keys: keys}, nil
+	return &FilterKeys{keys: keys, kinds: kinds}, nil
 }
 
 func splitFilterKeys(keys string) []FilterKey {

@@ -17,7 +17,7 @@ import (
 
 type QuerySet[Resource Resourcer] struct {
 	keys   *fieldSet
-	filter *FilterSet
+	filter *Filter
 	fields []accesstypes.Field
 	rMeta  *ResourceMetadata[Resource]
 }
@@ -166,35 +166,19 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	var filter *Statement
-	var orderBy *Statement
-
-	query := parseSpannerQuery(q.filter.filterVal)
-	switch q.filter.filterTyp {
-	case Index:
-		filter = query.parseToIndexFilter(q.filter.filterKey)
-	case SubString:
-		filter = query.parseToSearchSubstring(q.filter.filterKey)
-		orderBy = query.parseToNgramScore(q.filter.filterKey)
-	case FullText:
-		return spanner.Statement{}, errors.New("FullText search is not yet implemented")
-	case Ngram:
-		return spanner.Statement{}, errors.New("Ngram search is not yet implemented")
+	filter, err := q.filter.SpannerStmt()
+	if err != nil {
+		return spanner.Statement{}, err
 	}
 
 	stmt := spanner.NewStatement(fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s 
-			WHERE %s`,
+			%s`,
 		columns, q.Resource(), filter.Sql))
-	maps.Insert(stmt.Params, maps.All(filter.Params))
 
-	if orderBy != nil {
-		stmt.SQL = fmt.Sprintf("%s\nORDER BY %s", stmt.SQL, orderBy.Sql)
-
-		maps.Insert(stmt.Params, maps.All(orderBy.Params))
-	}
+	stmt.Params = filter.Params
 
 	return stmt, nil
 }
@@ -257,6 +241,6 @@ func (q *QuerySet[Resource]) SpannerList(ctx context.Context, txn *spanner.ReadO
 	return nil
 }
 
-func (q *QuerySet[Resource]) SetFilterParam(filterSet *FilterSet) {
+func (q *QuerySet[Resource]) SetFilterParam(filterSet *Filter) {
 	q.filter = filterSet
 }
