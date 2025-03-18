@@ -154,11 +154,56 @@ func newStruct(o types.Object) (Struct, bool) {
 
 // Pretty prints the struct name and its fields. Useful for debugging.
 func (s Struct) String() string {
-	var fieldNames []string
+	var (
+		maxNameLength int
+		maxTypeLength int
+	)
+
 	for _, field := range s.fields {
-		fieldNames = append(fieldNames, field.name)
+		maxNameLength = max(len(field.name), maxNameLength)
+		maxTypeLength = max(len(field.Type()), maxTypeLength)
 	}
-	return fmt.Sprintf(`struct {name: %q, fields: %v}`, s.name, fieldNames)
+
+	numNameTabs := maxNameLength/8 + 1
+	numTypeTabs := maxTypeLength/8 + 1
+
+	var fields string
+	for _, field := range s.fields {
+		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.name)/8))
+		typeTabs := strings.Repeat("\t", numTypeTabs-(len(field.Type())/8))
+		fields += fmt.Sprintf("\t%s%s%s%s%s\n", field.name, nameTabs, field.Type(), typeTabs, field.tags)
+	}
+
+	return fmt.Sprintf("type %s struct {\n%s}", s.name, fields)
+}
+
+func (s Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
+	var (
+		maxNameLength int
+		maxTypeLength int
+	)
+
+	for _, field := range s.fields {
+		maxNameLength = max(len(field.name), maxNameLength)
+		maxTypeLength = max(len(field.Type()), maxTypeLength)
+	}
+
+	numNameTabs := maxNameLength/8 + 1
+	numTypeTabs := maxTypeLength/8 + 1
+
+	var fields string
+	for i, field := range s.fields {
+		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.name)/8))
+		typeTabs := strings.Repeat("\t", numTypeTabs-(len(field.Type())/8))
+		if i == fieldIndex {
+			fields += fmt.Sprintf("\033[91m\t%s%s%s%s%s << %s\033[0m\n", field.name, nameTabs, field.Type(), typeTabs, field.tags, errMsg)
+		} else {
+			fields += fmt.Sprintf("\t%s%s%s%s%s\n", field.name, nameTabs, field.Type(), typeTabs, field.tags)
+		}
+
+	}
+
+	return fmt.Sprintf("type %s struct {\n%s}", s.name, fields)
 }
 
 func (s Struct) Name() string {
@@ -177,6 +222,10 @@ type Field struct {
 	Typ
 	tags        reflect.StructTag
 	isLocalType bool
+}
+
+func (f Field) String() string {
+	return fmt.Sprintf("%s\t\t%s\t\t%s", f.name, f.Type(), f.tags)
 }
 
 func (f Field) LookupTag(key string) (string, bool) {

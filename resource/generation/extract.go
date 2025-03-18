@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"fmt"
 	"go/types"
 	"slices"
 
@@ -30,11 +31,11 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 	for i, field := range pStruct.Fields() {
 		spannerTag, ok := field.LookupTag("spanner")
 		if !ok {
-			return nil, errors.Newf("field %q in struct %q[%d] at %s:%d is missing struct tag `spanner`", field.Name(), resource.Name(), i, field.PackageName(), field.Position())
+			return nil, errors.Newf("field %s.%s in package %s\n%s", resource.Name(), field.Name(), field.PackageName(), pStruct.PrintWithFieldError(i, "missing spanner tag"))
 		}
 		tableColumn, ok := table.Columns[spannerTag]
 		if !ok {
-			return nil, errors.Newf("field %q in struct %q[%d] at %s:%d is not in tableMeta", field.Name(), resource.Name(), i, field.PackageName(), field.Position())
+			return nil, errors.Newf("field %s.%s in package %s\n%s", resource.Name(), field.Name(), field.PackageName(), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(pStruct.Name()))))
 		}
 
 		resource.Fields[i] = &resourceField{
