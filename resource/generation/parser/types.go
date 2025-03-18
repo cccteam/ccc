@@ -4,23 +4,24 @@ import (
 	"fmt"
 	"go/types"
 	"reflect"
+	"strings"
 )
 
 type Type struct {
-	name        string
-	tt          types.Type
-	packageName string
-	position    int
+	name     string
+	tt       types.Type
+	pkg      *types.Package
+	position int
 }
 
 type Typ = Type
 
 func newType(o types.Object) Type {
 	return Type{
-		name:        o.Name(),
-		tt:          o.Type(),
-		packageName: o.Pkg().Name(),
-		position:    int(o.Pos()),
+		name:     o.Name(),
+		tt:       o.Type(),
+		pkg:      o.Pkg(),
+		position: int(o.Pos()),
 	}
 }
 
@@ -60,7 +61,7 @@ func (t Type) UnqualifiedTypeName() string {
 }
 
 func (t Type) PackageName() string {
-	return t.packageName
+	return t.pkg.Name()
 }
 
 // Position in the Package the type object was parsed from
@@ -97,14 +98,14 @@ func (t Type) ToStructType() Struct {
 		pStruct := Struct{
 			Typ:        t,
 			methods:    structMethods(t.tt),
-			localTypes: localTypesFromStruct(t.packageName, t.tt, map[string]struct{}{}),
+			localTypes: localTypesFromStruct(t.pkg, t.tt, map[string]struct{}{}),
 		}
 
 		for i := range st.NumFields() {
 			field := st.Field(i)
 
 			sField := Field{
-				Typ:  Type{name: field.Name(), tt: field.Type(), packageName: t.packageName},
+				Typ:  Type{name: field.Name(), tt: field.Type(), pkg: t.pkg},
 				tags: reflect.StructTag(st.Tag(i)),
 			}
 
@@ -133,16 +134,16 @@ func newStruct(o types.Object) (Struct, bool) {
 	s := Struct{
 		Typ:        newType(o),
 		methods:    structMethods(o.Type()),
-		localTypes: localTypesFromStruct(o.Pkg().Name(), o.Type(), map[string]struct{}{}),
+		localTypes: localTypesFromStruct(o.Pkg(), o.Type(), map[string]struct{}{}),
 	}
 
 	for i := range st.NumFields() {
 		fieldVar := st.Field(i)
 
 		field := Field{
-			Typ:         Type{name: fieldVar.Name(), tt: fieldVar.Type(), packageName: o.Pkg().Name()},
+			Typ:         Type{name: fieldVar.Name(), tt: fieldVar.Type(), pkg: o.Pkg()},
 			tags:        reflect.StructTag(st.Tag(i)),
-			isLocalType: isTypeLocalToPackage(fieldVar, o.Pkg().Name()),
+			isLocalType: isTypeLocalToPackage(fieldVar, o.Pkg()),
 		}
 
 		s.fields = append(s.fields, field)

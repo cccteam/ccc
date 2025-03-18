@@ -186,14 +186,14 @@ func typeStringer(t types.Type) string {
 	return types.TypeString(t, qualifier)
 }
 
-func isTypeLocalToPackage(t *types.Var, pkgName string) bool {
+func isTypeLocalToPackage(t *types.Var, pkg *types.Package) bool {
 	typeName := strings.TrimPrefix(typeStringer(t.Type()), "[]")
 	typeName = strings.TrimPrefix(typeName, "*")
 
-	return strings.HasPrefix(typeName, pkgName)
+	return strings.HasPrefix(typeName, pkg.Name())
 }
 
-func localTypesFromStruct(pkgName string, tt types.Type, typeMap map[string]struct{}) []Type {
+func localTypesFromStruct(pkg *types.Package, tt types.Type, typeMap map[string]struct{}) []Type {
 	var dependencies []Type
 	typeMap[typeStringer(tt)] = struct{}{}
 
@@ -207,17 +207,17 @@ func localTypesFromStruct(pkgName string, tt types.Type, typeMap map[string]stru
 			continue
 		}
 
-		if isTypeLocalToPackage(field, pkgName) {
+		if isTypeLocalToPackage(field, pkg) {
 			if _, ok := decodeToType[*types.Struct](field.Type()); ok {
-				dependencies = append(dependencies, localTypesFromStruct(pkgName, unwrapType(field.Type()), typeMap)...)
+				dependencies = append(dependencies, localTypesFromStruct(pkg, unwrapType(field.Type()), typeMap)...)
 			} else {
 				typeMap[typeStringer(unwrapType(field.Type()))] = struct{}{}
 			}
 
 			pt := Type{
-				name:        field.Name(),
-				tt:          unwrapType(field.Type()),
-				packageName: pkgName,
+				name: field.Name(),
+				tt:   unwrapType(field.Type()),
+				pkg:  pkg,
 			}
 			dependencies = append(dependencies, pt)
 		}
