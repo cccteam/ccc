@@ -55,7 +55,6 @@ func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
 					keys[key] = filterType
 				}
 			}
-
 		}
 	}
 
