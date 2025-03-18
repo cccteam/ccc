@@ -2,8 +2,8 @@ package parser
 
 import (
 	"go/types"
-	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -78,91 +78,32 @@ func Test_ParseStructs(t *testing.T) {
 		packagePath string
 	}
 
-	type field struct {
-		name string
-		Type string
-		tags reflect.StructTag
-	}
-
-	type structType struct {
-		name   string
-		fields []field
-	}
 	tests := []struct {
 		name    string
 		args    args
-		want    []structType
+		want    []Struct
 		wantErr bool
 	}{
 		{
 			name: "parse 1 file",
 			args: args{packageName: "resources", packagePath: "../testdata/resources/res1.go"},
-			want: []structType{
-				{
-					name: "AddressType",
-					fields: []field{
-						{
-							name: "ID",
-							Type: "string",
-							tags: reflect.StructTag(`spanner:"Id"`),
-						},
-						{
-							name: "Description",
-							Type: "string",
-							tags: reflect.StructTag(`spanner:"description"`),
-						},
-					},
-				},
-				{
-					name: "FileRecordSet",
-					fields: []field{
-						{
-							name: "ID",
-							Type: "ccc.UUID",
-							tags: reflect.StructTag(`spanner:"Id"`),
-						},
-						{
-							name: "FileID",
-							Type: "ccc.UUID",
-							tags: reflect.StructTag(`spanner:"FileId" index:"true"`),
-						},
-						{
-							name: "ManyIDs",
-							Type: "[]resources.FileID",
-							tags: reflect.StructTag(`spanner:"FileIdArray"`),
-						},
-						{
-							name: "Status",
-							Type: "resources.FileRecordSetStatus",
-							tags: reflect.StructTag(`spanner:"Status"`),
-						},
-						{
-							name: "ErrorDetails",
-							Type: "*string",
-							tags: reflect.StructTag(`spanner:"ErrorDetails"`),
-						},
-						{
-							name: "UpdatedAt",
-							Type: "*time.Time",
-							tags: reflect.StructTag(`spanner:"UpdatedAt" conditions:"immutable"`),
-						},
-					},
-				},
-				{
-					name: "Status",
-					fields: []field{
-						{
-							name: "ID",
-							Type: "ccc.UUID",
-							tags: reflect.StructTag(`spanner:"Id"`),
-						},
-						{
-							name: "Description",
-							Type: "string",
-							tags: reflect.StructTag(`spanner:"description"`),
-						},
-					},
-				},
+			want: []Struct{
+				testStruct(t, "AddressType",
+					testField{"ID", basic(types.String), `spanner:"Id"`},
+					testField{"Description", basic(types.String), `spanner:"description"`},
+				),
+				testStruct(t, "FileRecordSet",
+					testField{"ID", named("ccc.UUID", &types.Struct{}), `spanner:"Id"`},
+					testField{"FileID", named("ccc.UUID", &types.Struct{}), `spanner:"FileId" index:"true"`},
+					testField{"ManyIDs", named("[]resources.FileID", basic(types.String)), `spanner:"FileIdArray"`},
+					testField{"Status", named("resources.FileRecordSetStatus", basic(types.String)), `spanner:"Status"`},
+					testField{"ErrorDetails", pointer(basic(types.String)), `spanner:"ErrorDetails"`},
+					testField{"UpdatedAt", pointer(named("time.Time", &types.Struct{})), `spanner:"UpdatedAt" conditions:"immutable"`},
+				),
+				testStruct(t, "Status",
+					testField{"ID", named("ccc.UUID", &types.Struct{}), `spanner:"Id"`},
+					testField{"Description", basic(types.String), `spanner:"description"`},
+				),
 			},
 			wantErr: false,
 		},
@@ -184,7 +125,7 @@ func Test_ParseStructs(t *testing.T) {
 			}
 
 			if len(parsedStructs) != len(tt.want) {
-				t.Errorf("parseStructs() = %v \nwant = %v", parsedStructs, tt.want)
+				t.Errorf("parseStructs() length of parsed structs slice does not match length of expected structs slice: got= %v \nwant = %v", parsedStructs, tt.want)
 				return
 			}
 
@@ -194,11 +135,11 @@ func Test_ParseStructs(t *testing.T) {
 				}
 
 				for j := range parsedStructs[i].fields {
-					if parsedStructs[i].fields[j].Name() != tt.want[i].fields[j].name {
-						t.Errorf("parseStructs() field name = %v, want %v", parsedStructs[i].fields[j].Name(), tt.want[i].fields[j].name)
+					if parsedStructs[i].fields[j].Name() != tt.want[i].fields[j].Name() {
+						t.Errorf("parseStructs() field name = %v, want %v", parsedStructs[i].fields[j].Name(), tt.want[i].fields[j].Name())
 					}
-					if parsedStructs[i].fields[j].Type() != tt.want[i].fields[j].Type {
-						t.Errorf("parseStructs() field Type = %v, want %v", parsedStructs[i].fields[j].Type(), tt.want[i].fields[j].Type)
+					if parsedStructs[i].fields[j].Type() != tt.want[i].fields[j].Type() {
+						t.Errorf("parseStructs() field Type = %v, want %v", parsedStructs[i].fields[j].Type(), tt.want[i].fields[j].Type())
 					}
 					if parsedStructs[i].fields[j].tags != tt.want[i].fields[j].tags {
 						t.Errorf("parseStructs() field tags = %v, want %v", parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
@@ -282,7 +223,7 @@ func Test_localTypesFromStruct(t *testing.T) {
 			}
 
 			var typeNames []string
-			for _, localType := range localTypesFromStruct(tt.args.pkgName, lastStructType, map[string]struct{}{}) {
+			for _, localType := range localTypesFromStruct(pkg, lastStructType, map[string]struct{}{}) {
 				typeNames = append(typeNames, typeStringer(localType.tt))
 			}
 
@@ -291,4 +232,73 @@ func Test_localTypesFromStruct(t *testing.T) {
 			}
 		})
 	}
+}
+
+type testField struct {
+	name string
+	typ  types.Type
+	tag  string
+}
+
+func pkgAndObjName(name string) (*types.Package, string) {
+	var pkgName string
+	if s := strings.Split(name, "."); len(s) > 1 {
+		pkgName = s[0]
+		name = s[1]
+	}
+
+	return types.NewPackage(pkgName, pkgName), name
+}
+
+func typeName(name string, pkg *types.Package, typ types.Type) *types.TypeName {
+	return types.NewTypeName(types.Universe.Pos(), pkg, name, typ)
+}
+
+func field(pkg *types.Package, fp testField) *types.Var {
+	return types.NewField(types.Universe.Pos(), pkg, fp.name, fp.typ, false)
+}
+
+func pointer(t types.Type) *types.Pointer {
+	return types.NewPointer(t)
+}
+
+func basic(tb types.BasicKind) *types.Basic {
+	return types.Typ[tb]
+}
+
+func named(name string, typ types.Type) *types.Named {
+	pkg, objName := pkgAndObjName(name)
+
+	return types.NewNamed(typeName(objName, pkg, typ), typ, nil)
+}
+
+func method(name string, pkg *types.Package, st *types.Struct) *types.Func {
+	recv := types.NewVar(types.Universe.Pos(), pkg, name, st)
+	sig := types.NewSignatureType(recv, nil, nil, nil, nil, false)
+
+	return types.NewFunc(types.Universe.Pos(), pkg, name, sig)
+}
+
+func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) Struct {
+	t.Helper()
+
+	pkg, structName := pkgAndObjName(qualifiedName)
+
+	fields := make([]*types.Var, len(fieldParams))
+	tags := make([]string, len(fieldParams))
+	for i, fieldParam := range fieldParams {
+		fields[i] = field(pkg, fieldParam)
+		tags[i] = fieldParam.tag
+	}
+
+	structType := types.NewStruct(fields, tags)
+
+	namedType := types.NewNamed(typeName(structName, pkg, structType), structType, nil)
+
+	s, ok := newStruct(namedType.Obj())
+	if !ok {
+		panic("could not create struct")
+	}
+
+	return s
 }
