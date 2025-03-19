@@ -46,33 +46,33 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 }
 
 func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QuerySet[Resource], error) {
-	reqFields, filterSet, err := d.parseQuery(request.URL.Query())
+	requestedFields, filterSet, err := d.parseQuery(request.URL.Query())
 	if err != nil {
 		return nil, err
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
 	qSet.SetFilterParam(filterSet)
-	qSet.SetRequestedFields(reqFields)
+	qSet.SetRequestedFields(requestedFields)
 
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (fields []accesstypes.Field, filterSet *Filter, err error) {
-	if columns := query.Get("columns"); columns != "" {
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, filterSet *Filter, err error) {
+	if cols := query.Get("columns"); cols != "" {
 		// column names received in the query parameters are a comma separated list of json field names (ie: json tags on the request struct)
 		// we need to convert these to struct field names
-		for jsonColumn := range strings.SplitSeq(columns, ",") {
-			if field, found := d.requestFieldMapper.StructFieldName(jsonColumn); found {
-				fields = append(fields, field)
+		for column := range strings.SplitSeq(cols, ",") {
+			if field, found := d.requestFieldMapper.StructFieldName(column); found {
+				columnFields = append(columnFields, field)
 			} else {
-				return nil, nil, httpio.NewBadRequestMessagef("unknown column: %s", jsonColumn)
+				return nil, nil, httpio.NewBadRequestMessagef("unknown column: %s", column)
 			}
 		}
 
 		delete(query, "columns")
 	} else {
-		fields = d.requestFieldMapper.Fields()
+		columnFields = d.requestFieldMapper.Fields()
 	}
 
 	filterSet, query, err = d.parseFilterParam(d.filterKeys, query)
@@ -84,7 +84,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (fields [
 		return nil, nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
 	}
 
-	return fields, filterSet, nil
+	return columnFields, filterSet, nil
 }
 
 func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (searchSet *Filter, query url.Values, err error) {
@@ -122,11 +122,11 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 			return nil, queryParams, httpio.NewBadRequestMessagef("search type not implemented: %s", searchKeys.keys[searchKey])
 		}
 
-		if typ != "" && typ != searchKeys.keys[searchKey] {
+		if typ == "" {
+			typ = searchKeys.keys[searchKey]
+		} else if typ != searchKeys.keys[searchKey] {
 			return nil, queryParams, httpio.NewBadRequestMessagef("only one search type is allowed, found: %s and %s", typ, searchKeys.keys[searchKey])
 		}
-
-		typ = searchKeys.keys[searchKey]
 
 		delete(queryParams, string(searchKey))
 	}
