@@ -1,9 +1,11 @@
 package resource
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -20,19 +22,19 @@ func (n nilResource) DefaultConfig() Config {
 // StructDecoder is a struct that can be used for decoding http requests and validating those requests
 type StructDecoder[Request any] struct {
 	validate    ValidatorFunc
-	fieldMapper *FieldMapper
-	resourceSet *ResourceSet[nilResource, Request]
+	fieldMapper *RequestFieldMapper
+	resourceSet *ResourceSet[nilResource]
 }
 
-func NewStructDecoder[Request any]() (*StructDecoder[Request], error) {
+func NewStructDecoder[Request any](permissions ...accesstypes.Permission) (*StructDecoder[Request], error) {
 	target := new(Request)
 
-	m, err := NewFieldMapper(target)
+	m, err := NewRequestFieldMapper(target)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	rSet, err := NewResourceSet[nilResource, Request]()
+	rSet, err := NewResourceSet[nilResource, Request](permissions...)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewResourceSet()")
 	}
@@ -50,20 +52,8 @@ func (d *StructDecoder[Request]) WithValidator(v ValidatorFunc) *StructDecoder[R
 	return &decoder
 }
 
-func (d *StructDecoder[Request]) WithPermissionChecker(domainFromReq DomainFromReq, userFromReq UserFromReq, enforcer accesstypes.Enforcer) *StructDecoderWithPermissionChecker[Request] {
-	return &StructDecoderWithPermissionChecker[Request]{
-		userFromReq:   userFromReq,
-		domainFromReq: domainFromReq,
-		enforcer:      enforcer,
-		resourceSet:   d.resourceSet,
-		fieldMapper:   d.fieldMapper,
-	}
-}
-
-// Decode parses the http request body and validates it against the struct validation rules
-// and returns a named patchset
-func (d *StructDecoder[Request]) Decode(request *http.Request) (*Request, error) {
-	_, target, err := decodeToPatch(d.resourceSet, d.fieldMapper, request, d.validate)
+func (d *StructDecoder[Request]) DecodeWithoutPermissions(request *http.Request) (*Request, error) {
+	_, target, err := decodeToPatch[nilResource, Request](d.resourceSet, d.fieldMapper, request, d.validate)
 	if err != nil {
 		return nil, err
 	}
@@ -71,33 +61,35 @@ func (d *StructDecoder[Request]) Decode(request *http.Request) (*Request, error)
 	return target, nil
 }
 
-type StructDecoderWithPermissionChecker[Request any] struct {
-	userFromReq   UserFromReq
-	domainFromReq DomainFromReq
-	validate      ValidatorFunc
-	enforcer      accesstypes.Enforcer
-	resourceSet   *ResourceSet[nilResource, Request]
-	fieldMapper   *FieldMapper
-}
-
-func (d *StructDecoderWithPermissionChecker[Request]) WithValidator(v ValidatorFunc) *StructDecoderWithPermissionChecker[Request] {
-	decoder := *d
-	decoder.validate = v
-
-	return &decoder
-}
-
-// Decode parses the http request body and validates it against the struct validation rules
-func (d *StructDecoderWithPermissionChecker[Request]) Decode(request *http.Request, perm accesstypes.Permission) (*Request, error) {
-	p, target, err := decodeToPatch(d.resourceSet, d.fieldMapper, request, d.validate)
+func (d *StructDecoder[Request]) Decode(request *http.Request, userPermissions UserPermissions, requiredPermission accesstypes.Permission) (*Request, error) {
+	p, target, err := decodeToPatch[nilResource, Request](d.resourceSet, d.fieldMapper, request, d.validate)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO(jwatson): Verify this works with a nilResource
-	if err := checkPermissions(request.Context(), p.Fields(), d.enforcer, d.resourceSet, d.userFromReq(request), d.domainFromReq(request), perm); err != nil {
+	if err := checkPermissions(request.Context(), p.Fields(), d.resourceSet, userPermissions, requiredPermission); err != nil {
 		return nil, err
 	}
 
 	return target, nil
+}
+
+func checkPermissions[Resource Resourcer](
+	ctx context.Context, fields []accesstypes.Field, rSet *ResourceSet[Resource], userPermissions UserPermissions, perm accesstypes.Permission,
+) error {
+	resources := make([]accesstypes.Resource, 0, len(fields)+1)
+	resources = append(resources, rSet.BaseResource())
+	for _, fieldName := range fields {
+		if rSet.PermissionRequired(fieldName, perm) {
+			resources = append(resources, rSet.Resource(fieldName))
+		}
+	}
+
+	if ok, missing, err := userPermissions.Check(ctx, perm, resources...); err != nil {
+		return errors.Wrap(err, "enforcer.RequireResource()")
+	} else if !ok {
+		return httpio.NewForbiddenMessagef("user %s, domain %s, does not have %s on %s", userPermissions.User(), userPermissions.Domain(), perm, missing)
+	}
+
+	return nil
 }

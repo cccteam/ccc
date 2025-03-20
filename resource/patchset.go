@@ -48,6 +48,16 @@ func (p *PatchSet[Resource]) PatchType() PatchType {
 	return p.patchType
 }
 
+func (p *PatchSet[Resource]) EnableUserPermissionEnforcement(rSet *ResourceSet[Resource], userPermissions UserPermissions, requiredPermission accesstypes.Permission) *PatchSet[Resource] {
+	p.querySet.EnableUserPermissionEnforcement(rSet, userPermissions, requiredPermission)
+
+	return p
+}
+
+func (p *PatchSet[Resource]) checkPermissions(ctx context.Context) error {
+	return p.querySet.checkPermissions(ctx)
+}
+
 func (p *PatchSet[Resource]) Set(field accesstypes.Field, value any) *PatchSet[Resource] {
 	p.data.Set(field, value)
 	p.querySet.AddField(field)
@@ -94,7 +104,7 @@ func (p *PatchSet[Resource]) HasKey() bool {
 }
 
 func (p *PatchSet[Resource]) deleteQuerySet() *QuerySet[Resource] {
-	for field := range p.querySet.rMeta.fieldMap {
+	for _, field := range p.querySet.rMeta.Fields() {
 		p.querySet.AddField(field)
 	}
 
@@ -121,7 +131,7 @@ func (p *PatchSet[Resource]) SpannerApply(ctx context.Context, spanner *spanner.
 func (p *PatchSet[Resource]) SpannerBuffer(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
-		return p.spannerBufferInsert(txn, eventSource...)
+		return p.spannerBufferInsert(ctx, txn, eventSource...)
 	case UpdatePatchType:
 		return p.spannerBufferUpdate(ctx, txn, eventSource...)
 	case DeletePatchType:
@@ -133,7 +143,7 @@ func (p *PatchSet[Resource]) SpannerBuffer(ctx context.Context, txn *spanner.Rea
 
 func (p *PatchSet[Resource]) spannerInsert(ctx context.Context, s *spanner.Client, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.spannerBufferInsert(txn, eventSource...); err != nil {
+		if err := p.spannerBufferInsert(ctx, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -187,7 +197,11 @@ func (p *PatchSet[Resource]) spannerDelete(ctx context.Context, s *spanner.Clien
 	return nil
 }
 
-func (p *PatchSet[Resource]) spannerBufferInsert(txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+	if err := p.checkPermissions(ctx); err != nil {
+		return err
+	}
+
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
@@ -213,6 +227,10 @@ func (p *PatchSet[Resource]) spannerBufferInsert(txn *spanner.ReadWriteTransacti
 }
 
 func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+	if err := p.checkPermissions(ctx); err != nil {
+		return err
+	}
+
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
@@ -238,6 +256,10 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn *spann
 }
 
 func (p *PatchSet[Resource]) SpannerBufferInsertOrUpdate(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+	if err := p.checkPermissions(ctx); err != nil {
+		return err
+	}
+
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
@@ -263,6 +285,10 @@ func (p *PatchSet[Resource]) SpannerBufferInsertOrUpdate(ctx context.Context, tx
 }
 
 func (p *PatchSet[Resource]) spannerBufferDelete(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error {
+	if err := p.checkPermissions(ctx); err != nil {
+		return err
+	}
+
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err

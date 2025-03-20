@@ -16,10 +16,14 @@ import (
 )
 
 type QuerySet[Resource Resourcer] struct {
-	keys   *fieldSet
-	filter *Filter
-	fields []accesstypes.Field
-	rMeta  *ResourceMetadata[Resource]
+	keys                   *fieldSet
+	filter                 *Filter
+	fields                 []accesstypes.Field
+	returnAccessableFields bool
+	rMeta                  *ResourceMetadata[Resource]
+	resourceSet            *ResourceSet[Resource]
+	userPermissions        UserPermissions
+	requiredPermission     accesstypes.Permission
 }
 
 func NewQuerySet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *QuerySet[Resource] {
@@ -33,6 +37,78 @@ func (q *QuerySet[Resource]) Resource() accesstypes.Resource {
 	var r Resource
 
 	return r.Resource()
+}
+
+func (q *QuerySet[Resource]) RequiredPermission() accesstypes.Permission {
+	return q.requiredPermission
+}
+
+func (q *QuerySet[Resource]) ReturnAccessableFields(b bool) *QuerySet[Resource] {
+	q.returnAccessableFields = b
+
+	return q
+}
+
+func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *ResourceSet[Resource], userPermissions UserPermissions, requiredPermission accesstypes.Permission) *QuerySet[Resource] {
+	q.resourceSet = rSet
+	q.userPermissions = userPermissions
+	q.requiredPermission = requiredPermission
+
+	return q
+}
+
+func (q *QuerySet[Resource]) checkPermissions(ctx context.Context) error {
+	fields := q.Fields()
+
+	if len(fields) == 0 && q.returnAccessableFields {
+		return q.addAccessableFields(ctx)
+	}
+
+	if q.resourceSet != nil {
+		resources := make([]accesstypes.Resource, 0, len(fields)+1)
+		resources = append(resources, q.resourceSet.BaseResource())
+
+		for _, fieldName := range fields {
+			if q.resourceSet.PermissionRequired(fieldName, q.requiredPermission) {
+				resources = append(resources, q.resourceSet.Resource(fieldName))
+			}
+		}
+
+		if ok, missing, err := q.userPermissions.Check(ctx, q.requiredPermission, resources...); err != nil {
+			return errors.Wrap(err, "enforcer.RequireResource()")
+		} else if !ok {
+			return httpio.NewForbiddenMessagef("domain (%s), user (%s) does not have (%s) on %s", q.userPermissions.Domain(), q.userPermissions.User(), q.requiredPermission, missing)
+		}
+	}
+
+	return nil
+}
+
+func (q *QuerySet[Resource]) addAccessableFields(ctx context.Context) error {
+	fields := make([]accesstypes.Field, 0, q.rMeta.Len())
+
+	if q.resourceSet != nil {
+		for _, field := range q.rMeta.Fields() {
+			if !q.resourceSet.PermissionRequired(field, q.RequiredPermission()) {
+				fields = append(fields, field)
+			} else {
+				if ok, _, err := q.userPermissions.Check(ctx, q.requiredPermission, q.resourceSet.Resource(field)); err != nil {
+					return errors.Wrap(err, "enforcer.RequireResource()")
+				} else if ok {
+					fields = append(fields, field)
+				}
+			}
+		}
+	} else {
+		// If we don't have a resourceSet, just return all fields
+		fields = q.rMeta.Fields()
+	}
+
+	for _, field := range fields {
+		q.AddField(field)
+	}
+
+	return nil
 }
 
 func (q *QuerySet[Resource]) AddField(field accesstypes.Field) *QuerySet[Resource] {
@@ -212,6 +288,10 @@ func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
 }
 
 func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, txn *spanner.ReadOnlyTransaction, dst any) error {
+	if err := q.checkPermissions(ctx); err != nil {
+		return err
+	}
+
 	stmt, err := q.SpannerStmt()
 	if err != nil {
 		return errors.Wrap(err, "patcher.Stmt()")
@@ -229,6 +309,10 @@ func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, txn *spanner.ReadO
 }
 
 func (q *QuerySet[Resource]) SpannerList(ctx context.Context, txn *spanner.ReadOnlyTransaction, dst any) error {
+	if err := q.checkPermissions(ctx); err != nil {
+		return err
+	}
+
 	stmt, err := q.SpannerStmt()
 	if err != nil {
 		return errors.Wrap(err, "patcher.Stmt()")

@@ -16,7 +16,7 @@ func TestNewFieldMapper(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    *FieldMapper
+		want    *RequestFieldMapper
 		wantErr bool
 	}{
 		{
@@ -27,7 +27,7 @@ func TestNewFieldMapper(t *testing.T) {
 					Field2 string `json:"field2"`
 				}{},
 			},
-			want: &FieldMapper{
+			want: &RequestFieldMapper{
 				jsonTagToFields: map[string]accesstypes.Field{
 					"field1": "Field1",
 					"field2": "Field2",
@@ -52,12 +52,12 @@ func TestNewFieldMapper(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := NewFieldMapper(tt.args.v)
+			got, err := NewRequestFieldMapper(tt.args.v)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewFieldMapper() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(FieldMapper{})); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(RequestFieldMapper{})); diff != "" {
 				t.Errorf("NewFieldMapper() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -99,11 +99,11 @@ func TestFieldMapper_StructFieldName(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := &FieldMapper{
+			f := &RequestFieldMapper{
 				jsonTagToFields: tt.fields.jsonTagToFields,
 			}
 			got, got1 := f.StructFieldName(tt.args.tag)
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(FieldMapper{})); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(RequestFieldMapper{})); diff != "" {
 				t.Errorf("FieldMapper.StructFieldName() mismatch (-want +got):\n%s", diff)
 			}
 			if got1 != tt.want1 {
@@ -139,7 +139,7 @@ func TestFieldMapper_Len(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := &FieldMapper{
+			f := &RequestFieldMapper{
 				jsonTagToFields: tt.fields.jsonTagToFields,
 			}
 			if got := f.Len(); got != tt.want {
@@ -183,12 +183,12 @@ func TestFieldMapper_Fields(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := &FieldMapper{
+			f := &RequestFieldMapper{
 				jsonTagToFields: tt.fields.jsonTagToFields,
 				fields:          tt.fields.fields,
 			}
 			got := f.Fields()
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(FieldMapper{})); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(RequestFieldMapper{})); diff != "" {
 				t.Errorf("FieldMapper.Fields() mismatch (-want +got):\n%s", diff)
 			}
 		})

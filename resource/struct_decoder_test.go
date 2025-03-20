@@ -22,7 +22,7 @@ func (v *validateMock) StructPartial(s interface{}, fields ...string) error {
 	return v.validatePartialFunc(s, fields...)
 }
 
-func TestDecoder_Decode(t *testing.T) {
+func TestDecoder_DecodeWithoutPermissions(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
@@ -81,7 +81,7 @@ func TestDecoder_Decode(t *testing.T) {
 			}
 
 			r := httptest.NewRequest(http.MethodGet, "/test", strings.NewReader(tt.args.body))
-			if _, err := decoder.Decode(r); (err != nil) != tt.wantDecodeErr {
+			if _, err := decoder.DecodeWithoutPermissions(r); (err != nil) != tt.wantDecodeErr {
 				t.Fatalf("Decoder.DecodeRequest() error = %v, wantErr %v", err, tt.wantDecodeErr)
 			}
 
@@ -92,14 +92,14 @@ func TestDecoder_Decode(t *testing.T) {
 			decoder = decoder.WithValidator(tt.args.validatorFunc)
 
 			r = httptest.NewRequest(http.MethodGet, "/test", strings.NewReader(tt.args.body))
-			if _, err := decoder.Decode(r); (err != nil) != tt.wantValidatorErr {
+			if _, err := decoder.DecodeWithoutPermissions(r); (err != nil) != tt.wantValidatorErr {
 				t.Errorf("Decoder.DecodeRequest() error = %v, wantErr %v", err, tt.wantValidatorErr)
 			}
 		})
 	}
 }
 
-func TestDecoder_Decode_Error(t *testing.T) {
+func TestNewStructDecoder_Error(t *testing.T) {
 	t.Parallel()
 
 	type args struct {

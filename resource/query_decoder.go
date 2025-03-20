@@ -2,10 +2,10 @@ package resource
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"reflect"
-	"slices"
 	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -20,19 +20,16 @@ type (
 
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
-	fieldMapper       *FieldMapper
-	filterKeys        *FilterKeys
-	resourceSet       *ResourceSet[Resource, Request]
-	permissionChecker accesstypes.Enforcer
-	domainFromCtx     DomainFromCtx
-	userFromCtx       UserFromCtx
+	requestFieldMapper *RequestFieldMapper
+	filterKeys         *FilterKeys
+	resourceSet        *ResourceSet[Resource]
 }
 
-func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource, Request], permChecker accesstypes.Enforcer, domainFromCtx DomainFromCtx, userFromCtx UserFromCtx) (*QueryDecoder[Resource, Request], error) {
+func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource]) (*QueryDecoder[Resource, Request], error) {
 	var req Request
 	var res Resource
 
-	mapper, err := NewFieldMapper(req)
+	mapper, err := NewRequestFieldMapper(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
@@ -43,74 +40,53 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 	}
 
 	return &QueryDecoder[Resource, Request]{
-		fieldMapper:       mapper,
-		filterKeys:        filterKeys,
-		resourceSet:       resSet,
-		permissionChecker: permChecker,
-		domainFromCtx:     domainFromCtx,
-		userFromCtx:       userFromCtx,
+		requestFieldMapper: mapper,
+		filterKeys:         filterKeys,
+		resourceSet:        resSet,
 	}, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QuerySet[Resource], error) {
-	columns, filterSet, err := d.parseQuery(request.URL.Query())
-	if err != nil {
-		return nil, err
-	}
-
-	fields, err := d.fields(request.Context(), columns)
+func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
+	requestedFields, filterSet, err := d.parseQuery(request.URL.Query())
 	if err != nil {
 		return nil, err
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
 	qSet.SetFilterParam(filterSet)
-	for _, field := range fields {
-		qSet.AddField(field)
+	if len(requestedFields) == 0 {
+		qSet.ReturnAccessableFields(true)
+	} else {
+		for _, field := range requestedFields {
+			qSet.AddField(field)
+		}
 	}
 
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) fields(ctx context.Context, columnFields []accesstypes.Field) ([]accesstypes.Field, error) {
-	domain, user := d.domainFromCtx(ctx), d.userFromCtx(ctx)
-
-	if ok, _, err := d.permissionChecker.RequireResources(ctx, user, domain, d.resourceSet.Permission(), d.resourceSet.BaseResource()); err != nil {
-		return nil, errors.Wrap(err, "accesstypes.Enforcer.RequireResources()")
-	} else if !ok {
-		return nil, httpio.NewForbiddenMessagef("user %s does not have %s permission on %s", user, d.resourceSet.Permission(), d.resourceSet.BaseResource())
+func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions) (*QuerySet[Resource], error) {
+	qSet, err := d.DecodeWithoutPermissions(request)
+	if err != nil {
+		return nil, err
 	}
 
-	fields := make([]accesstypes.Field, 0, d.fieldMapper.Len())
-	for _, field := range d.fieldMapper.Fields() {
-		if len(columnFields) > 0 {
-			if !slices.Contains(columnFields, field) {
-				continue
-			}
-		}
-
-		if !d.resourceSet.PermissionRequired(field, d.resourceSet.Permission()) {
-			fields = append(fields, field)
-		} else {
-			if hasPerm, _, err := d.permissionChecker.RequireResources(ctx, user, domain, d.resourceSet.Permission(), d.resourceSet.Resource(field)); err != nil {
-				return nil, errors.Wrap(err, "hasPermission()")
-			} else if hasPerm {
-				fields = append(fields, field)
-			}
-		}
+	perms := d.resourceSet.Permissions()
+	if len(perms) != 1 {
+		panic(fmt.Sprintf("expected one non-mutating permission, found: %d, (%s)", len(perms), perms))
 	}
 
-	if len(fields) == 0 {
-		return nil, httpio.NewForbiddenMessagef("user %s does not have %s permission on any fields in %s", user, d.resourceSet.Permission(), d.resourceSet.BaseResource())
-	}
+	qSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, perms[0])
 
-	return fields, nil
+	return qSet, nil
 }
 
 func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, filterSet *Filter, err error) {
 	if cols := query.Get("columns"); cols != "" {
-		for _, column := range strings.Split(cols, ",") {
-			if field, found := d.fieldMapper.StructFieldName(column); found {
+		// column names received in the query parameters are a comma separated list of json field names (ie: json tags on the request struct)
+		// we need to convert these to struct field names
+		for column := range strings.SplitSeq(cols, ",") {
+			if field, found := d.requestFieldMapper.StructFieldName(column); found {
 				columnFields = append(columnFields, field)
 			} else {
 				return nil, nil, httpio.NewBadRequestMessagef("unknown column: %s", column)
@@ -152,7 +128,7 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 			filterValues[searchKey] = queryParams.Get(searchKey.String())
 
 		case Index:
-			field, _ := d.fieldMapper.StructFieldName(searchKey.String())
+			field, _ := d.requestFieldMapper.StructFieldName(searchKey.String())
 			cacheEntry, found := d.resourceSet.ResourceMetadata().fieldMap[field]
 			if !found {
 				return nil, queryParams, httpio.NewBadRequestMessagef("field %s not found in metadata", field)
@@ -167,11 +143,11 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 			return nil, queryParams, httpio.NewBadRequestMessagef("search type not implemented: %s", searchKeys.keys[searchKey])
 		}
 
-		if typ != "" && typ != searchKeys.keys[searchKey] {
+		if typ == "" {
+			typ = searchKeys.keys[searchKey]
+		} else if typ != searchKeys.keys[searchKey] {
 			return nil, queryParams, httpio.NewBadRequestMessagef("only one search type is allowed, found: %s and %s", typ, searchKeys.keys[searchKey])
 		}
-
-		typ = searchKeys.keys[searchKey]
 
 		delete(queryParams, string(searchKey))
 	}
