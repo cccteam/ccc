@@ -33,7 +33,7 @@ func TestQueryDecoder_parseQuery_fields(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
-		rSet    *ResourceSet[testResource, testRequest]
+		rSet    *ResourceSet[testResource]
 		columns url.Values
 	}
 	tests := []struct {
@@ -70,7 +70,7 @@ func TestQueryDecoder_parseQuery_fields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			d, err := NewQueryDecoder(tt.args.rSet)
+			d, err := NewQueryDecoder[testResource, testRequest](tt.args.rSet)
 			if (err != nil) != false {
 				t.Fatalf("NewQueryDecoder() error = %v, wantErr %v", err, tt.wantErr)
 			}

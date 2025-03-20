@@ -15,7 +15,7 @@ type (
 	immutableFieldMap map[accesstypes.Resource]map[accesstypes.Tag]struct{}
 )
 
-func AddResources[Resource Resourcer, Request any](s *Collection, scope accesstypes.PermissionScope, rSet *ResourceSet[Resource, Request]) error {
+func AddResources[Resource Resourcer](s *Collection, scope accesstypes.PermissionScope, rSet *ResourceSet[Resource]) error {
 	if !collectResourcePermissions {
 		return nil
 	}

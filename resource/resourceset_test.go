@@ -167,9 +167,9 @@ type wantResourceSetRun struct {
 }
 
 func testNewResourceSetRun[Resource Resourcer, Request any](t *testing.T, name string, permissions []accesstypes.Permission, w wantResourceSetRun) {
-	var want *ResourceSet[Resource, Request]
+	var want *ResourceSet[Resource]
 	if !w.wantErr {
-		want = &ResourceSet[Resource, Request]{
+		want = &ResourceSet[Resource]{
 			permissions:     w.wantPermissions,
 			requiredTagPerm: w.requiredTagPerm,
 			fieldToTag:      w.fieldToTag,
@@ -185,7 +185,7 @@ func testNewResourceSetRun[Resource Resourcer, Request any](t *testing.T, name s
 			t.Errorf("NewResourceSet() error = %v, wantErr %v", err, w.wantErr)
 			return
 		}
-		if diff := cmp.Diff(want, got, cmp.AllowUnexported(ResourceSet[Resource, Request]{}, ResourceMetadata[Resource]{})); diff != "" {
+		if diff := cmp.Diff(want, got, cmp.AllowUnexported(ResourceSet[Resource]{}, ResourceMetadata[Resource]{})); diff != "" {
 			t.Errorf("NewResourceSet() mismatch (-want +got):\n%s", diff)
 		}
 	})

@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -21,10 +22,10 @@ type (
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
 	filterKeys         *FilterKeys
-	resourceSet        *ResourceSet[Resource, Request]
+	resourceSet        *ResourceSet[Resource]
 }
 
-func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource, Request]) (*QueryDecoder[Resource, Request], error) {
+func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource]) (*QueryDecoder[Resource, Request], error) {
 	var req Request
 	var res Resource
 
@@ -45,7 +46,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 	}, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QuerySet[Resource], error) {
+func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
 	requestedFields, filterSet, err := d.parseQuery(request.URL.Query())
 	if err != nil {
 		return nil, err
@@ -54,6 +55,22 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request) (*QueryS
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
 	qSet.SetFilterParam(filterSet)
 	qSet.SetRequestedFields(requestedFields)
+
+	return qSet, nil
+}
+
+func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions) (*QuerySet[Resource], error) {
+	qSet, err := d.DecodeWithoutPermissions(request)
+	if err != nil {
+		return nil, err
+	}
+
+	perms := d.resourceSet.Permissions()
+	if len(perms) != 1 {
+		panic(fmt.Sprintf("expected one non-mutating permission, found: %d, (%s)", len(perms), perms))
+	}
+
+	qSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, perms[0])
 
 	return qSet, nil
 }

@@ -18,7 +18,7 @@ type Resourcer interface {
 	DefaultConfig() Config
 }
 
-type ResourceSet[Resource Resourcer, Request any] struct {
+type ResourceSet[Resource Resourcer] struct {
 	permissions     []accesstypes.Permission
 	requiredTagPerm accesstypes.TagPermissions
 	fieldToTag      map[accesstypes.Field]accesstypes.Tag
@@ -26,13 +26,13 @@ type ResourceSet[Resource Resourcer, Request any] struct {
 	rMeta           *ResourceMetadata[Resource]
 }
 
-func NewResourceSet[Resource Resourcer, Request any](permissions ...accesstypes.Permission) (*ResourceSet[Resource, Request], error) {
+func NewResourceSet[Resource Resourcer, Request any](permissions ...accesstypes.Permission) (*ResourceSet[Resource], error) {
 	requiredTagPerm, fieldToTag, permissions, immutableFields, err := permissionsFromTags(reflect.TypeFor[Request](), permissions)
 	if err != nil {
 		return nil, errors.Wrap(err, "permissionsFromTags()")
 	}
 
-	return &ResourceSet[Resource, Request]{
+	return &ResourceSet[Resource]{
 		permissions:     permissions,
 		requiredTagPerm: requiredTagPerm,
 		fieldToTag:      fieldToTag,
@@ -41,46 +41,35 @@ func NewResourceSet[Resource Resourcer, Request any](permissions ...accesstypes.
 	}, nil
 }
 
-func (r *ResourceSet[Resource, Request]) BaseResource() accesstypes.Resource {
+func (r *ResourceSet[Resource]) BaseResource() accesstypes.Resource {
 	var res Resource
 
 	return res.Resource()
 }
 
-func (r *ResourceSet[Resource, Request]) ImmutableFields() map[accesstypes.Tag]struct{} {
+func (r *ResourceSet[Resource]) ImmutableFields() map[accesstypes.Tag]struct{} {
 	return r.immutableFields
 }
 
-func (r *ResourceSet[Resource, Request]) ResourceMetadata() *ResourceMetadata[Resource] {
+func (r *ResourceSet[Resource]) ResourceMetadata() *ResourceMetadata[Resource] {
 	return r.rMeta
 }
 
-func (r *ResourceSet[Resource, Request]) PermissionRequired(fieldName accesstypes.Field, perm accesstypes.Permission) bool {
+func (r *ResourceSet[Resource]) PermissionRequired(fieldName accesstypes.Field, perm accesstypes.Permission) bool {
 	return slices.Contains(r.requiredTagPerm[r.fieldToTag[fieldName]], perm)
 }
 
-func (r *ResourceSet[Resource, Request]) Permission() accesstypes.Permission {
-	switch len(r.permissions) {
-	case 0:
-		return accesstypes.NullPermission
-	case 1:
-		return r.permissions[0]
-	default:
-		panic("resource set has more than one required permission")
-	}
-}
-
-func (r *ResourceSet[Resource, Request]) Permissions() []accesstypes.Permission {
+func (r *ResourceSet[Resource]) Permissions() []accesstypes.Permission {
 	return r.permissions
 }
 
-func (r *ResourceSet[Resource, Request]) Resource(fieldName accesstypes.Field) accesstypes.Resource {
+func (r *ResourceSet[Resource]) Resource(fieldName accesstypes.Field) accesstypes.Resource {
 	var res Resource
 
 	return accesstypes.Resource(fmt.Sprintf("%s.%s", res.Resource(), r.fieldToTag[fieldName]))
 }
 
-func (r *ResourceSet[Resource, Request]) TagPermissions() accesstypes.TagPermissions {
+func (r *ResourceSet[Resource]) TagPermissions() accesstypes.TagPermissions {
 	return r.requiredTagPerm
 }
 
@@ -93,7 +82,7 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 	fieldToTag = make(map[accesstypes.Field]accesstypes.Tag)
 	permissionMap := make(map[accesstypes.Permission]struct{})
 	mutating := make(map[accesstypes.Permission]struct{})
-	viewing := make(map[accesstypes.Permission]struct{})
+	nonmutating := make(map[accesstypes.Permission]struct{})
 	immutableFields = make(map[accesstypes.Tag]struct{})
 
 	for _, perm := range perms {
@@ -103,7 +92,7 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 		case accesstypes.Create, accesstypes.Update, accesstypes.Delete:
 			mutating[perm] = struct{}{}
 		default:
-			viewing[perm] = struct{}{}
+			nonmutating[perm] = struct{}{}
 		}
 		permissionMap[perm] = struct{}{}
 	}
@@ -128,7 +117,7 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 				permission = accesstypes.Update
 				mutating[permission] = struct{}{}
 			default:
-				viewing[permission] = struct{}{}
+				nonmutating[permission] = struct{}{}
 			}
 
 			if jsonTag == "" || jsonTag == "-" {
@@ -147,12 +136,12 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 		}
 	}
 
-	if len(viewing) > 1 {
-		return nil, nil, nil, nil, errors.Newf("can not have more then one type of viewing permission in the same struct: found %s", slices.Collect(maps.Keys(viewing)))
+	if len(nonmutating) > 1 {
+		return nil, nil, nil, nil, errors.Newf("can not have more then one type of non-mutating permission in the same struct: found %s", slices.Collect(maps.Keys(nonmutating)))
 	}
 
-	if len(viewing) != 0 && len(mutating) != 0 {
-		return nil, nil, nil, nil, errors.Newf("can not have both viewing and mutating permissions in the same struct: found %s and %s", slices.Collect(maps.Keys(viewing)), slices.Collect(maps.Keys(mutating)))
+	if len(nonmutating) != 0 && len(mutating) != 0 {
+		return nil, nil, nil, nil, errors.Newf("can not have both non-mutating and mutating permissions in the same struct: found %s and %s", slices.Collect(maps.Keys(nonmutating)), slices.Collect(maps.Keys(mutating)))
 	}
 
 	permissions = slices.Collect(maps.Keys(permissionMap))

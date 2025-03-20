@@ -23,6 +23,12 @@ type SpannerBufferer interface {
 	PrimaryKey() KeySet
 }
 
-type Queryer[T Resourcer] interface {
-	Query() *QuerySet[T]
+type Queryer[Resource Resourcer] interface {
+	Query() *QuerySet[Resource]
+}
+
+type UserPermissions interface {
+	Check(ctx context.Context, perm accesstypes.Permission, resources ...accesstypes.Resource) (ok bool, missing []accesstypes.Resource, err error)
+	Domain() accesstypes.Domain
+	User() accesstypes.User
 }

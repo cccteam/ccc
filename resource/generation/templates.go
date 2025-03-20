@@ -225,6 +225,24 @@ type {{ .Resource.Name }}DeletePatch struct {
 	patchSet *resource.PatchSet[{{ .Resource.Name }}]
 }
 
+func New{{ .Resource.Name }}DeletePatchFromPatchSet(
+{{- range $field := .Resource.Fields -}}
+	{{- if $field.IsPrimaryKey -}}
+		{{- GoCamel $field.Name }} {{ $field.Type }},
+	{{- end -}}
+{{- end -}}
+patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}DeletePatch {
+	patchSet.
+	{{ range $field := .Resource.Fields }}
+		{{ if $field.IsPrimaryKey }}
+		SetKey("{{ $field.Name }}", {{ GoCamel $field.Name }}).
+		{{ end }}
+	{{ end }}
+		SetPatchType(resource.DeletePatchType)
+	
+	return &{{ .Resource.Name }}DeletePatch{patchSet: patchSet}
+}
+
 func New{{ .Resource.Name }}DeletePatch(
 {{- range $isNotFirstIteration, $field := .Resource.Fields }}
 	{{- if $field.IsPrimaryKey -}}
@@ -296,7 +314,7 @@ import (
 		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ Pluralize .Resource.Name }}()")
 		defer span.End()
 
-		querySet, err := decoder.Decode(r)
+		querySet, err := decoder.Decode(r, a.UserPermissions(r))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -330,7 +348,7 @@ import (
 
 		id := httpio.Param[{{ .Resource.PrimaryKeyType }}](r, router.{{ .Resource.Name }}ID)
 
-		querySet, err := decoder.Decode(r)
+		querySet, err := decoder.Decode(r, a.UserPermissions(r))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -375,7 +393,7 @@ import (
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
 
-			patchSet, err := decoder.DecodeOperation(op)
+			patchSet, err := decoder.DecodeOperation(op, a.UserPermissions(r))
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -398,7 +416,7 @@ import (
 				patches = append(patches, resources.New{{ .Resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet())
 			case resource.OperationDelete:
 				id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
-				patches = append(patches, resources.New{{ .Resource.Name }}DeletePatch(id).PatchSet())
+				patches = append(patches, resources.New{{ .Resource.Name }}DeletePatchFromPatchSet(id, patchSet).PatchSet())
 			}
 		}
 
@@ -486,7 +504,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						patches = append(patches, resources.New{{ $resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet())
 					case resource.OperationDelete:
 						id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
-						patches = append(patches, resources.New{{ $resource.Name }}DeletePatch(id).PatchSet())
+						patches = append(patches, resources.New{{ $resource.Name }}DeletePatchFromPatchSet(id, patchSet).PatchSet())
 					}
 				{{- end -}}
 			}
@@ -776,7 +794,7 @@ func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
 		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ .RPCMethod.Name }}()")
 		defer span.End()
 
-		params, err := decoder.Decode(r)
+		params, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.Execute)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
