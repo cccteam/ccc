@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.17](https://github.com/cccteam/ccc/compare/resource/v0.0.16...resource/v0.0.17) (2025-03-20)
+
+
+### Features
+
+* Stateful resources phase 1 - Move permission evaluation to QuerySet ([#230](https://github.com/cccteam/ccc/issues/230)) ([d418330](https://github.com/cccteam/ccc/commit/d418330f6f9be9f728958fe3a6c48fa0220ab860))
+
+
+### Code Refactoring
+
+* separate parser package ([#232](https://github.com/cccteam/ccc/issues/232)) ([6d856f1](https://github.com/cccteam/ccc/commit/6d856f147cff43951c15e30be4a774704b904f84))
+
 ## [0.0.16](https://github.com/cccteam/ccc/compare/resource/v0.0.15...resource/v0.0.16) (2025-03-18)
 
 
