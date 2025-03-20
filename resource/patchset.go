@@ -104,7 +104,7 @@ func (p *PatchSet[Resource]) HasKey() bool {
 }
 
 func (p *PatchSet[Resource]) deleteQuerySet() *QuerySet[Resource] {
-	for field := range p.querySet.rMeta.fieldMap {
+	for _, field := range p.querySet.rMeta.Fields() {
 		p.querySet.AddField(field)
 	}
 

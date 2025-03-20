@@ -54,7 +54,13 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
 	qSet.SetFilterParam(filterSet)
-	qSet.SetRequestedFields(requestedFields)
+	if len(requestedFields) == 0 {
+		qSet.ReturnAccessableFields(true)
+	} else {
+		for _, field := range requestedFields {
+			qSet.AddField(field)
+		}
+	}
 
 	return qSet, nil
 }
@@ -88,8 +94,6 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 		}
 
 		delete(query, "columns")
-	} else {
-		columnFields = d.requestFieldMapper.Fields()
 	}
 
 	filterSet, query, err = d.parseFilterParam(d.filterKeys, query)

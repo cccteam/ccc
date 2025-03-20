@@ -170,6 +170,14 @@ func NewResourceMetadata[Resource Resourcer]() *ResourceMetadata[Resource] {
 	}
 }
 
+func (r *ResourceMetadata[Resource]) Fields() []accesstypes.Field {
+	return slices.Collect(maps.Keys(r.fieldMap))
+}
+
+func (r *ResourceMetadata[Resource]) Len() int {
+	return len(r.fieldMap)
+}
+
 var resMetadataCache = resourceMetadataCache{
 	cache: make(map[reflect.Type]*resourceMetadataCacheEntry),
 }
