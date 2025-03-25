@@ -413,31 +413,31 @@ import (
 						return errors.Wrap(err, "resources.New{{ .Resource.Name }}CreatePatchFromPatchSet()")
 					}
 					if err := patch.PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerApply()")
+						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerBuffer()")
 					}
 					resp.IDs = append(resp.IDs, patch.ID())
 					{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
 					if err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerApply()")
+						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerBuffer()")
 					}
 					{{- end }}
 				case resource.OperationUpdate:
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
 					if err := resources.New{{ .Resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-						return errors.Wrap(err, "resources.{{ .Resource.Name }}UpdatePatch.SpannerApply()")
+						return errors.Wrap(err, "resources.{{ .Resource.Name }}UpdatePatch.SpannerBuffer()")
 					}
 				case resource.OperationDelete:
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
 					if err := resources.New{{ .Resource.Name }}DeletePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-						return errors.Wrap(err, "resources.{{ .Resource.Name }}DeletePatch.SpannerApply()")
+						return errors.Wrap(err, "resources.{{ .Resource.Name }}DeletePatch.SpannerBuffer()")
 					}
 				}
 			}
 
 			return nil
 		}); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, spanner.HandleError[resources.AddressType](err))
+			return httpio.NewEncoder(w).ClientMessage(ctx, spanner.HandleError[resources.{{ .Resource.Name }}](err))
 		}
 
 		{{ if $PrimaryKeyIsUUID  }}
@@ -486,8 +486,11 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 		var (
 			patches []resource.SpannerBuffer
-			resp = make(response)
+			resp    response
 		)
+
+		if err := a.ExecuteFunc(ctx, resource.UserEvent(ctx), func(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource string) error {
+			resp = response{}
 
 			for op, err := range resource.Operations(r, "/{resource}/{id}", resource.RequireCreatePath()) {
 				if err != nil {
@@ -510,25 +513,34 @@ func (a *App) PatchResources() http.HandlerFunc {
 							if err != nil {
 								return httpio.NewEncoder(w).ClientMessage(ctx, err)
 							}
-							patches = append(patches, patch.PatchSet())
+							if err := patch.PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
+							}
 							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.ID())
 							{{- else }}
 							id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
-							patches = append(patches, resources.New{{ $resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet())
+							if err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
+							}
 							{{- end }}
 						case resource.OperationUpdate:
 							id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
-							patches = append(patches, resources.New{{ $resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet())
+							if err := resources.New{{ $resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.{{ $resource.Name }}UpdatePatch.SpannerBuffer()")
+							}
 						case resource.OperationDelete:
 							id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
-							patches = append(patches, resources.New{{ $resource.Name }}DeletePatchFromPatchSet(id, patchSet).PatchSet())
+							if err := resources.New{{ $resource.Name }}DeletePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.{{ $resource.Name }}DeletePatch.SpannerBuffer()")
+							}
 						}
 					{{- end -}}
 				}
 			}
 
-		if err := a.Patch(ctx, resource.UserEvent(ctx), patches...); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+			return nil
+		}); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, spanner.HandleError[resources.{{ $resource.Name }}](err))
 		}
 
 		return httpio.NewEncoder(w).Ok(resp)
