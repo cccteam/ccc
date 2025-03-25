@@ -2,18 +2,20 @@ package resource
 
 import "fmt"
 
-type partialExpr struct {
+type PartialExpr struct {
 	tree Node
 }
 
-func (px partialExpr) Group(x expr) expr {
+func NewPartialExpr() PartialExpr {
+	return PartialExpr{tree: nil}
+}
+
+func (px PartialExpr) Group(x Expr) Expr {
 	if px.tree == nil {
 		root := x.tree
 		root.SetGroup(true)
 
-		return expr{
-			tree: root,
-		}
+		return Expr{tree: root}
 	}
 
 	root := px.tree
@@ -24,16 +26,14 @@ func (px partialExpr) Group(x expr) expr {
 	root.SetRight(x.tree)
 	root.SetGroup(true)
 
-	return expr{
-		tree: px.tree,
-	}
+	return Expr{tree: px.tree}
 }
 
-type expr struct {
+type Expr struct {
 	tree Node
 }
 
-func (x expr) And() partialExpr {
+func (x Expr) And() PartialExpr {
 	root := newNode(and)
 
 	// AND has a higher operator precedence than OR so we need to reorder the tree
@@ -42,102 +42,88 @@ func (x expr) And() partialExpr {
 		root.SetLeft(x.tree.Right())
 		x.tree.SetRight(root)
 
-		return partialExpr{
-			tree: x.tree,
-		}
+		return PartialExpr{tree: x.tree}
 	}
 
 	root.SetLeft(x.tree)
 
-	return partialExpr{
-		tree: root,
-	}
+	return PartialExpr{tree: root}
 }
 
-func (x expr) Or() partialExpr {
+func (x Expr) Or() PartialExpr {
 	root := newNode(or)
 	root.SetLeft(x.tree)
 
-	return partialExpr{
-		tree: root,
-	}
+	return PartialExpr{tree: root}
 }
 
-type ident[T comparable] struct {
+type Ident[T comparable] struct {
 	column      string
-	partialExpr partialExpr
+	partialExpr PartialExpr
 }
 
-func (i ident[T]) Equal(v ...T) expr {
+func NewIdent[T comparable](column string, px PartialExpr) Ident[T] {
+	return Ident[T]{column, px}
+}
+
+func (i Ident[T]) Equal(v ...T) Expr {
 	eqNode := &equalityNode[T]{
 		node:   newNode(equal),
 		column: i.column,
 		values: v,
 	}
 
-	return expr{
-		tree: addNode(i.partialExpr.tree, eqNode),
-	}
+	return Expr{tree: addNode(i.partialExpr.tree, eqNode)}
 }
 
-func (i ident[T]) NotEqual(v ...T) expr {
+func (i Ident[T]) NotEqual(v ...T) Expr {
 	neqNode := &equalityNode[T]{
 		node:   newNode(notEqual),
 		column: i.column,
 		values: v,
 	}
 
-	return expr{
-		tree: addNode(i.partialExpr.tree, neqNode),
-	}
+	return Expr{tree: addNode(i.partialExpr.tree, neqNode)}
 }
 
-func (i ident[T]) GreaterThan(v T) expr {
+func (i Ident[T]) GreaterThan(v T) Expr {
 	gtNode := &compNode[T]{
 		node:   newNode(greaterThan),
 		column: i.column,
 		value:  v,
 	}
 
-	return expr{
-		tree: addNode(i.partialExpr.tree, gtNode),
-	}
+	return Expr{tree: addNode(i.partialExpr.tree, gtNode)}
 }
 
-func (i ident[T]) GreaterThanEq(v T) expr {
+func (i Ident[T]) GreaterThanEq(v T) Expr {
 	gteqNode := &compNode[T]{
 		node:   newNode(greaterThanEq),
 		column: i.column,
 		value:  v,
 	}
 
-	return expr{
-		tree: addNode(i.partialExpr.tree, gteqNode),
-	}
+	return Expr{tree: addNode(i.partialExpr.tree, gteqNode)}
 }
 
-func (i ident[T]) LessThan(v T) expr {
+func (i Ident[T]) LessThan(v T) Expr {
 	ltNode := &compNode[T]{
 		node:   newNode(lessThan),
 		column: i.column,
 		value:  v,
 	}
 
-	return expr{
-		tree: addNode(i.partialExpr.tree, ltNode),
-	}
+	return Expr{tree: addNode(i.partialExpr.tree, ltNode)}
 }
 
-func (i ident[T]) LessThanEq(v T) expr {
+func (i Ident[T]) LessThanEq(v T) Expr {
 	lteqNode := &compNode[T]{
 		node:   newNode(lessThanEq),
 		column: i.column,
 		value:  v,
 	}
 
-	return expr{
-		tree: addNode(i.partialExpr.tree, lteqNode),
-	}
+	return Expr{tree: addNode(i.partialExpr.tree, lteqNode)}
 }
 
 type nodeType string

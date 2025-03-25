@@ -5,7 +5,9 @@ import (
 	"testing"
 )
 
-type testQuery struct{}
+type testQuery struct {
+	qSet *QuerySet[AResource]
+}
 
 func newTestQuery() *testQuery {
 	return &testQuery{}
@@ -16,16 +18,16 @@ func (q *testQuery) Where() testQueryPartialExpr {
 }
 
 type testQueryPartialExpr struct {
-	partialExpr partialExpr
+	partialExpr PartialExpr
 }
 
 type testQueryExpr struct {
-	expr expr
+	expr Expr
 }
 
 func newTestQueryFilter() testQueryPartialExpr {
 	return testQueryPartialExpr{
-		partialExpr: partialExpr{
+		partialExpr: PartialExpr{
 			tree: nil,
 		},
 	}
@@ -37,7 +39,7 @@ func (px testQueryPartialExpr) Group(x testQueryExpr) testQueryExpr {
 
 func (o testQueryPartialExpr) ID() testQueryIdent[int] {
 	return testQueryIdent[int]{
-		ident: ident[int]{
+		Ident: Ident[int]{
 			column:      "ID",
 			partialExpr: o.partialExpr,
 		},
@@ -46,7 +48,7 @@ func (o testQueryPartialExpr) ID() testQueryIdent[int] {
 
 func (o testQueryPartialExpr) Name() testQueryIdent[string] {
 	return testQueryIdent[string]{
-		ident: ident[string]{
+		Ident: Ident[string]{
 			column:      "Name",
 			partialExpr: o.partialExpr,
 		},
@@ -62,19 +64,19 @@ func (e testQueryExpr) Or() testQueryPartialExpr {
 }
 
 type testQueryIdent[T comparable] struct {
-	ident[T]
+	Ident[T]
 }
 
 func (i testQueryIdent[T]) Equal(v ...T) testQueryExpr {
-	return testQueryExpr{expr: i.ident.Equal(v...)}
+	return testQueryExpr{expr: i.Ident.Equal(v...)}
 }
 
 func (i testQueryIdent[T]) NotEqual(v ...T) testQueryExpr {
-	return testQueryExpr{expr: i.ident.NotEqual(v...)}
+	return testQueryExpr{expr: i.Ident.NotEqual(v...)}
 }
 
 func (i testQueryIdent[T]) GreaterThan(v T) testQueryExpr {
-	return testQueryExpr{expr: i.ident.GreaterThan(v)}
+	return testQueryExpr{expr: i.Ident.GreaterThan(v)}
 }
 
 func Test_Filtering(t *testing.T) {
