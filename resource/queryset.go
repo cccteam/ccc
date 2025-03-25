@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"fmt"
+	"iter"
 	"maps"
 	"slices"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/spxscan"
+	"github.com/cccteam/spxscan/spxapi"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -287,42 +289,49 @@ func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
 	}, nil
 }
 
-func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, txn *spanner.ReadOnlyTransaction, dst any) error {
+func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, db spxapi.Querier) (*Resource, error) {
 	if err := q.checkPermissions(ctx); err != nil {
-		return err
+		return nil, err
 	}
 
 	stmt, err := q.SpannerStmt()
 	if err != nil {
-		return errors.Wrap(err, "patcher.Stmt()")
+		return nil, errors.Wrap(err, "patcher.Stmt()")
 	}
 
-	if err := spxscan.Get(ctx, txn, dst, stmt); err != nil {
+	dst := new(Resource)
+	if err := spxscan.Get(ctx, db, dst, stmt); err != nil {
 		if errors.Is(err, spxscan.ErrNotFound) {
-			return httpio.NewNotFoundMessagef("%s (%s) not found", q.Resource(), q.KeySet().String())
+			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", q.Resource(), q.KeySet().String())
 		}
 
-		return errors.Wrap(err, "spxscan.Get()")
+		return nil, errors.Wrap(err, "spxscan.Get()")
 	}
 
-	return nil
+	return dst, nil
 }
 
-func (q *QuerySet[Resource]) SpannerList(ctx context.Context, txn *spanner.ReadOnlyTransaction, dst any) error {
-	if err := q.checkPermissions(ctx); err != nil {
-		return err
-	}
+func (q *QuerySet[Resource]) SpannerList(ctx context.Context, db spxapi.Querier) iter.Seq2[*Resource, error] {
+	return func(yield func(*Resource, error) bool) {
+		if err := q.checkPermissions(ctx); err != nil {
+			yield(nil, err)
 
-	stmt, err := q.SpannerStmt()
-	if err != nil {
-		return errors.Wrap(err, "patcher.Stmt()")
-	}
+			return
+		}
 
-	if err := spxscan.Select(ctx, txn, dst, stmt); err != nil {
-		return errors.Wrap(err, "spxscan.Get()")
-	}
+		stmt, err := q.SpannerStmt()
+		if err != nil {
+			yield(nil, errors.Wrap(err, "patcher.Stmt()"))
 
-	return nil
+			return
+		}
+
+		for r, err := range spxscan.SelectSeq[Resource](ctx, db, stmt) {
+			if !yield(r, err) {
+				return
+			}
+		}
+	}
 }
 
 func (q *QuerySet[Resource]) SetFilterParam(filterSet *Filter) {
