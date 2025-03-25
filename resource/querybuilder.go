@@ -3,11 +3,11 @@ package resource
 import "fmt"
 
 type PartialExpr struct {
-	tree Node
+	tree ExprTree
 }
 
-func NewPartialExpr() PartialExpr {
-	return PartialExpr{tree: nil}
+func NewPartialExpr(t ExprTree) PartialExpr {
+	return PartialExpr{tree: t}
 }
 
 func (px PartialExpr) Group(x Expr) Expr {
@@ -30,7 +30,7 @@ func (px PartialExpr) Group(x Expr) Expr {
 }
 
 type Expr struct {
-	tree Node
+	tree ExprTree
 }
 
 func (x Expr) And() PartialExpr {
@@ -146,20 +146,20 @@ const (
 	lessThanEq             = "LESSTHANEQ"
 )
 
-type Node interface {
+type ExprTree interface {
 	Type() nodeType
 	Operator() operator
-	Left() Node
-	Right() Node
-	SetLeft(Node)
-	SetRight(Node)
+	Left() ExprTree
+	Right() ExprTree
+	SetLeft(ExprTree)
+	SetRight(ExprTree)
 	IsGroup() bool
 	SetGroup(bool)
 }
 
 type node struct {
-	left    Node
-	right   Node
+	left    ExprTree
+	right   ExprTree
 	op      operator
 	isGroup bool
 }
@@ -185,19 +185,19 @@ func (n *node) Operator() operator {
 	return n.op
 }
 
-func (n *node) Left() Node {
+func (n *node) Left() ExprTree {
 	return n.left
 }
 
-func (n *node) Right() Node {
+func (n *node) Right() ExprTree {
 	return n.right
 }
 
-func (n *node) SetLeft(newNode Node) {
+func (n *node) SetLeft(newNode ExprTree) {
 	n.left = newNode
 }
 
-func (n *node) SetRight(newNode Node) {
+func (n *node) SetRight(newNode ExprTree) {
 	n.right = newNode
 }
 
@@ -209,7 +209,7 @@ func (n *node) SetGroup(b bool) {
 	n.isGroup = b
 }
 
-func addNode(tree Node, n Node) Node {
+func addNode(tree ExprTree, n ExprTree) ExprTree {
 	if tree == nil {
 		return n
 	}

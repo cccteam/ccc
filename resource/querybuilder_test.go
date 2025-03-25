@@ -110,7 +110,7 @@ func Test_Filtering(t *testing.T) {
 	}
 }
 
-func PrintTree(t *testing.T, root Node) string {
+func PrintTree(t *testing.T, root ExprTree) string {
 	t.Helper()
 
 	if root == nil {
