@@ -18,16 +18,16 @@ func (q *testQuery) Where() testQueryPartialExpr {
 }
 
 type testQueryPartialExpr struct {
-	partialExpr PartialExpr
+	partialExpr PartialQueryClause
 }
 
 type testQueryExpr struct {
-	expr Expr
+	expr QueryClause
 }
 
 func newTestQueryFilter() testQueryPartialExpr {
 	return testQueryPartialExpr{
-		partialExpr: PartialExpr{
+		partialExpr: PartialQueryClause{
 			tree: nil,
 		},
 	}
@@ -110,7 +110,7 @@ func Test_Filtering(t *testing.T) {
 	}
 }
 
-func PrintTree(t *testing.T, root ExprTree) string {
+func PrintTree(t *testing.T, root clauseExprTree) string {
 	t.Helper()
 
 	if root == nil {

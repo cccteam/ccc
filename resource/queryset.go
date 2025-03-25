@@ -21,6 +21,7 @@ type QuerySet[Resource Resourcer] struct {
 	keys                   *fieldSet
 	filter                 *Filter
 	fields                 []accesstypes.Field
+	clause                 clauseExprTree
 	returnAccessableFields bool
 	rMeta                  *ResourceMetadata[Resource]
 	resourceSet            *ResourceSet[Resource]
@@ -173,6 +174,8 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 
 // Where translates the the fields to database struct tags in databaseType when building the where clause
 func (q *QuerySet[Resource]) Where() (*Statement, error) {
+
+	// TODO(jrowland): use QuerySet.clause to build the where clause
 	parts := q.KeySet().Parts()
 	if len(parts) == 0 {
 		return &Statement{}, nil
@@ -230,7 +233,7 @@ func (q *QuerySet[Resource]) spannerIndexStmt() (spanner.Statement, error) {
 	stmt := spanner.NewStatement(fmt.Sprintf(`
 			SELECT
 				%s
-			FROM %s 
+			FROM %s
 			%s`, columns, q.Resource(), where.Sql,
 	))
 	maps.Insert(stmt.Params, maps.All(where.Params))
@@ -252,7 +255,7 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 	stmt := spanner.NewStatement(fmt.Sprintf(`
 			SELECT
 				%s
-			FROM %s 
+			FROM %s
 			%s`,
 		columns, q.Resource(), filter.Sql))
 
@@ -279,7 +282,7 @@ func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
 	sql := fmt.Sprintf(`
 			SELECT
 				%s
-			FROM %s 
+			FROM %s
 			%s`, columns, q.Resource(), where.Sql,
 	)
 
