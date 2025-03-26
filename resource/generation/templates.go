@@ -390,11 +390,17 @@ import (
 		{{ if $PrimaryKeyIsUUID }}
 		var resp response
 		{{- end }}
+		eventSource := resource.UserEvent(ctx)
 
 		if err := a.ExecuteFunc(ctx, func(ctx context.Context, txn resource.BufferWriter) error {
 			{{- if $PrimaryKeyIsUUID }}
 			resp = response{}
 			{{- end }}
+			r, err := resource.CloneRequest(r)
+			if err != nil {
+				return errors.Wrap(err, "resource.CloneRequest()")
+			}
+
 			for op, err := range resource.Operations(r, "/{id}"{{- if eq false $PrimaryKeyIsUUID }}, resource.RequireCreatePath(){{- end }}) {
 				if err != nil {
 					return errors.Wrap(err, "resource.Operations()")
@@ -485,12 +491,17 @@ func (a *App) PatchResources() http.HandlerFunc {
 		defer span.End()
 
 		var (
+			eventSource = resource.UserEvent(ctx)
 			patches []resource.SpannerBuffer
 			resp    response
 		)
 
 		if err := a.ExecuteFunc(ctx, func(ctx context.Context, txn resource.BufferWriter) error {
 			resp = response{}
+			r, err := resource.CloneRequest(r)
+			if err != nil {
+				return errors.Wrap(err, "resource.CloneRequest()")
+			}
 
 			for op, err := range resource.Operations(r, "/{resource}/{id}", resource.RequireCreatePath()) {
 				if err != nil {
