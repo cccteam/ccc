@@ -1,13 +1,16 @@
 package resource
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type PartialQueryClause struct {
 	tree clauseExprTree
 }
 
-func NewPartialQueryClause[R Resourcer](qSet *QuerySet[R]) PartialQueryClause {
-	return PartialQueryClause{tree: qSet.clause}
+func NewPartialQueryClause() PartialQueryClause {
+	return PartialQueryClause{tree: nil}
 }
 
 func (p PartialQueryClause) Group(qc QueryClause) QueryClause {
@@ -38,7 +41,7 @@ func (x QueryClause) And() PartialQueryClause {
 
 	// AND has a higher operator precedence than OR so we need to reorder the tree
 	// https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-PRECEDENCE
-	if !x.tree.IsGroup() && x.tree.Operator() == or {
+	if !x.tree.IsGroup() && x.tree.Action() == or {
 		root.SetLeft(x.tree.Right())
 		x.tree.SetRight(root)
 
@@ -129,26 +132,29 @@ func (i Ident[T]) LessThanEq(v T) QueryClause {
 type nodeType string
 
 const (
-	logical     nodeType = "LOGICAL"
-	conditional          = "CONDITIONAL"
+	logical    nodeType = "LOGICAL"
+	comparison          = "COMPARISON"
 )
 
-type operator string
+type action string
 
 const (
-	and           operator = "AND"
-	or                     = "OR"
-	equal                  = "EQUAL"
-	notEqual               = "NOTEQUAL"
-	greaterThan            = "GREATERTHAN"
-	greaterThanEq          = "GREATERTHANEQ"
-	lessThan               = "LESSTHAN"
-	lessThanEq             = "LESSTHANEQ"
+	and           action = "AND"
+	or                   = "OR"
+	equal                = "EQUAL"
+	notEqual             = "NOTEQUAL"
+	greaterThan          = "GREATERTHAN"
+	greaterThanEq        = "GREATERTHANEQ"
+	lessThan             = "LESSTHAN"
+	lessThanEq           = "LESSTHANEQ"
 )
 
 type clauseExprTree interface {
 	Type() nodeType
-	Operator() operator
+	Action() action
+	Operator() string
+	LeftOperand() string
+	RightOperands() []any
 	Left() clauseExprTree
 	Right() clauseExprTree
 	SetLeft(clauseExprTree)
@@ -160,11 +166,11 @@ type clauseExprTree interface {
 type node struct {
 	left    clauseExprTree
 	right   clauseExprTree
-	op      operator
+	op      action
 	isGroup bool
 }
 
-func newNode(op operator) *node {
+func newNode(op action) *node {
 	return &node{
 		left:  nil,
 		right: nil,
@@ -177,12 +183,34 @@ func (n *node) Type() nodeType {
 	case and, or:
 		return logical
 	default:
-		return conditional
+		return comparison
 	}
 }
 
-func (n *node) Operator() operator {
+func (n *node) Action() action {
 	return n.op
+}
+
+func (n *node) Operator() string {
+	return string(n.Action())
+}
+
+func (n *node) LeftOperand() string {
+	switch n.Type() {
+	case logical:
+		return ""
+	default:
+		panic(fmt.Sprintf("non-logical node type %s must implement LeftOperand()", n.Type()))
+	}
+}
+
+func (n *node) RightOperands() []any {
+	switch n.Type() {
+	case logical:
+		return []any{}
+	default:
+		panic(fmt.Sprintf("non-logical node type %s must implement RightOperands()", n.Type()))
+	}
 }
 
 func (n *node) Left() clauseExprTree {
@@ -229,18 +257,32 @@ type equalityNode[T comparable] struct {
 	values []T
 }
 
-func (e *equalityNode[T]) Operator() operator {
-	op := e.column + "." + string(e.node.op) + "["
-	for i := range e.values {
-		if i == 0 {
-			op += fmt.Sprintf("%v", e.values[i])
-			continue
-		}
-		op += fmt.Sprintf(", %v", e.values[i])
-	}
-	op += "]"
+func (n *equalityNode[T]) LeftOperand() string {
+	return n.column
+}
 
-	return operator(op)
+func (n *equalityNode[T]) RightOperands() []any {
+	v := make([]any, len(n.values))
+	for i := range n.values {
+		v[i] = n.values[i]
+	}
+
+	return v
+}
+
+func (n *equalityNode[T]) Operator() string {
+	switch {
+	case n.node.op == equal && len(n.values) == 1:
+		return "="
+	case n.node.op == equal && len(n.values) > 1:
+		return "IN"
+	case n.node.op == notEqual && len(n.values) == 1:
+		return "!="
+	case n.node.op == notEqual && len(n.values) > 1:
+		return "NOT IN"
+	default:
+		panic("unreachable: invalid state for equalityNode")
+	}
 }
 
 type compNode[T comparable] struct {
@@ -249,10 +291,104 @@ type compNode[T comparable] struct {
 	value  T
 }
 
-func (e *compNode[T]) Operator() operator {
-	return operator(e.column + "." + string(e.node.op) + "[" + fmt.Sprintf("%v", e.value) + "]")
+func (n *compNode[T]) Operator() string {
+	switch n.node.op {
+	case greaterThan:
+		return ">"
+	case greaterThanEq:
+		return ">="
+	case lessThan:
+		return "<"
+	case lessThanEq:
+		return "<="
+	default:
+		panic("unreachable: invalid state for equalityNode")
+	}
 }
 
-func walkClauseExprTree[R Resourcer](qSet *QuerySet[R], x clauseExprTree) *QuerySet[R] {
-	return qSet
+func (n *compNode[T]) LeftOperand() string {
+	return n.column
+}
+
+func (n *compNode[T]) RightOperands() []any {
+	return []any{n.value}
+}
+
+// treeWalker tracks the number of values from visited nodes in the
+// query clause expression tree. This enables uniquely identifying parameters
+// which must conform to naming requirements in https://cloud.google.com/spanner/docs/reference/standard-sql/lexical#identifiers
+type treeWalker struct {
+	accumulator map[action]int
+	params      map[string]any
+}
+
+func newTreeWalker() treeWalker {
+	return treeWalker{
+		accumulator: map[action]int{
+			equal:         0,
+			notEqual:      0,
+			greaterThan:   0,
+			greaterThanEq: 0,
+			lessThan:      0,
+			lessThanEq:    0,
+		},
+
+		params: make(map[string]any),
+	}
+}
+
+func (t *treeWalker) walk(root clauseExprTree) string {
+	if root == nil {
+		return ""
+	}
+
+	b := strings.Builder{}
+
+	if root.Left() != nil {
+		b.WriteString(fmt.Sprintf("(%s ", t.walk(root.Left())))
+	}
+
+	b.WriteString(t.visit(root))
+
+	if root.Right() != nil {
+		b.WriteString(fmt.Sprintf(" %s)", t.walk(root.Right())))
+	}
+
+	return b.String()
+}
+
+func (t *treeWalker) visit(node clauseExprTree) string {
+	b := strings.Builder{}
+
+	switch node.Type() {
+	case comparison:
+		b.WriteString(fmt.Sprintf("%s %s ", node.LeftOperand(), node.Operator()))
+
+		values := node.RightOperands()
+		if len(values) > 1 {
+			b.WriteString("(")
+		}
+
+		b.WriteString(fmt.Sprintf("%s", t.newParam(values[0], node.Action())))
+
+		if len(values) > 1 {
+			for _, v := range values[1:] {
+				b.WriteString(fmt.Sprintf(", %s", t.newParam(v, node.Action())))
+			}
+
+			b.WriteString(")")
+		}
+	case logical:
+		b.WriteString(fmt.Sprintf("%s", node.Operator()))
+	}
+
+	return b.String()
+}
+
+func (t *treeWalker) newParam(v any, a action) string {
+	s := fmt.Sprintf("@%s%d", a, t.accumulator[a])
+	t.accumulator[a] += 1
+	t.params[s] = v
+
+	return s
 }
