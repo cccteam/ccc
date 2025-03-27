@@ -20,7 +20,7 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 	}
 
 	resource := &resourceInfo{
-		Type:                  pStruct.Typ,
+		TypeInfo:              pStruct.TypeInfo,
 		Fields:                make([]*resourceField, len(pStruct.Fields())),
 		IsView:                table.IsView,
 		searchIndexes:         table.SearchIndexes,

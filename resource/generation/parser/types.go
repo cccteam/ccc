@@ -7,36 +7,43 @@ import (
 	"strings"
 )
 
-type Type struct {
-	name     string
-	tt       types.Type
-	pkg      *types.Package
-	position int
+type TypeInfo struct {
+	obj       types.Object
+	name      string
+	tt        types.Type
+	pkg       *types.Package
+	position  int
+	unwrapped bool
 }
 
-type Typ = Type
+func newType(obj types.Object, unwrap bool) TypeInfo {
+	tt := obj.Type()
+	if unwrap {
+		tt = unwrapType(tt)
+	}
 
-func newType(o types.Object) Type {
-	return Type{
-		name:     o.Name(),
-		tt:       o.Type(),
-		pkg:      o.Pkg(),
-		position: int(o.Pos()),
+	return TypeInfo{
+		obj:       obj,
+		name:      obj.Name(),
+		tt:        tt,
+		pkg:       obj.Pkg(),
+		position:  int(obj.Pos()),
+		unwrapped: unwrap,
 	}
 }
 
-func (t Type) Name() string {
+func (t TypeInfo) Name() string {
 	return t.name
 }
 
 // e.g. ccc.UUID, []ccc.UUID
-func (t Type) Type() string {
+func (t TypeInfo) Type() string {
 	return typeStringer(t.tt)
 }
 
 // Type without package prefix.
 // e.g. ccc.UUID -> UUID, []ccc.UUID -> []UUID
-func (t Type) UnqualifiedType() string {
+func (t TypeInfo) UnqualifiedType() string {
 	qualifier := func(p *types.Package) string {
 		return ""
 	}
@@ -46,13 +53,13 @@ func (t Type) UnqualifiedType() string {
 
 // Qualified type without array/slice/pointer prefix.
 // e.g. *ccc.UUID -> ccc.UUID, []ccc.UUID -> ccc.UUID
-func (t Type) TypeName() string {
+func (t TypeInfo) TypeName() string {
 	return typeStringer(unwrapType(t.tt))
 }
 
 // Type without array/slice/pointer or package prefix.
 // e.g. *ccc.UUID -> UUID, []ccc.UUID -> UUID
-func (t Type) UnqualifiedTypeName() string {
+func (t TypeInfo) UnqualifiedTypeName() string {
 	qualifier := func(p *types.Package) string {
 		return ""
 	}
@@ -60,20 +67,20 @@ func (t Type) UnqualifiedTypeName() string {
 	return types.TypeString(unwrapType(t.tt), qualifier)
 }
 
-func (t Type) PackageName() string {
+func (t TypeInfo) PackageName() string {
 	return t.pkg.Name()
 }
 
 // Position in the Package the type object was parsed from
-func (t Type) Position() int {
+func (t TypeInfo) Position() int {
 	return t.position
 }
 
-func (t Type) IsStruct() bool {
+func (t TypeInfo) IsStruct() bool {
 	return isUnderlyingTypeStruct(t.tt)
 }
 
-func (t Type) IsPointer() bool {
+func (t TypeInfo) IsPointer() bool {
 	switch t.tt.(type) {
 	case *types.Pointer:
 		return true
@@ -83,7 +90,7 @@ func (t Type) IsPointer() bool {
 }
 
 // Returns true if type is slice or array
-func (t Type) IsIterable() bool {
+func (t TypeInfo) IsIterable() bool {
 	switch t.tt.(type) {
 	case *types.Slice, *types.Array:
 		return true
@@ -92,61 +99,45 @@ func (t Type) IsIterable() bool {
 	}
 }
 
-func (t Type) ToStructType() Struct {
-	if t.IsStruct() {
-		st, _ := decodeToType[*types.Struct](t.tt)
-		pStruct := Struct{
-			Typ:        t,
-			methods:    structMethods(t.tt),
-			localTypes: localTypesFromStruct(t.pkg, t.tt, map[string]struct{}{}),
-		}
+func (t TypeInfo) ToStructType() Struct {
+	s, _ := newStruct(t.obj, t.unwrapped)
 
-		for i := range st.NumFields() {
-			field := st.Field(i)
-
-			sField := Field{
-				Typ:  Type{name: field.Name(), tt: field.Type(), pkg: t.pkg},
-				tags: reflect.StructTag(st.Tag(i)),
-			}
-
-			pStruct.fields = append(pStruct.fields, sField)
-		}
-
-		return pStruct
-	}
-
-	return Struct{}
+	return s
 }
 
 type Struct struct {
-	Typ
+	TypeInfo
 	fields     []Field
 	methods    []*types.Selection
-	localTypes []Type
+	localTypes []TypeInfo
 }
 
-func newStruct(o types.Object) (Struct, bool) {
-	st, ok := decodeToType[*types.Struct](o.Type())
+func newStruct(obj types.Object, unwrap bool) (Struct, bool) {
+	tt := obj.Type()
+	if unwrap {
+		tt = unwrapType(tt)
+	}
+	st, ok := decodeToType[*types.Struct](tt)
 	if !ok {
 		return Struct{}, false
 	}
 
 	s := Struct{
-		Typ:        newType(o),
-		methods:    structMethods(o.Type()),
-		localTypes: localTypesFromStruct(o.Pkg(), o.Type(), map[string]struct{}{}),
+		TypeInfo:   newType(obj, true),
+		methods:    structMethods(tt),
+		localTypes: localTypesFromStruct(obj, map[string]struct{}{}),
 	}
 
 	for i := range st.NumFields() {
-		fieldVar := st.Field(i)
+		field := st.Field(i)
 
-		field := Field{
-			Typ:         Type{name: fieldVar.Name(), tt: fieldVar.Type(), pkg: o.Pkg()},
+		sField := Field{
+			TypeInfo:    newType(field, false),
 			tags:        reflect.StructTag(st.Tag(i)),
-			isLocalType: isTypeLocalToPackage(fieldVar, o.Pkg()),
+			isLocalType: isTypeLocalToPackage(field, obj.Pkg()),
 		}
 
-		s.fields = append(s.fields, field)
+		s.fields = append(s.fields, sField)
 	}
 
 	return s, true
@@ -214,12 +205,12 @@ func (s Struct) Fields() []Field {
 	return s.fields
 }
 
-func (s Struct) LocalTypes() []Type {
+func (s Struct) LocalTypes() []TypeInfo {
 	return s.localTypes
 }
 
 type Field struct {
-	Typ
+	TypeInfo
 	tags        reflect.StructTag
 	isLocalType bool
 }

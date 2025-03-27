@@ -212,18 +212,14 @@ func Test_localTypesFromStruct(t *testing.T) {
 				return
 			}
 
+			var obj types.Object
 			pkg := pkgMap[tt.args.pkgName]
-			var lastStructType types.Type
 			for _, name := range pkg.Scope().Names() {
-				obj := pkg.Scope().Lookup(name)
-
-				if _, ok := decodeToType[*types.Struct](obj.Type()); ok {
-					lastStructType = obj.Type()
-				}
+				obj = pkg.Scope().Lookup(name)
 			}
 
 			var typeNames []string
-			for _, localType := range localTypesFromStruct(pkg, lastStructType, map[string]struct{}{}) {
+			for _, localType := range localTypesFromStruct(obj, map[string]struct{}{}) {
 				typeNames = append(typeNames, typeStringer(localType.tt))
 			}
 
@@ -295,7 +291,7 @@ func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) St
 
 	namedType := types.NewNamed(typeName(structName, pkg, structType), structType, nil)
 
-	s, ok := newStruct(namedType.Obj())
+	s, ok := newStruct(namedType.Obj(), false)
 	if !ok {
 		panic("could not create struct")
 	}
