@@ -356,7 +356,7 @@ import (
 		}
 
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).SetID(id)
-		
+
 		row, err := res.Query().SpannerRead(ctx, a.ReadTxn())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -889,7 +889,7 @@ import (
 
 type RPCBusinessLayer interface {
 {{ range $rpcMethod := .RPCMethods -}}
-	{{ $rpcMethod.Name }}(ctx context.Context, params *{{ $rpcMethod.TypeName }}) error
+	{{ $rpcMethod.Name }}(ctx context.Context, runner rpc.DBRunner) error
 {{ end }}
 }`
 
@@ -905,8 +905,8 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *Client) {{ .RPCMethod.Name }}(ctx context.Context, params *{{ .RPCMethod.TypeName }}) error {
-	if err := params.Execute(ctx, c.DB()); err != nil {
+func (c *Client) {{ .RPCMethod.Name }}(ctx context.Context, runner rpc.DBRunner) error {
+	if err := runner.Execute(ctx, c.DB()); err != nil {
 		return errors.Wrap(err, "{{ .RPCMethod.TypeName }}.Execute()")
 	}
 
