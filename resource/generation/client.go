@@ -86,12 +86,10 @@ func (r *resourceGenerator) Generate() error {
 			return err
 		}
 
-		var rpcMethods []rpcMethodInfo
+		r.rpcMethods = nil
 		for _, s := range rpcStructs {
-			rpcMethods = append(rpcMethods, rpcMethodInfo{s})
+			r.rpcMethods = append(r.rpcMethods, rpcMethodInfo{s})
 		}
-
-		r.rpcMethods = rpcMethods
 
 		if err := r.runRPCGeneration(); err != nil {
 			return err
@@ -196,12 +194,10 @@ func (t *typescriptGenerator) Generate() error {
 			return err
 		}
 
-		var rpcMethods []rpcMethodInfo
+		t.rpcMethods = nil
 		for _, s := range rpcStructs {
-			rpcMethods = append(rpcMethods, rpcMethodInfo{s})
+			t.rpcMethods = append(t.rpcMethods, rpcMethodInfo{s})
 		}
-
-		t.rpcMethods = rpcMethods
 	}
 
 	if t.genMetadata {
