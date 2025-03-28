@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.18](https://github.com/cccteam/ccc/compare/resource/v0.0.17...resource/v0.0.18) (2025-03-28)
+
+
+### Features
+
+* Support for iter.Seq2 ([#236](https://github.com/cccteam/ccc/issues/236)) ([25c8d90](https://github.com/cccteam/ccc/commit/25c8d9051fca233c6d92733edc886316b4effdfe))
+
 ## [0.0.17](https://github.com/cccteam/ccc/compare/resource/v0.0.16...resource/v0.0.17) (2025-03-20)
 
 
