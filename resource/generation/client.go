@@ -28,13 +28,15 @@ import (
 
 type resourceGenerator struct {
 	*client
-	genHandlers         bool
-	genRoutes           bool
-	resourceDestination string
-	handlerDestination  string
-	routerDestination   string
-	routerPackage       string
-	routePrefix         string
+	genHandlers             bool
+	genRoutes               bool
+	resourceDestination     string
+	handlerDestination      string
+	routerDestination       string
+	routerPackage           string
+	routePrefix             string
+	rpcPackageDir           string
+	businessLayerPackageDir string
 }
 
 func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, options ...ResourceOption) (Generator, error) {
@@ -229,7 +231,6 @@ type client struct {
 	consolidateAll            bool
 	consolidatedRoute         string
 	genRPCMethods             bool
-	rpcPackageDir             string
 	cleanup                   func()
 
 	muAlign sync.Mutex

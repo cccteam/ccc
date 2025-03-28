@@ -14,6 +14,13 @@ import (
 )
 
 func (r *resourceGenerator) runRPCGeneration() error {
+	if err := removeGeneratedFiles(r.rpcPackageDir, Prefix); err != nil {
+		return err
+	}
+	if err := removeGeneratedFiles(r.businessLayerPackageDir, Prefix); err != nil {
+		return err
+	}
+
 	if err := r.generateRPCInterfaces(); err != nil {
 		return err
 	}
@@ -89,7 +96,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod rpcMethodInfo) error {
 
 func (r *resourceGenerator) generateRPCMethod(rpcMethod rpcMethodInfo) error {
 	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
-	destinationFilePath := filepath.Join("./businesslayer", fileName)
+	destinationFilePath := filepath.Join(r.businessLayerPackageDir, fileName)
 
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
