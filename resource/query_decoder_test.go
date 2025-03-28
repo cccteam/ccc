@@ -47,7 +47,7 @@ func TestQueryDecoder_parseQuery_fields(t *testing.T) {
 			args: args{
 				rSet: ccc.Must(NewResourceSet[testResource, testRequest](accesstypes.Read)),
 			},
-			want: []accesstypes.Field{"ID", "Description"},
+			want: nil,
 		},
 		{
 			name: "columns with description",

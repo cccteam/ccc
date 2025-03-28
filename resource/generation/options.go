@@ -136,7 +136,7 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 	}
 }
 
-func WithRPC(rpcPackageDir string) option {
+func WithRPC(rpcPackageDir string, businessPackageDir string) option {
 	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
 
 	return func(g Generator) error {
@@ -144,6 +144,8 @@ func WithRPC(rpcPackageDir string) option {
 		case *resourceGenerator:
 			t.genRPCMethods = true
 			t.loadPackages = append(t.loadPackages, rpcPackageDir)
+			t.rpcPackageDir = rpcPackageDir
+			t.businessLayerPackageDir = businessPackageDir
 		case *typescriptGenerator:
 			t.genRPCMethods = true
 			t.loadPackages = append(t.loadPackages, rpcPackageDir)

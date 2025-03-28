@@ -5,26 +5,16 @@ import (
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/spxscan/spxapi"
 )
 
-type SpannerReader interface {
-	SpannerRead(ctx context.Context, txn *spanner.ReadOnlyTransaction, dst any) error
-	Resource() accesstypes.Resource
-	KeySet() KeySet
+type BufferWriter interface {
+	BufferWrite(ms []*spanner.Mutation) error
+	spxapi.Querier
 }
 
-type SpannerLister interface {
-	SpannerList(ctx context.Context, txn *spanner.ReadOnlyTransaction, dst any) error
-}
-
-type SpannerBufferer interface {
-	SpannerBuffer(ctx context.Context, txn *spanner.ReadWriteTransaction, eventSource ...string) error
-	Resource() accesstypes.Resource
-	PrimaryKey() KeySet
-}
-
-type Queryer[Resource Resourcer] interface {
-	Query() *QuerySet[Resource]
+type SpannerBuffer interface {
+	SpannerBuffer(ctx context.Context, txn BufferWriter, eventSource ...string) error
 }
 
 type UserPermissions interface {

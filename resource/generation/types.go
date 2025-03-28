@@ -94,7 +94,7 @@ const (
 	consolidatedHandlerOutputName = "consolidated_handler"
 )
 
-var rpcMethods = [...]string{"Method", "Execute"}
+var rpcInterfaces = [...]string{"TxnRunner", "DBRunner"}
 
 type searchIndex struct {
 	Name       string
@@ -202,7 +202,7 @@ func (r rpcField) JSONTag() string {
 }
 
 type resourceInfo struct {
-	parser.Type
+	parser.TypeInfo
 	Fields                []*resourceField
 	searchIndexes         map[string][]*expressionField // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
 	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.

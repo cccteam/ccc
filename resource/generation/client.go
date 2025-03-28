@@ -28,13 +28,15 @@ import (
 
 type resourceGenerator struct {
 	*client
-	genHandlers         bool
-	genRoutes           bool
-	resourceDestination string
-	handlerDestination  string
-	routerDestination   string
-	routerPackage       string
-	routePrefix         string
+	genHandlers             bool
+	genRoutes               bool
+	resourceDestination     string
+	handlerDestination      string
+	routerDestination       string
+	routerPackage           string
+	routePrefix             string
+	rpcPackageDir           string
+	businessLayerPackageDir string
 }
 
 func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, options ...ResourceOption) (Generator, error) {
@@ -81,17 +83,15 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	if r.genRPCMethods {
-		rpcStructs, err := extractStructsByMethod(packageMap["rpc"], rpcMethods[:]...)
+		rpcStructs, err := extractStructsByInterface(packageMap["rpc"], rpcInterfaces[:]...)
 		if err != nil {
 			return err
 		}
 
-		var rpcMethods []rpcMethodInfo
+		r.rpcMethods = nil
 		for _, s := range rpcStructs {
-			rpcMethods = append(rpcMethods, rpcMethodInfo{s})
+			r.rpcMethods = append(r.rpcMethods, rpcMethodInfo{s})
 		}
-
-		r.rpcMethods = rpcMethods
 
 		if err := r.runRPCGeneration(); err != nil {
 			return err
@@ -191,17 +191,15 @@ func (t *typescriptGenerator) Generate() error {
 	t.resources = resources
 
 	if t.genRPCMethods {
-		rpcStructs, err := extractStructsByMethod(packageMap["rpc"], rpcMethods[:]...)
+		rpcStructs, err := extractStructsByInterface(packageMap["rpc"], rpcInterfaces[:]...)
 		if err != nil {
 			return err
 		}
 
-		var rpcMethods []rpcMethodInfo
+		t.rpcMethods = nil
 		for _, s := range rpcStructs {
-			rpcMethods = append(rpcMethods, rpcMethodInfo{s})
+			t.rpcMethods = append(t.rpcMethods, rpcMethodInfo{s})
 		}
-
-		t.rpcMethods = rpcMethods
 	}
 
 	if t.genMetadata {
@@ -233,7 +231,6 @@ type client struct {
 	consolidateAll            bool
 	consolidatedRoute         string
 	genRPCMethods             bool
-	rpcPackageDir             string
 	cleanup                   func()
 
 	muAlign sync.Mutex

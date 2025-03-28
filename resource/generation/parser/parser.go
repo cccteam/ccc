@@ -3,7 +3,6 @@ package parser
 import (
 	"go/types"
 	"log"
-	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -103,7 +102,7 @@ func ParseStructs(pkg *types.Package) ([]Struct, error) {
 
 	var parsedStructs []Struct
 	for _, name := range scope.Names() {
-		pStruct, ok := newStruct(scope.Lookup(name))
+		pStruct, ok := newStruct(scope.Lookup(name), false)
 		if !ok {
 			continue
 		}
@@ -114,43 +113,35 @@ func ParseStructs(pkg *types.Package) ([]Struct, error) {
 	return parsedStructs, nil
 }
 
-func structMethods(s types.Type) []*types.Selection {
-	var methods []*types.Selection
-
-	// Need to iterate over the type and its pointer type because
-	// a method can use either as a receiver e.g. (a *app) or (a app)
-	for _, t := range []types.Type{s, types.NewPointer(s)} {
-		methodSet := types.NewMethodSet(t)
-		if methodSet.Len() == 0 {
-			continue
-		}
-
-		for method := range methodSet.Methods() {
-			methods = append(methods, method)
-		}
-	}
-
-	return methods
-}
-
-func HasMethods(pStruct Struct, methodNames ...string) bool {
-	if len(pStruct.methods) < len(methodNames) {
+func HasInterface(pkg *types.Package, s Struct, interfaceName string) bool {
+	ifaceObject := pkg.Scope().Lookup(interfaceName)
+	if ifaceObject == nil {
 		return false
 	}
 
-	bools := make([]bool, len(methodNames))
+	ifaceTypeName, ok := ifaceObject.(*types.TypeName)
+	if !ok {
+		return false
+	}
 
-methods:
-	for i := range methodNames {
-		for _, method := range pStruct.methods {
-			if method.Obj().Name() == methodNames[i] {
-				bools[i] = true
-				continue methods
-			}
+	iface, ok := ifaceTypeName.Type().Underlying().(*types.Interface)
+	if !ok {
+		return false
+	}
+
+	structTypeName, ok := s.obj.(*types.TypeName)
+	if !ok {
+		return false
+	}
+	structType := structTypeName.Type()
+
+	for _, t := range []types.Type{structType, types.NewPointer(structType)} {
+		if types.Implements(t, iface) {
+			return true
 		}
 	}
 
-	return !slices.Contains(bools, false)
+	return false
 }
 
 // The [types.Type] interface can be one of 14 concrete types:
@@ -193,8 +184,11 @@ func isTypeLocalToPackage(t *types.Var, pkg *types.Package) bool {
 	return strings.HasPrefix(typeName, pkg.Name())
 }
 
-func localTypesFromStruct(pkg *types.Package, tt types.Type, typeMap map[string]struct{}) []Type {
-	var dependencies []Type
+func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []TypeInfo {
+	var dependencies []TypeInfo
+	pkg := obj.Pkg()
+	tt := obj.Type()
+
 	typeMap[typeStringer(tt)] = struct{}{}
 
 	s, ok := decodeToType[*types.Struct](tt)
@@ -203,23 +197,19 @@ func localTypesFromStruct(pkg *types.Package, tt types.Type, typeMap map[string]
 	}
 
 	for field := range s.Fields() {
-		if _, ok := typeMap[typeStringer(unwrapType(field.Type()))]; ok {
+		ft := field.Type()
+		if _, ok := typeMap[typeStringer(unwrapType(ft))]; ok {
 			continue
 		}
 
 		if isTypeLocalToPackage(field, pkg) {
-			if _, ok := decodeToType[*types.Struct](field.Type()); ok {
-				dependencies = append(dependencies, localTypesFromStruct(pkg, unwrapType(field.Type()), typeMap)...)
+			if _, ok := decodeToType[*types.Struct](ft); ok {
+				dependencies = append(dependencies, localTypesFromStruct(field, typeMap)...)
 			} else {
-				typeMap[typeStringer(unwrapType(field.Type()))] = struct{}{}
+				typeMap[typeStringer(unwrapType(ft))] = struct{}{}
 			}
 
-			pt := Type{
-				name: field.Name(),
-				tt:   unwrapType(field.Type()),
-				pkg:  pkg,
-			}
-			dependencies = append(dependencies, pt)
+			dependencies = append(dependencies, newType(field, true))
 		}
 	}
 

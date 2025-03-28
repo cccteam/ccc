@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/resource
 
-go 1.24.0
+go 1.24.1
 
 require (
 	cloud.google.com/go/spanner v1.75.0
@@ -10,7 +10,7 @@ require (
 	github.com/cccteam/db-initiator v0.2.5
 	github.com/cccteam/httpio v0.7.6
 	github.com/cccteam/session v0.5.2
-	github.com/cccteam/spxscan v0.0.3
+	github.com/cccteam/spxscan v0.0.4
 	github.com/ettle/strcase v0.2.0
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/go-playground/errors/v5 v5.4.0

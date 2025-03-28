@@ -20,7 +20,7 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 	}
 
 	resource := &resourceInfo{
-		Type:                  pStruct.Typ,
+		TypeInfo:              pStruct.TypeInfo,
 		Fields:                make([]*resourceField, len(pStruct.Fields())),
 		IsView:                table.IsView,
 		searchIndexes:         table.SearchIndexes,
@@ -75,26 +75,29 @@ func (c *client) extractResources(pkg *types.Package) ([]*resourceInfo, error) {
 	return resources, nil
 }
 
-func extractStructsByMethod(pkg *types.Package, methodNames ...string) ([]parser.Struct, error) {
+func extractStructsByInterface(pkg *types.Package, interfaceNames ...string) ([]parser.Struct, error) {
 	parsedStructs, err := parser.ParseStructs(pkg)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(methodNames) == 0 {
-		return parsedStructs, nil
+	if len(interfaceNames) == 0 {
+		return nil, nil
 	}
 
 	var rpcStructs []parser.Struct
 
 	for _, pStruct := range parsedStructs {
-		if parser.HasMethods(pStruct, methodNames...) {
-			rpcStructs = append(rpcStructs, pStruct)
+		for _, interfaceName := range interfaceNames {
+			if parser.HasInterface(pkg, pStruct, interfaceName) {
+				pStruct.SetInterface(interfaceName)
+				rpcStructs = append(rpcStructs, pStruct)
+			}
 		}
 	}
 
 	if len(rpcStructs) == 0 {
-		return nil, errors.Newf("package %q has no structs that implement methods %v", pkg.Name(), methodNames)
+		return nil, errors.Newf("package %q has no structs that implement an interface in %v", pkg.Name(), interfaceNames)
 	}
 
 	return rpcStructs, nil
