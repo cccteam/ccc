@@ -26,7 +26,6 @@ func TestNewDuration(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if got := NewDuration(tt.args.d); !reflect.DeepEqual(got, tt.want) {
@@ -65,7 +64,6 @@ func TestNewDurationFromString(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := NewDurationFromString(tt.args.s)
@@ -105,7 +103,6 @@ func TestDuration_UnmarshalText(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			d := &Duration{}
@@ -139,7 +136,6 @@ func TestDuration_MarshalText(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			d := Duration{
@@ -187,7 +183,6 @@ func TestDuration_UnmarshalJSON(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			d := &Duration{}
@@ -221,7 +216,6 @@ func TestDuration_MarshalJSON(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			d := Duration{
@@ -275,7 +269,6 @@ func TestDuration_DecodeSpanner(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			d := &Duration{}
@@ -309,7 +302,6 @@ func TestDuration_EncodeSpanner(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			d := Duration{
@@ -345,7 +337,6 @@ func TestNullNewDuration(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := NewNullDuration(tt.args.d)
@@ -385,7 +376,6 @@ func TestNullNewDurationFromString(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := NewNullDurationFromString(tt.args.s)
@@ -425,7 +415,6 @@ func TestNullDuration_UnmarshalText(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			d := &NullDuration{}
@@ -463,7 +452,6 @@ func TestNullDuration_MarshalText(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := tt.fields.NullDuration.MarshalText()
@@ -514,7 +502,6 @@ func TestNullDuration_UnmarshalJSON(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			d := &NullDuration{}
@@ -554,7 +541,6 @@ func TestNullDuration_MarshalJSON(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := tt.fields.NullDuration.MarshalJSON()
@@ -617,7 +603,6 @@ func TestNullDuration_DecodeSpanner(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			d := &NullDuration{}
@@ -657,7 +642,6 @@ func TestNullDuration_EncodeSpanner(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := tt.fields.NullDuration.EncodeSpanner()

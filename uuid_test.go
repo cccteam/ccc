@@ -34,7 +34,6 @@ func TestMust_string(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			defer func() {
@@ -64,7 +63,6 @@ func TestNewUUID(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := NewUUID()
@@ -107,7 +105,6 @@ func TestUUIDFromString(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := UUIDFromString(tt.args.s)
@@ -158,7 +155,6 @@ func TestUUID_DecodeSpanner(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			u := &UUID{}
@@ -192,7 +188,6 @@ func TestUUID_EncodeSpanner(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			u := UUID{
@@ -235,7 +230,6 @@ func TestUUID_UnmarshalText(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			u := &UUID{}
@@ -263,7 +257,6 @@ func TestNewNullUUID(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := NewNullUUID()
@@ -306,7 +299,6 @@ func TestNullUUIDFromString(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := NullUUIDFromString(tt.args.s)
@@ -345,7 +337,6 @@ func TestNullUUIDFromUUID(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := NullUUIDFromUUID(tt.args.u)
@@ -404,7 +395,6 @@ func TestNullUUID_DecodeSpanner(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			u := &NullUUID{}
@@ -444,7 +434,6 @@ func TestNullUUID_EncodeSpanner(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			u := NullUUID{
@@ -488,7 +477,6 @@ func TestNullUUID_UnmarshalText(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			u := &NullUUID{}
@@ -531,7 +519,6 @@ func TestNullUUID_IsNil(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			u := NullUUID{
