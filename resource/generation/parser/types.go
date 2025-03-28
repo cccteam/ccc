@@ -108,7 +108,6 @@ func (t TypeInfo) ToStructType() Struct {
 type Struct struct {
 	TypeInfo
 	fields     []Field
-	methods    []*types.Selection
 	localTypes []TypeInfo
 }
 
@@ -124,7 +123,6 @@ func newStruct(obj types.Object, unwrap bool) (Struct, bool) {
 
 	s := Struct{
 		TypeInfo:   newType(obj, true),
-		methods:    structMethods(tt),
 		localTypes: localTypesFromStruct(obj, map[string]struct{}{}),
 	}
 

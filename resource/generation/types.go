@@ -94,7 +94,7 @@ const (
 	consolidatedHandlerOutputName = "consolidated_handler"
 )
 
-var rpcMethods = [...]string{"Method", "Execute"}
+var rpcInterfaces = [...]string{"TxnRunner", "DBRunner"}
 
 type searchIndex struct {
 	Name       string

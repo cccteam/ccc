@@ -1,14 +1,21 @@
 package rpc
 
-type Apple struct {}
+import (
+	"context"
 
-type Banana struct {}
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
+)
 
-type Cofveve struct {}
+type Apple struct{}
 
-func (a Apple) Method() {}
+func (a Apple) Method() accesstypes.Resource { return "" }
 
-func (b Banana) Execute() {}
+type Banana struct{}
 
-func (c Cofveve) Method() {}
+func (c *Banana) Method() accesstypes.Resource                                 { return "" }
+func (c *Banana) Execute(ctx context.Context, txn resource.BufferWriter) error { return nil }
 
+type Cofveve struct{}
+
+func (c Cofveve) Method() accesstypes.Resource { return "" }

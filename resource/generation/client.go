@@ -81,7 +81,7 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	if r.genRPCMethods {
-		rpcStructs, err := extractStructsByMethod(packageMap["rpc"], rpcMethods[:]...)
+		rpcStructs, err := extractStructsByInterface(packageMap["rpc"], rpcInterfaces[:]...)
 		if err != nil {
 			return err
 		}
@@ -189,7 +189,7 @@ func (t *typescriptGenerator) Generate() error {
 	t.resources = resources
 
 	if t.genRPCMethods {
-		rpcStructs, err := extractStructsByMethod(packageMap["rpc"], rpcMethods[:]...)
+		rpcStructs, err := extractStructsByInterface(packageMap["rpc"], rpcInterfaces[:]...)
 		if err != nil {
 			return err
 		}

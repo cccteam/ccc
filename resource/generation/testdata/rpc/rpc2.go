@@ -1,5 +1,9 @@
 package rpc
 
-type Druid struct{}
+import (
+	"context"
 
-func (c *Cofveve) Execute() {}
+	"github.com/cccteam/ccc/resource"
+)
+
+func (c *Cofveve) Execute(ctx context.Context, txn resource.BufferWriter) error { return nil }
