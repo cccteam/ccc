@@ -7,7 +7,7 @@ import (
 	"github.com/cccteam/ccc/resource/generation/parser"
 )
 
-func Test_extractStructsByMethod(t *testing.T) {
+func Test_extractStructsByInterface(t *testing.T) {
 	type args struct {
 		packagePath string
 		packageName string
