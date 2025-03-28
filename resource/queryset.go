@@ -174,8 +174,14 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 
 // Where translates the the fields to database struct tags in databaseType when building the where clause
 func (q *QuerySet[Resource]) Where() (*Statement, error) {
+	if q.clause != nil && q.KeySet().Len() != 0 {
+		panic("cannot use KeySet and QueryClause together")
+	}
 
-	// TODO(jrowland): use QuerySet.clause to build the where clause
+	if q.clause != nil {
+		return q.queryClauseWhere()
+	}
+
 	parts := q.KeySet().Parts()
 	if len(parts) == 0 {
 		return &Statement{}, nil
@@ -204,6 +210,13 @@ func (q *QuerySet[Resource]) Where() (*Statement, error) {
 		Sql:    "WHERE " + builder.String()[5:],
 		Params: params,
 	}, nil
+}
+
+func (q *QuerySet[Resource]) queryClauseWhere() (*Statement, error) {
+	tw := newTreeWalker()
+	sql := tw.walk(q.clause)
+
+	return &Statement{Sql: sql, Params: tw.params}, nil
 }
 
 func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
@@ -339,4 +352,8 @@ func (q *QuerySet[Resource]) SpannerList(ctx context.Context, db spxapi.Querier)
 
 func (q *QuerySet[Resource]) SetFilterParam(filterSet *Filter) {
 	q.filter = filterSet
+}
+
+func (q *QuerySet[Resource]) SetClause(qc QueryClause) {
+	q.clause = qc.tree
 }
