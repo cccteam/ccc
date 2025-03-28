@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/types"
 	"reflect"
+	"slices"
 	"strings"
 )
 
@@ -109,6 +110,7 @@ type Struct struct {
 	TypeInfo
 	fields     []Field
 	localTypes []TypeInfo
+	interfaces []string
 }
 
 func newStruct(obj types.Object, unwrap bool) (Struct, bool) {
@@ -139,6 +141,16 @@ func newStruct(obj types.Object, unwrap bool) (Struct, bool) {
 	}
 
 	return s, true
+}
+
+func (s *Struct) SetInterface(iface string) {
+	if !slices.Contains(s.interfaces, iface) {
+		s.interfaces = append(s.interfaces, iface)
+	}
+}
+
+func (s Struct) Implements(iface string) bool {
+	return slices.Contains(s.interfaces, iface)
 }
 
 // Pretty prints the struct name and its fields. Useful for debugging.

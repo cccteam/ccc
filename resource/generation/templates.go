@@ -889,7 +889,7 @@ import (
 
 type RPCBusinessLayer interface {
 {{ range $rpcMethod := .RPCMethods -}}
-	{{ $rpcMethod.Name }}(ctx context.Context, runner rpc.DBRunner) error
+	{{ $rpcMethod.Name }}(ctx context.Context, runner rpc.{{ if $rpcMethod.Implements "DBRunner"}}DBRunner{{else}}TxnRunner{{end}}) error
 {{ end }}
 }`
 
@@ -905,8 +905,8 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *Client) {{ .RPCMethod.Name }}(ctx context.Context, runner rpc.DBRunner) error {
-	if err := runner.Execute(ctx, c.DB()); err != nil {
+func (c *Client) {{ .RPCMethod.Name }}(ctx context.Context, runner rpc.{{ if .RPCMethod.Implements "DBRunner"}}DBRunner{{else}}TxnRunner{{end}}) error {
+	if err := {{ if .RPCMethod.Implements "DBRunner"}}runner.Execute(ctx, c.DB()){{else}}c.DB().Execute(ctx, runner){{end}}; err != nil {
 		return errors.Wrap(err, "{{ .RPCMethod.TypeName }}.Execute()")
 	}
 

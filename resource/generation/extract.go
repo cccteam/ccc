@@ -90,6 +90,7 @@ func extractStructsByInterface(pkg *types.Package, interfaceNames ...string) ([]
 	for _, pStruct := range parsedStructs {
 		for _, interfaceName := range interfaceNames {
 			if parser.HasInterface(pkg, pStruct, interfaceName) {
+				pStruct.SetInterface(interfaceName)
 				rpcStructs = append(rpcStructs, pStruct)
 			}
 		}
