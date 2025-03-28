@@ -113,8 +113,8 @@ func ParseStructs(pkg *types.Package) ([]Struct, error) {
 	return parsedStructs, nil
 }
 
-func HasInterface(pkg *types.Package, s Struct, methodName string) bool {
-	ifaceObject := pkg.Scope().Lookup(methodName)
+func HasInterface(pkg *types.Package, s Struct, interfaceName string) bool {
+	ifaceObject := pkg.Scope().Lookup(interfaceName)
 	if ifaceObject == nil {
 		return false
 	}
