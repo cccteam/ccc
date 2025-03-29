@@ -174,10 +174,6 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 
 // Where translates the the fields to database struct tags in databaseType when building the where clause
 func (q *QuerySet[Resource]) Where() (*Statement, error) {
-	if q.clause != nil && q.KeySet().Len() != 0 {
-		panic("cannot use KeySet and QueryClause together")
-	}
-
 	if q.clause != nil {
 		return q.queryClauseWhere()
 	}
@@ -222,6 +218,10 @@ func (q *QuerySet[Resource]) queryClauseWhere() (*Statement, error) {
 func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 	if q.rMeta.dbType != SpannerDBType {
 		return spanner.Statement{}, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
+	}
+
+	if moreThan(1, q.clause != nil, q.KeySet().Len() != 0, q.filter != nil) {
+		panic("cannot use QueryClause, KeySet, or Filter together")
 	}
 
 	if q.filter != nil {
@@ -356,4 +356,15 @@ func (q *QuerySet[Resource]) SetFilterParam(filterSet *Filter) {
 
 func (q *QuerySet[Resource]) SetClause(qc QueryClause) {
 	q.clause = qc.tree
+}
+
+func moreThan(cnt int, exp ...bool) bool {
+	count := 0
+	for _, v := range exp {
+		if v {
+			count++
+		}
+	}
+
+	return count > cnt
 }
