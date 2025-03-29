@@ -102,7 +102,7 @@ func Test_QueryClause(t *testing.T) {
 		{
 			name:       "AND has higher precedence than OR",
 			filter:     newTestQuery().Where(newTestQueryFilter().ID().Equal(1).Or().ID().GreaterThan(1).And().Name().Equal("test")),
-			wantString: "(ID = @EQUAL0 OR (ID > @GREATERTHAN0 AND Name = @EQUAL1))",
+			wantString: "ID = @EQUAL0 OR ID > @GREATERTHAN0 AND Name = @EQUAL1",
 			wantParams: map[string]any{
 				"@EQUAL0":       1,
 				"@EQUAL1":       "test",
@@ -112,7 +112,17 @@ func Test_QueryClause(t *testing.T) {
 		{
 			name:       "AND has same precedence as Group",
 			filter:     newTestQuery().Where(newTestQueryFilter().Group(newTestQueryFilter().ID().Equal(10).Or().ID().GreaterThan(2)).And().Name().Equal("test")),
-			wantString: "((ID = @EQUAL0 OR ID > @GREATERTHAN0) AND Name = @EQUAL1)",
+			wantString: "(ID = @EQUAL0 OR ID > @GREATERTHAN0) AND Name = @EQUAL1",
+			wantParams: map[string]any{
+				"@EQUAL0":       10,
+				"@EQUAL1":       "test",
+				"@GREATERTHAN0": 2,
+			},
+		},
+		{
+			name:       "multiple AND's has higher precedence as OR",
+			filter:     newTestQuery().Where(newTestQueryFilter().ID().Equal(10).And().Name().Equal("test").Or().ID().GreaterThan(2)),
+			wantString: "ID = @EQUAL0 AND Name = @EQUAL1 OR ID > @GREATERTHAN0",
 			wantParams: map[string]any{
 				"@EQUAL0":       10,
 				"@EQUAL1":       "test",
@@ -127,7 +137,6 @@ func Test_QueryClause(t *testing.T) {
 			tw := newTreeWalker()
 
 			got := tw.walk(tt.filter.qSet.clause)
-			// got := treeishWalker(tt.filter.qSet.clause)
 			if tt.wantString != got {
 				t.Errorf("output string != wantString\ngot = %q\nwnt = %q", got, tt.wantString)
 			}

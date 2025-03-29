@@ -344,14 +344,22 @@ func (t *treeWalker) walk(root clauseExprTree) string {
 
 	b := strings.Builder{}
 
+	if root.IsGroup() {
+		b.WriteString("(")
+	}
+
 	if root.Left() != nil {
-		b.WriteString(fmt.Sprintf("(%s ", t.walk(root.Left())))
+		b.WriteString(fmt.Sprintf("%s ", t.walk(root.Left())))
 	}
 
 	b.WriteString(t.visit(root))
 
 	if root.Right() != nil {
-		b.WriteString(fmt.Sprintf(" %s)", t.walk(root.Right())))
+		b.WriteString(fmt.Sprintf(" %s", t.walk(root.Right())))
+	}
+
+	if root.IsGroup() {
+		b.WriteString(")")
 	}
 
 	return b.String()
