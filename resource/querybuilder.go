@@ -6,7 +6,7 @@ import (
 )
 
 type PartialQueryClause struct {
-	tree clauseExprTree
+	tree whereClauseExprTree
 }
 
 func NewPartialQueryClause() PartialQueryClause {
@@ -27,7 +27,7 @@ func (p PartialQueryClause) Group(qc QueryClause) QueryClause {
 }
 
 type QueryClause struct {
-	tree clauseExprTree
+	tree whereClauseExprTree
 }
 
 func (x QueryClause) And() PartialQueryClause {
@@ -133,23 +133,23 @@ const (
 	lessThanEq           = "LESSTHANEQ"
 )
 
-type clauseExprTree interface {
+type whereClauseExprTree interface {
 	Type() nodeType
 	Action() action
 	Operator() string
 	LeftOperand() string
 	RightOperands() []any
-	Left() clauseExprTree
-	Right() clauseExprTree
-	SetLeft(clauseExprTree)
-	SetRight(clauseExprTree)
+	Left() whereClauseExprTree
+	Right() whereClauseExprTree
+	SetLeft(whereClauseExprTree)
+	SetRight(whereClauseExprTree)
 	IsGroup() bool
 	SetGroup(bool)
 }
 
 type node struct {
-	left    clauseExprTree
-	right   clauseExprTree
+	left    whereClauseExprTree
+	right   whereClauseExprTree
 	op      action
 	isGroup bool
 }
@@ -197,19 +197,19 @@ func (n *node) RightOperands() []any {
 	}
 }
 
-func (n *node) Left() clauseExprTree {
+func (n *node) Left() whereClauseExprTree {
 	return n.left
 }
 
-func (n *node) Right() clauseExprTree {
+func (n *node) Right() whereClauseExprTree {
 	return n.right
 }
 
-func (n *node) SetLeft(newNode clauseExprTree) {
+func (n *node) SetLeft(newNode whereClauseExprTree) {
 	n.left = newNode
 }
 
-func (n *node) SetRight(newNode clauseExprTree) {
+func (n *node) SetRight(newNode whereClauseExprTree) {
 	n.right = newNode
 }
 
@@ -221,7 +221,7 @@ func (n *node) SetGroup(b bool) {
 	n.isGroup = b
 }
 
-func addNode(tree clauseExprTree, n clauseExprTree) clauseExprTree {
+func addNode(tree whereClauseExprTree, n whereClauseExprTree) whereClauseExprTree {
 	if tree == nil {
 		return n
 	}
@@ -318,7 +318,7 @@ func newTreeWalker() treeWalker {
 	}
 }
 
-func (t *treeWalker) walk(root clauseExprTree) string {
+func (t *treeWalker) walk(root whereClauseExprTree) string {
 	if root == nil {
 		return ""
 	}
@@ -346,7 +346,7 @@ func (t *treeWalker) walk(root clauseExprTree) string {
 	return b.String()
 }
 
-func (t *treeWalker) visit(node clauseExprTree) string {
+func (t *treeWalker) visit(node whereClauseExprTree) string {
 	b := strings.Builder{}
 
 	switch node.Type() {

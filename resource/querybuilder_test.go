@@ -1,7 +1,6 @@
 package resource
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -16,7 +15,8 @@ func newTestQuery() *testQuery {
 }
 
 func (q *testQuery) Where(qc testQueryExpr) *testQuery {
-	q.qSet.SetClause(qc.expr)
+	q.qSet.SetWhereClause(qc.expr)
+
 	return q
 }
 
@@ -146,7 +146,7 @@ func Test_QueryClause(t *testing.T) {
 
 			tw := newTreeWalker()
 
-			got := tw.walk(tt.filter.qSet.clause)
+			got := tw.walk(tt.filter.qSet.whereClause)
 			if tt.wantString != got {
 				t.Errorf("output string != wantString\ngot = %q\nwnt = %q", got, tt.wantString)
 			}
@@ -163,30 +163,4 @@ func Test_QueryClause(t *testing.T) {
 			}
 		})
 	}
-}
-
-func PrintTree(t *testing.T, root clauseExprTree) string {
-	t.Helper()
-
-	if root == nil {
-		return ""
-	}
-
-	var s string
-
-	if root.Left() != nil {
-		s += "("
-		s += PrintTree(t, root.Left())
-		s += " <-- "
-	}
-
-	s += fmt.Sprintf("%s", root.Operator())
-
-	if root.Right() != nil {
-		s += " --> "
-		s += PrintTree(t, root.Right())
-		s += ")"
-	}
-
-	return s
 }

@@ -21,7 +21,7 @@ type QuerySet[Resource Resourcer] struct {
 	keys                   *fieldSet
 	filter                 *Filter
 	fields                 []accesstypes.Field
-	clause                 clauseExprTree
+	whereClause            whereClauseExprTree
 	returnAccessableFields bool
 	rMeta                  *ResourceMetadata[Resource]
 	resourceSet            *ResourceSet[Resource]
@@ -174,8 +174,8 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 
 // Where translates the the fields to database struct tags in databaseType when building the where clause
 func (q *QuerySet[Resource]) Where() (*Statement, error) {
-	if q.clause != nil {
-		return q.queryClauseWhere()
+	if q.whereClause != nil {
+		return q.queryWhereClause()
 	}
 
 	parts := q.KeySet().Parts()
@@ -208,9 +208,9 @@ func (q *QuerySet[Resource]) Where() (*Statement, error) {
 	}, nil
 }
 
-func (q *QuerySet[Resource]) queryClauseWhere() (*Statement, error) {
+func (q *QuerySet[Resource]) queryWhereClause() (*Statement, error) {
 	tw := newTreeWalker()
-	sql := tw.walk(q.clause)
+	sql := tw.walk(q.whereClause)
 
 	return &Statement{Sql: sql, Params: tw.params}, nil
 }
@@ -220,7 +220,7 @@ func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 		return spanner.Statement{}, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
-	if moreThan(1, q.clause != nil, q.KeySet().Len() != 0, q.filter != nil) {
+	if moreThan(1, q.whereClause != nil, q.KeySet().Len() != 0, q.filter != nil) {
 		panic("cannot use QueryClause, KeySet, or Filter together")
 	}
 
@@ -354,8 +354,8 @@ func (q *QuerySet[Resource]) SetFilterParam(filterSet *Filter) {
 	q.filter = filterSet
 }
 
-func (q *QuerySet[Resource]) SetClause(qc QueryClause) {
-	q.clause = qc.tree
+func (q *QuerySet[Resource]) SetWhereClause(qc QueryClause) {
+	q.whereClause = qc.tree
 }
 
 func moreThan(cnt int, exp ...bool) bool {
