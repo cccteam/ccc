@@ -24,10 +24,6 @@ type testQueryPartialExpr struct {
 	partialExpr PartialQueryClause
 }
 
-type testQueryExpr struct {
-	expr QueryClause
-}
-
 func newTestQueryFilter() testQueryPartialExpr {
 	return testQueryPartialExpr{
 		partialExpr: PartialQueryClause{
@@ -56,6 +52,10 @@ func (o testQueryPartialExpr) Name() testQueryIdent[string] {
 			partialExpr: o.partialExpr,
 		},
 	}
+}
+
+type testQueryExpr struct {
+	expr QueryClause
 }
 
 func (e testQueryExpr) And() testQueryPartialExpr {
