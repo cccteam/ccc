@@ -14,22 +14,16 @@ func NewPartialQueryClause() PartialQueryClause {
 }
 
 func (p PartialQueryClause) Group(qc QueryClause) QueryClause {
-	if p.tree == nil {
-		root := qc.tree
-		root.SetGroup(true)
-
-		return QueryClause{tree: root}
-	}
+	qc.tree.SetGroup(true)
 
 	root := p.tree
-	for root.Right() != nil {
-		root = root.Right()
+	if root == nil {
+		root = qc.tree
+	} else {
+		root.SetRight(qc.tree)
 	}
 
-	root.SetRight(qc.tree)
-	root.SetGroup(true)
-
-	return QueryClause{tree: p.tree}
+	return QueryClause{tree: root}
 }
 
 type QueryClause struct {
@@ -38,16 +32,6 @@ type QueryClause struct {
 
 func (x QueryClause) And() PartialQueryClause {
 	root := newNode(and)
-
-	// AND has a higher operator precedence than OR so we need to reorder the tree
-	// https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-PRECEDENCE
-	if !x.tree.IsGroup() && x.tree.Action() == or {
-		root.SetLeft(x.tree.Right())
-		x.tree.SetRight(root)
-
-		return PartialQueryClause{tree: x.tree}
-	}
-
 	root.SetLeft(x.tree)
 
 	return PartialQueryClause{tree: root}
@@ -243,9 +227,6 @@ func addNode(tree clauseExprTree, n clauseExprTree) clauseExprTree {
 	}
 
 	root := tree
-	for root.Right() != nil {
-		root = root.Right()
-	}
 	root.SetRight(n)
 
 	return tree

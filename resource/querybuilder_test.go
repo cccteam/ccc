@@ -129,6 +129,16 @@ func Test_QueryClause(t *testing.T) {
 				"@GREATERTHAN0": 2,
 			},
 		},
+		{
+			name:       "Group later in expression",
+			filter:     newTestQuery().Where(newTestQueryFilter().ID().Equal(10).And().Group(newTestQueryFilter().Name().Equal("test").Or().ID().GreaterThan(2))),
+			wantString: "ID = @EQUAL0 AND (Name = @EQUAL1 OR ID > @GREATERTHAN0)",
+			wantParams: map[string]any{
+				"@EQUAL0":       10,
+				"@EQUAL1":       "test",
+				"@GREATERTHAN0": 2,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
