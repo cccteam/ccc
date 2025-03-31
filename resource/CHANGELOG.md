@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.19](https://github.com/cccteam/ccc/compare/resource/v0.0.18...resource/v0.0.19) (2025-03-31)
+
+
+### Features
+
+* generate query clause ([#239](https://github.com/cccteam/ccc/issues/239)) ([0813f26](https://github.com/cccteam/ccc/commit/0813f2628fdd6177a8050be88b799f36feebe988))
+* query builder ([#235](https://github.com/cccteam/ccc/issues/235)) ([884fc64](https://github.com/cccteam/ccc/commit/884fc64caf22f8279dbf2bf1c7d4d903363a0015))
+
 ## [0.0.18](https://github.com/cccteam/ccc/compare/resource/v0.0.17...resource/v0.0.18) (2025-03-28)
 
 
