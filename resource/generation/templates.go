@@ -58,7 +58,7 @@ func New{{ .Resource.Name }}QueryFromQuerySet(qSet *resource.QuerySet[{{ .Resour
 }
 
 {{ range $field := .Resource.Fields }}
-{{ if $field.IsIndex }}
+{{ if $field.IsUniqueIndex }}
 func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ .Type }}) *{{ $field.Parent.Name }}Query {
 	q.qSet.SetKey("{{ $field.Name }}", v)
 
