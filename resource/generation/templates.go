@@ -106,6 +106,7 @@ func (q *{{ $field.Parent.Name }}Query) AddColumn{{ $field.Name }}() *{{ $field.
 }
 {{ end }}
 
+{{ if .Resource.HasIndexes -}}
 func (q *{{ .Resource.Name }}Query) Where(c {{ .Resource.Name }}QueryClause) *{{ .Resource.Name }}Query {
 	q.qSet.SetWhereClause(c.clause)
 
@@ -125,9 +126,11 @@ func (p {{ .Resource.Name }}QueryPartialClause) Group(qc {{ .Resource.Name }}Que
 }
 
 {{ range $field := .Resource.Fields }}
+{{ if or $field.IsIndex $field.IsUniqueIndex -}}
 func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $field.Type }}] {
 	return {{ $field.Parent.Name }}QueryIdent[{{ $field.Type }}]{Ident: resource.NewIdent[{{ $field.Type }}]("{{ $field.Name }}", p.partialClause)}
 }
+{{- end }}
 {{ end }}
 
 type {{ .Resource.Name }}QueryClause struct {
@@ -169,6 +172,7 @@ func (i {{ .Resource.Name }}QueryIdent[T]) LessThan(v T) {{ .Resource.Name }}Que
 func (i {{ .Resource.Name }}QueryIdent[T]) LessThanEq(v T) {{ .Resource.Name }}QueryClause {
 	return {{ .Resource.Name }}QueryClause{clause: i.Ident.LessThanEq(v)}
 }
+{{- end }}
 
 {{ if eq .Resource.IsView false }}
 type {{ .Resource.Name }}CreatePatch struct {
