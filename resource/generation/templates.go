@@ -58,7 +58,7 @@ func New{{ .Resource.Name }}QueryFromQuerySet(qSet *resource.QuerySet[{{ .Resour
 }
 
 {{ range $field := .Resource.Fields }}
-{{ if $field.IsIndex }}
+{{ if $field.IsUniqueIndex }}
 func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ .Type }}) *{{ $field.Parent.Name }}Query {
 	q.qSet.SetKey("{{ $field.Name }}", v)
 
@@ -105,6 +105,74 @@ func (q *{{ $field.Parent.Name }}Query) AddColumn{{ $field.Name }}() *{{ $field.
 	return q
 }
 {{ end }}
+
+{{ if .Resource.HasIndexes -}}
+func (q *{{ .Resource.Name }}Query) Where(c {{ .Resource.Name }}QueryClause) *{{ .Resource.Name }}Query {
+	q.qSet.SetWhereClause(c.clause)
+
+	return q
+}
+
+type {{ .Resource.Name }}QueryPartialClause struct {
+	partialClause resource.PartialQueryClause
+}
+
+func New{{ .Resource.Name }}QueryClause() {{ .Resource.Name }}QueryPartialClause {
+	return {{ .Resource.Name }}QueryPartialClause{partialClause: resource.NewPartialQueryClause()}
+}
+
+func (p {{ .Resource.Name }}QueryPartialClause) Group(qc {{ .Resource.Name }}QueryClause) {{ .Resource.Name }}QueryClause {
+	return {{ .Resource.Name }}QueryClause{clause: p.partialClause.Group(qc.clause)}
+}
+
+{{ range $field := .Resource.Fields }}
+{{ if or $field.IsIndex $field.IsUniqueIndex -}}
+func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $field.Type }}] {
+	return {{ $field.Parent.Name }}QueryIdent[{{ $field.Type }}]{Ident: resource.NewIdent[{{ $field.Type }}]("{{ $field.Name }}", p.partialClause)}
+}
+{{- end }}
+{{ end }}
+
+type {{ .Resource.Name }}QueryClause struct {
+	clause resource.QueryClause
+}
+
+func (qc {{ .Resource.Name }}QueryClause) And() {{ .Resource.Name }}QueryPartialClause {
+	return {{ .Resource.Name }}QueryPartialClause{partialClause: qc.clause.And()}
+}
+
+func (qc {{ .Resource.Name }}QueryClause) Or() {{ .Resource.Name }}QueryPartialClause {
+	return {{ .Resource.Name }}QueryPartialClause{partialClause: qc.clause.Or()}
+}
+
+type {{ .Resource.Name }}QueryIdent[T comparable] struct {
+	resource.Ident[T]
+}
+
+func (i {{ .Resource.Name }}QueryIdent[T]) Equal(v ...T) {{ .Resource.Name }}QueryClause {
+	return {{ .Resource.Name }}QueryClause{clause: i.Ident.Equal(v...)}
+}
+
+func (i {{ .Resource.Name }}QueryIdent[T]) NotEqual(v ...T) {{ .Resource.Name }}QueryClause {
+	return {{ .Resource.Name }}QueryClause{clause: i.Ident.NotEqual(v...)}
+}
+
+func (i {{ .Resource.Name }}QueryIdent[T]) GreaterThan(v T) {{ .Resource.Name }}QueryClause {
+	return {{ .Resource.Name }}QueryClause{clause: i.Ident.GreaterThan(v)}
+}
+
+func (i {{ .Resource.Name }}QueryIdent[T]) GreaterThanEq(v T) {{ .Resource.Name }}QueryClause {
+	return {{ .Resource.Name }}QueryClause{clause: i.Ident.GreaterThanEq(v)}
+}
+
+func (i {{ .Resource.Name }}QueryIdent[T]) LessThan(v T) {{ .Resource.Name }}QueryClause {
+	return {{ .Resource.Name }}QueryClause{clause: i.Ident.LessThan(v)}
+}
+
+func (i {{ .Resource.Name }}QueryIdent[T]) LessThanEq(v T) {{ .Resource.Name }}QueryClause {
+	return {{ .Resource.Name }}QueryClause{clause: i.Ident.LessThanEq(v)}
+}
+{{- end }}
 
 {{ if eq .Resource.IsView false }}
 type {{ .Resource.Name }}CreatePatch struct {

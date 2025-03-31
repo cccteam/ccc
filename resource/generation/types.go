@@ -249,6 +249,16 @@ func (r *resourceInfo) PrimaryKeyType() string {
 	return ""
 }
 
+func (r *resourceInfo) HasIndexes() bool {
+	for _, field := range r.Fields {
+		if field.IsIndex || field.IsUniqueIndex {
+			return true
+		}
+	}
+
+	return false
+}
+
 type resourceField struct {
 	*parser.Field
 	Parent         *resourceInfo
