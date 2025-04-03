@@ -686,7 +686,7 @@ export const Methods = {
 {{ range $resource, $tags := $resourcetags }}
 export const {{ $resource }} = {
 {{- range $_, $tag := $tags }}
-  {{ $tag }}: '{{ $resource.ResourceWithTag $tag }}' as Resource,
+  {{ $tag }}: '{{ $tag }}' as Resource,
 {{- end }}
 };
 {{ end }}
