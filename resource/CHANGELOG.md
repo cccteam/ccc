@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.20](https://github.com/cccteam/ccc/compare/resource/v0.0.19...resource/v0.0.20) (2025-04-03)
+
+
+### Bug Fixes
+
+* correct resource tag assignment in templates ([#241](https://github.com/cccteam/ccc/issues/241)) ([7a610e2](https://github.com/cccteam/ccc/commit/7a610e2518eff63d8647bd345db0c1ff8bc95686))
+
 ## [0.0.19](https://github.com/cccteam/ccc/compare/resource/v0.0.18...resource/v0.0.19) (2025-03-31)
 
 
