@@ -2,19 +2,24 @@ package resource
 
 import (
 	"context"
+	"time"
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/spxscan/spxapi"
 )
 
-type BufferWriter interface {
+type SpannerCommitter interface {
+	ReadWriteTransaction(ctx context.Context, f func(context.Context, *spanner.ReadWriteTransaction) error) (commitTimestamp time.Time, err error)
+}
+
+type TxnBuffer interface {
 	BufferWrite(ms []*spanner.Mutation) error
 	spxapi.Querier
 }
 
 type SpannerBuffer interface {
-	SpannerBuffer(ctx context.Context, txn BufferWriter, eventSource ...string) error
+	SpannerBuffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error
 }
 
 type UserPermissions interface {
