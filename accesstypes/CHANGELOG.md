@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.1...accesstypes/v0.5.2) (2025-04-04)
+
+
+### Features
+
+* Stateful resources phase 1 - Move permission evaluation to QuerySet ([#230](https://github.com/cccteam/ccc/issues/230)) ([d418330](https://github.com/cccteam/ccc/commit/d418330f6f9be9f728958fe3a6c48fa0220ab860))
+
 ## [0.5.1](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.0...accesstypes/v0.5.1) (2025-03-07)
 
 
