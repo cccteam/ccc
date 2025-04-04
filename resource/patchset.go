@@ -115,20 +115,20 @@ func (p *PatchSet[Resource]) Resource() accesstypes.Resource {
 	return p.querySet.Resource()
 }
 
-func (p *PatchSet[Resource]) SpannerApply(ctx context.Context, spanner *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerApply(ctx context.Context, committer SpannerCommitter, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
-		return p.spannerInsert(ctx, spanner, eventSource...)
+		return p.spannerInsert(ctx, committer, eventSource...)
 	case UpdatePatchType:
-		return p.spannerUpdate(ctx, spanner, eventSource...)
+		return p.spannerUpdate(ctx, committer, eventSource...)
 	case DeletePatchType:
-		return p.spannerDelete(ctx, spanner, eventSource...)
+		return p.spannerDelete(ctx, committer, eventSource...)
 	default:
 		return errors.Newf("PatchType %s not supported", p.patchType)
 	}
 }
 
-func (p *PatchSet[Resource]) SpannerBuffer(ctx context.Context, txn BufferWriter, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerBuffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
 		return p.spannerBufferInsert(ctx, txn, eventSource...)
@@ -141,7 +141,7 @@ func (p *PatchSet[Resource]) SpannerBuffer(ctx context.Context, txn BufferWriter
 	}
 }
 
-func (p *PatchSet[Resource]) spannerInsert(ctx context.Context, s *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerInsert(ctx context.Context, s SpannerCommitter, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
 		if err := p.spannerBufferInsert(ctx, txn, eventSource...); err != nil {
 			return err
@@ -155,7 +155,7 @@ func (p *PatchSet[Resource]) spannerInsert(ctx context.Context, s *spanner.Clien
 	return nil
 }
 
-func (p *PatchSet[Resource]) spannerUpdate(ctx context.Context, s *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerUpdate(ctx context.Context, s SpannerCommitter, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
 		if err := p.spannerBufferUpdate(ctx, txn, eventSource...); err != nil {
 			return err
@@ -183,7 +183,7 @@ func (p *PatchSet[Resource]) SpannerInsertOrUpdate(ctx context.Context, s *spann
 	return nil
 }
 
-func (p *PatchSet[Resource]) spannerDelete(ctx context.Context, s *spanner.Client, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerDelete(ctx context.Context, s SpannerCommitter, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
 		if err := p.spannerBufferDelete(ctx, txn, eventSource...); err != nil {
 			return err
@@ -197,7 +197,7 @@ func (p *PatchSet[Resource]) spannerDelete(ctx context.Context, s *spanner.Clien
 	return nil
 }
 
-func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn BufferWriter, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
@@ -226,7 +226,7 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn Buffer
 	return nil
 }
 
-func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn BufferWriter, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
@@ -255,7 +255,7 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn Buffer
 	return nil
 }
 
-func (p *PatchSet[Resource]) SpannerBufferInsertOrUpdate(ctx context.Context, txn BufferWriter, eventSource ...string) error {
+func (p *PatchSet[Resource]) SpannerBufferInsertOrUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
@@ -284,7 +284,7 @@ func (p *PatchSet[Resource]) SpannerBufferInsertOrUpdate(ctx context.Context, tx
 	return nil
 }
 
-func (p *PatchSet[Resource]) spannerBufferDelete(ctx context.Context, txn BufferWriter, eventSource ...string) error {
+func (p *PatchSet[Resource]) spannerBufferDelete(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
@@ -309,7 +309,7 @@ func (p *PatchSet[Resource]) spannerBufferDelete(ctx context.Context, txn Buffer
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn BufferWriter, eventSource string) error {
+func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn TxnBuffer, eventSource string) error {
 	changeSet, err := p.insertChangeSet()
 	if err != nil {
 		return err
@@ -335,7 +335,7 @@ func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn BufferWriter, e
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context.Context, txn BufferWriter, eventSource string) error {
+func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context.Context, txn TxnBuffer, eventSource string) error {
 	changeSet, err := p.updateChangeSet(ctx, txn)
 	if err != nil {
 		if !errors.Is(err, spxscan.ErrNotFound) {
@@ -367,7 +367,7 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context, txn BufferWriter, eventSource string) error {
+func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context, txn TxnBuffer, eventSource string) error {
 	changeSet, err := p.updateChangeSet(ctx, txn)
 	if err != nil {
 		return err
@@ -393,7 +393,7 @@ func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context, txn BufferWriter, eventSource string) error {
+func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context, txn TxnBuffer, eventSource string) error {
 	keySet := p.PrimaryKey()
 	changeSet, err := p.jsonDeleteSet(ctx, txn)
 	if err != nil {
@@ -430,7 +430,7 @@ func (p *PatchSet[Resource]) insertChangeSet() (map[accesstypes.Field]DiffElem, 
 	return changeSet, nil
 }
 
-func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn BufferWriter) (map[accesstypes.Field]DiffElem, error) {
+func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn TxnBuffer) (map[accesstypes.Field]DiffElem, error) {
 	stmt, err := p.querySet.SpannerStmt()
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
@@ -457,7 +457,7 @@ func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn BufferWrit
 	return changeSet, nil
 }
 
-func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn BufferWriter) (map[accesstypes.Field]DiffElem, error) {
+func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn TxnBuffer) (map[accesstypes.Field]DiffElem, error) {
 	stmt, err := p.deleteQuerySet().SpannerStmt()
 	if err != nil {
 		return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")

@@ -127,8 +127,8 @@ func (p {{ .Resource.Name }}QueryPartialClause) Group(qc {{ .Resource.Name }}Que
 
 {{ range $field := .Resource.Fields }}
 {{ if or $field.IsIndex $field.IsUniqueIndex -}}
-func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $field.Type }}] {
-	return {{ $field.Parent.Name }}QueryIdent[{{ $field.Type }}]{Ident: resource.NewIdent[{{ $field.Type }}]("{{ $field.Name }}", p.partialClause)}
+func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}] {
+	return {{ $field.Parent.Name }}QueryIdent[{{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}]{Ident: resource.NewIdent[{{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}]("{{ $field.Name }}", p.partialClause)}
 }
 {{- end }}
 {{ end }}
@@ -460,7 +460,7 @@ import (
 		{{- end }}
 		eventSource := resource.UserEvent(ctx)
 
-		if err := a.ExecuteFunc(ctx, func(ctx context.Context, txn resource.BufferWriter) error {
+		if err := a.ExecuteFunc(ctx, func(ctx context.Context, txn resource.TxnBuffer) error {
 			{{- if $PrimaryKeyIsUUID }}
 			resp = response{}
 			{{- end }}
@@ -564,7 +564,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 			resp    response
 		)
 
-		if err := a.ExecuteFunc(ctx, func(ctx context.Context, txn resource.BufferWriter) error {
+		if err := a.ExecuteFunc(ctx, func(ctx context.Context, txn resource.TxnBuffer) error {
 			resp = response{}
 			r, err := resource.CloneRequest(r)
 			if err != nil {
