@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.21](https://github.com/cccteam/ccc/compare/resource/v0.0.20...resource/v0.0.21) (2025-04-04)
+
+
+### Features
+
+* Implement Commit Buffer ([#243](https://github.com/cccteam/ccc/issues/243)) ([f9e26fd](https://github.com/cccteam/ccc/commit/f9e26fdf93aad2e882f757411b82fecd85a4df4f))
+
 ## [0.0.20](https://github.com/cccteam/ccc/compare/resource/v0.0.19...resource/v0.0.20) (2025-04-03)
 
 
