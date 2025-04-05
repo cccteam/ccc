@@ -89,22 +89,13 @@ func (q *{{ .Resource.Name }}Query) Query() *resource.QuerySet[{{ .Resource.Name
 	return q.qSet
 }
 
-func (q *{{ .Resource.Name }}Query) AddAllColumns() *{{ .Resource.Name }}Query {
-	{{- range $field := .Resource.Fields }}
-	q.qSet.AddField("{{ $field.Name }}")
-	{{- end }}
+func (q *{{ .Resource.Name }}Query) AddColumns(c *{{ .Resource.Name }}Columns) *{{ .Resource.Name }}Query {
+	for _, field := range c.fields {
+		q.qSet.AddField(field)
+	}
 
 	return q
 }
-
-
-{{ range $field := .Resource.Fields }}
-func (q *{{ $field.Parent.Name }}Query) AddColumn{{ $field.Name }}() *{{ $field.Parent.Name }}Query {
-	q.qSet.AddField("{{ $field.Name }}")
-
-	return q
-}
-{{ end }}
 
 {{ if .Resource.HasIndexes -}}
 func (q *{{ .Resource.Name }}Query) Where(c {{ .Resource.Name }}QueryClause) *{{ .Resource.Name }}Query {
@@ -112,7 +103,35 @@ func (q *{{ .Resource.Name }}Query) Where(c {{ .Resource.Name }}QueryClause) *{{
 
 	return q
 }
+{{- end }}
 
+type {{ .Resource.Name }}Columns struct {
+	fields []accesstypes.Field
+}
+
+func New{{ .Resource.Name }}Columns() *{{ .Resource.Name }}Columns {
+	return &{{ .Resource.Name }}Columns{}
+}
+
+func (c *{{ .Resource.Name }}Columns) All() *{{ .Resource.Name }}Columns {
+	c.fields = []accesstypes.Field{
+	{{- range $field := .Resource.Fields }}
+		"{{ $field.Name }}",
+	{{- end }}
+	}
+
+	return c
+}
+
+{{ range $field := .Resource.Fields }}
+func (c *{{ $field.Parent.Name }}Columns) {{ $field.Name }}() *{{ $field.Parent.Name }}Columns {
+	c.fields = append(c.fields, "{{ $field.Name }}")
+
+	return c
+}
+{{ end }}
+
+{{ if .Resource.HasIndexes -}}
 type {{ .Resource.Name }}QueryPartialClause struct {
 	partialClause resource.PartialQueryClause
 }
