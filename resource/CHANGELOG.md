@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.22](https://github.com/cccteam/ccc/compare/resource/v0.0.21...resource/v0.0.22) (2025-04-05)
+
+
+### Bug Fixes
+
+* Fix auto commit bug ([#245](https://github.com/cccteam/ccc/issues/245)) ([459c358](https://github.com/cccteam/ccc/commit/459c358f41e4a9d3b625e5beb06a0e33c0a2cb37))
+
+
+### Code Refactoring
+
+* Refactor Add Column methods into a separate type ([#246](https://github.com/cccteam/ccc/issues/246)) ([632c1e3](https://github.com/cccteam/ccc/commit/632c1e3e0e3e0ee64a4de8e70cc043a3dfb6b16a))
+
 ## [0.0.21](https://github.com/cccteam/ccc/compare/resource/v0.0.20...resource/v0.0.21) (2025-04-04)
 
 
