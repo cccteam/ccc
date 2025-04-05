@@ -7,10 +7,10 @@ import (
 )
 
 type CommitBuffer struct {
-	db          TxnFuncRunner
-	eventSource string
-	size        int
-	buffer      []SpannerBuffer
+	db             TxnFuncRunner
+	eventSource    string
+	autoCommitSize int
+	buffer         []SpannerBuffer
 }
 
 // NewCommitBuffer returns a CommitBuffer that flushes the buffer when it reaches autoCommitSize, committing the content in a single transaction.
@@ -19,17 +19,17 @@ type CommitBuffer struct {
 // Commit() must be called before discarding CommitBuffer to ensure all buffered mutations are committed.
 func NewCommitBuffer(db TxnFuncRunner, eventSource string, autoCommitSize int) *CommitBuffer {
 	return &CommitBuffer{
-		db:          db,
-		eventSource: eventSource,
-		size:        autoCommitSize,
-		buffer:      make([]SpannerBuffer, 0, autoCommitSize),
+		db:             db,
+		eventSource:    eventSource,
+		autoCommitSize: autoCommitSize,
+		buffer:         make([]SpannerBuffer, 0, autoCommitSize),
 	}
 }
 
 func (cb *CommitBuffer) Buffer(ctx context.Context, ps ...SpannerBuffer) error {
 	cb.buffer = append(cb.buffer, ps...)
 
-	if cb.size > 0 && len(cb.buffer) == 0 {
+	if cb.autoCommitSize > 0 && len(cb.buffer) >= cb.autoCommitSize {
 		if err := cb.Commit(ctx); err != nil {
 			return errors.Wrap(err, "CommitBufferrer.Commit()")
 		}
