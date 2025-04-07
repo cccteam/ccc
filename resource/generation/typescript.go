@@ -36,12 +36,12 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 		templateData["RPCMethods"] = t.rpcMethods
 	}
 
-	output, err := t.generateTemplateOutput(typescriptPermissionTemplate, templateData)
+	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, templateData)
 	if err != nil {
 		return errors.Wrap(err, "c.generateTemplateOutput()")
 	}
 
-	destinationFilePath := filepath.Join(t.typescriptDestination, "resourcePermissions.ts")
+	destinationFilePath := filepath.Join(t.typescriptDestination, "constants.ts")
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
