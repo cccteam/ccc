@@ -700,21 +700,21 @@ export const Methods = {
   {{ $rpcMethod.Name }}: '{{ $rpcMethod.Name }}' as Method,
 {{- end }}
 };
-{{ end -}}
+{{- end }}
 
 export type FieldName = Brand<string, 'FieldName'>;
 {{ range $resource, $tags := $resourcetags }}
-export namespace {{ $resource }}  {
+export namespace {{ $resource }} {
   export const fieldName = {
   {{- range $_, $tag := $tags }}
     {{ $tag }}: '{{ $tag }}' as FieldName,
   {{- end }}
-  }
+  };
   export const resourceName = {
   {{- range $_, $tag := $tags }}
     {{ $tag }}: '{{ $resource.ResourceWithTag $tag }}' as Resource,
   {{- end }}
-  }
+  };
 };
 {{ end }}
 type ResourcePermissions = Record<Permission, boolean>;
