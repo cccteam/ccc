@@ -671,11 +671,6 @@ import { Domain, Permission, Resource } from '@cccteam/ccc-lib';
 {{- $resourcePermMap := .ResourcePermissionsMap }}
 {{- $domains := .Domains }}
 
-type Brand<K, T> = K & {
-  __brand: T;
-};
-export type Method = Brand<string, 'Method'>;
-
 export const Permissions = {
 {{- range $perm := $permissions }}
   {{ $perm }}: '{{ $perm }}' as Permission,
@@ -702,7 +697,6 @@ export const Methods = {
 };
 {{- end }}
 
-export type FieldName = Brand<string, 'FieldName'>;
 {{ range $resource, $tags := $resourcetags }}
 export namespace {{ $resource }} {
   export const fieldName = {
