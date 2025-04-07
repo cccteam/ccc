@@ -702,11 +702,19 @@ export const Methods = {
 };
 {{ end -}}
 
+export type FieldName = Brand<string, 'FieldName'>;
 {{ range $resource, $tags := $resourcetags }}
-export const {{ $resource }} = {
-{{- range $_, $tag := $tags }}
-  {{ $tag }}: '{{ $tag }}' as Resource,
-{{- end }}
+export namespace {{ $resource }}  {
+  export const fieldName = {
+  {{- range $_, $tag := $tags }}
+    {{ $tag }}: '{{ $tag }}' as FieldName,
+  {{- end }}
+  }
+  export const resourceName = {
+  {{- range $_, $tag := $tags }}
+    {{ $tag }}: '{{ $resource.ResourceWithTag $tag }}' as Resource,
+  {{- end }}
+  }
 };
 {{ end }}
 type ResourcePermissions = Record<Permission, boolean>;
@@ -720,7 +728,7 @@ const Mappings: PermissionMappings = {
     {{- end }}
   },
     {{- range $tag := index $resourcetags $resource }}
-  [{{$resource.ResourceWithTag $tag }}]: {
+  [{{ $resource }}.resourceName.{{ $tag }}]: {
       {{- range $perm := $resourcePermissions }}
     [Permissions.{{ $perm }}]: {{ index $resourcePermMap ($resource.ResourceWithTag $tag) $perm }},
       {{- end }}
