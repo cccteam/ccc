@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.23](https://github.com/cccteam/ccc/compare/resource/v0.0.22...resource/v0.0.23) (2025-04-08)
+
+
+### Code Refactoring
+
+* typescript namespacing ([#248](https://github.com/cccteam/ccc/issues/248)) ([8187146](https://github.com/cccteam/ccc/commit/81871463b5b7a2ae4e0b244e119472ba73d79b5c))
+
 ## [0.0.22](https://github.com/cccteam/ccc/compare/resource/v0.0.21...resource/v0.0.22) (2025-04-05)
 
 
