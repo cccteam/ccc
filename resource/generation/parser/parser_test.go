@@ -92,6 +92,10 @@ func Test_ParseStructs(t *testing.T) {
 					testField{"ID", basic(types.String), `spanner:"Id"`},
 					testField{"Description", basic(types.String), `spanner:"description"`},
 				),
+				testStruct(t, "Status",
+					testField{"ID", named("ccc.UUID", &types.Struct{}), `spanner:"Id"`},
+					testField{"Description", basic(types.String), `spanner:"description"`},
+				),
 				testStruct(t, "FileRecordSet",
 					testField{"ID", named("ccc.UUID", &types.Struct{}), `spanner:"Id"`},
 					testField{"FileID", named("ccc.UUID", &types.Struct{}), `spanner:"FileId" index:"true"`},
@@ -99,10 +103,6 @@ func Test_ParseStructs(t *testing.T) {
 					testField{"Status", named("resources.FileRecordSetStatus", basic(types.String)), `spanner:"Status"`},
 					testField{"ErrorDetails", pointer(basic(types.String)), `spanner:"ErrorDetails"`},
 					testField{"UpdatedAt", pointer(named("time.Time", &types.Struct{})), `spanner:"UpdatedAt" conditions:"immutable"`},
-				),
-				testStruct(t, "Status",
-					testField{"ID", named("ccc.UUID", &types.Struct{}), `spanner:"Id"`},
-					testField{"Description", basic(types.String), `spanner:"description"`},
 				),
 			},
 			wantErr: false,
@@ -142,7 +142,7 @@ func Test_ParseStructs(t *testing.T) {
 						t.Errorf("parseStructs() field Type = %v, want %v", parsedStructs[i].fields[j].Type(), tt.want[i].fields[j].Type())
 					}
 					if parsedStructs[i].fields[j].tags != tt.want[i].fields[j].tags {
-						t.Errorf("parseStructs() field tags = %v, want %v", parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
+						t.Errorf("parseStructs() field %q.%q has tags = %v, want %v", parsedStructs[i].name, parsedStructs[i].fields[j].name, parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
 					}
 				}
 			}
@@ -214,8 +214,8 @@ func Test_localTypesFromStruct(t *testing.T) {
 
 			var obj types.Object
 			pkg := pkgMap[tt.args.pkgName]
-			for _, name := range pkg.Scope().Names() {
-				obj = pkg.Scope().Lookup(name)
+			for _, name := range pkg.Types.Scope().Names() {
+				obj = pkg.Types.Scope().Lookup(name)
 			}
 
 			var typeNames []string
