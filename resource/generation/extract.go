@@ -2,11 +2,11 @@ package generation
 
 import (
 	"fmt"
-	"go/types"
 	"slices"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
+	"golang.org/x/tools/go/packages"
 )
 
 func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error) {
@@ -61,7 +61,7 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 	return resource, nil
 }
 
-func (c *client) extractResources(pkg *types.Package) ([]*resourceInfo, error) {
+func (c *client) extractResources(pkg *packages.Package) ([]*resourceInfo, error) {
 	resourceStructs, err := parser.ParseStructs(pkg)
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func (c *client) extractResources(pkg *types.Package) ([]*resourceInfo, error) {
 	return resources, nil
 }
 
-func extractStructsByInterface(pkg *types.Package, interfaceNames ...string) ([]parser.Struct, error) {
+func extractStructsByInterface(pkg *packages.Package, interfaceNames ...string) ([]parser.Struct, error) {
 	parsedStructs, err := parser.ParseStructs(pkg)
 	if err != nil {
 		return nil, err
@@ -94,7 +94,7 @@ func extractStructsByInterface(pkg *types.Package, interfaceNames ...string) ([]
 
 	for _, pStruct := range parsedStructs {
 		for _, interfaceName := range interfaceNames {
-			if parser.HasInterface(pkg, pStruct, interfaceName) {
+			if parser.HasInterface(pkg.Types, pStruct, interfaceName) {
 				pStruct.SetInterface(interfaceName)
 				rpcStructs = append(rpcStructs, pStruct)
 			}
@@ -102,7 +102,7 @@ func extractStructsByInterface(pkg *types.Package, interfaceNames ...string) ([]
 	}
 
 	if len(rpcStructs) == 0 {
-		return nil, errors.Newf("package %q has no structs that implement an interface in %v", pkg.Name(), interfaceNames)
+		return nil, errors.Newf("package %q has no structs that implement an interface in %v", pkg.Types.Name(), interfaceNames)
 	}
 
 	return rpcStructs, nil
