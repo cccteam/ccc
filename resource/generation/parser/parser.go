@@ -112,6 +112,29 @@ func ParseStructs(pkg *packages.Package) ([]Struct, error) {
 					continue
 				}
 
+				// comments on a struct start after its closing bracket on the same line
+				var structComments []string
+				if ts.Comment != nil {
+					for _, c := range ts.Comment.List {
+						structComments = append(structComments, c.Text)
+					}
+				}
+
+				st, ok := ts.Type.(*ast.StructType)
+				if !ok {
+					errors.Newf("typeSpec for parsedStruct %q could not be cast to *ast.StructType. how did you do that?", pStruct.name)
+				}
+
+				for _, field := range st.Fields.List {
+					var comments []string
+
+					if field.Doc != nil {
+						for _, c := range field.Doc.List {
+							comments = append(comments, c.Text)
+						}
+					}
+				}
+
 				parsedStructs = append(parsedStructs, pStruct)
 			}
 		}
