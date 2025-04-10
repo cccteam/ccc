@@ -111,6 +111,7 @@ type Struct struct {
 	fields     []Field
 	localTypes []TypeInfo
 	interfaces []string
+	comments   []string
 }
 
 func newStruct(obj types.Object, unwrap bool) (Struct, bool) {
@@ -223,6 +224,7 @@ type Field struct {
 	TypeInfo
 	tags        reflect.StructTag
 	isLocalType bool
+	comments    []string
 }
 
 func (f Field) String() string {
