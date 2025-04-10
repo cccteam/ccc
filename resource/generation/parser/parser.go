@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"go/ast"
+	"go/token"
 	"go/types"
 	"log"
 	"strings"
@@ -13,7 +15,7 @@ import (
 // loading or typechecking, otherwise returns the package's data.
 // Useful for static type analysis with the [types] package instead of
 // manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
-func LoadPackages(packagePatterns ...string) (map[string]*types.Package, error) {
+func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, error) {
 	log.Printf("Loading packages %v...\n", packagePatterns)
 
 	files := []string{}
@@ -27,7 +29,7 @@ func LoadPackages(packagePatterns ...string) (map[string]*types.Package, error) 
 		}
 	}
 
-	packMap := make(map[string]*types.Package, len(packagePatterns))
+	packMap := make(map[string]*packages.Package, len(packagePatterns))
 
 	if len(files) > 0 {
 		pkgs, err := loadPackages(files...)
@@ -36,7 +38,7 @@ func LoadPackages(packagePatterns ...string) (map[string]*types.Package, error) 
 		}
 
 		for _, pkg := range pkgs {
-			packMap[pkg.Name] = pkg.Types
+			packMap[pkg.Name] = pkg
 		}
 	}
 
@@ -47,7 +49,7 @@ func LoadPackages(packagePatterns ...string) (map[string]*types.Package, error) 
 		}
 
 		for _, pkg := range pkgs {
-			packMap[pkg.Name] = pkg.Types
+			packMap[pkg.Name] = pkg
 		}
 	}
 
@@ -55,7 +57,7 @@ func LoadPackages(packagePatterns ...string) (map[string]*types.Package, error) 
 }
 
 func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
-	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedFiles}
+	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypesInfo}
 	pkgs, err := packages.Load(cfg, packagePatterns...)
 	if err != nil {
 		return nil, errors.Wrap(err, "packages.Load()")
@@ -88,26 +90,31 @@ func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 // We can iterate over the declarations at the package level a single time
 // to extract all the data necessary for generation. Any new data that needs
 // to be added to the struct definitions can be extracted here.
-func ParseStructs(pkg *types.Package) ([]Struct, error) {
-	if pkg == nil {
-		return nil, errors.New("package is nil")
-	}
-
-	log.Printf("Parsing structs from package %q...", pkg.Name())
-
-	scope := pkg.Scope() // The package scope holds all the objects declared at package level (TypeNames, Consts, Vars, and Funcs)
-	if scope == nil || len(scope.Names()) == 0 {
-		return nil, errors.Newf("package %q has invalid scope", pkg.Name())
-	}
+func ParseStructs(pkg *packages.Package) ([]Struct, error) {
+	log.Printf("Parsing structs from package %q...", pkg.Types.Name())
 
 	var parsedStructs []Struct
-	for _, name := range scope.Names() {
-		pStruct, ok := newStruct(scope.Lookup(name), false)
-		if !ok {
-			continue
-		}
+	for _, astFile := range pkg.Syntax {
+		for _, decl := range astFile.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.TYPE {
+				continue
+			}
 
-		parsedStructs = append(parsedStructs, pStruct)
+			for _, spec := range gd.Specs {
+				ts, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+
+				pStruct, ok := newStruct(pkg.TypesInfo.ObjectOf(ts.Name), false)
+				if !ok {
+					continue
+				}
+
+				parsedStructs = append(parsedStructs, pStruct)
+			}
+		}
 	}
 
 	return parsedStructs, nil
