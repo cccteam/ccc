@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.24](https://github.com/cccteam/ccc/compare/resource/v0.0.23...resource/v0.0.24) (2025-04-11)
+
+
+### Features
+
+* update typescript template ([95dcc52](https://github.com/cccteam/ccc/commit/95dcc5242870ed956cfc9141a587ca591da8fcb4))
+
 ## [0.0.23](https://github.com/cccteam/ccc/compare/resource/v0.0.22...resource/v0.0.23) (2025-04-08)
 
 
