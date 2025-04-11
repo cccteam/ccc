@@ -133,6 +133,12 @@ func ParseStructs(pkg *packages.Package) ([]Struct, error) {
 							comments = append(comments, c.Text)
 						}
 					}
+
+					if field.Comment != nil {
+						for _, c := range field.Comment.List {
+							comments = append(comments, c.Text)
+						}
+					}
 				}
 
 				parsedStructs = append(parsedStructs, pStruct)
