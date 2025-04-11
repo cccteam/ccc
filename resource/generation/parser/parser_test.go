@@ -2,6 +2,7 @@ package parser
 
 import (
 	"go/types"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -150,6 +151,56 @@ func Test_ParseStructs(t *testing.T) {
 	}
 }
 
+func Test_FilterStructsByInterface(t *testing.T) {
+	type args struct {
+		packagePath string
+		packageName string
+		interfaces  []string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []string
+		wantErr bool
+	}{
+		{
+			name:    "returns structs that implement a given interface",
+			args:    args{packagePath: "../testdata/rpc", packageName: "rpc", interfaces: []string{"TxnRunner"}},
+			want:    []string{"Banana", "Cofveve"},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			pkgMap, err := LoadPackages(tt.args.packagePath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("loadPackages() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			rpcStructs, err := ParseStructs(pkgMap[tt.args.packageName])
+			if (err != nil) != tt.wantErr {
+				t.Errorf("extractRPCMethods() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			rpcStructs = FilterStructsByInterface(rpcStructs, tt.args.interfaces)
+
+			var rpcStructNames []string
+			for _, s := range rpcStructs {
+				rpcStructNames = append(rpcStructNames, s.Name())
+			}
+
+			if !reflect.DeepEqual(rpcStructNames, tt.want) {
+				t.Errorf("extractRPCMethods() = %v, want %v", rpcStructNames, tt.want)
+			}
+		})
+	}
+}
+
 func Test_typeStringer(t *testing.T) {
 	type args struct {
 		t types.Type
@@ -266,13 +317,6 @@ func named(name string, typ types.Type) *types.Named {
 	pkg, objName := pkgAndObjName(name)
 
 	return types.NewNamed(typeName(objName, pkg, typ), typ, nil)
-}
-
-func method(name string, pkg *types.Package, st *types.Struct) *types.Func {
-	recv := types.NewVar(types.Universe.Pos(), pkg, name, st)
-	sig := types.NewSignatureType(recv, nil, nil, nil, nil, false)
-
-	return types.NewFunc(types.Universe.Pos(), pkg, name, sig)
 }
 
 func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) Struct {
