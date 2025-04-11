@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"go/types"
 	"log"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -101,9 +102,15 @@ func ParseStructs(pkg *packages.Package) ([]Struct, error) {
 				continue
 			}
 
+			var interfaceNames []string
 			for _, spec := range gd.Specs {
 				ts, ok := spec.(*ast.TypeSpec)
 				if !ok {
+					continue
+				}
+
+				if _, ok := ts.Type.(*ast.InterfaceType); ok {
+					interfaceNames = append(interfaceNames, ts.Name.Name)
 					continue
 				}
 
@@ -143,13 +150,34 @@ func ParseStructs(pkg *packages.Package) ([]Struct, error) {
 
 				parsedStructs = append(parsedStructs, pStruct)
 			}
+
+			for i := range parsedStructs {
+				for _, ifaceName := range interfaceNames {
+					if hasInterface(pkg.Types, parsedStructs[i], ifaceName) {
+						parsedStructs[i].AddInterface(ifaceName)
+					}
+				}
+			}
 		}
 	}
 
 	return parsedStructs, nil
 }
 
-func HasInterface(pkg *types.Package, s Struct, interfaceName string) bool {
+func FilterStructsByInterface(s []Struct, interfaceNames []string) []Struct {
+	filteredStructs := make([]Struct, 0, len(s))
+	for _, e := range s {
+		for _, iface := range interfaceNames {
+			if e.Implements(iface) {
+				filteredStructs = append(filteredStructs, e)
+			}
+		}
+	}
+
+	return slices.Clip(filteredStructs)
+}
+
+func hasInterface(pkg *types.Package, s Struct, interfaceName string) bool {
 	ifaceObject := pkg.Scope().Lookup(interfaceName)
 	if ifaceObject == nil {
 		return false

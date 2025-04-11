@@ -83,10 +83,12 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	if r.genRPCMethods {
-		rpcStructs, err := extractStructsByInterface(packageMap["rpc"], rpcInterfaces[:]...)
+		rpcStructs, err := parser.ParseStructs(packageMap["rpc"])
 		if err != nil {
 			return err
 		}
+
+		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
 		r.rpcMethods = nil
 		for _, s := range rpcStructs {
@@ -194,10 +196,12 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genRPCMethods {
-		rpcStructs, err := extractStructsByInterface(packageMap["rpc"], rpcInterfaces[:]...)
+		rpcStructs, err := parser.ParseStructs(packageMap["rpc"])
 		if err != nil {
 			return err
 		}
+
+		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
 		t.rpcMethods = nil
 		for _, s := range rpcStructs {
