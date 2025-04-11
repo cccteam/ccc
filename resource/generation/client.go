@@ -777,8 +777,3 @@ func (c *client) resourceEndpoints(resource *resourceInfo) []HandlerType {
 
 	return filteredHandlerTypes
 }
-
-// The resourceName should already be pluralized
-func (t *typescriptGenerator) isResourceInAppRouter(resourceName string) bool {
-	return slices.Contains(t.routerResources, accesstypes.Resource(resourceName))
-}

@@ -181,7 +181,3 @@ func (c *client) handlerName(structName string, handlerType HandlerType) string 
 
 	return functionName
 }
-
-func joinBytes(p ...[]byte) []byte {
-	return bytes.Join(p, []byte(""))
-}
