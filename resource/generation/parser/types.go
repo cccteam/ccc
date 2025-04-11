@@ -144,7 +144,7 @@ func newStruct(obj types.Object, unwrap bool) (Struct, bool) {
 	return s, true
 }
 
-func (s *Struct) SetInterface(iface string) {
+func (s *Struct) AddInterface(iface string) {
 	if !slices.Contains(s.interfaces, iface) {
 		s.interfaces = append(s.interfaces, iface)
 	}
