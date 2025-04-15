@@ -26,7 +26,7 @@ func (dg depGraph) OrderedList() []string {
 	var root *dependencyTree
 
 	for name, vertex := range dg {
-		root = addNode(name, vertex.indegree, root)
+		root = addNode(name, len(vertex.edges), root)
 	}
 
 	return orderedTree(root)
@@ -43,7 +43,6 @@ func (dg depGraph) AddEdge(src, dst string) error {
 	dg.addVertex(dst)
 
 	dg[src].edges[dst] = dg[dst]
-	dg[dst].indegree += 1
 
 	return nil
 }
@@ -79,27 +78,26 @@ func (dg depGraph) cycle(src, dst string) string {
 }
 
 type graphNode struct {
-	indegree int
-	edges    map[string]*graphNode // outgoing edges only
+	edges map[string]*graphNode // outgoing edges only
 }
 
 type dependencyTree struct {
 	name        string
-	indegree    int
+	outdegree   int
 	left, right *dependencyTree
 }
 
 func newNode(name string, val int) *dependencyTree {
-	return &dependencyTree{name: name, indegree: val}
+	return &dependencyTree{name: name, outdegree: val}
 }
 
 func addNode(name string, val int, root *dependencyTree) *dependencyTree {
 	switch {
 	case root == nil:
 		return newNode(name, val)
-	case val < root.indegree:
+	case val < root.outdegree:
 		root.left = addNode(name, val, root.left)
-	case val > root.indegree:
+	case val > root.outdegree:
 		root.right = addNode(name, val, root.right)
 
 	// if the values are equal, store the node sorted alphabetically

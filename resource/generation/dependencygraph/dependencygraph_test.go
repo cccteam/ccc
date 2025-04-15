@@ -30,30 +30,29 @@ func Test_DepGraph(t *testing.T) {
 			name: "base cases",
 			args: args{
 				nodes: map[string][]string{
-					"A": {"B", "C", "D"}, // indegree: 0
-					"B": {"D"},           // indegree: 2
-					"C": {"B", "D"},      // indegree: 1
-					// D indegree: 3
+					"A": {"B", "C", "D"}, // outdegree: 0
+					"B": {"D"},           // outdegree: 2
+					"C": {"B", "D"},      // outdegree: 1
+					// D outdegree: 3
 				},
 			},
-			want: []string{"A", "C", "B", "D"},
+			want: []string{"D", "B", "C", "A"},
 		},
 		{
-			name: "alphabetically sorted nodes of equal indegree",
+			name: "alphabetically sorted nodes of equal outdegree",
 			args: args{
 				nodes: map[string][]string{
+					"Apple":              {"ZZZZZZZZZZZZZZZZZZ", "Banana", "Empire", "Electro", "Electronic", "Election"},
 					"Banana":             {"Chiropractor"},
-					"Apple":              {"Banana"},
 					"Date":               {"Electron"},
+					"ZZZZZZZZZZZZZZZZZZ": {"Banana"},
 					"Empire":             {"Electrons"},
 					"Chiropractor":       {"Date"},
-					"ZZZZZZZZZZZZZZZZZZ": {"Apple", "Banana", "Empire", "Electro", "Electronic", "Election"},
 				},
 			},
 			want: []string{
-				"ZZZZZZZZZZZZZZZZZZ", "Apple", "Chiropractor",
-				"Date", "Election", "Electro", "Electron", "Electronic",
-				"Electrons", "Empire", "Banana",
+				"Election", "Electro", "Electron", "Electronic",
+				"Electrons", "Banana", "Chiropractor", "Date", "Empire", "ZZZZZZZZZZZZZZZZZZ", "Apple",
 			},
 		},
 		{
