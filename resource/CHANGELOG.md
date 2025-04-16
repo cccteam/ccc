@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.25](https://github.com/cccteam/ccc/compare/resource/v0.0.24...resource/v0.0.25) (2025-04-16)
+
+
+### Features
+
+* Do not label resource field as required when default defined in the DB ([#254](https://github.com/cccteam/ccc/issues/254)) ([8f11c65](https://github.com/cccteam/ccc/commit/8f11c6523b7fba6122f293b44734742245e08913))
+
 ## [0.0.24](https://github.com/cccteam/ccc/compare/resource/v0.0.23...resource/v0.0.24) (2025-04-11)
 
 
