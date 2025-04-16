@@ -349,6 +349,7 @@ func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, er
 		c.GENERATION_EXPRESSION,
 		c.ORDINAL_POSITION,
 		COALESCE(d.KEY_ORDINAL_POSITION, 1) AS KEY_ORDINAL_POSITION,
+		c.COLUMN_DEFAULT IS NOT NULL AS HAS_DEFAULT,
 	FROM INFORMATION_SCHEMA.COLUMNS c
 		LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
 			AND t.TABLE_TYPE = 'BASE TABLE'
@@ -363,7 +364,7 @@ func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, er
 		AND c.COLUMN_NAME NOT LIKE '%_HIDDEN'
 	GROUP BY c.TABLE_NAME, c.COLUMN_NAME, IS_NULLABLE, c.SPANNER_TYPE,
 	d.IS_PRIMARY_KEY, d.IS_FOREIGN_KEY, d.REFERENCED_COLUMN, d.REFERENCED_TABLE,
-	IS_VIEW, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION
+	IS_VIEW, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
 
 	return c.createTableMapUsingQuery(ctx, qry)
@@ -437,6 +438,10 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 
 		if r.IsUniqueIndex {
 			column.IsUniqueIndex = true
+		}
+
+		if r.HasDefault {
+			column.HasDefault = true
 		}
 
 		table.Columns[r.ColumnName] = column

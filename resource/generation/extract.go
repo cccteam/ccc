@@ -50,6 +50,7 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 			KeyOrdinalPosition: tableColumn.KeyOrdinalPosition,
 			ReferencedResource: tableColumn.ReferencedTable,
 			ReferencedField:    tableColumn.ReferencedColumn,
+			HasDefault:         tableColumn.HasDefault,
 		}
 	}
 
