@@ -117,6 +117,7 @@ type InformationSchemaResult struct {
 	GenerationExpression *string `spanner:"GENERATION_EXPRESSION"`
 	OrdinalPosition      int64   `spanner:"ORDINAL_POSITION"`
 	KeyOrdinalPosition   int64   `spanner:"KEY_ORDINAL_POSITION"`
+	HasDefault           bool    `spanner:"HAS_DEFAULT"`
 }
 
 type tableMetadata struct {
@@ -139,6 +140,7 @@ type columnMeta struct {
 	KeyOrdinalPosition int64
 	ReferencedTable    string
 	ReferencedColumn   string
+	HasDefault         bool
 }
 
 type generationOption struct {
@@ -274,6 +276,7 @@ type resourceField struct {
 	IsEnumerated       bool
 	ReferencedResource string
 	ReferencedField    string
+	HasDefault         bool
 }
 
 func (f *resourceField) TypescriptDataType() string {
@@ -436,7 +439,7 @@ func (f *resourceField) IsRequired() bool {
 		return true
 	}
 
-	if !f.IsPrimaryKey && !f.IsNullable {
+	if !f.IsPrimaryKey && !f.IsNullable && !f.HasDefault {
 		return true
 	}
 
