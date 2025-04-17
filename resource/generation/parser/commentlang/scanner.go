@@ -101,13 +101,18 @@ func (s *scanner) Scan() error {
 				return errors.New(s.error("invalid keyword"))
 			}
 
+			var (
+				arg []byte
+				err error
+			)
 			if peek, ok := s.peekNext(); ok && peek == byte('(') {
-				arg, err := s.scanArguments()
+				arg, err = s.scanArguments()
 				if err != nil {
 					return err
 				}
-				s.addKeywordArgument(kw, arg)
 			}
+
+			s.addKeywordArgument(kw, arg)
 
 		default:
 			return errors.New(s.error("unexpected character %q", string(char)))
@@ -124,7 +129,9 @@ func (s *scanner) addKeywordArgument(kw Keyword, arg []byte) {
 		s.keywordArguments[kw] = make([]string, 0, 1)
 	}
 
-	s.keywordArguments[kw] = append(s.keywordArguments[kw], string(arg))
+	if arg != nil {
+		s.keywordArguments[kw] = append(s.keywordArguments[kw], string(arg))
+	}
 }
 
 func (s *scanner) scanArguments() ([]byte, error) {
