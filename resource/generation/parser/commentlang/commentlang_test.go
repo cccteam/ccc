@@ -26,7 +26,8 @@ func Test_commentLang(t *testing.T) {
 
 */`},
 			want: map[commentlang.Keyword][]string{
-				commentlang.Substring: {"SUBSTR(%self%-4)"},
+				commentlang.UniqueIndex: {},
+				commentlang.Substring:   {"SUBSTR(%self%-4)"},
 			},
 		},
 		{
@@ -46,6 +47,13 @@ func Test_commentLang(t *testing.T) {
 			args: args{comment: `// @primarykey (Id, Description)`},
 			want: map[commentlang.Keyword][]string{
 				commentlang.PrimaryKey: {"Id, Description"},
+			},
+		},
+		{
+			name: "singular no args",
+			args: args{comment: `// @primarykey`},
+			want: map[commentlang.Keyword][]string{
+				commentlang.PrimaryKey: {},
 			},
 		},
 		{
