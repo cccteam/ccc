@@ -2,6 +2,7 @@ package commentlang
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -32,7 +33,55 @@ type scanner struct {
 	pos              int
 }
 
-func NewScanner(src []byte) *scanner {
+func Scan(src []string) (map[Keyword][]string, error) {
+	results := make(map[Keyword][]string)
+	for i := range src {
+		scanner := newScanner([]byte(src[i]))
+		if err := scanner.scan(); err != nil {
+			return nil, err
+		}
+
+		results = combineResults(results, scanner.result())
+	}
+
+	return results, nil
+}
+
+func combineResults(r1, r2 map[Keyword][]string) map[Keyword][]string {
+	var result map[Keyword][]string
+
+	keys := make([]Keyword, 0, len(r1)+len(r2))
+
+	for k := range r1 {
+		keys = append(keys, k)
+	}
+	for k := range r2 {
+		keys = append(keys, k)
+	}
+
+	keys = slices.Compact(keys)
+	result = make(map[Keyword][]string, len(keys))
+
+	for _, k := range keys {
+		v1, ok1 := r1[k]
+		v2, ok2 := r2[k]
+
+		switch {
+		case ok1 && ok2:
+			result[k] = v1
+			result[k] = append(result[k], v2...)
+			result[k] = slices.Compact(result[k])
+		case ok1:
+			result[k] = v1
+		case ok2:
+			result[k] = v2
+		}
+	}
+
+	return result
+}
+
+func newScanner(src []byte) *scanner {
 	return &scanner{
 		src:              src,
 		identifiers:      make(map[string]struct{}),
@@ -64,7 +113,7 @@ func (s *scanner) consumeWhitespace() (byte, bool) {
 	return char, eof
 }
 
-func (s *scanner) Scan() error {
+func (s *scanner) scan() error {
 	var (
 		char byte
 		eof  bool
@@ -187,7 +236,7 @@ loop:
 	return buf, nil
 }
 
-func (s *scanner) Result() map[Keyword][]string {
+func (s *scanner) result() map[Keyword][]string {
 	return s.keywordArguments
 }
 
