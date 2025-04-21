@@ -66,23 +66,21 @@ func Test_commentLang(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			s := commentlang.NewScanner([]byte(tt.args.comment))
-			err := s.Scan()
+			got, err := commentlang.Scan([]string{tt.args.comment})
 			if err != nil && tt.wantErr {
 				return
 			}
 			if err != nil {
-				t.Errorf("commentlang.scanner.Scan() error (wantErr=%v): %s", tt.wantErr, err.Error())
+				t.Errorf("commentlang.Scan() error (wantErr=%v): %s", tt.wantErr, err.Error())
 			}
 			if tt.wantErr {
-				t.Errorf("commentlang.scanner.Scan() did not error (wantErr=%v)", tt.wantErr)
+				t.Errorf("commentlang.Scan() did not error (wantErr=%v)", tt.wantErr)
 
 				return
 			}
 
-			got := s.Result()
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("commentlang.scanner.Result() mismatch (-want +got):\n%s", diff)
+				t.Errorf("commentlang.Result() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
