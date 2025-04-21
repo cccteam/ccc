@@ -144,6 +144,10 @@ func newStruct(obj types.Object, unwrap bool) (Struct, bool) {
 	return s, true
 }
 
+func (s Struct) Comments() []string {
+	return s.comments
+}
+
 func (s *Struct) AddInterface(iface string) {
 	if !slices.Contains(s.interfaces, iface) {
 		s.interfaces = append(s.interfaces, iface)
@@ -248,4 +252,8 @@ func (f Field) ResolvedType() string {
 	}
 
 	return f.Type()
+}
+
+func (f Field) Comments() []string {
+	return f.comments
 }
