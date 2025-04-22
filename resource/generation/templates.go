@@ -208,7 +208,7 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet *resource.PatchSet[
 	}
 	
 	patchSet.
-		SetKey("ID", id).
+		SetKey("{{ .Resource.PrimaryKeyName }}", id).
 		SetPatchType(resource.CreatePatchType)
 	
 	return &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}, nil
@@ -221,7 +221,7 @@ func New{{ .Resource.Name }}CreatePatch() (*{{ .Resource.Name }}CreatePatch, err
 	}
 	
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
-		SetKey("ID", id).
+		SetKey("{{ .Resource.PrimaryKeyName }}", id).
 		SetPatchType(resource.CreatePatchType)
 
 	return &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}, nil
