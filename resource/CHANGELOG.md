@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.26](https://github.com/cccteam/ccc/compare/resource/v0.0.25...resource/v0.0.26) (2025-04-22)
+
+
+### Features
+
+* Support singular primary keys with names other than 'Id' ([#259](https://github.com/cccteam/ccc/issues/259)) ([733ebb0](https://github.com/cccteam/ccc/commit/733ebb02a25c4b24b109a9745163ec624178cdec))
+
+
+### Bug Fixes
+
+* add google's civil.date type to typescript overrides ([#257](https://github.com/cccteam/ccc/issues/257)) ([f4ee8f4](https://github.com/cccteam/ccc/commit/f4ee8f44d6bd18d9ed771acf80eb4c9e4f68ceac))
+* run go mod tidy ([#260](https://github.com/cccteam/ccc/issues/260)) ([0381744](https://github.com/cccteam/ccc/commit/038174498e26525defc01a3ebada433c72b7f802))
+* update resource & app handler templates to import google's civil package instead of ccc's ([#255](https://github.com/cccteam/ccc/issues/255)) ([fb54aef](https://github.com/cccteam/ccc/commit/fb54aefb0c3c87e5c5c2482e10d59ec626c9359f))
+
 ## [0.0.25](https://github.com/cccteam/ccc/compare/resource/v0.0.24...resource/v0.0.25) (2025-04-16)
 
 
