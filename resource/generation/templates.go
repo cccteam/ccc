@@ -444,7 +444,7 @@ import (
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).SetID(id)
+		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKeyName }}(id)
 
 		row, err := res.Query().SpannerRead(ctx, a.ReadTxn())
 		if err != nil {
