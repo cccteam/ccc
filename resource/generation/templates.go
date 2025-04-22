@@ -208,7 +208,7 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet *resource.PatchSet[
 	}
 	
 	patchSet.
-		SetKey("{{ .Resource.PrimaryKeyName }}", id).
+		SetKey("{{ .Resource.PrimaryKey.Name }}", id).
 		SetPatchType(resource.CreatePatchType)
 	
 	return &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}, nil
@@ -221,7 +221,7 @@ func New{{ .Resource.Name }}CreatePatch() (*{{ .Resource.Name }}CreatePatch, err
 	}
 	
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
-		SetKey("{{ .Resource.PrimaryKeyName }}", id).
+		SetKey("{{ .Resource.PrimaryKey.Name }}", id).
 		SetPatchType(resource.CreatePatchType)
 
 	return &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}, nil
@@ -444,7 +444,7 @@ import (
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKeyName }}(id)
+		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id)
 
 		row, err := res.Query().SpannerRead(ctx, a.ReadTxn())
 		if err != nil {
@@ -510,7 +510,7 @@ import (
 					if err := patch.PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerBuffer()")
 					}
-					resp.IDs = append(resp.IDs, patch.{{ .Resource.PrimaryKeyName }}())
+					resp.IDs = append(resp.IDs, patch.{{ .Resource.PrimaryKey.Name }}())
 					{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
 					if err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
@@ -616,7 +616,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 							if err := patch.PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
 							}
-							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.{{ .Resource.PrimaryKeyName }}())
+							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.{{ .Resource.PrimaryKey.Name }}())
 							{{- else }}
 							id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
 							if err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
