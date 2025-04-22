@@ -251,6 +251,20 @@ func (r *resourceInfo) PrimaryKeyType() string {
 	return ""
 }
 
+func (r *resourceInfo) PrimaryKey() *resourceField {
+	if r.HasCompoundPrimaryKey {
+		return nil
+	}
+
+	for _, f := range r.Fields {
+		if f.IsPrimaryKey {
+			return f
+		}
+	}
+
+	return nil
+}
+
 func (r *resourceInfo) HasIndexes() bool {
 	for _, field := range r.Fields {
 		if field.IsIndex || field.IsUniqueIndex {
