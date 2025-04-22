@@ -510,7 +510,7 @@ import (
 					if err := patch.PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerBuffer()")
 					}
-					resp.IDs = append(resp.IDs, patch.ID())
+					resp.IDs = append(resp.IDs, patch.{{ .Resource.PrimaryKeyName }}())
 					{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
 					if err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
@@ -616,7 +616,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 							if err := patch.PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
 							}
-							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.ID())
+							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.{{ .Resource.PrimaryKeyName }}())
 							{{- else }}
 							id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
 							if err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
