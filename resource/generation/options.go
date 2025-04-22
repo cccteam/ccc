@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"time"
 
+	"cloud.google.com/go/civil"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
@@ -208,6 +209,7 @@ func defaultTypescriptOverrides() map[string]string {
 		reflect.TypeOf(decimal.Decimal{}).String():     "number",
 		reflect.TypeOf(decimal.NullDecimal{}).String(): "number",
 		reflect.TypeOf(time.Time{}).String():           "Date",
+		reflect.TypeOf(civil.Date{}).String():          "Date",
 		"bool":                                         "boolean",
 		"string":                                       "string",
 		"int":                                          "number",
