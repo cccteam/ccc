@@ -95,7 +95,7 @@ func Test_commentLang(t *testing.T) {
 
 func Test_commentLangFieldErrors(t *testing.T) {
 	type args struct {
-		comment string
+		comment []string
 		mode    commentlang.ScanMode
 	}
 	tests := []struct {
@@ -106,14 +106,26 @@ func Test_commentLangFieldErrors(t *testing.T) {
 	}{
 		{
 			name:    "primarykey with args returns an error when using ScanField mode",
-			args:    args{comment: `// @primarykey (Id, Description)`, mode: commentlang.ScanField},
+			args:    args{comment: []string{`// @primarykey (Id, Description)`}, mode: commentlang.ScanField},
 			wantErr: true,
 		},
 		{
 			name: "primarykey without args does not error when using ScanField mode",
-			args: args{comment: `// @primarykey `, mode: commentlang.ScanField},
+			args: args{comment: []string{`// @primarykey`}, mode: commentlang.ScanField},
 			want: map[commentlang.Keyword][]string{
 				commentlang.PrimaryKey: {},
+			},
+		},
+		{
+			name: "multiple singleline field comments",
+			args: args{
+				comment: []string{`// @primarykey`, `// @substring (%self% - 4)`, `// @check (%self% = 'S')`},
+				mode:    commentlang.ScanField,
+			},
+			want: map[commentlang.Keyword][]string{
+				commentlang.PrimaryKey: {},
+				commentlang.Substring:  {`%self% - 4`},
+				commentlang.Check:      {`%self% = 'S'`},
 			},
 		},
 	}
@@ -121,7 +133,7 @@ func Test_commentLangFieldErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := commentlang.Scan([]string{tt.args.comment}, tt.args.mode)
+			got, err := commentlang.Scan(tt.args.comment, tt.args.mode)
 			if err != nil && tt.wantErr {
 				return
 			}
