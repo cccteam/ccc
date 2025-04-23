@@ -2,26 +2,31 @@ package commentlang
 
 import (
 	"fmt"
-	"slices"
+	"strings"
 
 	"github.com/go-playground/errors/v5"
 )
 
 type (
 	keyword            string
-	fieldKeywordNoArgs = keyword
+	fieldKeywordNoArgs keyword
 	Keyword            interface {
-		isKeyword()
+		keyword() keyword
 	}
 	arglessFieldKeyword interface {
 		isArglessFieldKeyword()
 	}
 )
 
-func (keyword) isKeyword()                        {}
+func (k keyword) keyword() keyword {
+	return k
+}
 func (fieldKeywordNoArgs) isArglessFieldKeyword() {}
+func (k fieldKeywordNoArgs) keyword() keyword {
+	return keyword(k)
+}
 
-var keywords = []keyword{PrimaryKey, ForeignKey, Check, Default, Substring, UniqueIndex}
+var keywords = []Keyword{PrimaryKey, ForeignKey, Check, Default, Substring, UniqueIndex}
 
 const (
 	// remember to add new keywords to the slice above ^^^
@@ -31,7 +36,7 @@ const (
 	Check       keyword            = "check"
 	Default     keyword            = "default"
 	Substring   keyword            = "substring"
-	UniqueIndex keyword            = "uniqueindex"
+	UniqueIndex fieldKeywordNoArgs = "uniqueindex"
 )
 
 type ScanMode interface {
@@ -270,16 +275,16 @@ func (s *scanner) matchKeyword() (Keyword, bool) {
 
 	ident := s.consumeIdentifier()
 	for _, kword := range keywords {
-		if len(ident) == len(kword) && keyword(ident) == kword {
+		if len(ident) == len(kword.keyword()) && keyword(ident) == kword.keyword() {
 			return kword, true
 		}
 
 		// calculating a similarity score for identifiers is expensive
 		// so we should only do it if they're nearly the same length
-		v := len(ident) - len(kword)
+		v := len(ident) - len(kword.keyword())
 		if -2 <= v && v <= 2 {
-			if ss := similarity(string(ident), string(kword)); ss > matchSimilarity && ss > 0.65 {
-				possibleMatch = kword
+			if ss := similarity(string(ident), string(kword.keyword())); ss > matchSimilarity && ss > 0.65 {
+				possibleMatch = kword.keyword()
 				matchSimilarity = ss
 			}
 		}
