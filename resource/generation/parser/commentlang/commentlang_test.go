@@ -21,17 +21,16 @@ func Test_commentLang(t *testing.T) {
 		{
 			name: "multiline",
 			args: args{
-				comment: `/* @uniqueindex
-@substring
+				comment: `/* @uniqueindex (Id, Description)
 
-@substring (SUBSTR(%self%-4))
+@substring (SUBSTR(@self-4))
 
 */`,
 				mode: commentlang.ScanStruct,
 			},
 			want: map[commentlang.Keyword][]string{
-				commentlang.UniqueIndex: {},
-				commentlang.Substring:   {"SUBSTR(%self%-4)"},
+				commentlang.UniqueIndex: {"Id, Description"},
+				commentlang.Substring:   {"SUBSTR(@self-4)"},
 			},
 		},
 		{
@@ -57,11 +56,9 @@ func Test_commentLang(t *testing.T) {
 			},
 		},
 		{
-			name: "singular no args",
-			args: args{comment: `// @primarykey`, mode: commentlang.ScanStruct},
-			want: map[commentlang.Keyword][]string{
-				commentlang.PrimaryKey: {},
-			},
+			name:    "singular missing args error",
+			args:    args{comment: `// @primarykey`, mode: commentlang.ScanStruct},
+			wantErr: true,
 		},
 		{
 			name:    "typo returns an error",
@@ -119,13 +116,13 @@ func Test_commentLangFieldErrors(t *testing.T) {
 		{
 			name: "multiple singleline field comments",
 			args: args{
-				comment: []string{`// @primarykey`, `// @substring (%self% - 4)`, `// @check (%self% = 'S')`},
+				comment: []string{`// @primarykey`, `// @substring (@self - 4)`, `// @check (@self = 'S')`},
 				mode:    commentlang.ScanField,
 			},
 			want: map[commentlang.Keyword][]string{
 				commentlang.PrimaryKey: {},
-				commentlang.Substring:  {`%self% - 4`},
-				commentlang.Check:      {`%self% = 'S'`},
+				commentlang.Substring:  {`@self - 4`},
+				commentlang.Check:      {`@self = 'S'`},
 			},
 		},
 	}

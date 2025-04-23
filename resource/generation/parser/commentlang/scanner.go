@@ -8,35 +8,40 @@ import (
 )
 
 type (
-	keyword            string
-	fieldKeywordNoArgs keyword
-	Keyword            interface {
-		keyword() keyword
+	keyword     string
+	keywordOpts struct {
+		argsRequired           bool
+		noArgs                 bool
+		argsRequiredWhenStruct bool
+		argsRequiredWhenField  bool
+		noArgsWhenStruct       bool
+		noArgsWhenField        bool
+		exclusive              bool
 	}
-	arglessFieldKeyword interface {
-		isArglessFieldKeyword()
-	}
+	Keyword interface{ isKeyword() }
 )
 
-func (k keyword) keyword() keyword {
-	return k
-}
-func (fieldKeywordNoArgs) isArglessFieldKeyword() {}
-func (k fieldKeywordNoArgs) keyword() keyword {
-	return keyword(k)
-}
+func (keyword) isKeyword() {}
 
-var keywords = []Keyword{PrimaryKey, ForeignKey, Check, Default, Substring, UniqueIndex}
+var keywords = map[keyword]keywordOpts{
+	illegal:     {},
+	PrimaryKey:  {argsRequiredWhenStruct: true, noArgsWhenField: true, exclusive: true},
+	ForeignKey:  {argsRequired: true},
+	Check:       {argsRequired: true},
+	Default:     {argsRequired: true},
+	Substring:   {argsRequired: true},
+	UniqueIndex: {argsRequiredWhenStruct: true, noArgsWhenField: true},
+}
 
 const (
-	// remember to add new keywords to the slice above ^^^
-	illegal     keyword            = ""
-	PrimaryKey  fieldKeywordNoArgs = "primarykey"
-	ForeignKey  keyword            = "foreignkey"
-	Check       keyword            = "check"
-	Default     keyword            = "default"
-	Substring   keyword            = "substring"
-	UniqueIndex fieldKeywordNoArgs = "uniqueindex"
+	// remember to add new keywords to the map above ^^^
+	illegal     keyword = ""
+	PrimaryKey  keyword = "primarykey"
+	ForeignKey  keyword = "foreignkey"
+	Check       keyword = "check"
+	Default     keyword = "default"
+	Substring   keyword = "substring"
+	UniqueIndex keyword = "uniqueindex"
 )
 
 type ScanMode interface {
@@ -150,9 +155,17 @@ func (s *scanner) scan() error {
 					s.pos += 1 // push error karat to start of arguments
 					return errors.New(s.errorPostscript("unexpected argument", "%s keyword cannot take arguments on a field", kw))
 				}
+
 				arg, err = s.scanArguments()
 				if err != nil {
 					return err
+				}
+			} else if s.requiresArguments(kw) {
+				switch s.mode {
+				case ScanStruct:
+					return errors.New(s.errorPostscript("expected argument", "%s requires an argument?", kw))
+				case ScanField:
+					return errors.New(s.errorPostscript("expected argument", "%[1]s requires an argument. did you mean to use `%[1]s (@self)`?", kw))
 				}
 			}
 
@@ -168,26 +181,36 @@ func (s *scanner) scan() error {
 	return nil
 }
 
-func (s *scanner) addKeywordArgument(kw Keyword, arg []byte) {
-	if _, ok := s.keywordArguments[kw]; !ok {
-		s.keywordArguments[kw] = make([]string, 0, 1)
+func (s *scanner) addKeywordArgument(key Keyword, arg []byte) {
+	if _, ok := s.keywordArguments[key]; !ok {
+		s.keywordArguments[key] = make([]string, 0, 1)
 	}
 
 	if arg != nil {
-		s.keywordArguments[kw] = append(s.keywordArguments[kw], string(arg))
+		s.keywordArguments[key] = append(s.keywordArguments[key], string(arg))
 	}
 }
 
-func (s scanner) canHaveArguments(kw Keyword) bool {
-	if s.mode == ScanStruct {
-		return true
+func (s scanner) canHaveArguments(key keyword) bool {
+	switch s.mode {
+	case ScanStruct:
+		return !keywords[key].noArgsWhenStruct
+	case ScanField:
+		return !keywords[key].noArgsWhenField
+	default:
+		panic("new scanMode not handled")
 	}
+}
 
-	if _, ok := kw.(arglessFieldKeyword); !ok {
-		return true
+func (s scanner) requiresArguments(key keyword) bool {
+	switch s.mode {
+	case ScanStruct:
+		return keywords[key].argsRequiredWhenStruct
+	case ScanField:
+		return keywords[key].argsRequiredWhenField
+	default:
+		panic("new scanMode not handled")
 	}
-
-	return false
 }
 
 func (s *scanner) scanArguments() ([]byte, error) {
@@ -268,23 +291,23 @@ func (s *scanner) consumeIdentifier() []byte {
 	return buf
 }
 
-func (s *scanner) matchKeyword() (Keyword, bool) {
+func (s *scanner) matchKeyword() (keyword, bool) {
 	currentPos := s.pos
 	possibleMatch := illegal
 	var matchSimilarity float64
 
 	ident := s.consumeIdentifier()
-	for _, kword := range keywords {
-		if len(ident) == len(kword.keyword()) && keyword(ident) == kword.keyword() {
-			return kword, true
+	for key := range keywords {
+		if len(ident) == len(key) && keyword(ident) == key {
+			return key, true
 		}
 
 		// calculating a similarity score for identifiers is expensive
 		// so we should only do it if they're nearly the same length
-		v := len(ident) - len(kword.keyword())
+		v := len(ident) - len(key)
 		if -2 <= v && v <= 2 {
-			if ss := similarity(string(ident), string(kword.keyword())); ss > matchSimilarity && ss > 0.65 {
-				possibleMatch = kword.keyword()
+			if ss := similarity(string(ident), string(key)); ss > matchSimilarity && ss > 0.65 {
+				possibleMatch = key
 				matchSimilarity = ss
 			}
 		}
