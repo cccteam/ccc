@@ -8,35 +8,59 @@ import (
 )
 
 type (
-	keyword string
-	Keyword interface {
+	keyword            string
+	fieldKeywordNoArgs = keyword
+	Keyword            interface {
 		isKeyword()
+	}
+	arglessFieldKeyword interface {
+		isArglessFieldKeyword()
 	}
 )
 
-func (keyword) isKeyword() {}
+func (keyword) isKeyword()                        {}
+func (fieldKeywordNoArgs) isArglessFieldKeyword() {}
 
-var keywords = []keyword{PrimaryKey, ForeignKey, Substring, UniqueIndex}
+var keywords = []keyword{PrimaryKey, ForeignKey, Check, Default, Substring, UniqueIndex}
 
 const (
-	illegal     keyword = ""
-	PrimaryKey  keyword = "primarykey"
-	ForeignKey  keyword = "foreignkey"
-	Substring   keyword = "substring"
-	UniqueIndex keyword = "uniqueindex"
+	// remember to add new keywords to the slice above ^^^
+	illegal     keyword            = ""
+	PrimaryKey  fieldKeywordNoArgs = "primarykey"
+	ForeignKey  keyword            = "foreignkey"
+	Check       keyword            = "check"
+	Default     keyword            = "default"
+	Substring   keyword            = "substring"
+	UniqueIndex keyword            = "uniqueindex"
+)
+
+type ScanMode interface {
+	mode() scanMode
+}
+
+type scanMode int
+
+func (s scanMode) mode() scanMode {
+	return s
+}
+
+const (
+	ScanStruct scanMode = iota << 1
+	ScanField
 )
 
 type scanner struct {
 	src              []byte
+	mode             scanMode
 	identifiers      map[string]struct{}
 	keywordArguments map[Keyword][]string
 	pos              int
 }
 
-func Scan(src []string) (map[Keyword][]string, error) {
+func Scan(src []string, mode ScanMode) (map[Keyword][]string, error) {
 	results := make(map[Keyword][]string)
 	for i := range src {
-		scanner := newScanner([]byte(src[i]))
+		scanner := newScanner([]byte(src[i]), mode.mode())
 		if err := scanner.scan(); err != nil {
 			return nil, err
 		}
@@ -81,9 +105,10 @@ func combineResults(r1, r2 map[Keyword][]string) map[Keyword][]string {
 	return result
 }
 
-func newScanner(src []byte) *scanner {
+func newScanner(src []byte, mode scanMode) *scanner {
 	return &scanner{
 		src:              src,
+		mode:             mode,
 		identifiers:      make(map[string]struct{}),
 		keywordArguments: make(map[Keyword][]string),
 	}
@@ -155,6 +180,10 @@ func (s *scanner) scan() error {
 				err error
 			)
 			if peek, ok := s.peekNext(); ok && peek == byte('(') {
+				if !s.canHaveArguments(kw) {
+					s.pos += 1 // push error karat to start of arguments
+					return errors.New(s.errorPostscript("unexpected argument", "%s keyword cannot take arguments on a field", kw))
+				}
 				arg, err = s.scanArguments()
 				if err != nil {
 					return err
@@ -181,6 +210,18 @@ func (s *scanner) addKeywordArgument(kw Keyword, arg []byte) {
 	if arg != nil {
 		s.keywordArguments[kw] = append(s.keywordArguments[kw], string(arg))
 	}
+}
+
+func (s scanner) canHaveArguments(kw Keyword) bool {
+	if s.mode == ScanStruct {
+		return true
+	}
+
+	if _, ok := kw.(arglessFieldKeyword); !ok {
+		return true
+	}
+
+	return false
 }
 
 func (s *scanner) scanArguments() ([]byte, error) {

@@ -10,6 +10,7 @@ import (
 func Test_commentLang(t *testing.T) {
 	type args struct {
 		comment string
+		mode    commentlang.ScanMode
 	}
 	tests := []struct {
 		name    string
@@ -19,12 +20,15 @@ func Test_commentLang(t *testing.T) {
 	}{
 		{
 			name: "multiline",
-			args: args{comment: `/* @uniqueindex
+			args: args{
+				comment: `/* @uniqueindex
 @substring
 
 @substring (SUBSTR(%self%-4))
 
-*/`},
+*/`,
+				mode: commentlang.ScanStruct,
+			},
 			want: map[commentlang.Keyword][]string{
 				commentlang.UniqueIndex: {},
 				commentlang.Substring:   {"SUBSTR(%self%-4)"},
@@ -32,11 +36,14 @@ func Test_commentLang(t *testing.T) {
 		},
 		{
 			name: "multiline with and without space before arguments",
-			args: args{comment: `/* @uniqueindex (Id)
+			args: args{
+				comment: `/* @uniqueindex (Id)
 @uniqueindex(Id2)
 @substring (Id)
 @substring(Other)
-*/`},
+*/`,
+				mode: commentlang.ScanStruct,
+			},
 			want: map[commentlang.Keyword][]string{
 				commentlang.Substring:   {"Id", "Other"},
 				commentlang.UniqueIndex: {"Id", "Id2"},
@@ -44,21 +51,21 @@ func Test_commentLang(t *testing.T) {
 		},
 		{
 			name: "singular",
-			args: args{comment: `// @primarykey (Id, Description)`},
+			args: args{comment: `// @primarykey (Id, Description)`, mode: commentlang.ScanStruct},
 			want: map[commentlang.Keyword][]string{
 				commentlang.PrimaryKey: {"Id, Description"},
 			},
 		},
 		{
 			name: "singular no args",
-			args: args{comment: `// @primarykey`},
+			args: args{comment: `// @primarykey`, mode: commentlang.ScanStruct},
 			want: map[commentlang.Keyword][]string{
 				commentlang.PrimaryKey: {},
 			},
 		},
 		{
 			name:    "typo returns an error",
-			args:    args{comment: `// @primarkyey (Id, Description)`},
+			args:    args{comment: `// @primarkyey (Id, Description)`, mode: commentlang.ScanStruct},
 			wantErr: true,
 		},
 	}
@@ -66,21 +73,69 @@ func Test_commentLang(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := commentlang.Scan([]string{tt.args.comment})
+			got, err := commentlang.Scan([]string{tt.args.comment}, tt.args.mode)
 			if err != nil && tt.wantErr {
 				return
 			}
 			if err != nil {
-				t.Errorf("commentlang.Scan() error (wantErr=%v): %s", tt.wantErr, err.Error())
+				t.Errorf("%s: commentlang.Scan() error (wantErr=%v): %s", t.Name(), tt.wantErr, err.Error())
 			}
 			if tt.wantErr {
-				t.Errorf("commentlang.Scan() did not error (wantErr=%v)", tt.wantErr)
+				t.Errorf("%s: commentlang.Scan() did not error (wantErr=%v)", t.Name(), tt.wantErr)
 
 				return
 			}
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("commentlang.Result() mismatch (-want +got):\n%s", diff)
+				t.Errorf("%s: commentlang.Result() mismatch (-want +got):\n%s", t.Name(), diff)
+			}
+		})
+	}
+}
+
+func Test_commentLangFieldErrors(t *testing.T) {
+	type args struct {
+		comment string
+		mode    commentlang.ScanMode
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    map[commentlang.Keyword][]string
+		wantErr bool
+	}{
+		{
+			name:    "primarykey with args returns an error when using ScanField mode",
+			args:    args{comment: `// @primarykey (Id, Description)`, mode: commentlang.ScanField},
+			wantErr: true,
+		},
+		{
+			name: "primarykey without args does not error when using ScanField mode",
+			args: args{comment: `// @primarykey `, mode: commentlang.ScanField},
+			want: map[commentlang.Keyword][]string{
+				commentlang.PrimaryKey: {},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := commentlang.Scan([]string{tt.args.comment}, tt.args.mode)
+			if err != nil && tt.wantErr {
+				return
+			}
+			if err != nil {
+				t.Errorf("%s: commentlang.Scan() error (wantErr=%v): %s", t.Name(), tt.wantErr, err.Error())
+			}
+			if tt.wantErr {
+				t.Errorf("%s: commentlang.Scan() did not error (wantErr=%v)", t.Name(), tt.wantErr)
+
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("%s: commentlang.Result() mismatch (-want +got):\n%s", t.Name(), diff)
 			}
 		})
 	}
