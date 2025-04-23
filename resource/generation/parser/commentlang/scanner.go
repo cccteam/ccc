@@ -58,51 +58,12 @@ type scanner struct {
 }
 
 func Scan(src []string, mode ScanMode) (map[Keyword][]string, error) {
-	results := make(map[Keyword][]string)
-	for i := range src {
-		scanner := newScanner([]byte(src[i]), mode.mode())
-		if err := scanner.scan(); err != nil {
-			return nil, err
-		}
-
-		results = combineResults(results, scanner.result())
+	scanner := newScanner([]byte(strings.Join(src, "\n")), mode.mode())
+	if err := scanner.scan(); err != nil {
+		return nil, err
 	}
 
-	return results, nil
-}
-
-func combineResults(r1, r2 map[Keyword][]string) map[Keyword][]string {
-	var result map[Keyword][]string
-
-	keys := make([]Keyword, 0, len(r1)+len(r2))
-
-	for k := range r1 {
-		keys = append(keys, k)
-	}
-	for k := range r2 {
-		keys = append(keys, k)
-	}
-
-	keys = slices.Compact(keys)
-	result = make(map[Keyword][]string, len(keys))
-
-	for _, k := range keys {
-		v1, ok1 := r1[k]
-		v2, ok2 := r2[k]
-
-		switch {
-		case ok1 && ok2:
-			result[k] = v1
-			result[k] = append(result[k], v2...)
-			result[k] = slices.Compact(result[k])
-		case ok1:
-			result[k] = v1
-		case ok2:
-			result[k] = v2
-		}
-	}
-
-	return result
+	return scanner.result(), nil
 }
 
 func newScanner(src []byte, mode scanMode) *scanner {
