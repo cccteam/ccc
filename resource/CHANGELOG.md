@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.27](https://github.com/cccteam/ccc/compare/resource/v0.0.26...resource/v0.0.27) (2025-04-24)
+
+
+### Bug Fixes
+
+* Check that the primary key is a generated UUID (vs just a UUID) ([#262](https://github.com/cccteam/ccc/issues/262)) ([78308f1](https://github.com/cccteam/ccc/commit/78308f1486ecc70ad404d2ee9cd720a4b5738b0f))
+
 ## [0.0.26](https://github.com/cccteam/ccc/compare/resource/v0.0.25...resource/v0.0.26) (2025-04-22)
 
 
