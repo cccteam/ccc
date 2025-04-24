@@ -231,9 +231,15 @@ func (r *resourceInfo) SearchIndexes() []*searchIndex {
 	return indexes
 }
 
-func (r *resourceInfo) PrimaryKeyIsUUID() bool {
+func (r *resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
+	if r.HasCompoundPrimaryKey {
+		return false
+	}
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
+			if f.IsForeignKey {
+				return false
+			}
 			return f.Type() == "ccc.UUID"
 		}
 	}
