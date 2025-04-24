@@ -7,43 +7,6 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-type (
-	keyword     string
-	keywordOpts struct {
-		argsRequired           bool
-		noArgs                 bool
-		argsRequiredWhenStruct bool
-		argsRequiredWhenField  bool
-		noArgsWhenStruct       bool
-		noArgsWhenField        bool
-		exclusive              bool
-	}
-	Keyword interface{ isKeyword() }
-)
-
-func (keyword) isKeyword() {}
-
-var keywords = map[keyword]keywordOpts{
-	illegal:     {},
-	PrimaryKey:  {argsRequiredWhenStruct: true, noArgsWhenField: true, exclusive: true},
-	ForeignKey:  {argsRequired: true},
-	Check:       {argsRequired: true},
-	Default:     {argsRequired: true},
-	Substring:   {argsRequired: true},
-	UniqueIndex: {argsRequiredWhenStruct: true, noArgsWhenField: true},
-}
-
-const (
-	// remember to add new keywords to the map above ^^^
-	illegal     keyword = ""
-	PrimaryKey  keyword = "primarykey"
-	ForeignKey  keyword = "foreignkey"
-	Check       keyword = "check"
-	Default     keyword = "default"
-	Substring   keyword = "substring"
-	UniqueIndex keyword = "uniqueindex"
-)
-
 type ScanMode interface {
 	mode() scanMode
 }
@@ -63,11 +26,11 @@ type scanner struct {
 	src              []byte
 	mode             scanMode
 	identifiers      map[string]struct{}
-	keywordArguments map[Keyword][]string
+	keywordArguments map[Keyword][]KeywordArguments
 	pos              int
 }
 
-func Scan(src []string, mode ScanMode) (map[Keyword][]string, error) {
+func Scan(src []string, mode ScanMode) (map[Keyword][]KeywordArguments, error) {
 	scanner := newScanner([]byte(strings.Join(src, "\n")), mode.mode())
 	if err := scanner.scan(); err != nil {
 		return nil, err
@@ -81,7 +44,7 @@ func newScanner(src []byte, mode scanMode) *scanner {
 		src:              src,
 		mode:             mode,
 		identifiers:      make(map[string]struct{}),
-		keywordArguments: make(map[Keyword][]string),
+		keywordArguments: make(map[Keyword][]KeywordArguments),
 	}
 }
 
@@ -147,7 +110,7 @@ func (s *scanner) scan() error {
 			}
 
 			var (
-				arg []byte
+				arg KeywordArguments
 				err error
 			)
 			if peek, ok := s.peekNext(); ok && peek == byte('(') {
@@ -156,7 +119,7 @@ func (s *scanner) scan() error {
 					return errors.New(s.errorPostscript("unexpected argument", "%s keyword cannot take arguments on a field", kw))
 				}
 
-				arg, err = s.scanArguments()
+				arg, err = keywords[kw].scanArgs(s)
 				if err != nil {
 					return err
 				}
@@ -181,13 +144,13 @@ func (s *scanner) scan() error {
 	return nil
 }
 
-func (s *scanner) addKeywordArgument(key Keyword, arg []byte) {
+func (s *scanner) addKeywordArgument(key Keyword, arg KeywordArguments) {
 	if _, ok := s.keywordArguments[key]; !ok {
-		s.keywordArguments[key] = make([]string, 0, 1)
+		s.keywordArguments[key] = make([]KeywordArguments, 0, 1)
 	}
 
 	if arg != nil {
-		s.keywordArguments[key] = append(s.keywordArguments[key], string(arg))
+		s.keywordArguments[key] = append(s.keywordArguments[key], arg)
 	}
 }
 
@@ -217,9 +180,10 @@ func (s *scanner) scanArguments() ([]byte, error) {
 	var (
 		opened          bool
 		openParenthesis int
-		buf             []byte
-		char            byte
-		eof             bool
+
+		buf  []byte
+		char byte
+		eof  bool
 	)
 
 	currentPos := s.pos
@@ -266,7 +230,7 @@ loop:
 	return buf, nil
 }
 
-func (s *scanner) result() map[Keyword][]string {
+func (s *scanner) result() map[Keyword][]KeywordArguments {
 	return s.keywordArguments
 }
 
