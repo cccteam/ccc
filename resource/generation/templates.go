@@ -199,8 +199,7 @@ type {{ .Resource.Name }}CreatePatch struct {
 	patchSet *resource.PatchSet[{{ .Resource.Name }}]
 }
 
-{{ $PrimaryKeyIsUUID := .Resource.PrimaryKeyIsUUID }}
-{{ if and (eq .Resource.HasCompoundPrimaryKey false) (eq $PrimaryKeyIsUUID true) }}
+{{ if .Resource.PrimaryKeyIsGeneratedUUID -}}
 func New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet *resource.PatchSet[{{ .Resource.Name }}]) (*{{ .Resource.Name }}CreatePatch, error) {
 	id, err := ccc.NewUUID()
 	if err != nil {
@@ -462,9 +461,9 @@ import (
 		{{- end }}
 	}
 	
-	{{ $PrimaryKeyIsUUID := .Resource.PrimaryKeyIsUUID }}
+	{{ $PrimaryKeyIsGeneratedUUID := .Resource.PrimaryKeyIsGeneratedUUID }}
 	{{ $PrimaryKeyType := .Resource.PrimaryKeyType }}
-	{{- if $PrimaryKeyIsUUID }}
+	{{- if $PrimaryKeyIsGeneratedUUID }}
 	type response struct {
 		IDs []ccc.UUID ` + "`json:\"iDs\"`" + `
 	}
@@ -476,13 +475,13 @@ import (
 		ctx, span := otel.Tracer(name).Start(r.Context(), "App.Patch{{ Pluralize .Resource.Name }}()")
 		defer span.End()
 
-		{{ if $PrimaryKeyIsUUID }}
+		{{ if $PrimaryKeyIsGeneratedUUID }}
 		var resp response
 		{{- end }}
 		eventSource := resource.UserEvent(ctx)
 
 		if err := a.ExecuteFunc(ctx, func(ctx context.Context, txn resource.TxnBuffer) error {
-			{{- if $PrimaryKeyIsUUID }}
+			{{- if $PrimaryKeyIsGeneratedUUID }}
 			resp = response{}
 			{{- end }}
 			r, err := resource.CloneRequest(r)
@@ -490,7 +489,7 @@ import (
 				return errors.Wrap(err, "resource.CloneRequest()")
 			}
 
-			for op, err := range resource.Operations(r, "/{id}"{{- if eq false $PrimaryKeyIsUUID }}, resource.RequireCreatePath(){{- end }}) {
+			for op, err := range resource.Operations(r, "/{id}"{{- if eq false $PrimaryKeyIsGeneratedUUID }}, resource.RequireCreatePath(){{- end }}) {
 				if err != nil {
 					return errors.Wrap(err, "resource.Operations()")
 				}
@@ -502,7 +501,7 @@ import (
 
 				switch op.Type {
 				case resource.OperationCreate:
-					{{- if $PrimaryKeyIsUUID }}
+					{{- if $PrimaryKeyIsGeneratedUUID }}
 					patch, err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet)
 					if err != nil {
 						return errors.Wrap(err, "resources.New{{ .Resource.Name }}CreatePatchFromPatchSet()")
@@ -535,7 +534,7 @@ import (
 			return httpio.NewEncoder(w).ClientMessage(ctx, spanner.HandleError[resources.{{ .Resource.Name }}](err))
 		}
 
-		{{ if $PrimaryKeyIsUUID  }}
+		{{ if $PrimaryKeyIsGeneratedUUID  }}
 		return httpio.NewEncoder(w).Ok(resp)
 		{{ else }}
 		return httpio.NewEncoder(w).Ok(nil)
@@ -608,7 +607,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 						switch op.Type {
 						case resource.OperationCreate:
-							{{- if $resource.PrimaryKeyIsUUID }}
+							{{- if $resource.PrimaryKeyIsGeneratedUUID }}
 							patch, err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet(patchSet)
 							if err != nil {
 								return httpio.NewEncoder(w).ClientMessage(ctx, err)
