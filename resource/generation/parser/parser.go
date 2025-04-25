@@ -132,16 +132,13 @@ func ParseStructs(pkg *packages.Package) ([]Struct, error) {
 				}
 
 				for i, field := range st.Fields.List {
-					// Right now we're only parsing Doc comments, which are directly above a field's declaration
-					if field.Doc == nil {
-						continue
+					if field.Doc != nil {
+						pStruct.fields[i].comments = field.Doc.Text()
 					}
-
-					pStruct.fields[i].comments = field.Doc.Text()
-					if pStruct.fields[i].name == field.Names[0].Name {
+					if field.Comment != nil {
+						pStruct.fields[i].comments += field.Comment.Text()
 					}
 				}
-
 				parsedStructs = append(parsedStructs, pStruct)
 			}
 
