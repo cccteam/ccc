@@ -9,7 +9,7 @@ import (
 
 func Test_commentLang(t *testing.T) {
 	type args struct {
-		comment []string
+		comment string
 		mode    commentlang.ScanMode
 	}
 	tests := []struct {
@@ -21,12 +21,10 @@ func Test_commentLang(t *testing.T) {
 		{
 			name: "multiline",
 			args: args{
-				comment: []string{`/* @uniqueindex (Id, Description)
-
-@substring (SUBSTR(@self-4))
-@substring (Id)
-@substring(Other)
-*/`},
+				comment: `@uniqueindex (Id, Description)
+					@substring (SUBSTR(@self-4))
+					@substring (Id)
+					@substring(Other)`,
 				mode: commentlang.ScanStruct,
 			},
 			want: map[commentlang.Keyword][]string{
@@ -36,29 +34,29 @@ func Test_commentLang(t *testing.T) {
 		},
 		{
 			name: "singular",
-			args: args{comment: []string{`// @primarykey (Id, Description)`}, mode: commentlang.ScanStruct},
+			args: args{comment: `@primarykey (Id, Description)`, mode: commentlang.ScanStruct},
 			want: map[commentlang.Keyword][]string{
 				commentlang.PrimaryKey: {"Id, Description"},
 			},
 		},
 		{
 			name:    "singular missing args error",
-			args:    args{comment: []string{`// @primarykey`}, mode: commentlang.ScanStruct},
+			args:    args{comment: "@primarykey", mode: commentlang.ScanStruct},
 			wantErr: true,
 		},
 		{
 			name:    "typo returns an error",
-			args:    args{comment: []string{`// @primarkyey (Id, Description)`}, mode: commentlang.ScanStruct},
+			args:    args{comment: "@primarkyey (Id, Description)", mode: commentlang.ScanStruct},
 			wantErr: true,
 		},
 		{
 			name:    "primarykey with args returns an error when using ScanField mode",
-			args:    args{comment: []string{`// @primarykey (Id, Description)`}, mode: commentlang.ScanField},
+			args:    args{comment: "@primarykey (Id, Description)", mode: commentlang.ScanField},
 			wantErr: true,
 		},
 		{
 			name: "primarykey without args does not error when using ScanField mode",
-			args: args{comment: []string{`// @primarykey`}, mode: commentlang.ScanField},
+			args: args{comment: "@primarykey", mode: commentlang.ScanField},
 			want: map[commentlang.Keyword][]string{
 				commentlang.PrimaryKey: {},
 			},
@@ -66,13 +64,13 @@ func Test_commentLang(t *testing.T) {
 		{
 			name: "multiple singleline field comments",
 			args: args{
-				comment: []string{`// @primarykey`, `// @substring (@self - 4)`, `// @check (@self = 'S')`},
+				comment: "@primarykey\n@substring (@self - 4)\n@check (@self = 'S')",
 				mode:    commentlang.ScanField,
 			},
 			want: map[commentlang.Keyword][]string{
 				commentlang.PrimaryKey: {},
-				commentlang.Substring:  {`@self - 4`},
-				commentlang.Check:      {`@self = 'S'`},
+				commentlang.Substring:  {"@self - 4"},
+				commentlang.Check:      {"@self = 'S'"},
 			},
 		},
 	}

@@ -111,7 +111,7 @@ type Struct struct {
 	fields     []Field
 	localTypes []TypeInfo
 	interfaces []string
-	comments   []string
+	comments   string
 }
 
 func newStruct(obj types.Object, unwrap bool) (Struct, bool) {
@@ -144,7 +144,7 @@ func newStruct(obj types.Object, unwrap bool) (Struct, bool) {
 	return s, true
 }
 
-func (s Struct) Comments() []string {
+func (s Struct) Comments() string {
 	return s.comments
 }
 
@@ -216,6 +216,10 @@ func (s Struct) Name() string {
 	return s.name
 }
 
+func (s Struct) NumFields() int {
+	return len(s.fields)
+}
+
 func (s Struct) Fields() []Field {
 	return s.fields
 }
@@ -228,7 +232,7 @@ type Field struct {
 	TypeInfo
 	tags        reflect.StructTag
 	isLocalType bool
-	comments    []string
+	comments    string
 }
 
 func (f Field) String() string {
@@ -245,6 +249,6 @@ func (f Field) IsLocalType() bool {
 	return f.isLocalType
 }
 
-func (f Field) Comments() []string {
+func (f Field) Comments() string {
 	return f.comments
 }
