@@ -59,8 +59,9 @@ func (dg depGraph) addVertex(name string) {
 	}
 }
 
+// TODO: consider moving cycle checking to a one-time check after graph is built
 func (dg depGraph) cycle(src, dst string) string {
-	if !dg.exists(src) || !dg.exists(dst) {
+	if !dg.exists(src) || !dg.exists(dst) || src == dst {
 		return ""
 	}
 
