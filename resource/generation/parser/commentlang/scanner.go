@@ -84,7 +84,6 @@ func (s *scanner) scan() error {
 		case isWhitespace(char):
 			break
 
-
 		case char == byte('@'):
 			kw, ok := s.matchKeyword()
 			if !ok {
@@ -101,10 +100,10 @@ func (s *scanner) scan() error {
 			if peek, ok := s.peekNext(); ok && peek == byte('(') {
 				if !s.canHaveArguments(kw) {
 					s.pos += 1 // push error karat to start of arguments
-					return errors.New(s.errorPostscript("unexpected argument", "%s keyword cannot take arguments on a field", kw))
+					return errors.New(s.errorPostscript("unexpected argument", "%s keyword cannot take arguments here", kw))
 				}
 
-				arg, err = keywords[kw].scanArgs(s)
+				arg, err = s.keywordArgs(kw)
 				if err != nil {
 					return err
 				}
@@ -129,6 +128,33 @@ func (s *scanner) scan() error {
 	return nil
 }
 
+func (s *scanner) keywordArgs(key keyword) (KeywordArguments, error) {
+	if keywords[key][s.mode]&dualArgsRequired != 0 {
+		arg1, err := s.scanArguments()
+		if err != nil {
+			return nil, err
+		}
+
+		if peek, ok := s.peekNext(); !ok || peek != byte('(') {
+			return nil, errors.New(s.error("expected second argument for %s, found %q", key, string(peek)))
+		}
+
+		arg2, err := s.scanArguments()
+		if err != nil {
+			return nil, err
+		}
+
+		return dualArgs{string(arg1), string(arg2)}, nil
+	}
+
+	args, err := s.scanArguments()
+	if err != nil {
+		return nil, err
+	}
+
+	return singleArg{arg: string(args)}, nil
+}
+
 func (s *scanner) addKeywordArgument(key Keyword, arg KeywordArguments) {
 	if _, ok := s.keywordArguments[key]; !ok {
 		s.keywordArguments[key] = make([]KeywordArguments, 0, 1)
@@ -140,25 +166,21 @@ func (s *scanner) addKeywordArgument(key Keyword, arg KeywordArguments) {
 }
 
 func (s scanner) canHaveArguments(key keyword) bool {
-	switch s.mode {
-	case ScanStruct:
-		return !keywords[key].noArgsWhenStruct
-	case ScanField:
-		return !keywords[key].noArgsWhenField
-	default:
-		panic("new scanMode not handled")
+	opts, ok := keywords[key][s.mode]
+	if !ok {
+		return false
 	}
+
+	return opts&noArgs == 0
 }
 
 func (s scanner) requiresArguments(key keyword) bool {
-	switch s.mode {
-	case ScanStruct:
-		return keywords[key].argsRequiredWhenStruct
-	case ScanField:
-		return keywords[key].argsRequiredWhenField
-	default:
-		panic("new scanMode not handled")
+	opts, ok := keywords[key][s.mode]
+	if !ok {
+		return false
 	}
+
+	return opts&argsRequired != 0 || opts&dualArgsRequired != 0
 }
 
 func (s *scanner) scanArguments() ([]byte, error) {
@@ -327,8 +349,20 @@ func (s *scanner) peekNext() (byte, bool) {
 	if s.pos >= len(s.src) {
 		return byte('\x00'), false
 	}
+	counter := 0
+	for {
+		if s.pos+counter >= len(s.src) {
+			return byte('\x00'), false
+		}
 
-	return s.src[s.pos], true
+		if !isWhitespace(s.src[s.pos+counter]) {
+			break
+		}
+
+		counter += 1
+	}
+
+	return s.src[s.pos+counter], true
 }
 
 func (s *scanner) error(msg string, a ...any) string {

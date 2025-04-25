@@ -22,14 +22,13 @@ func Test_commentLang(t *testing.T) {
 			name: "multiline",
 			args: args{
 				comment: `@uniqueindex (Id, Description)
-					@substring (SUBSTR(@self-4))
-					@substring (Id)
-					@substring(Other)`,
+					@foreignkey (Type) (ClaimTypes(Id))
+					@foreignkey (Status) (ClaimStatuses(Id))`,
 				mode: commentlang.ScanStruct,
 			},
 			want: map[commentlang.Keyword][]string{
 				commentlang.UniqueIndex: {"Id, Description"},
-				commentlang.Substring:   {"SUBSTR(@self-4)", "Id", "Other"},
+				commentlang.ForeignKey:  {"Type", "ClaimTypes(Id)", "Status", "ClaimStatuses(Id)"},
 			},
 		},
 		{
