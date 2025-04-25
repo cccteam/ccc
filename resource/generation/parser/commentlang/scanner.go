@@ -2,7 +2,6 @@ package commentlang
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -30,8 +29,8 @@ type scanner struct {
 	pos              int
 }
 
-func Scan(src []string, mode ScanMode) (map[Keyword][]KeywordArguments, error) {
-	scanner := newScanner([]byte(strings.Join(src, "\n")), mode.mode())
+func Scan(src string, mode ScanMode) (map[Keyword][]KeywordArguments, error) {
+	scanner := newScanner([]byte(src), mode.mode())
 	if err := scanner.scan(); err != nil {
 		return nil, err
 	}
