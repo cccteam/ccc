@@ -84,20 +84,6 @@ func (s *scanner) scan() error {
 		case isWhitespace(char):
 			break
 
-		case char == byte('/'):
-			if peek, ok := s.peekNext(); ok {
-				switch peek {
-				case byte('/'), byte('*'):
-					char, eof = s.next()
-				default:
-					return errors.New(s.error("unexpected character %q", string(peek)))
-				}
-			}
-
-		case char == byte('*'):
-			if peek, ok := s.peekNext(); ok && peek == byte('/') {
-				return nil
-			}
 
 		case char == byte('@'):
 			kw, ok := s.matchKeyword()
