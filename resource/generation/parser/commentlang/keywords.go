@@ -1,32 +1,35 @@
 package commentlang
 
-import "github.com/go-playground/errors/v5"
+type keywordFlag int
+
+const (
+	prohibited   keywordFlag = 0
+	argsRequired keywordFlag = 1 << iota
+	dualArgsRequired
+	noArgs
+	exclusive // limit instance of the keyword to 1 per field or struct
+)
 
 type (
 	keyword     string
-	keywordOpts struct {
-		argsRequired           bool
-		noArgs                 bool
-		argsRequiredWhenStruct bool
-		argsRequiredWhenField  bool
-		noArgsWhenStruct       bool
-		noArgsWhenField        bool
-		exclusive              bool
-		scanArgs               func(s *scanner) (KeywordArguments, error)
+	keywordOpts map[scanMode]keywordFlag
+	Keyword     interface {
+		isKeyword()
 	}
-	Keyword interface{ isKeyword() }
 )
 
 func (keyword) isKeyword() {}
 
 var keywords = map[keyword]keywordOpts{
 	illegal:     {},
-	PrimaryKey:  {argsRequiredWhenStruct: true, noArgsWhenField: true, exclusive: true, scanArgs: scanSingleArg},
-	ForeignKey:  {argsRequired: true, scanArgs: scanDualArgs},
-	Check:       {argsRequired: true, scanArgs: scanSingleArg},
-	Default:     {argsRequired: true, scanArgs: scanSingleArg},
-	Substring:   {argsRequired: true, scanArgs: scanSingleArg},
-	UniqueIndex: {argsRequiredWhenStruct: true, noArgsWhenField: true, scanArgs: scanSingleArg},
+	PrimaryKey:  {ScanStruct: argsRequired | exclusive, ScanField: noArgs | exclusive},
+	ForeignKey:  {ScanStruct: dualArgsRequired, ScanField: argsRequired | exclusive},
+	Check:       {ScanStruct: argsRequired, ScanField: argsRequired},
+	Default:     {ScanField: argsRequired | exclusive},
+	Substring:   {ScanField: argsRequired | exclusive},
+	UniqueIndex: {ScanStruct: argsRequired, ScanField: noArgs},
+	Query:       {ScanStruct: argsRequired | exclusive},
+	As:          {ScanField: argsRequired | exclusive},
 }
 
 const (
@@ -38,6 +41,8 @@ const (
 	Default     keyword = "default"
 	Substring   keyword = "substring"
 	UniqueIndex keyword = "uniqueindex"
+	Query       keyword = "query"
+	As          keyword = "as"
 )
 
 type KeywordArguments interface {
@@ -52,15 +57,6 @@ func (d singleArg) Arguments() []string {
 	return []string{d.arg}
 }
 
-func scanSingleArg(s *scanner) (KeywordArguments, error) {
-	args, err := s.scanArguments()
-	if err != nil {
-		return nil, err
-	}
-
-	return singleArg{arg: string(args)}, nil
-}
-
 type dualArgs struct {
 	arg1 string
 	arg2 string
@@ -68,22 +64,4 @@ type dualArgs struct {
 
 func (f dualArgs) Arguments() []string {
 	return []string{f.arg1, f.arg2}
-}
-
-func scanDualArgs(s *scanner) (KeywordArguments, error) {
-	arg1, err := s.scanArguments()
-	if err != nil {
-		return nil, err
-	}
-
-	if peek, ok := s.peekNext(); !ok || peek != byte('(') {
-		return nil, errors.New(s.error("expected second argument"))
-	}
-
-	arg2, err := s.scanArguments()
-	if err != nil {
-		return nil, err
-	}
-
-	return dualArgs{string(arg1), string(arg2)}, nil
 }
