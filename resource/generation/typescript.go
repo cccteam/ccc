@@ -85,7 +85,7 @@ func (t *typescriptGenerator) generateTemplateOutput(fileTemplate string, data m
 
 func (t *typescriptGenerator) generateTypescriptMetadata() error {
 	log.Println("Starting typescript metadata generation...")
-	output, err := t.generateTemplateOutput(typescriptMetadataTemplate, map[string]any{
+	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, map[string]any{
 		"Resources":         t.resources,
 		"ConsolidatedRoute": t.consolidatedRoute,
 	})
