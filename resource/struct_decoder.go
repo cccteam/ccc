@@ -68,7 +68,10 @@ func (d *StructDecoder[Request]) Decode(request *http.Request, userPermissions U
 		return nil, err
 	}
 
-	log.Println(d.resourceSet)
+	log.Println(d.resourceSet.BaseResource())
+	log.Println(d.resourceSet.permissions)
+	log.Println(d.resourceSet.ImmutableFields())
+	log.Println(d.resourceSet.ResourceMetadata())
 
 	if err := checkPermissions(request.Context(), p.Fields(), d.resourceSet, userPermissions, requiredPermission); err != nil {
 		return nil, err
