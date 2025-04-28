@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"log"
 	"net/http"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -67,6 +68,8 @@ func (d *StructDecoder[Request]) Decode(request *http.Request, userPermissions U
 		return nil, err
 	}
 
+	log.Println(d.resourceSet)
+
 	if err := checkPermissions(request.Context(), p.Fields(), d.resourceSet, userPermissions, requiredPermission); err != nil {
 		return nil, err
 	}
@@ -84,6 +87,8 @@ func checkPermissions[Resource Resourcer](
 			resources = append(resources, rSet.Resource(fieldName))
 		}
 	}
+
+	log.Println(resources)
 
 	if ok, missing, err := userPermissions.Check(ctx, perm, resources...); err != nil {
 		return errors.Wrap(err, "enforcer.RequireResource()")
