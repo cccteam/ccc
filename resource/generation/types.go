@@ -200,6 +200,14 @@ func (r rpcField) JSONTag() string {
 	return fmt.Sprintf("json:%q", camelCaseName)
 }
 
+func (f *rpcField) TypescriptDataType() string {
+	if f.typescriptType == "uuid" {
+		return "string"
+	}
+
+	return f.typescriptType
+}
+
 type resourceInfo struct {
 	parser.TypeInfo
 	Fields                []*resourceField
