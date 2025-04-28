@@ -801,7 +801,7 @@ export function resourceMeta(resource: Resource): ResourceMeta {
 {{- $rpcMethods := .RPCMethods -}}
 {{ range $rpcMethod := $rpcMethods }}
 export interface {{ $rpcMethod.Name }} {
-  {{- range $field := $resource.Fields }}
+  {{- range $field := $rpcMethod.Fields }}
     {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
   {{- end }}
 }
