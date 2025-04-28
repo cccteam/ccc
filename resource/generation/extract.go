@@ -103,3 +103,22 @@ func extractStructsByInterface(pkg *types.Package, interfaceNames ...string) ([]
 
 	return rpcStructs, nil
 }
+
+func (c *client) structToMethod(pStruct *parser.Struct) (*rpcMethodInfo, error) {
+	if pStruct == nil {
+		return nil, errors.New("parser.Struct cannot be nil")
+	}
+
+	method := &rpcMethodInfo{
+		Struct: *pStruct,
+		Fields: make([]*rpcField, len(pStruct.Fields())),
+	}
+
+	for i, field := range pStruct.Fields() {
+		method.Fields[i] = &rpcField{
+			Field: field,
+		}
+	}
+
+	return method, nil
+}

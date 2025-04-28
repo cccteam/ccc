@@ -90,7 +90,11 @@ func (r *resourceGenerator) Generate() error {
 
 		r.rpcMethods = nil
 		for _, s := range rpcStructs {
-			r.rpcMethods = append(r.rpcMethods, rpcMethodInfo{s})
+			methodInfo, err := r.structToMethod(&s)
+			if err != nil {
+				return err
+			}
+			r.rpcMethods = append(r.rpcMethods, methodInfo)
 		}
 
 		if err := r.runRPCGeneration(); err != nil {
@@ -182,7 +186,7 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	for _, resource := range resources {
-		resource, err = t.setTypescriptInfo(resource)
+		resource, err = t.setResourceTypescriptInfo(resource)
 		if err != nil {
 			return err
 		}
@@ -198,7 +202,15 @@ func (t *typescriptGenerator) Generate() error {
 
 		t.rpcMethods = nil
 		for _, s := range rpcStructs {
-			t.rpcMethods = append(t.rpcMethods, rpcMethodInfo{s})
+			methodInfo, err := t.structToMethod(&s)
+			if err != nil {
+				return err
+			}
+			methodInfo, err = t.setMethodTypescriptInfo(methodInfo)
+			if err != nil {
+				return err
+			}
+			t.rpcMethods = append(t.rpcMethods, methodInfo)
 		}
 	}
 
@@ -220,7 +232,7 @@ type client struct {
 	loadPackages              []string
 	resourceFilePath          string
 	resources                 []*resourceInfo
-	rpcMethods                []rpcMethodInfo
+	rpcMethods                []*rpcMethodInfo
 	packageName               string
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser

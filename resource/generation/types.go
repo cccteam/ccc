@@ -17,6 +17,11 @@ type Generator interface {
 	Close()
 }
 
+type field interface {
+	IsIterable() bool
+	TypeName() string
+}
+
 var tokenizeRegex = regexp.MustCompile(`(TOKENIZE_[^)]+)\(([^)]+)\)`)
 
 const (
@@ -180,20 +185,12 @@ resourceRange:
 
 type rpcMethodInfo struct {
 	parser.Struct
-}
-
-func (r rpcMethodInfo) Fields() []rpcField {
-	fields := []rpcField{}
-
-	for _, parserField := range r.Struct.Fields() {
-		fields = append(fields, rpcField{parserField})
-	}
-
-	return fields
+	Fields []*rpcField
 }
 
 type rpcField struct {
 	parser.Field
+	typescriptType string
 }
 
 func (r rpcField) JSONTag() string {
