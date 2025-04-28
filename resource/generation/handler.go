@@ -45,7 +45,7 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 					errChan <- err
 				}
 				wg.Done()
-			}(rpcMethod)
+			}(*rpcMethod)
 		}
 	}
 
