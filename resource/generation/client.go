@@ -707,7 +707,7 @@ func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	return formatInterfaceTypes(names)
 }
 
-func formatRPCInterfaceTypes(rpcMethods []rpcMethodInfo) string {
+func formatRPCInterfaceTypes(rpcMethods []*rpcMethodInfo) string {
 	names := make([]string, len(rpcMethods))
 	for i, rpcMethod := range rpcMethods {
 		names[i] = rpcMethod.Name()
