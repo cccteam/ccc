@@ -301,6 +301,16 @@ func (r *resourceInfo) IsQueryClauseEligible() bool {
 	return false
 }
 
+func (r *resourceInfo) IsQueryClauseEligible() bool {
+	for _, field := range r.Fields {
+		if field.IsQueryClauseEligible() {
+			return true
+		}
+	}
+
+	return false
+}
+
 type resourceField struct {
 	*parser.Field
 	Parent         *resourceInfo
@@ -560,7 +570,7 @@ func (f *resourceField) IsQueryClauseEligible() bool {
 	return false
 }
 
-type expressionField struct {
+type searchExpression struct {
 	tokenType resource.SearchType
 	fieldName string
 }

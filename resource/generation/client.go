@@ -398,7 +398,7 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 		if !ok {
 			table = &tableMetadata{
 				Columns:       make(map[string]columnMeta),
-				SearchIndexes: make(map[string][]*expressionField),
+				SearchIndexes: make(map[string][]*searchExpression),
 				IsView:        r.IsView,
 			}
 		}
@@ -716,8 +716,8 @@ func formatRPCInterfaceTypes(rpcMethods []*rpcMethodInfo) string {
 	return formatInterfaceTypes(names)
 }
 
-func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*expressionField, error) {
-	var flds []*expressionField
+func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*searchExpression, error) {
+	var flds []*searchExpression
 
 	for _, match := range tokenizeRegex.FindAllStringSubmatch(expression, -1) {
 		if len(match) != 3 {
@@ -741,9 +741,9 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*e
 			return nil, errors.Newf("column `%s` from expression `%s` was not found in table (is the tokenizeRegex working?)", fieldName, match[0])
 		}
 
-		flds = append(flds, &expressionField{
+		flds = append(flds, &searchExpression{
 			tokenType: tokenType,
-			fieldName: match[2],
+			argument: match[2],
 		})
 	}
 
