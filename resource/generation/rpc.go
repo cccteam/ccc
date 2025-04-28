@@ -36,12 +36,12 @@ func (r *resourceGenerator) runRPCGeneration() error {
 	)
 	for _, rpcMethod := range r.rpcMethods {
 		wg.Add(1)
-		go func(rpcMethod rpcMethodInfo) {
+		go func(rpcMethod *rpcMethodInfo) {
 			if err := r.generateRPCMethod(rpcMethod); err != nil {
 				errChan <- err
 			}
 			wg.Done()
-		}(*rpcMethod)
+		}(rpcMethod)
 	}
 
 	go func() {
@@ -61,7 +61,7 @@ func (r *resourceGenerator) runRPCGeneration() error {
 	return nil
 }
 
-func (r *resourceGenerator) generateRPCHandler(rpcMethod rpcMethodInfo) error {
+func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
@@ -94,7 +94,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod rpcMethodInfo) error {
 	return nil
 }
 
-func (r *resourceGenerator) generateRPCMethod(rpcMethod rpcMethodInfo) error {
+func (r *resourceGenerator) generateRPCMethod(rpcMethod *rpcMethodInfo) error {
 	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
 	destinationFilePath := filepath.Join(r.businessLayerPackageDir, fileName)
 
