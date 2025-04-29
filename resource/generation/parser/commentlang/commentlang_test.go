@@ -22,13 +22,13 @@ func Test_commentLang(t *testing.T) {
 			name: "multiline",
 			args: args{
 				comment: `@uniqueindex (Id, Description)
-					@foreignkey (Type) (ClaimTypes(Id))
-					@foreignkey (Status) (ClaimStatuses(Id))`,
+					@foreignkey (Type) (StatusTypes(Id))
+					@foreignkey (Status) (Statuses(Id))`,
 				mode: commentlang.ScanStruct,
 			},
 			want: map[commentlang.Keyword][]string{
 				commentlang.UniqueIndex: {"Id, Description"},
-				commentlang.ForeignKey:  {"Type", "ClaimTypes(Id)", "Status", "ClaimStatuses(Id)"},
+				commentlang.ForeignKey:  {"Type", "StatusTypes(Id)", "Status", "Statuses(Id)"},
 			},
 		},
 		{
@@ -51,6 +51,17 @@ func Test_commentLang(t *testing.T) {
 		{
 			name:    "primarykey with args returns an error when using ScanField mode",
 			args:    args{comment: "@primarykey (Id, Description)", mode: commentlang.ScanField},
+			wantErr: true,
+		},
+		{
+			name: "multiple exclusive keyword use returns error",
+			args: args{
+				comment: `@primarykey
+@check(@self != 0)
+@foreignkey (Foobar(Id))
+@primarykey`,
+				mode: commentlang.ScanField,
+			},
 			wantErr: true,
 		},
 		{
