@@ -18,7 +18,11 @@ type Generator interface {
 }
 
 type field interface {
+	// Returns true if field type is iterable (slice or array), false otherwise.
 	IsIterable() bool
+
+	// Qualified type without array/slice/pointer prefix.
+	// e.g. *ccc.UUID -> ccc.UUID, []ccc.UUID -> ccc.UUID
 	TypeName() string
 }
 
@@ -184,7 +188,7 @@ resourceRange:
 }
 
 type rpcMethodInfo struct {
-	parser.Struct
+	parser.TypeInfo
 	Fields []*rpcField
 }
 

@@ -90,7 +90,7 @@ func (r *resourceGenerator) Generate() error {
 
 		r.rpcMethods = nil
 		for _, s := range rpcStructs {
-			methodInfo, err := r.structToMethod(&s)
+			methodInfo, err := r.structToRPCMethod(&s)
 			if err != nil {
 				return err
 			}
@@ -202,7 +202,7 @@ func (t *typescriptGenerator) Generate() error {
 
 		t.rpcMethods = nil
 		for _, s := range rpcStructs {
-			methodInfo, err := t.structToMethod(&s)
+			methodInfo, err := t.structToRPCMethod(&s)
 			if err != nil {
 				return err
 			}
