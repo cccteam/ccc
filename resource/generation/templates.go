@@ -671,6 +671,7 @@ import { Domain, FieldName, Method, Permission, Resource } from '@cccteam/ccc-li
 {{- $resourcetags := .ResourceTags }}
 {{- $resourcePermMap := .ResourcePermissionsMap }}
 {{- $domains := .Domains }}
+{{- $rpcMethods := .RPCMethods }}
 
 export const Permissions = {
 {{- range $perm := $permissions }}
@@ -690,7 +691,6 @@ export const Resources = {
 {{- end}}
 };
 
-{{ with $rpcMethods := .RPCMethods -}}
 export const Methods = {
 {{- range $rpcMethod := $rpcMethods }}
   {{ $rpcMethod.Name }}: '{{ $rpcMethod.Name }}' as Method,
@@ -708,6 +708,15 @@ export namespace {{ $resource }} {
   export const resourceName = {
   {{- range $_, $tag := $tags }}
     {{ $tag }}: '{{ $resource.ResourceWithTag $tag }}' as Resource,
+  {{- end }}
+  };
+};
+{{ end }}
+{{ range $rpcMethod := $rpcMethods }}
+export namespace {{ $rpcMethod.Name }} {
+  export const fieldName = {
+  {{- range $field := $rpcMethod.Fields }}
+    {{ $field.Name }}: '{{ $field.Name }}' as FieldName,
   {{- end }}
   };
 };
