@@ -16,6 +16,14 @@ func (s scanMode) mode() scanMode {
 	return s
 }
 
+func (s scanMode) String() string {
+	if s == ScanField {
+		return "field"
+	}
+
+	return "struct"
+}
+
 const (
 	ScanStruct scanMode = iota << 1
 	ScanField
@@ -85,12 +93,16 @@ func (s *scanner) scan() error {
 			break
 
 		case char == byte('@'):
-			kw, ok := s.matchKeyword()
+			key, ok := s.matchKeyword()
 			if !ok {
-				if kw != illegal {
-					return errors.New(s.errorPostscript("invalid keyword", "did you mean %s?", kw))
+				if key != illegal {
+					return errors.New(s.errorPostscript("invalid keyword", "did you mean %s?", key))
 				}
 				return errors.New(s.error("invalid keyword"))
+			}
+
+			if _, ok := s.keywordArguments[key]; ok && s.isExclusive(key) {
+				return errors.New(s.error("%s cannot be used twice on a %s", key, s.mode.String()))
 			}
 
 			var (
@@ -98,25 +110,25 @@ func (s *scanner) scan() error {
 				err error
 			)
 			if peek, ok := s.peekNext(); ok && peek == byte('(') {
-				if !s.canHaveArguments(kw) {
-					s.pos += 1 // push error karat to start of arguments
-					return errors.New(s.errorPostscript("unexpected argument", "%s keyword cannot take arguments here", kw))
+				if !s.canHaveArguments(key) {
+					s.pos += 1 // push error caret to start of arguments
+					return errors.New(s.errorPostscript("unexpected argument", "%s keyword cannot take arguments here", key))
 				}
 
-				arg, err = s.keywordArgs(kw)
+				arg, err = s.keywordArgs(key)
 				if err != nil {
 					return err
 				}
-			} else if s.requiresArguments(kw) {
+			} else if s.requiresArguments(key) {
 				switch s.mode {
 				case ScanStruct:
-					return errors.New(s.errorPostscript("expected argument", "%s requires an argument?", kw))
+					return errors.New(s.errorPostscript("expected argument", "%s requires an argument?", key))
 				case ScanField:
-					return errors.New(s.errorPostscript("expected argument", "%[1]s requires an argument. did you mean to use `%[1]s (@self)`?", kw))
+					return errors.New(s.errorPostscript("expected argument", "%[1]s requires an argument. did you mean to use `%[1]s (@self)`?", key))
 				}
 			}
 
-			s.addKeywordArgument(kw, arg)
+			s.addKeywordArgument(key, arg)
 
 		default:
 			return errors.New(s.error("unexpected character %q", string(char)))
@@ -171,7 +183,11 @@ func (s scanner) canHaveArguments(key keyword) bool {
 		return false
 	}
 
-	return opts&noArgs == 0
+	if !hasFlag(opts, noArgs) {
+		return true
+	}
+
+	return false
 }
 
 func (s scanner) requiresArguments(key keyword) bool {
@@ -180,7 +196,28 @@ func (s scanner) requiresArguments(key keyword) bool {
 		return false
 	}
 
-	return opts&argsRequired != 0 || opts&dualArgsRequired != 0
+	if hasFlag(opts, argsRequired) {
+		return true
+	}
+
+	if hasFlag(opts, dualArgsRequired) {
+		return true
+	}
+
+	return false
+}
+
+func (s scanner) isExclusive(key keyword) bool {
+	opts, ok := keywords[key][s.mode]
+	if !ok {
+		return false
+	}
+
+	if hasFlag(opts, exclusive) {
+		return true
+	}
+
+	return false
 }
 
 func (s *scanner) scanArguments() ([]byte, error) {
@@ -417,4 +454,12 @@ func isWhitespace(b byte) bool {
 	default:
 		return false
 	}
+}
+
+func hasFlag(option, flag keywordFlag) bool {
+	if option&flag != 0 {
+		return true
+	}
+
+	return false
 }
