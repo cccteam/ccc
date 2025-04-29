@@ -188,7 +188,7 @@ resourceRange:
 }
 
 type rpcMethodInfo struct {
-	parser.TypeInfo
+	parser.Struct
 	Fields []*rpcField
 }
 

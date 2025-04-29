@@ -110,7 +110,7 @@ func (c *client) structToRPCMethod(pStruct *parser.Struct) (*rpcMethodInfo, erro
 	}
 
 	method := &rpcMethodInfo{
-		TypeInfo: *&pStruct.TypeInfo,
+		Struct: *pStruct,
 		Fields: make([]*rpcField, len(pStruct.Fields())),
 	}
 
