@@ -26,6 +26,7 @@ var keywords = map[keyword]keywordOpts{
 	ForeignKey:  {ScanStruct: dualArgsRequired, ScanField: argsRequired | exclusive},
 	Check:       {ScanStruct: argsRequired, ScanField: argsRequired},
 	Default:     {ScanField: argsRequired | exclusive},
+	Hidden:      {ScanField: noArgs | exclusive},
 	Substring:   {ScanField: argsRequired | exclusive},
 	UniqueIndex: {ScanStruct: argsRequired, ScanField: noArgs},
 	Query:       {ScanStruct: argsRequired | exclusive},
@@ -39,6 +40,7 @@ const (
 	ForeignKey  keyword = "foreignkey"
 	Check       keyword = "check"
 	Default     keyword = "default"
+	Hidden      keyword = "hidden"
 	Substring   keyword = "substring"
 	UniqueIndex keyword = "uniqueindex"
 	Query       keyword = "query"
