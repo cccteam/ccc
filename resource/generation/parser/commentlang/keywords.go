@@ -23,14 +23,15 @@ func (keyword) isKeyword() {}
 var keywords = map[keyword]keywordOpts{
 	illegal:     {},
 	PrimaryKey:  {ScanStruct: argsRequired | exclusive, ScanField: noArgs | exclusive},
-	ForeignKey:  {ScanStruct: dualArgsRequired, ScanField: argsRequired | exclusive},
-	Check:       {ScanStruct: argsRequired, ScanField: argsRequired},
+	ForeignKey:  {ScanStruct: dualArgsRequired, ScanField: argsRequired},
+	Check:       {ScanField: argsRequired},
 	Default:     {ScanField: argsRequired | exclusive},
 	Hidden:      {ScanField: noArgs | exclusive},
-	Substring:   {ScanField: argsRequired | exclusive},
+	Substring:   {ScanField: argsRequired},
 	UniqueIndex: {ScanStruct: argsRequired, ScanField: noArgs},
+	View:        {ScanStruct: noArgs | exclusive},
 	Query:       {ScanStruct: argsRequired | exclusive},
-	As:          {ScanField: argsRequired | exclusive},
+	Using:       {ScanField: argsRequired | exclusive},
 }
 
 const (
@@ -43,8 +44,9 @@ const (
 	Hidden      keyword = "hidden"
 	Substring   keyword = "substring"
 	UniqueIndex keyword = "uniqueindex"
-	Query       keyword = "query"
-	As          keyword = "as"
+	View        keyword = "view"  // Designates a struct as a view
+	Query       keyword = "query" // The query to be used for a view. Required if @view is used.
+	Using       keyword = "using" // Can only be used in views. Names the source field from another struct if it does not match this field
 )
 
 type KeywordArguments interface {
