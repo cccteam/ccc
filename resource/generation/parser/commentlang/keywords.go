@@ -15,10 +15,14 @@ type (
 	keywordOpts map[scanMode]keywordFlag
 	Keyword     interface {
 		isKeyword()
+		String() string
 	}
 )
 
 func (keyword) isKeyword() {}
+func (k keyword) String() string {
+	return string(k)
+}
 
 var keywords = map[keyword]keywordOpts{
 	illegal:     {},
@@ -28,6 +32,8 @@ var keywords = map[keyword]keywordOpts{
 	Default:     {ScanField: argsRequired | exclusive},
 	Hidden:      {ScanField: noArgs | exclusive},
 	Substring:   {ScanField: argsRequired},
+	Fulltext:    {ScanField: argsRequired},
+	Ngram:       {ScanField: argsRequired},
 	UniqueIndex: {ScanStruct: argsRequired, ScanField: noArgs},
 	View:        {ScanStruct: noArgs | exclusive},
 	Query:       {ScanStruct: argsRequired | exclusive},
@@ -43,6 +49,8 @@ const (
 	Default     keyword = "default"
 	Hidden      keyword = "hidden"
 	Substring   keyword = "substring"
+	Fulltext    keyword = "fulltext"
+	Ngram       keyword = "ngram"
 	UniqueIndex keyword = "uniqueindex"
 	View        keyword = "view"  // Designates a struct as a view
 	Query       keyword = "query" // The query to be used for a view. Required if @view is used.
