@@ -696,7 +696,6 @@ export const Methods = {
   {{ $rpcMethod.Name }}: '{{ $rpcMethod.Name }}' as Method,
 {{- end }}
 };
-{{- end }}
 
 {{ range $resource, $tags := $resourcetags }}
 export namespace {{ $resource }} {
