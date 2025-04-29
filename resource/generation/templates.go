@@ -715,7 +715,7 @@ export namespace {{ $resource }} {
 export namespace {{ $rpcMethod.Name }} {
   export const fieldName = {
   {{- range $field := $rpcMethod.Fields }}
-    {{ $field.Name }}: '{{ $field.Name }}' as FieldName,
+    {{ Camel $field.Name }}: '{{ Camel $field.Name }}' as FieldName,
   {{- end }}
   };
 };
