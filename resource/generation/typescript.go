@@ -151,7 +151,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	return nil
 }
 
-func (t *typescriptGenerator) setResourceTypescriptInfo(resource *resourceInfo) (*resourceInfo, error) {
+func (t *typescriptGenerator) setResourceTypescriptInfo(resource *resourceInfo) *resourceInfo {
 	for _, field := range resource.Fields {
 		field.typescriptType = t.typescriptType(*field)
 
@@ -160,15 +160,15 @@ func (t *typescriptGenerator) setResourceTypescriptInfo(resource *resourceInfo) 
 		}
 	}
 
-	return resource, nil
+	return resource
 }
 
-func (t *typescriptGenerator) setMethodTypescriptInfo(method *rpcMethodInfo) (*rpcMethodInfo, error) {
+func (t *typescriptGenerator) setMethodTypescriptInfo(method *rpcMethodInfo) *rpcMethodInfo {
 	for _, field := range method.Fields {
 		field.typescriptType = t.typescriptType(*field)
 	}
 
-	return method, nil
+	return method
 }
 
 func (t *typescriptGenerator) typescriptType(field field) string {

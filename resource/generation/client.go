@@ -186,10 +186,7 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	for _, resource := range resources {
-		resource, err = t.setResourceTypescriptInfo(resource)
-		if err != nil {
-			return err
-		}
+		resource = t.setResourceTypescriptInfo(resource)
 	}
 
 	t.resources = resources
@@ -206,10 +203,7 @@ func (t *typescriptGenerator) Generate() error {
 			if err != nil {
 				return err
 			}
-			methodInfo, err = t.setMethodTypescriptInfo(methodInfo)
-			if err != nil {
-				return err
-			}
+			methodInfo = t.setMethodTypescriptInfo(methodInfo)
 			t.rpcMethods = append(t.rpcMethods, methodInfo)
 		}
 	}
