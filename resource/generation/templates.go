@@ -822,7 +822,7 @@ export interface {{ $rpcMethod.Name }} {
 export type MethodMap = Record<Method, MethodMeta>;
 
 const methodMap: MethodMap = {
-  {{- range $rpcMethod := $rpcMethods }}
+  {{- range $rpcMethod := .RPCMethods }}
   [Methods.{{ $rpcMethod.Name }}]: {
     route: '{{ Kebab ($rpcMethod.Name) }}',
   },
