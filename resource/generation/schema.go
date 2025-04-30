@@ -127,11 +127,109 @@ type schemaColumn struct {
 	SourceTable  *string // only non-nil when parent schemaResource is a View
 }
 
-func (s *schemaResource) addStructComments(comments map[commentlang.Keyword][]*commentlang.KeywordArguments) error {
+func (s *schemaResource) addStructComments(pStruct *parser.Struct) error {
+	structComments, err := commentlang.Scan(pStruct.Comments(), commentlang.ScanStruct)
+	if err != nil {
+		return errors.Wrap(err, "commentlang.Scan()")
+	}
+
+	if _, ok := structComments[commentlang.View]; ok {
+		s.IsView = true
+	}
+
+	for keyword, args := range structComments {
+		if s.IsView {
+			switch keyword {
+			case commentlang.Query:
+				s.Query = &args[0].Arg1
+			case commentlang.View:
+				continue
+			default:
+				return errors.Newf("%s keyword not supported because resource %q is a view", keyword.String(), s.Name)
+			}
+		}
+		switch keyword {
+		case commentlang.PrimaryKey:
+			s.PrimaryKey = args[0].Arg1
+
+		case commentlang.ForeignKey:
+			for _, arg := range args {
+				sourceExpression := arg.Arg1
+				if arg.Arg2 == nil {
+					return errors.Newf("expected second argument for foreignkey on struct %q", s.Name)
+				}
+				referenceExpression := *arg.Arg2
+
+				s.ForeignKeys = append(s.ForeignKeys, foreignKeyConstraint{sourceExpression, referenceExpression})
+			}
+		}
+	}
+
 	return nil
 }
 
-func (s *schemaResource) addFieldComments(comments map[commentlang.Keyword][]*commentlang.KeywordArguments) error {
+func (s *schemaResource) addFieldComments(pStruct *parser.Struct) error {
+	for i, field := range pStruct.Fields() {
+		fieldComments, err := commentlang.Scan(field.Comments(), commentlang.ScanField)
+		if err != nil {
+			return errors.Wrap(err, "commentlang.Scan()")
+		}
+
+		for keyword, args := range fieldComments {
+			// View-only keywords go in their own switch so we can error out by default
+			if s.IsView {
+				switch keyword {
+				case commentlang.Using:
+					usingName := args[0].Arg1
+					s.Columns[i].Name = usingName
+
+				default:
+					return errors.Newf("%s keyword not supported because resource %q is a view", keyword.String(), s.Name)
+				}
+			}
+
+			switch keyword {
+			case commentlang.PrimaryKey:
+				if s.PrimaryKey != "" {
+					return errors.Newf("cannot use @primarykey on field %q and struct, or on multiple fields", field.Name())
+				}
+
+				s.PrimaryKey = field.Name()
+
+			case commentlang.ForeignKey:
+				for _, arg := range args {
+					sourceExpression := field.Name()
+					referenceExpression := arg.Arg1
+
+					s.ForeignKeys = append(s.ForeignKeys, foreignKeyConstraint{sourceExpression, referenceExpression})
+				}
+
+			case commentlang.Default:
+				defaultValue := args[0].Arg1
+				s.Columns[i].DefaultValue = &defaultValue
+
+			case commentlang.Hidden:
+				s.Columns[i].IsHidden = true
+
+			case commentlang.Check:
+				checkArg := args[0].Arg1
+				s.Checks = append(s.Checks, checkConstraint{field.Name(), checkArg})
+
+			case commentlang.Substring, commentlang.Fulltext, commentlang.Ngram:
+				for _, arg := range args {
+					argument := arg.Arg1
+					s.SearchTokens = append(s.SearchTokens, searchExpression{resource.FilterType(keyword.String()), argument})
+				}
+
+			case commentlang.UniqueIndex:
+				s.Indexes = append(s.Indexes, schemaIndex{Name: field.Name(), indexType: uniqueIndexType})
+
+			default:
+				return errors.Newf("%s keyword not yet implemented in generator", keyword.String())
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -148,106 +246,12 @@ func structToSchemaResource(pStruct *parser.Struct) (*schemaResource, error) {
 		})
 	}
 
-	structComments, err := commentlang.Scan(pStruct.Comments(), commentlang.ScanStruct)
-	if err != nil {
-		return nil, errors.Wrap(err, "commentlang.Scan()")
+	if err := res.addStructComments(pStruct); err != nil {
+		return nil, err
 	}
 
-	if _, ok := structComments[commentlang.View]; ok {
-		res.IsView = true
-	}
-
-	for keyword, args := range structComments {
-		if res.IsView {
-			switch keyword {
-			case commentlang.Query:
-				res.Query = &args[0].Arg1
-			case commentlang.View:
-				continue
-			default:
-				return nil, errors.Newf("%s keyword not supported because resource %q is a view", keyword.String(), res.Name)
-			}
-		}
-		switch keyword {
-		case commentlang.PrimaryKey:
-			res.PrimaryKey = args[0].Arg1
-
-		case commentlang.ForeignKey:
-			for _, arg := range args {
-				sourceExpression := arg.Arg1
-				if arg.Arg2 == nil {
-					return nil, errors.Newf("expected second argument for foreignkey on struct %q", res.Name)
-				}
-				referenceExpression := *arg.Arg2
-
-				res.ForeignKeys = append(res.ForeignKeys, foreignKeyConstraint{sourceExpression, referenceExpression})
-			}
-		}
-	}
-
-	// TODO: validate struct comments
-	_ = structComments
-
-	for i, field := range pStruct.Fields() {
-		fieldComments, err := commentlang.Scan(field.Comments(), commentlang.ScanField)
-		if err != nil {
-			return nil, errors.Wrap(err, "commentlang.Scan()")
-		}
-
-		for keyword, args := range fieldComments {
-			// View-only keywords go in their own switch so we can error out by default
-			if res.IsView {
-				switch keyword {
-				case commentlang.Using:
-					usingName := args[0].Arg1
-					res.Columns[i].Name = usingName
-
-				default:
-					return nil, errors.Newf("%s keyword not supported because resource %q is a view", keyword.String(), res.Name)
-				}
-			}
-
-			switch keyword {
-			case commentlang.PrimaryKey:
-				if res.PrimaryKey != "" {
-					return nil, errors.Newf("cannot use @primarykey on field %q and struct, or on multiple fields", field.Name())
-				}
-
-				res.PrimaryKey = field.Name()
-
-			case commentlang.ForeignKey:
-				for _, arg := range args {
-					sourceExpression := field.Name()
-					referenceExpression := arg.Arg1
-
-					res.ForeignKeys = append(res.ForeignKeys, foreignKeyConstraint{sourceExpression, referenceExpression})
-				}
-
-			case commentlang.Default:
-				// TODO: consider something less ugly than "args[0].Arguments()[0]"
-				defaultValue := args[0].Arg1
-				res.Columns[i].DefaultValue = &defaultValue
-
-			case commentlang.Hidden:
-				res.Columns[i].IsHidden = true
-
-			case commentlang.Check:
-				checkArg := args[0].Arg1
-				res.Checks = append(res.Checks, checkConstraint{field.Name(), checkArg})
-
-			case commentlang.Substring, commentlang.Fulltext, commentlang.Ngram:
-				for _, arg := range args {
-					argument := arg.Arg1
-					res.SearchTokens = append(res.SearchTokens, searchExpression{resource.FilterType(keyword.String()), argument})
-				}
-
-			case commentlang.UniqueIndex:
-				res.Indexes = append(res.Indexes, schemaIndex{Name: field.Name(), indexType: uniqueIndexType})
-
-			default:
-				return nil, errors.Newf("%s keyword not yet implemented in generator", keyword.String())
-			}
-		}
+	if err := res.addFieldComments(pStruct); err != nil {
+		return nil, err
 	}
 
 	return res, nil
