@@ -162,8 +162,8 @@ func structToSchemaResource(pStruct *parser.Struct) (*schemaResource, error) {
 			case commentlang.ForeignKey:
 				for _, arg := range args {
 					fkArgs := arg.Arguments()
-					sourceExpression := fkArgs[0]
-					referenceExpression := fkArgs[1]
+					sourceExpression := field.Name()
+					referenceExpression := fkArgs[0]
 
 					res.ForeignKeys = append(res.ForeignKeys, foreignKeyConstraint{sourceExpression, referenceExpression})
 				}
