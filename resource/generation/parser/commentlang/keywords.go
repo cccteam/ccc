@@ -57,23 +57,7 @@ const (
 	Using       keyword = "using" // Can only be used in views. Names the source field from another struct if it does not match this field
 )
 
-type KeywordArguments interface {
-	Arguments() []string
-}
-
-type singleArg struct {
-	arg string
-}
-
-func (d singleArg) Arguments() []string {
-	return []string{d.arg}
-}
-
-type dualArgs struct {
-	arg1 string
-	arg2 string
-}
-
-func (f dualArgs) Arguments() []string {
-	return []string{f.arg1, f.arg2}
+type KeywordArguments struct {
+	Arg1 string
+	Arg2 *string
 }

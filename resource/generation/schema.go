@@ -161,29 +161,27 @@ func structToSchemaResource(pStruct *parser.Struct) (*schemaResource, error) {
 
 			case commentlang.ForeignKey:
 				for _, arg := range args {
-					fkArgs := arg.Arguments()
 					sourceExpression := field.Name()
-					referenceExpression := fkArgs[0]
+					referenceExpression := arg.Arg1
 
 					res.ForeignKeys = append(res.ForeignKeys, foreignKeyConstraint{sourceExpression, referenceExpression})
 				}
 
 			case commentlang.Default:
 				// TODO: consider something less ugly than "args[0].Arguments()[0]"
-				defaultValue := args[0].Arguments()[0]
+				defaultValue := args[0].Arg1
 				res.Columns[i].DefaultValue = &defaultValue
 
 			case commentlang.Hidden:
 				res.Columns[i].IsHidden = true
 
 			case commentlang.Check:
-				checkArg := args[0].Arguments()[0]
+				checkArg := args[0].Arg1
 				res.Checks = append(res.Checks, checkConstraint{field.Name(), checkArg})
 
 			case commentlang.Substring, commentlang.Fulltext, commentlang.Ngram:
 				for _, arg := range args {
-					argument := arg.Arguments()[0]
-
+					argument := arg.Arg1
 					res.SearchTokens = append(res.SearchTokens, searchExpression{resource.FilterType(keyword.String()), argument})
 				}
 
@@ -192,7 +190,7 @@ func structToSchemaResource(pStruct *parser.Struct) (*schemaResource, error) {
 
 			case commentlang.Using:
 				// TODO: validate that the struct is a view, because this is a view-only keyword
-				usingName := args[0].Arguments()[0]
+				usingName := args[0].Arg1
 				res.Columns[i].Name = usingName
 
 			default:
