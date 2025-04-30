@@ -15,7 +15,7 @@ type RPCDecoder[Request any] struct {
 	userPermissions    func(*http.Request) UserPermissions
 }
 
-func NewRPCDecoder[Request any](methodName accesstypes.Resource, perm accesstypes.Permission, userPermissions func(*http.Request) UserPermissions) (*RPCDecoder[Request], error) {
+func NewRPCDecoder[Request any](userPermissions func(*http.Request) UserPermissions, methodName accesstypes.Resource, perm accesstypes.Permission) (*RPCDecoder[Request], error) {
 	decoder, err := NewStructDecoder[Request]()
 	if err != nil {
 		return nil, errors.Wrap(err, "NewStructDecoder()")
