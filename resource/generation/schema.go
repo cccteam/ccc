@@ -86,7 +86,6 @@ func (schemaGenerator) Close() {}
 type schemaIndex struct {
 	Name      string
 	indexType indexType
-	Argument  string
 }
 
 type indexType string
