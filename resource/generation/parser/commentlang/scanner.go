@@ -33,11 +33,11 @@ type scanner struct {
 	src              []byte
 	mode             scanMode
 	identifiers      map[string]struct{}
-	keywordArguments map[Keyword][]KeywordArguments
+	keywordArguments map[Keyword][]*KeywordArguments
 	pos              int
 }
 
-func Scan(src string, mode ScanMode) (map[Keyword][]KeywordArguments, error) {
+func Scan(src string, mode ScanMode) (map[Keyword][]*KeywordArguments, error) {
 	scanner := newScanner([]byte(src), mode.mode())
 	if err := scanner.scan(); err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ func newScanner(src []byte, mode scanMode) *scanner {
 		src:              src,
 		mode:             mode,
 		identifiers:      make(map[string]struct{}),
-		keywordArguments: make(map[Keyword][]KeywordArguments),
+		keywordArguments: make(map[Keyword][]*KeywordArguments),
 	}
 }
 
@@ -106,7 +106,7 @@ func (s *scanner) scan() error {
 			}
 
 			var (
-				arg KeywordArguments
+				arg *KeywordArguments
 				err error
 			)
 			if peek, ok := s.peekNext(); ok && peek == byte('(') {
@@ -140,7 +140,7 @@ func (s *scanner) scan() error {
 	return nil
 }
 
-func (s *scanner) keywordArgs(key keyword) (KeywordArguments, error) {
+func (s *scanner) keywordArgs(key keyword) (*KeywordArguments, error) {
 	if keywords[key][s.mode]&dualArgsRequired != 0 {
 		arg1, err := s.scanArguments()
 		if err != nil {
@@ -151,25 +151,27 @@ func (s *scanner) keywordArgs(key keyword) (KeywordArguments, error) {
 			return nil, errors.New(s.error("expected second argument for %s, found %q", key, string(peek)))
 		}
 
-		arg2, err := s.scanArguments()
+		arg2b, err := s.scanArguments()
 		if err != nil {
 			return nil, err
 		}
 
-		return dualArgs{string(arg1), string(arg2)}, nil
+		arg2 := string(arg2b)
+
+		return &KeywordArguments{string(arg1), &arg2}, nil
 	}
 
-	args, err := s.scanArguments()
+	arg, err := s.scanArguments()
 	if err != nil {
 		return nil, err
 	}
 
-	return singleArg{arg: string(args)}, nil
+	return &KeywordArguments{Arg1: string(arg)}, nil
 }
 
-func (s *scanner) addKeywordArgument(key Keyword, arg KeywordArguments) {
+func (s *scanner) addKeywordArgument(key Keyword, arg *KeywordArguments) {
 	if _, ok := s.keywordArguments[key]; !ok {
-		s.keywordArguments[key] = make([]KeywordArguments, 0, 1)
+		s.keywordArguments[key] = make([]*KeywordArguments, 0, 1)
 	}
 
 	if arg != nil {
@@ -274,7 +276,7 @@ loop:
 	return buf, nil
 }
 
-func (s *scanner) result() map[Keyword][]KeywordArguments {
+func (s *scanner) result() map[Keyword][]*KeywordArguments {
 	return s.keywordArguments
 }
 
