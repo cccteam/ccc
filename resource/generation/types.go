@@ -17,6 +17,15 @@ type Generator interface {
 	Close()
 }
 
+type field interface {
+	// Returns true if field type is iterable (slice or array), false otherwise.
+	IsIterable() bool
+
+	// Qualified type without array/slice/pointer prefix.
+	// e.g. *ccc.UUID -> ccc.UUID, []ccc.UUID -> ccc.UUID
+	TypeName() string
+}
+
 var tokenizeRegex = regexp.MustCompile(`(TOKENIZE_[^)]+)\(([^)]+)\)`)
 
 const (
@@ -180,20 +189,12 @@ resourceRange:
 
 type rpcMethodInfo struct {
 	parser.Struct
-}
-
-func (r rpcMethodInfo) Fields() []rpcField {
-	fields := []rpcField{}
-
-	for _, parserField := range r.Struct.Fields() {
-		fields = append(fields, rpcField{parserField})
-	}
-
-	return fields
+	Fields []*rpcField
 }
 
 type rpcField struct {
 	parser.Field
+	typescriptType string
 }
 
 func (r rpcField) JSONTag() string {
@@ -201,6 +202,14 @@ func (r rpcField) JSONTag() string {
 	camelCaseName := caser.ToCamel(r.Name())
 
 	return fmt.Sprintf("json:%q", camelCaseName)
+}
+
+func (f *rpcField) TypescriptDataType() string {
+	if f.typescriptType == "uuid" {
+		return "string"
+	}
+
+	return f.typescriptType
 }
 
 type resourceInfo struct {

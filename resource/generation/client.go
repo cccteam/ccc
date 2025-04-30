@@ -90,7 +90,11 @@ func (r *resourceGenerator) Generate() error {
 
 		r.rpcMethods = nil
 		for _, s := range rpcStructs {
-			r.rpcMethods = append(r.rpcMethods, rpcMethodInfo{s})
+			methodInfo, err := r.structToRPCMethod(&s)
+			if err != nil {
+				return err
+			}
+			r.rpcMethods = append(r.rpcMethods, methodInfo)
 		}
 
 		if err := r.runRPCGeneration(); err != nil {
@@ -182,10 +186,7 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	for _, resource := range resources {
-		resource, err = t.setTypescriptInfo(resource)
-		if err != nil {
-			return err
-		}
+		resource = t.setResourceTypescriptInfo(resource)
 	}
 
 	t.resources = resources
@@ -198,7 +199,12 @@ func (t *typescriptGenerator) Generate() error {
 
 		t.rpcMethods = nil
 		for _, s := range rpcStructs {
-			t.rpcMethods = append(t.rpcMethods, rpcMethodInfo{s})
+			methodInfo, err := t.structToRPCMethod(&s)
+			if err != nil {
+				return err
+			}
+			methodInfo = t.setMethodTypescriptInfo(methodInfo)
+			t.rpcMethods = append(t.rpcMethods, methodInfo)
 		}
 	}
 
@@ -220,7 +226,7 @@ type client struct {
 	loadPackages              []string
 	resourceFilePath          string
 	resources                 []*resourceInfo
-	rpcMethods                []rpcMethodInfo
+	rpcMethods                []*rpcMethodInfo
 	packageName               string
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser
@@ -695,7 +701,7 @@ func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	return formatInterfaceTypes(names)
 }
 
-func formatRPCInterfaceTypes(rpcMethods []rpcMethodInfo) string {
+func formatRPCInterfaceTypes(rpcMethods []*rpcMethodInfo) string {
 	names := make([]string, len(rpcMethods))
 	for i, rpcMethod := range rpcMethods {
 		names[i] = rpcMethod.Name()
