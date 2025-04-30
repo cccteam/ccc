@@ -43,15 +43,15 @@ func NewStructDecoder[Request any]() (*StructDecoder[Request], error) {
 	}, nil
 }
 
-func (d *StructDecoder[Request]) WithValidator(v ValidatorFunc) *StructDecoder[Request] {
-	decoder := *d
+func (s *StructDecoder[Request]) WithValidator(v ValidatorFunc) *StructDecoder[Request] {
+	decoder := *s
 	decoder.validate = v
 
 	return &decoder
 }
 
-func (d *StructDecoder[Request]) Decode(request *http.Request) (*Request, error) {
-	_, target, err := decodeToPatch[nilResource, Request](d.resourceSet, d.fieldMapper, request, d.validate)
+func (s *StructDecoder[Request]) Decode(request *http.Request) (*Request, error) {
+	_, target, err := decodeToPatch[nilResource, Request](s.resourceSet, s.fieldMapper, request, s.validate)
 	if err != nil {
 		return nil, err
 	}
