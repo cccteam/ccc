@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.0](https://github.com/cccteam/ccc/compare/resource/v0.0.27...resource/v0.1.0) (2025-04-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* Renamed `StructDecoder.DecodeWithoutPermissions()` -> `StructDecoder.Decode()`
+
+### Features
+
+* Add generation of typescript methods metadata ([#265](https://github.com/cccteam/ccc/issues/265)) ([5b25170](https://github.com/cccteam/ccc/commit/5b25170baeee4387f90f1937617490429fc09f7a))
+
+
+### Bug Fixes
+
+* Fix bug in StructDecoder permission checking with new RPCDecoder ([f0a1ff9](https://github.com/cccteam/ccc/commit/f0a1ff9b7083fa9a44017e51153c47729e70f430))
+* Renamed `StructDecoder.DecodeWithoutPermissions()` -&gt; `StructDecoder.Decode()` ([f0a1ff9](https://github.com/cccteam/ccc/commit/f0a1ff9b7083fa9a44017e51153c47729e70f430))
+
 ## [0.0.27](https://github.com/cccteam/ccc/compare/resource/v0.0.26...resource/v0.0.27) (2025-04-24)
 
 
