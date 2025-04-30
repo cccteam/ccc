@@ -15,18 +15,25 @@ type RPCDecoder[Request any] struct {
 	userPermissions    func(*http.Request) UserPermissions
 }
 
-func NewRPCDecoder[Request any](validator ValidatorFunc, methodName accesstypes.Resource, perm accesstypes.Permission, userPermissions func(*http.Request) UserPermissions) (*RPCDecoder[Request], error) {
+func NewRPCDecoder[Request any](methodName accesstypes.Resource, perm accesstypes.Permission, userPermissions func(*http.Request) UserPermissions) (*RPCDecoder[Request], error) {
 	decoder, err := NewStructDecoder[Request]()
 	if err != nil {
 		return nil, errors.Wrap(err, "NewStructDecoder()")
 	}
 
 	return &RPCDecoder[Request]{
-		d:                  decoder.WithValidator(validator),
+		d:                  decoder,
 		res:                methodName,
 		requiredPermission: perm,
 		userPermissions:    userPermissions,
 	}, nil
+}
+
+func (s *RPCDecoder[Request]) WithValidator(v ValidatorFunc) *RPCDecoder[Request] {
+	decoder := *s
+	decoder.d = s.d.WithValidator(v)
+
+	return &decoder
 }
 
 func (r *RPCDecoder[Request]) Decode(request *http.Request) (*Request, error) {
