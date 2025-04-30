@@ -22,7 +22,7 @@ func (v *validateMock) StructPartial(s interface{}, fields ...string) error {
 	return v.validatePartialFunc(s, fields...)
 }
 
-func TestDecoder(t *testing.T) {
+func TestDecoder_Decode(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
