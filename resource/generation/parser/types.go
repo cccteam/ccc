@@ -148,7 +148,7 @@ func (s Struct) Comments() string {
 	return s.comments
 }
 
-func (s *Struct) AddInterface(iface string) {
+func (s *Struct) SetInterface(iface string) {
 	if !slices.Contains(s.interfaces, iface) {
 		s.interfaces = append(s.interfaces, iface)
 	}
