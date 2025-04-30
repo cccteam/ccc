@@ -144,8 +144,8 @@ func ParseStructs(pkg *packages.Package) ([]Struct, error) {
 
 			for i := range parsedStructs {
 				for _, ifaceName := range interfaceNames {
-					if hasInterface(pkg.Types, parsedStructs[i], ifaceName) {
-						parsedStructs[i].AddInterface(ifaceName)
+					if HasInterface(pkg.Types, parsedStructs[i], ifaceName) {
+						parsedStructs[i].SetInterface(ifaceName)
 					}
 				}
 			}
@@ -168,7 +168,7 @@ func FilterStructsByInterface(s []Struct, interfaceNames []string) []Struct {
 	return slices.Clip(filteredStructs)
 }
 
-func hasInterface(pkg *types.Package, s Struct, interfaceName string) bool {
+func HasInterface(pkg *types.Package, s Struct, interfaceName string) bool {
 	ifaceObject := pkg.Scope().Lookup(interfaceName)
 	if ifaceObject == nil {
 		return false
