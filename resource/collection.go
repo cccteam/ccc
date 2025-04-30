@@ -84,6 +84,14 @@ func NewCollection() *Collection {
 }
 
 func (s *Collection) AddResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
+	return s.add(true, scope, permission, res)
+}
+
+func (s *Collection) AddMethodResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
+	return s.add(false, scope, permission, res)
+}
+
+func (s *Collection) add(allowDuplicateRegistration bool, scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
 	if permission == accesstypes.NullPermission {
 		return errors.New("cannot register null permission")
 	}
@@ -95,7 +103,7 @@ func (s *Collection) AddResource(scope accesstypes.PermissionScope, permission a
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.addResource(true, scope, permission, res)
+	return s.addResource(allowDuplicateRegistration, scope, permission, res)
 }
 
 func (s *Collection) addResource(allowDuplicateRegistration bool, scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
