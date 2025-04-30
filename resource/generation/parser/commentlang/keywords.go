@@ -28,7 +28,7 @@ var keywords = map[keyword]keywordOpts{
 	illegal:     {},
 	PrimaryKey:  {ScanStruct: argsRequired | exclusive, ScanField: noArgs | exclusive},
 	ForeignKey:  {ScanStruct: dualArgsRequired, ScanField: argsRequired},
-	Check:       {ScanField: argsRequired},
+	Check:       {ScanField: argsRequired | exclusive},
 	Default:     {ScanField: argsRequired | exclusive},
 	Hidden:      {ScanField: noArgs | exclusive},
 	Substring:   {ScanField: argsRequired},
