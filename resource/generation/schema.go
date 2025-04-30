@@ -115,6 +115,8 @@ func sqlTypeFromField(f parser.Field) string {
 	case "int":
 		return "INT64"
 	default:
+		// TODO: replace string type check with a function that is aware of the conversion packages generics
+		// e.g. conversion.IntTo[ccc.UUID]
 		panic(fmt.Sprintf("unknown fieldtype %q", f.UnqualifiedTypeName()))
 	}
 }
