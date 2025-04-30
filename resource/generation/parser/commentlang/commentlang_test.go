@@ -108,7 +108,10 @@ func Test_commentLang(t *testing.T) {
 				}
 
 				for _, arg := range args {
-					got[key] = append(got[key], arg.Arguments()...)
+					got[key] = append(got[key], arg.Arg1)
+					if arg.Arg2 != nil {
+						got[key] = append(got[key], *arg.Arg2)
+					}
 				}
 			}
 
