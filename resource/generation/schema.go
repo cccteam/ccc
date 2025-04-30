@@ -105,6 +105,15 @@ type checkConstraint struct {
 	Expression string
 }
 
+type schemaColumn struct {
+	Name         string
+	SQLType      string
+	DefaultValue *string
+	IsNullable   bool
+	IsHidden     bool
+	SourceTable  *string // only non-nil when parent schemaResource is a View
+}
+
 type schemaResource struct {
 	Name         string
 	Columns      []schemaColumn
@@ -115,15 +124,6 @@ type schemaResource struct {
 	Indexes      []schemaIndex
 	IsView       bool
 	Query        *string
-}
-
-type schemaColumn struct {
-	Name         string
-	SQLType      string
-	DefaultValue *string
-	IsNullable   bool
-	IsHidden     bool
-	SourceTable  *string // only non-nil when parent schemaResource is a View
 }
 
 func (s *schemaResource) addStructComments(pStruct *parser.Struct) error {
@@ -137,16 +137,19 @@ func (s *schemaResource) addStructComments(pStruct *parser.Struct) error {
 	}
 
 	for keyword, args := range structComments {
-		if s.IsView {
+		if s.IsView { // View-only keywords go in their own switch so we can error by default on anything else
 			switch keyword {
 			case commentlang.Query:
 				s.Query = &args[0].Arg1
+
 			case commentlang.View:
 				continue
+
 			default:
 				return errors.Newf("%s keyword not supported because resource %q is a view", keyword.String(), s.Name)
 			}
 		}
+
 		switch keyword {
 		case commentlang.PrimaryKey:
 			s.PrimaryKey = args[0].Arg1
@@ -161,6 +164,16 @@ func (s *schemaResource) addStructComments(pStruct *parser.Struct) error {
 
 				s.ForeignKeys = append(s.ForeignKeys, foreignKeyConstraint{sourceExpression, referenceExpression})
 			}
+
+		case commentlang.UniqueIndex:
+			for _, arg := range args {
+				uniqueIndexArg := arg.Arg1
+
+				s.Indexes = append(s.Indexes, schemaIndex{Name: uniqueIndexArg, indexType: uniqueIndexType})
+			}
+
+		default:
+			return errors.Newf("struct keyword %s not yet implemented in generator", keyword.String())
 		}
 	}
 
@@ -175,8 +188,7 @@ func (s *schemaResource) addFieldComments(pStruct *parser.Struct) error {
 		}
 
 		for keyword, args := range fieldComments {
-			// View-only keywords go in their own switch so we can error out by default
-			if s.IsView {
+			if s.IsView { // View-only keywords go in their own switch so we can error by default on anything else
 				switch keyword {
 				case commentlang.Using:
 					usingName := args[0].Arg1
@@ -224,7 +236,7 @@ func (s *schemaResource) addFieldComments(pStruct *parser.Struct) error {
 				s.Indexes = append(s.Indexes, schemaIndex{Name: field.Name(), indexType: uniqueIndexType})
 
 			default:
-				return errors.Newf("%s keyword not yet implemented in generator", keyword.String())
+				return errors.Newf("field keyword %s not yet implemented in generator", keyword.String())
 			}
 		}
 	}
