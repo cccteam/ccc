@@ -177,11 +177,8 @@ func structToSchemaResource(pStruct *parser.Struct) (*schemaResource, error) {
 				res.Columns[i].IsHidden = true
 
 			case commentlang.Check:
-				// TODO figure out unique constraint names for columns that have multiple checks
-				for _, arg := range args {
-					checkArgs := arg.Arguments()[0]
-					res.Checks = append(res.Checks, checkConstraint{field.Name(), checkArgs})
-				}
+				checkArg := args[0].Arguments()[0]
+				res.Checks = append(res.Checks, checkConstraint{field.Name(), checkArg})
 
 			case commentlang.Substring, commentlang.Fulltext, commentlang.Ngram:
 				for _, arg := range args {
