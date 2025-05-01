@@ -2,6 +2,7 @@
 package resource
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"reflect"
@@ -13,9 +14,12 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+type FieldDefaultFn func(ctx context.Context, txn TxnBuffer) (any, error)
+
 type Resourcer interface {
 	Resource() accesstypes.Resource
 	DefaultConfig() Config
+	DefaultFns() map[accesstypes.Field]FieldDefaultFn
 }
 
 type ResourceSet[Resource Resourcer] struct {
@@ -23,6 +27,7 @@ type ResourceSet[Resource Resourcer] struct {
 	requiredTagPerm accesstypes.TagPermissions
 	fieldToTag      map[accesstypes.Field]accesstypes.Tag
 	immutableFields map[accesstypes.Tag]struct{}
+	defaultFns      map[accesstypes.Field]FieldDefaultFn
 	rMeta           *ResourceMetadata[Resource]
 }
 
@@ -32,11 +37,13 @@ func NewResourceSet[Resource Resourcer, Request any](permissions ...accesstypes.
 		return nil, errors.Wrap(err, "permissionsFromTags()")
 	}
 
+	var res Resource
 	return &ResourceSet[Resource]{
 		permissions:     permissions,
 		requiredTagPerm: requiredTagPerm,
 		fieldToTag:      fieldToTag,
 		immutableFields: immutableFields,
+		defaultFns:      res.DefaultFns(),
 		rMeta:           NewResourceMetadata[Resource](),
 	}, nil
 }

@@ -26,15 +26,18 @@ const (
 )
 
 type PatchSet[Resource Resourcer] struct {
-	querySet  *QuerySet[Resource]
-	data      *fieldSet
-	patchType PatchType
+	querySet   *QuerySet[Resource]
+	data       *fieldSet
+	patchType  PatchType
+	defaultFns map[accesstypes.Field]FieldDefaultFn
 }
 
 func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSet[Resource] {
+	var res Resource
 	return &PatchSet[Resource]{
-		querySet: NewQuerySet(rMeta),
-		data:     newFieldSet(),
+		querySet:   NewQuerySet(rMeta),
+		data:       newFieldSet(),
+		defaultFns: res.DefaultFns(),
 	}
 }
 
@@ -205,6 +208,16 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuf
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
+	}
+
+	for field, defaultFn := range p.defaultFns {
+		if !p.IsSet(field) {
+			d, err := defaultFn(ctx, txn)
+			if err != nil {
+				return errors.Wrap(err, "defaultFn()")
+			}
+			p.Set(field, d)
+		}
 	}
 
 	patch, err := p.Resolve()

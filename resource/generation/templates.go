@@ -46,6 +46,16 @@ func ({{ .Resource.Name }}) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+func ({{ .Resource.Name }}) DefaultFns() map[accesstypes.Field]resource.FieldDefaultFn {
+	return map[accesstypes.Field]resource.FieldDefaultFn{
+	{{- range $field := .Resource.Fields }}
+	{{- if $field.HasDefaultFn }}
+		"{{ $field.Name }}": {{ $field.DefaultFnName }},
+	{{- end }}
+	{{- end }}
+	}
+}
+
 type {{ .Resource.Name }}Query struct {
 	qSet *resource.QuerySet[{{ .Resource.Name }}]
 }
