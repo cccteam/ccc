@@ -62,6 +62,10 @@ func (r AResource) DefaultConfig() Config {
 	return defaultConfig
 }
 
+func (r AResource) DefaultFns() map[accesstypes.Field]FieldDefaultFn {
+	return nil
+}
+
 func TestNewResourceSet(t *testing.T) {
 	t.Parallel()
 
@@ -217,6 +221,10 @@ func (DoeInstitution) Resource() accesstypes.Resource {
 
 func (DoeInstitution) DefaultConfig() Config {
 	return defaultConfig
+}
+
+func (DoeInstitution) DefaultFns() map[accesstypes.Field]FieldDefaultFn {
+	return nil
 }
 
 var defaultConfig = Config{

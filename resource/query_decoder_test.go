@@ -24,6 +24,10 @@ func (testResource) DefaultConfig() Config {
 	}
 }
 
+func (testResource) DefaultFns() map[accesstypes.Field]FieldDefaultFn {
+	return nil
+}
+
 type testRequest struct {
 	ID          string `json:"id"`
 	Description string `json:"description"`
