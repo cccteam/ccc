@@ -516,7 +516,7 @@ func (f *resourceField) IsRequired() bool {
 		return true
 	}
 
-	if !f.IsPrimaryKey && !f.IsNullable && !f.HasDefault {
+	if !f.IsPrimaryKey && !f.IsNullable && !f.HasDefault && !f.HasDefaultFn() {
 		return true
 	}
 
