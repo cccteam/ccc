@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/cccteam/ccc/compare/resource/v0.1.0...resource/v0.1.1) (2025-05-02)
+
+
+### Features
+
+* Add rpc method config generation ([#270](https://github.com/cccteam/ccc/issues/270)) ([d2f66c8](https://github.com/cccteam/ccc/commit/d2f66c824e3bcf889e808879f41ab7494d4805c8))
+
 ## [0.1.0](https://github.com/cccteam/ccc/compare/resource/v0.0.27...resource/v0.1.0) (2025-04-30)
 
 
