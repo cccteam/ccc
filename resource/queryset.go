@@ -351,8 +351,6 @@ func (q *QuerySet[Resource]) SpannerList(ctx context.Context, db spxapi.Querier)
 			return
 		}
 
-		log.Println("ccc/resource SQL: ", stmt.SQL)
-		log.Println("ccc/resource params: ", stmt.Params)
 		for r, err := range spxscan.SelectSeq[Resource](ctx, db, stmt) {
 			if !yield(r, err) {
 				return
