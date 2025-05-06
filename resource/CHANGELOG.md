@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/cccteam/ccc/compare/resource/v0.1.1...resource/v0.1.2) (2025-05-06)
+
+
+### Bug Fixes
+
+* Correct where clause generation ([#275](https://github.com/cccteam/ccc/issues/275)) ([8902974](https://github.com/cccteam/ccc/commit/890297492a226da5aab99b43f255ad5030d1881f))
+
 ## [0.1.1](https://github.com/cccteam/ccc/compare/resource/v0.1.0...resource/v0.1.1) (2025-05-02)
 
 
