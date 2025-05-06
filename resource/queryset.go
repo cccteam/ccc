@@ -212,7 +212,7 @@ func (q *QuerySet[Resource]) queryWhereClause() (*Statement, error) {
 	tw := newTreeWalker()
 	sql := tw.walk(q.whereClause)
 
-	return &Statement{Sql: sql, Params: tw.params}, nil
+	return &Statement{Sql: "WHERE " + sql, Params: tw.params}, nil
 }
 
 func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
