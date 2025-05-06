@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"iter"
-	"log"
 	"maps"
 	"slices"
 	"sort"
@@ -176,8 +175,6 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 // Where translates the the fields to database struct tags in databaseType when building the where clause
 func (q *QuerySet[Resource]) Where() (*Statement, error) {
 	if q.whereClause != nil {
-		log.Println("q.whereClause != nil")
-
 		return q.queryWhereClause()
 	}
 
@@ -205,21 +202,15 @@ func (q *QuerySet[Resource]) Where() (*Statement, error) {
 		params[strings.ToLower(key)] = part.Value
 	}
 
-	stmt := &Statement{
+	return &Statement{
 		Sql:    "WHERE " + builder.String()[5:],
 		Params: params,
-	}
-	log.Println("stmt_2: ", stmt.Sql)
-	log.Println("params_2: ", stmt.Params)
-
-	return stmt, nil
+	}, nil
 }
 
 func (q *QuerySet[Resource]) queryWhereClause() (*Statement, error) {
 	tw := newTreeWalker()
 	sql := tw.walk(q.whereClause)
-	log.Println("sql: ", sql)
-	log.Println("params: ", tw.params)
 
 	return &Statement{Sql: "WHERE " + sql, Params: tw.params}, nil
 }
