@@ -125,7 +125,7 @@ type action string
 const (
 	and           action = "AND"
 	or                   = "OR"
-	equal                = "EQUAL"
+	equal                = "equal"
 	notEqual             = "NOTEQUAL"
 	greaterThan          = "GREATERTHAN"
 	greaterThanEq        = "GREATERTHANEQ"
