@@ -221,7 +221,7 @@ func (q *QuerySet[Resource]) queryWhereClause() (*Statement, error) {
 	log.Println("sql: ", sql)
 	log.Println("params: ", tw.params)
 
-	return &Statement{Sql: sql, Params: tw.params}, nil
+	return &Statement{Sql: "WHERE " + sql, Params: tw.params}, nil
 }
 
 func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
