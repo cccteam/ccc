@@ -96,7 +96,7 @@ func Test_QueryClause(t *testing.T) {
 			filter:     newTestQuery().Where(newTestQueryFilter().Name().Equal("test")),
 			wantString: "Name = @EQUAL0",
 			wantParams: map[string]any{
-				"@EQUAL0": "test",
+				"EQUAL0": "test",
 			},
 		},
 		{
@@ -104,9 +104,9 @@ func Test_QueryClause(t *testing.T) {
 			filter:     newTestQuery().Where(newTestQueryFilter().ID().Equal(1).Or().ID().GreaterThan(1).And().Name().Equal("test")),
 			wantString: "ID = @EQUAL0 OR ID > @GREATERTHAN0 AND Name = @EQUAL1",
 			wantParams: map[string]any{
-				"@EQUAL0":       1,
-				"@EQUAL1":       "test",
-				"@GREATERTHAN0": 1,
+				"EQUAL0":       1,
+				"EQUAL1":       "test",
+				"GREATERTHAN0": 1,
 			},
 		},
 		{
@@ -114,9 +114,9 @@ func Test_QueryClause(t *testing.T) {
 			filter:     newTestQuery().Where(newTestQueryFilter().Group(newTestQueryFilter().ID().Equal(10).Or().ID().GreaterThan(2)).And().Name().Equal("test")),
 			wantString: "(ID = @EQUAL0 OR ID > @GREATERTHAN0) AND Name = @EQUAL1",
 			wantParams: map[string]any{
-				"@EQUAL0":       10,
-				"@EQUAL1":       "test",
-				"@GREATERTHAN0": 2,
+				"EQUAL0":       10,
+				"EQUAL1":       "test",
+				"GREATERTHAN0": 2,
 			},
 		},
 		{
@@ -124,9 +124,9 @@ func Test_QueryClause(t *testing.T) {
 			filter:     newTestQuery().Where(newTestQueryFilter().ID().Equal(10).And().Name().Equal("test").Or().ID().GreaterThan(2)),
 			wantString: "ID = @EQUAL0 AND Name = @EQUAL1 OR ID > @GREATERTHAN0",
 			wantParams: map[string]any{
-				"@EQUAL0":       10,
-				"@EQUAL1":       "test",
-				"@GREATERTHAN0": 2,
+				"EQUAL0":       10,
+				"EQUAL1":       "test",
+				"GREATERTHAN0": 2,
 			},
 		},
 		{
@@ -134,9 +134,9 @@ func Test_QueryClause(t *testing.T) {
 			filter:     newTestQuery().Where(newTestQueryFilter().ID().Equal(10).And().Group(newTestQueryFilter().Name().Equal("test").Or().ID().GreaterThan(2))),
 			wantString: "ID = @EQUAL0 AND (Name = @EQUAL1 OR ID > @GREATERTHAN0)",
 			wantParams: map[string]any{
-				"@EQUAL0":       10,
-				"@EQUAL1":       "test",
-				"@GREATERTHAN0": 2,
+				"EQUAL0":       10,
+				"EQUAL1":       "test",
+				"GREATERTHAN0": 2,
 			},
 		},
 	}

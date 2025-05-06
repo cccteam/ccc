@@ -358,11 +358,11 @@ func (t *treeWalker) visit(node whereClauseExprTree) string {
 			b.WriteString("(")
 		}
 
-		b.WriteString(fmt.Sprintf("%s", t.newParam(values[0], node.Action())))
+		b.WriteString(fmt.Sprintf("@%s", t.newParam(values[0], node.Action())))
 
 		if len(values) > 1 {
 			for _, v := range values[1:] {
-				b.WriteString(fmt.Sprintf(", %s", t.newParam(v, node.Action())))
+				b.WriteString(fmt.Sprintf(", @%s", t.newParam(v, node.Action())))
 			}
 
 			b.WriteString(")")
@@ -375,7 +375,7 @@ func (t *treeWalker) visit(node whereClauseExprTree) string {
 }
 
 func (t *treeWalker) newParam(v any, a action) string {
-	s := fmt.Sprintf("@%s%d", a, t.accumulator[a])
+	s := fmt.Sprintf("%s%d", a, t.accumulator[a])
 	t.accumulator[a] += 1
 	t.params[s] = v
 
