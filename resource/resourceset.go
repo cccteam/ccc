@@ -108,7 +108,7 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 			immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
 
 			// immutability is implemented by requiring the update permission (here) and then
-			// disallowing it from being assigned to a roll (elsewhere)
+			// disallowing it from being assigned to a role (elsewhere)
 			if !slices.Contains(perms, string(accesstypes.Update)) {
 				perms = append(perms, string(accesstypes.Update))
 			}
