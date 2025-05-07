@@ -424,8 +424,8 @@ func (f *resourceField) ReadPermTag() string {
 
 	permissions := strings.Split(tag, ",")
 
-	if slices.Contains(permissions, "Read") {
-		return fmt.Sprintf("perm:%q", "Read")
+	if slices.Contains(permissions, string(accesstypes.Read)) {
+		return fmt.Sprintf("perm:%q", accesstypes.Read)
 	}
 
 	return ""
