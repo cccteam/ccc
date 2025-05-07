@@ -15,51 +15,51 @@ type (
 	immutableFieldMap map[accesstypes.Resource]map[accesstypes.Tag]struct{}
 )
 
-func AddResources[Resource Resourcer](s *Collection, scope accesstypes.PermissionScope, rSet *ResourceSet[Resource]) error {
+func AddResources[Resource Resourcer](c *Collection, scope accesstypes.PermissionScope, rSet *ResourceSet[Resource]) error {
 	if !collectResourcePermissions {
 		return nil
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	res := rSet.BaseResource()
 	tags := rSet.TagPermissions()
 
 	for _, perm := range rSet.Permissions() {
-		if err := s.addResource(false, scope, perm, res); err != nil {
+		if err := c.addResource(false, scope, perm, res); err != nil {
 			return err
 		}
 	}
 
-	if s.tagStore[scope][res] == nil {
-		if s.tagStore[scope] == nil {
-			s.tagStore[scope] = make(tagStore)
+	if c.tagStore[scope][res] == nil {
+		if c.tagStore[scope] == nil {
+			c.tagStore[scope] = make(tagStore)
 		}
 
-		s.tagStore[scope][res] = make(map[accesstypes.Tag][]accesstypes.Permission, len(tags))
+		c.tagStore[scope][res] = make(map[accesstypes.Tag][]accesstypes.Permission, len(tags))
 	}
 
 	for tag, tagPermissions := range tags {
 		for _, permission := range tagPermissions {
-			permissions := s.tagStore[scope][res][tag]
+			permissions := c.tagStore[scope][res][tag]
 			if slices.Contains(permissions, permission) {
 				return errors.Newf("found existing mapping between tag (%s) and permission (%s) under resource (%s)", tag, permission, res)
 			}
 
 			if permission != accesstypes.NullPermission {
-				s.tagStore[scope][res][tag] = append(permissions, permission)
+				c.tagStore[scope][res][tag] = append(permissions, permission)
 			} else {
-				s.tagStore[scope][res][tag] = permissions
+				c.tagStore[scope][res][tag] = permissions
 			}
 		}
 	}
 
-	if _, ok := s.immutableFields[scope]; !ok {
-		s.immutableFields[scope] = make(map[accesstypes.Resource]map[accesstypes.Tag]struct{})
+	if _, ok := c.immutableFields[scope]; !ok {
+		c.immutableFields[scope] = make(map[accesstypes.Resource]map[accesstypes.Tag]struct{})
 	}
 
-	s.immutableFields[scope][res] = rSet.ImmutableFields()
+	c.immutableFields[scope][res] = rSet.ImmutableFields()
 
 	return nil
 }
