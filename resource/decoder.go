@@ -130,7 +130,7 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *ResourceSet[Resource],
 	for jsonField := range jsonData {
 		if operationPerm == accesstypes.Update {
 			if _, found := rSet.immutableFields[accesstypes.Tag(jsonField)]; found {
-				return nil, nil, httpio.NewBadRequestMessagef("json field name %s is immutable", jsonField)
+				return nil, nil, httpio.NewBadRequestMessagef("json field %s is immutable", jsonField)
 			}
 		}
 

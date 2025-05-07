@@ -457,7 +457,7 @@ import (
 	patchTemplate = `func (a *App) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type request struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
 		{{- end }}
 	}
 	
@@ -567,7 +567,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 	{{- range $resource := .Resources }}
 	type {{ GoCamel $resource.Name }}Request struct {
 		{{- range $field := .Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
 		{{- end }}
 	}
 	{{ GoCamel $resource.Name}}Decoder := NewDecoder[resources.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)

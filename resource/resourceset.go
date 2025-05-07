@@ -100,8 +100,20 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 	for i := range t.NumField() {
 		field := t.Field(i)
 		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		immutableTag, _, _ := strings.Cut(field.Tag.Get("immutable"), ",")
 		permTag := field.Tag.Get("perm")
 		perms := strings.Split(permTag, ",")
+
+		if immutableTag == "true" {
+			immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
+
+			// immutability is implemented by requiring the update permission (here) and then
+			// disallowing it from being assigned to a roll (elsewhere)
+			if !slices.Contains(perms, string(accesstypes.Update)) {
+				perms = append(perms, string(accesstypes.Update))
+			}
+		}
+
 		var collected bool
 		for _, s := range perms {
 			permission := accesstypes.Permission(strings.TrimSpace(s))
@@ -111,10 +123,6 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 			case accesstypes.Delete:
 				return nil, nil, nil, nil, errors.Newf("delete permission is not allowed in struct tag")
 			case accesstypes.Create, accesstypes.Update:
-				mutating[permission] = struct{}{}
-			case accesstypes.Permission("Immutable"):
-				immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
-				permission = accesstypes.Update
 				mutating[permission] = struct{}{}
 			default:
 				nonmutating[permission] = struct{}{}

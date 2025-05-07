@@ -420,10 +420,6 @@ func (f *resourceField) ListPermTag() string {
 }
 
 func (f *resourceField) PatchPermTag() string {
-	if f.IsImmutable() {
-		return `perm:"Immutable"`
-	}
-
 	tag, ok := f.LookupTag("perm")
 	if !ok {
 		return ""
@@ -440,6 +436,14 @@ func (f *resourceField) PatchPermTag() string {
 
 	if len(patches) != 0 {
 		return fmt.Sprintf("perm:%q", strings.Join(patches, ","))
+	}
+
+	return ""
+}
+
+func (f *resourceField) ImmutableTag() string {
+	if f.IsImmutable() {
+		return `immutable:"true"`
 	}
 
 	return ""
