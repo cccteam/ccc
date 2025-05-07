@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 
@@ -392,7 +393,7 @@ func (f *resourceField) IsOutputOnly() bool {
 
 	conditions := strings.Split(tag, ",")
 
-	return slices.Contains(conditions, "outputonly")
+	return slices.Contains(conditions, "output_only")
 }
 
 func (f *resourceField) IsInputOnly() bool {
@@ -403,7 +404,7 @@ func (f *resourceField) IsInputOnly() bool {
 
 	conditions := strings.Split(tag, ",")
 
-	return slices.Contains(conditions, "inputonly")
+	return slices.Contains(conditions, "input_only")
 }
 
 func (f *resourceField) QueryTag() string {
@@ -424,7 +425,7 @@ func (f *resourceField) ReadPermTag() string {
 	permissions := strings.Split(tag, ",")
 
 	if slices.Contains(permissions, "Read") {
-		return `perm:"Read"`
+		return fmt.Sprintf("perm:%q", "Read")
 	}
 
 	return ""
@@ -438,8 +439,8 @@ func (f *resourceField) ListPermTag() string {
 
 	permissions := strings.Split(tag, ",")
 
-	if slices.Contains(permissions, "List") {
-		return `perm:"List"`
+	if slices.Contains(permissions, string(accesstypes.List)) {
+		return fmt.Sprintf("perm:%q", accesstypes.List)
 	}
 
 	return ""
@@ -455,7 +456,7 @@ func (f *resourceField) PatchPermTag() string {
 
 	var patches []string
 	for _, perm := range permissions {
-		if perm != "Read" && perm != "List" {
+		if perm != string(accesstypes.Read) && perm != string(accesstypes.List) {
 			patches = append(patches, perm)
 		}
 	}
