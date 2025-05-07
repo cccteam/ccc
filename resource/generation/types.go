@@ -325,6 +325,10 @@ func (f *resourceField) TypescriptDisplayType() string {
 }
 
 func (f *resourceField) JSONTag() string {
+	if f.IsInputOnly() {
+		return fmt.Sprintf("json:%q", "-")
+	}
+
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(f.Name())
 
@@ -336,7 +340,7 @@ func (f *resourceField) JSONTag() string {
 }
 
 func (f *resourceField) JSONTagForPatch() string {
-	if f.IsPrimaryKey {
+	if f.IsPrimaryKey || f.IsOutputOnly() {
 		return fmt.Sprintf("json:%q", "-")
 	}
 
@@ -378,6 +382,28 @@ func (f *resourceField) IsImmutable() bool {
 	conditions := strings.Split(tag, ",")
 
 	return slices.Contains(conditions, "immutable")
+}
+
+func (f *resourceField) IsOutputOnly() bool {
+	tag, ok := f.LookupTag("conditions")
+	if !ok {
+		return false
+	}
+
+	conditions := strings.Split(tag, ",")
+
+	return slices.Contains(conditions, "outputonly")
+}
+
+func (f *resourceField) IsInputOnly() bool {
+	tag, ok := f.LookupTag("conditions")
+	if !ok {
+		return false
+	}
+
+	conditions := strings.Split(tag, ",")
+
+	return slices.Contains(conditions, "inputonly")
 }
 
 func (f *resourceField) QueryTag() string {
