@@ -53,7 +53,7 @@ func (d *Decoder[Resource, Request]) WithValidator(v ValidatorFunc) *Decoder[Res
 }
 
 func (d *Decoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*PatchSet[Resource], error) {
-	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate)
+	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate, accesstypes.NullPermission)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func (d *Decoder[Resource, Request]) DecodeWithoutPermissions(request *http.Requ
 }
 
 func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, requiredPermission accesstypes.Permission) (*PatchSet[Resource], error) {
-	p, err := d.DecodeWithoutPermissions(request)
+	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate, requiredPermission)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermis
 	return patchSet, nil
 }
 
-func decodeToPatch[Resource Resourcer, Request any](rSet *ResourceSet[Resource], fieldMapper *RequestFieldMapper, req *http.Request, validate ValidatorFunc) (*PatchSet[Resource], *Request, error) {
+func decodeToPatch[Resource Resourcer, Request any](rSet *ResourceSet[Resource], fieldMapper *RequestFieldMapper, req *http.Request, validate ValidatorFunc, operationPerm accesstypes.Permission) (*PatchSet[Resource], *Request, error) {
 	request := new(Request)
 	pr, pw := io.Pipe()
 	tr := io.TeeReader(req.Body, pw)
@@ -128,6 +128,12 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *ResourceSet[Resource],
 
 	changes := make(map[accesstypes.Field]any)
 	for jsonField := range jsonData {
+		if operationPerm == accesstypes.Update {
+			if _, found := rSet.immutableFields[accesstypes.Tag(jsonField)]; found {
+				return nil, nil, httpio.NewBadRequestMessagef("json field %s is immutable", jsonField)
+			}
+		}
+
 		fieldName, ok := fieldMapper.StructFieldName(jsonField)
 		if !ok {
 			fieldName, ok = fieldMapper.StructFieldName(strings.ToLower(jsonField))

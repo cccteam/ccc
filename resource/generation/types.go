@@ -336,7 +336,7 @@ func (f *resourceField) JSONTag() string {
 }
 
 func (f *resourceField) JSONTagForPatch() string {
-	if f.IsPrimaryKey || f.IsImmutable() {
+	if f.IsPrimaryKey {
 		return fmt.Sprintf("json:%q", "-")
 	}
 
@@ -436,6 +436,14 @@ func (f *resourceField) PatchPermTag() string {
 
 	if len(patches) != 0 {
 		return fmt.Sprintf("perm:%q", strings.Join(patches, ","))
+	}
+
+	return ""
+}
+
+func (f *resourceField) ImmutableTag() string {
+	if f.IsImmutable() {
+		return `immutable:"true"`
 	}
 
 	return ""

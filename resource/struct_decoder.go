@@ -51,7 +51,7 @@ func (s *StructDecoder[Request]) WithValidator(v ValidatorFunc) *StructDecoder[R
 }
 
 func (s *StructDecoder[Request]) Decode(request *http.Request) (*Request, error) {
-	_, target, err := decodeToPatch[nilResource, Request](s.resourceSet, s.fieldMapper, request, s.validate)
+	_, target, err := decodeToPatch[nilResource, Request](s.resourceSet, s.fieldMapper, request, s.validate, accesstypes.NullPermission)
 	if err != nil {
 		return nil, err
 	}
