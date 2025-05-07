@@ -60,14 +60,14 @@ func New{{ .Resource.Name }}QueryFromQuerySet(qSet *resource.QuerySet[{{ .Resour
 
 {{ range $field := .Resource.Fields }}
 {{ if $field.IsUniqueIndex }}
-func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ .Type }}) *{{ $field.Parent.Name }}Query {
+func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}) *{{ $field.Parent.Name }}Query {
 	q.qSet.SetKey("{{ $field.Name }}", v)
 
 	return q
 }
 
-func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.Type }} {
-	v, _ := q.qSet.Key("{{ $field.Name }}").({{ $field.Type }})
+func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }} {
+	v, _ := q.qSet.Key("{{ $field.Name }}").({{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }})
 
 	return v
 }
