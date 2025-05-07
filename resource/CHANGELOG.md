@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/cccteam/ccc/compare/resource/v0.1.2...resource/v0.1.3) (2025-05-07)
+
+
+### Bug Fixes
+
+* Output the correct type name for local types in resourceFileTemplate ([#274](https://github.com/cccteam/ccc/issues/274)) ([c0c44c0](https://github.com/cccteam/ccc/commit/c0c44c036fb946471b9a89ba652b29680cc7d7fb))
+
 ## [0.1.2](https://github.com/cccteam/ccc/compare/resource/v0.1.1...resource/v0.1.2) (2025-05-06)
 
 
