@@ -14,12 +14,11 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-type FieldDefaultFn func(ctx context.Context, txn TxnBuffer) (any, error)
+type FieldDefaultFunc func(ctx context.Context, txn TxnBuffer) (any, error)
 
 type Resourcer interface {
 	Resource() accesstypes.Resource
 	DefaultConfig() Config
-	DefaultFns() map[accesstypes.Field]FieldDefaultFn
 }
 
 type ResourceSet[Resource Resourcer] struct {

@@ -46,16 +46,6 @@ func ({{ .Resource.Name }}) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
-func ({{ .Resource.Name }}) DefaultFns() map[accesstypes.Field]resource.FieldDefaultFn {
-	return map[accesstypes.Field]resource.FieldDefaultFn{
-	{{- range $field := .Resource.Fields }}
-	{{- if $field.HasDefaultFn }}
-		"{{ $field.Name }}": {{ $field.DefaultFnName }},
-	{{- end }}
-	{{- end }}
-	}
-}
-
 type {{ .Resource.Name }}Query struct {
 	qSet *resource.QuerySet[{{ .Resource.Name }}]
 }
@@ -268,6 +258,16 @@ func New{{ .Resource.Name }}CreatePatch(
 
 func (p *{{ .Resource.Name }}CreatePatch) PatchSet() *resource.PatchSet[{{ .Resource.Name }}] {
 	return p.patchSet
+}
+
+func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
+{{- range $field := .Resource.Fields }}
+{{- if $field.HasDefaultFn }}
+	p.patchSet.RegisterDefaultFunc("{{ $field.Name }}", func(ctx context.Context, txn resource.TxnBuffer) (any, error) {
+		return {{ $field.DefaultFnName }}(ctx, txn)
+	})
+{{- end }}
+{{- end }}
 }
 
 ` + fieldAccessors(CreatePatch) + `

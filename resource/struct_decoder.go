@@ -17,10 +17,6 @@ func (n nilResource) DefaultConfig() Config {
 	return Config{}
 }
 
-func (n nilResource) DefaultFns() map[accesstypes.Field]FieldDefaultFn {
-	return nil
-}
-
 // StructDecoder is a struct that can be used for decoding http requests and validating those requests
 type StructDecoder[Request any] struct {
 	validate    ValidatorFunc
