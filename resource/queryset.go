@@ -215,9 +215,9 @@ func (q *QuerySet[Resource]) queryWhereClause() (*Statement, error) {
 	return &Statement{Sql: "WHERE " + sql, Params: tw.params}, nil
 }
 
-func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
+func (q *QuerySet[Resource]) SpannerStmt() (*StatementWrapper, error) {
 	if q.rMeta.dbType != SpannerDBType {
-		return spanner.Statement{}, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
+		return nil, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
 	if moreThan(1, q.whereClause != nil, q.KeySet().Len() != 0, q.filter != nil) {
@@ -232,15 +232,15 @@ func (q *QuerySet[Resource]) SpannerStmt() (spanner.Statement, error) {
 }
 
 // TODO(bswaney): collapse this into the spanner filter stmt so that we can use the general case
-func (q *QuerySet[Resource]) spannerIndexStmt() (spanner.Statement, error) {
+func (q *QuerySet[Resource]) spannerIndexStmt() (*StatementWrapper, error) {
 	columns, err := q.Columns()
 	if err != nil {
-		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
+		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
 	where, err := q.Where()
 	if err != nil {
-		return spanner.Statement{}, errors.Wrap(err, "patcher.Where()")
+		return nil, errors.Wrap(err, "patcher.Where()")
 	}
 
 	stmt := spanner.NewStatement(fmt.Sprintf(`
@@ -251,18 +251,18 @@ func (q *QuerySet[Resource]) spannerIndexStmt() (spanner.Statement, error) {
 	))
 	maps.Insert(stmt.Params, maps.All(where.Params))
 
-	return stmt, nil
+	return &StatementWrapper{whereClause: strings.TrimPrefix(where.Sql, "WHERE "), Statement: stmt}, nil
 }
 
-func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
+func (q *QuerySet[Resource]) spannerFilterStmt() (*StatementWrapper, error) {
 	columns, err := q.Columns()
 	if err != nil {
-		return spanner.Statement{}, errors.Wrap(err, "QuerySet.Columns()")
+		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
 	filter, err := q.filter.SpannerStmt()
 	if err != nil {
-		return spanner.Statement{}, err
+		return nil, err
 	}
 
 	stmt := spanner.NewStatement(fmt.Sprintf(`
@@ -274,7 +274,7 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (spanner.Statement, error) {
 
 	stmt.Params = filter.Params
 
-	return stmt, nil
+	return &StatementWrapper{whereClause: strings.TrimPrefix(filter.Sql, "WHERE "), Statement: stmt}, nil
 }
 
 func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
@@ -316,9 +316,9 @@ func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, db spxapi.Querier)
 	}
 
 	dst := new(Resource)
-	if err := spxscan.Get(ctx, db, dst, stmt); err != nil {
+	if err := spxscan.Get(ctx, db, dst, stmt.Statement); err != nil {
 		if errors.Is(err, spxscan.ErrNotFound) {
-			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", q.Resource(), q.KeySet().String())
+			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", q.Resource(), stmt.whereClause)
 		}
 
 		return nil, errors.Wrap(err, "spxscan.Get()")
@@ -342,7 +342,7 @@ func (q *QuerySet[Resource]) SpannerList(ctx context.Context, db spxapi.Querier)
 			return
 		}
 
-		for r, err := range spxscan.SelectSeq[Resource](ctx, db, stmt) {
+		for r, err := range spxscan.SelectSeq[Resource](ctx, db, stmt.Statement) {
 			if !yield(r, err) {
 				return
 			}

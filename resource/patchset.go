@@ -449,9 +449,9 @@ func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn TxnBuffer)
 	}
 
 	oldValues := new(Resource)
-	if err := spxscan.Get(ctx, txn, oldValues, stmt); err != nil {
+	if err := spxscan.Get(ctx, txn, oldValues, stmt.Statement); err != nil {
 		if errors.Is(err, spxscan.ErrNotFound) {
-			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().String())
+			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), stmt.whereClause)
 		}
 
 		return nil, errors.Wrap(err, "spxscan.Get()")
@@ -463,7 +463,7 @@ func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn TxnBuffer)
 	}
 
 	if len(changeSet) == 0 {
-		return nil, httpio.NewBadRequestMessagef("No changes to apply for %s (%s)", p.Resource(), p.PrimaryKey().String())
+		return nil, httpio.NewBadRequestMessagef("No changes to apply for %s (%s)", p.Resource(), stmt.whereClause)
 	}
 
 	return changeSet, nil
@@ -476,9 +476,9 @@ func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn TxnBuffer) (
 	}
 
 	oldValues := new(Resource)
-	if err := spxscan.Get(ctx, txn, oldValues, stmt); err != nil {
+	if err := spxscan.Get(ctx, txn, oldValues, stmt.Statement); err != nil {
 		if errors.Is(err, spxscan.ErrNotFound) {
-			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), p.PrimaryKey().String())
+			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), stmt.whereClause)
 		}
 
 		return nil, errors.Wrap(err, "spxscan.Get()")

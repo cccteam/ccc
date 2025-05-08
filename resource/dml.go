@@ -1,5 +1,7 @@
 package resource
 
+import "cloud.google.com/go/spanner"
+
 type DBType string
 
 const (
@@ -10,6 +12,11 @@ const (
 type Statement struct {
 	Sql    string
 	Params map[string]any
+}
+
+type StatementWrapper struct {
+	whereClause string
+	spanner.Statement
 }
 
 type Columns string
