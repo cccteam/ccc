@@ -43,15 +43,6 @@ func (p KeySet) RowID() string {
 	return id.String()[1:]
 }
 
-func (p KeySet) String() string {
-	var values strings.Builder
-	for _, keyPart := range p.keyParts {
-		values.WriteString(fmt.Sprintf(", %s: %v", keyPart.Key, keyPart.Value))
-	}
-
-	return values.String()[2:]
-}
-
 func (p KeySet) KeySet() spanner.KeySet {
 	keys := make(spanner.Key, 0, len(p.keyParts))
 	for _, v := range p.keyParts {
