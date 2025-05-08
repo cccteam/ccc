@@ -408,7 +408,7 @@ func (f *resourceField) IsInputOnly() bool {
 }
 
 func (f *resourceField) DefaultFnName() string {
-	tag, ok := f.LookupTag("defaultFn")
+	tag, ok := f.LookupTag("default_fn")
 	if !ok {
 		return ""
 	}
