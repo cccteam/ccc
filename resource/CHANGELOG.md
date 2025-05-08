@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/cccteam/ccc/compare/resource/v0.1.4...resource/v0.1.5) (2025-05-08)
+
+
+### Features
+
+* Support funcs for setting resource field defaults ([#268](https://github.com/cccteam/ccc/issues/268)) ([af6b4ab](https://github.com/cccteam/ccc/commit/af6b4abb622a4ba0c1419a56433d90c7e70575ab))
+
 ## [0.1.4](https://github.com/cccteam/ccc/compare/resource/v0.1.3...resource/v0.1.4) (2025-05-08)
 
 
