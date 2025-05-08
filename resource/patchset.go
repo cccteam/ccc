@@ -433,10 +433,15 @@ func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context
 }
 
 func (p *PatchSet[Resource]) insertChangeSet() (map[accesstypes.Field]DiffElem, error) {
-	// FIXME(jwatson): We need nil values, not the zero value of the type.
 	changeSet, err := p.Diff(new(Resource))
 	if err != nil {
 		return nil, errors.Wrap(err, "Diff()")
+	}
+
+	// Old values for inserts are always nil
+	for k, v := range changeSet {
+		v.Old = nil
+		changeSet[k] = v
 	}
 
 	return changeSet, nil
