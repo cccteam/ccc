@@ -23,6 +23,7 @@ type Resource interface {
 package resources
 
 import (
+	"context"
 	"reflect"
 	"time"
 
@@ -271,9 +272,7 @@ func (p *{{ .Resource.Name }}CreatePatch) PatchSet() *resource.PatchSet[{{ .Reso
 func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 {{- range $field := .Resource.Fields }}
 {{- if $field.HasDefaultFn }}
-	p.patchSet.RegisterDefaultFunc("{{ $field.Name }}", func(ctx context.Context, txn resource.TxnBuffer) (any, error) {
-		return {{ $field.DefaultFnName }}(ctx, txn)
-	})
+	p.patchSet.RegisterDefaultFunc("{{ $field.Name }}", {{ $field.DefaultFnName }})
 {{- end }}
 {{- end }}
 }
