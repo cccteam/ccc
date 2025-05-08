@@ -407,6 +407,19 @@ func (f *resourceField) IsInputOnly() bool {
 	return slices.Contains(conditions, "input_only")
 }
 
+func (f *resourceField) DefaultFnName() string {
+	tag, ok := f.LookupTag("default_fn")
+	if !ok {
+		return ""
+	}
+
+	return tag
+}
+
+func (f *resourceField) HasDefaultFn() bool {
+	return f.DefaultFnName() != ""
+}
+
 func (f *resourceField) QueryTag() string {
 	query, ok := f.LookupTag("query")
 	if !ok {
@@ -503,7 +516,7 @@ func (f *resourceField) IsRequired() bool {
 		return true
 	}
 
-	if !f.IsPrimaryKey && !f.IsNullable && !f.HasDefault {
+	if !f.IsPrimaryKey && !f.IsNullable && !f.HasDefault && !f.HasDefaultFn() {
 		return true
 	}
 

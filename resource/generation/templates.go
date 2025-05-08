@@ -209,8 +209,10 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet *resource.PatchSet[
 	patchSet.
 		SetKey("{{ .Resource.PrimaryKey.Name }}", id).
 		SetPatchType(resource.CreatePatchType)
-	
-	return &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}, nil
+	patch := &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}
+	patch.registerDefaultFuncs()
+
+	return patch, nil
 }
 
 func New{{ .Resource.Name }}CreatePatch() (*{{ .Resource.Name }}CreatePatch, error) {
@@ -222,8 +224,10 @@ func New{{ .Resource.Name }}CreatePatch() (*{{ .Resource.Name }}CreatePatch, err
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
 		SetKey("{{ .Resource.PrimaryKey.Name }}", id).
 		SetPatchType(resource.CreatePatchType)
+	patch := &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}
+	patch.registerDefaultFuncs()
 
-	return &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}, nil
+	return patch, nil
 }
 {{ else }}
 func New{{ .Resource.Name }}CreatePatchFromPatchSet(
@@ -237,8 +241,10 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(
 	{{ end }}
 	{{ end }}
 		SetPatchType(resource.CreatePatchType)
+	patch := &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}
+	patch.registerDefaultFuncs()
 	
-	return &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}
+	return patch
 }
 
 func New{{ .Resource.Name }}CreatePatch(
@@ -251,13 +257,25 @@ func New{{ .Resource.Name }}CreatePatch(
 	{{ end }}
 	{{ end }}
 		SetPatchType(resource.CreatePatchType)
+	patch := &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}
+	patch.registerDefaultFuncs()
 
-	return &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}
+	return patch
 }
 {{ end }}
 
 func (p *{{ .Resource.Name }}CreatePatch) PatchSet() *resource.PatchSet[{{ .Resource.Name }}] {
 	return p.patchSet
+}
+
+func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
+{{- range $field := .Resource.Fields }}
+{{- if $field.HasDefaultFn }}
+	p.patchSet.RegisterDefaultFunc("{{ $field.Name }}", func(ctx context.Context, txn resource.TxnBuffer) (any, error) {
+		return {{ $field.DefaultFnName }}(ctx, txn)
+	})
+{{- end }}
+{{- end }}
 }
 
 ` + fieldAccessors(CreatePatch) + `

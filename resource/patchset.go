@@ -26,15 +26,17 @@ const (
 )
 
 type PatchSet[Resource Resourcer] struct {
-	querySet  *QuerySet[Resource]
-	data      *fieldSet
-	patchType PatchType
+	querySet     *QuerySet[Resource]
+	data         *fieldSet
+	patchType    PatchType
+	defaultFuncs map[accesstypes.Field]FieldDefaultFunc
 }
 
 func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSet[Resource] {
 	return &PatchSet[Resource]{
-		querySet: NewQuerySet(rMeta),
-		data:     newFieldSet(),
+		querySet:     NewQuerySet(rMeta),
+		data:         newFieldSet(),
+		defaultFuncs: make(map[accesstypes.Field]FieldDefaultFunc),
 	}
 }
 
@@ -205,6 +207,16 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuf
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
+	}
+
+	for field, defaultFunc := range p.defaultFuncs {
+		if !p.IsSet(field) {
+			d, err := defaultFunc(ctx, txn)
+			if err != nil {
+				return errors.Wrap(err, "defaultFunc()")
+			}
+			p.Set(field, d)
+		}
 	}
 
 	patch, err := p.Resolve()
@@ -584,6 +596,10 @@ func (p *PatchSet[Resource]) validateEventSource(eventSource []string) (string, 
 	}
 
 	return event, nil
+}
+
+func (p *PatchSet[Resource]) RegisterDefaultFunc(field accesstypes.Field, fn FieldDefaultFunc) {
+	p.defaultFuncs[field] = fn
 }
 
 // all returns an iterator over key-value pairs from m.
