@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.6](https://github.com/cccteam/ccc/compare/resource/v0.1.5...resource/v0.1.6) (2025-05-08)
+
+
+### Bug Fixes
+
+* Ensure old values for inserts are set to nil in data change tracking ([#284](https://github.com/cccteam/ccc/issues/284)) ([72ab7d0](https://github.com/cccteam/ccc/commit/72ab7d0c05256c3c6eb185e55169eb8dc58c4ae2))
+* Fix not found error condition for filters and where clauses ([#284](https://github.com/cccteam/ccc/issues/284)) ([72ab7d0](https://github.com/cccteam/ccc/commit/72ab7d0c05256c3c6eb185e55169eb8dc58c4ae2))
+
+
+### Code Refactoring
+
+* Remove unused closure ([#286](https://github.com/cccteam/ccc/issues/286)) ([8f4e075](https://github.com/cccteam/ccc/commit/8f4e07539490e26a2ef2d638d4086be1ff9a1001))
+
 ## [0.1.5](https://github.com/cccteam/ccc/compare/resource/v0.1.4...resource/v0.1.5) (2025-05-08)
 
 
