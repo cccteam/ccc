@@ -15,7 +15,10 @@ type Statement struct {
 }
 
 type StatementWrapper struct {
+	// whereClause is used to carry contextual information for error messages
+	// and is not used in the query.
 	whereClause string
+
 	spanner.Statement
 }
 
