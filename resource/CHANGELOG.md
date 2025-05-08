@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.4](https://github.com/cccteam/ccc/compare/resource/v0.1.3...resource/v0.1.4) (2025-05-08)
+
+
+### Features
+
+* Implement InputOnly and OutputOnly field options ([#280](https://github.com/cccteam/ccc/issues/280)) ([4f670c3](https://github.com/cccteam/ccc/commit/4f670c3f3fbe68aa2d87b65a84e02878f3f8a9b8))
+
+
+### Bug Fixes
+
+* Allow setting immutable fields on Create ([#277](https://github.com/cccteam/ccc/issues/277)) ([f730f7b](https://github.com/cccteam/ccc/commit/f730f7b3d0fbd6c4ecdec075c4eca2809a42c302))
+
 ## [0.1.3](https://github.com/cccteam/ccc/compare/resource/v0.1.2...resource/v0.1.3) (2025-05-07)
 
 
