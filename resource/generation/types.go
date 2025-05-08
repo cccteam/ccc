@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 
@@ -325,6 +326,10 @@ func (f *resourceField) TypescriptDisplayType() string {
 }
 
 func (f *resourceField) JSONTag() string {
+	if f.IsInputOnly() {
+		return fmt.Sprintf("json:%q", "-")
+	}
+
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(f.Name())
 
@@ -336,7 +341,7 @@ func (f *resourceField) JSONTag() string {
 }
 
 func (f *resourceField) JSONTagForPatch() string {
-	if f.IsPrimaryKey {
+	if f.IsPrimaryKey || f.IsOutputOnly() {
 		return fmt.Sprintf("json:%q", "-")
 	}
 
@@ -380,6 +385,28 @@ func (f *resourceField) IsImmutable() bool {
 	return slices.Contains(conditions, "immutable")
 }
 
+func (f *resourceField) IsOutputOnly() bool {
+	tag, ok := f.LookupTag("conditions")
+	if !ok {
+		return false
+	}
+
+	conditions := strings.Split(tag, ",")
+
+	return slices.Contains(conditions, "output_only")
+}
+
+func (f *resourceField) IsInputOnly() bool {
+	tag, ok := f.LookupTag("conditions")
+	if !ok {
+		return false
+	}
+
+	conditions := strings.Split(tag, ",")
+
+	return slices.Contains(conditions, "input_only")
+}
+
 func (f *resourceField) QueryTag() string {
 	query, ok := f.LookupTag("query")
 	if !ok {
@@ -397,8 +424,8 @@ func (f *resourceField) ReadPermTag() string {
 
 	permissions := strings.Split(tag, ",")
 
-	if slices.Contains(permissions, "Read") {
-		return fmt.Sprintf("perm:%q", "Read")
+	if slices.Contains(permissions, string(accesstypes.Read)) {
+		return fmt.Sprintf("perm:%q", accesstypes.Read)
 	}
 
 	return ""
@@ -412,8 +439,8 @@ func (f *resourceField) ListPermTag() string {
 
 	permissions := strings.Split(tag, ",")
 
-	if slices.Contains(permissions, "List") {
-		return fmt.Sprintf("perm:%q", "List")
+	if slices.Contains(permissions, string(accesstypes.List)) {
+		return fmt.Sprintf("perm:%q", accesstypes.List)
 	}
 
 	return ""
@@ -429,7 +456,7 @@ func (f *resourceField) PatchPermTag() string {
 
 	var patches []string
 	for _, perm := range permissions {
-		if perm != "Read" && perm != "List" {
+		if perm != string(accesstypes.Read) && perm != string(accesstypes.List) {
 			patches = append(patches, perm)
 		}
 	}
