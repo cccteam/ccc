@@ -2,6 +2,7 @@ package resource
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"cloud.google.com/go/spanner"
@@ -48,6 +49,8 @@ func (p KeySet) String() string {
 	for _, keyPart := range p.keyParts {
 		values.WriteString(fmt.Sprintf(", %s: %v", keyPart.Key, keyPart.Value))
 	}
+
+	log.Println(values.String())
 
 	return values.String()[2:]
 }
