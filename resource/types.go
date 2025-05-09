@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"context"
 	"time"
 
 	"cloud.google.com/go/spanner"
@@ -33,4 +34,16 @@ type TypescriptData struct {
 	ResourceTags          map[accesstypes.Resource][]accesstypes.Tag
 	ResourcePermissionMap permissionMap
 	Domains               []accesstypes.PermissionScope
+}
+
+var _ FieldDefaultFunc = (CommitTimestamp)
+
+func CommitTimestamp(_ context.Context, _ TxnBuffer) (any, error) {
+	return spanner.CommitTimestamp, nil
+}
+
+var _ FieldDefaultFunc = (CommitTimestampPtr)
+
+func CommitTimestampPtr(_ context.Context, _ TxnBuffer) (any, error) {
+	return &spanner.CommitTimestamp, nil
 }

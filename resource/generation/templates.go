@@ -271,8 +271,8 @@ func (p *{{ .Resource.Name }}CreatePatch) PatchSet() *resource.PatchSet[{{ .Reso
 
 func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 {{- range $field := .Resource.Fields }}
-{{- if $field.HasDefaultFn }}
-	p.patchSet.RegisterDefaultFunc("{{ $field.Name }}", {{ $field.DefaultFnName }})
+{{- if $field.HasDefaultCreateFunc }}
+	p.patchSet.RegisterDefaultCreateFunc("{{ $field.Name }}", {{ $field.DefaultCreateFuncName }})
 {{- end }}
 {{- end }}
 }
@@ -298,7 +298,10 @@ patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}UpdatePa
 	{{ end }}
 		SetPatchType(resource.UpdatePatchType)
 
-	return &{{ .Resource.Name }}UpdatePatch{patchSet: patchSet}
+	patch := &{{ .Resource.Name }}UpdatePatch{patchSet: patchSet}
+	patch.registerDefaultFuncs()
+
+	return patch
 }
 
 func New{{ .Resource.Name }}UpdatePatch(
@@ -316,11 +319,22 @@ func New{{ .Resource.Name }}UpdatePatch(
 {{- end }}
 		SetPatchType(resource.UpdatePatchType)
 
-	return &{{ .Resource.Name }}UpdatePatch{patchSet: patchSet}
+	patch := &{{ .Resource.Name }}UpdatePatch{patchSet: patchSet}
+	patch.registerDefaultFuncs()
+
+	return patch
 }
 
 func (p *{{ .Resource.Name }}UpdatePatch) PatchSet() *resource.PatchSet[{{ .Resource.Name }}] {
 	return p.patchSet
+}
+
+func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
+{{- range $field := .Resource.Fields }}
+{{- if $field.HasDefaultUpdateFunc }}
+	p.patchSet.RegisterDefaultUpdateFunc("{{ $field.Name }}", {{ $field.DefaultUpdateFuncName }})
+{{- end }}
+{{- end }}
 }
 
 ` + fieldAccessors(UpdatePatch) + `
