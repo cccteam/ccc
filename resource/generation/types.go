@@ -212,6 +212,9 @@ func (f *rpcField) TypescriptDataType() string {
 	if f.typescriptType == "uuid" {
 		return "string"
 	}
+	if f.typescriptType == "civilDate" {
+		return "Date"
+	}
 
 	return f.typescriptType
 }
