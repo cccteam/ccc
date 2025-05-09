@@ -416,8 +416,8 @@ func (f *resourceField) IsInputOnly() bool {
 	return slices.Contains(conditions, "input_only")
 }
 
-func (f *resourceField) DefaultFnName() string {
-	tag, ok := f.LookupTag("default_fn")
+func (f *resourceField) DefaultCreateFuncName() string {
+	tag, ok := f.LookupTag("default_create_fn")
 	if !ok {
 		return ""
 	}
@@ -425,8 +425,21 @@ func (f *resourceField) DefaultFnName() string {
 	return tag
 }
 
-func (f *resourceField) HasDefaultFn() bool {
-	return f.DefaultFnName() != ""
+func (f *resourceField) HasDefaultCreateFunc() bool {
+	return f.DefaultCreateFuncName() != ""
+}
+
+func (f *resourceField) DefaultUpdateFuncName() string {
+	tag, ok := f.LookupTag("default_update_fn")
+	if !ok {
+		return ""
+	}
+
+	return tag
+}
+
+func (f *resourceField) HasDefaultUpdateFunc() bool {
+	return f.DefaultUpdateFuncName() != ""
 }
 
 func (f *resourceField) QueryTag() string {
@@ -525,7 +538,7 @@ func (f *resourceField) IsRequired() bool {
 		return true
 	}
 
-	if !f.IsPrimaryKey && !f.IsNullable && !f.HasDefault && !f.HasDefaultFn() {
+	if !f.IsPrimaryKey && !f.IsNullable && !f.HasDefault && !f.HasDefaultCreateFunc() {
 		return true
 	}
 
