@@ -63,14 +63,14 @@ func (c *client) extractResources(pkg *types.Package) ([]*resourceInfo, error) {
 		return nil, err
 	}
 
-	resources := make([]*resourceInfo, len(resourceStructs))
-	for i, pStruct := range resourceStructs {
+	resources := make([]*resourceInfo, 0, len(resourceStructs))
+	for _, pStruct := range resourceStructs {
 		resource, err := c.structToResource(&pStruct)
 		if err != nil {
 			return nil, err
 		}
 
-		resources[i] = resource
+		resources = append(resources, resource)
 	}
 
 	return resources, nil

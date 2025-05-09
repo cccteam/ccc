@@ -185,11 +185,13 @@ func (t *typescriptGenerator) Generate() error {
 		return err
 	}
 
-	for _, resource := range resources {
-		resource = t.setResourceTypescriptInfo(resource)
+	t.resources = make([]*resourceInfo, 0, len(resources))
+	for _, resourceInfo := range resources {
+		resource := accesstypes.Resource(t.pluralize(resourceInfo.Name()))
+		if t.rc.ResourceExists(resource) {
+			t.resources = append(t.resources, t.setResourceTypescriptInfo(resourceInfo))
+		}
 	}
-
-	t.resources = resources
 
 	if t.genRPCMethods {
 		rpcStructs, err := extractStructsByInterface(packageMap["rpc"], rpcInterfaces[:]...)

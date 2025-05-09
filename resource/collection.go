@@ -201,6 +201,24 @@ func (s *Collection) Resources() []accesstypes.Resource {
 	return slices.Compact(resources)
 }
 
+func (s *Collection) ResourceExists(r accesstypes.Resource) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, stores := range s.resourceStore {
+		for resource, permissions := range stores {
+			if slices.Contains(permissions, accesstypes.Execute) {
+				continue
+			}
+			if resource == r {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func (s *Collection) tags() map[accesstypes.Resource][]accesstypes.Tag {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

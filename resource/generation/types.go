@@ -43,6 +43,7 @@ const (
 type HandlerType string
 
 const (
+	All   HandlerType = "all"
 	List  HandlerType = "list"
 	Read  HandlerType = "read"
 	Patch HandlerType = "patch"
