@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/cccteam/ccc/compare/resource/v0.1.6...resource/v0.1.7) (2025-05-09)
+
+
+### Bug Fixes
+
+* Exclude resources with no handlers from typescript resource generation ([#287](https://github.com/cccteam/ccc/issues/287)) ([5e137e9](https://github.com/cccteam/ccc/commit/5e137e934deb15445207fb80b1196341a6541515))
+
 ## [0.1.6](https://github.com/cccteam/ccc/compare/resource/v0.1.5...resource/v0.1.6) (2025-05-08)
 
 
