@@ -40,22 +40,24 @@ const (
 	ForeignKey ConstraintType = "FOREIGN KEY"
 )
 
+type SuppressHandlerGeneration map[string][]HandlerType
+
 type HandlerType string
 
 const (
-	All   HandlerType = "all"
-	List  HandlerType = "list"
-	Read  HandlerType = "read"
-	Patch HandlerType = "patch"
+	AllHandlers  HandlerType = "allHandlers"
+	ListHandler  HandlerType = "listHandler"
+	ReadHandler  HandlerType = "readHandler"
+	PatchHandler HandlerType = "patchHandler"
 )
 
 func (h HandlerType) template() string {
 	switch h {
-	case Read:
+	case ReadHandler:
 		return readTemplate
-	case List:
+	case ListHandler:
 		return listTemplate
-	case Patch:
+	case PatchHandler:
 		return patchTemplate
 	default:
 		panic(fmt.Sprintf("template(): unknown handler type: %s", h))
@@ -64,9 +66,9 @@ func (h HandlerType) template() string {
 
 func (h HandlerType) Method() string {
 	switch h {
-	case Read, List:
+	case ReadHandler, ListHandler:
 		return "GET"
-	case Patch:
+	case PatchHandler:
 		return "PATCH"
 	default:
 		panic(fmt.Sprintf("Method(): unknown handler type: %s", h))

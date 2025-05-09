@@ -23,7 +23,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 
 		for _, ht := range handlerTypes {
 			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(resource.Name())))
-			if ht == Read {
+			if ht == ReadHandler {
 				path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name()+"ID"))
 			}
 
