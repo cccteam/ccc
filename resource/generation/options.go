@@ -4,6 +4,7 @@ import (
 	"maps"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"time"
 
 	"cloud.google.com/go/civil"
@@ -53,6 +54,9 @@ func GenerateHandlers(targetDir string, ignoredHandlers map[string][]HandlerType
 			r.handlerOptions = make(map[string]map[HandlerType][]OptionType)
 
 			for structName, handlerTypes := range ignoredHandlers {
+				if slices.Contains(handlerTypes, All) {
+					handlerTypes = []HandlerType{List, Read, Patch}
+				}
 				for _, handlerType := range handlerTypes {
 					if _, ok := r.handlerOptions[structName]; !ok {
 						r.handlerOptions[structName] = make(map[HandlerType][]OptionType)
