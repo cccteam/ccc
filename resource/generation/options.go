@@ -213,7 +213,7 @@ func defaultTypescriptOverrides() map[string]string {
 		reflect.TypeOf(decimal.Decimal{}).String():     "number",
 		reflect.TypeOf(decimal.NullDecimal{}).String(): "number",
 		reflect.TypeOf(time.Time{}).String():           "Date",
-		reflect.TypeOf(civil.Date{}).String():          "Date",
+		reflect.TypeOf(civil.Date{}).String():          "simpleDate",
 		"bool":                                         "boolean",
 		"string":                                       "string",
 		"int":                                          "number",
