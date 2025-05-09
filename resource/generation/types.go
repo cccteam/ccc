@@ -316,6 +316,9 @@ func (f *resourceField) TypescriptDataType() string {
 	if f.typescriptType == "uuid" {
 		return "string"
 	}
+	if f.typescriptType == "simpleDate" {
+		return "Date"
+	}
 
 	return f.typescriptType
 }
