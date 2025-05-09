@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/cccteam/ccc/compare/resource/v0.1.7...resource/v0.1.8) (2025-05-09)
+
+
+### Code Refactoring
+
+* Refactor handler types for better code readability ([#289](https://github.com/cccteam/ccc/issues/289)) ([5357052](https://github.com/cccteam/ccc/commit/5357052237b6a5fa63ccea224c9ee4713c9191ae))
+
 ## [0.1.7](https://github.com/cccteam/ccc/compare/resource/v0.1.6...resource/v0.1.7) (2025-05-09)
 
 
