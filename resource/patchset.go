@@ -26,17 +26,19 @@ const (
 )
 
 type PatchSet[Resource Resourcer] struct {
-	querySet     *QuerySet[Resource]
-	data         *fieldSet
-	patchType    PatchType
-	defaultFuncs map[accesstypes.Field]FieldDefaultFunc
+	querySet           *QuerySet[Resource]
+	data               *fieldSet
+	patchType          PatchType
+	defaultCreateFuncs map[accesstypes.Field]FieldDefaultFunc
+	defaultUpdateFuncs map[accesstypes.Field]FieldDefaultFunc
 }
 
 func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSet[Resource] {
 	return &PatchSet[Resource]{
-		querySet:     NewQuerySet(rMeta),
-		data:         newFieldSet(),
-		defaultFuncs: make(map[accesstypes.Field]FieldDefaultFunc),
+		querySet:           NewQuerySet(rMeta),
+		data:               newFieldSet(),
+		defaultCreateFuncs: make(map[accesstypes.Field]FieldDefaultFunc),
+		defaultUpdateFuncs: make(map[accesstypes.Field]FieldDefaultFunc),
 	}
 }
 
@@ -209,7 +211,7 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuf
 		return err
 	}
 
-	for field, defaultFunc := range p.defaultFuncs {
+	for field, defaultFunc := range p.defaultCreateFuncs {
 		if !p.IsSet(field) {
 			d, err := defaultFunc(ctx, txn)
 			if err != nil {
@@ -246,6 +248,16 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuf
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
+	}
+
+	for field, defaultFunc := range p.defaultUpdateFuncs {
+		if !p.IsSet(field) {
+			d, err := defaultFunc(ctx, txn)
+			if err != nil {
+				return errors.Wrap(err, "defaultFunc()")
+			}
+			p.Set(field, d)
+		}
 	}
 
 	patch, err := p.Resolve()
@@ -603,8 +615,12 @@ func (p *PatchSet[Resource]) validateEventSource(eventSource []string) (string, 
 	return event, nil
 }
 
-func (p *PatchSet[Resource]) RegisterDefaultFunc(field accesstypes.Field, fn FieldDefaultFunc) {
-	p.defaultFuncs[field] = fn
+func (p *PatchSet[Resource]) RegisterDefaultCreateFunc(field accesstypes.Field, fn FieldDefaultFunc) {
+	p.defaultCreateFuncs[field] = fn
+}
+
+func (p *PatchSet[Resource]) RegisterDefaultUpdateFunc(field accesstypes.Field, fn FieldDefaultFunc) {
+	p.defaultUpdateFuncs[field] = fn
 }
 
 // all returns an iterator over key-value pairs from m.
