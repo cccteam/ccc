@@ -45,10 +45,10 @@ type SuppressHandlerGeneration map[string][]HandlerType
 type HandlerType string
 
 const (
-	AllHandlers  HandlerType = "all"
-	ListHandler  HandlerType = "list"
-	ReadHandler  HandlerType = "read"
-	PatchHandler HandlerType = "patch"
+	AllHandlers  HandlerType = "allHandlers"
+	ListHandler  HandlerType = "listHandler"
+	ReadHandler  HandlerType = "readHandler"
+	PatchHandler HandlerType = "patchHandler"
 )
 
 func (h HandlerType) template() string {
