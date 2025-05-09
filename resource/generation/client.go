@@ -747,13 +747,13 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*e
 }
 
 func (c *client) resourceEndpoints(resource *resourceInfo) []HandlerType {
-	handlerTypes := []HandlerType{List}
+	handlerTypes := []HandlerType{ListHandler}
 
 	if !resource.IsView {
-		handlerTypes = append(handlerTypes, Read)
+		handlerTypes = append(handlerTypes, ReadHandler)
 
 		if resource.IsConsolidated == c.consolidateAll {
-			handlerTypes = append(handlerTypes, Patch)
+			handlerTypes = append(handlerTypes, PatchHandler)
 		}
 	}
 

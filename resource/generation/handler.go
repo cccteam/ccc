@@ -171,11 +171,11 @@ func (r *resourceGenerator) handlerContent(handler HandlerType, resource *resour
 func (c *client) handlerName(structName string, handlerType HandlerType) string {
 	var functionName string
 	switch handlerType {
-	case List:
+	case ListHandler:
 		functionName = c.pluralize(structName)
-	case Read:
+	case ReadHandler:
 		functionName = structName
-	case Patch:
+	case PatchHandler:
 		functionName = "Patch" + c.pluralize(structName)
 	}
 

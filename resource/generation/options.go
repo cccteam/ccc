@@ -45,17 +45,17 @@ func (option) isTypescriptOption() {}
 
 // ignoredHandlers maps the name of a resource and to handler types (list, read, patch)
 // that you do not want generated for that resource
-func GenerateHandlers(targetDir string, ignoredHandlers map[string][]HandlerType) ResourceOption {
+func GenerateHandlers(targetDir string, ignoreHandlers SuppressHandlerGeneration) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genHandlers = true
 		r.handlerDestination = targetDir
 
-		if ignoredHandlers != nil {
+		if ignoreHandlers != nil {
 			r.handlerOptions = make(map[string]map[HandlerType][]OptionType)
 
-			for structName, handlerTypes := range ignoredHandlers {
-				if slices.Contains(handlerTypes, All) {
-					handlerTypes = []HandlerType{List, Read, Patch}
+			for structName, handlerTypes := range ignoreHandlers {
+				if slices.Contains(handlerTypes, AllHandlers) {
+					handlerTypes = []HandlerType{ListHandler, ReadHandler, PatchHandler}
 				}
 				for _, handlerType := range handlerTypes {
 					if _, ok := r.handlerOptions[structName]; !ok {
