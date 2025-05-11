@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/cccteam/ccc/compare/resource/v0.1.8...resource/v0.1.9) (2025-05-11)
+
+
+### Bug Fixes
+
+* Simple date typescript type ([#293](https://github.com/cccteam/ccc/issues/293)) ([ed662ca](https://github.com/cccteam/ccc/commit/ed662ca29687532870c4d702d2a297381ad56a3f))
+
 ## [0.1.8](https://github.com/cccteam/ccc/compare/resource/v0.1.7...resource/v0.1.8) (2025-05-09)
 
 
