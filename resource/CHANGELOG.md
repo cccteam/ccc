@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/cccteam/ccc/compare/resource/v0.1.9...resource/v0.1.10) (2025-05-12)
+
+
+### Features
+
+* Implement default update function support ([#295](https://github.com/cccteam/ccc/issues/295)) ([ff4be47](https://github.com/cccteam/ccc/commit/ff4be4784c039dc2df12ea30d4a0a53e6745807d))
+
 ## [0.1.9](https://github.com/cccteam/ccc/compare/resource/v0.1.8...resource/v0.1.9) (2025-05-11)
 
 
