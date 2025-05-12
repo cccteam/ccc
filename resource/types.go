@@ -36,13 +36,13 @@ type TypescriptData struct {
 	Domains               []accesstypes.PermissionScope
 }
 
-var _ FieldDefaultFunc = (CommitTimestamp)
+var _ FieldDefaultFunc = CommitTimestamp
 
 func CommitTimestamp(_ context.Context, _ TxnBuffer) (any, error) {
 	return spanner.CommitTimestamp, nil
 }
 
-var _ FieldDefaultFunc = (CommitTimestampPtr)
+var _ FieldDefaultFunc = CommitTimestampPtr
 
 func CommitTimestampPtr(_ context.Context, _ TxnBuffer) (any, error) {
 	return &spanner.CommitTimestamp, nil
