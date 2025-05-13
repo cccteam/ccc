@@ -299,22 +299,14 @@ func (n *compNode[T]) RightOperands() []any {
 // query clause expression tree. This enables uniquely identifying parameters
 // which must conform to naming requirements in https://cloud.google.com/spanner/docs/reference/standard-sql/lexical#identifiers
 type treeWalker struct {
-	accumulator map[action]int
+	accumulator map[string]int
 	params      map[string]any
 }
 
 func newTreeWalker() treeWalker {
 	return treeWalker{
-		accumulator: map[action]int{
-			equal:         0,
-			notEqual:      0,
-			greaterThan:   0,
-			greaterThanEq: 0,
-			lessThan:      0,
-			lessThanEq:    0,
-		},
-
-		params: make(map[string]any),
+		accumulator: make(map[string]int),
+		params:      make(map[string]any),
 	}
 }
 
@@ -358,11 +350,11 @@ func (t *treeWalker) visit(node whereClauseExprTree) string {
 			b.WriteString("(")
 		}
 
-		b.WriteString(fmt.Sprintf("@%s", t.newParam(values[0], node.Action())))
+		b.WriteString(fmt.Sprintf("@%s", t.newParam(values[0], node.LeftOperand())))
 
 		if len(values) > 1 {
 			for _, v := range values[1:] {
-				b.WriteString(fmt.Sprintf(", @%s", t.newParam(v, node.Action())))
+				b.WriteString(fmt.Sprintf(", @%s", t.newParam(v, node.LeftOperand())))
 			}
 
 			b.WriteString(")")
@@ -374,7 +366,7 @@ func (t *treeWalker) visit(node whereClauseExprTree) string {
 	return b.String()
 }
 
-func (t *treeWalker) newParam(v any, a action) string {
+func (t *treeWalker) newParam(v any, a string) string {
 	s := fmt.Sprintf("%s%d", a, t.accumulator[a])
 	t.accumulator[a] += 1
 	t.params[s] = v
