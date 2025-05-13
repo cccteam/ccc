@@ -367,7 +367,10 @@ func (t *treeWalker) visit(node whereClauseExprTree) string {
 }
 
 func (t *treeWalker) newParam(v any, a string) string {
-	s := fmt.Sprintf("%s%d", a, t.accumulator[a])
+	s := a
+	if _, exists := t.accumulator[a]; exists {
+		s = fmt.Sprintf("%s%d", a, t.accumulator[a])
+	}
 	t.accumulator[a] += 1
 	t.params[s] = v
 
