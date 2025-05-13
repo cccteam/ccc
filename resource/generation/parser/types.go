@@ -238,3 +238,12 @@ func (f Field) LookupTag(key string) (string, bool) {
 func (f Field) IsLocalType() bool {
 	return f.isLocalType
 }
+
+// Returns the field's unqualified type if it's local, and the qualified type otherwise.
+func (f Field) ResolvedType() string {
+	if f.IsLocalType() {
+		return f.UnqualifiedType()
+	}
+
+	return f.Type()
+}

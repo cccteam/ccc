@@ -61,14 +61,14 @@ func New{{ .Resource.Name }}QueryFromQuerySet(qSet *resource.QuerySet[{{ .Resour
 
 {{ range $field := .Resource.Fields }}
 {{ if $field.IsUniqueIndex }}
-func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}) *{{ $field.Parent.Name }}Query {
+func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ $field.ResolvedType }}) *{{ $field.Parent.Name }}Query {
 	q.qSet.SetKey("{{ $field.Name }}", v)
 
 	return q
 }
 
-func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }} {
-	v, _ := q.qSet.Key("{{ $field.Name }}").({{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }})
+func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.ResolvedType }} {
+	v, _ := q.qSet.Key("{{ $field.Name }}").({{ $field.ResolvedType }})
 
 	return v
 }
@@ -148,8 +148,8 @@ func (p {{ .Resource.Name }}QueryPartialClause) Group(qc {{ .Resource.Name }}Que
 
 {{ range $field := .Resource.Fields }}
 {{ if or $field.IsIndex $field.IsUniqueIndex -}}
-func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}] {
-	return {{ $field.Parent.Name }}QueryIdent[{{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}]{Ident: resource.NewIdent[{{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}]("{{ $field.Name }}", p.partialClause)}
+func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $field.ResolvedType }}] {
+	return {{ $field.Parent.Name }}QueryIdent[{{ $field.ResolvedType }}]{Ident: resource.NewIdent[{{ $field.ResolvedType }}]("{{ $field.Name }}", p.partialClause)}
 }
 {{- end }}
 {{ end }}
@@ -233,7 +233,7 @@ func New{{ .Resource.Name }}CreatePatch() (*{{ .Resource.Name }}CreatePatch, err
 {{ else }}
 func New{{ .Resource.Name }}CreatePatchFromPatchSet(
 {{- range $field := .Resource.Fields -}}
-{{ if $field.IsPrimaryKey }}{{ GoCamel $field.Name }} {{ $field.Type }},{{ end }}
+{{ if $field.IsPrimaryKey }}{{ GoCamel $field.Name }} {{ $field.ResolvedType }},{{ end }}
 {{- end }} patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}CreatePatch {
 	patchSet.
 	{{ range $field := .Resource.Fields }}
@@ -250,7 +250,7 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(
 
 func New{{ .Resource.Name }}CreatePatch(
 {{- range $isNotFirstIteration, $field := .Resource.Fields }}
-{{- if $field.IsPrimaryKey }}{{- if $isNotFirstIteration }}, {{ end }}{{ GoCamel $field.Name }} {{ $field.Type }}{{ end }}{{ end }}) *{{ .Resource.Name }}CreatePatch {
+{{- if $field.IsPrimaryKey }}{{- if $isNotFirstIteration }}, {{ end }}{{ GoCamel $field.Name }} {{ $field.ResolvedType }}{{ end }}{{ end }}) *{{ .Resource.Name }}CreatePatch {
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
 	{{ range $field := .Resource.Fields }}
 	{{ if $field.IsPrimaryKey }}
@@ -286,7 +286,7 @@ type {{ .Resource.Name }}UpdatePatch struct {
 func New{{ .Resource.Name }}UpdatePatchFromPatchSet(
 {{- range $field := .Resource.Fields -}}
 	{{- if $field.IsPrimaryKey -}}
-		{{- GoCamel $field.Name }} {{ $field.Type }},
+		{{- GoCamel $field.Name }} {{ $field.ResolvedType }},
 	{{- end -}}
 {{- end -}}
 patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}UpdatePatch {
@@ -308,7 +308,7 @@ func New{{ .Resource.Name }}UpdatePatch(
 {{- range $isNotFirstIteration, $field := .Resource.Fields -}}
 	{{- if $field.IsPrimaryKey }}
 		{{- if $isNotFirstIteration }}, {{ end -}}
-		{{- GoCamel $field.Name }} {{ $field.Type -}}
+		{{- GoCamel $field.Name }} {{ $field.ResolvedType }}
 	{{- end -}}
 {{- end }}) *{{ .Resource.Name }}UpdatePatch {
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
@@ -346,7 +346,7 @@ type {{ .Resource.Name }}DeletePatch struct {
 func New{{ .Resource.Name }}DeletePatchFromPatchSet(
 {{- range $field := .Resource.Fields -}}
 	{{- if $field.IsPrimaryKey -}}
-		{{- GoCamel $field.Name }} {{ $field.Type }},
+		{{- GoCamel $field.Name }} {{ $field.ResolvedType }},
 	{{- end -}}
 {{- end -}}
 patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}DeletePatch {
@@ -365,7 +365,7 @@ func New{{ .Resource.Name }}DeletePatch(
 {{- range $isNotFirstIteration, $field := .Resource.Fields }}
 	{{- if $field.IsPrimaryKey -}}
 		{{- if $isNotFirstIteration }}, {{ end -}}
-		{{- GoCamel $field.Name }} {{ $field.Type -}}
+		{{- GoCamel $field.Name }} {{ $field.ResolvedType }}
 	{{- end -}}
 {{- end }}) *{{ .Resource.Name }}DeletePatch {
 	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
@@ -385,8 +385,8 @@ func (p *{{ .Resource.Name }}DeletePatch) PatchSet() *resource.PatchSet[{{ .Reso
 
 {{ range $field := .Resource.Fields }}
 {{ if $field.IsPrimaryKey }} 
-func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.Type }} {
-	v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.Type }}) 
+func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.ResolvedType }} {
+	v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.ResolvedType }}) 
 
 	return v
 }
@@ -1094,18 +1094,18 @@ func fieldAccessors(patchType PatchType) string {
 	return fmt.Sprintf(`
 		{{- range $field := .Resource.Fields }}
 		{{ if eq false $field.IsPrimaryKey }}
-		func (p *{{ $field.Parent.Name }}%[1]sPatch) Set{{ $field.Name }}(v {{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}) *{{ $field.Parent.Name }}%[1]sPatch {
+		func (p *{{ $field.Parent.Name }}%[1]sPatch) Set{{ $field.Name }}(v {{ $field.ResolvedType }}) *{{ $field.Parent.Name }}%[1]sPatch {
 			p.patchSet.Set("{{ $field.Name }}", v)
 
 			return p
 		}
 		{{ end }}
 
-		func (p *{{ $field.Parent.Name }}%[1]sPatch) {{ $field.Name }}() {{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }} {
+		func (p *{{ $field.Parent.Name }}%[1]sPatch) {{ $field.Name }}() {{ $field.ResolvedType }} {
 		{{ if $field.IsPrimaryKey -}} 
-			v, _ := p.patchSet.Key("{{ $field.Name }}").({{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }})
+			v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.ResolvedType }})
 		{{ else -}} 
-			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ if $field.IsLocalType }}{{ $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }}) 
+			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ $field.ResolvedType }}) 
 		{{ end }}
 
 			return v
