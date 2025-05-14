@@ -381,3 +381,12 @@ func (t *treeWalker) newParam(v any, a action) string {
 
 	return s
 }
+
+func substituteSQLParams(sql string, params map[string]any) string {
+	sql = strings.TrimPrefix(sql, "WHERE ")
+	for k, v := range params {
+		sql = strings.Replace(sql, "@"+k, fmt.Sprintf("%v", v), 1)
+	}
+
+	return sql
+}

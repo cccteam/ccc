@@ -164,3 +164,50 @@ func Test_QueryClause(t *testing.T) {
 		})
 	}
 }
+
+func Test_substituteSQLParams(t *testing.T) {
+	type args struct {
+		sql    string
+		params map[string]any
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "basic",
+			args: args{
+				sql:    "ID = @ID",
+				params: map[string]any{"ID": 1},
+			},
+			want: "ID = 1",
+		},
+		{
+			name: "multiple params",
+			args: args{
+				sql:    "ID = @ID AND Name = @Name",
+				params: map[string]any{"ID": 1, "Name": "test"},
+			},
+			want: "ID = 1 AND Name = test",
+		},
+		{
+			name: "multiple params of same name",
+			args: args{
+				sql:    "ID = @ID OR ID = @ID1",
+				params: map[string]any{"ID": 1, "ID1": 2},
+			},
+			want: "ID = 1 OR ID = 2",
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := substituteSQLParams(tt.args.sql, tt.args.params)
+			if got != tt.want {
+				t.Errorf("substituteSQLParams() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
