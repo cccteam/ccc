@@ -251,7 +251,7 @@ func (q *QuerySet[Resource]) spannerIndexStmt() (*StatementWrapper, error) {
 	))
 	maps.Insert(stmt.Params, maps.All(where.Params))
 
-	return &StatementWrapper{whereClause: strings.TrimPrefix(where.Sql, "WHERE "), Statement: stmt}, nil
+	return &StatementWrapper{resolvedWhereClause: substituteSQLParams(where.Sql, where.Params), Statement: stmt}, nil
 }
 
 func (q *QuerySet[Resource]) spannerFilterStmt() (*StatementWrapper, error) {
@@ -274,7 +274,7 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (*StatementWrapper, error) {
 
 	stmt.Params = filter.Params
 
-	return &StatementWrapper{whereClause: strings.TrimPrefix(filter.Sql, "WHERE "), Statement: stmt}, nil
+	return &StatementWrapper{resolvedWhereClause: substituteSQLParams(filter.Sql, filter.Params), Statement: stmt}, nil
 }
 
 func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
@@ -318,7 +318,7 @@ func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, db spxapi.Querier)
 	dst := new(Resource)
 	if err := spxscan.Get(ctx, db, dst, stmt.Statement); err != nil {
 		if errors.Is(err, spxscan.ErrNotFound) {
-			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", q.Resource(), stmt.whereClause)
+			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", q.Resource(), stmt.resolvedWhereClause)
 		}
 
 		return nil, errors.Wrap(err, "spxscan.Get()")
