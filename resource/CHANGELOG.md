@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.11](https://github.com/cccteam/ccc/compare/resource/v0.1.10...resource/v0.1.11) (2025-05-14)
+
+
+### Bug Fixes
+
+* Resolve parameters from where clause in error messages ([#300](https://github.com/cccteam/ccc/issues/300)) ([713e041](https://github.com/cccteam/ccc/commit/713e0412311958ae9d79f30eacabd1b35da5bae7))
+* Use unqualified type for local types in the resourceFileTemplate ([#301](https://github.com/cccteam/ccc/issues/301)) ([242813e](https://github.com/cccteam/ccc/commit/242813e49bab70c28f478c83d4b414a7a8a16cce))
+
 ## [0.1.10](https://github.com/cccteam/ccc/compare/resource/v0.1.9...resource/v0.1.10) (2025-05-12)
 
 
