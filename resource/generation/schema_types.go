@@ -11,7 +11,7 @@ type schemaGenerator struct {
 	resourceDestination string
 	schemaDestination   string
 	loadPackages        []string
-	structs             []parser.Struct
+	structs             []*parser.Struct
 	schemaResources     map[string]*schemaResource
 }
 

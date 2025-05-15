@@ -69,7 +69,7 @@ func (c *client) extractResources(pkg *packages.Package) ([]*resourceInfo, error
 
 	resources := make([]*resourceInfo, 0, len(resourceStructs))
 	for _, pStruct := range resourceStructs {
-		resource, err := c.structToResource(&pStruct)
+		resource, err := c.structToResource(pStruct)
 		if err != nil {
 			return nil, err
 		}
@@ -80,7 +80,7 @@ func (c *client) extractResources(pkg *packages.Package) ([]*resourceInfo, error
 	return resources, nil
 }
 
-func extractStructsByInterface(pkg *packages.Package, interfaceNames ...string) ([]parser.Struct, error) {
+func extractStructsByInterface(pkg *packages.Package, interfaceNames ...string) ([]*parser.Struct, error) {
 	parsedStructs, err := parser.ParseStructs(pkg)
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func extractStructsByInterface(pkg *packages.Package, interfaceNames ...string) 
 		return nil, nil
 	}
 
-	var rpcStructs []parser.Struct
+	var rpcStructs []*parser.Struct
 
 	for _, pStruct := range parsedStructs {
 		for _, interfaceName := range interfaceNames {

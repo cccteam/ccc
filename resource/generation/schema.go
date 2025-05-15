@@ -49,7 +49,7 @@ func (s *schemaGenerator) Generate() error {
 func (s *schemaGenerator) structsToSchema() error {
 	s.schemaResources = make(map[string]*schemaResource, len(s.structs))
 	for i := range s.structs {
-		res, err := structToSchemaResource(&s.structs[i])
+		res, err := structToSchemaResource(s.structs[i])
 		if err != nil {
 			return err
 		}
