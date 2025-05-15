@@ -2,7 +2,9 @@ package parser
 
 import (
 	"fmt"
+	"go/ast"
 	"go/types"
+	"log"
 	"reflect"
 	"slices"
 	"strings"
@@ -269,4 +271,19 @@ func (f Field) ResolvedType() string {
 
 func (f Field) Comments() string {
 	return f.comments
+}
+
+func (f *Field) addMetadata(field *ast.Field) {
+	if indexExpr, ok := decodeToExpr[*ast.IndexExpr](field.Type); ok {
+		if ident, ok := decodeToExpr[*ast.Ident](indexExpr.Index); ok {
+			log.Printf("field %q type=%q indexExpr[index]=%q\n", f.name, f.Type(), ident.Name)
+		}
+	}
+
+	if field.Doc != nil {
+		f.comments = field.Doc.Text()
+	}
+	if field.Comment != nil {
+		f.comments += field.Comment.Text()
+	}
 }

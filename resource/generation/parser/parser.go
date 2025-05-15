@@ -2,7 +2,6 @@ package parser
 
 import (
 	"go/ast"
-	"go/token"
 	"go/types"
 	"log"
 	"slices"
@@ -94,62 +93,56 @@ func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 func ParseStructs(pkg *packages.Package) ([]*Struct, error) {
 	log.Printf("Parsing structs from package %q...", pkg.Types.Name())
 
-	var parsedStructs []Struct
-	for _, astFile := range pkg.Syntax {
-		for _, decl := range astFile.Decls {
-			gd, ok := decl.(*ast.GenDecl)
-			if !ok || gd.Tok != token.TYPE {
-				continue
-			}
-
-			var interfaceNames []string
-			for _, spec := range gd.Specs {
-				ts, ok := spec.(*ast.TypeSpec)
-				if !ok {
-					continue
-				}
-
-				if _, ok := ts.Type.(*ast.InterfaceType); ok {
-					interfaceNames = append(interfaceNames, ts.Name.Name)
-					continue
-				}
-
-				pStruct, ok := newStruct(pkg.TypesInfo.ObjectOf(ts.Name), false)
-				if !ok {
-					continue
-				}
-
-				if ts.Doc != nil {
-					pStruct.comments = ts.Doc.Text()
-				}
-				if ts.Comment != nil {
-					pStruct.comments += ts.Comment.Text()
-				}
-
-				st, ok := ts.Type.(*ast.StructType)
-				if !ok {
-					errors.Newf("typeSpec for parsedStruct %q could not be cast to *ast.StructType. how did you do that?", pStruct.name)
-				}
-
-				for i, field := range st.Fields.List {
-					if field.Doc != nil {
-						pStruct.fields[i].comments = field.Doc.Text()
-					}
-					if field.Comment != nil {
-						pStruct.fields[i].comments += field.Comment.Text()
-					}
-				}
-				parsedStructs = append(parsedStructs, pStruct)
-			}
-
-			for i := range parsedStructs {
-				for _, ifaceName := range interfaceNames {
-					if HasInterface(pkg.Types, parsedStructs[i], ifaceName) {
-						parsedStructs[i].SetInterface(ifaceName)
+	// Gather all type definitions from generic (top-level) declarations
+	typeSpecs := make([]*ast.TypeSpec, 0, 256)
+	for i := range pkg.Syntax {
+		for j := range pkg.Syntax[i].Decls {
+			if genDecl, ok := pkg.Syntax[i].Decls[j].(*ast.GenDecl); ok {
+				for k := range genDecl.Specs {
+					if typeSpec, ok := genDecl.Specs[k].(*ast.TypeSpec); ok {
+						typeSpecs = append(typeSpecs, typeSpec)
 					}
 				}
 			}
 		}
+	}
+
+	// Gather all interface definitions so we can check if structs implement them
+	interfaceNames := make([]string, 0, 16)
+	for i := range typeSpecs {
+		if _, ok := typeSpecs[i].Type.(*ast.InterfaceType); ok {
+			interfaceNames = append(interfaceNames, typeSpecs[i].Name.Name)
+		}
+	}
+
+	parsedStructs := make([]*Struct, 0, 128)
+	for i := range typeSpecs {
+		pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name), false)
+		if pStruct == nil {
+			continue
+		}
+
+		for j := range interfaceNames {
+			if HasInterface(pkg.Types, pStruct, interfaceNames[j]) {
+				pStruct.SetInterface(interfaceNames[j])
+			}
+		}
+
+		if typeSpecs[i].Doc != nil {
+			pStruct.comments = typeSpecs[i].Doc.Text()
+		}
+		if typeSpecs[i].Comment != nil {
+			pStruct.comments += typeSpecs[i].Comment.Text()
+		}
+
+		st, ok := typeSpecs[i].Type.(*ast.StructType)
+		if !ok {
+			errors.Newf("typeSpec for parsedStruct %q could not be cast to *ast.StructType. how did you do that?", pStruct.name)
+		}
+
+		pStruct = addFieldMetadata(pStruct, st.Fields.List)
+
+		parsedStructs = append(parsedStructs, pStruct)
 	}
 
 	return parsedStructs, nil
@@ -216,6 +209,19 @@ func decodeToType[T types.Type](v types.Type) (T, bool) {
 		return decodeToType[T](t.Elem())
 	case *types.Named:
 		return decodeToType[T](t.Underlying())
+	case T:
+		return t, true
+	default:
+		var zero T
+
+		return zero, false
+	}
+}
+
+func decodeToExpr[T ast.Expr](v ast.Expr) (T, bool) {
+	switch t := v.(type) {
+	case *ast.StarExpr:
+		return decodeToExpr[T](t.X)
 	case T:
 		return t, true
 	default:
@@ -303,4 +309,12 @@ func unwrapType(tt types.Type) types.Type {
 	default:
 		return t
 	}
+}
+
+func addFieldMetadata(pStruct *Struct, fields []*ast.Field) *Struct {
+	for i := range fields {
+		pStruct.fields[i].addMetadata(fields[i])
+	}
+
+	return pStruct
 }
