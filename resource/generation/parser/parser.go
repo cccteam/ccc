@@ -91,7 +91,7 @@ func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 // We can iterate over the declarations at the package level a single time
 // to extract all the data necessary for generation. Any new data that needs
 // to be added to the struct definitions can be extracted here.
-func ParseStructs(pkg *packages.Package) ([]Struct, error) {
+func ParseStructs(pkg *packages.Package) ([]*Struct, error) {
 	log.Printf("Parsing structs from package %q...", pkg.Types.Name())
 
 	var parsedStructs []Struct
@@ -155,8 +155,8 @@ func ParseStructs(pkg *packages.Package) ([]Struct, error) {
 	return parsedStructs, nil
 }
 
-func FilterStructsByInterface(s []Struct, interfaceNames []string) []Struct {
-	filteredStructs := make([]Struct, 0, len(s))
+func FilterStructsByInterface(s []*Struct, interfaceNames []string) []*Struct {
+	filteredStructs := make([]*Struct, 0, len(s))
 	for _, e := range s {
 		for _, iface := range interfaceNames {
 			if e.Implements(iface) {
@@ -168,7 +168,14 @@ func FilterStructsByInterface(s []Struct, interfaceNames []string) []Struct {
 	return slices.Clip(filteredStructs)
 }
 
-func HasInterface(pkg *types.Package, s Struct, interfaceName string) bool {
+func HasInterface(pkg *types.Package, s *Struct, interfaceName string) bool {
+	if pkg == nil {
+		panic("pkg is nil")
+	}
+	if s == nil {
+		panic("struct is nil")
+	}
+
 	ifaceObject := pkg.Scope().Lookup(interfaceName)
 	if ifaceObject == nil {
 		return false

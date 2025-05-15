@@ -100,8 +100,11 @@ func (t TypeInfo) IsIterable() bool {
 	}
 }
 
-func (t TypeInfo) ToStructType() Struct {
-	s, _ := newStruct(t.obj, t.unwrapped)
+// TODO: this method is only used in templates to retrieve a struct's fields.
+// the ok boolean should not be ignored. maybe replace this method with an iterator over fields
+// if the type is a struct.
+func (t TypeInfo) ToStructType() *Struct {
+	s := newStruct(t.obj, t.unwrapped)
 
 	return s
 }
@@ -114,17 +117,17 @@ type Struct struct {
 	comments   string
 }
 
-func newStruct(obj types.Object, unwrap bool) (Struct, bool) {
+func newStruct(obj types.Object, unwrap bool) *Struct {
 	tt := obj.Type()
 	if unwrap {
 		tt = unwrapType(tt)
 	}
 	st, ok := decodeToType[*types.Struct](tt)
 	if !ok {
-		return Struct{}, false
+		return nil
 	}
 
-	s := Struct{
+	s := &Struct{
 		TypeInfo:   newType(obj, true),
 		localTypes: localTypesFromStruct(obj, map[string]struct{}{}),
 	}
@@ -141,7 +144,7 @@ func newStruct(obj types.Object, unwrap bool) (Struct, bool) {
 		s.fields = append(s.fields, sField)
 	}
 
-	return s, true
+	return s
 }
 
 func (s Struct) Comments() string {
