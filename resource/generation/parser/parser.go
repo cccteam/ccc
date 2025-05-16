@@ -252,8 +252,8 @@ func isTypeLocalToPackage(t *types.Var, pkg *types.Package) bool {
 	return strings.HasPrefix(typeName, pkg.Name())
 }
 
-func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []TypeInfo {
-	var dependencies []TypeInfo
+func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []*TypeInfo {
+	var dependencies []*TypeInfo
 	pkg := obj.Pkg()
 	tt := obj.Type()
 

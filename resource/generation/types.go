@@ -224,7 +224,7 @@ func (f *rpcField) TypescriptDataType() string {
 }
 
 type resourceInfo struct {
-	parser.TypeInfo
+	*parser.TypeInfo
 	Fields                []*resourceField
 	searchIndexes         map[string][]*expressionField // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
 	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.
