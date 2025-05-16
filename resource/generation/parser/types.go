@@ -19,13 +19,13 @@ type TypeInfo struct {
 	unwrapped bool
 }
 
-func newType(obj types.Object, unwrap bool) TypeInfo {
+func newType(obj types.Object, unwrap bool) *TypeInfo {
 	tt := obj.Type()
 	if unwrap {
 		tt = unwrapType(tt)
 	}
 
-	return TypeInfo{
+	return &TypeInfo{
 		obj:       obj,
 		name:      obj.Name(),
 		tt:        tt,
@@ -112,9 +112,9 @@ func (t TypeInfo) ToStructType() *Struct {
 }
 
 type Struct struct {
-	TypeInfo
+	*TypeInfo
 	fields     []Field
-	localTypes []TypeInfo
+	localTypes []*TypeInfo
 	interfaces []string
 	comments   string
 }
@@ -229,15 +229,15 @@ func (s Struct) Fields() []Field {
 	return s.fields
 }
 
-func (s Struct) LocalTypes() []TypeInfo {
+func (s Struct) LocalTypes() []*TypeInfo {
 	return s.localTypes
 }
 
 type Field struct {
-	TypeInfo
+	*TypeInfo
 	tags        reflect.StructTag
-	isLocalType bool
 	comments    string
+	isLocalType bool
 }
 
 func (f Field) String() string {
