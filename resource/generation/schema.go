@@ -96,7 +96,7 @@ func structToSchemaResource(pStruct *parser.Struct) (*schemaResource, error) {
 	return res, nil
 }
 
-func isTypeNullable(f parser.Field) bool {
+func isTypeNullable(f *parser.Field) bool {
 	if f.IsPointer() {
 		return true
 	}
@@ -104,7 +104,7 @@ func isTypeNullable(f parser.Field) bool {
 	return strings.Contains(strings.ToLower(f.UnqualifiedTypeName()), "null")
 }
 
-func sqlTypeFromField(f parser.Field) string {
+func sqlTypeFromField(f *parser.Field) string {
 	switch f.UnqualifiedTypeName() {
 	case "string":
 		return "STRING(MAX)"

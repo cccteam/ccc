@@ -43,7 +43,7 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 		}
 
 		resource.Fields[i] = &resourceField{
-			Field:              &field,
+			Field:              field,
 			Parent:             resource,
 			IsPrimaryKey:       tableColumn.IsPrimaryKey,
 			IsForeignKey:       tableColumn.IsForeignKey,

@@ -35,18 +35,18 @@ func newType(obj types.Object, unwrap bool) *TypeInfo {
 	}
 }
 
-func (t TypeInfo) Name() string {
+func (t *TypeInfo) Name() string {
 	return t.name
 }
 
 // e.g. ccc.UUID, []ccc.UUID
-func (t TypeInfo) Type() string {
+func (t *TypeInfo) Type() string {
 	return typeStringer(t.tt)
 }
 
 // Type without package prefix.
 // e.g. ccc.UUID -> UUID, []ccc.UUID -> []UUID
-func (t TypeInfo) UnqualifiedType() string {
+func (t *TypeInfo) UnqualifiedType() string {
 	qualifier := func(p *types.Package) string {
 		return ""
 	}
@@ -56,13 +56,13 @@ func (t TypeInfo) UnqualifiedType() string {
 
 // Qualified type without array/slice/pointer prefix.
 // e.g. *ccc.UUID -> ccc.UUID, []ccc.UUID -> ccc.UUID
-func (t TypeInfo) TypeName() string {
+func (t *TypeInfo) TypeName() string {
 	return typeStringer(unwrapType(t.tt))
 }
 
 // Type without array/slice/pointer or package prefix.
 // e.g. *ccc.UUID -> UUID, []ccc.UUID -> UUID
-func (t TypeInfo) UnqualifiedTypeName() string {
+func (t *TypeInfo) UnqualifiedTypeName() string {
 	qualifier := func(p *types.Package) string {
 		return ""
 	}
@@ -70,12 +70,12 @@ func (t TypeInfo) UnqualifiedTypeName() string {
 	return types.TypeString(unwrapType(t.tt), qualifier)
 }
 
-func (t TypeInfo) PackageName() string {
+func (t *TypeInfo) PackageName() string {
 	return t.pkg.Name()
 }
 
 // Position in the Package the type object was parsed from
-func (t TypeInfo) Position() int {
+func (t *TypeInfo) Position() int {
 	return t.position
 }
 
@@ -93,7 +93,7 @@ func (t TypeInfo) IsPointer() bool {
 }
 
 // Returns true if type is slice or array
-func (t TypeInfo) IsIterable() bool {
+func (t *TypeInfo) IsIterable() bool {
 	switch t.tt.(type) {
 	case *types.Slice, *types.Array:
 		return true
@@ -113,7 +113,7 @@ func (t TypeInfo) ToStructType() *Struct {
 
 type Struct struct {
 	*TypeInfo
-	fields     []Field
+	fields     []*Field
 	localTypes []*TypeInfo
 	interfaces []string
 	comments   string
@@ -149,7 +149,7 @@ func newStruct(obj types.Object, unwrap bool) *Struct {
 	return s
 }
 
-func (s Struct) Comments() string {
+func (s *Struct) Comments() string {
 	return s.comments
 }
 
@@ -159,12 +159,12 @@ func (s *Struct) SetInterface(iface string) {
 	}
 }
 
-func (s Struct) Implements(iface string) bool {
+func (s *Struct) Implements(iface string) bool {
 	return slices.Contains(s.interfaces, iface)
 }
 
 // Pretty prints the struct name and its fields. Useful for debugging.
-func (s Struct) String() string {
+func (s *Struct) String() string {
 	var (
 		maxNameLength int
 		maxTypeLength int
@@ -188,7 +188,7 @@ func (s Struct) String() string {
 	return fmt.Sprintf("type %s struct {\n%s}", s.name, fields)
 }
 
-func (s Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
+func (s *Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
 	var (
 		maxNameLength int
 		maxTypeLength int
@@ -217,19 +217,19 @@ func (s Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
 	return fmt.Sprintf("type %s struct {\n%s}", s.name, fields)
 }
 
-func (s Struct) Name() string {
+func (s *Struct) Name() string {
 	return s.name
 }
 
-func (s Struct) NumFields() int {
+func (s *Struct) NumFields() int {
 	return len(s.fields)
 }
 
-func (s Struct) Fields() []Field {
+func (s *Struct) Fields() []*Field {
 	return s.fields
 }
 
-func (s Struct) LocalTypes() []*TypeInfo {
+func (s *Struct) LocalTypes() []*TypeInfo {
 	return s.localTypes
 }
 
@@ -240,11 +240,11 @@ type Field struct {
 	isLocalType bool
 }
 
-func (f Field) String() string {
+func (f *Field) String() string {
 	return fmt.Sprintf("%s\t\t%s\t\t%s", f.name, f.Type(), f.tags)
 }
 
-func (f Field) LookupTag(key string) (string, bool) {
+func (f *Field) LookupTag(key string) (string, bool) {
 	return f.tags.Lookup(key)
 }
 
@@ -256,12 +256,12 @@ func (f Field) HasTag(key string) bool {
 
 // Returns true if the field's type originates from the same package
 // its parent struct is defined in.
-func (f Field) IsLocalType() bool {
+func (f *Field) IsLocalType() bool {
 	return f.isLocalType
 }
 
 // Returns the field's unqualified type if it's local, and the qualified type otherwise.
-func (f Field) ResolvedType() string {
+func (f *Field) ResolvedType() string {
 	if f.IsLocalType() {
 		return f.UnqualifiedType()
 	}
@@ -269,7 +269,7 @@ func (f Field) ResolvedType() string {
 	return f.Type()
 }
 
-func (f Field) Comments() string {
+func (f *Field) Comments() string {
 	return f.comments
 }
 
