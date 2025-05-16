@@ -197,7 +197,7 @@ type rpcMethodInfo struct {
 }
 
 type rpcField struct {
-	parser.Field
+	*parser.Field
 	typescriptType string
 }
 
