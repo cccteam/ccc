@@ -338,7 +338,7 @@ func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) *S
 
 	namedType := types.NewNamed(typeName(structName, pkg, structType), structType, nil)
 
-	s := newStruct(namedType.Obj(), false)
+	s := newStruct(namedType.Obj())
 	if s == nil {
 		panic("could not create struct")
 	}
