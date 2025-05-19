@@ -62,10 +62,7 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 }
 
 func (c *client) extractResources(pkg *packages.Package) ([]*resourceInfo, error) {
-	resourceStructs, err := parser.ParseStructs(pkg)
-	if err != nil {
-		return nil, err
-	}
+	resourceStructs := parser.ParseStructs(pkg)
 
 	resources := make([]*resourceInfo, 0, len(resourceStructs))
 	for _, pStruct := range resourceStructs {
