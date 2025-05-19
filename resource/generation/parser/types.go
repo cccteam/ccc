@@ -79,11 +79,7 @@ func (t *TypeInfo) Position() int {
 	return t.position
 }
 
-func (t TypeInfo) IsStruct() bool {
-	return isUnderlyingTypeStruct(t.tt)
-}
-
-func (t TypeInfo) IsPointer() bool {
+func (t *TypeInfo) IsPointer() bool {
 	switch t.tt.(type) {
 	case *types.Pointer:
 		return true
@@ -105,10 +101,8 @@ func (t *TypeInfo) IsIterable() bool {
 // TODO: this method is only used in templates to retrieve a struct's fields.
 // the ok boolean should not be ignored. maybe replace this method with an iterator over fields
 // if the type is a struct.
-func (t TypeInfo) ToStructType() *Struct {
-	s := newStruct(t.obj, t.unwrapped)
-
-	return s
+func (t *TypeInfo) AsStruct() *Struct {
+	return newStruct(t.obj)
 }
 
 type Struct struct {
@@ -119,11 +113,9 @@ type Struct struct {
 	comments   string
 }
 
-func newStruct(obj types.Object, unwrap bool) *Struct {
+func newStruct(obj types.Object) *Struct {
 	tt := obj.Type()
-	if unwrap {
-		tt = unwrapType(tt)
-	}
+
 	st, ok := decodeToType[*types.Struct](tt)
 	if !ok {
 		return nil
@@ -137,13 +129,11 @@ func newStruct(obj types.Object, unwrap bool) *Struct {
 	for i := range st.NumFields() {
 		field := st.Field(i)
 
-		sField := Field{
+		s.fields = append(s.fields, &Field{
 			TypeInfo:    newType(field, false),
 			tags:        reflect.StructTag(st.Tag(i)),
 			isLocalType: isTypeLocalToPackage(field, obj.Pkg()),
-		}
-
-		s.fields = append(s.fields, sField)
+		})
 	}
 
 	return s

@@ -117,7 +117,7 @@ func ParseStructs(pkg *packages.Package) ([]*Struct, error) {
 
 	parsedStructs := make([]*Struct, 0, 128)
 	for i := range typeSpecs {
-		pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name), false)
+		pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name))
 		if pStruct == nil {
 			continue
 		}
@@ -205,6 +205,8 @@ func HasInterface(pkg *types.Package, s *Struct, interfaceName string) bool {
 // and support can easily be expanded to other types in our [resources] package
 func decodeToType[T types.Type](v types.Type) (T, bool) {
 	switch t := v.(type) {
+	case *types.Slice:
+		return decodeToType[T](t.Elem())
 	case *types.Pointer:
 		return decodeToType[T](t.Elem())
 	case *types.Named:
@@ -282,21 +284,6 @@ func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []*Type
 	}
 
 	return dependencies
-}
-
-func isUnderlyingTypeStruct(tt types.Type) bool {
-	switch t := tt.(type) {
-	case *types.Slice:
-		return isUnderlyingTypeStruct(t.Elem())
-	case *types.Pointer:
-		return isUnderlyingTypeStruct(t.Elem())
-	case *types.Named:
-		return isUnderlyingTypeStruct(tt.Underlying())
-	case *types.Struct:
-		return true
-	default:
-		return false
-	}
 }
 
 // Returns the underlying element type for slice and pointer types
