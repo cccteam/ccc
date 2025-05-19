@@ -108,10 +108,16 @@ func ParseStructs(pkg *packages.Package) ([]*Struct, error) {
 	}
 
 	// Gather all interface definitions so we can check if structs implement them
-	interfaceNames := make([]string, 0, 16)
+	interfaces := make([]*Interface, 0, 16)
 	for i := range typeSpecs {
-		if _, ok := typeSpecs[i].Type.(*ast.InterfaceType); ok {
-			interfaceNames = append(interfaceNames, typeSpecs[i].Name.Name)
+		if _, ok := typeSpecs[i].Type.(*ast.InterfaceType); !ok {
+			continue
+		}
+
+		obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
+
+		if iface, ok := decodeToType[*types.Interface](obj.Type()); ok {
+			interfaces = append(interfaces, &Interface{Name: typeSpecs[i].Name.Name, iface: iface})
 		}
 	}
 
@@ -122,9 +128,10 @@ func ParseStructs(pkg *packages.Package) ([]*Struct, error) {
 			continue
 		}
 
-		for j := range interfaceNames {
-			if HasInterface(pkg.Types, pStruct, interfaceNames[j]) {
-				pStruct.SetInterface(interfaceNames[j])
+		for _, iface := range interfaces {
+			// Necessary to check non-pointer and pointer receivers
+			if types.Implements(pStruct.tt, iface.iface) || types.Implements(types.NewPointer(pStruct.tt), iface.iface) {
+				pStruct.SetInterface(iface.Name)
 			}
 		}
 
@@ -154,55 +161,17 @@ func ParseStructs(pkg *packages.Package) ([]*Struct, error) {
 	return parsedStructs, nil
 }
 
-func FilterStructsByInterface(s []*Struct, interfaceNames []string) []*Struct {
-	filteredStructs := make([]*Struct, 0, len(s))
-	for _, e := range s {
+func FilterStructsByInterface(pStructs []*Struct, interfaceNames []string) []*Struct {
+	filteredStructs := make([]*Struct, 0, len(pStructs))
+	for _, pStruct := range pStructs {
 		for _, iface := range interfaceNames {
-			if e.Implements(iface) {
-				filteredStructs = append(filteredStructs, e)
+			if pStruct.Implements(iface) {
+				filteredStructs = append(filteredStructs, pStruct)
 			}
 		}
 	}
 
 	return slices.Clip(filteredStructs)
-}
-
-func HasInterface(pkg *types.Package, s *Struct, interfaceName string) bool {
-	if pkg == nil {
-		panic("pkg is nil")
-	}
-	if s == nil {
-		panic("struct is nil")
-	}
-
-	ifaceObject := pkg.Scope().Lookup(interfaceName)
-	if ifaceObject == nil {
-		return false
-	}
-
-	ifaceTypeName, ok := ifaceObject.(*types.TypeName)
-	if !ok {
-		return false
-	}
-
-	iface, ok := ifaceTypeName.Type().Underlying().(*types.Interface)
-	if !ok {
-		return false
-	}
-
-	structTypeName, ok := s.obj.(*types.TypeName)
-	if !ok {
-		return false
-	}
-	structType := structTypeName.Type()
-
-	for _, t := range []types.Type{structType, types.NewPointer(structType)} {
-		if types.Implements(t, iface) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // The [types.Type] interface can be one of 14 concrete types:
