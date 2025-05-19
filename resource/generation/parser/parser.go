@@ -90,7 +90,7 @@ func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 // We can iterate over the declarations at the package level a single time
 // to extract all the data necessary for generation. Any new data that needs
 // to be added to the struct definitions can be extracted here.
-func ParseStructs(pkg *packages.Package) ([]*Struct, error) {
+func ParseStructs(pkg *packages.Package) []*Struct {
 	log.Printf("Parsing structs from package %q...", pkg.Types.Name())
 
 	// Gather all type definitions from generic (top-level) declarations
@@ -158,7 +158,7 @@ func ParseStructs(pkg *packages.Package) ([]*Struct, error) {
 		parsedStructs = append(parsedStructs, pStruct)
 	}
 
-	return parsedStructs, nil
+	return parsedStructs
 }
 
 func FilterStructsByInterface(pStructs []*Struct, interfaceNames []string) []*Struct {

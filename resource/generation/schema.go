@@ -24,12 +24,7 @@ func (s *schemaGenerator) Generate() error {
 		return err
 	}
 
-	pStructs, err := parser.ParseStructs(packageMap["resources"])
-	if err != nil {
-		return err
-	}
-
-	s.structs = pStructs
+	s.structs = parser.ParseStructs(packageMap["resources"])
 
 	if err := s.structsToSchema(); err != nil {
 		return err
