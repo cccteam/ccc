@@ -135,12 +135,18 @@ func ParseStructs(pkg *packages.Package) ([]*Struct, error) {
 			pStruct.comments += typeSpecs[i].Comment.Text()
 		}
 
-		st, ok := typeSpecs[i].Type.(*ast.StructType)
-		if !ok {
-			errors.Newf("typeSpec for parsedStruct %q could not be cast to *ast.StructType. how did you do that?", pStruct.name)
-		}
+		pStruct.astInfo = typeSpecs[i].Type.(*ast.StructType)
 
-		pStruct = addFieldMetadata(pStruct, st.Fields.List)
+		for j := range pStruct.fields {
+			pStruct.fields[j].astInfo = pStruct.astInfo.Fields.List[j]
+
+			if pStruct.fields[j].astInfo.Doc != nil {
+				pStruct.fields[j].comments = pStruct.fields[j].astInfo.Doc.Text()
+			}
+			if pStruct.fields[j].astInfo.Comment != nil {
+				pStruct.fields[j].comments += pStruct.fields[j].astInfo.Comment.Text()
+			}
+		}
 
 		parsedStructs = append(parsedStructs, pStruct)
 	}
@@ -221,11 +227,19 @@ func decodeToType[T types.Type](v types.Type) (T, bool) {
 }
 
 func decodeToExpr[T ast.Expr](v ast.Expr) (T, bool) {
+	if v == nil {
+		panic("nil ast.Expr cannot be decoded")
+	}
+
 	switch t := v.(type) {
-	case *ast.StarExpr:
-		return decodeToExpr[T](t.X)
 	case T:
 		return t, true
+	// unwraps pointer types e.g. *ccc.UUID -> ccc.UUID
+	case *ast.StarExpr:
+		return decodeToExpr[T](t.X)
+	// captures the expression immediately following the dot e.g. ccc.UUID -> UUID
+	case *ast.SelectorExpr:
+		return decodeToExpr[T](t.Sel)
 	default:
 		var zero T
 

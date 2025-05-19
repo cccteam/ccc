@@ -107,6 +107,7 @@ func (t *TypeInfo) AsStruct() *Struct {
 
 type Struct struct {
 	*TypeInfo
+	astInfo    *ast.StructType
 	fields     []*Field
 	localTypes []*TypeInfo
 	interfaces []string
@@ -225,6 +226,7 @@ func (s *Struct) LocalTypes() []*TypeInfo {
 
 type Field struct {
 	*TypeInfo
+	astInfo     *ast.Field
 	tags        reflect.StructTag
 	comments    string
 	isLocalType bool
