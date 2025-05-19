@@ -80,6 +80,8 @@ func (s *schemaResource) addStructComments(pStruct *parser.Struct) error {
 			default:
 				return errors.Newf("%s keyword not supported because resource %q is a view", keyword.String(), s.Name)
 			}
+
+			continue
 		}
 
 		switch keyword {
@@ -129,6 +131,8 @@ func (s *schemaResource) addFieldComments(pStruct *parser.Struct) error {
 				default:
 					return errors.Newf("%s keyword not supported because resource %q is a view", keyword.String(), s.Name)
 				}
+
+				continue
 			}
 
 			switch keyword {
