@@ -34,6 +34,10 @@ func (s *schemaGenerator) Generate() error {
 		return err
 	}
 
+	if err := s.generateConversionMethods(); err != nil {
+		return err
+	}
+
 	if err := s.generateMutations(); err != nil {
 		return err
 	}
@@ -44,7 +48,7 @@ func (s *schemaGenerator) Generate() error {
 func (s *schemaGenerator) structsToSchema() error {
 	s.schemaResources = make(map[string]*schemaResource, len(s.structs))
 	for i := range s.structs {
-		res, err := structToSchemaResource(s.structs[i])
+		res, err := structToSchemaTable(s.structs[i])
 		if err != nil {
 			return err
 		}
@@ -61,27 +65,39 @@ func (s *schemaGenerator) generateSchemaMigrations() error {
 	return nil
 }
 
+func (s *schemaGenerator) generateConversionMethods() error {
+	// TODO: determine which fields need to be transformed to fit new schema using astInfo in parser.Field
+	return nil
+}
+
 func (s *schemaGenerator) generateMutations() error {
+	// TODO: generate a spanner insert mutation for each table using the schema definition
 	return nil
 }
 
 func (schemaGenerator) Close() {}
 
-func structToSchemaResource(pStruct *parser.Struct) (*schemaResource, error) {
+func structToSchemaTable(pStruct *parser.Struct) (*schemaResource, error) {
 	res := &schemaResource{
 		Columns: make([]schemaColumn, 0, pStruct.NumFields()),
 	}
 
-	for _, f := range pStruct.Fields() {
-		res.Columns = append(res.Columns, schemaColumn{
-			Name:       f.Name(),
-			SQLType:    sqlTypeFromField(f),
-			IsNullable: isTypeNullable(f),
-		})
-	}
-
 	if err := res.addStructComments(pStruct); err != nil {
 		return nil, err
+	}
+
+	for _, f := range pStruct.Fields() {
+		sc := schemaColumn{
+			Name:       f.Name(),
+			IsNullable: isTypeNullable(f),
+		}
+
+		// TODO: decouple sqlTypeFromField from needing to be called on non-view resources
+		if !res.IsView {
+			sc.SQLType = sqlTypeFromField(f)
+		}
+
+		res.Columns = append(res.Columns, sc)
 	}
 
 	if err := res.addFieldComments(pStruct); err != nil {
@@ -100,19 +116,25 @@ func isTypeNullable(f *parser.Field) bool {
 }
 
 func sqlTypeFromField(f *parser.Field) string {
-	switch f.UnqualifiedTypeName() {
+	tt := f.Type()
+
+	if f.TypeArgs() != "" {
+		tt = f.TypeArgs()
+	}
+
+	switch tt {
 	case "string":
 		return "STRING(MAX)"
-	case "bool", "IntToBool", "CharToBool":
+	case "bool":
 		return "BOOL"
-	case "IntToUUID":
+	case "UUID":
 		return "STRING(36)"
 	case "int":
 		return "INT64"
+	case "float":
+		return "FLOAT64"
 	default:
-		// TODO: replace string type check with a function that is aware of the conversion packages generics
-		// e.g. conversion.IntTo[ccc.UUID]
-		panic(fmt.Sprintf("unknown fieldtype %q", f.UnqualifiedTypeName()))
+		panic(fmt.Sprintf("schemagen conversion unimplemented for type=%q", f.Type()))
 	}
 }
 
