@@ -105,6 +105,11 @@ func (t *TypeInfo) AsStruct() *Struct {
 	return newStruct(t.obj)
 }
 
+type Interface struct {
+	Name  string
+	iface *types.Interface
+}
+
 type Struct struct {
 	*TypeInfo
 	astInfo    *ast.StructType
