@@ -80,34 +80,6 @@ func (c *client) extractResources(pkg *packages.Package) ([]*resourceInfo, error
 	return resources, nil
 }
 
-func extractStructsByInterface(pkg *packages.Package, interfaceNames ...string) ([]*parser.Struct, error) {
-	parsedStructs, err := parser.ParseStructs(pkg)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(interfaceNames) == 0 {
-		return nil, nil
-	}
-
-	var rpcStructs []*parser.Struct
-
-	for _, pStruct := range parsedStructs {
-		for _, interfaceName := range interfaceNames {
-			if parser.HasInterface(pkg.Types, pStruct, interfaceName) {
-				pStruct.SetInterface(interfaceName)
-				rpcStructs = append(rpcStructs, pStruct)
-			}
-		}
-	}
-
-	if len(rpcStructs) == 0 {
-		return nil, errors.Newf("package %q has no structs that implement an interface in %v", pkg.Types.Name(), interfaceNames)
-	}
-
-	return rpcStructs, nil
-}
-
 func (c *client) structToRPCMethod(pStruct *parser.Struct) (*rpcMethodInfo, error) {
 	if pStruct == nil {
 		return nil, errors.New("parser.Struct cannot be nil")
