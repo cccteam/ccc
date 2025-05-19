@@ -61,7 +61,7 @@ type schemaResource struct {
 func (s *schemaResource) addStructComments(pStruct *parser.Struct) error {
 	structComments, err := commentlang.Scan(pStruct.Comments(), commentlang.ScanStruct)
 	if err != nil {
-		return errors.Wrap(err, "commentlang.Scan()")
+		return errors.Wrapf(err, "%s commentlang.Scan()", pStruct.Error())
 	}
 
 	if _, ok := structComments[commentlang.View]; ok {

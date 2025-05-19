@@ -3,8 +3,8 @@ package parser
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
-	"log"
 	"reflect"
 	"slices"
 	"strings"
@@ -14,12 +14,12 @@ type TypeInfo struct {
 	obj       types.Object
 	name      string
 	tt        types.Type
-	pkg       *types.Package
-	position  int
+	fset      *token.FileSet
 	unwrapped bool
 }
 
-func newType(obj types.Object, unwrap bool) *TypeInfo {
+// Use the unwrap option if you need a slice or pointer's underlying type.
+func newTypeInfo(obj types.Object, fset *token.FileSet, unwrap bool) *TypeInfo {
 	tt := obj.Type()
 	if unwrap {
 		tt = unwrapType(tt)
@@ -29,8 +29,7 @@ func newType(obj types.Object, unwrap bool) *TypeInfo {
 		obj:       obj,
 		name:      obj.Name(),
 		tt:        tt,
-		pkg:       obj.Pkg(),
-		position:  int(obj.Pos()),
+		fset:      fset,
 		unwrapped: unwrap,
 	}
 }
@@ -70,14 +69,6 @@ func (t *TypeInfo) UnqualifiedTypeName() string {
 	return types.TypeString(unwrapType(t.tt), qualifier)
 }
 
-func (t *TypeInfo) PackageName() string {
-	return t.pkg.Name()
-}
-
-// Position in the Package the type object was parsed from
-func (t *TypeInfo) Position() int {
-	return t.position
-}
 
 func (t *TypeInfo) IsPointer() bool {
 	switch t.tt.(type) {
@@ -102,7 +93,7 @@ func (t *TypeInfo) IsIterable() bool {
 // the ok boolean should not be ignored. maybe replace this method with an iterator over fields
 // if the type is a struct.
 func (t *TypeInfo) AsStruct() *Struct {
-	return newStruct(t.obj)
+	return newStruct(t.obj, nil)
 }
 
 type Interface struct {
@@ -119,8 +110,12 @@ type Struct struct {
 	comments   string
 }
 
-func newStruct(obj types.Object) *Struct {
+func newStruct(obj types.Object, fset *token.FileSet) *Struct {
 	tt := obj.Type()
+
+	if fset == nil {
+		fset = token.NewFileSet()
+	}
 
 	st, ok := decodeToType[*types.Struct](tt)
 	if !ok {
@@ -128,7 +123,7 @@ func newStruct(obj types.Object) *Struct {
 	}
 
 	s := &Struct{
-		TypeInfo:   newType(obj, true),
+		TypeInfo:   newTypeInfo(obj, fset, true),
 		localTypes: localTypesFromStruct(obj, map[string]struct{}{}),
 	}
 
@@ -136,7 +131,7 @@ func newStruct(obj types.Object) *Struct {
 		field := st.Field(i)
 
 		s.fields = append(s.fields, &Field{
-			TypeInfo:    newType(field, false),
+			TypeInfo:    newTypeInfo(field, fset, false),
 			tags:        reflect.StructTag(st.Tag(i)),
 			isLocalType: isTypeLocalToPackage(field, obj.Pkg()),
 		})
@@ -229,6 +224,10 @@ func (s *Struct) LocalTypes() []*TypeInfo {
 	return s.localTypes
 }
 
+func (s *Struct) Error() string {
+	return fmt.Sprintf("%s at %s", s.name, s.fset.Position(s.astInfo.Pos()))
+}
+
 type Field struct {
 	*TypeInfo
 	astInfo     *ast.Field
@@ -270,17 +269,36 @@ func (f *Field) Comments() string {
 	return f.comments
 }
 
-func (f *Field) addMetadata(field *ast.Field) {
-	if indexExpr, ok := decodeToExpr[*ast.IndexExpr](field.Type); ok {
-		if ident, ok := decodeToExpr[*ast.Ident](indexExpr.Index); ok {
-			log.Printf("field %q type=%q indexExpr[index]=%q\n", f.name, f.Type(), ident.Name)
-		}
+// If the type is a generic instantiation, returns the origin of the generic type.
+// e.g. ccc.Foo[bool] returns ccc.Foo
+func (f *Field) OriginType() string {
+	indexExpr, ok := decodeToExpr[*ast.IndexExpr](f.astInfo.Type)
+	if !ok {
+		return f.Type()
 	}
 
-	if field.Doc != nil {
-		f.comments = field.Doc.Text()
+	typeIdent, ok := decodeToExpr[*ast.Ident](indexExpr.X)
+	if ok {
+		return typeIdent.String()
 	}
-	if field.Comment != nil {
-		f.comments += field.Comment.Text()
+
+	return f.Type()
+}
+
+func (f *Field) TypeArgs() string {
+	indexExpr, ok := decodeToExpr[*ast.IndexExpr](f.astInfo.Type)
+	if !ok {
+		return ""
 	}
+
+	typeArgIdent, ok := decodeToExpr[*ast.Ident](indexExpr.Index)
+	if ok {
+		return typeArgIdent.String()
+	}
+
+	return ""
+}
+
+func (f *Field) Error() string {
+	return fmt.Sprintf("%s at %s", f.name, f.fset.Position(f.astInfo.Pos()))
 }

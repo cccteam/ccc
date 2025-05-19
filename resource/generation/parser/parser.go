@@ -123,7 +123,7 @@ func ParseStructs(pkg *packages.Package) []*Struct {
 
 	parsedStructs := make([]*Struct, 0, 128)
 	for i := range typeSpecs {
-		pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name))
+		pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name), pkg.Fset)
 		if pStruct == nil {
 			continue
 		}
@@ -262,7 +262,7 @@ func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []*Type
 				typeMap[typeStringer(unwrapType(ft))] = struct{}{}
 			}
 
-			dependencies = append(dependencies, newType(field, true))
+			dependencies = append(dependencies, newTypeInfo(field, nil, true))
 		}
 	}
 

@@ -16,7 +16,7 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 
 	table, err := c.lookupTable(pStruct.Name())
 	if err != nil {
-		return nil, errors.Wrapf(err, "struct %q at %s:%d is not in lookupTable", pStruct.Name(), pStruct.PackageName(), pStruct.Position())
+		return nil, errors.Wrapf(err, "struct %s is not in lookupTable", pStruct.Error())
 	}
 
 	resource := &resourceInfo{
@@ -31,11 +31,11 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 	for i, field := range pStruct.Fields() {
 		spannerTag, ok := field.LookupTag("spanner")
 		if !ok {
-			return nil, errors.Newf("field %s.%s in package %s\n%s", resource.Name(), field.Name(), field.PackageName(), pStruct.PrintWithFieldError(i, "missing spanner tag"))
+			return nil, errors.Newf("field %s \n%s", field.Error(), pStruct.PrintWithFieldError(i, "missing spanner tag"))
 		}
 		tableColumn, ok := table.Columns[spannerTag]
 		if !ok {
-			return nil, errors.Newf("field %s.%s in package %s\n%s", resource.Name(), field.Name(), field.PackageName(), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(pStruct.Name()))))
+			return nil, errors.Newf("field %s \n%s", field.Error(), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(pStruct.Name()))))
 		}
 		_, hasIndexTag := field.LookupTag("index")
 		if !table.IsView && hasIndexTag {
