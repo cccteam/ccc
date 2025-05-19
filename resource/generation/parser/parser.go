@@ -280,11 +280,3 @@ func unwrapType(tt types.Type) types.Type {
 		return t
 	}
 }
-
-func addFieldMetadata(pStruct *Struct, fields []*ast.Field) *Struct {
-	for i := range fields {
-		pStruct.fields[i].addMetadata(fields[i])
-	}
-
-	return pStruct
-}
