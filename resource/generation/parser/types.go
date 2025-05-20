@@ -69,7 +69,6 @@ func (t *TypeInfo) UnqualifiedTypeName() string {
 	return types.TypeString(unwrapType(t.tt), qualifier)
 }
 
-
 func (t *TypeInfo) IsPointer() bool {
 	switch t.tt.(type) {
 	case *types.Pointer:
