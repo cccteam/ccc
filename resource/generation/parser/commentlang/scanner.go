@@ -6,27 +6,11 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-type ScanMode interface {
-	mode() scanMode
-}
-
 type scanMode int
 
-func (s scanMode) mode() scanMode {
-	return s
-}
-
-func (s scanMode) String() string {
-	if s == ScanField {
-		return "field"
-	}
-
-	return "struct"
-}
-
 const (
-	ScanStruct scanMode = iota << 1
-	ScanField
+	scanStruct scanMode = iota
+	scanField
 )
 
 type scanner struct {
@@ -37,8 +21,16 @@ type scanner struct {
 	pos              int
 }
 
-func Scan(src string, mode ScanMode) (map[Keyword][]*KeywordArguments, error) {
-	scanner := newScanner([]byte(src), mode.mode())
+func ScanStruct(src string) (map[Keyword][]*KeywordArguments, error) {
+	return scan(src, scanStruct)
+}
+
+func ScanField(src string) (map[Keyword][]*KeywordArguments, error) {
+	return scan(src, scanField)
+}
+
+func scan(src string, mode scanMode) (map[Keyword][]*KeywordArguments, error) {
+	scanner := newScanner([]byte(src), mode)
 	if err := scanner.scan(); err != nil {
 		return nil, err
 	}
@@ -102,7 +94,7 @@ func (s *scanner) scan() error {
 			}
 
 			if _, ok := s.keywordArguments[key]; ok && s.isExclusive(key) {
-				return errors.New(s.error("%s cannot be used twice on a %s", key, s.mode.String()))
+				return errors.New(s.error("%s used twice here", key))
 			}
 
 			var (
@@ -120,12 +112,7 @@ func (s *scanner) scan() error {
 					return err
 				}
 			} else if s.requiresArguments(key) {
-				switch s.mode {
-				case ScanStruct:
-					return errors.New(s.errorPostscript("expected argument", "%s requires an argument?", key))
-				case ScanField:
-					return errors.New(s.errorPostscript("expected argument", "%[1]s requires an argument. did you mean to use `%[1]s (@self)`?", key))
-				}
+				return errors.New(s.errorPostscript("expected argument", "%[1]s requires an argument. hint: `%[1]s(<your arg here>)", key))
 			}
 
 			s.addKeywordArgument(key, arg)

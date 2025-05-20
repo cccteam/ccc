@@ -26,18 +26,18 @@ func (k keyword) String() string {
 
 var keywords = map[keyword]keywordOpts{
 	illegal:     {},
-	PrimaryKey:  {ScanStruct: argsRequired | exclusive, ScanField: noArgs | exclusive},
-	ForeignKey:  {ScanStruct: dualArgsRequired, ScanField: argsRequired},
-	Check:       {ScanField: argsRequired | exclusive},
-	Default:     {ScanField: argsRequired | exclusive},
-	Hidden:      {ScanField: noArgs | exclusive},
-	Substring:   {ScanField: argsRequired},
-	Fulltext:    {ScanField: argsRequired},
-	Ngram:       {ScanField: argsRequired},
-	UniqueIndex: {ScanStruct: argsRequired, ScanField: noArgs},
-	View:        {ScanStruct: noArgs | exclusive},
-	Query:       {ScanStruct: argsRequired | exclusive},
-	Using:       {ScanField: argsRequired | exclusive},
+	PrimaryKey:  {scanStruct: argsRequired | exclusive, scanField: noArgs | exclusive},
+	ForeignKey:  {scanStruct: dualArgsRequired, scanField: argsRequired},
+	Check:       {scanField: argsRequired | exclusive},
+	Default:     {scanField: argsRequired | exclusive},
+	Hidden:      {scanField: noArgs | exclusive},
+	Substring:   {scanField: argsRequired},
+	Fulltext:    {scanField: argsRequired},
+	Ngram:       {scanField: argsRequired},
+	UniqueIndex: {scanStruct: argsRequired, scanField: noArgs},
+	View:        {scanStruct: noArgs | exclusive},
+	Query:       {scanStruct: argsRequired | exclusive},
+	Using:       {scanField: argsRequired | exclusive},
 }
 
 const (
