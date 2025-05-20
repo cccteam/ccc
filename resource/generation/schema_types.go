@@ -59,9 +59,9 @@ type schemaResource struct {
 }
 
 func (s *schemaResource) addStructComments(pStruct *parser.Struct) error {
-	structComments, err := commentlang.Scan(pStruct.Comments(), commentlang.ScanStruct)
+	structComments, err := commentlang.ScanStruct(pStruct.Comments())
 	if err != nil {
-		return errors.Wrapf(err, "%s commentlang.Scan()", pStruct.Error())
+		return errors.Wrapf(err, "%s commentlang.ScanStruct()", pStruct.Error())
 	}
 
 	if _, ok := structComments[commentlang.View]; ok {
@@ -116,9 +116,9 @@ func (s *schemaResource) addStructComments(pStruct *parser.Struct) error {
 
 func (s *schemaResource) addFieldComments(pStruct *parser.Struct) error {
 	for i, field := range pStruct.Fields() {
-		fieldComments, err := commentlang.Scan(field.Comments(), commentlang.ScanField)
+		fieldComments, err := commentlang.ScanField(field.Comments())
 		if err != nil {
-			return errors.Wrap(err, "commentlang.Scan()")
+			return errors.Wrap(err, "commentlang.ScanField()")
 		}
 
 		for keyword, args := range fieldComments {
