@@ -3,9 +3,12 @@ package generation
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
+	"github.com/cccteam/ccc/resource/generation/parser/commentlang"
+	"github.com/go-playground/errors/v5"
 )
 
 func NewSchemaGenerator(resourceFilePath, schemaDestinationPath string) (Generator, error) {
@@ -24,9 +27,10 @@ func (s *schemaGenerator) Generate() error {
 		return err
 	}
 
-	s.structs = parser.ParseStructs(packageMap["resources"])
+	pStructs := parser.ParseStructs(packageMap["resources"])
 
-	if err := s.structsToSchema(); err != nil {
+	genSchema, err := newSchema(pStructs)
+	if err != nil {
 		return err
 	}
 
@@ -40,20 +44,6 @@ func (s *schemaGenerator) Generate() error {
 
 	if err := s.generateMutations(); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-func (s *schemaGenerator) structsToSchema() error {
-	s.schemaResources = make(map[string]*schemaResource, len(s.structs))
-	for i := range s.structs {
-		res, err := structToSchemaTable(s.structs[i])
-		if err != nil {
-			return err
-		}
-
-		s.schemaResources[s.structs[i].Name()] = res
 	}
 
 	return nil
@@ -77,37 +67,105 @@ func (s *schemaGenerator) generateMutations() error {
 
 func (schemaGenerator) Close() {}
 
-func structToSchemaTable(pStruct *parser.Struct) (*schemaResource, error) {
-	res := &schemaResource{
-		Columns: make([]schemaColumn, 0, pStruct.NumFields()),
+func newSchema(pStructs []*parser.Struct) (*schema, error) {
+	s := &schema{
+		tables: make([]*schemaTable, 0, len(pStructs)),
+		views:  make([]*schemaView, 0, len(pStructs)),
 	}
 
-	if err := res.addStructComments(pStruct); err != nil {
-		return nil, err
-	}
-
-	for _, f := range pStruct.Fields() {
-		sc := schemaColumn{
-			Name:       f.Name(),
-			IsNullable: isTypeNullable(f),
+	for i := range pStructs {
+		structComments, err := commentlang.ScanStruct(pStructs[i].Comments())
+		if err != nil {
+			return nil, errors.Wrapf(err, "%s commentlang.Scan()", pStructs[i].Error())
 		}
 
-		// TODO: decouple sqlTypeFromField from needing to be called on non-view resources
-		if !res.IsView {
-			sc.SQLType = sqlTypeFromField(f)
+		_, isView := structComments[commentlang.View]
+		if isView {
+			view, err := newSchemaView(pStructs[i])
+			if err != nil {
+				return nil, err
+			}
+
+			if err := view.resolveStructComments(structComments); err != nil {
+				return nil, err
+			}
+
+			s.views = append(s.views, view)
+		} else {
+			table, err := newSchemaTable(pStructs[i])
+			if err != nil {
+				return nil, err
+			}
+
+			if err := table.resolveStructComments(structComments); err != nil {
+				return nil, err
+			}
+
+			s.tables = append(s.tables, table)
 		}
-
-		res.Columns = append(res.Columns, sc)
 	}
 
-	if err := res.addFieldComments(pStruct); err != nil {
-		return nil, err
-	}
+	s.tables = slices.Clip(s.tables)
+	s.views = slices.Clip(s.views)
 
-	return res, nil
+	return s, nil
 }
 
-func isTypeNullable(f *parser.Field) bool {
+func newSchemaTable(pStruct *parser.Struct) (*schemaTable, error) {
+	table := &schemaTable{
+		Name:    pStruct.Name(),
+		Columns: make([]*tableColumn, 0, pStruct.NumFields()),
+	}
+
+	for _, field := range pStruct.Fields() {
+		col := tableColumn{
+			Name:       field.Name(),
+			IsNullable: isSQLTypeNullable(field),
+			SQLType:    decodeSQLType(field),
+		}
+
+		fieldComments, err := commentlang.ScanField(field.Comments())
+		if err != nil {
+			return nil, errors.Wrap(err, "commentlang.ScanField()")
+		}
+
+		col, err = table.resolveFieldComment(col, fieldComments)
+		if err != nil {
+			return nil, err
+		}
+
+		table.Columns = append(table.Columns, &col)
+	}
+
+	return table, nil
+}
+
+func newSchemaView(pStruct *parser.Struct) (*schemaView, error) {
+	view := &schemaView{
+		Name:    pStruct.Name(),
+		Columns: make([]*viewColumn, 0, pStruct.NumFields()),
+	}
+
+	for _, field := range pStruct.Fields() {
+		fieldComments, err := commentlang.ScanField(field.Comments())
+		if err != nil {
+			return nil, errors.Wrap(err, "commentlang.ScanField()")
+		}
+
+		col, err := view.resolveFieldComment(viewColumn{Name: field.Name()}, fieldComments)
+		if err != nil {
+			return nil, err
+		}
+
+		// TODO: obtain view column's source table from the field's type (expecting `View[Resource]`)
+
+		view.Columns = append(view.Columns, &col)
+	}
+
+	return view, nil
+}
+
+func isSQLTypeNullable(f *parser.Field) bool {
 	if f.IsPointer() {
 		return true
 	}
@@ -115,7 +173,7 @@ func isTypeNullable(f *parser.Field) bool {
 	return strings.Contains(strings.ToLower(f.UnqualifiedTypeName()), "null")
 }
 
-func sqlTypeFromField(f *parser.Field) string {
+func decodeSQLType(f *parser.Field) string {
 	tt := f.Type()
 
 	if f.TypeArgs() != "" {
