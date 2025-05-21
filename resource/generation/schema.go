@@ -1,11 +1,16 @@
 package generation
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"text/template"
 
+	"github.com/cccteam/ccc/resource/generation/dependencygraph"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/commentlang"
 	"github.com/go-playground/errors/v5"
@@ -54,8 +59,86 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 		panic("schemaInfo cannot be nil")
 	}
 
-	// TODO:
-	// - write to file
+	tableMap := make(map[string]*schemaTable, len(schemaInfo.tables))
+
+	dg := dependencygraph.New()
+
+	for _, table := range schemaInfo.tables {
+		tableMap[table.Name] = table
+
+		for _, foreignKey := range table.ForeignKeys {
+			if err := dg.AddEdge(table.Name, foreignKey.referencedTable); err != nil {
+				return errors.Wrap(err, "dependencygraph.Graph.AddEdge()")
+			}
+		}
+	}
+
+	migrationOrder := dg.OrderedList()
+
+	// TODO: validate that referenced table names by foreign keys and views are actually in the schema
+
+	if len(migrationOrder) < 0 {
+		return errors.New("migrationOrder is empty")
+	}
+
+	var (
+		wg      sync.WaitGroup
+		errChan = make(chan error)
+	)
+
+	migrationIndex := 0
+	for _, resourceName := range migrationOrder {
+		if table, ok := tableMap[resourceName]; ok {
+			migrateFunc := func(index int, table *schemaTable, suffix, templateName string) {
+				fileName := s.sqlMigrationFileName(index, table.Name, suffix)
+				if err := generateMigration(fileName, templateName, table); err != nil {
+					errChan <- err
+				}
+
+				wg.Done()
+			}
+
+			wg.Add(1)
+			go migrateFunc(migrationIndex, table, migrationSuffixUp, tableMigrationUpTemplate)
+			wg.Add(1)
+			go migrateFunc(migrationIndex, table, migrationSuffixDown, tableMigrationDownTemplate)
+
+			migrationIndex += 1
+		}
+	}
+
+	for _, view := range schemaInfo.views {
+		migrateFunc := func(index int, view *schemaView, suffix, templateName string) {
+			fileName := s.sqlMigrationFileName(index, view.Name, suffix)
+			if err := generateMigration(fileName, templateName, view); err != nil {
+				errChan <- err
+			}
+
+			wg.Done()
+		}
+
+		wg.Add(1)
+		go migrateFunc(migrationIndex, view, migrationSuffixUp, viewMigrationUpTemplate)
+		wg.Add(1)
+		go migrateFunc(migrationIndex, view, migrationSuffixDown, viewMigrationDownTemplate)
+
+		migrationIndex += 1
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var migrationErrors error
+	for e := range errChan {
+		migrationErrors = errors.Join(migrationErrors, e)
+	}
+
+	if migrationErrors != nil {
+		return migrationErrors
+	}
+
 	return nil
 }
 
@@ -70,6 +153,49 @@ func (s *schemaGenerator) generateMutations() error {
 }
 
 func (schemaGenerator) Close() {}
+
+func (s *schemaGenerator) sqlMigrationFileName(migrationIndex int, tableName, suffix string) string {
+	return filepath.Join(s.schemaDestination, fmt.Sprintf("%0000d_%s.%s", migrationIndex, tableName, suffix))
+}
+
+func generateMigration(fileName, templateName string, schemaResource any) error {
+	data, err := generateTemplateOutput(templateName, map[string]any{"Resource": schemaResource})
+	if err != nil {
+		return err
+	}
+
+	file, err := os.Create(fileName)
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	if err := file.Truncate(0); err != nil {
+		return errors.Wrapf(err, "file.Truncate(): file: %s", file.Name())
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		return errors.Wrapf(err, "file.Seek(): file: %s", file.Name())
+	}
+	if _, err := file.Write(data); err != nil {
+		return errors.Wrapf(err, "file.Write(): file: %s", file.Name())
+	}
+
+	return nil
+}
+
+func generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
+	tmpl, err := template.New(fileTemplate).Parse(fileTemplate)
+	if err != nil {
+		return nil, errors.Wrap(err, "template.Parse()")
+	}
+
+	buf := bytes.NewBuffer([]byte{})
+	if err := tmpl.Execute(buf, data); err != nil {
+		return nil, errors.Wrap(err, "tmpl.Execute()")
+	}
+
+	return buf.Bytes(), nil
+}
 
 func newSchema(pStructs []*parser.Struct) (*schema, error) {
 	s := &schema{
