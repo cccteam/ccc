@@ -9,6 +9,11 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+const (
+	migrationSuffixUp string = "up.sql"
+	migrationSuffixDown string = "down.sql"
+)
+
 type schemaGenerator struct {
 	resourceDestination string
 	schemaDestination   string
