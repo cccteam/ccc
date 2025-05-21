@@ -1,13 +1,13 @@
-package generation_test
+package generation
 
 import (
 	"testing"
 
-	"github.com/cccteam/ccc/resource/generation"
+	"github.com/google/go-cmp/cmp"
 )
 
 func Test_schemageneration(t *testing.T) {
-	generator, err := generation.NewSchemaGenerator("./testdata/schemagen/resources.go", t.TempDir())
+	generator, err := NewSchemaGenerator("./testdata/schemagen/resources.go", t.TempDir())
 	if err != nil {
 		t.Error(err)
 
@@ -18,5 +18,45 @@ func Test_schemageneration(t *testing.T) {
 		t.Error(err)
 
 		return
+	}
+}
+
+func Test_referenceExpr(t *testing.T) {
+	type args struct {
+		expr string
+	}
+
+	tests := []struct {
+		name        string
+		args        args
+		wantTable   string
+		wantColumns []string
+	}{
+		{
+			name:        "extracts column names properly",
+			args:        args{expr: "Economies(Id, Type)"},
+			wantTable:   "Economies",
+			wantColumns: []string{"Id", "Type"},
+		},
+		{
+			name:        "extracts column names from weirdly formatted string",
+			args:        args{expr: "Businesses ( Id,Type ) "},
+			wantTable:   "Businesses",
+			wantColumns: []string{"Id", "Type"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotTable, gotColumns := parseReferenceExpression(tt.args.expr)
+
+			if diff := cmp.Diff(tt.wantTable, gotTable); diff != "" {
+				t.Errorf("newReferenceExpr() table mismatch (-want +got):\n%s", diff)
+			}
+
+			if diff := cmp.Diff(tt.wantColumns, gotColumns); diff != "" {
+				t.Errorf("newReferenceExpr() columns mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

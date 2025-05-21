@@ -1,6 +1,8 @@
 package generation
 
 import (
+	"strings"
+
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/commentlang"
@@ -26,8 +28,9 @@ const (
 )
 
 type foreignKeyConstraint struct {
-	sourceExpression    string // the column(s) the constraint is on
-	referenceExpression string // the table & column(s) the constraint references
+	sourceExpression  string // the column(s) the constraint is on
+	referencedTable   string
+	referencedColumns []string
 }
 
 type checkConstraint struct {
@@ -67,13 +70,17 @@ func (s *schemaTable) resolveStructComments(comments map[commentlang.Keyword][]*
 
 		case commentlang.ForeignKey:
 			for _, arg := range args {
+				// TODO(jrowland): consider validating column names actually exist in this struct
+				// columnNames := strings.Split(strings.ReplaceAll(arg.Arg1, " ", ""), ",")
 				sourceExpression := arg.Arg1
-				if arg.Arg2 == nil {
+
+				if arg.Arg2 == nil { // TODO(jrowland): move validation into scanner
 					return errors.Newf("expected second argument for foreignkey on struct %q", s.Name)
 				}
-				referenceExpression := *arg.Arg2
 
-				s.ForeignKeys = append(s.ForeignKeys, foreignKeyConstraint{sourceExpression, referenceExpression})
+				refTable, refColumns := parseReferenceExpression(*arg.Arg2)
+
+				s.ForeignKeys = append(s.ForeignKeys, foreignKeyConstraint{sourceExpression, refTable, refColumns})
 			}
 
 		case commentlang.UniqueIndex:
@@ -104,9 +111,9 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[commen
 		case commentlang.ForeignKey:
 			for _, arg := range args {
 				sourceExpression := column.Name
-				referenceExpression := arg.Arg1
+				refTable, refColumns := parseReferenceExpression(arg.Arg1)
 
-				s.ForeignKeys = append(s.ForeignKeys, foreignKeyConstraint{sourceExpression, referenceExpression})
+				s.ForeignKeys = append(s.ForeignKeys, foreignKeyConstraint{sourceExpression, refTable, refColumns})
 			}
 
 		case commentlang.Default:
@@ -189,4 +196,42 @@ func newViewColumn(field *parser.Field) (viewColumn, error) {
 	}
 
 	return column, nil
+}
+
+// Takes a string of the form `TableName(column1, column2)` and returns
+// the identifiers as table and columns
+func parseReferenceExpression(arg string) (table string, columns []string) {
+	var i int
+tableNameLoop:
+	for i < len(arg) {
+		switch arg[i] {
+		case ' ':
+			i += 1
+
+		case '(':
+			i += 1
+			break tableNameLoop
+
+		default:
+			table += string(arg[i])
+			i += 1
+		}
+	}
+
+	var cols string
+columnsLoop:
+	for i < len(arg) {
+		switch arg[i] {
+		case ')':
+			break columnsLoop
+		default:
+			cols += string(arg[i])
+			i += 1
+		}
+	}
+
+	cols = strings.ReplaceAll(cols, " ", "")
+	columns = strings.Split(cols, ",")
+
+	return table, columns
 }
