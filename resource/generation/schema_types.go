@@ -2,6 +2,7 @@ package generation
 
 import (
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/commentlang"
 	"github.com/go-playground/errors/v5"
 )
@@ -139,6 +140,7 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[commen
 type viewColumn struct {
 	Name         string
 	SourceColumn string
+	SourceTable  string
 }
 
 type schemaView struct {
@@ -164,7 +166,17 @@ func (s *schemaView) resolveStructComments(comments map[commentlang.Keyword][]*c
 	return nil
 }
 
-func (s *schemaView) resolveFieldComment(column viewColumn, comment map[commentlang.Keyword][]*commentlang.KeywordArguments) (viewColumn, error) {
+func newViewColumn(field *parser.Field) (viewColumn, error) {
+	comment, err := commentlang.ScanField(field.Comments())
+	if err != nil {
+		return viewColumn{}, errors.Wrap(err, "commentlang.ScanField()")
+	}
+
+	column := viewColumn{
+		Name:        field.Name(),
+		SourceTable: field.TypeArgs(),
+	}
+
 	for keyword, args := range comment {
 		switch keyword {
 		case commentlang.Using:

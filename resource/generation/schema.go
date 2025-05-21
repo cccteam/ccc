@@ -29,12 +29,12 @@ func (s *schemaGenerator) Generate() error {
 
 	pStructs := parser.ParseStructs(packageMap["resources"])
 
-	genSchema, err := newSchema(pStructs)
+	schemaInfo, err := newSchema(pStructs)
 	if err != nil {
 		return err
 	}
 
-	if err := s.generateSchemaMigrations(); err != nil {
+	if err := s.generateSchemaMigrations(schemaInfo); err != nil {
 		return err
 	}
 
@@ -49,7 +49,11 @@ func (s *schemaGenerator) Generate() error {
 	return nil
 }
 
-func (s *schemaGenerator) generateSchemaMigrations() error {
+func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
+	if schemaInfo == nil {
+		panic("schemaInfo cannot be nil")
+	}
+
 	// TODO:
 	// - write to file
 	return nil
@@ -147,17 +151,10 @@ func newSchemaView(pStruct *parser.Struct) (*schemaView, error) {
 	}
 
 	for _, field := range pStruct.Fields() {
-		fieldComments, err := commentlang.ScanField(field.Comments())
-		if err != nil {
-			return nil, errors.Wrap(err, "commentlang.ScanField()")
-		}
-
-		col, err := view.resolveFieldComment(viewColumn{Name: field.Name()}, fieldComments)
+		col, err := newViewColumn(field)
 		if err != nil {
 			return nil, err
 		}
-
-		// TODO: obtain view column's source table from the field's type (expecting `View[Resource]`)
 
 		view.Columns = append(view.Columns, &col)
 	}
