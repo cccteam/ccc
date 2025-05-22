@@ -3,21 +3,31 @@ package resources
 import (
 	"cloud.google.com/go/civil"
 	"github.com/cccteam/ccc"
-	"github.com/cccteam/ccc/resource/generation/conversion"
+)
+
+// Used to generate Go functions converting types between databases
+type (
+	IntTo[T any]    = int
+	StringTo[T any] = string
+	Hidden[T any]   = T
+	View[T any]     = struct{}
 )
 
 type Stores struct {
 	// @primarykey
-	ID conversion.IntTo[ccc.UUID] `db:"store_id"`
+	ID IntTo[ccc.UUID] `db:"store_id"`
 	// @foreignkey(StoreTypes(Id))
-	Type               string                  `db:"store_type"`
-	GrandOpeningDate   civil.Date              `db:"opening_date"`
-	ClosingDate        *civil.Date             `db:"closed_date"`
-	CharityParticipant *conversion.IntTo[bool] `db:"charity_participant"`
-	// @check(@self = 'S') @default('S') @hidden
+	Type               string       `db:"store_type"`
+	GrandOpeningDate   civil.Date   `db:"opening_date"`
+	ClosingDate        *civil.Date  `db:"closed_date"`
+	CharityParticipant *IntTo[bool] `db:"charity_participant"`
+	// @check(@self = 'S')
+	// @default('S')
+	// @hidden
 	EconomyType string `db:"-"`
-	// @foreignkey(ParentCompanies(Id)) @uniqueindex
-	ParentCompanyID conversion.IntTo[ccc.UUID] `db:"parent_id"`
+	// @foreignkey(ParentCompanies(Id))
+	// @uniqueindex
+	ParentCompanyID IntTo[ccc.UUID] `db:"parent_id"`
 } /*
 	@foreignkey(Id, EconomyType) (Economies(Id, Type))
 	@uniqueindex(Id, Type)
@@ -25,17 +35,17 @@ type Stores struct {
 
 type Customers struct {
 	// @primarykey
-	ID  conversion.IntTo[ccc.UUID] `db:"store_id"`
-	Ssn string                     `db"ssn"`
+	ID  IntTo[ccc.UUID] `db:"store_id"`
+	Ssn string          `db"ssn"`
 }
 
 type (
 	// @view
 	StoreByPerson struct {
-		StoreID  conversion.View[Stores] // @using(ID)
-		Type     conversion.View[Stores]
-		PersonID conversion.View[Customers] // @using(ID)
-		Ssn      conversion.View[Customers]
+		StoreID  View[Stores] // @using(ID)
+		Type     View[Stores]
+		PersonID View[Customers] // @using(ID)
+		Ssn      View[Customers]
 	} /* @query(
 	FROM Stores
 	LEFT JOIN StorePurchasers ON StorePurchasers.Id = Stores.Id
