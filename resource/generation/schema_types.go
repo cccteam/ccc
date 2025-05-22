@@ -162,6 +162,8 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[commen
 
 		case commentlang.Check:
 			checkArg := args[0].Arg1
+			checkArg = strings.ReplaceAll(checkArg, "@self", column.Name)
+
 			s.Checks = append(s.Checks, checkConstraint{column.Name, checkArg})
 
 		case commentlang.Substring, commentlang.Fulltext, commentlang.Ngram:
