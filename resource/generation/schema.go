@@ -99,9 +99,9 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 			}
 
 			wg.Add(1)
-			go migrateFunc(migrationIndex, table, migrationSuffixUp, tableMigrationUpTemplate)
+			go migrateFunc(migrationIndex, table, migrationSuffixUp, migrationTableUpTemplate)
 			wg.Add(1)
-			go migrateFunc(migrationIndex, table, migrationSuffixDown, tableMigrationDownTemplate)
+			go migrateFunc(migrationIndex, table, migrationSuffixDown, migrationTableDownTemplate)
 
 			migrationIndex += 1
 		}
@@ -118,9 +118,9 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 		}
 
 		wg.Add(1)
-		go migrateFunc(migrationIndex, view, migrationSuffixUp, viewMigrationUpTemplate)
+		go migrateFunc(migrationIndex, view, migrationSuffixUp, migrationViewUpTemplate)
 		wg.Add(1)
-		go migrateFunc(migrationIndex, view, migrationSuffixDown, viewMigrationDownTemplate)
+		go migrateFunc(migrationIndex, view, migrationSuffixDown, migrationViewDownTemplate)
 
 		migrationIndex += 1
 	}
