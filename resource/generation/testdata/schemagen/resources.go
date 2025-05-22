@@ -40,11 +40,9 @@ type (
 		Type     conversion.View[Stores]
 		PersonID conversion.View[Customers] // @using(ID)
 		Ssn      conversion.View[Customers]
-	} /*
-		@query(
-			FROM Stores
-			LEFT JOIN StorePurchasers ON StorePurchasers.Id = Stores.Id
-			LEFT JOIN Customers ON Customers.Id = StorePurchasers.CustomerId
-		)
-	*/
+	} /* @query(
+	FROM Stores
+	LEFT JOIN StorePurchasers ON StorePurchasers.Id = Stores.Id
+	LEFT JOIN Customers ON Customers.Id = StorePurchasers.CustomerId
+	) */
 )
