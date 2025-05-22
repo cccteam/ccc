@@ -1146,20 +1146,19 @@ CREATE TABLE {{ .Resource.Name }} (
     ])
   ) HIDDEN,
   {{- end }}
-
-  {{ range $constraint := .Resource.Constraints -}}
+  {{- if .Resource.Constraints }}
+  {{ range $constraint := .Resource.Constraints }}
   CONSTRAINT {{ $constraint }},
-  {{ end -}}
+  {{- end }}
+  {{- end }}
 ) PRIMARY KEY ({{ .Resource.PrimaryKey }});
-
-{{ range $index := .Resource.Indexes -}}
-CREATE {{ $index.Type }} INDEX {{ $index.Name }} ON {{ .Resource.Name }}({{ $index.Argument }});
-{{- end }}
-`
+{{ range $index := .Resource.Indexes }}
+CREATE {{ $index.Type }} INDEX {{ $index.Name }} ON {{ $.Resource.Name }}({{ $index.Argument }});
+{{- end }}`
 	migrationTableDownTemplate = `{{ .MigrationHeaderComment }}
 {{ range $index := .Resource.Indexes -}}
 DROP INDEX {{ $index.Name }};
-{{- end }}
+{{ end -}}
 DROP TABLE {{ .Resource.Name }};
 `
 
