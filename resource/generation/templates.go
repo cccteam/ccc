@@ -1134,10 +1134,10 @@ const (
 	migrationTableUpTemplate = `{{ .MigrationHeaderComment }}
 CREATE TABLE {{ .Resource.Name }} (
   {{- range $column := .Resource.Columns }}
-  {{ $column.Name }} {{ $column.SQLType }} {{ if not $column.IsNullable }}NOT NULL{{ end }} {{ if $column.DefaultValue }}DEFAULT ({{ $column.DefaultValue }}){{ end }}{{ if $column.IsHidden }}HIDDEN{{ end }},
+  {{ $column.Name }} {{ $column.SQLType }}{{ if not $column.IsNullable }} NOT NULL{{ end }}{{ if $column.DefaultValue }} DEFAULT ({{ $column.DefaultValue }}){{ end }}{{ if $column.IsHidden }} HIDDEN{{ end }},
   {{- end }}
 
-  {{ if .Resource.SearchTokens -}}
+  {{- if .Resource.SearchTokens -}}
   SearchTokens TOKENLIST AS (
     TOKENLIST_CONCAT([
     {{- range $index, $searchToken := .Resource.SearchTokens }}

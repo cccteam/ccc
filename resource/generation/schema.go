@@ -39,6 +39,13 @@ func (s *schemaGenerator) Generate() error {
 		return err
 	}
 
+	if _, err := os.Stat(s.schemaDestination); errors.Is(err, os.ErrNotExist) {
+		err := os.MkdirAll(s.schemaDestination, 0o777)
+		if err != nil {
+			return errors.Wrap(err, "os.MkdirAll()")
+		}
+	}
+
 	if err := s.generateSchemaMigrations(schemaInfo); err != nil {
 		return err
 	}
@@ -89,9 +96,9 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 	migrationIndex := 0
 	for _, resourceName := range migrationOrder {
 		if table, ok := tableMap[resourceName]; ok {
-			migrateFunc := func(index int, table *schemaTable, suffix, templateName string) {
-				fileName := s.sqlMigrationFileName(index, table.Name, suffix)
-				if err := generateMigration(fileName, templateName, table); err != nil {
+			migrateFunc := func(index int, table *schemaTable, suffix, migrationTemplate string) {
+				fileName := sqlMigrationFileName(index, table.Name, suffix)
+				if err := s.generateMigration(fileName, migrationTemplate, table); err != nil {
 					errChan <- err
 				}
 
@@ -109,8 +116,8 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 
 	for _, view := range schemaInfo.views {
 		migrateFunc := func(index int, view *schemaView, suffix, templateName string) {
-			fileName := s.sqlMigrationFileName(index, view.Name, suffix)
-			if err := generateMigration(fileName, templateName, view); err != nil {
+			fileName := sqlMigrationFileName(index, view.Name, suffix)
+			if err := s.generateMigration(fileName, templateName, view); err != nil {
 				errChan <- err
 			}
 
@@ -154,17 +161,19 @@ func (s *schemaGenerator) generateMutations() error {
 
 func (schemaGenerator) Close() {}
 
-func (s *schemaGenerator) sqlMigrationFileName(migrationIndex int, tableName, suffix string) string {
-	return filepath.Join(s.schemaDestination, fmt.Sprintf("%0000d_%s.%s", migrationIndex, tableName, suffix))
+func sqlMigrationFileName(migrationIndex int, tableName, suffix string) string {
+	return fmt.Sprintf("%0000d_%s.%s", migrationIndex, tableName, suffix)
 }
 
-func generateMigration(fileName, templateName string, schemaResource any) error {
-	data, err := generateTemplateOutput(templateName, map[string]any{"Resource": schemaResource})
+func (s *schemaGenerator) generateMigration(fileName, migrationTemplate string, schemaResource any) error {
+	data, err := executeMigrationTemplate(migrationTemplate, map[string]any{"Resource": schemaResource})
 	if err != nil {
 		return err
 	}
 
-	file, err := os.Create(fileName)
+	destinationFilePath := filepath.Join(s.schemaDestination, fileName)
+
+	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
 	}
@@ -183,8 +192,9 @@ func generateMigration(fileName, templateName string, schemaResource any) error 
 	return nil
 }
 
-func generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
-	tmpl, err := template.New(fileTemplate).Parse(fileTemplate)
+func executeMigrationTemplate(migrationTemplate string, data map[string]any) ([]byte, error) {
+	data["MigrationHeaderComment"] = migrationHeaderComment
+	tmpl, err := template.New("migrationTemplate").Parse(migrationTemplate)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.Parse()")
 	}
