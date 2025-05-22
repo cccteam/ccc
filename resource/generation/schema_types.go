@@ -71,6 +71,12 @@ type schemaTable struct {
 func (s *schemaTable) Constraints() []string {
 	constraints := make([]string, 0, len(s.ForeignKeys)+len(s.Checks))
 
+	for _, ck := range s.Checks {
+		constraint := fmt.Sprintf("CK_%s_%s CHECK (%s)", s.Name, ck.Name, ck.Expression)
+
+		constraints = append(constraints, constraint)
+	}
+
 	for _, fk := range s.ForeignKeys {
 		// The source expression is a comma-delimited list of column names
 		// We want to convert `Id, Type` to `Id_Type`
@@ -78,12 +84,6 @@ func (s *schemaTable) Constraints() []string {
 		columnNames = strings.ReplaceAll(columnNames, ",", "_")
 
 		constraint := fmt.Sprintf("FK_%s_%s FOREIGN KEY (%s) REFERENCES %s (%s)", s.Name, columnNames, fk.sourceExpression, fk.referencedTable, fk.sourceExpression)
-
-		constraints = append(constraints, constraint)
-	}
-
-	for _, ck := range s.Checks {
-		constraint := fmt.Sprintf("CK_%s_%s CHECK (%s)", s.Name, ck.Name, ck.Expression)
 
 		constraints = append(constraints, constraint)
 	}
@@ -133,6 +133,10 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[commen
 		case commentlang.PrimaryKey:
 			if s.PrimaryKey != "" { // TODO: do all error checking in Scanner instead of here (redundant)
 				return tableColumn{}, errors.New("@primarykey used twice")
+			}
+
+			if column.SQLType == "STRING(36)" {
+				s.Checks = append(s.Checks, checkConstraint{column.Name, migrationCheckUUID})
 			}
 
 			s.PrimaryKey = column.Name
