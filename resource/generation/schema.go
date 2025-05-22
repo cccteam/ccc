@@ -328,12 +328,14 @@ func decodeSQLType(f *parser.Field) string {
 		return "STRING(MAX)"
 	case "bool":
 		return "BOOL"
-	case "UUID":
+	case "ccc.UUID", "UUID":
 		return "STRING(36)"
 	case "int":
 		return "INT64"
 	case "float":
 		return "FLOAT64"
+	case "civil.Date", "Date":
+		return "DATE"
 	default:
 		panic(fmt.Sprintf("schemagen conversion unimplemented for type=%q", f.Type()))
 	}
