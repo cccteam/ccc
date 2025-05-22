@@ -317,7 +317,7 @@ func isSQLTypeNullable(f *parser.Field) bool {
 }
 
 func decodeSQLType(f *parser.Field) string {
-	tt := f.Type()
+	tt := f.TypeName()
 
 	if f.TypeArgs() != "" {
 		tt = f.TypeArgs()
