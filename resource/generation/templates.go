@@ -1149,7 +1149,7 @@ CREATE TABLE {{ .Resource.Name }} (
 
   {{ range $constraint := .Resource.Constraints -}}
   CONSTRAINT {{ $constraint }},
-  {{- end }}
+  {{ end -}}
 ) PRIMARY KEY ({{ .Resource.PrimaryKey }});
 
 {{ range $index := .Resource.Indexes -}}
