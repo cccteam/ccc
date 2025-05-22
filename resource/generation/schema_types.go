@@ -22,8 +22,9 @@ type schemaGenerator struct {
 }
 
 type schemaIndex struct {
-	Name      string
-	indexType indexType
+	Name     string
+	Type     indexType
+	Argument string
 }
 
 type indexType string
@@ -68,7 +69,7 @@ type schemaTable struct {
 	Query        *string
 }
 
-func (s *schemaTable) Constraints() []string {
+func (s schemaTable) Constraints() []string {
 	constraints := make([]string, 0, len(s.ForeignKeys)+len(s.Checks))
 
 	for _, ck := range s.Checks {
@@ -114,9 +115,12 @@ func (s *schemaTable) resolveStructComments(comments map[commentlang.Keyword][]*
 
 		case commentlang.UniqueIndex:
 			for _, arg := range args {
-				uniqueIndexArg := arg.Arg1
+				uniqueIndexArg := strings.ReplaceAll(arg.Arg1, " ", "")
+				uniqueIndexArg = strings.ReplaceAll(uniqueIndexArg, ",", "And")
 
-				s.Indexes = append(s.Indexes, schemaIndex{Name: uniqueIndexArg, indexType: uniqueIndexType})
+				name := fmt.Sprintf("%sBy%s", s.Name, uniqueIndexArg)
+
+				s.Indexes = append(s.Indexes, schemaIndex{Name: name, Type: uniqueIndexType, Argument: arg.Arg1})
 			}
 
 		default:
@@ -167,7 +171,9 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[commen
 			}
 
 		case commentlang.UniqueIndex:
-			s.Indexes = append(s.Indexes, schemaIndex{Name: column.Name, indexType: uniqueIndexType})
+			name := fmt.Sprintf("%sBy%s", s.Name, column.Name)
+
+			s.Indexes = append(s.Indexes, schemaIndex{Name: name, Type: uniqueIndexType, Argument: column.Name})
 
 		default:
 			return tableColumn{}, errors.Newf("field keyword %s not yet implemented for schemaColumn", keyword.String())
