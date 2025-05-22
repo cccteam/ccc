@@ -6,32 +6,28 @@ import (
 	"github.com/cccteam/ccc/resource/generation/conversion"
 )
 
-type (
-	Stores struct {
-		// @primarykey
-		ID conversion.IntTo[ccc.UUID] `db:"store_id"`
-		// @foreignkey(StoreTypes(Id))
-		Type               string                  `db:"store_type"`
-		GrandOpeningDate   civil.Date              `db:"opening_date"`
-		ClosingDate        *civil.Date             `db:"closed_date"`
-		CharityParticipant *conversion.IntTo[bool] `db:"charity_participant"`
-		// @check(@self = 'S') @default('S') @hidden
-		EconomyType string `db:"-"`
-		// @foreignkey(ParentCompanies(Id)) @uniqueindex
-		ParentCompanyID conversion.IntTo[ccc.UUID] `db:"parent_id"`
-	} /*
-		@foreignkey(Id, EconomyType) (Economies(Id, Type))
-		@uniqueindex(Id, Type)
-	*/
-)
+type Stores struct {
+	// @primarykey
+	ID conversion.IntTo[ccc.UUID] `db:"store_id"`
+	// @foreignkey(StoreTypes(Id))
+	Type               string                  `db:"store_type"`
+	GrandOpeningDate   civil.Date              `db:"opening_date"`
+	ClosingDate        *civil.Date             `db:"closed_date"`
+	CharityParticipant *conversion.IntTo[bool] `db:"charity_participant"`
+	// @check(@self = 'S') @default('S') @hidden
+	EconomyType string `db:"-"`
+	// @foreignkey(ParentCompanies(Id)) @uniqueindex
+	ParentCompanyID conversion.IntTo[ccc.UUID] `db:"parent_id"`
+} /*
+	@foreignkey(Id, EconomyType) (Economies(Id, Type))
+	@uniqueindex(Id, Type)
+*/
 
-type (
-	Customers struct {
-		// @primarykey
-		ID  conversion.IntTo[ccc.UUID] `db:"store_id"`
-		Ssn string                     `db"ssn"`
-	}
-)
+type Customers struct {
+	// @primarykey
+	ID  conversion.IntTo[ccc.UUID] `db:"store_id"`
+	Ssn string                     `db"ssn"`
+}
 
 type (
 	// @view
