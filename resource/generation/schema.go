@@ -70,7 +70,15 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 
 	dg := dependencygraph.New()
 
+	migrationOrder := make([]*schemaTable, 0, len(schemaInfo.tables))
 	for _, table := range schemaInfo.tables {
+
+		if len(table.ForeignKeys) == 0 {
+			migrationOrder = append(migrationOrder, table)
+
+			continue
+		}
+
 		tableMap[table.Name] = table
 
 		for _, foreignKey := range table.ForeignKeys {
@@ -80,7 +88,11 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 		}
 	}
 
-	migrationOrder := dg.OrderedList()
+	for _, tableName := range dg.OrderedList() {
+		if table, ok := tableMap[tableName]; ok {
+			migrationOrder = append(migrationOrder, table)
+		}
+	}
 
 	// TODO: validate that referenced table names by foreign keys and views are actually in the schema
 
@@ -94,24 +106,22 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 	)
 
 	migrationIndex := 0
-	for _, resourceName := range migrationOrder {
-		if table, ok := tableMap[resourceName]; ok {
-			migrateFunc := func(index int, table *schemaTable, suffix, migrationTemplate string) {
-				fileName := sqlMigrationFileName(index, table.Name, suffix)
-				if err := s.generateMigration(fileName, migrationTemplate, table); err != nil {
-					errChan <- err
-				}
-
-				wg.Done()
+	for _, table := range migrationOrder {
+		migrateFunc := func(index int, table *schemaTable, suffix, migrationTemplate string) {
+			fileName := sqlMigrationFileName(index, table.Name, suffix)
+			if err := s.generateMigration(fileName, migrationTemplate, table); err != nil {
+				errChan <- err
 			}
 
-			wg.Add(1)
-			go migrateFunc(migrationIndex, table, migrationSuffixUp, migrationTableUpTemplate)
-			wg.Add(1)
-			go migrateFunc(migrationIndex, table, migrationSuffixDown, migrationTableDownTemplate)
-
-			migrationIndex += 1
+			wg.Done()
 		}
+
+		wg.Add(1)
+		go migrateFunc(migrationIndex, table, migrationSuffixUp, migrationTableUpTemplate)
+		wg.Add(1)
+		go migrateFunc(migrationIndex, table, migrationSuffixDown, migrationTableDownTemplate)
+
+		migrationIndex += 1
 	}
 
 	for _, view := range schemaInfo.views {
