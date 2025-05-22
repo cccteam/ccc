@@ -35,7 +35,7 @@ const (
 type foreignKeyConstraint struct {
 	sourceExpression  string // the column(s) the constraint is on
 	referencedTable   string
-	referencedColumns []string
+	referencedColumns string
 }
 
 type checkConstraint struct {
@@ -204,8 +204,8 @@ func newViewColumn(field *parser.Field) (viewColumn, error) {
 }
 
 // Takes a string of the form `TableName(column1, column2)` and returns
-// the identifiers as table and columns
-func parseReferenceExpression(arg string) (table string, columns []string) {
+// the identifiers as `TableName“ and `column1, column2`
+func parseReferenceExpression(arg string) (table string, columns string) {
 	var i int
 tableNameLoop:
 	for i < len(arg) {
@@ -223,20 +223,19 @@ tableNameLoop:
 		}
 	}
 
-	var cols string
 columnsLoop:
 	for i < len(arg) {
 		switch arg[i] {
 		case ')':
 			break columnsLoop
 		default:
-			cols += string(arg[i])
+			columns += string(arg[i])
 			i += 1
 		}
 	}
 
-	cols = strings.ReplaceAll(cols, " ", "")
-	columns = strings.Split(cols, ",")
+	columns = strings.ReplaceAll(columns, " ", "")
+	columns = strings.ReplaceAll(columns, ",", ", ")
 
 	return table, columns
 }

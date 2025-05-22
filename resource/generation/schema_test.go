@@ -30,19 +30,19 @@ func Test_referenceExpr(t *testing.T) {
 		name        string
 		args        args
 		wantTable   string
-		wantColumns []string
+		wantColumns string
 	}{
 		{
 			name:        "extracts column names properly",
 			args:        args{expr: "Economies(Id, Type)"},
 			wantTable:   "Economies",
-			wantColumns: []string{"Id", "Type"},
+			wantColumns: "Id, Type",
 		},
 		{
 			name:        "extracts column names from weirdly formatted string",
-			args:        args{expr: "Businesses ( Id,Type ) "},
+			args:        args{expr: "Businesses ( Class,Org ) "},
 			wantTable:   "Businesses",
-			wantColumns: []string{"Id", "Type"},
+			wantColumns: "Class, Org",
 		},
 	}
 	for _, tt := range tests {
