@@ -18,14 +18,17 @@ type (
 		EconomyType conversion.Hidden[string] `db:"-"`
 
 		// @foreignkey (ParentCompanies(ID))
+		// @uniqueindex
 		ParentCompanyID conversion.IntTo[ccc.UUID] `db:"parent_id"`
 	} /*
 		@foreignkey (ID, EconomyType) (Economies(Id, Type))
+		@uniqueindex (Id, Type)
 	*/
 )
 
 type (
 	Customers struct {
+		// @primarykey
 		ID  conversion.IntTo[ccc.UUID] `db:"store_id"`
 		Ssn string                     `db"ssn"`
 	}
