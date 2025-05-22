@@ -140,7 +140,8 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[commen
 			}
 
 			if column.SQLType == "STRING(36)" {
-				s.Checks = append(s.Checks, checkConstraint{column.Name, migrationCheckUUID})
+				checkArg := fmt.Sprintf(migrationCheckUUID, column.Name)
+				s.Checks = append(s.Checks, checkConstraint{column.Name, checkArg})
 			}
 
 			s.PrimaryKey = column.Name
