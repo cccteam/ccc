@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	migrationSuffixUp string = "up.sql"
+	migrationSuffixUp   string = "up.sql"
 	migrationSuffixDown string = "down.sql"
 )
 
