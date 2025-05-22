@@ -1170,7 +1170,7 @@ SELECT
   {{- range $column := .Resource.Columns }}
   {{ $column.SourceTable }}.{{ $column.Name }},
   {{- end }}
-{{ .Resource.Query }}
+{{- .Resource.Query }}
 `
 	migrationViewDownTemplate = `{{ .MigrationHeaderComment }}
 DROP VIEW {{ .View.Name }};
