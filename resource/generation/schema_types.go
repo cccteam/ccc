@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/cccteam/ccc/resource"
@@ -65,6 +66,29 @@ type schemaTable struct {
 	SearchTokens []searchExpression
 	Indexes      []schemaIndex
 	Query        *string
+}
+
+func (s *schemaTable) Constraints() []string {
+	constraints := make([]string, 0, len(s.ForeignKeys)+len(s.Checks))
+
+	for _, fk := range s.ForeignKeys {
+		// The source expression is a comma-delimited list of column names
+		// We want to convert `Id, Type` to `Id_Type`
+		columnNames := strings.ReplaceAll(fk.sourceExpression, " ", "")
+		columnNames = strings.ReplaceAll(columnNames, ",", "_")
+
+		constraint := fmt.Sprintf("FK_%s_%s FOREIGN KEY (%s) REFERENCES %s (%s)", s.Name, columnNames, fk.sourceExpression, fk.referencedTable, fk.sourceExpression)
+
+		constraints = append(constraints, constraint)
+	}
+
+	for _, ck := range s.Checks {
+		constraint := fmt.Sprintf("CK_%s_%s CHECK (%s)", s.Name, ck.Name, ck.Expression)
+
+		constraints = append(constraints, constraint)
+	}
+
+	return constraints
 }
 
 func (s *schemaTable) resolveStructComments(comments map[commentlang.Keyword][]*commentlang.KeywordArguments) error {
