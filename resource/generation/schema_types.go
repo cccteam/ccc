@@ -84,7 +84,7 @@ func (s schemaTable) Constraints() []string {
 		columnNames := strings.ReplaceAll(fk.sourceExpression, " ", "")
 		columnNames = strings.ReplaceAll(columnNames, ",", "_")
 
-		constraint := fmt.Sprintf("FK_%s_%s FOREIGN KEY (%s) REFERENCES %s (%s)", s.Name, columnNames, fk.sourceExpression, fk.referencedTable, fk.sourceExpression)
+		constraint := fmt.Sprintf("FK_%s_%s FOREIGN KEY (%s) REFERENCES %s (%s)", s.Name, columnNames, fk.sourceExpression, fk.referencedTable, fk.referencedColumns)
 
 		constraints = append(constraints, constraint)
 	}
