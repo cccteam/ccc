@@ -9,7 +9,7 @@ type (
 	Stores struct {
 		// @primarykey
 		ID conversion.IntTo[ccc.UUID] `db:"store_id"`
-		// @foreignkey (StoreTypes(ID))
+		// @foreignkey (StoreTypes(Id))
 		Type               string                  `db:"store_type"`
 		CharityParticipant *conversion.IntTo[bool] `db:"charity_participant"`
 
@@ -17,11 +17,11 @@ type (
 		// @default ('S')
 		EconomyType conversion.Hidden[string] `db:"-"`
 
-		// @foreignkey (ParentCompanies(ID))
+		// @foreignkey (ParentCompanies(Id))
 		// @uniqueindex
 		ParentCompanyID conversion.IntTo[ccc.UUID] `db:"parent_id"`
 	} /*
-		@foreignkey (ID, EconomyType) (Economies(Id, Type))
+		@foreignkey (Id, EconomyType) (Economies(Id, Type))
 		@uniqueindex (Id, Type)
 	*/
 )
