@@ -1,14 +1,15 @@
 package generation
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
+	"text/template"
 
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/go-playground/errors/v5"
-	"golang.org/x/tools/go/packages"
 )
 
 const (
@@ -20,7 +21,7 @@ type schemaGenerator struct {
 	resourceDestination string
 	schemaDestination   string
 	resourceFilePath    string
-	resourcePackage     *packages.Package
+	packageName         string
 	fileWriter
 }
 
@@ -52,13 +53,74 @@ type schema struct {
 	tables []*schemaTable
 	views  []*schemaView
 }
+type conversionFlag int
+
+const (
+	noConversion conversionFlag = 0
+	custom       conversionFlag = 1 << iota
+	fromInt
+	fromString
+	toString
+	toBool
+	toUUID
+)
 
 type tableColumn struct {
-	Name         string
-	SQLType      string
-	DefaultValue *string
-	IsNullable   bool
-	IsHidden     bool
+	Table            *schemaTable
+	Name             string
+	SQLType          string
+	DefaultValue     *string
+	IsNullable       bool
+	IsHidden         bool
+	conversionMethod conversionFlag
+}
+
+// template use only
+func (t tableColumn) HasConversion() bool {
+	return t.conversionMethod > 0
+}
+
+// template use only
+func (t tableColumn) NeedsConversionMethod() bool {
+	return t.conversionMethod > custom
+}
+
+func (t tableColumn) ConversionReturnType() string {
+	switch {
+	case t.conversionMethod&toString != 0:
+		return "string"
+	case t.conversionMethod&toBool != 0:
+		return "bool"
+	case t.conversionMethod&toUUID != 0:
+		return "ccc.UUID"
+	default:
+		panic(fmt.Sprintf("conversionReturnType not implemented for %s", t.Name))
+	}
+}
+
+func (t tableColumn) conversionRefTable() string {
+	for _, fk := range t.Table.ForeignKeys {
+		if strings.Contains(fk.sourceExpression, t.Name) {
+			return fk.referencedTable
+		}
+	}
+
+	return ""
+}
+
+func (t tableColumn) ConversionMethod() string {
+	tmpl := template.Must(template.New("ConversionMethod").Parse(conversionTemplateMap[t.conversionMethod]))
+
+	// TODO(jrowland): find a way to pass all possible template parameters from this tableColumn method
+	buf := bytes.NewBuffer([]byte{})
+	if err := tmpl.Execute(buf, map[string]any{
+		"RefTableName": t.conversionRefTable(),
+		"Column":       t,
+	}); err != nil {
+		panic(errors.Wrap(err, "template.Template.Execute()"))
+	}
+
+	return buf.String()
 }
 
 type schemaTable struct {
@@ -69,7 +131,7 @@ type schemaTable struct {
 	Checks       []checkConstraint
 	SearchTokens []searchExpression
 	Indexes      []schemaIndex
-	Query        *string
+	Query        *string // TODO: remove query and use method on struct instead
 }
 
 func (s schemaTable) Constraints() []string {
