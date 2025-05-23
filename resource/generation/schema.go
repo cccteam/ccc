@@ -17,31 +17,26 @@ import (
 )
 
 func NewSchemaGenerator(resourceFilePath, schemaDestinationPath string) (Generator, error) {
+	resourcePackage, err := parser.LoadPackage(resourceFilePath)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &schemaGenerator{
 		resourceDestination: filepath.Dir(resourceFilePath),
 		schemaDestination:   schemaDestinationPath,
-		loadPackages:        []string{resourceFilePath},
+		resourceFilePath:    resourceFilePath,
+		resourcePackage:     resourcePackage,
 	}
 
 	return s, nil
 }
 
 func (s *schemaGenerator) Generate() error {
-	packageMap, err := parser.LoadPackages(s.loadPackages...)
-	if err != nil {
-		return err
-	}
-
-	pStructs := parser.ParseStructs(packageMap["resources"])
-
+	pStructs := parser.ParseStructs(s.resourcePackage)
 	schemaInfo, err := newSchema(pStructs)
 	if err != nil {
 		return err
-	}
-
-	err = os.MkdirAll(s.schemaDestination, 0o777)
-	if err != nil {
-		return errors.Wrap(err, "os.MkdirAll()")
 	}
 
 	if err := s.generateSchemaMigrations(schemaInfo); err != nil {
@@ -62,6 +57,10 @@ func (s *schemaGenerator) Generate() error {
 func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 	if schemaInfo == nil {
 		panic("schemaInfo cannot be nil")
+	}
+
+	if err := os.MkdirAll(s.schemaDestination, 0o777); err != nil {
+		return errors.Wrap(err, "os.MkdirAll()")
 	}
 
 	tableMap := make(map[string]*schemaTable, len(schemaInfo.tables))

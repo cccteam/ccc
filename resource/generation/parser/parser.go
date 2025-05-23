@@ -56,6 +56,16 @@ func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, erro
 	return packMap, nil
 }
 
+// Loads a single package
+func LoadPackage(packagePattern string) (*packages.Package, error) {
+	pkgs, err := loadPackages(packagePattern)
+	if err != nil {
+		return nil, err
+	}
+
+	return pkgs[0], nil
+}
+
 func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypesInfo}
 	pkgs, err := packages.Load(cfg, packagePatterns...)
