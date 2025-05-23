@@ -1,9 +1,9 @@
-package commentlang_test
+package genlang_test
 
 import (
 	"testing"
 
-	"github.com/cccteam/ccc/resource/generation/parser/commentlang"
+	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -14,7 +14,7 @@ func Test_ScanStruct(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    map[commentlang.Keyword][]string
+		want    map[genlang.Keyword][]string
 		wantErr bool
 	}{
 		{
@@ -24,16 +24,16 @@ func Test_ScanStruct(t *testing.T) {
 					@foreignkey (Type) (StatusTypes(Id))
 					@foreignkey (Status) (Statuses(Id))`,
 			},
-			want: map[commentlang.Keyword][]string{
-				commentlang.UniqueIndex: {"Id, Description"},
-				commentlang.ForeignKey:  {"Type", "StatusTypes(Id)", "Status", "Statuses(Id)"},
+			want: map[genlang.Keyword][]string{
+				genlang.UniqueIndex: {"Id, Description"},
+				genlang.ForeignKey:  {"Type", "StatusTypes(Id)", "Status", "Statuses(Id)"},
 			},
 		},
 		{
 			name: "singular",
 			args: args{comment: `@primarykey (Id, Description)`},
-			want: map[commentlang.Keyword][]string{
-				commentlang.PrimaryKey: {"Id, Description"},
+			want: map[genlang.Keyword][]string{
+				genlang.PrimaryKey: {"Id, Description"},
 			},
 		},
 		{
@@ -51,7 +51,7 @@ func Test_ScanStruct(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			argMap, err := commentlang.ScanStruct(tt.args.comment)
+			argMap, err := genlang.ScanStruct(tt.args.comment)
 			if err != nil && tt.wantErr {
 				return
 			}
@@ -64,7 +64,7 @@ func Test_ScanStruct(t *testing.T) {
 				return
 			}
 
-			got := make(map[commentlang.Keyword][]string)
+			got := make(map[genlang.Keyword][]string)
 			for key, args := range argMap {
 				if _, ok := got[key]; !ok {
 					got[key] = make([]string, 0)
@@ -92,7 +92,7 @@ func Test_ScanField(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    map[commentlang.Keyword][]string
+		want    map[genlang.Keyword][]string
 		wantErr bool
 	}{
 		{
@@ -113,8 +113,8 @@ func Test_ScanField(t *testing.T) {
 		{
 			name: "primarykey without args does not error when using ScanField mode",
 			args: args{comment: "@primarykey"},
-			want: map[commentlang.Keyword][]string{
-				commentlang.PrimaryKey: {},
+			want: map[genlang.Keyword][]string{
+				genlang.PrimaryKey: {},
 			},
 		},
 		{
@@ -122,10 +122,10 @@ func Test_ScanField(t *testing.T) {
 			args: args{
 				comment: "@primarykey\n@substring (@self - 4)\n@check (@self = 'S')",
 			},
-			want: map[commentlang.Keyword][]string{
-				commentlang.PrimaryKey: {},
-				commentlang.Substring:  {"@self - 4"},
-				commentlang.Check:      {"@self = 'S'"},
+			want: map[genlang.Keyword][]string{
+				genlang.PrimaryKey: {},
+				genlang.Substring:  {"@self - 4"},
+				genlang.Check:      {"@self = 'S'"},
 			},
 		},
 	}
@@ -133,7 +133,7 @@ func Test_ScanField(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			argMap, err := commentlang.ScanField(tt.args.comment)
+			argMap, err := genlang.ScanField(tt.args.comment)
 			if err != nil && tt.wantErr {
 				return
 			}
@@ -146,7 +146,7 @@ func Test_ScanField(t *testing.T) {
 				return
 			}
 
-			got := make(map[commentlang.Keyword][]string)
+			got := make(map[genlang.Keyword][]string)
 			for key, args := range argMap {
 				if _, ok := got[key]; !ok {
 					got[key] = make([]string, 0)

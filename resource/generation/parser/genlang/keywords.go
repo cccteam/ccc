@@ -1,4 +1,4 @@
-package commentlang
+package genlang
 
 type keywordFlag int
 
@@ -57,7 +57,7 @@ const (
 	Using       keyword = "using" // Can only be used in views. Names the source field from another struct if it does not match this field
 )
 
-type KeywordArguments struct {
+type Args struct {
 	Arg1 string
 	Arg2 *string
 }
