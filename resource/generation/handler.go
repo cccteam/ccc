@@ -111,7 +111,12 @@ func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
 
 		log.Printf("Generating handler file: %s", fileName)
 
-		if err := r.writeBytesToFile(destinationFilePath, file, buf.Bytes(), true); err != nil {
+		formattedBytes, err := r.goFormatBytes(file.Name(), buf.Bytes())
+		if err != nil {
+			return err
+		}
+
+		if err := r.writeBytesToFile(file, formattedBytes); err != nil {
 			return err
 		}
 	}
@@ -145,7 +150,12 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 
 	log.Printf("Generating consolidated handler file: %s", fileName)
 
-	if err := r.writeBytesToFile(destinationFilePath, file, buf.Bytes(), true); err != nil {
+	formattedBytes, err := r.goFormatBytes(file.Name(), buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
 
