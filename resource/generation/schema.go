@@ -39,11 +39,9 @@ func (s *schemaGenerator) Generate() error {
 		return err
 	}
 
-	if _, err := os.Stat(s.schemaDestination); errors.Is(err, os.ErrNotExist) {
-		err := os.MkdirAll(s.schemaDestination, 0o777)
-		if err != nil {
-			return errors.Wrap(err, "os.MkdirAll()")
-		}
+	err = os.MkdirAll(s.schemaDestination, 0o777)
+	if err != nil {
+		return errors.Wrap(err, "os.MkdirAll()")
 	}
 
 	if err := s.generateSchemaMigrations(schemaInfo); err != nil {
@@ -95,10 +93,6 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 	}
 
 	// TODO: validate that referenced table names by foreign keys and views are actually in the schema
-
-	if len(migrationOrder) < 0 {
-		return errors.New("migrationOrder is empty")
-	}
 
 	var (
 		wg      sync.WaitGroup
