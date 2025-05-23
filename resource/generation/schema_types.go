@@ -8,6 +8,7 @@ import (
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/commentlang"
 	"github.com/go-playground/errors/v5"
+	"golang.org/x/tools/go/packages"
 )
 
 const (
@@ -18,7 +19,8 @@ const (
 type schemaGenerator struct {
 	resourceDestination string
 	schemaDestination   string
-	loadPackages        []string
+	resourceFilePath    string
+	resourcePackage     *packages.Package
 }
 
 type schemaIndex struct {
