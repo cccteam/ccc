@@ -95,6 +95,10 @@ func (t *TypeInfo) AsStruct() *Struct {
 	return newStruct(t.obj, nil)
 }
 
+func (t *TypeInfo) IsExported() bool {
+	return t.obj.Exported()
+}
+
 type Interface struct {
 	Name  string
 	iface *types.Interface
@@ -106,6 +110,7 @@ type Struct struct {
 	fields     []*Field
 	localTypes []*TypeInfo
 	interfaces []string
+	methodSet  map[string]struct{}
 	comments   string
 }
 
@@ -124,6 +129,18 @@ func newStruct(obj types.Object, fset *token.FileSet) *Struct {
 	s := &Struct{
 		TypeInfo:   newTypeInfo(obj, fset, true),
 		localTypes: localTypesFromStruct(obj, map[string]struct{}{}),
+		methodSet:  make(map[string]struct{}),
+	}
+
+	methodSet := types.NewMethodSet(types.NewPointer(tt))
+	for method := range methodSet.Methods() {
+		kind := method.Kind()
+		if kind != types.MethodVal {
+			continue
+		}
+
+		name := method.Obj().Name()
+		s.methodSet[name] = struct{}{}
 	}
 
 	for i := range st.NumFields() {
@@ -225,6 +242,12 @@ func (s *Struct) LocalTypes() []*TypeInfo {
 
 func (s *Struct) Error() string {
 	return fmt.Sprintf("%s at %s", s.name, s.fset.Position(s.astInfo.Pos()))
+}
+
+func (s Struct) HasMethod(methodName string) bool {
+	_, ok := s.methodSet[methodName]
+
+	return ok
 }
 
 type Field struct {

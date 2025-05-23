@@ -7,7 +7,7 @@ import (
 )
 
 func Test_schemageneration(t *testing.T) {
-	generator, err := NewSchemaGenerator("./testdata/schemagen/resources.go", t.TempDir())
+	// To view the output swap the tempdir with a real dir relative to the generation package directory
 	if err != nil {
 		t.Error(err)
 
