@@ -21,6 +21,7 @@ type schemaGenerator struct {
 	schemaDestination   string
 	resourceFilePath    string
 	resourcePackage     *packages.Package
+	fileWriter
 }
 
 type schemaIndex struct {

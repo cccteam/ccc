@@ -162,14 +162,17 @@ func (s *schemaGenerator) generateMutations() error {
 	return nil
 }
 
-func (schemaGenerator) Close() {}
+func (*schemaGenerator) Close() {}
 
 func sqlMigrationFileName(migrationIndex int, tableName, suffix string) string {
 	return fmt.Sprintf("%0000d_%s.%s", migrationIndex, tableName, suffix)
 }
 
 func (s *schemaGenerator) generateMigration(fileName, migrationTemplate string, schemaResource any) error {
-	data, err := executeMigrationTemplate(migrationTemplate, map[string]any{"Resource": schemaResource})
+	data, err := executeTemplate("migrationTemplate", migrationTemplate, map[string]any{
+		"Resource":               schemaResource,
+		"MigrationHeaderComment": schemaGenHeaderComment,
+	})
 	if err != nil {
 		return err
 	}
@@ -182,22 +185,15 @@ func (s *schemaGenerator) generateMigration(fileName, migrationTemplate string, 
 	}
 	defer file.Close()
 
-	if err := file.Truncate(0); err != nil {
-		return errors.Wrapf(err, "file.Truncate(): file: %s", file.Name())
-	}
-	if _, err := file.Seek(0, 0); err != nil {
-		return errors.Wrapf(err, "file.Seek(): file: %s", file.Name())
-	}
-	if _, err := file.Write(data); err != nil {
-		return errors.Wrapf(err, "file.Write(): file: %s", file.Name())
+	if err := s.writeBytesToFile(file, data); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func executeMigrationTemplate(migrationTemplate string, data map[string]any) ([]byte, error) {
-	data["MigrationHeaderComment"] = migrationHeaderComment
-	tmpl, err := template.New("migrationTemplate").Parse(migrationTemplate)
+func executeTemplate(templateName, templateSrc string, data map[string]any) ([]byte, error) {
+	tmpl, err := template.New(templateName).Parse(templateSrc)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.Parse()")
 	}
