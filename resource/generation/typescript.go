@@ -48,8 +48,8 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	}
 	defer file.Close()
 
-	if err := t.writeBytesToFile(destinationFilePath, file, output, false); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	if err := t.writeBytesToFile(file, output); err != nil {
+		return err
 	}
 
 	log.Printf("Generated Permissions: %s\n", file.Name())
@@ -116,8 +116,8 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 	}
 	defer file.Close()
 
-	if err := t.writeBytesToFile(destinationFilePath, file, output, false); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	if err := t.writeBytesToFile(file, output); err != nil {
+		return err
 	}
 
 	log.Printf("Generated resource metadata: %s\n", file.Name())
@@ -142,8 +142,8 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	}
 	defer file.Close()
 
-	if err := t.writeBytesToFile(destinationFilePath, file, output, false); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	if err := t.writeBytesToFile(file, output); err != nil {
+		return err
 	}
 
 	log.Printf("Generated methods metadata: %s\n", file.Name())

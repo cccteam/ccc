@@ -87,7 +87,12 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 
 	log.Printf("Generating RPC handler file: %s", fileName)
 
-	if err := r.writeBytesToFile(destinationFilePath, file, buf.Bytes(), true); err != nil {
+	formattedBytes, err := r.goFormatBytes(file.Name(), buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
 
@@ -120,7 +125,12 @@ func (r *resourceGenerator) generateRPCMethod(rpcMethod *rpcMethodInfo) error {
 
 	log.Printf("Generating RPC handler file: %s", fileName)
 
-	if err := r.writeBytesToFile(destinationFilePath, file, buf.Bytes(), true); err != nil {
+	formattedBytes, err := r.goFormatBytes(file.Name(), buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
 
@@ -144,8 +154,13 @@ func (r *resourceGenerator) generateRPCInterfaces() error {
 	}
 	defer file.Close()
 
-	if err := r.writeBytesToFile(destinationFile, file, output, true); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	formattedBytes, err := r.goFormatBytes(file.Name(), output)
+	if err != nil {
+		return err
+	}
+
+	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+		return err
 	}
 
 	return nil
@@ -169,8 +184,13 @@ func (r *resourceGenerator) generateBusinessLayerInterfaces() error {
 	}
 	defer file.Close()
 
-	if err := r.writeBytesToFile(destinationFile, file, output, true); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	formattedBytes, err := r.goFormatBytes(file.Name(), output)
+	if err != nil {
+		return err
+	}
+
+	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+		return err
 	}
 
 	return nil

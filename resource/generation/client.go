@@ -5,13 +5,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"go/format"
 	"log"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
@@ -22,8 +20,6 @@ import (
 	"github.com/cccteam/spxscan"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
-	"github.com/momaek/formattag/align"
-	"golang.org/x/tools/imports"
 )
 
 type resourceGenerator struct {
@@ -238,8 +234,7 @@ type client struct {
 	consolidatedRoute         string
 	genRPCMethods             bool
 	cleanup                   func()
-
-	muAlign sync.Mutex
+	fileWriter
 }
 
 func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string) (*client, error) {
@@ -483,43 +478,6 @@ func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 	}
 
 	return table, nil
-}
-
-func (c *client) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
-	if goFormat {
-		var err error
-		data, err = format.Source(data)
-		if err != nil {
-			return errors.Wrapf(err, "format.Source(): file: %s, file content: %q", file.Name(), data)
-		}
-
-		data, err = imports.Process(destination, data, nil)
-		if err != nil {
-			return errors.Wrapf(err, "imports.Process(): file: %s", file.Name())
-		}
-
-		// align package is not concurrent safe
-		c.muAlign.Lock()
-		defer c.muAlign.Unlock()
-
-		align.Init(bytes.NewReader(data))
-		data, err = align.Do()
-		if err != nil {
-			return errors.Wrapf(err, "align.Do(): file: %s", file.Name())
-		}
-	}
-
-	if err := file.Truncate(0); err != nil {
-		return errors.Wrapf(err, "file.Truncate(): file: %s", file.Name())
-	}
-	if _, err := file.Seek(0, 0); err != nil {
-		return errors.Wrapf(err, "file.Seek(): file: %s", file.Name())
-	}
-	if _, err := file.Write(data); err != nil {
-		return errors.Wrapf(err, "file.Write(): file: %s", file.Name())
-	}
-
-	return nil
 }
 
 func (c *client) templateFuncs() map[string]any {

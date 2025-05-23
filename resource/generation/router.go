@@ -87,8 +87,13 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
 
-	if err := r.writeBytesToFile(destinationFile, file, buf.Bytes(), true); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	formattedBytes, err := r.goFormatBytes(file.Name(), buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+		return err
 	}
 
 	return nil
