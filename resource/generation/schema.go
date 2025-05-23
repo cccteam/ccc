@@ -12,7 +12,7 @@ import (
 
 	"github.com/cccteam/ccc/resource/generation/dependencygraph"
 	"github.com/cccteam/ccc/resource/generation/parser"
-	"github.com/cccteam/ccc/resource/generation/parser/commentlang"
+	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -217,12 +217,12 @@ func newSchema(pStructs []*parser.Struct) (*schema, error) {
 	}
 
 	for i := range pStructs {
-		structComments, err := commentlang.ScanStruct(pStructs[i].Comments())
+		structComments, err := genlang.ScanStruct(pStructs[i].Comments())
 		if err != nil {
 			return nil, errors.Wrapf(err, "%s commentlang.Scan()", pStructs[i].Error())
 		}
 
-		_, isView := structComments[commentlang.View]
+		_, isView := structComments[genlang.View]
 		if isView {
 			view, err := newSchemaView(pStructs[i])
 			if err != nil {
@@ -267,7 +267,7 @@ func newSchemaTable(pStruct *parser.Struct) (*schemaTable, error) {
 			SQLType:    decodeSQLType(field),
 		}
 
-		fieldComments, err := commentlang.ScanField(field.Comments())
+		fieldComments, err := genlang.ScanField(field.Comments())
 		if err != nil {
 			return nil, errors.Wrap(err, "commentlang.ScanField()")
 		}
