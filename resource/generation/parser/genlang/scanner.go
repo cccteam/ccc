@@ -1,4 +1,4 @@
-package commentlang
+package genlang
 
 import (
 	"fmt"
@@ -17,19 +17,19 @@ type scanner struct {
 	src              []byte
 	mode             scanMode
 	identifiers      map[string]struct{}
-	keywordArguments map[Keyword][]*KeywordArguments
+	keywordArguments map[Keyword][]*Args
 	pos              int
 }
 
-func ScanStruct(src string) (map[Keyword][]*KeywordArguments, error) {
+func ScanStruct(src string) (map[Keyword][]*Args, error) {
 	return scan(src, scanStruct)
 }
 
-func ScanField(src string) (map[Keyword][]*KeywordArguments, error) {
+func ScanField(src string) (map[Keyword][]*Args, error) {
 	return scan(src, scanField)
 }
 
-func scan(src string, mode scanMode) (map[Keyword][]*KeywordArguments, error) {
+func scan(src string, mode scanMode) (map[Keyword][]*Args, error) {
 	scanner := newScanner([]byte(src), mode)
 	if err := scanner.scan(); err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func newScanner(src []byte, mode scanMode) *scanner {
 		src:              src,
 		mode:             mode,
 		identifiers:      make(map[string]struct{}),
-		keywordArguments: make(map[Keyword][]*KeywordArguments),
+		keywordArguments: make(map[Keyword][]*Args),
 	}
 }
 
@@ -98,7 +98,7 @@ func (s *scanner) scan() error {
 			}
 
 			var (
-				arg *KeywordArguments
+				arg *Args
 				err error
 			)
 			if peek, ok := s.peekNext(); ok && peek == byte('(') {
@@ -127,7 +127,7 @@ func (s *scanner) scan() error {
 	return nil
 }
 
-func (s *scanner) keywordArgs(key keyword) (*KeywordArguments, error) {
+func (s *scanner) keywordArgs(key keyword) (*Args, error) {
 	if keywords[key][s.mode]&dualArgsRequired != 0 {
 		arg1, err := s.scanArguments()
 		if err != nil {
@@ -145,7 +145,7 @@ func (s *scanner) keywordArgs(key keyword) (*KeywordArguments, error) {
 
 		arg2 := string(arg2b)
 
-		return &KeywordArguments{string(arg1), &arg2}, nil
+		return &Args{string(arg1), &arg2}, nil
 	}
 
 	arg, err := s.scanArguments()
@@ -153,12 +153,12 @@ func (s *scanner) keywordArgs(key keyword) (*KeywordArguments, error) {
 		return nil, err
 	}
 
-	return &KeywordArguments{Arg1: string(arg)}, nil
+	return &Args{Arg1: string(arg)}, nil
 }
 
-func (s *scanner) addKeywordArgument(key Keyword, arg *KeywordArguments) {
+func (s *scanner) addKeywordArgument(key Keyword, arg *Args) {
 	if _, ok := s.keywordArguments[key]; !ok {
-		s.keywordArguments[key] = make([]*KeywordArguments, 0, 1)
+		s.keywordArguments[key] = make([]*Args, 0, 1)
 	}
 
 	if arg != nil {
@@ -263,7 +263,7 @@ loop:
 	return buf, nil
 }
 
-func (s *scanner) result() map[Keyword][]*KeywordArguments {
+func (s *scanner) result() map[Keyword][]*Args {
 	return s.keywordArguments
 }
 

@@ -6,7 +6,7 @@ import (
 
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
-	"github.com/cccteam/ccc/resource/generation/parser/commentlang"
+	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/tools/go/packages"
 )
@@ -94,13 +94,13 @@ func (s schemaTable) Constraints() []string {
 	return constraints
 }
 
-func (s *schemaTable) resolveStructComments(comments map[commentlang.Keyword][]*commentlang.KeywordArguments) error {
+func (s *schemaTable) resolveStructComments(comments map[genlang.Keyword][]*genlang.Args) error {
 	for keyword, args := range comments {
 		switch keyword {
-		case commentlang.PrimaryKey:
+		case genlang.PrimaryKey:
 			s.PrimaryKey = args[0].Arg1
 
-		case commentlang.ForeignKey:
+		case genlang.ForeignKey:
 			for _, arg := range args {
 				// TODO(jrowland): consider validating column names actually exist in this struct
 				// columnNames := strings.Split(strings.ReplaceAll(arg.Arg1, " ", ""), ",")
@@ -115,7 +115,7 @@ func (s *schemaTable) resolveStructComments(comments map[commentlang.Keyword][]*
 				s.ForeignKeys = append(s.ForeignKeys, foreignKeyConstraint{sourceExpression, refTable, refColumns})
 			}
 
-		case commentlang.UniqueIndex:
+		case genlang.UniqueIndex:
 			for _, arg := range args {
 				uniqueIndexArg := strings.ReplaceAll(arg.Arg1, " ", "")
 				uniqueIndexArg = strings.ReplaceAll(uniqueIndexArg, ",", "And")
@@ -133,10 +133,10 @@ func (s *schemaTable) resolveStructComments(comments map[commentlang.Keyword][]*
 	return nil
 }
 
-func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[commentlang.Keyword][]*commentlang.KeywordArguments) (tableColumn, error) {
+func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[genlang.Keyword][]*genlang.Args) (tableColumn, error) {
 	for keyword, args := range comment {
 		switch keyword {
-		case commentlang.PrimaryKey:
+		case genlang.PrimaryKey:
 			if s.PrimaryKey != "" { // TODO: do all error checking in Scanner instead of here (redundant)
 				return tableColumn{}, errors.New("@primarykey used twice")
 			}
@@ -148,7 +148,7 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[commen
 
 			s.PrimaryKey = column.Name
 
-		case commentlang.ForeignKey:
+		case genlang.ForeignKey:
 			for _, arg := range args {
 				sourceExpression := column.Name
 				refTable, refColumns := parseReferenceExpression(arg.Arg1)
@@ -156,26 +156,26 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[commen
 				s.ForeignKeys = append(s.ForeignKeys, foreignKeyConstraint{sourceExpression, refTable, refColumns})
 			}
 
-		case commentlang.Default:
+		case genlang.Default:
 			defaultValue := args[0].Arg1
 			column.DefaultValue = &defaultValue
 
-		case commentlang.Hidden:
+		case genlang.Hidden:
 			column.IsHidden = true
 
-		case commentlang.Check:
+		case genlang.Check:
 			checkArg := args[0].Arg1
 			checkArg = strings.ReplaceAll(checkArg, "@self", column.Name)
 
 			s.Checks = append(s.Checks, checkConstraint{column.Name, checkArg})
 
-		case commentlang.Substring, commentlang.Fulltext, commentlang.Ngram:
+		case genlang.Substring, genlang.Fulltext, genlang.Ngram:
 			for _, arg := range args {
 				argument := arg.Arg1
 				s.SearchTokens = append(s.SearchTokens, searchExpression{resource.FilterType(keyword.String()), argument})
 			}
 
-		case commentlang.UniqueIndex:
+		case genlang.UniqueIndex:
 			name := fmt.Sprintf("%sBy%s", s.Name, column.Name)
 
 			s.Indexes = append(s.Indexes, schemaIndex{Name: name, Type: uniqueIndexType, Argument: column.Name})
@@ -200,13 +200,13 @@ type schemaView struct {
 	Query   string
 }
 
-func (s *schemaView) resolveStructComments(comments map[commentlang.Keyword][]*commentlang.KeywordArguments) error {
+func (s *schemaView) resolveStructComments(comments map[genlang.Keyword][]*genlang.Args) error {
 	for keyword, args := range comments {
 		switch keyword {
-		case commentlang.Query:
+		case genlang.Query:
 			s.Query = args[0].Arg1
 
-		case commentlang.View:
+		case genlang.View:
 			continue
 
 		default:
@@ -218,7 +218,7 @@ func (s *schemaView) resolveStructComments(comments map[commentlang.Keyword][]*c
 }
 
 func newViewColumn(field *parser.Field) (viewColumn, error) {
-	comment, err := commentlang.ScanField(field.Comments())
+	comment, err := genlang.ScanField(field.Comments())
 	if err != nil {
 		return viewColumn{}, errors.Wrap(err, "commentlang.ScanField()")
 	}
@@ -230,7 +230,7 @@ func newViewColumn(field *parser.Field) (viewColumn, error) {
 
 	for keyword, args := range comment {
 		switch keyword {
-		case commentlang.Using:
+		case genlang.Using:
 			usingName := args[0].Arg1
 			column.SourceColumn = usingName
 
