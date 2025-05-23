@@ -33,6 +33,17 @@ type Stores struct {
 	@uniqueindex(Id, Type)
 */
 
+func (s *Stores) EconomyTypeConversion() string {
+	switch s.EconomyType {
+	case "A", "B", "C":
+		return "Thriving"
+	case "D":
+		return "Elementary"
+	default:
+		return "Recession"
+	}
+}
+
 type Customers struct {
 	// @primarykey
 	ID  IntTo[ccc.UUID] `db:"store_id"`

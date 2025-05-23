@@ -13,27 +13,29 @@ import (
 	"github.com/cccteam/ccc/resource/generation/dependencygraph"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
+	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
 func NewSchemaGenerator(resourceFilePath, schemaDestinationPath string) (Generator, error) {
-	resourcePackage, err := parser.LoadPackage(resourceFilePath)
-	if err != nil {
-		return nil, err
-	}
-
 	s := &schemaGenerator{
 		resourceDestination: filepath.Dir(resourceFilePath),
 		schemaDestination:   schemaDestinationPath,
 		resourceFilePath:    resourceFilePath,
-		resourcePackage:     resourcePackage,
 	}
 
 	return s, nil
 }
 
 func (s *schemaGenerator) Generate() error {
-	pStructs := parser.ParseStructs(s.resourcePackage)
+	resourcePackage, err := parser.LoadPackage(s.resourceFilePath)
+	if err != nil {
+		return err
+	}
+
+	s.packageName = resourcePackage.Name
+
+	pStructs := parser.ParseStructs(resourcePackage)
 	schemaInfo, err := newSchema(pStructs)
 	if err != nil {
 		return err
@@ -43,7 +45,7 @@ func (s *schemaGenerator) Generate() error {
 		return err
 	}
 
-	if err := s.generateConversionMethods(); err != nil {
+	if err := s.generateConversionMethods(schemaInfo); err != nil {
 		return err
 	}
 
@@ -61,6 +63,10 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 
 	if err := os.MkdirAll(s.schemaDestination, 0o777); err != nil {
 		return errors.Wrap(err, "os.MkdirAll()")
+	}
+
+	if err := removeFilesByType(s.schemaDestination, ".sql"); err != nil {
+		return err
 	}
 
 	tableMap := make(map[string]*schemaTable, len(schemaInfo.tables))
@@ -152,8 +158,79 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 	return nil
 }
 
-func (s *schemaGenerator) generateConversionMethods() error {
-	// TODO: determine which fields need to be transformed to fit new schema using astInfo in parser.Field
+func (s *schemaGenerator) generateConversionMethods(schemaInfo *schema) error {
+	if schemaInfo == nil {
+		panic("schemaInfo cannot be nil")
+	}
+
+	if err := removeGeneratedFiles(s.resourceDestination, Prefix); err != nil {
+		return err
+	}
+
+	var (
+		wg      sync.WaitGroup
+		errChan = make(chan error)
+	)
+	caser := strcase.NewCaser(false, nil, nil)
+
+	for _, table := range schemaInfo.tables {
+		conversionFunc := func(table *schemaTable) {
+			fileName := fmt.Sprintf("%s_%s.go", genPrefix, strings.ToLower(caser.ToSnake(table.Name)))
+			if err := s.generateConversionFile(fileName, table); err != nil {
+				errChan <- err
+			}
+
+			wg.Done()
+		}
+
+		wg.Add(1)
+		go conversionFunc(table)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var conversion error
+	for e := range errChan {
+		conversion = errors.Join(conversion, e)
+	}
+
+	if conversion != nil {
+		return conversion
+	}
+
+	return nil
+}
+
+func (s *schemaGenerator) generateConversionFile(fileName string, table *schemaTable) error {
+	data, err := executeTemplate("conversionTemplate", conversionTemplate, map[string]any{
+		"HeaderComment": schemaGenHeaderComment,
+		"PackageName":   s.packageName,
+		"Resource":      table,
+	})
+	if err != nil {
+		return err
+	}
+
+	destinationFilePath := filepath.Join(s.resourceDestination, fileName)
+
+	file, err := os.Create(destinationFilePath)
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	formattedBytes, err := s.goFormatBytes(file.Name(), data)
+	if err != nil {
+		return err
+	}
+
+	if err := s.writeBytesToFile(file, formattedBytes); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -258,9 +335,16 @@ func newSchemaTable(pStruct *parser.Struct) (*schemaTable, error) {
 
 	for _, field := range pStruct.Fields() {
 		col := tableColumn{
+			Table:      table,
 			Name:       strings.ReplaceAll(field.Name(), "ID", "Id"),
 			IsNullable: isSQLTypeNullable(field),
 			SQLType:    decodeSQLType(field),
+		}
+
+		if pStruct.HasMethod(field.Name() + "Conversion") {
+			col.conversionMethod = custom
+		} else {
+			col.conversionMethod = determineConversionMethod(field)
 		}
 
 		fieldComments, err := genlang.ScanField(field.Comments())
@@ -326,6 +410,67 @@ func decodeSQLType(f *parser.Field) string {
 	case "civil.Date", "Date":
 		return "DATE"
 	default:
-		panic(fmt.Sprintf("schemagen conversion unimplemented for type=%q", f.Type()))
+		panic(fmt.Sprintf("schemagen SQL type unimplemented for type=%q", f.Type()))
 	}
+}
+
+func removeFilesByType(directory, fileExtension string) error {
+	dir, err := os.Open(directory)
+	if err != nil {
+		return errors.Wrap(err, "os.Open()")
+	}
+
+	files, err := dir.Readdirnames(0)
+	if err != nil {
+		return errors.Wrap(err, "os.File.Readdirnames()")
+	}
+
+	if err := dir.Close(); err != nil {
+		return errors.Wrap(err, "os.File.Close()")
+	}
+
+	for _, f := range files {
+		if !strings.HasSuffix(f, fileExtension) {
+			continue
+		}
+
+		fp := filepath.Join(directory, f)
+		if err := os.Remove(fp); err != nil {
+			return errors.Wrap(err, "os.Remove()")
+		}
+	}
+
+	return nil
+}
+
+func determineConversionMethod(field *parser.Field) conversionFlag {
+	var flag conversionFlag
+	typeArgs := field.TypeArgs()
+	if typeArgs == "" {
+		return flag
+	}
+
+	tt := field.OriginType()
+
+	switch tt {
+	case "IntTo":
+		flag |= fromInt
+	case "StringTo":
+		flag |= fromString
+	default:
+		panic(fmt.Sprintf("schemagen convert-from unimplemented for type=%q", tt))
+	}
+
+	switch typeArgs {
+	case "string":
+		flag |= toString
+	case "bool":
+		flag |= toBool
+	case "UUID":
+		flag |= toUUID
+	default:
+		panic(fmt.Sprintf("schemagen convert-to unimplemented for type=%q", typeArgs))
+	}
+
+	return flag
 }
