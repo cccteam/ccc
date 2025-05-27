@@ -1165,7 +1165,7 @@ SELECT
 {{- .Resource.Query }}
 `
 	migrationViewDownTemplate = `-- {{ .MigrationHeaderComment }}
-DROP VIEW {{ .View.Name }};
+DROP VIEW {{ .Resource.Name }};
 `
 	conversionTemplate string = `// {{ .HeaderComment }}
 package {{ .PackageName }}
