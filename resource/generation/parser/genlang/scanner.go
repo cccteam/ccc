@@ -6,6 +6,18 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+type (
+	KeyArgs map[Keyword][]*Args
+
+	scanner struct {
+		src              []byte
+		mode             scanMode
+		identifiers      map[string]struct{}
+		keywordArguments KeyArgs
+		pos              int
+	}
+)
+
 type scanMode int
 
 const (
@@ -13,23 +25,15 @@ const (
 	scanField
 )
 
-type scanner struct {
-	src              []byte
-	mode             scanMode
-	identifiers      map[string]struct{}
-	keywordArguments map[Keyword][]*Args
-	pos              int
-}
-
-func ScanStruct(src string) (map[Keyword][]*Args, error) {
+func ScanStruct(src string) (KeyArgs, error) {
 	return scan(src, scanStruct)
 }
 
-func ScanField(src string) (map[Keyword][]*Args, error) {
+func ScanField(src string) (KeyArgs, error) {
 	return scan(src, scanField)
 }
 
-func scan(src string, mode scanMode) (map[Keyword][]*Args, error) {
+func scan(src string, mode scanMode) (KeyArgs, error) {
 	scanner := newScanner([]byte(src), mode)
 	if err := scanner.scan(); err != nil {
 		return nil, err
@@ -43,7 +47,7 @@ func newScanner(src []byte, mode scanMode) *scanner {
 		src:              src,
 		mode:             mode,
 		identifiers:      make(map[string]struct{}),
-		keywordArguments: make(map[Keyword][]*Args),
+		keywordArguments: make(KeyArgs),
 	}
 }
 
@@ -263,7 +267,7 @@ loop:
 	return buf, nil
 }
 
-func (s *scanner) result() map[Keyword][]*Args {
+func (s *scanner) result() KeyArgs {
 	return s.keywordArguments
 }
 
