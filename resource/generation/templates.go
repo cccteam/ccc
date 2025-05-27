@@ -1207,11 +1207,7 @@ func (x *{{ .Resource.Name }}) Convert(rows pgx.Rows) ([]any, error) {
 	}, nil
 }
 
-func (x *{{ .Resource.Name }}) Insert(convertedRows []any) (string, *spanner.Mutation) {
-	if convertedRows == nil {
-		return x.TableName(), nil
-	}
-
+func (x *{{ .Resource.Name }}) Insert(convertedRows []any) *spanner.Mutation {
 	cols := []string{
 	{{- range $column := .Resource.Columns }}
 		"{{ $column.Name }}",
