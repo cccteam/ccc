@@ -24,6 +24,8 @@ func (k keyword) String() string {
 	return string(k)
 }
 
+// TODO(jrowland): consider taking this map as an argument to this package,
+// making keywords programmable for any use case
 var keywords = map[keyword]keywordOpts{
 	illegal:     {},
 	PrimaryKey:  {scanStruct: argsRequired | exclusive, scanField: noArgs | exclusive},
@@ -57,6 +59,7 @@ const (
 	Using       keyword = "using" // Can only be used in views. Names the source field from another struct if it does not match this field
 )
 
+// TODO(jrowland): find a better way to handle single vs dual arg results
 type Args struct {
 	Arg1 string
 	Arg2 *string
