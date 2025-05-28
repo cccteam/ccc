@@ -1194,7 +1194,7 @@ func (x *{{ .Resource.Name }}) TableName() string {
 }
 {{ range $column := .Resource.Columns }}
 {{ if $column.NeedsConversionMethod -}}
-func (x *{{ $.Resource.Name }}) {{ $column.Name }}Conversion() {{ $column.ConversionReturnType }} {
+func (x *{{ $.Resource.Name }}) {{ $column.GoName }}Conversion() {{ $column.ConversionReturnType }} {
 	{{ $column.ConversionMethod }}
 }
 {{- end }}
@@ -1206,7 +1206,7 @@ func (x *{{ .Resource.Name }}) Convert(rows pgx.Rows) ([]any, error) {
 
 	return []any{
 	{{- range $column := .Resource.Columns }}
-		x.{{ $column.Name }}{{ if $column.HasConversion }}Conversion(){{ end }},
+		x.{{ $column.GoName }}{{ if $column.HasConversion }}Conversion(){{ end }},
 	{{- end }}
 	}, nil
 }
