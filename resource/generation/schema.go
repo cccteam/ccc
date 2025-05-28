@@ -10,6 +10,7 @@ import (
 	"sync"
 	"text/template"
 
+	"github.com/cccteam/ccc/pkg"
 	"github.com/cccteam/ccc/resource/generation/dependencygraph"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
@@ -19,9 +20,23 @@ import (
 
 func NewSchemaGenerator(resourceFilePath, schemaDestinationPath string) (Generator, error) {
 	s := &schemaGenerator{
-		resourceDestination: filepath.Dir(resourceFilePath),
-		schemaDestination:   schemaDestinationPath,
-		resourceFilePath:    resourceFilePath,
+		schemaDestination: schemaDestinationPath,
+		resourceFilePath:  resourceFilePath,
+	}
+
+	if filepath.Ext(resourceFilePath) == "" {
+		s.resourceDestination = resourceFilePath
+	} else {
+		s.resourceDestination = filepath.Dir(resourceFilePath)
+	}
+
+	pkgInfo, err := pkg.Info()
+	if err != nil {
+		return nil, errors.Wrap(err, "pkg.Info()")
+	}
+
+	if err := os.Chdir(pkgInfo.AbsolutePath); err != nil {
+		return nil, errors.Wrap(err, "os.Chdir()")
 	}
 
 	return s, nil
