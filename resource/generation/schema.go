@@ -409,6 +409,8 @@ func decodeSQLType(f *parser.Field) string {
 		return "FLOAT64"
 	case "civil.Date", "Date":
 		return "DATE"
+	case "time.Time", "sql.NullTime":
+		return "TIMESTAMP"
 	default:
 		panic(fmt.Sprintf("schemagen SQL type unimplemented for type=%q", f.Type()))
 	}
