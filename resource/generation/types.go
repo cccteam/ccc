@@ -575,6 +575,10 @@ type searchExpression struct {
 	fieldName string
 }
 
+func (s searchExpression) String() string {
+	return fmt.Sprintf("TOKENIZE_%s(%s)", strings.ToUpper(string(s.tokenType)), s.argument)
+}
+
 func generatedFileName(name string) string {
 	return fmt.Sprintf("%s_%s.go", genPrefix, name)
 }
