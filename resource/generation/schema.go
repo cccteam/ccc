@@ -43,6 +43,10 @@ func NewSchemaGenerator(resourceFilePath, schemaDestinationPath string) (Generat
 }
 
 func (s *schemaGenerator) Generate() error {
+	if err := removeGeneratedFiles(s.resourceDestination, Prefix); err != nil {
+		return err
+	}
+
 	resourcePackage, err := parser.LoadPackage(s.resourceFilePath)
 	if err != nil {
 		return err
@@ -176,10 +180,6 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 func (s *schemaGenerator) generateConversionMethods(schemaInfo *schema) error {
 	if schemaInfo == nil {
 		panic("schemaInfo cannot be nil")
-	}
-
-	if err := removeGeneratedFiles(s.resourceDestination, Prefix); err != nil {
-		return err
 	}
 
 	var (
