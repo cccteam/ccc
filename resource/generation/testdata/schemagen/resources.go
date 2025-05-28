@@ -16,6 +16,10 @@ type (
 type Stores struct {
 	// @primarykey
 	ID IntTo[ccc.UUID] `db:"store_id"`
+	// @substring(@self)
+	Name string `db:"store_name"`
+	// @substring(@self)
+	Address string `db:"store_addy"`
 	// @foreignkey(StoreTypes(Id))
 	Type               string       `db:"store_type"`
 	GrandOpeningDate   civil.Date   `db:"opening_date"`

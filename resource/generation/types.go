@@ -554,6 +554,10 @@ type searchExpression struct {
 	argument  string // Can be a column name or an expression e.g. (Name), (SUBSTR(Name, -4))
 }
 
+func (s searchExpression) String() string {
+	return fmt.Sprintf("TOKENIZE_%s(%s)", strings.ToUpper(string(s.tokenType)), s.argument)
+}
+
 func generatedFileName(name string) string {
 	return fmt.Sprintf("%s_%s.go", genPrefix, name)
 }

@@ -1137,24 +1137,28 @@ CREATE TABLE {{ .Resource.Name }} (
   {{ $column.Name }} {{ $column.SQLType }}{{ if not $column.IsNullable }} NOT NULL{{ end }}{{ if $column.DefaultValue }} DEFAULT ({{ $column.DefaultValue }}){{ end }}{{ if $column.IsHidden }} HIDDEN{{ end }},
   {{- end }}
 
-  {{- if .Resource.SearchTokens -}}
+  {{- if .Resource.SearchTokens }}
+
   SearchTokens TOKENLIST AS (
     TOKENLIST_CONCAT([
-    {{- range $index, $searchToken := .Resource.SearchTokens }}
-        {{ if $index }},{{ end }}({{ $searchToken.Name }}({{ $searchToken.Arg }}))
+    {{- range $index, $searchToken := .Resource.SearchTokens }}{{ if $index }},{{ end }}
+        ({{ $searchToken }})
     {{- end }}
     ])
   ) HIDDEN,
   {{- end }}
   {{- if .Resource.Constraints }}
-  {{ range $constraint := .Resource.Constraints }}
+{{ range $constraint := .Resource.Constraints }}
   CONSTRAINT {{ $constraint }},
-  {{- end }}
-  {{- end }}
+{{- end }}
+{{- end }}
 ) PRIMARY KEY ({{ .Resource.PrimaryKey }});
 {{ range $index := .Resource.Indexes }}
 CREATE {{ $index.Type }} INDEX {{ $index.Name }} ON {{ $.Resource.Name }}({{ $index.Argument }});
-{{- end }}`
+{{- end }}
+{{- if .Resource.SearchTokens }}
+CREATE SEARCH INDEX {{ .Resource.Name }}SearchIndex ON {{ .Resource.Name }}(SearchTokens);
+{{- end}}`
 	migrationTableDownTemplate = `-- {{ .MigrationHeaderComment }}
 {{ range $index := .Resource.Indexes -}}
 DROP INDEX {{ $index.Name }};
