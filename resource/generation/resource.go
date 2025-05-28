@@ -8,7 +8,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/cccteam/ccc/resource"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -51,8 +50,13 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 	}
 	defer file.Close()
 
-	if err := r.writeBytesToFile(destinationFile, file, output, true); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	formattedBytes, err := r.goFormatBytes(file.Name(), output)
+	if err != nil {
+		return err
+	}
+
+	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+		return err
 	}
 
 	return nil
@@ -75,8 +79,13 @@ func (r *resourceGenerator) generateResourceTests() error {
 	}
 	defer file.Close()
 
-	if err := r.writeBytesToFile(destinationFile, file, output, true); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	formattedBytes, err := r.goFormatBytes(file.Name(), output)
+	if err != nil {
+		return err
+	}
+
+	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+		return err
 	}
 
 	return nil
@@ -102,8 +111,13 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	}
 	defer file.Close()
 
-	if err := r.writeBytesToFile(destinationFilePath, file, output, true); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	formattedBytes, err := r.goFormatBytes(file.Name(), output)
+	if err != nil {
+		return err
+	}
+
+	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+		return err
 	}
 
 	return nil
@@ -121,25 +135,4 @@ func (r *resourceGenerator) generateTemplateOutput(templateName, fileTemplate st
 	}
 
 	return buf.Bytes(), nil
-}
-
-func (c *client) buildTableSearchIndexes(tableName string) []*searchIndex {
-	typeIndexMap := make(map[resource.FilterType]string)
-	if tableMeta, ok := c.tableMap[tableName]; ok {
-		for tokenListColumn, expressionFields := range tableMeta.SearchIndexes {
-			for _, exprField := range expressionFields {
-				typeIndexMap[exprField.tokenType] = tokenListColumn
-			}
-		}
-	}
-
-	var indexes []*searchIndex
-	for tokenType, indexName := range typeIndexMap {
-		indexes = append(indexes, &searchIndex{
-			Name:       indexName,
-			SearchType: string(tokenType),
-		})
-	}
-
-	return indexes
 }
