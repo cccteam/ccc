@@ -67,12 +67,16 @@ const (
 
 type tableColumn struct {
 	Table            *schemaTable
-	Name             string
+	name             string
 	SQLType          string
 	DefaultValue     *string
 	IsNullable       bool
 	IsHidden         bool
 	conversionMethod conversionFlag
+}
+
+func (t tableColumn) Name() string {
+	return strings.ReplaceAll(t.name, "Id", "ID")
 }
 
 // template use only
@@ -94,13 +98,13 @@ func (t tableColumn) ConversionReturnType() string {
 	case t.conversionMethod&toUUID != 0:
 		return "ccc.UUID"
 	default:
-		panic(fmt.Sprintf("conversionReturnType not implemented for %s", t.Name))
+		panic(fmt.Sprintf("conversionReturnType not implemented for %s", t.name))
 	}
 }
 
 func (t tableColumn) conversionRefTable() string {
 	for _, fk := range t.Table.ForeignKeys {
-		if strings.Contains(fk.sourceExpression, t.Name) {
+		if strings.Contains(fk.sourceExpression, t.name) {
 			return fk.referencedTable
 		}
 	}
@@ -205,15 +209,15 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[genlan
 			}
 
 			if column.SQLType == "STRING(36)" {
-				checkArg := fmt.Sprintf(migrationCheckUUID, column.Name)
-				s.Checks = append(s.Checks, checkConstraint{column.Name, checkArg})
+				checkArg := fmt.Sprintf(migrationCheckUUID, column.name)
+				s.Checks = append(s.Checks, checkConstraint{column.name, checkArg})
 			}
 
-			s.PrimaryKey = column.Name
+			s.PrimaryKey = column.name
 
 		case genlang.ForeignKey:
 			for _, arg := range args {
-				sourceExpression := column.Name
+				sourceExpression := column.name
 				refTable, refColumns := parseReferenceExpression(arg.Arg1)
 
 				s.ForeignKeys = append(s.ForeignKeys, foreignKeyConstraint{sourceExpression, refTable, refColumns})
@@ -228,20 +232,20 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[genlan
 
 		case genlang.Check:
 			checkArg := args[0].Arg1
-			checkArg = strings.ReplaceAll(checkArg, "@self", column.Name)
+			checkArg = strings.ReplaceAll(checkArg, "@self", column.name)
 
-			s.Checks = append(s.Checks, checkConstraint{column.Name, checkArg})
+			s.Checks = append(s.Checks, checkConstraint{column.name, checkArg})
 
 		case genlang.Substring, genlang.Fulltext, genlang.Ngram:
 			for _, arg := range args {
-				argument := strings.ReplaceAll(arg.Arg1, "@self", column.Name)
+				argument := strings.ReplaceAll(arg.Arg1, "@self", column.name)
 				s.SearchTokens = append(s.SearchTokens, searchExpression{resource.FilterType(keyword.String()), argument})
 			}
 
 		case genlang.UniqueIndex:
-			name := fmt.Sprintf("%sBy%s", s.Name, column.Name)
+			name := fmt.Sprintf("%sBy%s", s.Name, column.name)
 
-			s.Indexes = append(s.Indexes, schemaIndex{Name: name, Type: uniqueIndexType, Argument: column.Name})
+			s.Indexes = append(s.Indexes, schemaIndex{Name: name, Type: uniqueIndexType, Argument: column.name})
 
 		default:
 			return tableColumn{}, errors.Newf("field keyword %s not yet implemented for schemaColumn", keyword.String())
