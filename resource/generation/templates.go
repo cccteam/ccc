@@ -1218,7 +1218,7 @@ func (x *{{ .Resource.Name }}) Insert(convertedRows []any) *spanner.Mutation {
 	{{- end }}
 	}
 
-	return x.TableName(), spanner.Insert(x.TableName(), cols, convertedRows)
+	return spanner.Insert(x.TableName(), cols, convertedRows)
 }
 `
 )
