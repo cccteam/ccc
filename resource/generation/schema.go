@@ -351,7 +351,7 @@ func newSchemaTable(pStruct *parser.Struct) (*schemaTable, error) {
 	for _, field := range pStruct.Fields() {
 		col := tableColumn{
 			Table:      table,
-			name:       strings.ReplaceAll(field.Name(), "ID", "Id"),
+			Name:       strings.ReplaceAll(field.Name(), "ID", "Id"),
 			IsNullable: isSQLTypeNullable(field),
 			SQLType:    decodeSQLType(field),
 		}
