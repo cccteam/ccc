@@ -73,6 +73,24 @@ func (i Ident[T]) NotEqual(v ...T) QueryClause {
 	return QueryClause{tree: addNode(i.partialExpr.tree, neqNode)}
 }
 
+func (i Ident[T]) IsNull() QueryClause {
+	inNode := &equalityNode[T]{
+		node:   newNode(isNull),
+		column: i.column,
+	}
+
+	return QueryClause{tree: addNode(i.partialExpr.tree, inNode)}
+}
+
+func (i Ident[T]) IsNotNull() QueryClause {
+	nnNode := &equalityNode[T]{
+		node:   newNode(isNotNull),
+		column: i.column,
+	}
+
+	return QueryClause{tree: addNode(i.partialExpr.tree, nnNode)}
+}
+
 func (i Ident[T]) GreaterThan(v T) QueryClause {
 	gtNode := &compNode[T]{
 		node:   newNode(greaterThan),
@@ -111,24 +129,6 @@ func (i Ident[T]) LessThanEq(v T) QueryClause {
 	}
 
 	return QueryClause{tree: addNode(i.partialExpr.tree, lteqNode)}
-}
-
-func (i Ident[T]) IsNull() QueryClause {
-	neqNode := &equalityNode[T]{
-		node:   newNode(isNull),
-		column: i.column,
-	}
-
-	return QueryClause{tree: addNode(i.partialExpr.tree, neqNode)}
-}
-
-func (i Ident[T]) IsNotNull() QueryClause {
-	neqNode := &equalityNode[T]{
-		node:   newNode(isNotNull),
-		column: i.column,
-	}
-
-	return QueryClause{tree: addNode(i.partialExpr.tree, neqNode)}
 }
 
 type nodeType string
