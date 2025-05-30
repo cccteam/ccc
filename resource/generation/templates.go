@@ -193,6 +193,14 @@ func (i {{ .Resource.Name }}QueryIdent[T]) LessThan(v T) {{ .Resource.Name }}Que
 func (i {{ .Resource.Name }}QueryIdent[T]) LessThanEq(v T) {{ .Resource.Name }}QueryClause {
 	return {{ .Resource.Name }}QueryClause{clause: i.Ident.LessThanEq(v)}
 }
+
+func (i {{ .Resource.Name }}QueryIdent[T]) IsNull() {{ .Resource.Name }}QueryClause {
+	return {{ .Resource.Name }}QueryClause{clause: i.Ident.IsNull()}
+}
+
+func (i {{ .Resource.Name }}QueryIdent[T]) IsNotNull() {{ .Resource.Name }}QueryClause {
+	return {{ .Resource.Name }}QueryClause{clause: i.Ident.IsNotNull()}
+}
 {{- end }}
 
 {{ if eq .Resource.IsView false }}

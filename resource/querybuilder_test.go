@@ -82,6 +82,14 @@ func (i testQueryIdent[T]) GreaterThan(v T) testQueryExpr {
 	return testQueryExpr{expr: i.Ident.GreaterThan(v)}
 }
 
+func (i testQueryIdent[T]) IsNull() testQueryExpr {
+	return testQueryExpr{expr: i.Ident.IsNull()}
+}
+
+func (i testQueryIdent[T]) IsNotNull() testQueryExpr {
+	return testQueryExpr{expr: i.Ident.IsNotNull()}
+}
+
 func Test_QueryClause(t *testing.T) {
 	t.Parallel()
 
@@ -101,11 +109,11 @@ func Test_QueryClause(t *testing.T) {
 		},
 		{
 			name:       "AND has higher precedence than OR",
-			filter:     newTestQuery().Where(newTestQueryFilter().ID().Equal(1).Or().ID().GreaterThan(1).And().Name().Equal("test")),
-			wantString: "ID = @EQUAL0 OR ID > @GREATERTHAN0 AND Name = @EQUAL1",
+			filter:     newTestQuery().Where(newTestQueryFilter().ID().NotEqual(1).Or().ID().GreaterThan(1).And().Name().Equal("test")),
+			wantString: "ID <> @NOTEQUAL0 OR ID > @GREATERTHAN0 AND Name = @EQUAL0",
 			wantParams: map[string]any{
-				"EQUAL0":       1,
-				"EQUAL1":       "test",
+				"NOTEQUAL0":    1,
+				"EQUAL0":       "test",
 				"GREATERTHAN0": 1,
 			},
 		},
@@ -137,6 +145,26 @@ func Test_QueryClause(t *testing.T) {
 				"EQUAL0":       10,
 				"EQUAL1":       "test",
 				"GREATERTHAN0": 2,
+			},
+		},
+		{
+			name:       "IS NULL check",
+			filter:     newTestQuery().Where(newTestQueryFilter().Name().IsNull()),
+			wantString: "Name IS NULL",
+			wantParams: map[string]any{},
+		},
+		{
+			name:       "IS NOT NULL check",
+			filter:     newTestQuery().Where(newTestQueryFilter().Name().IsNotNull()),
+			wantString: "Name IS NOT NULL",
+			wantParams: map[string]any{},
+		},
+		{
+			name:       "basic output with NOT NULL",
+			filter:     newTestQuery().Where(newTestQueryFilter().Name().Equal("test").And().Name().IsNotNull()),
+			wantString: "Name = @EQUAL0 AND Name IS NOT NULL",
+			wantParams: map[string]any{
+				"EQUAL0": "test",
 			},
 		},
 	}
