@@ -102,7 +102,7 @@ func (f Filter) parseToIndexFilter() (Statement, error) {
 			case reflect.Bool:
 				typed, err := strconv.ParseBool(term)
 				if err != nil {
-					return Statement{}, httpio.NewBadRequestMessageWithErrorf(errors.Wrap(err, "strconv.ParseBool()"), "unable to convert %s to an bool kind", term)
+					return Statement{}, httpio.NewBadRequestMessageWithErrorf(errors.Wrap(err, "strconv.ParseBool()"), "unable to convert %s to a bool kind", term)
 				}
 				params[param] = typed
 
