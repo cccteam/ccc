@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/v0.2.9...v0.3.0) (2025-06-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120))
+
+### Features
+
+* add immutable permission ([#149](https://github.com/cccteam/ccc/issues/149)) ([560b53f](https://github.com/cccteam/ccc/commit/560b53f4aa0a06b6400e779cd944000550edbdf1))
+* add lint package ([#200](https://github.com/cccteam/ccc/issues/200)) ([8250164](https://github.com/cccteam/ccc/commit/82501647152168866470b0d7617b4092d9043e2e))
+* Add support for keys ([#109](https://github.com/cccteam/ccc/issues/109)) ([8f23951](https://github.com/cccteam/ccc/commit/8f239515236c088f3e848a8db6e061fd7fe49eff))
+* Add support to fetch a value from the patchset ([#109](https://github.com/cccteam/ccc/issues/109)) ([8f23951](https://github.com/cccteam/ccc/commit/8f239515236c088f3e848a8db6e061fd7fe49eff))
+* Implement QuerySet ([#146](https://github.com/cccteam/ccc/issues/146)) ([8e71fe8](https://github.com/cccteam/ccc/commit/8e71fe80d044b2c16089b0e40ddf63734aa2f027))
+* Merge queryset, resourceset, patchset, resourcestore into a single resource package ([#146](https://github.com/cccteam/ccc/issues/146)) ([8e71fe8](https://github.com/cccteam/ccc/commit/8e71fe80d044b2c16089b0e40ddf63734aa2f027))
+* Move base resouce permission checking into columnset ([#132](https://github.com/cccteam/ccc/issues/132)) ([f76879d](https://github.com/cccteam/ccc/commit/f76879d09ff489b64e5290f9d55b278cc01d7b5c))
+* New BaseResource() method ([#111](https://github.com/cccteam/ccc/issues/111)) ([694ef45](https://github.com/cccteam/ccc/commit/694ef454390be2cbb8223a53f7fccd8eeb7904ff))
+* Package Information ([#202](https://github.com/cccteam/ccc/issues/202)) ([fcb19aa](https://github.com/cccteam/ccc/commit/fcb19aa1b96230899a231e256bdf3472f9886a32))
+* Support atomic operations across create update delete ([#120](https://github.com/cccteam/ccc/issues/120)) ([9f15fce](https://github.com/cccteam/ccc/commit/9f15fce5c8022ca5c25b86dee12be0326212cc75))
+* Support for iter.Seq2 ([#236](https://github.com/cccteam/ccc/issues/236)) ([25c8d90](https://github.com/cccteam/ccc/commit/25c8d9051fca233c6d92733edc886316b4effdfe))
+* text search support ([#169](https://github.com/cccteam/ccc/issues/169)) ([5c2ab80](https://github.com/cccteam/ccc/commit/5c2ab8037ba978169f5db0439d74a859d441670c))
+
+
+### Bug Fixes
+
+* Fix import for unit tests ([#115](https://github.com/cccteam/ccc/issues/115)) ([4f0da34](https://github.com/cccteam/ccc/commit/4f0da34c25bc2346e94c54d5ddbfe74ac068be01))
+* Fix unstable ordering of composite primary keys ([#136](https://github.com/cccteam/ccc/issues/136)) ([8a37c94](https://github.com/cccteam/ccc/commit/8a37c9408d76dbe571474e6b51874a2c5ac78933))
+* Implement stable ordering of data fields ([#141](https://github.com/cccteam/ccc/issues/141)) ([128edea](https://github.com/cccteam/ccc/commit/128edeae4608f82b3e6765b7c79fb9de741d489a))
+* Return error for condition where user does not have permission for any column ([#113](https://github.com/cccteam/ccc/issues/113)) ([c501924](https://github.com/cccteam/ccc/commit/c5019244871bb407d755d4eab3634258260610a1))
+
+
+### Code Refactoring
+
+* change format of generated typescript from resource store ([#119](https://github.com/cccteam/ccc/issues/119)) ([bd90eaa](https://github.com/cccteam/ccc/commit/bd90eaa76014a92679ac1c87aa9c614346563800))
+* replace ccc-types import with ccc-lib ([#147](https://github.com/cccteam/ccc/issues/147)) ([7e5c631](https://github.com/cccteam/ccc/commit/7e5c631f18ebfb1d08ed9c996d29a65051ac9a37))
+* Typescript generation whitespace fix ([#142](https://github.com/cccteam/ccc/issues/142)) ([76031de](https://github.com/cccteam/ccc/commit/76031de18e64fb5606c6e441bcd627b7dcc5c39f))
+
+
+### Code Upgrade
+
+* ccc and sub repos GO version to `1.23.6` and all dependencies except CCC authored packages ([#178](https://github.com/cccteam/ccc/issues/178)) ([117a49d](https://github.com/cccteam/ccc/commit/117a49d3740b461d1b295047cdeaf85b4cacb53f))
+* **deps:** Bump github.com/google/go-cmp in the go-dependencies group ([#221](https://github.com/cccteam/ccc/issues/221)) ([2dbbff6](https://github.com/cccteam/ccc/commit/2dbbff605ff8575402bf5992e128edb7f597a17e))
+* Upgrade dependencies ([#135](https://github.com/cccteam/ccc/issues/135)) ([7901e64](https://github.com/cccteam/ccc/commit/7901e64376e6f8437af357ed9606429b7187ae95))
+* Upgrade go dependencies ([#125](https://github.com/cccteam/ccc/issues/125)) ([bc379ee](https://github.com/cccteam/ccc/commit/bc379eefa9ec295092ff2ae15fc5bd7729d0084c))
+* Upgrade go dependencies ([#126](https://github.com/cccteam/ccc/issues/126)) ([64192ed](https://github.com/cccteam/ccc/commit/64192ed95dace976dbb9088b167144455047c078))
+* Upgrade go dependencies ([#127](https://github.com/cccteam/ccc/issues/127)) ([9fae5f2](https://github.com/cccteam/ccc/commit/9fae5f2a049a8b4a6f73bb55b171c9ef8578af08))
+* Upgrade go dependencies ([#128](https://github.com/cccteam/ccc/issues/128)) ([045f94a](https://github.com/cccteam/ccc/commit/045f94a28f9dae9c2157fbbacfec73a904903d75))
+
 ## [0.2.9](https://github.com/cccteam/ccc/compare/v0.2.8...v0.2.9) (2024-10-21)
 
 
