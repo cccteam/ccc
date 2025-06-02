@@ -106,6 +106,9 @@ func (f Filter) parseToIndexFilter() (Statement, error) {
 			exprs = append(exprs, fmt.Sprintf("(%s = @%s)", column, param))
 		}
 		fragment := strings.Join(exprs, " OR ")
+		if len(terms) > 1 {
+			fragment = fmt.Sprintf("(%s)", fragment)
+		}
 		fragments = append(fragments, fragment)
 	}
 
