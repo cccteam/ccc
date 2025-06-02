@@ -73,6 +73,24 @@ func (i Ident[T]) NotEqual(v ...T) QueryClause {
 	return QueryClause{tree: addNode(i.partialExpr.tree, neqNode)}
 }
 
+func (i Ident[T]) IsNull() QueryClause {
+	inNode := &equalityNode[T]{
+		node:   newNode(isNull),
+		column: i.column,
+	}
+
+	return QueryClause{tree: addNode(i.partialExpr.tree, inNode)}
+}
+
+func (i Ident[T]) IsNotNull() QueryClause {
+	nnNode := &equalityNode[T]{
+		node:   newNode(isNotNull),
+		column: i.column,
+	}
+
+	return QueryClause{tree: addNode(i.partialExpr.tree, nnNode)}
+}
+
 func (i Ident[T]) GreaterThan(v T) QueryClause {
 	gtNode := &compNode[T]{
 		node:   newNode(greaterThan),
@@ -131,6 +149,8 @@ const (
 	greaterThanEq        = "GREATERTHANEQ"
 	lessThan             = "LESSTHAN"
 	lessThanEq           = "LESSTHANEQ"
+	isNull               = "ISNULL"
+	isNotNull            = "ISNOTNULL"
 )
 
 type whereClauseExprTree interface {
@@ -258,9 +278,13 @@ func (n *equalityNode[T]) Operator() string {
 	case n.node.op == equal && len(n.values) > 1:
 		return "IN"
 	case n.node.op == notEqual && len(n.values) == 1:
-		return "!="
+		return "<>"
 	case n.node.op == notEqual && len(n.values) > 1:
 		return "NOT IN"
+	case n.node.op == isNull:
+		return "IS NULL"
+	case n.node.op == isNotNull:
+		return "IS NOT NULL"
 	default:
 		panic("unreachable: invalid state for equalityNode")
 	}
@@ -343,21 +367,23 @@ func (t *treeWalker) visit(node whereClauseExprTree) string {
 
 	switch node.Type() {
 	case comparison:
-		b.WriteString(fmt.Sprintf("%s %s ", node.LeftOperand(), node.Operator()))
+		b.WriteString(fmt.Sprintf("%s %s", node.LeftOperand(), node.Operator()))
 
 		values := node.RightOperands()
-		if len(values) > 1 {
-			b.WriteString("(")
-		}
-
-		b.WriteString(fmt.Sprintf("@%s", t.newParam(values[0], node.LeftOperand())))
-
-		if len(values) > 1 {
-			for _, v := range values[1:] {
-				b.WriteString(fmt.Sprintf(", @%s", t.newParam(v, node.LeftOperand())))
+		if len(values) > 0 {
+			if len(values) > 1 {
+				b.WriteString("(")
 			}
 
-			b.WriteString(")")
+			b.WriteString(fmt.Sprintf(" @%s", t.newParam(values[0], node.LeftOperand())))
+
+			if len(values) > 1 {
+				for _, v := range values[1:] {
+					b.WriteString(fmt.Sprintf(", @%s", t.newParam(v, node.LeftOperand())))
+				}
+
+				b.WriteString(")")
+			}
 		}
 	case logical:
 		b.WriteString(fmt.Sprintf("%s", node.Operator()))
