@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.10](https://github.com/cccteam/ccc/compare/v0.2.9...v0.2.10) (2025-06-02)
+
+
+### Code Upgrade
+
+* ccc and sub repos GO version to `1.23.6` and all dependencies except CCC authored packages ([#178](https://github.com/cccteam/ccc/issues/178)) ([117a49d](https://github.com/cccteam/ccc/commit/117a49d3740b461d1b295047cdeaf85b4cacb53f))
+* **deps:** Bump github.com/google/go-cmp in the go-dependencies group ([#221](https://github.com/cccteam/ccc/issues/221)) ([2dbbff6](https://github.com/cccteam/ccc/commit/2dbbff605ff8575402bf5992e128edb7f597a17e))
+
 ## [0.2.9](https://github.com/cccteam/ccc/compare/v0.2.8...v0.2.9) (2024-10-21)
 
 
