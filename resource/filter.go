@@ -12,6 +12,11 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+const (
+	IsNullFilter    = "_ISNULL_"
+	IsNotNullFilter = "_ISNOTNULL_"
+)
+
 type FilterKey string
 
 func (f FilterKey) String() string {
@@ -86,8 +91,15 @@ func (f Filter) parseToIndexFilter() (Statement, error) {
 
 		exprs := make([]string, 0, len(terms))
 		for i, term := range terms {
-			param := fmt.Sprintf("indexfilterterm%s%d", column, i)
+			if term == IsNullFilter {
+				exprs = append(exprs, fmt.Sprintf("(%s IS NULL)", column))
+				continue
+			} else if term == IsNotNullFilter {
+				exprs = append(exprs, fmt.Sprintf("(%s IS NOT NULL)", column))
+				continue
+			}
 
+			param := fmt.Sprintf("indexfilterterm%s%d", column, i)
 			switch k := f.kinds[column]; k {
 			case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
 				typed, err := strconv.Atoi(term)
