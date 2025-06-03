@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.12](https://github.com/cccteam/ccc/compare/resource/v0.1.11...resource/v0.1.12) (2025-06-03)
+
+
+### Features
+
+* Added support for filtering on boolean columns ([#307](https://github.com/cccteam/ccc/issues/307)) ([873baeb](https://github.com/cccteam/ccc/commit/873baeb85fb8e14d175e0f960214a3929cb5eb05))
+* Support NULL checks ([#308](https://github.com/cccteam/ccc/issues/308)) ([3ef7b17](https://github.com/cccteam/ccc/commit/3ef7b175a7909192c11f9a1148f56efbfddc4b71))
+
+
+### Bug Fixes
+
+* Enclose index filter fragments in parentheses for multiple terms ([#315](https://github.com/cccteam/ccc/issues/315)) ([afb9ea8](https://github.com/cccteam/ccc/commit/afb9ea8fd62cf64b86ee31a257b2ac76bf960a9f))
+
+
+### Code Cleanup
+
+* Cleanup the where clause generation ([#299](https://github.com/cccteam/ccc/issues/299)) ([cb805d4](https://github.com/cccteam/ccc/commit/cb805d4faef6dacd62ffa90ac92faba0a2bda10a))
+
 ## [0.1.11](https://github.com/cccteam/ccc/compare/resource/v0.1.10...resource/v0.1.11) (2025-05-14)
 
 
