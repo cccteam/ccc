@@ -100,10 +100,10 @@ func Test_DirectedGraph(t *testing.T) {
 
 			for node, edges := range tt.args.nodes {
 				for _, e := range edges {
-					srcVertex := g.Insert(node)
-					dstVertex := g.Insert(e)
+					srcNode := g.Insert(node)
+					dstNode := g.Insert(e)
 
-					g.AddPath(srcVertex, dstVertex)
+					g.AddPath(srcNode, dstNode)
 				}
 			}
 

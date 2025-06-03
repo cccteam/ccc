@@ -11,18 +11,18 @@ import (
 )
 
 type Graph[T comparable] interface {
-	Get(v T) Vertex[T]    // Returns a reference to the Vertex for v if it exists, otherwise nil.
-	Insert(v T) Vertex[T] // Inserts a value into the graph and returns a reference to its Vertex.
+	Get(v T) Node[T]    // Returns a reference to the Node for v if it exists, otherwise nil.
+	Insert(v T) Node[T] // Inserts a value into the graph and returns a reference to its Node.
 	Remove(value T)
-	AddPath(src, dst Vertex[T])
-	Vertices() iter.Seq[Vertex[T]] // Returns an unordered iterator over the graph's vertices.
+	AddPath(src, dst Node[T])
+	Nodes() iter.Seq[Node[T]] // Returns an unordered iterator over the graph's nodes.
 	OrderedList(compare func(a T, b T) int) []T
 	CycleCheck() error
 	cycle(start T, key T, stack *[]T, blocked map[T]struct{}) bool
 	exists(v T) bool
 }
 
-type Vertex[T comparable] interface {
+type Node[T comparable] interface {
 	Value() T
 	Indegree() int
 	Outdegree() int
@@ -30,10 +30,10 @@ type Vertex[T comparable] interface {
 	addOutgoingEdge(value T)
 	removeIncomingEdge(value T)
 	removeOutgoingEdge(value T)
-	isVertex()
+	isNode()
 }
 
-type vertex[T comparable] struct {
+type node[T comparable] struct {
 	value T
 	// Outgoing and incoming are sets of keys used to access the nodes in the parent graph's map.
 	// This keeps the pointers in the parent graph so you can instantiate a graph at compile time.
@@ -42,71 +42,71 @@ type vertex[T comparable] struct {
 	incoming map[T]struct{}
 }
 
-func (v *vertex[T]) Value() T {
+func (v *node[T]) Value() T {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
 	return v.value
 }
 
-func (v *vertex[T]) Indegree() int {
+func (v *node[T]) Indegree() int {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
 	return len(v.incoming)
 }
 
-func (v *vertex[T]) Outdegree() int {
+func (v *node[T]) Outdegree() int {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
 	return len(v.outgoing)
 }
 
-func (v *vertex[T]) addIncomingEdge(value T) {
+func (v *node[T]) addIncomingEdge(value T) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
 	v.incoming[value] = struct{}{}
 }
 
-func (v *vertex[T]) addOutgoingEdge(value T) {
+func (v *node[T]) addOutgoingEdge(value T) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
 	v.outgoing[value] = struct{}{}
 }
 
-func (v *vertex[T]) removeIncomingEdge(value T) {
+func (v *node[T]) removeIncomingEdge(value T) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
 	delete(v.incoming, value)
 }
 
-func (v *vertex[T]) removeOutgoingEdge(value T) {
+func (v *node[T]) removeOutgoingEdge(value T) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
 	delete(v.outgoing, value)
 }
 
-func (*vertex[T]) isVertex() {}
+func (*node[T]) isNode() {}
 
 type graph[T comparable] struct {
 	mu    sync.RWMutex
-	graph map[T]*vertex[T]
+	graph map[T]*node[T]
 }
 
 func New[T comparable](capacity uint) Graph[T] {
 	g := &graph[T]{
-		graph: make(map[T]*vertex[T], capacity),
+		graph: make(map[T]*node[T], capacity),
 	}
 
 	return g
 }
 
-func (g *graph[T]) Get(v T) Vertex[T] {
+func (g *graph[T]) Get(v T) Node[T] {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
@@ -117,12 +117,13 @@ func (g *graph[T]) Get(v T) Vertex[T] {
 	return nil
 }
 
-func (g *graph[T]) Insert(v T) Vertex[T] {
+func (g *graph[T]) Insert(v T) Node[T] {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	if !g.exists(v) {
-		g.graph[v] = &vertex[T]{
+		g.graph[v] = &node[T]{
+			value:    v,
 			outgoing: make(map[T]struct{}),
 			incoming: make(map[T]struct{}),
 		}
@@ -137,18 +138,18 @@ func (g *graph[T]) Remove(value T) {
 
 	delete(g.graph, value)
 
-	for _, vertex := range g.graph {
-		vertex.removeOutgoingEdge(value)
+	for _, node := range g.graph {
+		node.removeOutgoingEdge(value)
 	}
 }
 
-func (g *graph[T]) AddPath(src, dst Vertex[T]) {
+func (g *graph[T]) AddPath(src, dst Node[T]) {
 	src.addOutgoingEdge(dst.Value())
 	dst.addIncomingEdge(src.Value())
 }
 
-func (g *graph[T]) Vertices() iter.Seq[Vertex[T]] {
-	iter := func(yield func(Vertex[T]) bool) {
+func (g *graph[T]) Nodes() iter.Seq[Node[T]] {
+	iter := func(yield func(Node[T]) bool) {
 		for _, vert := range g.graph {
 			if !yield(vert) {
 				return
@@ -211,8 +212,8 @@ func (g *graph[T]) OrderedList(compare func(a, b T) int) []T {
 
 	var root *dependencyTree2[T]
 
-	for key, vertex := range g.graph {
-		root = addNode2(key, vertex.Outdegree(), root, compare)
+	for key, node := range g.graph {
+		root = addNode2(key, node.Outdegree(), root, compare)
 	}
 
 	return orderedTree2(root)
