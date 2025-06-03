@@ -11,7 +11,7 @@ import (
 	"text/template"
 
 	"github.com/cccteam/ccc/pkg"
-	"github.com/cccteam/ccc/resource/generation/dependencygraph"
+	"github.com/cccteam/ccc/resource/generation/graph"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/ettle/strcase"
@@ -89,32 +89,32 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 	}
 
 	tableMap := make(map[string]*schemaTable, len(schemaInfo.tables))
+	for _, table := range schemaInfo.tables {
+		tableMap[table.Name] = table
+	}
 
-	dg := dependencygraph.New()
+	dg := graph.New[*schemaTable](uint(len(schemaInfo.tables)))
 
 	migrationOrder := make([]*schemaTable, 0, len(schemaInfo.tables))
 	for _, table := range schemaInfo.tables {
-
-		if len(table.ForeignKeys) == 0 {
-			migrationOrder = append(migrationOrder, table)
-
-			continue
-		}
-
-		tableMap[table.Name] = table
+		tableNode := dg.Insert(table)
 
 		for _, foreignKey := range table.ForeignKeys {
-			if err := dg.AddEdge(table.Name, foreignKey.referencedTable); err != nil {
-				return errors.Wrap(err, "dependencygraph.Graph.AddEdge()")
+
+			refTable, ok := tableMap[foreignKey.referencedTable]
+			if !ok {
+				return errors.Newf("table %q references non-existant table %q", table.Name, foreignKey.referencedTable)
 			}
+			refTableNode := dg.Insert(refTable)
+			dg.AddPath(tableNode, refTableNode)
 		}
 	}
 
-	for _, tableName := range dg.OrderedList() {
-		if table, ok := tableMap[tableName]; ok {
-			migrationOrder = append(migrationOrder, table)
-		}
+	compareFn := func(a, b *schemaTable) int {
+		return strings.Compare(a.Name, b.Name)
 	}
+
+	migrationOrder = append(migrationOrder, dg.OrderedList(compareFn)...)
 
 	// TODO: validate that referenced table names by foreign keys and views are actually in the schema
 

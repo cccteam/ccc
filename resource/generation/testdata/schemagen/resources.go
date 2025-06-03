@@ -13,6 +13,23 @@ type (
 	View[T any]     = struct{}
 )
 
+type StoreTypes struct {
+	// @primarykey
+	ID          string `db:"store_type_code"`
+	Description string `db:"store_type_desc"`
+} // @uniqueindex(Id, Description)
+
+type ParentCompanies struct {
+	// @primarykey
+	ID IntTo[ccc.UUID] `db:"store_id"`
+}
+
+type Economies struct {
+	// @primarykey
+	ID   IntTo[ccc.UUID] `db:"econ_type"`
+	Type string          `db:"-"`
+}
+
 type Stores struct {
 	// @primarykey
 	ID IntTo[ccc.UUID] `db:"store_id"`
