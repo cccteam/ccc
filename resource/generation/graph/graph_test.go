@@ -1,13 +1,14 @@
-package dependencygraph_test
+package graph_test
 
 import (
+	"strings"
 	"testing"
 
-	"github.com/cccteam/ccc/resource/generation/dependencygraph"
+	"github.com/cccteam/ccc/resource/generation/graph"
 	"github.com/google/go-cmp/cmp"
 )
 
-func Test_DepGraph(t *testing.T) {
+func Test_DirectedGraph(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
@@ -30,13 +31,26 @@ func Test_DepGraph(t *testing.T) {
 			name: "base cases",
 			args: args{
 				nodes: map[string][]string{
-					"A": {"B", "C", "D"}, // outdegree: 0
-					"B": {"D"},           // outdegree: 2
-					"C": {"B", "D"},      // outdegree: 1
-					// D outdegree: 3
+					"A": {"B", "C", "D"}, // outdegree: 3
+					"B": {"D"},           // outdegree: 1
+					"C": {"B", "D"},      // outdegree: 2
+					// D outdegree: 0
 				},
 			},
 			want: []string{"D", "B", "C", "A"},
+		},
+		{
+			name: "base cases, equal outdegree",
+			args: args{
+				nodes: map[string][]string{
+					"A": {"B"}, // outdegree: 1
+					"B": {"C"}, // outdegree: 1
+					"C": {"D"}, // outdegree: 1
+					"D": {"E"}, // outdegree: 1
+					// E outdegree: 0
+				},
+			},
+			want: []string{"E", "A", "B", "C", "D"},
 		},
 		{
 			name: "alphabetically sorted nodes of equal outdegree",
@@ -82,22 +96,29 @@ func Test_DepGraph(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			dg := dependencygraph.New()
+			g := graph.New[string](uint(len(tt.args.nodes)))
 
 			for node, edges := range tt.args.nodes {
 				for _, e := range edges {
-					err := dg.AddEdge(node, e)
-					if err != nil && !tt.wantErr {
-						t.Errorf("AddEdge() error:\n%s", err)
-					} else if err != nil && tt.wantErr {
-						return
-					}
+					srcVertex := g.Insert(node)
+					dstVertex := g.Insert(e)
+
+					g.AddPath(srcVertex, dstVertex)
 				}
 			}
 
-			got := dg.OrderedList()
+			err := g.CycleCheck()
+			if err != nil && !tt.wantErr {
+				t.Errorf("%s: CycleCheck() error:\n%s", tt.name, err)
+			} else if err != nil && tt.wantErr {
+				return
+			} else if err == nil && tt.wantErr {
+				t.Errorf("%s: CycleCheck() expected error, got nil", tt.name)
+			}
+
+			got := g.OrderedList(strings.Compare)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("OrderedList() mismatch (-want +got):\n%s", diff)
+				t.Errorf("%s: OrderedList() mismatch (-want +got):\n%s", tt.name, diff)
 			}
 		})
 	}
