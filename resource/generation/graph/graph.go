@@ -14,6 +14,7 @@ type Graph[T comparable] interface {
 	Get(v T) Node[T]    // Returns a reference to the Node for v if it exists, otherwise nil.
 	Insert(v T) Node[T] // Inserts a value into the graph and returns a reference to its Node.
 	Remove(value T)
+	Length() int
 	AddPath(src, dst Node[T])
 	Nodes() iter.Seq[Node[T]] // Returns an unordered iterator over the graph's nodes.
 	OrderedList(compare func(a T, b T) int) []T
@@ -104,6 +105,13 @@ func New[T comparable](capacity uint) Graph[T] {
 	}
 
 	return g
+}
+
+func (g *graph[T]) Length() int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	return len(g.graph)
 }
 
 func (g *graph[T]) Get(v T) Node[T] {
