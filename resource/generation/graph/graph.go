@@ -11,9 +11,9 @@ import (
 )
 
 type Graph[T comparable] interface {
-	Get(v T) Node[T]    // Returns a reference to the Node for v if it exists, otherwise nil.
-	Insert(v T) Node[T] // Inserts a value into the graph and returns a reference to its Node.
-	Remove(value T)
+	Get(n T) Node[T]    // Returns a reference to the Node for v if it exists, otherwise nil.
+	Insert(n T) Node[T] // Inserts a value into the graph and returns a reference to its Node.
+	Remove(n Node[T])
 	Length() int
 	AddPath(src, dst Node[T])
 	Nodes() iter.Seq[Node[T]] // Returns an unordered iterator over the graph's nodes.
@@ -26,12 +26,12 @@ type Graph[T comparable] interface {
 type Node[T comparable] interface {
 	Value() T
 	Dependencies() []T
-	Indegree() int
-	Outdegree() int
-	addIncomingEdge(value T)
-	addOutgoingEdge(value T)
-	removeIncomingEdge(value T)
-	removeOutgoingEdge(value T)
+	NumDependents() int
+	NumDependencies() int
+	addDependent(value T)
+	addDependency(value T)
+	removeDependent(value T)
+	removeDependency(value T)
 	isNode()
 }
 
@@ -63,42 +63,42 @@ func (v *node[T]) Dependencies() []T {
 	return set
 }
 
-func (v *node[T]) Indegree() int {
+func (v *node[T]) NumDependents() int {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
 	return len(v.incoming)
 }
 
-func (v *node[T]) Outdegree() int {
+func (v *node[T]) NumDependencies() int {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
 	return len(v.outgoing)
 }
 
-func (v *node[T]) addIncomingEdge(value T) {
+func (v *node[T]) addDependent(value T) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
 	v.incoming[value] = struct{}{}
 }
 
-func (v *node[T]) addOutgoingEdge(value T) {
+func (v *node[T]) addDependency(value T) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
 	v.outgoing[value] = struct{}{}
 }
 
-func (v *node[T]) removeIncomingEdge(value T) {
+func (v *node[T]) removeDependent(value T) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
 	delete(v.incoming, value)
 }
 
-func (v *node[T]) removeOutgoingEdge(value T) {
+func (v *node[T]) removeDependency(value T) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
@@ -153,20 +153,22 @@ func (g *graph[T]) Insert(v T) Node[T] {
 	return g.graph[v]
 }
 
-func (g *graph[T]) Remove(value T) {
+func (g *graph[T]) Remove(node Node[T]) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	delete(g.graph, value)
+	key := node.Value()
+
+	delete(g.graph, key)
 
 	for _, node := range g.graph {
-		node.removeOutgoingEdge(value)
+		node.removeDependency(key)
 	}
 }
 
 func (g *graph[T]) AddPath(src, dst Node[T]) {
-	src.addOutgoingEdge(dst.Value())
-	dst.addIncomingEdge(src.Value())
+	src.addDependency(dst.Value())
+	dst.addDependent(src.Value())
 }
 
 func (g *graph[T]) Nodes() iter.Seq[Node[T]] {
@@ -231,13 +233,13 @@ func (g *graph[T]) OrderedList(compare func(a, b T) int) []T {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	var root *dependencyTree2[T]
+	var root *dependencyTree[T]
 
 	for key, node := range g.graph {
-		root = addNode2(key, node.Outdegree(), root, compare)
+		root = addNode(key, node.NumDependencies(), root, compare)
 	}
 
-	return orderedTree2(root)
+	return orderedTree(root)
 }
 
 // Call site must have a lock on graph.mutex
@@ -247,34 +249,34 @@ func (g *graph[T]) exists(v T) bool {
 	return ok
 }
 
-type dependencyTree2[T comparable] struct {
+type dependencyTree[T comparable] struct {
 	key         T
 	value       int
-	left, right *dependencyTree2[T]
+	left, right *dependencyTree[T]
 }
 
-func newNode2[T comparable](key T, value int) *dependencyTree2[T] {
-	return &dependencyTree2[T]{key: key, value: value}
+func newNode[T comparable](key T, value int) *dependencyTree[T] {
+	return &dependencyTree[T]{key: key, value: value}
 }
 
-func addNode2[T comparable](key T, value int, root *dependencyTree2[T], compare func(a, b T) int) *dependencyTree2[T] {
+func addNode[T comparable](key T, value int, root *dependencyTree[T], compare func(a, b T) int) *dependencyTree[T] {
 	switch {
 	case root == nil:
-		return newNode2(key, value)
+		return newNode(key, value)
 	case value < root.value:
-		root.left = addNode2(key, value, root.left, compare)
+		root.left = addNode(key, value, root.left, compare)
 	case value > root.value:
-		root.right = addNode2(key, value, root.right, compare)
+		root.right = addNode(key, value, root.right, compare)
 
 	// if the values are equal, store the node sorted using compare func
 	default:
 		switch compare(key, root.key) {
 		case -1:
-			root.left = addNode2(key, value, root.left, compare)
+			root.left = addNode(key, value, root.left, compare)
 		case 0:
-			root.left = addNode2(key, value, root.left, compare)
+			root.left = addNode(key, value, root.left, compare)
 		case 1:
-			root.right = addNode2(key, value, root.right, compare)
+			root.right = addNode(key, value, root.right, compare)
 		default:
 			panic(fmt.Sprintf("invalid compare func want=(-1, 0, or 1) got=%d", compare(key, root.key)))
 		}
@@ -283,13 +285,13 @@ func addNode2[T comparable](key T, value int, root *dependencyTree2[T], compare 
 	return root
 }
 
-func orderedTree2[T comparable](root *dependencyTree2[T]) []T {
+func orderedTree[T comparable](root *dependencyTree[T]) []T {
 	if root == nil {
 		return []T{}
 	}
 
-	left := orderedTree2(root.left)
-	right := orderedTree2(root.right)
+	left := orderedTree(root.left)
+	right := orderedTree(root.right)
 	left = append(left, root.key)
 
 	return append(left, right...)
