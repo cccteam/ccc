@@ -25,6 +25,7 @@ type Graph[T comparable] interface {
 
 type Node[T comparable] interface {
 	Value() T
+	Dependencies() []T
 	Indegree() int
 	Outdegree() int
 	addIncomingEdge(value T)
@@ -48,6 +49,18 @@ func (v *node[T]) Value() T {
 	defer v.mu.RUnlock()
 
 	return v.value
+}
+
+func (v *node[T]) Dependencies() []T {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	set := make([]T, len(v.incoming))
+	for n := range v.incoming {
+		set = append(set, n)
+	}
+
+	return set
 }
 
 func (v *node[T]) Indegree() int {
