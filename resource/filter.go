@@ -86,8 +86,15 @@ func (f Filter) parseToIndexFilter() (Statement, error) {
 
 		exprs := make([]string, 0, len(terms))
 		for i, term := range terms {
-			param := fmt.Sprintf("indexfilterterm%s%d", column, i)
+			if term == "_ISNULL_" {
+				exprs = append(exprs, fmt.Sprintf("(%s IS NULL)", column))
+				continue
+			} else if term == "_ISNOTNULL_" {
+				exprs = append(exprs, fmt.Sprintf("(%s IS NOT NULL)", column))
+				continue
+			}
 
+			param := fmt.Sprintf("indexfilterterm%s%d", column, i)
 			switch k := f.kinds[column]; k {
 			case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
 				typed, err := strconv.Atoi(term)
