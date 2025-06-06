@@ -416,6 +416,10 @@ func newSchemaView(pStruct *parser.Struct) (*schemaView, error) {
 }
 
 func isSQLTypeNullable(f *parser.Field) bool {
+	if decodeSQLType(f) == "BOOL" {
+		return false
+	}
+
 	if f.IsPointer() {
 		return true
 	}
@@ -484,6 +488,10 @@ func determineConversionMethod(field *parser.Field) conversionFlag {
 	typeArgs := field.TypeArgs()
 	if typeArgs == "" {
 		return flag
+	}
+
+	if field.IsPointer() {
+		flag |= pointer
 	}
 
 	tt := field.OriginType()
