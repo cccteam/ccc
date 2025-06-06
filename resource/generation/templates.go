@@ -1164,6 +1164,9 @@ CREATE {{ $index.Type }} INDEX {{ $index.Name }} ON {{ $.Resource.Name }}({{ $in
 CREATE SEARCH INDEX {{ .Resource.Name }}SearchIndex ON {{ .Resource.Name }}(SearchTokens);
 {{- end}}`
 	migrationTableDownTemplate = `-- {{ .MigrationHeaderComment }}
+{{- if .Resource.SearchTokens }}
+DROP INDEX {{ .Resource.Name }}SearchIndex;
+{{- end }}
 {{ range $index := .Resource.Indexes -}}
 DROP INDEX {{ $index.Name }};
 {{ end -}}
