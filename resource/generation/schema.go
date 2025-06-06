@@ -18,10 +18,11 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func NewSchemaGenerator(resourceFilePath, schemaDestinationPath string) (Generator, error) {
+func NewSchemaGenerator(resourceFilePath, schemaDestinationPath, datamigrationPath string) (Generator, error) {
 	s := &schemaGenerator{
 		schemaDestination: schemaDestinationPath,
 		resourceFilePath:  resourceFilePath,
+		datamigrationPath: datamigrationPath,
 	}
 
 	if filepath.Ext(resourceFilePath) == "" {
@@ -73,9 +74,9 @@ func (s *schemaGenerator) Generate() error {
 		return err
 	}
 
-	if err := s.generateMutations(); err != nil {
+	if err := s.generateDatamigration(); err != nil {
 		return err
-	// }
+	}
 
 	return nil
 }
@@ -268,8 +269,41 @@ func (s *schemaGenerator) generateConversionFile(fileName string, table *schemaT
 	return nil
 }
 
-func (s *schemaGenerator) generateMutations() error {
-	// TODO: generate a spanner insert mutation for each table using the schema definition
+func (s *schemaGenerator) generateDatamigration() error {
+	order := s.migrationOrder()
+	tableMap := make(map[*schemaTable][]*schemaTable, len(order))
+
+	for _, table := range order {
+		tableMap[table] = s.schemaGraph.Get(table).Dependencies()
+	}
+	data, err := executeTemplate("datamigrationTemplate", datamigrationTemplate, map[string]any{
+		"HeaderComment": schemaGenHeaderComment,
+		"AppName":       s.appName,
+		"PackageName":   "datamigration",
+		"Tables":        order,
+		"TableMap":      tableMap,
+	})
+	if err != nil {
+		return err
+	}
+
+	destinationFilePath := filepath.Join(s.datamigrationPath, genPrefix+"_datamigration.go")
+
+	file, err := os.Create(destinationFilePath)
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	formattedBytes, err := s.goFormatBytes(file.Name(), data)
+	if err != nil {
+		return err
+	}
+
+	if err := s.writeBytesToFile(file, formattedBytes); err != nil {
+		return err
+	}
+
 	return nil
 }
 
