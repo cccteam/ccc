@@ -61,6 +61,7 @@ type conversionFlag int
 const (
 	noConversion conversionFlag = 0
 	custom       conversionFlag = 1 << iota
+	pointer
 	fromInt
 	fromString
 	toString
