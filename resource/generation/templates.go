@@ -1176,6 +1176,7 @@ package {{ .PackageName }}
 
 import (
 	"cloud.google.com/go/spanner"
+	"{{ .AppName }}/pktranslation"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/go-playground/errors/v5"
 	"github.com/jackc/pgx/v5"
@@ -1221,7 +1222,12 @@ func (x {{ .Resource.Name }}) NewInsertMutation(convertedRows []any) *spanner.Mu
 )
 
 var conversionTemplateMap map[conversionFlag]string = map[conversionFlag]string{
-	fromInt | toUUID: `return ccc.UUID{} // return m.cache.FetchValue("{{ .RefTableName }}", x.{{ .Column.GoName }})`,
+	fromInt | toUUID: `val, err := pktranslation.FetchValue("{{ if .Column.IsPrimaryKey }}{{ .Column.Table.Name }}{{ else }}{{ .RefTableName }}{{ end }}", x.{{ .Column.GoName }})
+	if err != nil {
+		panic("pktranslation failure")
+	}
+
+	return val.String()`,
 	fromInt | toBool: `return false`,
 	// TODO(jrowland): populate with all the combinations we need right now
 }

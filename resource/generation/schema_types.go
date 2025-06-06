@@ -22,6 +22,7 @@ type schemaGenerator struct {
 	schemaDestination   string
 	resourceFilePath    string
 	packageName         string
+	appName             string
 	fileWriter
 }
 
@@ -85,6 +86,11 @@ func (t tableColumn) GoName() string {
 }
 
 // template use only
+func (t tableColumn) IsPrimaryKey() bool {
+	return t.Name == t.Table.PrimaryKey
+}
+
+// template use only
 func (t tableColumn) HasConversion() bool {
 	return t.conversionMethod > 0
 }
@@ -96,12 +102,10 @@ func (t tableColumn) NeedsConversionMethod() bool {
 
 func (t tableColumn) ConversionReturnType() string {
 	switch {
-	case t.conversionMethod&toString != 0:
+	case t.conversionMethod&toString != 0, t.conversionMethod&toUUID != 0:
 		return "string"
 	case t.conversionMethod&toBool != 0:
 		return "bool"
-	case t.conversionMethod&toUUID != 0:
-		return "ccc.UUID"
 	default:
 		panic(fmt.Sprintf("conversionReturnType not implemented for %s", t.Name))
 	}

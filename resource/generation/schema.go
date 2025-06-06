@@ -34,6 +34,7 @@ func NewSchemaGenerator(resourceFilePath, schemaDestinationPath string) (Generat
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
 	}
+	s.appName = pkgInfo.PackageName
 
 	if err := os.Chdir(pkgInfo.AbsolutePath); err != nil {
 		return nil, errors.Wrap(err, "os.Chdir()")
@@ -222,6 +223,7 @@ func (s *schemaGenerator) generateConversionMethods(schemaInfo *schema) error {
 func (s *schemaGenerator) generateConversionFile(fileName string, table *schemaTable) error {
 	data, err := executeTemplate("conversionTemplate", conversionTemplate, map[string]any{
 		"HeaderComment": schemaGenHeaderComment,
+		"AppName":       s.appName,
 		"PackageName":   s.packageName,
 		"Resource":      table,
 	})
