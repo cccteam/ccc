@@ -55,7 +55,7 @@ func (v *node[T]) Dependencies() []T {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
-	set := make([]T, len(v.incoming))
+	set := make([]T, 0, len(v.incoming))
 	for n := range v.incoming {
 		set = append(set, n)
 	}
