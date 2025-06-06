@@ -1189,17 +1189,17 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (x *{{ .Resource.Name }}) TableName() string {
+func (x {{ .Resource.Name }}) TableName() string {
 	return "{{ .Resource.Name }}"
 }
 {{ range $column := .Resource.Columns }}
 {{ if $column.NeedsConversionMethod -}}
-func (x *{{ $.Resource.Name }}) {{ $column.GoName }}Conversion() {{ $column.ConversionReturnType }} {
+func (x {{ $.Resource.Name }}) {{ $column.GoName }}Conversion() {{ $column.ConversionReturnType }} {
 	{{ $column.ConversionMethod }}
 }
 {{- end }}
 {{ end }}
-func (x *{{ .Resource.Name }}) Convert(rows pgx.Rows) ([]any, error) {
+func (x {{ .Resource.Name }}) Convert(rows pgx.Rows) ([]any, error) {
 	if err := pgxscan.ScanRow(x, rows); err != nil {
 		return nil, errors.Wrap(err, "pgxscan.ScanRow()")
 	}
@@ -1211,7 +1211,7 @@ func (x *{{ .Resource.Name }}) Convert(rows pgx.Rows) ([]any, error) {
 	}, nil
 }
 
-func (x *{{ .Resource.Name }}) Insert(convertedRows []any) *spanner.Mutation {
+func (x {{ .Resource.Name }}) Insert(convertedRows []any) *spanner.Mutation {
 	cols := []string{
 	{{- range $column := .Resource.Columns }}
 		"{{ $column.Name }}",
@@ -1224,6 +1224,7 @@ func (x *{{ .Resource.Name }}) Insert(convertedRows []any) *spanner.Mutation {
 )
 
 var conversionTemplateMap map[conversionFlag]string = map[conversionFlag]string{
-	fromInt | toUUID: `return m.cache.FetchValue("{{ .RefTableName }}", x.{{ .Column.Name }})`,
+	fromInt | toUUID: `return ccc.UUID{} // return m.cache.FetchValue("{{ .RefTableName }}", x.{{ .Column.GoName }})`,
+	fromInt | toBool: `return false`,
 	// TODO(jrowland): populate with all the combinations we need right now
 }
