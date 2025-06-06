@@ -25,6 +25,7 @@ type Graph[T comparable] interface {
 
 type Node[T comparable] interface {
 	Value() T
+	Dependents() []T
 	Dependencies() []T
 	NumDependents() int
 	NumDependencies() int
@@ -51,12 +52,24 @@ func (v *node[T]) Value() T {
 	return v.value
 }
 
-func (v *node[T]) Dependencies() []T {
+func (v *node[T]) Dependents() []T {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
 	set := make([]T, 0, len(v.incoming))
 	for n := range v.incoming {
+		set = append(set, n)
+	}
+
+	return set
+}
+
+func (v *node[T]) Dependencies() []T {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	set := make([]T, 0, len(v.outgoing))
+	for n := range v.outgoing {
 		set = append(set, n)
 	}
 
