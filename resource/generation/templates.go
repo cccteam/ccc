@@ -1186,6 +1186,42 @@ SELECT
 	migrationViewDownTemplate = `-- {{ .MigrationHeaderComment }}
 DROP VIEW {{ .Resource.Name }};
 `
+	datamigrationTemplate = `// {{ .HeaderComment }}
+package {{ .PackageName }}
+
+import (
+	"{{ .AppName }}/resources"
+	"github.com/cccteam/ccc/resource/generation/graph"
+)
+
+// Returns a directed graph of the tables in our schema.
+// The resourceDeps map is populated by the schema generator.
+func (m *Migration) workerGraph() graph.Graph[*worker] {
+	resourceDeps := map[Resource][]Resource{
+	{{ range $table := .Tables }}
+		resources.{{ $table.Name }}{}: { {{- range $dependency := index $.TableMap $table }}resources.{{ $dependency.Name }}{},{{ end -}} },
+	{{ end }}
+	}
+
+	resourceWorker := map[Resource]*worker{
+	{{ range $table := .Tables }}
+		resources.{{ $table.Name }}{}: &worker{res: resources.{{ $table.Name }}{}},
+	{{ end }}
+	}
+
+	resourceGraph := graph.New[*worker](uint(len(resourceDeps)))
+
+	for node, dependents := range resourceDeps {
+		for _, dependentNode := range dependents {
+			srcNode := resourceGraph.Insert(resourceWorker[node])
+			dstNode := resourceGraph.Insert(resourceWorker[dependentNode])
+
+			resourceGraph.AddPath(srcNode, dstNode)
+		}
+	}
+
+	return resourceGraph
+}`
 	conversionTemplate string = `// {{ .HeaderComment }}
 package {{ .PackageName }}
 

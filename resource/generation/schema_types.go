@@ -22,6 +22,7 @@ type schemaGenerator struct {
 	resourceDestination string
 	schemaDestination   string
 	resourceFilePath    string
+	datamigrationPath   string
 	packageName         string
 	appName             string
 	schemaGraph         graph.Graph[*schemaTable]
