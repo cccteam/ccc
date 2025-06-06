@@ -7,6 +7,7 @@ import (
 	"text/template"
 
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/generation/graph"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/go-playground/errors/v5"
@@ -23,6 +24,7 @@ type schemaGenerator struct {
 	resourceFilePath    string
 	packageName         string
 	appName             string
+	schemaGraph         graph.Graph[*schemaTable]
 	fileWriter
 }
 
