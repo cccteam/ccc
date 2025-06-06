@@ -1134,7 +1134,11 @@ const (
 	migrationTableUpTemplate = `-- {{ .MigrationHeaderComment }}
 CREATE TABLE {{ .Resource.Name }} (
   {{- range $column := .Resource.Columns }}
-  {{ $column.Name }} {{ $column.SQLType }}{{ if not $column.IsNullable }} NOT NULL{{ end }}{{ if $column.DefaultValue }} DEFAULT ({{ $column.DefaultValue }}){{ end }}{{ if $column.IsHidden }} HIDDEN{{ end }},
+  {{ $column.Name }} {{ $column.SQLType }}
+  	{{- if not $column.IsNullable }} NOT NULL{{ end }}
+  	{{- if eq $column.Name "UpdatedAt" }} OPTIONS (allow_commit_timestamp=true){{ end }}
+  	{{- if $column.DefaultValue }} DEFAULT ({{ $column.DefaultValue }}){{ end }}
+	{{- if $column.IsHidden }} HIDDEN{{ end }},
   {{- end }}
 
   {{- if .Resource.SearchTokens }}
