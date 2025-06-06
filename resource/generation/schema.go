@@ -61,6 +61,10 @@ func (s *schemaGenerator) Generate() error {
 		return err
 	}
 
+	if err := s.buildGraph(schemaInfo); err != nil {
+		return err
+	}
+
 	if err := s.generateSchemaMigrations(schemaInfo); err != nil {
 		return err
 	}
@@ -71,9 +75,50 @@ func (s *schemaGenerator) Generate() error {
 
 	if err := s.generateMutations(); err != nil {
 		return err
+	// }
+
+	return nil
+}
+
+func (s *schemaGenerator) buildGraph(schemaInfo *schema) error {
+	if schemaInfo == nil {
+		panic("schemaInfo cannot be nil")
+	}
+
+	tableMap := make(map[string]*schemaTable, len(schemaInfo.tables))
+	for _, table := range schemaInfo.tables {
+		tableMap[table.Name] = table
+	}
+
+	s.schemaGraph = graph.New[*schemaTable](uint(len(schemaInfo.tables)))
+
+	for _, table := range schemaInfo.tables {
+		tableNode := s.schemaGraph.Insert(table)
+
+		for _, foreignKey := range table.ForeignKeys {
+
+			refTable, ok := tableMap[foreignKey.referencedTable]
+			if !ok {
+				return errors.Newf("table %q references non-existant table %q", table.Name, foreignKey.referencedTable)
+			}
+			refTableNode := s.schemaGraph.Insert(refTable)
+			s.schemaGraph.AddPath(tableNode, refTableNode)
+		}
 	}
 
 	return nil
+}
+
+func (s *schemaGenerator) migrationOrder() []*schemaTable {
+	migrationOrder := make([]*schemaTable, 0, s.schemaGraph.Length())
+
+	compareFn := func(a, b *schemaTable) int {
+		return strings.Compare(a.Name, b.Name)
+	}
+
+	migrationOrder = append(migrationOrder, s.schemaGraph.OrderedList(compareFn)...)
+
+	return migrationOrder
 }
 
 func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
@@ -89,34 +134,6 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 		return err
 	}
 
-	tableMap := make(map[string]*schemaTable, len(schemaInfo.tables))
-	for _, table := range schemaInfo.tables {
-		tableMap[table.Name] = table
-	}
-
-	dg := graph.New[*schemaTable](uint(len(schemaInfo.tables)))
-
-	migrationOrder := make([]*schemaTable, 0, len(schemaInfo.tables))
-	for _, table := range schemaInfo.tables {
-		tableNode := dg.Insert(table)
-
-		for _, foreignKey := range table.ForeignKeys {
-
-			refTable, ok := tableMap[foreignKey.referencedTable]
-			if !ok {
-				return errors.Newf("table %q references non-existant table %q", table.Name, foreignKey.referencedTable)
-			}
-			refTableNode := dg.Insert(refTable)
-			dg.AddPath(tableNode, refTableNode)
-		}
-	}
-
-	compareFn := func(a, b *schemaTable) int {
-		return strings.Compare(a.Name, b.Name)
-	}
-
-	migrationOrder = append(migrationOrder, dg.OrderedList(compareFn)...)
-
 	// TODO: validate that referenced table names by foreign keys and views are actually in the schema
 
 	var (
@@ -125,7 +142,7 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 	)
 
 	migrationIndex := 0
-	for _, table := range migrationOrder {
+	for _, table := range s.migrationOrder() {
 		migrateFunc := func(index int, table *schemaTable, suffix, migrationTemplate string) {
 			fileName := sqlMigrationFileName(index, table.Name, suffix)
 			if err := s.generateMigration(fileName, migrationTemplate, table); err != nil {
