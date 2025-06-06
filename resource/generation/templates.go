@@ -1199,19 +1199,24 @@ func (x {{ $.Resource.Name }}) {{ $column.GoName }}Conversion() {{ $column.Conve
 }
 {{- end }}
 {{ end }}
-func (x {{ .Resource.Name }}) Convert(rows pgx.Rows) ([]any, error) {
-	if err := pgxscan.ScanRow(x, rows); err != nil {
-		return nil, errors.Wrap(err, "pgxscan.ScanRow()")
+func (x {{ .Resource.Name }}) Scan(rowScanner *pgxscan.RowScanner) (any, error) {
+	var dst {{ .Resource.Name }}
+	if err := rowScanner.Scan(&dst); err != nil {
+		return {{ .Resource.Name }}{}, errors.Wrap(err, "pgxscan.RowScanner.Scan()")
 	}
 
+	return dst, nil
+}
+
+func (x {{ .Resource.Name }}) Convert() []any {
 	return []any{
 	{{- range $column := .Resource.Columns }}
 		x.{{ $column.GoName }}{{ if $column.HasConversion }}Conversion(){{ end }},
 	{{- end }}
-	}, nil
+	}
 }
 
-func (x {{ .Resource.Name }}) Insert(convertedRows []any) *spanner.Mutation {
+func (x {{ .Resource.Name }}) NewInsertMutation(convertedRows []any) *spanner.Mutation {
 	cols := []string{
 	{{- range $column := .Resource.Columns }}
 		"{{ $column.Name }}",
