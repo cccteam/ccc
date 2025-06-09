@@ -498,8 +498,10 @@ func decodeSQLType(f *parser.Field) string {
 		return "DATE"
 	case "time.Time", "sql.NullTime":
 		return "TIMESTAMP"
+	case "Decimal":
+		return "NUMERIC"
 	default:
-		panic(fmt.Sprintf("schemagen SQL type unimplemented for type=%q", f.Type()))
+		panic(fmt.Sprintf("schemagen SQL type unimplemented for type=%q (%s)", f.Type(), tt))
 	}
 }
 
@@ -561,6 +563,8 @@ func determineConversionMethod(field *parser.Field) conversionFlag {
 		flag |= toBool
 	case "UUID":
 		flag |= toUUID
+	case "Decimal":
+		flag = noConversion
 	default:
 		panic(fmt.Sprintf("schemagen convert-to unimplemented for type=%q", typeArgs))
 	}
