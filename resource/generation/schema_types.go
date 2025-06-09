@@ -108,6 +108,9 @@ func (t tableColumn) NeedsConversionMethod() bool {
 func (t tableColumn) ConversionReturnType() string {
 	switch {
 	case t.conversionMethod&toString != 0, t.conversionMethod&toUUID != 0:
+		if t.conversionMethod&pointer != 0 {
+			return "*string"
+		}
 		return "string"
 	case t.conversionMethod&toBool != 0:
 		return "bool"

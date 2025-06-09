@@ -1287,10 +1287,25 @@ var conversionTemplateMap map[conversionFlag]string = map[conversionFlag]string{
 	}
 
 	return val.String()`,
+	fromInt | toUUID | pointer: `if x.{{ .Column.GoName }} == nil {
+		return nil
+	}
+	val, err := pktranslation.FetchValue("{{ if .Column.IsPrimaryKey }}{{ .Column.Table.Name }}{{ else }}{{ .RefTableName }}{{ end }}", *x.{{ .Column.GoName }})
+	if err != nil {
+		panic("pktranslation failure")
+	}
+
+	return ccc.Ptr(val.String())`,
 	fromInt | toBool: `return x.{{ .Column.Name }} == 1`,
 	fromInt | toBool | pointer: `var val bool
 	if x.{{ .Column.Name }} != nil {
 		val = *x.{{ .Column.Name }} == 1
+	}
+	return val`,
+	fromString | toBool: `return x.{{ .Column.Name }} == "Y"`,
+	fromString | toBool | pointer: `var val bool
+	if x.{{ .Column.Name }} != nil {
+		val = *x.{{ .Column.Name }} == "Y"
 	}
 	return val`,
 	// TODO(jrowland): populate with all the combinations we need right now
