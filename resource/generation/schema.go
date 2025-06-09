@@ -273,10 +273,16 @@ func (s *schemaGenerator) generateConversionFile(fileName string, table *schemaT
 func (s *schemaGenerator) generateDatamigration() error {
 	order := s.migrationOrder()
 	tableMap := make(map[*schemaTable][]*schemaTable, len(order))
+	compareFn := func(a, b *schemaTable) int {
+		return strings.Compare(a.Name, b.Name)
+	}
 
 	for _, table := range order {
-		tableMap[table] = s.schemaGraph.Get(table).Dependencies()
+		tableDeps := s.schemaGraph.Get(table).Dependencies()
+		slices.SortFunc(tableDeps, compareFn)
+		tableMap[table] = tableDeps
 	}
+
 	data, err := executeTemplate("datamigrationTemplate", datamigrationTemplate, map[string]any{
 		"HeaderComment": schemaGenHeaderComment,
 		"AppName":       s.appName,
