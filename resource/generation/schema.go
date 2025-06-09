@@ -405,6 +405,17 @@ func newSchemaTable(pStruct *parser.Struct) (*schemaTable, error) {
 	}
 
 	for _, field := range pStruct.Fields() {
+		fieldComments, err := genlang.ScanField(field.Comments())
+		if err != nil {
+			return nil, errors.Wrap(err, "commentlang.ScanField()")
+		}
+
+		// Some columns need to be scanned in from the DB but are concatenated with other columns,
+		// then we don't want them in the output.
+		if _, ok := fieldComments[genlang.Suppress]; ok {
+			continue
+		}
+
 		col := tableColumn{
 			Table:      table,
 			Name:       strings.ReplaceAll(field.Name(), "ID", "Id"),
@@ -416,11 +427,6 @@ func newSchemaTable(pStruct *parser.Struct) (*schemaTable, error) {
 			col.conversionMethod = custom
 		} else {
 			col.conversionMethod = determineConversionMethod(field)
-		}
-
-		fieldComments, err := genlang.ScanField(field.Comments())
-		if err != nil {
-			return nil, errors.Wrap(err, "commentlang.ScanField()")
 		}
 
 		col, err = table.resolveFieldComment(col, fieldComments)

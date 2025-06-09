@@ -40,6 +40,7 @@ var keywords = map[keyword]keywordOpts{
 	View:        {scanStruct: noArgs | exclusive},
 	Query:       {scanStruct: argsRequired | exclusive},
 	Using:       {scanField: argsRequired | exclusive},
+	Suppress:    {scanField: noArgs | exclusive},
 }
 
 const (
@@ -57,6 +58,7 @@ const (
 	View        keyword = "view"  // Designates a struct as a view
 	Query       keyword = "query" // The query to be used for a view. Required if @view is used.
 	Using       keyword = "using" // Can only be used in views. Names the source field from another struct if it does not match this field
+	Suppress    keyword = "suppress"
 )
 
 // TODO(jrowland): find a better way to handle single vs dual arg results
