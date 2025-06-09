@@ -1198,22 +1198,22 @@ import (
 // The resourceDeps map is populated by the schema generator.
 func (m *Migration) workerGraph() graph.Graph[*worker] {
 	resourceDeps := map[Resource][]Resource{
-	{{ range $table := .Tables }}
+	{{ range $table := .Tables -}}
 		resources.{{ $table.Name }}{}: { {{- range $dependency := index $.TableMap $table }}resources.{{ $dependency.Name }}{},{{ end -}} },
 	{{ end }}
 	}
 
 	resourceWorker := map[Resource]*worker{
-	{{ range $table := .Tables }}
-		resources.{{ $table.Name }}{}: &worker{res: resources.{{ $table.Name }}{}},
+	{{ range $table := .Tables -}}
+		resources.{{ $table.Name }}{}: {res: resources.{{ $table.Name }}{}},
 	{{ end }}
 	}
 
 	resourceGraph := graph.New[*worker](uint(len(resourceDeps)))
 
 	for node, dependents := range resourceDeps {
+	srcNode := resourceGraph.Insert(resourceWorker[node])
 		for _, dependentNode := range dependents {
-			srcNode := resourceGraph.Insert(resourceWorker[node])
 			dstNode := resourceGraph.Insert(resourceWorker[dependentNode])
 
 			resourceGraph.AddPath(srcNode, dstNode)
@@ -1252,6 +1252,7 @@ func (x {{ .Resource.Name }}) Scan(rowScanner *pgxscan.RowScanner) (any, error) 
 	return dst, nil
 }
 
+{{ if eq .Resource.HasConvertMethod false -}}
 func (x {{ .Resource.Name }}) Convert() []any {
 	return []any{
 	{{- range $column := .Resource.Columns }}
@@ -1259,6 +1260,7 @@ func (x {{ .Resource.Name }}) Convert() []any {
 	{{- end }}
 	}
 }
+{{- end }}
 
 func (x {{ .Resource.Name }}) NewInsertMutation(convertedRows []any) *spanner.Mutation {
 	cols := []string{
@@ -1269,6 +1271,12 @@ func (x {{ .Resource.Name }}) NewInsertMutation(convertedRows []any) *spanner.Mu
 
 	return spanner.Insert(x.TableName(), cols, convertedRows)
 }
+
+{{ if eq .Resource.HasFilterMethod false -}}
+func ({{ .Resource.Name }}) Filter() string {
+	return ""
+}
+{{- end }}
 `
 )
 

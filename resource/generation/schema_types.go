@@ -19,13 +19,14 @@ const (
 )
 
 type schemaGenerator struct {
-	resourceDestination string
-	schemaDestination   string
-	resourceFilePath    string
-	datamigrationPath   string
-	packageName         string
-	appName             string
-	schemaGraph         graph.Graph[*schemaTable]
+	resourceDestination  string
+	schemaDestination    string
+	resourceFilePath     string
+	datamigrationPath    string
+	migrationIndexOffset int
+	packageName          string
+	appName              string
+	schemaGraph          graph.Graph[*schemaTable]
 	fileWriter
 }
 
@@ -141,14 +142,16 @@ func (t tableColumn) ConversionMethod() string {
 }
 
 type schemaTable struct {
-	Name         string
-	Columns      []*tableColumn
-	PrimaryKey   string
-	ForeignKeys  []foreignKeyConstraint
-	Checks       []checkConstraint
-	SearchTokens []searchExpression
-	Indexes      []schemaIndex
-	Query        *string // TODO: remove query and use method on struct instead
+	Name             string
+	Columns          []*tableColumn
+	PrimaryKey       string
+	ForeignKeys      []foreignKeyConstraint
+	Checks           []checkConstraint
+	SearchTokens     []searchExpression
+	Indexes          []schemaIndex
+	HasConvertMethod bool
+	HasFilterMethod  bool
+	Query            *string // TODO: remove query and use method on struct instead
 }
 
 func (s schemaTable) Constraints() []string {

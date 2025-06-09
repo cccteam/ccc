@@ -18,11 +18,12 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func NewSchemaGenerator(resourceFilePath, schemaDestinationPath, datamigrationPath string) (Generator, error) {
+func NewSchemaGenerator(resourceFilePath, schemaDestinationPath, datamigrationPath string, offset int) (Generator, error) {
 	s := &schemaGenerator{
-		schemaDestination: schemaDestinationPath,
-		resourceFilePath:  resourceFilePath,
-		datamigrationPath: datamigrationPath,
+		schemaDestination:    schemaDestinationPath,
+		resourceFilePath:     resourceFilePath,
+		datamigrationPath:    datamigrationPath,
+		migrationIndexOffset: offset,
 	}
 
 	if filepath.Ext(resourceFilePath) == "" {
@@ -142,7 +143,7 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 		errChan = make(chan error)
 	)
 
-	migrationIndex := 0
+	migrationIndex := s.migrationIndexOffset
 	for _, table := range s.migrationOrder() {
 		migrateFunc := func(index int, table *schemaTable, suffix, migrationTemplate string) {
 			fileName := sqlMigrationFileName(index, table.Name, suffix)
@@ -310,7 +311,7 @@ func (s *schemaGenerator) generateDatamigration() error {
 func (*schemaGenerator) Close() {}
 
 func sqlMigrationFileName(migrationIndex int, tableName, suffix string) string {
-	return fmt.Sprintf("%0000d_%s.%s", migrationIndex, tableName, suffix)
+	return fmt.Sprintf("%06d_%s.%s", migrationIndex, tableName, suffix)
 }
 
 func (s *schemaGenerator) generateMigration(fileName, migrationTemplate string, schemaResource any) error {
@@ -397,8 +398,10 @@ func newSchema(pStructs []*parser.Struct) (*schema, error) {
 
 func newSchemaTable(pStruct *parser.Struct) (*schemaTable, error) {
 	table := &schemaTable{
-		Name:    pStruct.Name(),
-		Columns: make([]*tableColumn, 0, pStruct.NumFields()),
+		Name:             pStruct.Name(),
+		Columns:          make([]*tableColumn, 0, pStruct.NumFields()),
+		HasConvertMethod: pStruct.HasMethod("Convert"),
+		HasFilterMethod:  pStruct.HasMethod("Filter"),
 	}
 
 	for _, field := range pStruct.Fields() {
