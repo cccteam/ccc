@@ -50,7 +50,7 @@ func Test_DirectedGraph(t *testing.T) {
 					// E outdegree: 0
 				},
 			},
-			want: []string{"E", "A", "B", "C", "D"},
+			want: []string{"E", "D", "C", "B", "A"},
 		},
 		{
 			name: "alphabetically sorted nodes of equal outdegree",
@@ -66,7 +66,7 @@ func Test_DirectedGraph(t *testing.T) {
 			},
 			want: []string{
 				"Election", "Electro", "Electron", "Electronic",
-				"Electrons", "Banana", "Chiropractor", "Date", "Empire", "ZZZZZZZZZZZZZZZZZZ", "Apple",
+				"Electrons", "Date", "Empire", "Chiropractor", "Banana", "ZZZZZZZZZZZZZZZZZZ", "Apple",
 			},
 		},
 		{

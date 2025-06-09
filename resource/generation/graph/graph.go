@@ -3,8 +3,8 @@
 package graph
 
 import (
-	"fmt"
 	"iter"
+	"slices"
 	"sync"
 
 	"github.com/go-playground/errors/v5"
@@ -170,6 +170,11 @@ func (g *graph[T]) Remove(node Node[T]) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	g.removeUnsafe(node)
+}
+
+// Call site must have a lock on Graph
+func (g *graph[T]) removeUnsafe(node Node[T]) {
 	key := node.Value()
 
 	delete(g.graph, key)
@@ -246,13 +251,39 @@ func (g *graph[T]) OrderedList(compare func(a, b T) int) []T {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	var root *dependencyTree[T]
+	gCopy := &graph[T]{graph: make(map[T]*node[T], g.Length())}
+	for node := range g.Nodes() {
+		src := gCopy.Insert(node.Value())
 
-	for key, node := range g.graph {
-		root = addNode(key, node.NumDependencies(), root, compare)
+		for _, dep := range node.Dependencies() {
+			dst := gCopy.Insert(dep)
+			gCopy.AddPath(src, dst)
+		}
 	}
 
-	return orderedTree(root)
+	order := make([]T, 0, gCopy.Length())
+
+	for gCopy.Length() > 0 {
+		var buf []T
+
+		for node := range gCopy.Nodes() {
+			if node.NumDependencies() > 0 {
+				continue
+			}
+
+			buf = append(buf, node.Value())
+		}
+
+		for _, val := range buf {
+			node := gCopy.Get(val)
+			gCopy.removeUnsafe(node)
+		}
+
+		slices.SortFunc(buf, compare)
+		order = append(order, buf...)
+	}
+
+	return order
 }
 
 // Call site must have a lock on graph.mutex
@@ -260,52 +291,4 @@ func (g *graph[T]) exists(v T) bool {
 	_, ok := g.graph[v]
 
 	return ok
-}
-
-type dependencyTree[T comparable] struct {
-	key         T
-	value       int
-	left, right *dependencyTree[T]
-}
-
-func newNode[T comparable](key T, value int) *dependencyTree[T] {
-	return &dependencyTree[T]{key: key, value: value}
-}
-
-func addNode[T comparable](key T, value int, root *dependencyTree[T], compare func(a, b T) int) *dependencyTree[T] {
-	switch {
-	case root == nil:
-		return newNode(key, value)
-	case value < root.value:
-		root.left = addNode(key, value, root.left, compare)
-	case value > root.value:
-		root.right = addNode(key, value, root.right, compare)
-
-	// if the values are equal, store the node sorted using compare func
-	default:
-		switch compare(key, root.key) {
-		case -1:
-			root.left = addNode(key, value, root.left, compare)
-		case 0:
-			root.left = addNode(key, value, root.left, compare)
-		case 1:
-			root.right = addNode(key, value, root.right, compare)
-		default:
-			panic(fmt.Sprintf("invalid compare func want=(-1, 0, or 1) got=%d", compare(key, root.key)))
-		}
-	}
-
-	return root
-}
-
-func orderedTree[T comparable](root *dependencyTree[T]) []T {
-	if root == nil {
-		return []T{}
-	}
-
-	left := orderedTree(root.left)
-	right := orderedTree(root.right)
-	left = append(left, root.key)
-
-	return append(left, right...)
 }
