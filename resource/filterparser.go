@@ -348,9 +348,6 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 			}
 			condition.Values = append(condition.Values, trimmed)
 		}
-		if len(condition.Values) == 0 { // Should be caught by valPart == "" earlier, but good for safety
-			return nil, errors.Wrapf(ErrInvalidValueFormat, "value list for '%s' resolved to empty", condition.Operator)
-		}
 	case "eq", "ne", "gt", "lt", "gte", "lte":
 		if len(parts) < 3 {
 			return nil, errors.Wrapf(ErrMissingValue, "operator '%s' requires a value", condition.Operator)
