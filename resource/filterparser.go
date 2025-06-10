@@ -186,7 +186,6 @@ type Parser struct {
 	lexer   *Lexer
 	current Token
 	peek    Token
-	errors  []error
 
 	prefixParseFns map[TokenType]prefixParseFn
 	infixParseFns  map[TokenType]infixParseFn
@@ -213,22 +212,16 @@ func NewParser(lexer *Lexer) (*Parser, error) {
 	p.infixParseFns[TokenPipe] = p.parseInfixExpression
 
 	// Prime the pump. Need to call twice to fill current and peek.
-	// we don't return error immediately from advance here if it's EOF.
-	// The parser might handle an initial EOF (e.g. empty filter string).
-	_ = p.advance() // current will be TokenEOF if input is empty
-	_ = p.advance() // peek will be TokenEOF if input is empty or has one token
+	// Any error from advance (which wraps lexer.NextToken) is a legitimate lexer error.
+	// lexer.NextToken() itself returns Token{Type: TokenEOF}, nil on successful EOF.
+	if err := p.advance(); err != nil {
+		return nil, errors.Wrap(err, "failed to advance for current token")
+	}
+	if err := p.advance(); err != nil {
+		return nil, errors.Wrap(err, "failed to advance for peek token")
+	}
 
 	return p, nil
-}
-
-func (p *Parser) Errors() []error {
-	return p.errors
-}
-
-func (p *Parser) addError(err error) {
-	if err != nil {
-		p.errors = append(p.errors, err)
-	}
 }
 
 func (p *Parser) advance() error {
@@ -236,9 +229,7 @@ func (p *Parser) advance() error {
 	var err error
 	p.peek, err = p.lexer.NextToken()
 	if err != nil {
-		p.addError(errors.Wrap(err, "lexer error during advance"))
-
-		return err
+		return errors.Wrap(err, "lexer error during advance")
 	}
 
 	return nil
@@ -248,9 +239,7 @@ func (p *Parser) expectPeek(t TokenType) error {
 	if p.peek.Type == t {
 		return p.advance()
 	}
-	p.addError(errors.Wrapf(ErrUnexpectedToken, "expected peek token to be %v, got %v instead", t, p.peek.Type))
-
-	return ErrUnexpectedToken // Return the specific error for control flow
+	return errors.Wrapf(ErrUnexpectedToken, "expected peek token to be %v, got %v instead", t, p.peek.Type)
 }
 
 func (p *Parser) currentPrecedence() int {
@@ -277,21 +266,11 @@ func (p *Parser) Parse() (ExpressionNode, error) {
 
 	expression, err := p.parseExpression(LOWEST)
 	if err != nil {
-		p.addError(err) // Ensure this error is added
+		return nil, err
 	}
 
 	if p.peek.Type != TokenEOF {
-		p.addError(errors.Wrapf(ErrUnexpectedToken, "expected EOF after parsing, got %v", p.peek.Type))
-	}
-
-	if len(p.errors) > 0 {
-		// Combine errors into a single error. This part might need a more sophisticated error reporting.
-		var errMsgs []string
-		for _, e := range p.errors {
-			errMsgs = append(errMsgs, e.Error())
-		}
-
-		return nil, errors.New(strings.Join(errMsgs, "; "))
+		return nil, errors.Wrapf(ErrUnexpectedToken, "expected EOF after parsing, got %v", p.peek.Type)
 	}
 
 	return expression, nil
@@ -314,9 +293,7 @@ func (p *Parser) parseExpression(precedence int) (ExpressionNode, error) {
 			// This means we have a token that should be an infix operator but isn't registered,
 			// or it's a token that shouldn't appear in an infix position.
 			// For example, two conditions back-to-back without an operator.
-			p.addError(errors.Wrapf(ErrUnexpectedToken, "expected operator, got %v (value: '%s')", p.peek.Type, p.peek.Value))
-
-			return leftExp, nil // Return the left expression parsed so far
+			return nil, errors.Wrapf(ErrUnexpectedToken, "expected operator, got %v (value: '%s')", p.peek.Type, p.peek.Value)
 		}
 		if err := p.advance(); err != nil { // Consume the operator
 			return nil, err
@@ -341,10 +318,7 @@ func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, erro
 	case TokenPipe:
 		node.Operator = OperatorOr
 	default:
-		err := errors.Wrapf(ErrUnexpectedToken, "unexpected token %v for infix operator", p.current.Type)
-		p.addError(err)
-
-		return nil, err
+		return nil, errors.Wrapf(ErrUnexpectedToken, "unexpected token %v for infix operator", p.current.Type)
 	}
 
 	precedence := p.currentPrecedence()
@@ -354,14 +328,10 @@ func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, erro
 	var err error
 	node.Right, err = p.parseExpression(precedence)
 	if err != nil {
-		// Error already added by parseExpression or one of its children
 		return nil, err
 	}
 	if node.Right == nil { // Should be caught by parseExpression returning an error
-		err = errors.Wrap(ErrExpectedExpression, "missing right-hand side of infix expression")
-		p.addError(err)
-
-		return nil, err
+		return nil, errors.Wrap(ErrExpectedExpression, "missing right-hand side of infix expression")
 	}
 
 	return node, nil
@@ -370,10 +340,7 @@ func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, erro
 func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 	parts := strings.SplitN(p.current.Value, ":", 3)
 	if len(parts) < 2 {
-		err := errors.Wrapf(ErrInvalidConditionFormat, "condition '%s' must have at least field:operator", p.current.Value)
-		p.addError(err)
-
-		return nil, err
+		return nil, errors.Wrapf(ErrInvalidConditionFormat, "condition '%s' must have at least field:operator", p.current.Value)
 	}
 
 	condition := Condition{
@@ -382,75 +349,48 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 	}
 
 	if condition.Field == "" {
-		err := errors.Wrapf(ErrInvalidConditionFormat, "field name cannot be empty in condition '%s'", p.current.Value)
-		p.addError(err)
-
-		return nil, err
+		return nil, errors.Wrapf(ErrInvalidConditionFormat, "field name cannot be empty in condition '%s'", p.current.Value)
 	}
 
 	switch condition.Operator {
 	case "isnull", "isnotnull":
 		if len(parts) > 2 && strings.TrimSpace(parts[2]) != "" {
-			err := errors.Wrapf(ErrInvalidConditionFormat, "operator '%s' does not take a value, but got '%s'", condition.Operator, parts[2])
-			p.addError(err)
-
-			return nil, err
+			return nil, errors.Wrapf(ErrInvalidConditionFormat, "operator '%s' does not take a value, but got '%s'", condition.Operator, parts[2])
 		}
 		condition.IsNullOp = true
 	case "in", "notin":
 		if len(parts) < 3 {
-			err := errors.Wrapf(ErrMissingValue, "operator '%s' requires a value part", condition.Operator)
-			p.addError(err)
-
-			return nil, err
+			return nil, errors.Wrapf(ErrMissingValue, "operator '%s' requires a value part", condition.Operator)
 		}
 		valPart := strings.TrimSpace(parts[2])
 		if !strings.HasPrefix(valPart, "(") || !strings.HasSuffix(valPart, ")") {
-			err := errors.Wrapf(ErrInvalidValueFormat, "value for '%s' must be in parentheses, e.g., (v1,v2), got '%s'", condition.Operator, valPart)
-			p.addError(err)
-
-			return nil, err
+			return nil, errors.Wrapf(ErrInvalidValueFormat, "value for '%s' must be in parentheses, e.g., (v1,v2), got '%s'", condition.Operator, valPart)
 		}
 		valPart = valPart[1 : len(valPart)-1] // Remove parentheses
 		if valPart == "" {                    // e.g. name:in:()
-			err := errors.Wrapf(ErrInvalidValueFormat, "value list for '%s' cannot be empty", condition.Operator)
-			p.addError(err)
-
-			return nil, err
+			return nil, errors.Wrapf(ErrInvalidValueFormat, "value list for '%s' cannot be empty", condition.Operator)
 		}
 		values := strings.Split(valPart, ",")
 		condition.Values = make([]string, 0, len(values))
 		for _, v := range values {
 			trimmed := strings.TrimSpace(v)
 			if trimmed == "" { // e.g. name:in:(v1,,v2)
-				err := errors.Wrapf(ErrInvalidValueFormat, "empty value in list for operator '%s'", condition.Operator)
-				p.addError(err)
-
-				return nil, err
+				return nil, errors.Wrapf(ErrInvalidValueFormat, "empty value in list for operator '%s'", condition.Operator)
 			}
 			condition.Values = append(condition.Values, trimmed)
 		}
 		if len(condition.Values) == 0 { // Should be caught by valPart == "" earlier, but good for safety
-			err := errors.Wrapf(ErrInvalidValueFormat, "value list for '%s' resolved to empty", condition.Operator)
-			p.addError(err)
-
-			return nil, err
+			return nil, errors.Wrapf(ErrInvalidValueFormat, "value list for '%s' resolved to empty", condition.Operator)
 		}
 	case "eq", "ne", "gt", "lt", "gte", "lte", "contains", "startswith", "endswith", "like", "ilike":
 		if len(parts) < 3 {
-			err := errors.Wrapf(ErrMissingValue, "operator '%s' requires a value", condition.Operator)
-			p.addError(err)
-
-			return nil, err
+			return nil, errors.Wrapf(ErrMissingValue, "operator '%s' requires a value", condition.Operator)
 		}
 		condition.Value = strings.TrimSpace(parts[2])
 		// It's debatable if an empty value is allowed, e.g. name:eq:
 		// For now, allowing it. Add validation if empty values are disallowed.
 	default:
-		err := errors.Wrapf(ErrUnknownOperator, "'%s' in condition '%s'", condition.Operator, p.current.Value)
-		p.addError(err)
-
-		return nil, err
+		return nil, errors.Wrapf(ErrUnknownOperator, "'%s' in condition '%s'", condition.Operator, p.current.Value)
 	}
 
 	return &ConditionNode{Condition: condition}, nil
@@ -463,26 +403,18 @@ func (p *Parser) parseGroupedExpression() (ExpressionNode, error) {
 
 	// Check for empty group ()
 	if p.current.Type == TokenRParen {
-		err := errors.Wrap(ErrExpectedExpression, "empty group '()' is not allowed")
-		p.addError(err)
-
-		return nil, err
+		return nil, errors.Wrap(ErrExpectedExpression, "empty group '()' is not allowed")
 	}
 
 	expression, err := p.parseExpression(LOWEST)
 	if err != nil {
-		// Error already added by parseExpression or its children
 		return nil, err
 	}
 	if expression == nil { // Should be caught by parseExpression returning an error
-		err = errors.Wrap(ErrExpectedExpression, "no expression inside parentheses")
-		p.addError(err)
-
-		return nil, err
+		return nil, errors.Wrap(ErrExpectedExpression, "no expression inside parentheses")
 	}
 
 	if err := p.expectPeek(TokenRParen); err != nil { // Checks p.peek and advances if it's RParen
-		// Error (ErrExpectedRightParen or ErrUnexpectedToken) already added by expectPeek
 		return nil, err
 	}
 

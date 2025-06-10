@@ -397,12 +397,12 @@ func TestParser_Parse_Errors(t *testing.T) {
 		{
 			name:         "unknown operator",
 			filterString: "name:badop:John",
-			wantErrMsg:   "unknown operator",
+			wantErrMsg:   "'badop' in condition",
 		},
 		{
 			name:         "missing closing parenthesis",
 			filterString: "(name:eq:John",
-			wantErrMsg:   "expected peek token to be 2, got 0",
+			wantErrMsg:   "expected peek token to be 2, got 0 instead",
 		},
 		{
 			name:         "unmatched closing parenthesis at start",
@@ -480,40 +480,30 @@ func TestParser_Parse_Errors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			lexer := NewLexer(tt.filterString)
-			parser, initErr := NewParser(lexer) // NewParser itself can't error with current design unless lexer does on advance
-
-			// General parser error handling
-			if initErr != nil {
-				// This case is unlikely now as NewParser collects errors rather than returning them directly
-				if !strings.Contains(initErr.Error(), tt.wantErrMsg) {
-					t.Fatalf("NewParser() init error = %v, wantErrMsg %s", initErr, tt.wantErrMsg)
+			parser, err := NewParser(lexer)
+			if err != nil {
+				if tt.wantErrMsg == "" {
+					t.Fatalf("NewParser() error = %v, want no error", err)
 				}
+				if !strings.Contains(err.Error(), tt.wantErrMsg) {
+					t.Fatalf("NewParser() error = %q, wantErrMsg substring %q", err.Error(), tt.wantErrMsg)
+				}
+
 				return
 			}
 
 			_, parseErr := parser.Parse()
-
-			if parseErr == nil {
-				// If Parse() returns nil, check if errors were collected in the parser
-				collectedErrors := parser.Errors()
-				if len(collectedErrors) > 0 {
-					found := false
-					for _, e := range collectedErrors {
-						if strings.Contains(e.Error(), tt.wantErrMsg) {
-							found = true
-							break
-						}
-					}
-					if !found {
-						t.Errorf("parser.Parse() error = nil, collected errors = %v, wantErrMsg substring %q", collectedErrors, tt.wantErrMsg)
-					}
-				} else {
-					t.Errorf("parser.Parse() error = nil, wantErrMsg substring %q", tt.wantErrMsg)
+			if tt.wantErrMsg == "" {
+				if parseErr != nil {
+					t.Errorf("parser.Parse() error = %v, want no error", parseErr)
 				}
 			} else {
-				// If Parse() returns an error, check it
-				if !strings.Contains(parseErr.Error(), tt.wantErrMsg) {
-					t.Errorf("parser.Parse() error = %q, wantErrMsg substring %q", parseErr.Error(), tt.wantErrMsg)
+				if parseErr == nil {
+					t.Errorf("parser.Parse() error = nil, wantErrMsg substring %q", tt.wantErrMsg)
+				} else {
+					if !strings.Contains(parseErr.Error(), tt.wantErrMsg) {
+						t.Errorf("parser.Parse() error = %q, wantErrMsg substring %q", parseErr.Error(), tt.wantErrMsg)
+					}
 				}
 			}
 		})
