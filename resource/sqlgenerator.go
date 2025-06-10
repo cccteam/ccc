@@ -167,7 +167,7 @@ func (s *SQLGenerator) generateLogicalOpSQL(ln *LogicalOpNode) (string, []any, e
 		return leftSQL, leftParams, nil
 	}
 
-	combinedSQL := fmt.Sprintf("(%s %s %s)", leftSQL, sqlOperator, rightSQL)
+	combinedSQL := fmt.Sprintf("%s %s %s", leftSQL, sqlOperator, rightSQL)
 	allParams := append(leftParams, rightParams...)
 
 	return combinedSQL, allParams, nil

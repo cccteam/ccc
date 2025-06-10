@@ -95,14 +95,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			name:         "name:eq:John,age:gte:30 pg",
 			filterString: "name:eq:John,age:gte:30",
 			dialect:      PostgreSQL,
-			wantSQL:      `("name" = $1 AND "age" >= $2)`,
+			wantSQL:      `"name" = $1 AND "age" >= $2`,
 			wantParams:   []any{"John", "30"},
 		},
 		{
 			name:         "name:eq:John,age:gte:30 spanner",
 			filterString: "name:eq:John,age:gte:30",
 			dialect:      Spanner,
-			wantSQL:      "(`name` = @p1 AND `age` >= @p2)",
+			wantSQL:      "`name` = @p1 AND `age` >= @p2",
 			wantParams:   []any{"John", "30"},
 		},
 
@@ -111,14 +111,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			name:         "name:eq:John|name:eq:Jane pg",
 			filterString: "name:eq:John|name:eq:Jane",
 			dialect:      PostgreSQL,
-			wantSQL:      `("name" = $1 OR "name" = $2)`,
+			wantSQL:      `"name" = $1 OR "name" = $2`,
 			wantParams:   []any{"John", "Jane"},
 		},
 		{
 			name:         "name:eq:John|name:eq:Jane spanner",
 			filterString: "name:eq:John|name:eq:Jane",
 			dialect:      Spanner,
-			wantSQL:      "(`name` = @p1 OR `name` = @p2)",
+			wantSQL:      "`name` = @p1 OR `name` = @p2",
 			wantParams:   []any{"John", "Jane"},
 		},
 
@@ -127,14 +127,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			name:         "(name:eq:John|name:eq:Jane),age:gte:30 pg",
 			filterString: "(name:eq:John|name:eq:Jane),age:gte:30",
 			dialect:      PostgreSQL,
-			wantSQL:      `((("name" = $1 OR "name" = $2)) AND "age" >= $3)`,
+			wantSQL:      `("name" = $1 OR "name" = $2) AND "age" >= $3`,
 			wantParams:   []any{"John", "Jane", "30"},
 		},
 		{
 			name:         "(name:eq:John|name:eq:Jane),age:gte:30 spanner",
 			filterString: "(name:eq:John|name:eq:Jane),age:gte:30",
 			dialect:      Spanner,
-			wantSQL:      "(((`name` = @p1 OR `name` = @p2)) AND `age` >= @p3)",
+			wantSQL:      "(`name` = @p1 OR `name` = @p2) AND `age` >= @p3",
 			wantParams:   []any{"John", "Jane", "30"},
 		},
 
@@ -176,14 +176,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			name:         "(category:in:(books,movies)|status:eq:active),price:lt:100 pg",
 			filterString: "(category:in:(books,movies)|status:eq:active),price:lt:100",
 			dialect:      PostgreSQL,
-			wantSQL:      `((("category" IN ($1, $2) OR "status" = $3)) AND "price" < $4)`,
+			wantSQL:      `("category" IN ($1, $2) OR "status" = $3) AND "price" < $4`,
 			wantParams:   []any{"books", "movies", "active", "100"},
 		},
 		{
 			name:         "(category:in:(books,movies)|status:eq:active),price:lt:100 spanner",
 			filterString: "(category:in:(books,movies)|status:eq:active),price:lt:100",
 			dialect:      Spanner,
-			wantSQL:      "(((`category` IN (@p1, @p2) OR `status` = @p3)) AND `price` < @p4)",
+			wantSQL:      "(`category` IN (@p1, @p2) OR `status` = @p3) AND `price` < @p4",
 			wantParams:   []any{"books", "movies", "active", "100"},
 		},
 		// name:eq:John Doe
@@ -207,7 +207,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			name:         "email:isnotnull,age:gt:18 pg",
 			filterString: "email:isnotnull,age:gt:18",
 			dialect:      PostgreSQL,
-			wantSQL:      `("email" IS NOT NULL AND "age" > $1)`,
+			wantSQL:      `"email" IS NOT NULL AND "age" > $1`,
 			wantParams:   []any{"18"},
 		},
 		// (name:isnull|name:eq:Unknown)
@@ -215,7 +215,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			name:         "(name:isnull|name:eq:Unknown) pg",
 			filterString: "(name:isnull|name:eq:Unknown)",
 			dialect:      PostgreSQL,
-			wantSQL:      `(("name" IS NULL OR "name" = $1))`,
+			wantSQL:      `("name" IS NULL OR "name" = $1)`,
 			wantParams:   []any{"Unknown"},
 		},
 		// (name:eq:John|name:eq:Jane),(category:in:(books,movies)|status:eq:active)
@@ -223,7 +223,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			name:         "(name:eq:John|name:eq:Jane),(category:in:(books,movies)|status:eq:active) pg",
 			filterString: "(name:eq:John|name:eq:Jane),(category:in:(books,movies)|status:eq:active)",
 			dialect:      PostgreSQL,
-			wantSQL:      `((("name" = $1 OR "name" = $2)) AND (("category" IN ($3, $4) OR "status" = $5)))`,
+			wantSQL:      `("name" = $1 OR "name" = $2) AND ("category" IN ($3, $4) OR "status" = $5)`,
 			wantParams:   []any{"John", "Jane", "books", "movies", "active"},
 		},
 		// ((status:eq:active|status:eq:pending),user_id:notin:(1,2)),price:gte:50
@@ -231,10 +231,8 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			name:         "((status:eq:active|status:eq:pending),user_id:notin:(1,2)),price:gte:50 pg",
 			filterString: "((status:eq:active|status:eq:pending),user_id:notin:(1,2)),price:gte:50",
 			dialect:      PostgreSQL,
-			// TODO(jules): This SQL is being produced with extra () in the expression. This SQL should look like this:
-			//           (("status" = $1 OR "status" = $2) AND "user_id" NOT IN ($3, $4)) AND "price" >= $5
-			wantSQL:    `((((("status" = $1 OR "status" = $2)) AND "user_id" NOT IN ($3, $4))) AND "price" >= $5)`,
-			wantParams: []any{"active", "pending", "1", "2", "50"},
+			wantSQL:      `(("status" = $1 OR "status" = $2) AND "user_id" NOT IN ($3, $4)) AND "price" >= $5`,
+			wantParams:   []any{"active", "pending", "1", "2", "50"},
 		},
 		// Test for "ne" operator
 		{
