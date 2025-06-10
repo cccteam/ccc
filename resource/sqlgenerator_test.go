@@ -14,8 +14,8 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 		filterString string
 		dialect      SQLDialect
 		wantSQL      string
-		wantParams   []any
-		wantErrMsg   string // Substring of the expected error message
+		wantParams   any
+		wantErrMsg   string
 	}
 
 	tests := []testCase{
@@ -25,14 +25,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "",
 			dialect:      PostgreSQL,
 			wantSQL:      "",
-			wantParams:   nil,
+			wantParams:   []any{},
 		},
 		{
 			name:         "empty filter spanner",
 			filterString: "",
 			dialect:      Spanner,
 			wantSQL:      "",
-			wantParams:   nil,
+			wantParams:   map[string]any{},
 		},
 
 		// name:eq:John
@@ -48,7 +48,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "name:eq:John",
 			dialect:      Spanner,
 			wantSQL:      "`name` = @p1",
-			wantParams:   []any{"John"},
+			wantParams:   map[string]any{"p1": "John"},
 		},
 
 		// age:gte:30
@@ -64,7 +64,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "age:gte:30",
 			dialect:      Spanner,
 			wantSQL:      "`age` >= @p1",
-			wantParams:   []any{"30"},
+			wantParams:   map[string]any{"p1": "30"},
 		},
 
 		// status:isnull
@@ -80,7 +80,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "status:isnull",
 			dialect:      Spanner,
 			wantSQL:      "`status` IS NULL",
-			wantParams:   []any{},
+			wantParams:   map[string]any{},
 		},
 		// email:isnotnull
 		{
@@ -89,6 +89,13 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			dialect:      PostgreSQL,
 			wantSQL:      `"email" IS NOT NULL`,
 			wantParams:   []any{},
+		},
+		{
+			name:         "email:isnotnull spanner",
+			filterString: "email:isnotnull",
+			dialect:      Spanner,
+			wantSQL:      "`email` IS NOT NULL",
+			wantParams:   map[string]any{},
 		},
 		// name:eq:John,age:gte:30
 		{
@@ -103,7 +110,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "name:eq:John,age:gte:30",
 			dialect:      Spanner,
 			wantSQL:      "`name` = @p1 AND `age` >= @p2",
-			wantParams:   []any{"John", "30"},
+			wantParams:   map[string]any{"p1": "John", "p2": "30"},
 		},
 
 		// name:eq:John|name:eq:Jane
@@ -119,7 +126,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "name:eq:John|name:eq:Jane",
 			dialect:      Spanner,
 			wantSQL:      "`name` = @p1 OR `name` = @p2",
-			wantParams:   []any{"John", "Jane"},
+			wantParams:   map[string]any{"p1": "John", "p2": "Jane"},
 		},
 
 		// (name:eq:John|name:eq:Jane),age:gte:30
@@ -135,7 +142,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "(name:eq:John|name:eq:Jane),age:gte:30",
 			dialect:      Spanner,
 			wantSQL:      "(`name` = @p1 OR `name` = @p2) AND `age` >= @p3",
-			wantParams:   []any{"John", "Jane", "30"},
+			wantParams:   map[string]any{"p1": "John", "p2": "Jane", "p3": "30"},
 		},
 
 		// category:in:(books,movies)
@@ -151,7 +158,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "category:in:(books,movies)",
 			dialect:      Spanner,
 			wantSQL:      "`category` IN (@p1, @p2)",
-			wantParams:   []any{"books", "movies"},
+			wantParams:   map[string]any{"p1": "books", "p2": "movies"},
 		},
 		// category:in:(single)
 		{
@@ -161,7 +168,13 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			wantSQL:      `"category" IN ($1)`,
 			wantParams:   []any{"single"},
 		},
-
+		{
+			name:         "category:in:(single) spanner",
+			filterString: "category:in:(single)",
+			dialect:      Spanner,
+			wantSQL:      "`category` IN (@p1)",
+			wantParams:   map[string]any{"p1": "single"},
+		},
 		// user_id:notin:(1,2,3)
 		{
 			name:         "user_id:notin:(1,2,3) pg",
@@ -184,7 +197,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "(category:in:(books,movies)|status:eq:active),price:lt:100",
 			dialect:      Spanner,
 			wantSQL:      "(`category` IN (@p1, @p2) OR `status` = @p3) AND `price` < @p4",
-			wantParams:   []any{"books", "movies", "active", "100"},
+			wantParams:   map[string]any{"p1": "books", "p2": "movies", "p3": "active", "p4": "100"},
 		},
 		// name:eq:John Doe
 		{
@@ -247,7 +260,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "status:ne:inactive",
 			dialect:      Spanner,
 			wantSQL:      "`status` <> @p1",
-			wantParams:   []any{"inactive"},
+			wantParams:   map[string]any{"p1": "inactive"},
 		},
 		// Test for "lt" operator
 		{
@@ -299,27 +312,65 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 				t.Fatalf("parser.Parse() error = %v, want nil", parseErr)
 			}
 
-			sqlGen := NewSQLGenerator(tt.dialect)
-			gotSQL, gotParams, genErr := sqlGen.GenerateSQL(ast)
+			var gotSQL string
+			var paramsResult any
+			var genErr error
+
+			if tt.dialect == PostgreSQL {
+				sqlGen := NewPostgreSQLGenerator()
+				gotSQL, paramsResult, genErr = sqlGen.GenerateSQL(ast)
+			} else if tt.dialect == Spanner {
+				sqlGen := NewSpannerGenerator()
+				gotSQL, paramsResult, genErr = sqlGen.GenerateSQL(ast)
+			} else {
+				t.Fatalf("Unsupported dialect in test case: %v", tt.dialect)
+			}
 
 			if tt.wantErrMsg != "" {
 				if genErr == nil {
-					t.Errorf("sqlGen.GenerateSQL() error = nil, wantErrMsg %s", tt.wantErrMsg)
+					t.Errorf("GenerateSQL() error = nil, wantErrMsg %s", tt.wantErrMsg)
 				} else if !strings.Contains(genErr.Error(), tt.wantErrMsg) {
-					t.Errorf("sqlGen.GenerateSQL() error = %v, wantErrMsg %s", genErr, tt.wantErrMsg)
+					t.Errorf("GenerateSQL() error = %v, wantErrMsg %s", genErr, tt.wantErrMsg)
 				}
 				return // Expected error, test done
 			}
 			if genErr != nil {
-				t.Errorf("sqlGen.GenerateSQL() error = %v, want nil", genErr)
+				t.Errorf("GenerateSQL() error = %v, want nil", genErr)
 				return
 			}
 
 			if gotSQL != tt.wantSQL {
-				t.Errorf("sqlGen.GenerateSQL() gotSQL = %q, want %q", gotSQL, tt.wantSQL)
+				t.Errorf("GenerateSQL() gotSQL = %q, want %q", gotSQL, tt.wantSQL)
 			}
-			if !reflect.DeepEqual(gotParams, tt.wantParams) {
-				t.Errorf("sqlGen.GenerateSQL() gotParams = %v, want %v", gotParams, tt.wantParams)
+
+			if tt.dialect == PostgreSQL {
+				wantPgParams, ok := tt.wantParams.([]any)
+				if !ok && tt.wantParams != nil {
+					t.Fatalf("PostgreSQL test case %s has wantParams not of type []any: %T", tt.name, tt.wantParams)
+				}
+
+				gotPgParams, ok := paramsResult.([]any)
+				if !ok && paramsResult != nil {
+					t.Fatalf("PostgreSQL generator did not return []any for test %s: %T", tt.name, paramsResult)
+				}
+
+				if !reflect.DeepEqual(gotPgParams, wantPgParams) {
+					t.Errorf("PostgreSQLGenerator.GenerateSQL() gotParams = %#v, want %#v", gotPgParams, wantPgParams)
+				}
+			} else if tt.dialect == Spanner {
+				wantSpannerParams, ok := tt.wantParams.(map[string]any)
+				if !ok && tt.wantParams != nil {
+					t.Fatalf("Spanner test case %s has wantParams not of type map[string]any: %T", tt.name, tt.wantParams)
+				}
+
+				gotSpannerParams, ok := paramsResult.(map[string]any)
+				if !ok && paramsResult != nil {
+					t.Fatalf("Spanner generator did not return map[string]any for test %s: %T", tt.name, paramsResult)
+				}
+
+				if !reflect.DeepEqual(gotSpannerParams, wantSpannerParams) {
+					t.Errorf("SpannerGenerator.GenerateSQL() gotParams = %#v, want %#v", gotSpannerParams, wantSpannerParams)
+				}
 			}
 		})
 	}
