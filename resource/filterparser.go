@@ -43,7 +43,6 @@ type Lexer struct {
 }
 
 func NewLexer(input string) *Lexer {
-
 	return &Lexer{
 		input: input,
 		pos:   0,
@@ -52,8 +51,7 @@ func NewLexer(input string) *Lexer {
 
 func (l *Lexer) NextToken() (Token, error) {
 	if l.pos >= len(l.input) {
-
-		return Token{Type: TokenEOF, Value: ""}, nil // Return TokenEOF
+		return Token{Type: TokenEOF}, nil
 	}
 
 	switch l.input[l.pos] {
@@ -84,42 +82,29 @@ LOOP:
 		case '(':
 			parenCount++
 			if parenCount > 1 {
-				// This error is about nested parentheses *within* a condition string,
-				// not about grouped expressions in the filter language itself.
-
 				return Token{}, fmt.Errorf("nested parentheses in condition token at position %d", l.pos)
 			}
 		case ')':
 			if parenCount > 0 {
 				parenCount--
+
 				continue
 			}
-			// If parenCount is 0, this ')' might be the end of a group, not part of the condition.
-			l.pos-- // Let the main parser handle this ')'
+			l.pos--
+
 			break LOOP
 		case ',', '|':
-			if parenCount > 0 { // If inside parentheses (e.g. for 'in' operator values)
+			if parenCount > 0 {
 				continue
 			}
-			l.pos-- // Re-evaluate this character as a separator token
+			l.pos--
+
 			break LOOP
 		}
 	}
-	value := l.input[start:l.pos]
-	if value == "" && l.pos < len(l.input) { // Should not happen if logic is correct
 
-		return Token{}, fmt.Errorf("empty condition token created at pos %d", start)
-	}
-	if value == "" && l.pos >= len(l.input) { // Reached end after trying to parse a condition
-
-		return Token{Type: TokenEOF, Value: ""}, nil
-	}
-
-
-	return Token{Type: TokenCondition, Value: value}, nil
+	return Token{Type: TokenCondition, Value: l.input[start:l.pos]}, nil
 }
-
-// --- AST Node Definitions ---
 
 // ExpressionNode represents a node in the filter AST.
 type ExpressionNode interface {
@@ -144,14 +129,11 @@ type ConditionNode struct {
 // String returns a string representation of the ConditionNode.
 func (cn *ConditionNode) String() string {
 	if cn.Condition.IsNullOp {
-
 		return fmt.Sprintf("%s:%s", cn.Condition.Field, cn.Condition.Operator)
 	}
 	if len(cn.Condition.Values) > 0 {
-
 		return fmt.Sprintf("%s:%s:(%s)", cn.Condition.Field, cn.Condition.Operator, strings.Join(cn.Condition.Values, ","))
 	}
-
 
 	return fmt.Sprintf("%s:%s:%s", cn.Condition.Field, cn.Condition.Operator, cn.Condition.Value)
 }
@@ -173,7 +155,6 @@ type LogicalOpNode struct {
 
 // String returns a string representation of the LogicalOpNode.
 func (ln *LogicalOpNode) String() string {
-
 	return fmt.Sprintf("(%s %s %s)", ln.Left.String(), ln.Operator, ln.Right.String())
 }
 
@@ -184,11 +165,8 @@ type GroupNode struct {
 
 // String returns a string representation of the GroupNode.
 func (gn *GroupNode) String() string {
-
 	return fmt.Sprintf("(%s)", gn.Expression.String())
 }
-
-// --- End of AST Node Definitions ---
 
 // Operator precedence
 const (
@@ -214,13 +192,14 @@ type Parser struct {
 	infixParseFns  map[TokenType]infixParseFn
 }
 
-type prefixParseFn func() (ExpressionNode, error)
-type infixParseFn func(ExpressionNode) (ExpressionNode, error)
+type (
+	prefixParseFn func() (ExpressionNode, error)
+	infixParseFn  func(ExpressionNode) (ExpressionNode, error)
+)
 
 func NewParser(lexer *Lexer) (*Parser, error) {
 	p := &Parser{
 		lexer:          lexer,
-		errors:         []error{},
 		prefixParseFns: make(map[TokenType]prefixParseFn),
 		infixParseFns:  make(map[TokenType]infixParseFn),
 	}
@@ -234,17 +213,15 @@ func NewParser(lexer *Lexer) (*Parser, error) {
 	p.infixParseFns[TokenPipe] = p.parseInfixExpression
 
 	// Prime the pump. Need to call twice to fill current and peek.
-	// Unlike before, we don't return error immediately from advance here if it's EOF.
+	// we don't return error immediately from advance here if it's EOF.
 	// The parser might handle an initial EOF (e.g. empty filter string).
 	_ = p.advance() // current will be TokenEOF if input is empty
 	_ = p.advance() // peek will be TokenEOF if input is empty or has one token
-
 
 	return p, nil
 }
 
 func (p *Parser) Errors() []error {
-
 	return p.errors
 }
 
@@ -257,53 +234,45 @@ func (p *Parser) addError(err error) {
 func (p *Parser) advance() error {
 	p.current = p.peek
 	var err error
-	p.peek, err = p.lexer.NextToken() // Lexer.NextToken now returns TokenEOF, not an error for EOF
-	if err != nil {                   // This would be for lexer errors other than EOF
+	p.peek, err = p.lexer.NextToken()
+	if err != nil {
 		p.addError(errors.Wrap(err, "lexer error during advance"))
 
-		return err // Propagate lexer error
+		return err
 	}
-
 
 	return nil
 }
 
 func (p *Parser) expectPeek(t TokenType) error {
 	if p.peek.Type == t {
-
 		return p.advance()
 	}
 	p.addError(errors.Wrapf(ErrUnexpectedToken, "expected peek token to be %v, got %v instead", t, p.peek.Type))
-
 
 	return ErrUnexpectedToken // Return the specific error for control flow
 }
 
 func (p *Parser) currentPrecedence() int {
 	if p, ok := precedences[p.current.Type]; ok {
-
 		return p
 	}
-
 
 	return LOWEST
 }
 
 func (p *Parser) peekPrecedence() int {
 	if p, ok := precedences[p.peek.Type]; ok {
-
 		return p
 	}
-
 
 	return LOWEST
 }
 
 // Parse is the main entry point for parsing the filter string.
 func (p *Parser) Parse() (ExpressionNode, error) {
-	if p.current.Type == TokenEOF && p.peek.Type == TokenEOF { // Empty input
-
-		return nil, nil // Or a specific node type for empty, if desired
+	if p.current.Type == TokenEOF && p.peek.Type == TokenEOF {
+		return nil, nil
 	}
 
 	expression, err := p.parseExpression(LOWEST)
@@ -322,10 +291,8 @@ func (p *Parser) Parse() (ExpressionNode, error) {
 			errMsgs = append(errMsgs, e.Error())
 		}
 
-
 		return nil, errors.New(strings.Join(errMsgs, "; "))
 	}
-
 
 	return expression, nil
 }
@@ -333,14 +300,12 @@ func (p *Parser) Parse() (ExpressionNode, error) {
 func (p *Parser) parseExpression(precedence int) (ExpressionNode, error) {
 	prefix := p.prefixParseFns[p.current.Type]
 	if prefix == nil {
-
 		return nil, errors.Wrapf(ErrExpectedExpression, "no prefix parse function for token type %v (value: '%s')", p.current.Type, p.current.Value)
 	}
 
 	leftExp, err := prefix()
 	if err != nil {
-
-		return nil, err // Error already added by prefix function or helper
+		return nil, err
 	}
 
 	for p.peek.Type != TokenEOF && precedence < p.peekPrecedence() {
@@ -351,22 +316,16 @@ func (p *Parser) parseExpression(precedence int) (ExpressionNode, error) {
 			// For example, two conditions back-to-back without an operator.
 			p.addError(errors.Wrapf(ErrUnexpectedToken, "expected operator, got %v (value: '%s')", p.peek.Type, p.peek.Value))
 
-
 			return leftExp, nil // Return the left expression parsed so far
 		}
 		if err := p.advance(); err != nil { // Consume the operator
-
-
 			return nil, err
 		}
 		leftExp, err = infix(leftExp)
 		if err != nil {
-
-
 			return nil, err // Error already added by infix function
 		}
 	}
-
 
 	return leftExp, nil
 }
@@ -385,32 +344,25 @@ func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, erro
 		err := errors.Wrapf(ErrUnexpectedToken, "unexpected token %v for infix operator", p.current.Type)
 		p.addError(err)
 
-
 		return nil, err
 	}
 
 	precedence := p.currentPrecedence()
 	if err := p.advance(); err != nil { // Consume the operator token itself
-
-
 		return nil, err
 	}
 	var err error
 	node.Right, err = p.parseExpression(precedence)
 	if err != nil {
 		// Error already added by parseExpression or one of its children
-
-
 		return nil, err
 	}
 	if node.Right == nil { // Should be caught by parseExpression returning an error
 		err = errors.Wrap(ErrExpectedExpression, "missing right-hand side of infix expression")
 		p.addError(err)
 
-
 		return nil, err
 	}
-
 
 	return node, nil
 }
@@ -420,7 +372,6 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 	if len(parts) < 2 {
 		err := errors.Wrapf(ErrInvalidConditionFormat, "condition '%s' must have at least field:operator", p.current.Value)
 		p.addError(err)
-
 
 		return nil, err
 	}
@@ -434,7 +385,6 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 		err := errors.Wrapf(ErrInvalidConditionFormat, "field name cannot be empty in condition '%s'", p.current.Value)
 		p.addError(err)
 
-
 		return nil, err
 	}
 
@@ -444,7 +394,6 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 			err := errors.Wrapf(ErrInvalidConditionFormat, "operator '%s' does not take a value, but got '%s'", condition.Operator, parts[2])
 			p.addError(err)
 
-
 			return nil, err
 		}
 		condition.IsNullOp = true
@@ -453,7 +402,6 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 			err := errors.Wrapf(ErrMissingValue, "operator '%s' requires a value part", condition.Operator)
 			p.addError(err)
 
-
 			return nil, err
 		}
 		valPart := strings.TrimSpace(parts[2])
@@ -461,14 +409,12 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 			err := errors.Wrapf(ErrInvalidValueFormat, "value for '%s' must be in parentheses, e.g., (v1,v2), got '%s'", condition.Operator, valPart)
 			p.addError(err)
 
-
 			return nil, err
 		}
 		valPart = valPart[1 : len(valPart)-1] // Remove parentheses
 		if valPart == "" {                    // e.g. name:in:()
 			err := errors.Wrapf(ErrInvalidValueFormat, "value list for '%s' cannot be empty", condition.Operator)
 			p.addError(err)
-
 
 			return nil, err
 		}
@@ -480,7 +426,6 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 				err := errors.Wrapf(ErrInvalidValueFormat, "empty value in list for operator '%s'", condition.Operator)
 				p.addError(err)
 
-
 				return nil, err
 			}
 			condition.Values = append(condition.Values, trimmed)
@@ -489,14 +434,12 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 			err := errors.Wrapf(ErrInvalidValueFormat, "value list for '%s' resolved to empty", condition.Operator)
 			p.addError(err)
 
-
 			return nil, err
 		}
 	case "eq", "ne", "gt", "lt", "gte", "lte", "contains", "startswith", "endswith", "like", "ilike":
 		if len(parts) < 3 {
 			err := errors.Wrapf(ErrMissingValue, "operator '%s' requires a value", condition.Operator)
 			p.addError(err)
-
 
 			return nil, err
 		}
@@ -507,18 +450,14 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 		err := errors.Wrapf(ErrUnknownOperator, "'%s' in condition '%s'", condition.Operator, p.current.Value)
 		p.addError(err)
 
-
 		return nil, err
 	}
-
 
 	return &ConditionNode{Condition: condition}, nil
 }
 
 func (p *Parser) parseGroupedExpression() (ExpressionNode, error) {
 	if err := p.advance(); err != nil { // Consume '('
-
-
 		return nil, err
 	}
 
@@ -527,32 +466,25 @@ func (p *Parser) parseGroupedExpression() (ExpressionNode, error) {
 		err := errors.Wrap(ErrExpectedExpression, "empty group '()' is not allowed")
 		p.addError(err)
 
-
 		return nil, err
 	}
 
 	expression, err := p.parseExpression(LOWEST)
 	if err != nil {
 		// Error already added by parseExpression or its children
-
-
 		return nil, err
 	}
 	if expression == nil { // Should be caught by parseExpression returning an error
 		err = errors.Wrap(ErrExpectedExpression, "no expression inside parentheses")
 		p.addError(err)
 
-
 		return nil, err
 	}
 
 	if err := p.expectPeek(TokenRParen); err != nil { // Checks p.peek and advances if it's RParen
 		// Error (ErrExpectedRightParen or ErrUnexpectedToken) already added by expectPeek
-
-
 		return nil, err
 	}
-
 
 	return &GroupNode{Expression: expression}, nil
 }
