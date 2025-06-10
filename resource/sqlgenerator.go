@@ -93,7 +93,7 @@ func (s *SQLGenerator) generateConditionSQL(cn *ConditionNode) (string, []any, e
 		placeholder := s.nextPlaceholder()
 		params = append(params, cn.Condition.Value)
 
-		return fmt.Sprintf("%s <> %s", field, placeholder), params, nil // Or use !=, <> is more standard
+		return fmt.Sprintf("%s <> %s", field, placeholder), params, nil
 	case "gt":
 		placeholder := s.nextPlaceholder()
 		params = append(params, cn.Condition.Value)
@@ -115,16 +115,6 @@ func (s *SQLGenerator) generateConditionSQL(cn *ConditionNode) (string, []any, e
 
 		return fmt.Sprintf("%s <= %s", field, placeholder), params, nil
 	case "in", "notin":
-		if len(cn.Condition.Values) == 0 {
-			// This case (e.g. field:in:()) should ideally be caught by the parser.
-			// SQL doesn't support empty IN lists well. `field IN ()` is a syntax error.
-			// Depending on desired behavior:
-			// - `1=0` (always false) for `IN ()`
-			// - `1=1` (always true) for `NOT IN ()`
-			// For now, returning an error as it's ambiguous.
-
-			return "", nil, errors.Wrapf(ErrUnsupportedOperator, "operator '%s' with empty list", op)
-		}
 		placeholders := make([]string, len(cn.Condition.Values))
 		for i, v := range cn.Condition.Values {
 			placeholders[i] = s.nextPlaceholder()
@@ -187,14 +177,6 @@ func (s *SQLGenerator) generateGroupSQL(gn *GroupNode) (string, []any, error) {
 	exprSQL, exprParams, err := s.generateSQLRecursive(gn.Expression)
 	if err != nil {
 		return "", nil, errors.Wrap(err, "failed to generate grouped expression")
-	}
-
-	// Avoid empty parentheses like "()" if the inner expression was somehow empty.
-	if exprSQL == "" {
-		// This might mean an empty group like `()` which parser should prevent,
-		// or an expression that validly generates no SQL (e.g. a future "always true" node).
-		// For now, assume inner expression should always produce some SQL.
-		return "", nil, errors.New("grouped expression generated empty SQL")
 	}
 
 	return fmt.Sprintf("(%s)", exprSQL), exprParams, nil

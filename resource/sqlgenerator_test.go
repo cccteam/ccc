@@ -231,8 +231,10 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			name:         "((status:eq:active|status:eq:pending),user_id:notin:(1,2)),price:gte:50 pg",
 			filterString: "((status:eq:active|status:eq:pending),user_id:notin:(1,2)),price:gte:50",
 			dialect:      PostgreSQL,
-			wantSQL:      `((((("status" = $1 OR "status" = $2)) AND "user_id" NOT IN ($3, $4))) AND "price" >= $5)`,
-			wantParams:   []any{"active", "pending", "1", "2", "50"},
+			// TODO(jules): This SQL is being produced with extra () in the expression. This SQL should look like this:
+			//           (("status" = $1 OR "status" = $2) AND "user_id" NOT IN ($3, $4)) AND "price" >= $5
+			wantSQL:    `((((("status" = $1 OR "status" = $2)) AND "user_id" NOT IN ($3, $4))) AND "price" >= $5)`,
+			wantParams: []any{"active", "pending", "1", "2", "50"},
 		},
 		// Test for "ne" operator
 		{
@@ -277,17 +279,12 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Not running in parallel due to shared SQLGenerator paramCount,
-			// though NewSQLGenerator is called per test. If paramCount was on GenerateSQL, could parallelize.
-			// For now, it's safer to run sequentially or ensure complete isolation if parallel.
-			// Let's instantiate SQLGenerator inside the loop for safety for now.
+			t.Parallel()
 
 			lexer := NewLexer(tt.filterString)
 			parser, err := NewParser(lexer)
 			if err != nil {
-				// This setup error is unexpected for valid filters defined in tests
 				t.Fatalf("NewParser() error = %v, wantErr %v", err, tt.wantErrMsg)
-				return
 			}
 
 			ast, parseErr := parser.Parse()
@@ -297,13 +294,11 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 					// If parseErr is nil, proceed to generation, the error might be from generation step
 				} else if !strings.Contains(parseErr.Error(), tt.wantErrMsg) {
 					t.Fatalf("parser.Parse() error = %v, wantErrMsg %s", parseErr, tt.wantErrMsg)
-					return
 				} else { // Expected parse error occurred
 					return // Test successful
 				}
 			} else if parseErr != nil { // Unexpected parse error
 				t.Fatalf("parser.Parse() error = %v, want nil", parseErr)
-				return
 			}
 
 			sqlGen := NewSQLGenerator(tt.dialect)
