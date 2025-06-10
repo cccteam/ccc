@@ -474,6 +474,10 @@ func TestParser_Parse_Errors(t *testing.T) {
 			filterString: "field:in:(v1,,v2)",
 			wantErrMsg:   "empty value in list for operator 'in'",
 		},
+		{
+			name:         "condition with empty value in 'eq'",
+			filterString: "field:eq:",
+		},
 	}
 
 	for _, tt := range tests {

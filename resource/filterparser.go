@@ -170,10 +170,9 @@ func (gn *GroupNode) String() string {
 
 // Operator precedence
 const (
-	_ int = iota
-	LOWEST
-	OR  // |
-	AND // ,
+	LOWEST int = iota + 1
+	OR         // |
+	AND        // ,
 )
 
 var precedences = map[TokenType]int{
@@ -212,8 +211,6 @@ func NewParser(lexer *Lexer) (*Parser, error) {
 	p.infixParseFns[TokenPipe] = p.parseInfixExpression
 
 	// Prime the pump. Need to call twice to fill current and peek.
-	// Any error from advance (which wraps lexer.NextToken) is a legitimate lexer error.
-	// lexer.NextToken() itself returns Token{Type: TokenEOF}, nil on successful EOF.
 	if err := p.advance(); err != nil {
 		return nil, errors.Wrap(err, "failed to advance for current token")
 	}
@@ -239,6 +236,7 @@ func (p *Parser) expectPeek(t TokenType) error {
 	if p.peek.Type == t {
 		return p.advance()
 	}
+
 	return errors.Wrapf(ErrUnexpectedToken, "expected peek token to be %v, got %v instead", t, p.peek.Type)
 }
 
@@ -322,7 +320,7 @@ func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, erro
 	}
 
 	precedence := p.currentPrecedence()
-	if err := p.advance(); err != nil { // Consume the operator token itself
+	if err := p.advance(); err != nil {
 		return nil, err
 	}
 	var err error
@@ -382,13 +380,11 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 		if len(condition.Values) == 0 { // Should be caught by valPart == "" earlier, but good for safety
 			return nil, errors.Wrapf(ErrInvalidValueFormat, "value list for '%s' resolved to empty", condition.Operator)
 		}
-	case "eq", "ne", "gt", "lt", "gte", "lte", "contains", "startswith", "endswith", "like", "ilike":
+	case "eq", "ne", "gt", "lt", "gte", "lte":
 		if len(parts) < 3 {
 			return nil, errors.Wrapf(ErrMissingValue, "operator '%s' requires a value", condition.Operator)
 		}
 		condition.Value = strings.TrimSpace(parts[2])
-		// It's debatable if an empty value is allowed, e.g. name:eq:
-		// For now, allowing it. Add validation if empty values are disallowed.
 	default:
 		return nil, errors.Wrapf(ErrUnknownOperator, "'%s' in condition '%s'", condition.Operator, p.current.Value)
 	}
@@ -401,7 +397,6 @@ func (p *Parser) parseGroupedExpression() (ExpressionNode, error) {
 		return nil, err
 	}
 
-	// Check for empty group ()
 	if p.current.Type == TokenRParen {
 		return nil, errors.Wrap(ErrExpectedExpression, "empty group '()' is not allowed")
 	}
@@ -410,11 +405,8 @@ func (p *Parser) parseGroupedExpression() (ExpressionNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	if expression == nil { // Should be caught by parseExpression returning an error
-		return nil, errors.Wrap(ErrExpectedExpression, "no expression inside parentheses")
-	}
 
-	if err := p.expectPeek(TokenRParen); err != nil { // Checks p.peek and advances if it's RParen
+	if err := p.expectPeek(TokenRParen); err != nil {
 		return nil, err
 	}
 

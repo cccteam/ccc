@@ -14,7 +14,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 		filterString string
 		dialect      SQLDialect
 		wantSQL      string
-		wantParams   []interface{}
+		wantParams   []any
 		wantErrMsg   string // Substring of the expected error message
 	}
 
@@ -24,15 +24,15 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			name:         "empty filter pg",
 			filterString: "",
 			dialect:      PostgreSQL,
-			wantSQL:      "1=1",
-			wantParams:   []interface{}{},
+			wantSQL:      "",
+			wantParams:   nil,
 		},
 		{
 			name:         "empty filter spanner",
 			filterString: "",
 			dialect:      Spanner,
-			wantSQL:      "1=1",
-			wantParams:   []interface{}{},
+			wantSQL:      "",
+			wantParams:   nil,
 		},
 
 		// name:eq:John
@@ -41,14 +41,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "name:eq:John",
 			dialect:      PostgreSQL,
 			wantSQL:      `"name" = $1`,
-			wantParams:   []interface{}{"John"},
+			wantParams:   []any{"John"},
 		},
 		{
 			name:         "name:eq:John spanner",
 			filterString: "name:eq:John",
 			dialect:      Spanner,
 			wantSQL:      "`name` = @p1",
-			wantParams:   []interface{}{"John"},
+			wantParams:   []any{"John"},
 		},
 
 		// age:gte:30
@@ -57,14 +57,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "age:gte:30",
 			dialect:      PostgreSQL,
 			wantSQL:      `"age" >= $1`,
-			wantParams:   []interface{}{"30"},
+			wantParams:   []any{"30"},
 		},
 		{
 			name:         "age:gte:30 spanner",
 			filterString: "age:gte:30",
 			dialect:      Spanner,
 			wantSQL:      "`age` >= @p1",
-			wantParams:   []interface{}{"30"},
+			wantParams:   []any{"30"},
 		},
 
 		// status:isnull
@@ -73,14 +73,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "status:isnull",
 			dialect:      PostgreSQL,
 			wantSQL:      `"status" IS NULL`,
-			wantParams:   []interface{}{},
+			wantParams:   []any{},
 		},
 		{
 			name:         "status:isnull spanner",
 			filterString: "status:isnull",
 			dialect:      Spanner,
 			wantSQL:      "`status` IS NULL",
-			wantParams:   []interface{}{},
+			wantParams:   []any{},
 		},
 		// email:isnotnull
 		{
@@ -88,7 +88,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "email:isnotnull",
 			dialect:      PostgreSQL,
 			wantSQL:      `"email" IS NOT NULL`,
-			wantParams:   []interface{}{},
+			wantParams:   []any{},
 		},
 		// name:eq:John,age:gte:30
 		{
@@ -96,14 +96,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "name:eq:John,age:gte:30",
 			dialect:      PostgreSQL,
 			wantSQL:      `("name" = $1 AND "age" >= $2)`,
-			wantParams:   []interface{}{"John", "30"},
+			wantParams:   []any{"John", "30"},
 		},
 		{
 			name:         "name:eq:John,age:gte:30 spanner",
 			filterString: "name:eq:John,age:gte:30",
 			dialect:      Spanner,
 			wantSQL:      "(`name` = @p1 AND `age` >= @p2)",
-			wantParams:   []interface{}{"John", "30"},
+			wantParams:   []any{"John", "30"},
 		},
 
 		// name:eq:John|name:eq:Jane
@@ -112,14 +112,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "name:eq:John|name:eq:Jane",
 			dialect:      PostgreSQL,
 			wantSQL:      `("name" = $1 OR "name" = $2)`,
-			wantParams:   []interface{}{"John", "Jane"},
+			wantParams:   []any{"John", "Jane"},
 		},
 		{
 			name:         "name:eq:John|name:eq:Jane spanner",
 			filterString: "name:eq:John|name:eq:Jane",
 			dialect:      Spanner,
 			wantSQL:      "(`name` = @p1 OR `name` = @p2)",
-			wantParams:   []interface{}{"John", "Jane"},
+			wantParams:   []any{"John", "Jane"},
 		},
 
 		// (name:eq:John|name:eq:Jane),age:gte:30
@@ -128,14 +128,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "(name:eq:John|name:eq:Jane),age:gte:30",
 			dialect:      PostgreSQL,
 			wantSQL:      `((("name" = $1 OR "name" = $2)) AND "age" >= $3)`,
-			wantParams:   []interface{}{"John", "Jane", "30"},
+			wantParams:   []any{"John", "Jane", "30"},
 		},
 		{
 			name:         "(name:eq:John|name:eq:Jane),age:gte:30 spanner",
 			filterString: "(name:eq:John|name:eq:Jane),age:gte:30",
 			dialect:      Spanner,
 			wantSQL:      "(((`name` = @p1 OR `name` = @p2)) AND `age` >= @p3)",
-			wantParams:   []interface{}{"John", "Jane", "30"},
+			wantParams:   []any{"John", "Jane", "30"},
 		},
 
 		// category:in:(books,movies)
@@ -144,14 +144,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "category:in:(books,movies)",
 			dialect:      PostgreSQL,
 			wantSQL:      `"category" IN ($1, $2)`,
-			wantParams:   []interface{}{"books", "movies"},
+			wantParams:   []any{"books", "movies"},
 		},
 		{
 			name:         "category:in:(books,movies) spanner",
 			filterString: "category:in:(books,movies)",
 			dialect:      Spanner,
 			wantSQL:      "`category` IN (@p1, @p2)",
-			wantParams:   []interface{}{"books", "movies"},
+			wantParams:   []any{"books", "movies"},
 		},
 		// category:in:(single)
 		{
@@ -159,7 +159,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "category:in:(single)",
 			dialect:      PostgreSQL,
 			wantSQL:      `"category" IN ($1)`,
-			wantParams:   []interface{}{"single"},
+			wantParams:   []any{"single"},
 		},
 
 		// user_id:notin:(1,2,3)
@@ -168,7 +168,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "user_id:notin:(1,2,3)",
 			dialect:      PostgreSQL,
 			wantSQL:      `"user_id" NOT IN ($1, $2, $3)`,
-			wantParams:   []interface{}{"1", "2", "3"},
+			wantParams:   []any{"1", "2", "3"},
 		},
 
 		// (category:in:(books,movies)|status:eq:active),price:lt:100
@@ -177,14 +177,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "(category:in:(books,movies)|status:eq:active),price:lt:100",
 			dialect:      PostgreSQL,
 			wantSQL:      `((("category" IN ($1, $2) OR "status" = $3)) AND "price" < $4)`,
-			wantParams:   []interface{}{"books", "movies", "active", "100"},
+			wantParams:   []any{"books", "movies", "active", "100"},
 		},
 		{
 			name:         "(category:in:(books,movies)|status:eq:active),price:lt:100 spanner",
 			filterString: "(category:in:(books,movies)|status:eq:active),price:lt:100",
 			dialect:      Spanner,
 			wantSQL:      "(((`category` IN (@p1, @p2) OR `status` = @p3)) AND `price` < @p4)",
-			wantParams:   []interface{}{"books", "movies", "active", "100"},
+			wantParams:   []any{"books", "movies", "active", "100"},
 		},
 		// name:eq:John Doe
 		{
@@ -192,7 +192,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "name:eq:John Doe",
 			dialect:      PostgreSQL,
 			wantSQL:      `"name" = $1`,
-			wantParams:   []interface{}{"John Doe"},
+			wantParams:   []any{"John Doe"},
 		},
 		// category:in:(sci-fi,non-fiction)
 		{
@@ -200,7 +200,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "category:in:(sci-fi,non-fiction)",
 			dialect:      PostgreSQL,
 			wantSQL:      `"category" IN ($1, $2)`,
-			wantParams:   []interface{}{"sci-fi", "non-fiction"},
+			wantParams:   []any{"sci-fi", "non-fiction"},
 		},
 		// email:isnotnull,age:gt:18
 		{
@@ -208,7 +208,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "email:isnotnull,age:gt:18",
 			dialect:      PostgreSQL,
 			wantSQL:      `("email" IS NOT NULL AND "age" > $1)`,
-			wantParams:   []interface{}{"18"},
+			wantParams:   []any{"18"},
 		},
 		// (name:isnull|name:eq:Unknown)
 		{
@@ -216,7 +216,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "(name:isnull|name:eq:Unknown)",
 			dialect:      PostgreSQL,
 			wantSQL:      `(("name" IS NULL OR "name" = $1))`,
-			wantParams:   []interface{}{"Unknown"},
+			wantParams:   []any{"Unknown"},
 		},
 		// (name:eq:John|name:eq:Jane),(category:in:(books,movies)|status:eq:active)
 		{
@@ -224,7 +224,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "(name:eq:John|name:eq:Jane),(category:in:(books,movies)|status:eq:active)",
 			dialect:      PostgreSQL,
 			wantSQL:      `((("name" = $1 OR "name" = $2)) AND (("category" IN ($3, $4) OR "status" = $5)))`,
-			wantParams:   []interface{}{"John", "Jane", "books", "movies", "active"},
+			wantParams:   []any{"John", "Jane", "books", "movies", "active"},
 		},
 		// ((status:eq:active|status:eq:pending),user_id:notin:(1,2)),price:gte:50
 		{
@@ -232,55 +232,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "((status:eq:active|status:eq:pending),user_id:notin:(1,2)),price:gte:50",
 			dialect:      PostgreSQL,
 			wantSQL:      `((((("status" = $1 OR "status" = $2)) AND "user_id" NOT IN ($3, $4))) AND "price" >= $5)`,
-			wantParams:   []interface{}{"active", "pending", "1", "2", "50"},
-		},
-		// description:like:%middle%
-		{
-			name:         "description:like:%middle% pg",
-			filterString: "description:like:%middle%",
-			dialect:      PostgreSQL,
-			wantSQL:      `"description" LIKE $1`,
-			wantParams:   []interface{}{"%middle%"},
-		},
-		// description:ilike:%middle% (PostgreSQL)
-		{
-			name:         "description:ilike:%middle% pg",
-			filterString: "description:ilike:%middle%",
-			dialect:      PostgreSQL,
-			wantSQL:      `"description" ILIKE $1`,
-			wantParams:   []interface{}{"%middle%"},
-		},
-		// description:ilike:%middle% (Spanner should map to LIKE)
-		{
-			name:         "description:ilike:%middle% spanner",
-			filterString: "description:ilike:%middle%",
-			dialect:      Spanner,
-			wantSQL:      "`description` LIKE @p1",
-			wantParams:   []interface{}{"%middle%"},
-		},
-		// title:startswith:The
-		{
-			name:         "title:startswith:The pg",
-			filterString: "title:startswith:The",
-			dialect:      PostgreSQL,
-			wantSQL:      `"title" LIKE $1`,
-			wantParams:   []interface{}{"The%"},
-		},
-		// title:endswith:End
-		{
-			name:         "title:endswith:End pg",
-			filterString: "title:endswith:End",
-			dialect:      PostgreSQL,
-			wantSQL:      `"title" LIKE $1`,
-			wantParams:   []interface{}{"%End"},
-		},
-		// title:contains:Book
-		{
-			name:         "title:contains:Book pg",
-			filterString: "title:contains:Book",
-			dialect:      PostgreSQL,
-			wantSQL:      `"title" LIKE $1`,
-			wantParams:   []interface{}{"%Book%"},
+			wantParams:   []any{"active", "pending", "1", "2", "50"},
 		},
 		// Test for "ne" operator
 		{
@@ -288,14 +240,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "status:ne:inactive",
 			dialect:      PostgreSQL,
 			wantSQL:      `"status" <> $1`,
-			wantParams:   []interface{}{"inactive"},
+			wantParams:   []any{"inactive"},
 		},
 		{
 			name:         "status:ne:inactive spanner",
 			filterString: "status:ne:inactive",
 			dialect:      Spanner,
 			wantSQL:      "`status` <> @p1",
-			wantParams:   []interface{}{"inactive"},
+			wantParams:   []any{"inactive"},
 		},
 		// Test for "lt" operator
 		{
@@ -303,7 +255,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "price:lt:10",
 			dialect:      PostgreSQL,
 			wantSQL:      `"price" < $1`,
-			wantParams:   []interface{}{"10"},
+			wantParams:   []any{"10"},
 		},
 		// Test for "lte" operator
 		{
@@ -311,7 +263,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "stock:lte:5",
 			dialect:      PostgreSQL,
 			wantSQL:      `"stock" <= $1`,
-			wantParams:   []interface{}{"5"},
+			wantParams:   []any{"5"},
 		},
 		// Test for "gt" operator
 		{
@@ -319,7 +271,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "rating:gt:4",
 			dialect:      PostgreSQL,
 			wantSQL:      `"rating" > $1`,
-			wantParams:   []interface{}{"4"},
+			wantParams:   []any{"4"},
 		},
 	}
 

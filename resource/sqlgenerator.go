@@ -36,25 +36,14 @@ func NewSQLGenerator(dialect SQLDialect) *SQLGenerator {
 
 // GenerateSQL converts an AST node into a SQL string and a list of parameters.
 // It resets the parameter counter for each top-level call.
-func (s *SQLGenerator) GenerateSQL(node ExpressionNode) (string, []interface{}, error) {
+func (s *SQLGenerator) GenerateSQL(node ExpressionNode) (string, []any, error) {
 	s.paramCount = 0 // Reset for each new generation pass
-
-	if node == nil { // Handle empty filter string resulting in nil node
-		return "1=1", []interface{}{}, nil
-	}
 
 	return s.generateSQLRecursive(node)
 }
 
 // generateSQLRecursive is the internal recursive part of SQL generation.
-func (s *SQLGenerator) generateSQLRecursive(node ExpressionNode) (string, []interface{}, error) {
-	if node == nil {
-		// This case should ideally be handled by the caller or specific node generators
-		// if an optional part of an expression is nil.
-		// For a nil root, GenerateSQL handles it. If nil occurs deeper, it's an issue.
-		return "", nil, errors.New("unexpected nil node during recursive generation")
-	}
-
+func (s *SQLGenerator) generateSQLRecursive(node ExpressionNode) (string, []any, error) {
 	switch n := node.(type) {
 	case *ConditionNode:
 		return s.generateConditionSQL(n)
@@ -62,13 +51,14 @@ func (s *SQLGenerator) generateSQLRecursive(node ExpressionNode) (string, []inte
 		return s.generateLogicalOpSQL(n)
 	case *GroupNode:
 		return s.generateGroupSQL(n)
+	case nil:
+		return "", nil, nil
 	default:
 		return "", nil, errors.Wrapf(ErrUnsupportedNodeType, "type: %T", n)
 	}
 }
 
 func (s *SQLGenerator) quoteIdentifier(identifier string) string {
-	// Basic quoting, can be expanded if needed (e.g. to handle already quoted identifiers or special chars)
 	// Spanner identifiers are case-sensitive and should be quoted with backticks if they contain non-alphanumeric chars or match keywords.
 	// PostgreSQL identifiers are folded to lower case unless quoted with double quotes.
 	if s.dialect == Spanner {
@@ -88,10 +78,10 @@ func (s *SQLGenerator) nextPlaceholder() string {
 	return fmt.Sprintf("$%d", s.paramCount)
 }
 
-func (s *SQLGenerator) generateConditionSQL(cn *ConditionNode) (string, []interface{}, error) {
+func (s *SQLGenerator) generateConditionSQL(cn *ConditionNode) (string, []any, error) {
 	field := s.quoteIdentifier(cn.Condition.Field)
 	op := strings.ToLower(cn.Condition.Operator)
-	params := []interface{}{}
+	params := []any{}
 
 	switch op {
 	case "eq":
@@ -124,22 +114,6 @@ func (s *SQLGenerator) generateConditionSQL(cn *ConditionNode) (string, []interf
 		params = append(params, cn.Condition.Value)
 
 		return fmt.Sprintf("%s <= %s", field, placeholder), params, nil
-	case "like":
-		placeholder := s.nextPlaceholder()
-		params = append(params, cn.Condition.Value)
-
-		return fmt.Sprintf("%s LIKE %s", field, placeholder), params, nil
-	case "ilike":
-		placeholder := s.nextPlaceholder()
-		params = append(params, cn.Condition.Value)
-		if s.dialect == PostgreSQL {
-			return fmt.Sprintf("%s ILIKE %s", field, placeholder), params, nil
-		}
-		// For Spanner, ILIKE is not directly supported.
-		// One common approach is LOWER(field) LIKE LOWER(value).
-		// However, the prompt asked to map ilike to LIKE for Spanner initially.
-
-		return fmt.Sprintf("%s LIKE %s", field, placeholder), params, nil
 	case "in", "notin":
 		if len(cn.Condition.Values) == 0 {
 			// This case (e.g. field:in:()) should ideally be caught by the parser.
@@ -168,29 +142,13 @@ func (s *SQLGenerator) generateConditionSQL(cn *ConditionNode) (string, []interf
 	case "isnotnull":
 
 		return fmt.Sprintf("%s IS NOT NULL", field), params, nil
-	// contains, startswith, endswith are often implemented with LIKE
-	case "contains":
-		placeholder := s.nextPlaceholder()
-		params = append(params, "%"+cn.Condition.Value+"%")
-
-		return fmt.Sprintf("%s LIKE %s", field, placeholder), params, nil
-	case "startswith":
-		placeholder := s.nextPlaceholder()
-		params = append(params, cn.Condition.Value+"%")
-
-		return fmt.Sprintf("%s LIKE %s", field, placeholder), params, nil
-	case "endswith":
-		placeholder := s.nextPlaceholder()
-		params = append(params, "%"+cn.Condition.Value)
-
-		return fmt.Sprintf("%s LIKE %s", field, placeholder), params, nil
 	default:
 
 		return "", nil, errors.Wrapf(ErrUnsupportedOperator, "operator: %s", op)
 	}
 }
 
-func (s *SQLGenerator) generateLogicalOpSQL(ln *LogicalOpNode) (string, []interface{}, error) {
+func (s *SQLGenerator) generateLogicalOpSQL(ln *LogicalOpNode) (string, []any, error) {
 	leftSQL, leftParams, err := s.generateSQLRecursive(ln.Left)
 	if err != nil {
 		return "", nil, errors.Wrap(err, "failed to generate left side of logical operation")
@@ -225,7 +183,7 @@ func (s *SQLGenerator) generateLogicalOpSQL(ln *LogicalOpNode) (string, []interf
 	return combinedSQL, allParams, nil
 }
 
-func (s *SQLGenerator) generateGroupSQL(gn *GroupNode) (string, []interface{}, error) {
+func (s *SQLGenerator) generateGroupSQL(gn *GroupNode) (string, []any, error) {
 	exprSQL, exprParams, err := s.generateSQLRecursive(gn.Expression)
 	if err != nil {
 		return "", nil, errors.Wrap(err, "failed to generate grouped expression")
