@@ -4,6 +4,107 @@ import (
 	"testing"
 )
 
+// DONE: Implement a lexer that will lex the filter values and produce tokens.
+// TODO: Implement a parser that uses the tokens to generate the SQL output.
+
+/*
+filter: name:eq:John
+SQL: name = ?
+Params: [John]
+
+filter: age:gte:30
+SQL: age >= ?
+Params: [30]
+
+filter: status:isnull
+SQL: status IS NULL
+Params: []
+
+filter: name:eq:John,age:gte:30
+SQL: name = ? AND age >= ?
+Params: [John 30]
+
+filter: name:eq:John|name:eq:Jane
+SQL: name = ? OR name = ?
+Params: [John Jane]
+
+filter: (name:eq:John|name:eq:Jane),age:gte:30
+SQL: (name = ? OR name = ?) AND age >= ?
+Params: [John Jane 30]
+
+filter: (category:in:(books,movies)|status:eq:active),price:lt:100
+SQL: (category IN (?, ?) OR status = ?) AND price < ?
+Params: [books movies active 100]
+
+filter: category:in:(books,movies)
+SQL: category IN (?, ?)
+Params: [books movies]
+
+filter: user_id:notin:(1,2,3)
+SQL: user_id NOT IN (?, ?, ?)
+Params: [1 2 3]
+
+filter: name:eq:John Doe
+SQL: name = ?
+Params: [John Doe]
+
+filter: category:in:(sci-fi,non-fiction)
+SQL: category IN (?, ?)
+Params: [sci-fi non-fiction]
+
+filter: email:isnotnull,age:gt:18
+SQL: email IS NOT NULL AND age > ?
+Params: [18]
+
+filter: (name:isnull|name:eq:Unknown)
+SQL: name IS NULL OR name = ?
+Params: [Unknown]
+
+filter: (name:eq:John|name:eq:Jane),(category:in:(books,movies)|status:eq:active)
+SQL: (name = ? OR name = ?) AND (category IN (?, ?) OR status = ?)
+Params: [John Jane books movies active]
+
+filter: ((status:eq:active|status:eq:pending),user_id:notin:(1,2)),price:gte:50
+SQL: ((status = ? OR status = ?) AND user_id NOT IN (?, ?)) AND price >= ?
+Params: [active pending 1 2 50]
+
+filter:
+SQL: 1=1
+Params: []
+
+filter: category:in:(single)
+SQL: category IN (?)
+Params: [single]
+
+filter: name:eq
+SQL: Error: invalid condition: name:eq
+
+filter: category:in:()
+SQL: Error: in/notin require non-empty value list: category:in:()
+
+filter: secret:eq:hack
+SQL: Error: invalid field: secret
+
+filter: name:bad:John
+SQL: Error: invalid operator: bad
+
+filter: (name:eq:John
+SQL: Error: missing closing parenthesis
+
+filter: name:eq:John)
+SQL: Error: unmatched closing parenthesis at position ...
+
+filter: category:in:(books,(nested))
+SQL: Error: nested parentheses in condition at position ...
+
+filter: name:eq:John,,age:gte:30
+SQL: Error: invalid condition at position ...
+
+filter: name:isnull:extra
+SQL: Error: isnull/isnotnull take no value: name:isnull:extra
+
+*/
+
 func TestNewLexer(t *testing.T) {
 	t.Parallel()
 
