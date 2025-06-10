@@ -168,18 +168,6 @@ func (gn *GroupNode) String() string {
 	return fmt.Sprintf("(%s)", gn.Expression.String())
 }
 
-// Operator precedence
-const (
-	LOWEST int = iota + 1
-	OR         // |
-	AND        // ,
-)
-
-var precedences = map[TokenType]int{
-	TokenPipe:  OR,
-	TokenComma: AND,
-}
-
 // Parser builds an AST from tokens.
 type Parser struct {
 	lexer   *Lexer
@@ -240,29 +228,13 @@ func (p *Parser) expectPeek(t TokenType) error {
 	return errors.Wrapf(ErrUnexpectedToken, "expected peek token to be %v, got %v instead", t, p.peek.Type)
 }
 
-func (p *Parser) currentPrecedence() int {
-	if p, ok := precedences[p.current.Type]; ok {
-		return p
-	}
-
-	return LOWEST
-}
-
-func (p *Parser) peekPrecedence() int {
-	if p, ok := precedences[p.peek.Type]; ok {
-		return p
-	}
-
-	return LOWEST
-}
-
 // Parse is the main entry point for parsing the filter string.
 func (p *Parser) Parse() (ExpressionNode, error) {
 	if p.current.Type == TokenEOF && p.peek.Type == TokenEOF {
 		return nil, nil
 	}
 
-	expression, err := p.parseExpression(LOWEST)
+	expression, err := p.parseExpression()
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +246,7 @@ func (p *Parser) Parse() (ExpressionNode, error) {
 	return expression, nil
 }
 
-func (p *Parser) parseExpression(precedence int) (ExpressionNode, error) {
+func (p *Parser) parseExpression() (ExpressionNode, error) {
 	prefix := p.prefixParseFns[p.current.Type]
 	if prefix == nil {
 		return nil, errors.Wrapf(ErrExpectedExpression, "no prefix parse function for token type %v (value: '%s')", p.current.Type, p.current.Value)
@@ -285,7 +257,7 @@ func (p *Parser) parseExpression(precedence int) (ExpressionNode, error) {
 		return nil, err
 	}
 
-	for p.peek.Type != TokenEOF && precedence < p.peekPrecedence() {
+	for p.peek.Type == TokenComma || p.peek.Type == TokenPipe {
 		infix := p.infixParseFns[p.peek.Type]
 		if infix == nil {
 			// This means we have a token that should be an infix operator but isn't registered,
@@ -319,12 +291,11 @@ func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, erro
 		return nil, errors.Wrapf(ErrUnexpectedToken, "unexpected token %v for infix operator", p.current.Type)
 	}
 
-	precedence := p.currentPrecedence()
 	if err := p.advance(); err != nil {
 		return nil, err
 	}
 	var err error
-	node.Right, err = p.parseExpression(precedence)
+	node.Right, err = p.parseExpression()
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +372,7 @@ func (p *Parser) parseGroupedExpression() (ExpressionNode, error) {
 		return nil, errors.Wrap(ErrExpectedExpression, "empty group '()' is not allowed")
 	}
 
-	expression, err := p.parseExpression(LOWEST)
+	expression, err := p.parseExpression()
 	if err != nil {
 		return nil, err
 	}
