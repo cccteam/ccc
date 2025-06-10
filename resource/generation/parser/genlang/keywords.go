@@ -36,6 +36,7 @@ var keywords = map[keyword]keywordOpts{
 	Substring:   {scanField: argsRequired},
 	Fulltext:    {scanField: argsRequired},
 	Ngram:       {scanField: argsRequired},
+	Index:       {scanStruct: argsRequired, scanField: noArgs},
 	UniqueIndex: {scanStruct: argsRequired, scanField: noArgs},
 	View:        {scanStruct: noArgs | exclusive},
 	Query:       {scanStruct: argsRequired | exclusive},
@@ -54,6 +55,7 @@ const (
 	Substring   keyword = "substring"
 	Fulltext    keyword = "fulltext"
 	Ngram       keyword = "ngram"
+	Index       keyword = "index"
 	UniqueIndex keyword = "uniqueindex"
 	View        keyword = "view"  // Designates a struct as a view
 	Query       keyword = "query" // The query to be used for a view. Required if @view is used.

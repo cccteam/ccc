@@ -39,6 +39,7 @@ type schemaIndex struct {
 type indexType string
 
 const (
+	normalIndexType indexType = ""
 	uniqueIndexType indexType = "UNIQUE"
 	searchIndexType indexType = "SEARCH"
 )
@@ -201,6 +202,16 @@ func (s *schemaTable) resolveStructComments(comments map[genlang.Keyword][]*genl
 				s.ForeignKeys = append(s.ForeignKeys, foreignKeyConstraint{sourceExpression, refTable, refColumns})
 			}
 
+		case genlang.Index:
+			for _, arg := range args {
+				indexArg := strings.ReplaceAll(arg.Arg1, " ", "")
+				indexArg = strings.ReplaceAll(indexArg, ",", "And")
+
+				name := fmt.Sprintf("%sBy%s", s.Name, indexArg)
+
+				s.Indexes = append(s.Indexes, schemaIndex{Name: name, Type: normalIndexType, Argument: arg.Arg1})
+			}
+
 		case genlang.UniqueIndex:
 			for _, arg := range args {
 				uniqueIndexArg := strings.ReplaceAll(arg.Arg1, " ", "")
@@ -260,6 +271,11 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[genlan
 				argument := strings.ReplaceAll(arg.Arg1, "@self", column.Name)
 				s.SearchTokens = append(s.SearchTokens, searchExpression{resource.FilterType(keyword.String()), argument})
 			}
+
+		case genlang.Index:
+			name := fmt.Sprintf("%sBy%s", s.Name, column.Name)
+
+			s.Indexes = append(s.Indexes, schemaIndex{Name: name, Type: normalIndexType, Argument: column.Name})
 
 		case genlang.UniqueIndex:
 			name := fmt.Sprintf("%sBy%s", s.Name, column.Name)
