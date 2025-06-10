@@ -1,11 +1,12 @@
 package resource
 
 import (
+	"strings"
 	"testing"
 )
 
 // DONE: Implement a lexer that will lex the filter values and produce tokens.
-// TODO: Implement a parser that uses the tokens to generate the SQL output.
+// DONE: Implement a parser that uses the tokens to generate the SQL output.
 
 /*
 filter: name:eq:John
@@ -305,6 +306,13 @@ func TestNewLexer(t *testing.T) {
 			},
 		},
 		{
+			name: "empty input",
+			args: args{
+				input: "",
+			},
+			want: []Token{}, // Expect no tokens, NextToken should yield TokenEOF immediately
+		},
+		{
 			name: "1=1",
 			args: args{
 				input: "1=1",
@@ -327,22 +335,223 @@ func TestNewLexer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Write the test
 			l := NewLexer(tt.args.input)
 			var tokens []Token
 			for {
-				token, err := l.NextToken()
-				if err != nil {
+				// Lexer's NextToken now returns TokenEOF, error is only for true lexing errors
+				token, lexErr := l.NextToken()
+				if lexErr != nil {
+					// This indicates an actual error from the lexer itself, not just EOF
+					t.Fatalf("l.NextToken() returned error: %v", lexErr)
+				}
+				if token.Type == TokenEOF { // Check for TokenEOF to break loop
 					break
 				}
 				tokens = append(tokens, token)
 			}
+
 			if len(tokens) != len(tt.want) {
-				t.Errorf("NewLexer() = %v, want %v", tokens, tt.want)
+				t.Errorf("Collected tokens = %v, want %v. Count mismatch: got %d, want %d", tokens, tt.want, len(tokens), len(tt.want))
 			}
 			for i := range tokens {
-				if i >= len(tt.want) || tokens[i] != tt.want[i] {
-					t.Errorf("NewLexer() = %v, want %v", tokens, tt.want)
+				if i >= len(tt.want) { // Should be caught by len check above, but defensive
+					t.Errorf("Token mismatch: index %d out of bounds for wanted tokens", i)
+					break
+				}
+				if tokens[i] != tt.want[i] {
+					t.Errorf("Token mismatch at index %d: got %v, want %v", i, tokens[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestParser_Parse_Errors(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		filterString string
+		wantErrMsg   string // Expected substring in the error message
+	}{
+		{
+			name:         "invalid condition - missing value",
+			filterString: "name:eq",
+			wantErrMsg:   "operator 'eq' requires a value", // More specific actual error
+		},
+		{
+			name:         "invalid condition - empty field",
+			filterString: ":eq:value",
+			wantErrMsg:   "field name cannot be empty",
+		},
+		{
+			name:         "in operator with empty value list",
+			filterString: "category:in:()",
+			wantErrMsg:   "value list for 'in' cannot be empty",
+		},
+		{
+			name:         "notin operator with empty value list",
+			filterString: "category:notin:()",
+			wantErrMsg:   "value list for 'notin' cannot be empty",
+		},
+		{
+			name:         "unknown operator",
+			filterString: "name:badop:John",
+			wantErrMsg:   "unknown operator",
+		},
+		{
+			name:         "missing closing parenthesis",
+			filterString: "(name:eq:John",
+			wantErrMsg:   "expected peek token to be 2, got 0", // TokenRParen vs TokenEOF
+		},
+		{
+			name:         "unmatched closing parenthesis at start",
+			filterString: ")name:eq:John",
+			wantErrMsg:   "no prefix parse function for token type 2", // TokenRParen is 2
+		},
+		{
+			name:         "unmatched closing parenthesis after expression",
+			filterString: "name:eq:John)",
+			// This is tricky: "name:eq:John" is a valid expression. The trailing ")" is unexpected *after* a full expression.
+			wantErrMsg: "expected EOF after parsing, got 2", // 2 is TokenRParen
+		},
+		{
+			name:         "nested parentheses in condition token - lexer error",
+			filterString: "category:in:(books,(nested))",
+			// This error is now caught by the Lexer's NextToken method directly. Note: wantErrMsg must match lexer's output.
+			// The parser won't even receive valid tokens to start parsing in this case.
+			// So, we test this by checking NewParser's initialization or first advance.
+			// For the purpose of TestParser_Parse_Errors, we assume lexing was successful
+			// and focus on parser-level errors. This specific case is more for lexer tests.
+			// However, if the lexer *did* produce such a token, parser would try to parse it.
+			// Let's assume the lexer somehow passed it (e.g. if validation was less strict).
+			// The current SplitN in parseConditionToken might just misinterpret it.
+			// A more robust test for this exact string would be in Lexer tests.
+			// For parser, let's assume a condition token *value* is malformed.
+			// The current lexer error is: "nested parentheses in condition token at position..."
+			// This means parser.Parse() would likely get an error from `p.advance()` if lexer fails.
+			// Let's simulate a slightly different parser error: an unparseable condition.
+			// This test case will be handled differently below due to its lexer-specific nature.
+			wantErrMsg: "nested parentheses in condition token",
+		},
+		{
+			name:         "unexpected token - double comma",
+			filterString: "name:eq:John,,age:gte:30",
+			wantErrMsg:   "no prefix parse function for token type 3", // TokenType 3 is TokenComma, parser expects expression or operator
+		},
+		{
+			name:         "operator isnull with value",
+			filterString: "name:isnull:extra",
+			wantErrMsg:   "operator 'isnull' does not take a value",
+		},
+		{
+			name:         "operator isnotnull with value",
+			filterString: "name:isnotnull:extra",
+			wantErrMsg:   "operator 'isnotnull' does not take a value",
+		},
+		{
+			name:         "empty group",
+			filterString: "()",
+			wantErrMsg:   "empty group '()' is not allowed",
+		},
+		{
+			name:         "group with only operator",
+			filterString: "(,)",
+			wantErrMsg:   "no prefix parse function for token type 3", // TokenComma
+		},
+		{
+			name:         "trailing operator comma",
+			filterString: "name:eq:John,",
+			wantErrMsg:   "no prefix parse function for token type 0", // TokenEOF
+		},
+		{
+			name:         "trailing operator pipe",
+			filterString: "name:eq:John|",
+			wantErrMsg:   "no prefix parse function for token type 0", // TokenEOF
+		},
+		{
+			name:         "leading operator comma",
+			filterString: ",name:eq:John",
+			wantErrMsg:   "no prefix parse function for token type 3", // TokenComma is 3
+		},
+		{
+			name:         "leading operator pipe",
+			filterString: "|name:eq:John",
+			wantErrMsg:   "no prefix parse function for token type 4", // TokenPipe is 4
+		},
+		{
+			name:         "condition with invalid value format for in",
+			filterString: "field:in:novalue",
+			wantErrMsg:   "value for 'in' must be in parentheses",
+		},
+		{
+			name:         "condition with invalid value format for notin (missing closing paren)",
+			filterString: "field:notin:(v1,v2",
+			wantErrMsg:   "value for 'notin' must be in parentheses",
+		},
+		{
+			name:         "condition with empty item in 'in' list",
+			filterString: "field:in:(v1,,v2)",
+			wantErrMsg:   "empty value in list for operator 'in'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			lexer := NewLexer(tt.filterString)
+			parser, initErr := NewParser(lexer) // NewParser itself can't error with current design unless lexer does on advance
+
+			// Special handling for the lexer error case
+			if tt.name == "nested parentheses in condition token - lexer error" {
+				l := NewLexer(tt.filterString)
+				var lexErr error
+				// The error might not be the first token, e.g. "field:op:(val,(nested))"
+				for i := 0; i < 5; i++ { // Try to find the error within a few tokens
+					_, lexErr = l.NextToken()
+					if lexErr != nil {
+						break
+					}
+				}
+				if lexErr == nil {
+					t.Errorf("Expected lexer error for '%s', but got nil", tt.filterString)
+				} else if !strings.Contains(lexErr.Error(), tt.wantErrMsg) { // tt.wantErrMsg is "nested parentheses in condition token"
+					t.Errorf("Lexer error = %v, wantErrMsg substring %q", lexErr, tt.wantErrMsg)
+				}
+				return // Done with this specific test case
+			}
+
+			// General parser error handling
+			if initErr != nil {
+				// This case is unlikely now as NewParser collects errors rather than returning them directly
+				if !strings.Contains(initErr.Error(), tt.wantErrMsg) {
+					t.Fatalf("NewParser() init error = %v, wantErrMsg %s", initErr, tt.wantErrMsg)
+				}
+				return
+			}
+
+			_, parseErr := parser.Parse()
+
+			if parseErr == nil {
+				// If Parse() returns nil, check if errors were collected in the parser
+				collectedErrors := parser.Errors()
+				if len(collectedErrors) > 0 {
+					found := false
+					for _, e := range collectedErrors {
+						if strings.Contains(e.Error(), tt.wantErrMsg) {
+							found = true
+							break
+						}
+					}
+					if !found {
+						t.Errorf("parser.Parse() error = nil, collected errors = %v, wantErrMsg substring %q", collectedErrors, tt.wantErrMsg)
+					}
+				} else {
+					t.Errorf("parser.Parse() error = nil, wantErrMsg substring %q", tt.wantErrMsg)
+				}
+			} else {
+				// If Parse() returns an error, check it
+				if !strings.Contains(parseErr.Error(), tt.wantErrMsg) {
+					t.Errorf("parser.Parse() error = %q, wantErrMsg substring %q", parseErr.Error(), tt.wantErrMsg)
 				}
 			}
 		})
