@@ -82,6 +82,18 @@ func (i testQueryIdent[T]) GreaterThan(v T) testQueryExpr {
 	return testQueryExpr{expr: i.Ident.GreaterThan(v)}
 }
 
+func (i testQueryIdent[T]) GreaterThanEq(v T) testQueryExpr {
+	return testQueryExpr{expr: i.Ident.GreaterThanEq(v)}
+}
+
+func (i testQueryIdent[T]) LessThan(v T) testQueryExpr {
+	return testQueryExpr{expr: i.Ident.LessThan(v)}
+}
+
+func (i testQueryIdent[T]) LessThanEq(v T) testQueryExpr {
+	return testQueryExpr{expr: i.Ident.LessThanEq(v)}
+}
+
 func (i testQueryIdent[T]) IsNull() testQueryExpr {
 	return testQueryExpr{expr: i.Ident.IsNull()}
 }
@@ -165,6 +177,107 @@ func Test_QueryClause(t *testing.T) {
 			wantSQL: "Name = @Name AND Name IS NOT NULL",
 			wantParams: map[string]any{
 				"Name": "test",
+			},
+		},
+		{
+			name:    "GreaterThanEq",
+			filter:  newTestQuery().Where(newTestQueryFilter().ID().GreaterThanEq(5)),
+			wantSQL: "ID >= @ID",
+			wantParams: map[string]any{
+				"ID": 5,
+			},
+		},
+		{
+			name:    "LessThan",
+			filter:  newTestQuery().Where(newTestQueryFilter().ID().LessThan(10)),
+			wantSQL: "ID < @ID",
+			wantParams: map[string]any{
+				"ID": 10,
+			},
+		},
+		{
+			name:    "LessThanEq",
+			filter:  newTestQuery().Where(newTestQueryFilter().ID().LessThanEq(15)),
+			wantSQL: "ID <= @ID",
+			wantParams: map[string]any{
+				"ID": 15,
+			},
+		},
+		{
+			name:    "IN clause with multiple integer values",
+			filter:  newTestQuery().Where(newTestQueryFilter().ID().Equal(5, 6, 7)),
+			wantSQL: "ID IN (@ID, @ID1, @ID2)",
+			wantParams: map[string]any{
+				"ID":  5,
+				"ID1": 6,
+				"ID2": 7,
+			},
+		},
+		{
+			name:    "NOT IN clause with multiple string values",
+			filter:  newTestQuery().Where(newTestQueryFilter().Name().NotEqual("abc", "def")),
+			wantSQL: "Name NOT IN (@Name, @Name1)",
+			wantParams: map[string]any{
+				"Name":  "abc",
+				"Name1": "def",
+			},
+		},
+		{
+			name: "complex nested grouped conditions",
+			filter: newTestQuery().Where(
+				newTestQueryFilter().Group(newTestQueryFilter().ID().Equal(1).And().Name().Equal("X")).Or().Group(newTestQueryFilter().ID().Equal(2).Or().Group(newTestQueryFilter().Name().Equal("Y").And().ID().Equal(3))),
+			),
+			wantSQL: "(ID = @ID AND Name = @Name) OR (ID = @ID1 OR (Name = @Name1 AND ID = @ID2))",
+			wantParams: map[string]any{
+				"ID":    1,
+				"Name":  "X",
+				"ID1":   2,
+				"Name1": "Y",
+				"ID2":   3,
+			},
+		},
+		{
+			name:       "nil whereClause (no .Where called)",
+			filter:     newTestQuery(),
+			wantSQL:    "",
+			wantParams: map[string]any{},
+		},
+		{
+			name:       "whereClause with nil tree",
+			filter:     newTestQuery().Where(testQueryExpr{expr: QueryClause{tree: nil}}),
+			wantSQL:    "",
+			wantParams: map[string]any{},
+		},
+		{
+			name: "parameter generation with many repeated column names",
+			filter: newTestQuery().Where(
+				newTestQueryFilter().ID().Equal(0).
+					Or().ID().Equal(1).
+					Or().ID().Equal(2).
+					Or().ID().Equal(3).
+					Or().ID().Equal(4).
+					Or().ID().Equal(5).
+					Or().ID().Equal(6).
+					Or().ID().Equal(7).
+					Or().ID().Equal(8).
+					Or().ID().Equal(9).
+					Or().ID().Equal(10).
+					Or().ID().Equal(11),
+			),
+			wantSQL: "ID = @ID OR ID = @ID1 OR ID = @ID2 OR ID = @ID3 OR ID = @ID4 OR ID = @ID5 OR ID = @ID6 OR ID = @ID7 OR ID = @ID8 OR ID = @ID9 OR ID = @ID10 OR ID = @ID11",
+			wantParams: map[string]any{
+				"ID":   0,
+				"ID1":  1,
+				"ID2":  2,
+				"ID3":  3,
+				"ID4":  4,
+				"ID5":  5,
+				"ID6":  6,
+				"ID7":  7,
+				"ID8":  8,
+				"ID9":  9,
+				"ID10": 10,
+				"ID11": 11,
 			},
 		},
 	}
