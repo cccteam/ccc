@@ -1296,42 +1296,42 @@ var conversionTemplateMap map[conversionFlag]string = map[conversionFlag]string{
 	}
 
 	return ccc.Ptr(val.String())`,
-	fromInt | toBool: `switch x.{{ .Column.Name }} {
+	fromInt | toBool: `switch x.{{ .Column.GoName }} {
 		case 0:
 			return true
 		case 1:
 			return false
 		default:
-			panic(fmt.Sprintf("Unsupported IntTo[bool] value: \"%d\"", x.{{ .Column.Name }}))
+			panic(fmt.Sprintf("Unsupported IntTo[bool] value: \"%d\"", x.{{ .Column.GoName }}))
 	}`,
-	fromInt | toBool | pointer: `if x.{{ .Column.Name }} == nil {
+	fromInt | toBool | pointer: `if x.{{ .Column.GoName }} == nil {
 		return false
 	}
 
-	switch *x.{{ .Column.Name }} {
+	switch *x.{{ .Column.GoName }} {
 		case 0: return true
 		case 1: return false
-		default: panic(fmt.Sprintf("Unsupported IntTo[bool] value: \"%d\"", *x.{{ .Column.Name }}))
+		default: panic(fmt.Sprintf("Unsupported IntTo[bool] value: \"%d\"", *x.{{ .Column.GoName }}))
 	}`,
-	fromString | toBool: `switch x.{{ .Column.Name }} {
+	fromString | toBool: `switch x.{{ .Column.GoName }} {
 		case "Y":
 			return true
 		case "N":
 			return false
 		default:
-			panic(fmt.Sprintf("Unsupported StringTo[bool] value: %q", x.{{ .Column.Name }}))
+			panic(fmt.Sprintf("Unsupported StringTo[bool] value: %q", x.{{ .Column.GoName }}))
 	}`,
-	fromString | toBool | pointer: `if x.{{ .Column.Name }} == nil {
+	fromString | toBool | pointer: `if x.{{ .Column.GoName }} == nil {
 		return false
 	}
 		
-	switch *x.{{ .Column.Name }} {
+	switch *x.{{ .Column.GoName }} {
 		case "Y":
 			return true
 		case "N":
 			return false
 		default:
-			panic(fmt.Sprintf("Unsupported StringTo[bool] value: %q", *x.{{ .Column.Name }}))
+			panic(fmt.Sprintf("Unsupported StringTo[bool] value: %q", *x.{{ .Column.GoName }}))
 	}`,
 	// TODO(jrowland): populate with all the combinations we need right now
 }
