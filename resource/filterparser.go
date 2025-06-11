@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -21,6 +22,8 @@ var (
 	ErrExpectedRightParen     = stderr.New("expected ')'")
 	ErrInvalidValueFormat     = stderr.New("invalid value format for operator")
 )
+
+//go:generate go run golang.org/x/tools/cmd/stringer -type=TokenType
 
 // TokenType defines the types of tokens in the filter string.
 type TokenType int
@@ -180,6 +183,12 @@ type (
 	infixParseFn  func(ExpressionNode) (ExpressionNode, error)
 )
 
+type FieldInfo struct {
+	Name      string
+	Kind      reflect.Kind
+	FieldType reflect.Type
+}
+
 // Parser builds an AST from tokens.
 type Parser struct {
 	lexer   *Lexer
@@ -230,7 +239,7 @@ func (p *Parser) Parse() (ExpressionNode, error) {
 	}
 
 	if p.peek.Type != TokenEOF {
-		return nil, errors.Wrapf(ErrUnexpectedToken, "expected EOF after parsing, got %v", p.peek.Type)
+		return nil, errors.Wrapf(ErrUnexpectedToken, "expected EOF after parsing, got %s", p.peek.Type)
 	}
 
 	return expression, nil
@@ -252,13 +261,13 @@ func (p *Parser) expectPeek(t TokenType) error {
 		return p.advance()
 	}
 
-	return errors.Wrapf(ErrUnexpectedToken, "expected peek token to be %v, got %v instead", t, p.peek.Type)
+	return httpio.NewBadRequestMessageWithErrorf(ErrUnexpectedToken, "expected next token to be %s, got %s instead", t, p.peek.Type)
 }
 
 func (p *Parser) parseExpression() (ExpressionNode, error) {
 	prefix := p.prefixParseFns[p.current.Type]
 	if prefix == nil {
-		return nil, errors.Wrapf(ErrExpectedExpression, "no prefix parse function for token type %v (value: '%s')", p.current.Type, p.current.Value)
+		return nil, errors.Wrapf(ErrExpectedExpression, "no prefix parse function for %s (value: '%s')", p.current.Type, p.current.Value)
 	}
 
 	leftExp, err := prefix()
@@ -272,7 +281,7 @@ func (p *Parser) parseExpression() (ExpressionNode, error) {
 			// This means we have a token that should be an infix operator but isn't registered,
 			// or it's a token that shouldn't appear in an infix position.
 			// For example, two conditions back-to-back without an operator.
-			return nil, errors.Wrapf(ErrUnexpectedToken, "expected operator, got %v (value: '%s')", p.peek.Type, p.peek.Value)
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrUnexpectedToken, "expected operator, got '%s'", p.peek.Value)
 		}
 		if err := p.advance(); err != nil { // Consume the operator
 			return nil, err
@@ -297,7 +306,7 @@ func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, erro
 	case TokenPipe:
 		node.Operator = OperatorOr
 	default:
-		return nil, errors.Wrapf(ErrUnexpectedToken, "unexpected token %v for infix operator", p.current.Type)
+		return nil, errors.Wrapf(ErrUnexpectedToken, "unexpected token %s for infix operator", p.current.Type)
 	}
 
 	if err := p.advance(); err != nil {
@@ -318,17 +327,17 @@ func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, erro
 func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 	parts := strings.SplitN(p.current.Value, ":", 3)
 	if len(parts) < 2 {
-		return nil, errors.Wrapf(ErrInvalidConditionFormat, "condition '%s' must have at least field:operator", p.current.Value)
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidConditionFormat, "condition '%s' must have at least field:operator", p.current.Value)
 	}
 
 	jsonFieldName := strings.TrimSpace(parts[0])
 	if jsonFieldName == "" {
-		return nil, errors.Wrapf(ErrInvalidConditionFormat, "field name cannot be empty in condition '%s'", p.current.Value)
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidConditionFormat, "field name cannot be empty in condition '%s'", p.current.Value)
 	}
 
 	fieldInfo, found := p.jsonToFieldInfo[jsonFieldName]
 	if !found {
-		return nil, errors.Wrapf(ErrInvalidFieldName, "'%s' in condition '%s'", jsonFieldName, p.current.Value)
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidFieldName, "'%s' is not indexed but was included in condition '%s'", jsonFieldName, p.current.Value)
 	}
 
 	condition := Condition{
@@ -339,29 +348,38 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 	switch condition.Operator {
 	case "isnull", "isnotnull":
 		if len(parts) > 2 && strings.TrimSpace(parts[2]) != "" {
-			return nil, errors.Wrapf(ErrInvalidConditionFormat, "operator '%s' does not take a value, but got '%s'", condition.Operator, parts[2])
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidConditionFormat, "operator '%s' does not take a value, but got '%s' in condition '%s'", condition.Operator, parts[2], p.current.Value)
 		}
 		condition.IsNullOp = true
 	case "in", "notin":
 		if len(parts) < 3 {
-			return nil, errors.Wrapf(ErrMissingValue, "operator '%s' requires a value part", condition.Operator)
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrMissingValue, "operator '%s' requires a value part in condition '%s'	", condition.Operator, p.current.Value)
 		}
 		valPart := strings.TrimSpace(parts[2])
 		if !strings.HasPrefix(valPart, "(") || !strings.HasSuffix(valPart, ")") {
-			return nil, errors.Wrapf(ErrInvalidValueFormat, "value for '%s' must be in parentheses, e.g., (v1,v2), got '%s'", condition.Operator, valPart)
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "value for '%s' must be in parentheses, e.g., (v1,v2), got '%s' in condition '%s'", condition.Operator, valPart, p.current.Value)
 		}
 		valPart = valPart[1 : len(valPart)-1] // Remove parentheses
 		if valPart == "" {                    // e.g. name:in:()
-			return nil, errors.Wrapf(ErrInvalidValueFormat, "value list for '%s' cannot be empty", condition.Operator)
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "value list for '%s' cannot be empty in condition '%s'", condition.Operator, p.current.Value)
 		}
 		values := strings.Split(valPart, ",")
 		condition.Values = make([]any, 0, len(values))
 		for _, v := range values {
 			trimmed := strings.TrimSpace(v)
 			if trimmed == "" { // e.g. name:in:(v1,,v2)
-				return nil, errors.Wrapf(ErrInvalidValueFormat, "empty value in list for operator '%s'", condition.Operator)
+				return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "empty value in list for operator '%s' in condition '%s'", condition.Operator, p.current.Value)
 			}
-			typedValue, err := p.convertValue(trimmed, fieldInfo.Kind)
+
+			valueKind := fieldInfo.Kind
+			if valueKind == reflect.Slice || valueKind == reflect.Array {
+				if fieldInfo.FieldType == nil {
+					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", fieldInfo.Name)
+				}
+				valueKind = fieldInfo.FieldType.Elem().Kind()
+			}
+
+			typedValue, err := p.convertValue(trimmed, valueKind)
 			if err != nil {
 				return nil, err
 			}
@@ -369,7 +387,7 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 		}
 	case "eq", "ne", "gt", "lt", "gte", "lte":
 		if len(parts) < 3 {
-			return nil, errors.Wrapf(ErrMissingValue, "operator '%s' requires a value", condition.Operator)
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrMissingValue, "operator '%s' requires a value in condition '%s'", condition.Operator, p.current.Value)
 		}
 		strValue := strings.TrimSpace(parts[2])
 		typedValue, err := p.convertValue(strValue, fieldInfo.Kind)
@@ -378,7 +396,7 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 		}
 		condition.Value = typedValue
 	default:
-		return nil, errors.Wrapf(ErrUnknownOperator, "'%s' in condition '%s'", condition.Operator, p.current.Value)
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrUnknownOperator, "unknown operator '%s' in condition '%s'", condition.Operator, p.current.Value)
 	}
 
 	return &ConditionNode{Condition: condition}, nil
@@ -392,19 +410,19 @@ func (p *Parser) convertValue(strValue string, kind reflect.Kind) (any, error) {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i, err := strconv.Atoi(strValue)
 		if err != nil {
-			return nil, errors.Wrapf(ErrInvalidValueFormat, "value '%s' is not a valid integer: %v", strValue, err)
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "value '%s' in condition '%s' is not a valid integer: %v", strValue, p.current.Value, err)
 		}
 		return i, nil
 	case reflect.Bool:
 		b, err := strconv.ParseBool(strValue)
 		if err != nil {
-			return nil, errors.Wrapf(ErrInvalidValueFormat, "value '%s' is not a valid boolean: %v", strValue, err)
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "value '%s' in condition '%s' is not a valid boolean: %v", strValue, p.current.Value, err)
 		}
 		return b, nil
 	case reflect.Float32, reflect.Float64:
 		f, err := strconv.ParseFloat(strValue, 64)
 		if err != nil {
-			return nil, errors.Wrapf(ErrInvalidValueFormat, "value '%s' is not a valid float: %v", strValue, err)
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "value '%s' in condition '%s' is not a valid float: %v", strValue, p.current.Value, err)
 		}
 		if kind == reflect.Float32 {
 			return float32(f), nil

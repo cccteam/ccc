@@ -318,22 +318,22 @@ func TestParser_Parse_Errors(t *testing.T) {
 		{
 			name:         "missing closing parenthesis",
 			filterString: "(name:eq:John",
-			wantErrMsg:   "expected peek token to be 2, got 0 instead",
+			wantErrMsg:   "expected next token to be TokenRParen, got TokenEOF instead",
 		},
 		{
 			name:         "unmatched closing parenthesis at start",
 			filterString: ")name:eq:John",
-			wantErrMsg:   "no prefix parse function for token type 2",
+			wantErrMsg:   "no prefix parse function for TokenRParen (value: ')')",
 		},
 		{
 			name:         "unmatched closing parenthesis after expression",
 			filterString: "name:eq:John)",
-			wantErrMsg:   "expected EOF after parsing, got 2",
+			wantErrMsg:   "expected EOF after parsing, got TokenRParen",
 		},
 		{
 			name:         "unexpected token - double comma",
 			filterString: "name:eq:John,,age:gte:30",
-			wantErrMsg:   "no prefix parse function for token type 3",
+			wantErrMsg:   "no prefix parse function for TokenComma (value: ',')",
 		},
 		{
 			name:         "operator isnull with value",
@@ -353,27 +353,27 @@ func TestParser_Parse_Errors(t *testing.T) {
 		{
 			name:         "group with only operator",
 			filterString: "(,)",
-			wantErrMsg:   "no prefix parse function for token type 3",
+			wantErrMsg:   "no prefix parse function for TokenComma (value: ',')",
 		},
 		{
 			name:         "trailing operator comma",
 			filterString: "name:eq:John,",
-			wantErrMsg:   "no prefix parse function for token type 0",
+			wantErrMsg:   "no prefix parse function for TokenEOF (value: '')",
 		},
 		{
 			name:         "trailing operator pipe",
 			filterString: "name:eq:John|",
-			wantErrMsg:   "no prefix parse function for token type 0",
+			wantErrMsg:   "no prefix parse function for TokenEOF (value: '')",
 		},
 		{
 			name:         "leading operator comma",
 			filterString: ",name:eq:John",
-			wantErrMsg:   "no prefix parse function for token type 3",
+			wantErrMsg:   "no prefix parse function for TokenComma (value: ',')",
 		},
 		{
 			name:         "leading operator pipe",
 			filterString: "|name:eq:John",
-			wantErrMsg:   "no prefix parse function for token type 4",
+			wantErrMsg:   "no prefix parse function for TokenPipe (value: '|')",
 		},
 		{
 			name:         "condition with invalid value format for in",

@@ -18,11 +18,6 @@ type (
 	UserFromCtx   func(context.Context) accesstypes.User
 )
 
-type FieldInfo struct {
-	Name string
-	Kind reflect.Kind
-}
-
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
@@ -103,9 +98,9 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 	}
 
 	if filterStr := query.Get("filter"); filterStr != "" {
-		parsedAST, err = d.parseFilterExpression(filterStr)
+		parsedAST, err = d.parseFilterExpression(d.filterKeys, filterStr)
 		if err != nil {
-			return columnFields, nil, nil, httpio.NewBadRequestMessagef("invalid filter query: %s", err.Error())
+			return columnFields, nil, nil, err
 		}
 
 		delete(query, "filter")
@@ -128,15 +123,32 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 }
 
 // parseFilterExpression parses the filter string and returns an AST.
-func (d *QueryDecoder[Resource, Request]) parseFilterExpression(filterStr string) (ExpressionNode, error) {
+func (d *QueryDecoder[Resource, Request]) parseFilterExpression(searchKeys *FilterKeys, filterStr string) (ExpressionNode, error) {
 	jsonToFieldInfoMap := make(map[string]FieldInfo)
 	resourceMetadata := d.resourceSet.ResourceMetadata()
 
-	for jsonTag, structFieldName := range d.requestFieldMapper.jsonTagToFields {
+	for searchKey, searchKeyType := range searchKeys.keys {
+		if searchKeyType != Index {
+			continue
+		}
+		jsonTag := searchKey.String()
+
+		structFieldName, _ := d.requestFieldMapper.StructFieldName(jsonTag)
 		if cacheEntry, found := resourceMetadata.fieldMap[structFieldName]; found {
+			fieldType, found := d.filterKeys.types[FilterKey(structFieldName)]
+			if !found {
+				return nil, errors.Newf("type not found in filterKeys for request struct field: %s (json tag: %s)", structFieldName, jsonTag)
+			}
+
+			fieldKind := fieldType.Kind()
+			if fieldKind == reflect.Pointer {
+				fieldKind = fieldType.Elem().Kind()
+			}
+
 			jsonToFieldInfoMap[jsonTag] = FieldInfo{
-				Name: cacheEntry.tag,
-				Kind: d.filterKeys.kinds[FilterKey(structFieldName)],
+				Name:      cacheEntry.tag,
+				Kind:      fieldKind,
+				FieldType: fieldType,
 			}
 		}
 	}
@@ -162,14 +174,14 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 	filterValues := make(map[FilterKey]string)
 	filterKinds := make(map[FilterKey]reflect.Kind)
 	var typ FilterType
-	for searchKey := range searchKeys.keys {
+	for searchKey, searchKeyType := range searchKeys.keys {
 		if paramCount := len(queryParams[string(searchKey)]); paramCount == 0 {
 			continue
 		} else if paramCount > 1 {
 			return nil, queryParams, httpio.NewBadRequestMessagef("only one search parameter is allowed, found: %v", queryParams[string(searchKey)])
 		}
 
-		switch searchKeys.keys[searchKey] {
+		switch searchKeyType {
 		case SubString, Ngram, FullText:
 			filterValues[searchKey] = queryParams.Get(searchKey.String())
 
@@ -183,16 +195,27 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 			columnName := FilterKey(cacheEntry.tag)
 
 			filterValues[columnName] = queryParams.Get(searchKey.String())
-			filterKinds[columnName] = searchKeys.kinds[FilterKey(field)]
+
+			// Get the type from filterKeys.types using the request struct field name
+			fieldType, found := searchKeys.types[FilterKey(field)]
+			if !found {
+				return nil, queryParams, httpio.NewBadRequestMessagef("type for field %s not found in filterKeys", field)
+			}
+			// For legacy filters, store the Kind (dereferenced if pointer)
+			if fieldType.Kind() == reflect.Pointer {
+				filterKinds[columnName] = fieldType.Elem().Kind()
+			} else {
+				filterKinds[columnName] = fieldType.Kind()
+			}
 
 		default:
-			return nil, queryParams, httpio.NewBadRequestMessagef("search type not implemented: %s", searchKeys.keys[searchKey])
+			return nil, queryParams, httpio.NewBadRequestMessagef("search type not implemented: %s", searchKeyType)
 		}
 
 		if typ == "" {
-			typ = searchKeys.keys[searchKey]
-		} else if typ != searchKeys.keys[searchKey] {
-			return nil, queryParams, httpio.NewBadRequestMessagef("only one search type is allowed, found: %s and %s", typ, searchKeys.keys[searchKey])
+			typ = searchKeyType
+		} else if typ != searchKeyType {
+			return nil, queryParams, httpio.NewBadRequestMessagef("only one search type is allowed, found: %s and %s", typ, searchKeyType)
 		}
 
 		delete(queryParams, string(searchKey))
