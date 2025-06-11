@@ -12,6 +12,7 @@ var (
 	ErrInvalidConditionFormat = errors.New("invalid condition format")
 	ErrUnknownOperator        = errors.New("unknown operator")
 	ErrMissingValue           = errors.New("missing value for operator")
+	ErrInvalidFieldName       = errors.New("invalid field name")
 	ErrUnexpectedToken        = errors.New("unexpected token")
 	ErrExpectedExpression     = errors.New("expected an expression")
 	ErrExpectedRightParen     = errors.New("expected ')'")
@@ -179,15 +180,17 @@ type Parser struct {
 	current Token
 	peek    Token
 
-	prefixParseFns map[TokenType]prefixParseFn
-	infixParseFns  map[TokenType]infixParseFn
+	prefixParseFns   map[TokenType]prefixParseFn
+	infixParseFns    map[TokenType]infixParseFn
+	jsonToSqlNameMap map[string]string
 }
 
-func NewParser(lexer *Lexer) (*Parser, error) {
+func NewParser(lexer *Lexer, jsonToSqlNameMap map[string]string) (*Parser, error) {
 	p := &Parser{
-		lexer:          lexer,
-		prefixParseFns: make(map[TokenType]prefixParseFn),
-		infixParseFns:  make(map[TokenType]infixParseFn),
+		lexer:            lexer,
+		prefixParseFns:   make(map[TokenType]prefixParseFn),
+		infixParseFns:    make(map[TokenType]infixParseFn),
+		jsonToSqlNameMap: jsonToSqlNameMap,
 	}
 
 	// Register prefix parsing functions
@@ -319,6 +322,13 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 
 	if condition.Field == "" {
 		return nil, errors.Wrapf(ErrInvalidConditionFormat, "field name cannot be empty in condition '%s'", p.current.Value)
+	}
+
+	// Map JSON field name to SQL column name
+	if sqlFieldName, ok := p.jsonToSqlNameMap[condition.Field]; ok {
+		condition.Field = sqlFieldName
+	} else {
+		return nil, errors.Wrapf(ErrInvalidFieldName, "'%s' in condition '%s'", condition.Field, p.current.Value)
 	}
 
 	switch condition.Operator {

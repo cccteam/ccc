@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+// defaultTestJsonToSqlNameMap provides a standard map for most test cases.
+var defaultTestJsonToSqlNameMap = map[string]string{
+	"status":   "Status",
+	"user_id":  "UserId",
+	"price":    "Price",
+	"stock":    "Stock",
+	"rating":   "Rating",
+	"name":     "Name",
+	"age":      "Age",
+	"category": "Category",
+	"email":    "Email",
+	"field":    "Field", // For generic tests like field:in:(v1,,v2)
+}
+
 func TestNewLexer(t *testing.T) {
 	t.Parallel()
 
@@ -272,6 +286,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 		name         string
 		filterString string
 		wantErrMsg   string
+		customMap    map[string]string
 	}{
 		{
 			name:         "invalid condition - missing value",
@@ -374,8 +389,22 @@ func TestParser_Parse_Errors(t *testing.T) {
 			wantErrMsg:   "empty value in list for operator 'in'",
 		},
 		{
-			name:         "condition with empty value in 'eq'",
-			filterString: "field:eq:",
+			name:         "invalid field name - using empty map",
+			filterString: "unknown_field:eq:value",
+			customMap:    map[string]string{},
+			wantErrMsg:   ErrInvalidFieldName.Error(),
+		},
+		{
+			name:         "invalid field name in group - using empty map",
+			filterString: "(unknown_field:eq:value,another_unknown:eq:Test)",
+			customMap:    map[string]string{},
+			wantErrMsg:   ErrInvalidFieldName.Error(),
+		},
+		{
+			name:         "invalid field name with pipe - using map without the specific field",
+			filterString: "name:eq:Test|unknown_field:eq:value",
+			customMap:    map[string]string{"name": "Name"},
+			wantErrMsg:   ErrInvalidFieldName.Error(),
 		},
 	}
 
@@ -383,7 +412,11 @@ func TestParser_Parse_Errors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			lexer := NewLexer(tt.filterString)
-			parser, err := NewParser(lexer)
+			currentMap := defaultTestJsonToSqlNameMap
+			if tt.customMap != nil {
+				currentMap = tt.customMap
+			}
+			parser, err := NewParser(lexer, currentMap)
 			if err != nil {
 				if tt.wantErrMsg == "" {
 					t.Fatalf("NewParser() error = %v, want no error", err)
@@ -408,6 +441,105 @@ func TestParser_Parse_Errors(t *testing.T) {
 						t.Errorf("parser.Parse() error = %q, wantErrMsg substring %q", parseErr.Error(), tt.wantErrMsg)
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestParser_Parse_Successful(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		filterString string
+		wantNode     ExpressionNode
+	}{
+		{
+			name:         "simple condition with status",
+			filterString: "status:eq:active",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: "eq", Value: "active"}},
+		},
+		{
+			name:         "simple condition with empty status",
+			filterString: "status:eq:",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: "eq", Value: ""}},
+		},
+		{
+			name:         "simple condition with user_id",
+			filterString: "user_id:in:(1,2,3)",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: "in", Values: []string{"1", "2", "3"}}},
+		},
+		{
+			name:         "simple condition with price",
+			filterString: "price:gte:100.50",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Price", Operator: "gte", Value: "100.50"}},
+		},
+		{
+			name:         "simple condition with name - mapped",
+			filterString: "name:eq:Test Name",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Name", Operator: "eq", Value: "Test Name"}},
+		},
+		{
+			name:         "simple condition with age - mapped",
+			filterString: "age:lt:30",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Age", Operator: "lt", Value: "30"}},
+		},
+		{
+			name:         "simple condition with category - mapped",
+			filterString: "category:isnotnull",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Category", Operator: "isnotnull", IsNullOp: true}},
+		},
+		{
+			name:         "simple condition with email - mapped",
+			filterString: "email:notin:(a@b.com,c@d.com)",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Email", Operator: "notin", Values: []string{"a@b.com", "c@d.com"}}},
+		},
+		{
+			name:         "grouped condition with translated fields",
+			filterString: "(user_id:eq:10,status:eq:pending)|price:gt:50",
+			wantNode: &LogicalOpNode{
+				Left: &GroupNode{
+					Expression: &LogicalOpNode{
+						Left:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: "eq", Value: "10"}},
+						Operator: OperatorAnd,
+						Right:    &ConditionNode{Condition: Condition{Field: "Status", Operator: "eq", Value: "pending"}},
+					},
+				},
+				Operator: OperatorOr,
+				Right:    &ConditionNode{Condition: Condition{Field: "Price", Operator: "gt", Value: "50"}},
+			},
+		},
+		{
+			name:         "empty filter string",
+			filterString: "",
+			wantNode:     nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			lexer := NewLexer(tt.filterString)
+			parser, err := NewParser(lexer, defaultTestJsonToSqlNameMap)
+			if err != nil {
+				t.Fatalf("NewParser() error = %v for input '%s'", err, tt.filterString)
+			}
+
+			gotNode, parseErr := parser.Parse()
+			if parseErr != nil {
+				t.Fatalf("parser.Parse() for input '%s', error = %v, want no error for successful parse tests", tt.filterString, parseErr)
+			}
+
+			var gotNodeStr, wantNodeStr string
+			if gotNode != nil {
+				gotNodeStr = gotNode.String()
+			}
+			if tt.wantNode != nil {
+				wantNodeStr = tt.wantNode.String()
+			}
+
+			if gotNodeStr != wantNodeStr {
+				t.Errorf("parser.Parse() for input '%s'\ngotNode = %s\nwantNode = %s", tt.filterString, gotNodeStr, wantNodeStr)
 			}
 		})
 	}
