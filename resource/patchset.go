@@ -11,6 +11,7 @@ import (
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/callback"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
@@ -31,6 +32,7 @@ type PatchSet[Resource Resourcer] struct {
 	patchType          PatchType
 	defaultCreateFuncs map[accesstypes.Field]FieldDefaultFunc
 	defaultUpdateFuncs map[accesstypes.Field]FieldDefaultFunc
+	callbackFuncs      []Callback[Resource]
 }
 
 func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSet[Resource] {
@@ -39,6 +41,7 @@ func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSe
 		data:               newFieldSet(),
 		defaultCreateFuncs: make(map[accesstypes.Field]FieldDefaultFunc),
 		defaultUpdateFuncs: make(map[accesstypes.Field]FieldDefaultFunc),
+		callbackFuncs:      []Callback[Resource]{},
 	}
 }
 
@@ -221,6 +224,12 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuf
 		}
 	}
 
+	for _, callbackFunc := range p.callbackFuncs {
+		if err := callbackFunc.Callback(ctx, txn, p); err != nil {
+			return errors.Wrap(err, "Callback[Resource].Callback()")
+		}
+	}
+
 	patch, err := p.Resolve()
 	if err != nil {
 		return errors.Wrap(err, "Resolve()")
@@ -257,6 +266,12 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuf
 				return errors.Wrap(err, "defaultFunc()")
 			}
 			p.Set(field, d)
+		}
+	}
+
+	for _, callbackFunc := range p.callbackFuncs {
+		if err := callbackFunc.Callback(ctx, txn, p); err != nil {
+			return errors.Wrap(err, "Callback[Resource].Callback()")
 		}
 	}
 
@@ -613,6 +628,16 @@ func (p *PatchSet[Resource]) validateEventSource(eventSource []string) (string, 
 	}
 
 	return event, nil
+}
+
+func (p *PatchSet[Resource]) AttachCallbackFuncs() {
+	registry := callback.NewRegistry()
+	for _, fn := range registry.Callbacks(p.Resource()) {
+		callback, _ := fn.(Callback[Resource])
+		// TODO(bswaney): handle the case where the fn is not ok
+
+		p.callbackFuncs = append(p.callbackFuncs, callback)
+	}
 }
 
 func (p *PatchSet[Resource]) RegisterDefaultCreateFunc(field accesstypes.Field, fn FieldDefaultFunc) {
