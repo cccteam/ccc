@@ -27,6 +27,7 @@ type QuerySet[Resource Resourcer] struct {
 	resourceSet            *ResourceSet[Resource]
 	userPermissions        UserPermissions
 	requiredPermission     accesstypes.Permission
+	parsedFilterAst        ExpressionNode // Changed from interface{} to ExpressionNode
 }
 
 func NewQuerySet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *QuerySet[Resource] {
@@ -172,10 +173,41 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 	}
 }
 
+func (q *QuerySet[Resource]) queryWhereClause() (*Statement, error) {
+	sql, params := newTreeWalker().Walk(q.whereClause)
+
+	return &Statement{SQL: "WHERE " + sql, SpannerParams: params}, nil
+}
+
+func (q *QuerySet[Resource]) astWhereClause() (*Statement, error) {
+	switch q.rMeta.dbType {
+	case SpannerDBType:
+		sql, params, err := NewSpannerGenerator().GenerateSQL(q.parsedFilterAst)
+		if err != nil {
+			return nil, errors.Wrap(err, "SpannerGenerator.GenerateSQL()")
+		}
+
+		return &Statement{SQL: "WHERE " + sql, SpannerParams: params}, nil
+	case PostgresDBType:
+		sql, params, err := NewPostgreSQLGenerator().GenerateSQL(q.parsedFilterAst)
+		if err != nil {
+			return nil, errors.Wrap(err, "SpannerGenerator.GenerateSQL()")
+		}
+
+		return &Statement{SQL: "WHERE " + sql, PostgreSQLParams: params}, nil
+	}
+
+	return nil, errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
+}
+
 // Where translates the the fields to database struct tags in databaseType when building the where clause
 func (q *QuerySet[Resource]) Where() (*Statement, error) {
 	if q.whereClause != nil {
 		return q.queryWhereClause()
+	}
+
+	if q.parsedFilterAst != nil {
+		return q.astWhereClause()
 	}
 
 	parts := q.KeySet().Parts()
@@ -203,15 +235,9 @@ func (q *QuerySet[Resource]) Where() (*Statement, error) {
 	}
 
 	return &Statement{
-		Sql:    "WHERE " + builder.String()[5:],
-		Params: params,
+		SQL:           "WHERE " + builder.String()[5:],
+		SpannerParams: params,
 	}, nil
-}
-
-func (q *QuerySet[Resource]) queryWhereClause() (*Statement, error) {
-	sql, params := newTreeWalker().Walk(q.whereClause)
-
-	return &Statement{Sql: "WHERE " + sql, Params: params}, nil
 }
 
 func (q *QuerySet[Resource]) SpannerStmt() (*StatementWrapper, error) {
@@ -219,8 +245,8 @@ func (q *QuerySet[Resource]) SpannerStmt() (*StatementWrapper, error) {
 		return nil, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
-	if moreThan(1, q.whereClause != nil, q.KeySet().Len() != 0, q.filter != nil) {
-		panic("cannot use QueryClause, KeySet, or Filter together")
+	if moreThan(1, q.whereClause != nil, q.KeySet().Len() != 0, q.filter != nil, q.parsedFilterAst != nil) {
+		panic("cannot use QueryClause, KeySet, Filter, or ParsedFilterAst together")
 	}
 
 	if q.filter != nil {
@@ -246,11 +272,11 @@ func (q *QuerySet[Resource]) spannerIndexStmt() (*StatementWrapper, error) {
 			SELECT
 				%s
 			FROM %s
-			%s`, columns, q.Resource(), where.Sql,
+			%s`, columns, q.Resource(), where.SQL,
 	))
-	maps.Insert(stmt.Params, maps.All(where.Params))
+	maps.Insert(stmt.Params, maps.All(where.SpannerParams))
 
-	return &StatementWrapper{resolvedWhereClause: substituteSQLParams(where.Sql, where.Params), Statement: stmt}, nil
+	return &StatementWrapper{resolvedWhereClause: substituteSQLParams(where.SQL, where.SpannerParams), Statement: stmt}, nil
 }
 
 func (q *QuerySet[Resource]) spannerFilterStmt() (*StatementWrapper, error) {
@@ -269,11 +295,11 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (*StatementWrapper, error) {
 				%s
 			FROM %s
 			%s`,
-		columns, q.Resource(), filter.Sql))
+		columns, q.Resource(), filter.SQL))
 
-	stmt.Params = filter.Params
+	stmt.Params = filter.SpannerParams
 
-	return &StatementWrapper{resolvedWhereClause: substituteSQLParams(filter.Sql, filter.Params), Statement: stmt}, nil
+	return &StatementWrapper{resolvedWhereClause: substituteSQLParams(filter.SQL, filter.SpannerParams), Statement: stmt}, nil
 }
 
 func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
@@ -295,12 +321,12 @@ func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
 			SELECT
 				%s
 			FROM %s
-			%s`, columns, q.Resource(), where.Sql,
+			%s`, columns, q.Resource(), where.SQL,
 	)
 
 	return Statement{
-		Sql:    sql,
-		Params: where.Params,
+		SQL:              sql,
+		PostgreSQLParams: where.PostgreSQLParams,
 	}, nil
 }
 
@@ -355,6 +381,11 @@ func (q *QuerySet[Resource]) SetFilterParam(filterSet *Filter) {
 
 func (q *QuerySet[Resource]) SetWhereClause(qc QueryClause) {
 	q.whereClause = qc.tree
+}
+
+// SetParsedFilterAst sets the parsed filter AST.
+func (q *QuerySet[Resource]) SetParsedFilterAst(ast ExpressionNode) { // Changed parameter type
+	q.parsedFilterAst = ast
 }
 
 func moreThan(cnt int, exp ...bool) bool {

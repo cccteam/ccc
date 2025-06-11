@@ -47,12 +47,13 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 }
 
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
-	requestedFields, filterSet, err := d.parseQuery(request.URL.Query())
+	requestedFields, filterSet, currentParsedAST, err := d.parseQuery(request.URL.Query())
 	if err != nil {
 		return nil, err
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
+	qSet.SetParsedFilterAst(currentParsedAST)
 	qSet.SetFilterParam(filterSet)
 	if len(requestedFields) == 0 {
 		qSet.ReturnAccessableFields(true)
@@ -81,7 +82,7 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, filterSet *Filter, err error) {
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, filterSet *Filter, parsedAST ExpressionNode, err error) {
 	if cols := query.Get("columns"); cols != "" {
 		// column names received in the query parameters are a comma separated list of json field names (ie: json tags on the request struct)
 		// we need to convert these to struct field names
@@ -89,23 +90,60 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 			if field, found := d.requestFieldMapper.StructFieldName(column); found {
 				columnFields = append(columnFields, field)
 			} else {
-				return nil, nil, httpio.NewBadRequestMessagef("unknown column: %s", column)
+				return nil, nil, nil, httpio.NewBadRequestMessagef("unknown column: %s", column)
 			}
 		}
 
 		delete(query, "columns")
 	}
 
+	if filterStr := query.Get("filter"); filterStr != "" {
+		parsedAST, err = d.parseFilterExpression(filterStr)
+		if err != nil {
+			return columnFields, nil, nil, httpio.NewBadRequestMessagef("invalid filter query: %s", err.Error())
+		}
+
+		delete(query, "filter")
+	}
+
 	filterSet, query, err = d.parseFilterParam(d.filterKeys, query)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
+	}
+
+	if parsedAST != nil && filterSet != nil {
+		return nil, nil, nil, httpio.NewBadRequestMessagef("cannot use 'filter' parameter alongside other legacy filterable field parameters")
 	}
 
 	if len(query) > 0 {
-		return nil, nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
+		return nil, nil, nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
 	}
 
-	return columnFields, filterSet, nil
+	return columnFields, filterSet, parsedAST, nil
+}
+
+// parseFilterExpression parses the filter string and returns an AST.
+func (d *QueryDecoder[Resource, Request]) parseFilterExpression(filterStr string) (ExpressionNode, error) {
+	jsonToSqlNameMap := make(map[string]string)
+	resourceMetadata := d.resourceSet.ResourceMetadata()
+
+	for jsonTag, structFieldName := range d.requestFieldMapper.jsonTagToFields {
+		if cacheEntry, found := resourceMetadata.fieldMap[structFieldName]; found {
+			jsonToSqlNameMap[jsonTag] = cacheEntry.tag
+		}
+	}
+
+	parser, err := NewParser(NewLexer(filterStr), jsonToSqlNameMap)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create parser")
+	}
+
+	ast, err := parser.Parse()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse filter expression")
+	}
+
+	return ast, nil
 }
 
 func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (searchSet *Filter, query url.Values, err error) {

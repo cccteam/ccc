@@ -49,7 +49,7 @@ func (f Filter) SpannerStmt() (Statement, error) {
 			return Statement{}, err
 		}
 
-		statement.Sql = fmt.Sprintf("WHERE %s", statement.Sql)
+		statement.SQL = fmt.Sprintf("WHERE %s", statement.SQL)
 
 		return statement, nil
 	case SubString:
@@ -63,13 +63,13 @@ func (f Filter) SpannerStmt() (Statement, error) {
 			return Statement{}, err
 		}
 
-		sql := fmt.Sprintf("WHERE %s\nORDER BY %s", searchStatement.Sql, scoreStatement.Sql)
-		params := make(map[string]any, len(searchStatement.Params)+len(scoreStatement.Params))
+		sql := fmt.Sprintf("WHERE %s\nORDER BY %s", searchStatement.SQL, scoreStatement.SQL)
+		params := make(map[string]any, len(searchStatement.SpannerParams)+len(scoreStatement.SpannerParams))
 
-		maps.Insert(params, maps.All(searchStatement.Params))
-		maps.Insert(params, maps.All(scoreStatement.Params))
+		maps.Insert(params, maps.All(searchStatement.SpannerParams))
+		maps.Insert(params, maps.All(scoreStatement.SpannerParams))
 
-		return Statement{Sql: sql, Params: params}, nil
+		return Statement{SQL: sql, SpannerParams: params}, nil
 	case FullText, Ngram:
 		return Statement{}, errors.Newf("%s filter is not yet implemented", f.typ)
 	default:
@@ -122,8 +122,8 @@ func (f Filter) parseToIndexFilter() (Statement, error) {
 	sql := strings.Join(fragments, " AND ")
 
 	return Statement{
-		Sql:    sql,
-		Params: params,
+		SQL:           sql,
+		SpannerParams: params,
 	}, nil
 }
 
@@ -149,8 +149,8 @@ func (f Filter) parseToSearchSubstring() (Statement, error) {
 	sql := strings.Join(exprs, " OR ")
 
 	return Statement{
-		Sql:    sql,
-		Params: params,
+		SQL:           sql,
+		SpannerParams: params,
 	}, nil
 }
 
@@ -175,7 +175,7 @@ func (f Filter) parseToNgramScore() (Statement, error) {
 	sql := strings.Join(exprs, " + ")
 
 	return Statement{
-		Sql:    sql,
-		Params: params,
+		SQL:           sql,
+		SpannerParams: params,
 	}, nil
 }
