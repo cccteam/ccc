@@ -168,6 +168,11 @@ func (gn *GroupNode) String() string {
 	return fmt.Sprintf("(%s)", gn.Expression.String())
 }
 
+type (
+	prefixParseFn func() (ExpressionNode, error)
+	infixParseFn  func(ExpressionNode) (ExpressionNode, error)
+)
+
 // Parser builds an AST from tokens.
 type Parser struct {
 	lexer   *Lexer
@@ -177,11 +182,6 @@ type Parser struct {
 	prefixParseFns map[TokenType]prefixParseFn
 	infixParseFns  map[TokenType]infixParseFn
 }
-
-type (
-	prefixParseFn func() (ExpressionNode, error)
-	infixParseFn  func(ExpressionNode) (ExpressionNode, error)
-)
 
 func NewParser(lexer *Lexer) (*Parser, error) {
 	p := &Parser{
