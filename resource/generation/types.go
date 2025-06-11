@@ -209,14 +209,18 @@ func (r rpcField) JSONTag() string {
 }
 
 func (f *rpcField) TypescriptDataType() string {
-	if f.typescriptType == "uuid" {
+	switch f.typescriptType {
+	case "uuid":
 		return "string"
-	}
-	if f.typescriptType == "civilDate" {
+	case "uuid[]":
+		return "string[]"
+	case "civilDate":
 		return "Date"
+	case "civilDate[]":
+		return "Date[]"
+	default:
+		return f.typescriptType
 	}
-
-	return f.typescriptType
 }
 
 type resourceInfo struct {
