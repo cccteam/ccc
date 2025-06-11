@@ -182,13 +182,13 @@ func NewPostgreSQLGenerator() *PostgreSQLGenerator {
 }
 
 // GenerateSQL generates SQL for the given node.
-func (g *PostgreSQLGenerator) GenerateSQL(node ExpressionNode) (string, []any, error) {
+func (g *PostgreSQLGenerator) GenerateSQL(node ExpressionNode) (sqlStr string, params []any, err error) {
 	sqlStr, queryParams, err := g.sqlGenerator.GenerateSQL(node)
 	if err != nil {
 		return "", nil, err
 	}
 
-	params := make([]any, 0, len(queryParams))
+	params = make([]any, 0, len(queryParams))
 	if queryParams != nil {
 		for _, qp := range queryParams {
 			params = append(params, qp.Value)
@@ -211,7 +211,7 @@ func NewSpannerGenerator() *SpannerGenerator {
 }
 
 // GenerateSQL generates SQL for the given node and returns named parameters.
-func (g *SpannerGenerator) GenerateSQL(node ExpressionNode) (string, map[string]any, error) {
+func (g *SpannerGenerator) GenerateSQL(node ExpressionNode) (sqlStr string, params map[string]any, err error) {
 	sqlStr, queryParams, err := g.sqlGenerator.GenerateSQL(node)
 	if err != nil {
 		return "", nil, err

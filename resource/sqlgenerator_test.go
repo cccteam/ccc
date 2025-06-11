@@ -332,11 +332,11 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 				} else if !strings.Contains(genErr.Error(), tt.wantErrMsg) {
 					t.Errorf("GenerateSQL() error = %v, wantErrMsg %s", genErr, tt.wantErrMsg)
 				}
+
 				return // Expected error, test done
 			}
 			if genErr != nil {
-				t.Errorf("GenerateSQL() error = %v, want nil", genErr)
-				return
+				t.Fatalf("GenerateSQL() error = %v, want nil", genErr)
 			}
 
 			if gotSQL != tt.wantSQL {

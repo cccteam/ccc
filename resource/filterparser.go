@@ -209,6 +209,24 @@ func NewParser(lexer *Lexer) (*Parser, error) {
 	return p, nil
 }
 
+// Parse is the main entry point for parsing the filter string.
+func (p *Parser) Parse() (ExpressionNode, error) {
+	if p.current.Type == TokenEOF && p.peek.Type == TokenEOF {
+		return nil, nil
+	}
+
+	expression, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+
+	if p.peek.Type != TokenEOF {
+		return nil, errors.Wrapf(ErrUnexpectedToken, "expected EOF after parsing, got %v", p.peek.Type)
+	}
+
+	return expression, nil
+}
+
 func (p *Parser) advance() error {
 	p.current = p.peek
 	var err error
@@ -226,24 +244,6 @@ func (p *Parser) expectPeek(t TokenType) error {
 	}
 
 	return errors.Wrapf(ErrUnexpectedToken, "expected peek token to be %v, got %v instead", t, p.peek.Type)
-}
-
-// Parse is the main entry point for parsing the filter string.
-func (p *Parser) Parse() (ExpressionNode, error) {
-	if p.current.Type == TokenEOF && p.peek.Type == TokenEOF {
-		return nil, nil
-	}
-
-	expression, err := p.parseExpression()
-	if err != nil {
-		return nil, err
-	}
-
-	if p.peek.Type != TokenEOF {
-		return nil, errors.Wrapf(ErrUnexpectedToken, "expected EOF after parsing, got %v", p.peek.Type)
-	}
-
-	return expression, nil
 }
 
 func (p *Parser) parseExpression() (ExpressionNode, error) {
