@@ -1,16 +1,36 @@
 package resource
 
 import (
+	stderr "errors"
 	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
 
+	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 )
+
+// Error constants for parsing.
+var (
+	ErrInvalidConditionFormat = stderr.New("invalid condition format")
+	ErrUnknownOperator        = stderr.New("unknown operator")
+	ErrMissingValue           = stderr.New("missing value for operator")
+	ErrInvalidFieldName       = stderr.New("invalid field name")
+	ErrUnexpectedToken        = stderr.New("unexpected token")
+	ErrExpectedExpression     = stderr.New("expected an expression")
+	ErrExpectedRightParen     = stderr.New("expected ')'")
+	ErrInvalidValueFormat     = stderr.New("invalid value format for operator")
+)
+
+//go:generate go run golang.org/x/tools/cmd/stringer -type=TokenType
 
 // TokenType defines the types of tokens in the filter string.
 type TokenType int
 
 const (
-	TokenLParen    TokenType = iota // (
+	TokenEOF       TokenType = iota // End of File
+	TokenLParen                     // (
 	TokenRParen                     // )
 	TokenComma                      // ,
 	TokenPipe                       // |
@@ -38,7 +58,7 @@ func NewLexer(input string) *Lexer {
 
 func (l *Lexer) NextToken() (Token, error) {
 	if l.pos >= len(l.input) {
-		return Token{}, errors.New("end of input")
+		return Token{Type: TokenEOF}, nil
 	}
 
 	switch l.input[l.pos] {
@@ -69,7 +89,7 @@ LOOP:
 		case '(':
 			parenCount++
 			if parenCount > 1 {
-				return Token{}, fmt.Errorf("nested parentheses in condition at position %d", l.pos)
+				return Token{}, fmt.Errorf("nested parentheses in condition token at position %d", l.pos)
 			}
 		case ')':
 			if parenCount > 0 {
@@ -77,8 +97,9 @@ LOOP:
 
 				continue
 			}
+			l.pos--
 
-			fallthrough
+			break LOOP
 		case ',', '|':
 			if parenCount > 0 {
 				continue
@@ -92,13 +113,80 @@ LOOP:
 	return Token{Type: TokenCondition, Value: l.input[start:l.pos]}, nil
 }
 
+// ExpressionNode represents a node in the filter AST.
+type ExpressionNode interface {
+	// String returns a string representation of the node (for debugging/testing).
+	String() string
+}
+
 // Condition represents a single condition (e.g., name:eq:John).
 type Condition struct {
 	Field    string
 	Operator string
-	Value    string   // For eq, ne, gt, lt, gte, lte
-	Values   []string // For in, notin
-	IsNullOp bool     // For isnull, isnotnull
+	Value    any   // For eq, ne, gt, lt, gte, lte
+	Values   []any // For in, notin
+	IsNullOp bool  // For isnull, isnotnull
+}
+
+// ConditionNode represents a simple condition in the AST.
+type ConditionNode struct {
+	Condition Condition
+}
+
+// String returns a string representation of the ConditionNode.
+func (cn *ConditionNode) String() string {
+	if cn.Condition.IsNullOp {
+		return fmt.Sprintf("%s:%s", cn.Condition.Field, cn.Condition.Operator)
+	}
+	if len(cn.Condition.Values) > 0 {
+		strValues := make([]string, len(cn.Condition.Values))
+		for i, v := range cn.Condition.Values {
+			strValues[i] = fmt.Sprintf("%v", v)
+		}
+		return fmt.Sprintf("%s:%s:(%s)", cn.Condition.Field, cn.Condition.Operator, strings.Join(strValues, ","))
+	}
+	return fmt.Sprintf("%s:%s:%v", cn.Condition.Field, cn.Condition.Operator, cn.Condition.Value)
+}
+
+// LogicalOperator defines the type of logical operator (AND, OR).
+type LogicalOperator string
+
+const (
+	OperatorAnd LogicalOperator = "AND"
+	OperatorOr  LogicalOperator = "OR"
+)
+
+// LogicalOpNode represents a logical operation (AND/OR) in the AST.
+type LogicalOpNode struct {
+	Left     ExpressionNode
+	Operator LogicalOperator
+	Right    ExpressionNode
+}
+
+// String returns a string representation of the LogicalOpNode.
+func (ln *LogicalOpNode) String() string {
+	return fmt.Sprintf("(%s %s %s)", ln.Left.String(), ln.Operator, ln.Right.String())
+}
+
+// GroupNode represents a parenthesized group of expressions in the AST.
+type GroupNode struct {
+	Expression ExpressionNode
+}
+
+// String returns a string representation of the GroupNode.
+func (gn *GroupNode) String() string {
+	return fmt.Sprintf("(%s)", gn.Expression.String())
+}
+
+type (
+	prefixParseFn func() (ExpressionNode, error)
+	infixParseFn  func(ExpressionNode) (ExpressionNode, error)
+)
+
+type FieldInfo struct {
+	Name      string
+	Kind      reflect.Kind
+	FieldType reflect.Type
 }
 
 // Parser builds an AST from tokens.
@@ -106,28 +194,262 @@ type Parser struct {
 	lexer   *Lexer
 	current Token
 	peek    Token
+
+	prefixParseFns  map[TokenType]prefixParseFn
+	infixParseFns   map[TokenType]infixParseFn
+	jsonToFieldInfo map[string]FieldInfo
 }
 
-func NewParser(lexer *Lexer) (*Parser, error) {
+func NewParser(lexer *Lexer, jsonToFieldInfo map[string]FieldInfo) (*Parser, error) {
 	p := &Parser{
-		lexer: lexer,
+		lexer:           lexer,
+		prefixParseFns:  make(map[TokenType]prefixParseFn),
+		infixParseFns:   make(map[TokenType]infixParseFn),
+		jsonToFieldInfo: jsonToFieldInfo,
+	}
+
+	// Register prefix parsing functions
+	p.prefixParseFns[TokenCondition] = p.parseConditionToken
+	p.prefixParseFns[TokenLParen] = p.parseGroupedExpression
+
+	// Register infix parsing functions
+	p.infixParseFns[TokenComma] = p.parseInfixExpression
+	p.infixParseFns[TokenPipe] = p.parseInfixExpression
+
+	// Prime the pump. Need to call twice to fill current and peek.
+	if err := p.advance(); err != nil {
+		return nil, errors.Wrap(err, "failed to advance for current token")
 	}
 	if err := p.advance(); err != nil {
-		return nil, err
-	}
-	if err := p.advance(); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to advance for peek token")
 	}
 
 	return p, nil
 }
 
-func (p *Parser) advance() (err error) {
+// Parse is the main entry point for parsing the filter string.
+func (p *Parser) Parse() (ExpressionNode, error) {
+	if p.current.Type == TokenEOF && p.peek.Type == TokenEOF {
+		return nil, nil
+	}
+
+	expression, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+
+	if p.peek.Type != TokenEOF {
+		return nil, errors.Wrapf(ErrUnexpectedToken, "expected EOF after parsing, got %s", p.peek.Type)
+	}
+
+	return expression, nil
+}
+
+func (p *Parser) advance() error {
 	p.current = p.peek
+	var err error
 	p.peek, err = p.lexer.NextToken()
 	if err != nil {
-		return errors.Wrap(err, "failed to advance parser")
+		return errors.Wrap(err, "lexer error during advance")
 	}
 
 	return nil
+}
+
+func (p *Parser) expectPeek(t TokenType) error {
+	if p.peek.Type == t {
+		return p.advance()
+	}
+
+	return httpio.NewBadRequestMessageWithErrorf(ErrUnexpectedToken, "expected next token to be %s, got %s instead", t, p.peek.Type)
+}
+
+func (p *Parser) parseExpression() (ExpressionNode, error) {
+	prefix := p.prefixParseFns[p.current.Type]
+	if prefix == nil {
+		return nil, errors.Wrapf(ErrExpectedExpression, "no prefix parse function for %s (value: '%s')", p.current.Type, p.current.Value)
+	}
+
+	leftExp, err := prefix()
+	if err != nil {
+		return nil, err
+	}
+
+	for p.peek.Type == TokenComma || p.peek.Type == TokenPipe {
+		infix := p.infixParseFns[p.peek.Type]
+		if infix == nil {
+			// This means we have a token that should be an infix operator but isn't registered,
+			// or it's a token that shouldn't appear in an infix position.
+			// For example, two conditions back-to-back without an operator.
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrUnexpectedToken, "expected operator, got '%s'", p.peek.Value)
+		}
+		if err := p.advance(); err != nil { // Consume the operator
+			return nil, err
+		}
+		leftExp, err = infix(leftExp)
+		if err != nil {
+			return nil, err // Error already added by infix function
+		}
+	}
+
+	return leftExp, nil
+}
+
+func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, error) {
+	node := &LogicalOpNode{
+		Left: left,
+	}
+
+	switch p.current.Type {
+	case TokenComma:
+		node.Operator = OperatorAnd
+	case TokenPipe:
+		node.Operator = OperatorOr
+	default:
+		return nil, errors.Wrapf(ErrUnexpectedToken, "unexpected token %s for infix operator", p.current.Type)
+	}
+
+	if err := p.advance(); err != nil {
+		return nil, err
+	}
+	var err error
+	node.Right, err = p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	if node.Right == nil { // Should be caught by parseExpression returning an error
+		return nil, errors.Wrap(ErrExpectedExpression, "missing right-hand side of infix expression")
+	}
+
+	return node, nil
+}
+
+func (p *Parser) parseConditionToken() (ExpressionNode, error) {
+	parts := strings.SplitN(p.current.Value, ":", 3)
+	if len(parts) < 2 {
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidConditionFormat, "condition '%s' must have at least field:operator", p.current.Value)
+	}
+
+	jsonFieldName := strings.TrimSpace(parts[0])
+	if jsonFieldName == "" {
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidConditionFormat, "field name cannot be empty in condition '%s'", p.current.Value)
+	}
+
+	fieldInfo, found := p.jsonToFieldInfo[jsonFieldName]
+	if !found {
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidFieldName, "'%s' is not indexed but was included in condition '%s'", jsonFieldName, p.current.Value)
+	}
+
+	condition := Condition{
+		Field:    fieldInfo.Name,
+		Operator: strings.ToLower(strings.TrimSpace(parts[1])),
+	}
+
+	switch condition.Operator {
+	case "isnull", "isnotnull":
+		if len(parts) > 2 && strings.TrimSpace(parts[2]) != "" {
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidConditionFormat, "operator '%s' does not take a value, but got '%s' in condition '%s'", condition.Operator, parts[2], p.current.Value)
+		}
+		condition.IsNullOp = true
+	case "in", "notin":
+		if len(parts) < 3 {
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrMissingValue, "operator '%s' requires a value part in condition '%s'	", condition.Operator, p.current.Value)
+		}
+		valPart := strings.TrimSpace(parts[2])
+		if !strings.HasPrefix(valPart, "(") || !strings.HasSuffix(valPart, ")") {
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "value for '%s' must be in parentheses, e.g., (v1,v2), got '%s' in condition '%s'", condition.Operator, valPart, p.current.Value)
+		}
+		valPart = valPart[1 : len(valPart)-1] // Remove parentheses
+		if valPart == "" {                    // e.g. name:in:()
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "value list for '%s' cannot be empty in condition '%s'", condition.Operator, p.current.Value)
+		}
+		values := strings.Split(valPart, ",")
+		condition.Values = make([]any, 0, len(values))
+		for _, v := range values {
+			trimmed := strings.TrimSpace(v)
+			if trimmed == "" { // e.g. name:in:(v1,,v2)
+				return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "empty value in list for operator '%s' in condition '%s'", condition.Operator, p.current.Value)
+			}
+
+			valueKind := fieldInfo.Kind
+			if valueKind == reflect.Slice || valueKind == reflect.Array {
+				if fieldInfo.FieldType == nil {
+					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", fieldInfo.Name)
+				}
+				valueKind = fieldInfo.FieldType.Elem().Kind()
+			}
+
+			typedValue, err := p.convertValue(trimmed, valueKind)
+			if err != nil {
+				return nil, err
+			}
+			condition.Values = append(condition.Values, typedValue)
+		}
+	case "eq", "ne", "gt", "lt", "gte", "lte":
+		if len(parts) < 3 {
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrMissingValue, "operator '%s' requires a value in condition '%s'", condition.Operator, p.current.Value)
+		}
+		strValue := strings.TrimSpace(parts[2])
+		typedValue, err := p.convertValue(strValue, fieldInfo.Kind)
+		if err != nil {
+			return nil, err
+		}
+		condition.Value = typedValue
+	default:
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrUnknownOperator, "unknown operator '%s' in condition '%s'", condition.Operator, p.current.Value)
+	}
+
+	return &ConditionNode{Condition: condition}, nil
+}
+
+// convertValue converts a string value to the specified reflect.Kind.
+func (p *Parser) convertValue(strValue string, kind reflect.Kind) (any, error) {
+	switch kind {
+	case reflect.String, reflect.Struct:
+		return strValue, nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		i, err := strconv.Atoi(strValue)
+		if err != nil {
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "value '%s' in condition '%s' is not a valid integer: %v", strValue, p.current.Value, err)
+		}
+		return i, nil
+	case reflect.Bool:
+		b, err := strconv.ParseBool(strValue)
+		if err != nil {
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "value '%s' in condition '%s' is not a valid boolean: %v", strValue, p.current.Value, err)
+		}
+		return b, nil
+	case reflect.Float32, reflect.Float64:
+		f, err := strconv.ParseFloat(strValue, 64)
+		if err != nil {
+			return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "value '%s' in condition '%s' is not a valid float: %v", strValue, p.current.Value, err)
+		}
+		if kind == reflect.Float32 {
+			return float32(f), nil
+		}
+		return f, nil
+	default:
+		return nil, errors.Newf("unsupported kind for value conversion: %v for value '%s'", kind, strValue)
+	}
+}
+
+func (p *Parser) parseGroupedExpression() (ExpressionNode, error) {
+	if err := p.advance(); err != nil { // Consume '('
+		return nil, err
+	}
+
+	if p.current.Type == TokenRParen {
+		return nil, errors.Wrap(ErrExpectedExpression, "empty group '()' is not allowed")
+	}
+
+	expression, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := p.expectPeek(TokenRParen); err != nil {
+		return nil, err
+	}
+
+	return &GroupNode{Expression: expression}, nil
 }

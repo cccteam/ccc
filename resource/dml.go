@@ -10,8 +10,9 @@ const (
 )
 
 type Statement struct {
-	Sql    string
-	Params map[string]any
+	SQL              string
+	SpannerParams    map[string]any
+	PostgreSQLParams []any
 }
 
 type StatementWrapper struct {

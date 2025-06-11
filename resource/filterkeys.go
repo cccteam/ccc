@@ -9,7 +9,7 @@ import (
 
 type FilterKeys struct {
 	keys  map[FilterKey]FilterType
-	kinds map[FilterKey]reflect.Kind
+	types map[FilterKey]reflect.Type
 }
 
 func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
@@ -19,21 +19,21 @@ func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
 	case SpannerDBType:
 		filterTypes = []FilterType{Index, FullText, Ngram, SubString}
 	case PostgresDBType:
-		filterTypes = []FilterType{}
+		filterTypes = []FilterType{Index}
 	}
 
 	keys := make(map[FilterKey]FilterType, 0)
-	kinds := make(map[FilterKey]reflect.Kind, 0)
+	types := make(map[FilterKey]reflect.Type, 0)
 	for _, structField := range reflect.VisibleFields(reflect.TypeFor[Req]()) {
 		for _, filterType := range filterTypes {
-			keyList := structField.Tag.Get(string(filterType))
-			if keyList == "" {
+			tag := structField.Tag.Get(string(filterType))
+			if tag == "" {
 				continue
 			}
 
 			switch filterType {
 			case Index:
-				if keyList != "true" {
+				if tag != "true" {
 					continue
 				}
 
@@ -44,21 +44,16 @@ func NewFilterKeys[Req any](res Resourcer) (*FilterKeys, error) {
 				}
 
 				keys[FilterKey(jsonTag)] = filterType
-
-				typ := structField.Type
-				if typ.Kind() == reflect.Pointer {
-					typ = typ.Elem()
-				}
-				kinds[FilterKey(structField.Name)] = typ.Kind()
+				types[FilterKey(structField.Name)] = structField.Type
 			case Ngram, SubString, FullText:
-				for _, key := range splitFilterKeys(keyList) {
+				for _, key := range splitFilterKeys(tag) {
 					keys[key] = filterType
 				}
 			}
 		}
 	}
 
-	return &FilterKeys{keys: keys, kinds: kinds}, nil
+	return &FilterKeys{keys: keys, types: types}, nil
 }
 
 func splitFilterKeys(keys string) []FilterKey {
