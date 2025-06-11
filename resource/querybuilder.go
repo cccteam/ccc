@@ -211,7 +211,7 @@ func (n *node) LeftOperand() string {
 func (n *node) RightOperands() []any {
 	switch n.Type() {
 	case logical:
-		return []any{}
+		return nil
 	default:
 		panic(fmt.Sprintf("non-logical node type %s must implement RightOperands()", n.Type()))
 	}
@@ -319,19 +319,23 @@ func (n *compNode[T]) RightOperands() []any {
 	return []any{n.value}
 }
 
-// treeWalker tracks the number of values from visited nodes in the
-// query clause expression tree. This enables uniquely identifying parameters
-// which must conform to naming requirements in https://cloud.google.com/spanner/docs/reference/standard-sql/lexical#identifiers
 type treeWalker struct {
 	accumulator map[string]int
 	params      map[string]any
 }
 
-func newTreeWalker() treeWalker {
-	return treeWalker{
+func newTreeWalker() *treeWalker {
+	return &treeWalker{
 		accumulator: make(map[string]int),
 		params:      make(map[string]any),
 	}
+}
+
+func (t *treeWalker) Walk(root whereClauseExprTree) (string, map[string]any) {
+	t.accumulator = make(map[string]int)
+	t.params = make(map[string]any)
+
+	return t.walk(root), t.params
 }
 
 func (t *treeWalker) walk(root whereClauseExprTree) string {

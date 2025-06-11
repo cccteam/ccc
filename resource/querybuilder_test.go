@@ -96,21 +96,21 @@ func Test_QueryClause(t *testing.T) {
 	tests := []struct {
 		name       string
 		filter     *testQuery
-		wantString string
+		wantSQL    string
 		wantParams map[string]any
 	}{
 		{
-			name:       "basic output",
-			filter:     newTestQuery().Where(newTestQueryFilter().Name().Equal("test")),
-			wantString: "Name = @Name",
+			name:    "basic output",
+			filter:  newTestQuery().Where(newTestQueryFilter().Name().Equal("test")),
+			wantSQL: "Name = @Name",
 			wantParams: map[string]any{
 				"Name": "test",
 			},
 		},
 		{
-			name:       "AND has higher precedence than OR",
-			filter:     newTestQuery().Where(newTestQueryFilter().ID().NotEqual(1).Or().ID().GreaterThan(1).And().Name().Equal("test")),
-			wantString: "ID <> @ID OR ID > @ID1 AND Name = @Name",
+			name:    "AND has higher precedence than OR",
+			filter:  newTestQuery().Where(newTestQueryFilter().ID().NotEqual(1).Or().ID().GreaterThan(1).And().Name().Equal("test")),
+			wantSQL: "ID <> @ID OR ID > @ID1 AND Name = @Name",
 			wantParams: map[string]any{
 				"ID":   1,
 				"ID1":  1,
@@ -118,9 +118,9 @@ func Test_QueryClause(t *testing.T) {
 			},
 		},
 		{
-			name:       "AND has same precedence as Group",
-			filter:     newTestQuery().Where(newTestQueryFilter().Group(newTestQueryFilter().ID().Equal(10).Or().ID().GreaterThan(2)).And().Name().Equal("test")),
-			wantString: "(ID = @ID OR ID > @ID1) AND Name = @Name",
+			name:    "AND has same precedence as Group",
+			filter:  newTestQuery().Where(newTestQueryFilter().Group(newTestQueryFilter().ID().Equal(10).Or().ID().GreaterThan(2)).And().Name().Equal("test")),
+			wantSQL: "(ID = @ID OR ID > @ID1) AND Name = @Name",
 			wantParams: map[string]any{
 				"ID":   10,
 				"ID1":  2,
@@ -128,9 +128,9 @@ func Test_QueryClause(t *testing.T) {
 			},
 		},
 		{
-			name:       "multiple AND's has higher precedence as OR",
-			filter:     newTestQuery().Where(newTestQueryFilter().ID().Equal(10).And().Name().Equal("test").Or().ID().GreaterThan(2)),
-			wantString: "ID = @ID AND Name = @Name OR ID > @ID1",
+			name:    "multiple AND's has higher precedence as OR",
+			filter:  newTestQuery().Where(newTestQueryFilter().ID().Equal(10).And().Name().Equal("test").Or().ID().GreaterThan(2)),
+			wantSQL: "ID = @ID AND Name = @Name OR ID > @ID1",
 			wantParams: map[string]any{
 				"ID":   10,
 				"Name": "test",
@@ -138,9 +138,9 @@ func Test_QueryClause(t *testing.T) {
 			},
 		},
 		{
-			name:       "Group later in expression",
-			filter:     newTestQuery().Where(newTestQueryFilter().ID().Equal(10).And().Group(newTestQueryFilter().Name().Equal("test").Or().ID().GreaterThan(2))),
-			wantString: "ID = @ID AND (Name = @Name OR ID > @ID1)",
+			name:    "Group later in expression",
+			filter:  newTestQuery().Where(newTestQueryFilter().ID().Equal(10).And().Group(newTestQueryFilter().Name().Equal("test").Or().ID().GreaterThan(2))),
+			wantSQL: "ID = @ID AND (Name = @Name OR ID > @ID1)",
 			wantParams: map[string]any{
 				"ID":   10,
 				"Name": "test",
@@ -150,19 +150,19 @@ func Test_QueryClause(t *testing.T) {
 		{
 			name:       "IS NULL check",
 			filter:     newTestQuery().Where(newTestQueryFilter().Name().IsNull()),
-			wantString: "Name IS NULL",
+			wantSQL:    "Name IS NULL",
 			wantParams: map[string]any{},
 		},
 		{
 			name:       "IS NOT NULL check",
 			filter:     newTestQuery().Where(newTestQueryFilter().Name().IsNotNull()),
-			wantString: "Name IS NOT NULL",
+			wantSQL:    "Name IS NOT NULL",
 			wantParams: map[string]any{},
 		},
 		{
-			name:       "basic output with NOT NULL",
-			filter:     newTestQuery().Where(newTestQueryFilter().Name().Equal("test").And().Name().IsNotNull()),
-			wantString: "Name = @Name AND Name IS NOT NULL",
+			name:    "basic output with NOT NULL",
+			filter:  newTestQuery().Where(newTestQueryFilter().Name().Equal("test").And().Name().IsNotNull()),
+			wantSQL: "Name = @Name AND Name IS NOT NULL",
 			wantParams: map[string]any{
 				"Name": "test",
 			},
@@ -174,13 +174,13 @@ func Test_QueryClause(t *testing.T) {
 
 			tw := newTreeWalker()
 
-			got := tw.walk(tt.filter.qSet.whereClause)
-			if tt.wantString != got {
-				t.Errorf("output string != wantString\ngot = %q\nwnt = %q", got, tt.wantString)
+			gotSQL, gotParams := tw.Walk(tt.filter.qSet.whereClause)
+			if tt.wantSQL != gotSQL {
+				t.Errorf("output SQL != wantSQL\ngot = %q\nwant = %q", gotSQL, tt.wantSQL)
 			}
 
 			for k := range tt.wantParams {
-				v, ok := tw.params[k]
+				v, ok := gotParams[k]
 				if !ok {
 					t.Errorf("wanted param %s not in output params", k)
 				}
