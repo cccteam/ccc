@@ -1,22 +1,24 @@
 package resource
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
 
 // defaultTestJsonToSqlNameMap provides a standard map for most test cases.
-var defaultTestJsonToSqlNameMap = map[string]string{
-	"status":   "Status",
-	"user_id":  "UserId",
-	"price":    "Price",
-	"stock":    "Stock",
-	"rating":   "Rating",
-	"name":     "Name",
-	"age":      "Age",
-	"category": "Category",
-	"email":    "Email",
-	"field":    "Field", // For generic tests like field:in:(v1,,v2)
+var defaultTestJsonToSqlNameMap = map[string]FieldInfo{
+	"status":   {Name: "Status", Kind: reflect.String},
+	"user_id":  {Name: "UserId", Kind: reflect.Int},
+	"price":    {Name: "Price", Kind: reflect.Float64},
+	"stock":    {Name: "Stock", Kind: reflect.Int},
+	"rating":   {Name: "Rating", Kind: reflect.Int},
+	"name":     {Name: "Name", Kind: reflect.String},
+	"age":      {Name: "Age", Kind: reflect.Int64},
+	"category": {Name: "Category", Kind: reflect.String},
+	"email":    {Name: "Email", Kind: reflect.String},
+	"active":   {Name: "Active", Kind: reflect.Bool},
+	"field":    {Name: "Field", Kind: reflect.String},
 }
 
 func TestNewLexer(t *testing.T) {
@@ -286,7 +288,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 		name         string
 		filterString string
 		wantErrMsg   string
-		customMap    map[string]string
+		customMap    map[string]FieldInfo
 	}{
 		{
 			name:         "invalid condition - missing value",
@@ -391,19 +393,17 @@ func TestParser_Parse_Errors(t *testing.T) {
 		{
 			name:         "invalid field name - using empty map",
 			filterString: "unknown_field:eq:value",
-			customMap:    map[string]string{},
 			wantErrMsg:   ErrInvalidFieldName.Error(),
 		},
 		{
 			name:         "invalid field name in group - using empty map",
 			filterString: "(unknown_field:eq:value,another_unknown:eq:Test)",
-			customMap:    map[string]string{},
 			wantErrMsg:   ErrInvalidFieldName.Error(),
 		},
 		{
 			name:         "invalid field name with pipe - using map without the specific field",
 			filterString: "name:eq:Test|unknown_field:eq:value",
-			customMap:    map[string]string{"name": "Name"},
+			customMap:    map[string]FieldInfo{"name": {Name: "Name", Kind: reflect.String}},
 			wantErrMsg:   ErrInvalidFieldName.Error(),
 		},
 	}
@@ -464,14 +464,24 @@ func TestParser_Parse_Successful(t *testing.T) {
 			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: "eq", Value: ""}},
 		},
 		{
+			name:         "True condition with active",
+			filterString: "active:eq:true",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Active", Operator: "eq", Value: true}},
+		},
+		{
+			name:         "False condition with active",
+			filterString: "active:eq:false",
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Active", Operator: "eq", Value: false}},
+		},
+		{
 			name:         "simple condition with user_id",
 			filterString: "user_id:in:(1,2,3)",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: "in", Values: []string{"1", "2", "3"}}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: "in", Values: []any{1, 2, 3}}},
 		},
 		{
 			name:         "simple condition with price",
 			filterString: "price:gte:100.50",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Price", Operator: "gte", Value: "100.50"}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Price", Operator: "gte", Value: 100.50}},
 		},
 		{
 			name:         "simple condition with name - mapped",
@@ -491,7 +501,7 @@ func TestParser_Parse_Successful(t *testing.T) {
 		{
 			name:         "simple condition with email - mapped",
 			filterString: "email:notin:(a@b.com,c@d.com)",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Email", Operator: "notin", Values: []string{"a@b.com", "c@d.com"}}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Email", Operator: "notin", Values: []any{"a@b.com", "c@d.com"}}},
 		},
 		{
 			name:         "grouped condition with translated fields",
@@ -499,13 +509,13 @@ func TestParser_Parse_Successful(t *testing.T) {
 			wantNode: &LogicalOpNode{
 				Left: &GroupNode{
 					Expression: &LogicalOpNode{
-						Left:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: "eq", Value: "10"}},
+						Left:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: "eq", Value: 10}},
 						Operator: OperatorAnd,
 						Right:    &ConditionNode{Condition: Condition{Field: "Status", Operator: "eq", Value: "pending"}},
 					},
 				},
 				Operator: OperatorOr,
-				Right:    &ConditionNode{Condition: Condition{Field: "Price", Operator: "gt", Value: "50"}},
+				Right:    &ConditionNode{Condition: Condition{Field: "Price", Operator: "gt", Value: 50}},
 			},
 		},
 		{
