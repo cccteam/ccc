@@ -18,6 +18,11 @@ type (
 	UserFromCtx   func(context.Context) accesstypes.User
 )
 
+type FieldInfo struct {
+	Name string
+	Kind reflect.Kind
+}
+
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
@@ -124,16 +129,19 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 
 // parseFilterExpression parses the filter string and returns an AST.
 func (d *QueryDecoder[Resource, Request]) parseFilterExpression(filterStr string) (ExpressionNode, error) {
-	jsonToSqlNameMap := make(map[string]string)
+	jsonToFieldInfoMap := make(map[string]FieldInfo)
 	resourceMetadata := d.resourceSet.ResourceMetadata()
 
 	for jsonTag, structFieldName := range d.requestFieldMapper.jsonTagToFields {
 		if cacheEntry, found := resourceMetadata.fieldMap[structFieldName]; found {
-			jsonToSqlNameMap[jsonTag] = cacheEntry.tag
+			jsonToFieldInfoMap[jsonTag] = FieldInfo{
+				Name: cacheEntry.tag,
+				Kind: d.filterKeys.kinds[FilterKey(structFieldName)],
+			}
 		}
 	}
 
-	parser, err := NewParser(NewLexer(filterStr), jsonToSqlNameMap)
+	parser, err := NewParser(NewLexer(filterStr), jsonToFieldInfoMap)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create parser")
 	}

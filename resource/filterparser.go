@@ -1,7 +1,10 @@
 package resource
 
 import (
+	stderr "errors"
 	"fmt"
+	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -9,14 +12,14 @@ import (
 
 // Error constants for parsing.
 var (
-	ErrInvalidConditionFormat = errors.New("invalid condition format")
-	ErrUnknownOperator        = errors.New("unknown operator")
-	ErrMissingValue           = errors.New("missing value for operator")
-	ErrInvalidFieldName       = errors.New("invalid field name")
-	ErrUnexpectedToken        = errors.New("unexpected token")
-	ErrExpectedExpression     = errors.New("expected an expression")
-	ErrExpectedRightParen     = errors.New("expected ')'")
-	ErrInvalidValueFormat     = errors.New("invalid value format for operator")
+	ErrInvalidConditionFormat = stderr.New("invalid condition format")
+	ErrUnknownOperator        = stderr.New("unknown operator")
+	ErrMissingValue           = stderr.New("missing value for operator")
+	ErrInvalidFieldName       = stderr.New("invalid field name")
+	ErrUnexpectedToken        = stderr.New("unexpected token")
+	ErrExpectedExpression     = stderr.New("expected an expression")
+	ErrExpectedRightParen     = stderr.New("expected ')'")
+	ErrInvalidValueFormat     = stderr.New("invalid value format for operator")
 )
 
 // TokenType defines the types of tokens in the filter string.
@@ -117,9 +120,9 @@ type ExpressionNode interface {
 type Condition struct {
 	Field    string
 	Operator string
-	Value    string   // For eq, ne, gt, lt, gte, lte
-	Values   []string // For in, notin
-	IsNullOp bool     // For isnull, isnotnull
+	Value    any   // For eq, ne, gt, lt, gte, lte
+	Values   []any // For in, notin
+	IsNullOp bool  // For isnull, isnotnull
 }
 
 // ConditionNode represents a simple condition in the AST.
@@ -133,10 +136,13 @@ func (cn *ConditionNode) String() string {
 		return fmt.Sprintf("%s:%s", cn.Condition.Field, cn.Condition.Operator)
 	}
 	if len(cn.Condition.Values) > 0 {
-		return fmt.Sprintf("%s:%s:(%s)", cn.Condition.Field, cn.Condition.Operator, strings.Join(cn.Condition.Values, ","))
+		strValues := make([]string, len(cn.Condition.Values))
+		for i, v := range cn.Condition.Values {
+			strValues[i] = fmt.Sprintf("%v", v)
+		}
+		return fmt.Sprintf("%s:%s:(%s)", cn.Condition.Field, cn.Condition.Operator, strings.Join(strValues, ","))
 	}
-
-	return fmt.Sprintf("%s:%s:%s", cn.Condition.Field, cn.Condition.Operator, cn.Condition.Value)
+	return fmt.Sprintf("%s:%s:%v", cn.Condition.Field, cn.Condition.Operator, cn.Condition.Value)
 }
 
 // LogicalOperator defines the type of logical operator (AND, OR).
@@ -180,17 +186,17 @@ type Parser struct {
 	current Token
 	peek    Token
 
-	prefixParseFns   map[TokenType]prefixParseFn
-	infixParseFns    map[TokenType]infixParseFn
-	jsonToSqlNameMap map[string]string
+	prefixParseFns  map[TokenType]prefixParseFn
+	infixParseFns   map[TokenType]infixParseFn
+	jsonToFieldInfo map[string]FieldInfo
 }
 
-func NewParser(lexer *Lexer, jsonToSqlNameMap map[string]string) (*Parser, error) {
+func NewParser(lexer *Lexer, jsonToFieldInfo map[string]FieldInfo) (*Parser, error) {
 	p := &Parser{
-		lexer:            lexer,
-		prefixParseFns:   make(map[TokenType]prefixParseFn),
-		infixParseFns:    make(map[TokenType]infixParseFn),
-		jsonToSqlNameMap: jsonToSqlNameMap,
+		lexer:           lexer,
+		prefixParseFns:  make(map[TokenType]prefixParseFn),
+		infixParseFns:   make(map[TokenType]infixParseFn),
+		jsonToFieldInfo: jsonToFieldInfo,
 	}
 
 	// Register prefix parsing functions
@@ -315,20 +321,19 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 		return nil, errors.Wrapf(ErrInvalidConditionFormat, "condition '%s' must have at least field:operator", p.current.Value)
 	}
 
-	condition := Condition{
-		Field:    strings.TrimSpace(parts[0]),
-		Operator: strings.ToLower(strings.TrimSpace(parts[1])),
-	}
-
-	if condition.Field == "" {
+	jsonFieldName := strings.TrimSpace(parts[0])
+	if jsonFieldName == "" {
 		return nil, errors.Wrapf(ErrInvalidConditionFormat, "field name cannot be empty in condition '%s'", p.current.Value)
 	}
 
-	// Map JSON field name to SQL column name
-	if sqlFieldName, ok := p.jsonToSqlNameMap[condition.Field]; ok {
-		condition.Field = sqlFieldName
-	} else {
-		return nil, errors.Wrapf(ErrInvalidFieldName, "'%s' in condition '%s'", condition.Field, p.current.Value)
+	fieldInfo, found := p.jsonToFieldInfo[jsonFieldName]
+	if !found {
+		return nil, errors.Wrapf(ErrInvalidFieldName, "'%s' in condition '%s'", jsonFieldName, p.current.Value)
+	}
+
+	condition := Condition{
+		Field:    fieldInfo.Name,
+		Operator: strings.ToLower(strings.TrimSpace(parts[1])),
 	}
 
 	switch condition.Operator {
@@ -350,24 +355,64 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 			return nil, errors.Wrapf(ErrInvalidValueFormat, "value list for '%s' cannot be empty", condition.Operator)
 		}
 		values := strings.Split(valPart, ",")
-		condition.Values = make([]string, 0, len(values))
+		condition.Values = make([]any, 0, len(values))
 		for _, v := range values {
 			trimmed := strings.TrimSpace(v)
 			if trimmed == "" { // e.g. name:in:(v1,,v2)
 				return nil, errors.Wrapf(ErrInvalidValueFormat, "empty value in list for operator '%s'", condition.Operator)
 			}
-			condition.Values = append(condition.Values, trimmed)
+			typedValue, err := p.convertValue(trimmed, fieldInfo.Kind)
+			if err != nil {
+				return nil, err
+			}
+			condition.Values = append(condition.Values, typedValue)
 		}
 	case "eq", "ne", "gt", "lt", "gte", "lte":
 		if len(parts) < 3 {
 			return nil, errors.Wrapf(ErrMissingValue, "operator '%s' requires a value", condition.Operator)
 		}
-		condition.Value = strings.TrimSpace(parts[2])
+		strValue := strings.TrimSpace(parts[2])
+		typedValue, err := p.convertValue(strValue, fieldInfo.Kind)
+		if err != nil {
+			return nil, err
+		}
+		condition.Value = typedValue
 	default:
 		return nil, errors.Wrapf(ErrUnknownOperator, "'%s' in condition '%s'", condition.Operator, p.current.Value)
 	}
 
 	return &ConditionNode{Condition: condition}, nil
+}
+
+// convertValue converts a string value to the specified reflect.Kind.
+func (p *Parser) convertValue(strValue string, kind reflect.Kind) (any, error) {
+	switch kind {
+	case reflect.String, reflect.Struct:
+		return strValue, nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		i, err := strconv.Atoi(strValue)
+		if err != nil {
+			return nil, errors.Wrapf(ErrInvalidValueFormat, "value '%s' is not a valid integer: %v", strValue, err)
+		}
+		return i, nil
+	case reflect.Bool:
+		b, err := strconv.ParseBool(strValue)
+		if err != nil {
+			return nil, errors.Wrapf(ErrInvalidValueFormat, "value '%s' is not a valid boolean: %v", strValue, err)
+		}
+		return b, nil
+	case reflect.Float32, reflect.Float64:
+		f, err := strconv.ParseFloat(strValue, 64)
+		if err != nil {
+			return nil, errors.Wrapf(ErrInvalidValueFormat, "value '%s' is not a valid float: %v", strValue, err)
+		}
+		if kind == reflect.Float32 {
+			return float32(f), nil
+		}
+		return f, nil
+	default:
+		return nil, errors.Newf("unsupported kind for value conversion: %v for value '%s'", kind, strValue)
+	}
 }
 
 func (p *Parser) parseGroupedExpression() (ExpressionNode, error) {

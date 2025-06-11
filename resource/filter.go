@@ -92,7 +92,7 @@ func (f Filter) parseToIndexFilter() (Statement, error) {
 			case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
 				typed, err := strconv.Atoi(term)
 				if err != nil {
-					return Statement{}, httpio.NewBadRequestMessageWithErrorf(errors.Wrap(err, "strconv.Atoi()"), "unable to convert %s to an int kind", term)
+					return Statement{}, httpio.NewBadRequestMessageWithErrorf(errors.Wrap(err, "strconv.Atoi()"), "unable to convert %s to an int", term)
 				}
 				params[param] = typed
 
@@ -102,7 +102,7 @@ func (f Filter) parseToIndexFilter() (Statement, error) {
 			case reflect.Bool:
 				typed, err := strconv.ParseBool(term)
 				if err != nil {
-					return Statement{}, httpio.NewBadRequestMessageWithErrorf(errors.Wrap(err, "strconv.ParseBool()"), "unable to convert %s to a bool kind", term)
+					return Statement{}, httpio.NewBadRequestMessageWithErrorf(errors.Wrap(err, "strconv.ParseBool()"), "unable to convert %s to a bool", term)
 				}
 				params[param] = typed
 

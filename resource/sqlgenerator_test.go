@@ -7,16 +7,18 @@ import (
 )
 
 // sqlGeneratorTestMap provides the necessary field name mappings for these tests.
-var sqlGeneratorTestMap = map[string]string{
-	"status":   "Status",
-	"user_id":  "UserId",
-	"price":    "Price",
-	"stock":    "Stock",
-	"rating":   "Rating",
-	"name":     "Name",
-	"age":      "Age",
-	"category": "Category",
-	"email":    "Email",
+var sqlGeneratorTestMap = map[string]FieldInfo{
+	"status":   {Name: "Status", Kind: reflect.String},
+	"user_id":  {Name: "UserId", Kind: reflect.Int},
+	"price":    {Name: "Price", Kind: reflect.Float64},
+	"stock":    {Name: "Stock", Kind: reflect.Int},
+	"rating":   {Name: "Rating", Kind: reflect.Int},
+	"name":     {Name: "Name", Kind: reflect.String},
+	"age":      {Name: "Age", Kind: reflect.Int64},
+	"category": {Name: "Category", Kind: reflect.String},
+	"email":    {Name: "Email", Kind: reflect.String},
+	"active":   {Name: "Active", Kind: reflect.Bool},
+	"field":    {Name: "Field", Kind: reflect.String},
 }
 
 func TestSQLGenerator_GenerateSQL(t *testing.T) {
@@ -70,14 +72,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "age:gte:30",
 			dialect:      PostgreSQL,
 			wantSQL:      `"Age" >= $1`,
-			wantParams:   []any{"30"},
+			wantParams:   []any{30},
 		},
 		{
 			name:         "age:gte:30 spanner",
 			filterString: "age:gte:30",
 			dialect:      Spanner,
 			wantSQL:      "`Age` >= @p1",
-			wantParams:   map[string]any{"p1": "30"},
+			wantParams:   map[string]any{"p1": 30},
 		},
 
 		// status:isnull
@@ -116,14 +118,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "name:eq:John,age:gte:30",
 			dialect:      PostgreSQL,
 			wantSQL:      `"Name" = $1 AND "Age" >= $2`,
-			wantParams:   []any{"John", "30"},
+			wantParams:   []any{"John", 30},
 		},
 		{
 			name:         "name:eq:John,age:gte:30 spanner",
 			filterString: "name:eq:John,age:gte:30",
 			dialect:      Spanner,
 			wantSQL:      "`Name` = @p1 AND `Age` >= @p2",
-			wantParams:   map[string]any{"p1": "John", "p2": "30"},
+			wantParams:   map[string]any{"p1": "John", "p2": 30},
 		},
 
 		// name:eq:John|name:eq:Jane
@@ -148,14 +150,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "(name:eq:John|name:eq:Jane),age:gte:30",
 			dialect:      PostgreSQL,
 			wantSQL:      `("Name" = $1 OR "Name" = $2) AND "Age" >= $3`,
-			wantParams:   []any{"John", "Jane", "30"},
+			wantParams:   []any{"John", "Jane", 30},
 		},
 		{
 			name:         "(name:eq:John|name:eq:Jane),age:gte:30 spanner",
 			filterString: "(name:eq:John|name:eq:Jane),age:gte:30",
 			dialect:      Spanner,
 			wantSQL:      "(`Name` = @p1 OR `Name` = @p2) AND `Age` >= @p3",
-			wantParams:   map[string]any{"p1": "John", "p2": "Jane", "p3": "30"},
+			wantParams:   map[string]any{"p1": "John", "p2": "Jane", "p3": 30},
 		},
 
 		// category:in:(books,movies)
@@ -194,7 +196,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "user_id:notin:(1,2,3)",
 			dialect:      PostgreSQL,
 			wantSQL:      `"UserId" NOT IN ($1, $2, $3)`,
-			wantParams:   []any{"1", "2", "3"},
+			wantParams:   []any{1, 2, 3},
 		},
 
 		// (category:in:(books,movies)|status:eq:active),price:lt:100
@@ -203,14 +205,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "(category:in:(books,movies)|status:eq:active),price:lt:100",
 			dialect:      PostgreSQL,
 			wantSQL:      `("Category" IN ($1, $2) OR "Status" = $3) AND "Price" < $4`,
-			wantParams:   []any{"books", "movies", "active", "100"},
+			wantParams:   []any{"books", "movies", "active", 100},
 		},
 		{
 			name:         "(category:in:(books,movies)|status:eq:active),price:lt:100 spanner",
 			filterString: "(category:in:(books,movies)|status:eq:active),price:lt:100",
 			dialect:      Spanner,
 			wantSQL:      "(`Category` IN (@p1, @p2) OR `Status` = @p3) AND `Price` < @p4",
-			wantParams:   map[string]any{"p1": "books", "p2": "movies", "p3": "active", "p4": "100"},
+			wantParams:   map[string]any{"p1": "books", "p2": "movies", "p3": "active", "p4": 100},
 		},
 		// name:eq:John Doe
 		{
@@ -234,7 +236,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "email:isnotnull,age:gt:18",
 			dialect:      PostgreSQL,
 			wantSQL:      `"Email" IS NOT NULL AND "Age" > $1`,
-			wantParams:   []any{"18"},
+			wantParams:   []any{18},
 		},
 		// (name:isnull|name:eq:Unknown)
 		{
@@ -258,7 +260,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "((status:eq:active|status:eq:pending),user_id:notin:(1,2)),price:gte:50",
 			dialect:      PostgreSQL,
 			wantSQL:      `(("Status" = $1 OR "Status" = $2) AND "UserId" NOT IN ($3, $4)) AND "Price" >= $5`,
-			wantParams:   []any{"active", "pending", "1", "2", "50"},
+			wantParams:   []any{"active", "pending", "1", "2", 50},
 		},
 		// Test for "ne" operator
 		{
@@ -281,7 +283,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "price:lt:10",
 			dialect:      PostgreSQL,
 			wantSQL:      `"Price" < $1`,
-			wantParams:   []any{"10"},
+			wantParams:   []any{10},
 		},
 		// Test for "lte" operator
 		{
@@ -289,7 +291,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "stock:lte:5",
 			dialect:      PostgreSQL,
 			wantSQL:      `"Stock" <= $1`,
-			wantParams:   []any{"5"},
+			wantParams:   []any{5},
 		},
 		// Test for "gt" operator
 		{
@@ -297,7 +299,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			filterString: "rating:gt:4",
 			dialect:      PostgreSQL,
 			wantSQL:      `"Rating" > $1`,
-			wantParams:   []any{"4"},
+			wantParams:   []any{4},
 		},
 	}
 
@@ -367,7 +369,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 				}
 
 				if !reflect.DeepEqual(gotPgParams, wantPgParams) {
-					t.Errorf("PostgreSQLGenerator.GenerateSQL() gotParams = %#v, want %#v", gotPgParams, wantPgParams)
+					t.Errorf("PostgreSQLGenerator.GenerateSQL() for test %s: gotParams = %#v, want %#v", tt.name, gotPgParams, wantPgParams)
 				}
 			} else if tt.dialect == Spanner {
 				wantSpannerParams, ok := tt.wantParams.(map[string]any)

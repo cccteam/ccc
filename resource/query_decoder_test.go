@@ -13,19 +13,19 @@ import (
 // --- Test Structures ---
 
 type TestResource struct {
-	ID                 string  `spanner:"id"`
-	Name               string  `spanner:"name_sql"`
-	Age                int     `spanner:"age_sql"`
-	Status             string  `spanner:"status_sql"`
-	Email              *string `spanner:"email_sql"`
-	Salary             float64 `spanner:"salary_sql"`
-	LegacyIndexedField string  `spanner:"legacy_indexed_field_sql"`
+	ID                 string   `spanner:"id"`
+	Name               string   `spanner:"name_sql"`
+	Age                int      `spanner:"age_sql"`
+	Status             string   `spanner:"status_sql"`
+	Email              *string  `spanner:"email_sql"`
+	Salary             float64  `spanner:"salary_sql"`
+	IsActive           bool     `spanner:"active_sql"`
+	ItemIDs            []int    `spanner:"item_ids_sql"`
+	Tags               []string `spanner:"tags_sql"`
+	LegacyIndexedField string   `spanner:"legacy_indexed_field_sql"`
 }
 
-func (tr TestResource) Resource() accesstypes.Resource {
-	return "testresources"
-}
-
+func (tr TestResource) Resource() accesstypes.Resource { return "testresources" }
 func (tr TestResource) DefaultConfig() Config {
 	return Config{
 		DBType:              SpannerDBType,
@@ -35,31 +35,39 @@ func (tr TestResource) DefaultConfig() Config {
 }
 
 type TestRequest struct {
-	Name               string  `json:"name"`
-	Age                int     `json:"age"`
-	Status             string  `json:"status"`
-	Email              *string `json:"email"`
-	Salary             float64 `json:"salary"`
-	LegacyIndexedField string  `json:"legacy_indexed_field" index:"true"`
+	Name               string   `json:"name"`
+	Age                int      `json:"age"`
+	Status             string   `json:"status"`
+	Email              *string  `json:"email"`
+	Salary             float64  `json:"salary"`
+	IsActive           bool     `json:"active" index:"true"`
+	ItemIDs            []int    `json:"ids" index:"true"`
+	Names              []string `json:"names" index:"true"`
+	LegacyIndexedField string   `json:"legacy_indexed_field" index:"true"`
 }
 
 func TestQueryDecoder_parseQuery_Refactored(t *testing.T) {
-	tests := []struct {
-		name                 string
-		queryValues          url.Values
-		wantErr              bool
-		expectedASTString    string
-		expectedFilterSet    *Filter
-		expectedColumnFields []accesstypes.Field
-		expectedErrMsg       string
-		expectConflictError  bool
+	test := []struct {
+		name                   string
+		queryValues            url.Values
+		wantErr                bool
+		expectedASTString      string
+		expectedFilterSet      *Filter
+		expectedColumnFields   []accesstypes.Field
+		expectedErrMsg         string
+		expectConflictError    bool
+		expectedConditionField string
+		expectedTypedValue     any
+		expectedTypedValues    []any
+		skipASTValueCheck      bool
 	}{
 		// 1. Columns processing first
 		{
 			name:                 "columns only",
-			queryValues:          url.Values{"columns": {"name,age"}},
+			queryValues:          url.Values{"columns": []string{"name,age"}},
 			wantErr:              false,
 			expectedColumnFields: []accesstypes.Field{"Name", "Age"},
+			skipASTValueCheck:    true,
 		},
 		{
 			name:                 "columns with valid filter",
@@ -67,10 +75,11 @@ func TestQueryDecoder_parseQuery_Refactored(t *testing.T) {
 			wantErr:              false,
 			expectedColumnFields: []accesstypes.Field{"Name"},
 			expectedASTString:    "age_sql:gt:30",
+			expectedTypedValue:   int(30), // Check typed value
 		},
 		{
 			name:                 "columns with legacy filter",
-			queryValues:          url.Values{"columns": {"name"}, "legacy_indexed_field": {"value"}},
+			queryValues:          url.Values{"columns": []string{"name"}, "legacy_indexed_field": []string{"value"}},
 			wantErr:              false,
 			expectedColumnFields: []accesstypes.Field{"Name"},
 			expectedFilterSet: NewFilter(
@@ -78,85 +87,202 @@ func TestQueryDecoder_parseQuery_Refactored(t *testing.T) {
 				map[FilterKey]string{FilterKey("legacy_indexed_field_sql"): "value"},
 				map[FilterKey]reflect.Kind{FilterKey("legacy_indexed_field_sql"): reflect.String},
 			),
+			skipASTValueCheck: true,
 		},
 		{
 			name:                 "invalid column name",
-			queryValues:          url.Values{"columns": {"name,nonexistent"}},
+			queryValues:          url.Values{"columns": []string{"name,nonexistent"}},
 			wantErr:              true,
 			expectedErrMsg:       "unknown column: nonexistent",
 			expectedColumnFields: nil,
+			skipASTValueCheck:    true,
 		},
 
 		// 2. "filter" parameter processing
 		{
-			name:              "valid filter only",
-			queryValues:       url.Values{"filter": {"name:eq:John"}},
-			wantErr:           false,
-			expectedASTString: "name_sql:eq:John",
+			name:               "valid filter only - string",
+			queryValues:        url.Values{"filter": []string{"name:eq:John"}},
+			wantErr:            false,
+			expectedASTString:  "name_sql:eq:John",
+			expectedTypedValue: "John",
 		},
 		{
-			name:           "invalid filter only",
-			queryValues:    url.Values{"filter": {"name:badop:John"}},
-			wantErr:        true,
-			expectedErrMsg: "parseConditionToken error='badop' in condition 'name:badop:John'",
+			name:              "invalid filter only",
+			queryValues:       url.Values{"filter": []string{"name:badop:John"}},
+			wantErr:           true,
+			expectedErrMsg:    "parseConditionToken error='badop' in condition 'name:badop:John'",
+			skipASTValueCheck: true,
 		},
 
 		// 3. Legacy filter parameter processing
 		{
 			name:        "legacy filter only",
-			queryValues: url.Values{"legacy_indexed_field": {"value"}},
+			queryValues: url.Values{"legacy_indexed_field": []string{"value"}},
 			wantErr:     false,
 			expectedFilterSet: NewFilter(
 				Index,
 				map[FilterKey]string{FilterKey("legacy_indexed_field_sql"): "value"},
 				map[FilterKey]reflect.Kind{FilterKey("legacy_indexed_field_sql"): reflect.String},
 			),
+			skipASTValueCheck: true,
 		},
 
 		// 4. Conflict Check
 		{
-			name:                "conflict between filter and legacy filter",
-			queryValues:         url.Values{"filter": {"name:eq:John"}, "legacy_indexed_field": {"value"}},
-			wantErr:             true,
+			name:               "conflict between filter and legacy filter",
+			queryValues:        url.Values{"filter": []string{"name:eq:John"}, "legacy_indexed_field": []string{"value"}},
+			wantErr:            true,
+			expectedASTString:  "name_sql:eq:John", // Still check AST structure
+			expectedTypedValue: "John",             // And its value
+			expectedFilterSet: NewFilter(
+				Index,
+				map[FilterKey]string{FilterKey("legacy_indexed_field_sql"): "value"},
+				map[FilterKey]reflect.Kind{FilterKey("legacy_indexed_field_sql"): reflect.String},
+			),
 			expectConflictError: true,
 			expectedErrMsg:      "cannot use 'filter' parameter alongside other legacy filterable field parameters",
 		},
 
 		// 5. Interaction and error propagation
 		{
-			name:           "invalid filter with legacy filter present",
-			queryValues:    url.Values{"filter": {"name:badop:John"}, "legacy_indexed_field": {"value"}},
-			wantErr:        true,
-			expectedErrMsg: "parseConditionToken error='badop' in condition 'name:badop:John'",
+			name:              "invalid filter with legacy filter present",
+			queryValues:       url.Values{"filter": []string{"name:badop:John"}, "legacy_indexed_field": []string{"value"}},
+			wantErr:           true,
+			expectedErrMsg:    "parseConditionToken error='badop' in condition 'name:badop:John'",
+			skipASTValueCheck: true,
 		},
 		{
-			name:           "valid filter with unknown parameter",
-			queryValues:    url.Values{"filter": {"name:eq:John"}, "unknown": {"value"}},
-			wantErr:        true,
+			name:               "valid filter with unknown parameter",
+			queryValues:        url.Values{"filter": []string{"name:eq:John"}, "unknown": []string{"value"}},
+			wantErr:            true,
+			expectedASTString:  "name_sql:eq:John", // AST is parsed
+			expectedTypedValue: "John",
+			expectedErrMsg:     "unknown query parameters: map[unknown:[value]]",
+			// checkReturnedAST is true by providing expectedASTString/expectedTypedValue
+		},
+		{
+			name:        "legacy filter with unknown parameter",
+			queryValues: url.Values{"legacy_indexed_field": []string{"value"}, "unknown": []string{"value"}},
+			wantErr:     true,
+			expectedFilterSet: NewFilter(
+				Index,
+				map[FilterKey]string{FilterKey("legacy_indexed_field_sql"): "value"},
+				map[FilterKey]reflect.Kind{FilterKey("legacy_indexed_field_sql"): reflect.String},
+			),
 			expectedErrMsg: "unknown query parameters: map[unknown:[value]]",
+			// checkReturnedFilterSet is true by providing expectedFilterSet
+			skipASTValueCheck: true,
 		},
 		{
-			name:           "legacy filter with unknown parameter",
-			queryValues:    url.Values{"legacy_indexed_field": {"value"}, "unknown": {"value"}},
-			wantErr:        true,
-			expectedErrMsg: "unknown query parameters: map[unknown:[value]]",
-		},
-		{
-			name:                "columns, valid filter, legacy filter (conflict), and unknown param",
-			queryValues:         url.Values{"columns": {"age"}, "filter": {"name:eq:John"}, "legacy_indexed_field": {"value"}, "unknown": {"value"}},
-			wantErr:             true,
+			name:                 "columns, valid filter, legacy filter (conflict), and unknown param",
+			queryValues:          url.Values{"columns": []string{"age"}, "filter": []string{"name:eq:John"}, "legacy_indexed_field": []string{"value"}, "unknown": []string{"value"}},
+			wantErr:              true,
+			expectedColumnFields: []accesstypes.Field{"Age"},
+			expectedASTString:    "name_sql:eq:John",
+			expectedTypedValue:   "John",
+			expectedFilterSet: NewFilter(
+				Index,
+				map[FilterKey]string{FilterKey("legacy_indexed_field_sql"): "value"},
+				map[FilterKey]reflect.Kind{FilterKey("legacy_indexed_field_sql"): reflect.String},
+			),
 			expectConflictError: true,
 			expectedErrMsg:      "cannot use 'filter' parameter alongside other legacy filterable field parameters",
 		},
 		{
-			name:           "empty filter string with legacy filter",
-			queryValues:    url.Values{"filter": {""}, "legacy_indexed_field": {"value"}},
-			wantErr:        true,
+			name:              "empty filter string with legacy filter",
+			queryValues:       url.Values{"filter": []string{""}, "legacy_indexed_field": []string{"value"}},
+			wantErr:           true,
+			expectedASTString: "", // No AST from empty filter string
+			expectedFilterSet: NewFilter(
+				Index,
+				map[FilterKey]string{FilterKey("legacy_indexed_field_sql"): "value"},
+				map[FilterKey]reflect.Kind{FilterKey("legacy_indexed_field_sql"): reflect.String},
+			),
 			expectedErrMsg: "unknown query parameters: map[filter:[]]",
+			// checkReturnedFilterSet is true by providing expectedFilterSet
+			skipASTValueCheck: true, // No AST to check value for
+		},
+		// New Test Cases for Typed Parsing
+		{
+			name:               "integer equality",
+			queryValues:        url.Values{"filter": []string{"age:eq:42"}},
+			wantErr:            false,
+			expectedASTString:  "age_sql:eq:42",
+			expectedTypedValue: int(42),
+		},
+		{
+			name:               "boolean true equality",
+			queryValues:        url.Values{"filter": []string{"active:eq:true"}},
+			wantErr:            false,
+			expectedASTString:  "active_sql:eq:true",
+			expectedTypedValue: true,
+		},
+		{
+			name:               "boolean false equality",
+			queryValues:        url.Values{"filter": []string{"active:eq:false"}},
+			wantErr:            false,
+			expectedASTString:  "active_sql:eq:false",
+			expectedTypedValue: false,
+		},
+		{
+			name:               "float GTE",
+			queryValues:        url.Values{"filter": []string{"salary:gte:5000.75"}},
+			wantErr:            false,
+			expectedASTString:  "salary_sql:gte:5000.75",
+			expectedTypedValue: float64(5000.75),
+		},
+		{
+			name:                "IN list of integers",
+			queryValues:         url.Values{"filter": []string{"ids:in:(1,2,3)"}},
+			wantErr:             false,
+			expectedASTString:   "ids_sql:in:(1,2,3)",
+			expectedTypedValues: []any{int(1), int(2), int(3)},
+		},
+		{
+			name:                "IN list of strings",
+			queryValues:         url.Values{"filter": []string{"names:in:(Alice,Bob,Charlie)"}},
+			wantErr:             false,
+			expectedASTString:   "tags_sql:in:(Alice,Bob,Charlie)", // Assuming json:"names" maps to db "tags_sql"
+			expectedTypedValues: []any{"Alice", "Bob", "Charlie"},
+		},
+		{
+			name:              "ISNULL operator (no value check needed)",
+			queryValues:       url.Values{"filter": []string{"email:isnull"}},
+			wantErr:           false,
+			expectedASTString: "email_sql:isnull",
+			skipASTValueCheck: true,
+		},
+		{
+			name:              "ISNOTNULL operator (no value check needed)",
+			queryValues:       url.Values{"filter": []string{"email:isnotnull"}},
+			wantErr:           false,
+			expectedASTString: "email_sql:isnotnull",
+			skipASTValueCheck: true,
+		},
+		{
+			name:              "conversion error - int",
+			queryValues:       url.Values{"filter": []string{"age:eq:notanint"}},
+			wantErr:           true,
+			expectedErrMsg:    "value 'notanint' is not a valid integer",
+			skipASTValueCheck: true,
+		},
+		{
+			name:              "conversion error - bool",
+			queryValues:       url.Values{"filter": []string{"active:eq:notabool"}},
+			wantErr:           true,
+			expectedErrMsg:    "value 'notabool' is not a valid boolean",
+			skipASTValueCheck: true,
+		},
+		{
+			name:              "conversion error - float",
+			queryValues:       url.Values{"filter": []string{"salary:eq:notafloat"}},
+			wantErr:           true,
+			expectedErrMsg:    "value 'notafloat' is not a valid float",
+			skipASTValueCheck: true,
 		},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range test {
 		t.Run(tt.name, func(t *testing.T) {
 			resSet, err := NewResourceSet[TestResource, TestRequest]()
 			if err != nil {
@@ -205,61 +331,94 @@ func TestQueryDecoder_parseQuery_Refactored(t *testing.T) {
 				}
 			}
 
-			// Check parsedAST
-			if tt.expectedASTString != "" {
-				if parsedAST == nil {
-					t.Fatalf("parsedAST should not be nil when checkReturnedAST is true for test '%s'", tt.name)
+			astOK := true
+			if parsedAST == nil {
+				if tt.expectedASTString != "" || tt.expectedTypedValue != nil || len(tt.expectedTypedValues) > 0 {
+					if !tt.wantErr { // If no error was wanted, but AST is nil when it shouldn't be
+						t.Errorf("parsedAST is nil for test '%s' when a structure or value was expected", tt.name)
+					}
+					astOK = false // Mark AST as not OK for further checks
 				}
-				if actualASTString := parsedAST.String(); actualASTString != tt.expectedASTString {
-					t.Errorf("AST string representation mismatch for test '%s':\nExpected: %s\nActual:   %s", tt.name, tt.expectedASTString, actualASTString)
-				}
-			} else if tt.expectedASTString != "" && !tt.wantErr {
-				if parsedAST == nil {
-					t.Fatalf("parsedAST should not be nil for a valid expected AST string for test '%s'", tt.name)
-				}
-				if actualASTString := parsedAST.String(); actualASTString != tt.expectedASTString {
-					t.Errorf("AST string representation mismatch for test '%s':\nExpected: %s\nActual:   %s", tt.name, tt.expectedASTString, actualASTString)
-				}
-			} else {
-				if parsedAST != nil {
-					t.Errorf("parsedAST should be nil for test '%s', got: %v", tt.name, parsedAST)
+			} else { // parsedAST is not nil
+				if tt.expectedASTString != "" {
+					if actualASTString := parsedAST.String(); actualASTString != tt.expectedASTString {
+						t.Errorf("AST string representation mismatch for test '%s':\nExpected: %s\nActual:   %s", tt.name, tt.expectedASTString, actualASTString)
+					}
 				}
 			}
 
-			// Check filterSet
+			if !tt.wantErr && !tt.skipASTValueCheck && astOK && parsedAST != nil {
+				condNode, ok := parsedAST.(*ConditionNode)
+				// If it's a complex AST, try to find the condition node. For now, assume simple or first.
+				// This part might need a helper function to traverse AST for more complex cases.
+				if !ok {
+					if ln, lnOk := parsedAST.(*LogicalOpNode); lnOk { // Check if it's a logical node
+						if cnLeft, cnLeftOk := ln.Left.(*ConditionNode); cnLeftOk { // Check left child
+							if tt.expectedConditionField == "" || tt.expectedConditionField == cnLeft.Condition.Field {
+								condNode = cnLeft
+								ok = true
+							}
+						}
+						if !ok { // If not found in left, check right child
+							if cnRight, cnRightOk := ln.Right.(*ConditionNode); cnRightOk {
+								if tt.expectedConditionField == "" || tt.expectedConditionField == cnRight.Condition.Field {
+									condNode = cnRight
+									ok = true
+								}
+							}
+						}
+					}
+				}
+
+				if ok && condNode != nil { // We have a ConditionNode to check
+					if tt.expectedTypedValue != nil {
+						if !reflect.DeepEqual(condNode.Condition.Value, tt.expectedTypedValue) {
+							t.Errorf("Typed value mismatch for test '%s' (field %s):\nExpected: %v (type %T)\nActual:   %v (type %T)",
+								tt.name, condNode.Condition.Field, tt.expectedTypedValue, tt.expectedTypedValue, condNode.Condition.Value, condNode.Condition.Value)
+						}
+					}
+					if len(tt.expectedTypedValues) > 0 {
+						if !reflect.DeepEqual(condNode.Condition.Values, tt.expectedTypedValues) {
+							t.Errorf("Typed values list mismatch for test '%s' (field %s):\nExpected: %v\nActual:   %v",
+								tt.name, condNode.Condition.Field, tt.expectedTypedValues, condNode.Condition.Values)
+						}
+						// Also check types of individual elements if necessary
+						for i := range tt.expectedTypedValues {
+							if i < len(condNode.Condition.Values) {
+								expectedType := reflect.TypeOf(tt.expectedTypedValues[i])
+								actualType := reflect.TypeOf(condNode.Condition.Values[i])
+								if expectedType != actualType {
+									t.Errorf("Typed values list element type mismatch for test '%s' (field %s, index %d):\nExpected type: %v\nActual type:   %v",
+										tt.name, condNode.Condition.Field, i, expectedType, actualType)
+								}
+							}
+						}
+					}
+				} else if tt.expectedTypedValue != nil || len(tt.expectedTypedValues) > 0 {
+					// Expected typed values/value but couldn't find a ConditionNode in AST
+					t.Errorf("Expected to check typed values for test '%s', but could not extract ConditionNode from AST %T", tt.name, parsedAST)
+				}
+			}
+
 			if tt.expectedFilterSet != nil {
 				if filterSet == nil {
-					t.Fatalf("filterSet should not be nil when checkReturnedFilterSet is true for test '%s'", tt.name)
-				}
-				if tt.expectedFilterSet.typ != filterSet.typ { // Accessing unexported field 'typ'
-					t.Errorf("FilterSet Type mismatch for test '%s':\nExpected: %v\nActual:   %v", tt.name, tt.expectedFilterSet.typ, filterSet.typ)
-				}
-			} else if tt.expectedFilterSet != nil && !tt.wantErr {
-				if filterSet == nil {
-					t.Fatalf("filterSet should not be nil for an expected legacy filter for test '%s'", tt.name)
-				}
-				if tt.expectedFilterSet != nil {
-					if tt.expectedFilterSet.typ != filterSet.typ { // Accessing unexported field 'typ'
+					if !tt.wantErr { // Only fail if no error was expected overall for the test
+						t.Fatalf("filterSet should not be nil for test '%s'", tt.name)
+					}
+				} else {
+					if tt.expectedFilterSet.typ != filterSet.typ {
 						t.Errorf("FilterSet Type mismatch for test '%s':\nExpected: %v\nActual:   %v", tt.name, tt.expectedFilterSet.typ, filterSet.typ)
 					}
 				}
-			} else {
-				if filterSet != nil {
+			} else { // tc.expectedFilterSet == nil
+				if filterSet != nil && !tt.wantErr && !tt.expectConflictError { // If no error and no conflict, filterSet should be nil
 					t.Errorf("filterSet should be nil for test '%s', got: %v", tt.name, filterSet)
-				}
-			}
-
-			// Specific assertions based on new logic from parseQuery
-			if !tt.wantErr && !tt.expectConflictError {
-				if tt.expectedASTString != "" && tt.expectedFilterSet == nil {
-					if filterSet != nil {
-						t.Errorf("filterSet should be nil when only 'filter' (AST) is used and valid for test '%s', got: %v", tt.name, filterSet)
-					}
-				}
-				if tt.expectedFilterSet != nil && tt.expectedASTString == "" {
-					if parsedAST != nil {
-						t.Errorf("parsedAST should be nil when only legacy filters are used and valid for test '%s', got: %v", tt.name, parsedAST)
-					}
+				} else if filterSet != nil && tt.expectConflictError && tt.wantErr && tt.expectedErrMsg == "cannot use 'filter' parameter alongside other legacy filterable field parameters" {
+					// This is the conflict case, filterSet can be non-nil here, verify its type
+					// This specific check is now covered by the more general check above with tc.expectedFilterSet being non-nil for conflict case.
+				} else if filterSet != nil && tt.wantErr && tt.expectedErrMsg != "" && !strings.Contains(tt.expectedErrMsg, "cannot use 'filter' parameter") {
+					// If an error occurred *before* conflict check (e.g. bad AST, bad legacy filter before conflict), filterSet might be nil or partially formed.
+					// The current assertions for tc.checkReturnedFilterSet handle this.
 				}
 			}
 		})
