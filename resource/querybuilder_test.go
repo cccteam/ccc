@@ -176,7 +176,7 @@ func Test_QueryClause(t *testing.T) {
 
 			gotSQL, gotParams := tw.Walk(tt.filter.qSet.whereClause)
 			if tt.wantSQL != gotSQL {
-				t.Errorf("output SQL != wantSQL\ngot = %q\nwnt = %q", gotSQL, tt.wantSQL)
+				t.Errorf("output SQL != wantSQL\ngot = %q\nwant = %q", gotSQL, tt.wantSQL)
 			}
 
 			for k := range tt.wantParams {
