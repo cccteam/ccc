@@ -200,21 +200,11 @@ func (n *node) Operator() string {
 }
 
 func (n *node) LeftOperand() string {
-	switch n.Type() {
-	case logical:
-		return ""
-	default:
-		panic(fmt.Sprintf("non-logical node type %s must implement LeftOperand()", n.Type()))
-	}
+	panic(fmt.Sprintf("node type %s must implement LeftOperand()", n.Type()))
 }
 
 func (n *node) RightOperands() []any {
-	switch n.Type() {
-	case logical:
-		return nil
-	default:
-		panic(fmt.Sprintf("non-logical node type %s must implement RightOperands()", n.Type()))
-	}
+	panic(fmt.Sprintf("node type %s must implement RightOperands()", n.Type()))
 }
 
 func (n *node) Left() whereClauseExprTree {
@@ -376,10 +366,12 @@ func (t *treeWalker) visit(node whereClauseExprTree) string {
 		values := node.RightOperands()
 		if len(values) > 0 {
 			if len(values) > 1 {
-				b.WriteString("(")
+				b.WriteString(" (")
+			} else {
+				b.WriteString(" ")
 			}
 
-			b.WriteString(fmt.Sprintf(" @%s", t.newParam(values[0], node.LeftOperand())))
+			b.WriteString(fmt.Sprintf("@%s", t.newParam(values[0], node.LeftOperand())))
 
 			if len(values) > 1 {
 				for _, v := range values[1:] {
