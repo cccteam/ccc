@@ -1333,5 +1333,11 @@ var conversionTemplateMap map[conversionFlag]string = map[conversionFlag]string{
 		default:
 			panic(fmt.Sprintf("Unsupported StringTo[bool] value: %q", *x.{{ .Column.GoName }}))
 	}`,
+	fromString | toInt: `i, err := strconv.Atoi(x.{{ .Column.GoName }})
+	if err != nil {
+		panic(fmt.Sprintf("Unsupported StringTo[int] value: %q, err=%s", x.{{ .Column.GoName }}, err.Error()))
+	}
+		
+	return int64(i)`,
 	// TODO(jrowland): populate with all the combinations we need right now
 }

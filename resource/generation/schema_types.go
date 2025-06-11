@@ -67,6 +67,7 @@ const (
 	pointer
 	fromInt
 	fromString
+	toInt
 	toString
 	toBool
 	toUUID
@@ -108,6 +109,8 @@ func (t tableColumn) NeedsConversionMethod() bool {
 
 func (t tableColumn) ConversionReturnType() string {
 	switch {
+	case t.conversionMethod&toInt != 0:
+		return "int64"
 	case t.conversionMethod&toString != 0, t.conversionMethod&toUUID != 0:
 		if t.conversionMethod&pointer != 0 {
 			return "*string"

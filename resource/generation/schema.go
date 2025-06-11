@@ -557,6 +557,8 @@ func determineConversionMethod(field *parser.Field) conversionFlag {
 	}
 
 	switch typeArgs {
+	case "int", "int64":
+		flag |= toInt
 	case "string":
 		flag |= toString
 	case "bool":
