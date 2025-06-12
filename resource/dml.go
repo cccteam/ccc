@@ -28,8 +28,8 @@ type PostgresStatement struct {
 	// and is not used in the query.
 	resolvedWhereClause string
 
-	SQL              string
-	PostgreSQLParams []any
+	SQL    string
+	Params []any
 }
 
 type Columns string

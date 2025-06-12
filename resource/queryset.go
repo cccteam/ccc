@@ -331,7 +331,7 @@ func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 	return &PostgresStatement{
 		resolvedWhereClause: resolvedSQL,
 		SQL:                 sql,
-		PostgreSQLParams:    where.PostgreSQLParams,
+		Params:              where.PostgreSQLParams,
 	}, nil
 }
 
