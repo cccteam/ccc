@@ -193,8 +193,8 @@ func (q *QuerySet[Resource]) astWhereClause() (*Statement, error) {
 	return nil, errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
 }
 
-// Where translates the the fields to database struct tags in databaseType when building the where clause
-func (q *QuerySet[Resource]) Where() (*Statement, error) {
+// where translates the the fields to database struct tags in databaseType when building the where clause
+func (q *QuerySet[Resource]) where() (*Statement, error) {
 	if q.parsedFilterAst != nil {
 		return q.astWhereClause()
 	}
@@ -229,7 +229,7 @@ func (q *QuerySet[Resource]) Where() (*Statement, error) {
 	}, nil
 }
 
-func (q *QuerySet[Resource]) SpannerStmt() (*StatementWrapper, error) {
+func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
 	if q.rMeta.dbType != SpannerDBType {
 		return nil, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
@@ -246,13 +246,13 @@ func (q *QuerySet[Resource]) SpannerStmt() (*StatementWrapper, error) {
 }
 
 // TODO(bswaney): collapse this into the spanner filter stmt so that we can use the general case
-func (q *QuerySet[Resource]) spannerIndexStmt() (*StatementWrapper, error) {
+func (q *QuerySet[Resource]) spannerIndexStmt() (*SpannerStatement, error) {
 	columns, err := q.Columns()
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	where, err := q.Where()
+	where, err := q.where()
 	if err != nil {
 		return nil, errors.Wrap(err, "patcher.Where()")
 	}
@@ -267,19 +267,19 @@ func (q *QuerySet[Resource]) spannerIndexStmt() (*StatementWrapper, error) {
 
 	resolvedSQL, err := substituteSQLParams(where.SQL, where.SpannerParams, Spanner)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause in spannerIndexStmt")
+		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause")
 	}
 
-	return &StatementWrapper{resolvedWhereClause: resolvedSQL, Statement: stmt}, nil
+	return &SpannerStatement{resolvedWhereClause: resolvedSQL, Statement: stmt}, nil
 }
 
-func (q *QuerySet[Resource]) spannerFilterStmt() (*StatementWrapper, error) {
+func (q *QuerySet[Resource]) spannerFilterStmt() (*SpannerStatement, error) {
 	columns, err := q.Columns()
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	filter, err := q.filter.SpannerStmt()
+	filter, err := q.filter.spannerStmt()
 	if err != nil {
 		return nil, err
 	}
@@ -298,22 +298,22 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (*StatementWrapper, error) {
 		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause in spannerFilterStmt")
 	}
 
-	return &StatementWrapper{resolvedWhereClause: resolvedSQL, Statement: stmt}, nil
+	return &SpannerStatement{resolvedWhereClause: resolvedSQL, Statement: stmt}, nil
 }
 
-func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
+func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 	if q.rMeta.dbType != PostgresDBType {
-		return Statement{}, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", PostgresDBType, q.rMeta.dbType)
+		return nil, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", PostgresDBType, q.rMeta.dbType)
 	}
 
 	columns, err := q.Columns()
 	if err != nil {
-		return Statement{}, errors.Wrap(err, "QuerySet.Columns()")
+		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	where, err := q.Where()
+	where, err := q.where()
 	if err != nil {
-		return Statement{}, errors.Wrap(err, "patcher.Where()")
+		return nil, errors.Wrap(err, "patcher.Where()")
 	}
 
 	sql := fmt.Sprintf(`
@@ -323,9 +323,15 @@ func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
 			%s`, columns, q.Resource(), where.SQL,
 	)
 
-	return Statement{
-		SQL:              sql,
-		PostgreSQLParams: where.PostgreSQLParams,
+	resolvedSQL, err := substituteSQLParams(where.SQL, where.PostgreSQLParams, Spanner)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause")
+	}
+
+	return &PostgresStatement{
+		resolvedWhereClause: resolvedSQL,
+		SQL:                 sql,
+		Params:              where.PostgreSQLParams,
 	}, nil
 }
 

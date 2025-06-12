@@ -41,7 +41,7 @@ func NewFilter(typ FilterType, values map[FilterKey]string, kinds map[FilterKey]
 	}
 }
 
-func (f Filter) SpannerStmt() (Statement, error) {
+func (f Filter) spannerStmt() (Statement, error) {
 	switch f.typ {
 	case Index:
 		statement, err := f.parseToIndexFilter()
