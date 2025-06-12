@@ -15,12 +15,21 @@ type Statement struct {
 	PostgreSQLParams []any
 }
 
-type StatementWrapper struct {
+type SpannerStatement struct {
 	// resolvedWhereClause is used to carry contextual information for error messages
 	// and is not used in the query.
 	resolvedWhereClause string
 
 	spanner.Statement
+}
+
+type PostgresStatement struct {
+	// resolvedWhereClause is used to carry contextual information for error messages
+	// and is not used in the query.
+	resolvedWhereClause string
+
+	SQL              string
+	PostgreSQLParams []any
 }
 
 type Columns string
