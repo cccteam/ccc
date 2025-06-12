@@ -26,7 +26,7 @@ type QuerySet[Resource Resourcer] struct {
 	resourceSet            *ResourceSet[Resource]
 	userPermissions        UserPermissions
 	requiredPermission     accesstypes.Permission
-	parsedFilterAst        ExpressionNode // Changed from interface{} to ExpressionNode
+	parsedFilterAst        ExpressionNode
 }
 
 func NewQuerySet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *QuerySet[Resource] {
@@ -382,8 +382,7 @@ func (q *QuerySet[Resource]) SetWhereClause(qc QueryClause) {
 	q.parsedFilterAst = qc.tree
 }
 
-// SetParsedFilterAst sets the parsed filter AST.
-func (q *QuerySet[Resource]) SetParsedFilterAst(ast ExpressionNode) { // Changed parameter type
+func (q *QuerySet[Resource]) SetParsedFilterAst(ast ExpressionNode) {
 	q.parsedFilterAst = ast
 }
 
