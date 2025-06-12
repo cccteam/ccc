@@ -23,6 +23,7 @@ type schemaGenerator struct {
 	schemaDestination    string
 	resourceFilePath     string
 	datamigrationPath    string
+	generateResources    bool
 	migrationIndexOffset int
 	packageName          string
 	appName              string
