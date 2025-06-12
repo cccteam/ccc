@@ -80,6 +80,7 @@ type tableColumn struct {
 	DefaultValue     *string
 	IsNullable       bool
 	IsHidden         bool
+	IsOmitted        bool
 	conversionMethod conversionFlag
 }
 
@@ -284,6 +285,9 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[genlan
 			name := fmt.Sprintf("%sBy%s", s.Name, column.Name)
 
 			s.Indexes = append(s.Indexes, schemaIndex{Name: name, Type: uniqueIndexType, Argument: column.Name})
+
+		case genlang.Omit:
+			column.IsOmitted = true
 
 		default:
 			return tableColumn{}, errors.Newf("field keyword %s not yet implemented for schemaColumn", keyword.String())
