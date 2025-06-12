@@ -136,8 +136,6 @@ func (s *schemaGenerator) generateSchemaMigrations(schemaInfo *schema) error {
 		return err
 	}
 
-	// TODO: validate that referenced table names by foreign keys and views are actually in the schema
-
 	var (
 		wg      sync.WaitGroup
 		errChan = make(chan error)

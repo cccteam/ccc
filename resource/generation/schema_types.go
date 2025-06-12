@@ -160,7 +160,6 @@ type schemaTable struct {
 	Policies         []string
 	HasConvertMethod bool
 	HasFilterMethod  bool
-	Query            *string // TODO: remove query and use method on struct instead
 }
 
 func (s schemaTable) Constraints() []string {
@@ -244,7 +243,7 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[genlan
 	for keyword, args := range comment {
 		switch keyword {
 		case genlang.PrimaryKey:
-			if s.PrimaryKey != "" { // TODO: do all error checking in Scanner instead of here (redundant)
+			if s.PrimaryKey != "" { // TODO(jrowland): do all error checking in Scanner instead of here (redundant)
 				return tableColumn{}, errors.New("@primarykey used twice")
 			}
 

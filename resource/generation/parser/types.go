@@ -88,9 +88,6 @@ func (t *TypeInfo) IsIterable() bool {
 	}
 }
 
-// TODO: this method is only used in templates to retrieve a struct's fields.
-// the ok boolean should not be ignored. maybe replace this method with an iterator over fields
-// if the type is a struct.
 func (t *TypeInfo) AsStruct() *Struct {
 	return newStruct(t.obj, nil)
 }
