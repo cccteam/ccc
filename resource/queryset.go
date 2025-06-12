@@ -21,7 +21,6 @@ type QuerySet[Resource Resourcer] struct {
 	keys                   *fieldSet
 	filter                 *Filter
 	fields                 []accesstypes.Field
-	whereClause            whereClauseExprTree
 	returnAccessableFields bool
 	rMeta                  *ResourceMetadata[Resource]
 	resourceSet            *ResourceSet[Resource]
@@ -173,12 +172,6 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 	}
 }
 
-func (q *QuerySet[Resource]) queryWhereClause() (*Statement, error) {
-	sql, params := newTreeWalker().Walk(q.whereClause)
-
-	return &Statement{SQL: "WHERE " + sql, SpannerParams: params}, nil
-}
-
 func (q *QuerySet[Resource]) astWhereClause() (*Statement, error) {
 	switch q.rMeta.dbType {
 	case SpannerDBType:
@@ -191,7 +184,7 @@ func (q *QuerySet[Resource]) astWhereClause() (*Statement, error) {
 	case PostgresDBType:
 		sql, params, err := NewPostgreSQLGenerator().GenerateSQL(q.parsedFilterAst)
 		if err != nil {
-			return nil, errors.Wrap(err, "SpannerGenerator.GenerateSQL()")
+			return nil, errors.Wrap(err, "PostgreSQLGenerator.GenerateSQL()")
 		}
 
 		return &Statement{SQL: "WHERE " + sql, PostgreSQLParams: params}, nil
@@ -202,10 +195,6 @@ func (q *QuerySet[Resource]) astWhereClause() (*Statement, error) {
 
 // Where translates the the fields to database struct tags in databaseType when building the where clause
 func (q *QuerySet[Resource]) Where() (*Statement, error) {
-	if q.whereClause != nil {
-		return q.queryWhereClause()
-	}
-
 	if q.parsedFilterAst != nil {
 		return q.astWhereClause()
 	}
@@ -245,8 +234,8 @@ func (q *QuerySet[Resource]) SpannerStmt() (*StatementWrapper, error) {
 		return nil, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
-	if moreThan(1, q.whereClause != nil, q.KeySet().Len() != 0, q.filter != nil, q.parsedFilterAst != nil) {
-		panic("cannot use QueryClause, KeySet, Filter, or ParsedFilterAst together")
+	if moreThan(1, q.KeySet().Len() != 0, q.filter != nil, q.parsedFilterAst != nil) {
+		return nil, httpio.NewBadRequestMessage("cannot use multiple sources for WHERE clause together (e.g. QueryClause, KeySet, or Filter)")
 	}
 
 	if q.filter != nil {
@@ -276,7 +265,12 @@ func (q *QuerySet[Resource]) spannerIndexStmt() (*StatementWrapper, error) {
 	))
 	maps.Insert(stmt.Params, maps.All(where.SpannerParams))
 
-	return &StatementWrapper{resolvedWhereClause: substituteSQLParams(where.SQL, where.SpannerParams), Statement: stmt}, nil
+	resolvedSQL, err := substituteSQLParams(where.SQL, where.SpannerParams, Spanner)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause in spannerIndexStmt")
+	}
+
+	return &StatementWrapper{resolvedWhereClause: resolvedSQL, Statement: stmt}, nil
 }
 
 func (q *QuerySet[Resource]) spannerFilterStmt() (*StatementWrapper, error) {
@@ -299,7 +293,12 @@ func (q *QuerySet[Resource]) spannerFilterStmt() (*StatementWrapper, error) {
 
 	stmt.Params = filter.SpannerParams
 
-	return &StatementWrapper{resolvedWhereClause: substituteSQLParams(filter.SQL, filter.SpannerParams), Statement: stmt}, nil
+	resolvedSQL, err := substituteSQLParams(filter.SQL, filter.SpannerParams, Spanner)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause in spannerFilterStmt")
+	}
+
+	return &StatementWrapper{resolvedWhereClause: resolvedSQL, Statement: stmt}, nil
 }
 
 func (q *QuerySet[Resource]) PostgresStmt() (Statement, error) {
@@ -380,7 +379,7 @@ func (q *QuerySet[Resource]) SetFilterParam(filterSet *Filter) {
 }
 
 func (q *QuerySet[Resource]) SetWhereClause(qc QueryClause) {
-	q.whereClause = qc.tree
+	q.parsedFilterAst = qc.tree
 }
 
 // SetParsedFilterAst sets the parsed filter AST.
