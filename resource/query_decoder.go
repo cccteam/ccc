@@ -49,14 +49,14 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 }
 
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
-	requestedFields, filterSet, currentParsedAST, err := d.parseQuery(request.URL.Query())
+	requestedFields, search, currentParsedAST, err := d.parseQuery(request.URL.Query())
 	if err != nil {
 		return nil, err
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
 	qSet.SetFilterAst(currentParsedAST)
-	qSet.SetSearchParam(filterSet)
+	qSet.SetSearchParam(search)
 	if len(requestedFields) == 0 {
 		qSet.ReturnAccessableFields(true)
 	} else {
@@ -84,7 +84,7 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, filterSet *Search, parsedAST ExpressionNode, err error) {
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, search *Search, parsedAST ExpressionNode, err error) {
 	if cols := query.Get("columns"); cols != "" {
 		// column names received in the query parameters are a comma separated list of json field names (ie: json tags on the request struct)
 		// we need to convert these to struct field names
@@ -108,20 +108,20 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 		delete(query, "filter")
 	}
 
-	filterSet, query, err = d.parseFilterParam(query)
+	search, query, err = d.parseFilterParam(query)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	if parsedAST != nil && filterSet != nil {
-		return nil, nil, nil, httpio.NewBadRequestMessagef("cannot use 'filter' parameter alongside other legacy filterable field parameters")
+	if parsedAST != nil && search != nil {
+		return nil, nil, nil, httpio.NewBadRequestMessagef("cannot use 'filter' parameter alongside 'search' parameter")
 	}
 
 	if len(query) > 0 {
 		return nil, nil, nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
 	}
 
-	return columnFields, filterSet, parsedAST, nil
+	return columnFields, search, parsedAST, nil
 }
 
 // parseFilterExpression parses the filter string and returns an AST.
