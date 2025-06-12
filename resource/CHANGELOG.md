@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.12](https://github.com/cccteam/ccc/compare/resource/v0.1.11...resource/v0.1.12) (2025-06-12)
+
+
+### Features
+
+* Added support for filtering on boolean columns ([#307](https://github.com/cccteam/ccc/issues/307)) ([873baeb](https://github.com/cccteam/ccc/commit/873baeb85fb8e14d175e0f960214a3929cb5eb05))
+* Cleanup walk interface to return params ([#319](https://github.com/cccteam/ccc/issues/319)) ([458154f](https://github.com/cccteam/ccc/commit/458154f02d1ab0cc05b723981e24ef33acce6b2f))
+* Implement filter query param ([#322](https://github.com/cccteam/ccc/issues/322)) ([222f389](https://github.com/cccteam/ccc/commit/222f389e03be3f2779539b30fbfbf8d4fe619686))
+* Support NULL checks ([#308](https://github.com/cccteam/ccc/issues/308)) ([3ef7b17](https://github.com/cccteam/ccc/commit/3ef7b175a7909192c11f9a1148f56efbfddc4b71))
+
+
+### Bug Fixes
+
+* Enclose index filter fragments in parentheses for multiple terms ([#315](https://github.com/cccteam/ccc/issues/315)) ([afb9ea8](https://github.com/cccteam/ccc/commit/afb9ea8fd62cf64b86ee31a257b2ac76bf960a9f))
+* Fix formatting bug with parens for IN/NOT IN clauses ([#320](https://github.com/cccteam/ccc/issues/320)) ([aa2fe0f](https://github.com/cccteam/ccc/commit/aa2fe0f83a554cd0e6e58e8acaea7b8c29add0b7))
+* Fix PostgresStmt() method to return resolvedWhereClause like the Spanner variant ([#324](https://github.com/cccteam/ccc/issues/324)) ([5f2664e](https://github.com/cccteam/ccc/commit/5f2664e104e525f840105c1c4b32ed1534222160))
+* Return correct typescript data type for uuid and date arrays ([#321](https://github.com/cccteam/ccc/issues/321)) ([438463a](https://github.com/cccteam/ccc/commit/438463a52e3d003adf08e57641f094df383575dd))
+
+
+### Code Refactoring
+
+* Remove duplicate SQL Generator code ([#323](https://github.com/cccteam/ccc/issues/323)) ([cdfa5e4](https://github.com/cccteam/ccc/commit/cdfa5e426dc7d36c47437f61bac06c55a8b8b98e))
+
+
+### Code Cleanup
+
+* Cleanup the where clause generation ([#299](https://github.com/cccteam/ccc/issues/299)) ([cb805d4](https://github.com/cccteam/ccc/commit/cb805d4faef6dacd62ffa90ac92faba0a2bda10a))
+
 ## [0.1.11](https://github.com/cccteam/ccc/compare/resource/v0.1.10...resource/v0.1.11) (2025-05-14)
 
 
