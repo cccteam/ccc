@@ -488,7 +488,7 @@ func decodeSQLType(f *parser.Field) string {
 		return "STRING(MAX)"
 	case "bool":
 		return "BOOL"
-	case "ccc.UUID", "UUID":
+	case "ccc.UUID", "UUID", "ccc.NullUUID":
 		return "STRING(36)"
 	case "int", "int64":
 		return "INT64"
