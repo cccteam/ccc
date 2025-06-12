@@ -1136,7 +1136,7 @@ CREATE TABLE {{ .Resource.Name }} (
   {{- range $column := .Resource.Columns }}
   {{ $column.Name }} {{ $column.SQLType }}
   	{{- if not $column.IsNullable }} NOT NULL{{ end }}
-  	{{- if eq $column.Name "UpdatedAt" }} OPTIONS (allow_commit_timestamp=true){{ end }}
+  	{{- if or (eq $column.Name "UpdatedAt") (eq $column.Name "CreatedAt") }} OPTIONS (allow_commit_timestamp=true){{ end }}
   	{{- if $column.DefaultValue }} DEFAULT ({{ $column.DefaultValue }}){{ end }}
 	{{- if $column.IsHidden }} HIDDEN{{ end }},
   {{- end }}
@@ -1156,7 +1156,8 @@ CREATE TABLE {{ .Resource.Name }} (
   CONSTRAINT {{ $constraint }},
 {{- end }}
 {{- end }}
-) PRIMARY KEY ({{ .Resource.PrimaryKey }});
+) PRIMARY KEY ({{ .Resource.PrimaryKey }})
+ {{- range $policy := .Resource.Policies }}, {{ $policy }}{{- end }};
 {{ range $index := .Resource.Indexes }}
 CREATE {{ $index.Type }} INDEX {{ $index.Name }} ON {{ $.Resource.Name }}({{ $index.Argument }});
 {{- end }}
@@ -1179,10 +1180,10 @@ SQL SECURITY INVOKER
 AS 
 SELECT
   {{- range $column := .Resource.Columns }}
-  {{ $column.SourceTable }}.{{ $column.Name }},
+  {{ if not $column.UsesAggregate }}{{ $column.SourceTable }}.{{ end }}{{ if $column.SourceColumn }}{{ $column.SourceColumn }} AS {{ end }}{{ $column.Name }},
   {{- end }}
-{{- .Resource.Query }}
-`
+{{- .Resource.Query }}`
+
 	migrationViewDownTemplate = `-- {{ .MigrationHeaderComment }}
 DROP VIEW {{ .Resource.Name }};
 `

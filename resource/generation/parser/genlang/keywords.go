@@ -43,6 +43,7 @@ var keywords = map[keyword]keywordOpts{
 	Using:       {scanField: argsRequired | exclusive},
 	Suppress:    {scanField: noArgs | exclusive},
 	Omit:        {scanField: noArgs | exclusive},
+	Policy:      {scanStruct: argsRequired},
 }
 
 const (
@@ -63,6 +64,7 @@ const (
 	Using       keyword = "using"    // Can only be used in views. Names the source field from another struct if it does not match this field
 	Suppress    keyword = "suppress" // Prevents field from being generated. Useful when merging multiple fields together for one output, like a phone number.
 	Omit        keyword = "omit"     // Omits field from migrating a value to DB. Useful for new schema columns that have a default value and you don't want to store Go's zero value.
+	Policy      keyword = "policy"   // Prints entire argument below table definition. Created for ROW POLICY declarations
 )
 
 // TODO(jrowland): find a better way to handle single vs dual arg results
