@@ -2,6 +2,7 @@ package resource
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -226,4 +227,95 @@ func (g *SpannerGenerator) GenerateSQL(node ExpressionNode) (sqlStr string, para
 	}
 
 	return sqlStr, namedParams, nil
+}
+
+// substituteSQLParams replaces placeholders in an SQL string with their actual values.
+// This function is intended for logging or debugging purposes and does NOT sanitize inputs,
+// so it should NOT be used for executing queries against a database to prevent SQL injection.
+func substituteSQLParams(sql string, params any, dialect SQLDialect) (string, error) {
+	if sql == "" {
+		return "", nil
+	}
+
+	switch dialect {
+	case Spanner:
+		spannerParams, ok := params.(map[string]any)
+		if !ok {
+			if params == nil { // Allow nil params for Spanner if no substitution is needed
+				return sql, nil
+			}
+
+			return "", errors.New("SubstituteSQLParams: for Spanner dialect, params must be map[string]any")
+		}
+		if len(spannerParams) == 0 {
+			return sql, nil
+		}
+
+		// Create a list of keys and sort by length in descending order
+		// to prevent shorter keys from replacing parts of longer keys (e.g., @p before @p1).
+		keys := make([]string, 0, len(spannerParams))
+		for k := range spannerParams {
+			keys = append(keys, k)
+		}
+		// Sort keys by length descending
+		// In case of equal length, sort alphabetically for stable output (optional)
+		sort.Slice(keys, func(i, j int) bool {
+			if len(keys[i]) == len(keys[j]) {
+				return keys[i] > keys[j] // Secondary sort: alphabetical descending for stability
+			}
+
+			return len(keys[i]) > len(keys[j])
+		})
+
+		for _, k := range keys {
+			v := spannerParams[k]
+			placeholder := "@" + k
+			// Using fmt.Sprintf for value substitution, similar to original behavior.
+			// String values ideally should be SQL-escaped and quoted for actual query execution.
+			valStr := ""
+			if strVal, isStr := v.(string); isStr {
+				// Simple quoting for strings for debug output
+				valStr = "'" + strings.ReplaceAll(strVal, "'", "''") + "'"
+			} else {
+				valStr = fmt.Sprintf("%v", v)
+			}
+			// Regex might be safer, but strings.ReplaceAll should work for simple @key placeholders.
+			// Need to be careful if keys can appear in other contexts.
+			sql = strings.ReplaceAll(sql, placeholder, valStr)
+		}
+
+	case PostgreSQL:
+		pgParams, ok := params.([]any)
+		if !ok {
+			if params == nil { // Allow nil params for PostgreSQL if no substitution is needed
+				return sql, nil
+			}
+
+			return "", errors.New("SubstituteSQLParams: for PostgreSQL dialect, params must be []any")
+		}
+		if len(pgParams) == 0 {
+			return sql, nil
+		}
+
+		// Iterate backwards to correctly replace multi-digit placeholders (e.g., $10 before $1)
+		for i := len(pgParams) - 1; i >= 0; i-- {
+			placeholder := fmt.Sprintf("$%d", i+1)
+			v := pgParams[i]
+			// Using fmt.Sprintf for value substitution.
+			// String values ideally should be SQL-escaped and quoted for actual query execution.
+			valStr := ""
+			if strVal, isStr := v.(string); isStr {
+				// Simple quoting for strings for debug output
+				valStr = "'" + strings.ReplaceAll(strVal, "'", "''") + "'"
+			} else {
+				valStr = fmt.Sprintf("%v", v)
+			}
+			sql = strings.ReplaceAll(sql, placeholder, valStr)
+		}
+
+	default:
+		return "", errors.Newf("SubstituteSQLParams: unsupported SQL dialect %v", dialect)
+	}
+
+	return sql, nil
 }

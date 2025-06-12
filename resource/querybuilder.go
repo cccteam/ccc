@@ -2,11 +2,10 @@ package resource
 
 import (
 	"fmt"
-	"strings"
 )
 
 type PartialQueryClause struct {
-	tree whereClauseExprTree
+	tree ExpressionNode
 }
 
 func NewPartialQueryClause() PartialQueryClause {
@@ -14,34 +13,39 @@ func NewPartialQueryClause() PartialQueryClause {
 }
 
 func (p PartialQueryClause) Group(qc QueryClause) QueryClause {
-	qc.tree.SetGroup(true)
-
-	root := p.tree
-	if root == nil {
-		root = qc.tree
-	} else {
-		root.SetRight(qc.tree)
+	groupedExpr := &GroupNode{Expression: qc.tree}
+	if p.tree == nil {
+		return QueryClause{tree: groupedExpr}
 	}
+	logicalNode, ok := p.tree.(*LogicalOpNode)
+	if !ok {
+		panic(fmt.Sprintf("Expected LogicalOpNode, got %T", p.tree))
+	}
+	logicalNode.Right = groupedExpr
 
-	return QueryClause{tree: root}
+	return QueryClause{tree: logicalNode}
 }
 
 type QueryClause struct {
-	tree whereClauseExprTree
+	tree ExpressionNode
 }
 
 func (x QueryClause) And() PartialQueryClause {
-	root := newNode(and)
-	root.SetLeft(x.tree)
-
-	return PartialQueryClause{tree: root}
+	return PartialQueryClause{
+		tree: &LogicalOpNode{
+			Left:     x.tree,
+			Operator: OperatorAnd,
+		},
+	}
 }
 
 func (x QueryClause) Or() PartialQueryClause {
-	root := newNode(or)
-	root.SetLeft(x.tree)
-
-	return PartialQueryClause{tree: root}
+	return PartialQueryClause{
+		tree: &LogicalOpNode{
+			Left:     x.tree,
+			Operator: OperatorOr,
+		},
+	}
 }
 
 type Ident[T comparable] struct {
@@ -54,356 +58,207 @@ func NewIdent[T comparable](column string, px PartialQueryClause) Ident[T] {
 }
 
 func (i Ident[T]) Equal(v ...T) QueryClause {
-	eqNode := &equalityNode[T]{
-		node:   newNode(equal),
-		column: i.column,
-		values: v,
+	var conditionNode *ConditionNode
+	if len(v) == 1 {
+		conditionNode = &ConditionNode{
+			Condition: Condition{
+				Field:    i.column,
+				Operator: "eq",
+				Value:    v[0],
+			},
+		}
+	} else {
+		values := make([]any, len(v))
+		for idx, val := range v {
+			values[idx] = val
+		}
+		conditionNode = &ConditionNode{
+			Condition: Condition{
+				Field:    i.column,
+				Operator: "in",
+				Values:   values,
+			},
+		}
 	}
 
-	return QueryClause{tree: addNode(i.partialExpr.tree, eqNode)}
+	if i.partialExpr.tree == nil {
+		return QueryClause{tree: conditionNode}
+	}
+
+	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
+	if !ok {
+		panic(fmt.Sprintf("Expected LogicalOpNode, got %T", i.partialExpr.tree))
+	}
+	logicalNode.Right = conditionNode
+
+	return QueryClause{tree: logicalNode}
 }
 
 func (i Ident[T]) NotEqual(v ...T) QueryClause {
-	neqNode := &equalityNode[T]{
-		node:   newNode(notEqual),
-		column: i.column,
-		values: v,
+	var conditionNode *ConditionNode
+	if len(v) == 1 {
+		conditionNode = &ConditionNode{
+			Condition: Condition{
+				Field:    i.column,
+				Operator: "ne",
+				Value:    v[0],
+			},
+		}
+	} else {
+		values := make([]any, len(v))
+		for idx, val := range v {
+			values[idx] = val
+		}
+		conditionNode = &ConditionNode{
+			Condition: Condition{
+				Field:    i.column,
+				Operator: "notin",
+				Values:   values,
+			},
+		}
 	}
 
-	return QueryClause{tree: addNode(i.partialExpr.tree, neqNode)}
+	if i.partialExpr.tree == nil {
+		return QueryClause{tree: conditionNode}
+	}
+
+	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
+	if !ok {
+		panic(fmt.Sprintf("Expected LogicalOpNode, got %T", i.partialExpr.tree))
+	}
+	logicalNode.Right = conditionNode
+
+	return QueryClause{tree: logicalNode}
 }
 
 func (i Ident[T]) IsNull() QueryClause {
-	inNode := &equalityNode[T]{
-		node:   newNode(isNull),
-		column: i.column,
+	conditionNode := &ConditionNode{
+		Condition: Condition{
+			Field:    i.column,
+			Operator: "isnull",
+			IsNullOp: true,
+		},
 	}
 
-	return QueryClause{tree: addNode(i.partialExpr.tree, inNode)}
+	if i.partialExpr.tree == nil {
+		return QueryClause{tree: conditionNode}
+	}
+
+	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
+	if !ok {
+		panic(fmt.Sprintf("Expected LogicalOpNode, got %T", i.partialExpr.tree))
+	}
+	logicalNode.Right = conditionNode
+
+	return QueryClause{tree: logicalNode}
 }
 
 func (i Ident[T]) IsNotNull() QueryClause {
-	nnNode := &equalityNode[T]{
-		node:   newNode(isNotNull),
-		column: i.column,
+	conditionNode := &ConditionNode{
+		Condition: Condition{
+			Field:    i.column,
+			Operator: "isnotnull",
+			IsNullOp: true,
+		},
 	}
 
-	return QueryClause{tree: addNode(i.partialExpr.tree, nnNode)}
+	if i.partialExpr.tree == nil {
+		return QueryClause{tree: conditionNode}
+	}
+
+	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
+	if !ok {
+		panic(fmt.Sprintf("Expected LogicalOpNode, got %T", i.partialExpr.tree))
+	}
+	logicalNode.Right = conditionNode
+
+	return QueryClause{tree: logicalNode}
 }
 
 func (i Ident[T]) GreaterThan(v T) QueryClause {
-	gtNode := &compNode[T]{
-		node:   newNode(greaterThan),
-		column: i.column,
-		value:  v,
+	conditionNode := &ConditionNode{
+		Condition: Condition{
+			Field:    i.column,
+			Operator: "gt",
+			Value:    v,
+		},
 	}
 
-	return QueryClause{tree: addNode(i.partialExpr.tree, gtNode)}
+	if i.partialExpr.tree == nil {
+		return QueryClause{tree: conditionNode}
+	}
+
+	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
+	if !ok {
+		panic(fmt.Sprintf("Expected LogicalOpNode, got %T", i.partialExpr.tree))
+	}
+	logicalNode.Right = conditionNode
+
+	return QueryClause{tree: logicalNode}
 }
 
 func (i Ident[T]) GreaterThanEq(v T) QueryClause {
-	gteqNode := &compNode[T]{
-		node:   newNode(greaterThanEq),
-		column: i.column,
-		value:  v,
+	conditionNode := &ConditionNode{
+		Condition: Condition{
+			Field:    i.column,
+			Operator: "gte",
+			Value:    v,
+		},
 	}
 
-	return QueryClause{tree: addNode(i.partialExpr.tree, gteqNode)}
+	if i.partialExpr.tree == nil {
+		return QueryClause{tree: conditionNode}
+	}
+
+	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
+	if !ok {
+		panic(fmt.Sprintf("Expected LogicalOpNode, got %T", i.partialExpr.tree))
+	}
+	logicalNode.Right = conditionNode
+
+	return QueryClause{tree: logicalNode}
 }
 
 func (i Ident[T]) LessThan(v T) QueryClause {
-	ltNode := &compNode[T]{
-		node:   newNode(lessThan),
-		column: i.column,
-		value:  v,
+	conditionNode := &ConditionNode{
+		Condition: Condition{
+			Field:    i.column,
+			Operator: "lt",
+			Value:    v,
+		},
 	}
 
-	return QueryClause{tree: addNode(i.partialExpr.tree, ltNode)}
+	if i.partialExpr.tree == nil {
+		return QueryClause{tree: conditionNode}
+	}
+
+	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
+	if !ok {
+		panic(fmt.Sprintf("Expected LogicalOpNode, got %T", i.partialExpr.tree))
+	}
+	logicalNode.Right = conditionNode
+
+	return QueryClause{tree: logicalNode}
 }
 
 func (i Ident[T]) LessThanEq(v T) QueryClause {
-	lteqNode := &compNode[T]{
-		node:   newNode(lessThanEq),
-		column: i.column,
-		value:  v,
+	conditionNode := &ConditionNode{
+		Condition: Condition{
+			Field:    i.column,
+			Operator: "lte",
+			Value:    v,
+		},
 	}
 
-	return QueryClause{tree: addNode(i.partialExpr.tree, lteqNode)}
-}
-
-type nodeType string
-
-const (
-	logical    nodeType = "LOGICAL"
-	comparison          = "COMPARISON"
-)
-
-type action string
-
-const (
-	and           action = "AND"
-	or                   = "OR"
-	equal                = "EQUAL"
-	notEqual             = "NOTEQUAL"
-	greaterThan          = "GREATERTHAN"
-	greaterThanEq        = "GREATERTHANEQ"
-	lessThan             = "LESSTHAN"
-	lessThanEq           = "LESSTHANEQ"
-	isNull               = "ISNULL"
-	isNotNull            = "ISNOTNULL"
-)
-
-type whereClauseExprTree interface {
-	Type() nodeType
-	Action() action
-	Operator() string
-	LeftOperand() string
-	RightOperands() []any
-	Left() whereClauseExprTree
-	Right() whereClauseExprTree
-	SetLeft(whereClauseExprTree)
-	SetRight(whereClauseExprTree)
-	IsGroup() bool
-	SetGroup(bool)
-}
-
-type node struct {
-	left    whereClauseExprTree
-	right   whereClauseExprTree
-	op      action
-	isGroup bool
-}
-
-func newNode(op action) *node {
-	return &node{
-		left:  nil,
-		right: nil,
-		op:    op,
-	}
-}
-
-func (n *node) Type() nodeType {
-	switch n.op {
-	case and, or:
-		return logical
-	default:
-		return comparison
-	}
-}
-
-func (n *node) Action() action {
-	return n.op
-}
-
-func (n *node) Operator() string {
-	return string(n.Action())
-}
-
-func (n *node) LeftOperand() string {
-	panic(fmt.Sprintf("node type %s must implement LeftOperand()", n.Type()))
-}
-
-func (n *node) RightOperands() []any {
-	panic(fmt.Sprintf("node type %s must implement RightOperands()", n.Type()))
-}
-
-func (n *node) Left() whereClauseExprTree {
-	return n.left
-}
-
-func (n *node) Right() whereClauseExprTree {
-	return n.right
-}
-
-func (n *node) SetLeft(newNode whereClauseExprTree) {
-	n.left = newNode
-}
-
-func (n *node) SetRight(newNode whereClauseExprTree) {
-	n.right = newNode
-}
-
-func (n *node) IsGroup() bool {
-	return n.isGroup
-}
-
-func (n *node) SetGroup(b bool) {
-	n.isGroup = b
-}
-
-func addNode(tree whereClauseExprTree, n whereClauseExprTree) whereClauseExprTree {
-	if tree == nil {
-		return n
+	if i.partialExpr.tree == nil {
+		return QueryClause{tree: conditionNode}
 	}
 
-	root := tree
-	root.SetRight(n)
-
-	return tree
-}
-
-type equalityNode[T comparable] struct {
-	*node
-	column string
-	values []T
-}
-
-func (n *equalityNode[T]) LeftOperand() string {
-	return n.column
-}
-
-func (n *equalityNode[T]) RightOperands() []any {
-	v := make([]any, len(n.values))
-	for i := range n.values {
-		v[i] = n.values[i]
+	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
+	if !ok {
+		panic(fmt.Sprintf("Expected LogicalOpNode, got %T", i.partialExpr.tree))
 	}
+	logicalNode.Right = conditionNode
 
-	return v
-}
-
-func (n *equalityNode[T]) Operator() string {
-	switch {
-	case n.node.op == equal && len(n.values) == 1:
-		return "="
-	case n.node.op == equal && len(n.values) > 1:
-		return "IN"
-	case n.node.op == notEqual && len(n.values) == 1:
-		return "<>"
-	case n.node.op == notEqual && len(n.values) > 1:
-		return "NOT IN"
-	case n.node.op == isNull:
-		return "IS NULL"
-	case n.node.op == isNotNull:
-		return "IS NOT NULL"
-	default:
-		panic("unreachable: invalid state for equalityNode")
-	}
-}
-
-type compNode[T comparable] struct {
-	*node
-	column string
-	value  T
-}
-
-func (n *compNode[T]) Operator() string {
-	switch n.node.op {
-	case greaterThan:
-		return ">"
-	case greaterThanEq:
-		return ">="
-	case lessThan:
-		return "<"
-	case lessThanEq:
-		return "<="
-	default:
-		panic("unreachable: invalid state for equalityNode")
-	}
-}
-
-func (n *compNode[T]) LeftOperand() string {
-	return n.column
-}
-
-func (n *compNode[T]) RightOperands() []any {
-	return []any{n.value}
-}
-
-type treeWalker struct {
-	accumulator map[string]int
-	params      map[string]any
-}
-
-func newTreeWalker() *treeWalker {
-	return &treeWalker{
-		accumulator: make(map[string]int),
-		params:      make(map[string]any),
-	}
-}
-
-func (t *treeWalker) Walk(root whereClauseExprTree) (string, map[string]any) {
-	t.accumulator = make(map[string]int)
-	t.params = make(map[string]any)
-
-	return t.walk(root), t.params
-}
-
-func (t *treeWalker) walk(root whereClauseExprTree) string {
-	if root == nil {
-		return ""
-	}
-
-	b := strings.Builder{}
-
-	if root.IsGroup() {
-		b.WriteString("(")
-	}
-
-	if root.Left() != nil {
-		b.WriteString(fmt.Sprintf("%s ", t.walk(root.Left())))
-	}
-
-	b.WriteString(t.visit(root))
-
-	if root.Right() != nil {
-		b.WriteString(fmt.Sprintf(" %s", t.walk(root.Right())))
-	}
-
-	if root.IsGroup() {
-		b.WriteString(")")
-	}
-
-	return b.String()
-}
-
-func (t *treeWalker) visit(node whereClauseExprTree) string {
-	b := strings.Builder{}
-
-	switch node.Type() {
-	case comparison:
-		b.WriteString(fmt.Sprintf("%s %s", node.LeftOperand(), node.Operator()))
-
-		values := node.RightOperands()
-		if len(values) > 0 {
-			if len(values) > 1 {
-				b.WriteString(" (")
-			} else {
-				b.WriteString(" ")
-			}
-
-			b.WriteString(fmt.Sprintf("@%s", t.newParam(values[0], node.LeftOperand())))
-
-			if len(values) > 1 {
-				for _, v := range values[1:] {
-					b.WriteString(fmt.Sprintf(", @%s", t.newParam(v, node.LeftOperand())))
-				}
-
-				b.WriteString(")")
-			}
-		}
-	case logical:
-		b.WriteString(fmt.Sprintf("%s", node.Operator()))
-	}
-
-	return b.String()
-}
-
-func (t *treeWalker) newParam(v any, a string) string {
-	s := a
-	if _, exists := t.accumulator[a]; exists {
-		s = fmt.Sprintf("%s%d", a, t.accumulator[a])
-	}
-	t.accumulator[a] += 1
-	t.params[s] = v
-
-	return s
-}
-
-func substituteSQLParams(sql string, params map[string]any) string {
-	sql = strings.TrimPrefix(sql, "WHERE ")
-	for k, v := range params {
-		sql = strings.Replace(sql, "@"+k, fmt.Sprintf("%v", v), 1)
-	}
-
-	return sql
+	return QueryClause{tree: logicalNode}
 }

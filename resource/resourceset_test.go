@@ -50,8 +50,8 @@ type HRequest struct {
 }
 
 type AResource struct {
-	Field1 string `json:"Field1"`
-	Field2 string `json:"Field2"`
+	ID   int    `spanner:"ID"`
+	Name string `spanner:"Name"`
 }
 
 func (r AResource) Resource() accesstypes.Resource {
@@ -185,7 +185,7 @@ func testNewResourceSetRun[Resource Resourcer, Request any](t *testing.T, name s
 			t.Errorf("NewResourceSet() error = %v, wantErr %v", err, w.wantErr)
 			return
 		}
-		if diff := cmp.Diff(want, got, cmp.AllowUnexported(ResourceSet[Resource]{}, ResourceMetadata[Resource]{})); diff != "" {
+		if diff := cmp.Diff(want, got, cmp.AllowUnexported(ResourceSet[Resource]{}, ResourceMetadata[Resource]{}, cacheEntry{})); diff != "" {
 			t.Errorf("NewResourceSet() mismatch (-want +got):\n%s", diff)
 		}
 	})

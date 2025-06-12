@@ -389,3 +389,175 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 		})
 	}
 }
+
+func TestSubstituteSQLParams(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		sqlInput      string
+		paramsInput   any
+		dialectInput  SQLDialect
+		wantSQLOutput string
+		wantErrMsg    string
+	}{
+		// Spanner Dialect Tests
+		{
+			name:          "Spanner basic",
+			sqlInput:      "SELECT * FROM t WHERE col = @p1 AND name = @name",
+			paramsInput:   map[string]any{"p1": 123, "name": "Test"},
+			dialectInput:  Spanner,
+			wantSQLOutput: "SELECT * FROM t WHERE col = 123 AND name = 'Test'",
+		},
+		{
+			name:          "Spanner sorted keys",
+			sqlInput:      "SELECT * FROM t WHERE col = @p1 AND col10 = @p10",
+			paramsInput:   map[string]any{"p1": 1, "p10": 10},
+			dialectInput:  Spanner,
+			wantSQLOutput: "SELECT * FROM t WHERE col = 1 AND col10 = 10",
+		},
+		{
+			name:          "Spanner no params in SQL",
+			sqlInput:      "SELECT * FROM t",
+			paramsInput:   map[string]any{"p1": 123},
+			dialectInput:  Spanner,
+			wantSQLOutput: "SELECT * FROM t",
+		},
+		{
+			name:          "Spanner param in SQL not in map",
+			sqlInput:      "SELECT * FROM t WHERE col = @p1",
+			paramsInput:   map[string]any{},
+			dialectInput:  Spanner,
+			wantSQLOutput: "SELECT * FROM t WHERE col = @p1",
+		},
+		{
+			name:          "Spanner nil params map",
+			sqlInput:      "SELECT * FROM t WHERE col = @p1",
+			paramsInput:   nil, // map[string]any(nil) would also work
+			dialectInput:  Spanner,
+			wantSQLOutput: "SELECT * FROM t WHERE col = @p1",
+		},
+		{
+			name:          "Spanner empty SQL",
+			sqlInput:      "",
+			paramsInput:   map[string]any{"p1": 123},
+			dialectInput:  Spanner,
+			wantSQLOutput: "",
+		},
+		{
+			name:          "Spanner boolean and float",
+			sqlInput:      "SELECT * FROM t WHERE active = @active AND price = @price",
+			paramsInput:   map[string]any{"active": true, "price": 123.45},
+			dialectInput:  Spanner,
+			wantSQLOutput: "SELECT * FROM t WHERE active = true AND price = 123.45",
+		},
+
+		// PostgreSQL Dialect Tests
+		{
+			name:          "PostgreSQL basic",
+			sqlInput:      "SELECT * FROM t WHERE col = $1 AND name = $2",
+			paramsInput:   []any{123, "Test"},
+			dialectInput:  PostgreSQL,
+			wantSQLOutput: "SELECT * FROM t WHERE col = 123 AND name = 'Test'",
+		},
+		{
+			name:          "PostgreSQL multi-digit placeholders",
+			sqlInput:      "SELECT $1, $2, $10, $11",
+			paramsInput:   []any{"a", "b", "c_val", "d_val", "e_val", "f_val", "g_val", "h_val", "i_val", "j", "k"}, // $1, $2, ($3-$9), $10, $11
+			dialectInput:  PostgreSQL,
+			wantSQLOutput: "SELECT 'a', 'b', 'j', 'k'",
+		},
+		{
+			name:          "PostgreSQL no params in SQL",
+			sqlInput:      "SELECT * FROM t",
+			paramsInput:   []any{123},
+			dialectInput:  PostgreSQL,
+			wantSQLOutput: "SELECT * FROM t",
+		},
+		{
+			name:          "PostgreSQL param in SQL not in slice",
+			sqlInput:      "SELECT * FROM t WHERE col = $3",
+			paramsInput:   []any{1, 2},
+			dialectInput:  PostgreSQL,
+			wantSQLOutput: "SELECT * FROM t WHERE col = $3",
+		},
+		{
+			name:          "PostgreSQL nil params slice",
+			sqlInput:      "SELECT * FROM t WHERE col = $1",
+			paramsInput:   nil, // []any(nil)
+			dialectInput:  PostgreSQL,
+			wantSQLOutput: "SELECT * FROM t WHERE col = $1",
+		},
+		{
+			name:          "PostgreSQL empty SQL",
+			sqlInput:      "",
+			paramsInput:   []any{123},
+			dialectInput:  PostgreSQL,
+			wantSQLOutput: "",
+		},
+		{
+			name:          "PostgreSQL boolean and float",
+			sqlInput:      "SELECT * FROM t WHERE active = $1 AND price = $2",
+			paramsInput:   []any{true, 123.45},
+			dialectInput:  PostgreSQL,
+			wantSQLOutput: "SELECT * FROM t WHERE active = true AND price = 123.45",
+		},
+
+		// Error Cases
+		{
+			name:          "Error Spanner with slice params",
+			sqlInput:      "SELECT * FROM t WHERE col = @p1",
+			paramsInput:   []any{123},
+			dialectInput:  Spanner,
+			wantSQLOutput: "",
+			wantErrMsg:    "SubstituteSQLParams: for Spanner dialect, params must be map[string]any",
+		},
+		{
+			name:          "Error PostgreSQL with map params",
+			sqlInput:      "SELECT * FROM t WHERE col = $1",
+			paramsInput:   map[string]any{"p1": 123},
+			dialectInput:  PostgreSQL,
+			wantSQLOutput: "",
+			wantErrMsg:    "SubstituteSQLParams: for PostgreSQL dialect, params must be []any",
+		},
+		{
+			name:          "Error Unsupported dialect",
+			sqlInput:      "SELECT * FROM t",
+			paramsInput:   nil,
+			dialectInput:  SQLDialect(99), // Unsupported
+			wantSQLOutput: "",
+			wantErrMsg:    "SubstituteSQLParams: unsupported SQL dialect",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			gotSQL, err := substituteSQLParams(tt.sqlInput, tt.paramsInput, tt.dialectInput)
+
+			if tt.wantErrMsg != "" {
+				if err == nil {
+					t.Errorf("SubstituteSQLParams() error = nil, wantErrMsg %q", tt.wantErrMsg)
+					return
+				}
+				if !strings.Contains(err.Error(), tt.wantErrMsg) {
+					t.Errorf("SubstituteSQLParams() error = %q, wantErrMsg contains %q", err.Error(), tt.wantErrMsg)
+				}
+				// If error is expected and occurred, check if output SQL is as expected (usually empty for error cases)
+				if gotSQL != tt.wantSQLOutput {
+					t.Errorf("SubstituteSQLParams() gotSQL = %q, wantSQLOutput %q for error case", gotSQL, tt.wantSQLOutput)
+				}
+				return // Test done if error was expected
+			}
+
+			if err != nil {
+				t.Fatalf("SubstituteSQLParams() unexpected error = %v", err)
+			}
+
+			if gotSQL != tt.wantSQLOutput {
+				t.Errorf("SubstituteSQLParams() gotSQL = %q, want %q", gotSQL, tt.wantSQLOutput)
+			}
+		})
+	}
+}
