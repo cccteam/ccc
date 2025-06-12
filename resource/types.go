@@ -36,6 +36,20 @@ type TypescriptData struct {
 	Domains               []accesstypes.PermissionScope
 }
 
+// SortDirection defines the sort direction for a field.
+type SortDirection string
+
+const (
+	SortAscending  SortDirection = "asc"
+	SortDescending SortDirection = "desc"
+)
+
+// SortField represents a field to sort by, including the field name and sort direction.
+type SortField struct {
+	Field     string
+	Direction SortDirection
+}
+
 var _ FieldDefaultFunc = CommitTimestamp
 
 func CommitTimestamp(_ context.Context, _ TxnBuffer) (any, error) {
