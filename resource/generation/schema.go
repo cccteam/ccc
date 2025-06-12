@@ -18,11 +18,12 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func NewSchemaGenerator(resourceFilePath, schemaDestinationPath, datamigrationPath string, offset int) (Generator, error) {
+func NewSchemaGenerator(resourceFilePath, schemaDestinationPath, datamigrationPath string, offset int, generateResources bool) (Generator, error) {
 	s := &schemaGenerator{
 		schemaDestination:    schemaDestinationPath,
 		resourceFilePath:     resourceFilePath,
 		datamigrationPath:    datamigrationPath,
+		generateResources:    generateResources,
 		migrationIndexOffset: offset,
 	}
 
@@ -71,8 +72,10 @@ func (s *schemaGenerator) Generate() error {
 		return err
 	}
 
-	if err := s.generateConversionMethods(schemaInfo); err != nil {
-		return err
+	if s.generateResources {
+		if err := s.generateConversionMethods(schemaInfo); err != nil {
+			return err
+		}
 	}
 
 	if err := s.generateDatamigration(); err != nil {
