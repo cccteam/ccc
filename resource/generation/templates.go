@@ -1256,7 +1256,7 @@ func (x {{ .Resource.Name }}) Scan(rowScanner *pgxscan.RowScanner) (any, error) 
 func (x {{ .Resource.Name }}) Convert() []any {
 	return []any{
 	{{- range $column := .Resource.Columns }}
-		{{if not $column.DefaultValue -}}
+		{{ if not $column.IsOmitted -}}
 		x.{{ $column.GoName }}{{ if $column.HasConversion }}Conversion(){{ end }},
 		{{- end }}
 	{{- end }}
@@ -1267,7 +1267,7 @@ func (x {{ .Resource.Name }}) Convert() []any {
 func (x {{ .Resource.Name }}) NewInsertMutation(convertedRows []any) *spanner.Mutation {
 	cols := []string{
 	{{- range $column := .Resource.Columns }}
-		{{if not $column.DefaultValue -}}
+		{{ if not $column.IsOmitted -}}
 		"{{ $column.Name }}",
 		{{- end }}
 	{{- end }}
