@@ -181,7 +181,7 @@ func newParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata 
 
 	for i := range reqType.NumField() {
 		structField := reqType.Field(i)
-		tag := structField.Tag.Get(string(Index))
+		tag := structField.Tag.Get("index")
 		if tag != "true" {
 			continue
 		}

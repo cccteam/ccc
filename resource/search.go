@@ -18,7 +18,6 @@ func (f SearchKey) String() string {
 type SearchType string
 
 const (
-	Index     SearchType = "index"
 	SubString SearchType = "substring"
 	FullText  SearchType = "fulltext"
 	Ngram     SearchType = "ngram"
