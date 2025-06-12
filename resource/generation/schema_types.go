@@ -157,6 +157,7 @@ type schemaTable struct {
 	Checks           []checkConstraint
 	SearchTokens     []searchExpression
 	Indexes          []schemaIndex
+	Policies         []string
 	HasConvertMethod bool
 	HasFilterMethod  bool
 	Query            *string // TODO: remove query and use method on struct instead
@@ -224,6 +225,11 @@ func (s *schemaTable) resolveStructComments(comments map[genlang.Keyword][]*genl
 				name := fmt.Sprintf("%sBy%s", s.Name, uniqueIndexArg)
 
 				s.Indexes = append(s.Indexes, schemaIndex{Name: name, Type: uniqueIndexType, Argument: arg.Arg1})
+			}
+
+		case genlang.Policy:
+			for _, arg := range args {
+				s.Policies = append(s.Policies, arg.Arg1)
 			}
 
 		default:
@@ -298,9 +304,10 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[genlan
 }
 
 type viewColumn struct {
-	Name         string
-	SourceColumn string
-	SourceTable  string
+	Name          string
+	SourceColumn  *string
+	SourceTable   string
+	UsesAggregate bool
 }
 
 type schemaView struct {
@@ -333,15 +340,18 @@ func newViewColumn(field *parser.Field) (viewColumn, error) {
 	}
 
 	column := viewColumn{
-		Name:        field.Name(),
+		Name:        strings.ReplaceAll(field.Name(), "ID", "Id"),
 		SourceTable: field.TypeArgs(),
 	}
 
 	for keyword, args := range comment {
 		switch keyword {
 		case genlang.Using:
-			usingName := args[0].Arg1
-			column.SourceColumn = usingName
+			usingStr := args[0].Arg1
+			column.SourceColumn = &usingStr
+			if strings.ContainsAny(usingStr, "()") {
+				column.UsesAggregate = true
+			}
 
 		default:
 			return viewColumn{}, errors.Newf("%s keyword not yet implemented for schemaView", keyword.String())
