@@ -32,7 +32,7 @@ func (tr TestResource) DefaultConfig() Config {
 }
 
 type TestRequest struct {
-	Name               string   `json:"name"                 index:"true"`
+	Name               string   `json:"name"                 index:"true"  substring:"SearchTokens"`
 	Age                int      `json:"age"                  index:"true"`
 	Status             string   `json:"status"`
 	Email              *string  `json:"email"                index:"true"`
@@ -43,18 +43,18 @@ type TestRequest struct {
 	LegacyIndexedField string   `json:"legacy_indexed_field" index:"true"`
 }
 
-func TestQueryDecoder_parseQuery_Refactored(t *testing.T) {
+func TestQueryDecoder_parseQuery(t *testing.T) {
 	test := []struct {
 		name                 string
 		queryValues          url.Values
 		wantErr              bool
 		expectedASTString    string
-		expectedFilterSet    *Filter
+		expectedSearchSet    *Search
 		expectedColumnFields []accesstypes.Field
 		expectedErrMsg       string
 		expectConflictError  bool
 	}{
-		// 1. Columns processing first
+		// Columns processing first
 		{
 			name:                 "columns only",
 			queryValues:          url.Values{"columns": []string{"name,age"}},
@@ -69,30 +69,35 @@ func TestQueryDecoder_parseQuery_Refactored(t *testing.T) {
 			expectedASTString:    "age_sql:gt:30",
 		},
 		{
-			name:                 "columns with legacy filter",
-			queryValues:          url.Values{"columns": []string{"name"}, "legacy_indexed_field": []string{"value"}},
-			wantErr:              false,
-			expectedColumnFields: []accesstypes.Field{"Name"},
-			expectedFilterSet: NewFilter(
-				Index,
-				map[FilterKey]string{FilterKey("legacy_indexed_field_sql"): "value"},
-				map[FilterKey]reflect.Kind{FilterKey("legacy_indexed_field_sql"): reflect.String},
-			),
+			name:           "columns with legacy filter (now unsupported)",
+			queryValues:    url.Values{"columns": []string{"name"}, "legacy_indexed_field": []string{"value"}},
+			wantErr:        true,
+			expectedErrMsg: "unknown query parameters",
 		},
 		{
-			name:                 "invalid column name",
-			queryValues:          url.Values{"columns": []string{"name,nonexistent"}},
-			wantErr:              true,
-			expectedErrMsg:       "unknown column: nonexistent",
-			expectedColumnFields: nil,
+			name:           "invalid column name",
+			queryValues:    url.Values{"columns": []string{"name,nonexistent"}},
+			wantErr:        true,
+			expectedErrMsg: "unknown column: nonexistent",
 		},
 
-		// 2. "filter" parameter processing
+		// "filter" parameter processing
 		{
 			name:              "valid filter only - string",
 			queryValues:       url.Values{"filter": []string{"name:eq:John"}},
 			wantErr:           false,
 			expectedASTString: "name_sql:eq:John",
+		},
+		{
+			name:        "valid search",
+			queryValues: url.Values{"SearchTokens": []string{"find this and this"}},
+			wantErr:     false,
+			expectedSearchSet: &Search{
+				typ: SubString,
+				values: map[SearchKey]string{
+					"SearchTokens": "find this and this",
+				},
+			},
 		},
 		{
 			name:           "invalid filter only",
@@ -101,73 +106,44 @@ func TestQueryDecoder_parseQuery_Refactored(t *testing.T) {
 			expectedErrMsg: "unknown operator 'badop' in condition 'name:badop:John'",
 		},
 
-		// 3. Legacy filter parameter processing
+		// Conflict Check (legacy_indexed_field is now an unknown parameter)
 		{
-			name:        "legacy filter only",
-			queryValues: url.Values{"legacy_indexed_field": []string{"value"}},
-			wantErr:     false,
-			expectedFilterSet: NewFilter(
-				Index,
-				map[FilterKey]string{FilterKey("legacy_indexed_field_sql"): "value"},
-				map[FilterKey]reflect.Kind{FilterKey("legacy_indexed_field_sql"): reflect.String},
-			),
+			name:           "filter with legacy field (now unknown param)",
+			queryValues:    url.Values{"filter": []string{"name:eq:John"}, "legacy_indexed_field": []string{"value"}},
+			wantErr:        true,
+			expectedErrMsg: "unknown query parameters",
 		},
 
-		// 4. Conflict Check
+		// Interaction and error propagation
 		{
-			name:                "conflict between filter and legacy filter",
-			queryValues:         url.Values{"filter": []string{"name:eq:John"}, "legacy_indexed_field": []string{"value"}},
-			wantErr:             true,
-			expectedASTString:   "name_sql:eq:John",
-			expectConflictError: true,
-			expectedErrMsg:      "cannot use 'filter' parameter alongside other legacy filterable field parameters",
-		},
-
-		// 5. Interaction and error propagation
-		{
-			name:           "invalid filter with legacy filter present",
+			name:           "invalid filter with legacy field (now unknown param)",
 			queryValues:    url.Values{"filter": []string{"name:badop:John"}, "legacy_indexed_field": []string{"value"}},
 			wantErr:        true,
 			expectedErrMsg: "unknown operator 'badop' in condition 'name:badop:John'",
 		},
 		{
-			name:              "valid filter with unknown parameter",
-			queryValues:       url.Values{"filter": []string{"name:eq:John"}, "unknown": []string{"value"}},
-			wantErr:           true,
-			expectedASTString: "name_sql:eq:John",
-			expectedErrMsg:    "unknown query parameters: map[unknown:[value]]",
-		},
-		{
-			name:        "legacy filter with unknown parameter",
-			queryValues: url.Values{"legacy_indexed_field": []string{"value"}, "unknown": []string{"value"}},
-			wantErr:     true,
-			expectedFilterSet: NewFilter(
-				Index,
-				map[FilterKey]string{FilterKey("legacy_indexed_field_sql"): "value"},
-				map[FilterKey]reflect.Kind{FilterKey("legacy_indexed_field_sql"): reflect.String},
-			),
+			name:           "valid filter with unknown parameter",
+			queryValues:    url.Values{"filter": []string{"name:eq:John"}, "unknown": []string{"value"}},
+			wantErr:        true,
 			expectedErrMsg: "unknown query parameters: map[unknown:[value]]",
 		},
 		{
-			name:                 "columns, valid filter, legacy filter (conflict), and unknown param",
-			queryValues:          url.Values{"columns": []string{"age"}, "filter": []string{"name:eq:John"}, "legacy_indexed_field": []string{"value"}, "unknown": []string{"value"}},
-			wantErr:              true,
-			expectedColumnFields: nil,
-			expectedASTString:    "name_sql:eq:John",
-			expectedFilterSet:    nil,
-			expectConflictError:  true,
-			expectedErrMsg:       "cannot use 'filter' parameter alongside other legacy filterable field parameters",
+			name:           "legacy field (now unknown) with another unknown parameter",
+			queryValues:    url.Values{"legacy_indexed_field": []string{"value"}, "unknown": []string{"value"}},
+			wantErr:        true,
+			expectedErrMsg: "unknown query parameters",
 		},
 		{
-			name:        "empty filter string with legacy filter",
-			queryValues: url.Values{"filter": []string{""}, "legacy_indexed_field": []string{"value"}},
-			wantErr:     true,
-			expectedFilterSet: NewFilter(
-				Index,
-				map[FilterKey]string{FilterKey("legacy_indexed_field_sql"): "value"},
-				map[FilterKey]reflect.Kind{FilterKey("legacy_indexed_field_sql"): reflect.String},
-			),
-			expectedErrMsg: "unknown query parameters: map[filter:[]]",
+			name:           "columns, valid filter, legacy field (now unsupported), and unknown param",
+			queryValues:    url.Values{"columns": []string{"age"}, "filter": []string{"name:eq:John"}, "legacy_indexed_field": []string{"value"}, "unknown": []string{"value"}},
+			wantErr:        true,
+			expectedErrMsg: "unknown query parameters",
+		},
+		{
+			name:           "empty filter string with legacy field (now unsupported)",
+			queryValues:    url.Values{"filter": []string{""}, "legacy_indexed_field": []string{"value"}},
+			wantErr:        true,
+			expectedErrMsg: "unknown query parameters",
 		},
 		{
 			name:              "integer equality",
@@ -254,7 +230,7 @@ func TestQueryDecoder_parseQuery_Refactored(t *testing.T) {
 				t.Fatalf("NewQueryDecoder should not fail with default setup for test case %s: %v", tt.name, err)
 			}
 
-			columnFields, filterSet, parsedAST, err := decoder.parseQuery(tt.queryValues)
+			columnFields, searchSet, parsedAST, err := decoder.parseQuery(tt.queryValues)
 
 			if tt.wantErr {
 				if err == nil {
@@ -303,33 +279,32 @@ func TestQueryDecoder_parseQuery_Refactored(t *testing.T) {
 				}
 			}
 
-			// Check FilterSet
-			if tt.expectedFilterSet != nil {
-				if filterSet == nil {
+			// Check SearchSet
+			if tt.expectedSearchSet != nil {
+				if searchSet == nil {
 					// Only error if we didn't expect an error that might prevent FilterSet parsing.
 					// Or if it's a conflict error where FilterSet is expected.
 					if !tt.wantErr || (tt.expectConflictError && tt.expectedErrMsg == "cannot use 'filter' parameter alongside other legacy filterable field parameters") {
-						t.Errorf("filterSet is nil for test '%s', but expected: %#v", tt.name, tt.expectedFilterSet)
+						t.Errorf("searchSet is nil for test '%s', but expected: %#v", tt.name, tt.expectedSearchSet)
 					}
 				} else {
-					if tt.expectedFilterSet.typ != filterSet.typ {
-						t.Errorf("FilterSet Type mismatch for test '%s':\nExpected: %v\nActual:   %v", tt.name, tt.expectedFilterSet.typ, filterSet.typ)
+					if tt.expectedSearchSet.typ != searchSet.typ {
+						t.Errorf("FilterSet Type mismatch for test '%s':\nExpected: %v\nActual:   %v", tt.name, tt.expectedSearchSet.typ, searchSet.typ)
 					}
 					// Optionally, a more focused check on values if essential for the test
-					if !reflect.DeepEqual(tt.expectedFilterSet.values, filterSet.values) {
-						t.Errorf("FilterSet Values mismatch for test '%s':\nExpected: %#v\nActual:   %#v", tt.name, tt.expectedFilterSet.values, filterSet.values)
+					if !reflect.DeepEqual(tt.expectedSearchSet.values, searchSet.values) {
+						t.Errorf("FilterSet Values mismatch for test '%s':\nExpected: %#v\nActual:   %#v", tt.name, tt.expectedSearchSet.values, searchSet.values)
 					}
 				}
-			} else { // tt.expectedFilterSet == nil
-				// If no FilterSet is expected, and no error occurred (or error occurred before FilterSet parsing),
-				// then filterSet should be nil.
+			} else { // tt.expectedsearchSet == nil
+				// If no SearchSet is expected, and no error occurred (or error occurred before FilterSet parsing),
+				// then searchSet should be nil.
 				// Exception: conflict error might parse FilterSet before detecting conflict.
-				if filterSet != nil && !tt.wantErr {
+				if searchSet != nil && !tt.wantErr {
 					if !(tt.expectConflictError && err != nil && strings.Contains(err.Error(), "cannot use 'filter' parameter")) {
-						t.Errorf("filterSet should be nil for test '%s', got: %#v", tt.name, filterSet)
+						t.Errorf("searchSet should be nil for test '%s', got: %#v", tt.name, searchSet)
 					}
 				}
-				// Removed extra closing brace that was here
 			}
 		})
 	}

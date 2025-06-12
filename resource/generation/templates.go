@@ -79,8 +79,8 @@ func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.ResolvedTy
 {{ $resource := .Resource }}
 {{ range $searchIndex := .Resource.SearchIndexes }}
 func (q *{{ $resource.Name }}Query) SearchBy{{ $searchIndex.Name }}(v string) *{{ $resource.Name }}Query {
-	searchSet := resource.NewFilter({{ ResourceSearchType $searchIndex.SearchType }}, map[resource.FilterKey]string{"{{ $searchIndex.Name }}": v}, nil)
-	q.qSet.SetFilterParam(searchSet)
+	searchSet := resource.NewSearch({{ ResourceSearchType $searchIndex.SearchType }}, map[resource.SearchKey]string{"{{ $searchIndex.Name }}": v})
+	q.qSet.SetSearchParam(searchSet)
 
 	return q
 }

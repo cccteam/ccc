@@ -8,7 +8,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/cccteam/ccc/resource"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -121,25 +120,4 @@ func (r *resourceGenerator) generateTemplateOutput(templateName, fileTemplate st
 	}
 
 	return buf.Bytes(), nil
-}
-
-func (c *client) buildTableSearchIndexes(tableName string) []*searchIndex {
-	typeIndexMap := make(map[resource.FilterType]string)
-	if tableMeta, ok := c.tableMap[tableName]; ok {
-		for tokenListColumn, expressionFields := range tableMeta.SearchIndexes {
-			for _, exprField := range expressionFields {
-				typeIndexMap[exprField.tokenType] = tokenListColumn
-			}
-		}
-	}
-
-	var indexes []*searchIndex
-	for tokenType, indexName := range typeIndexMap {
-		indexes = append(indexes, &searchIndex{
-			Name:       indexName,
-			SearchType: string(tokenType),
-		})
-	}
-
-	return indexes
 }
