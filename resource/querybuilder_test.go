@@ -300,7 +300,7 @@ func Test_QueryClause(t *testing.T) {
 			var gotSpParams map[string]any
 			var gotPgParams []any
 			var err error
-			expressionNode := tt.filter.qSet.parsedFilterAst
+			expressionNode := tt.filter.qSet.filterAst
 
 			dbType := tt.filter.qSet.rMeta.dbType
 			switch dbType {

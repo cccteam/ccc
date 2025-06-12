@@ -233,7 +233,7 @@ type resourceInfo struct {
 }
 
 func (r *resourceInfo) SearchIndexes() []*searchIndex {
-	typeIndexMap := make(map[resource.FilterType]string)
+	typeIndexMap := make(map[resource.SearchType]string)
 	for searchIndex, expressionFields := range r.searchIndexes {
 		for _, exprField := range expressionFields {
 			typeIndexMap[exprField.tokenType] = searchIndex
@@ -516,7 +516,7 @@ func (f *resourceField) ImmutableTag() string {
 }
 
 func (f *resourceField) SearchIndexTags() string {
-	typeIndexMap := make(map[resource.FilterType][]string)
+	typeIndexMap := make(map[resource.SearchType][]string)
 	for searchIndex, expressionFields := range f.Parent.searchIndexes {
 		for _, exprField := range expressionFields {
 			if spannerTag, ok := f.LookupTag("spanner"); ok && spannerTag == exprField.fieldName {
@@ -550,7 +550,7 @@ func (f *resourceField) IsRequired() bool {
 }
 
 type expressionField struct {
-	tokenType resource.FilterType
+	tokenType resource.SearchType
 	fieldName string
 }
 

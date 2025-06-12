@@ -21,8 +21,9 @@ type (
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
-	filterKeys         *FilterKeys
+	searchKeys         *SearchKeys
 	resourceSet        *ResourceSet[Resource]
+	parserFields       map[string]FieldInfo
 }
 
 func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource]) (*QueryDecoder[Resource, Request], error) {
@@ -34,27 +35,28 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	filterKeys, err := NewFilterKeys[Request](res)
+	parserFields, err := newParserFields(reflect.TypeOf(req), resSet.ResourceMetadata())
 	if err != nil {
 		return nil, err
 	}
 
 	return &QueryDecoder[Resource, Request]{
 		requestFieldMapper: mapper,
-		filterKeys:         filterKeys,
+		searchKeys:         NewSearchKeys[Request](res),
 		resourceSet:        resSet,
+		parserFields:       parserFields,
 	}, nil
 }
 
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
-	requestedFields, filterSet, currentParsedAST, err := d.parseQuery(request.URL.Query())
+	requestedFields, search, currentParsedAST, err := d.parseQuery(request.URL.Query())
 	if err != nil {
 		return nil, err
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
-	qSet.SetParsedFilterAst(currentParsedAST)
-	qSet.SetFilterParam(filterSet)
+	qSet.SetFilterAst(currentParsedAST)
+	qSet.SetSearchParam(search)
 	if len(requestedFields) == 0 {
 		qSet.ReturnAccessableFields(true)
 	} else {
@@ -82,7 +84,7 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, filterSet *Filter, parsedAST ExpressionNode, err error) {
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, search *Search, parsedAST ExpressionNode, err error) {
 	if cols := query.Get("columns"); cols != "" {
 		// column names received in the query parameters are a comma separated list of json field names (ie: json tags on the request struct)
 		// we need to convert these to struct field names
@@ -98,64 +100,35 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 	}
 
 	if filterStr := query.Get("filter"); filterStr != "" {
-		parsedAST, err = d.parseFilterExpression(d.filterKeys, filterStr)
+		parsedAST, err = d.parseFilterExpression(filterStr)
 		if err != nil {
-			return columnFields, nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		delete(query, "filter")
 	}
 
-	filterSet, query, err = d.parseFilterParam(d.filterKeys, query)
+	search, query, err = d.parseFilterParam(query)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	if parsedAST != nil && filterSet != nil {
-		return nil, nil, nil, httpio.NewBadRequestMessagef("cannot use 'filter' parameter alongside other legacy filterable field parameters")
+	if parsedAST != nil && search != nil {
+		return nil, nil, nil, httpio.NewBadRequestMessagef("cannot use 'filter' parameter alongside 'search' parameter")
 	}
 
 	if len(query) > 0 {
 		return nil, nil, nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
 	}
 
-	return columnFields, filterSet, parsedAST, nil
+	return columnFields, search, parsedAST, nil
 }
 
 // parseFilterExpression parses the filter string and returns an AST.
-func (d *QueryDecoder[Resource, Request]) parseFilterExpression(searchKeys *FilterKeys, filterStr string) (ExpressionNode, error) {
-	jsonToFieldInfoMap := make(map[string]FieldInfo)
-	resourceMetadata := d.resourceSet.ResourceMetadata()
-
-	for searchKey, searchKeyType := range searchKeys.keys {
-		if searchKeyType != Index {
-			continue
-		}
-		jsonTag := searchKey.String()
-
-		structFieldName, _ := d.requestFieldMapper.StructFieldName(jsonTag)
-		if cacheEntry, found := resourceMetadata.fieldMap[structFieldName]; found {
-			fieldType, found := d.filterKeys.types[FilterKey(structFieldName)]
-			if !found {
-				return nil, errors.Newf("type not found in filterKeys for request struct field: %s (json tag: %s)", structFieldName, jsonTag)
-			}
-
-			fieldKind := fieldType.Kind()
-			if fieldKind == reflect.Pointer {
-				fieldKind = fieldType.Elem().Kind()
-			}
-
-			jsonToFieldInfoMap[jsonTag] = FieldInfo{
-				Name:      cacheEntry.tag,
-				Kind:      fieldKind,
-				FieldType: fieldType,
-			}
-		}
-	}
-
-	parser, err := NewParser(NewLexer(filterStr), jsonToFieldInfoMap)
+func (d *QueryDecoder[Resource, Request]) parseFilterExpression(filterStr string) (ExpressionNode, error) {
+	parser, err := NewParser(NewLexer(filterStr), d.parserFields)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create parser")
+		return nil, errors.Wrap(err, "failed to create filter expression parser")
 	}
 
 	ast, err := parser.Parse()
@@ -166,15 +139,10 @@ func (d *QueryDecoder[Resource, Request]) parseFilterExpression(searchKeys *Filt
 	return ast, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKeys, queryParams url.Values) (searchSet *Filter, query url.Values, err error) {
-	if searchKeys == nil || len(queryParams) == 0 {
-		return nil, queryParams, nil
-	}
-
-	filterValues := make(map[FilterKey]string)
-	filterKinds := make(map[FilterKey]reflect.Kind)
-	var typ FilterType
-	for searchKey, searchKeyType := range searchKeys.keys {
+func (d *QueryDecoder[Resource, Request]) parseFilterParam(queryParams url.Values) (searchSet *Search, query url.Values, err error) {
+	searchValues := make(map[SearchKey]string)
+	var typ SearchType
+	for searchKey, searchKeyType := range d.searchKeys.keys {
 		if paramCount := len(queryParams[string(searchKey)]); paramCount == 0 {
 			continue
 		} else if paramCount > 1 {
@@ -183,31 +151,7 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 
 		switch searchKeyType {
 		case SubString, Ngram, FullText:
-			filterValues[searchKey] = queryParams.Get(searchKey.String())
-
-		case Index:
-			field, _ := d.requestFieldMapper.StructFieldName(searchKey.String())
-			cacheEntry, found := d.resourceSet.ResourceMetadata().fieldMap[field]
-			if !found {
-				return nil, queryParams, httpio.NewBadRequestMessagef("field %s not found in metadata", field)
-			}
-
-			columnName := FilterKey(cacheEntry.tag)
-
-			filterValues[columnName] = queryParams.Get(searchKey.String())
-
-			// Get the type from filterKeys.types using the request struct field name
-			fieldType, found := searchKeys.types[FilterKey(field)]
-			if !found {
-				return nil, queryParams, httpio.NewBadRequestMessagef("type for field %s not found in filterKeys", field)
-			}
-			// For legacy filters, store the Kind (dereferenced if pointer)
-			if fieldType.Kind() == reflect.Pointer {
-				filterKinds[columnName] = fieldType.Elem().Kind()
-			} else {
-				filterKinds[columnName] = fieldType.Kind()
-			}
-
+			searchValues[searchKey] = queryParams.Get(searchKey.String())
 		default:
 			return nil, queryParams, httpio.NewBadRequestMessagef("search type not implemented: %s", searchKeyType)
 		}
@@ -221,13 +165,52 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(searchKeys *FilterKey
 		delete(queryParams, string(searchKey))
 	}
 
-	if len(filterValues) == 0 {
+	if len(searchValues) == 0 {
 		return nil, queryParams, nil
 	}
 
-	if len(filterValues) > 1 && typ != Index {
+	if len(searchValues) > 1 {
 		return nil, queryParams, httpio.NewBadRequestMessagef("only one search parameter is allowed for: %s", typ)
 	}
 
-	return NewFilter(typ, filterValues, filterKinds), queryParams, nil
+	return NewSearch(typ, searchValues), queryParams, nil
+}
+
+func newParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *ResourceMetadata[Resource]) (map[string]FieldInfo, error) {
+	fields := make(map[string]FieldInfo)
+
+	for i := range reqType.NumField() {
+		structField := reqType.Field(i)
+		tag := structField.Tag.Get("index")
+		if tag != "true" {
+			continue
+		}
+
+		goStructFieldName := structField.Name
+		jsonTag := structField.Tag.Get("json")
+		jsonFieldName, _, _ := strings.Cut(jsonTag, ",")
+		if jsonFieldName == "" || jsonFieldName == "-" {
+			return nil, errors.Newf("indexed field %s must have a json tag", goStructFieldName)
+		}
+
+		cacheEntry, found := resourceMetadata.fieldMap[accesstypes.Field(goStructFieldName)]
+		if !found {
+			return nil, errors.Newf("field %s (json: %s) not found in resource metadata", goStructFieldName, jsonFieldName)
+		}
+
+		fieldType := structField.Type
+		fieldKind := fieldType.Kind()
+		if fieldKind == reflect.Pointer {
+			fieldType = fieldType.Elem()
+			fieldKind = fieldType.Kind()
+		}
+
+		fields[jsonFieldName] = FieldInfo{
+			Name:      cacheEntry.tag,
+			Kind:      fieldKind,
+			FieldType: fieldType,
+		}
+	}
+
+	return fields, nil
 }

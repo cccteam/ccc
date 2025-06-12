@@ -720,7 +720,7 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*e
 			return nil, errors.Newf("expression `%s` has unexpected number of matches: `%d` (expected 3)", expression, len(match))
 		}
 
-		var tokenType resource.FilterType
+		var tokenType resource.SearchType
 		switch match[1] {
 		case "TOKENIZE_SUBSTRING":
 			tokenType = resource.SubString
