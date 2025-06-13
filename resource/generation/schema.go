@@ -425,9 +425,13 @@ func newSchemaTable(pStruct *parser.Struct) (*schemaTable, error) {
 
 		col := tableColumn{
 			Table:      table,
-			Name:       strings.ReplaceAll(field.Name(), "ID", "Id"),
+			Name:       field.Name(),
 			IsNullable: isSQLTypeNullable(field),
 			SQLType:    decodeSQLType(field),
+		}
+
+		if s, ok := strings.CutSuffix(col.Name, "ID"); ok {
+			col.Name = s + "Id"
 		}
 
 		if pStruct.HasMethod(field.Name() + "Conversion") {
