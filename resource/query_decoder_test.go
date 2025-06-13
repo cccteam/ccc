@@ -51,6 +51,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 		expectedASTString    string
 		expectedSearchSet    *Search
 		expectedColumnFields []accesstypes.Field
+		expectedSortFields   []SortField
 		expectedErrMsg       string
 		expectConflictError  bool
 	}{
@@ -112,6 +113,12 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			queryValues:    url.Values{"filter": []string{"name:eq:John"}, "legacy_indexed_field": []string{"value"}},
 			wantErr:        true,
 			expectedErrMsg: "unknown query parameters",
+		},
+		{
+			name:           "filter with search parameter",
+			queryValues:    url.Values{"filter": []string{"name:eq:John"}, "SearchTokens": []string{"find this and this"}},
+			wantErr:        true,
+			expectedErrMsg: "cannot use 'filter' parameter alongside 'search' parameter",
 		},
 
 		// Interaction and error propagation
@@ -217,6 +224,92 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:        true,
 			expectedErrMsg: "value 'notafloat' in condition 'salary:eq:notafloat' is not a valid float",
 		},
+
+		// Sort parameter processing
+		{
+			name:               "sort single field default direction",
+			queryValues:        url.Values{"sort": []string{"name"}},
+			wantErr:            false,
+			expectedSortFields: []SortField{{Field: "Name", Direction: SortAscending}},
+		},
+		{
+			name:               "sort single field asc",
+			queryValues:        url.Values{"sort": []string{"name:asc"}},
+			wantErr:            false,
+			expectedSortFields: []SortField{{Field: "Name", Direction: SortAscending}},
+		},
+		{
+			name:               "sort single field desc",
+			queryValues:        url.Values{"sort": []string{"age:desc"}},
+			wantErr:            false,
+			expectedSortFields: []SortField{{Field: "Age", Direction: SortDescending}},
+		},
+		{
+			name:               "sort multi-field",
+			queryValues:        url.Values{"sort": []string{"name:asc,age:desc"}},
+			wantErr:            false,
+			expectedSortFields: []SortField{{Field: "Name", Direction: SortAscending}, {Field: "Age", Direction: SortDescending}},
+		},
+		{
+			name:               "sort multi-field with spaces",
+			queryValues:        url.Values{"sort": []string{" name : asc , age : desc "}},
+			wantErr:            false,
+			expectedSortFields: []SortField{{Field: "Name", Direction: SortAscending}, {Field: "Age", Direction: SortDescending}},
+		},
+		{
+			name:           "sort invalid field name",
+			queryValues:    url.Values{"sort": []string{"nonexistent:asc"}},
+			wantErr:        true,
+			expectedErrMsg: "unknown sort field: nonexistent",
+		},
+		{
+			name:               "sort legacy_indexed_field (is sortable)",
+			queryValues:        url.Values{"sort": []string{"legacy_indexed_field:asc"}},
+			wantErr:            false,
+			expectedSortFields: []SortField{{Field: "LegacyIndexedField", Direction: SortAscending}},
+		},
+		{
+			name:           "sort invalid direction",
+			queryValues:    url.Values{"sort": []string{"name:invalid"}},
+			wantErr:        true,
+			expectedErrMsg: "invalid sort direction for field 'name': invalid. Must be 'asc' or 'desc'",
+		},
+		{
+			name:           "sort with search parameter",
+			queryValues:    url.Values{"sort": []string{"name:asc"}, "SearchTokens": []string{"find this"}},
+			wantErr:        true,
+			expectedErrMsg: "sorting ('sort=' parameter) cannot be used in conjunction with search parameters",
+		},
+		{
+			name:           "sort empty parameter",
+			queryValues:    url.Values{"sort": []string{""}},
+			wantErr:        true,
+			expectedErrMsg: "unknown query parameters: map[sort:[]]",
+		},
+		{
+			name:           "sort with empty parts",
+			queryValues:    url.Values{"sort": []string{"name,,age"}},
+			wantErr:        true,
+			expectedErrMsg: "invalid sort field, found empty part in sort parameter: name,,age",
+		},
+		{
+			name:           "sort with leading comma",
+			queryValues:    url.Values{"sort": []string{",name"}},
+			wantErr:        true,
+			expectedErrMsg: "invalid sort field, found empty part in sort parameter: ,name",
+		},
+		{
+			name:           "sort with only colon",
+			queryValues:    url.Values{"sort": []string{":"}},
+			wantErr:        true,
+			expectedErrMsg: "sort field name cannot be empty",
+		},
+		{
+			name:           "sort field name ends with colon",
+			queryValues:    url.Values{"sort": []string{"name:"}},
+			wantErr:        true,
+			expectedErrMsg: "invalid sort direction for field 'name': . Must be 'asc' or 'desc'",
+		},
 	}
 
 	for _, tt := range test {
@@ -232,8 +325,16 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 
 			columnFields, sortFields, searchSet, parsedAST, err := decoder.parseQuery(tt.queryValues)
 
-			// TODO(jwatson): Add a check for the sortFields if needed.
-			_ = sortFields
+			// Check sortFields
+			if !reflect.DeepEqual(tt.expectedSortFields, sortFields) {
+				// Handle special case for error expectations:
+				// If wantErr is true and expectedSortFields is nil (common for error cases where parsing might not complete or is irrelevant),
+				// and actual sortFields is also nil or empty, treat as equal. This simplifies test case definitions for errors.
+				isNilOrEmptySortField := func(s []SortField) bool { return s == nil || len(s) == 0 }
+				if !(tt.wantErr && isNilOrEmptySortField(tt.expectedSortFields) && isNilOrEmptySortField(sortFields)) {
+					t.Errorf("SortFields mismatch for test '%s':\nExpected: %#v\nActual:   %#v", tt.name, tt.expectedSortFields, sortFields)
+				}
+			}
 
 			if tt.wantErr {
 				if err == nil {
