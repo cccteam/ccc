@@ -243,6 +243,26 @@ func TestUUID_UnmarshalText(t *testing.T) {
 	}
 }
 
+func TestUUID_MarshalJSON_UnmarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	u := UUID{UUID: uuid.FromStringOrNil("4192bff0-e1e0-43ce-a4db-912808c32493")}
+
+	data, err := u.MarshalJSON()
+	if err != nil {
+		t.Fatalf("UUID.MarshalJSON() error = %v", err)
+	}
+
+	var got UUID
+	if err := got.UnmarshalJSON(data); err != nil {
+		t.Fatalf("UUID.UnmarshalJSON() error = %v", err)
+	}
+
+	if diff := cmp.Diff(u, got); diff != "" {
+		t.Errorf("round trip mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestNewNullUUID(t *testing.T) {
 	t.Parallel()
 
@@ -485,6 +505,82 @@ func TestNullUUID_UnmarshalText(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.want, *u); diff != "" {
 				t.Errorf("NullUUID.UnmarshalText() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestNullUUID_UnmarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	type args struct {
+		val []byte
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    NullUUID
+		wantErr bool
+	}{
+		{
+			name:    "Successful Unmarshal",
+			args:    args{val: []byte(`"4192bff0-e1e0-43ce-a4db-912808c32493"`)},
+			want:    NullUUID{UUID: UUID{UUID: uuid.FromStringOrNil("4192bff0-e1e0-43ce-a4db-912808c32493")}, Valid: true},
+			wantErr: false,
+		},
+		{
+			name:    "Null value",
+			args:    args{val: []byte(`"null"`)},
+			want:    NullUUID{},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			u := &NullUUID{}
+			if err := u.UnmarshalJSON(tt.args.val); (err != nil) != tt.wantErr {
+				t.Errorf("NullUUID.UnmarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if diff := cmp.Diff(tt.want, *u); diff != "" {
+				t.Errorf("NullUUID.UnmarshalJSON() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestNullUUID_MarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		value   NullUUID
+		want    []byte
+		wantErr bool
+	}{
+		{
+			name:    "Valid UUID",
+			value:   NullUUID{UUID: UUID{UUID: uuid.FromStringOrNil("4192bff0-e1e0-43ce-a4db-912808c32493")}, Valid: true},
+			want:    []byte(`"4192bff0-e1e0-43ce-a4db-912808c32493"`),
+			wantErr: false,
+		},
+		{
+			name:    "Null UUID",
+			value:   NullUUID{Valid: false},
+			want:    []byte("null"),
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := tt.value.MarshalJSON()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NullUUID.MarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("NullUUID.MarshalJSON() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
