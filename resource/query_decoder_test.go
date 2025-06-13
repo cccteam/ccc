@@ -230,7 +230,10 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 				t.Fatalf("NewQueryDecoder should not fail with default setup for test case %s: %v", tt.name, err)
 			}
 
-			columnFields, searchSet, parsedAST, err := decoder.parseQuery(tt.queryValues)
+			columnFields, sortFields, searchSet, parsedAST, err := decoder.parseQuery(tt.queryValues)
+
+			// TODO(jwatson): Add a check for the sortFields if needed.
+			_ = sortFields
 
 			if tt.wantErr {
 				if err == nil {

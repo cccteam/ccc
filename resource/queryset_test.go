@@ -1,115 +1,198 @@
 package resource
 
 import (
+	"strings"
+	"testing"
+
 	"github.com/cccteam/ccc/accesstypes"
 )
 
-type SpannerStruct struct {
-	Field1 string `spanner:"field1"`
-	Field2 string `spanner:"fieldtwo"`
-	Field3 int    `spanner:"field3"`
-	Field5 string `spanner:"field5"`
-	Field4 string `spanner:"field4"`
+// SortTestResource is used for testing sorting functionality.
+type SortTestResource struct {
+	ID   string `spanner:"Id"   db:"Id"`
+	Name string `spanner:"Name" db:"Name"`
+	Date string `spanner:"Date" db:"Date"`
 }
 
-func (SpannerStruct) Resource() accesstypes.Resource {
-	return "SpannerStructs"
+func (SortTestResource) Resource() accesstypes.Resource {
+	return "SortTestResources"
 }
 
-// func TestQuerySet_Columns(t *testing.T) {
-// 	t.Parallel()
+func (s SortTestResource) DefaultConfig() Config {
+	return Config{
+		DBType: SpannerDBType,
+	}
+}
 
-// 	type args struct {
-// 		patchSet *resource.PatchSet
-// 	}
-// 	tests := []struct {
-// 		name string
-// 		args args
-// 		want Columns
-// 	}{
-// 		{
-// 			name: "multiple fields in patchSet",
-// 			args: args{
-// 				patchSet: resource.NewPatchSet(resource.NewRow[SpannerStruct]()).
-// 					Set("Field2", "apple").
-// 					Set("Field3", 10),
-// 			},
-// 			want: "fieldtwo, field3",
-// 		},
-// 		{
-// 			name: "multiple fields not in sorted order",
-// 			args: args{
-// 				patchSet: resource.NewPatchSet(resource.NewRow[SpannerStruct]()).
-// 					Set("Field4", "apple").
-// 					Set("Field5", "bannana"),
-// 			},
-// 			want: "field5, field4",
-// 		},
-// 	}
-// 	for _, tt := range tests {
-// 		tt := tt
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			t.Parallel()
+func TestQuerySet_SpannerStmt_OrderBy(t *testing.T) {
+	t.Parallel()
 
-// 			got, _ := tm.Columns(tt.args.patchSet.QuerySet())
-// 			if got != tt.want {
-// 				t.Errorf("Patcher.Columns() = (%v),  want (%v)", got, tt.want)
-// 			}
-// 		})
-// 	}
-// }
+	tests := []struct {
+		name                 string
+		sortFields           []SortField
+		wantQueryContains    string
+		wantErrorMsgContains string
+		wantErr              bool
+		assertFunc           func(t *testing.T, sql string, wantContains string)
+	}{
+		{
+			name:              "no sort fields",
+			sortFields:        []SortField{},
+			wantQueryContains: "ORDER BY", // Expect ORDER BY to be absent
+			assertFunc: func(t *testing.T, sql string, wantContains string) {
+				if strings.Contains(sql, wantContains) {
+					t.Errorf("Expected SQL NOT to contain '%s', but got: %s", wantContains, sql)
+				}
+			},
+		},
+		{
+			name:              "single field ascending",
+			sortFields:        []SortField{{Field: "Name", Direction: SortAscending}},
+			wantQueryContains: "ORDER BY `Name` ASC",
+		},
+		{
+			name:              "single field descending",
+			sortFields:        []SortField{{Field: "Date", Direction: SortDescending}},
+			wantQueryContains: "ORDER BY `Date` DESC",
+		},
+		{
+			name:              "multiple fields mixed directions",
+			sortFields:        []SortField{{Field: "Name", Direction: SortAscending}, {Field: "Date", Direction: SortDescending}},
+			wantQueryContains: "ORDER BY `Name` ASC, `Date` DESC",
+		},
+		{
+			name:              "sorting by ID field",
+			sortFields:        []SortField{{Field: "ID", Direction: SortDescending}},
+			wantQueryContains: "ORDER BY `Id` DESC",
+		},
+		{
+			name:                 "invalid sort field",
+			sortFields:           []SortField{{Field: "InvalidField", Direction: SortAscending}},
+			wantErr:              true,                             // Expect error from buildOrderByClause
+			wantErrorMsgContains: "not found in resource metadata", // buildOrderByClause error
+		},
+	}
 
-// type PostgresStruct struct {
-// 	Field1 string `db:"field1"`
-// 	Field2 string `db:"fieldtwo"`
-// 	Field3 int    `db:"field3"`
-// 	Field5 string `db:"field5"`
-// 	Field4 string `db:"field4"`
-// }
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-// func (PostgresStruct) Resource() accesstypes.Resource {
-// 	return "PostgresStructs"
-// }
+			rMetaPostgres := NewResourceMetadata[SortTestResource]()
+			rMetaPostgres.dbType = SpannerDBType
 
-// func TestPatcher_Postgres_Columns(t *testing.T) {
-// 	t.Parallel()
+			qSet := NewQuerySet(rMetaPostgres)
+			qSet.AddField("ID")
 
-// 	type args struct {
-// 		patchSet *resource.PatchSet
-// 	}
-// 	tests := []struct {
-// 		name string
-// 		args args
-// 		want Columns
-// 	}{
-// 		{
-// 			name: "multiple fields in patchSet",
-// 			args: args{
-// 				patchSet: resource.NewPatchSet(resource.NewRow[PostgresStruct]()).
-// 					Set("Field2", "apple").
-// 					Set("Field3", 10),
-// 			},
-// 			want: `"fieldtwo", "field3"`,
-// 		},
-// 		{
-// 			name: "multiple fields not in sorted order",
-// 			args: args{
-// 				patchSet: resource.NewPatchSet(resource.NewRow[PostgresStruct]()).
-// 					Set("Field4", "apple").
-// 					Set("Field5", "bannana"),
-// 			},
-// 			want: `"field5", "field4"`,
-// 		},
-// 	}
-// 	for _, tt := range tests {
-// 		tt := tt
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			t.Parallel()
+			qSet.SetSortFields(tt.sortFields)
+			stmt, err := qSet.SpannerStmt()
 
-// 			got, _ := tm.Columns(tt.args.patchSet.QuerySet())
-// 			if got != tt.want {
-// 				t.Errorf("Patcher.Columns() = (%v),  want (%v)", got, tt.want)
-// 			}
-// 		})
-// 	}
-// }
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Expected an error, but got none")
+				} else if tt.wantErrorMsgContains != "" && !strings.Contains(err.Error(), tt.wantErrorMsgContains) {
+					t.Errorf("SpannerStmt() error = %v, want error message containing %q", err, tt.wantErrorMsgContains)
+				}
+
+				return // Test finished if error was expected
+			}
+			if err != nil {
+				t.Fatalf("SpannerStmt() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			sql := stmt.Statement.SQL // Access as a field, not a function
+			if tt.assertFunc != nil {
+				tt.assertFunc(t, sql, tt.wantQueryContains)
+			} else {
+				if !strings.Contains(sql, tt.wantQueryContains) {
+					t.Errorf("SpannerStmt() SQL = \n%s\nWant to contain:\n%s", sql, tt.wantQueryContains)
+				}
+			}
+		})
+	}
+}
+
+func TestQuerySet_PostgresStmt_OrderBy(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                 string
+		sortFields           []SortField
+		wantQueryContains    string
+		wantErrorMsgContains string
+		wantErr              bool
+		assertFunc           func(t *testing.T, sql string, wantContains string)
+	}{
+		{
+			name:              "no sort fields",
+			sortFields:        []SortField{},
+			wantQueryContains: "ORDER BY", // Expect ORDER BY to be absent
+			assertFunc: func(t *testing.T, sql string, wantContains string) {
+				if strings.Contains(sql, wantContains) {
+					t.Errorf("Expected SQL NOT to contain '%s', but got: %s", wantContains, sql)
+				}
+			},
+		},
+		{
+			name:              "single field ascending",
+			sortFields:        []SortField{{Field: "Name", Direction: SortAscending}},
+			wantQueryContains: `ORDER BY "Name" ASC`,
+		},
+		{
+			name:              "single field descending",
+			sortFields:        []SortField{{Field: "Date", Direction: SortDescending}},
+			wantQueryContains: `ORDER BY "Date" DESC`,
+		},
+		{
+			name:              "multiple fields mixed directions",
+			sortFields:        []SortField{{Field: "Name", Direction: SortAscending}, {Field: "Date", Direction: SortDescending}},
+			wantQueryContains: `ORDER BY "Name" ASC, "Date" DESC`,
+		},
+		{
+			name:              "sorting by ID field",
+			sortFields:        []SortField{{Field: "ID", Direction: SortDescending}},
+			wantQueryContains: `ORDER BY "Id" DESC`,
+		},
+		{
+			name:                 "invalid sort field",
+			sortFields:           []SortField{{Field: "InvalidField", Direction: SortAscending}},
+			wantErr:              true,                             // Expect error from buildOrderByClause
+			wantErrorMsgContains: "not found in resource metadata", // buildOrderByClause error
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rMetaPostgres := NewResourceMetadata[SortTestResource]()
+			rMetaPostgres.dbType = PostgresDBType
+
+			qSet := NewQuerySet(rMetaPostgres)
+			qSet.AddField("ID") // Add a default field to make the SELECT valid
+
+			qSet.SetSortFields(tt.sortFields)
+			stmt, err := qSet.PostgresStmt()
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Expected an error, but got none")
+				} else if tt.wantErrorMsgContains != "" && !strings.Contains(err.Error(), tt.wantErrorMsgContains) {
+					t.Errorf("PostgresStmt() error = %v, want error message containing %q", err, tt.wantErrorMsgContains)
+				}
+
+				return // Test finished if error was expected
+			}
+			if err != nil {
+				t.Fatalf("PostgresStmt() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			sql := stmt.SQL
+			if tt.assertFunc != nil {
+				tt.assertFunc(t, sql, tt.wantQueryContains)
+			} else {
+				if !strings.Contains(sql, tt.wantQueryContains) {
+					t.Errorf("PostgresStmt() SQL = \n%s\nWant to contain:\n%s", sql, tt.wantQueryContains)
+				}
+			}
+		})
+	}
+}

@@ -49,7 +49,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 }
 
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
-	requestedFields, search, currentParsedAST, err := d.parseQuery(request.URL.Query())
+	requestedFields, sortFields, search, currentParsedAST, err := d.parseQuery(request.URL.Query())
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +57,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
 	qSet.SetFilterAst(currentParsedAST)
 	qSet.SetSearchParam(search)
+	qSet.SetSortFields(sortFields)
 	if len(requestedFields) == 0 {
 		qSet.ReturnAccessableFields(true)
 	} else {
@@ -84,7 +85,16 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, search *Search, parsedAST ExpressionNode, err error) {
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, sortFields []SortField, search *Search, parsedAST ExpressionNode, err error) {
+	if sortParamValue := query.Get("sort"); sortParamValue != "" {
+		sortFields, err = d.parseSortParam(sortParamValue)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+
+		delete(query, "sort")
+	}
+
 	if cols := query.Get("columns"); cols != "" {
 		// column names received in the query parameters are a comma separated list of json field names (ie: json tags on the request struct)
 		// we need to convert these to struct field names
@@ -92,7 +102,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 			if field, found := d.requestFieldMapper.StructFieldName(column); found {
 				columnFields = append(columnFields, field)
 			} else {
-				return nil, nil, nil, httpio.NewBadRequestMessagef("unknown column: %s", column)
+				return nil, nil, nil, nil, httpio.NewBadRequestMessagef("unknown column: %s", column)
 			}
 		}
 
@@ -102,7 +112,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 	if filterStr := query.Get("filter"); filterStr != "" {
 		parsedAST, err = d.parseFilterExpression(filterStr)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 
 		delete(query, "filter")
@@ -110,18 +120,67 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 
 	search, query, err = d.parseFilterParam(query)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	if parsedAST != nil && search != nil {
-		return nil, nil, nil, httpio.NewBadRequestMessagef("cannot use 'filter' parameter alongside 'search' parameter")
+		return nil, nil, nil, nil, httpio.NewBadRequestMessagef("cannot use 'filter' parameter alongside 'search' parameter")
+	}
+
+	if search != nil && len(sortFields) > 0 {
+		return nil, nil, nil, nil, httpio.NewBadRequestMessage("sorting ('sort=' parameter) cannot be used in conjunction with search parameters")
 	}
 
 	if len(query) > 0 {
-		return nil, nil, nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
+		return nil, nil, nil, nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
 	}
 
-	return columnFields, search, parsedAST, nil
+	return columnFields, sortFields, search, parsedAST, nil
+}
+
+func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) ([]SortField, error) {
+	var sortFields []SortField
+	sortParts := strings.Split(sortParamValue, ",")
+	if len(sortParts) > 0 {
+		sortFields = make([]SortField, 0, len(sortParts))
+		for _, part := range sortParts {
+			trimmedPart := strings.TrimSpace(part)
+			if trimmedPart == "" {
+				return nil, httpio.NewBadRequestMessagef("invalid sort field, found empty part in sort parameter: %s", sortParamValue)
+			}
+			fieldAndDir := strings.SplitN(trimmedPart, ":", 2)
+			jsonFieldName := strings.TrimSpace(fieldAndDir[0])
+
+			if jsonFieldName == "" {
+				return nil, httpio.NewBadRequestMessagef("sort field name cannot be empty")
+			}
+
+			goFieldName, found := d.requestFieldMapper.StructFieldName(jsonFieldName)
+			if !found {
+				return nil, httpio.NewBadRequestMessagef("unknown sort field: %s", jsonFieldName)
+			}
+			// Ensure the field exists in the resource metadata
+			if _, fieldMetaExists := d.resourceSet.ResourceMetadata().fieldMap[goFieldName]; !fieldMetaExists {
+				return nil, httpio.NewBadRequestMessagef("sort field '%s' (resolved to '%s') not found in resource", jsonFieldName, goFieldName)
+			}
+
+			direction := SortAscending // Default direction
+			if len(fieldAndDir) == 2 {
+				dirStr := strings.ToLower(strings.TrimSpace(fieldAndDir[1]))
+				switch dirStr {
+				case "asc":
+					direction = SortAscending
+				case "desc":
+					direction = SortDescending
+				default:
+					return nil, httpio.NewBadRequestMessagef("invalid sort direction for field '%s': %s. Must be 'asc' or 'desc'", jsonFieldName, fieldAndDir[1])
+				}
+			}
+			sortFields = append(sortFields, SortField{Field: string(goFieldName), Direction: direction})
+		}
+	}
+
+	return sortFields, nil
 }
 
 // parseFilterExpression parses the filter string and returns an AST.

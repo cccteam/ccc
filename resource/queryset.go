@@ -21,6 +21,7 @@ type QuerySet[Resource Resourcer] struct {
 	keys                   *fieldSet
 	search                 *Search
 	fields                 []accesstypes.Field
+	sortFields             []SortField
 	returnAccessableFields bool
 	rMeta                  *ResourceMetadata[Resource]
 	resourceSet            *ResourceSet[Resource]
@@ -142,6 +143,38 @@ func (q *QuerySet[Resource]) KeySet() KeySet {
 	return q.keys.KeySet()
 }
 
+func (q *QuerySet[Resource]) buildOrderByClause() (string, error) {
+	var orderByParts []string
+	for _, sf := range q.sortFields {
+		cacheEntry, ok := q.rMeta.fieldMap[accesstypes.Field(sf.Field)]
+		if !ok {
+			return "", errors.Newf("sort field '%s' not found in resource metadata for query", sf.Field)
+		}
+		dbColumnName := cacheEntry.tag
+
+		var quotedColumnName string
+		switch q.rMeta.dbType {
+		case SpannerDBType:
+			quotedColumnName = fmt.Sprintf("`%s`", dbColumnName)
+		case PostgresDBType:
+			quotedColumnName = fmt.Sprintf(`"%s"`, dbColumnName)
+		default:
+			return "", errors.Newf("unsupported dbType for sorting: %s", q.rMeta.dbType)
+		}
+
+		directionSQL := "ASC"
+		if sf.Direction == SortDescending {
+			directionSQL = "DESC"
+		}
+		orderByParts = append(orderByParts, fmt.Sprintf("%s %s", quotedColumnName, directionSQL))
+	}
+	if len(orderByParts) == 0 {
+		return "", nil
+	}
+
+	return "ORDER BY " + strings.Join(orderByParts, ", "), nil
+}
+
 // Columns returns the database struct tags for the fields in databaseType that the user has access to view.
 func (q *QuerySet[Resource]) Columns() (Columns, error) {
 	columnEntries := make([]cacheEntry, 0, q.Len())
@@ -252,11 +285,17 @@ func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
 		return nil, errors.Wrap(err, "patcher.Where()")
 	}
 
+	orderByClause, err := q.buildOrderByClause()
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
+	}
+
 	stmt := spanner.NewStatement(fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s
-			%s`, columns, q.Resource(), where.SQL,
+			%s
+			%s`, columns, q.Resource(), where.SQL, orderByClause,
 	))
 	maps.Insert(stmt.Params, maps.All(where.SpannerParams))
 
@@ -311,14 +350,20 @@ func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 		return nil, errors.Wrap(err, "patcher.Where()")
 	}
 
+	orderByClause, err := q.buildOrderByClause()
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
+	}
+
 	sql := fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s
-			%s`, columns, q.Resource(), where.SQL,
+			%s
+			%s`, columns, q.Resource(), where.SQL, orderByClause,
 	)
 
-	resolvedSQL, err := substituteSQLParams(where.SQL, where.PostgreSQLParams, Spanner)
+	resolvedSQL, err := substituteSQLParams(where.SQL, where.PostgreSQLParams, PostgreSQL)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause")
 	}
@@ -385,6 +430,10 @@ func (q *QuerySet[Resource]) SetWhereClause(qc QueryClause) {
 
 func (q *QuerySet[Resource]) SetFilterAst(ast ExpressionNode) {
 	q.filterAst = ast
+}
+
+func (q *QuerySet[Resource]) SetSortFields(sortFields []SortField) {
+	q.sortFields = sortFields
 }
 
 func moreThan(cnt int, exp ...bool) bool {
