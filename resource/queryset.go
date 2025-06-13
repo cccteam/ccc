@@ -144,16 +144,10 @@ func (q *QuerySet[Resource]) KeySet() KeySet {
 }
 
 func (q *QuerySet[Resource]) buildOrderByClause() (string, error) {
-	if len(q.sortFields) == 0 {
-		return "", nil
-	}
-
 	var orderByParts []string
 	for _, sf := range q.sortFields {
-		goFieldName := accesstypes.Field(sf.Field)
-		cacheEntry, ok := q.rMeta.fieldMap[goFieldName]
+		cacheEntry, ok := q.rMeta.fieldMap[accesstypes.Field(sf.Field)]
 		if !ok {
-			// This should ideally be caught by validation in QueryDecoder, but as a safeguard:
 			return "", errors.Newf("sort field '%s' not found in resource metadata for query", sf.Field)
 		}
 		dbColumnName := cacheEntry.tag
@@ -177,7 +171,8 @@ func (q *QuerySet[Resource]) buildOrderByClause() (string, error) {
 	if len(orderByParts) == 0 {
 		return "", nil
 	}
-	return strings.Join(orderByParts, ", "), nil
+
+	return "ORDER BY " + strings.Join(orderByParts, ", "), nil
 }
 
 // Columns returns the database struct tags for the fields in databaseType that the user has access to view.
@@ -272,21 +267,14 @@ func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
 		return nil, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
 
-	// New check: sorting and searching are mutually exclusive
-	if q.search != nil && len(q.sortFields) > 0 {
-		return nil, httpio.NewBadRequestMessage("sorting ('sort=' parameter) cannot be used in conjunction with search parameters")
-	}
-
 	if moreThan(1, q.KeySet().Len() != 0, q.search != nil, q.filterAst != nil) {
 		return nil, httpio.NewBadRequestMessage("cannot use multiple sources for WHERE clause together (e.g. QueryClause, KeySet, and Search)")
 	}
 
 	if q.search != nil {
-		// Search path - no sorting allowed here as per the new check above
 		return q.spannerSearchStmt()
 	}
 
-	// Non-search path - sorting is allowed
 	columns, err := q.Columns()
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.Columns()")
@@ -302,17 +290,13 @@ func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
 		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
 
-	sqlQuery := fmt.Sprintf(`
+	stmt := spanner.NewStatement(fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s
-			%s`, columns, q.Resource(), where.SQL)
-
-	if orderByClause != "" {
-		sqlQuery = fmt.Sprintf("%s ORDER BY %s", sqlQuery, orderByClause)
-	}
-
-	stmt := spanner.NewStatement(sqlQuery)
+			%s
+			%s`, columns, q.Resource(), where.SQL, orderByClause,
+	))
 	maps.Insert(stmt.Params, maps.All(where.SpannerParams))
 
 	resolvedSQL, err := substituteSQLParams(where.SQL, where.SpannerParams, Spanner)
@@ -334,22 +318,13 @@ func (q *QuerySet[Resource]) spannerSearchStmt() (*SpannerStatement, error) {
 		return nil, err
 	}
 
-	// orderByClause, err := q.buildOrderByClause() // Removed: Sorting not allowed with search
-	// if err != nil {
-	// 	return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
-	// }
-
-	sqlQuery := fmt.Sprintf(`
+	stmt := spanner.NewStatement(fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s
 			%s`,
-		columns, q.Resource(), search.SQL)
+		columns, q.Resource(), search.SQL))
 
-	// if orderByClause != "" { // Removed: Sorting not allowed with search
-	// 	sqlQuery = fmt.Sprintf("%s ORDER BY %s", sqlQuery, orderByClause)
-	// }
-	stmt := spanner.NewStatement(sqlQuery)
 	stmt.Params = search.SpannerParams
 
 	resolvedSQL, err := substituteSQLParams(search.SQL, search.SpannerParams, Spanner)
@@ -363,12 +338,6 @@ func (q *QuerySet[Resource]) spannerSearchStmt() (*SpannerStatement, error) {
 func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 	if q.rMeta.dbType != PostgresDBType {
 		return nil, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", PostgresDBType, q.rMeta.dbType)
-	}
-
-	// New check: sorting and searching are mutually exclusive
-	// Note: Postgres path currently doesn't use q.search, but this makes it consistent.
-	if q.search != nil && len(q.sortFields) > 0 {
-		return nil, httpio.NewBadRequestMessage("sorting ('sort=' parameter) cannot be used in conjunction with search parameters")
 	}
 
 	columns, err := q.Columns()
@@ -390,13 +359,11 @@ func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 			SELECT
 				%s
 			FROM %s
-			%s`, columns, q.Resource(), where.SQL)
+			%s
+			%s`, columns, q.Resource(), where.SQL, orderByClause,
+	)
 
-	if orderByClause != "" {
-		sql = fmt.Sprintf("%s ORDER BY %s", sql, orderByClause)
-	}
-
-	resolvedSQL, err := substituteSQLParams(where.SQL, where.PostgreSQLParams, PostgreSQL) // Correct constant from sqlgenerator.go
+	resolvedSQL, err := substituteSQLParams(where.SQL, where.PostgreSQLParams, PostgreSQL)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause")
 	}
@@ -465,9 +432,8 @@ func (q *QuerySet[Resource]) SetFilterAst(ast ExpressionNode) {
 	q.filterAst = ast
 }
 
-func (q *QuerySet[Resource]) SetSortFields(sortFields []SortField) *QuerySet[Resource] {
+func (q *QuerySet[Resource]) SetSortFields(sortFields []SortField) {
 	q.sortFields = sortFields
-	return q
 }
 
 func moreThan(cnt int, exp ...bool) bool {

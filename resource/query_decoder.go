@@ -86,18 +86,15 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 }
 
 func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, sortFields []SortField, search *Search, parsedAST ExpressionNode, err error) {
-	// Sort parameter parsing
 	if sortParamValue := query.Get("sort"); sortParamValue != "" {
-		var parsedSFields []SortField
-		parsedSFields, err = d.parseSortParam(sortParamValue)
+		sortFields, err = d.parseSortParam(sortParamValue)
 		if err != nil {
-			return nil, nil, nil, nil, err // Pass error up
+			return nil, nil, nil, nil, err
 		}
-		sortFields = parsedSFields // Assign to the named return variable
+
 		delete(query, "sort")
 	}
 
-	// Columns parameter parsing
 	if cols := query.Get("columns"); cols != "" {
 		// column names received in the query parameters are a comma separated list of json field names (ie: json tags on the request struct)
 		// we need to convert these to struct field names
@@ -130,6 +127,10 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 		return nil, nil, nil, nil, httpio.NewBadRequestMessagef("cannot use 'filter' parameter alongside 'search' parameter")
 	}
 
+	if search != nil && len(sortFields) > 0 {
+		return nil, nil, nil, nil, httpio.NewBadRequestMessage("sorting ('sort=' parameter) cannot be used in conjunction with search parameters")
+	}
+
 	if len(query) > 0 {
 		return nil, nil, nil, nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
 	}
@@ -137,19 +138,15 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 	return columnFields, sortFields, search, parsedAST, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseSortParam(sortQueryValue string) ([]SortField, error) {
-	if sortQueryValue == "" {
-		return nil, nil
-	}
-
-	var parsedSortFields []SortField
-	sortParts := strings.Split(sortQueryValue, ",")
+func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) ([]SortField, error) {
+	var sortFields []SortField
+	sortParts := strings.Split(sortParamValue, ",")
 	if len(sortParts) > 0 {
-		parsedSortFields = make([]SortField, 0, len(sortParts))
+		sortFields = make([]SortField, 0, len(sortParts))
 		for _, part := range sortParts {
 			trimmedPart := strings.TrimSpace(part)
 			if trimmedPart == "" {
-				continue // Skip empty parts
+				return nil, httpio.NewBadRequestMessagef("invalid sort field, found empty part in sort parameter: %s", sortParamValue)
 			}
 			fieldAndDir := strings.SplitN(trimmedPart, ":", 2)
 			jsonFieldName := strings.TrimSpace(fieldAndDir[0])
@@ -179,10 +176,11 @@ func (d *QueryDecoder[Resource, Request]) parseSortParam(sortQueryValue string) 
 					return nil, httpio.NewBadRequestMessagef("invalid sort direction for field '%s': %s. Must be 'asc' or 'desc'", jsonFieldName, fieldAndDir[1])
 				}
 			}
-			parsedSortFields = append(parsedSortFields, SortField{Field: string(goFieldName), Direction: direction})
+			sortFields = append(sortFields, SortField{Field: string(goFieldName), Direction: direction})
 		}
 	}
-	return parsedSortFields, nil
+
+	return sortFields, nil
 }
 
 // parseFilterExpression parses the filter string and returns an AST.
