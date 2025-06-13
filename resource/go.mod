@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/resource
 
-go 1.24.3
+go 1.24.4
 
 require (
 	cloud.google.com/go v0.121.2
