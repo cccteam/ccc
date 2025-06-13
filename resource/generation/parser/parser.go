@@ -168,6 +168,12 @@ func ParseStructs(pkg *packages.Package) []*Struct {
 		parsedStructs = append(parsedStructs, pStruct)
 	}
 
+	compareFn := func(a, b *Struct) int {
+		return strings.Compare(a.Name(), b.Name())
+	}
+
+	slices.SortFunc(parsedStructs, compareFn)
+
 	return parsedStructs
 }
 
