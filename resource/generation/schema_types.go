@@ -279,7 +279,7 @@ func (s *schemaTable) resolveFieldComment(column tableColumn, comment map[genlan
 		case genlang.Substring, genlang.Fulltext, genlang.Ngram:
 			for _, arg := range args {
 				argument := strings.ReplaceAll(arg.Arg1, "@self", column.Name)
-				s.SearchTokens = append(s.SearchTokens, searchExpression{resource.FilterType(keyword.String()), argument})
+				s.SearchTokens = append(s.SearchTokens, searchExpression{resource.SearchType(keyword.String()), argument})
 			}
 
 		case genlang.Index:
