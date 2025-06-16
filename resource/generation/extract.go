@@ -37,13 +37,17 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 		if !ok {
 			return nil, errors.Newf("field %s.%s in package %s\n%s", resource.Name(), field.Name(), field.PackageName(), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(pStruct.Name()))))
 		}
+		var hasIndexTag bool
+		if _, ok := field.LookupTag("index"); ok {
+			hasIndexTag = true
+		}
 
 		resource.Fields[i] = &resourceField{
 			Field:              &field,
 			Parent:             resource,
 			IsPrimaryKey:       tableColumn.IsPrimaryKey,
 			IsForeignKey:       tableColumn.IsForeignKey,
-			IsIndex:            tableColumn.IsIndex,
+			IsIndex:            tableColumn.IsIndex || hasIndexTag,
 			IsUniqueIndex:      tableColumn.IsUniqueIndex,
 			IsNullable:         tableColumn.IsNullable,
 			OrdinalPosition:    tableColumn.OrdinalPosition,
