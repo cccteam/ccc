@@ -37,9 +37,9 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 		if !ok {
 			return nil, errors.Newf("field %s.%s in package %s\n%s", resource.Name(), field.Name(), field.PackageName(), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(pStruct.Name()))))
 		}
-		var hasIndexTag bool
-		if _, ok := field.LookupTag("index"); ok {
-			hasIndexTag = true
+		_, hasIndexTag := field.LookupTag("index")
+		if !table.IsView && hasIndexTag {
+			return nil, errors.Newf("cannot use index tag on field %s because resource %s is not virtual/view", field.Name(), resource.Name())
 		}
 
 		resource.Fields[i] = &resourceField{
