@@ -301,6 +301,16 @@ func (r *resourceInfo) HasIndexes() bool {
 	return false
 }
 
+func (r *resourceInfo) IsQueryClauseEligible() bool {
+	for _, field := range r.Fields {
+		if field.IsQueryClauseEligible() {
+			return true
+		}
+	}
+
+	return false
+}
+
 type resourceField struct {
 	*parser.Field
 	Parent         *resourceInfo
@@ -543,6 +553,17 @@ func (f *resourceField) IsRequired() bool {
 	}
 
 	if !f.IsPrimaryKey && !f.IsNullable && !f.HasDefault && !f.HasDefaultCreateFunc() {
+		return true
+	}
+
+	return false
+}
+
+func (f *resourceField) IsQueryClauseEligible() bool {
+	if f.IsIndex || f.IsUniqueIndex {
+		return true
+	}
+	if f.HasTag("allow_filter") {
 		return true
 	}
 

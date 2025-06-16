@@ -99,7 +99,7 @@ func (q *{{ .Resource.Name }}Query) AddColumns(c *{{ .Resource.Name }}Columns) *
 	return q
 }
 
-{{ if .Resource.HasIndexes -}}
+{{ if .Resource.IsQueryClauseEligible -}}
 func (q *{{ .Resource.Name }}Query) Where(c {{ .Resource.Name }}QueryClause) *{{ .Resource.Name }}Query {
 	q.qSet.SetWhereClause(c.clause)
 
@@ -133,7 +133,7 @@ func (c *{{ $field.Parent.Name }}Columns) {{ $field.Name }}() *{{ $field.Parent.
 }
 {{ end }}
 
-{{ if .Resource.HasIndexes -}}
+{{ if .Resource.IsQueryClauseEligible -}}
 type {{ .Resource.Name }}QueryPartialClause struct {
 	partialClause resource.PartialQueryClause
 }
@@ -147,7 +147,7 @@ func (p {{ .Resource.Name }}QueryPartialClause) Group(qc {{ .Resource.Name }}Que
 }
 
 {{ range $field := .Resource.Fields }}
-{{ if or $field.IsIndex $field.IsUniqueIndex -}}
+{{ if or $field.IsQueryClauseEligible -}}
 func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $field.ResolvedType }}] {
 	return {{ $field.Parent.Name }}QueryIdent[{{ $field.ResolvedType }}]{Ident: resource.NewIdent[{{ $field.ResolvedType }}]("{{ $field.Name }}", p.partialClause)}
 }
