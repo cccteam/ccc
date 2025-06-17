@@ -89,7 +89,7 @@ LOOP:
 		case '(':
 			parenCount++
 			if parenCount > 1 {
-				return Token{}, fmt.Errorf("nested parentheses in condition token at position %d", l.pos)
+				return Token{}, httpio.NewBadRequestMessageWithErrorf(ErrInvalidConditionFormat, "Invalid filter query. Nested parentheses are not allowed within a single condition segment. Found near character %d of %s.", l.pos, l.input)
 			}
 		case ')':
 			if parenCount > 0 {
@@ -239,7 +239,7 @@ func (p *Parser) Parse() (ExpressionNode, error) {
 	}
 
 	if p.peek.Type != TokenEOF {
-		return nil, errors.Wrapf(ErrUnexpectedToken, "expected EOF after parsing, got %s", p.peek.Type)
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrUnexpectedToken, "Invalid filter query. Unexpected characters '%s' (type: %s) found after the end of the query.", p.peek.Value, p.peek.Type)
 	}
 
 	return expression, nil
@@ -267,7 +267,7 @@ func (p *Parser) expectPeek(t TokenType) error {
 func (p *Parser) parseExpression() (ExpressionNode, error) {
 	prefix := p.prefixParseFns[p.current.Type]
 	if prefix == nil {
-		return nil, errors.Wrapf(ErrExpectedExpression, "no prefix parse function for %s (value: '%s')", p.current.Type, p.current.Value)
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrExpectedExpression, "Invalid filter query. Unexpected token '%s' (type: %s) at the beginning of an expression or after an operator. Please ensure your query is correctly formatted (e.g., 'field:operator:value').", p.current.Value, p.current.Type)
 	}
 
 	leftExp, err := prefix()
@@ -306,7 +306,7 @@ func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, erro
 	case TokenPipe:
 		node.Operator = OperatorOr
 	default:
-		return nil, errors.Wrapf(ErrUnexpectedToken, "unexpected token %s for infix operator", p.current.Type)
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrUnexpectedToken, "Invalid filter query. Expected a logical operator (',' for AND, '|' for OR) but found '%s' (type: %s).", p.current.Value, p.current.Type)
 	}
 
 	if err := p.advance(); err != nil {
@@ -429,7 +429,7 @@ func (p *Parser) convertValue(strValue string, kind reflect.Kind) (any, error) {
 		}
 		return f, nil
 	default:
-		return nil, errors.Newf("unsupported kind for value conversion: %v for value '%s'", kind, strValue)
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidValueFormat, "Invalid value format. The value '%s' in condition '%s' cannot be processed due to an unsupported data type: %v.", strValue, p.current.Value, kind)
 	}
 }
 
@@ -439,7 +439,7 @@ func (p *Parser) parseGroupedExpression() (ExpressionNode, error) {
 	}
 
 	if p.current.Type == TokenRParen {
-		return nil, errors.Wrap(ErrExpectedExpression, "empty group '()' is not allowed")
+		return nil, httpio.NewBadRequestMessageWithErrorf(ErrExpectedExpression, "Invalid filter query. Empty groups '()' are not allowed.")
 	}
 
 	expression, err := p.parseExpression()

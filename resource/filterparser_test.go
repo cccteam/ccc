@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/cccteam/httpio"
 )
 
 // defaultTestJsonToSqlNameMap provides a standard map for most test cases.
@@ -284,127 +286,194 @@ func TestNewLexer(t *testing.T) {
 
 func TestParser_Parse_Errors(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name         string
-		filterString string
-		wantErrMsg   string
-		customMap    map[string]FieldInfo
-	}{
+	type errorTestCase struct {
+		name               string
+		filterString       string
+		wantErrMsgContains string
+		customMap          map[string]FieldInfo
+		isHttpError        bool
+	}
+	tests := []errorTestCase{
 		{
-			name:         "invalid condition - missing value",
-			filterString: "name:eq",
-			wantErrMsg:   "operator 'eq' requires a value",
+			name:               "invalid condition - missing value",
+			filterString:       "name:eq",
+			wantErrMsgContains: "operator 'eq' requires a value",
+			isHttpError:        true,
 		},
 		{
-			name:         "invalid condition - empty field",
-			filterString: ":eq:value",
-			wantErrMsg:   "field name cannot be empty",
+			name:               "invalid condition - empty field",
+			filterString:       ":eq:value",
+			wantErrMsgContains: "field name cannot be empty in condition ':eq:value'",
+			isHttpError:        true,
 		},
 		{
-			name:         "in operator with empty value list",
-			filterString: "category:in:()",
-			wantErrMsg:   "value list for 'in' cannot be empty",
+			name:               "in operator with empty value list",
+			filterString:       "category:in:()",
+			wantErrMsgContains: "value list for 'in' cannot be empty in condition 'category:in:()'",
+			isHttpError:        true,
 		},
 		{
-			name:         "notin operator with empty value list",
-			filterString: "category:notin:()",
-			wantErrMsg:   "value list for 'notin' cannot be empty",
+			name:               "notin operator with empty value list",
+			filterString:       "category:notin:()",
+			wantErrMsgContains: "value list for 'notin' cannot be empty in condition 'category:notin:()'",
+			isHttpError:        true,
 		},
 		{
-			name:         "unknown operator",
-			filterString: "name:badop:John",
-			wantErrMsg:   "'badop' in condition",
+			name:               "unknown operator",
+			filterString:       "name:badop:John",
+			wantErrMsgContains: "unknown operator 'badop' in condition 'name:badop:John'",
+			isHttpError:        true,
 		},
 		{
-			name:         "missing closing parenthesis",
-			filterString: "(name:eq:John",
-			wantErrMsg:   "expected next token to be TokenRParen, got TokenEOF instead",
+			name:               "missing closing parenthesis",
+			filterString:       "(name:eq:John",
+			wantErrMsgContains: "expected next token to be TokenRParen, got TokenEOF instead",
+			isHttpError:        true,
 		},
 		{
-			name:         "unmatched closing parenthesis at start",
-			filterString: ")name:eq:John",
-			wantErrMsg:   "no prefix parse function for TokenRParen (value: ')')",
+			name:               "unmatched closing parenthesis at start",
+			filterString:       ")name:eq:John",
+			wantErrMsgContains: "Invalid filter query. Unexpected token ')' (type: TokenRParen) at the beginning of an expression",
+			isHttpError:        true,
 		},
 		{
-			name:         "unmatched closing parenthesis after expression",
-			filterString: "name:eq:John)",
-			wantErrMsg:   "expected EOF after parsing, got TokenRParen",
+			name:               "unmatched closing parenthesis after expression",
+			filterString:       "name:eq:John)",
+			wantErrMsgContains: "Invalid filter query. Unexpected characters ')' (type: TokenRParen) found after the end of the query",
+			isHttpError:        true,
 		},
 		{
-			name:         "unexpected token - double comma",
-			filterString: "name:eq:John,,age:gte:30",
-			wantErrMsg:   "no prefix parse function for TokenComma (value: ',')",
+			name:               "unexpected token - double comma",
+			filterString:       "name:eq:John,,age:gte:30",
+			wantErrMsgContains: "Invalid filter query. Unexpected token ',' (type: TokenComma) at the beginning of an expression",
+			isHttpError:        true,
 		},
 		{
-			name:         "operator isnull with value",
-			filterString: "name:isnull:extra",
-			wantErrMsg:   "operator 'isnull' does not take a value",
+			name:               "operator isnull with value",
+			filterString:       "name:isnull:extra",
+			wantErrMsgContains: "operator 'isnull' does not take a value, but got 'extra' in condition 'name:isnull:extra'",
+			isHttpError:        true,
 		},
 		{
-			name:         "operator isnotnull with value",
-			filterString: "name:isnotnull:extra",
-			wantErrMsg:   "operator 'isnotnull' does not take a value",
+			name:               "operator isnotnull with value",
+			filterString:       "name:isnotnull:extra",
+			wantErrMsgContains: "operator 'isnotnull' does not take a value, but got 'extra' in condition 'name:isnotnull:extra'",
+			isHttpError:        true,
 		},
 		{
-			name:         "empty group",
-			filterString: "()",
-			wantErrMsg:   "empty group '()' is not allowed",
+			name:               "empty group",
+			filterString:       "()",
+			wantErrMsgContains: "Invalid filter query. Empty groups '()' are not allowed.",
+			isHttpError:        true,
 		},
 		{
-			name:         "group with only operator",
-			filterString: "(,)",
-			wantErrMsg:   "no prefix parse function for TokenComma (value: ',')",
+			name:               "group with only operator",
+			filterString:       "(,)",
+			wantErrMsgContains: "Invalid filter query. Unexpected token ',' (type: TokenComma) at the beginning of an expression",
+			isHttpError:        true,
 		},
 		{
-			name:         "trailing operator comma",
-			filterString: "name:eq:John,",
-			wantErrMsg:   "no prefix parse function for TokenEOF (value: '')",
+			name:               "trailing operator comma",
+			filterString:       "name:eq:John,",
+			wantErrMsgContains: "Invalid filter query. Unexpected token '' (type: TokenEOF) at the beginning of an expression",
+			isHttpError:        true,
 		},
 		{
-			name:         "trailing operator pipe",
-			filterString: "name:eq:John|",
-			wantErrMsg:   "no prefix parse function for TokenEOF (value: '')",
+			name:               "trailing operator pipe",
+			filterString:       "name:eq:John|",
+			wantErrMsgContains: "Invalid filter query. Unexpected token '' (type: TokenEOF) at the beginning of an expression",
+			isHttpError:        true,
 		},
 		{
-			name:         "leading operator comma",
-			filterString: ",name:eq:John",
-			wantErrMsg:   "no prefix parse function for TokenComma (value: ',')",
+			name:               "leading operator comma - NEW",
+			filterString:       ",name:eq:John",
+			wantErrMsgContains: "Invalid filter query. Unexpected token ',' (type: TokenComma) at the beginning of an expression",
+			isHttpError:        true,
 		},
 		{
-			name:         "leading operator pipe",
-			filterString: "|name:eq:John",
-			wantErrMsg:   "no prefix parse function for TokenPipe (value: '|')",
+			name:               "leading operator pipe",
+			filterString:       "|name:eq:John",
+			wantErrMsgContains: "Invalid filter query. Unexpected token '|' (type: TokenPipe) at the beginning of an expression",
+			isHttpError:        true,
 		},
 		{
-			name:         "condition with invalid value format for in",
-			filterString: "field:in:novalue",
-			wantErrMsg:   "value for 'in' must be in parentheses",
+			name:               "condition with invalid value format for in",
+			filterString:       "field:in:novalue",
+			wantErrMsgContains: "value for 'in' must be in parentheses, e.g., (v1,v2), got 'novalue' in condition 'field:in:novalue'",
+			isHttpError:        true,
 		},
 		{
-			name:         "condition with invalid value format for notin (missing closing paren)",
-			filterString: "field:notin:(v1,v2",
-			wantErrMsg:   "value for 'notin' must be in parentheses",
+			name:               "condition with invalid value format for notin (missing closing paren)",
+			filterString:       "field:notin:(v1,v2",
+			wantErrMsgContains: "value for 'notin' must be in parentheses, e.g., (v1,v2), got '(v1,v2' in condition 'field:notin:(v1,v2'",
+			isHttpError:        true,
 		},
 		{
-			name:         "condition with empty item in 'in' list",
-			filterString: "field:in:(v1,,v2)",
-			wantErrMsg:   "empty value in list for operator 'in'",
+			name:               "condition with empty item in 'in' list",
+			filterString:       "field:in:(v1,,v2)",
+			wantErrMsgContains: "empty value in list for operator 'in' in condition 'field:in:(v1,,v2)'",
+			isHttpError:        true,
 		},
 		{
-			name:         "invalid field name - using empty map",
-			filterString: "unknown_field:eq:value",
-			wantErrMsg:   ErrInvalidFieldName.Error(),
+			name:               "invalid field name - using empty map",
+			filterString:       "unknown_field:eq:value",
+			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
+			customMap:          map[string]FieldInfo{},
+			isHttpError:        true,
 		},
 		{
-			name:         "invalid field name in group - using empty map",
-			filterString: "(unknown_field:eq:value,another_unknown:eq:Test)",
-			wantErrMsg:   ErrInvalidFieldName.Error(),
+			name:               "invalid field name in group - using empty map",
+			filterString:       "(unknown_field:eq:value,another_unknown:eq:Test)",
+			customMap:          map[string]FieldInfo{},
+			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
+			isHttpError:        true,
 		},
 		{
-			name:         "invalid field name with pipe - using map without the specific field",
-			filterString: "name:eq:Test|unknown_field:eq:value",
-			customMap:    map[string]FieldInfo{"name": {Name: "Name", Kind: reflect.String}},
-			wantErrMsg:   ErrInvalidFieldName.Error(),
+			name:               "invalid field name with pipe - using map without the specific field",
+			filterString:       "name:eq:Test|unknown_field:eq:value",
+			customMap:          map[string]FieldInfo{"name": {Name: "Name", Kind: reflect.String}},
+			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
+			isHttpError:        true,
+		},
+		// New test cases
+		{
+			name:               "unexpected token at beginning (original issue)",
+			filterString:       ",submittalSource:eq:M",
+			wantErrMsgContains: "Invalid filter query. Unexpected token ',' (type: TokenComma) at the beginning of an expression",
+			isHttpError:        true,
+		},
+		{
+			name:               "two conditions back-to-back - (Lexer makes this one token, so parser sees valid single condition)",
+			filterString:       "name:eq:Value1 name:eq:Value2",
+			wantErrMsgContains: "", // No error expected with current lexer/parser (i.e. will become name = 'Value1 name:eq:Value2')
+			isHttpError:        false,
+		},
+		{
+			name:               "unexpected characters at end - revised (Lexer makes this one token, so parser sees valid single condition)",
+			filterString:       "name:eq:Value1 (name:eq:Value2)",
+			wantErrMsgContains: "", // No error expected with current lexer
+			isHttpError:        false,
+		},
+		{
+			name:               "nested parentheses in condition token (Lexer error)",
+			filterString:       "field:op:(val(nested))",
+			wantErrMsgContains: "Invalid filter query. Nested parentheses are not allowed within a single condition segment. Found near character 14 of field:op:(val(nested))",
+			isHttpError:        true,
+		},
+		{
+			name:         "unsupported value type in convertValue",
+			filterString: "unsupported_field:eq:somevalue",
+			customMap: map[string]FieldInfo{
+				"unsupported_field": {Name: "UnsupportedField", Kind: reflect.Chan},
+			},
+			wantErrMsgContains: "Invalid value format. The value 'somevalue' in condition 'unsupported_field:eq:somevalue' cannot be processed due to an unsupported data type: chan.",
+			isHttpError:        true,
+		},
+		{
+			name:               "Lexer error during advance (NewParser)",
+			filterString:       "field:op:(val(nes)ted)",
+			wantErrMsgContains: "Invalid filter query. Nested parentheses are not allowed",
+			isHttpError:        true,
 		},
 	}
 
@@ -416,30 +485,47 @@ func TestParser_Parse_Errors(t *testing.T) {
 			if tt.customMap != nil {
 				currentMap = tt.customMap
 			}
+
+			// Test NewParser for errors first, especially for lexer errors
 			parser, err := NewParser(lexer, currentMap)
-			if err != nil {
-				if tt.wantErrMsg == "" {
-					t.Fatalf("NewParser() error = %v, want no error", err)
+			if err != nil { // Error from NewParser
+				if tt.wantErrMsgContains == "" {
+					t.Fatalf("NewParser() error = %v, want no error. Input: %q", err, tt.filterString)
 				}
-				if !strings.Contains(err.Error(), tt.wantErrMsg) {
-					t.Fatalf("NewParser() error = %q, wantErrMsg substring %q", err.Error(), tt.wantErrMsg)
+				if !strings.Contains(err.Error(), tt.wantErrMsgContains) {
+					t.Fatalf("NewParser() error = %q, wantErrMsg substring %q. Input: %q", err.Error(), tt.wantErrMsgContains, tt.filterString)
+				}
+				if tt.isHttpError {
+					if !httpio.HasBadRequest(err) {
+						t.Errorf("NewParser() error: Input %q: Expected HTTP 400 Bad Request error, but got: %v", tt.filterString, err)
+					}
 				}
 
-				return
+				return // Test ends here if NewParser fails as expected
 			}
 
+			// Proceed to test parser.Parse() if NewParser succeeded
 			_, parseErr := parser.Parse()
-			if tt.wantErrMsg == "" {
+			if tt.wantErrMsgContains == "" { // No error expected from Parse()
 				if parseErr != nil {
-					t.Errorf("parser.Parse() error = %v, want no error", parseErr)
+					t.Errorf("parser.Parse() error = %v, want no error. Input: %q", parseErr, tt.filterString)
 				}
-			} else {
-				if parseErr == nil {
-					t.Errorf("parser.Parse() error = nil, wantErrMsg substring %q", tt.wantErrMsg)
-				} else {
-					if !strings.Contains(parseErr.Error(), tt.wantErrMsg) {
-						t.Errorf("parser.Parse() error = %q, wantErrMsg substring %q", parseErr.Error(), tt.wantErrMsg)
-					}
+
+				return // Test ends here if no error was expected from Parse()
+			}
+
+			// An error was expected from Parse()
+			if parseErr == nil {
+				t.Fatalf("parser.Parse() error = nil, wantErrMsg substring %q. Input: %q", tt.wantErrMsgContains, tt.filterString)
+			}
+
+			if !strings.Contains(parseErr.Error(), tt.wantErrMsgContains) {
+				t.Errorf("parser.Parse() error = %q, wantErrMsg substring %q. Input: %q", parseErr.Error(), tt.wantErrMsgContains, tt.filterString)
+			}
+
+			if tt.isHttpError {
+				if !httpio.HasBadRequest(parseErr) {
+					t.Errorf("parser.Parse() error: Input %q: Expected HTTP 400 Bad Request error, but got: %v", tt.filterString, parseErr)
 				}
 			}
 		})
