@@ -147,7 +147,7 @@ func (p {{ .Resource.Name }}QueryPartialClause) Group(qc {{ .Resource.Name }}Que
 }
 
 {{ range $field := .Resource.Fields }}
-{{ if or $field.IsQueryClauseEligible -}}
+{{ if $field.IsQueryClauseEligible -}}
 func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $field.ResolvedType }}] {
 	return {{ $field.Parent.Name }}QueryIdent[{{ $field.ResolvedType }}]{Ident: resource.NewIdent[{{ $field.ResolvedType }}]("{{ $field.Name }}", p.partialClause)}
 }
