@@ -103,7 +103,7 @@ func (s *scanner) scan() error {
 		case char == byte('@'):
 			key, ok := s.matchKeyword()
 			if !ok {
-				if key != illegal {
+				if key != "" {
 					return errors.New(s.errorPostscript("invalid keyword", "did you mean %s?", key))
 				}
 				return errors.New(s.error("invalid keyword"))
@@ -306,7 +306,7 @@ func (s *scanner) consumeIdentifier() []byte {
 
 func (s *scanner) matchKeyword() (string, bool) {
 	currentPos := s.pos
-	possibleMatch := illegal
+	possibleMatch := ""
 	var matchSimilarity float64
 
 	ident := s.consumeIdentifier()

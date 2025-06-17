@@ -8,17 +8,11 @@ const (
 	ArgsRequired keywordFlag = 1 << iota
 	DualArgsRequired
 	NoArgs
-	Exclusive // limit instance of the keyword to 1 per field or struct
+	Exclusive // limit usage of the keyword to 1 per instance 
 )
 
 type KeywordOpts map[scanMode]keywordFlag
 
-const (
-	// remember to add new keywords to the map above ^^^
-	illegal string = ""
-)
-
-// TODO(jrowland): find a better way to handle single vs dual arg results
 type Args struct {
 	Arg1 string
 	Arg2 *string
