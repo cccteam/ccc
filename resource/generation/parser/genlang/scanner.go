@@ -99,7 +99,6 @@ func (s *scanner) scan() error {
 	for !eof {
 		switch {
 		case isWhitespace(char):
-			break
 
 		case char == byte('@'):
 			key, ok := s.matchKeyword()
