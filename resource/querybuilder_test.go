@@ -18,6 +18,9 @@ func newTestQuery(dbType DBType) *testQuery {
 }
 
 func (q *testQuery) Where(qc testQueryExpr) *testQuery {
+	if err := qc.expr.Validate(); err != nil {
+		panic(err)
+	}
 	q.qSet.SetWhereClause(qc.expr)
 
 	return q
@@ -41,19 +44,13 @@ func (px testQueryPartialExpr) Group(x testQueryExpr) testQueryExpr {
 
 func (o testQueryPartialExpr) ID() testQueryIdent[int] {
 	return testQueryIdent[int]{
-		Ident: Ident[int]{
-			column:      "ID",
-			partialExpr: o.partialExpr,
-		},
+		Ident: NewIdent[int]("ID", o.partialExpr, true),
 	}
 }
 
 func (o testQueryPartialExpr) Name() testQueryIdent[string] {
 	return testQueryIdent[string]{
-		Ident: Ident[string]{
-			column:      "Name",
-			partialExpr: o.partialExpr,
-		},
+		Ident: NewIdent[string]("Name", o.partialExpr, true),
 	}
 }
 
@@ -255,7 +252,7 @@ func Test_QueryClause(t *testing.T) {
 		},
 		{
 			name:         "whereClause with nil tree spanner",
-			filter:       newTestQuery(SpannerDBType).Where(testQueryExpr{expr: QueryClause{tree: nil}}),
+			filter:       newTestQuery(SpannerDBType).Where(testQueryExpr{expr: QueryClause{tree: nil, hasIndexedField: true}}),
 			wantSQL:      "", // Empty SQL for nil expression
 			wantSpParams: map[string]any{},
 		},

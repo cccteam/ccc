@@ -2,10 +2,13 @@ package resource
 
 import (
 	"fmt"
+
+	stderr "errors"
 )
 
 type PartialQueryClause struct {
-	tree ExpressionNode
+	tree            ExpressionNode
+	hasIndexedField bool
 }
 
 func NewPartialQueryClause() PartialQueryClause {
@@ -14,20 +17,32 @@ func NewPartialQueryClause() PartialQueryClause {
 
 func (p PartialQueryClause) Group(qc QueryClause) QueryClause {
 	groupedExpr := &GroupNode{Expression: qc.tree}
+	finalHasIndexedField := qc.hasIndexedField
 	if p.tree == nil {
-		return QueryClause{tree: groupedExpr}
+		return QueryClause{tree: groupedExpr, hasIndexedField: finalHasIndexedField}
 	}
 	logicalNode, ok := p.tree.(*LogicalOpNode)
 	if !ok {
 		panic(fmt.Sprintf("Expected LogicalOpNode, got %T", p.tree))
 	}
 	logicalNode.Right = groupedExpr
+	finalHasIndexedField = p.hasIndexedField || qc.hasIndexedField
 
-	return QueryClause{tree: logicalNode}
+	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
 type QueryClause struct {
-	tree ExpressionNode
+	tree            ExpressionNode
+	hasIndexedField bool
+}
+
+// Validate checks if the query clause has at least one indexed field.
+func (qc QueryClause) Validate() error {
+	if !qc.hasIndexedField {
+		return stderr.New("Invalid filter query. Filter must contain at least one column that is indexed")
+	}
+
+	return nil
 }
 
 func (x QueryClause) And() PartialQueryClause {
@@ -36,6 +51,7 @@ func (x QueryClause) And() PartialQueryClause {
 			Left:     x.tree,
 			Operator: OperatorAnd,
 		},
+		hasIndexedField: x.hasIndexedField,
 	}
 }
 
@@ -45,16 +61,18 @@ func (x QueryClause) Or() PartialQueryClause {
 			Left:     x.tree,
 			Operator: OperatorOr,
 		},
+		hasIndexedField: x.hasIndexedField,
 	}
 }
 
 type Ident[T comparable] struct {
 	column      string
 	partialExpr PartialQueryClause
+	indexed     bool
 }
 
-func NewIdent[T comparable](column string, px PartialQueryClause) Ident[T] {
-	return Ident[T]{column, px}
+func NewIdent[T comparable](column string, px PartialQueryClause, indexed bool) Ident[T] {
+	return Ident[T]{column, px, indexed}
 }
 
 func (i Ident[T]) Equal(v ...T) QueryClause {
@@ -81,8 +99,10 @@ func (i Ident[T]) Equal(v ...T) QueryClause {
 		}
 	}
 
+	finalHasIndexedField := i.partialExpr.hasIndexedField || i.indexed
+
 	if i.partialExpr.tree == nil {
-		return QueryClause{tree: conditionNode}
+		return QueryClause{tree: conditionNode, hasIndexedField: finalHasIndexedField}
 	}
 
 	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
@@ -91,7 +111,7 @@ func (i Ident[T]) Equal(v ...T) QueryClause {
 	}
 	logicalNode.Right = conditionNode
 
-	return QueryClause{tree: logicalNode}
+	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
 func (i Ident[T]) NotEqual(v ...T) QueryClause {
@@ -118,8 +138,10 @@ func (i Ident[T]) NotEqual(v ...T) QueryClause {
 		}
 	}
 
+	finalHasIndexedField := i.partialExpr.hasIndexedField || i.indexed
+
 	if i.partialExpr.tree == nil {
-		return QueryClause{tree: conditionNode}
+		return QueryClause{tree: conditionNode, hasIndexedField: finalHasIndexedField}
 	}
 
 	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
@@ -128,7 +150,7 @@ func (i Ident[T]) NotEqual(v ...T) QueryClause {
 	}
 	logicalNode.Right = conditionNode
 
-	return QueryClause{tree: logicalNode}
+	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
 func (i Ident[T]) IsNull() QueryClause {
@@ -139,9 +161,10 @@ func (i Ident[T]) IsNull() QueryClause {
 			IsNullOp: true,
 		},
 	}
+	finalHasIndexedField := i.partialExpr.hasIndexedField || i.indexed
 
 	if i.partialExpr.tree == nil {
-		return QueryClause{tree: conditionNode}
+		return QueryClause{tree: conditionNode, hasIndexedField: finalHasIndexedField}
 	}
 
 	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
@@ -150,7 +173,7 @@ func (i Ident[T]) IsNull() QueryClause {
 	}
 	logicalNode.Right = conditionNode
 
-	return QueryClause{tree: logicalNode}
+	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
 func (i Ident[T]) IsNotNull() QueryClause {
@@ -161,9 +184,10 @@ func (i Ident[T]) IsNotNull() QueryClause {
 			IsNullOp: true,
 		},
 	}
+	finalHasIndexedField := i.partialExpr.hasIndexedField || i.indexed
 
 	if i.partialExpr.tree == nil {
-		return QueryClause{tree: conditionNode}
+		return QueryClause{tree: conditionNode, hasIndexedField: finalHasIndexedField}
 	}
 
 	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
@@ -172,7 +196,7 @@ func (i Ident[T]) IsNotNull() QueryClause {
 	}
 	logicalNode.Right = conditionNode
 
-	return QueryClause{tree: logicalNode}
+	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
 func (i Ident[T]) GreaterThan(v T) QueryClause {
@@ -183,9 +207,10 @@ func (i Ident[T]) GreaterThan(v T) QueryClause {
 			Value:    v,
 		},
 	}
+	finalHasIndexedField := i.partialExpr.hasIndexedField || i.indexed
 
 	if i.partialExpr.tree == nil {
-		return QueryClause{tree: conditionNode}
+		return QueryClause{tree: conditionNode, hasIndexedField: finalHasIndexedField}
 	}
 
 	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
@@ -194,7 +219,7 @@ func (i Ident[T]) GreaterThan(v T) QueryClause {
 	}
 	logicalNode.Right = conditionNode
 
-	return QueryClause{tree: logicalNode}
+	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
 func (i Ident[T]) GreaterThanEq(v T) QueryClause {
@@ -205,9 +230,10 @@ func (i Ident[T]) GreaterThanEq(v T) QueryClause {
 			Value:    v,
 		},
 	}
+	finalHasIndexedField := i.partialExpr.hasIndexedField || i.indexed
 
 	if i.partialExpr.tree == nil {
-		return QueryClause{tree: conditionNode}
+		return QueryClause{tree: conditionNode, hasIndexedField: finalHasIndexedField}
 	}
 
 	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
@@ -216,7 +242,7 @@ func (i Ident[T]) GreaterThanEq(v T) QueryClause {
 	}
 	logicalNode.Right = conditionNode
 
-	return QueryClause{tree: logicalNode}
+	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
 func (i Ident[T]) LessThan(v T) QueryClause {
@@ -227,9 +253,10 @@ func (i Ident[T]) LessThan(v T) QueryClause {
 			Value:    v,
 		},
 	}
+	finalHasIndexedField := i.partialExpr.hasIndexedField || i.indexed
 
 	if i.partialExpr.tree == nil {
-		return QueryClause{tree: conditionNode}
+		return QueryClause{tree: conditionNode, hasIndexedField: finalHasIndexedField}
 	}
 
 	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
@@ -238,7 +265,7 @@ func (i Ident[T]) LessThan(v T) QueryClause {
 	}
 	logicalNode.Right = conditionNode
 
-	return QueryClause{tree: logicalNode}
+	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
 func (i Ident[T]) LessThanEq(v T) QueryClause {
@@ -249,9 +276,10 @@ func (i Ident[T]) LessThanEq(v T) QueryClause {
 			Value:    v,
 		},
 	}
+	finalHasIndexedField := i.partialExpr.hasIndexedField || i.indexed
 
 	if i.partialExpr.tree == nil {
-		return QueryClause{tree: conditionNode}
+		return QueryClause{tree: conditionNode, hasIndexedField: finalHasIndexedField}
 	}
 
 	logicalNode, ok := i.partialExpr.tree.(*LogicalOpNode)
@@ -260,5 +288,5 @@ func (i Ident[T]) LessThanEq(v T) QueryClause {
 	}
 	logicalNode.Right = conditionNode
 
-	return QueryClause{tree: logicalNode}
+	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
