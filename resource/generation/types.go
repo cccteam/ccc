@@ -291,16 +291,6 @@ func (r *resourceInfo) PrimaryKey() *resourceField {
 	return nil
 }
 
-func (r *resourceInfo) HasIndexes() bool {
-	for _, field := range r.Fields {
-		if field.IsIndex || field.IsUniqueIndex {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (r *resourceInfo) IsQueryClauseEligible() bool {
 	for _, field := range r.Fields {
 		if field.IsQueryClauseEligible() {
