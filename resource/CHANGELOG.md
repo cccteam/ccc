@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.13](https://github.com/cccteam/ccc/compare/resource/v0.1.12...resource/v0.1.13) (2025-06-17)
+
+
+### Features
+
+* Add support for 'sort' query parameter ([#328](https://github.com/cccteam/ccc/issues/328)) ([d110d6f](https://github.com/cccteam/ccc/commit/d110d6f1dde3a1b28b5683d7fa44aac89a2ed1c2))
+* Add tests ([#329](https://github.com/cccteam/ccc/issues/329)) ([cb6647f](https://github.com/cccteam/ccc/commit/cb6647f1c64fd6fa83dbebb905b0445a81ea1321))
+* support query builder filtering on virtual resources ([#333](https://github.com/cccteam/ccc/issues/333)) ([578ade6](https://github.com/cccteam/ccc/commit/578ade6eae28117e4fb61437a8f42ec7c27121de))
+
+
+### Bug Fixes
+
+* Cleanup error messages to return client message ([#334](https://github.com/cccteam/ccc/issues/334)) ([3a32195](https://github.com/cccteam/ccc/commit/3a321958806a692549d75e936b6e27e91e8ea013))
+
+
+### Code Refactoring
+
+* Remove support for legacy query filters by column ([#326](https://github.com/cccteam/ccc/issues/326)) ([138014c](https://github.com/cccteam/ccc/commit/138014c8f8fa0f2ae1fa8989787715cb31d71e49))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group ([#316](https://github.com/cccteam/ccc/issues/316)) ([8fba3e5](https://github.com/cccteam/ccc/commit/8fba3e5b019ecfe9617b2edc4cc42ce247d23ddc))
+
 ## [0.1.12](https://github.com/cccteam/ccc/compare/resource/v0.1.11...resource/v0.1.12) (2025-06-12)
 
 
