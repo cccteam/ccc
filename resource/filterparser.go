@@ -21,6 +21,7 @@ var (
 	ErrExpectedExpression     = stderr.New("expected an expression")
 	ErrExpectedRightParen     = stderr.New("expected ')'")
 	ErrInvalidValueFormat     = stderr.New("invalid value format for operator")
+	ErrMissingFilterIndex     = stderr.New("missing filter index")
 )
 
 //go:generate go run golang.org/x/tools/cmd/stringer -type=TokenType
@@ -187,13 +188,15 @@ type FieldInfo struct {
 	Name      string
 	Kind      reflect.Kind
 	FieldType reflect.Type
+	Indexed   bool
 }
 
 // Parser builds an AST from tokens.
 type Parser struct {
-	lexer   *Lexer
-	current Token
-	peek    Token
+	lexer           *Lexer
+	current         Token
+	peek            Token
+	hasIndexedField bool
 
 	prefixParseFns  map[TokenType]prefixParseFn
 	infixParseFns   map[TokenType]infixParseFn
@@ -240,6 +243,10 @@ func (p *Parser) Parse() (ExpressionNode, error) {
 
 	if p.peek.Type != TokenEOF {
 		return nil, httpio.NewBadRequestMessageWithErrorf(ErrUnexpectedToken, "Invalid filter query. Unexpected characters '%s' (type: %s) found after the end of the query.", p.peek.Value, p.peek.Type)
+	}
+
+	if !p.hasIndexedField {
+		return nil, httpio.NewBadRequestMessageWithError(ErrMissingFilterIndex, "Invalid filter query. Filter must contain at least one column that is indexed")
 	}
 
 	return expression, nil
@@ -338,6 +345,9 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 	fieldInfo, found := p.jsonToFieldInfo[jsonFieldName]
 	if !found {
 		return nil, httpio.NewBadRequestMessageWithErrorf(ErrInvalidFieldName, "'%s' is not indexed but was included in condition '%s'", jsonFieldName, p.current.Value)
+	}
+	if fieldInfo.Indexed {
+		p.hasIndexedField = true
 	}
 
 	condition := Condition{
