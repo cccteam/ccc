@@ -1,74 +1,91 @@
 package genlang
 
+import "iter"
+
 type keywordFlag int
 
 const (
-	prohibited   keywordFlag = 0
-	argsRequired keywordFlag = 1 << iota
-	dualArgsRequired
-	noArgs
-	exclusive // limit instance of the keyword to 1 per field or struct
+	ArgsRequired keywordFlag = 1 << iota
+	DualArgsRequired
+	NoArgs
+	Exclusive // limit instance of the keyword to 1 per field or struct
 )
 
-type (
-	keyword     string
-	keywordOpts map[scanMode]keywordFlag
-	Keyword     interface {
-		isKeyword()
-		String() string
-	}
-)
-
-func (keyword) isKeyword() {}
-func (k keyword) String() string {
-	return string(k)
-}
-
-// TODO(jrowland): consider taking this map as an argument to this package,
-// making keywords programmable for any use case
-var keywords = map[keyword]keywordOpts{
-	illegal:     {},
-	PrimaryKey:  {scanStruct: argsRequired | exclusive, scanField: noArgs | exclusive},
-	ForeignKey:  {scanStruct: dualArgsRequired, scanField: argsRequired},
-	Check:       {scanField: argsRequired | exclusive},
-	Default:     {scanField: argsRequired | exclusive},
-	Hidden:      {scanField: noArgs | exclusive},
-	Substring:   {scanField: argsRequired},
-	Fulltext:    {scanField: argsRequired},
-	Ngram:       {scanField: argsRequired},
-	Index:       {scanStruct: argsRequired, scanField: noArgs},
-	UniqueIndex: {scanStruct: argsRequired, scanField: noArgs},
-	View:        {scanStruct: noArgs | exclusive},
-	Query:       {scanStruct: argsRequired | exclusive},
-	Using:       {scanField: argsRequired | exclusive},
-	Suppress:    {scanField: noArgs | exclusive},
-	Omit:        {scanField: noArgs | exclusive},
-	Policy:      {scanStruct: argsRequired},
-}
+type KeywordOpts map[scanMode]keywordFlag
 
 const (
 	// remember to add new keywords to the map above ^^^
-	illegal     keyword = ""
-	PrimaryKey  keyword = "primarykey"
-	ForeignKey  keyword = "foreignkey"
-	Check       keyword = "check"
-	Default     keyword = "default"
-	Hidden      keyword = "hidden"
-	Substring   keyword = "substring"
-	Fulltext    keyword = "fulltext"
-	Ngram       keyword = "ngram"
-	Index       keyword = "index"
-	UniqueIndex keyword = "uniqueindex"
-	View        keyword = "view"     // Designates a struct as a view
-	Query       keyword = "query"    // The query to be used for a view. Required if @view is used.
-	Using       keyword = "using"    // Can only be used in views. Names the source field from another struct if it does not match this field
-	Suppress    keyword = "suppress" // Prevents field from being generated. Useful when merging multiple fields together for one output, like a phone number.
-	Omit        keyword = "omit"     // Omits field from migrating a value to DB. Useful for new schema columns that have a default value and you don't want to store Go's zero value.
-	Policy      keyword = "policy"   // Prints entire argument below table definition. Created for ROW POLICY declarations
+	illegal string = ""
 )
 
 // TODO(jrowland): find a better way to handle single vs dual arg results
 type Args struct {
 	Arg1 string
 	Arg2 *string
+}
+
+type MultiMap struct {
+	m map[string][]Args
+}
+
+func (m MultiMap) Keys() iter.Seq[string] {
+	iter := func(yield func(string) bool) {
+		for keyword := range m.m {
+			if !yield(keyword) {
+				return
+			}
+		}
+	}
+
+	return iter
+}
+
+func (m MultiMap) Get(s string) []Args {
+	return m.m[s]
+}
+
+func (m MultiMap) GetOne(s string) Args {
+	return m.m[s][0]
+}
+
+func (m MultiMap) Has(s string) bool {
+	_, ok := m.m[s]
+
+	return ok
+}
+
+func (m MultiMap) GetSingleArgs(s string) iter.Seq[string] {
+	iter := func(yield func(string) bool) {
+		for _, arg := range m.m[s] {
+			if !yield(arg.Arg1) {
+				return
+			}
+		}
+	}
+
+	return iter
+}
+
+func (m MultiMap) GetDualArgs(s string) iter.Seq2[string, *string] {
+	iter := func(yield func(string, *string) bool) {
+		for _, arg := range m.m[s] {
+			if !yield(arg.Arg1, arg.Arg2) {
+				return
+			}
+		}
+	}
+
+	return iter
+}
+
+func (m MultiMap) GetIter(s string) iter.Seq[Args] {
+	iter := func(yield func(Args) bool) {
+		for _, arg := range m.m[s] {
+			if !yield(arg) {
+				return
+			}
+		}
+	}
+
+	return iter
 }

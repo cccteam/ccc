@@ -3,52 +3,65 @@ package genlang
 import (
 	"fmt"
 
+	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
 )
 
 type (
-	KeyArgs map[Keyword][]*Args
-
+	scanMode int
+	Scanner  interface {
+		ScanStruct(*parser.Struct) (Results, error)
+	}
 	scanner struct {
 		src              []byte
 		mode             scanMode
-		identifiers      map[string]struct{}
-		keywordArguments KeyArgs
+		keywordArguments map[string][]Args
+		keywords         map[string]KeywordOpts
 		pos              int
 	}
-)
 
-type scanMode int
+	Results struct {
+		Struct MultiMap
+		Fields []MultiMap
+	}
+)
 
 const (
-	scanStruct scanMode = iota
-	scanField
+	ScanStruct scanMode = iota
+	ScanField
 )
 
-func ScanStruct(src string) (KeyArgs, error) {
-	return scan(src, scanStruct)
-}
-
-func ScanField(src string) (KeyArgs, error) {
-	return scan(src, scanField)
-}
-
-func scan(src string, mode scanMode) (KeyArgs, error) {
-	scanner := newScanner([]byte(src), mode)
-	if err := scanner.scan(); err != nil {
-		return nil, err
-	}
-
-	return scanner.result(), nil
-}
-
-func newScanner(src []byte, mode scanMode) *scanner {
+func NewScanner(keywords map[string]KeywordOpts) Scanner {
 	return &scanner{
-		src:              src,
-		mode:             mode,
-		identifiers:      make(map[string]struct{}),
-		keywordArguments: make(KeyArgs),
+		keywordArguments: make(map[string][]Args),
+		keywords:         keywords,
 	}
+}
+
+func (s *scanner) ScanStruct(pStruct *parser.Struct) (Results, error) {
+	s.src = []byte(pStruct.Comments())
+	s.mode = ScanStruct
+	if err := s.scan(); err != nil {
+		return Results{}, err
+	}
+
+	structResults := MultiMap{s.result()}
+
+	s.mode = ScanField
+	fieldResults := make([]MultiMap, 0, len(pStruct.Fields()))
+	for _, f := range pStruct.Fields() {
+		s.src = []byte(f.Comments())
+		s.pos = 0
+		s.keywordArguments = make(map[string][]Args)
+
+		if err := s.scan(); err != nil {
+			return Results{}, err
+		}
+
+		fieldResults = append(fieldResults, MultiMap{s.result()})
+	}
+
+	return Results{structResults, fieldResults}, nil
 }
 
 // moves the position pointer forward and returns the current character
@@ -131,8 +144,8 @@ func (s *scanner) scan() error {
 	return nil
 }
 
-func (s *scanner) keywordArgs(key keyword) (*Args, error) {
-	if keywords[key][s.mode]&dualArgsRequired != 0 {
+func (s *scanner) keywordArgs(key string) (*Args, error) {
+	if s.keywords[key][s.mode]&DualArgsRequired != 0 {
 		arg1, err := s.scanArguments()
 		if err != nil {
 			return nil, err
@@ -160,53 +173,53 @@ func (s *scanner) keywordArgs(key keyword) (*Args, error) {
 	return &Args{Arg1: string(arg)}, nil
 }
 
-func (s *scanner) addKeywordArgument(key Keyword, arg *Args) {
+func (s *scanner) addKeywordArgument(key string, arg *Args) {
 	if _, ok := s.keywordArguments[key]; !ok {
-		s.keywordArguments[key] = make([]*Args, 0, 1)
+		s.keywordArguments[key] = make([]Args, 0, 1)
 	}
 
 	if arg != nil {
-		s.keywordArguments[key] = append(s.keywordArguments[key], arg)
+		s.keywordArguments[key] = append(s.keywordArguments[key], *arg)
 	}
 }
 
-func (s scanner) canHaveArguments(key keyword) bool {
-	opts, ok := keywords[key][s.mode]
+func (s scanner) canHaveArguments(key string) bool {
+	opts, ok := s.keywords[key][s.mode]
 	if !ok {
 		return false
 	}
 
-	if !hasFlag(opts, noArgs) {
+	if !hasFlag(opts, NoArgs) {
 		return true
 	}
 
 	return false
 }
 
-func (s scanner) requiresArguments(key keyword) bool {
-	opts, ok := keywords[key][s.mode]
+func (s scanner) requiresArguments(key string) bool {
+	opts, ok := s.keywords[key][s.mode]
 	if !ok {
 		return false
 	}
 
-	if hasFlag(opts, argsRequired) {
+	if hasFlag(opts, ArgsRequired) {
 		return true
 	}
 
-	if hasFlag(opts, dualArgsRequired) {
+	if hasFlag(opts, DualArgsRequired) {
 		return true
 	}
 
 	return false
 }
 
-func (s scanner) isExclusive(key keyword) bool {
-	opts, ok := keywords[key][s.mode]
+func (s scanner) isExclusive(key string) bool {
+	opts, ok := s.keywords[key][s.mode]
 	if !ok {
 		return false
 	}
 
-	if hasFlag(opts, exclusive) {
+	if hasFlag(opts, Exclusive) {
 		return true
 	}
 
@@ -267,7 +280,7 @@ loop:
 	return buf, nil
 }
 
-func (s *scanner) result() KeyArgs {
+func (s *scanner) result() map[string][]Args {
 	return s.keywordArguments
 }
 
@@ -292,14 +305,14 @@ func (s *scanner) consumeIdentifier() []byte {
 	return buf
 }
 
-func (s *scanner) matchKeyword() (keyword, bool) {
+func (s *scanner) matchKeyword() (string, bool) {
 	currentPos := s.pos
 	possibleMatch := illegal
 	var matchSimilarity float64
 
 	ident := s.consumeIdentifier()
-	for key := range keywords {
-		if len(ident) == len(key) && keyword(ident) == key {
+	for key := range s.keywords {
+		if len(ident) == len(key) && string(ident) == key {
 			return key, true
 		}
 
