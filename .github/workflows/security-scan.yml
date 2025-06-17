@@ -3,6 +3,9 @@ name: Security Scan
 on:
   schedule:
     - cron: '0 14 * * *' # Daily at 8:00 AM CDT
+  push:
+    branches:
+      - upgrade/GO-2025-3750
 
 jobs:
   security_scan:
@@ -11,5 +14,5 @@ jobs:
       execute-trivy-scan: false
     secrets:
       SLACK_BOT_TOKEN: ${{ secrets.CCC_SLACK_BOT_TOKEN }}
-      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+      SLACK_CHANNEL_ID: 'invalid'
       DEPENDABOT_ALERTS_TOKEN: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}
