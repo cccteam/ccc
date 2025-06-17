@@ -5,13 +5,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"go/format"
 	"log"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
@@ -22,8 +20,6 @@ import (
 	"github.com/cccteam/spxscan"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
-	"github.com/momaek/formattag/align"
-	"golang.org/x/tools/imports"
 )
 
 type resourceGenerator struct {
@@ -83,14 +79,13 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	if r.genRPCMethods {
-		rpcStructs, err := extractStructsByInterface(packageMap["rpc"], rpcInterfaces[:]...)
-		if err != nil {
-			return err
-		}
+		rpcStructs := parser.ParseStructs(packageMap["rpc"])
+
+		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
 		r.rpcMethods = nil
 		for _, s := range rpcStructs {
-			methodInfo, err := r.structToRPCMethod(&s)
+			methodInfo, err := r.structToRPCMethod(s)
 			if err != nil {
 				return err
 			}
@@ -194,14 +189,13 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genRPCMethods {
-		rpcStructs, err := extractStructsByInterface(packageMap["rpc"], rpcInterfaces[:]...)
-		if err != nil {
-			return err
-		}
+		rpcStructs := parser.ParseStructs(packageMap["rpc"])
+
+		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
 		t.rpcMethods = nil
 		for _, s := range rpcStructs {
-			methodInfo, err := t.structToRPCMethod(&s)
+			methodInfo, err := t.structToRPCMethod(s)
 			if err != nil {
 				return err
 			}
@@ -240,8 +234,7 @@ type client struct {
 	consolidatedRoute         string
 	genRPCMethods             bool
 	cleanup                   func()
-
-	muAlign sync.Mutex
+	FileWriter
 }
 
 func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string) (*client, error) {
@@ -394,7 +387,7 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 		if !ok {
 			table = &tableMetadata{
 				Columns:       make(map[string]columnMeta),
-				SearchIndexes: make(map[string][]*expressionField),
+				SearchIndexes: make(map[string][]*searchExpression),
 				IsView:        r.IsView,
 			}
 		}
@@ -487,43 +480,6 @@ func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 	return table, nil
 }
 
-func (c *client) writeBytesToFile(destination string, file *os.File, data []byte, goFormat bool) error {
-	if goFormat {
-		var err error
-		data, err = format.Source(data)
-		if err != nil {
-			return errors.Wrapf(err, "format.Source(): file: %s, file content: %q", file.Name(), data)
-		}
-
-		data, err = imports.Process(destination, data, nil)
-		if err != nil {
-			return errors.Wrapf(err, "imports.Process(): file: %s", file.Name())
-		}
-
-		// align package is not concurrent safe
-		c.muAlign.Lock()
-		defer c.muAlign.Unlock()
-
-		align.Init(bytes.NewReader(data))
-		data, err = align.Do()
-		if err != nil {
-			return errors.Wrapf(err, "align.Do(): file: %s", file.Name())
-		}
-	}
-
-	if err := file.Truncate(0); err != nil {
-		return errors.Wrapf(err, "file.Truncate(): file: %s", file.Name())
-	}
-	if _, err := file.Seek(0, 0); err != nil {
-		return errors.Wrapf(err, "file.Seek(): file: %s", file.Name())
-	}
-	if _, err := file.Write(data); err != nil {
-		return errors.Wrapf(err, "file.Write(): file: %s", file.Name())
-	}
-
-	return nil
-}
-
 func (c *client) templateFuncs() map[string]any {
 	templateFuncs := map[string]any{
 		"Pluralize":                    c.pluralize,
@@ -604,7 +560,7 @@ func (c *client) pluralize(value string) string {
 	return pluralValue
 }
 
-func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) error {
+func RemoveGeneratedFiles(directory string, method GeneratedFileDeleteMethod) error {
 	log.Printf("removing generated files in directory %q...", directory)
 	dir, err := os.Open(directory)
 	if err != nil {
@@ -712,8 +668,8 @@ func formatRPCInterfaceTypes(rpcMethods []*rpcMethodInfo) string {
 	return formatInterfaceTypes(names)
 }
 
-func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*expressionField, error) {
-	var flds []*expressionField
+func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*searchExpression, error) {
+	var flds []*searchExpression
 
 	for _, match := range tokenizeRegex.FindAllStringSubmatch(expression, -1) {
 		if len(match) != 3 {
@@ -737,9 +693,9 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*e
 			return nil, errors.Newf("column `%s` from expression `%s` was not found in table (is the tokenizeRegex working?)", fieldName, match[0])
 		}
 
-		flds = append(flds, &expressionField{
+		flds = append(flds, &searchExpression{
 			tokenType: tokenType,
-			fieldName: match[2],
+			argument:  match[2],
 		})
 	}
 
@@ -772,9 +728,4 @@ func (c *client) resourceEndpoints(resource *resourceInfo) []HandlerType {
 	}
 
 	return filteredHandlerTypes
-}
-
-// The resourceName should already be pluralized
-func (t *typescriptGenerator) isResourceInAppRouter(resourceName string) bool {
-	return slices.Contains(t.routerResources, accesstypes.Resource(resourceName))
 }

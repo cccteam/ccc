@@ -1,8 +1,10 @@
 package parser
 
 import (
+	"go/ast"
 	"go/types"
 	"log"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -13,7 +15,7 @@ import (
 // loading or typechecking, otherwise returns the package's data.
 // Useful for static type analysis with the [types] package instead of
 // manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
-func LoadPackages(packagePatterns ...string) (map[string]*types.Package, error) {
+func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, error) {
 	log.Printf("Loading packages %v...\n", packagePatterns)
 
 	files := []string{}
@@ -27,7 +29,7 @@ func LoadPackages(packagePatterns ...string) (map[string]*types.Package, error) 
 		}
 	}
 
-	packMap := make(map[string]*types.Package, len(packagePatterns))
+	packMap := make(map[string]*packages.Package, len(packagePatterns))
 
 	if len(files) > 0 {
 		pkgs, err := loadPackages(files...)
@@ -36,7 +38,7 @@ func LoadPackages(packagePatterns ...string) (map[string]*types.Package, error) 
 		}
 
 		for _, pkg := range pkgs {
-			packMap[pkg.Name] = pkg.Types
+			packMap[pkg.Name] = pkg
 		}
 	}
 
@@ -47,15 +49,25 @@ func LoadPackages(packagePatterns ...string) (map[string]*types.Package, error) 
 		}
 
 		for _, pkg := range pkgs {
-			packMap[pkg.Name] = pkg.Types
+			packMap[pkg.Name] = pkg
 		}
 	}
 
 	return packMap, nil
 }
 
+// Loads a single package
+func LoadPackage(packagePattern string) (*packages.Package, error) {
+	pkgs, err := loadPackages(packagePattern)
+	if err != nil {
+		return nil, err
+	}
+
+	return pkgs[0], nil
+}
+
 func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
-	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedFiles}
+	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypesInfo}
 	pkgs, err := packages.Load(cfg, packagePatterns...)
 	if err != nil {
 		return nil, errors.Wrap(err, "packages.Load()")
@@ -88,60 +100,94 @@ func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 // We can iterate over the declarations at the package level a single time
 // to extract all the data necessary for generation. Any new data that needs
 // to be added to the struct definitions can be extracted here.
-func ParseStructs(pkg *types.Package) ([]Struct, error) {
-	if pkg == nil {
-		return nil, errors.New("package is nil")
+func ParseStructs(pkg *packages.Package) []*Struct {
+	log.Printf("Parsing structs from package %q...", pkg.Types.Name())
+
+	// Gather all type definitions from generic (top-level) declarations
+	typeSpecs := make([]*ast.TypeSpec, 0, 256)
+	for i := range pkg.Syntax {
+		for j := range pkg.Syntax[i].Decls {
+			if genDecl, ok := pkg.Syntax[i].Decls[j].(*ast.GenDecl); ok {
+				for k := range genDecl.Specs {
+					if typeSpec, ok := genDecl.Specs[k].(*ast.TypeSpec); ok {
+						typeSpecs = append(typeSpecs, typeSpec)
+					}
+				}
+			}
+		}
 	}
 
-	log.Printf("Parsing structs from package %q...", pkg.Name())
-
-	scope := pkg.Scope() // The package scope holds all the objects declared at package level (TypeNames, Consts, Vars, and Funcs)
-	if scope == nil || len(scope.Names()) == 0 {
-		return nil, errors.Newf("package %q has invalid scope", pkg.Name())
-	}
-
-	var parsedStructs []Struct
-	for _, name := range scope.Names() {
-		pStruct, ok := newStruct(scope.Lookup(name), false)
-		if !ok {
+	// Gather all interface definitions so we can check if structs implement them
+	interfaces := make([]*Interface, 0, 16)
+	for i := range typeSpecs {
+		if _, ok := typeSpecs[i].Type.(*ast.InterfaceType); !ok {
 			continue
+		}
+
+		obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
+
+		if iface, ok := decodeToType[*types.Interface](obj.Type()); ok {
+			interfaces = append(interfaces, &Interface{Name: typeSpecs[i].Name.Name, iface: iface})
+		}
+	}
+
+	parsedStructs := make([]*Struct, 0, 128)
+	for i := range typeSpecs {
+		pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name), pkg.Fset)
+		if pStruct == nil {
+			continue
+		}
+
+		for _, iface := range interfaces {
+			// Necessary to check non-pointer and pointer receivers
+			if types.Implements(pStruct.tt, iface.iface) || types.Implements(types.NewPointer(pStruct.tt), iface.iface) {
+				pStruct.SetInterface(iface.Name)
+			}
+		}
+
+		if typeSpecs[i].Doc != nil {
+			pStruct.comments = typeSpecs[i].Doc.Text()
+		}
+		if typeSpecs[i].Comment != nil {
+			pStruct.comments += typeSpecs[i].Comment.Text()
+		}
+
+		pStruct.astInfo = typeSpecs[i].Type.(*ast.StructType)
+
+		for j := range pStruct.fields {
+			pStruct.fields[j].astInfo = pStruct.astInfo.Fields.List[j]
+
+			if pStruct.fields[j].astInfo.Doc != nil {
+				pStruct.fields[j].comments = pStruct.fields[j].astInfo.Doc.Text()
+			}
+			if pStruct.fields[j].astInfo.Comment != nil {
+				pStruct.fields[j].comments += pStruct.fields[j].astInfo.Comment.Text()
+			}
 		}
 
 		parsedStructs = append(parsedStructs, pStruct)
 	}
 
-	return parsedStructs, nil
+	compareFn := func(a, b *Struct) int {
+		return strings.Compare(a.Name(), b.Name())
+	}
+
+	slices.SortFunc(parsedStructs, compareFn)
+
+	return parsedStructs
 }
 
-func HasInterface(pkg *types.Package, s Struct, interfaceName string) bool {
-	ifaceObject := pkg.Scope().Lookup(interfaceName)
-	if ifaceObject == nil {
-		return false
-	}
-
-	ifaceTypeName, ok := ifaceObject.(*types.TypeName)
-	if !ok {
-		return false
-	}
-
-	iface, ok := ifaceTypeName.Type().Underlying().(*types.Interface)
-	if !ok {
-		return false
-	}
-
-	structTypeName, ok := s.obj.(*types.TypeName)
-	if !ok {
-		return false
-	}
-	structType := structTypeName.Type()
-
-	for _, t := range []types.Type{structType, types.NewPointer(structType)} {
-		if types.Implements(t, iface) {
-			return true
+func FilterStructsByInterface(pStructs []*Struct, interfaceNames []string) []*Struct {
+	filteredStructs := make([]*Struct, 0, len(pStructs))
+	for _, pStruct := range pStructs {
+		for _, iface := range interfaceNames {
+			if pStruct.Implements(iface) {
+				filteredStructs = append(filteredStructs, pStruct)
+			}
 		}
 	}
 
-	return false
+	return slices.Clip(filteredStructs)
 }
 
 // The [types.Type] interface can be one of 14 concrete types:
@@ -150,12 +196,35 @@ func HasInterface(pkg *types.Package, s Struct, interfaceName string) bool {
 // and support can easily be expanded to other types in our [resources] package
 func decodeToType[T types.Type](v types.Type) (T, bool) {
 	switch t := v.(type) {
+	case *types.Slice:
+		return decodeToType[T](t.Elem())
 	case *types.Pointer:
 		return decodeToType[T](t.Elem())
 	case *types.Named:
 		return decodeToType[T](t.Underlying())
 	case T:
 		return t, true
+	default:
+		var zero T
+
+		return zero, false
+	}
+}
+
+func decodeToExpr[T ast.Expr](v ast.Expr) (T, bool) {
+	if v == nil {
+		panic("nil ast.Expr cannot be decoded")
+	}
+
+	switch t := v.(type) {
+	case T:
+		return t, true
+	// unwraps pointer types e.g. *ccc.UUID -> ccc.UUID
+	case *ast.StarExpr:
+		return decodeToExpr[T](t.X)
+	// captures the expression immediately following the dot e.g. ccc.UUID -> UUID
+	case *ast.SelectorExpr:
+		return decodeToExpr[T](t.Sel)
 	default:
 		var zero T
 
@@ -184,8 +253,8 @@ func isTypeLocalToPackage(t *types.Var, pkg *types.Package) bool {
 	return strings.HasPrefix(typeName, pkg.Name())
 }
 
-func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []TypeInfo {
-	var dependencies []TypeInfo
+func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []*TypeInfo {
+	var dependencies []*TypeInfo
 	pkg := obj.Pkg()
 	tt := obj.Type()
 
@@ -209,26 +278,11 @@ func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []TypeI
 				typeMap[typeStringer(unwrapType(ft))] = struct{}{}
 			}
 
-			dependencies = append(dependencies, newType(field, true))
+			dependencies = append(dependencies, newTypeInfo(field, nil, true))
 		}
 	}
 
 	return dependencies
-}
-
-func isUnderlyingTypeStruct(tt types.Type) bool {
-	switch t := tt.(type) {
-	case *types.Slice:
-		return isUnderlyingTypeStruct(t.Elem())
-	case *types.Pointer:
-		return isUnderlyingTypeStruct(t.Elem())
-	case *types.Named:
-		return isUnderlyingTypeStruct(tt.Underlying())
-	case *types.Struct:
-		return true
-	default:
-		return false
-	}
 }
 
 // Returns the underlying element type for slice and pointer types

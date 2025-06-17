@@ -996,8 +996,9 @@ import (
 func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
 	{{- range $type := .RPCMethod.LocalTypes }}
 	type {{ Lower $type.UnqualifiedTypeName }} 
-	{{- if $type.IsStruct }} struct {
-		{{- range $field := $type.ToStructType.Fields }}
+	
+	{{- with $type.AsStruct }} struct {
+		{{- range $field := .Fields }}
 		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\"`" + `
 		{{- end }}
 	}

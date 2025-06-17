@@ -2,6 +2,7 @@ package parser
 
 import (
 	"go/types"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -81,16 +82,19 @@ func Test_ParseStructs(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    []Struct
+		want    []*Struct
 		wantErr bool
 	}{
 		{
 			name: "parse 1 file",
 			args: args{packageName: "resources", packagePath: "../testdata/resources/res1.go"},
-			want: []Struct{
+			want: []*Struct{
 				testStruct(t, "AddressType",
 					testField{"ID", basic(types.String), `spanner:"Id"`},
 					testField{"Description", basic(types.String), `spanner:"description"`},
+				),
+				testStruct(t, "ExampleStruct",
+					testField{"Foo", basic(types.Int), ""},
 				),
 				testStruct(t, "FileRecordSet",
 					testField{"ID", named("ccc.UUID", &types.Struct{}), `spanner:"Id"`},
@@ -118,11 +122,7 @@ func Test_ParseStructs(t *testing.T) {
 				return
 			}
 
-			parsedStructs, err := ParseStructs(pkgMap[tt.args.packageName])
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parseStructs() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			parsedStructs := ParseStructs(pkgMap[tt.args.packageName])
 
 			if len(parsedStructs) != len(tt.want) {
 				t.Errorf("parseStructs() length of parsed structs slice does not match length of expected structs slice: got= %v \nwant = %v", parsedStructs, tt.want)
@@ -142,9 +142,58 @@ func Test_ParseStructs(t *testing.T) {
 						t.Errorf("parseStructs() field Type = %v, want %v", parsedStructs[i].fields[j].Type(), tt.want[i].fields[j].Type())
 					}
 					if parsedStructs[i].fields[j].tags != tt.want[i].fields[j].tags {
-						t.Errorf("parseStructs() field tags = %v, want %v", parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
+						t.Errorf("parseStructs() field %q.%q has tags = %v, want %v", parsedStructs[i].name, parsedStructs[i].fields[j].name, parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
+					}
+					if parsedStructs[i].fields[j].Name() != parsedStructs[i].fields[j].astInfo.Names[0].Name {
+						t.Errorf("parseStructs field name=%q, ast.Field name=%q", parsedStructs[i].fields[j].Name(), parsedStructs[i].fields[j].astInfo.Names[0].Name)
 					}
 				}
+			}
+		})
+	}
+}
+
+func Test_FilterStructsByInterface(t *testing.T) {
+	type args struct {
+		packagePath string
+		packageName string
+		interfaces  []string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []string
+		wantErr bool
+	}{
+		{
+			name:    "returns structs that implement a given interface",
+			args:    args{packagePath: "../testdata/rpc", packageName: "rpc", interfaces: []string{"TxnRunner"}},
+			want:    []string{"Banana", "Cofveve"},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			pkgMap, err := LoadPackages(tt.args.packagePath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("loadPackages() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			rpcStructs := ParseStructs(pkgMap[tt.args.packageName])
+
+			rpcStructs = FilterStructsByInterface(rpcStructs, tt.args.interfaces)
+
+			var rpcStructNames []string
+			for _, s := range rpcStructs {
+				rpcStructNames = append(rpcStructNames, s.Name())
+			}
+
+			if !reflect.DeepEqual(rpcStructNames, tt.want) {
+				t.Errorf("extractRPCMethods() = %v, want %v", rpcStructNames, tt.want)
 			}
 		})
 	}
@@ -214,8 +263,8 @@ func Test_localTypesFromStruct(t *testing.T) {
 
 			var obj types.Object
 			pkg := pkgMap[tt.args.pkgName]
-			for _, name := range pkg.Scope().Names() {
-				obj = pkg.Scope().Lookup(name)
+			for _, name := range pkg.Types.Scope().Names() {
+				obj = pkg.Types.Scope().Lookup(name)
 			}
 
 			var typeNames []string
@@ -268,14 +317,7 @@ func named(name string, typ types.Type) *types.Named {
 	return types.NewNamed(typeName(objName, pkg, typ), typ, nil)
 }
 
-func method(name string, pkg *types.Package, st *types.Struct) *types.Func {
-	recv := types.NewVar(types.Universe.Pos(), pkg, name, st)
-	sig := types.NewSignatureType(recv, nil, nil, nil, nil, false)
-
-	return types.NewFunc(types.Universe.Pos(), pkg, name, sig)
-}
-
-func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) Struct {
+func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) *Struct {
 	t.Helper()
 
 	pkg, structName := pkgAndObjName(qualifiedName)
@@ -291,8 +333,8 @@ func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) St
 
 	namedType := types.NewNamed(typeName(structName, pkg, structType), structType, nil)
 
-	s, ok := newStruct(namedType.Obj(), false)
-	if !ok {
+	s := newStruct(namedType.Obj(), nil)
+	if s == nil {
 		panic("could not create struct")
 	}
 

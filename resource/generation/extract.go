@@ -2,11 +2,11 @@ package generation
 
 import (
 	"fmt"
-	"go/types"
 	"slices"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
+	"golang.org/x/tools/go/packages"
 )
 
 func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error) {
@@ -16,7 +16,7 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 
 	table, err := c.lookupTable(pStruct.Name())
 	if err != nil {
-		return nil, errors.Wrapf(err, "struct %q at %s:%d is not in lookupTable", pStruct.Name(), pStruct.PackageName(), pStruct.Position())
+		return nil, errors.Wrapf(err, "struct %s is not in lookupTable", pStruct.Error())
 	}
 
 	resource := &resourceInfo{
@@ -31,11 +31,11 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 	for i, field := range pStruct.Fields() {
 		spannerTag, ok := field.LookupTag("spanner")
 		if !ok {
-			return nil, errors.Newf("field %s.%s in package %s\n%s", resource.Name(), field.Name(), field.PackageName(), pStruct.PrintWithFieldError(i, "missing spanner tag"))
+			return nil, errors.Newf("field %s \n%s", field.Error(), pStruct.PrintWithFieldError(i, "missing spanner tag"))
 		}
 		tableColumn, ok := table.Columns[spannerTag]
 		if !ok {
-			return nil, errors.Newf("field %s.%s in package %s\n%s", resource.Name(), field.Name(), field.PackageName(), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(pStruct.Name()))))
+			return nil, errors.Newf("field %s \n%s", field.Error(), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(pStruct.Name()))))
 		}
 		_, hasIndexTag := field.LookupTag("index")
 		if !table.IsView && hasIndexTag {
@@ -43,7 +43,7 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 		}
 
 		resource.Fields[i] = &resourceField{
-			Field:              &field,
+			Field:              field,
 			Parent:             resource,
 			IsPrimaryKey:       tableColumn.IsPrimaryKey,
 			IsForeignKey:       tableColumn.IsForeignKey,
@@ -61,15 +61,12 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 	return resource, nil
 }
 
-func (c *client) extractResources(pkg *types.Package) ([]*resourceInfo, error) {
-	resourceStructs, err := parser.ParseStructs(pkg)
-	if err != nil {
-		return nil, err
-	}
+func (c *client) extractResources(pkg *packages.Package) ([]*resourceInfo, error) {
+	resourceStructs := parser.ParseStructs(pkg)
 
 	resources := make([]*resourceInfo, 0, len(resourceStructs))
 	for _, pStruct := range resourceStructs {
-		resource, err := c.structToResource(&pStruct)
+		resource, err := c.structToResource(pStruct)
 		if err != nil {
 			return nil, err
 		}
@@ -78,34 +75,6 @@ func (c *client) extractResources(pkg *types.Package) ([]*resourceInfo, error) {
 	}
 
 	return resources, nil
-}
-
-func extractStructsByInterface(pkg *types.Package, interfaceNames ...string) ([]parser.Struct, error) {
-	parsedStructs, err := parser.ParseStructs(pkg)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(interfaceNames) == 0 {
-		return nil, nil
-	}
-
-	var rpcStructs []parser.Struct
-
-	for _, pStruct := range parsedStructs {
-		for _, interfaceName := range interfaceNames {
-			if parser.HasInterface(pkg, pStruct, interfaceName) {
-				pStruct.SetInterface(interfaceName)
-				rpcStructs = append(rpcStructs, pStruct)
-			}
-		}
-	}
-
-	if len(rpcStructs) == 0 {
-		return nil, errors.Newf("package %q has no structs that implement an interface in %v", pkg.Name(), interfaceNames)
-	}
-
-	return rpcStructs, nil
 }
 
 func (c *client) structToRPCMethod(pStruct *parser.Struct) (*rpcMethodInfo, error) {

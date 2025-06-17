@@ -12,7 +12,7 @@ import (
 )
 
 func (r *resourceGenerator) runResourcesGeneration() error {
-	if err := removeGeneratedFiles(r.resourceDestination, Prefix); err != nil {
+	if err := RemoveGeneratedFiles(r.resourceDestination, Prefix); err != nil {
 		return err
 	}
 
@@ -50,8 +50,13 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 	}
 	defer file.Close()
 
-	if err := r.writeBytesToFile(destinationFile, file, output, true); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	if err != nil {
+		return err
+	}
+
+	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+		return err
 	}
 
 	return nil
@@ -74,8 +79,13 @@ func (r *resourceGenerator) generateResourceTests() error {
 	}
 	defer file.Close()
 
-	if err := r.writeBytesToFile(destinationFile, file, output, true); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	if err != nil {
+		return err
+	}
+
+	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+		return err
 	}
 
 	return nil
@@ -101,8 +111,13 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	}
 	defer file.Close()
 
-	if err := r.writeBytesToFile(destinationFilePath, file, output, true); err != nil {
-		return errors.Wrap(err, "c.writeBytesToFile()")
+	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	if err != nil {
+		return err
+	}
+
+	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+		return err
 	}
 
 	return nil

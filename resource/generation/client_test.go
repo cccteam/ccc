@@ -71,7 +71,7 @@ func Test_searchExpressionFields(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    []*expressionField
+		want    []*searchExpression
 		wantErr bool
 	}{
 		{
@@ -91,11 +91,11 @@ func Test_searchExpressionFields(t *testing.T) {
 					"Ssn":            {},
 				},
 			},
-			want: []*expressionField{
-				{tokenType: "substring", fieldName: "FirstName"},
-				{tokenType: "substring", fieldName: "LastName"},
-				{tokenType: "substring", fieldName: "FormerLastName"},
-				{tokenType: "substring", fieldName: "Ssn"},
+			want: []*searchExpression{
+				{tokenType: "substring", argument: "FirstName"},
+				{tokenType: "substring", argument: "LastName"},
+				{tokenType: "substring", argument: "FormerLastName"},
+				{tokenType: "substring", argument: "Ssn"},
 			},
 		},
 		{
@@ -109,11 +109,11 @@ func Test_searchExpressionFields(t *testing.T) {
 					"Ssn":            {},
 				},
 			},
-			want: []*expressionField{
-				{tokenType: "substring", fieldName: "FirstName"},
-				{tokenType: "substring", fieldName: "LastName"},
-				{tokenType: "substring", fieldName: "FormerLastName"},
-				{tokenType: "substring", fieldName: "Ssn"},
+			want: []*searchExpression{
+				{tokenType: "substring", argument: "FirstName"},
+				{tokenType: "substring", argument: "LastName"},
+				{tokenType: "substring", argument: "FormerLastName"},
+				{tokenType: "substring", argument: "Ssn"},
 			},
 		},
 	}
@@ -124,7 +124,7 @@ func Test_searchExpressionFields(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("searchExpressionFields() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(expressionField{})); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(searchExpression{})); diff != "" {
 				t.Errorf("searchExpressionFields() mismatch (-want +got):\n%s", diff)
 			}
 		})

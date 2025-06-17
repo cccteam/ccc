@@ -135,7 +135,7 @@ type InformationSchemaResult struct {
 
 type tableMetadata struct {
 	Columns       map[string]columnMeta
-	SearchIndexes map[string][]*expressionField
+	SearchIndexes map[string][]*searchExpression
 	IsView        bool
 	PkCount       int
 }
@@ -197,7 +197,7 @@ type rpcMethodInfo struct {
 }
 
 type rpcField struct {
-	parser.Field
+	*parser.Field
 	typescriptType string
 }
 
@@ -224,11 +224,11 @@ func (f *rpcField) TypescriptDataType() string {
 }
 
 type resourceInfo struct {
-	parser.TypeInfo
+	*parser.TypeInfo
 	Fields                []*resourceField
-	searchIndexes         map[string][]*expressionField // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
-	IsView                bool                          // Determines how CreatePatch is rendered in resource generation.
-	HasCompoundPrimaryKey bool                          // Determines how CreatePatchSet is rendered in resource generation.
+	searchIndexes         map[string][]*searchExpression // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
+	IsView                bool                           // Determines how CreatePatch is rendered in resource generation.
+	HasCompoundPrimaryKey bool                           // Determines how CreatePatchSet is rendered in resource generation.
 	IsConsolidated        bool
 }
 
@@ -519,7 +519,7 @@ func (f *resourceField) SearchIndexTags() string {
 	typeIndexMap := make(map[resource.SearchType][]string)
 	for searchIndex, expressionFields := range f.Parent.searchIndexes {
 		for _, exprField := range expressionFields {
-			if spannerTag, ok := f.LookupTag("spanner"); ok && spannerTag == exprField.fieldName {
+			if spannerTag, ok := f.LookupTag("spanner"); ok && spannerTag == exprField.argument {
 				typeIndexMap[exprField.tokenType] = append(typeIndexMap[exprField.tokenType], searchIndex)
 			}
 		}
@@ -560,9 +560,13 @@ func (f *resourceField) IsQueryClauseEligible() bool {
 	return false
 }
 
-type expressionField struct {
+type searchExpression struct {
 	tokenType resource.SearchType
-	fieldName string
+	argument  string
+}
+
+func (s searchExpression) String() string {
+	return fmt.Sprintf("TOKENIZE_%s(%s)", strings.ToUpper(string(s.tokenType)), s.argument)
 }
 
 func generatedFileName(name string) string {
