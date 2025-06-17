@@ -14,10 +14,10 @@ import (
 )
 
 func (r *resourceGenerator) runRPCGeneration() error {
-	if err := removeGeneratedFiles(r.rpcPackageDir, Prefix); err != nil {
+	if err := RemoveGeneratedFiles(r.rpcPackageDir, Prefix); err != nil {
 		return err
 	}
-	if err := removeGeneratedFiles(r.businessLayerPackageDir, Prefix); err != nil {
+	if err := RemoveGeneratedFiles(r.businessLayerPackageDir, Prefix); err != nil {
 		return err
 	}
 
@@ -87,12 +87,12 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 
 	log.Printf("Generating RPC handler file: %s", fileName)
 
-	formattedBytes, err := r.goFormatBytes(file.Name(), buf.Bytes())
+	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
 	if err != nil {
 		return err
 	}
 
-	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
 
@@ -125,12 +125,12 @@ func (r *resourceGenerator) generateRPCMethod(rpcMethod *rpcMethodInfo) error {
 
 	log.Printf("Generating RPC handler file: %s", fileName)
 
-	formattedBytes, err := r.goFormatBytes(file.Name(), buf.Bytes())
+	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
 	if err != nil {
 		return err
 	}
 
-	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
 
@@ -154,12 +154,12 @@ func (r *resourceGenerator) generateRPCInterfaces() error {
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.goFormatBytes(file.Name(), output)
+	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
 
@@ -184,12 +184,12 @@ func (r *resourceGenerator) generateBusinessLayerInterfaces() error {
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.goFormatBytes(file.Name(), output)
+	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
 

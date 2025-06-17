@@ -13,7 +13,7 @@ import (
 )
 
 func (r *resourceGenerator) runHandlerGeneration() error {
-	if err := removeGeneratedFiles(r.handlerDestination, Prefix); err != nil {
+	if err := RemoveGeneratedFiles(r.handlerDestination, Prefix); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
@@ -111,12 +111,12 @@ func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
 
 		log.Printf("Generating handler file: %s", fileName)
 
-		formattedBytes, err := r.goFormatBytes(file.Name(), buf.Bytes())
+		formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
 		if err != nil {
 			return err
 		}
 
-		if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+		if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 			return err
 		}
 	}
@@ -150,12 +150,12 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 
 	log.Printf("Generating consolidated handler file: %s", fileName)
 
-	formattedBytes, err := r.goFormatBytes(file.Name(), buf.Bytes())
+	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
 	if err != nil {
 		return err
 	}
 
-	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
 

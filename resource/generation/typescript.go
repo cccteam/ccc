@@ -14,7 +14,7 @@ import (
 
 func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	if !t.genMetadata {
-		if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+		if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 			return errors.Wrap(err, "removeGeneratedFiles()")
 		}
 	}
@@ -48,7 +48,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	}
 	defer file.Close()
 
-	if err := t.writeBytesToFile(file, output); err != nil {
+	if err := t.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 
@@ -58,7 +58,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 }
 
 func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
-	if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+	if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
@@ -116,7 +116,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 	}
 	defer file.Close()
 
-	if err := t.writeBytesToFile(file, output); err != nil {
+	if err := t.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 
@@ -142,7 +142,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	}
 	defer file.Close()
 
-	if err := t.writeBytesToFile(file, output); err != nil {
+	if err := t.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 

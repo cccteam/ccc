@@ -13,7 +13,7 @@ import (
 )
 
 func (r *resourceGenerator) runRouteGeneration() error {
-	if err := removeGeneratedFiles(r.routerDestination, Prefix); err != nil {
+	if err := RemoveGeneratedFiles(r.routerDestination, Prefix); err != nil {
 		return err
 	}
 
@@ -87,12 +87,12 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
 
-	formattedBytes, err := r.goFormatBytes(file.Name(), buf.Bytes())
+	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
 	if err != nil {
 		return err
 	}
 
-	if err := r.writeBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
 

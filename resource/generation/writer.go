@@ -11,11 +11,11 @@ import (
 	"golang.org/x/tools/imports"
 )
 
-type fileWriter struct {
+type FileWriter struct {
 	muAlign sync.Mutex
 }
 
-func (f *fileWriter) writeBytesToFile(file *os.File, data []byte) error {
+func (f *FileWriter) WriteBytesToFile(file *os.File, data []byte) error {
 	if err := file.Truncate(0); err != nil {
 		return errors.Wrapf(err, "file.Truncate(): file: %s", file.Name())
 	}
@@ -29,7 +29,7 @@ func (f *fileWriter) writeBytesToFile(file *os.File, data []byte) error {
 	return nil
 }
 
-func (f *fileWriter) goFormatBytes(fileName string, data []byte) ([]byte, error) {
+func (f *FileWriter) GoFormatBytes(fileName string, data []byte) ([]byte, error) {
 	formattedData, err := format.Source(data)
 	if err != nil {
 		return nil, errors.Wrapf(err, "format.Source(): file: %s, file content: %q", fileName, data)
