@@ -291,9 +291,9 @@ func (r *resourceInfo) PrimaryKey() *resourceField {
 	return nil
 }
 
-func (r *resourceInfo) HasIndexes() bool {
+func (r *resourceInfo) IsQueryClauseEligible() bool {
 	for _, field := range r.Fields {
-		if field.IsIndex || field.IsUniqueIndex {
+		if field.IsQueryClauseEligible() {
 			return true
 		}
 	}
@@ -543,6 +543,17 @@ func (f *resourceField) IsRequired() bool {
 	}
 
 	if !f.IsPrimaryKey && !f.IsNullable && !f.HasDefault && !f.HasDefaultCreateFunc() {
+		return true
+	}
+
+	return false
+}
+
+func (f *resourceField) IsQueryClauseEligible() bool {
+	if f.IsIndex || f.IsUniqueIndex {
+		return true
+	}
+	if f.HasTag("allow_filter") {
 		return true
 	}
 

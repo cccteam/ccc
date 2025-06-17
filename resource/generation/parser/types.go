@@ -233,6 +233,12 @@ func (f Field) LookupTag(key string) (string, bool) {
 	return f.tags.Lookup(key)
 }
 
+func (f Field) HasTag(key string) bool {
+	_, ok := f.tags.Lookup(key)
+
+	return ok
+}
+
 // Returns true if the field's type originates from the same package
 // its parent struct is defined in.
 func (f Field) IsLocalType() bool {
