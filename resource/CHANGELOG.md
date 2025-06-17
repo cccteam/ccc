@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/cccteam/ccc/compare/resource/v0.1.13...resource/v0.1.14) (2025-06-17)
+
+
+### Features
+
+* comment parsing ([#306](https://github.com/cccteam/ccc/issues/306)) ([59bc9ae](https://github.com/cccteam/ccc/commit/59bc9ae7350a41632f3ebb7fe18debc567dc83a7))
+
 ## [0.1.13](https://github.com/cccteam/ccc/compare/resource/v0.1.12...resource/v0.1.13) (2025-06-17)
 
 
