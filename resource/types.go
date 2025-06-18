@@ -61,3 +61,15 @@ var _ FieldDefaultFunc = CommitTimestampPtr
 func CommitTimestampPtr(_ context.Context, _ TxnBuffer) (any, error) {
 	return &spanner.CommitTimestamp, nil
 }
+
+var _ FieldDefaultFunc = DefaultFalse
+
+func DefaultFalse(_ context.Context, _ TxnBuffer) (any, error) {
+	return false, nil
+}
+
+var _ FieldDefaultFunc = DefaultTrue
+
+func DefaultTrue(_ context.Context, _ TxnBuffer) (any, error) {
+	return true, nil
+}
