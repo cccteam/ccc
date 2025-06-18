@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/cccteam/ccc/compare/resource/v0.1.15...resource/v0.1.16) (2025-06-18)
+
+
+### Features
+
+* Add a default function for booleans ([#341](https://github.com/cccteam/ccc/issues/341)) ([72debe6](https://github.com/cccteam/ccc/commit/72debe6593af47b5c8d3d0a32cccc1717e47744f))
+
 ## [0.1.15](https://github.com/cccteam/ccc/compare/resource/v0.1.14...resource/v0.1.15) (2025-06-18)
 
 
