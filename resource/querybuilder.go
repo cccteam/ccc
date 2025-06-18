@@ -17,16 +17,15 @@ func NewPartialQueryClause() PartialQueryClause {
 
 func (p PartialQueryClause) Group(qc QueryClause) QueryClause {
 	groupedExpr := &GroupNode{Expression: qc.tree}
-	finalHasIndexedField := qc.hasIndexedField
 	if p.tree == nil {
-		return QueryClause{tree: groupedExpr, hasIndexedField: finalHasIndexedField}
+		return QueryClause{tree: groupedExpr, hasIndexedField: qc.hasIndexedField}
 	}
 	logicalNode, ok := p.tree.(*LogicalOpNode)
 	if !ok {
 		panic(fmt.Sprintf("Expected LogicalOpNode, got %T", p.tree))
 	}
 	logicalNode.Right = groupedExpr
-	finalHasIndexedField = p.hasIndexedField || qc.hasIndexedField
+	finalHasIndexedField := p.hasIndexedField || qc.hasIndexedField
 
 	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }

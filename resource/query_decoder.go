@@ -242,13 +242,13 @@ func newParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata 
 		var indexed bool
 		structField := reqType.Field(i)
 		tag := structField.Tag.Get("index")
-		if tag != "true" {
+		if tag == "true" {
+			indexed = true
+		} else {
 			tag := structField.Tag.Get("allow_filter")
 			if tag != "true" {
 				continue
 			}
-		} else {
-			indexed = true
 		}
 
 		goStructFieldName := structField.Name
