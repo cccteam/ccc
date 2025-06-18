@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/cccteam/ccc/compare/resource/v0.1.16...resource/v0.1.17) (2025-06-18)
+
+
+### Features
+
+* New Option to set Spanner Emulator Version ([#343](https://github.com/cccteam/ccc/issues/343)) ([6eae667](https://github.com/cccteam/ccc/commit/6eae66781f42e2f1b509ffa76d84f0e114b70ef0))
+
 ## [0.1.16](https://github.com/cccteam/ccc/compare/resource/v0.1.15...resource/v0.1.16) (2025-06-18)
 
 
