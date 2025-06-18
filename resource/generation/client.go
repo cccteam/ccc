@@ -40,18 +40,12 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 		resourceDestination: filepath.Dir(resourceSourcePath),
 	}
 
-	opts := []option{}
+	opts := make([]option, 0, len(options))
 	for _, opt := range options {
 		opts = append(opts, opt)
 	}
 
-	r.client = &client{}
-
-	if err := resolveOptions(r, opts); err != nil {
-		return nil, err
-	}
-
-	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, r.spannerEmulatorVersion)
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -155,18 +149,12 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 		genMetadata:           genMetadata,
 	}
 
-	opts := []option{}
+	opts := make([]option, 0, len(options))
 	for _, opt := range options {
 		opts = append(opts, opt)
 	}
 
-	t.client = &client{}
-
-	if err := resolveOptions(t, opts); err != nil {
-		return nil, err
-	}
-
-	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, t.spannerEmulatorVersion)
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +239,7 @@ type client struct {
 	FileWriter
 }
 
-func newClient(ctx context.Context, resourceFilePath, migrationSourceURL, emulatorVersion string) (*client, error) {
+func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string, opts []option) (*client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -261,8 +249,13 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL, emulat
 		return nil, errors.Wrap(err, "os.Chdir()")
 	}
 
+	c := &client{}
+	if err := resolveOptions(c, opts); err != nil {
+		return nil, err
+	}
+
 	log.Println("Starting Spanner Container...")
-	spannerContainer, err := initiator.NewSpannerContainer(ctx, emulatorVersion)
+	spannerContainer, err := initiator.NewSpannerContainer(ctx, c.spannerEmulatorVersion)
 	if err != nil {
 		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
 	}
@@ -287,15 +280,12 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL, emulat
 		return nil, errors.Wrap(err, "db.MigrateUp()")
 	}
 
-	c := &client{
-		loadPackages:     []string{resourceFilePath},
-		resourceFilePath: resourceFilePath,
-		db:               db.Client,
-		packageName:      pkgInfo.PackageName,
-		cleanup:          cleanupFunc,
-		caser:            strcase.NewCaser(false, nil, nil),
-	}
-
+	c.loadPackages = append(c.loadPackages, resourceFilePath)
+	c.resourceFilePath = resourceFilePath
+	c.db = db.Client
+	c.packageName = pkgInfo.PackageName
+	c.cleanup = cleanupFunc
+	c.caser = strcase.NewCaser(false, nil, nil)
 	c.tableMap, err = c.newTableMap(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "c.newTableMap()")
