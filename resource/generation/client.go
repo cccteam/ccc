@@ -40,17 +40,23 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 		resourceDestination: filepath.Dir(resourceSourcePath),
 	}
 
-	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL)
+	opts := []option{}
+	for _, opt := range options {
+		opts = append(opts, opt)
+	}
+
+	r.client = &client{}
+
+	if err := resolveOptions(r, opts); err != nil {
+		return nil, err
+	}
+
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, r.spannerEmulatorVersion)
 	if err != nil {
 		return nil, err
 	}
 
 	r.client = c
-
-	opts := []Option{}
-	for _, opt := range options {
-		opts = append(opts, opt)
-	}
 
 	if err := resolveOptions(r, opts); err != nil {
 		return nil, err
@@ -113,12 +119,13 @@ func (r *resourceGenerator) Generate() error {
 
 type typescriptGenerator struct {
 	*client
-	genPermission         bool
-	genMetadata           bool
-	typescriptDestination string
-	typescriptOverrides   map[string]string
-	rc                    *resource.Collection
-	routerResources       []accesstypes.Resource
+	genPermission          bool
+	genMetadata            bool
+	typescriptDestination  string
+	typescriptOverrides    map[string]string
+	rc                     *resource.Collection
+	routerResources        []accesstypes.Resource
+	spannerEmulatorVersion string
 }
 
 func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TSOption) (Generator, error) {
@@ -148,17 +155,23 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 		genMetadata:           genMetadata,
 	}
 
-	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL)
+	opts := []option{}
+	for _, opt := range options {
+		opts = append(opts, opt)
+	}
+
+	t.client = &client{}
+
+	if err := resolveOptions(t, opts); err != nil {
+		return nil, err
+	}
+
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, t.spannerEmulatorVersion)
 	if err != nil {
 		return nil, err
 	}
 
 	t.client = c
-
-	opts := []Option{}
-	for _, opt := range options {
-		opts = append(opts, opt)
-	}
 
 	if err := resolveOptions(t, opts); err != nil {
 		return nil, err
@@ -234,10 +247,11 @@ type client struct {
 	consolidatedRoute         string
 	genRPCMethods             bool
 	cleanup                   func()
+	spannerEmulatorVersion    string
 	FileWriter
 }
 
-func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string) (*client, error) {
+func newClient(ctx context.Context, resourceFilePath, migrationSourceURL, emulatorVersion string) (*client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -248,7 +262,7 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string)
 	}
 
 	log.Println("Starting Spanner Container...")
-	spannerContainer, err := initiator.NewSpannerContainer(ctx, "latest")
+	spannerContainer, err := initiator.NewSpannerContainer(ctx, emulatorVersion)
 	if err != nil {
 		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
 	}

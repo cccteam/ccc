@@ -18,17 +18,17 @@ import (
 type (
 	resourceOption func(*resourceGenerator) error
 	tsOption       func(*typescriptGenerator) error
-	option         func(Generator) error
+	Option         func(Generator) error
 
-	Option interface {
+	option interface {
 		isOption()
 	}
 	ResourceOption interface {
-		Option
+		option
 		isResourceOption()
 	}
 	TSOption interface {
-		Option
+		option
 		isTypescriptOption()
 	}
 )
@@ -39,9 +39,9 @@ func (resourceOption) isResourceOption() {}
 func (tsOption) isOption()           {}
 func (tsOption) isTypescriptOption() {}
 
-func (option) isOption()           {}
-func (option) isResourceOption()   {}
-func (option) isTypescriptOption() {}
+func (Option) isOption()           {}
+func (Option) isResourceOption()   {}
+func (Option) isTypescriptOption() {}
 
 // ignoredHandlers maps the name of a resource and to handler types (list, read, patch)
 // that you do not want generated for that resource
@@ -91,7 +91,20 @@ func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	})
 }
 
-func WithPluralOverrides(overrides map[string]string) option {
+func WithSpannerEmulaterVersion(version string) Option {
+	return func(g Generator) error {
+		switch t := g.(type) {
+		case *resourceGenerator:
+			t.spannerEmulatorVersion = version
+		case *typescriptGenerator:
+			t.spannerEmulatorVersion = version
+		}
+
+		return nil
+	}
+}
+
+func WithPluralOverrides(overrides map[string]string) Option {
 	tempMap := defaultPluralOverrides()
 	maps.Copy(tempMap, overrides)
 
@@ -107,7 +120,7 @@ func WithPluralOverrides(overrides map[string]string) option {
 	}
 }
 
-func CaserInitialismOverrides(overrides map[string]bool) option {
+func CaserInitialismOverrides(overrides map[string]bool) Option {
 	return func(g Generator) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
@@ -120,7 +133,7 @@ func CaserInitialismOverrides(overrides map[string]bool) option {
 	}
 }
 
-func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...string) option {
+func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...string) Option {
 	return func(g Generator) error {
 		if !consolidateAll && len(resources) == 0 {
 			return errors.New("at least one resource is required if not consolidating all handlers")
@@ -141,7 +154,7 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 	}
 }
 
-func WithRPC(rpcPackageDir string, businessPackageDir string) option {
+func WithRPC(rpcPackageDir string, businessPackageDir string) Option {
 	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
 
 	return func(g Generator) error {
@@ -160,7 +173,7 @@ func WithRPC(rpcPackageDir string, businessPackageDir string) option {
 	}
 }
 
-func resolveOptions(generator Generator, options []Option) error {
+func resolveOptions(generator Generator, options []option) error {
 	for _, optionFunc := range options {
 		if optionFunc != nil {
 			switch fn := optionFunc.(type) {
@@ -172,7 +185,7 @@ func resolveOptions(generator Generator, options []Option) error {
 				if err := fn(generator.(*typescriptGenerator)); err != nil {
 					return err
 				}
-			case option:
+			case Option:
 				if err := fn(generator); err != nil {
 					return err
 				}
@@ -185,6 +198,9 @@ func resolveOptions(generator Generator, options []Option) error {
 		if g.pluralOverrides == nil {
 			g.pluralOverrides = defaultPluralOverrides()
 		}
+		if g.spannerEmulatorVersion == "" {
+			g.spannerEmulatorVersion = "latest"
+		}
 
 	case *typescriptGenerator:
 		if g.pluralOverrides == nil {
@@ -192,6 +208,9 @@ func resolveOptions(generator Generator, options []Option) error {
 		}
 		if g.typescriptOverrides == nil {
 			g.typescriptOverrides = defaultTypescriptOverrides()
+		}
+		if g.spannerEmulatorVersion == "" {
+			g.spannerEmulatorVersion = "latest"
 		}
 	}
 
