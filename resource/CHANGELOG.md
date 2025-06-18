@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.15](https://github.com/cccteam/ccc/compare/resource/v0.1.14...resource/v0.1.15) (2025-06-18)
+
+
+### Features
+
+* Implement allow_filter struct tag to support non-indexed columns in filters ([#338](https://github.com/cccteam/ccc/issues/338)) ([ef0f5c0](https://github.com/cccteam/ccc/commit/ef0f5c0cb13f3cdd053bfd12c63777bc29a6e950))
+
 ## [0.1.14](https://github.com/cccteam/ccc/compare/resource/v0.1.13...resource/v0.1.14) (2025-06-17)
 
 
