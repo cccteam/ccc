@@ -18,7 +18,7 @@ import (
 type (
 	resourceOption func(*resourceGenerator) error
 	tsOption       func(*typescriptGenerator) error
-	Option         func(Generator) error
+	Option         func(any) error
 
 	option interface {
 		isOption()
@@ -92,11 +92,9 @@ func WithTypescriptOverrides(overrides map[string]string) TSOption {
 }
 
 func WithSpannerEmulaterVersion(version string) Option {
-	return func(g Generator) error {
+	return func(g any) error {
 		switch t := g.(type) {
-		case *resourceGenerator:
-			t.spannerEmulatorVersion = version
-		case *typescriptGenerator:
+		case *client:
 			t.spannerEmulatorVersion = version
 		}
 
@@ -108,11 +106,9 @@ func WithPluralOverrides(overrides map[string]string) Option {
 	tempMap := defaultPluralOverrides()
 	maps.Copy(tempMap, overrides)
 
-	return func(g Generator) error {
+	return func(g any) error {
 		switch t := g.(type) {
-		case *resourceGenerator:
-			t.pluralOverrides = tempMap
-		case *typescriptGenerator:
+		case *client:
 			t.pluralOverrides = tempMap
 		}
 
@@ -121,11 +117,9 @@ func WithPluralOverrides(overrides map[string]string) Option {
 }
 
 func CaserInitialismOverrides(overrides map[string]bool) Option {
-	return func(g Generator) error {
+	return func(g any) error {
 		switch t := g.(type) {
-		case *resourceGenerator:
-			t.caser = strcase.NewCaser(false, overrides, nil)
-		case *typescriptGenerator:
+		case *client:
 			t.caser = strcase.NewCaser(false, overrides, nil)
 		}
 
@@ -134,17 +128,13 @@ func CaserInitialismOverrides(overrides map[string]bool) Option {
 }
 
 func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...string) Option {
-	return func(g Generator) error {
+	return func(g any) error {
 		if !consolidateAll && len(resources) == 0 {
 			return errors.New("at least one resource is required if not consolidating all handlers")
 		}
 
 		switch t := g.(type) {
-		case *resourceGenerator:
-			t.consolidatedResourceNames = resources
-			t.consolidatedRoute = route
-			t.consolidateAll = consolidateAll
-		case *typescriptGenerator:
+		case *client:
 			t.consolidatedResourceNames = resources
 			t.consolidatedRoute = route
 			t.consolidateAll = consolidateAll
@@ -157,14 +147,12 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 func WithRPC(rpcPackageDir string, businessPackageDir string) Option {
 	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
 
-	return func(g Generator) error {
+	return func(g any) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
-			t.genRPCMethods = true
-			t.loadPackages = append(t.loadPackages, rpcPackageDir)
 			t.rpcPackageDir = rpcPackageDir
 			t.businessLayerPackageDir = businessPackageDir
-		case *typescriptGenerator:
+		case *client:
 			t.genRPCMethods = true
 			t.loadPackages = append(t.loadPackages, rpcPackageDir)
 		}
@@ -173,17 +161,23 @@ func WithRPC(rpcPackageDir string, businessPackageDir string) Option {
 	}
 }
 
-func resolveOptions(generator Generator, options []option) error {
+func resolveOptions(generator any, options []option) error {
 	for _, optionFunc := range options {
 		if optionFunc != nil {
 			switch fn := optionFunc.(type) {
 			case resourceOption:
-				if err := fn(generator.(*resourceGenerator)); err != nil {
-					return err
+				switch g := generator.(type) {
+				case *resourceGenerator:
+					if err := fn(g); err != nil {
+						return err
+					}
 				}
 			case tsOption:
-				if err := fn(generator.(*typescriptGenerator)); err != nil {
-					return err
+				switch g := generator.(type) {
+				case *typescriptGenerator:
+					if err := fn(g); err != nil {
+						return err
+					}
 				}
 			case Option:
 				if err := fn(generator); err != nil {
