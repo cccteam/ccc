@@ -10,17 +10,17 @@ import (
 
 // defaultTestJsonToSqlNameMap provides a standard map for most test cases.
 var defaultTestJsonToSqlNameMap = map[string]FieldInfo{
-	"status":   {Name: "Status", Kind: reflect.String},
-	"user_id":  {Name: "UserId", Kind: reflect.Int},
-	"price":    {Name: "Price", Kind: reflect.Float64},
-	"stock":    {Name: "Stock", Kind: reflect.Int},
-	"rating":   {Name: "Rating", Kind: reflect.Int},
-	"name":     {Name: "Name", Kind: reflect.String},
-	"age":      {Name: "Age", Kind: reflect.Int64},
-	"category": {Name: "Category", Kind: reflect.String},
-	"email":    {Name: "Email", Kind: reflect.String},
-	"active":   {Name: "Active", Kind: reflect.Bool},
-	"field":    {Name: "Field", Kind: reflect.String},
+	"status":   {Name: "Status", Kind: reflect.String, Indexed: true},
+	"user_id":  {Name: "UserId", Kind: reflect.Int, Indexed: true},
+	"price":    {Name: "Price", Kind: reflect.Float64, Indexed: true},
+	"stock":    {Name: "Stock", Kind: reflect.Int, Indexed: true},
+	"rating":   {Name: "Rating", Kind: reflect.Int, Indexed: true},
+	"name":     {Name: "Name", Kind: reflect.String, Indexed: true},
+	"age":      {Name: "Age", Kind: reflect.Int64, Indexed: true},
+	"category": {Name: "Category", Kind: reflect.String, Indexed: true},
+	"email":    {Name: "Email", Kind: reflect.String, Indexed: true},
+	"active":   {Name: "Active", Kind: reflect.Bool, Indexed: true},
+	"field":    {Name: "Field", Kind: reflect.String, Indexed: true},
 }
 
 func TestNewLexer(t *testing.T) {

@@ -101,6 +101,9 @@ func (q *{{ .Resource.Name }}Query) AddColumns(c *{{ .Resource.Name }}Columns) *
 
 {{ if .Resource.IsQueryClauseEligible -}}
 func (q *{{ .Resource.Name }}Query) Where(c {{ .Resource.Name }}QueryClause) *{{ .Resource.Name }}Query {
+	if err := c.clause.Validate(); err != nil {
+		panic(err)
+	}
 	q.qSet.SetWhereClause(c.clause)
 
 	return q
@@ -149,7 +152,7 @@ func (p {{ .Resource.Name }}QueryPartialClause) Group(qc {{ .Resource.Name }}Que
 {{ range $field := .Resource.Fields }}
 {{ if $field.IsQueryClauseEligible -}}
 func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $field.ResolvedType }}] {
-	return {{ $field.Parent.Name }}QueryIdent[{{ $field.ResolvedType }}]{Ident: resource.NewIdent[{{ $field.ResolvedType }}]("{{ $field.Name }}", p.partialClause)}
+	return {{ $field.Parent.Name }}QueryIdent[{{ $field.ResolvedType }}]{Ident: resource.NewIdent[{{ $field.ResolvedType }}]("{{ $field.Name }}", p.partialClause, {{ $field.IsIndex }})}
 }
 {{- end }}
 {{ end }}
@@ -465,7 +468,7 @@ import (
 	readTemplate = `func (a *App) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.AllowFilterTag }} {{ $field.ReadPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
 		{{- end }}
 	}
 

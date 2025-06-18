@@ -18,6 +18,9 @@ func newTestQuery(dbType DBType) *testQuery {
 }
 
 func (q *testQuery) Where(qc testQueryExpr) *testQuery {
+	if err := qc.expr.Validate(); err != nil {
+		panic(err)
+	}
 	q.qSet.SetWhereClause(qc.expr)
 
 	return q
@@ -41,19 +44,25 @@ func (px testQueryPartialExpr) Group(x testQueryExpr) testQueryExpr {
 
 func (o testQueryPartialExpr) ID() testQueryIdent[int] {
 	return testQueryIdent[int]{
-		Ident: Ident[int]{
-			column:      "ID",
-			partialExpr: o.partialExpr,
-		},
+		Ident: NewIdent[int]("ID", o.partialExpr, true),
 	}
 }
 
 func (o testQueryPartialExpr) Name() testQueryIdent[string] {
 	return testQueryIdent[string]{
-		Ident: Ident[string]{
-			column:      "Name",
-			partialExpr: o.partialExpr,
-		},
+		Ident: NewIdent[string]("Name", o.partialExpr, true),
+	}
+}
+
+func (o testQueryPartialExpr) IndexedID() testQueryIdent[int] {
+	return testQueryIdent[int]{
+		Ident: NewIdent[int]("ID", o.partialExpr, true),
+	}
+}
+
+func (o testQueryPartialExpr) NonIndexedField() testQueryIdent[string] {
+	return testQueryIdent[string]{
+		Ident: NewIdent[string]("NonIndexedField", o.partialExpr, false),
 	}
 }
 
@@ -255,7 +264,7 @@ func Test_QueryClause(t *testing.T) {
 		},
 		{
 			name:         "whereClause with nil tree spanner",
-			filter:       newTestQuery(SpannerDBType).Where(testQueryExpr{expr: QueryClause{tree: nil}}),
+			filter:       newTestQuery(SpannerDBType).Where(testQueryExpr{expr: QueryClause{tree: nil, hasIndexedField: true}}),
 			wantSQL:      "", // Empty SQL for nil expression
 			wantSpParams: map[string]any{},
 		},
@@ -335,6 +344,132 @@ func Test_QueryClause(t *testing.T) {
 			case PostgresDBType:
 				if !reflect.DeepEqual(tt.wantPgParams, gotPgParams) {
 					t.Errorf("output params != wantParams\ngot = %v\nwant = %v", gotPgParams, tt.wantPgParams)
+				}
+			}
+		})
+	}
+}
+
+func TestQueryClause_Validate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		qc        QueryClause
+		expectErr bool
+	}{
+		{
+			name:      "Query with only indexed field",
+			qc:        newTestQueryFilter().IndexedID().Equal(1).expr,
+			expectErr: false,
+		},
+		{
+			name:      "Query with only non-indexed field",
+			qc:        newTestQueryFilter().NonIndexedField().Equal("test").expr,
+			expectErr: true,
+		},
+		{
+			name:      "Query with indexed AND non-indexed fields",
+			qc:        newTestQueryFilter().IndexedID().Equal(1).And().NonIndexedField().Equal("test").expr,
+			expectErr: false, // True because one of them is indexed
+		},
+		{
+			name:      "Query with non-indexed AND indexed fields",
+			qc:        newTestQueryFilter().NonIndexedField().Equal("test").And().IndexedID().Equal(1).expr,
+			expectErr: false, // True because one of them is indexed
+		},
+		{
+			name:      "Query with indexed OR non-indexed fields",
+			qc:        newTestQueryFilter().IndexedID().Equal(1).Or().NonIndexedField().Equal("test").expr,
+			expectErr: false, // True because one of them is indexed
+		},
+		{
+			name:      "Query with non-indexed OR indexed fields",
+			qc:        newTestQueryFilter().NonIndexedField().Equal("test").Or().IndexedID().Equal(1).expr,
+			expectErr: false, // True because one of them is indexed
+		},
+		{
+			name:      "Query with only non-indexed fields ANDed",
+			qc:        newTestQueryFilter().NonIndexedField().Equal("test").And().NonIndexedField().Equal("another").expr,
+			expectErr: true,
+		},
+		{
+			name:      "Query with only non-indexed fields ORed",
+			qc:        newTestQueryFilter().NonIndexedField().Equal("test").Or().NonIndexedField().Equal("another").expr,
+			expectErr: true,
+		},
+		{
+			name: "Grouped clause with indexed field inside",
+			qc: newTestQueryFilter().Group(
+				newTestQueryFilter().IndexedID().Equal(1),
+			).expr,
+			expectErr: false,
+		},
+		{
+			name: "Grouped clause with non-indexed field inside",
+			qc: newTestQueryFilter().Group(
+				newTestQueryFilter().NonIndexedField().Equal("test"),
+			).expr,
+			expectErr: true,
+		},
+		{
+			name: "Grouped clause with indexed field outside, non-indexed inside",
+			qc: newTestQueryFilter().IndexedID().Equal(1).And().Group(
+				newTestQueryFilter().NonIndexedField().Equal("test"),
+			).expr,
+			expectErr: false,
+		},
+		{
+			name: "Grouped clause with non-indexed field outside, indexed inside",
+			qc: newTestQueryFilter().NonIndexedField().Equal("test").And().Group(
+				newTestQueryFilter().IndexedID().Equal(1),
+			).expr,
+			expectErr: false, // True because the overall expression contains an indexed field.
+		},
+		{
+			name: "Complex query with nested groups and mixed fields - overall valid",
+			qc: newTestQueryFilter().Group(
+				newTestQueryFilter().NonIndexedField().Equal("A").Or().IndexedID().Equal(1),
+			).And().NonIndexedField().Equal("B").expr,
+			expectErr: false, // Valid because the first group has an indexed field
+		},
+		{
+			name: "Complex query with nested groups and mixed fields - overall invalid",
+			qc: newTestQueryFilter().Group(
+				newTestQueryFilter().NonIndexedField().Equal("A").Or().NonIndexedField().Equal("C"),
+			).And().NonIndexedField().Equal("B").expr,
+			expectErr: true,
+		},
+		{
+			name:      "Query with nil tree and hasIndexedField=true", // Should not happen with current builder but test case for Validate
+			qc:        QueryClause{tree: nil, hasIndexedField: true},
+			expectErr: false,
+		},
+		{
+			name:      "Query with nil tree and hasIndexedField=false", // Should not happen with current builder but test case for Validate
+			qc:        QueryClause{tree: nil, hasIndexedField: false},
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tc := tt // capture range variable
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.qc.Validate()
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("%s: expected an error, but got nil", tc.name)
+				}
+				// Specific error message check, as per original assert.EqualError
+				// The Validate() method returns a static error string.
+				expectedErrMsg := "Invalid filter query. Filter must contain at least one column that is indexed"
+				if err != nil && err.Error() != expectedErrMsg {
+					t.Errorf("%s: expected error message %q, got %q", tc.name, expectedErrMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("%s: expected no error, got %v", tc.name, err)
 				}
 			}
 		})

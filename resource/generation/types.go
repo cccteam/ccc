@@ -387,6 +387,14 @@ func (f *resourceField) UniqueIndexTag() string {
 	return ""
 }
 
+func (f *resourceField) AllowFilterTag() string {
+	if f.HasTag("allow_filter") {
+		return `allow_filter:"true"`
+	}
+
+	return ""
+}
+
 func (f *resourceField) IsImmutable() bool {
 	tag, ok := f.LookupTag("conditions")
 	if !ok {
@@ -553,11 +561,8 @@ func (f *resourceField) IsQueryClauseEligible() bool {
 	if f.IsIndex || f.IsUniqueIndex {
 		return true
 	}
-	if f.HasTag("allow_filter") {
-		return true
-	}
 
-	return false
+	return f.HasTag("allow_filter")
 }
 
 type searchExpression struct {
