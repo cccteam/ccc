@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.18](https://github.com/cccteam/ccc/compare/resource/v0.1.17...resource/v0.1.18) (2025-06-19)
+
+
+### Features
+
+* Implement DefaultString() values ([#347](https://github.com/cccteam/ccc/issues/347)) ([1478241](https://github.com/cccteam/ccc/commit/1478241b72ebff3b935a54e3c8d4b5d6dc0a0a0d))
+
+
+### Code Refactoring
+
+* Cleanup Option processing ([#345](https://github.com/cccteam/ccc/issues/345)) ([e985297](https://github.com/cccteam/ccc/commit/e9852974e5647bc37a29fb86b0f74378eb9fcb1b))
+
 ## [0.1.17](https://github.com/cccteam/ccc/compare/resource/v0.1.16...resource/v0.1.17) (2025-06-18)
 
 
