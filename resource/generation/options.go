@@ -91,7 +91,7 @@ func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	})
 }
 
-func WithSpannerEmulaterVersion(version string) Option {
+func WithSpannerEmulatorVersion(version string) Option {
 	return func(g any) error {
 		switch t := g.(type) {
 		case *client:
