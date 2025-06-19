@@ -73,3 +73,11 @@ var _ FieldDefaultFunc = DefaultTrue
 func DefaultTrue(_ context.Context, _ TxnBuffer) (any, error) {
 	return true, nil
 }
+
+var _ FieldDefaultFunc = DefaultString("test")
+
+func DefaultString(v string) FieldDefaultFunc {
+	return func(_ context.Context, _ TxnBuffer) (any, error) {
+		return v, nil
+	}
+}
