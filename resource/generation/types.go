@@ -530,6 +530,7 @@ func (f *resourceField) SearchIndexTags() string {
 		for _, exprField := range expressionFields {
 			if spannerTag, ok := f.LookupTag("spanner"); ok && spannerTag == exprField.argument {
 				typeIndexMap[exprField.tokenType] = append(typeIndexMap[exprField.tokenType], searchIndex)
+				typeIndexMap[exprField.tokenType] = slices.Compact(typeIndexMap[exprField.tokenType])
 			}
 		}
 	}
