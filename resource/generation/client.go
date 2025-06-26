@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -349,6 +350,7 @@ func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, er
 		d.REFERENCED_TABLE,
 		d.REFERENCED_COLUMN,
 		(t.TABLE_NAME IS NULL AND v.TABLE_NAME IS NOT NULL) as IS_VIEW,
+		v.VIEW_DEFINITION,
 		ic.INDEX_NAME IS NOT NULL AS IS_INDEX,
 		MAX(COALESCE(i.IS_UNIQUE, false)) AS IS_UNIQUE_INDEX,
 		c.GENERATION_EXPRESSION,
@@ -369,7 +371,7 @@ func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, er
 		AND c.COLUMN_NAME NOT LIKE '%_HIDDEN'
 	GROUP BY c.TABLE_NAME, c.COLUMN_NAME, IS_NULLABLE, c.SPANNER_TYPE,
 	d.IS_PRIMARY_KEY, d.IS_FOREIGN_KEY, d.REFERENCED_COLUMN, d.REFERENCED_TABLE,
-	IS_VIEW, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT
+	IS_VIEW, v.VIEW_DEFINITION, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
 
 	return c.createTableMapUsingQuery(ctx, qry)
@@ -460,11 +462,31 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 
 		table := m[r.TableName]
 
-		if r.GenerationExpression == nil {
+		var generationExpr string
+		switch {
+		// If the TokenList column is in a View, we don't have direct access to
+		// the generation expression. We need to grab the source table's name from
+		// the view definition then find it in the information schema results.
+		case r.IsView:
+			// Matches on TableName.TokenListColumnName
+			sourceTableNameRegex := regexp.MustCompile(fmt.Sprintf(`(\w)+.%s`, r.ColumnName))
+			match := sourceTableNameRegex.FindString(*r.ViewDefinition)
+			// Returns slice of all characters before "."
+			sourceTableName := match[:strings.Index(match, ".")]
+
+			for _, r2 := range result {
+				if r2.TableName == sourceTableName && r2.ColumnName == r.ColumnName {
+					generationExpr = *r2.GenerationExpression
+				}
+			}
+
+		case r.GenerationExpression == nil:
 			return nil, errors.Newf("generation expression not found for tokenlist column=`%s` table=`%s`", r.ColumnName, r.TableName)
+		default:
+			generationExpr = *r.GenerationExpression
 		}
 
-		expressionFields, err := searchExpressionFields(*r.GenerationExpression, table.Columns)
+		expressionFields, err := searchExpressionFields(generationExpr, table.Columns)
 		if err != nil {
 			return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
 		}
