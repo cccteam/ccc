@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -462,41 +461,39 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 
 		table := m[r.TableName]
 
+		var generationExpr string
 		switch {
 		// If the TokenList column is in a View, we don't have direct access to
 		// the generation expression. We need to grab the source table's name from
 		// the view definition then find it in the information schema results.
 		case r.IsView:
-			tokenListMatch := regexp.MustCompile(`(TOKENLIST_CONCAT\(\[)((\w+\.\w+)(\, )?)+(\]\))`).FindString(*r.ViewDefinition)
-			matches := regexp.MustCompile(`\w+\.\w+`).FindAllString(tokenListMatch, -1)
-
-			for _, match := range matches {
-				sourceTableName := match[:strings.Index(match, ".")]
-
-				for _, r2 := range result {
-					if r2.TableName != sourceTableName || r2.ColumnName != r.ColumnName {
-						continue
-					}
-
-					expressionFields, err := searchExpressionFields(*r2.GenerationExpression, table.Columns)
-					if err != nil {
-						return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
-					}
-
-					table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], expressionFields...)
-				}
+			sourceTableName, err := originTableName(*r.ViewDefinition, r.ColumnName)
+			if err != nil {
+				return nil, err
 			}
+
+			sourceTableIndex := slices.IndexFunc(result, func(e InformationSchemaResult) bool {
+				return e.TableName == sourceTableName && e.ColumnName == r.ColumnName
+			})
+			if sourceTableIndex < 0 {
+				return nil, errors.Newf("could not find source table %q for TOKENLIST column %q in %q", sourceTableName, r.ColumnName, r.TableName)
+			}
+
+			generationExpr = *result[sourceTableIndex].GenerationExpression
 
 		case r.GenerationExpression == nil:
 			return nil, errors.Newf("generation expression not found for tokenlist column=`%s` table=`%s`", r.ColumnName, r.TableName)
-		default:
-			expressionFields, err := searchExpressionFields(*r.GenerationExpression, table.Columns)
-			if err != nil {
-				return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
-			}
 
-			table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], expressionFields...)
+		default:
+			generationExpr = *r.GenerationExpression
 		}
+
+		expressionFields, err := searchExpressionFields(generationExpr, table.Columns)
+		if err != nil {
+			return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
+		}
+
+		table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], expressionFields...)
 	}
 
 	return m, nil
