@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.19](https://github.com/cccteam/ccc/compare/resource/v0.1.18...resource/v0.1.19) (2025-07-02)
+
+
+### Features
+
+* Add support for tokenlist search indexes on virtual resources (views) ([#352](https://github.com/cccteam/ccc/issues/352)) ([713a839](https://github.com/cccteam/ccc/commit/713a839d4c20149719f202aae1a7368ae953ea82))
+
 ## [0.1.18](https://github.com/cccteam/ccc/compare/resource/v0.1.17...resource/v0.1.18) (2025-06-19)
 
 
