@@ -125,6 +125,7 @@ type InformationSchemaResult struct {
 	SpannerType          string  `spanner:"SPANNER_TYPE"`
 	IsNullable           bool    `spanner:"IS_NULLABLE"`
 	IsView               bool    `spanner:"IS_VIEW"`
+	ViewDefinition       *string `spanner:"VIEW_DEFINITION"`
 	IsIndex              bool    `spanner:"IS_INDEX"`
 	IsUniqueIndex        bool    `spanner:"IS_UNIQUE_INDEX"`
 	GenerationExpression *string `spanner:"GENERATION_EXPRESSION"`
@@ -529,6 +530,7 @@ func (f *resourceField) SearchIndexTags() string {
 		for _, exprField := range expressionFields {
 			if spannerTag, ok := f.LookupTag("spanner"); ok && spannerTag == exprField.argument {
 				typeIndexMap[exprField.tokenType] = append(typeIndexMap[exprField.tokenType], searchIndex)
+				typeIndexMap[exprField.tokenType] = slices.Compact(typeIndexMap[exprField.tokenType])
 			}
 		}
 	}
