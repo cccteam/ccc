@@ -14,10 +14,10 @@ import (
 )
 
 func (r *resourceGenerator) runRPCGeneration() error {
-	if err := RemoveGeneratedFiles(r.rpcPackageDir, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.rpcPackageDir, Prefix); err != nil {
 		return err
 	}
-	if err := RemoveGeneratedFiles(r.businessLayerPackageDir, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.businessLayerPackageDir, Prefix); err != nil {
 		return err
 	}
 
@@ -78,9 +78,9 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 
 	buf := bytes.NewBuffer(nil)
 	if err := tmpl.Execute(buf, map[string]any{
-		"Source":      r.resourceFilePath,
-		"PackageName": r.packageName,
-		"RPCMethod":   rpcMethod,
+		"Source":              r.resourceFilePath,
+		"LocalPackageImports": r.localPackageImports(),
+		"RPCMethod":           rpcMethod,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
@@ -116,9 +116,9 @@ func (r *resourceGenerator) generateRPCMethod(rpcMethod *rpcMethodInfo) error {
 
 	buf := bytes.NewBuffer(nil)
 	if err := tmpl.Execute(buf, map[string]any{
-		"Source":      r.resourceFilePath,
-		"PackageName": r.packageName,
-		"RPCMethod":   rpcMethod,
+		"Source":              r.resourceFilePath,
+		"LocalPackageImports": r.localPackageImports(),
+		"RPCMethod":           rpcMethod,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
@@ -168,9 +168,9 @@ func (r *resourceGenerator) generateRPCInterfaces() error {
 
 func (r *resourceGenerator) generateBusinessLayerInterfaces() error {
 	output, err := r.generateTemplateOutput("businessLayerInterfaces", businesslayerInterfacesTemplate, map[string]any{
-		"Source":      r.resourceFilePath,
-		"PackageName": r.packageName,
-		"RPCMethods":  r.rpcMethods,
+		"Source":              r.resourceFilePath,
+		"LocalPackageImports": r.localPackageImports(),
+		"RPCMethods":          r.rpcMethods,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

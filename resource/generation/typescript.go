@@ -14,7 +14,7 @@ import (
 
 func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	if !t.genMetadata {
-		if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+		if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 			return errors.Wrap(err, "removeGeneratedFiles()")
 		}
 	}
@@ -58,7 +58,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 }
 
 func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
-	if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+	if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 

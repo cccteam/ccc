@@ -417,9 +417,7 @@ import (
 	"net/http"
 	"time"
 
-	"{{.PackageName}}/app/router"
-	"{{.PackageName}}/spanner"
-	"{{.PackageName}}/spanner/resources"
+	{{ .LocalPackageImports }}
 	"cloud.google.com/go/civil"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
@@ -453,7 +451,7 @@ import (
 
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
-		var resp response
+		resp := response{}
 		for r, err := range res.Query().SpannerList(ctx, a.ReadTxn()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -594,9 +592,7 @@ import (
 	"net/http"
 	"time"
 
-	"{{.PackageName}}/app/router"
-	"{{.PackageName}}/spanner"
-	"{{.PackageName}}/spanner/resources"
+	{{ .LocalPackageImports }}
 	"cloud.google.com/go/civil"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
@@ -930,7 +926,7 @@ package {{ .Package }}
 import (
 	"net/http"
 
-	"{{ .PackageName }}/mock/mock_router"
+	{{ .LocalPackageImports }}
 )
 
 type generatedRouterTest struct {
@@ -984,10 +980,7 @@ import (
 	"net/http"
 	"time"
 
-	"{{ .PackageName }}/app/router"
-	"{{ .PackageName }}/spanner"
-	"{{ .PackageName }}/spanner/resources"
-	"{{ .PackageName }}/businesslayer/rpc"
+	{{ .LocalPackageImports }}
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
@@ -1071,7 +1064,7 @@ package businesslayer
 import (
 	"context"
 
-	"{{.PackageName}}/businesslayer/rpc"
+	{{ .LocalPackageImports }}
 )
 
 type RPCBusinessLayer interface {
@@ -1088,7 +1081,7 @@ package businesslayer
 import (
 	"context"
 
-	"{{.PackageName}}/businesslayer/rpc"
+	{{ .LocalPackageImports }}
 	"github.com/go-playground/errors/v5"
 )
 
