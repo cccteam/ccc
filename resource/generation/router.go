@@ -78,7 +78,7 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 	if err := tmpl.Execute(buf, map[string]any{
 		"Source":                 r.resourceFilePath,
 		"Package":                r.routerPackage,
-		"PackageName":            r.packageName,
+		"LocalPackageImports":    r.localPackageImports(),
 		"RoutesMap":              generatedRoutes,
 		"HasConsolidatedHandler": r.consolidatedRoute != "",
 		"RoutePrefix":            r.routePrefix,

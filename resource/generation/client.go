@@ -35,7 +35,7 @@ type resourceGenerator struct {
 	businessLayerPackageDir string
 }
 
-func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, options ...ResourceOption) (Generator, error) {
+func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, localPackages []string, options ...ResourceOption) (Generator, error) {
 	r := &resourceGenerator{
 		resourceDestination: filepath.Dir(resourceSourcePath),
 	}
@@ -45,7 +45,7 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 		opts = append(opts, opt)
 	}
 
-	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, opts)
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, localPackages, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +154,7 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 		opts = append(opts, opt)
 	}
 
-	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, opts)
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, nil, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +224,7 @@ type client struct {
 	resourceFilePath          string
 	resources                 []*resourceInfo
 	rpcMethods                []*rpcMethodInfo
-	packageName               string
+	localPackages             []string
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser
 	tableMap                  map[string]*tableMetadata
@@ -239,7 +239,7 @@ type client struct {
 	FileWriter
 }
 
-func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string, opts []option) (*client, error) {
+func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string, localPackages []string, opts []option) (*client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -283,7 +283,7 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string,
 	c.loadPackages = append(c.loadPackages, resourceFilePath)
 	c.resourceFilePath = resourceFilePath
 	c.db = db.Client
-	c.packageName = pkgInfo.PackageName
+	c.localPackages = localPackages
 	c.cleanup = cleanupFunc
 	c.caser = strcase.NewCaser(false, nil, nil)
 	c.tableMap, err = c.newTableMap(ctx)
@@ -296,6 +296,14 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string,
 
 func (c *client) Close() {
 	c.cleanup()
+}
+
+func (c *client) localPackageImports() string {
+	if len(c.localPackages) == 0 {
+		return ""
+	}
+
+	return `"` + strings.Join(c.localPackages, "\"\n\t\"") + `"`
 }
 
 func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, error) {
