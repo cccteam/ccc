@@ -12,7 +12,7 @@ import (
 )
 
 func (r *resourceGenerator) runResourcesGeneration() error {
-	if err := RemoveGeneratedFiles(r.resourceDestination, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.resourceDestination, Prefix); err != nil {
 		return err
 	}
 

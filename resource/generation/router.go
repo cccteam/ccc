@@ -13,7 +13,7 @@ import (
 )
 
 func (r *resourceGenerator) runRouteGeneration() error {
-	if err := RemoveGeneratedFiles(r.routerDestination, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.routerDestination, Prefix); err != nil {
 		return err
 	}
 
