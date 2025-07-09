@@ -451,7 +451,7 @@ import (
 
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
-		var resp response
+		resp := response{}
 		for r, err := range res.Query().SpannerList(ctx, a.ReadTxn()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
