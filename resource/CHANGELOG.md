@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.0](https://github.com/cccteam/ccc/compare/resource/v0.1.19...resource/v0.2.0) (2025-07-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* Changed signature of `NewResourceGenerator()` (357)
+
+### Features
+
+* Changed signature of `NewResourceGenerator()` (357) ([c1c8013](https://github.com/cccteam/ccc/commit/c1c80132790d8301a321b7ebda24619e53889e6f))
+* Take in local packages instead of hard coding (357) ([c1c8013](https://github.com/cccteam/ccc/commit/c1c80132790d8301a321b7ebda24619e53889e6f))
+
+
+### Bug Fixes
+
+* Return empty array instead of nil when no records found (357) ([c1c8013](https://github.com/cccteam/ccc/commit/c1c80132790d8301a321b7ebda24619e53889e6f))
+
+
+### Code Upgrade
+
+* **deps:** Bump github.com/go-chi/chi/v5 in /resource ([#351](https://github.com/cccteam/ccc/issues/351)) ([90c29d3](https://github.com/cccteam/ccc/commit/90c29d387967460f0a27e7a05e187dd663d1d07d))
+* **deps:** Bump the go-dependencies group across 1 directory with 5 updates ([#356](https://github.com/cccteam/ccc/issues/356)) ([4f8e37f](https://github.com/cccteam/ccc/commit/4f8e37fd7ce6b5e9ce6d852abe56ac837f28d071))
+
 ## [0.1.19](https://github.com/cccteam/ccc/compare/resource/v0.1.18...resource/v0.1.19) (2025-07-02)
 
 
