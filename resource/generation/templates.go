@@ -151,8 +151,8 @@ func (p {{ .Resource.Name }}QueryPartialClause) Group(qc {{ .Resource.Name }}Que
 
 {{ range $field := .Resource.Fields }}
 {{ if $field.IsQueryClauseEligible -}}
-func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $field.ResolvedType }}] {
-	return {{ $field.Parent.Name }}QueryIdent[{{ $field.ResolvedType }}]{Ident: resource.NewIdent[{{ $field.ResolvedType }}]("{{ $field.Name }}", p.partialClause, {{ $field.IsIndex }})}
+func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $field.DerefResolvedType }}] {
+	return {{ $field.Parent.Name }}QueryIdent[{{ $field.DerefResolvedType }}]{Ident: resource.NewIdent[{{ $field.DerefResolvedType }}]("{{ $field.Name }}", p.partialClause, {{ $field.IsIndex }})}
 }
 {{- end }}
 {{ end }}

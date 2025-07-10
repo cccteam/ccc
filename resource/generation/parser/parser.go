@@ -296,3 +296,13 @@ func unwrapType(tt types.Type) types.Type {
 		return t
 	}
 }
+
+// Returns the underlying element type for pointer types
+func derefType(tt types.Type) types.Type {
+	switch t := tt.(type) {
+	case *types.Pointer:
+		return derefType(t.Elem())
+	default:
+		return t
+	}
+}
