@@ -43,6 +43,11 @@ func (t *TypeInfo) Type() string {
 	return typeStringer(t.tt)
 }
 
+// e.g. *ccc.UUID -> ccc.UUID
+func (t *TypeInfo) DerefType() string {
+	return typeStringer(derefType(t.tt))
+}
+
 // Type without package prefix.
 // e.g. ccc.UUID -> UUID, []ccc.UUID -> []UUID
 func (t *TypeInfo) UnqualifiedType() string {
@@ -51,6 +56,16 @@ func (t *TypeInfo) UnqualifiedType() string {
 	}
 
 	return types.TypeString(t.tt, qualifier)
+}
+
+// Type without pointer and package prefix removed
+// e.g. *ccc.UUID -> UUID
+func (t *TypeInfo) DerefUnqualifiedType() string {
+	qualifier := func(p *types.Package) string {
+		return ""
+	}
+
+	return types.TypeString(derefType(t.tt), qualifier)
 }
 
 // Qualified type without array/slice/pointer prefix.
@@ -282,6 +297,15 @@ func (f *Field) ResolvedType() string {
 	}
 
 	return f.Type()
+}
+
+// Returns the field's unqualified type if it's local, and the qualified type otherwise.
+func (f *Field) DerefResolvedType() string {
+	if f.IsLocalType() {
+		return f.DerefUnqualifiedType()
+	}
+
+	return f.DerefType()
 }
 
 func (f *Field) Comments() string {
