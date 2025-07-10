@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/cccteam/ccc/compare/resource/v0.2.0...resource/v0.2.1) (2025-07-10)
+
+
+### Bug Fixes
+
+* Fix bug for Named types typescript type ([#360](https://github.com/cccteam/ccc/issues/360)) ([304bdd3](https://github.com/cccteam/ccc/commit/304bdd3bc8a447290773a40708aee4dd3c414c4e))
+* Remove pointers from input fields for clause comparisons ([#358](https://github.com/cccteam/ccc/issues/358)) ([6e7887b](https://github.com/cccteam/ccc/commit/6e7887b83b06abf79c334933824176d27ac0ba07))
+
 ## [0.2.0](https://github.com/cccteam/ccc/compare/resource/v0.1.19...resource/v0.2.0) (2025-07-09)
 
 
