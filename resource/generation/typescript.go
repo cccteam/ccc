@@ -153,7 +153,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 
 func (t *typescriptGenerator) setResourceTypescriptInfo(resource *resourceInfo) *resourceInfo {
 	for _, field := range resource.Fields {
-		field.typescriptType = t.typescriptType(*field)
+		field.typescriptType = t.typescriptType(field)
 
 		if field.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
 			field.IsEnumerated = true
@@ -165,7 +165,7 @@ func (t *typescriptGenerator) setResourceTypescriptInfo(resource *resourceInfo) 
 
 func (t *typescriptGenerator) setMethodTypescriptInfo(method *rpcMethodInfo) *rpcMethodInfo {
 	for _, field := range method.Fields {
-		field.typescriptType = t.typescriptType(*field)
+		field.typescriptType = t.typescriptType(field)
 	}
 
 	return method

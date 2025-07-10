@@ -292,6 +292,13 @@ func unwrapType(tt types.Type) types.Type {
 		return unwrapType(t.Elem())
 	case *types.Pointer:
 		return unwrapType(t.Elem())
+	case *types.Named:
+		switch u := t.Underlying().(type) {
+		case *types.Struct:
+			return t
+		default:
+			return unwrapType(u)
+		}
 	default:
 		return t
 	}
