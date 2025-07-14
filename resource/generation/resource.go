@@ -2,14 +2,105 @@ package generation
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
 
+	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
 )
+
+type resourceGenerator struct {
+	*client
+	genHandlers             bool
+	genRoutes               bool
+	resourceDestination     string
+	handlerDestination      string
+	routerDestination       string
+	routerPackage           string
+	routePrefix             string
+	rpcPackageDir           string
+	businessLayerPackageDir string
+}
+
+func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, localPackages []string, options ...ResourceOption) (Generator, error) {
+	r := &resourceGenerator{
+		resourceDestination: filepath.Dir(resourceSourcePath),
+	}
+
+	opts := make([]option, 0, len(options))
+	for _, opt := range options {
+		opts = append(opts, opt)
+	}
+
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, localPackages, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	r.client = c
+
+	if err := resolveOptions(r, opts); err != nil {
+		return nil, err
+	}
+
+	return r, nil
+}
+
+func (r *resourceGenerator) Generate() error {
+	log.Println("Starting ResourceGenerator Generation")
+
+	packageMap, err := parser.LoadPackages(r.loadPackages...)
+	if err != nil {
+		return err
+	}
+
+	resources, err := r.extractResources(packageMap["resources"])
+	if err != nil {
+		return err
+	}
+
+	r.resources = resources
+
+	if err := r.runResourcesGeneration(); err != nil {
+		return err
+	}
+
+	if r.genRPCMethods {
+		rpcStructs := parser.ParseStructs(packageMap["rpc"])
+
+		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
+
+		r.rpcMethods = nil
+		for _, s := range rpcStructs {
+			methodInfo, err := r.structToRPCMethod(s)
+			if err != nil {
+				return err
+			}
+			r.rpcMethods = append(r.rpcMethods, methodInfo)
+		}
+
+		if err := r.runRPCGeneration(); err != nil {
+			return err
+		}
+	}
+
+	if r.genRoutes {
+		if err := r.runRouteGeneration(); err != nil {
+			return err
+		}
+	}
+	if r.genHandlers {
+		if err := r.runHandlerGeneration(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
 
 func (r *resourceGenerator) runResourcesGeneration() error {
 	if err := removeGeneratedFiles(r.resourceDestination, Prefix); err != nil {
