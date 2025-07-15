@@ -14,19 +14,19 @@ func TestNullStringEnum_DecodeSpanner(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   any
-		want    NullStringEnum[string]
+		want    NullEnum[string]
 		wantErr bool
 	}{
 		{
 			name:    "Nil value",
 			input:   nil,
-			want:    NullStringEnum[string]{Value: "", Valid: false},
+			want:    NullEnum[string]{Value: "", Valid: false},
 			wantErr: false,
 		},
 		{
 			name:    "Valid string",
 			input:   "testValue",
-			want:    NullStringEnum[string]{Value: "testValue", Valid: true},
+			want:    NullEnum[string]{Value: "testValue", Valid: true},
 			wantErr: false,
 		},
 		{
@@ -40,7 +40,7 @@ func TestNullStringEnum_DecodeSpanner(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullStringEnum[string]
+			var n NullEnum[string]
 			err := n.DecodeSpanner(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeSpanner() error = %v, wantErr %v", err, tt.wantErr)
@@ -58,17 +58,17 @@ func TestNullStringEnum_EncodeSpanner(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		input NullStringEnum[string]
+		input NullEnum[string]
 		want  any
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullStringEnum[string]{Value: "enumValue", Valid: true},
+			input: NullEnum[string]{Value: "enumValue", Valid: true},
 			want:  "enumValue",
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullStringEnum[string]{Valid: false},
+			input: NullEnum[string]{Valid: false},
 			want:  nil,
 		},
 	}
@@ -93,17 +93,17 @@ func TestNullStringEnum_MarshalText(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		input NullStringEnum[string]
+		input NullEnum[string]
 		want  []byte
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullStringEnum[string]{Value: "enumValue", Valid: true},
+			input: NullEnum[string]{Value: "enumValue", Valid: true},
 			want:  []byte("enumValue"),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullStringEnum[string]{Valid: false},
+			input: NullEnum[string]{Valid: false},
 			want:  nil,
 		},
 	}
@@ -129,26 +129,26 @@ func TestNullStringEnum_UnmarshalText(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   []byte
-		want    NullStringEnum[string]
+		want    NullEnum[string]
 		wantErr bool
 	}{
 		{
 			name:  "Valid text",
 			input: []byte("enumValue"),
-			want:  NullStringEnum[string]{Value: "enumValue", Valid: true},
+			want:  NullEnum[string]{Value: "enumValue", Valid: true},
 		},
 		{
 			name: "Nil text",
 			// []byte(nil) produces a nil slice
 			input: nil,
-			want:  NullStringEnum[string]{Value: "", Valid: false},
+			want:  NullEnum[string]{Value: "", Valid: false},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullStringEnum[string]
+			var n NullEnum[string]
 			err := n.UnmarshalText(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalText() error = %v, wantErr %v", err, tt.wantErr)
@@ -166,17 +166,17 @@ func TestNullStringEnum_MarshalJSON(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		input NullStringEnum[string]
+		input NullEnum[string]
 		want  []byte
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullStringEnum[string]{Value: "enumValue", Valid: true},
+			input: NullEnum[string]{Value: "enumValue", Valid: true},
 			want:  []byte(`"enumValue"`),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullStringEnum[string]{Valid: false},
+			input: NullEnum[string]{Valid: false},
 			// Assuming jsonNull is defined as "null"
 			want: []byte("null"),
 		},
@@ -203,18 +203,18 @@ func TestNullStringEnum_UnmarshalJSON(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   []byte
-		want    NullStringEnum[string]
+		want    NullEnum[string]
 		wantErr bool
 	}{
 		{
 			name:  "Valid Enum",
 			input: []byte(`"enumValue"`),
-			want:  NullStringEnum[string]{Value: "enumValue", Valid: true},
+			want:  NullEnum[string]{Value: "enumValue", Valid: true},
 		},
 		{
 			name:  "Null JSON",
 			input: []byte(`"null"`),
-			want:  NullStringEnum[string]{Value: "", Valid: false},
+			want:  NullEnum[string]{Value: "", Valid: false},
 		},
 		{
 			name:    "Invalid JSON",
@@ -226,7 +226,7 @@ func TestNullStringEnum_UnmarshalJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullStringEnum[string]
+			var n NullEnum[string]
 			err := n.UnmarshalJSON(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
