@@ -46,6 +46,12 @@ func (l NullStringEnum[T]) MarshalText() ([]byte, error) {
 }
 
 func (l *NullStringEnum[T]) UnmarshalText(text []byte) error {
+	if text == nil {
+		l.Valid = false
+		l.Value = ""
+
+		return nil
+	}
 	l.Value = T(text)
 	l.Valid = true
 
@@ -73,6 +79,7 @@ func (l *NullStringEnum[T]) UnmarshalJSON(b []byte) error {
 
 	if s == jsonNull {
 		l.Valid = false
+		l.Value = ""
 
 		return nil
 	}
