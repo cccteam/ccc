@@ -56,7 +56,7 @@ func (n NullEnum[T]) MarshalText() ([]byte, error) {
 }
 
 func (n *NullEnum[T]) UnmarshalText(text []byte) error {
-	if text == nil {
+	if len(text) == 0 {
 		return nil
 	}
 
