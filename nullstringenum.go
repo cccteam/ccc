@@ -60,34 +60,36 @@ func (n *NullEnum[T]) UnmarshalText(text []byte) error {
 		return nil
 	}
 
-	switch t := any(n.Value).(type) {
+	var val any
+	var err error
+	switch any(n.Value).(type) {
 	case string:
-		t = string(text)
-		n.Valid = true
+		val = string(text)
 	case int:
-		v, err := strconv.Atoi(string(text))
+		val, err = strconv.Atoi(string(text))
 		if err != nil {
 			return errors.Wrap(err, "strconv.Atoi()")
 		}
-		t = v
-		n.Valid = true
 	case int64:
-		v, err := strconv.ParseInt(string(text), 10, 64)
+		val, err = strconv.ParseInt(string(text), 10, 64)
 		if err != nil {
 			return errors.Wrap(err, "strconv.ParseInt()")
 		}
-		t = v
-		n.Valid = true
 	case float64:
-		v, err := strconv.ParseFloat(string(text), 64)
+		val, err = strconv.ParseFloat(string(text), 64)
 		if err != nil {
 			return errors.Wrap(err, "strconv.ParseFloat()")
 		}
-		t = v
-		n.Valid = true
 	default:
-		return fmt.Errorf("unsupported type %T", t)
+		return errors.Newf("unsupported type %T", n.Value)
 	}
+
+	var ok bool
+	n.Value, ok = val.(T)
+	if !ok {
+		return errors.New("internal logic error")
+	}
+	n.Valid = true
 
 	return nil
 }
