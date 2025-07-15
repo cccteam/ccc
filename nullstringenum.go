@@ -108,13 +108,19 @@ func (n NullEnum[T]) MarshalJSON() ([]byte, error) {
 }
 
 func (n *NullEnum[T]) UnmarshalJSON(b []byte) error {
-	var s T
+	var s *T
 	if err := json.Unmarshal(b, &s); err != nil {
 		return errors.Newf("json.Unmarshal() error: %s", err)
 	}
 
+	if s == nil {
+		n.Valid = false
+
+		return nil
+	}
+
 	n.Valid = true
-	n.Value = s
+	n.Value = *s
 
 	return nil
 }

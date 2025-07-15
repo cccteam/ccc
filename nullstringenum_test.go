@@ -8,7 +8,7 @@ import (
 )
 
 // TestDecodeSpanner validates DecodeSpanner method.
-func TestNullStringEnum_DecodeSpanner(t *testing.T) {
+func TestNullEnum_DecodeSpanner_string(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -52,8 +52,53 @@ func TestNullStringEnum_DecodeSpanner(t *testing.T) {
 	}
 }
 
+// TestDecodeSpanner validates DecodeSpanner method.
+func TestNullEnum_DecodeSpanner_int(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   any
+		want    NullEnum[int]
+		wantErr bool
+	}{
+		{
+			name:    "Nil value",
+			input:   nil,
+			want:    NullEnum[int]{Value: 0, Valid: false},
+			wantErr: false,
+		},
+		{
+			name:    "Valid string",
+			input:   44,
+			want:    NullEnum[int]{Value: 44, Valid: true},
+			wantErr: false,
+		},
+		{
+			name:    "Invalid type",
+			input:   "123",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var n NullEnum[int]
+			err := n.DecodeSpanner(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("DecodeSpanner() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && !reflect.DeepEqual(n, tt.want) {
+				t.Errorf("DecodeSpanner() = %+v, want %+v", n, tt.want)
+			}
+		})
+	}
+}
+
 // TestEncodeSpanner validates EncodeSpanner.
-func TestNullStringEnum_EncodeSpanner(t *testing.T) {
+func TestNullEnum_EncodeSpanner_string(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -88,7 +133,7 @@ func TestNullStringEnum_EncodeSpanner(t *testing.T) {
 }
 
 // TestMarshalText validates MarshalText.
-func TestNullStringEnum_MarshalText(t *testing.T) {
+func TestNullEnum_MarshalText_string(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -123,7 +168,7 @@ func TestNullStringEnum_MarshalText(t *testing.T) {
 }
 
 // TestUnmarshalText validates UnmarshalText.
-func TestNullStringEnum_UnmarshalText(t *testing.T) {
+func TestNullEnum_UnmarshalText_string(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -161,7 +206,7 @@ func TestNullStringEnum_UnmarshalText(t *testing.T) {
 }
 
 // TestMarshalJSON validates MarshalJSON.
-func TestNullStringEnum_MarshalJSON(t *testing.T) {
+func TestNullEnum_MarshalJSON_string(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -177,8 +222,7 @@ func TestNullStringEnum_MarshalJSON(t *testing.T) {
 		{
 			name:  "Invalid Enum",
 			input: NullEnum[string]{Valid: false},
-			// Assuming jsonNull is defined as "null"
-			want: []byte("null"),
+			want:  []byte("null"),
 		},
 	}
 	for _, tt := range tests {
@@ -197,7 +241,7 @@ func TestNullStringEnum_MarshalJSON(t *testing.T) {
 }
 
 // TestUnmarshalJSON validates UnmarshalJSON.
-func TestNullStringEnum_UnmarshalJSON(t *testing.T) {
+func TestNullEnum_UnmarshalJSON_string(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -213,7 +257,7 @@ func TestNullStringEnum_UnmarshalJSON(t *testing.T) {
 		},
 		{
 			name:  "Null JSON",
-			input: []byte(`"null"`),
+			input: []byte(`null`),
 			want:  NullEnum[string]{Value: "", Valid: false},
 		},
 		{
