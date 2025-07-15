@@ -25,7 +25,7 @@ func (n *NullEnum[T]) DecodeSpanner(val any) error {
 		return nil
 	}
 
-	return errors.Newf("failed to parse %+v (type %T) as NullStringEnum[%T]", val, val, n.Value)
+	return errors.Newf("failed to parse %+v (type %T) as NullEnum[%T]", val, val, n.Value)
 }
 
 func (n NullEnum[T]) EncodeSpanner() (any, error) {

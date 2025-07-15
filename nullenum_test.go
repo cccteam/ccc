@@ -11,22 +11,24 @@ import (
 func TestNullEnum_DecodeSpanner_string(t *testing.T) {
 	t.Parallel()
 
+	type namedType string
+
 	tests := []struct {
 		name    string
 		input   any
-		want    NullEnum[string]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:    "Nil value",
 			input:   nil,
-			want:    NullEnum[string]{Value: "", Valid: false},
+			want:    NullEnum[namedType]{Value: "", Valid: false},
 			wantErr: false,
 		},
 		{
 			name:    "Valid string",
 			input:   "testValue",
-			want:    NullEnum[string]{Value: "testValue", Valid: true},
+			want:    NullEnum[namedType]{Value: "testValue", Valid: true},
 			wantErr: false,
 		},
 		{
@@ -40,7 +42,7 @@ func TestNullEnum_DecodeSpanner_string(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[string]
+			var n NullEnum[namedType]
 			err := n.DecodeSpanner(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeSpanner() error = %v, wantErr %v", err, tt.wantErr)
@@ -56,22 +58,24 @@ func TestNullEnum_DecodeSpanner_string(t *testing.T) {
 func TestNullEnum_DecodeSpanner_int(t *testing.T) {
 	t.Parallel()
 
+	type namedType int
+
 	tests := []struct {
 		name    string
 		input   any
-		want    NullEnum[int]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:    "Nil value",
 			input:   nil,
-			want:    NullEnum[int]{Value: 0, Valid: false},
+			want:    NullEnum[namedType]{Value: 0, Valid: false},
 			wantErr: false,
 		},
 		{
 			name:    "Valid string",
 			input:   44,
-			want:    NullEnum[int]{Value: 44, Valid: true},
+			want:    NullEnum[namedType]{Value: 44, Valid: true},
 			wantErr: false,
 		},
 		{
@@ -85,7 +89,7 @@ func TestNullEnum_DecodeSpanner_int(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[int]
+			var n NullEnum[namedType]
 			err := n.DecodeSpanner(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeSpanner() error = %v, wantErr %v", err, tt.wantErr)
@@ -101,22 +105,24 @@ func TestNullEnum_DecodeSpanner_int(t *testing.T) {
 func TestNullEnum_DecodeSpanner_int64(t *testing.T) {
 	t.Parallel()
 
+	type namedType int64
+
 	tests := []struct {
 		name    string
 		input   any
-		want    NullEnum[int64]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:    "Nil value",
 			input:   nil,
-			want:    NullEnum[int64]{Value: 0, Valid: false},
+			want:    NullEnum[namedType]{Value: 0, Valid: false},
 			wantErr: false,
 		},
 		{
 			name:    "Valid int64",
 			input:   int64(44),
-			want:    NullEnum[int64]{Value: 44, Valid: true},
+			want:    NullEnum[namedType]{Value: 44, Valid: true},
 			wantErr: false,
 		},
 		{
@@ -130,7 +136,7 @@ func TestNullEnum_DecodeSpanner_int64(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[int64]
+			var n NullEnum[namedType]
 			err := n.DecodeSpanner(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeSpanner() error = %v, wantErr %v", err, tt.wantErr)
@@ -146,22 +152,24 @@ func TestNullEnum_DecodeSpanner_int64(t *testing.T) {
 func TestNullEnum_DecodeSpanner_float64(t *testing.T) {
 	t.Parallel()
 
+	type namedType float64
+
 	tests := []struct {
 		name    string
 		input   any
-		want    NullEnum[float64]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:    "Nil value",
 			input:   nil,
-			want:    NullEnum[float64]{Value: 0, Valid: false},
+			want:    NullEnum[namedType]{Value: 0, Valid: false},
 			wantErr: false,
 		},
 		{
 			name:    "Valid float64",
 			input:   float64(44.2),
-			want:    NullEnum[float64]{Value: 44.2, Valid: true},
+			want:    NullEnum[namedType]{Value: 44.2, Valid: true},
 			wantErr: false,
 		},
 		{
@@ -175,7 +183,7 @@ func TestNullEnum_DecodeSpanner_float64(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[float64]
+			var n NullEnum[namedType]
 			err := n.DecodeSpanner(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DecodeSpanner() error = %v, wantErr %v", err, tt.wantErr)
@@ -191,19 +199,21 @@ func TestNullEnum_DecodeSpanner_float64(t *testing.T) {
 func TestNullEnum_EncodeSpanner_string(t *testing.T) {
 	t.Parallel()
 
+	type namedType string
+
 	tests := []struct {
 		name  string
-		input NullEnum[string]
+		input NullEnum[namedType]
 		want  any
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[string]{Value: "enumValue", Valid: true},
+			input: NullEnum[namedType]{Value: "enumValue", Valid: true},
 			want:  "enumValue",
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[string]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  nil,
 		},
 	}
@@ -226,19 +236,21 @@ func TestNullEnum_EncodeSpanner_string(t *testing.T) {
 func TestNullEnum_EncodeSpanner_int(t *testing.T) {
 	t.Parallel()
 
+	type namedType int
+
 	tests := []struct {
 		name  string
-		input NullEnum[int]
+		input NullEnum[namedType]
 		want  any
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[int]{Value: 42, Valid: true},
+			input: NullEnum[namedType]{Value: 42, Valid: true},
 			want:  42,
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[int]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  nil,
 		},
 	}
@@ -261,19 +273,21 @@ func TestNullEnum_EncodeSpanner_int(t *testing.T) {
 func TestNullEnum_EncodeSpanner_int64(t *testing.T) {
 	t.Parallel()
 
+	type namedType int64
+
 	tests := []struct {
 		name  string
-		input NullEnum[int64]
+		input NullEnum[namedType]
 		want  any
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[int64]{Value: 42, Valid: true},
+			input: NullEnum[namedType]{Value: 42, Valid: true},
 			want:  int64(42),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[int64]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  nil,
 		},
 	}
@@ -296,19 +310,21 @@ func TestNullEnum_EncodeSpanner_int64(t *testing.T) {
 func TestNullEnum_EncodeSpanner_float64(t *testing.T) {
 	t.Parallel()
 
+	type namedType float64
+
 	tests := []struct {
 		name  string
-		input NullEnum[float64]
+		input NullEnum[namedType]
 		want  any
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[float64]{Value: 42.1, Valid: true},
+			input: NullEnum[namedType]{Value: 42.1, Valid: true},
 			want:  float64(42.1),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[float64]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  nil,
 		},
 	}
@@ -331,19 +347,21 @@ func TestNullEnum_EncodeSpanner_float64(t *testing.T) {
 func TestNullEnum_MarshalText_string(t *testing.T) {
 	t.Parallel()
 
+	type namedType string
+
 	tests := []struct {
 		name  string
-		input NullEnum[string]
+		input NullEnum[namedType]
 		want  []byte
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[string]{Value: "enumValue", Valid: true},
+			input: NullEnum[namedType]{Value: "enumValue", Valid: true},
 			want:  []byte("enumValue"),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[string]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  nil,
 		},
 	}
@@ -366,19 +384,21 @@ func TestNullEnum_MarshalText_string(t *testing.T) {
 func TestNullEnum_MarshalText_int(t *testing.T) {
 	t.Parallel()
 
+	type namedType int
+
 	tests := []struct {
 		name  string
-		input NullEnum[int]
+		input NullEnum[namedType]
 		want  []byte
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[int]{Value: 42, Valid: true},
+			input: NullEnum[namedType]{Value: 42, Valid: true},
 			want:  []byte("42"),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[int]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  nil,
 		},
 	}
@@ -401,19 +421,21 @@ func TestNullEnum_MarshalText_int(t *testing.T) {
 func TestNullEnum_MarshalText_int64(t *testing.T) {
 	t.Parallel()
 
+	type namedType int64
+
 	tests := []struct {
 		name  string
-		input NullEnum[int64]
+		input NullEnum[namedType]
 		want  []byte
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[int64]{Value: 42, Valid: true},
+			input: NullEnum[namedType]{Value: 42, Valid: true},
 			want:  []byte("42"),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[int64]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  nil,
 		},
 	}
@@ -436,19 +458,21 @@ func TestNullEnum_MarshalText_int64(t *testing.T) {
 func TestNullEnum_MarshalText_float64(t *testing.T) {
 	t.Parallel()
 
+	type namedType float64
+
 	tests := []struct {
 		name  string
-		input NullEnum[float64]
+		input NullEnum[namedType]
 		want  []byte
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[float64]{Value: 42.1, Valid: true},
+			input: NullEnum[namedType]{Value: 42.1, Valid: true},
 			want:  []byte("42.1"),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[float64]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  nil,
 		},
 	}
@@ -471,29 +495,31 @@ func TestNullEnum_MarshalText_float64(t *testing.T) {
 func TestNullEnum_UnmarshalText_string(t *testing.T) {
 	t.Parallel()
 
+	type namedType string
+
 	tests := []struct {
 		name    string
 		input   []byte
-		want    NullEnum[string]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:  "Valid text",
 			input: []byte("enumValue"),
-			want:  NullEnum[string]{Value: "enumValue", Valid: true},
+			want:  NullEnum[namedType]{Value: "enumValue", Valid: true},
 		},
 		{
 			name: "Nil text",
 			// []byte(nil) produces a nil slice
 			input: nil,
-			want:  NullEnum[string]{Value: "", Valid: false},
+			want:  NullEnum[namedType]{Value: "", Valid: false},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[string]
+			var n NullEnum[namedType]
 			err := n.UnmarshalText(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalText() error = %v, wantErr %v", err, tt.wantErr)
@@ -509,22 +535,24 @@ func TestNullEnum_UnmarshalText_string(t *testing.T) {
 func TestNullEnum_UnmarshalText_int(t *testing.T) {
 	t.Parallel()
 
+	type namedType int
+
 	tests := []struct {
 		name    string
 		input   []byte
-		want    NullEnum[int]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:  "Valid text",
 			input: []byte("42"),
-			want:  NullEnum[int]{Value: 42, Valid: true},
+			want:  NullEnum[namedType]{Value: 42, Valid: true},
 		},
 		{
 			name: "Nil text",
 			// []byte(nil) produces a nil slice
 			input: nil,
-			want:  NullEnum[int]{Value: 0, Valid: false},
+			want:  NullEnum[namedType]{Value: 0, Valid: false},
 		},
 		{
 			name:    "Invalid text",
@@ -536,7 +564,7 @@ func TestNullEnum_UnmarshalText_int(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[int]
+			var n NullEnum[namedType]
 			err := n.UnmarshalText(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalText() error = %v, wantErr %v", err, tt.wantErr)
@@ -552,22 +580,24 @@ func TestNullEnum_UnmarshalText_int(t *testing.T) {
 func TestNullEnum_UnmarshalText_int64(t *testing.T) {
 	t.Parallel()
 
+	type namedType int64
+
 	tests := []struct {
 		name    string
 		input   []byte
-		want    NullEnum[int64]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:  "Valid text",
 			input: []byte("42"),
-			want:  NullEnum[int64]{Value: 42, Valid: true},
+			want:  NullEnum[namedType]{Value: 42, Valid: true},
 		},
 		{
 			name: "Nil text",
 			// []byte(nil) produces a nil slice
 			input: nil,
-			want:  NullEnum[int64]{Value: 0, Valid: false},
+			want:  NullEnum[namedType]{Value: 0, Valid: false},
 		},
 		{
 			name:    "Invalid text",
@@ -579,7 +609,7 @@ func TestNullEnum_UnmarshalText_int64(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[int64]
+			var n NullEnum[namedType]
 			err := n.UnmarshalText(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalText() error = %v, wantErr %v", err, tt.wantErr)
@@ -595,22 +625,24 @@ func TestNullEnum_UnmarshalText_int64(t *testing.T) {
 func TestNullEnum_UnmarshalText_float64(t *testing.T) {
 	t.Parallel()
 
+	type namedType float64
+
 	tests := []struct {
 		name    string
 		input   []byte
-		want    NullEnum[float64]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:  "Valid text",
 			input: []byte("42.1"),
-			want:  NullEnum[float64]{Value: 42.1, Valid: true},
+			want:  NullEnum[namedType]{Value: 42.1, Valid: true},
 		},
 		{
 			name: "Nil text",
 			// []byte(nil) produces a nil slice
 			input: nil,
-			want:  NullEnum[float64]{Value: 0, Valid: false},
+			want:  NullEnum[namedType]{Value: 0, Valid: false},
 		},
 		{
 			name:    "Invalid text",
@@ -622,7 +654,7 @@ func TestNullEnum_UnmarshalText_float64(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[float64]
+			var n NullEnum[namedType]
 			err := n.UnmarshalText(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalText() error = %v, wantErr %v", err, tt.wantErr)
@@ -638,19 +670,21 @@ func TestNullEnum_UnmarshalText_float64(t *testing.T) {
 func TestNullEnum_MarshalJSON_string(t *testing.T) {
 	t.Parallel()
 
+	type namedType string
+
 	tests := []struct {
 		name  string
-		input NullEnum[string]
+		input NullEnum[namedType]
 		want  []byte
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[string]{Value: "enumValue", Valid: true},
+			input: NullEnum[namedType]{Value: "enumValue", Valid: true},
 			want:  []byte(`"enumValue"`),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[string]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  []byte("null"),
 		},
 	}
@@ -673,19 +707,21 @@ func TestNullEnum_MarshalJSON_string(t *testing.T) {
 func TestNullEnum_MarshalJSON_int(t *testing.T) {
 	t.Parallel()
 
+	type namedType int
+
 	tests := []struct {
 		name  string
-		input NullEnum[int]
+		input NullEnum[namedType]
 		want  []byte
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[int]{Value: 42, Valid: true},
+			input: NullEnum[namedType]{Value: 42, Valid: true},
 			want:  []byte(`42`),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[int]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  []byte("null"),
 		},
 	}
@@ -708,19 +744,21 @@ func TestNullEnum_MarshalJSON_int(t *testing.T) {
 func TestNullEnum_MarshalJSON_int64(t *testing.T) {
 	t.Parallel()
 
+	type namedType int64
+
 	tests := []struct {
 		name  string
-		input NullEnum[int64]
+		input NullEnum[namedType]
 		want  []byte
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[int64]{Value: 42, Valid: true},
+			input: NullEnum[namedType]{Value: 42, Valid: true},
 			want:  []byte(`42`),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[int64]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  []byte("null"),
 		},
 	}
@@ -743,19 +781,21 @@ func TestNullEnum_MarshalJSON_int64(t *testing.T) {
 func TestNullEnum_MarshalJSON_float64(t *testing.T) {
 	t.Parallel()
 
+	type namedType float64
+
 	tests := []struct {
 		name  string
-		input NullEnum[float64]
+		input NullEnum[namedType]
 		want  []byte
 	}{
 		{
 			name:  "Valid Enum",
-			input: NullEnum[float64]{Value: 42.1, Valid: true},
+			input: NullEnum[namedType]{Value: 42.1, Valid: true},
 			want:  []byte(`42.1`),
 		},
 		{
 			name:  "Invalid Enum",
-			input: NullEnum[float64]{Valid: false},
+			input: NullEnum[namedType]{Valid: false},
 			want:  []byte("null"),
 		},
 	}
@@ -778,21 +818,23 @@ func TestNullEnum_MarshalJSON_float64(t *testing.T) {
 func TestNullEnum_UnmarshalJSON_string(t *testing.T) {
 	t.Parallel()
 
+	type namedType string
+
 	tests := []struct {
 		name    string
 		input   []byte
-		want    NullEnum[string]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:  "Valid Enum",
 			input: []byte(`"enumValue"`),
-			want:  NullEnum[string]{Value: "enumValue", Valid: true},
+			want:  NullEnum[namedType]{Value: "enumValue", Valid: true},
 		},
 		{
 			name:  "Null JSON",
 			input: []byte(`null`),
-			want:  NullEnum[string]{Value: "", Valid: false},
+			want:  NullEnum[namedType]{Value: "", Valid: false},
 		},
 		{
 			name:    "Invalid JSON",
@@ -804,7 +846,7 @@ func TestNullEnum_UnmarshalJSON_string(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[string]
+			var n NullEnum[namedType]
 			err := n.UnmarshalJSON(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
@@ -822,21 +864,23 @@ func TestNullEnum_UnmarshalJSON_string(t *testing.T) {
 func TestNullEnum_UnmarshalJSON_int(t *testing.T) {
 	t.Parallel()
 
+	type namedType int
+
 	tests := []struct {
 		name    string
 		input   []byte
-		want    NullEnum[int]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:  "Valid Enum",
 			input: []byte(`42`),
-			want:  NullEnum[int]{Value: 42, Valid: true},
+			want:  NullEnum[namedType]{Value: 42, Valid: true},
 		},
 		{
 			name:  "Null JSON",
 			input: []byte(`null`),
-			want:  NullEnum[int]{Value: 0, Valid: false},
+			want:  NullEnum[namedType]{Value: 0, Valid: false},
 		},
 		{
 			name:    "Invalid JSON",
@@ -848,7 +892,7 @@ func TestNullEnum_UnmarshalJSON_int(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[int]
+			var n NullEnum[namedType]
 			err := n.UnmarshalJSON(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
@@ -866,21 +910,23 @@ func TestNullEnum_UnmarshalJSON_int(t *testing.T) {
 func TestNullEnum_UnmarshalJSON_int64(t *testing.T) {
 	t.Parallel()
 
+	type namedType int64
+
 	tests := []struct {
 		name    string
 		input   []byte
-		want    NullEnum[int64]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:  "Valid Enum",
 			input: []byte(`42`),
-			want:  NullEnum[int64]{Value: 42, Valid: true},
+			want:  NullEnum[namedType]{Value: 42, Valid: true},
 		},
 		{
 			name:  "Null JSON",
 			input: []byte(`null`),
-			want:  NullEnum[int64]{Value: 0, Valid: false},
+			want:  NullEnum[namedType]{Value: 0, Valid: false},
 		},
 		{
 			name:    "Invalid JSON",
@@ -892,7 +938,7 @@ func TestNullEnum_UnmarshalJSON_int64(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[int64]
+			var n NullEnum[namedType]
 			err := n.UnmarshalJSON(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
@@ -910,21 +956,23 @@ func TestNullEnum_UnmarshalJSON_int64(t *testing.T) {
 func TestNullEnum_UnmarshalJSON_float64(t *testing.T) {
 	t.Parallel()
 
+	type namedType float64
+
 	tests := []struct {
 		name    string
 		input   []byte
-		want    NullEnum[float64]
+		want    NullEnum[namedType]
 		wantErr bool
 	}{
 		{
 			name:  "Valid Enum",
 			input: []byte(`42.1`),
-			want:  NullEnum[float64]{Value: 42.1, Valid: true},
+			want:  NullEnum[namedType]{Value: 42.1, Valid: true},
 		},
 		{
 			name:  "Null JSON",
 			input: []byte(`null`),
-			want:  NullEnum[float64]{Value: 0, Valid: false},
+			want:  NullEnum[namedType]{Value: 0, Valid: false},
 		},
 		{
 			name:    "Invalid JSON",
@@ -936,7 +984,7 @@ func TestNullEnum_UnmarshalJSON_float64(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var n NullEnum[float64]
+			var n NullEnum[namedType]
 			err := n.UnmarshalJSON(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
