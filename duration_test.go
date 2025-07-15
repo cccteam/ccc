@@ -486,7 +486,7 @@ func TestNullDuration_UnmarshalJSON(t *testing.T) {
 		},
 		{
 			name:    "Successful Unmarshal nil value",
-			args:    args{val: []byte(`"null"`)},
+			args:    args{val: []byte(`null`)},
 			want:    NullDuration{},
 			wantErr: false,
 		},

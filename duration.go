@@ -146,18 +146,16 @@ func (d NullDuration) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler.UnmarshalJSON for Duration.
 func (d *NullDuration) UnmarshalJSON(b []byte) error {
-	var s string
+	var s *string
 	if err := json.Unmarshal(b, &s); err != nil {
 		return errors.Newf("json.Unmarshal() error: %s", err)
 	}
 
-	if s == jsonNull {
-		d.Valid = false
-
+	if s == nil {
 		return nil
 	}
 
-	duration, err := time.ParseDuration(strings.ReplaceAll(s, " ", ""))
+	duration, err := time.ParseDuration(strings.ReplaceAll(*s, " ", ""))
 	if err != nil {
 		return errors.Newf("time.ParseDuration() error: %s", err)
 	}
