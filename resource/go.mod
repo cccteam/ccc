@@ -5,11 +5,11 @@ go 1.24.4
 require (
 	cloud.google.com/go v0.121.3
 	cloud.google.com/go/spanner v1.83.0
-	github.com/cccteam/ccc v0.2.11
+	github.com/cccteam/ccc v0.2.12
 	github.com/cccteam/ccc/accesstypes v0.5.2
 	github.com/cccteam/ccc/pkg v0.0.2
 	github.com/cccteam/db-initiator v0.2.9
-	github.com/cccteam/httpio v0.7.7
+	github.com/cccteam/httpio v0.7.8
 	github.com/cccteam/session v0.5.5
 	github.com/cccteam/spxscan v0.0.7
 	github.com/cloudspannerecosystem/memefish v0.6.2
