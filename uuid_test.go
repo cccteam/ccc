@@ -530,7 +530,7 @@ func TestNullUUID_UnmarshalJSON(t *testing.T) {
 		},
 		{
 			name:    "Null value",
-			args:    args{val: []byte(`"null"`)},
+			args:    args{val: []byte(`null`)},
 			want:    NullUUID{},
 			wantErr: false,
 		},

@@ -94,10 +94,6 @@ func (u *UUID) UnmarshalJSON(data []byte) error {
 		return errors.Wrap(err, "json.Unmarshal()")
 	}
 
-	if s == jsonNull {
-		return nil
-	}
-
 	uid, err := uuid.FromString(s)
 	if err != nil {
 		return errors.Wrap(err, "uuid.FromString()")
@@ -214,18 +210,16 @@ func (u NullUUID) MarshalJSON() ([]byte, error) {
 }
 
 func (u *NullUUID) UnmarshalJSON(data []byte) error {
-	var s string
+	var s *string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return errors.Wrap(err, "json.Unmarshal()")
 	}
 
-	if s == jsonNull {
-		u.Valid = false
-
+	if s == nil {
 		return nil
 	}
 
-	uid, err := uuid.FromString(s)
+	uid, err := uuid.FromString(*s)
 	if err != nil {
 		return errors.Wrap(err, "uuid.FromString()")
 	}
