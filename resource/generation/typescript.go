@@ -80,7 +80,9 @@ func (t *typescriptGenerator) Generate() error {
 		return err
 	}
 
-	resources, err := t.extractResources(packageMap["resources"])
+	pStructs := parser.ParsePackage(packageMap["resources"]).Structs
+
+	resources, err := t.extractResources(pStructs)
 	if err != nil {
 		return err
 	}
@@ -94,7 +96,7 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genRPCMethods {
-		rpcStructs := parser.ParseStructs(packageMap["rpc"])
+		rpcStructs := parser.ParsePackage(packageMap["rpc"]).Structs
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
