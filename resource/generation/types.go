@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
@@ -318,6 +319,26 @@ type resourceField struct {
 	ReferencedResource string
 	ReferencedField    string
 	HasDefault         bool
+}
+
+// When generating QueryClauses for Null-style wrapper types we want to use the underlying type
+// i.e. ccc.NullUUID -> ccc.UUID, spanner.NullString -> string
+func (f *resourceField) UnwrappedNullType() *string {
+	if !strings.HasPrefix(strings.ToLower(f.DerefUnqualifiedType()), "null") {
+		return nil
+	}
+
+	pStruct := f.AsStruct()
+	if pStruct == nil {
+		return nil
+	}
+
+	fields := pStruct.Fields()
+	if len(fields) != 2 || fields[1].Name() != "Valid" {
+		return nil
+	}
+
+	return ccc.Ptr(fields[0].DerefResolvedType())
 }
 
 func (f *resourceField) TypescriptDataType() string {
