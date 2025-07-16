@@ -73,7 +73,7 @@ func TestNullEnum_DecodeSpanner_int(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "Valid string",
+			name:    "Valid int",
 			input:   44,
 			want:    NullEnum[namedType]{Value: 44, Valid: true},
 			wantErr: false,
@@ -833,7 +833,7 @@ func TestNullEnum_UnmarshalJSON_string(t *testing.T) {
 		},
 		{
 			name:  "Null JSON",
-			input: []byte(`null`),
+			input: []byte("null"),
 			want:  NullEnum[namedType]{Value: "", Valid: false},
 		},
 		{
@@ -879,12 +879,12 @@ func TestNullEnum_UnmarshalJSON_int(t *testing.T) {
 		},
 		{
 			name:  "Null JSON",
-			input: []byte(`null`),
+			input: []byte("null"),
 			want:  NullEnum[namedType]{Value: 0, Valid: false},
 		},
 		{
-			name:    "Invalid JSON",
-			input:   []byte(`"enumValue`), // missing closing quote
+			name:    "Invalid int Enum",
+			input:   []byte(`"enumValue"`),
 			wantErr: true,
 		},
 	}
@@ -925,12 +925,12 @@ func TestNullEnum_UnmarshalJSON_int64(t *testing.T) {
 		},
 		{
 			name:  "Null JSON",
-			input: []byte(`null`),
+			input: []byte("null"),
 			want:  NullEnum[namedType]{Value: 0, Valid: false},
 		},
 		{
-			name:    "Invalid JSON",
-			input:   []byte(`"enumValue`), // missing closing quote
+			name:    "Invalid int64 Enum",
+			input:   []byte(`"enumValue"`),
 			wantErr: true,
 		},
 	}
@@ -971,12 +971,12 @@ func TestNullEnum_UnmarshalJSON_float64(t *testing.T) {
 		},
 		{
 			name:  "Null JSON",
-			input: []byte(`null`),
+			input: []byte("null"),
 			want:  NullEnum[namedType]{Value: 0, Valid: false},
 		},
 		{
-			name:    "Invalid JSON",
-			input:   []byte(`"enumValue`), // missing closing quote
+			name:    "Invalid float64 Enum",
+			input:   []byte(`"enumValue"`),
 			wantErr: true,
 		},
 	}

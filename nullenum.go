@@ -114,8 +114,6 @@ func (n *NullEnum[T]) UnmarshalJSON(b []byte) error {
 	}
 
 	if s == nil {
-		n.Valid = false
-
 		return nil
 	}
 
