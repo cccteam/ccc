@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.12](https://github.com/cccteam/ccc/compare/v0.2.11...v0.2.12) (2025-07-16)
+
+
+### Features
+
+* Add a NullEnum type ([#363](https://github.com/cccteam/ccc/issues/363)) ([d037dc2](https://github.com/cccteam/ccc/commit/d037dc28dc976fb1cacaa54a7cbaf844f6c0962c))
+
 ## [0.2.11](https://github.com/cccteam/ccc/compare/v0.2.10...v0.2.11) (2025-06-18)
 
 
