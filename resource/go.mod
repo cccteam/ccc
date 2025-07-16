@@ -5,11 +5,11 @@ go 1.24.4
 require (
 	cloud.google.com/go v0.121.3
 	cloud.google.com/go/spanner v1.83.0
-	github.com/cccteam/ccc v0.2.11
+	github.com/cccteam/ccc v0.2.12
 	github.com/cccteam/ccc/accesstypes v0.5.2
 	github.com/cccteam/ccc/pkg v0.0.2
 	github.com/cccteam/db-initiator v0.2.9
-	github.com/cccteam/httpio v0.7.7
+	github.com/cccteam/httpio v0.7.8
 	github.com/cccteam/session v0.5.5
 	github.com/cccteam/spxscan v0.0.7
 	github.com/cloudspannerecosystem/memefish v0.6.2
@@ -19,7 +19,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/momaek/formattag v0.0.10
 	github.com/shopspring/decimal v1.4.0
-	golang.org/x/tools v0.34.0
+	golang.org/x/tools v0.35.0
 )
 
 require (
@@ -115,13 +115,13 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.36.0 // indirect
 	go.opentelemetry.io/otel/trace v1.36.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/crypto v0.39.0 // indirect
-	golang.org/x/mod v0.25.0 // indirect
-	golang.org/x/net v0.41.0 // indirect
+	golang.org/x/crypto v0.40.0 // indirect
+	golang.org/x/mod v0.26.0 // indirect
+	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/text v0.26.0 // indirect
+	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/text v0.27.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/api v0.238.0 // indirect
 	google.golang.org/genproto v0.0.0-20250603155806-513f23925822 // indirect
