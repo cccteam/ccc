@@ -58,7 +58,9 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
-	resources, err := r.extractResources(packageMap["resources"])
+	resourcesPkg := parser.ParsePackage(packageMap["resources"])
+
+	resources, err := r.extractResources(resourcesPkg.Structs)
 	if err != nil {
 		return err
 	}
@@ -70,7 +72,7 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	if r.genRPCMethods {
-		rpcStructs := parser.ParseStructs(packageMap["rpc"])
+		rpcStructs := parser.ParsePackage(packageMap["rpc"]).Structs
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 

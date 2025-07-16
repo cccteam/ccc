@@ -10,6 +10,11 @@ import (
 	"strings"
 )
 
+type Package struct {
+	Structs []*Struct
+	Named   []*NamedType
+}
+
 type TypeInfo struct {
 	obj       types.Object
 	name      string
@@ -344,4 +349,9 @@ func (f *Field) TypeArgs() string {
 
 func (f *Field) Error() string {
 	return fmt.Sprintf("%s at %s", f.name, f.fset.Position(f.astInfo.Pos()))
+}
+
+type NamedType struct {
+	*TypeInfo
+	Comments string
 }

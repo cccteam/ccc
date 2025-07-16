@@ -122,7 +122,7 @@ func Test_ParseStructs(t *testing.T) {
 				return
 			}
 
-			parsedStructs := ParseStructs(pkgMap[tt.args.packageName])
+			parsedStructs := ParsePackage(pkgMap[tt.args.packageName]).Structs
 
 			if len(parsedStructs) != len(tt.want) {
 				t.Errorf("parseStructs() length of parsed structs slice does not match length of expected structs slice: got= %v \nwant = %v", parsedStructs, tt.want)
@@ -183,7 +183,7 @@ func Test_FilterStructsByInterface(t *testing.T) {
 				return
 			}
 
-			rpcStructs := ParseStructs(pkgMap[tt.args.packageName])
+			rpcStructs := ParsePackage(pkgMap[tt.args.packageName]).Structs
 
 			rpcStructs = FilterStructsByInterface(rpcStructs, tt.args.interfaces)
 

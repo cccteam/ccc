@@ -6,7 +6,6 @@ import (
 
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
-	"golang.org/x/tools/go/packages"
 )
 
 func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error) {
@@ -61,9 +60,7 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 	return resource, nil
 }
 
-func (c *client) extractResources(pkg *packages.Package) ([]*resourceInfo, error) {
-	resourceStructs := parser.ParseStructs(pkg)
-
+func (c *client) extractResources(resourceStructs []*parser.Struct) ([]*resourceInfo, error) {
 	resources := make([]*resourceInfo, 0, len(resourceStructs))
 	for _, pStruct := range resourceStructs {
 		resource, err := c.structToResource(pStruct)
