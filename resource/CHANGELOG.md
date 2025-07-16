@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.2](https://github.com/cccteam/ccc/compare/resource/v0.2.1...resource/v0.2.2) (2025-07-16)
+
+
+### Bug Fixes
+
+* use underlying type for null wrapper types in clause generation ([#364](https://github.com/cccteam/ccc/issues/364)) ([a98dec0](https://github.com/cccteam/ccc/commit/a98dec00c371b9314ca82a5028eb5def15e4bb20))
+
+
+### Code Upgrade
+
+* **deps:** Bump golang.org/x/tools ([#361](https://github.com/cccteam/ccc/issues/361)) ([a44935a](https://github.com/cccteam/ccc/commit/a44935ab72fa7dd06cafa75899e95021b6a6c7de))
+* **deps:** Bump the go-dependencies group across 1 directory with 2 updates ([#368](https://github.com/cccteam/ccc/issues/368)) ([7333932](https://github.com/cccteam/ccc/commit/73339325d3897e6a3c5d115011f3b616a96cd0b5))
+
 ## [0.2.1](https://github.com/cccteam/ccc/compare/resource/v0.2.0...resource/v0.2.1) (2025-07-10)
 
 
