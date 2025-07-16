@@ -324,7 +324,7 @@ type resourceField struct {
 // When generating QueryClauses for Null-style wrapper types we want to use the underlying type
 // i.e. ccc.NullUUID -> ccc.UUID, spanner.NullString -> string
 func (f *resourceField) UnwrappedNullType() *string {
-	if !strings.HasPrefix(strings.ToLower(f.DerefUnqualifiedType()), "null") {
+	if !strings.HasPrefix(f.DerefUnqualifiedType(), "Null") {
 		return nil
 	}
 
@@ -334,11 +334,28 @@ func (f *resourceField) UnwrappedNullType() *string {
 	}
 
 	fields := pStruct.Fields()
-	if len(fields) != 2 || fields[1].Name() != "Valid" {
+	if len(fields) != 2 {
 		return nil
 	}
 
-	return ccc.Ptr(fields[0].DerefResolvedType())
+	var hasValidColumn bool
+	for i := range fields {
+		if fields[i].Name() == "Valid" && fields[i].DerefUnqualifiedType() == "bool" {
+			hasValidColumn = true
+		}
+	}
+
+	if !hasValidColumn {
+		return nil
+	}
+
+	for i := range fields {
+		if fields[i].Name() != "Valid" {
+			return ccc.Ptr(fields[i].DerefResolvedType())
+		}
+	}
+
+	return nil
 }
 
 func (f *resourceField) TypescriptDataType() string {
