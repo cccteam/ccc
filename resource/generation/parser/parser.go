@@ -138,6 +138,12 @@ func ParseStructs(pkg *packages.Package) []*Struct {
 			continue
 		}
 
+		var ok bool
+		pStruct.astInfo, ok = typeSpecs[i].Type.(*ast.StructType)
+		if !ok {
+			continue
+		}
+
 		for _, iface := range interfaces {
 			// Necessary to check non-pointer and pointer receivers
 			if types.Implements(pStruct.tt, iface.iface) || types.Implements(types.NewPointer(pStruct.tt), iface.iface) {
@@ -151,8 +157,6 @@ func ParseStructs(pkg *packages.Package) []*Struct {
 		if typeSpecs[i].Comment != nil {
 			pStruct.comments += typeSpecs[i].Comment.Text()
 		}
-
-		pStruct.astInfo = typeSpecs[i].Type.(*ast.StructType)
 
 		for j := range pStruct.fields {
 			pStruct.fields[j].astInfo = pStruct.astInfo.Fields.List[j]
@@ -202,6 +206,9 @@ func decodeToType[T types.Type](v types.Type) (T, bool) {
 		return decodeToType[T](t.Elem())
 	case *types.Named:
 		return decodeToType[T](t.Underlying())
+	case *types.Alias:
+		return decodeToType[T](t.Rhs())
+
 	case T:
 		return t, true
 	default:

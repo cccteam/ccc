@@ -151,9 +151,15 @@ func (p {{ .Resource.Name }}QueryPartialClause) Group(qc {{ .Resource.Name }}Que
 
 {{ range $field := .Resource.Fields }}
 {{ if $field.IsQueryClauseEligible -}}
+{{ if $unwrappedType := $field.UnwrappedNullType -}}
+func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $unwrappedType }}] {
+	return {{ $field.Parent.Name }}QueryIdent[{{ $unwrappedType }}]{Ident: resource.NewIdent[{{ $unwrappedType }}]("{{ $field.Name }}", p.partialClause, {{ $field.IsIndex }})}
+}
+{{- else }}
 func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $field.DerefResolvedType }}] {
 	return {{ $field.Parent.Name }}QueryIdent[{{ $field.DerefResolvedType }}]{Ident: resource.NewIdent[{{ $field.DerefResolvedType }}]("{{ $field.Name }}", p.partialClause, {{ $field.IsIndex }})}
 }
+{{- end }}
 {{- end }}
 {{ end }}
 
