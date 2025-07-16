@@ -3,6 +3,7 @@ package ccc
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 
 	"github.com/go-playground/errors/v5"
@@ -18,14 +19,37 @@ func (n *NullEnum[T]) DecodeSpanner(val any) error {
 		return nil
 	}
 
-	if v, ok := val.(T); ok {
-		n.Valid = true
-		n.Value = v
-
-		return nil
+	var ok bool
+	var v any
+	nType := reflect.TypeOf(n.Value)
+	switch nType.Kind() {
+	case reflect.String:
+		v, ok = val.(string)
+	case reflect.Int:
+		if valInt64, isInt64 := val.(int64); isInt64 {
+			v = valInt64
+			ok = true
+		} else {
+			v, ok = val.(int)
+		}
+	case reflect.Int64:
+		v, ok = val.(int64)
+	case reflect.Float64:
+		v, ok = val.(float64)
+	default:
+		panic("implementation logic error: missing type in switch")
+	}
+	if !ok {
+		return errors.Newf("failed to parse %+v (type %T) as NullEnum[%T]", val, val, n.Value)
 	}
 
-	return errors.Newf("failed to parse %+v (type %T) as NullEnum[%T]", val, val, n.Value)
+	n.Value, ok = reflect.ValueOf(v).Convert(nType).Interface().(T)
+	if !ok {
+		return errors.Newf("failed to convert %v to type %T", v, new(T))
+	}
+	n.Valid = true
+
+	return nil
 }
 
 func (n NullEnum[T]) EncodeSpanner() (any, error) {
@@ -33,7 +57,19 @@ func (n NullEnum[T]) EncodeSpanner() (any, error) {
 		return nil, nil
 	}
 
-	return n.Value, nil
+	val := reflect.ValueOf(n.Value)
+	switch val.Kind() {
+	case reflect.String:
+		return val.String(), nil
+	case reflect.Int:
+		return int(val.Int()), nil
+	case reflect.Int64:
+		return val.Int(), nil
+	case reflect.Float64:
+		return val.Float(), nil
+	default:
+		panic("implementation logic error: missing type in switch")
+	}
 }
 
 func (n NullEnum[T]) MarshalText() ([]byte, error) {
@@ -41,17 +77,16 @@ func (n NullEnum[T]) MarshalText() ([]byte, error) {
 		return nil, nil
 	}
 
-	switch t := any(n.Value).(type) {
-	case string:
-		return []byte(t), nil
-	case int:
-		return []byte(strconv.Itoa(t)), nil
-	case int64:
-		return []byte(strconv.FormatInt(t, 10)), nil
-	case float64:
-		return []byte(strconv.FormatFloat(t, 'f', -1, 64)), nil
+	val := reflect.ValueOf(n.Value)
+	switch val.Kind() {
+	case reflect.String:
+		return []byte(val.String()), nil
+	case reflect.Int, reflect.Int64:
+		return []byte(strconv.FormatInt(val.Int(), 10)), nil
+	case reflect.Float64:
+		return []byte(strconv.FormatFloat(val.Float(), 'f', -1, 64)), nil
 	default:
-		return nil, fmt.Errorf("unsupported type %T", t)
+		return nil, fmt.Errorf("unsupported type %T", n.Value)
 	}
 }
 
@@ -62,20 +97,21 @@ func (n *NullEnum[T]) UnmarshalText(text []byte) error {
 
 	var val any
 	var err error
-	switch any(n.Value).(type) {
-	case string:
+	nType := reflect.TypeOf(n.Value)
+	switch nType.Kind() {
+	case reflect.String:
 		val = string(text)
-	case int:
+	case reflect.Int:
 		val, err = strconv.Atoi(string(text))
 		if err != nil {
 			return errors.Wrap(err, "strconv.Atoi()")
 		}
-	case int64:
+	case reflect.Int64:
 		val, err = strconv.ParseInt(string(text), 10, 64)
 		if err != nil {
 			return errors.Wrap(err, "strconv.ParseInt()")
 		}
-	case float64:
+	case reflect.Float64:
 		val, err = strconv.ParseFloat(string(text), 64)
 		if err != nil {
 			return errors.Wrap(err, "strconv.ParseFloat()")
@@ -85,9 +121,9 @@ func (n *NullEnum[T]) UnmarshalText(text []byte) error {
 	}
 
 	var ok bool
-	n.Value, ok = val.(T)
+	n.Value, ok = reflect.ValueOf(val).Convert(nType).Interface().(T)
 	if !ok {
-		return errors.New("internal logic error")
+		return errors.Newf("failed to convert %v to type %T", val, new(T))
 	}
 	n.Valid = true
 
