@@ -190,10 +190,8 @@ func (g *PostgreSQLGenerator) GenerateSQL(node ExpressionNode) (sqlStr string, p
 	}
 
 	params = make([]any, 0, len(queryParams))
-	if queryParams != nil {
-		for _, qp := range queryParams {
-			params = append(params, qp.Value)
-		}
+	for _, qp := range queryParams {
+		params = append(params, qp.Value)
 	}
 
 	return sqlStr, params, nil
@@ -219,11 +217,8 @@ func (g *SpannerGenerator) GenerateSQL(node ExpressionNode) (sqlStr string, para
 	}
 
 	namedParams := make(map[string]any)
-
-	if queryParams != nil {
-		for _, qp := range queryParams {
-			namedParams[qp.Name] = qp.Value
-		}
+	for _, qp := range queryParams {
+		namedParams[qp.Name] = qp.Value
 	}
 
 	return sqlStr, namedParams, nil
