@@ -20,13 +20,12 @@ func TestOperations(t *testing.T) {
 		opts    []Option
 	}
 	tests := []struct {
-		name         string
-		args         args
-		wantMethod   []string
-		wantResource []string
-		wantIDs      []string
-		wantValues   []string
-		wantErr      bool
+		name       string
+		args       args
+		wantMethod []string
+		wantValues []string
+		wantParams []map[string]string
+		wantErr    bool
 	}{
 		{
 			name: "Test Requests with invalid path",
@@ -73,6 +72,27 @@ func TestOperations(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "Test patch Requests with resource and multiple ids",
+			args: args{
+				r: &http.Request{
+					Method: "POST",
+					Body: io.NopCloser(bytes.NewBufferString(
+						`[
+							{"op":"patch","path":"/resource1/10/20","value":{"c":1}},
+							{"op":"patch","path":"/resource2/11/21","value":{"a":2}}
+						]`,
+					)),
+				},
+				pattern: "/{resource}/{id1}/{id2}",
+			},
+			wantMethod: []string{"PATCH", "PATCH"},
+			wantParams: []map[string]string{
+				{"resource": "resource1", "id1": "10", "id2": "20"},
+				{"resource": "resource2", "id1": "11", "id2": "21"},
+			},
+			wantValues: []string{`{"c":1}`, `{"a":2}`},
+		},
+		{
 			name: "Test patch Requests with id",
 			args: args{
 				r: &http.Request{
@@ -87,7 +107,10 @@ func TestOperations(t *testing.T) {
 				pattern: "/{id}",
 			},
 			wantMethod: []string{"PATCH", "PATCH"},
-			wantIDs:    []string{"10", "11"},
+			wantParams: []map[string]string{
+				{"id": "10"},
+				{"id": "11"},
+			},
 			wantValues: []string{`{"c":1}`, `{"a":2}`},
 		},
 		{
@@ -104,10 +127,12 @@ func TestOperations(t *testing.T) {
 				},
 				pattern: "/{resource}/{id}",
 			},
-			wantMethod:   []string{"PATCH", "PATCH"},
-			wantResource: []string{"resource1", "resource2"},
-			wantIDs:      []string{"10", "11"},
-			wantValues:   []string{`{"c":1}`, `{"a":2}`},
+			wantMethod: []string{"PATCH", "PATCH"},
+			wantParams: []map[string]string{
+				{"resource": "resource1", "id": "10"},
+				{"resource": "resource2", "id": "11"},
+			},
+			wantValues: []string{`{"c":1}`, `{"a":2}`},
 		},
 		{
 			name: "Test add Requests with id",
@@ -141,7 +166,10 @@ func TestOperations(t *testing.T) {
 				pattern: "/{id}",
 			},
 			wantMethod: []string{"DELETE", "DELETE"},
-			wantIDs:    []string{"10", "11"},
+			wantParams: []map[string]string{
+				{"id": "10"},
+				{"id": "11"},
+			},
 		},
 		{
 			name: "Test extra space Requests with id",
@@ -196,7 +224,11 @@ func TestOperations(t *testing.T) {
 				},
 			},
 			wantMethod: []string{"POST", "PATCH", "DELETE"},
-			wantIDs:    []string{"X", "O", "W"},
+			wantParams: []map[string]string{
+				{"id": "X"},
+				{"id": "O"},
+				{"id": "W"},
+			},
 			wantValues: []string{
 				`{"description":"Office X"}`,
 				`{"description":"Office O 2"}`,
@@ -235,9 +267,8 @@ func TestOperations(t *testing.T) {
 			t.Parallel()
 
 			var gotMethod []string
-			var gotResource []string
-			var gotIDs []string
 			var gotValues []string
+			var gotParams []map[string]string
 
 			for oper, err := range Operations(tt.args.r, tt.args.pattern, tt.args.opts...) {
 				if (err != nil) != tt.wantErr {
@@ -249,14 +280,12 @@ func TestOperations(t *testing.T) {
 
 				gotMethod = append(gotMethod, oper.Req.Method)
 
-				if len(tt.wantResource) > 0 {
-					resource := httpio.Param[string](oper.Req, "resource")
-					gotResource = append(gotResource, resource)
-				}
-
-				if len(tt.wantIDs) > 0 {
-					id := httpio.Param[string](oper.Req, "id")
-					gotIDs = append(gotIDs, id)
+				if tt.wantParams != nil {
+					params := make(map[string]string)
+					for key := range tt.wantParams[len(gotParams)] {
+						params[key] = httpio.Param[string](oper.Req, httpio.ParamType(key))
+					}
+					gotParams = append(gotParams, params)
 				}
 
 				if len(tt.wantValues) > 0 {
@@ -280,12 +309,8 @@ func TestOperations(t *testing.T) {
 				t.Errorf("Requests() methods mismatch (-want +got):\n%s", diff)
 			}
 
-			if diff := cmp.Diff(tt.wantResource, gotResource); diff != "" {
-				t.Errorf("Requests() resouces mismatch (-want +got):\n%s", diff)
-			}
-
-			if diff := cmp.Diff(tt.wantIDs, gotIDs); diff != "" {
-				t.Errorf("Requests() IDs mismatch (-want +got):\n%s", diff)
+			if diff := cmp.Diff(tt.wantParams, gotParams); diff != "" {
+				t.Errorf("Requests() params mismatch (-want +got):\n%s", diff)
 			}
 
 			if diff := cmp.Diff(tt.wantValues, gotValues); diff != "" {
