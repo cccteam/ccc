@@ -2,6 +2,7 @@ package generation
 
 import (
 	"fmt"
+	"log"
 	"regexp"
 	"slices"
 	"strings"
@@ -281,6 +282,7 @@ func (r *resourceInfo) PrimaryKeyType() string {
 
 func (r *resourceInfo) PrimaryKey() *resourceField {
 	for _, f := range r.Fields {
+		log.Println(f)
 		if f.IsPrimaryKey {
 			return f
 		}
