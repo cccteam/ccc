@@ -280,10 +280,6 @@ func (r *resourceInfo) PrimaryKeyType() string {
 }
 
 func (r *resourceInfo) PrimaryKey() *resourceField {
-	if r.HasCompoundPrimaryKey {
-		return nil
-	}
-
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
 			return f
