@@ -26,7 +26,7 @@ func NewSearchKeys[Req any](res Resourcer) *SearchKeys {
 			if tag == "" {
 				continue
 			}
-			for _, key := range splitSplitKeys(tag) {
+			for _, key := range splitKeys(tag) {
 				keys[key] = searchType
 			}
 		}
@@ -35,7 +35,7 @@ func NewSearchKeys[Req any](res Resourcer) *SearchKeys {
 	return &SearchKeys{keys: keys}
 }
 
-func splitSplitKeys(keys string) []SearchKey {
+func splitKeys(keys string) []SearchKey {
 	split := strings.Split(keys, ",")
 
 	searchKeys := make([]SearchKey, 0, len(split))
