@@ -2,6 +2,7 @@ package resource
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"testing"
@@ -10,12 +11,13 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestRequests(t *testing.T) {
+func TestOperations(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
 		r       *http.Request
 		pattern string
+		opts    []Option
 	}
 	tests := []struct {
 		name         string
@@ -160,6 +162,73 @@ func TestRequests(t *testing.T) {
 			wantMethod: []string{"POST"},
 			wantValues: []string{`{"c":1}`},
 		},
+		{
+			name: "Test mixed operations",
+			args: args{
+				r: &http.Request{
+					Method: "PATCH",
+					Body: io.NopCloser(bytes.NewBufferString(
+						`[
+						  {
+							"op": "add",
+							"path": "/X",
+							"value": {
+								"description": "Office X"
+							}
+						  },
+						  {
+							"op": "patch",
+							"path": "/O",
+							"value": {
+								"description": "Office O 2"
+							}
+						  },
+						  {
+							"op": "remove",
+							"path": "/W"
+						  }
+						]`,
+					)),
+				},
+				pattern: "/{id}",
+				opts: []Option{
+					RequireCreatePath(),
+				},
+			},
+			wantMethod: []string{"POST", "PATCH", "DELETE"},
+			wantIDs:    []string{"X", "O", "W"},
+			wantValues: []string{
+				`{"description":"Office X"}`,
+				`{"description":"Office O 2"}`,
+				``,
+			},
+		},
+		{
+			name: "Test invalid op",
+			args: args{
+				r: &http.Request{
+					Method: "PATCH",
+					Body: io.NopCloser(bytes.NewBufferString(
+						`[{"op": "invalid", "path": "/W"}]`,
+					)),
+				},
+				pattern: "/{id}",
+			},
+			wantErr: true,
+		},
+		{
+			name: "Test malformed JSON",
+			args: args{
+				r: &http.Request{
+					Method: "PATCH",
+					Body: io.NopCloser(bytes.NewBufferString(
+						`[{"op": "add", "path": "/W", "value": "invalid"}`,
+					)),
+				},
+				pattern: "/{id}",
+			},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -170,7 +239,7 @@ func TestRequests(t *testing.T) {
 			var gotIDs []string
 			var gotValues []string
 
-			for oper, err := range Operations(tt.args.r, tt.args.pattern) {
+			for oper, err := range Operations(tt.args.r, tt.args.pattern, tt.args.opts...) {
 				if (err != nil) != tt.wantErr {
 					t.Errorf("Requests() error = %v, wantErr %v", err, tt.wantErr)
 				}
@@ -195,7 +264,15 @@ func TestRequests(t *testing.T) {
 					if err != nil {
 						t.Fatalf("io.ReadAll() error: %s", err)
 					}
-					gotValues = append(gotValues, string(val))
+					if len(val) > 0 {
+						var prettyVal bytes.Buffer
+						if err := json.Compact(&prettyVal, val); err != nil {
+							t.Fatalf("json.Compact() error: %s", err)
+						}
+						gotValues = append(gotValues, prettyVal.String())
+					} else {
+						gotValues = append(gotValues, "")
+					}
 				}
 			}
 
