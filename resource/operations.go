@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"iter"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 
@@ -29,6 +30,23 @@ type Operation struct {
 	Req  *http.Request
 }
 
+func (o *Operation) ReqWithPattern(pattern string) (*http.Request, error) {
+	var chiContext *chi.Context
+	r := chi.NewRouter()
+	r.Handle(pattern, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		chiContext = chi.RouteContext(r.Context())
+	}))
+	r.ServeHTTP(httptest.NewRecorder(), &http.Request{Method: o.Req.Method, Header: o.Req.Header, URL: o.Req.URL})
+
+	if chiContext == nil {
+		return nil, httpio.NewBadRequestMessagef("path %q does not match pattern %q", o.Req.URL.Path, pattern)
+	}
+
+	ctx := context.WithValue(o.Req.Context(), chi.RouteCtxKey, chiContext)
+
+	return o.Req.WithContext(ctx), nil
+}
+
 type patchOperation struct {
 	Op    string          `json:"op"`
 	Path  string          `json:"path"`
@@ -37,6 +55,7 @@ type patchOperation struct {
 
 type options struct {
 	requireCreatePath bool
+	matchPrefix       bool
 }
 
 type Option func(opt options) options
@@ -44,6 +63,14 @@ type Option func(opt options) options
 func RequireCreatePath() Option {
 	return func(o options) options {
 		o.requireCreatePath = true
+
+		return o
+	}
+}
+
+func MatchPrefix() Option {
+	return func(o options) options {
+		o.matchPrefix = true
 
 		return o
 	}
@@ -101,7 +128,7 @@ func Operations(r *http.Request, pattern string, opts ...Option) iter.Seq2[*Oper
 				return
 			}
 
-			ctx, err := withParams(r.Context(), method, pattern, op.Path, o.requireCreatePath)
+			ctx, err := withParams(r.Context(), method, pattern, op.Path, o)
 			if err != nil {
 				yield(nil, err)
 
@@ -147,15 +174,15 @@ func httpMethod(op string) (string, error) {
 	}
 }
 
-func withParams(ctx context.Context, method, pattern, path string, requireCreatePath bool) (context.Context, error) {
+func withParams(ctx context.Context, method, pattern, path string, o options) (context.Context, error) {
 	switch method {
 	case http.MethodPost:
 		p := strings.TrimPrefix(path, "/")
-		if requireCreatePath && p == "" {
+		if o.requireCreatePath && p == "" {
 			return ctx, httpio.NewBadRequestMessage("path is required for create operation")
 		}
 
-		if !requireCreatePath && p != "" {
+		if !o.requireCreatePath && p != "" {
 			return ctx, httpio.NewBadRequestMessage("path is not allowed for create operation")
 		}
 
@@ -171,10 +198,19 @@ func withParams(ctx context.Context, method, pattern, path string, requireCreate
 
 		var chiContext *chi.Context
 		r := chi.NewRouter()
+
+		servePath := path
+		if o.matchPrefix {
+			patternParts := strings.Split(pattern, "/")
+			pathParts := strings.Split(path, "/")
+			if len(pathParts) > len(patternParts) {
+				servePath = strings.Join(pathParts[:len(patternParts)], "/")
+			}
+		}
 		r.Handle(pattern, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			chiContext = chi.RouteContext(r.Context())
 		}))
-		r.ServeHTTP(nil, &http.Request{Method: method, Header: make(map[string][]string), URL: &url.URL{Path: path}})
+		r.ServeHTTP(httptest.NewRecorder(), &http.Request{Method: method, Header: make(map[string][]string), URL: &url.URL{Path: servePath}})
 
 		if chiContext == nil {
 			return ctx, httpio.NewBadRequestMessagef("path %q does not match pattern %q", path, pattern)

@@ -256,8 +256,21 @@ func TestOperations(t *testing.T) {
 			wantValues: []string{
 				`{"description":"Office X"}`,
 				`{"description":"Office O 2"}`,
-				``,
+				`{}`,
 			},
+		},
+		{
+			name: "Test invalid pattern",
+			args: args{
+				r: &http.Request{
+					Method: "PATCH",
+					Body: io.NopCloser(bytes.NewBufferString(
+						`[{"op": "remove", "path": "/W"}]`,
+					)),
+				},
+				pattern: "/", // does not match the path
+			},
+			wantErr: true,
 		},
 		{
 			name: "Test invalid op",
@@ -339,6 +352,127 @@ func TestOperations(t *testing.T) {
 
 			if diff := cmp.Diff(tt.wantValues, gotValues); diff != "" {
 				t.Errorf("Requests() values mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestOperationsWithPrefix(t *testing.T) {
+	t.Parallel()
+
+	type args struct {
+		r       *http.Request
+		pattern string
+		opts    []Option
+	}
+	tests := []struct {
+		name               string
+		args               args
+		wantPrefixParams   []map[string]string
+		wantPattern        []string
+		wantPatternParams  []map[string]string
+		wantOperationsErr  bool
+		wantWithPatternErr bool
+	}{
+		{
+			name: "Test patch Requests with resource and multiple ids",
+			args: args{
+				r: &http.Request{
+					Method: "POST",
+					Body: io.NopCloser(bytes.NewBufferString(
+						`[
+							{"op":"patch","path":"/resource1/10/20","value":{"c":1}},
+							{"op":"patch","path":"/resource2/11/21/31","value":{"a":2}}
+						]`,
+					)),
+				},
+				pattern: "/{resource}",
+				opts: []Option{
+					MatchPrefix(),
+				},
+			},
+			wantPattern: []string{"/{resource}/{id1}/{id2}", "/{resource}/{id1}/{id2}/{id3}"},
+			wantPrefixParams: []map[string]string{
+				{"resource": "resource1"},
+				{"resource": "resource2"},
+			},
+			wantPatternParams: []map[string]string{
+				{"resource": "resource1", "id1": "10", "id2": "20"},
+				{"resource": "resource2", "id1": "11", "id2": "21", "id3": "31"},
+			},
+		},
+		{
+			name: "Test ReqWithPattern err",
+			args: args{
+				r: &http.Request{
+					Method: "POST",
+					Body: io.NopCloser(bytes.NewBufferString(
+						`[
+							{"op":"patch","path":"/resource1/10/20","value":{"c":1}},
+						]`,
+					)),
+				},
+				pattern: "/{resource}",
+				opts: []Option{
+					MatchPrefix(),
+				},
+			},
+			wantPattern: []string{"/{resource}/{id1}"}, // Invalid pattern
+			wantPrefixParams: []map[string]string{
+				{"resource": "resource1"},
+			},
+			wantPatternParams: []map[string]string{
+				{"resource": "resource1", "id1": "10", "id2": "20"},
+			},
+			wantWithPatternErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var gotPrefixParams []map[string]string
+			var gotPatternParams []map[string]string
+
+			for oper, err := range Operations(tt.args.r, tt.args.pattern, tt.args.opts...) {
+				if (err != nil) != tt.wantOperationsErr {
+					t.Fatalf("Requests() error = %v, wantErr %v", err, tt.wantOperationsErr)
+				}
+				if tt.wantOperationsErr {
+					return
+				}
+
+				if tt.wantPrefixParams != nil {
+					params := make(map[string]string)
+					for key := range tt.wantPrefixParams[len(gotPrefixParams)] {
+						params[key] = httpio.Param[string](oper.Req, httpio.ParamType(key))
+					}
+					gotPrefixParams = append(gotPrefixParams, params)
+				}
+
+				if tt.wantPatternParams != nil {
+					req, err := oper.ReqWithPattern(tt.wantPattern[len(gotPatternParams)])
+					if (err != nil) != tt.wantWithPatternErr {
+						t.Fatalf("Requests() error = %v, wantErr %v", err, tt.wantWithPatternErr)
+					}
+					if tt.wantWithPatternErr {
+						return
+					}
+
+					params := make(map[string]string)
+					for key := range tt.wantPatternParams[len(gotPatternParams)] {
+						params[key] = httpio.Param[string](req, httpio.ParamType(key))
+					}
+					gotPatternParams = append(gotPatternParams, params)
+				}
+			}
+
+			if diff := cmp.Diff(tt.wantPrefixParams, gotPrefixParams); diff != "" {
+				t.Errorf("Requests() prefix params mismatch (-want +got):\n%s", diff)
+			}
+
+			if diff := cmp.Diff(tt.wantPatternParams, gotPatternParams); diff != "" {
+				t.Errorf("Requests() pattern params mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
