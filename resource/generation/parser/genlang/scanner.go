@@ -10,7 +10,8 @@ import (
 type (
 	scanMode int
 	Scanner  interface {
-		ScanStruct(*parser.Struct) (Results, error)
+		ScanStruct(*parser.Struct) (StructResults, error)
+		ScanNamedType(*parser.NamedType) (NamedTypeResults, error)
 	}
 	scanner struct {
 		src              []byte
@@ -20,15 +21,20 @@ type (
 		pos              int
 	}
 
-	Results struct {
+	StructResults struct {
 		Struct MultiMap
 		Fields []MultiMap
+	}
+
+	NamedTypeResults struct {
+		Named MultiMap
 	}
 )
 
 const (
 	ScanStruct scanMode = iota
 	ScanField
+	ScanNamedType
 )
 
 func NewScanner(keywords map[string]KeywordOpts) Scanner {
@@ -38,11 +44,11 @@ func NewScanner(keywords map[string]KeywordOpts) Scanner {
 	}
 }
 
-func (s *scanner) ScanStruct(pStruct *parser.Struct) (Results, error) {
+func (s *scanner) ScanStruct(pStruct *parser.Struct) (StructResults, error) {
 	s.src = []byte(pStruct.Comments())
 	s.mode = ScanStruct
 	if err := s.scan(); err != nil {
-		return Results{}, err
+		return StructResults{}, err
 	}
 
 	structResults := MultiMap{s.result()}
@@ -55,13 +61,23 @@ func (s *scanner) ScanStruct(pStruct *parser.Struct) (Results, error) {
 		s.keywordArguments = make(map[string][]Args)
 
 		if err := s.scan(); err != nil {
-			return Results{}, err
+			return StructResults{}, err
 		}
 
 		fieldResults = append(fieldResults, MultiMap{s.result()})
 	}
 
-	return Results{structResults, fieldResults}, nil
+	return StructResults{structResults, fieldResults}, nil
+}
+
+func (s *scanner) ScanNamedType(namedType *parser.NamedType) (NamedTypeResults, error) {
+	s.src = []byte(namedType.Comments)
+	s.mode = ScanNamedType
+	if err := s.scan(); err != nil {
+		return NamedTypeResults{}, err
+	}
+
+	return NamedTypeResults{MultiMap{s.result()}}, nil
 }
 
 // moves the position pointer forward and returns the current character
@@ -106,6 +122,7 @@ func (s *scanner) scan() error {
 				if key != "" {
 					return errors.New(s.errorPostscript("invalid keyword", "did you mean %s?", key))
 				}
+
 				return errors.New(s.error("invalid keyword"))
 			}
 

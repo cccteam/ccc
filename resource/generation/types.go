@@ -10,6 +10,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
+	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 
 	"github.com/ettle/strcase"
 )
@@ -633,3 +634,13 @@ const (
 	// Adds resource.ts to generator output
 	TSMeta
 )
+
+const (
+	keywordEnumerate string = "enumerate" // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
+)
+
+func keywords() map[string]genlang.KeywordOpts {
+	return map[string]genlang.KeywordOpts{
+		keywordEnumerate: {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
+	}
+}

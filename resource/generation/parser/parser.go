@@ -119,6 +119,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 
 	interfaces := make([]*Interface, 0, 16)
 	parsedStructs := make([]*Struct, 0, 128)
+	namedTypes := make([]*NamedType, 0, 16)
 	for i := range typeSpecs {
 		switch typeSpecs[i].Type.(type) {
 		case *ast.InterfaceType:
@@ -128,8 +129,10 @@ func ParsePackage(pkg *packages.Package) *Package {
 		case *ast.Ident:
 			var namedType NamedType
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name) // NamedType's name
-			bt, _ := decodeToType[*types.Basic](obj.Type())  // NamedType's underlying type
-			_ = bt
+
+			namedType.TypeInfo = newTypeInfo(obj, pkg.Fset, false)
+
+			// bt, ok := decodeToType[*types.Basic](obj.Type()) // NamedType's underlying type
 
 			if typeSpecs[i].Doc != nil {
 				namedType.Comments = typeSpecs[i].Doc.Text()
@@ -138,6 +141,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 				namedType.Comments += typeSpecs[i].Comment.Text()
 			}
 
+			namedTypes = append(namedTypes, &namedType)
 		case *ast.StructType:
 			pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name), pkg.Fset)
 			if pStruct == nil { // nil pStruct is anonymous struct
@@ -187,7 +191,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 
 	slices.SortFunc(parsedStructs, compareFn)
 
-	return &Package{Structs: parsedStructs}
+	return &Package{Structs: parsedStructs, NamedTypes: namedTypes}
 }
 
 func FilterStructsByInterface(pStructs []*Struct, interfaceNames []string) []*Struct {

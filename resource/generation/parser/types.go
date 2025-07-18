@@ -11,8 +11,8 @@ import (
 )
 
 type Package struct {
-	Structs []*Struct
-	Named   []*NamedType
+	Structs    []*Struct
+	NamedTypes []*NamedType
 }
 
 type TypeInfo struct {
