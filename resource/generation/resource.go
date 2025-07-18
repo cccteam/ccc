@@ -10,6 +10,7 @@ import (
 	"text/template"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
+	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -68,6 +69,10 @@ func (r *resourceGenerator) Generate() error {
 	r.resources = resources
 
 	if err := r.runResourcesGeneration(); err != nil {
+		return err
+	}
+
+	if err := r.generateEnums(resourcesPkg.NamedTypes); err != nil {
 		return err
 	}
 
@@ -216,6 +221,36 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	return nil
 }
 
+func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error {
+	scanner := genlang.NewScanner(keywords())
+
+	for _, namedType := range namedTypes {
+		result, err := scanner.ScanNamedType(namedType)
+		if err != nil {
+			return errors.Wrap(err, "scanner.ScanNamedType()")
+		}
+
+		var resourceName string
+		if result.Named.Has("enumerate") {
+			resourceName = result.Named.Get("enumerate")[0].Arg1
+		} else {
+			continue
+		}
+
+		if ok := r.doesResourceExist(resourceName); !ok {
+			return errors.Newf("cannot enumerate type %q because resource %q does not exist", namedType.Name(), resourceName)
+		}
+
+		// TODO: gather enumData values for resourceName
+
+		// TODO: generate constants like
+		// const IDValueEnumName TypeName = DescriptionValue
+
+	}
+
+	return nil
+}
+
 func (r *resourceGenerator) generateTemplateOutput(templateName, fileTemplate string, data map[string]any) ([]byte, error) {
 	tmpl, err := template.New(templateName).Funcs(r.templateFuncs()).Parse(fileTemplate)
 	if err != nil {
@@ -228,4 +263,14 @@ func (r *resourceGenerator) generateTemplateOutput(templateName, fileTemplate st
 	}
 
 	return buf.Bytes(), nil
+}
+
+func (r *resourceGenerator) doesResourceExist(resourceName string) bool {
+	for i := range r.resources {
+		if r.pluralize(r.resources[i].Name()) == resourceName {
+			return true
+		}
+	}
+
+	return false
 }
