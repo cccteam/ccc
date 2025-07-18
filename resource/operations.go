@@ -90,6 +90,10 @@ func Operations(r *http.Request, pattern string, opts ...Option) iter.Seq2[*Oper
 				return
 			}
 
+			if op.Value == nil {
+				op.Value = []byte("{}")
+			}
+
 			method, err := httpMethod(op.Op)
 			if err != nil {
 				yield(nil, err)
