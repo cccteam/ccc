@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3](https://github.com/cccteam/ccc/compare/resource/v0.2.2...resource/v0.2.3) (2025-07-18)
+
+
+### Bug Fixes
+
+* Cleanup after Jules ([#369](https://github.com/cccteam/ccc/issues/369)) ([6fe0bac](https://github.com/cccteam/ccc/commit/6fe0bacdd07cd559a8365b5b9d63257c161540e2))
+* Support `add` and `patch` operations that use Path parameters and have no Value parameters  ([#372](https://github.com/cccteam/ccc/issues/372)) ([bfb4b05](https://github.com/cccteam/ccc/commit/bfb4b053d9b113abf03b55c06fc69521b82d144e))
+
 ## [0.2.2](https://github.com/cccteam/ccc/compare/resource/v0.2.1...resource/v0.2.2) (2025-07-16)
 
 
