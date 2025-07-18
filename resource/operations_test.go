@@ -172,6 +172,30 @@ func TestOperations(t *testing.T) {
 			},
 		},
 		{
+			name: "Test add Requests with no values, all fields in path",
+			args: args{
+				r: &http.Request{
+					Method: "POST",
+					Body: io.NopCloser(bytes.NewBufferString(
+						`[
+							{
+							"op": "add",
+							"path": "/10/11"
+							}
+						]`,
+					)),
+				},
+				pattern: "/{id1}/{id2}",
+				opts: []Option{
+					RequireCreatePath(),
+				},
+			},
+			wantMethod: []string{"POST"},
+			wantParams: []map[string]string{
+				{"id1": "10", "id2": "11"},
+			},
+		},
+		{
 			name: "Test extra space Requests with id",
 			args: args{
 				r: &http.Request{
@@ -272,7 +296,7 @@ func TestOperations(t *testing.T) {
 
 			for oper, err := range Operations(tt.args.r, tt.args.pattern, tt.args.opts...) {
 				if (err != nil) != tt.wantErr {
-					t.Errorf("Requests() error = %v, wantErr %v", err, tt.wantErr)
+					t.Fatalf("Requests() error = %v, wantErr %v", err, tt.wantErr)
 				}
 				if tt.wantErr {
 					return
