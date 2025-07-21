@@ -59,13 +59,22 @@ func (n *NullEnum[T]) DecodeSpanner(val any) error {
 	case reflect.Int64:
 		v, ok = val.(int64)
 		if !ok {
-			var t *int64
-			t, ok = val.(*int64)
-			if ok {
+			switch t := val.(type) {
+			case *int64:
 				if t == nil {
 					return nil
 				}
 				v = *t
+				ok = true
+			case int:
+				v = t
+				ok = true
+			case *int:
+				if t == nil {
+					return nil
+				}
+				v = *t
+				ok = true
 			}
 		}
 	case reflect.Float64:

@@ -168,6 +168,12 @@ func TestNullEnum_DecodeSpanner_int64(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "Nil *int value",
+			input:   (*int)(nil),
+			want:    NullEnum[namedType]{Value: 0, Valid: false},
+			wantErr: false,
+		},
+		{
 			name:    "Valid int64",
 			input:   int64(44),
 			want:    NullEnum[namedType]{Value: 44, Valid: true},
@@ -176,6 +182,18 @@ func TestNullEnum_DecodeSpanner_int64(t *testing.T) {
 		{
 			name:    "Valid *int64 value",
 			input:   Ptr(int64(44)),
+			want:    NullEnum[namedType]{Value: 44, Valid: true},
+			wantErr: false,
+		},
+		{
+			name:    "Valid int",
+			input:   44,
+			want:    NullEnum[namedType]{Value: 44, Valid: true},
+			wantErr: false,
+		},
+		{
+			name:    "Valid *int value",
+			input:   Ptr(44),
 			want:    NullEnum[namedType]{Value: 44, Valid: true},
 			wantErr: false,
 		},
