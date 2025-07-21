@@ -15,8 +15,7 @@ type NullEnum[T ~string | ~int | ~int64 | ~float64] struct {
 }
 
 func (n *NullEnum[T]) DecodeSpanner(val any) error {
-	reflectVal := reflect.ValueOf(val)
-	if val == nil || (reflectVal.Kind() == reflect.Ptr && reflectVal.IsNil()) {
+	if val == nil {
 		return nil
 	}
 
@@ -26,17 +25,61 @@ func (n *NullEnum[T]) DecodeSpanner(val any) error {
 	switch nType.Kind() {
 	case reflect.String:
 		v, ok = val.(string)
+		if !ok {
+			var t *string
+			t, ok = val.(*string)
+			if ok {
+				if t == nil {
+					return nil
+				}
+				v = *t
+			}
+		}
 	case reflect.Int:
-		if valInt64, isInt64 := val.(int64); isInt64 {
-			v = valInt64
-			ok = true
-		} else {
-			v, ok = val.(int)
+		v, ok = val.(int)
+		if !ok {
+			switch t := val.(type) {
+			case *int:
+				if t == nil {
+					return nil
+				}
+				v = *t
+				ok = true
+			case int64:
+				v = t
+				ok = true
+			case *int64:
+				if t == nil {
+					return nil
+				}
+				v = *t
+				ok = true
+			}
 		}
 	case reflect.Int64:
 		v, ok = val.(int64)
+		if !ok {
+			var t *int64
+			t, ok = val.(*int64)
+			if ok {
+				if t == nil {
+					return nil
+				}
+				v = *t
+			}
+		}
 	case reflect.Float64:
 		v, ok = val.(float64)
+		if !ok {
+			var t *float64
+			t, ok = val.(*float64)
+			if ok {
+				if t == nil {
+					return nil
+				}
+				v = *t
+			}
+		}
 	default:
 		panic("implementation logic error: missing type in switch")
 	}
