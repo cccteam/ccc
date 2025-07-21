@@ -15,7 +15,8 @@ type NullEnum[T ~string | ~int | ~int64 | ~float64] struct {
 }
 
 func (n *NullEnum[T]) DecodeSpanner(val any) error {
-	if val == nil {
+	reflectVal := reflect.ValueOf(val)
+	if val == nil || (reflectVal.Kind() == reflect.Ptr && reflectVal.IsNil()) {
 		return nil
 	}
 
