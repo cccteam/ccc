@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.13](https://github.com/cccteam/ccc/compare/v0.2.12...v0.2.13) (2025-07-21)
+
+
+### Bug Fixes
+
+* Properly handle nil pointer values in NullEnum.DecodeSpanner() ([#375](https://github.com/cccteam/ccc/issues/375)) ([c1a5e41](https://github.com/cccteam/ccc/commit/c1a5e41e4bf81374837508b03352870b6bbde1ec))
+
 ## [0.2.12](https://github.com/cccteam/ccc/compare/v0.2.11...v0.2.12) (2025-07-16)
 
 
