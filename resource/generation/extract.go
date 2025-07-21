@@ -25,6 +25,7 @@ func (c *client) structToResource(pStruct *parser.Struct) (*resourceInfo, error)
 		searchIndexes:         table.SearchIndexes,
 		HasCompoundPrimaryKey: table.PkCount > 1,
 		IsConsolidated:        !table.IsView && slices.Contains(c.consolidatedResourceNames, pStruct.Name()) != c.consolidateAll,
+		PkCount:               table.PkCount,
 	}
 
 	for i, field := range pStruct.Fields() {

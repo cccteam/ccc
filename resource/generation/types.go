@@ -240,6 +240,7 @@ type resourceInfo struct {
 	IsView                bool                           // Determines how CreatePatch is rendered in resource generation.
 	HasCompoundPrimaryKey bool                           // Determines how CreatePatchSet is rendered in resource generation.
 	IsConsolidated        bool
+	PkCount               int
 }
 
 func (r *resourceInfo) SearchIndexes() []*searchIndex {
@@ -277,6 +278,19 @@ func (r *resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
 	return false
 }
 
+func (r *resourceInfo) OperationPathPattern() string {
+	if !r.HasCompoundPrimaryKey {
+		return "/{id}"
+	}
+
+	var pattern string
+	for i := range r.PkCount {
+		pattern += fmt.Sprintf("/{id%d}", i+1)
+	}
+
+	return pattern
+}
+
 func (r *resourceInfo) PrimaryKeyType() string {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
@@ -288,10 +302,6 @@ func (r *resourceInfo) PrimaryKeyType() string {
 }
 
 func (r *resourceInfo) PrimaryKey() *resourceField {
-	if r.HasCompoundPrimaryKey {
-		return nil
-	}
-
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
 			return f
