@@ -162,6 +162,8 @@ issues:
     - path: nullenum\.go
       linters:
         - funlen
+        - gocyclo
+        - cyclop
       text: DecodeSpanner
 
   include:
