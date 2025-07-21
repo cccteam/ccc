@@ -159,6 +159,13 @@ issues:
         - gochecknoinits
         - lll
 
+    - path: nullenum\.go
+      linters:
+        - funlen
+        - gocyclo
+        - cyclop
+      text: DecodeSpanner
+
   include:
     - EXC0002
     - EXC0005
