@@ -3,14 +3,17 @@ package generation
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
 
+	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
+	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -51,7 +54,7 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 	return r, nil
 }
 
-func (r *resourceGenerator) Generate() error {
+func (r *resourceGenerator) Generate(ctx context.Context) error {
 	log.Println("Starting ResourceGenerator Generation")
 
 	packageMap, err := parser.LoadPackages(r.loadPackages...)
@@ -72,7 +75,7 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
-	if err := r.generateEnums(resourcesPkg.NamedTypes); err != nil {
+	if err := r.generateEnums(ctx, resourcesPkg.NamedTypes); err != nil {
 		return err
 	}
 
@@ -221,13 +224,46 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	return nil
 }
 
-func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error {
-	scanner := genlang.NewScanner(keywords())
+func (r *resourceGenerator) generateEnums(ctx context.Context, namedTypes []*parser.NamedType) error {
+	enumMap, err := r.retrieveDatabaseEnumValues(ctx, namedTypes)
+	if err != nil {
+		return err
+	}
 
+	output, err := r.generateTemplateOutput("resourceEnumsTemplate", resourceEnumsTemplate, map[string]any{
+		"Source":     r.resourceFilePath,
+		"NamedTypes": namedTypes,
+		"EnumMap":    enumMap,
+	})
+	if err != nil {
+		return errors.Wrap(err, "generateTemplateOutput()")
+	}
+
+	file, err := os.Create(filepath.Join(r.resourceDestination, genPrefix+resourceEnumsFileName))
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	if err != nil {
+		return err
+	}
+
+	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *resourceGenerator) retrieveDatabaseEnumValues(ctx context.Context, namedTypes []*parser.NamedType) (map[string][]enumData, error) {
+	enumMap := make(map[string][]enumData)
 	for _, namedType := range namedTypes {
+		scanner := genlang.NewScanner(keywords())
 		result, err := scanner.ScanNamedType(namedType)
 		if err != nil {
-			return errors.Wrap(err, "scanner.ScanNamedType()")
+			return nil, errors.Wrap(err, "scanner.ScanNamedType()")
 		}
 
 		var resourceName string
@@ -238,17 +274,21 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 		}
 
 		if ok := r.doesResourceExist(resourceName); !ok {
-			return errors.Newf("cannot enumerate type %q because resource %q does not exist", namedType.Name(), resourceName)
+			return nil, errors.Newf("cannot enumerate type %q because resource %q does not exist", namedType.Name(), resourceName)
 		}
 
-		// TODO: gather enumData values for resourceName
+		query := fmt.Sprintf("SELECT id, description FROM %s ORDER BY id", resourceName)
+		stmt := cloudspanner.Statement{SQL: query}
 
-		// TODO: generate constants like
-		// const IDValueEnumName TypeName = DescriptionValue
+		var data []enumData
+		if err := spxscan.Select(ctx, r.db.Single(), &data, stmt); err != nil {
+			return nil, errors.Wrap(err, "spxscan.Select()")
+		}
 
+		enumMap[namedType.Name()] = data
 	}
 
-	return nil
+	return enumMap, nil
 }
 
 func (r *resourceGenerator) generateTemplateOutput(templateName, fileTemplate string, data map[string]any) ([]byte, error) {

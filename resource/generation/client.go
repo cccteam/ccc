@@ -369,6 +369,16 @@ func (c *client) templateFuncs() map[string]any {
 				return "", errors.Newf("MethodToHttpConst: unknown method: %s", method)
 			}
 		},
+		"SanitizeIdentifier": func(name string) string {
+			var result []byte
+			for _, b := range []byte(name) {
+				if b == ' ' || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') {
+					result = append(result, b)
+				}
+			}
+
+			return c.caser.ToPascal(string(result))
+		},
 	}
 
 	return templateFuncs

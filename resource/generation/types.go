@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"slices"
@@ -16,7 +17,7 @@ import (
 )
 
 type Generator interface {
-	Generate() error
+	Generate(ctx context.Context) error
 	Close()
 }
 
@@ -104,6 +105,7 @@ const (
 	querySetOutputFileName        = "types.go"
 	resourceInterfaceOutputName   = "resources_iface"
 	resourcesTestFileName         = "resource_types_test.go"
+	resourceEnumsFileName         = "_enums.go"
 	routesOutputName              = "routes"
 	routerTestOutputName          = "routes_test"
 	consolidatedHandlerOutputName = "consolidated_handler"
@@ -134,6 +136,11 @@ type InformationSchemaResult struct {
 	OrdinalPosition      int64   `spanner:"ORDINAL_POSITION"`
 	KeyOrdinalPosition   int64   `spanner:"KEY_ORDINAL_POSITION"`
 	HasDefault           bool    `spanner:"HAS_DEFAULT"`
+}
+
+type enumData struct {
+	ID          string `spanner:"id"`
+	Description string `spanner:"description"`
 }
 
 type tableMetadata struct {

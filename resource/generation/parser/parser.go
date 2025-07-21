@@ -132,8 +132,6 @@ func ParsePackage(pkg *packages.Package) *Package {
 
 			namedType.TypeInfo = newTypeInfo(obj, pkg.Fset, false)
 
-			// bt, ok := decodeToType[*types.Basic](obj.Type()) // NamedType's underlying type
-
 			if typeSpecs[i].Doc != nil {
 				namedType.Comments = typeSpecs[i].Doc.Text()
 			}

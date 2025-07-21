@@ -72,7 +72,7 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 	return t, nil
 }
 
-func (t *typescriptGenerator) Generate() error {
+func (t *typescriptGenerator) Generate(ctx context.Context) error {
 	log.Println("Starting TypescriptGenerator Generation")
 
 	packageMap, err := parser.LoadPackages(t.loadPackages...)
