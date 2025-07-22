@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -86,6 +87,7 @@ func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
 	}
 
 	if len(handlerData) > 0 {
+		begin := time.Now()
 		fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(resource.Name()))))
 		destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
@@ -109,8 +111,6 @@ func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
 			return errors.Wrap(err, "tmpl.Execute()")
 		}
 
-		log.Printf("Generating handler file: %s", fileName)
-
 		formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
 		if err != nil {
 			return err
@@ -119,12 +119,14 @@ func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
 		if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 			return err
 		}
+		log.Printf("Generated handler file in %s: %s", time.Since(begin), destinationFilePath)
 	}
 
 	return nil
 }
 
 func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resourceInfo) error {
+	begin := time.Now()
 	fileName := generatedFileName(consolidatedHandlerOutputName)
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
@@ -148,8 +150,6 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
 
-	log.Printf("Generating consolidated handler file: %s", fileName)
-
 	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
 	if err != nil {
 		return err
@@ -158,6 +158,8 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
+
+	log.Printf("Generated consolidated handler file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }

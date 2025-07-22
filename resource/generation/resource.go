@@ -2,14 +2,116 @@ package generation
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 
+	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/resource/generation/parser"
+	"github.com/cccteam/ccc/resource/generation/parser/genlang"
+	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
 )
+
+type resourceGenerator struct {
+	*client
+	genHandlers             bool
+	genRoutes               bool
+	resourceDestination     string
+	handlerDestination      string
+	routerDestination       string
+	routerPackage           string
+	routePrefix             string
+	rpcPackageDir           string
+	businessLayerPackageDir string
+}
+
+func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, localPackages []string, options ...ResourceOption) (Generator, error) {
+	r := &resourceGenerator{
+		resourceDestination: filepath.Dir(resourceSourcePath),
+	}
+
+	opts := make([]option, 0, len(options))
+	for _, opt := range options {
+		opts = append(opts, opt)
+	}
+
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, localPackages, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	r.client = c
+
+	if err := resolveOptions(r, opts); err != nil {
+		return nil, err
+	}
+
+	return r, nil
+}
+
+func (r *resourceGenerator) Generate(ctx context.Context) error {
+	log.Println("Starting ResourceGenerator Generation")
+
+	packageMap, err := parser.LoadPackages(r.loadPackages...)
+	if err != nil {
+		return err
+	}
+
+	resourcesPkg := parser.ParsePackage(packageMap["resources"])
+
+	resources, err := r.extractResources(resourcesPkg.Structs)
+	if err != nil {
+		return err
+	}
+
+	r.resources = resources
+
+	if err := r.runResourcesGeneration(); err != nil {
+		return err
+	}
+
+	if err := r.generateEnums(ctx, resourcesPkg.NamedTypes); err != nil {
+		return err
+	}
+
+	if r.genRPCMethods {
+		rpcStructs := parser.ParsePackage(packageMap["rpc"]).Structs
+
+		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
+
+		r.rpcMethods = nil
+		for _, s := range rpcStructs {
+			methodInfo, err := r.structToRPCMethod(s)
+			if err != nil {
+				return err
+			}
+			r.rpcMethods = append(r.rpcMethods, methodInfo)
+		}
+
+		if err := r.runRPCGeneration(); err != nil {
+			return err
+		}
+	}
+
+	if r.genRoutes {
+		if err := r.runRouteGeneration(); err != nil {
+			return err
+		}
+	}
+	if r.genHandlers {
+		if err := r.runHandlerGeneration(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
 
 func (r *resourceGenerator) runResourcesGeneration() error {
 	if err := removeGeneratedFiles(r.resourceDestination, Prefix); err != nil {
@@ -92,10 +194,9 @@ func (r *resourceGenerator) generateResourceTests() error {
 }
 
 func (r *resourceGenerator) generateResources(res *resourceInfo) error {
+	begin := time.Now()
 	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
 	destinationFilePath := filepath.Join(r.resourceDestination, fileName)
-
-	log.Printf("Generating resource file: %v\n", fileName)
 
 	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
 		"Source":   r.resourceFilePath,
@@ -120,7 +221,80 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 		return err
 	}
 
+	log.Printf("Generated resource file in %s: %v\n", time.Since(begin), destinationFilePath)
+
 	return nil
+}
+
+func (r *resourceGenerator) generateEnums(ctx context.Context, namedTypes []*parser.NamedType) error {
+	enumMap, err := r.retrieveDatabaseEnumValues(ctx, namedTypes)
+	if err != nil {
+		return err
+	}
+
+	output, err := r.generateTemplateOutput("resourceEnumsTemplate", resourceEnumsTemplate, map[string]any{
+		"Source":     r.resourceFilePath,
+		"NamedTypes": namedTypes,
+		"EnumMap":    enumMap,
+	})
+	if err != nil {
+		return errors.Wrap(err, "generateTemplateOutput()")
+	}
+
+	file, err := os.Create(filepath.Join(r.resourceDestination, genPrefix+resourceEnumsFileName))
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	if err != nil {
+		return err
+	}
+
+	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *resourceGenerator) retrieveDatabaseEnumValues(ctx context.Context, namedTypes []*parser.NamedType) (map[string][]enumData, error) {
+	enumMap := make(map[string][]enumData)
+	for _, namedType := range namedTypes {
+		scanner := genlang.NewScanner(keywords())
+		result, err := scanner.ScanNamedType(namedType)
+		if err != nil {
+			return nil, errors.Wrap(err, "scanner.ScanNamedType()")
+		}
+
+		var resourceName string
+		if result.Named.Has("enumerate") {
+			resourceName = result.Named.Get("enumerate")[0].Arg1
+		} else {
+			continue
+		}
+
+		if ok := r.doesResourceExist(resourceName); !ok {
+			return nil, errors.Newf("cannot enumerate type %q, resource %q does not exist", namedType.Name(), resourceName)
+		}
+
+		if t := namedType.TypeInfo.TypeName(); t != "string" {
+			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), "string", t)
+		}
+
+		query := fmt.Sprintf("SELECT id, description FROM %s ORDER BY id", resourceName)
+		stmt := cloudspanner.Statement{SQL: query}
+
+		var data []enumData
+		if err := spxscan.Select(ctx, r.db.Single(), &data, stmt); err != nil {
+			return nil, errors.Wrap(err, "spxscan.Select()")
+		}
+
+		enumMap[namedType.Name()] = data
+	}
+
+	return enumMap, nil
 }
 
 func (r *resourceGenerator) generateTemplateOutput(templateName, fileTemplate string, data map[string]any) ([]byte, error) {
@@ -135,4 +309,14 @@ func (r *resourceGenerator) generateTemplateOutput(templateName, fileTemplate st
 	}
 
 	return buf.Bytes(), nil
+}
+
+func (r *resourceGenerator) doesResourceExist(resourceName string) bool {
+	for i := range r.resources {
+		if r.pluralize(r.resources[i].Name()) == resourceName {
+			return true
+		}
+	}
+
+	return false
 }

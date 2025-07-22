@@ -100,7 +100,7 @@ func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 // We can iterate over the declarations at the package level a single time
 // to extract all the data necessary for generation. Any new data that needs
 // to be added to the struct definitions can be extracted here.
-func ParseStructs(pkg *packages.Package) []*Struct {
+func ParsePackage(pkg *packages.Package) *Package {
 	log.Printf("Parsing structs from package %q...", pkg.Types.Name())
 
 	// Gather all type definitions from generic (top-level) declarations
@@ -117,59 +117,70 @@ func ParseStructs(pkg *packages.Package) []*Struct {
 		}
 	}
 
-	// Gather all interface definitions so we can check if structs implement them
 	interfaces := make([]*Interface, 0, 16)
+	parsedStructs := make([]*Struct, 0, 128)
+	namedTypes := make([]*NamedType, 0, 16)
 	for i := range typeSpecs {
-		if _, ok := typeSpecs[i].Type.(*ast.InterfaceType); !ok {
-			continue
-		}
-
-		obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
-
-		if iface, ok := decodeToType[*types.Interface](obj.Type()); ok {
+		switch typeSpecs[i].Type.(type) {
+		case *ast.InterfaceType:
+			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
+			iface, _ := decodeToType[*types.Interface](obj.Type())
 			interfaces = append(interfaces, &Interface{Name: typeSpecs[i].Name.Name, iface: iface})
+		case *ast.Ident:
+			var namedType NamedType
+			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name) // NamedType's name
+
+			namedType.TypeInfo = newTypeInfo(obj, pkg.Fset, false)
+
+			if typeSpecs[i].Doc != nil {
+				namedType.Comments = typeSpecs[i].Doc.Text()
+			}
+			if typeSpecs[i].Comment != nil {
+				namedType.Comments += typeSpecs[i].Comment.Text()
+			}
+
+			namedTypes = append(namedTypes, &namedType)
+		case *ast.StructType:
+			pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name), pkg.Fset)
+			if pStruct == nil { // nil pStruct is anonymous struct
+				continue
+			}
+
+			if typeSpecs[i].Doc != nil {
+				pStruct.comments = typeSpecs[i].Doc.Text()
+			}
+			if typeSpecs[i].Comment != nil {
+				pStruct.comments += typeSpecs[i].Comment.Text()
+			}
+
+			var ok bool
+			pStruct.astInfo, ok = typeSpecs[i].Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+
+			for j := range pStruct.fields {
+				pStruct.fields[j].astInfo = pStruct.astInfo.Fields.List[j]
+
+				if pStruct.fields[j].astInfo.Doc != nil {
+					pStruct.fields[j].comments = pStruct.fields[j].astInfo.Doc.Text()
+				}
+				if pStruct.fields[j].astInfo.Comment != nil {
+					pStruct.fields[j].comments += pStruct.fields[j].astInfo.Comment.Text()
+				}
+			}
+
+			parsedStructs = append(parsedStructs, pStruct)
 		}
 	}
 
-	parsedStructs := make([]*Struct, 0, 128)
-	for i := range typeSpecs {
-		pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name), pkg.Fset)
-		if pStruct == nil {
-			continue
-		}
-
-		var ok bool
-		pStruct.astInfo, ok = typeSpecs[i].Type.(*ast.StructType)
-		if !ok {
-			continue
-		}
-
-		for _, iface := range interfaces {
+	for i := range parsedStructs {
+		for j := range interfaces {
 			// Necessary to check non-pointer and pointer receivers
-			if types.Implements(pStruct.tt, iface.iface) || types.Implements(types.NewPointer(pStruct.tt), iface.iface) {
-				pStruct.SetInterface(iface.Name)
+			if types.Implements(parsedStructs[i].tt, interfaces[j].iface) || types.Implements(types.NewPointer(parsedStructs[i].tt), interfaces[j].iface) {
+				parsedStructs[i].SetInterface(interfaces[j].Name)
 			}
 		}
-
-		if typeSpecs[i].Doc != nil {
-			pStruct.comments = typeSpecs[i].Doc.Text()
-		}
-		if typeSpecs[i].Comment != nil {
-			pStruct.comments += typeSpecs[i].Comment.Text()
-		}
-
-		for j := range pStruct.fields {
-			pStruct.fields[j].astInfo = pStruct.astInfo.Fields.List[j]
-
-			if pStruct.fields[j].astInfo.Doc != nil {
-				pStruct.fields[j].comments = pStruct.fields[j].astInfo.Doc.Text()
-			}
-			if pStruct.fields[j].astInfo.Comment != nil {
-				pStruct.fields[j].comments += pStruct.fields[j].astInfo.Comment.Text()
-			}
-		}
-
-		parsedStructs = append(parsedStructs, pStruct)
 	}
 
 	compareFn := func(a, b *Struct) int {
@@ -178,7 +189,7 @@ func ParseStructs(pkg *packages.Package) []*Struct {
 
 	slices.SortFunc(parsedStructs, compareFn)
 
-	return parsedStructs
+	return &Package{Structs: parsedStructs, NamedTypes: namedTypes}
 }
 
 func FilterStructsByInterface(pStructs []*Struct, interfaceNames []string) []*Struct {

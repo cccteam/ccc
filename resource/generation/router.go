@@ -7,12 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"text/template"
+	"time"
 
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
 func (r *resourceGenerator) runRouteGeneration() error {
+	begin := time.Now()
 	if err := removeGeneratedFiles(r.routerDestination, Prefix); err != nil {
 		return err
 	}
@@ -47,16 +49,17 @@ func (r *resourceGenerator) runRouteGeneration() error {
 
 	if len(generatedRoutesMap) > 0 {
 		routesDestination := filepath.Join(r.routerDestination, generatedFileName(routesOutputName))
-		log.Printf("Generating routes file: %s\n", routesDestination)
 		if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRoutes()")
 		}
+		log.Printf("Generated routes file in %s: %s\n", time.Since(begin), routesDestination)
 
 		routerTestsDestination := filepath.Join(r.routerDestination, generatedFileName(routerTestOutputName))
-		log.Printf("Generating router tests file: %s\n", routerTestsDestination)
+		begin = time.Now()
 		if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRouterTests()")
 		}
+		log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
 	}
 
 	return nil

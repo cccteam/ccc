@@ -12,212 +12,13 @@ import (
 	"strings"
 
 	cloudspanner "cloud.google.com/go/spanner"
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/pkg"
 	"github.com/cccteam/ccc/resource"
-	"github.com/cccteam/ccc/resource/generation/parser"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
-
-type resourceGenerator struct {
-	*client
-	genHandlers             bool
-	genRoutes               bool
-	resourceDestination     string
-	handlerDestination      string
-	routerDestination       string
-	routerPackage           string
-	routePrefix             string
-	rpcPackageDir           string
-	businessLayerPackageDir string
-}
-
-func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, localPackages []string, options ...ResourceOption) (Generator, error) {
-	r := &resourceGenerator{
-		resourceDestination: filepath.Dir(resourceSourcePath),
-	}
-
-	opts := make([]option, 0, len(options))
-	for _, opt := range options {
-		opts = append(opts, opt)
-	}
-
-	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, localPackages, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	r.client = c
-
-	if err := resolveOptions(r, opts); err != nil {
-		return nil, err
-	}
-
-	return r, nil
-}
-
-func (r *resourceGenerator) Generate() error {
-	log.Println("Starting ResourceGenerator Generation")
-
-	packageMap, err := parser.LoadPackages(r.loadPackages...)
-	if err != nil {
-		return err
-	}
-
-	resources, err := r.extractResources(packageMap["resources"])
-	if err != nil {
-		return err
-	}
-
-	r.resources = resources
-
-	if err := r.runResourcesGeneration(); err != nil {
-		return err
-	}
-
-	if r.genRPCMethods {
-		rpcStructs := parser.ParseStructs(packageMap["rpc"])
-
-		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
-
-		r.rpcMethods = nil
-		for _, s := range rpcStructs {
-			methodInfo, err := r.structToRPCMethod(s)
-			if err != nil {
-				return err
-			}
-			r.rpcMethods = append(r.rpcMethods, methodInfo)
-		}
-
-		if err := r.runRPCGeneration(); err != nil {
-			return err
-		}
-	}
-
-	if r.genRoutes {
-		if err := r.runRouteGeneration(); err != nil {
-			return err
-		}
-	}
-	if r.genHandlers {
-		if err := r.runHandlerGeneration(); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-type typescriptGenerator struct {
-	*client
-	genPermission          bool
-	genMetadata            bool
-	typescriptDestination  string
-	typescriptOverrides    map[string]string
-	rc                     *resource.Collection
-	routerResources        []accesstypes.Resource
-	spannerEmulatorVersion string
-}
-
-func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TSOption) (Generator, error) {
-	if rc == nil {
-		return nil, errors.New("resource collection cannot be nil")
-	}
-
-	var (
-		genPermission bool
-		genMetadata   bool
-	)
-	switch mode {
-	case TSPerm | TSMeta:
-		genPermission = true
-		genMetadata = true
-	case TSPerm:
-		genPermission = true
-	case TSMeta:
-		genMetadata = true
-	}
-
-	t := &typescriptGenerator{
-		rc:                    rc,
-		routerResources:       rc.Resources(),
-		typescriptDestination: targetDir,
-		genPermission:         genPermission,
-		genMetadata:           genMetadata,
-	}
-
-	opts := make([]option, 0, len(options))
-	for _, opt := range options {
-		opts = append(opts, opt)
-	}
-
-	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, nil, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	t.client = c
-
-	if err := resolveOptions(t, opts); err != nil {
-		return nil, err
-	}
-
-	return t, nil
-}
-
-func (t *typescriptGenerator) Generate() error {
-	log.Println("Starting TypescriptGenerator Generation")
-
-	packageMap, err := parser.LoadPackages(t.loadPackages...)
-	if err != nil {
-		return err
-	}
-
-	resources, err := t.extractResources(packageMap["resources"])
-	if err != nil {
-		return err
-	}
-
-	t.resources = make([]*resourceInfo, 0, len(resources))
-	for _, resourceInfo := range resources {
-		resource := accesstypes.Resource(t.pluralize(resourceInfo.Name()))
-		if t.rc.ResourceExists(resource) {
-			t.resources = append(t.resources, t.setResourceTypescriptInfo(resourceInfo))
-		}
-	}
-
-	if t.genRPCMethods {
-		rpcStructs := parser.ParseStructs(packageMap["rpc"])
-
-		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
-
-		t.rpcMethods = nil
-		for _, s := range rpcStructs {
-			methodInfo, err := t.structToRPCMethod(s)
-			if err != nil {
-				return err
-			}
-			methodInfo = t.setMethodTypescriptInfo(methodInfo)
-			t.rpcMethods = append(t.rpcMethods, methodInfo)
-		}
-	}
-
-	if t.genMetadata {
-		if err := t.runTypescriptMetadataGeneration(); err != nil {
-			return err
-		}
-	}
-	if t.genPermission {
-		if err := t.runTypescriptPermissionGeneration(); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
 
 type client struct {
 	loadPackages              []string
@@ -568,6 +369,7 @@ func (c *client) templateFuncs() map[string]any {
 				return "", errors.Newf("MethodToHttpConst: unknown method: %s", method)
 			}
 		},
+		"SanitizeIdentifier": c.sanitizeEnumIdentifier,
 	}
 
 	return templateFuncs
@@ -764,4 +566,22 @@ func (c *client) resourceEndpoints(resource *resourceInfo) []HandlerType {
 	}
 
 	return filteredHandlerTypes
+}
+
+func (c *client) sanitizeEnumIdentifier(name string) string {
+	var result []byte
+	var hasAlpha bool
+	for _, b := range []byte(name) {
+		switch {
+		case b == ' ' || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') || hasAlpha && ('0' <= b && b <= '9'):
+			hasAlpha = true
+			result = append(result, b)
+		case ('0' <= b && b <= '9'):
+		case b == '`' || b == '\'':
+		default:
+			result = append(result, '_')
+		}
+	}
+
+	return c.caser.ToPascal(string(result))
 }

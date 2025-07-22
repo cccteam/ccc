@@ -92,7 +92,7 @@ func Test_ScanStruct(t *testing.T) {
 				return
 			}
 
-			parsedStructs := parser.ParseStructs(pkgMap["resources"])
+			parsedStructs := parser.ParsePackage(pkgMap["resources"]).Structs
 
 			for _, pStruct := range parsedStructs {
 				scanner := genlang.NewScanner(keywords)

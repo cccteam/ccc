@@ -2,17 +2,132 @@ package generation
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"os"
 	"path/filepath"
 	"slices"
 	"text/template"
+	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
 )
 
+type typescriptGenerator struct {
+	*client
+	genPermission          bool
+	genMetadata            bool
+	typescriptDestination  string
+	typescriptOverrides    map[string]string
+	rc                     *resource.Collection
+	routerResources        []accesstypes.Resource
+	spannerEmulatorVersion string
+}
+
+func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TSOption) (Generator, error) {
+	if rc == nil {
+		return nil, errors.New("resource collection cannot be nil")
+	}
+
+	var (
+		genPermission bool
+		genMetadata   bool
+	)
+	switch mode {
+	case TSPerm | TSMeta:
+		genPermission = true
+		genMetadata = true
+	case TSPerm:
+		genPermission = true
+	case TSMeta:
+		genMetadata = true
+	}
+
+	t := &typescriptGenerator{
+		rc:                    rc,
+		routerResources:       rc.Resources(),
+		typescriptDestination: targetDir,
+		genPermission:         genPermission,
+		genMetadata:           genMetadata,
+	}
+
+	opts := make([]option, 0, len(options))
+	for _, opt := range options {
+		opts = append(opts, opt)
+	}
+
+	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, nil, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	t.client = c
+
+	if err := resolveOptions(t, opts); err != nil {
+		return nil, err
+	}
+
+	return t, nil
+}
+
+func (t *typescriptGenerator) Generate(ctx context.Context) error {
+	log.Println("Starting TypescriptGenerator Generation")
+
+	packageMap, err := parser.LoadPackages(t.loadPackages...)
+	if err != nil {
+		return err
+	}
+
+	pStructs := parser.ParsePackage(packageMap["resources"]).Structs
+
+	resources, err := t.extractResources(pStructs)
+	if err != nil {
+		return err
+	}
+
+	t.resources = make([]*resourceInfo, 0, len(resources))
+	for _, resourceInfo := range resources {
+		resource := accesstypes.Resource(t.pluralize(resourceInfo.Name()))
+		if t.rc.ResourceExists(resource) {
+			t.resources = append(t.resources, t.setResourceTypescriptInfo(resourceInfo))
+		}
+	}
+
+	if t.genRPCMethods {
+		rpcStructs := parser.ParsePackage(packageMap["rpc"]).Structs
+
+		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
+
+		t.rpcMethods = nil
+		for _, s := range rpcStructs {
+			methodInfo, err := t.structToRPCMethod(s)
+			if err != nil {
+				return err
+			}
+			methodInfo = t.setMethodTypescriptInfo(methodInfo)
+			t.rpcMethods = append(t.rpcMethods, methodInfo)
+		}
+	}
+
+	if t.genMetadata {
+		if err := t.runTypescriptMetadataGeneration(); err != nil {
+			return err
+		}
+	}
+	if t.genPermission {
+		if err := t.runTypescriptPermissionGeneration(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
+	begin := time.Now()
 	if !t.genMetadata {
 		if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 			return errors.Wrap(err, "removeGeneratedFiles()")
@@ -52,7 +167,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 		return err
 	}
 
-	log.Printf("Generated Permissions: %s\n", file.Name())
+	log.Printf("Generated Permissions in %s: %s\n", time.Since(begin), file.Name())
 
 	return nil
 }
@@ -84,6 +199,7 @@ func (t *typescriptGenerator) generateTemplateOutput(fileTemplate string, data m
 }
 
 func (t *typescriptGenerator) generateTypescriptMetadata() error {
+	begin := time.Now()
 	log.Println("Starting typescript metadata generation...")
 
 	if err := t.generateResourceMetadata(); err != nil {
@@ -94,12 +210,13 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 		return errors.Wrap(err, "generateMethodMetadata()")
 	}
 
-	log.Println("Generated typescript metadata")
+	log.Printf("Generated typescript metadata in %s\n", time.Since(begin))
 
 	return nil
 }
 
 func (t *typescriptGenerator) generateResourceMetadata() error {
+	begin := time.Now()
 	log.Println("Starting resource metadata generation...")
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, map[string]any{
 		"Resources":         t.resources,
@@ -120,12 +237,13 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 		return err
 	}
 
-	log.Printf("Generated resource metadata: %s\n", file.Name())
+	log.Printf("Generated resource metadata in %s: %s\n", time.Since(begin), file.Name())
 
 	return nil
 }
 
 func (t *typescriptGenerator) generateMethodMetadata() error {
+	begin := time.Now()
 	log.Println("Starting method metadata generation...")
 
 	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, map[string]any{
@@ -146,7 +264,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 		return err
 	}
 
-	log.Printf("Generated methods metadata: %s\n", file.Name())
+	log.Printf("Generated methods metadata in %s: %s\n", time.Since(begin), file.Name())
 
 	return nil
 }
