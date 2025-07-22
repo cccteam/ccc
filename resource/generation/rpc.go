@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -62,6 +63,7 @@ func (r *resourceGenerator) runRPCGeneration() error {
 }
 
 func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
+	begin := time.Now()
 	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
@@ -85,8 +87,6 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
 
-	log.Printf("Generating RPC handler file: %s", fileName)
-
 	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
 	if err != nil {
 		return err
@@ -95,6 +95,8 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
+
+	log.Printf("Generated RPC handler file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }
@@ -123,8 +125,7 @@ func (r *resourceGenerator) generateRPCMethod(rpcMethod *rpcMethodInfo) error {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
 
-	log.Printf("Generating RPC handler file: %s", fileName)
-
+	begin := time.Now()
 	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
 	if err != nil {
 		return err
@@ -133,6 +134,8 @@ func (r *resourceGenerator) generateRPCMethod(rpcMethod *rpcMethodInfo) error {
 	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
+
+	log.Printf("Generated RPC method file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }

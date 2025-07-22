@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/resource/generation/parser"
@@ -193,10 +194,9 @@ func (r *resourceGenerator) generateResourceTests() error {
 }
 
 func (r *resourceGenerator) generateResources(res *resourceInfo) error {
+	begin := time.Now()
 	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
 	destinationFilePath := filepath.Join(r.resourceDestination, fileName)
-
-	log.Printf("Generating resource file: %v\n", fileName)
 
 	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
 		"Source":   r.resourceFilePath,
@@ -220,6 +220,8 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
 		return err
 	}
+
+	log.Printf("Generated resource file in %s: %v\n", time.Since(begin), destinationFilePath)
 
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"text/template"
+	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
@@ -126,6 +127,7 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 }
 
 func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
+	begin := time.Now()
 	if !t.genMetadata {
 		if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 			return errors.Wrap(err, "removeGeneratedFiles()")
@@ -165,7 +167,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 		return err
 	}
 
-	log.Printf("Generated Permissions: %s\n", file.Name())
+	log.Printf("Generated Permissions in %s: %s\n", time.Since(begin), file.Name())
 
 	return nil
 }
@@ -197,6 +199,7 @@ func (t *typescriptGenerator) generateTemplateOutput(fileTemplate string, data m
 }
 
 func (t *typescriptGenerator) generateTypescriptMetadata() error {
+	begin := time.Now()
 	log.Println("Starting typescript metadata generation...")
 
 	if err := t.generateResourceMetadata(); err != nil {
@@ -207,12 +210,13 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 		return errors.Wrap(err, "generateMethodMetadata()")
 	}
 
-	log.Println("Generated typescript metadata")
+	log.Printf("Generated typescript metadata in %s\n", time.Since(begin))
 
 	return nil
 }
 
 func (t *typescriptGenerator) generateResourceMetadata() error {
+	begin := time.Now()
 	log.Println("Starting resource metadata generation...")
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, map[string]any{
 		"Resources":         t.resources,
@@ -233,12 +237,13 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 		return err
 	}
 
-	log.Printf("Generated resource metadata: %s\n", file.Name())
+	log.Printf("Generated resource metadata in %s: %s\n", time.Since(begin), file.Name())
 
 	return nil
 }
 
 func (t *typescriptGenerator) generateMethodMetadata() error {
+	begin := time.Now()
 	log.Println("Starting method metadata generation...")
 
 	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, map[string]any{
@@ -259,7 +264,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 		return err
 	}
 
-	log.Printf("Generated methods metadata: %s\n", file.Name())
+	log.Printf("Generated methods metadata in %s: %s\n", time.Since(begin), file.Name())
 
 	return nil
 }

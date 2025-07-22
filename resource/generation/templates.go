@@ -424,7 +424,6 @@ import (
 	"time"
 
 	{{ .LocalPackageImports }}
-	"cloud.google.com/go/civil"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
