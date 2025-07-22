@@ -374,6 +374,8 @@ func (c *client) templateFuncs() map[string]any {
 			for _, b := range []byte(name) {
 				if b == ' ' || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') {
 					result = append(result, b)
+				} else {
+					result = append(result, '_')
 				}
 			}
 
