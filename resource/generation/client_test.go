@@ -255,6 +255,13 @@ func Test_client_sanitizeEnumIdentifier(t *testing.T) {
 			},
 			want: "DefaultedThenBankruptActiveChapter13",
 		},
+		{
+			name: "Borrower's Bankrupt",
+			args: args{
+				name: "Borrower's Bankrupt",
+			},
+			want: "BorrowersBankrupt",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

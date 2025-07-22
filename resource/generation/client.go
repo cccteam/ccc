@@ -577,6 +577,7 @@ func (c *client) sanitizeEnumIdentifier(name string) string {
 			hasAlpha = true
 			result = append(result, b)
 		case ('0' <= b && b <= '9'):
+		case b == '`' || b == '\'':
 		default:
 			result = append(result, '_')
 		}
