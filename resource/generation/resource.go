@@ -274,7 +274,11 @@ func (r *resourceGenerator) retrieveDatabaseEnumValues(ctx context.Context, name
 		}
 
 		if ok := r.doesResourceExist(resourceName); !ok {
-			return nil, errors.Newf("cannot enumerate type %q because resource %q does not exist", namedType.Name(), resourceName)
+			return nil, errors.Newf("cannot enumerate type %q, resource %q does not exist", namedType.Name(), resourceName)
+		}
+
+		if t := namedType.TypeInfo.TypeName(); t != "string" {
+			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), "string", t)
 		}
 
 		query := fmt.Sprintf("SELECT id, description FROM %s ORDER BY id", resourceName)
