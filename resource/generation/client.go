@@ -369,18 +369,7 @@ func (c *client) templateFuncs() map[string]any {
 				return "", errors.Newf("MethodToHttpConst: unknown method: %s", method)
 			}
 		},
-		"SanitizeIdentifier": func(name string) string {
-			var result []byte
-			for _, b := range []byte(name) {
-				if b == ' ' || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') {
-					result = append(result, b)
-				} else {
-					result = append(result, '_')
-				}
-			}
-
-			return c.caser.ToPascal(string(result))
-		},
+		"SanitizeIdentifier": c.sanitizeEnumIdentifier,
 	}
 
 	return templateFuncs
@@ -577,4 +566,21 @@ func (c *client) resourceEndpoints(resource *resourceInfo) []HandlerType {
 	}
 
 	return filteredHandlerTypes
+}
+
+func (c *client) sanitizeEnumIdentifier(name string) string {
+	var result []byte
+	var hasAlpha bool
+	for _, b := range []byte(name) {
+		switch {
+		case b == ' ' || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') || hasAlpha && ('0' <= b && b <= '9'):
+			hasAlpha = true
+			result = append(result, b)
+		case ('0' <= b && b <= '9'):
+		default:
+			result = append(result, '_')
+		}
+	}
+
+	return c.caser.ToPascal(string(result))
 }

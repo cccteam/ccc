@@ -3,6 +3,7 @@ package generation
 import (
 	"testing"
 
+	"github.com/ettle/strcase"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -126,6 +127,143 @@ func Test_searchExpressionFields(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(searchExpression{})); diff != "" {
 				t.Errorf("searchExpressionFields() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func Test_client_sanitizeEnumIdentifier(t *testing.T) {
+	t.Parallel()
+
+	type args struct {
+		name string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "empty",
+			args: args{
+				name: "",
+			},
+			want: "",
+		},
+		{
+			name: "simple",
+			args: args{
+				name: "test",
+			},
+			want: "Test",
+		},
+		{
+			name: "with leading numbers",
+			args: args{
+				name: "123test",
+			},
+			want: "Test",
+		},
+		{
+			name: "with punctuation",
+			args: args{
+				name: "test, test",
+			},
+			want: "TestTest",
+		},
+		{
+			name: "with space",
+			args: args{
+				name: "test test",
+			},
+			want: "TestTest",
+		},
+		{
+			name: "with space and punctuation",
+			args: args{
+				name: "test test.test",
+			},
+			want: "TestTestTest",
+		},
+		{
+			name: "with number",
+			args: args{
+				name: "test1",
+			},
+			want: "Test1",
+		},
+		{
+			name: "with number and punctuation",
+			args: args{
+				name: "test1.test",
+			},
+			want: "Test1Test",
+		},
+		{
+			name: "with number and space",
+			args: args{
+				name: "test 1",
+			},
+			want: "Test1",
+		},
+		{
+			name: "with number, space and punctuation",
+			args: args{
+				name: "test 1.test",
+			},
+			want: "Test1Test",
+		},
+		{
+			name: "with hyphen",
+			args: args{
+				name: "test-test",
+			},
+			want: "TestTest",
+		},
+		{
+			name: "with hyphen and punctuation",
+			args: args{
+				name: "test-test.test",
+			},
+			want: "TestTestTest",
+		},
+		{
+			name: "with hyphen and space",
+			args: args{
+				name: "test- test",
+			},
+			want: "TestTest",
+		},
+		{
+			name: "with hyphen, space and punctuation",
+			args: args{
+				name: "test- test.test",
+			},
+			want: "TestTestTest",
+		},
+		{
+			name: "Bankruptcy (Chapter 12 or 13)",
+			args: args{
+				name: "Bankruptcy (Chapter 12 or 13)",
+			},
+			want: "BankruptcyChapter12Or13",
+		},
+		{
+			name: "Defaulted, Then Bankrupt, Active, Chapter 13",
+			args: args{
+				name: "Defaulted, Then Bankrupt, Active, Chapter 13",
+			},
+			want: "DefaultedThenBankruptActiveChapter13",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := &client{
+				caser: strcase.NewCaser(false, nil, nil),
+			}
+			if got := c.sanitizeEnumIdentifier(tt.args.name); got != tt.want {
+				t.Errorf("client.sanitizeEnumIdentifier() = %v, want %v, from %s", got, tt.want, tt.args.name)
 			}
 		})
 	}
