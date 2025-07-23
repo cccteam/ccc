@@ -576,7 +576,7 @@ func (c *client) sanitizeEnumIdentifier(name string) string {
 			result = append(result, 'N', b)
 		case alphaFollowingNumber(result, b):
 			result = append(result, '_', b)
-		case isAlphNumeric(b):
+		case isAlphaNumeric(b):
 			result = append(result, b)
 		case b == '`' || b == '\'':
 		default:
@@ -609,6 +609,6 @@ func alphaFollowingNumber(result []byte, b byte) bool {
 	return ('0' <= prev && prev <= '9') && (('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z'))
 }
 
-func isAlphNumeric(b byte) bool {
+func isAlphaNumeric(b byte) bool {
 	return ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') || ('0' <= b && b <= '9')
 }
