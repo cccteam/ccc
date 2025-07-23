@@ -16,14 +16,14 @@ type Package struct {
 }
 
 type TypeInfo struct {
-	obj       types.Object
-	name      string
-	tt        types.Type
-	fset      *token.FileSet
-	unwrapped bool
+	obj  types.Object
+	name string
+	tt   types.Type
+	fset *token.FileSet
 }
 
-// Use the unwrap option if you need a slice or pointer's underlying type.
+// Use the unwrap option if you need a slice or pointer's underlying type,
+// or you want the named type whose underlying type is a struct.
 func newTypeInfo(obj types.Object, fset *token.FileSet, unwrap bool) *TypeInfo {
 	tt := obj.Type()
 	if unwrap {
@@ -31,11 +31,10 @@ func newTypeInfo(obj types.Object, fset *token.FileSet, unwrap bool) *TypeInfo {
 	}
 
 	return &TypeInfo{
-		obj:       obj,
-		name:      obj.Name(),
-		tt:        tt,
-		fset:      fset,
-		unwrapped: unwrap,
+		obj:  obj,
+		name: obj.Name(),
+		tt:   tt,
+		fset: fset,
 	}
 }
 

@@ -271,6 +271,7 @@ func isTypeLocalToPackage(t *types.Var, pkg *types.Package) bool {
 	return strings.HasPrefix(typeName, pkg.Name())
 }
 
+// Returns a list of types from this struct's package that the struct depends on
 func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []*TypeInfo {
 	var dependencies []*TypeInfo
 	pkg := obj.Pkg()
@@ -303,7 +304,8 @@ func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []*Type
 	return dependencies
 }
 
-// Returns the underlying element type for slice and pointer types
+// Returns the underlying element type for slices and pointer,
+// or the named type if its underlying type is a struct
 func unwrapType(tt types.Type) types.Type {
 	switch t := tt.(type) {
 	case *types.Slice:
