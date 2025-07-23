@@ -570,13 +570,14 @@ func (c *client) resourceEndpoints(resource *resourceInfo) []HandlerType {
 
 func (c *client) sanitizeEnumIdentifier(name string) string {
 	var result []byte
-	var hasAlpha bool
 	for _, b := range []byte(name) {
 		switch {
-		case b == ' ' || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') || hasAlpha && ('0' <= b && b <= '9'):
-			hasAlpha = true
+		case startStandaloneNumber(result, b):
+			result = append(result, 'N', b)
+		case alphaFollowingNumber(result, b):
+			result = append(result, '_', b)
+		case isAlphNumeric(b):
 			result = append(result, b)
-		case ('0' <= b && b <= '9'):
 		case b == '`' || b == '\'':
 		default:
 			result = append(result, '_')
@@ -584,4 +585,30 @@ func (c *client) sanitizeEnumIdentifier(name string) string {
 	}
 
 	return c.caser.ToPascal(string(result))
+}
+
+func startStandaloneNumber(result []byte, b byte) bool {
+	if len(result) == 0 && ('0' <= b && b <= '9') {
+		return true
+	}
+
+	if len(result) == 1 {
+		return false
+	}
+
+	return bytes.HasSuffix(result, []byte("_")) && ('0' <= b && b <= '9') && ('0' <= result[len(result)-2] && result[len(result)-2] <= '9')
+}
+
+func alphaFollowingNumber(result []byte, b byte) bool {
+	if len(result) == 0 {
+		return false
+	}
+
+	prev := result[len(result)-1]
+
+	return ('0' <= prev && prev <= '9') && (('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z'))
+}
+
+func isAlphNumeric(b byte) bool {
+	return ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') || ('0' <= b && b <= '9')
 }
