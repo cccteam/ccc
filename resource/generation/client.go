@@ -592,7 +592,7 @@ func startStandaloneNumber(result []byte, b byte) bool {
 		return true
 	}
 
-	if len(result) == 1 {
+	if len(result) < 2 {
 		return false
 	}
 
