@@ -162,7 +162,7 @@ func Test_client_sanitizeEnumIdentifier(t *testing.T) {
 			args: args{
 				name: "123test",
 			},
-			want: "Test",
+			want: "N123Test",
 		},
 		{
 			name: "with punctuation",
@@ -261,6 +261,27 @@ func Test_client_sanitizeEnumIdentifier(t *testing.T) {
 				name: "Borrower's Bankrupt",
 			},
 			want: "BorrowersBankrupt",
+		},
+		{
+			name: "8-10",
+			args: args{
+				name: "8-10",
+			},
+			want: "N8N10",
+		},
+		{
+			name: "8_10",
+			args: args{
+				name: "8_10",
+			},
+			want: "N8N10",
+		},
+		{
+			name: "8 10",
+			args: args{
+				name: "8 10",
+			},
+			want: "N8N10",
 		},
 	}
 	for _, tt := range tests {
