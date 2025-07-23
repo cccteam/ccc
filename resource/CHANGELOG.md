@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.4](https://github.com/cccteam/ccc/compare/resource/v0.2.3...resource/v0.2.4) (2025-07-23)
+
+
+### Bug Fixes
+
+* Fix identifier for mostly numeric descriptions ([#378](https://github.com/cccteam/ccc/issues/378)) ([05c5d73](https://github.com/cccteam/ccc/commit/05c5d737368bd3615ad23d7308bfcde5313641f0))
+* Spelling ([#380](https://github.com/cccteam/ccc/issues/380)) ([2209b08](https://github.com/cccteam/ccc/commit/2209b08c3527e38983e29e3f90d2dcba6e50d828))
+
 ## [0.2.3](https://github.com/cccteam/ccc/compare/resource/v0.2.2...resource/v0.2.3) (2025-07-22)
 
 
