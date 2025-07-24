@@ -31,6 +31,8 @@ const (
 
 type alias = struct{} // line comment on a type alias
 
+type named struct{} // line comment on a named type
+
 // this is not a doc comment
 type ExampleStruct struct {
 	Foo int

@@ -108,6 +108,8 @@ func Test_ParseStructs(t *testing.T) {
 					testField{"ID", named("ccc.UUID", &types.Struct{}), `spanner:"Id"`},
 					testField{"Description", basic(types.String), `spanner:"description"`},
 				),
+				testStruct(t, "alias"),
+				testStruct(t, "named"),
 			},
 			wantErr: false,
 		},
@@ -125,7 +127,7 @@ func Test_ParseStructs(t *testing.T) {
 			parsedStructs := ParsePackage(pkgMap[tt.args.packageName]).Structs
 
 			if len(parsedStructs) != len(tt.want) {
-				t.Errorf("parseStructs() length of parsed structs slice does not match length of expected structs slice: got= %v \nwant = %v", parsedStructs, tt.want)
+				t.Errorf("parseStructs() length of parsed structs slice does not match length of expected structs slice: got= %v \nwant = %v", len(parsedStructs), len(tt.want))
 				return
 			}
 
