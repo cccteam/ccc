@@ -624,7 +624,6 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 		var (
 			eventSource = resource.UserEvent(ctx)
-			patches []resource.SpannerBuffer
 			resp    response
 		)
 
@@ -635,7 +634,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 				return errors.Wrap(err, "resource.CloneRequest()")
 			}
 
-			for op, err := range resource.Operations(r, "/{resource}/{id}", resource.RequireCreatePath()) {
+			for op, err := range resource.Operations(r, "/{resource}", resource.MatchPrefix(), resource.RequireCreatePath()) {
 				if err != nil {
 					return httpio.NewEncoder(w).ClientMessage(ctx, err)
 				}
@@ -644,37 +643,45 @@ func (a *App) PatchResources() http.HandlerFunc {
 					{{- range $resource := .Resources -}}
 					{{- $primaryKeyType := $resource.PrimaryKeyType }}
 					case "{{ Kebab (Pluralize $resource.Name) }}":
-						patchSet, err := {{ GoCamel $resource.Name}}Decoder.DecodeOperation(op)
+						patchSet, err := {{ GoCamel $resource.Name}}Decoder.DecodeOperation(op, a.UserPermissions(op.Req))
 						if err != nil {
 							return httpio.NewEncoder(w).ClientMessage(ctx, err)
 						}
 
+						req, err := op.ReqWithPattern("/{resource}/{id}")
+						if err != nil {
+							return errors.Wrap(err, "op.ReqWithPattern()")
+						}
+
 						switch op.Type {
 						case resource.OperationCreate:
-							{{- if $resource.PrimaryKeyIsGeneratedUUID }}
+						{{- if $resource.PrimaryKeyIsGeneratedUUID }}
 							patch, err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet(patchSet)
 							if err != nil {
 								return httpio.NewEncoder(w).ClientMessage(ctx, err)
 							}
 							if err := patch.PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(err, "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
+								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
 							}
-							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.{{ .Resource.PrimaryKey.Name }}())
-							{{- else }}
-							id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
+							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.{{ $resource.PrimaryKey.Name }}())
+						{{- else }}
+							{{- /* // TODO: handle compound primary key */ }}
+							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
 							if err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(err, "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
+								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
 							}
-							{{- end }}
+						{{- end }}
 						case resource.OperationUpdate:
-							id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
+							{{- /* // TODO: handle compound primary key */ }}
+							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
 							if err := resources.New{{ $resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(err, "resources.{{ $resource.Name }}UpdatePatch.SpannerBuffer()")
+								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}UpdatePatch.SpannerBuffer()")
 							}
 						case resource.OperationDelete:
-							id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
+							{{- /* // TODO: handle compound primary key */ }}
+							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
 							if err := resources.New{{ $resource.Name }}DeletePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(err, "resources.{{ $resource.Name }}DeletePatch.SpannerBuffer()")
+								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}DeletePatch.SpannerBuffer()")
 							}
 						}
 					{{- end -}}
@@ -683,7 +690,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 			return nil
 		}); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, spanner.HandleError[resources.{{ $resource.Name }}](err))
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
 		return httpio.NewEncoder(w).Ok(resp)
