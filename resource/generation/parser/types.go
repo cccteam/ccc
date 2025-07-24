@@ -96,10 +96,6 @@ func (t *TypeInfo) IsIterable() bool {
 	}
 }
 
-func (t *TypeInfo) AsStruct() *Struct {
-	return newStruct(t.obj, nil)
-}
-
 type Interface struct {
 	Name  string
 	iface *types.Interface
@@ -109,7 +105,6 @@ type Struct struct {
 	*TypeInfo
 	astInfo    *ast.StructType
 	fields     []*Field
-	localTypes []*TypeInfo
 	interfaces []string
 	methodSet  map[string]struct{}
 	comments   string
@@ -128,9 +123,8 @@ func newStruct(obj types.Object, fset *token.FileSet) *Struct {
 	}
 
 	s := &Struct{
-		TypeInfo:   newTypeInfo(obj, fset),
-		localTypes: localTypesFromStruct(obj, map[string]struct{}{}),
-		methodSet:  make(map[string]struct{}),
+		TypeInfo:  newTypeInfo(obj, fset),
+		methodSet: make(map[string]struct{}),
 	}
 
 	methodSet := types.NewMethodSet(types.NewPointer(tt))
@@ -233,10 +227,6 @@ func (s *Struct) Fields() []*Field {
 	return s.fields
 }
 
-func (s *Struct) LocalTypes() []*TypeInfo {
-	return s.localTypes
-}
-
 func (s *Struct) Error() string {
 	return fmt.Sprintf("%s at %s", s.Name(), s.fset.Position(s.astInfo.Pos()))
 }
@@ -267,6 +257,10 @@ func (f Field) HasTag(key string) bool {
 	_, ok := f.tags.Lookup(key)
 
 	return ok
+}
+
+func (f Field) AsStruct() *Struct {
+	return newStruct(f.obj, nil)
 }
 
 // Returns true if the field's type originates from the same package

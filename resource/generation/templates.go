@@ -1018,16 +1018,18 @@ import (
 )
 
 func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
-	{{- range $type := .RPCMethod.LocalTypes }}
-	type {{ Lower $type.UnqualifiedTypeName }} 
+	{{- range $field := .RPCMethod.Fields }}
+	{{- if $field.IsLocalType }}
+	type {{ Lower $field.UnqualifiedTypeName }} 
 	
-	{{- with $type.AsStruct }} struct {
+	{{- with $field.AsStruct }} struct {
 		{{- range $field := .Fields }}
 		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\"`" + `
 		{{- end }}
 	}
-	{{ else }} {{ $type.Type }}
+	{{ else }} {{ $field.Type }}
 	{{ end }}
+	{{ end -}}
 	{{ end }}
 	type request struct {
 		{{- range $field := .RPCMethod.Fields }}
