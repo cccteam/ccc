@@ -83,18 +83,19 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 		return err
 	}
 
-	pStructs := parser.ParsePackage(packageMap["resources"]).Structs
+	resourcesPkg := parser.ParsePackage(packageMap["resources"])
 
-	resources, err := t.extractResources(pStructs)
+	resources, err := t.extractResources(resourcesPkg.Structs, resourcesPkg.Fset)
 	if err != nil {
 		return err
 	}
 
-	t.resources = make([]*resourceInfo, 0, len(resources))
-	for _, resourceInfo := range resources {
-		resource := accesstypes.Resource(t.pluralize(resourceInfo.Name()))
+	t.resources = make([]resourceInfo, 0, len(resources))
+	for i := range resources {
+		resource := accesstypes.Resource(t.pluralize(resources[i].Name()))
 		if t.rc.ResourceExists(resource) {
-			t.resources = append(t.resources, t.setResourceTypescriptInfo(resourceInfo))
+			resources[i].Fields = t.resourceFieldsTypescriptType(resources[i].Fields)
+			t.resources = append(t.resources, resources[i])
 		}
 	}
 
@@ -103,14 +104,13 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
-		t.rpcMethods = nil
-		for _, s := range rpcStructs {
-			methodInfo, err := t.structToRPCMethod(s)
-			if err != nil {
-				return err
-			}
-			methodInfo = t.setMethodTypescriptInfo(methodInfo)
-			t.rpcMethods = append(t.rpcMethods, methodInfo)
+		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs)
+		if err != nil {
+			return err
+		}
+
+		for i := range t.rpcMethods {
+			t.rpcMethods[i].Fields = t.rpcFieldsTypescriptType(t.rpcMethods[i].Fields)
 		}
 	}
 
@@ -273,37 +273,38 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	return nil
 }
 
-func (t *typescriptGenerator) setResourceTypescriptInfo(resource *resourceInfo) *resourceInfo {
-	for _, field := range resource.Fields {
-		field.typescriptType = t.typescriptType(field)
+func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []resourceField) []resourceField {
+	for i := range fields {
+		if override, ok := t.typescriptOverrides[fields[i].TypeName()]; ok {
+			fields[i].typescriptType = override
+		} else {
+			fields[i].typescriptType = "string"
+		}
 
-		if field.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
-			field.IsEnumerated = true
+		if fields[i].IsIterable() {
+			fields[i].typescriptType += "[]"
+		}
+
+		if fields[i].IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(fields[i].ReferencedResource)) {
+			fields[i].IsEnumerated = true
 		}
 	}
 
-	return resource
+	return fields
 }
 
-func (t *typescriptGenerator) setMethodTypescriptInfo(method *rpcMethodInfo) *rpcMethodInfo {
-	for _, field := range method.Fields {
-		field.typescriptType = t.typescriptType(field)
+func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []rpcField) []rpcField {
+	for i := range fields {
+		if override, ok := t.typescriptOverrides[fields[i].TypeName()]; ok {
+			fields[i].typescriptType = override
+		} else {
+			fields[i].typescriptType = "string"
+		}
+
+		if fields[i].IsIterable() {
+			fields[i].typescriptType += "[]"
+		}
 	}
 
-	return method
-}
-
-func (t *typescriptGenerator) typescriptType(field field) string {
-	var tsType string
-	if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
-		tsType = override
-	} else {
-		tsType = "string"
-	}
-
-	if field.IsIterable() {
-		tsType += "[]"
-	}
-
-	return tsType
+	return fields
 }

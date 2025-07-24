@@ -19,14 +19,14 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 	}
 
 	var (
-		consolidatedResources []*resourceInfo
+		consolidatedResources []resourceInfo
 		wg                    sync.WaitGroup
 
 		errChan = make(chan error)
 	)
 	for _, resource := range r.resources {
 		wg.Add(1)
-		go func(resource *resourceInfo) {
+		go func(resource resourceInfo) {
 			if err := r.generateHandlers(resource); err != nil {
 				errChan <- err
 			}
@@ -41,7 +41,7 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 	if r.genRPCMethods {
 		for _, rpcMethod := range r.rpcMethods {
 			wg.Add(1)
-			go func(rpcMethod *rpcMethodInfo) {
+			go func(rpcMethod rpcMethodInfo) {
 				if err := r.generateRPCHandler(rpcMethod); err != nil {
 					errChan <- err
 				}
@@ -73,7 +73,7 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 	return nil
 }
 
-func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
+func (r *resourceGenerator) generateHandlers(resource resourceInfo) error {
 	handlerTypes := r.resourceEndpoints(resource)
 
 	var handlerData [][]byte
@@ -125,7 +125,7 @@ func (r *resourceGenerator) generateHandlers(resource *resourceInfo) error {
 	return nil
 }
 
-func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resourceInfo) error {
+func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []resourceInfo) error {
 	begin := time.Now()
 	fileName := generatedFileName(consolidatedHandlerOutputName)
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
@@ -164,7 +164,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 	return nil
 }
 
-func (r *resourceGenerator) handlerContent(handler HandlerType, resource *resourceInfo) ([]byte, error) {
+func (r *resourceGenerator) handlerContent(handler HandlerType, resource resourceInfo) ([]byte, error) {
 	tmpl, err := template.New("handler").Funcs(r.templateFuncs()).Parse(handler.template())
 	if err != nil {
 		return nil, errors.Wrap(err, "template.New().Parse()")

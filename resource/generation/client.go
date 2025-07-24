@@ -23,8 +23,8 @@ import (
 type client struct {
 	loadPackages              []string
 	resourceFilePath          string
-	resources                 []*resourceInfo
-	rpcMethods                []*rpcMethodInfo
+	resources                 []resourceInfo
+	rpcMethods                []rpcMethodInfo
 	localPackages             []string
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser
@@ -488,7 +488,7 @@ func formatInterfaceTypes(types []string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
 }
 
-func formatResourceInterfaceTypes(resources []*resourceInfo) string {
+func formatResourceInterfaceTypes(resources []resourceInfo) string {
 	names := make([]string, len(resources))
 	for i, resource := range resources {
 		names[i] = resource.Name()
@@ -497,7 +497,7 @@ func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	return formatInterfaceTypes(names)
 }
 
-func formatRPCInterfaceTypes(rpcMethods []*rpcMethodInfo) string {
+func formatRPCInterfaceTypes(rpcMethods []rpcMethodInfo) string {
 	names := make([]string, len(rpcMethods))
 	for i, rpcMethod := range rpcMethods {
 		names[i] = rpcMethod.Name()
@@ -540,7 +540,7 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*s
 	return flds, nil
 }
 
-func (c *client) resourceEndpoints(resource *resourceInfo) []HandlerType {
+func (c *client) resourceEndpoints(resource resourceInfo) []HandlerType {
 	handlerTypes := []HandlerType{ListHandler}
 
 	if !resource.IsView {

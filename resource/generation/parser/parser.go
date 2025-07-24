@@ -117,20 +117,20 @@ func ParsePackage(pkg *packages.Package) *Package {
 		}
 	}
 
-	interfaces := make([]*Interface, 0, 16)
-	parsedStructs := make([]*Struct, 0, 128)
-	namedTypes := make([]*NamedType, 0, 16)
+	interfaces := make([]Interface, 0, 16)
+	parsedStructs := make([]Struct, 0, 128)
+	namedTypes := make([]NamedType, 0, 16)
 	for i := range typeSpecs {
 		switch typeSpecs[i].Type.(type) {
 		case *ast.InterfaceType:
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
 			iface, _ := decodeToType[*types.Interface](obj.Type())
-			interfaces = append(interfaces, &Interface{Name: typeSpecs[i].Name.Name, iface: iface})
+			interfaces = append(interfaces, Interface{Name: typeSpecs[i].Name.Name, iface: iface})
 		case *ast.Ident:
 			var namedType NamedType
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name) // NamedType's name
 
-			namedType.TypeInfo = newTypeInfo(obj, pkg.Fset)
+			namedType.TypeInfo = TypeInfo{obj}
 
 			if typeSpecs[i].Doc != nil {
 				namedType.Comments = typeSpecs[i].Doc.Text()
@@ -139,10 +139,10 @@ func ParsePackage(pkg *packages.Package) *Package {
 				namedType.Comments += typeSpecs[i].Comment.Text()
 			}
 
-			namedTypes = append(namedTypes, &namedType)
+			namedTypes = append(namedTypes, namedType)
 		case *ast.StructType:
 			pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name), pkg.Fset)
-			if pStruct == nil { // nil pStruct is anonymous struct
+			if pStruct.TypeInfo.obj == nil { // nil pStruct is anonymous struct
 				continue
 			}
 
@@ -183,17 +183,17 @@ func ParsePackage(pkg *packages.Package) *Package {
 		}
 	}
 
-	compareFn := func(a, b *Struct) int {
+	compareFn := func(a, b Struct) int {
 		return strings.Compare(a.Name(), b.Name())
 	}
 
 	slices.SortFunc(parsedStructs, compareFn)
 
-	return &Package{Structs: parsedStructs, NamedTypes: namedTypes}
+	return &Package{Structs: parsedStructs, NamedTypes: namedTypes, Fset: pkg.Fset}
 }
 
-func FilterStructsByInterface(pStructs []*Struct, interfaceNames []string) []*Struct {
-	filteredStructs := make([]*Struct, 0, len(pStructs))
+func FilterStructsByInterface(pStructs []Struct, interfaceNames []string) []Struct {
+	filteredStructs := make([]Struct, 0, len(pStructs))
 	for _, pStruct := range pStructs {
 		for _, iface := range interfaceNames {
 			if pStruct.Implements(iface) {
@@ -272,8 +272,8 @@ func isTypeLocalToPackage(t *types.Var, pkg *types.Package) bool {
 }
 
 // Returns a list of types from this struct's package that the struct depends on
-func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []*TypeInfo {
-	var dependencies []*TypeInfo
+func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []TypeInfo {
+	var dependencies []TypeInfo
 	pkg := obj.Pkg()
 	tt := obj.Type()
 
@@ -297,7 +297,7 @@ func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []*Type
 				typeMap[typeStringer(unwrapType(ft))] = struct{}{}
 			}
 
-			dependencies = append(dependencies, newTypeInfo(field, nil))
+			dependencies = append(dependencies, TypeInfo{field})
 		}
 	}
 

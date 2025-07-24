@@ -82,13 +82,13 @@ func Test_ParseStructs(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    []*Struct
+		want    []Struct
 		wantErr bool
 	}{
 		{
 			name: "parse 1 file",
 			args: args{packageName: "resources", packagePath: "../testdata/resources/res1.go"},
-			want: []*Struct{
+			want: []Struct{
 				testStruct(t, "AddressType",
 					testField{"ID", basic(types.String), `spanner:"Id"`},
 					testField{"Description", basic(types.String), `spanner:"description"`},
@@ -319,7 +319,7 @@ func named(name string, typ types.Type) *types.Named {
 	return types.NewNamed(typeName(objName, pkg, typ), typ, nil)
 }
 
-func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) *Struct {
+func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) Struct {
 	t.Helper()
 
 	pkg, structName := pkgAndObjName(qualifiedName)
@@ -336,9 +336,6 @@ func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) *S
 	namedType := types.NewNamed(typeName(structName, pkg, structType), structType, nil)
 
 	s := newStruct(namedType.Obj(), nil)
-	if s == nil {
-		panic("could not create struct")
-	}
 
 	return s
 }

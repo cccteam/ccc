@@ -67,7 +67,7 @@ func (r *resourceGenerator) Generate(ctx context.Context) error {
 
 	resourcesPkg := parser.ParsePackage(packageMap["resources"])
 
-	resources, err := r.extractResources(resourcesPkg.Structs)
+	resources, err := r.extractResources(resourcesPkg.Structs, resourcesPkg.Fset)
 	if err != nil {
 		return err
 	}
@@ -87,13 +87,9 @@ func (r *resourceGenerator) Generate(ctx context.Context) error {
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
-		r.rpcMethods = nil
-		for _, s := range rpcStructs {
-			methodInfo, err := r.structToRPCMethod(s)
-			if err != nil {
-				return err
-			}
-			r.rpcMethods = append(r.rpcMethods, methodInfo)
+		r.rpcMethods, err = r.structsToRPCMethods(rpcStructs)
+		if err != nil {
+			return err
 		}
 
 		if err := r.runRPCGeneration(); err != nil {
@@ -126,8 +122,8 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 		return errors.Wrap(err, "c.generateResourceInterfaces()")
 	}
 
-	for _, resource := range r.resources {
-		if err := r.generateResources(resource); err != nil {
+	for i := range r.resources {
+		if err := r.generateResources(r.resources[i]); err != nil {
 			return errors.Wrap(err, "c.generateResources()")
 		}
 	}
@@ -197,7 +193,7 @@ func (r *resourceGenerator) generateResourceTests() error {
 	return nil
 }
 
-func (r *resourceGenerator) generateResources(res *resourceInfo) error {
+func (r *resourceGenerator) generateResources(res resourceInfo) error {
 	begin := time.Now()
 	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
 	destinationFilePath := filepath.Join(r.resourceDestination, fileName)
@@ -230,7 +226,7 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	return nil
 }
 
-func (r *resourceGenerator) generateEnums(ctx context.Context, namedTypes []*parser.NamedType) error {
+func (r *resourceGenerator) generateEnums(ctx context.Context, namedTypes []parser.NamedType) error {
 	enumMap, err := r.retrieveDatabaseEnumValues(ctx, namedTypes)
 	if err != nil {
 		return err
@@ -263,7 +259,7 @@ func (r *resourceGenerator) generateEnums(ctx context.Context, namedTypes []*par
 	return nil
 }
 
-func (r *resourceGenerator) retrieveDatabaseEnumValues(ctx context.Context, namedTypes []*parser.NamedType) (map[string][]enumData, error) {
+func (r *resourceGenerator) retrieveDatabaseEnumValues(ctx context.Context, namedTypes []parser.NamedType) (map[string][]enumData, error) {
 	enumMap := make(map[string][]enumData)
 	for _, namedType := range namedTypes {
 		scanner := genlang.NewScanner(keywords())

@@ -203,11 +203,11 @@ resourceRange:
 
 type rpcMethodInfo struct {
 	parser.Struct
-	Fields []*rpcField
+	Fields []rpcField
 }
 
 type rpcField struct {
-	*parser.Field
+	parser.Field
 	typescriptType string
 }
 
@@ -234,8 +234,8 @@ func (f *rpcField) TypescriptDataType() string {
 }
 
 type resourceInfo struct {
-	*parser.TypeInfo
-	Fields                []*resourceField
+	parser.TypeInfo
+	Fields                []resourceField
 	searchIndexes         map[string][]*searchExpression // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
 	IsView                bool                           // Determines how CreatePatch is rendered in resource generation.
 	HasCompoundPrimaryKey bool                           // Determines how CreatePatchSet is rendered in resource generation.
@@ -243,7 +243,7 @@ type resourceInfo struct {
 	PkCount               int
 }
 
-func (r *resourceInfo) SearchIndexes() []*searchIndex {
+func (r resourceInfo) SearchIndexes() []searchIndex {
 	typeIndexMap := make(map[resource.SearchType]string)
 	for searchIndex, expressionFields := range r.searchIndexes {
 		for _, exprField := range expressionFields {
@@ -251,9 +251,9 @@ func (r *resourceInfo) SearchIndexes() []*searchIndex {
 		}
 	}
 
-	var indexes []*searchIndex
+	var indexes []searchIndex
 	for tokenType, indexName := range typeIndexMap {
-		indexes = append(indexes, &searchIndex{
+		indexes = append(indexes, searchIndex{
 			Name:       indexName,
 			SearchType: string(tokenType),
 		})
@@ -262,7 +262,7 @@ func (r *resourceInfo) SearchIndexes() []*searchIndex {
 	return indexes
 }
 
-func (r *resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
+func (r resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
 	if r.HasCompoundPrimaryKey {
 		return false
 	}
@@ -278,7 +278,7 @@ func (r *resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
 	return false
 }
 
-func (r *resourceInfo) OperationPathPattern() string {
+func (r resourceInfo) OperationPathPattern() string {
 	if !r.HasCompoundPrimaryKey {
 		return "/{id}"
 	}
@@ -291,7 +291,7 @@ func (r *resourceInfo) OperationPathPattern() string {
 	return pattern
 }
 
-func (r *resourceInfo) PrimaryKeyType() string {
+func (r resourceInfo) PrimaryKeyType() string {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
 			return f.Type()
@@ -301,17 +301,17 @@ func (r *resourceInfo) PrimaryKeyType() string {
 	return ""
 }
 
-func (r *resourceInfo) PrimaryKey() *resourceField {
+func (r resourceInfo) PrimaryKey() *resourceField {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
-			return f
+			return &f
 		}
 	}
 
 	return nil
 }
 
-func (r *resourceInfo) IsQueryClauseEligible() bool {
+func (r resourceInfo) IsQueryClauseEligible() bool {
 	for _, field := range r.Fields {
 		if field.IsQueryClauseEligible() {
 			return true
@@ -322,7 +322,7 @@ func (r *resourceInfo) IsQueryClauseEligible() bool {
 }
 
 type resourceField struct {
-	*parser.Field
+	parser.Field
 	Parent         *resourceInfo
 	typescriptType string
 	// Spanner stuff
@@ -341,7 +341,7 @@ type resourceField struct {
 
 // When generating QueryClauses for Null-style wrapper types we want to use the underlying type
 // i.e. ccc.NullUUID -> ccc.UUID, spanner.NullString -> string
-func (f *resourceField) UnwrappedNullType() *string {
+func (f resourceField) UnwrappedNullType() *string {
 	if !strings.HasPrefix(f.DerefUnqualifiedType(), "Null") {
 		return nil
 	}
@@ -376,7 +376,7 @@ func (f *resourceField) UnwrappedNullType() *string {
 	return nil
 }
 
-func (f *resourceField) TypescriptDataType() string {
+func (f resourceField) TypescriptDataType() string {
 	if f.typescriptType == "uuid" {
 		return "string"
 	}
@@ -387,7 +387,7 @@ func (f *resourceField) TypescriptDataType() string {
 	return f.typescriptType
 }
 
-func (f *resourceField) TypescriptDisplayType() string {
+func (f resourceField) TypescriptDisplayType() string {
 	if f.IsEnumerated {
 		return "enumerated"
 	}
@@ -395,7 +395,7 @@ func (f *resourceField) TypescriptDisplayType() string {
 	return f.typescriptType
 }
 
-func (f *resourceField) JSONTag() string {
+func (f resourceField) JSONTag() string {
 	if f.IsInputOnly() {
 		return fmt.Sprintf("json:%q", "-")
 	}
@@ -410,7 +410,7 @@ func (f *resourceField) JSONTag() string {
 	return fmt.Sprintf("json:%q", camelCaseName+",omitzero")
 }
 
-func (f *resourceField) JSONTagForPatch() string {
+func (f resourceField) JSONTagForPatch() string {
 	if f.IsPrimaryKey || f.IsOutputOnly() {
 		return fmt.Sprintf("json:%q", "-")
 	}
@@ -421,7 +421,7 @@ func (f *resourceField) JSONTagForPatch() string {
 	return fmt.Sprintf("json:%q", camelCaseName)
 }
 
-func (f *resourceField) IndexTag() string {
+func (f resourceField) IndexTag() string {
 	if f.IsIndex {
 		return `index:"true"`
 	}
@@ -436,7 +436,7 @@ func (f *resourceField) IndexTag() string {
 	return ""
 }
 
-func (f *resourceField) UniqueIndexTag() string {
+func (f resourceField) UniqueIndexTag() string {
 	if f.IsUniqueIndex {
 		return `index:"true"`
 	}
@@ -444,7 +444,7 @@ func (f *resourceField) UniqueIndexTag() string {
 	return ""
 }
 
-func (f *resourceField) AllowFilterTag() string {
+func (f resourceField) AllowFilterTag() string {
 	if f.HasTag("allow_filter") {
 		return `allow_filter:"true"`
 	}
@@ -452,7 +452,7 @@ func (f *resourceField) AllowFilterTag() string {
 	return ""
 }
 
-func (f *resourceField) IsImmutable() bool {
+func (f resourceField) IsImmutable() bool {
 	tag, ok := f.LookupTag("conditions")
 	if !ok {
 		return false
@@ -463,7 +463,7 @@ func (f *resourceField) IsImmutable() bool {
 	return slices.Contains(conditions, "immutable")
 }
 
-func (f *resourceField) IsOutputOnly() bool {
+func (f resourceField) IsOutputOnly() bool {
 	tag, ok := f.LookupTag("conditions")
 	if !ok {
 		return false
@@ -474,7 +474,7 @@ func (f *resourceField) IsOutputOnly() bool {
 	return slices.Contains(conditions, "output_only")
 }
 
-func (f *resourceField) IsInputOnly() bool {
+func (f resourceField) IsInputOnly() bool {
 	tag, ok := f.LookupTag("conditions")
 	if !ok {
 		return false
@@ -485,7 +485,7 @@ func (f *resourceField) IsInputOnly() bool {
 	return slices.Contains(conditions, "input_only")
 }
 
-func (f *resourceField) DefaultCreateFuncName() string {
+func (f resourceField) DefaultCreateFuncName() string {
 	tag, ok := f.LookupTag("default_create_fn")
 	if !ok {
 		return ""
@@ -494,11 +494,11 @@ func (f *resourceField) DefaultCreateFuncName() string {
 	return tag
 }
 
-func (f *resourceField) HasDefaultCreateFunc() bool {
+func (f resourceField) HasDefaultCreateFunc() bool {
 	return f.DefaultCreateFuncName() != ""
 }
 
-func (f *resourceField) DefaultUpdateFuncName() string {
+func (f resourceField) DefaultUpdateFuncName() string {
 	tag, ok := f.LookupTag("default_update_fn")
 	if !ok {
 		return ""
@@ -507,11 +507,11 @@ func (f *resourceField) DefaultUpdateFuncName() string {
 	return tag
 }
 
-func (f *resourceField) HasDefaultUpdateFunc() bool {
+func (f resourceField) HasDefaultUpdateFunc() bool {
 	return f.DefaultUpdateFuncName() != ""
 }
 
-func (f *resourceField) QueryTag() string {
+func (f resourceField) QueryTag() string {
 	query, ok := f.LookupTag("query")
 	if !ok {
 		return ""
@@ -520,7 +520,7 @@ func (f *resourceField) QueryTag() string {
 	return fmt.Sprintf("query:%q", query)
 }
 
-func (f *resourceField) ReadPermTag() string {
+func (f resourceField) ReadPermTag() string {
 	tag, ok := f.LookupTag("perm")
 	if !ok {
 		return ""
@@ -535,7 +535,7 @@ func (f *resourceField) ReadPermTag() string {
 	return ""
 }
 
-func (f *resourceField) ListPermTag() string {
+func (f resourceField) ListPermTag() string {
 	tag, ok := f.LookupTag("perm")
 	if !ok {
 		return ""
@@ -550,7 +550,7 @@ func (f *resourceField) ListPermTag() string {
 	return ""
 }
 
-func (f *resourceField) PatchPermTag() string {
+func (f resourceField) PatchPermTag() string {
 	tag, ok := f.LookupTag("perm")
 	if !ok {
 		return ""
@@ -572,7 +572,7 @@ func (f *resourceField) PatchPermTag() string {
 	return ""
 }
 
-func (f *resourceField) ImmutableTag() string {
+func (f resourceField) ImmutableTag() string {
 	if f.IsImmutable() {
 		return `immutable:"true"`
 	}
@@ -580,7 +580,7 @@ func (f *resourceField) ImmutableTag() string {
 	return ""
 }
 
-func (f *resourceField) SearchIndexTags() string {
+func (f resourceField) SearchIndexTags() string {
 	typeIndexMap := make(map[resource.SearchType][]string)
 	for searchIndex, expressionFields := range f.Parent.searchIndexes {
 		for _, exprField := range expressionFields {
@@ -599,11 +599,11 @@ func (f *resourceField) SearchIndexTags() string {
 	return strings.Join(tags, " ")
 }
 
-func (f *resourceField) IsView() bool {
+func (f resourceField) IsView() bool {
 	return f.Parent.IsView
 }
 
-func (f *resourceField) IsRequired() bool {
+func (f resourceField) IsRequired() bool {
 	if f.IsPrimaryKey && f.Type() != "ccc.UUID" {
 		return true
 	}
@@ -615,7 +615,7 @@ func (f *resourceField) IsRequired() bool {
 	return false
 }
 
-func (f *resourceField) IsQueryClauseEligible() bool {
+func (f resourceField) IsQueryClauseEligible() bool {
 	if f.IsIndex || f.IsUniqueIndex {
 		return true
 	}
