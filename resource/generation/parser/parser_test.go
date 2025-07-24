@@ -132,8 +132,8 @@ func Test_ParseStructs(t *testing.T) {
 			}
 
 			for i := range parsedStructs {
-				if parsedStructs[i].name != tt.want[i].name {
-					t.Errorf("parseStructs() struct name = %s, want %v", parsedStructs[i].name, tt.want[i].name)
+				if parsedStructs[i].Name() != tt.want[i].Name() {
+					t.Errorf("parseStructs() struct name = %s, want %v", parsedStructs[i].Name(), tt.want[i].Name())
 				}
 
 				for j := range parsedStructs[i].fields {
@@ -144,7 +144,7 @@ func Test_ParseStructs(t *testing.T) {
 						t.Errorf("parseStructs() field Type = %v, want %v", parsedStructs[i].fields[j].Type(), tt.want[i].fields[j].Type())
 					}
 					if parsedStructs[i].fields[j].tags != tt.want[i].fields[j].tags {
-						t.Errorf("parseStructs() field %q.%q has tags = %v, want %v", parsedStructs[i].name, parsedStructs[i].fields[j].name, parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
+						t.Errorf("parseStructs() field %q.%q has tags = %v, want %v", parsedStructs[i].Name(), parsedStructs[i].fields[j].Name(), parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
 					}
 					if parsedStructs[i].fields[j].Name() != parsedStructs[i].fields[j].astInfo.Names[0].Name {
 						t.Errorf("parseStructs field name=%q, ast.Field name=%q", parsedStructs[i].fields[j].Name(), parsedStructs[i].fields[j].astInfo.Names[0].Name)
@@ -271,7 +271,7 @@ func Test_localTypesFromStruct(t *testing.T) {
 
 			var typeNames []string
 			for _, localType := range localTypesFromStruct(obj, map[string]struct{}{}) {
-				typeNames = append(typeNames, typeStringer(localType.tt))
+				typeNames = append(typeNames, typeStringer(localType.obj.Type()))
 			}
 
 			if !slices.Equal(typeNames, tt.want) && !tt.wantFail {

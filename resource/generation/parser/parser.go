@@ -130,7 +130,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 			var namedType NamedType
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name) // NamedType's name
 
-			namedType.TypeInfo = newTypeInfo(obj, pkg.Fset, false)
+			namedType.TypeInfo = newTypeInfo(obj, pkg.Fset)
 
 			if typeSpecs[i].Doc != nil {
 				namedType.Comments = typeSpecs[i].Doc.Text()
@@ -177,7 +177,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 	for i := range parsedStructs {
 		for j := range interfaces {
 			// Necessary to check non-pointer and pointer receivers
-			if types.Implements(parsedStructs[i].tt, interfaces[j].iface) || types.Implements(types.NewPointer(parsedStructs[i].tt), interfaces[j].iface) {
+			if types.Implements(parsedStructs[i].obj.Type(), interfaces[j].iface) || types.Implements(types.NewPointer(parsedStructs[i].obj.Type()), interfaces[j].iface) {
 				parsedStructs[i].SetInterface(interfaces[j].Name)
 			}
 		}
@@ -297,7 +297,7 @@ func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []*Type
 				typeMap[typeStringer(unwrapType(ft))] = struct{}{}
 			}
 
-			dependencies = append(dependencies, newTypeInfo(field, nil, true))
+			dependencies = append(dependencies, newTypeInfo(field, nil))
 		}
 	}
 
