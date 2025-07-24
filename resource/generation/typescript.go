@@ -76,6 +76,8 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 func (t *typescriptGenerator) Generate(ctx context.Context) error {
 	log.Println("Starting TypescriptGenerator Generation")
 
+	begin := time.Now()
+
 	packageMap, err := parser.LoadPackages(t.loadPackages...)
 	if err != nil {
 		return err
@@ -122,6 +124,8 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 			return err
 		}
 	}
+
+	log.Printf("Finished Typescript generation in %s\n", time.Since(begin))
 
 	return nil
 }

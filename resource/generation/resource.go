@@ -58,6 +58,8 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 func (r *resourceGenerator) Generate(ctx context.Context) error {
 	log.Println("Starting ResourceGenerator Generation")
 
+	begin := time.Now()
+
 	packageMap, err := parser.LoadPackages(r.loadPackages...)
 	if err != nil {
 		return err
@@ -109,6 +111,8 @@ func (r *resourceGenerator) Generate(ctx context.Context) error {
 			return err
 		}
 	}
+
+	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
 
 	return nil
 }
