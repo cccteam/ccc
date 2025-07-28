@@ -540,13 +540,18 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*s
 	return flds, nil
 }
 
+// Returns slice of applicable handler types for a given resource.
+// Every resource starts with a List handler.
+// Views do not have Read handlers.
+// Consolidated resources do not have Patch handlers.
+// Ignored handler types are filtered out.
 func (c *client) resourceEndpoints(resource resourceInfo) []HandlerType {
 	handlerTypes := []HandlerType{ListHandler}
 
 	if !resource.IsView {
 		handlerTypes = append(handlerTypes, ReadHandler)
 
-		if resource.IsConsolidated == c.consolidateAll {
+		if !resource.IsConsolidated && !c.consolidateAll {
 			handlerTypes = append(handlerTypes, PatchHandler)
 		}
 	}

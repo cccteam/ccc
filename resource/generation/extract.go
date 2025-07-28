@@ -17,11 +17,12 @@ func (c *client) extractResources(structs []parser.Struct) ([]resourceInfo, erro
 		}
 
 		resource := resourceInfo{
-			TypeInfo:       pStruct.TypeInfo,
-			Fields:         make([]resourceField, len(pStruct.Fields())),
-			IsView:         table.IsView,
-			searchIndexes:  table.SearchIndexes,
-			IsConsolidated: !table.IsView && slices.Contains(c.consolidatedResourceNames, pStruct.Name()) != c.consolidateAll,
+			TypeInfo:      pStruct.TypeInfo,
+			Fields:        make([]resourceField, len(pStruct.Fields())),
+			IsView:        table.IsView,
+			searchIndexes: table.SearchIndexes,
+			// Consolidate resource if it is not a view and it is in consolidated list
+			IsConsolidated: !table.IsView && (slices.Contains(c.consolidatedResourceNames, pStruct.Name()) || c.consolidateAll),
 			PkCount:        table.PkCount,
 		}
 
