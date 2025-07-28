@@ -85,7 +85,7 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 
 	resourcesPkg := parser.ParsePackage(packageMap["resources"])
 
-	resources, err := t.extractResources(resourcesPkg.Structs, resourcesPkg.Fset)
+	resources, err := t.extractResources(resourcesPkg.Structs)
 	if err != nil {
 		return err
 	}

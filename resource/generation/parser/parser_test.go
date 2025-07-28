@@ -146,9 +146,6 @@ func Test_ParseStructs(t *testing.T) {
 					if parsedStructs[i].fields[j].tags != tt.want[i].fields[j].tags {
 						t.Errorf("parseStructs() field %q.%q has tags = %v, want %v", parsedStructs[i].Name(), parsedStructs[i].fields[j].Name(), parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
 					}
-					if parsedStructs[i].fields[j].Name() != parsedStructs[i].fields[j].astInfo.Names[0].Name {
-						t.Errorf("parseStructs field name=%q, ast.Field name=%q", parsedStructs[i].fields[j].Name(), parsedStructs[i].fields[j].astInfo.Names[0].Name)
-					}
 				}
 			}
 		})
@@ -335,7 +332,7 @@ func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) St
 
 	namedType := types.NewNamed(typeName(structName, pkg, structType), structType, nil)
 
-	s := newStruct(namedType.Obj(), nil)
+	s := newStruct(namedType.Obj())
 
 	return s
 }

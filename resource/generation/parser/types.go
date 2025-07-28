@@ -13,7 +13,6 @@ import (
 type Package struct {
 	Structs    []Struct
 	NamedTypes []NamedType
-	Fset       *token.FileSet
 }
 
 type TypeInfo struct {
@@ -96,19 +95,14 @@ type Interface struct {
 
 type Struct struct {
 	TypeInfo
-	astInfo    *ast.StructType
 	fields     []Field
 	interfaces []string
 	methodSet  map[string]struct{}
 	comments   string
 }
 
-func newStruct(obj types.Object, fset *token.FileSet) Struct {
+func newStruct(obj types.Object) Struct {
 	tt := obj.Type()
-
-	if fset == nil {
-		fset = token.NewFileSet()
-	}
 
 	st, ok := decodeToType[*types.Struct](tt)
 	if !ok {
@@ -220,9 +214,6 @@ func (s Struct) Fields() []Field {
 	return s.fields
 }
 
-func (s Struct) Error(fset *token.FileSet) string {
-	return fmt.Sprintf("%s at %s", s.Name(), fset.Position(s.astInfo.Pos()))
-}
 
 func (s Struct) HasMethod(methodName string) bool {
 	_, ok := s.methodSet[methodName]
@@ -253,7 +244,7 @@ func (f Field) HasTag(key string) bool {
 }
 
 func (f Field) AsStruct() *Struct {
-	s := newStruct(f.obj, nil)
+	s := newStruct(f.obj)
 
 	if s.TypeInfo.obj == nil {
 		return nil

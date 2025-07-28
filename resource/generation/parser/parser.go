@@ -74,23 +74,25 @@ func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 	}
 
 	if len(pkgs) == 0 {
-		return nil, errors.New("no packages loaded")
+		return nil, errors.Newf("no packages loaded for pattern %v", packagePatterns)
 	}
 
 	for _, pkg := range pkgs {
-		if len(pkg.Errors) > 0 {
-			return nil, errors.Wrap(pkg.Errors[0], "packages.Load() package error:")
-		}
-		if len(pkg.TypeErrors) > 0 {
-			return nil, errors.Wrap(pkg.TypeErrors[0], "packages.Load() type error:")
+		if len(pkg.Errors) > 0 || len(pkg.TypeErrors) > 0 {
+			var err error
+			for _, e := range pkg.Errors {
+				err = errors.Join(e)
+			}
+
+			for _, e := range pkg.TypeErrors {
+				err = errors.Join(e)
+			}
+
+			return nil, errors.Wrap(err, "packages.Load() package error(s):")
 		}
 
 		if len(pkg.GoFiles) == 0 || pkg.GoFiles[0] == "" {
-			return nil, errors.Newf("package %q: no files loaded", pkg.Name)
-		}
-
-		if pkg.Types == nil {
-			return nil, errors.Newf("package %q: types not loaded", pkg.Name)
+			return nil, errors.Newf("no files were loaded for package %q", pkg.Name)
 		}
 	}
 
@@ -121,7 +123,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 	parsedStructs := make([]Struct, 0, 128)
 	namedTypes := make([]NamedType, 0, 16)
 	for i := range typeSpecs {
-		switch typeSpecs[i].Type.(type) {
+		switch astNode := typeSpecs[i].Type.(type) {
 		case *ast.InterfaceType:
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
 			iface, _ := decodeToType[*types.Interface](obj.Type())
@@ -141,7 +143,8 @@ func ParsePackage(pkg *packages.Package) *Package {
 
 			namedTypes = append(namedTypes, namedType)
 		case *ast.StructType:
-			pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name), pkg.Fset)
+			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
+			pStruct := newStruct(obj)
 			if pStruct.TypeInfo.obj == nil { // nil pStruct is anonymous struct
 				continue
 			}
@@ -153,14 +156,8 @@ func ParsePackage(pkg *packages.Package) *Package {
 				pStruct.comments += typeSpecs[i].Comment.Text()
 			}
 
-			var ok bool
-			pStruct.astInfo, ok = typeSpecs[i].Type.(*ast.StructType)
-			if !ok {
-				continue
-			}
-
 			for j := range pStruct.fields {
-				pStruct.fields[j].astInfo = pStruct.astInfo.Fields.List[j]
+				pStruct.fields[j].astInfo = astNode.Fields.List[j]
 
 				if pStruct.fields[j].astInfo.Doc != nil {
 					pStruct.fields[j].comments = pStruct.fields[j].astInfo.Doc.Text()
@@ -189,7 +186,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 
 	slices.SortFunc(parsedStructs, compareFn)
 
-	return &Package{Structs: parsedStructs, NamedTypes: namedTypes, Fset: pkg.Fset}
+	return &Package{Structs: slices.Clip(parsedStructs), NamedTypes: slices.Clip(namedTypes)}
 }
 
 func FilterStructsByInterface(pStructs []Struct, interfaceNames []string) []Struct {

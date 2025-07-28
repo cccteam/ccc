@@ -67,7 +67,7 @@ func (r *resourceGenerator) Generate(ctx context.Context) error {
 
 	resourcesPkg := parser.ParsePackage(packageMap["resources"])
 
-	resources, err := r.extractResources(resourcesPkg.Structs, resourcesPkg.Fset)
+	resources, err := r.extractResources(resourcesPkg.Structs)
 	if err != nil {
 		return err
 	}

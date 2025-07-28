@@ -2,19 +2,18 @@ package generation
 
 import (
 	"fmt"
-	"go/token"
 	"slices"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *client) extractResources(structs []parser.Struct, fset *token.FileSet) ([]resourceInfo, error) {
+func (c *client) extractResources(structs []parser.Struct) ([]resourceInfo, error) {
 	resources := make([]resourceInfo, 0, len(structs))
 	for _, pStruct := range structs {
 		table, err := c.lookupTable(pStruct.Name())
 		if err != nil {
-			return nil, errors.Wrapf(err, "struct %s is not in lookupTable", pStruct.Error(fset))
+			return nil, err
 		}
 
 		resource := resourceInfo{
@@ -30,11 +29,11 @@ func (c *client) extractResources(structs []parser.Struct, fset *token.FileSet) 
 		for i, field := range pStruct.Fields() {
 			spannerTag, ok := field.LookupTag("spanner")
 			if !ok {
-				return nil, errors.Newf("field %s \n%s", field.Error(fset), pStruct.PrintWithFieldError(i, "missing spanner tag"))
+				return nil, errors.Newf("field %s \n%s", field.Name(), pStruct.PrintWithFieldError(i, "missing spanner tag"))
 			}
 			tableColumn, ok := table.Columns[spannerTag]
 			if !ok {
-				return nil, errors.Newf("field %s \n%s", field.Error(fset), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(pStruct.Name()))))
+				return nil, errors.Newf("field %s \n%s", field.Name(), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(pStruct.Name()))))
 			}
 			_, hasIndexTag := field.LookupTag("index")
 			if !table.IsView && hasIndexTag {

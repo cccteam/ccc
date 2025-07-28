@@ -311,7 +311,7 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 	table, ok := c.tableMap[c.pluralize(resourceName)]
 	if !ok {
-		return nil, errors.Newf("resourceName %q pluralized as %q not in tableMetadata", resourceName, c.pluralize(resourceName))
+		return nil, errors.Newf("resource %q pluralized as %q not in tableMetadata", resourceName, c.pluralize(resourceName))
 	}
 
 	return table, nil
