@@ -3,6 +3,7 @@ package generation
 import (
 	"context"
 	"fmt"
+	"iter"
 	"regexp"
 	"slices"
 	"strings"
@@ -235,12 +236,11 @@ func (f *rpcField) TypescriptDataType() string {
 
 type resourceInfo struct {
 	parser.TypeInfo
-	Fields                []resourceField
-	searchIndexes         map[string][]*searchExpression // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
-	IsView                bool                           // Determines how CreatePatch is rendered in resource generation.
-	HasCompoundPrimaryKey bool                           // Determines how CreatePatchSet is rendered in resource generation.
-	IsConsolidated        bool
-	PkCount               int
+	Fields         []resourceField
+	searchIndexes  map[string][]*searchExpression // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
+	IsView         bool                           // Determines how CreatePatch is rendered in resource generation.
+	IsConsolidated bool
+	PkCount        int
 }
 
 func (r resourceInfo) SearchIndexes() []searchIndex {
@@ -262,10 +262,32 @@ func (r resourceInfo) SearchIndexes() []searchIndex {
 	return indexes
 }
 
+func (r resourceInfo) PrimaryKeys() iter.Seq2[int, resourceField] {
+	i := 1
+	return func(yield func(int, resourceField) bool) {
+		for _, f := range r.Fields {
+			if !f.IsPrimaryKey {
+				continue
+			}
+
+			if !yield(i, f) {
+				return
+			}
+
+			i++
+		}
+	}
+}
+
+func (r resourceInfo) HasCompoundPrimaryKey() bool {
+	return r.PkCount > 1
+}
+
 func (r resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
-	if r.HasCompoundPrimaryKey {
+	if r.PkCount > 1 {
 		return false
 	}
+
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
 			if f.IsForeignKey {
@@ -279,7 +301,7 @@ func (r resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
 }
 
 func (r resourceInfo) OperationPathPattern() string {
-	if !r.HasCompoundPrimaryKey {
+	if r.PkCount == 1 {
 		return "/{id}"
 	}
 

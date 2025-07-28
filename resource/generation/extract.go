@@ -17,13 +17,12 @@ func (c *client) extractResources(structs []parser.Struct) ([]resourceInfo, erro
 		}
 
 		resource := resourceInfo{
-			TypeInfo:              pStruct.TypeInfo,
-			Fields:                make([]resourceField, len(pStruct.Fields())),
-			IsView:                table.IsView,
-			searchIndexes:         table.SearchIndexes,
-			HasCompoundPrimaryKey: table.PkCount > 1,
-			IsConsolidated:        !table.IsView && slices.Contains(c.consolidatedResourceNames, pStruct.Name()) != c.consolidateAll,
-			PkCount:               table.PkCount,
+			TypeInfo:       pStruct.TypeInfo,
+			Fields:         make([]resourceField, len(pStruct.Fields())),
+			IsView:         table.IsView,
+			searchIndexes:  table.SearchIndexes,
+			IsConsolidated: !table.IsView && slices.Contains(c.consolidatedResourceNames, pStruct.Name()) != c.consolidateAll,
+			PkCount:        table.PkCount,
 		}
 
 		for i, field := range pStruct.Fields() {
