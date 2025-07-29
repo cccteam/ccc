@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
+	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -24,6 +25,31 @@ func (c *client) extractResources(structs []parser.Struct) ([]resourceInfo, erro
 			// Consolidate resource if it is not a view and it is in consolidated list
 			IsConsolidated: !table.IsView && (slices.Contains(c.consolidatedResourceNames, pStruct.Name()) || c.consolidateAll),
 			PkCount:        table.PkCount,
+		}
+
+		scanner := genlang.NewScanner(keywords())
+		result, err := scanner.ScanStruct(pStruct)
+		if err != nil {
+			return nil, errors.Wrap(err, "scanner.ScanStruct()")
+		}
+
+		if result.Struct.Has(suppressKeyword) {
+		suppressLoop:
+			for i, handlerArg := range result.Struct.Get(suppressKeyword) {
+				switch HandlerType(handlerArg.Arg1) {
+				case AllHandlers:
+					resource.SuppressedHandlers = [3]HandlerType{ListHandler, ReadHandler, PatchHandler}
+					break suppressLoop
+				case ListHandler:
+					resource.SuppressedHandlers[i] = ListHandler
+				case ReadHandler:
+					resource.SuppressedHandlers[i] = ReadHandler
+				case PatchHandler:
+					resource.SuppressedHandlers[i] = PatchHandler
+				default:
+					return nil, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s", handlerArg.Arg1, pStruct.Name())
+				}
+			}
 		}
 
 		for i, field := range pStruct.Fields() {

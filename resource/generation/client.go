@@ -223,16 +223,10 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 		if r.IsPrimaryKey {
 			table.PkCount++
 			column.IsPrimaryKey = true
-			if !slices.Contains(column.ConstraintTypes, PrimaryKey) {
-				column.ConstraintTypes = append(column.ConstraintTypes, PrimaryKey)
-			}
 		}
 
 		if r.IsForeignKey {
 			column.IsForeignKey = true
-			if !slices.Contains(column.ConstraintTypes, ForeignKey) {
-				column.ConstraintTypes = append(column.ConstraintTypes, ForeignKey)
-			}
 
 			if r.ReferencedTable != nil {
 				column.ReferencedTable = *r.ReferencedTable
@@ -556,21 +550,11 @@ func (c *client) resourceEndpoints(resource resourceInfo) []HandlerType {
 		}
 	}
 
-	endpointOptions, ok := c.handlerOptions[resource.Name()]
-	if !ok {
-		return handlerTypes
-	}
+	handlerTypes = slices.DeleteFunc(handlerTypes, func(ht HandlerType) bool {
+		return slices.Contains(resource.SuppressedHandlers[:], ht)
+	})
 
-	filteredHandlerTypes := handlerTypes[:0]
-	for _, ht := range handlerTypes {
-		if slices.Contains(endpointOptions[ht], NoGenerate) {
-			continue
-		}
-
-		filteredHandlerTypes = append(filteredHandlerTypes, ht)
-	}
-
-	return filteredHandlerTypes
+	return handlerTypes
 }
 
 func (c *client) sanitizeEnumIdentifier(name string) string {

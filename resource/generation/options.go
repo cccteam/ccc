@@ -4,7 +4,6 @@ import (
 	"maps"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"time"
 
 	"cloud.google.com/go/civil"
@@ -45,26 +44,11 @@ func (Option) isTypescriptOption() {}
 
 // ignoredHandlers maps the name of a resource and to handler types (list, read, patch)
 // that you do not want generated for that resource
-func GenerateHandlers(targetDir string, ignoreHandlers SuppressHandlerGeneration) ResourceOption {
+func GenerateHandlers(targetDir string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genHandlers = true
 		r.handlerDestination = targetDir
 
-		if ignoreHandlers != nil {
-			r.handlerOptions = make(map[string]map[HandlerType][]OptionType)
-
-			for structName, handlerTypes := range ignoreHandlers {
-				if slices.Contains(handlerTypes, AllHandlers) {
-					handlerTypes = []HandlerType{ListHandler, ReadHandler, PatchHandler}
-				}
-				for _, handlerType := range handlerTypes {
-					if _, ok := r.handlerOptions[structName]; !ok {
-						r.handlerOptions[structName] = make(map[HandlerType][]OptionType)
-					}
-					r.handlerOptions[structName][handlerType] = append(r.handlerOptions[structName][handlerType], NoGenerate)
-				}
-			}
-		}
 
 		return nil
 	})

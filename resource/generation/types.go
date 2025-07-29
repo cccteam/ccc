@@ -22,29 +22,11 @@ type Generator interface {
 	Close()
 }
 
-type field interface {
-	// Returns true if field type is iterable (slice or array), false otherwise.
-	IsIterable() bool
-
-	// Qualified type without array/slice/pointer prefix.
-	// e.g. *ccc.UUID -> ccc.UUID, []ccc.UUID -> ccc.UUID
-	TypeName() string
-}
-
 var tokenizeRegex = regexp.MustCompile(`(TOKENIZE_[^)]+)\(([^)]+)\)`)
 
 const (
 	genPrefix = "zz_gen"
 )
-
-type ConstraintType string
-
-const (
-	PrimaryKey ConstraintType = "PRIMARY KEY"
-	ForeignKey ConstraintType = "FOREIGN KEY"
-)
-
-type SuppressHandlerGeneration map[string][]HandlerType
 
 type HandlerType string
 
@@ -81,11 +63,6 @@ func (h HandlerType) Method() string {
 
 type OptionType string
 
-const (
-	Regenerate OptionType = "regenerate"
-	NoGenerate OptionType = "nogenerate"
-)
-
 type PatchType string
 
 const (
@@ -106,7 +83,7 @@ const (
 	querySetOutputFileName        = "types.go"
 	resourceInterfaceOutputName   = "resources_iface"
 	resourcesTestFileName         = "resource_types_test.go"
-	resourceEnumsFileName         = "_enums.go"
+	resourceEnumsFileName         = "enums"
 	routesOutputName              = "routes"
 	routerTestOutputName          = "routes_test"
 	consolidatedHandlerOutputName = "consolidated_handler"
@@ -153,7 +130,6 @@ type tableMetadata struct {
 
 type columnMeta struct {
 	ColumnName         string
-	ConstraintTypes    []ConstraintType
 	IsPrimaryKey       bool
 	IsForeignKey       bool
 	SpannerType        string
@@ -165,16 +141,6 @@ type columnMeta struct {
 	ReferencedTable    string
 	ReferencedColumn   string
 	HasDefault         bool
-}
-
-type generationOption struct {
-	option  OptionType
-	handler HandlerType
-}
-
-type generatedHandler struct {
-	template    string
-	handlerType HandlerType
 }
 
 type generatedRoute struct {
@@ -236,11 +202,12 @@ func (f *rpcField) TypescriptDataType() string {
 
 type resourceInfo struct {
 	parser.TypeInfo
-	Fields         []resourceField
-	searchIndexes  map[string][]*searchExpression // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
-	IsView         bool                           // Determines how CreatePatch is rendered in resource generation.
-	IsConsolidated bool
-	PkCount        int
+	Fields             []resourceField
+	SuppressedHandlers [3]HandlerType
+	searchIndexes      map[string][]*searchExpression // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
+	IsView             bool                           // Determines how CreatePatch is rendered in resource generation.
+	IsConsolidated     bool
+	PkCount            int
 }
 
 func (r resourceInfo) SearchIndexes() []searchIndex {
@@ -675,11 +642,13 @@ const (
 )
 
 const (
-	keywordEnumerate string = "enumerate" // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
+	enumerateKeyword string = "enumerate" // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
+	suppressKeyword  string = "suppress"  // Suppresses specified handler types from being generated
 )
 
 func keywords() map[string]genlang.KeywordOpts {
 	return map[string]genlang.KeywordOpts{
-		keywordEnumerate: {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
+		enumerateKeyword: {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
+		suppressKeyword:  {genlang.ScanStruct: genlang.ArgsRequired},
 	}
 }

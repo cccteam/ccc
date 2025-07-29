@@ -241,7 +241,7 @@ func (r *resourceGenerator) generateEnums(ctx context.Context, namedTypes []pars
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	file, err := os.Create(filepath.Join(r.resourceDestination, genPrefix+resourceEnumsFileName))
+	file, err := os.Create(filepath.Join(r.resourceDestination, generatedFileName(resourceEnumsFileName)))
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
 	}
@@ -269,8 +269,8 @@ func (r *resourceGenerator) retrieveDatabaseEnumValues(ctx context.Context, name
 		}
 
 		var resourceName string
-		if result.Named.Has("enumerate") {
-			resourceName = result.Named.Get("enumerate")[0].Arg1
+		if result.Named.Has(enumerateKeyword) {
+			resourceName = result.Named.GetOne(enumerateKeyword).Arg1
 		} else {
 			continue
 		}
