@@ -129,7 +129,7 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	begin := time.Now()
 	if !t.genMetadata {
-		if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+		if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 			return errors.Wrap(err, "removeGeneratedFiles()")
 		}
 	}
@@ -173,7 +173,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 }
 
 func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
-	if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+	if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 

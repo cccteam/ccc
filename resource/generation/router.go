@@ -15,7 +15,7 @@ import (
 
 func (r *resourceGenerator) runRouteGeneration() error {
 	begin := time.Now()
-	if err := removeGeneratedFiles(r.routerDestination, Prefix); err != nil {
+	if err := RemoveGeneratedFiles(r.routerDestination, Prefix); err != nil {
 		return err
 	}
 

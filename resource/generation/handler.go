@@ -14,7 +14,7 @@ import (
 )
 
 func (r *resourceGenerator) runHandlerGeneration() error {
-	if err := removeGeneratedFiles(r.handlerDestination, Prefix); err != nil {
+	if err := RemoveGeneratedFiles(r.handlerDestination, Prefix); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
