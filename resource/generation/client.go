@@ -398,7 +398,7 @@ func (c *client) pluralize(value string) string {
 	return pluralValue
 }
 
-func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) error {
+func RemoveGeneratedFiles(directory string, method GeneratedFileDeleteMethod) error {
 	log.Printf("removing generated files in directory %q...", directory)
 	dir, err := os.Open(directory)
 	if err != nil {

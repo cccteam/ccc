@@ -114,7 +114,7 @@ func (r *resourceGenerator) Generate(ctx context.Context) error {
 }
 
 func (r *resourceGenerator) runResourcesGeneration() error {
-	if err := removeGeneratedFiles(r.resourceDestination, Prefix); err != nil {
+	if err := RemoveGeneratedFiles(r.resourceDestination, Prefix); err != nil {
 		return err
 	}
 

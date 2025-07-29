@@ -15,10 +15,10 @@ import (
 )
 
 func (r *resourceGenerator) runRPCGeneration() error {
-	if err := removeGeneratedFiles(r.rpcPackageDir, Prefix); err != nil {
+	if err := RemoveGeneratedFiles(r.rpcPackageDir, Prefix); err != nil {
 		return err
 	}
-	if err := removeGeneratedFiles(r.businessLayerPackageDir, Prefix); err != nil {
+	if err := RemoveGeneratedFiles(r.businessLayerPackageDir, Prefix); err != nil {
 		return err
 	}
 
