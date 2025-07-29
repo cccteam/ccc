@@ -39,6 +39,8 @@ func (c *client) extractResources(structs []parser.Struct) ([]resourceInfo, erro
 				switch HandlerType(handlerArg.Arg1) {
 				case AllHandlers:
 					resource.SuppressedHandlers = [3]HandlerType{ListHandler, ReadHandler, PatchHandler}
+					resource.IsConsolidated = false
+
 					break suppressLoop
 				case ListHandler:
 					resource.SuppressedHandlers[i] = ListHandler
@@ -46,6 +48,7 @@ func (c *client) extractResources(structs []parser.Struct) ([]resourceInfo, erro
 					resource.SuppressedHandlers[i] = ReadHandler
 				case PatchHandler:
 					resource.SuppressedHandlers[i] = PatchHandler
+					resource.IsConsolidated = false
 				default:
 					return nil, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s", handlerArg.Arg1, pStruct.Name())
 				}
