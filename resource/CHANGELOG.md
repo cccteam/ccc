@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/cccteam/ccc/compare/resource/v0.2.4...resource/v0.2.5) (2025-07-31)
+
+
+### Bug Fixes
+
+* Handle named types where underlying type is supported by spanner ([#385](https://github.com/cccteam/ccc/issues/385)) ([0dca4bd](https://github.com/cccteam/ccc/commit/0dca4bdf4c708e6e681038bdc9ee21f0f2b39188))
+
 ## [0.2.4](https://github.com/cccteam/ccc/compare/resource/v0.2.3...resource/v0.2.4) (2025-07-29)
 
 
