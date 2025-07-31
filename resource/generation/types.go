@@ -416,6 +416,10 @@ func (f resourceField) TypescriptDisplayType() string {
 		return "enumerated"
 	}
 
+	if f.typescriptType == "boolean" && f.IsNullable {
+		return "enumerated"
+	}
+
 	return f.typescriptType
 }
 
