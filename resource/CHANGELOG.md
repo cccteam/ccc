@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/cccteam/ccc/compare/resource/v0.2.5...resource/v0.2.6) (2025-07-31)
+
+
+### Code Refactoring
+
+* consolidated handlers generation ([#382](https://github.com/cccteam/ccc/issues/382)) ([70fb1a8](https://github.com/cccteam/ccc/commit/70fb1a846b5636a6bcb530b8413351e3324e6f11))
+
 ## [0.2.5](https://github.com/cccteam/ccc/compare/resource/v0.2.4...resource/v0.2.5) (2025-07-31)
 
 
