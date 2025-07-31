@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 )
 
@@ -24,24 +25,32 @@ func (s SortTestResource) DefaultConfig() Config {
 	}
 }
 
-func TestQuerySet_SpannerStmt_OrderBy(t *testing.T) {
+func TestQuerySet_SpannerStmt_OrderBy_Limit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name                 string
 		sortFields           []SortField
+		limit                *uint64
 		wantQueryContains    string
 		wantErrorMsgContains string
 		wantErr              bool
 		assertFunc           func(t *testing.T, sql string, wantContains string)
 	}{
 		{
-			name:              "no sort fields",
-			sortFields:        []SortField{},
-			wantQueryContains: "ORDER BY", // Expect ORDER BY to be absent
+			name:              "with limit",
+			limit:             ccc.Ptr(uint64(10)),
+			wantQueryContains: "LIMIT 10",
+		},
+		{
+			name:       "no sort fields or limit",
+			sortFields: []SortField{},
 			assertFunc: func(t *testing.T, sql string, wantContains string) {
-				if strings.Contains(sql, wantContains) {
-					t.Errorf("Expected SQL NOT to contain '%s', but got: %s", wantContains, sql)
+				if strings.Contains(sql, "ORDER BY") {
+					t.Errorf("Expected SQL NOT to contain 'ORDER BY', but got: %s", sql)
+				}
+				if strings.Contains(sql, "LIMIT") {
+					t.Errorf("Expected SQL NOT to contain 'LIMIT', but got: %s", sql)
 				}
 			},
 		},
@@ -84,6 +93,9 @@ func TestQuerySet_SpannerStmt_OrderBy(t *testing.T) {
 			qSet.AddField("ID")
 
 			qSet.SetSortFields(tt.sortFields)
+			if tt.limit != nil {
+				qSet.SetLimit(tt.limit)
+			}
 			stmt, err := qSet.SpannerStmt()
 
 			if tt.wantErr {
@@ -111,24 +123,32 @@ func TestQuerySet_SpannerStmt_OrderBy(t *testing.T) {
 	}
 }
 
-func TestQuerySet_PostgresStmt_OrderBy(t *testing.T) {
+func TestQuerySet_PostgresStmt_OrderBy_Limit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name                 string
 		sortFields           []SortField
+		limit                *uint64
 		wantQueryContains    string
 		wantErrorMsgContains string
 		wantErr              bool
 		assertFunc           func(t *testing.T, sql string, wantContains string)
 	}{
 		{
-			name:              "no sort fields",
-			sortFields:        []SortField{},
-			wantQueryContains: "ORDER BY", // Expect ORDER BY to be absent
+			name:              "with limit",
+			limit:             ccc.Ptr(uint64(10)),
+			wantQueryContains: "LIMIT 10",
+		},
+		{
+			name:       "no sort fields or limit",
+			sortFields: []SortField{},
 			assertFunc: func(t *testing.T, sql string, wantContains string) {
-				if strings.Contains(sql, wantContains) {
-					t.Errorf("Expected SQL NOT to contain '%s', but got: %s", wantContains, sql)
+				if strings.Contains(sql, "ORDER BY") {
+					t.Errorf("Expected SQL NOT to contain 'ORDER BY', but got: %s", sql)
+				}
+				if strings.Contains(sql, "LIMIT") {
+					t.Errorf("Expected SQL NOT to contain 'LIMIT', but got: %s", sql)
 				}
 			},
 		},
@@ -171,6 +191,9 @@ func TestQuerySet_PostgresStmt_OrderBy(t *testing.T) {
 			qSet.AddField("ID") // Add a default field to make the SELECT valid
 
 			qSet.SetSortFields(tt.sortFields)
+			if tt.limit != nil {
+				qSet.SetLimit(tt.limit)
+			}
 			stmt, err := qSet.PostgresStmt()
 			if tt.wantErr {
 				if err == nil {

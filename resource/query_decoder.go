@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -17,6 +18,14 @@ type (
 	DomainFromCtx func(context.Context) accesstypes.Domain
 	UserFromCtx   func(context.Context) accesstypes.User
 )
+
+type parsedQueryParams struct {
+	ColumnFields []accesstypes.Field
+	SortFields   []SortField
+	Search       *Search
+	ParsedAST    ExpressionNode
+	Limit        *uint64
+}
 
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
@@ -49,19 +58,20 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 }
 
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
-	requestedFields, sortFields, search, currentParsedAST, err := d.parseQuery(request.URL.Query())
+	parsedQuery, err := d.parseQuery(request.URL.Query())
 	if err != nil {
 		return nil, err
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
-	qSet.SetFilterAst(currentParsedAST)
-	qSet.SetSearchParam(search)
-	qSet.SetSortFields(sortFields)
-	if len(requestedFields) == 0 {
+	qSet.SetFilterAst(parsedQuery.ParsedAST)
+	qSet.SetSearchParam(parsedQuery.Search)
+	qSet.SetSortFields(parsedQuery.SortFields)
+	qSet.SetLimit(parsedQuery.Limit)
+	if len(parsedQuery.ColumnFields) == 0 {
 		qSet.ReturnAccessableFields(true)
 	} else {
-		for _, field := range requestedFields {
+		for _, field := range parsedQuery.ColumnFields {
 			qSet.AddField(field)
 		}
 	}
@@ -85,14 +95,30 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFields []accesstypes.Field, sortFields []SortField, search *Search, parsedAST ExpressionNode, err error) {
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQueryParams, error) {
+	var columnFields []accesstypes.Field
+	var sortFields []SortField
+	var search *Search
+	var parsedAST ExpressionNode
+	var limit *uint64
+	var err error
+
 	if sortParamValue := query.Get("sort"); sortParamValue != "" {
 		sortFields, err = d.parseSortParam(sortParamValue)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, err
 		}
 
 		delete(query, "sort")
+	}
+
+	if limitStr := query.Get("limit"); limitStr != "" {
+		limitVal, err := strconv.ParseUint(limitStr, 10, 64)
+		if err != nil {
+			return nil, httpio.NewBadRequestMessagef("invalid limit value: %s", limitStr)
+		}
+		limit = &limitVal
+		delete(query, "limit")
 	}
 
 	if cols := query.Get("columns"); cols != "" {
@@ -102,7 +128,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 			if field, found := d.requestFieldMapper.StructFieldName(column); found {
 				columnFields = append(columnFields, field)
 			} else {
-				return nil, nil, nil, nil, httpio.NewBadRequestMessagef("unknown column: %s", column)
+				return nil, httpio.NewBadRequestMessagef("unknown column: %s", column)
 			}
 		}
 
@@ -112,7 +138,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 	if filterStr := query.Get("filter"); filterStr != "" {
 		parsedAST, err = d.parseFilterExpression(filterStr)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, err
 		}
 
 		delete(query, "filter")
@@ -120,22 +146,28 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (columnFi
 
 	search, query, err = d.parseFilterParam(query)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err
 	}
 
 	if parsedAST != nil && search != nil {
-		return nil, nil, nil, nil, httpio.NewBadRequestMessagef("cannot use 'filter' parameter alongside 'search' parameter")
+		return nil, httpio.NewBadRequestMessagef("cannot use 'filter' parameter alongside 'search' parameter")
 	}
 
 	if search != nil && len(sortFields) > 0 {
-		return nil, nil, nil, nil, httpio.NewBadRequestMessage("sorting ('sort=' parameter) cannot be used in conjunction with search parameters")
+		return nil, httpio.NewBadRequestMessage("sorting ('sort=' parameter) cannot be used in conjunction with search parameters")
 	}
 
 	if len(query) > 0 {
-		return nil, nil, nil, nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
+		return nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
 	}
 
-	return columnFields, sortFields, search, parsedAST, nil
+	return &parsedQueryParams{
+		ColumnFields: columnFields,
+		SortFields:   sortFields,
+		Search:       search,
+		ParsedAST:    parsedAST,
+		Limit:        limit,
+	}, nil
 }
 
 func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) ([]SortField, error) {
