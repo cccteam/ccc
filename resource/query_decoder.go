@@ -19,7 +19,7 @@ type (
 	UserFromCtx   func(context.Context) accesstypes.User
 )
 
-type parsedQueryParms struct {
+type parsedQueryParams struct {
 	ColumnFields []accesstypes.Field
 	SortFields   []SortField
 	Search       *Search
@@ -95,7 +95,7 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQueryParms, error) {
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQueryParams, error) {
 	var columnFields []accesstypes.Field
 	var sortFields []SortField
 	var search *Search
@@ -161,7 +161,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		return nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
 	}
 
-	return &parsedQueryParms{
+	return &parsedQueryParams{
 		ColumnFields: columnFields,
 		SortFields:   sortFields,
 		Search:       search,

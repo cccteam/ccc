@@ -49,7 +49,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 		name                string
 		queryValues         url.Values
 		wantErr             bool
-		expectedResult      *parsedQueryParms
+		expectedResult      *parsedQueryParams
 		expectedASTString   string
 		expectedErrMsg      string
 		expectConflictError bool
@@ -58,7 +58,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:        "limit only",
 			queryValues: url.Values{"limit": []string{"10"}},
 			wantErr:     false,
-			expectedResult: &parsedQueryParms{
+			expectedResult: &parsedQueryParams{
 				Limit: ccc.Ptr(uint64(10)),
 			},
 		},
@@ -79,7 +79,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:        "columns only",
 			queryValues: url.Values{"columns": []string{"name,age"}},
 			wantErr:     false,
-			expectedResult: &parsedQueryParms{
+			expectedResult: &parsedQueryParams{
 				ColumnFields: []accesstypes.Field{"Name", "Age"},
 			},
 		},
@@ -87,7 +87,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:        "columns with valid filter",
 			queryValues: url.Values{"columns": {"name"}, "filter": {"age:gt:30"}},
 			wantErr:     false,
-			expectedResult: &parsedQueryParms{
+			expectedResult: &parsedQueryParams{
 				ColumnFields: []accesstypes.Field{"Name"},
 			},
 			expectedASTString: "age_sql:gt:30",
@@ -116,7 +116,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:        "valid search",
 			queryValues: url.Values{"SearchTokens": []string{"find this and this"}},
 			wantErr:     false,
-			expectedResult: &parsedQueryParms{
+			expectedResult: &parsedQueryParams{
 				Search: &Search{
 					typ: SubString,
 					values: map[SearchKey]string{
@@ -138,7 +138,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			queryValues:       url.Values{"columns": []string{"name,age"}, "filter": []string{"name:eq:John"}, "limit": []string{"10"}},
 			wantErr:           false,
 			expectedASTString: "name_sql:eq:John",
-			expectedResult: &parsedQueryParms{
+			expectedResult: &parsedQueryParams{
 				ColumnFields: []accesstypes.Field{"Name", "Age"},
 				Limit:        ccc.Ptr(uint64(10)),
 			},
@@ -267,7 +267,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:        "sort single field default direction",
 			queryValues: url.Values{"sort": []string{"name"}},
 			wantErr:     false,
-			expectedResult: &parsedQueryParms{
+			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}},
 			},
 		},
@@ -275,7 +275,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:        "sort single field asc",
 			queryValues: url.Values{"sort": []string{"name:asc"}},
 			wantErr:     false,
-			expectedResult: &parsedQueryParms{
+			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}},
 			},
 		},
@@ -283,7 +283,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:        "sort single field desc",
 			queryValues: url.Values{"sort": []string{"age:desc"}},
 			wantErr:     false,
-			expectedResult: &parsedQueryParms{
+			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Age", Direction: SortDescending}},
 			},
 		},
@@ -291,7 +291,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:        "sort multi-field",
 			queryValues: url.Values{"sort": []string{"name:asc,age:desc"}},
 			wantErr:     false,
-			expectedResult: &parsedQueryParms{
+			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}, {Field: "Age", Direction: SortDescending}},
 			},
 		},
@@ -299,7 +299,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:        "sort multi-field with spaces",
 			queryValues: url.Values{"sort": []string{" name : asc , age : desc "}},
 			wantErr:     false,
-			expectedResult: &parsedQueryParms{
+			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}, {Field: "Age", Direction: SortDescending}},
 			},
 		},
@@ -313,7 +313,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:        "sort legacy_indexed_field (is sortable)",
 			queryValues: url.Values{"sort": []string{"legacy_indexed_field:asc"}},
 			wantErr:     false,
-			expectedResult: &parsedQueryParms{
+			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "LegacyIndexedField", Direction: SortAscending}},
 			},
 		},
