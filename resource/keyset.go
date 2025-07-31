@@ -2,10 +2,15 @@ package resource
 
 import (
 	"fmt"
+	"math/big"
+	"reflect"
 	"strings"
+	"time"
 
+	gcivil "cloud.google.com/go/civil"
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
+	guid "github.com/google/uuid"
 )
 
 type KeyPart struct {
@@ -46,7 +51,33 @@ func (p KeySet) RowID() string {
 func (p KeySet) KeySet() spanner.KeySet {
 	keys := make(spanner.Key, 0, len(p.keyParts))
 	for _, v := range p.keyParts {
-		keys = append(keys, v.Value)
+		switch v.Value.(type) {
+		// Taken from cloud.google.com/go/spanner@v1.83.0/value.go
+		// these types are handled by the driver, the rest must be conveted
+		case bool, int, int8, int16, int32, uint8, uint16, uint32, int64, float64, float32, []byte,
+			spanner.NullInt64, spanner.NullFloat64, spanner.NullFloat32, spanner.NullBool,
+			string, spanner.NullString, time.Time, gcivil.Date, spanner.NullTime,
+			spanner.NullDate, big.Rat, spanner.NullNumeric, spanner.NullProtoEnum, guid.UUID,
+			guid.NullUUID, spanner.NullUUID, spanner.Encoder:
+			keys = append(keys, v.Value)
+		default:
+			// Handle named types by inspecting their underlying kind using reflection.
+			refVal := reflect.ValueOf(v.Value)
+			switch refVal.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				keys = append(keys, refVal.Int())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				keys = append(keys, int64(refVal.Uint()))
+			case reflect.String:
+				keys = append(keys, refVal.String())
+			case reflect.Float32, reflect.Float64:
+				keys = append(keys, refVal.Float())
+			case reflect.Bool:
+				keys = append(keys, refVal.Bool())
+			default:
+				keys = append(keys, v.Value)
+			}
+		}
 	}
 
 	return keys
