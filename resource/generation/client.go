@@ -23,8 +23,8 @@ import (
 type client struct {
 	loadPackages              []string
 	resourceFilePath          string
-	resources                 []*resourceInfo
-	rpcMethods                []*rpcMethodInfo
+	resources                 []resourceInfo
+	rpcMethods                []rpcMethodInfo
 	localPackages             []string
 	db                        *cloudspanner.Client
 	caser                     *strcase.Caser
@@ -223,16 +223,10 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 		if r.IsPrimaryKey {
 			table.PkCount++
 			column.IsPrimaryKey = true
-			if !slices.Contains(column.ConstraintTypes, PrimaryKey) {
-				column.ConstraintTypes = append(column.ConstraintTypes, PrimaryKey)
-			}
 		}
 
 		if r.IsForeignKey {
 			column.IsForeignKey = true
-			if !slices.Contains(column.ConstraintTypes, ForeignKey) {
-				column.ConstraintTypes = append(column.ConstraintTypes, ForeignKey)
-			}
 
 			if r.ReferencedTable != nil {
 				column.ReferencedTable = *r.ReferencedTable
@@ -311,7 +305,7 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 	table, ok := c.tableMap[c.pluralize(resourceName)]
 	if !ok {
-		return nil, errors.Newf("resourceName %q pluralized as %q not in tableMetadata", resourceName, c.pluralize(resourceName))
+		return nil, errors.Newf("resource %q pluralized as %q not in tableMetadata", resourceName, c.pluralize(resourceName))
 	}
 
 	return table, nil
@@ -488,7 +482,7 @@ func formatInterfaceTypes(types []string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
 }
 
-func formatResourceInterfaceTypes(resources []*resourceInfo) string {
+func formatResourceInterfaceTypes(resources []resourceInfo) string {
 	names := make([]string, len(resources))
 	for i, resource := range resources {
 		names[i] = resource.Name()
@@ -497,7 +491,7 @@ func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	return formatInterfaceTypes(names)
 }
 
-func formatRPCInterfaceTypes(rpcMethods []*rpcMethodInfo) string {
+func formatRPCInterfaceTypes(rpcMethods []rpcMethodInfo) string {
 	names := make([]string, len(rpcMethods))
 	for i, rpcMethod := range rpcMethods {
 		names[i] = rpcMethod.Name()
@@ -540,32 +534,27 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*s
 	return flds, nil
 }
 
-func (c *client) resourceEndpoints(resource *resourceInfo) []HandlerType {
+// Returns slice of applicable handler types for a given resource.
+// Every resource starts with a List handler.
+// Views do not have Read handlers.
+// Consolidated resources do not have Patch handlers.
+// Ignored handler types are filtered out.
+func (c *client) resourceEndpoints(resource resourceInfo) []HandlerType {
 	handlerTypes := []HandlerType{ListHandler}
 
 	if !resource.IsView {
 		handlerTypes = append(handlerTypes, ReadHandler)
 
-		if resource.IsConsolidated == c.consolidateAll {
+		if !resource.IsConsolidated && !c.consolidateAll {
 			handlerTypes = append(handlerTypes, PatchHandler)
 		}
 	}
 
-	endpointOptions, ok := c.handlerOptions[resource.Name()]
-	if !ok {
-		return handlerTypes
-	}
+	handlerTypes = slices.DeleteFunc(handlerTypes, func(ht HandlerType) bool {
+		return slices.Contains(resource.SuppressedHandlers[:], ht)
+	})
 
-	filteredHandlerTypes := handlerTypes[:0]
-	for _, ht := range handlerTypes {
-		if slices.Contains(endpointOptions[ht], NoGenerate) {
-			continue
-		}
-
-		filteredHandlerTypes = append(filteredHandlerTypes, ht)
-	}
-
-	return filteredHandlerTypes
+	return handlerTypes
 }
 
 func (c *client) sanitizeEnumIdentifier(name string) string {

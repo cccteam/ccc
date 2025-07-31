@@ -11,86 +11,66 @@ import (
 )
 
 type Package struct {
-	Structs    []*Struct
-	NamedTypes []*NamedType
+	Structs    []Struct
+	NamedTypes []NamedType
 }
 
 type TypeInfo struct {
-	obj       types.Object
-	name      string
-	tt        types.Type
-	fset      *token.FileSet
-	unwrapped bool
+	obj types.Object
 }
 
-// Use the unwrap option if you need a slice or pointer's underlying type.
-func newTypeInfo(obj types.Object, fset *token.FileSet, unwrap bool) *TypeInfo {
-	tt := obj.Type()
-	if unwrap {
-		tt = unwrapType(tt)
-	}
-
-	return &TypeInfo{
-		obj:       obj,
-		name:      obj.Name(),
-		tt:        tt,
-		fset:      fset,
-		unwrapped: unwrap,
-	}
-}
-
-func (t *TypeInfo) Name() string {
-	return t.name
+func (t TypeInfo) Name() string {
+	return t.obj.Name()
 }
 
 // e.g. ccc.UUID, []ccc.UUID
-func (t *TypeInfo) Type() string {
-	return typeStringer(t.tt)
+func (t TypeInfo) Type() string {
+	return typeStringer(t.obj.Type())
 }
 
 // e.g. *ccc.UUID -> ccc.UUID
-func (t *TypeInfo) DerefType() string {
-	return typeStringer(derefType(t.tt))
+func (t TypeInfo) DerefType() string {
+	return typeStringer(derefType(t.obj.Type()))
 }
 
 // Type without package prefix.
 // e.g. ccc.UUID -> UUID, []ccc.UUID -> []UUID
-func (t *TypeInfo) UnqualifiedType() string {
+func (t TypeInfo) UnqualifiedType() string {
 	qualifier := func(p *types.Package) string {
 		return ""
 	}
 
-	return types.TypeString(t.tt, qualifier)
+	return types.TypeString(t.obj.Type(), qualifier)
 }
 
 // Type without pointer and package prefix removed
 // e.g. *ccc.UUID -> UUID
-func (t *TypeInfo) DerefUnqualifiedType() string {
+func (t TypeInfo) DerefUnqualifiedType() string {
 	qualifier := func(p *types.Package) string {
 		return ""
 	}
 
-	return types.TypeString(derefType(t.tt), qualifier)
+	return types.TypeString(derefType(t.obj.Type()), qualifier)
 }
 
 // Qualified type without array/slice/pointer prefix.
 // e.g. *ccc.UUID -> ccc.UUID, []ccc.UUID -> ccc.UUID
-func (t *TypeInfo) TypeName() string {
-	return typeStringer(unwrapType(t.tt))
+func (t TypeInfo) TypeName() string {
+	return typeStringer(unwrapType(t.obj.Type()))
 }
 
 // Type without array/slice/pointer or package prefix.
 // e.g. *ccc.UUID -> UUID, []ccc.UUID -> UUID
-func (t *TypeInfo) UnqualifiedTypeName() string {
+func (t TypeInfo) UnqualifiedTypeName() string {
 	qualifier := func(p *types.Package) string {
 		return ""
 	}
 
-	return types.TypeString(unwrapType(t.tt), qualifier)
+	return types.TypeString(unwrapType(t.obj.Type()), qualifier)
 }
 
-func (t *TypeInfo) IsPointer() bool {
-	switch t.tt.(type) {
+func (t TypeInfo) IsPointer() bool {
+	switch t.obj.Type().(type) {
 	case *types.Pointer:
 		return true
 	default:
@@ -99,21 +79,13 @@ func (t *TypeInfo) IsPointer() bool {
 }
 
 // Returns true if type is slice or array
-func (t *TypeInfo) IsIterable() bool {
-	switch t.tt.(type) {
+func (t TypeInfo) IsIterable() bool {
+	switch t.obj.Type().(type) {
 	case *types.Slice, *types.Array:
 		return true
 	default:
 		return false
 	}
-}
-
-func (t *TypeInfo) AsStruct() *Struct {
-	return newStruct(t.obj, nil)
-}
-
-func (t *TypeInfo) IsExported() bool {
-	return t.obj.Exported()
 }
 
 type Interface struct {
@@ -122,31 +94,24 @@ type Interface struct {
 }
 
 type Struct struct {
-	*TypeInfo
-	astInfo    *ast.StructType
-	fields     []*Field
-	localTypes []*TypeInfo
+	TypeInfo
+	fields     []Field
 	interfaces []string
 	methodSet  map[string]struct{}
 	comments   string
 }
 
-func newStruct(obj types.Object, fset *token.FileSet) *Struct {
+func newStruct(obj types.Object) Struct {
 	tt := obj.Type()
-
-	if fset == nil {
-		fset = token.NewFileSet()
-	}
 
 	st, ok := decodeToType[*types.Struct](tt)
 	if !ok {
-		return nil
+		return Struct{}
 	}
 
-	s := &Struct{
-		TypeInfo:   newTypeInfo(obj, fset, true),
-		localTypes: localTypesFromStruct(obj, map[string]struct{}{}),
-		methodSet:  make(map[string]struct{}),
+	s := Struct{
+		TypeInfo:  TypeInfo{obj},
+		methodSet: make(map[string]struct{}),
 	}
 
 	methodSet := types.NewMethodSet(types.NewPointer(tt))
@@ -163,8 +128,8 @@ func newStruct(obj types.Object, fset *token.FileSet) *Struct {
 	for i := range st.NumFields() {
 		field := st.Field(i)
 
-		s.fields = append(s.fields, &Field{
-			TypeInfo:    newTypeInfo(field, fset, false),
+		s.fields = append(s.fields, Field{
+			TypeInfo:    TypeInfo{field},
 			tags:        reflect.StructTag(st.Tag(i)),
 			isLocalType: isTypeLocalToPackage(field, obj.Pkg()),
 		})
@@ -173,7 +138,7 @@ func newStruct(obj types.Object, fset *token.FileSet) *Struct {
 	return s
 }
 
-func (s *Struct) Comments() string {
+func (s Struct) Comments() string {
 	return s.comments
 }
 
@@ -183,19 +148,19 @@ func (s *Struct) SetInterface(iface string) {
 	}
 }
 
-func (s *Struct) Implements(iface string) bool {
+func (s Struct) Implements(iface string) bool {
 	return slices.Contains(s.interfaces, iface)
 }
 
 // Pretty prints the struct name and its fields. Useful for debugging.
-func (s *Struct) String() string {
+func (s Struct) String() string {
 	var (
 		maxNameLength int
 		maxTypeLength int
 	)
 
 	for _, field := range s.fields {
-		maxNameLength = max(len(field.name), maxNameLength)
+		maxNameLength = max(len(field.Name()), maxNameLength)
 		maxTypeLength = max(len(field.Type()), maxTypeLength)
 	}
 
@@ -204,22 +169,22 @@ func (s *Struct) String() string {
 
 	var fields string
 	for _, field := range s.fields {
-		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.name)/8))
+		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.Name())/8))
 		typeTabs := strings.Repeat("\t", numTypeTabs-(len(field.Type())/8))
-		fields += fmt.Sprintf("\t%s%s%s%s%s\n", field.name, nameTabs, field.Type(), typeTabs, field.tags)
+		fields += fmt.Sprintf("\t%s%s%s%s%s\n", field.Name(), nameTabs, field.Type(), typeTabs, field.tags)
 	}
 
-	return fmt.Sprintf("type %s struct {\n%s}", s.name, fields)
+	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
 }
 
-func (s *Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
+func (s Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
 	var (
 		maxNameLength int
 		maxTypeLength int
 	)
 
 	for _, field := range s.fields {
-		maxNameLength = max(len(field.name), maxNameLength)
+		maxNameLength = max(len(field.Name()), maxNameLength)
 		maxTypeLength = max(len(field.Type()), maxTypeLength)
 	}
 
@@ -228,38 +193,27 @@ func (s *Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
 
 	var fields string
 	for i, field := range s.fields {
-		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.name)/8))
+		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.Name())/8))
 		typeTabs := strings.Repeat("\t", numTypeTabs-(len(field.Type())/8))
 		if i == fieldIndex {
-			fields += fmt.Sprintf("\033[91m\t%s%s%s%s%s << %s\033[0m\n", field.name, nameTabs, field.Type(), typeTabs, field.tags, errMsg)
+			fields += fmt.Sprintf("\033[91m\t%s%s%s%s%s << %s\033[0m\n", field.Name(), nameTabs, field.Type(), typeTabs, field.tags, errMsg)
 		} else {
-			fields += fmt.Sprintf("\t%s%s%s%s%s\n", field.name, nameTabs, field.Type(), typeTabs, field.tags)
+			fields += fmt.Sprintf("\t%s%s%s%s%s\n", field.Name(), nameTabs, field.Type(), typeTabs, field.tags)
 		}
 
 	}
 
-	return fmt.Sprintf("type %s struct {\n%s}", s.name, fields)
+	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
 }
 
-func (s *Struct) Name() string {
-	return s.name
-}
-
-func (s *Struct) NumFields() int {
+func (s Struct) NumFields() int {
 	return len(s.fields)
 }
 
-func (s *Struct) Fields() []*Field {
+func (s Struct) Fields() []Field {
 	return s.fields
 }
 
-func (s *Struct) LocalTypes() []*TypeInfo {
-	return s.localTypes
-}
-
-func (s *Struct) Error() string {
-	return fmt.Sprintf("%s at %s", s.name, s.fset.Position(s.astInfo.Pos()))
-}
 
 func (s Struct) HasMethod(methodName string) bool {
 	_, ok := s.methodSet[methodName]
@@ -268,18 +222,18 @@ func (s Struct) HasMethod(methodName string) bool {
 }
 
 type Field struct {
-	*TypeInfo
+	TypeInfo
 	astInfo     *ast.Field
 	tags        reflect.StructTag
 	comments    string
 	isLocalType bool
 }
 
-func (f *Field) String() string {
-	return fmt.Sprintf("%s\t\t%s\t\t%s", f.name, f.Type(), f.tags)
+func (f Field) String() string {
+	return fmt.Sprintf("%s\t\t%s\t\t%s", f.Name(), f.Type(), f.tags)
 }
 
-func (f *Field) LookupTag(key string) (string, bool) {
+func (f Field) LookupTag(key string) (string, bool) {
 	return f.tags.Lookup(key)
 }
 
@@ -289,14 +243,24 @@ func (f Field) HasTag(key string) bool {
 	return ok
 }
 
+func (f Field) AsStruct() *Struct {
+	s := newStruct(f.obj)
+
+	if s.TypeInfo.obj == nil {
+		return nil
+	}
+
+	return &s
+}
+
 // Returns true if the field's type originates from the same package
 // its parent struct is defined in.
-func (f *Field) IsLocalType() bool {
+func (f Field) IsLocalType() bool {
 	return f.isLocalType
 }
 
 // Returns the field's unqualified type if it's local, and the qualified type otherwise.
-func (f *Field) ResolvedType() string {
+func (f Field) ResolvedType() string {
 	if f.IsLocalType() {
 		return f.UnqualifiedType()
 	}
@@ -305,7 +269,7 @@ func (f *Field) ResolvedType() string {
 }
 
 // Returns the field's unqualified type if it's local, and the qualified type otherwise.
-func (f *Field) DerefResolvedType() string {
+func (f Field) DerefResolvedType() string {
 	if f.IsLocalType() {
 		return f.DerefUnqualifiedType()
 	}
@@ -313,13 +277,13 @@ func (f *Field) DerefResolvedType() string {
 	return f.DerefType()
 }
 
-func (f *Field) Comments() string {
+func (f Field) Comments() string {
 	return f.comments
 }
 
 // If the type is a generic instantiation, returns the origin of the generic type.
 // e.g. ccc.Foo[bool] returns ccc.Foo
-func (f *Field) OriginType() string {
+func (f Field) OriginType() string {
 	indexExpr, ok := decodeToExpr[*ast.IndexExpr](f.astInfo.Type)
 	if !ok {
 		return f.Type()
@@ -333,7 +297,7 @@ func (f *Field) OriginType() string {
 	return f.Type()
 }
 
-func (f *Field) TypeArgs() string {
+func (f Field) TypeArgs() string {
 	indexExpr, ok := decodeToExpr[*ast.IndexExpr](f.astInfo.Type)
 	if !ok {
 		return ""
@@ -347,11 +311,11 @@ func (f *Field) TypeArgs() string {
 	return ""
 }
 
-func (f *Field) Error() string {
-	return fmt.Sprintf("%s at %s", f.name, f.fset.Position(f.astInfo.Pos()))
+func (f Field) Error(fset *token.FileSet) string {
+	return fmt.Sprintf("%s at %s", f.Name(), fset.Position(f.astInfo.Pos()))
 }
 
 type NamedType struct {
-	*TypeInfo
+	TypeInfo
 	Comments string
 }

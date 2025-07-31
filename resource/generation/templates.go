@@ -624,7 +624,6 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 		var (
 			eventSource = resource.UserEvent(ctx)
-			patches []resource.SpannerBuffer
 			resp    response
 		)
 
@@ -635,7 +634,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 				return errors.Wrap(err, "resource.CloneRequest()")
 			}
 
-			for op, err := range resource.Operations(r, "/{resource}/{id}", resource.RequireCreatePath()) {
+			for op, err := range resource.Operations(r, "/{resource}", resource.MatchPrefix(), resource.RequireCreatePath()) {
 				if err != nil {
 					return httpio.NewEncoder(w).ClientMessage(ctx, err)
 				}
@@ -644,38 +643,68 @@ func (a *App) PatchResources() http.HandlerFunc {
 					{{- range $resource := .Resources -}}
 					{{- $primaryKeyType := $resource.PrimaryKeyType }}
 					case "{{ Kebab (Pluralize $resource.Name) }}":
-						patchSet, err := {{ GoCamel $resource.Name}}Decoder.DecodeOperation(op)
+						patchSet, err := {{ GoCamel $resource.Name}}Decoder.DecodeOperation(op, a.UserPermissions(op.Req))
 						if err != nil {
 							return httpio.NewEncoder(w).ClientMessage(ctx, err)
 						}
 
+						req, err := op.ReqWithPattern("/{resource}{{ $resource.OperationPathPattern }}")
+						if err != nil {
+							return errors.Wrap(err, "op.ReqWithPattern()")
+						}
+
 						switch op.Type {
 						case resource.OperationCreate:
-							{{- if $resource.PrimaryKeyIsGeneratedUUID }}
+						{{- if $resource.PrimaryKeyIsGeneratedUUID }}
 							patch, err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet(patchSet)
 							if err != nil {
 								return httpio.NewEncoder(w).ClientMessage(ctx, err)
 							}
 							if err := patch.PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(err, "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
+								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
 							}
-							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.{{ .Resource.PrimaryKey.Name }}())
-							{{- else }}
-							id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
+							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.{{ $resource.PrimaryKey.Name }}())
+						{{- else if $resource.HasCompoundPrimaryKey }}
+							{{- range $i, $field := $resource.PrimaryKeys }}
+							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
+							{{- end }}
+							if err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
+							}
+						{{- else }}
+							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
 							if err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(err, "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
+								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
+							}
+						{{- end }}
+						case resource.OperationUpdate:
+							{{- if $resource.HasCompoundPrimaryKey }}
+							{{- range $i, $field := $resource.PrimaryKeys }}
+							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
+							{{- end }}
+							if err := resources.New{{ $resource.Name }}UpdatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}UpdatePatch.SpannerBuffer()")
+							}
+							{{- else}}
+							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
+							if err := resources.New{{ $resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}UpdatePatch.SpannerBuffer()")
 							}
 							{{- end }}
-						case resource.OperationUpdate:
-							id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
-							if err := resources.New{{ $resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(err, "resources.{{ $resource.Name }}UpdatePatch.SpannerBuffer()")
-							}
 						case resource.OperationDelete:
-							id := httpio.Param[{{ $primaryKeyType }}](op.Req, "id")
-							if err := resources.New{{ $resource.Name }}DeletePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(err, "resources.{{ $resource.Name }}DeletePatch.SpannerBuffer()")
+							{{- if $resource.HasCompoundPrimaryKey }}
+							{{- range $i, $field := $resource.PrimaryKeys }}
+							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
+							{{- end }}
+							if err := resources.New{{ $resource.Name }}DeletePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}DeletePatch.SpannerBuffer()")
 							}
+							{{- else }}
+							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
+							if err := resources.New{{ $resource.Name }}DeletePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}DeletePatch.SpannerBuffer()")
+							}
+							{{- end }}
 						}
 					{{- end -}}
 				}
@@ -683,7 +712,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 			return nil
 		}); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, spanner.HandleError[resources.{{ $resource.Name }}](err))
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
 		return httpio.NewEncoder(w).Ok(resp)
@@ -1011,16 +1040,18 @@ import (
 )
 
 func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
-	{{- range $type := .RPCMethod.LocalTypes }}
-	type {{ Lower $type.UnqualifiedTypeName }} 
+	{{- range $field := .RPCMethod.Fields }}
+	{{- if $field.IsLocalType }}
+	type {{ Lower $field.UnqualifiedTypeName }} 
 	
-	{{- with $type.AsStruct }} struct {
+	{{- with $field.AsStruct }} struct {
 		{{- range $field := .Fields }}
 		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\"`" + `
 		{{- end }}
 	}
-	{{ else }} {{ $type.Type }}
+	{{ else }} {{ $field.Type }}
 	{{ end }}
+	{{ end -}}
 	{{ end }}
 	type request struct {
 		{{- range $field := .RPCMethod.Fields }}

@@ -82,13 +82,13 @@ func Test_ParseStructs(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    []*Struct
+		want    []Struct
 		wantErr bool
 	}{
 		{
 			name: "parse 1 file",
 			args: args{packageName: "resources", packagePath: "../testdata/resources/res1.go"},
-			want: []*Struct{
+			want: []Struct{
 				testStruct(t, "AddressType",
 					testField{"ID", basic(types.String), `spanner:"Id"`},
 					testField{"Description", basic(types.String), `spanner:"description"`},
@@ -108,6 +108,8 @@ func Test_ParseStructs(t *testing.T) {
 					testField{"ID", named("ccc.UUID", &types.Struct{}), `spanner:"Id"`},
 					testField{"Description", basic(types.String), `spanner:"description"`},
 				),
+				testStruct(t, "alias"),
+				testStruct(t, "named"),
 			},
 			wantErr: false,
 		},
@@ -125,13 +127,13 @@ func Test_ParseStructs(t *testing.T) {
 			parsedStructs := ParsePackage(pkgMap[tt.args.packageName]).Structs
 
 			if len(parsedStructs) != len(tt.want) {
-				t.Errorf("parseStructs() length of parsed structs slice does not match length of expected structs slice: got= %v \nwant = %v", parsedStructs, tt.want)
+				t.Errorf("parseStructs() length of parsed structs slice does not match length of expected structs slice: got= %v \nwant = %v", len(parsedStructs), len(tt.want))
 				return
 			}
 
 			for i := range parsedStructs {
-				if parsedStructs[i].name != tt.want[i].name {
-					t.Errorf("parseStructs() struct name = %s, want %v", parsedStructs[i].name, tt.want[i].name)
+				if parsedStructs[i].Name() != tt.want[i].Name() {
+					t.Errorf("parseStructs() struct name = %s, want %v", parsedStructs[i].Name(), tt.want[i].Name())
 				}
 
 				for j := range parsedStructs[i].fields {
@@ -142,10 +144,7 @@ func Test_ParseStructs(t *testing.T) {
 						t.Errorf("parseStructs() field Type = %v, want %v", parsedStructs[i].fields[j].Type(), tt.want[i].fields[j].Type())
 					}
 					if parsedStructs[i].fields[j].tags != tt.want[i].fields[j].tags {
-						t.Errorf("parseStructs() field %q.%q has tags = %v, want %v", parsedStructs[i].name, parsedStructs[i].fields[j].name, parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
-					}
-					if parsedStructs[i].fields[j].Name() != parsedStructs[i].fields[j].astInfo.Names[0].Name {
-						t.Errorf("parseStructs field name=%q, ast.Field name=%q", parsedStructs[i].fields[j].Name(), parsedStructs[i].fields[j].astInfo.Names[0].Name)
+						t.Errorf("parseStructs() field %q.%q has tags = %v, want %v", parsedStructs[i].Name(), parsedStructs[i].fields[j].Name(), parsedStructs[i].fields[j].tags, tt.want[i].fields[j].tags)
 					}
 				}
 			}
@@ -269,7 +268,7 @@ func Test_localTypesFromStruct(t *testing.T) {
 
 			var typeNames []string
 			for _, localType := range localTypesFromStruct(obj, map[string]struct{}{}) {
-				typeNames = append(typeNames, typeStringer(localType.tt))
+				typeNames = append(typeNames, typeStringer(localType.obj.Type()))
 			}
 
 			if !slices.Equal(typeNames, tt.want) && !tt.wantFail {
@@ -317,7 +316,7 @@ func named(name string, typ types.Type) *types.Named {
 	return types.NewNamed(typeName(objName, pkg, typ), typ, nil)
 }
 
-func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) *Struct {
+func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) Struct {
 	t.Helper()
 
 	pkg, structName := pkgAndObjName(qualifiedName)
@@ -333,10 +332,7 @@ func testStruct(t *testing.T, qualifiedName string, fieldParams ...testField) *S
 
 	namedType := types.NewNamed(typeName(structName, pkg, structType), structType, nil)
 
-	s := newStruct(namedType.Obj(), nil)
-	if s == nil {
-		panic("could not create struct")
-	}
+	s := newStruct(namedType.Obj())
 
 	return s
 }

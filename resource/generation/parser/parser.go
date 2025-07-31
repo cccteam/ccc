@@ -74,23 +74,25 @@ func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 	}
 
 	if len(pkgs) == 0 {
-		return nil, errors.New("no packages loaded")
+		return nil, errors.Newf("no packages loaded for pattern %v", packagePatterns)
 	}
 
 	for _, pkg := range pkgs {
-		if len(pkg.Errors) > 0 {
-			return nil, errors.Wrap(pkg.Errors[0], "packages.Load() package error:")
-		}
-		if len(pkg.TypeErrors) > 0 {
-			return nil, errors.Wrap(pkg.TypeErrors[0], "packages.Load() type error:")
+		if len(pkg.Errors) > 0 || len(pkg.TypeErrors) > 0 {
+			var err error
+			for _, e := range pkg.Errors {
+				err = errors.Join(e)
+			}
+
+			for _, e := range pkg.TypeErrors {
+				err = errors.Join(e)
+			}
+
+			return nil, errors.Wrap(err, "packages.Load() package error(s):")
 		}
 
 		if len(pkg.GoFiles) == 0 || pkg.GoFiles[0] == "" {
-			return nil, errors.Newf("package %q: no files loaded", pkg.Name)
-		}
-
-		if pkg.Types == nil {
-			return nil, errors.Newf("package %q: types not loaded", pkg.Name)
+			return nil, errors.Newf("no files were loaded for package %q", pkg.Name)
 		}
 	}
 
@@ -117,20 +119,20 @@ func ParsePackage(pkg *packages.Package) *Package {
 		}
 	}
 
-	interfaces := make([]*Interface, 0, 16)
-	parsedStructs := make([]*Struct, 0, 128)
-	namedTypes := make([]*NamedType, 0, 16)
+	interfaces := make([]Interface, 0, 16)
+	parsedStructs := make([]Struct, 0, 128)
+	namedTypes := make([]NamedType, 0, 16)
 	for i := range typeSpecs {
-		switch typeSpecs[i].Type.(type) {
+		switch astNode := typeSpecs[i].Type.(type) {
 		case *ast.InterfaceType:
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
 			iface, _ := decodeToType[*types.Interface](obj.Type())
-			interfaces = append(interfaces, &Interface{Name: typeSpecs[i].Name.Name, iface: iface})
+			interfaces = append(interfaces, Interface{Name: typeSpecs[i].Name.Name, iface: iface})
 		case *ast.Ident:
 			var namedType NamedType
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name) // NamedType's name
 
-			namedType.TypeInfo = newTypeInfo(obj, pkg.Fset, false)
+			namedType.TypeInfo = TypeInfo{obj}
 
 			if typeSpecs[i].Doc != nil {
 				namedType.Comments = typeSpecs[i].Doc.Text()
@@ -139,10 +141,11 @@ func ParsePackage(pkg *packages.Package) *Package {
 				namedType.Comments += typeSpecs[i].Comment.Text()
 			}
 
-			namedTypes = append(namedTypes, &namedType)
+			namedTypes = append(namedTypes, namedType)
 		case *ast.StructType:
-			pStruct := newStruct(pkg.TypesInfo.ObjectOf(typeSpecs[i].Name), pkg.Fset)
-			if pStruct == nil { // nil pStruct is anonymous struct
+			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
+			pStruct := newStruct(obj)
+			if pStruct.TypeInfo.obj == nil { // nil pStruct is anonymous struct
 				continue
 			}
 
@@ -153,14 +156,8 @@ func ParsePackage(pkg *packages.Package) *Package {
 				pStruct.comments += typeSpecs[i].Comment.Text()
 			}
 
-			var ok bool
-			pStruct.astInfo, ok = typeSpecs[i].Type.(*ast.StructType)
-			if !ok {
-				continue
-			}
-
 			for j := range pStruct.fields {
-				pStruct.fields[j].astInfo = pStruct.astInfo.Fields.List[j]
+				pStruct.fields[j].astInfo = astNode.Fields.List[j]
 
 				if pStruct.fields[j].astInfo.Doc != nil {
 					pStruct.fields[j].comments = pStruct.fields[j].astInfo.Doc.Text()
@@ -177,23 +174,23 @@ func ParsePackage(pkg *packages.Package) *Package {
 	for i := range parsedStructs {
 		for j := range interfaces {
 			// Necessary to check non-pointer and pointer receivers
-			if types.Implements(parsedStructs[i].tt, interfaces[j].iface) || types.Implements(types.NewPointer(parsedStructs[i].tt), interfaces[j].iface) {
+			if types.Implements(parsedStructs[i].obj.Type(), interfaces[j].iface) || types.Implements(types.NewPointer(parsedStructs[i].obj.Type()), interfaces[j].iface) {
 				parsedStructs[i].SetInterface(interfaces[j].Name)
 			}
 		}
 	}
 
-	compareFn := func(a, b *Struct) int {
+	compareFn := func(a, b Struct) int {
 		return strings.Compare(a.Name(), b.Name())
 	}
 
 	slices.SortFunc(parsedStructs, compareFn)
 
-	return &Package{Structs: parsedStructs, NamedTypes: namedTypes}
+	return &Package{Structs: slices.Clip(parsedStructs), NamedTypes: slices.Clip(namedTypes)}
 }
 
-func FilterStructsByInterface(pStructs []*Struct, interfaceNames []string) []*Struct {
-	filteredStructs := make([]*Struct, 0, len(pStructs))
+func FilterStructsByInterface(pStructs []Struct, interfaceNames []string) []Struct {
+	filteredStructs := make([]Struct, 0, len(pStructs))
 	for _, pStruct := range pStructs {
 		for _, iface := range interfaceNames {
 			if pStruct.Implements(iface) {
@@ -271,8 +268,9 @@ func isTypeLocalToPackage(t *types.Var, pkg *types.Package) bool {
 	return strings.HasPrefix(typeName, pkg.Name())
 }
 
-func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []*TypeInfo {
-	var dependencies []*TypeInfo
+// Returns a list of types from this struct's package that the struct depends on
+func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []TypeInfo {
+	var dependencies []TypeInfo
 	pkg := obj.Pkg()
 	tt := obj.Type()
 
@@ -296,14 +294,15 @@ func localTypesFromStruct(obj types.Object, typeMap map[string]struct{}) []*Type
 				typeMap[typeStringer(unwrapType(ft))] = struct{}{}
 			}
 
-			dependencies = append(dependencies, newTypeInfo(field, nil, true))
+			dependencies = append(dependencies, TypeInfo{field})
 		}
 	}
 
 	return dependencies
 }
 
-// Returns the underlying element type for slice and pointer types
+// Returns the underlying element type for slices and pointer,
+// or the named type if its underlying type is a struct
 func unwrapType(tt types.Type) types.Type {
 	switch t := tt.(type) {
 	case *types.Slice:
