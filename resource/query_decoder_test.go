@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 )
 
@@ -52,9 +53,28 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 		expectedSearchSet    *Search
 		expectedColumnFields []accesstypes.Field
 		expectedSortFields   []SortField
+		expectedLimit        *uint64
 		expectedErrMsg       string
 		expectConflictError  bool
 	}{
+		{
+			name:          "limit only",
+			queryValues:   url.Values{"limit": []string{"10"}},
+			wantErr:       false,
+			expectedLimit: ccc.Ptr(uint64(10)),
+		},
+		{
+			name:           "invalid limit - negative",
+			queryValues:    url.Values{"limit": []string{"-1"}},
+			wantErr:        true,
+			expectedErrMsg: "invalid limit value: -1",
+		},
+		{
+			name:           "invalid limit - non-integer",
+			queryValues:    url.Values{"limit": []string{"abc"}},
+			wantErr:        true,
+			expectedErrMsg: "invalid limit value: abc",
+		},
 		// Columns processing first
 		{
 			name:                 "columns only",
@@ -105,6 +125,16 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			queryValues:    url.Values{"filter": []string{"name:badop:John"}},
 			wantErr:        true,
 			expectedErrMsg: "unknown operator 'badop' in condition 'name:badop:John'",
+		},
+
+		// all togeather now
+		{
+			name:                 "limit only",
+			queryValues:          url.Values{"columns": []string{"name,age"}, "filter": []string{"name:eq:John"}, "limit": []string{"10"}},
+			wantErr:              false,
+			expectedColumnFields: []accesstypes.Field{"Name", "Age"},
+			expectedASTString:    "name_sql:eq:John",
+			expectedLimit:        ccc.Ptr(uint64(10)),
 		},
 
 		// Conflict Check (legacy_indexed_field is now an unknown parameter)
@@ -323,7 +353,17 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 				t.Fatalf("NewQueryDecoder should not fail with default setup for test case %s: %v", tt.name, err)
 			}
 
-			columnFields, sortFields, searchSet, parsedAST, err := decoder.parseQuery(tt.queryValues)
+			columnFields, sortFields, searchSet, parsedAST, limit, err := decoder.parseQuery(tt.queryValues)
+
+			if tt.expectedLimit != nil {
+				if limit == nil {
+					t.Errorf("Expected limit %d, got nil", *tt.expectedLimit)
+				} else if *tt.expectedLimit != *limit {
+					t.Errorf("Expected limit %d, got %d", *tt.expectedLimit, *limit)
+				}
+			} else if limit != nil {
+				t.Errorf("Expected nil limit, got %d", *limit)
+			}
 
 			// Check sortFields
 			if !reflect.DeepEqual(tt.expectedSortFields, sortFields) {

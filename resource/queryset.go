@@ -22,6 +22,7 @@ type QuerySet[Resource Resourcer] struct {
 	search                 *Search
 	fields                 []accesstypes.Field
 	sortFields             []SortField
+	limit                  *uint64
 	returnAccessableFields bool
 	rMeta                  *ResourceMetadata[Resource]
 	resourceSet            *ResourceSet[Resource]
@@ -290,12 +291,18 @@ func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
 		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
 
+	limitClause := ""
+	if q.limit != nil {
+		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
+	}
+
 	stmt := spanner.NewStatement(fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s
 			%s
-			%s`, columns, q.Resource(), where.SQL, orderByClause,
+			%s
+			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause,
 	))
 	maps.Insert(stmt.Params, maps.All(where.SpannerParams))
 
@@ -355,12 +362,18 @@ func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
 
+	limitClause := ""
+	if q.limit != nil {
+		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
+	}
+
 	sql := fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s
 			%s
-			%s`, columns, q.Resource(), where.SQL, orderByClause,
+			%s
+			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause,
 	)
 
 	resolvedSQL, err := substituteSQLParams(where.SQL, where.PostgreSQLParams, PostgreSQL)
@@ -434,6 +447,10 @@ func (q *QuerySet[Resource]) SetFilterAst(ast ExpressionNode) {
 
 func (q *QuerySet[Resource]) SetSortFields(sortFields []SortField) {
 	q.sortFields = sortFields
+}
+
+func (q *QuerySet[Resource]) SetLimit(limit *uint64) {
+	q.limit = limit
 }
 
 func moreThan(cnt int, exp ...bool) bool {
