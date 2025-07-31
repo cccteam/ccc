@@ -3,14 +3,14 @@ module github.com/cccteam/ccc/resource
 go 1.24.4
 
 require (
-	cloud.google.com/go v0.121.3
+	cloud.google.com/go v0.121.4
 	cloud.google.com/go/spanner v1.83.0
-	github.com/cccteam/ccc v0.2.12
+	github.com/cccteam/ccc v0.2.13
 	github.com/cccteam/ccc/accesstypes v0.5.2
 	github.com/cccteam/ccc/pkg v0.0.2
-	github.com/cccteam/db-initiator v0.2.9
+	github.com/cccteam/db-initiator v0.2.10
 	github.com/cccteam/httpio v0.7.8
-	github.com/cccteam/session v0.5.5
+	github.com/cccteam/session v0.5.7
 	github.com/cccteam/spxscan v0.0.7
 	github.com/cloudspannerecosystem/memefish v0.6.2
 	github.com/ettle/strcase v0.2.0
@@ -99,7 +99,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
-	github.com/testcontainers/testcontainers-go v0.37.0 // indirect
+	github.com/testcontainers/testcontainers-go v0.38.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
@@ -123,11 +123,11 @@ require (
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
-	google.golang.org/api v0.238.0 // indirect
+	google.golang.org/api v0.239.0 // indirect
 	google.golang.org/genproto v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect
-	google.golang.org/grpc v1.73.0 // indirect
+	google.golang.org/grpc v1.74.2 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
