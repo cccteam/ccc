@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/cccteam/ccc/compare/resource/v0.2.6...resource/v0.2.7) (2025-07-31)
+
+
+### Features
+
+* Add limit parameter to query decoder ([#389](https://github.com/cccteam/ccc/issues/389)) ([6b31061](https://github.com/cccteam/ccc/commit/6b31061981e812bf49415e8ed16e0b3155266c81))
+
 ## [0.2.6](https://github.com/cccteam/ccc/compare/resource/v0.2.5...resource/v0.2.6) (2025-07-31)
 
 
