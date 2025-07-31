@@ -10,7 +10,7 @@ require (
 	github.com/cccteam/ccc/pkg v0.0.2
 	github.com/cccteam/db-initiator v0.2.10
 	github.com/cccteam/httpio v0.7.8
-	github.com/cccteam/session v0.5.5
+	github.com/cccteam/session v0.5.7
 	github.com/cccteam/spxscan v0.0.7
 	github.com/cloudspannerecosystem/memefish v0.6.2
 	github.com/ettle/strcase v0.2.0
