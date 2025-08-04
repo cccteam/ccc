@@ -314,14 +314,8 @@ func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 
 func (c *client) templateFuncs() map[string]any {
 	templateFuncs := map[string]any{
-		"Pluralize": c.pluralize,
-		"GoCamel":   strcase.ToGoCamel,
-		"PrivateType": func(s string) string {
-			r, runeWidth := utf8.DecodeRuneInString(s)
-			lowerFirst := strings.ToLower(string(r))
-
-			return lowerFirst + s[runeWidth:]
-		},
+		"Pluralize":                    c.pluralize,
+		"GoCamel":                      strcase.ToGoCamel,
 		"Camel":                        c.caser.ToCamel,
 		"Pascal":                       c.caser.ToPascal,
 		"Kebab":                        c.caser.ToKebab,
@@ -369,6 +363,12 @@ func (c *client) templateFuncs() map[string]any {
 			default:
 				return "", errors.Newf("MethodToHttpConst: unknown method: %s", method)
 			}
+		},
+		"PrivateType": func(s string) string {
+			r, runeWidth := utf8.DecodeRuneInString(s)
+			lowerFirst := strings.ToLower(string(r))
+
+			return lowerFirst + s[runeWidth:]
 		},
 		"SanitizeIdentifier": c.sanitizeEnumIdentifier,
 	}
