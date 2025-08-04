@@ -10,7 +10,7 @@ require (
 	github.com/cccteam/ccc/pkg v0.0.2
 	github.com/cccteam/db-initiator v0.2.10
 	github.com/cccteam/httpio v0.7.8
-	github.com/cccteam/session v0.5.5
+	github.com/cccteam/session v0.5.8
 	github.com/cccteam/spxscan v0.0.7
 	github.com/cloudspannerecosystem/memefish v0.6.2
 	github.com/ettle/strcase v0.2.0
@@ -95,7 +95,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
-	github.com/shirou/gopsutil/v4 v4.25.6 // indirect
+	github.com/shirou/gopsutil/v4 v4.25.7 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
