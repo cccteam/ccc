@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/pkg"
@@ -313,8 +314,14 @@ func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 
 func (c *client) templateFuncs() map[string]any {
 	templateFuncs := map[string]any{
-		"Pluralize":                    c.pluralize,
-		"GoCamel":                      strcase.ToGoCamel,
+		"Pluralize": c.pluralize,
+		"GoCamel":   strcase.ToGoCamel,
+		"PrivateType": func(s string) string {
+			r, runeWidth := utf8.DecodeRuneInString(s)
+			lowerFirst := strings.ToLower(string(r))
+
+			return lowerFirst + s[runeWidth:]
+		},
 		"Camel":                        c.caser.ToCamel,
 		"Pascal":                       c.caser.ToPascal,
 		"Kebab":                        c.caser.ToKebab,

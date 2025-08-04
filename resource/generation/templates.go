@@ -108,6 +108,18 @@ func (q *{{ .Resource.Name }}Query) Where(c {{ .Resource.Name }}QueryClause) *{{
 
 	return q
 }
+
+func (q *{{ .Resource.Name }}Query) Sort(sort *{{ .Resource.Name }}Sort) *{{ .Resource.Name }}Query {
+	q.qSet.SetSortFields(sort.sortFields)
+
+	return q
+}
+
+func (q *{{ .Resource.Name }}Query) Limit(n uint64) *{{ .Resource.Name }}Query {
+	q.qSet.SetLimit(&n)
+
+	return q
+}
 {{- end }}
 
 type {{ .Resource.Name }}Columns struct {
@@ -209,6 +221,46 @@ func (i {{ .Resource.Name }}QueryIdent[T]) IsNull() {{ .Resource.Name }}QueryCla
 
 func (i {{ .Resource.Name }}QueryIdent[T]) IsNotNull() {{ .Resource.Name }}QueryClause {
 	return {{ .Resource.Name }}QueryClause{clause: i.Ident.IsNotNull()}
+}
+
+type {{ .Resource.Name }}SortBuilder struct {
+	*{{ PrivateType .Resource.Name }}Sort
+}
+
+func New{{ .Resource.Name }}Sort() *{{ .Resource.Name }}SortBuilder {
+	return &{{ .Resource.Name }}SortBuilder{ {{ PrivateType .Resource.Name }}Sort: &{{ PrivateType .Resource.Name }}Sort{}}
+}
+
+type {{ PrivateType .Resource.Name }}Sort struct {
+	sortFields []resource.SortField
+}
+
+func (c *{{ PrivateType .Resource.Name }}Sort) addField(field string) *{{ .Resource.Name }}Sort {
+	c.sortFields = append(c.sortFields, resource.SortField{Field: field, Direction: resource.SortAscending})
+
+	return &{{ .Resource.Name }}Sort{ {{ PrivateType .Resource.Name }}Sort: c}
+}
+
+{{ range $field := .Resource.Fields }}
+func (c *{{ PrivateType $field.Parent.Name }}Sort) {{ $field.Name }}() *{{ $field.Parent.Name }}Sort {
+	return c.addField("{{ $field.Name }}")
+}
+{{ end }}
+
+type {{ .Resource.Name }}Sort struct {
+	*{{ PrivateType .Resource.Name }}Sort
+}
+
+func (s *{{ .Resource.Name }}Sort) Asc() *{{ .Resource.Name }}Sort {
+	s.sortFields[len(s.sortFields)-1].Direction = resource.SortAscending
+
+	return s
+}
+
+func (s *{{ .Resource.Name }}Sort) Desc() *{{ .Resource.Name }}Sort {
+	s.sortFields[len(s.sortFields)-1].Direction = resource.SortDescending
+
+	return s
 }
 {{- end }}
 
