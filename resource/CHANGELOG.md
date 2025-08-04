@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.7](https://github.com/cccteam/ccc/compare/resource/v0.2.6...resource/v0.2.7) (2025-08-04)
+
+
+### Features
+
+* Add limit parameter to query decoder ([#389](https://github.com/cccteam/ccc/issues/389)) ([6b31061](https://github.com/cccteam/ccc/commit/6b31061981e812bf49415e8ed16e0b3155266c81))
+* Add support for Sorting and Limiting Query Clauses ([#393](https://github.com/cccteam/ccc/issues/393)) ([56d9cfd](https://github.com/cccteam/ccc/commit/56d9cfd96933a8f0afdd0e1197a6fa78daa2d729))
+
+
+### Code Upgrade
+
+* **deps:** Bump github.com/cccteam/session ([#391](https://github.com/cccteam/ccc/issues/391)) ([aa84ed6](https://github.com/cccteam/ccc/commit/aa84ed6a6bca6eef0dd730f4e8d0aa66a5a6bc01))
+
 ## [0.2.6](https://github.com/cccteam/ccc/compare/resource/v0.2.5...resource/v0.2.6) (2025-07-31)
 
 
