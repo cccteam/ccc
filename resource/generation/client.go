@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/pkg"
@@ -362,6 +363,12 @@ func (c *client) templateFuncs() map[string]any {
 			default:
 				return "", errors.Newf("MethodToHttpConst: unknown method: %s", method)
 			}
+		},
+		"PrivateType": func(s string) string {
+			r, runeWidth := utf8.DecodeRuneInString(s)
+			lowerFirst := strings.ToLower(string(r))
+
+			return lowerFirst + s[runeWidth:]
 		},
 		"SanitizeIdentifier": c.sanitizeEnumIdentifier,
 	}
