@@ -598,7 +598,7 @@ import (
 
 				switch op.Type {
 				case resource.OperationCreate:
-					{{- if $PrimaryKeyIsGeneratedUUID }}
+				{{- if $PrimaryKeyIsGeneratedUUID }}
 					patch, err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet)
 					if err != nil {
 						return errors.Wrap(err, "resources.New{{ .Resource.Name }}CreatePatchFromPatchSet()")
@@ -607,22 +607,47 @@ import (
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerBuffer()")
 					}
 					resp.IDs = append(resp.IDs, patch.{{ .Resource.PrimaryKey.Name }}())
-					{{- else }}
+				{{- else if .Resource.HasCompoundPrimaryKey }}
+					{{- range $i, $field := .Resource.PrimaryKeys }}
+					id{{ $i }} := httpio.Param[{{ $field.Type }}](r, "id{{ $i }}")
+					{{- end }}
+					if err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerBuffer()")
+					}
+				{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
 					if err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerBuffer()")
 					}
-					{{- end }}
+				{{- end }}
 				case resource.OperationUpdate:
+				{{- if .Resource.HasCompoundPrimaryKey }}
+					{{- range $i, $field := .Resource.PrimaryKeys }}
+					id{{ $i }} := httpio.Param[{{ $field.Type }}](r, "id{{ $i }}")
+					{{- end }}
+					if err := resources.New{{ .Resource.Name }}UpdatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+						return errors.Wrap(err, "resources.{{ .Resource.Name }}UpdatePatch.SpannerBuffer()")
+					}
+				{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
 					if err := resources.New{{ .Resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}UpdatePatch.SpannerBuffer()")
 					}
+				{{- end }}
 				case resource.OperationDelete:
+				{{- if .Resource.HasCompoundPrimaryKey }}
+					{{- range $i, $field := .Resource.PrimaryKeys }}
+						id{{ $i }} := httpio.Param[{{ $field.Type }}](r, "id{{ $i }}")
+					{{- end }}
+					if err := resources.New{{ .Resource.Name }}DeletePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+						return errors.Wrap(err, "resources.{{ .Resource.Name }}DeletePatch.SpannerBuffer()")
+					}
+				{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
 					if err := resources.New{{ .Resource.Name }}DeletePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}DeletePatch.SpannerBuffer()")
 					}
+				{{- end }}
 				}
 			}
 
