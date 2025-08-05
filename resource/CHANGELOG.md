@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/cccteam/ccc/compare/resource/v0.2.7...resource/v0.2.8) (2025-08-05)
+
+
+### Bug Fixes
+
+* Fix bug causing unstable KEY_ORDINAL_POSITION ([#394](https://github.com/cccteam/ccc/issues/394)) ([7eeecde](https://github.com/cccteam/ccc/commit/7eeecdeb8ac21a2575463aa85cbeea71869d835c))
+
 ## [0.2.7](https://github.com/cccteam/ccc/compare/resource/v0.2.6...resource/v0.2.7) (2025-08-04)
 
 
