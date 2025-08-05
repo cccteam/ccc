@@ -119,17 +119,17 @@ func ParsePackage(pkg *packages.Package) *Package {
 		}
 	}
 
-	interfaces := make([]Interface, 0, 16)
-	parsedStructs := make([]Struct, 0, 128)
-	namedTypes := make([]NamedType, 0, 16)
+	interfaces := make([]*Interface, 0, 16)
+	parsedStructs := make([]*Struct, 0, 128)
+	namedTypes := make([]*NamedType, 0, 16)
 	for i := range typeSpecs {
 		switch astNode := typeSpecs[i].Type.(type) {
 		case *ast.InterfaceType:
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
 			iface, _ := decodeToType[*types.Interface](obj.Type())
-			interfaces = append(interfaces, Interface{Name: typeSpecs[i].Name.Name, iface: iface})
+			interfaces = append(interfaces, &Interface{Name: typeSpecs[i].Name.Name, iface: iface})
 		case *ast.Ident:
-			var namedType NamedType
+			namedType := &NamedType{}
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name) // NamedType's name
 
 			namedType.TypeInfo = TypeInfo{obj}
@@ -180,7 +180,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 		}
 	}
 
-	compareFn := func(a, b Struct) int {
+	compareFn := func(a, b *Struct) int {
 		return strings.Compare(a.Name(), b.Name())
 	}
 
@@ -189,8 +189,8 @@ func ParsePackage(pkg *packages.Package) *Package {
 	return &Package{Structs: slices.Clip(parsedStructs), NamedTypes: slices.Clip(namedTypes)}
 }
 
-func FilterStructsByInterface(pStructs []Struct, interfaceNames []string) []Struct {
-	filteredStructs := make([]Struct, 0, len(pStructs))
+func FilterStructsByInterface(pStructs []*Struct, interfaceNames []string) []*Struct {
+	filteredStructs := make([]*Struct, 0, len(pStructs))
 	for _, pStruct := range pStructs {
 		for _, iface := range interfaceNames {
 			if pStruct.Implements(iface) {

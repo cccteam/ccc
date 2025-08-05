@@ -330,13 +330,14 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 			var paramsResult any
 			var genErr error
 
-			if tt.dialect == PostgreSQL {
+			switch tt.dialect {
+			case PostgreSQL:
 				sqlGen := NewPostgreSQLGenerator()
 				gotSQL, paramsResult, genErr = sqlGen.GenerateSQL(ast)
-			} else if tt.dialect == Spanner {
+			case Spanner:
 				sqlGen := NewSpannerGenerator()
 				gotSQL, paramsResult, genErr = sqlGen.GenerateSQL(ast)
-			} else {
+			default:
 				t.Fatalf("Unsupported dialect in test case: %v", tt.dialect)
 			}
 
@@ -357,7 +358,8 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 				t.Errorf("GenerateSQL() gotSQL = %q, want %q", gotSQL, tt.wantSQL)
 			}
 
-			if tt.dialect == PostgreSQL {
+			switch tt.dialect {
+			case PostgreSQL:
 				wantPgParams, ok := tt.wantParams.([]any)
 				if !ok && tt.wantParams != nil {
 					t.Fatalf("PostgreSQL test case %s has wantParams not of type []any: %T", tt.name, tt.wantParams)
@@ -371,7 +373,7 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 				if !reflect.DeepEqual(gotPgParams, wantPgParams) {
 					t.Errorf("PostgreSQLGenerator.GenerateSQL() for test %s: gotParams = %#v, want %#v", tt.name, gotPgParams, wantPgParams)
 				}
-			} else if tt.dialect == Spanner {
+			case Spanner:
 				wantSpannerParams, ok := tt.wantParams.(map[string]any)
 				if !ok && tt.wantParams != nil {
 					t.Fatalf("Spanner test case %s has wantParams not of type map[string]any: %T", tt.name, tt.wantParams)

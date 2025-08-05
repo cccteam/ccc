@@ -9,7 +9,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *client) extractResources(structs []parser.Struct) ([]resourceInfo, error) {
+func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, error) {
 	resources := make([]resourceInfo, 0, len(structs))
 	for _, pStruct := range structs {
 		table, err := c.lookupTable(pStruct.Name())
@@ -91,7 +91,7 @@ func (c *client) extractResources(structs []parser.Struct) ([]resourceInfo, erro
 	return resources, nil
 }
 
-func (c *client) structsToRPCMethods(structs []parser.Struct) ([]rpcMethodInfo, error) {
+func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]rpcMethodInfo, error) {
 	rpcMethods := make([]rpcMethodInfo, 0, len(structs))
 	for _, s := range structs {
 		rpcMethod := rpcMethodInfo{

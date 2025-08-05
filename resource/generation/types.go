@@ -80,7 +80,6 @@ const (
 )
 
 const (
-	querySetOutputFileName        = "types.go"
 	resourceInterfaceOutputName   = "resources_iface"
 	resourcesTestFileName         = "resource_types_test.go"
 	resourceEnumsFileName         = "enums"
@@ -169,12 +168,12 @@ resourceRange:
 }
 
 type rpcMethodInfo struct {
-	parser.Struct
+	*parser.Struct
 	Fields []rpcField
 }
 
 type rpcField struct {
-	parser.Field
+	*parser.Field
 	typescriptType string
 }
 
@@ -201,7 +200,7 @@ func (f *rpcField) TypescriptDataType() string {
 }
 
 type resourceInfo struct {
-	parser.TypeInfo
+	*parser.TypeInfo
 	Fields             []resourceField
 	SuppressedHandlers [3]HandlerType
 	searchIndexes      map[string][]*searchExpression // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
@@ -311,7 +310,7 @@ func (r resourceInfo) IsQueryClauseEligible() bool {
 }
 
 type resourceField struct {
-	parser.Field
+	*parser.Field
 	Parent         *resourceInfo
 	typescriptType string
 	// Spanner stuff

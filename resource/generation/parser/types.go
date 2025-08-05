@@ -11,31 +11,31 @@ import (
 )
 
 type Package struct {
-	Structs    []Struct
-	NamedTypes []NamedType
+	Structs    []*Struct
+	NamedTypes []*NamedType
 }
 
 type TypeInfo struct {
 	obj types.Object
 }
 
-func (t TypeInfo) Name() string {
+func (t *TypeInfo) Name() string {
 	return t.obj.Name()
 }
 
 // e.g. ccc.UUID, []ccc.UUID
-func (t TypeInfo) Type() string {
+func (t *TypeInfo) Type() string {
 	return typeStringer(t.obj.Type())
 }
 
 // e.g. *ccc.UUID -> ccc.UUID
-func (t TypeInfo) DerefType() string {
+func (t *TypeInfo) DerefType() string {
 	return typeStringer(derefType(t.obj.Type()))
 }
 
 // Type without package prefix.
 // e.g. ccc.UUID -> UUID, []ccc.UUID -> []UUID
-func (t TypeInfo) UnqualifiedType() string {
+func (t *TypeInfo) UnqualifiedType() string {
 	qualifier := func(p *types.Package) string {
 		return ""
 	}
@@ -45,7 +45,7 @@ func (t TypeInfo) UnqualifiedType() string {
 
 // Type without pointer and package prefix removed
 // e.g. *ccc.UUID -> UUID
-func (t TypeInfo) DerefUnqualifiedType() string {
+func (t *TypeInfo) DerefUnqualifiedType() string {
 	qualifier := func(p *types.Package) string {
 		return ""
 	}
@@ -55,13 +55,13 @@ func (t TypeInfo) DerefUnqualifiedType() string {
 
 // Qualified type without array/slice/pointer prefix.
 // e.g. *ccc.UUID -> ccc.UUID, []ccc.UUID -> ccc.UUID
-func (t TypeInfo) TypeName() string {
+func (t *TypeInfo) TypeName() string {
 	return typeStringer(unwrapType(t.obj.Type()))
 }
 
 // Type without array/slice/pointer or package prefix.
 // e.g. *ccc.UUID -> UUID, []ccc.UUID -> UUID
-func (t TypeInfo) UnqualifiedTypeName() string {
+func (t *TypeInfo) UnqualifiedTypeName() string {
 	qualifier := func(p *types.Package) string {
 		return ""
 	}
@@ -69,7 +69,7 @@ func (t TypeInfo) UnqualifiedTypeName() string {
 	return types.TypeString(unwrapType(t.obj.Type()), qualifier)
 }
 
-func (t TypeInfo) IsPointer() bool {
+func (t *TypeInfo) IsPointer() bool {
 	switch t.obj.Type().(type) {
 	case *types.Pointer:
 		return true
@@ -79,7 +79,7 @@ func (t TypeInfo) IsPointer() bool {
 }
 
 // Returns true if type is slice or array
-func (t TypeInfo) IsIterable() bool {
+func (t *TypeInfo) IsIterable() bool {
 	switch t.obj.Type().(type) {
 	case *types.Slice, *types.Array:
 		return true
@@ -94,23 +94,23 @@ type Interface struct {
 }
 
 type Struct struct {
-	TypeInfo
-	fields     []Field
+	*TypeInfo
+	fields     []*Field
 	interfaces []string
 	methodSet  map[string]struct{}
 	comments   string
 }
 
-func newStruct(obj types.Object) Struct {
+func newStruct(obj types.Object) *Struct {
 	tt := obj.Type()
 
 	st, ok := decodeToType[*types.Struct](tt)
 	if !ok {
-		return Struct{}
+		return &Struct{}
 	}
 
-	s := Struct{
-		TypeInfo:  TypeInfo{obj},
+	s := &Struct{
+		TypeInfo:  &TypeInfo{obj},
 		methodSet: make(map[string]struct{}),
 	}
 
@@ -128,7 +128,7 @@ func newStruct(obj types.Object) Struct {
 	for i := range st.NumFields() {
 		field := st.Field(i)
 
-		s.fields = append(s.fields, Field{
+		s.fields = append(s.fields, &Field{
 			TypeInfo:    TypeInfo{field},
 			tags:        reflect.StructTag(st.Tag(i)),
 			isLocalType: isTypeLocalToPackage(field, obj.Pkg()),
@@ -138,7 +138,7 @@ func newStruct(obj types.Object) Struct {
 	return s
 }
 
-func (s Struct) Comments() string {
+func (s *Struct) Comments() string {
 	return s.comments
 }
 
@@ -148,12 +148,12 @@ func (s *Struct) SetInterface(iface string) {
 	}
 }
 
-func (s Struct) Implements(iface string) bool {
+func (s *Struct) Implements(iface string) bool {
 	return slices.Contains(s.interfaces, iface)
 }
 
 // Pretty prints the struct name and its fields. Useful for debugging.
-func (s Struct) String() string {
+func (s *Struct) String() string {
 	var (
 		maxNameLength int
 		maxTypeLength int
@@ -177,7 +177,7 @@ func (s Struct) String() string {
 	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
 }
 
-func (s Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
+func (s *Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
 	var (
 		maxNameLength int
 		maxTypeLength int
@@ -206,16 +206,15 @@ func (s Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
 	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
 }
 
-func (s Struct) NumFields() int {
+func (s *Struct) NumFields() int {
 	return len(s.fields)
 }
 
-func (s Struct) Fields() []Field {
+func (s *Struct) Fields() []*Field {
 	return s.fields
 }
 
-
-func (s Struct) HasMethod(methodName string) bool {
+func (s *Struct) HasMethod(methodName string) bool {
 	_, ok := s.methodSet[methodName]
 
 	return ok
@@ -250,7 +249,7 @@ func (f Field) AsStruct() *Struct {
 		return nil
 	}
 
-	return &s
+	return s
 }
 
 // Returns true if the field's type originates from the same package

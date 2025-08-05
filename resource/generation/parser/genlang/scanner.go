@@ -10,8 +10,8 @@ import (
 type (
 	scanMode int
 	Scanner  interface {
-		ScanStruct(parser.Struct) (StructResults, error)
-		ScanNamedType(parser.NamedType) (NamedTypeResults, error)
+		ScanStruct(*parser.Struct) (StructResults, error)
+		ScanNamedType(*parser.NamedType) (NamedTypeResults, error)
 	}
 	scanner struct {
 		src              []byte
@@ -44,7 +44,7 @@ func NewScanner(keywords map[string]KeywordOpts) Scanner {
 	}
 }
 
-func (s *scanner) ScanStruct(pStruct parser.Struct) (StructResults, error) {
+func (s *scanner) ScanStruct(pStruct *parser.Struct) (StructResults, error) {
 	s.src = []byte(pStruct.Comments())
 	s.mode = ScanStruct
 	if err := s.scan(); err != nil {
@@ -70,7 +70,7 @@ func (s *scanner) ScanStruct(pStruct parser.Struct) (StructResults, error) {
 	return StructResults{structResults, fieldResults}, nil
 }
 
-func (s *scanner) ScanNamedType(namedType parser.NamedType) (NamedTypeResults, error) {
+func (s *scanner) ScanNamedType(namedType *parser.NamedType) (NamedTypeResults, error) {
 	s.src = []byte(namedType.Comments)
 	s.mode = ScanNamedType
 	if err := s.scan(); err != nil {

@@ -409,10 +409,10 @@ func TestCollection_TypescriptData(t *testing.T) {
 		if len(data.Resources) != 0 {
 			t.Errorf("TypescriptData.Resources should be empty, got %v", data.Resources)
 		}
-		if data.ResourceTags != nil && len(data.ResourceTags) != 0 {
+		if len(data.ResourceTags) != 0 {
 			t.Errorf("TypescriptData.ResourceTags should be empty or nil, got %v", data.ResourceTags)
 		}
-		if data.ResourcePermissionMap != nil && len(data.ResourcePermissionMap) != 0 {
+		if len(data.ResourcePermissionMap) != 0 {
 			t.Errorf("TypescriptData.ResourcePermissionMap should be empty or nil, got %v", data.ResourcePermissionMap)
 		}
 		if len(data.Domains) != 0 {
@@ -432,21 +432,12 @@ func TestCollection_TypescriptData(t *testing.T) {
 		// This path taken if collectResourcePermissions is true by default.
 		// For an empty collection, all these should still be empty.
 		if len(data.Permissions) != 0 || len(data.ResourcePermissions) != 0 || len(data.Resources) != 0 ||
-			(data.ResourceTags != nil && len(data.ResourceTags) != 0) ||
-			(data.ResourcePermissionMap != nil && len(data.ResourcePermissionMap) != 0) ||
+			len(data.ResourceTags) != 0 ||
+			len(data.ResourcePermissionMap) != 0 ||
 			len(data.Domains) != 0 {
 			t.Errorf("TypescriptData is not zero-valued for an empty collection even when collectResourcePermissions=true. Got: %+v", data)
 		}
 	}
 }
 
-var (
-	permRead   = accesstypes.Permission("read")
-	permWrite  = accesstypes.Permission("write")
-	permDelete = accesstypes.Permission("delete")
-	permList   = accesstypes.Permission("list")
-	permExec   = accesstypes.Execute
-
-	tagFoo = accesstypes.Tag("foo")
-	tagBar = accesstypes.Tag("bar")
-)
+var permRead = accesstypes.Permission("read")
