@@ -403,14 +403,14 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 				}
 
 				if !reflect.DeepEqual(tt.expectedResult.SortFields, parsedQuery.SortFields) {
-					isNilOrEmptySortField := func(s []SortField) bool { return s == nil || len(s) == 0 }
+					isNilOrEmptySortField := func(s []SortField) bool { return len(s) == 0 }
 					if !(tt.wantErr && isNilOrEmptySortField(tt.expectedResult.SortFields) && isNilOrEmptySortField(parsedQuery.SortFields)) {
 						t.Errorf("SortFields mismatch for test '%s':\nExpected: %#v\nActual:   %#v", tt.name, tt.expectedResult.SortFields, parsedQuery.SortFields)
 					}
 				}
 
 				if !reflect.DeepEqual(tt.expectedResult.ColumnFields, parsedQuery.ColumnFields) {
-					isNilOrEmpty := func(s []accesstypes.Field) bool { return s == nil || len(s) == 0 }
+					isNilOrEmpty := func(s []accesstypes.Field) bool { return len(s) == 0 }
 					if !(tt.wantErr && isNilOrEmpty(tt.expectedResult.ColumnFields) && isNilOrEmpty(parsedQuery.ColumnFields)) {
 						t.Errorf("ColumnFields mismatch for test '%s':\nExpected: %#v\nActual:   %#v", tt.name, tt.expectedResult.ColumnFields, parsedQuery.ColumnFields)
 					}

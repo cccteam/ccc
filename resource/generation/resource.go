@@ -226,7 +226,7 @@ func (r *resourceGenerator) generateResources(res resourceInfo) error {
 	return nil
 }
 
-func (r *resourceGenerator) generateEnums(ctx context.Context, namedTypes []parser.NamedType) error {
+func (r *resourceGenerator) generateEnums(ctx context.Context, namedTypes []*parser.NamedType) error {
 	enumMap, err := r.retrieveDatabaseEnumValues(ctx, namedTypes)
 	if err != nil {
 		return err
@@ -259,7 +259,7 @@ func (r *resourceGenerator) generateEnums(ctx context.Context, namedTypes []pars
 	return nil
 }
 
-func (r *resourceGenerator) retrieveDatabaseEnumValues(ctx context.Context, namedTypes []parser.NamedType) (map[string][]enumData, error) {
+func (r *resourceGenerator) retrieveDatabaseEnumValues(ctx context.Context, namedTypes []*parser.NamedType) (map[string][]enumData, error) {
 	enumMap := make(map[string][]enumData)
 	for _, namedType := range namedTypes {
 		scanner := genlang.NewScanner(keywords())

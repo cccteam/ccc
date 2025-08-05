@@ -80,7 +80,6 @@ const (
 )
 
 const (
-	querySetOutputFileName        = "types.go"
 	resourceInterfaceOutputName   = "resources_iface"
 	resourcesTestFileName         = "resource_types_test.go"
 	resourceEnumsFileName         = "enums"
@@ -169,12 +168,12 @@ resourceRange:
 }
 
 type rpcMethodInfo struct {
-	parser.Struct
+	*parser.Struct
 	Fields []rpcField
 }
 
 type rpcField struct {
-	parser.Field
+	*parser.Field
 	typescriptType string
 }
 
@@ -311,7 +310,7 @@ func (r resourceInfo) IsQueryClauseEligible() bool {
 }
 
 type resourceField struct {
-	parser.Field
+	*parser.Field
 	Parent         *resourceInfo
 	typescriptType string
 	// Spanner stuff
