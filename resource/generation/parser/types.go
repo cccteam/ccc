@@ -94,7 +94,7 @@ type Interface struct {
 }
 
 type Struct struct {
-	TypeInfo
+	*TypeInfo
 	fields     []*Field
 	interfaces []string
 	methodSet  map[string]struct{}
@@ -110,7 +110,7 @@ func newStruct(obj types.Object) *Struct {
 	}
 
 	s := &Struct{
-		TypeInfo:  TypeInfo{obj},
+		TypeInfo:  &TypeInfo{obj},
 		methodSet: make(map[string]struct{}),
 	}
 

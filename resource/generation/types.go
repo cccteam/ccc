@@ -200,7 +200,7 @@ func (f *rpcField) TypescriptDataType() string {
 }
 
 type resourceInfo struct {
-	parser.TypeInfo
+	*parser.TypeInfo
 	Fields             []resourceField
 	SuppressedHandlers [3]HandlerType
 	searchIndexes      map[string][]*searchExpression // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions

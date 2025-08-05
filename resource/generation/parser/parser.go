@@ -119,7 +119,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 		}
 	}
 
-	interfaces := make([]Interface, 0, 16)
+	interfaces := make([]*Interface, 0, 16)
 	parsedStructs := make([]*Struct, 0, 128)
 	namedTypes := make([]*NamedType, 0, 16)
 	for i := range typeSpecs {
@@ -127,7 +127,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 		case *ast.InterfaceType:
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
 			iface, _ := decodeToType[*types.Interface](obj.Type())
-			interfaces = append(interfaces, Interface{Name: typeSpecs[i].Name.Name, iface: iface})
+			interfaces = append(interfaces, &Interface{Name: typeSpecs[i].Name.Name, iface: iface})
 		case *ast.Ident:
 			namedType := &NamedType{}
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name) // NamedType's name
