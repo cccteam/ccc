@@ -533,14 +533,23 @@ import (
 		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ .Resource.Name }}()")
 		defer span.End()
 
+	{{ if .Resource.HasCompoundPrimaryKey }}
+	{{- range $_, $field := .Resource.PrimaryKeys }}
+		{{ GoCamel $field.Name }} := httpio.Param[{{ $field.Type }}](r, router.{{ $.Resource.Name }}{{ $field.Name }})
+	{{- end }}
+	{{ else }}
 		id := httpio.Param[{{ .Resource.PrimaryKeyType }}](r, router.{{ .Resource.Name }}ID)
-
+	{{ end }}
 		querySet, err := decoder.Decode(r, a.UserPermissions(r))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
+	{{ if .Resource.HasCompoundPrimaryKey }}
+		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet){{ range $_, $field := .Resource.PrimaryKeys }}.Set{{ $field.Name }}({{ GoCamel $field.Name }}){{ end }}
+	{{- else }}
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id)
+	{{- end }}
 
 		row, err := res.Query().SpannerRead(ctx, a.ReadTxn())
 		if err != nil {
