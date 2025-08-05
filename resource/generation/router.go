@@ -19,14 +19,20 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		return err
 	}
 
-	generatedRoutesMap := make(routeMap)
+	generatedRoutesMap := make(map[string][]generatedRoute)
 	for _, resource := range r.resources {
 		handlerTypes := r.resourceEndpoints(resource)
 
 		for _, ht := range handlerTypes {
 			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(resource.Name())))
 			if ht == ReadHandler {
-				path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name()+"ID"))
+				if resource.HasCompoundPrimaryKey() {
+					for _, field := range resource.PrimaryKeys() {
+						path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name()+field.Name()))
+					}
+				} else {
+					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name()+"ID"))
+				}
 			}
 
 			generatedRoutesMap[resource.Name()] = append(generatedRoutesMap[resource.Name()], generatedRoute{
@@ -35,6 +41,17 @@ func (r *resourceGenerator) runRouteGeneration() error {
 				HandlerFunc: r.handlerName(resource.Name(), ht),
 			})
 		}
+	}
+
+	filteredResources := []resourceInfo{}
+resourceRange:
+	for _, resource := range r.resources {
+		for _, route := range generatedRoutesMap[resource.Name()] {
+			if route.Method == "POST" {
+				continue resourceRange
+			}
+		}
+		filteredResources = append(filteredResources, resource)
 	}
 
 	if r.genRPCMethods {
@@ -49,14 +66,14 @@ func (r *resourceGenerator) runRouteGeneration() error {
 
 	if len(generatedRoutesMap) > 0 {
 		routesDestination := filepath.Join(r.routerDestination, generatedFileName(routesOutputName))
-		if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, generatedRoutesMap); err != nil {
+		if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, filteredResources, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRoutes()")
 		}
 		log.Printf("Generated routes file in %s: %s\n", time.Since(begin), routesDestination)
 
 		routerTestsDestination := filepath.Join(r.routerDestination, generatedFileName(routerTestOutputName))
 		begin = time.Now()
-		if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, generatedRoutesMap); err != nil {
+		if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, filteredResources, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRouterTests()")
 		}
 		log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
@@ -65,7 +82,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	return nil
 }
 
-func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, generatedRoutes routeMap) error {
+func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, resources []resourceInfo, generatedRoutes map[string][]generatedRoute) error {
 	file, err := os.Create(destinationFile)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
@@ -83,6 +100,7 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 		"Package":                r.routerPackage,
 		"LocalPackageImports":    r.localPackageImports(),
 		"RoutesMap":              generatedRoutes,
+		"Resources":              resources,
 		"HasConsolidatedHandler": r.consolidatedRoute != "",
 		"RoutePrefix":            r.routePrefix,
 		"ConsolidatedRoute":      r.consolidatedRoute,

@@ -1027,8 +1027,15 @@ import (
 )
 
 const (
-	{{ range $Struct := .RoutesMap.Resources }}{{ $Struct }}ID httpio.ParamType = "{{ GoCamel $Struct }}ID"
-	{{ end }}
+{{- range $resource := .Resources }}
+{{- if $resource.HasCompoundPrimaryKey }}
+	{{- range $_, $field := $resource.PrimaryKeys }}
+	{{ $resource.Name }}{{ $field.Name }} httpio.ParamType = "{{ GoCamel $resource.Name }}{{ $field.Name }}"
+	{{- end }}
+{{- else}}
+	{{ $resource.Name }}ID httpio.ParamType = "{{ GoCamel $resource.Name }}ID"
+{{- end }}
+{{- end }}
 )
 
 type GeneratedHandlers interface {
@@ -1065,8 +1072,15 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string {
-		{{ range $Struct := .RoutesMap.Resources }}"{{ GoCamel $Struct }}ID",
-		{{ end }}
+	{{- range $resource := .Resources }}
+	{{- if $resource.HasCompoundPrimaryKey }}
+		{{- range $_, $field := $resource.PrimaryKeys }}
+		"{{ GoCamel $resource.Name }}{{ $field.Name }}",
+		{{- end }}
+	{{- else }}
+		"{{ GoCamel $resource.Name }}ID",
+	{{- end }}
+	{{- end }}
 	}
 
 	return keys
@@ -1075,10 +1089,11 @@ func generatedRouteParameters() []string {
 {{ $routePrefix := .RoutePrefix -}}
 func generatedRouterTests() []*generatedRouterTest {
 	routerTests := []*generatedRouterTest {
-		{{ range $Struct, $Routes := .RoutesMap }}{{ range $route := $Routes }}{
-			url: "{{ DetermineTestURL $Struct $routePrefix $route }}", method: {{ MethodToHttpConst $route.Method }},
+		{{ range $resource := .Resources }}
+		{{- range $route := (index $.RoutesMap $resource.Name) }}{
+			url: "{{ DetermineTestURL $resource $routePrefix $route }}", method: {{ MethodToHttpConst $route.Method }},
 			handlerFunc: "{{ $route.HandlerFunc }}",
-			parameters: {{ DetermineParameters $Struct $route }},
+			parameters: {{ DetermineParameters $resource $route }},
 		},
 		{{ end }}{{ end }}
 		{{- if eq .HasConsolidatedHandler true -}}
