@@ -360,7 +360,7 @@ func (c *client) templateFuncs() map[string]any {
 				if resource.HasCompoundPrimaryKey() {
 					params := "map[string]string{"
 					for _, key := range resource.PrimaryKeys() {
-						params += fmt.Sprintf(`"%[1]s%[2]s": "test%[1]s%[2]s", `, strcase.ToGoCamel(resource.Name()), key.Name())
+						params += fmt.Sprintf(`"%[1]s%[3]s": "test%[2]s%[3]s", `, strcase.ToGoCamel(resource.Name()), c.caser.ToPascal(resource.Name()), key.Name())
 					}
 
 					params += "}"
