@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/cccteam/ccc/compare/resource/v0.2.9...resource/v0.2.10) (2025-08-06)
+
+
+### Bug Fixes
+
+* Fix resourceMeta() function to satisfy typescript ([#399](https://github.com/cccteam/ccc/issues/399)) ([73103e5](https://github.com/cccteam/ccc/commit/73103e55485e989f8d3af8bffb3176c7c73185cc))
+
 ## [0.2.9](https://github.com/cccteam/ccc/compare/resource/v0.2.8...resource/v0.2.9) (2025-08-06)
 
 
