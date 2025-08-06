@@ -148,25 +148,6 @@ type generatedRoute struct {
 	HandlerFunc string
 }
 
-type routeMap map[string][]generatedRoute
-
-func (r routeMap) Resources() []string {
-	resources := []string{}
-resourceRange:
-	for resource := range r {
-		for _, route := range r[resource] {
-			if route.Method == "POST" {
-				continue resourceRange
-			}
-		}
-		resources = append(resources, resource)
-	}
-
-	slices.Sort(resources)
-
-	return resources
-}
-
 type rpcMethodInfo struct {
 	*parser.Struct
 	Fields []rpcField

@@ -334,20 +334,41 @@ func (c *client) templateFuncs() map[string]any {
 				return ""
 			}
 		},
-		"DetermineTestURL": func(structName, routePrefix string, route generatedRoute) string {
-			if strings.EqualFold(route.Method, "get") && strings.HasSuffix(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(structName))) {
+		"DetermineTestURL": func(resource resourceInfo, routePrefix string, route generatedRoute) string {
+			if !resource.IsView && strings.EqualFold(route.Method, "get") && (strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
+				if resource.HasCompoundPrimaryKey() {
+					url := fmt.Sprintf("/%s/%s", routePrefix, c.caser.ToKebab(c.pluralize(resource.Name())))
+
+					for _, key := range resource.PrimaryKeys() {
+						url += fmt.Sprintf("/test%s%s", c.caser.ToPascal(resource.Name()), key.Name())
+					}
+
+					return url
+				}
+
 				return fmt.Sprintf("/%s/%s/%s",
 					routePrefix,
-					c.caser.ToKebab(c.pluralize(structName)),
-					strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(structName))),
+					c.caser.ToKebab(c.pluralize(resource.Name())),
+					strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(resource.Name()))),
 				)
 			}
 
 			return route.Path
 		},
-		"DetermineParameters": func(structName string, route generatedRoute) string {
-			if strings.EqualFold(route.Method, "get") && strings.HasSuffix(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(structName))) {
-				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(structName+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(structName))))
+		"DetermineParameters": func(resource resourceInfo, route generatedRoute) string {
+			if !resource.IsView && strings.EqualFold(route.Method, "get") && (strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
+				if resource.HasCompoundPrimaryKey() {
+					params := "map[string]string{"
+					for _, key := range resource.PrimaryKeys() {
+						params += fmt.Sprintf(`"%[1]s%[3]s": "test%[2]s%[3]s", `, strcase.ToGoCamel(resource.Name()), c.caser.ToPascal(resource.Name()), key.Name())
+					}
+
+					params += "}"
+
+					return params
+				}
+
+				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(resource.Name()+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(resource.Name()))))
 			}
 
 			return "map[string]string{}"

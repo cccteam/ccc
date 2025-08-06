@@ -533,14 +533,23 @@ import (
 		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ .Resource.Name }}()")
 		defer span.End()
 
+	{{ if .Resource.HasCompoundPrimaryKey }}
+	{{- range $_, $field := .Resource.PrimaryKeys }}
+		{{ GoCamel $field.Name }} := httpio.Param[{{ $field.Type }}](r, router.{{ $.Resource.Name }}{{ $field.Name }})
+	{{- end }}
+	{{ else }}
 		id := httpio.Param[{{ .Resource.PrimaryKeyType }}](r, router.{{ .Resource.Name }}ID)
-
+	{{ end }}
 		querySet, err := decoder.Decode(r, a.UserPermissions(r))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
+	{{ if .Resource.HasCompoundPrimaryKey }}
+		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet){{ range $_, $field := .Resource.PrimaryKeys }}.Set{{ $field.Name }}({{ GoCamel $field.Name }}){{ end }}
+	{{- else }}
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id)
+	{{- end }}
 
 		row, err := res.Query().SpannerRead(ctx, a.ReadTxn())
 		if err != nil {
@@ -586,7 +595,11 @@ import (
 				return errors.Wrap(err, "resource.CloneRequest()")
 			}
 
-			for op, err := range resource.Operations(r, "/{id}"{{- if eq false $PrimaryKeyIsGeneratedUUID }}, resource.RequireCreatePath(){{- end }}) {
+			for op, err := range resource.Operations(r, 
+			{{- if $PrimaryKeyIsGeneratedUUID }}"/{id}"
+			{{- else if .Resource.HasCompoundPrimaryKey }}"
+			{{- range $i := .Resource.PrimaryKeys }}/{id{{ $i }}}{{ end }}"
+			{{- else }}"/{id}", resource.RequireCreatePath(){{ end }}) {
 				if err != nil {
 					return errors.Wrap(err, "resource.Operations()")
 				}
@@ -598,7 +611,7 @@ import (
 
 				switch op.Type {
 				case resource.OperationCreate:
-					{{- if $PrimaryKeyIsGeneratedUUID }}
+				{{- if $PrimaryKeyIsGeneratedUUID }}
 					patch, err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet)
 					if err != nil {
 						return errors.Wrap(err, "resources.New{{ .Resource.Name }}CreatePatchFromPatchSet()")
@@ -607,22 +620,47 @@ import (
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerBuffer()")
 					}
 					resp.IDs = append(resp.IDs, patch.{{ .Resource.PrimaryKey.Name }}())
-					{{- else }}
+				{{- else if .Resource.HasCompoundPrimaryKey }}
+					{{- range $i, $field := .Resource.PrimaryKeys }}
+					id{{ $i }} := httpio.Param[{{ $field.Type }}](r, "id{{ $i }}")
+					{{- end }}
+					if err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerBuffer()")
+					}
+				{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
 					if err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerBuffer()")
 					}
-					{{- end }}
+				{{- end }}
 				case resource.OperationUpdate:
+				{{- if .Resource.HasCompoundPrimaryKey }}
+					{{- range $i, $field := .Resource.PrimaryKeys }}
+					id{{ $i }} := httpio.Param[{{ $field.Type }}](r, "id{{ $i }}")
+					{{- end }}
+					if err := resources.New{{ .Resource.Name }}UpdatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+						return errors.Wrap(err, "resources.{{ .Resource.Name }}UpdatePatch.SpannerBuffer()")
+					}
+				{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
 					if err := resources.New{{ .Resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}UpdatePatch.SpannerBuffer()")
 					}
+				{{- end }}
 				case resource.OperationDelete:
+				{{- if .Resource.HasCompoundPrimaryKey }}
+					{{- range $i, $field := .Resource.PrimaryKeys }}
+						id{{ $i }} := httpio.Param[{{ $field.Type }}](r, "id{{ $i }}")
+					{{- end }}
+					if err := resources.New{{ .Resource.Name }}DeletePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
+						return errors.Wrap(err, "resources.{{ .Resource.Name }}DeletePatch.SpannerBuffer()")
+					}
+				{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
 					if err := resources.New{{ .Resource.Name }}DeletePatchFromPatchSet(id, patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}DeletePatch.SpannerBuffer()")
 					}
+				{{- end }}
 				}
 			}
 
@@ -905,8 +943,9 @@ export function requiresMethodPermission(resource: Method, permission: Permissio
 
 	typescriptResourcesTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
 import { Resource } from '@cccteam/ccc-lib';
-import { ResourceMap, ResourceMeta } from '@components/Resource/resources-helpers';
+import { ResourceMap } from '@components/Resource/resources-helpers';
 import { Resources } from './constants';
+import { Meta } from './methods';
 {{- $resources := .Resources }}
 {{ range $resource := $resources }}
 export interface {{ Pluralize $resource.Name }} {
@@ -936,36 +975,45 @@ const resourceMap: ResourceMap = {
   {{- end }}
 }
 
-export function resourceMeta(resource: Resource): ResourceMeta {
+export function resourceMeta(resource: Resource): Meta {
   if (resourceMap[resource] !== undefined) {
     return resourceMap[resource];
   } else {
     console.error('Resource not found in resourceMap:', resource);
-    return {} as ResourceMeta;
+    return {} as Meta;
   }
 }
 `
 
 	typescriptMethodsTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
 import { FieldName, Method } from '@cccteam/ccc-lib';
+import { ResourceMeta, ValidRPCTypes } from '@components/Resource/resources-helpers';
 import { Methods } from './constants';
 export interface FieldPointer {
   field: FieldName;
 }
 {{ range $rpcMethod := .RPCMethods }}
 export interface {{ $rpcMethod.Name }}Config {
-  {{- range $field := $rpcMethod.Fields }}
-    {{ Camel $field.Name }}: {{ $field.TypescriptDataType }} | FieldPointer;
-  {{- end }}
+{{- range $field := $rpcMethod.Fields }}
+  {{ Camel $field.Name }}: {{ $field.TypescriptDataType }} | FieldPointer;
+{{- end }}
 }
 export interface {{ $rpcMethod.Name }} {
-  {{- range $field := $rpcMethod.Fields }}
-    {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
-  {{- end }}
+{{- range $field := $rpcMethod.Fields }}
+  {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
+{{- end }}
 }
 {{ end }}
- export interface MethodMeta {
+export interface FieldMeta {
+  fieldName: string;
+  displayType: ValidRPCTypes;
+}
+
+export type Meta = MethodMeta | ResourceMeta;
+
+export interface MethodMeta {
   route: string;
+  fields?: FieldMeta[];
 }
 
 export type MethodMap = Record<Method, MethodMeta>;
@@ -974,17 +1022,24 @@ const methodMap: MethodMap = {
   {{- range $rpcMethod := .RPCMethods }}
   [Methods.{{ $rpcMethod.Name }}]: {
     route: '{{ Kebab ($rpcMethod.Name) }}',
+  {{- if gt $rpcMethod.NumFields 0 }}
+    fields: [
+    {{- range $field := $rpcMethod.Fields }}
+      { fieldName: '{{ Camel $field.Name }}', displayType: '{{ Lower $field.TypescriptDataType }}' },
+    {{- end }}
+    ],
+  {{- end }}
   },
 
   {{- end }}
-}
+};
 
-export function methodMeta(method: Method): MethodMeta {
+export function methodMeta(method: Method): Meta {
   if (methodMap[method] !== undefined) {
     return methodMap[method];
   } else {
     console.error('Method not found in methodMap:', method);
-    return {} as MethodMeta;
+    return {} as Meta;
   }
 }
 `
@@ -1002,8 +1057,15 @@ import (
 )
 
 const (
-	{{ range $Struct := .RoutesMap.Resources }}{{ $Struct }}ID httpio.ParamType = "{{ GoCamel $Struct }}ID"
-	{{ end }}
+{{- range $resource := .Resources }}
+{{- if $resource.HasCompoundPrimaryKey }}
+	{{- range $_, $field := $resource.PrimaryKeys }}
+	{{ $resource.Name }}{{ $field.Name }} httpio.ParamType = "{{ GoCamel $resource.Name }}{{ $field.Name }}"
+	{{- end }}
+{{- else}}
+	{{ $resource.Name }}ID httpio.ParamType = "{{ GoCamel $resource.Name }}ID"
+{{- end }}
+{{- end }}
 )
 
 type GeneratedHandlers interface {
@@ -1040,8 +1102,15 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string {
-		{{ range $Struct := .RoutesMap.Resources }}"{{ GoCamel $Struct }}ID",
-		{{ end }}
+	{{- range $resource := .Resources }}
+	{{- if $resource.HasCompoundPrimaryKey }}
+		{{- range $_, $field := $resource.PrimaryKeys }}
+		"{{ GoCamel $resource.Name }}{{ $field.Name }}",
+		{{- end }}
+	{{- else }}
+		"{{ GoCamel $resource.Name }}ID",
+	{{- end }}
+	{{- end }}
 	}
 
 	return keys
@@ -1050,10 +1119,11 @@ func generatedRouteParameters() []string {
 {{ $routePrefix := .RoutePrefix -}}
 func generatedRouterTests() []*generatedRouterTest {
 	routerTests := []*generatedRouterTest {
-		{{ range $Struct, $Routes := .RoutesMap }}{{ range $route := $Routes }}{
-			url: "{{ DetermineTestURL $Struct $routePrefix $route }}", method: {{ MethodToHttpConst $route.Method }},
+		{{ range $resource := .Resources }}
+		{{- range $route := (index $.RoutesMap $resource.Name) }}{
+			url: "{{ DetermineTestURL $resource $routePrefix $route }}", method: {{ MethodToHttpConst $route.Method }},
 			handlerFunc: "{{ $route.HandlerFunc }}",
-			parameters: {{ DetermineParameters $Struct $route }},
+			parameters: {{ DetermineParameters $resource $route }},
 		},
 		{{ end }}{{ end }}
 		{{- if eq .HasConsolidatedHandler true -}}
