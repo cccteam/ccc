@@ -43,17 +43,6 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		}
 	}
 
-	filteredResources := []resourceInfo{}
-resourceRange:
-	for _, resource := range r.resources {
-		for _, route := range generatedRoutesMap[resource.Name()] {
-			if route.Method == "POST" {
-				continue resourceRange
-			}
-		}
-		filteredResources = append(filteredResources, resource)
-	}
-
 	if r.genRPCMethods {
 		for _, rpcStruct := range r.rpcMethods {
 			generatedRoutesMap[rpcStruct.Name()] = []generatedRoute{{
@@ -66,14 +55,14 @@ resourceRange:
 
 	if len(generatedRoutesMap) > 0 {
 		routesDestination := filepath.Join(r.routerDestination, generatedFileName(routesOutputName))
-		if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, filteredResources, generatedRoutesMap); err != nil {
+		if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, r.resources, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRoutes()")
 		}
 		log.Printf("Generated routes file in %s: %s\n", time.Since(begin), routesDestination)
 
 		routerTestsDestination := filepath.Join(r.routerDestination, generatedFileName(routerTestOutputName))
 		begin = time.Now()
-		if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, filteredResources, generatedRoutesMap); err != nil {
+		if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, r.resources, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRouterTests()")
 		}
 		log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
