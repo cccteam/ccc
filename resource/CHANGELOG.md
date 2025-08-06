@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.9](https://github.com/cccteam/ccc/compare/resource/v0.2.8...resource/v0.2.9) (2025-08-06)
+
+
+### Features
+
+* rpc method typescript metadata ([#396](https://github.com/cccteam/ccc/issues/396)) ([e6a7aa5](https://github.com/cccteam/ccc/commit/e6a7aa586a1da509fb40cf372a0faaea173a17dc))
+
+
+### Bug Fixes
+
+* Revert breaking changes to the public interface (397) ([c45b0be](https://github.com/cccteam/ccc/commit/c45b0be637cf0e00a8ca44f87f4ad4ece11b753c))
+
 ## [0.2.8](https://github.com/cccteam/ccc/compare/resource/v0.2.7...resource/v0.2.8) (2025-08-05)
 
 
