@@ -598,7 +598,7 @@ import (
 			for op, err := range resource.Operations(r, 
 			{{- if $PrimaryKeyIsGeneratedUUID }}"/{id}"
 			{{- else if .Resource.HasCompoundPrimaryKey }}"
-			{{- range $i := .Resource.PrimaryKeys }}/{id{{ $i }}}{{ end }}"
+			{{- range $i := .Resource.PrimaryKeys }}/{id{{ $i }}}{{ end }}", resource.RequireCreatePath()
 			{{- else }}"/{id}", resource.RequireCreatePath(){{ end }}) {
 				if err != nil {
 					return errors.Wrap(err, "resource.Operations()")
