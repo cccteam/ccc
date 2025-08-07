@@ -598,7 +598,7 @@ import (
 			for op, err := range resource.Operations(r, 
 			{{- if $PrimaryKeyIsGeneratedUUID }}"/{id}"
 			{{- else if .Resource.HasCompoundPrimaryKey }}"
-			{{- range $i := .Resource.PrimaryKeys }}/{id{{ $i }}}{{ end }}"
+			{{- range $i := .Resource.PrimaryKeys }}/{id{{ $i }}}{{ end }}", resource.RequireCreatePath()
 			{{- else }}"/{id}", resource.RequireCreatePath(){{ end }}) {
 				if err != nil {
 					return errors.Wrap(err, "resource.Operations()")
@@ -622,7 +622,7 @@ import (
 					resp.IDs = append(resp.IDs, patch.{{ .Resource.PrimaryKey.Name }}())
 				{{- else if .Resource.HasCompoundPrimaryKey }}
 					{{- range $i, $field := .Resource.PrimaryKeys }}
-					id{{ $i }} := httpio.Param[{{ $field.Type }}](r, "id{{ $i }}")
+					id{{ $i }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ $i }}")
 					{{- end }}
 					if err := resources.New{{ .Resource.Name }}CreatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}CreatePatch.SpannerBuffer()")
@@ -636,7 +636,7 @@ import (
 				case resource.OperationUpdate:
 				{{- if .Resource.HasCompoundPrimaryKey }}
 					{{- range $i, $field := .Resource.PrimaryKeys }}
-					id{{ $i }} := httpio.Param[{{ $field.Type }}](r, "id{{ $i }}")
+					id{{ $i }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ $i }}")
 					{{- end }}
 					if err := resources.New{{ .Resource.Name }}UpdatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}UpdatePatch.SpannerBuffer()")
@@ -650,7 +650,7 @@ import (
 				case resource.OperationDelete:
 				{{- if .Resource.HasCompoundPrimaryKey }}
 					{{- range $i, $field := .Resource.PrimaryKeys }}
-						id{{ $i }} := httpio.Param[{{ $field.Type }}](r, "id{{ $i }}")
+						id{{ $i }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ $i }}")
 					{{- end }}
 					if err := resources.New{{ .Resource.Name }}DeletePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "resources.{{ .Resource.Name }}DeletePatch.SpannerBuffer()")
