@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.11](https://github.com/cccteam/ccc/compare/resource/v0.2.10...resource/v0.2.11) (2025-08-07)
+
+
+### Bug Fixes
+
+* Fix bug in template for Patch handlers with compound primary keys ([#401](https://github.com/cccteam/ccc/issues/401)) ([fe4ae06](https://github.com/cccteam/ccc/commit/fe4ae06bcdcc42b82c871a100560565766f9dfd9))
+
 ## [0.2.10](https://github.com/cccteam/ccc/compare/resource/v0.2.9...resource/v0.2.10) (2025-08-06)
 
 
