@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.12](https://github.com/cccteam/ccc/compare/resource/v0.2.11...resource/v0.2.12) (2025-08-08)
+
+
+### Features
+
+* Rpc type generation [#403](https://github.com/cccteam/ccc/issues/403) ([70424fb](https://github.com/cccteam/ccc/commit/70424fb984d918368a253a618339b863fca04417))
+
 ## [0.2.11](https://github.com/cccteam/ccc/compare/resource/v0.2.10...resource/v0.2.11) (2025-08-07)
 
 
