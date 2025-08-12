@@ -3,7 +3,6 @@ package generation
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,10 +10,8 @@ import (
 	"text/template"
 	"time"
 
-	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
-	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -78,7 +75,7 @@ func (r *resourceGenerator) Generate(ctx context.Context) error {
 		return err
 	}
 
-	if err := r.generateEnums(ctx, resourcesPkg.NamedTypes); err != nil {
+	if err := r.generateEnums(resourcesPkg.NamedTypes); err != nil {
 		return err
 	}
 
@@ -226,8 +223,8 @@ func (r *resourceGenerator) generateResources(res resourceInfo) error {
 	return nil
 }
 
-func (r *resourceGenerator) generateEnums(ctx context.Context, namedTypes []*parser.NamedType) error {
-	enumMap, err := r.retrieveDatabaseEnumValues(ctx, namedTypes)
+func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error {
+	enumMap, err := r.retrieveDatabaseEnumValues(namedTypes)
 	if err != nil {
 		return err
 	}
@@ -259,7 +256,7 @@ func (r *resourceGenerator) generateEnums(ctx context.Context, namedTypes []*par
 	return nil
 }
 
-func (r *resourceGenerator) retrieveDatabaseEnumValues(ctx context.Context, namedTypes []*parser.NamedType) (map[string][]enumData, error) {
+func (r *resourceGenerator) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]enumData, error) {
 	enumMap := make(map[string][]enumData)
 	for _, namedType := range namedTypes {
 		scanner := genlang.NewScanner(keywords())
@@ -268,27 +265,20 @@ func (r *resourceGenerator) retrieveDatabaseEnumValues(ctx context.Context, name
 			return nil, errors.Wrap(err, "scanner.ScanNamedType()")
 		}
 
-		var resourceName string
+		var tableName string
 		if result.Named.Has(enumerateKeyword) {
-			resourceName = result.Named.GetOne(enumerateKeyword).Arg1
+			tableName = result.Named.GetOne(enumerateKeyword).Arg1
 		} else {
 			continue
-		}
-
-		if ok := r.doesResourceExist(resourceName); !ok {
-			return nil, errors.Newf("cannot enumerate type %q, resource %q does not exist", namedType.Name(), resourceName)
 		}
 
 		if t := namedType.TypeInfo.TypeName(); t != "string" {
 			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), "string", t)
 		}
 
-		query := fmt.Sprintf("SELECT id, description FROM %s ORDER BY id", resourceName)
-		stmt := cloudspanner.Statement{SQL: query}
-
-		var data []enumData
-		if err := spxscan.Select(ctx, r.db.Single(), &data, stmt); err != nil {
-			return nil, errors.Wrap(err, "spxscan.Select()")
+		data, ok := r.enumValues[tableName]
+		if !ok {
+			return nil, errors.Newf("cannot enumerate type %q, tableName %q has no values or does not exist", namedType.Name(), tableName)
 		}
 
 		enumMap[namedType.Name()] = data

@@ -27,9 +27,11 @@ type client struct {
 	resources                 []resourceInfo
 	rpcMethods                []rpcMethodInfo
 	localPackages             []string
+	migrationSourceURL        string
 	db                        *spanner.Client
 	caser                     *strcase.Caser
 	tableMap                  map[string]*tableMetadata
+	enumValues                map[string][]enumData
 	handlerOptions            map[string]map[HandlerType][]OptionType
 	pluralOverrides           map[string]string
 	consolidatedResourceNames []string
@@ -56,42 +58,77 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string,
 		return nil, err
 	}
 
-	log.Println("Starting Spanner Container...")
-	spannerContainer, err := initiator.NewSpannerContainer(ctx, c.spannerEmulatorVersion)
+	isValid, err := isCacheValid(migrationSourceURL)
 	if err != nil {
-		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
+		return nil, err
 	}
 
-	db, err := spannerContainer.CreateDatabase(ctx, "resourcegeneration")
-	if err != nil {
-		return nil, errors.Wrap(err, "container.CreateDatabase()")
-	}
-
-	cleanupFunc := func() {
-		if err := db.DropDatabase(ctx); err != nil {
-			panic(err)
+	if isValid {
+		c.tableMap = make(map[string]*tableMetadata)
+		if err := loadData(tableMapCache, &c.tableMap); err != nil {
+			return nil, err
 		}
 
-		if err := db.Close(); err != nil {
-			panic(err)
+		c.enumValues = make(map[string][]enumData)
+		if err := loadData(enumValueCache, &c.enumValues); err != nil {
+			return nil, err
 		}
-	}
 
-	log.Println("Starting Spanner Migration...")
-	if err := db.MigrateUp(migrationSourceURL); err != nil {
-		return nil, errors.Wrap(err, "db.MigrateUp()")
+		// TODO: think about cleanup
+		c.cleanup = func() {
+			// TODO: write consolidated routes to file
+		}
+
+	} else {
+		if err := cleanCache(); err != nil {
+			return nil, err
+		}
+
+		log.Println("Starting Spanner Container...")
+		spannerContainer, err := initiator.NewSpannerContainer(ctx, c.spannerEmulatorVersion)
+		if err != nil {
+			return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
+		}
+
+		db, err := spannerContainer.CreateDatabase(ctx, "resourcegeneration")
+		if err != nil {
+			return nil, errors.Wrap(err, "initiator.SpannerContainer.CreateDatabase()")
+		}
+
+		log.Println("Starting Spanner Migration...")
+		if err := db.MigrateUp(migrationSourceURL); err != nil {
+			return nil, errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
+		}
+
+		c.db = db.Client
+		if c.tableMap, err = c.newTableMap(ctx); err != nil {
+			return nil, err
+		}
+
+		if c.enumValues, err = c.fetchEnumValues(ctx); err != nil {
+			return nil, err
+		}
+
+		c.cleanup = func() {
+			if err := db.DropDatabase(ctx); err != nil {
+				panic(err)
+			}
+
+			if err := db.Close(); err != nil {
+				panic(err)
+			}
+
+			if err := c.populateCache(); err != nil {
+				panic(err)
+			}
+		}
 	}
 
 	c.loadPackages = append(c.loadPackages, resourceFilePath)
 	c.resourceFilePath = resourceFilePath
-	c.db = db.Client
 	c.localPackages = localPackages
-	c.cleanup = cleanupFunc
 	c.caser = strcase.NewCaser(false, nil, nil)
-	c.tableMap, err = c.newTableMap(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "c.newTableMap()")
-	}
+	c.migrationSourceURL = migrationSourceURL
 
 	return c, nil
 }
@@ -310,6 +347,41 @@ func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 	}
 
 	return table, nil
+}
+
+func (c *client) fetchEnumValues(ctx context.Context) (map[string][]enumData, error) {
+	qry := `
+	SELECT DISTINCT
+		c.TABLE_NAME
+	FROM INFORMATION_SCHEMA.COLUMNS c
+	LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
+		AND t.TABLE_TYPE = 'BASE TABLE'
+	WHERE c.COLUMN_NAME = 'Description';
+	`
+	stmt := spanner.Statement{SQL: qry}
+
+	type tableNameResults struct {
+		TableName string `spanner:"TABLE_NAME"`
+	}
+
+	var results []tableNameResults
+	if err := spxscan.Select(ctx, c.db.Single(), &results, stmt); err != nil {
+		return nil, errors.Wrap(err, "spxscan.Select()")
+	}
+
+	enumResults := make(map[string][]enumData, len(results))
+	for _, tnr := range results {
+		stmt := spanner.Statement{SQL: fmt.Sprintf("SELECT DISTINCT Id, Description FROM %s ORDER BY Id", tnr.TableName)}
+
+		var results []enumData
+		if err := spxscan.Select(ctx, c.db.Single(), &results, stmt); err != nil {
+			return nil, errors.Wrap(err, "spxscan.Select()")
+		}
+
+		enumResults[tnr.TableName] = results
+	}
+
+	return enumResults, nil
 }
 
 func (c *client) templateFuncs() map[string]any {
@@ -628,4 +700,21 @@ func alphaFollowingNumber(result []byte, b byte) bool {
 
 func isAlphaNumeric(b byte) bool {
 	return ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') || ('0' <= b && b <= '9')
+}
+
+func (c *client) populateCache() error {
+	if err := cacheData(tableMapCache, c.tableMap); err != nil {
+		return err
+	}
+
+	if err := cacheSchemaHashes(c.migrationSourceURL); err != nil {
+		return err
+	}
+
+	if err := cacheData(enumValueCache, c.enumValues); err != nil {
+		return err
+	}
+
+	// TODO: cache consolidatedRoutes
+	return nil
 }
