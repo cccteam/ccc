@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	cloudspanner "cloud.google.com/go/spanner"
+	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/pkg"
 	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
@@ -27,7 +27,7 @@ type client struct {
 	resources                 []resourceInfo
 	rpcMethods                []rpcMethodInfo
 	localPackages             []string
-	db                        *cloudspanner.Client
+	db                        *spanner.Client
 	caser                     *strcase.Caser
 	tableMap                  map[string]*tableMetadata
 	handlerOptions            map[string]map[HandlerType][]OptionType
@@ -189,7 +189,7 @@ func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, er
 func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[string]*tableMetadata, error) {
 	log.Println("Creating spanner table lookup...")
 
-	stmt := cloudspanner.Statement{SQL: qry}
+	stmt := spanner.Statement{SQL: qry}
 
 	var result []InformationSchemaResult
 	if err := spxscan.Select(ctx, c.db.Single(), &result, stmt); err != nil {
