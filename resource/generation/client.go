@@ -64,24 +64,24 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string,
 	if isValid {
 		c.tableMap = make(map[string]*tableMetadata)
 		if err := loadData(tableMapCache, &c.tableMap); err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "loadData() for %s", tableMapCache)
 		}
 
 		c.enumValues = make(map[string][]enumData)
 		if err := loadData(enumValueCache, &c.enumValues); err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "loadData() for %s", enumValueCache)
 		}
 
 		if c.ConsolidatedRoute == "" {
 			if err := loadData(consolidatedRouteCache, &c.consolidateConfig); err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "loadData() for %s", consolidatedRouteCache)
 			}
 		}
 
 		c.cleanup = func() {}
 	} else {
 		if err := cleanCache(); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "cleanCache()")
 		}
 
 		log.Println("Starting Spanner Container...")
@@ -102,11 +102,11 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string,
 
 		c.db = db.Client
 		if c.tableMap, err = c.newTableMap(ctx); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "newTableMap()")
 		}
 
 		if c.enumValues, err = c.fetchEnumValues(ctx); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "fetchEnumValues()")
 		}
 
 		c.cleanup = func() {
