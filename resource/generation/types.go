@@ -194,7 +194,7 @@ func (r resourceInfo) SearchIndexes() []searchIndex {
 	typeIndexMap := make(map[resource.SearchType]string)
 	for searchIndex, expressionFields := range r.searchIndexes {
 		for _, exprField := range expressionFields {
-			typeIndexMap[exprField.tokenType] = searchIndex
+			typeIndexMap[exprField.TokenType] = searchIndex
 		}
 	}
 
@@ -553,9 +553,9 @@ func (f resourceField) SearchIndexTags() string {
 	typeIndexMap := make(map[resource.SearchType][]string)
 	for searchIndex, expressionFields := range f.Parent.searchIndexes {
 		for _, exprField := range expressionFields {
-			if spannerTag, ok := f.LookupTag("spanner"); ok && spannerTag == exprField.argument {
-				typeIndexMap[exprField.tokenType] = append(typeIndexMap[exprField.tokenType], searchIndex)
-				typeIndexMap[exprField.tokenType] = slices.Compact(typeIndexMap[exprField.tokenType])
+			if spannerTag, ok := f.LookupTag("spanner"); ok && spannerTag == exprField.Argument {
+				typeIndexMap[exprField.TokenType] = append(typeIndexMap[exprField.TokenType], searchIndex)
+				typeIndexMap[exprField.TokenType] = slices.Compact(typeIndexMap[exprField.TokenType])
 			}
 		}
 	}
@@ -593,12 +593,12 @@ func (f resourceField) IsQueryClauseEligible() bool {
 }
 
 type searchExpression struct {
-	tokenType resource.SearchType
-	argument  string
+	TokenType resource.SearchType
+	Argument  string
 }
 
 func (s searchExpression) String() string {
-	return fmt.Sprintf("TOKENIZE_%s(%s)", strings.ToUpper(string(s.tokenType)), s.argument)
+	return fmt.Sprintf("TOKENIZE_%s(%s)", strings.ToUpper(string(s.TokenType)), s.Argument)
 }
 
 func generatedFileName(name string) string {

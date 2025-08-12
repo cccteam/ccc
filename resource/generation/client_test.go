@@ -93,10 +93,10 @@ func Test_searchExpressionFields(t *testing.T) {
 				},
 			},
 			want: []*searchExpression{
-				{tokenType: "substring", argument: "FirstName"},
-				{tokenType: "substring", argument: "LastName"},
-				{tokenType: "substring", argument: "FormerLastName"},
-				{tokenType: "substring", argument: "Ssn"},
+				{TokenType: "substring", Argument: "FirstName"},
+				{TokenType: "substring", Argument: "LastName"},
+				{TokenType: "substring", Argument: "FormerLastName"},
+				{TokenType: "substring", Argument: "Ssn"},
 			},
 		},
 		{
@@ -111,10 +111,10 @@ func Test_searchExpressionFields(t *testing.T) {
 				},
 			},
 			want: []*searchExpression{
-				{tokenType: "substring", argument: "FirstName"},
-				{tokenType: "substring", argument: "LastName"},
-				{tokenType: "substring", argument: "FormerLastName"},
-				{tokenType: "substring", argument: "Ssn"},
+				{TokenType: "substring", Argument: "FirstName"},
+				{TokenType: "substring", Argument: "LastName"},
+				{TokenType: "substring", Argument: "FormerLastName"},
+				{TokenType: "substring", Argument: "Ssn"},
 			},
 		},
 	}

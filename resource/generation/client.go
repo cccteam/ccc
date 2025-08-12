@@ -554,8 +554,8 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*s
 		}
 
 		flds = append(flds, &searchExpression{
-			tokenType: tokenType,
-			argument:  match[2],
+			TokenType: tokenType,
+			Argument:  match[2],
 		})
 	}
 
