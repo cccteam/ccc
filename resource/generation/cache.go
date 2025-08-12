@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	genCacheDir    string = ".gencache"
-	genCacheSuffix string = ".gen"
-	tableMapCache  string = "tablemap" + genCacheSuffix
-	enumValueCache string = "enumvalues" + genCacheSuffix
+	genCacheDir            string = ".gencache"
+	genCacheSuffix         string = ".gen"
+	tableMapCache          string = "tablemap" + genCacheSuffix
+	enumValueCache         string = "enumvalues" + genCacheSuffix
+	consolidatedRouteCache string = "consolidatedroutes" + genCacheSuffix
 )
 
 func readGenCache() (map[string]struct{}, error) {

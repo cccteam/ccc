@@ -23,7 +23,7 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 			IsView:        table.IsView,
 			searchIndexes: table.SearchIndexes,
 			// Consolidate resource if it is not a view and it is in consolidated list
-			IsConsolidated: !table.IsView && (slices.Contains(c.consolidatedResourceNames, pStruct.Name()) || c.consolidateAll),
+			IsConsolidated: !table.IsView && (slices.Contains(c.ConsolidatedResourceNames, pStruct.Name()) || c.ConsolidateAll),
 			PkCount:        table.PkCount,
 		}
 

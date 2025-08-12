@@ -70,6 +70,12 @@ const (
 	UpdatePatch PatchType = "Update"
 )
 
+type consolidateConfig struct {
+	ConsolidatedResourceNames []string
+	ConsolidateAll            bool
+	ConsolidatedRoute         string
+}
+
 type GeneratedFileDeleteMethod int
 
 const (

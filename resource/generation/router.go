@@ -90,9 +90,9 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 		"LocalPackageImports":    r.localPackageImports(),
 		"RoutesMap":              generatedRoutes,
 		"Resources":              resources,
-		"HasConsolidatedHandler": r.consolidatedRoute != "",
+		"HasConsolidatedHandler": r.ConsolidatedRoute != "",
 		"RoutePrefix":            r.routePrefix,
-		"ConsolidatedRoute":      r.consolidatedRoute,
+		"ConsolidatedRoute":      r.ConsolidatedRoute,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}

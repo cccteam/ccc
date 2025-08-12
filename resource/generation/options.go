@@ -49,7 +49,6 @@ func GenerateHandlers(targetDir string) ResourceOption {
 		r.genHandlers = true
 		r.handlerDestination = targetDir
 
-
 		return nil
 	})
 }
@@ -119,11 +118,11 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 
 		switch t := g.(type) {
 		case *client:
-			t.consolidatedRoute = route
+			t.ConsolidatedRoute = route
 			if consolidateAll {
-				t.consolidateAll = true
+				t.ConsolidateAll = true
 			} else {
-				t.consolidatedResourceNames = resources
+				t.ConsolidatedResourceNames = resources
 			}
 		}
 

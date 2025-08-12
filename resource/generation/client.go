@@ -22,24 +22,22 @@ import (
 )
 
 type client struct {
-	loadPackages              []string
-	resourceFilePath          string
-	resources                 []resourceInfo
-	rpcMethods                []rpcMethodInfo
-	localPackages             []string
-	migrationSourceURL        string
-	db                        *spanner.Client
-	caser                     *strcase.Caser
-	tableMap                  map[string]*tableMetadata
-	enumValues                map[string][]enumData
-	handlerOptions            map[string]map[HandlerType][]OptionType
-	pluralOverrides           map[string]string
-	consolidatedResourceNames []string
-	consolidateAll            bool
-	consolidatedRoute         string
-	genRPCMethods             bool
-	cleanup                   func()
-	spannerEmulatorVersion    string
+	loadPackages       []string
+	resourceFilePath   string
+	resources          []resourceInfo
+	rpcMethods         []rpcMethodInfo
+	localPackages      []string
+	migrationSourceURL string
+	db                 *spanner.Client
+	caser              *strcase.Caser
+	tableMap           map[string]*tableMetadata
+	enumValues         map[string][]enumData
+	handlerOptions     map[string]map[HandlerType][]OptionType
+	pluralOverrides    map[string]string
+	consolidateConfig
+	genRPCMethods          bool
+	cleanup                func()
+	spannerEmulatorVersion string
 	FileWriter
 }
 
@@ -74,11 +72,13 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string,
 			return nil, err
 		}
 
-		// TODO: think about cleanup
-		c.cleanup = func() {
-			// TODO: write consolidated routes to file
+		if c.ConsolidatedRoute == "" {
+			if err := loadData(consolidatedRouteCache, &c.consolidateConfig); err != nil {
+				return nil, err
+			}
 		}
 
+		c.cleanup = func() {}
 	} else {
 		if err := cleanCache(); err != nil {
 			return nil, err
@@ -645,7 +645,7 @@ func (c *client) resourceEndpoints(resource resourceInfo) []HandlerType {
 	if !resource.IsView {
 		handlerTypes = append(handlerTypes, ReadHandler)
 
-		if !resource.IsConsolidated && !c.consolidateAll {
+		if !resource.IsConsolidated && !c.ConsolidateAll {
 			handlerTypes = append(handlerTypes, PatchHandler)
 		}
 	}

@@ -224,7 +224,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 	log.Println("Starting resource metadata generation...")
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, map[string]any{
 		"Resources":         t.resources,
-		"ConsolidatedRoute": t.consolidatedRoute,
+		"ConsolidatedRoute": t.ConsolidatedRoute,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
