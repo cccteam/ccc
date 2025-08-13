@@ -652,7 +652,7 @@ func (c *client) resourceEndpoints(resource resourceInfo) []HandlerType {
 	if !resource.IsView {
 		handlerTypes = append(handlerTypes, ReadHandler)
 
-		if !resource.IsConsolidated && !c.ConsolidateAll {
+		if !resource.IsConsolidated {
 			handlerTypes = append(handlerTypes, PatchHandler)
 		}
 	}

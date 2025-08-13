@@ -119,11 +119,8 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 		switch t := g.(type) {
 		case *client:
 			t.ConsolidatedRoute = route
-			if consolidateAll {
-				t.ConsolidateAll = true
-			} else {
-				t.ConsolidatedResourceNames = resources
-			}
+			t.ConsolidateAll = consolidateAll
+			t.ConsolidatedResourceNames = resources
 		}
 
 		return nil

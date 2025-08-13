@@ -76,6 +76,11 @@ type consolidateConfig struct {
 	ConsolidatedRoute         string
 }
 
+func (c consolidateConfig) IsConsolidated(resourceName string) bool {
+	return !c.ConsolidateAll && slices.Contains(c.ConsolidatedResourceNames, resourceName) ||
+		c.ConsolidateAll && !slices.Contains(c.ConsolidatedResourceNames, resourceName)
+}
+
 type GeneratedFileDeleteMethod int
 
 const (
