@@ -59,7 +59,7 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 		opts = append(opts, opt)
 	}
 
-	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, nil, opts)
+	c, err := newClient(ctx, typeScriptGeneratorType, resourceSourcePath, migrationSourceURL, nil, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +224,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 	log.Println("Starting resource metadata generation...")
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, map[string]any{
 		"Resources":         t.resources,
-		"ConsolidatedRoute": t.consolidatedRoute,
+		"ConsolidatedRoute": t.ConsolidatedRoute,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

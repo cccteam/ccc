@@ -2,7 +2,6 @@ package generation
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
@@ -12,7 +11,8 @@ import (
 func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, error) {
 	resources := make([]resourceInfo, 0, len(structs))
 	for _, pStruct := range structs {
-		table, err := c.lookupTable(pStruct.Name())
+		resourceName := pStruct.Name()
+		table, err := c.lookupTable(resourceName)
 		if err != nil {
 			return nil, err
 		}
@@ -23,7 +23,7 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 			IsView:        table.IsView,
 			searchIndexes: table.SearchIndexes,
 			// Consolidate resource if it is not a view and it is in consolidated list
-			IsConsolidated: !table.IsView && (slices.Contains(c.consolidatedResourceNames, pStruct.Name()) || c.consolidateAll),
+			IsConsolidated: !table.IsView && c.consolidateConfig.IsConsolidated(resourceName),
 			PkCount:        table.PkCount,
 		}
 
@@ -50,7 +50,7 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 					resource.SuppressedHandlers[i] = PatchHandler
 					resource.IsConsolidated = false
 				default:
-					return nil, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s", handlerArg.Arg1, pStruct.Name())
+					return nil, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s", handlerArg.Arg1, resourceName)
 				}
 			}
 		}
@@ -62,7 +62,7 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 			}
 			tableColumn, ok := table.Columns[spannerTag]
 			if !ok {
-				return nil, errors.Newf("field %s \n%s", field.Name(), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(pStruct.Name()))))
+				return nil, errors.Newf("field %s \n%s", field.Name(), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(resourceName))))
 			}
 			_, hasIndexTag := field.LookupTag("index")
 			if !table.IsView && hasIndexTag {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	cloudspanner "cloud.google.com/go/spanner"
+	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/pkg"
 	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
@@ -21,27 +21,34 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+type generatorType string
+
+const (
+	resourceGeneratorType   generatorType = "resource"
+	typeScriptGeneratorType generatorType = "typescript"
+)
+
 type client struct {
-	loadPackages              []string
-	resourceFilePath          string
-	resources                 []resourceInfo
-	rpcMethods                []rpcMethodInfo
-	localPackages             []string
-	db                        *cloudspanner.Client
-	caser                     *strcase.Caser
-	tableMap                  map[string]*tableMetadata
-	handlerOptions            map[string]map[HandlerType][]OptionType
-	pluralOverrides           map[string]string
-	consolidatedResourceNames []string
-	consolidateAll            bool
-	consolidatedRoute         string
-	genRPCMethods             bool
-	cleanup                   func()
-	spannerEmulatorVersion    string
+	loadPackages       []string
+	resourceFilePath   string
+	resources          []resourceInfo
+	rpcMethods         []rpcMethodInfo
+	localPackages      []string
+	migrationSourceURL string
+	db                 *spanner.Client
+	caser              *strcase.Caser
+	tableMap           map[string]*tableMetadata
+	enumValues         map[string][]enumData
+	handlerOptions     map[string]map[HandlerType][]OptionType
+	pluralOverrides    map[string]string
+	consolidateConfig
+	genRPCMethods          bool
+	cleanup                func()
+	spannerEmulatorVersion string
 	FileWriter
 }
 
-func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string, localPackages []string, opts []option) (*client, error) {
+func newClient(ctx context.Context, genType generatorType, resourceFilePath, migrationSourceURL string, localPackages []string, opts []option) (*client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -56,42 +63,79 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string,
 		return nil, err
 	}
 
-	log.Println("Starting Spanner Container...")
-	spannerContainer, err := initiator.NewSpannerContainer(ctx, c.spannerEmulatorVersion)
+	isValid, err := isCacheValid(migrationSourceURL)
 	if err != nil {
-		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
+		return nil, err
 	}
 
-	db, err := spannerContainer.CreateDatabase(ctx, "resourcegeneration")
-	if err != nil {
-		return nil, errors.Wrap(err, "container.CreateDatabase()")
-	}
-
-	cleanupFunc := func() {
-		if err := db.DropDatabase(ctx); err != nil {
-			panic(err)
+	if isValid {
+		c.tableMap = make(map[string]*tableMetadata)
+		if err := loadData(tableMapCache, &c.tableMap); err != nil {
+			return nil, errors.Wrapf(err, "loadData() for %s", tableMapCache)
 		}
 
-		if err := db.Close(); err != nil {
-			panic(err)
+		c.enumValues = make(map[string][]enumData)
+		if err := loadData(enumValueCache, &c.enumValues); err != nil {
+			return nil, errors.Wrapf(err, "loadData() for %s", enumValueCache)
 		}
-	}
 
-	log.Println("Starting Spanner Migration...")
-	if err := db.MigrateUp(migrationSourceURL); err != nil {
-		return nil, errors.Wrap(err, "db.MigrateUp()")
+		if genType == typeScriptGeneratorType {
+			if err := loadData(consolidatedRouteCache, &c.consolidateConfig); err != nil {
+				return nil, errors.Wrapf(err, "loadData() for %s", consolidatedRouteCache)
+			}
+		}
+
+		c.cleanup = func() {}
+	} else {
+		if err := cleanCache(); err != nil {
+			return nil, errors.Wrap(err, "cleanCache()")
+		}
+
+		log.Println("Starting Spanner Container...")
+		spannerContainer, err := initiator.NewSpannerContainer(ctx, c.spannerEmulatorVersion)
+		if err != nil {
+			return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
+		}
+
+		db, err := spannerContainer.CreateDatabase(ctx, "resourcegeneration")
+		if err != nil {
+			return nil, errors.Wrap(err, "initiator.SpannerContainer.CreateDatabase()")
+		}
+
+		log.Println("Starting Spanner Migration...")
+		if err := db.MigrateUp(migrationSourceURL); err != nil {
+			return nil, errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
+		}
+
+		c.db = db.Client
+		if c.tableMap, err = c.newTableMap(ctx); err != nil {
+			return nil, errors.Wrap(err, "newTableMap()")
+		}
+
+		if c.enumValues, err = c.fetchEnumValues(ctx); err != nil {
+			return nil, errors.Wrap(err, "fetchEnumValues()")
+		}
+
+		c.cleanup = func() {
+			if err := db.DropDatabase(ctx); err != nil {
+				panic(err)
+			}
+
+			if err := db.Close(); err != nil {
+				panic(err)
+			}
+
+			if err := c.populateCache(); err != nil {
+				panic(err)
+			}
+		}
 	}
 
 	c.loadPackages = append(c.loadPackages, resourceFilePath)
 	c.resourceFilePath = resourceFilePath
-	c.db = db.Client
 	c.localPackages = localPackages
-	c.cleanup = cleanupFunc
 	c.caser = strcase.NewCaser(false, nil, nil)
-	c.tableMap, err = c.newTableMap(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "c.newTableMap()")
-	}
+	c.migrationSourceURL = migrationSourceURL
 
 	return c, nil
 }
@@ -189,7 +233,7 @@ func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, er
 func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[string]*tableMetadata, error) {
 	log.Println("Creating spanner table lookup...")
 
-	stmt := cloudspanner.Statement{SQL: qry}
+	stmt := spanner.Statement{SQL: qry}
 
 	var result []InformationSchemaResult
 	if err := spxscan.Select(ctx, c.db.Single(), &result, stmt); err != nil {
@@ -310,6 +354,41 @@ func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 	}
 
 	return table, nil
+}
+
+func (c *client) fetchEnumValues(ctx context.Context) (map[string][]enumData, error) {
+	qry := `
+	SELECT DISTINCT
+		c.TABLE_NAME
+	FROM INFORMATION_SCHEMA.COLUMNS c
+	LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
+		AND t.TABLE_TYPE = 'BASE TABLE'
+	WHERE c.COLUMN_NAME = 'Description';
+	`
+	stmt := spanner.Statement{SQL: qry}
+
+	type tableNameResults struct {
+		TableName string `spanner:"TABLE_NAME"`
+	}
+
+	var results []tableNameResults
+	if err := spxscan.Select(ctx, c.db.Single(), &results, stmt); err != nil {
+		return nil, errors.Wrap(err, "spxscan.Select()")
+	}
+
+	enumResults := make(map[string][]enumData, len(results))
+	for _, tnr := range results {
+		stmt := spanner.Statement{SQL: fmt.Sprintf("SELECT DISTINCT Id, Description FROM %s ORDER BY Id", tnr.TableName)}
+
+		var results []enumData
+		if err := spxscan.Select(ctx, c.db.Single(), &results, stmt); err != nil {
+			return nil, errors.Wrap(err, "spxscan.Select()")
+		}
+
+		enumResults[tnr.TableName] = results
+	}
+
+	return enumResults, nil
 }
 
 func (c *client) templateFuncs() map[string]any {
@@ -554,8 +633,8 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*s
 		}
 
 		flds = append(flds, &searchExpression{
-			tokenType: tokenType,
-			argument:  match[2],
+			TokenType: tokenType,
+			Argument:  match[2],
 		})
 	}
 
@@ -573,7 +652,7 @@ func (c *client) resourceEndpoints(resource resourceInfo) []HandlerType {
 	if !resource.IsView {
 		handlerTypes = append(handlerTypes, ReadHandler)
 
-		if !resource.IsConsolidated && !c.consolidateAll {
+		if !resource.IsConsolidated {
 			handlerTypes = append(handlerTypes, PatchHandler)
 		}
 	}
@@ -628,4 +707,21 @@ func alphaFollowingNumber(result []byte, b byte) bool {
 
 func isAlphaNumeric(b byte) bool {
 	return ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') || ('0' <= b && b <= '9')
+}
+
+func (c *client) populateCache() error {
+	if err := cacheData(tableMapCache, c.tableMap); err != nil {
+		return err
+	}
+
+	if err := cacheSchemaHashes(c.migrationSourceURL); err != nil {
+		return err
+	}
+
+	if err := cacheData(enumValueCache, c.enumValues); err != nil {
+		return err
+	}
+
+	// TODO: cache consolidatedRoutes
+	return nil
 }
