@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.13](https://github.com/cccteam/ccc/compare/resource/v0.2.12...resource/v0.2.13) (2025-08-13)
+
+
+### Features
+
+* Add generation cache ([#407](https://github.com/cccteam/ccc/issues/407)) ([1be7c18](https://github.com/cccteam/ccc/commit/1be7c18691b18f3bb8c08fc76259360806797600))
+
 ## [0.2.12](https://github.com/cccteam/ccc/compare/resource/v0.2.11...resource/v0.2.12) (2025-08-08)
 
 
