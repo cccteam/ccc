@@ -21,6 +21,13 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+type generatorType string
+
+const (
+	resourceGeneratorType   generatorType = "resource"
+	typeScriptGeneratorType generatorType = "typescript"
+)
+
 type client struct {
 	loadPackages       []string
 	resourceFilePath   string
@@ -41,7 +48,7 @@ type client struct {
 	FileWriter
 }
 
-func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string, localPackages []string, opts []option) (*client, error) {
+func newClient(ctx context.Context, genType generatorType, resourceFilePath, migrationSourceURL string, localPackages []string, opts []option) (*client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -72,7 +79,7 @@ func newClient(ctx context.Context, resourceFilePath, migrationSourceURL string,
 			return nil, errors.Wrapf(err, "loadData() for %s", enumValueCache)
 		}
 
-		if c.ConsolidatedRoute == "" {
+		if genType == typeScriptGeneratorType {
 			if err := loadData(consolidatedRouteCache, &c.consolidateConfig); err != nil {
 				return nil, errors.Wrapf(err, "loadData() for %s", consolidatedRouteCache)
 			}

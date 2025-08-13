@@ -38,16 +38,14 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 		opts = append(opts, opt)
 	}
 
-	c, err := newClient(ctx, resourceSourcePath, migrationSourceURL, localPackages, opts)
+	c, err := newClient(ctx, resourceGeneratorType, resourceSourcePath, migrationSourceURL, localPackages, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	// We always want to cache the consolidatedRoute data for the typescript gen
-	if c.ConsolidatedRoute != "" {
-		if err := cacheData(consolidatedRouteCache, c.consolidateConfig); err != nil {
-			return nil, err
-		}
+	if err := cacheData(consolidatedRouteCache, c.consolidateConfig); err != nil {
+		return nil, err
 	}
 
 	r.client = c
