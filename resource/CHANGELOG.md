@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.15](https://github.com/cccteam/ccc/compare/resource/v0.2.14...resource/v0.2.15) (2025-08-15)
+
+
+### Bug Fixes
+
+* Fix encoding of nullable fields in json ([#412](https://github.com/cccteam/ccc/issues/412)) ([e9b5d4f](https://github.com/cccteam/ccc/commit/e9b5d4f6e248e631d3d5c695262be3fbb6301b68))
+
 ## [0.2.14](https://github.com/cccteam/ccc/compare/resource/v0.2.13...resource/v0.2.14) (2025-08-15)
 
 
