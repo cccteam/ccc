@@ -796,7 +796,9 @@ func (a *App) PatchResources() http.HandlerFunc {
 							}
 							{{- end }}
 						}
-					{{- end -}}
+					{{- end }}
+				default:
+					return httpio.NewBadRequestMessagef("unknown resource %q", httpio.Param[string](op.Req, "resource"))
 				}
 			}
 
