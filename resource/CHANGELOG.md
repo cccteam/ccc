@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.14](https://github.com/cccteam/ccc/compare/resource/v0.2.13...resource/v0.2.14) (2025-08-15)
+
+
+### Bug Fixes
+
+* Add missing default clause in the Consolidated Patch Handler ([#410](https://github.com/cccteam/ccc/issues/410)) ([be3979c](https://github.com/cccteam/ccc/commit/be3979cd374b7aa60ba77cf3eecd2acb89549775))
+
 ## [0.2.13](https://github.com/cccteam/ccc/compare/resource/v0.2.12...resource/v0.2.13) (2025-08-13)
 
 
