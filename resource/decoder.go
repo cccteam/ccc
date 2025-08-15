@@ -8,9 +8,11 @@ import (
 	"strings"
 	"sync"
 
+	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
+	guid "github.com/google/uuid"
 )
 
 // ValidatorFunc is a function that validates s
@@ -127,7 +129,7 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *ResourceSet[Resource],
 	}
 
 	changes := make(map[accesstypes.Field]any)
-	for jsonField := range jsonData {
+	for jsonField, jsonValue := range jsonData {
 		if operationPerm == accesstypes.Update {
 			if _, found := rSet.immutableFields[accesstypes.Tag(jsonField)]; found {
 				return nil, nil, httpio.NewBadRequestMessagef("json field %s is immutable", jsonField)
@@ -142,13 +144,25 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *ResourceSet[Resource],
 			}
 		}
 
-		value := vValue.FieldByName(string(fieldName)).Interface()
-		if value == nil {
-			return nil, nil, httpio.NewBadRequestMessagef("invalid field in json - %s", jsonField)
-		}
-
 		if _, ok := changes[fieldName]; ok {
 			return nil, nil, httpio.NewBadRequestMessagef("json field name %s collides with another field name of different case", fieldName)
+		}
+
+		field := vValue.FieldByName(string(fieldName))
+		value := field.Interface()
+		switch jsonValue.(type) {
+		case nil:
+			if field.Kind() != reflect.Ptr {
+				switch value.(type) {
+				// Taken from cloud.google.com/go/spanner@v1.83.0/value.go
+				// these types are handled by the driver
+				case spanner.NullInt64, spanner.NullFloat64, spanner.NullFloat32, spanner.NullBool,
+					spanner.NullString, spanner.NullTime, spanner.NullDate, spanner.NullNumeric,
+					spanner.NullProtoEnum, spanner.NullUUID, guid.NullUUID, spanner.Encoder:
+				default:
+					return nil, nil, httpio.NewBadRequestMessagef(`%s cannot be null`, jsonField)
+				}
+			}
 		}
 		changes[fieldName] = value
 	}
