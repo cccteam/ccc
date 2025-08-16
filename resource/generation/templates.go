@@ -726,7 +726,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 			for op, err := range resource.Operations(r, "/{resource}", resource.MatchPrefix(), resource.RequireCreatePath()) {
 				if err != nil {
-					return httpio.NewEncoder(w).ClientMessage(ctx, err)
+					return errors.Wrap(err, "resource.Operations()")
 				}
 
 				switch httpio.Param[string](op.Req, "resource") {
@@ -735,7 +735,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 					case "{{ Kebab (Pluralize $resource.Name) }}":
 						patchSet, err := {{ GoCamel $resource.Name}}Decoder.DecodeOperation(op, a.UserPermissions(op.Req))
 						if err != nil {
-							return httpio.NewEncoder(w).ClientMessage(ctx, err)
+							return errors.Wrap(err, "{{ GoCamel $resource.Name}}Decoder.DecodeOperation()")
 						}
 
 						req, err := op.ReqWithPattern("/{resource}{{ $resource.OperationPathPattern }}")
@@ -748,7 +748,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						{{- if $resource.PrimaryKeyIsGeneratedUUID }}
 							patch, err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet(patchSet)
 							if err != nil {
-								return httpio.NewEncoder(w).ClientMessage(ctx, err)
+								return errors.Wrap(err, "{{ GoCamel $resource.Name}}CreatePatchFromPatchSet()")
 							}
 							if err := patch.PatchSet().SpannerBuffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.SpannerBuffer()")
