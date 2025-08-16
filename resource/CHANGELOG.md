@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.17](https://github.com/cccteam/ccc/compare/resource/v0.2.16...resource/v0.2.17) (2025-08-16)
+
+
+### Bug Fixes
+
+* Fix bug in the Consolidated Patch Handler template that would double-encode the client message ([#417](https://github.com/cccteam/ccc/issues/417)) ([1f995aa](https://github.com/cccteam/ccc/commit/1f995aa200e34cc6f4be1ab2008c85aa893d16b4))
+* Fix bug that would transparently convert a nil value on a non-nillable field to the zero value of the Go type ([#417](https://github.com/cccteam/ccc/issues/417)) ([1f995aa](https://github.com/cccteam/ccc/commit/1f995aa200e34cc6f4be1ab2008c85aa893d16b4))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group across 1 directory with 4 updates ([#419](https://github.com/cccteam/ccc/issues/419)) ([fb60557](https://github.com/cccteam/ccc/commit/fb605572c157c754cd1d64a594faaea206864d62))
+
 ## [0.2.16](https://github.com/cccteam/ccc/compare/resource/v0.2.15...resource/v0.2.16) (2025-08-15)
 
 
