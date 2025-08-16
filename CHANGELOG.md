@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.14](https://github.com/cccteam/ccc/compare/v0.2.13...v0.2.14) (2025-08-16)
+
+
+### Code Refactoring
+
+* Move Release Please from Bot to GitHub Action ([be3979c](https://github.com/cccteam/ccc/commit/be3979cd374b7aa60ba77cf3eecd2acb89549775))
+
 ## [0.2.13](https://github.com/cccteam/ccc/compare/v0.2.12...v0.2.13) (2025-07-21)
 
 
