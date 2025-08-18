@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/cache"
 	"github.com/cccteam/ccc/pkg"
 	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
@@ -46,6 +47,7 @@ type client struct {
 	cleanup                func()
 	spannerEmulatorVersion string
 	FileWriter
+	genCache *cache.Cache
 }
 
 func newClient(ctx context.Context, genType generatorType, resourceFilePath, migrationSourceURL string, localPackages []string, opts []option) (*client, error) {
@@ -58,37 +60,36 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 		return nil, errors.Wrap(err, "os.Chdir()")
 	}
 
-	c := &client{}
+	c := &client{
+		migrationSourceURL: migrationSourceURL,
+		genCache:           cache.New(genCacheDir),
+	}
 	if err := resolveOptions(c, opts); err != nil {
 		return nil, err
 	}
 
-	isValid, err := isCacheValid(migrationSourceURL)
+	isSchemaClean, err := c.isSchemaClean()
 	if err != nil {
 		return nil, err
 	}
 
-	if isValid {
-		c.tableMap = make(map[string]*tableMetadata)
-		if err := loadData(tableMapCache, &c.tableMap); err != nil {
-			return nil, errors.Wrapf(err, "loadData() for %s", tableMapCache)
-		}
-
-		c.enumValues = make(map[string][]enumData)
-		if err := loadData(enumValueCache, &c.enumValues); err != nil {
-			return nil, errors.Wrapf(err, "loadData() for %s", enumValueCache)
+	if isSchemaClean {
+		if ok, err := c.loadAllCachedData(); err != nil {
+			return nil, err
+		} else if !ok {
+			// todo
 		}
 
 		if genType == typeScriptGeneratorType {
-			if err := loadData(consolidatedRouteCache, &c.consolidateConfig); err != nil {
-				return nil, errors.Wrapf(err, "loadData() for %s", consolidatedRouteCache)
+			if ok, err := c.genCache.Load("app", consolidatedRouteCache, &c.consolidateConfig); err != nil {
+				return nil, errors.Wrapf(err, "cache.Cache.Load() for %q", consolidatedRouteCache)
+			} else if !ok {
+				// todo
 			}
 		}
-
-		c.cleanup = func() {}
 	} else {
-		if err := cleanCache(); err != nil {
-			return nil, errors.Wrap(err, "cleanCache()")
+		if err := c.genCache.DeleteSubpath("migrations"); err != nil {
+			return nil, errors.Wrap(err, "cache.Cache.DeleteSubpath()")
 		}
 
 		log.Println("Starting Spanner Container...")
@@ -707,21 +708,4 @@ func alphaFollowingNumber(result []byte, b byte) bool {
 
 func isAlphaNumeric(b byte) bool {
 	return ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') || ('0' <= b && b <= '9')
-}
-
-func (c *client) populateCache() error {
-	if err := cacheData(tableMapCache, c.tableMap); err != nil {
-		return err
-	}
-
-	if err := cacheSchemaHashes(c.migrationSourceURL); err != nil {
-		return err
-	}
-
-	if err := cacheData(enumValueCache, c.enumValues); err != nil {
-		return err
-	}
-
-	// TODO: cache consolidatedRoutes
-	return nil
 }
