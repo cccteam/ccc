@@ -28,6 +28,7 @@
       "include-component-in-tag": false,
       "exclude-paths": [
         "accesstypes",
+        "cache",
         "resource",
         "pkg",
         "sns",
@@ -40,6 +41,9 @@
     },
     "accesstypes": {
       "package-name": "accesstypes"
+    },
+    "cache": {
+      "package-name": "cache"
     },
     "resource": {
       "package-name": "resource"
