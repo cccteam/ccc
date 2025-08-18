@@ -14,9 +14,11 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+const cachePrefix string = ".ccc-cache"
+
 func New(path string) *Cache {
 	c := &Cache{
-		path: path,
+		path: filepath.Join(path, cachePrefix),
 	}
 
 	return c
