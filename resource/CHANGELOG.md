@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.19](https://github.com/cccteam/ccc/compare/resource/v0.2.18...resource/v0.2.19) (2025-08-19)
+
+
+### Bug Fixes
+
+* Fix bug in Create Resource for resources with provided keys ([#426](https://github.com/cccteam/ccc/issues/426)) ([ed13f05](https://github.com/cccteam/ccc/commit/ed13f05981c4f24ac13b031b22ddb47108cad68e))
+
+
+### Code Refactoring
+
+* change gencache implementation to use new cache package ([#425](https://github.com/cccteam/ccc/issues/425)) ([68993d0](https://github.com/cccteam/ccc/commit/68993d05e5c9db2968084aa3dd843feaffd364ab))
+
 ## [0.2.18](https://github.com/cccteam/ccc/compare/resource/v0.2.17...resource/v0.2.18) (2025-08-19)
 
 
