@@ -190,17 +190,19 @@ func withParams(ctx context.Context, method, pattern, path, pathPrefix string, o
 
 	switch method {
 	case http.MethodPost:
-		p := strings.TrimSuffix(path, "/")
-		if o.requireCreatePath && p == pathPrefix {
-			return ctx, pathPrefix, httpio.NewBadRequestMessage("path is required for create operation")
-		}
+		if !o.matchPrefix {
+			p := strings.TrimSuffix(path, "/")
+			if o.requireCreatePath && p == pathPrefix {
+				return ctx, pathPrefix, httpio.NewBadRequestMessage("path is required for create operation")
+			}
 
-		if !o.requireCreatePath && p != pathPrefix {
-			return ctx, pathPrefix, httpio.NewBadRequestMessage("path is not allowed for create operation")
-		}
+			if !o.requireCreatePath && p != pathPrefix {
+				return ctx, pathPrefix, httpio.NewBadRequestMessage("path is not allowed for create operation")
+			}
 
-		if !o.matchPrefix && p == pathPrefix {
-			return ctx, pathPrefix, nil
+			if p == pathPrefix {
+				return ctx, pathPrefix, nil
+			}
 		}
 
 		fallthrough
