@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	genCacheDir            string = ".gencache"
+	genCacheDir            string = "."
 	genCacheSuffix         string = ".gen"
 	tableMapCache          string = "tablemap" + genCacheSuffix
 	enumValueCache         string = "enumvalues" + genCacheSuffix
