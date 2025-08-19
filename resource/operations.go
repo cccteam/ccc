@@ -173,7 +173,7 @@ func httpMethod(op string) (string, error) {
 	case OperationDelete:
 		return http.MethodDelete, nil
 	default:
-		return "", errors.Newf("unsupported operation %q", op)
+		return "", httpio.NewBadRequestMessagef("unsupported operation %q", op)
 	}
 }
 
