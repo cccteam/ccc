@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.18](https://github.com/cccteam/ccc/compare/resource/v0.2.17...resource/v0.2.18) (2025-08-19)
+
+
+### Bug Fixes
+
+* Fix bug in consolidated patch handler template ([#423](https://github.com/cccteam/ccc/issues/423)) ([b436eff](https://github.com/cccteam/ccc/commit/b436eff57dec9423eefa3b4e049205d3c192e3c4))
+* Fix bug when creating a resource via consolidated handler ([#423](https://github.com/cccteam/ccc/issues/423)) ([b436eff](https://github.com/cccteam/ccc/commit/b436eff57dec9423eefa3b4e049205d3c192e3c4))
+
 ## [0.2.17](https://github.com/cccteam/ccc/compare/resource/v0.2.16...resource/v0.2.17) (2025-08-16)
 
 
