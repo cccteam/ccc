@@ -2,10 +2,8 @@ package generation
 
 import (
 	"crypto/sha1"
-	"encoding/gob"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,46 +12,24 @@ import (
 )
 
 const (
-	genCacheDir            string = ".gencache"
+	genCacheDir            string = "."
 	genCacheSuffix         string = ".gen"
 	tableMapCache          string = "tablemap" + genCacheSuffix
 	enumValueCache         string = "enumvalues" + genCacheSuffix
 	consolidatedRouteCache string = "consolidatedroutes" + genCacheSuffix
 )
 
-func readGenCache() (map[string]struct{}, error) {
-	dir, err := os.Open(genCacheDir)
+// Calculate the SHA1 checksum of a file
+func hashFile(filePath string) ([]byte, error) {
+	stat, err := os.Stat(filePath)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return nil, errors.Wrap(err, "os.Open()")
-		}
-
-		if err := os.Mkdir(genCacheDir, fs.ModeDir|0o755); err != nil {
-			return nil, errors.Wrap(err, "os.Mkdir()")
-		}
-
-		dir, err = os.Open(genCacheDir)
-		if err != nil {
-			return nil, errors.Wrap(err, "os.Open()")
-		}
+		return nil, errors.Wrapf(err, "could not stat %q: os.Stat()", filePath)
 	}
-	defer dir.Close()
-
-	fileNames, err := dir.Readdirnames(0)
-	if err != nil {
-		return nil, errors.Wrap(err, "os.File.Readdirnames()")
+	if stat.IsDir() {
+		return nil, errors.Newf("cannot compute SHA1 of the directory %q. pass each of its files to this function individually", filePath)
 	}
 
-	genCacheMap := make(map[string]struct{}, len(fileNames))
-	for _, fileName := range fileNames {
-		genCacheMap[fileName] = struct{}{}
-	}
-
-	return genCacheMap, nil
-}
-
-func hashFile(fileName string) ([]byte, error) {
-	f, err := os.Open(fileName)
+	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, errors.Wrap(err, "os.Open()")
 	}
@@ -67,7 +43,16 @@ func hashFile(fileName string) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
+// Compute the SHA1 checksum of each file in a directory
 func hashFilesInDir(path string) (map[string]struct{}, error) {
+	stat, err := os.Stat(path)
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not stat %q: os.Stat()", path)
+	}
+	if !stat.IsDir() {
+		return nil, errors.Newf("%q is not a directory", path)
+	}
+
 	dir, err := os.Open(path)
 	if err != nil {
 		return nil, errors.Wrap(err, "os.Open()")
@@ -91,32 +76,37 @@ func hashFilesInDir(path string) (map[string]struct{}, error) {
 	return hashMap, nil
 }
 
-func cacheSchemaHashes(migrationPath string) error {
-	migrationPath = strings.TrimPrefix(migrationPath, "file://")
+func (c *client) cacheSchemaHashes() error {
+	migrationPath := strings.TrimPrefix(c.migrationSourceURL, "file://")
 	schemaMigrationHashes, err := hashFilesInDir(migrationPath)
 	if err != nil {
 		return err
 	}
 
 	for hash := range schemaMigrationHashes {
-		fileName := filepath.Join(genCacheDir, fmt.Sprintf("%x", []byte(hash)))
-		fd, err := os.Create(fileName)
-		if err != nil {
-			return errors.Wrap(err, "os.Create()")
+		if err := c.genCache.Store("migrations", fmt.Sprintf("%x", []byte(hash)), ""); err != nil {
+			return errors.Wrap(err, "could not store SHA1 hash in gencache: cache.Cache.Store()")
 		}
-		fd.Close()
 	}
 
 	return nil
 }
 
-func isCacheValid(migrationPath string) (bool, error) {
-	genCacheMap, err := readGenCache()
+// Loads previous schema migration checksums from gencache, if they exist.
+// Returns false current schema migration checksums do not match cached checksums.
+func (c *client) isSchemaClean() (bool, error) {
+	keys, err := c.genCache.Keys("migrations")
 	if err != nil {
-		return false, err
+		return false, errors.Wrap(err, "could not load migration hashes from genCache: cache.Cache.Keys()")
 	}
 
-	migrationPath = strings.TrimPrefix(migrationPath, "file://")
+	cachedHashes := make(map[string]struct{})
+	for key := range keys {
+		cachedHashes[key] = struct{}{}
+	}
+
+	// gather files from schema migration directory
+	migrationPath := strings.TrimPrefix(c.migrationSourceURL, "file://")
 	dir, err := os.Open(migrationPath)
 	if err != nil {
 		return false, errors.Wrap(err, "os.Open()")
@@ -128,62 +118,60 @@ func isCacheValid(migrationPath string) (bool, error) {
 		return false, errors.Wrap(err, "os.File.Readdirnames()")
 	}
 
-	hashMap := make(map[string]struct{}, len(fileNames))
+	// check cache for hash of each schema migration file
 	for _, fileName := range fileNames {
 		hash, err := hashFile(filepath.Join(migrationPath, fileName))
 		if err != nil {
 			return false, err
 		}
 
-		if _, ok := genCacheMap[fmt.Sprintf("%x", hash)]; !ok {
+		if _, ok := cachedHashes[fmt.Sprintf("%x", hash)]; !ok {
 			return false, nil
 		}
-
-		hashMap[string(hash)] = struct{}{}
 	}
 
 	return true, nil
 }
 
-func cleanCache() error {
-	if err := os.RemoveAll(genCacheDir); err != nil {
-		return errors.Wrap(err, "os.RemoveAll")
+func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
+	c.tableMap = make(map[string]*tableMetadata)
+	if ok, err := c.genCache.Load("spanner", tableMapCache, &c.tableMap); err != nil {
+		return false, errors.Wrapf(err, "cache.Cache.Load() for %q", tableMapCache)
+	} else if !ok {
+		return false, nil
 	}
 
-	if err := os.Mkdir(genCacheDir, fs.ModeDir|0o755); err != nil {
-		return errors.Wrap(err, "os.Mkdir")
+	c.enumValues = make(map[string][]enumData)
+	if ok, err := c.genCache.Load("spanner", enumValueCache, &c.enumValues); err != nil {
+		return false, errors.Wrapf(err, "cache.Cache.Load() for %q", enumValueCache)
+	} else if !ok {
+		return false, nil
 	}
 
-	return nil
+	if genType == typeScriptGeneratorType {
+		if ok, err := c.genCache.Load("app", consolidatedRouteCache, &c.consolidateConfig); err != nil {
+			return false, errors.Wrapf(err, "cache.Cache.Load() for %q", consolidatedRouteCache)
+		} else if !ok {
+			return false, nil
+		}
+	}
+
+	c.cleanup = func() {}
+
+	return true, nil
 }
 
-func cacheData(name string, data any) error {
-	fileName := filepath.Join(genCacheDir, name)
-	f, err := os.Create(fileName)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer f.Close()
-
-	encoder := gob.NewEncoder(f)
-	if err := encoder.Encode(data); err != nil {
-		return errors.Wrap(err, "gob.Encoder.Encode()")
+func (c *client) populateCache() error {
+	if err := c.genCache.Store("spanner", tableMapCache, c.tableMap); err != nil {
+		return err
 	}
 
-	return nil
-}
-
-func loadData(name string, dst any) error {
-	fileName := filepath.Join(genCacheDir, name)
-	f, err := os.Open(fileName)
-	if err != nil {
-		return errors.Wrap(err, "os.Open")
+	if err := c.cacheSchemaHashes(); err != nil {
+		return err
 	}
-	defer f.Close()
 
-	decoder := gob.NewDecoder(f)
-	if err := decoder.Decode(dst); err != nil {
-		return errors.Wrapf(err, "fileName=%q, gob.Decoder.Decode()", fileName)
+	if err := c.genCache.Store("spanner", enumValueCache, c.enumValues); err != nil {
+		return err
 	}
 
 	return nil

@@ -44,7 +44,7 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 	}
 
 	// We always want to cache the consolidatedRoute data for the typescript gen
-	if err := cacheData(consolidatedRouteCache, c.consolidateConfig); err != nil {
+	if err := c.genCache.Store("app", consolidatedRouteCache, c.consolidateConfig); err != nil {
 		return nil, err
 	}
 
