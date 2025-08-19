@@ -595,11 +595,7 @@ import (
 				return errors.Wrap(err, "resource.CloneRequest()")
 			}
 
-			for op, err := range resource.Operations(r, 
-			{{- if $PrimaryKeyIsGeneratedUUID }}"/{id}"
-			{{- else if .Resource.HasCompoundPrimaryKey }}"
-			{{- range $i := .Resource.PrimaryKeys }}/{id{{ $i }}}{{ end }}", resource.RequireCreatePath()
-			{{- else }}"/{id}", resource.RequireCreatePath(){{ end }}) {
+			for op, err := range resource.Operations(r, "{{ .Resource.OperationPathPattern }}"{{ if not $PrimaryKeyIsGeneratedUUID }}, resource.RequireCreatePath(){{ end }}) {
 				if err != nil {
 					return errors.Wrap(err, "resource.Operations()")
 				}
