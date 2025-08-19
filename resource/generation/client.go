@@ -16,7 +16,6 @@ import (
 	"github.com/cccteam/ccc/cache"
 	"github.com/cccteam/ccc/pkg"
 	"github.com/cccteam/ccc/resource"
-	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
@@ -74,61 +73,16 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 	}
 
 	if isSchemaClean {
-		if ok, err := c.loadAllCachedData(); err != nil {
+		if ok, err := c.loadAllCachedData(genType); err != nil {
 			return nil, err
 		} else if !ok {
-			// todo
-		}
-
-		if genType == typeScriptGeneratorType {
-			if ok, err := c.genCache.Load("app", consolidatedRouteCache, &c.consolidateConfig); err != nil {
-				return nil, errors.Wrapf(err, "cache.Cache.Load() for %q", consolidatedRouteCache)
-			} else if !ok {
-				// todo
+			if err := c.runSpanner(ctx); err != nil {
+				return nil, err
 			}
 		}
 	} else {
-		if err := c.genCache.DeleteSubpath("migrations"); err != nil {
-			return nil, errors.Wrap(err, "cache.Cache.DeleteSubpath()")
-		}
-
-		log.Println("Starting Spanner Container...")
-		spannerContainer, err := initiator.NewSpannerContainer(ctx, c.spannerEmulatorVersion)
-		if err != nil {
-			return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
-		}
-
-		db, err := spannerContainer.CreateDatabase(ctx, "resourcegeneration")
-		if err != nil {
-			return nil, errors.Wrap(err, "initiator.SpannerContainer.CreateDatabase()")
-		}
-
-		log.Println("Starting Spanner Migration...")
-		if err := db.MigrateUp(migrationSourceURL); err != nil {
-			return nil, errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
-		}
-
-		c.db = db.Client
-		if c.tableMap, err = c.newTableMap(ctx); err != nil {
-			return nil, errors.Wrap(err, "newTableMap()")
-		}
-
-		if c.enumValues, err = c.fetchEnumValues(ctx); err != nil {
-			return nil, errors.Wrap(err, "fetchEnumValues()")
-		}
-
-		c.cleanup = func() {
-			if err := db.DropDatabase(ctx); err != nil {
-				panic(err)
-			}
-
-			if err := db.Close(); err != nil {
-				panic(err)
-			}
-
-			if err := c.populateCache(); err != nil {
-				panic(err)
-			}
+		if err := c.runSpanner(ctx); err != nil {
+			return nil, err
 		}
 	}
 

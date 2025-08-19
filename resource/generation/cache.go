@@ -133,19 +133,27 @@ func (c *client) isSchemaClean() (bool, error) {
 	return true, nil
 }
 
-func (c *client) loadAllCachedData() (bool, error) {
+func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
 	c.tableMap = make(map[string]*tableMetadata)
 	if ok, err := c.genCache.Load("spanner", tableMapCache, &c.tableMap); err != nil {
 		return false, errors.Wrapf(err, "cache.Cache.Load() for %q", tableMapCache)
 	} else if !ok {
-		// todo: start spanner, skip enum values below
+		return false, nil
 	}
 
 	c.enumValues = make(map[string][]enumData)
 	if ok, err := c.genCache.Load("spanner", enumValueCache, &c.enumValues); err != nil {
 		return false, errors.Wrapf(err, "cache.Cache.Load() for %q", enumValueCache)
 	} else if !ok {
-		// todo: start spanner
+		return false, nil
+	}
+
+	if genType == typeScriptGeneratorType {
+		if ok, err := c.genCache.Load("app", consolidatedRouteCache, &c.consolidateConfig); err != nil {
+			return false, errors.Wrapf(err, "cache.Cache.Load() for %q", consolidatedRouteCache)
+		} else if !ok {
+			return false, nil
+		}
 	}
 
 	c.cleanup = func() {}
