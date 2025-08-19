@@ -26,23 +26,26 @@ const (
 )
 
 type Operation struct {
-	Type OperationType
-	Req  *http.Request
+	Type       OperationType
+	Req        *http.Request
+	pathPrefix string
 }
 
-func (o *Operation) ReqWithPattern(pattern string) (*http.Request, error) {
-	var chiContext *chi.Context
-	r := chi.NewRouter()
-	r.Handle(pattern, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		chiContext = chi.RouteContext(r.Context())
-	}))
-	r.ServeHTTP(httptest.NewRecorder(), &http.Request{Method: o.Req.Method, Header: o.Req.Header, URL: o.Req.URL})
-
-	if chiContext == nil {
-		return nil, httpio.NewBadRequestMessagef("path %q does not match pattern %q", o.Req.URL.Path, pattern)
+func (o *Operation) ReqWithPattern(pattern string, opts ...Option) (*http.Request, error) {
+	var os options
+	for _, opt := range opts {
+		os = opt(os)
 	}
 
-	ctx := context.WithValue(o.Req.Context(), chi.RouteCtxKey, chiContext)
+	method, err := httpMethod(string(o.Type))
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, _, err := withParams(o.Req.Context(), method, pattern, o.Req.URL.Path, o.pathPrefix, os)
+	if err != nil {
+		return nil, err
+	}
 
 	return o.Req.WithContext(ctx), nil
 }
@@ -128,7 +131,7 @@ func Operations(r *http.Request, pattern string, opts ...Option) iter.Seq2[*Oper
 				return
 			}
 
-			ctx, err := withParams(r.Context(), method, pattern, op.Path, o)
+			ctx, pathPrefix, err := withParams(r.Context(), method, pattern, op.Path, "", o)
 			if err != nil {
 				yield(nil, err)
 
@@ -142,7 +145,7 @@ func Operations(r *http.Request, pattern string, opts ...Option) iter.Seq2[*Oper
 				return
 			}
 
-			if !yield(&Operation{Type: OperationType(op.Op), Req: r2}, nil) {
+			if !yield(&Operation{Type: OperationType(op.Op), Req: r2, pathPrefix: pathPrefix}, nil) {
 				return
 			}
 		}
@@ -170,56 +173,58 @@ func httpMethod(op string) (string, error) {
 	case OperationDelete:
 		return http.MethodDelete, nil
 	default:
-		return "", errors.Newf("unsupported operation %q", op)
+		return "", httpio.NewBadRequestMessagef("unsupported operation %q", op)
 	}
 }
 
-func withParams(ctx context.Context, method, pattern, path string, o options) (context.Context, error) {
+func withParams(ctx context.Context, method, pattern, path, pathPrefix string, o options) (context.Context, string, error) {
+	servePath := path
+	if o.matchPrefix {
+		patternParts := strings.Split(pattern, "/")
+		pathParts := strings.Split(path, "/")
+		if len(pathParts) > len(patternParts) {
+			servePath = strings.Join(pathParts[:len(patternParts)], "/")
+		}
+		pathPrefix = servePath
+	}
+
 	switch method {
 	case http.MethodPost:
-		p := strings.TrimPrefix(path, "/")
-		if o.requireCreatePath && p == "" {
-			return ctx, httpio.NewBadRequestMessage("path is required for create operation")
+		p := strings.TrimSuffix(path, "/")
+		if o.requireCreatePath && p == pathPrefix {
+			return ctx, pathPrefix, httpio.NewBadRequestMessage("path is required for create operation")
 		}
 
-		if !o.requireCreatePath && p != "" {
-			return ctx, httpio.NewBadRequestMessage("path is not allowed for create operation")
+		if !o.requireCreatePath && p != pathPrefix {
+			return ctx, pathPrefix, httpio.NewBadRequestMessage("path is not allowed for create operation")
 		}
 
-		if p == "" {
-			return ctx, nil
+		if !o.matchPrefix && p == pathPrefix {
+			return ctx, pathPrefix, nil
 		}
 
 		fallthrough
 	case http.MethodPatch, http.MethodDelete:
 		if path == "" {
-			return ctx, httpio.NewBadRequestMessage("path is required for patch and delete operations")
+			return ctx, pathPrefix, httpio.NewBadRequestMessage("path is required for patch and delete operations")
 		}
 
 		var chiContext *chi.Context
 		r := chi.NewRouter()
 
-		servePath := path
-		if o.matchPrefix {
-			patternParts := strings.Split(pattern, "/")
-			pathParts := strings.Split(path, "/")
-			if len(pathParts) > len(patternParts) {
-				servePath = strings.Join(pathParts[:len(patternParts)], "/")
-			}
-		}
 		r.Handle(pattern, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			chiContext = chi.RouteContext(r.Context())
 		}))
 		r.ServeHTTP(httptest.NewRecorder(), &http.Request{Method: method, Header: make(map[string][]string), URL: &url.URL{Path: servePath}})
 
 		if chiContext == nil {
-			return ctx, httpio.NewBadRequestMessagef("path %q does not match pattern %q", path, pattern)
+			return ctx, pathPrefix, httpio.NewBadRequestMessagef("path %q does not match pattern %q", path, pattern)
 		}
 
 		ctx = context.WithValue(ctx, chi.RouteCtxKey, chiContext)
 	}
 
-	return ctx, nil
+	return ctx, pathPrefix, nil
 }
 
 func permissionFromType(typ OperationType) accesstypes.Permission {
