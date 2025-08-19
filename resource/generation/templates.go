@@ -724,7 +724,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 				return errors.Wrap(err, "resource.CloneRequest()")
 			}
 
-			for op, err := range resource.Operations(r, "/{resource}", resource.MatchPrefix(), resource.RequireCreatePath()) {
+			for op, err := range resource.Operations(r, "/{resource}", resource.MatchPrefix()) {
 				if err != nil {
 					return errors.Wrap(err, "resource.Operations()")
 				}
@@ -738,7 +738,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 							return errors.Wrap(err, "{{ GoCamel $resource.Name}}Decoder.DecodeOperation()")
 						}
 
-						req, err := op.ReqWithPattern("/{resource}{{ $resource.OperationPathPattern }}")
+						req, err := op.ReqWithPattern("/{resource}{{ $resource.OperationPathPattern }}"{{ if not $resource.PrimaryKeyIsGeneratedUUID }}, resource.RequireCreatePath(){{ end }})
 						if err != nil {
 							return errors.Wrap(err, "op.ReqWithPattern()")
 						}
