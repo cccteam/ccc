@@ -383,11 +383,7 @@ func (f resourceField) JSONTag() string {
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(f.Name())
 
-	if !f.IsNullable {
-		return fmt.Sprintf("json:%q", camelCaseName)
-	}
-
-	return fmt.Sprintf("json:%q", camelCaseName+",omitzero")
+	return fmt.Sprintf("json:%q", camelCaseName)
 }
 
 func (f resourceField) JSONTagForPatch() string {
