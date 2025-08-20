@@ -18,15 +18,21 @@ const cachePrefix string = ".ccc-cache"
 
 func New(path string) *Cache {
 	c := &Cache{
-		path: filepath.Join(path, cachePrefix),
+		permissionBits: 0o755,
+		path:           filepath.Join(path, cachePrefix),
 	}
 
 	return c
 }
 
 type Cache struct {
-	mu   sync.RWMutex
-	path string
+	permissionBits uint32
+	mu             sync.RWMutex
+	path           string
+}
+
+func (c *Cache) SetPermissions(perms uint32) {
+	c.permissionBits = perms
 }
 
 // Loads data from path/subpath and stores in dst
@@ -106,21 +112,30 @@ func (c *Cache) Store(subpath, key string, data any) error {
 	if ok, err := c.pathExists(subpath); err != nil {
 		return err
 	} else if !ok {
-		if err := os.MkdirAll(filepath.Join(c.path, subpath), fs.ModeDir|0o755); err != nil {
+		path := filepath.Join(c.path, subpath)
+		if err := os.MkdirAll(path, fs.ModeDir|fs.FileMode(c.permissionBits)); err != nil {
 			return errors.Wrap(err, "os.MkdirAll()")
+		}
+
+		if err := os.Chmod(path, fs.FileMode(c.permissionBits)); err != nil {
+			return errors.Wrap(err, "os.Chmod()")
 		}
 	}
 
 	fileName := filepath.Join(c.path, subpath, key)
-	f, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, 0o666)
+	f, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, fs.FileMode(c.permissionBits))
 	if err != nil {
 		return errors.Wrap(err, "os.OpenFile()")
 	}
-	defer f.Close()
 
 	encoder := gob.NewEncoder(f)
 	if err := encoder.Encode(data); err != nil {
 		return errors.Wrap(err, "gob.Encoder.Encode()")
+	}
+	f.Close()
+
+	if err := os.Chmod(fileName, fs.FileMode(c.permissionBits)); err != nil {
+		return errors.Wrap(err, "os.Chmod()")
 	}
 
 	return nil
@@ -164,8 +179,12 @@ func (c *Cache) DeleteAll() error {
 		return err
 	}
 
-	if err := os.Mkdir(c.path, fs.ModeDir|0o755); err != nil {
+	if err := os.Mkdir(c.path, fs.ModeDir|fs.FileMode(c.permissionBits)); err != nil {
 		return errors.Wrap(err, "os.Mkdir")
+	}
+
+	if err := os.Chmod(c.path, fs.FileMode(c.permissionBits)); err != nil {
+		return errors.Wrap(err, "os.Chmod()")
 	}
 
 	return nil
