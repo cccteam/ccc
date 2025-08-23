@@ -13,6 +13,7 @@ const (
 	load op = 1 << iota
 	store
 	remove
+	delete
 )
 
 func Test_Cache(t *testing.T) {
@@ -58,11 +59,33 @@ func Test_Cache(t *testing.T) {
 		{
 			name: "removing subpath removes all keys",
 			args: args{t.TempDir(), []transaction{
-				{store, "subpath1", "key1", foo{Int: 2}},
+				{store, "subpath1", "key1", foo{Int: 1}},
+				{store, "subpath1", "key2", foo{Int: 2}},
 				{remove, "subpath1", "", foo{}},
+				{load, "subpath1", "key1", foo{}},
+				{load, "subpath1", "key2", foo{}},
+			}},
+			wantFail: true,
+		},
+		{
+			name: "remove all removes all subpaths",
+			args: args{t.TempDir(), []transaction{
+				{store, "subpath", "key", foo{Int: 1}},
+				{store, "subpath1", "key1", foo{Int: 2}},
+				{op: delete},
+				{load, "subpath", "key", foo{}},
 				{load, "subpath1", "key1", foo{}},
 			}},
 			wantFail: true,
+		},
+		{
+			name: "removing subpath does not remove other subpaths",
+			args: args{t.TempDir(), []transaction{
+				{store, "subpath", "key", foo{Int: 1}},
+				{store, "subpath1", "key", foo{Int: 2}},
+				{remove, "subpath1", "", foo{}},
+				{load, "subpath", "key", foo{Int: 1}},
+			}},
 		},
 		{
 			name: "error when path is not a directory",
@@ -76,7 +99,13 @@ func Test_Cache(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			c := cache.New(tt.args.dir)
+			c, err := cache.New(tt.args.dir)
+			if err != nil {
+				if !tt.wantErr {
+					t.Errorf("cache.New() error = %v", err)
+				}
+				return
+			}
 			for _, transaction := range tt.args.transactions {
 				switch transaction.op {
 				case store:
@@ -106,6 +135,11 @@ func Test_Cache(t *testing.T) {
 				case remove:
 					if err := c.DeleteSubpath(transaction.subpath); err != nil {
 						t.Errorf("cache.Cache.DeleteSubpath() error = %v", err)
+						return
+					}
+				case delete:
+					if err := c.DeleteAll(); err != nil {
+						t.Errorf("cache.Cache.DeleteAll() error = %v", err)
 						return
 					}
 				}
