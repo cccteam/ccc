@@ -13,6 +13,7 @@ const (
 	load op = 1 << iota
 	store
 	remove
+	delete
 )
 
 func Test_Cache(t *testing.T) {
@@ -63,6 +64,17 @@ func Test_Cache(t *testing.T) {
 				{remove, "subpath1", "", foo{}},
 				{load, "subpath1", "key1", foo{}},
 				{load, "subpath1", "key2", foo{}},
+			}},
+			wantFail: true,
+		},
+		{
+			name: "remove all removes all subpaths",
+			args: args{t.TempDir(), []transaction{
+				{store, "subpath", "key", foo{Int: 1}},
+				{store, "subpath1", "key1", foo{Int: 2}},
+				{op: delete},
+				{load, "subpath", "key", foo{}},
+				{load, "subpath1", "key1", foo{}},
 			}},
 			wantFail: true,
 		},
@@ -123,6 +135,11 @@ func Test_Cache(t *testing.T) {
 				case remove:
 					if err := c.DeleteSubpath(transaction.subpath); err != nil {
 						t.Errorf("cache.Cache.DeleteSubpath() error = %v", err)
+						return
+					}
+				case delete:
+					if err := c.DeleteAll(); err != nil {
+						t.Errorf("cache.Cache.DeleteAll() error = %v", err)
 						return
 					}
 				}

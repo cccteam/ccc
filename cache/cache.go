@@ -27,10 +27,17 @@ func WithPermission(perms uint32) Option {
 	}
 }
 
+type Cache struct {
+	permissionBits uint32
+	mu             sync.RWMutex
+	cacheFolder    string
+	root           *os.Root
+}
+
 func New(path string, opts ...Option) (*Cache, error) {
 	c := &Cache{
 		permissionBits: 0o755,
-		path:           filepath.Join(path, cachePrefix),
+		cacheFolder:    filepath.Join(path, cachePrefix),
 	}
 
 	for _, opt := range opts {
@@ -39,31 +46,31 @@ func New(path string, opts ...Option) (*Cache, error) {
 
 	// Require path exists so we don't need to make permission
 	// assumptions on any parent directories.
-	if exist, err := c.pathExists(".."); err != nil {
-		return nil, err
-	} else if !exist {
+	if _, err := os.Stat(path); err != nil {
+		return nil, errors.Wrap(err, "os.Stat()")
+	} else if os.IsNotExist(err) {
 		return nil, errors.Newf("cache path %q does not exist", path)
 	}
 
-	if exist, err := c.pathExists(""); err != nil {
-		return nil, err
-	} else if !exist {
-		if err := os.Mkdir(c.path, fs.FileMode(c.permissionBits)); err != nil {
+	if _, err := os.Stat(c.cacheFolder); err != nil && !os.IsNotExist(err) {
+		return nil, errors.Wrap(err, "os.Stat()")
+	} else if os.IsNotExist(err) {
+		if err := os.Mkdir(c.cacheFolder, fs.FileMode(c.permissionBits)); err != nil {
 			return c, errors.Wrap(err, "os.Mkdir()")
 		}
 
-		if err := os.Chmod(c.path, fs.FileMode(c.permissionBits)); err != nil {
+		if err := os.Chmod(c.cacheFolder, fs.FileMode(c.permissionBits)); err != nil {
 			return c, errors.Wrap(err, "os.Chmod()")
 		}
 	}
 
-	return c, nil
-}
+	root, err := os.OpenRoot(c.cacheFolder)
+	if err != nil {
+		return nil, errors.Wrap(err, "os.OpenRoot()")
+	}
+	c.root = root
 
-type Cache struct {
-	permissionBits uint32
-	mu             sync.RWMutex
-	path           string
+	return c, nil
 }
 
 // Loads data from path/subpath and stores in dst
@@ -77,11 +84,11 @@ func (c *Cache) Load(subpath, key string, dst any) (bool, error) {
 		return false, nil
 	}
 
-	fileName := filepath.Join(c.path, subpath, key)
-	f, err := os.Open(fileName)
+	fileName := filepath.Join(subpath, key)
+	f, err := c.root.Open(fileName)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return false, errors.Wrap(err, "os.Open()")
+			return false, errors.Wrap(err, "os.Root.Open()")
 		}
 
 		return false, nil
@@ -108,10 +115,10 @@ func (c *Cache) Keys(subpath string) (iter.Seq[string], error) {
 		return empty, nil
 	}
 
-	dir, err := os.Open(filepath.Join(c.path, subpath))
+	dir, err := c.root.Open(subpath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return nil, errors.Wrap(err, "os.Open()")
+			return nil, errors.Wrap(err, "os.Root.Open()")
 		}
 
 		return empty, nil
@@ -120,7 +127,7 @@ func (c *Cache) Keys(subpath string) (iter.Seq[string], error) {
 
 	dirEntries, err := dir.ReadDir(0)
 	if err != nil {
-		return nil, errors.Wrap(err, "os.Open()")
+		return nil, errors.Wrap(err, "os.File.ReadDir()")
 	}
 
 	return func(yield func(string) bool) {
@@ -143,25 +150,25 @@ func (c *Cache) Store(subpath, key string, data any) error {
 	if exist, err := c.pathExists(subpath); err != nil {
 		return err
 	} else if !exist {
-		path := c.path
+		var path string
 		for part := range strings.SplitSeq(filepath.Clean(subpath), string(os.PathSeparator)) {
 			path = filepath.Join(path, part)
-			if _, err := os.Stat(path); os.IsNotExist(err) {
-				if err := os.Mkdir(path, fs.FileMode(c.permissionBits)); err != nil {
-					return errors.Wrapf(err, "os.Mkdir(%q)", path)
+			if _, err := c.root.Stat(path); os.IsNotExist(err) {
+				if err := c.root.Mkdir(path, fs.FileMode(c.permissionBits)); err != nil {
+					return errors.Wrapf(err, "os.Root.Mkdir(%q)", path)
 				}
 
-				if err := os.Chmod(path, fs.FileMode(c.permissionBits)); err != nil {
-					return errors.Wrap(err, "os.Chmod()")
+				if err := c.root.Chmod(path, fs.FileMode(c.permissionBits)); err != nil {
+					return errors.Wrap(err, "os.Root.Chmod()")
 				}
 			}
 		}
 	}
 
-	fileName := filepath.Join(c.path, subpath, key)
-	f, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, fs.FileMode(c.permissionBits))
+	fileName := filepath.Join(subpath, key)
+	f, err := c.root.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, fs.FileMode(c.permissionBits))
 	if err != nil {
-		return errors.Wrap(err, "os.OpenFile()")
+		return errors.Wrap(err, "os.Root.OpenFile()")
 	}
 
 	encoder := gob.NewEncoder(f)
@@ -171,8 +178,8 @@ func (c *Cache) Store(subpath, key string, data any) error {
 	f.Close()
 
 	// Files should not be executable, so drop execute bits
-	if err := os.Chmod(fileName, fs.FileMode(c.permissionBits&^0o111)); err != nil {
-		return errors.Wrap(err, "os.Chmod()")
+	if err := c.root.Chmod(fileName, fs.FileMode(c.permissionBits&^0o111)); err != nil {
+		return errors.Wrap(err, "os.Root.Chmod()")
 	}
 
 	return nil
@@ -188,8 +195,8 @@ func (c *Cache) DeleteKey(subpath, key string) error {
 		return nil
 	}
 
-	if err := os.Remove(filepath.Join(c.path, subpath, key)); err != nil {
-		return errors.Wrap(err, "os.Remove()")
+	if err := c.root.Remove(filepath.Join(subpath, key)); err != nil {
+		return errors.Wrap(err, "os.Root.Remove()")
 	}
 
 	return nil
@@ -205,49 +212,44 @@ func (c *Cache) DeleteSubpath(subpath string) error {
 		return nil
 	}
 
-	return deletePath(filepath.Join(c.path, subpath))
+	if err := c.root.RemoveAll(subpath); err != nil {
+		return errors.Wrap(err, "os.Root.RemoveAll()")
+	}
+
+	return nil
 }
 
 func (c *Cache) DeleteAll() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if err := deletePath(c.path); err != nil {
-		return err
+	if err := os.RemoveAll(c.cacheFolder); err != nil {
+		return errors.Wrap(err, "os.RemoveAll()")
 	}
 
-	if err := os.Mkdir(c.path, fs.FileMode(c.permissionBits)); err != nil {
+	if err := os.Mkdir(c.cacheFolder, fs.FileMode(c.permissionBits)); err != nil {
 		return errors.Wrap(err, "os.Mkdir")
 	}
 
-	if err := os.Chmod(c.path, fs.FileMode(c.permissionBits)); err != nil {
+	if err := os.Chmod(c.cacheFolder, fs.FileMode(c.permissionBits)); err != nil {
 		return errors.Wrap(err, "os.Chmod()")
 	}
 
 	return nil
 }
 
-func deletePath(path string) error {
-	if err := os.RemoveAll(path); err != nil {
-		return errors.Wrap(err, "os.RemoveAll()")
-	}
-
-	return nil
-}
-
 func (c *Cache) pathExists(subpath string) (bool, error) {
-	path := filepath.Join(c.path, subpath)
-	stat, err := os.Stat(path)
+	stat, err := c.root.Stat(subpath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return false, errors.Wrap(err, "os.Stat()")
+			return false, errors.Wrap(err, "os.Root.Stat()")
 		}
 
 		return false, nil
 	}
 
 	if !stat.IsDir() {
-		return false, errors.Newf("path %q is not a directory", path)
+		return false, errors.Newf("path %q is not a directory", subpath)
 	}
 
 	return true, nil
