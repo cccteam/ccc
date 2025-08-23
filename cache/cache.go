@@ -73,6 +73,14 @@ func New(path string, opts ...Option) (*Cache, error) {
 	return c, nil
 }
 
+func (c *Cache) Close() error {
+	if err := c.root.Close(); err != nil {
+		return errors.Wrap(err, "os.Root.Close()")
+	}
+
+	return nil
+}
+
 // Loads data from path/subpath and stores in dst
 func (c *Cache) Load(subpath, key string, dst any) (bool, error) {
 	c.mu.RLock()
