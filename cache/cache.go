@@ -16,10 +16,24 @@ import (
 
 const cachePrefix string = ".ccc-cache"
 
-func New(path string) *Cache {
+type Option func(*Cache) *Cache
+
+func WithPermission(perms uint32) Option {
+	return func(c *Cache) *Cache {
+		c.permissionBits = perms
+
+		return c
+	}
+}
+
+func New(path string, opts ...Option) *Cache {
 	c := &Cache{
 		permissionBits: 0o755,
 		path:           filepath.Join(path, cachePrefix),
+	}
+
+	for _, opt := range opts {
+		opt(c)
 	}
 
 	return c
@@ -29,10 +43,6 @@ type Cache struct {
 	permissionBits uint32
 	mu             sync.RWMutex
 	path           string
-}
-
-func (c *Cache) SetPermissions(perms uint32) {
-	c.permissionBits = perms
 }
 
 // Loads data from path/subpath and stores in dst
