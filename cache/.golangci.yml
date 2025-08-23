@@ -1,0 +1,202 @@
+version: '2'
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bodyclose
+    - copyloopvar
+    - cyclop
+    - depguard
+    - dogsled
+    - durationcheck
+    - errcheck
+    - errorlint
+    - exhaustive
+    - forcetypeassert
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godox
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - govet
+    - importas
+    - ineffassign
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    - nlreturn
+    - noctx
+    - nolintlint
+    - paralleltest
+    - prealloc
+    - predeclared
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - tagliatelle
+    - tparallel
+    - unconvert
+    - unparam
+    - unused
+    - wastedassign
+    - whitespace
+    - wrapcheck
+  settings:
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+          arguments:
+            - 'disable-checks-on-functions'
+            - 'disable-checks-on-methods'
+            - 'disable-checks-on-types'
+            - 'disable-checks-on-constants'
+    cyclop:
+      max-complexity: 25
+    depguard:
+      rules:
+        main:
+          files:
+            - $all
+          allow:
+            - cloud.google.com/go/civil
+            - cloud.google.com/go/spanner
+            - github.com/AscendiumApps
+            - github.com/aws
+            - github.com/casbin
+            - github.com/cccteam/access
+            - github.com/cccteam/ccc
+            - github.com/cccteam/ccc/accesstypes
+            - github.com/cccteam/ccc/resource
+            - github.com/cccteam/db-initiator
+            - github.com/cccteam/httpio
+            - github.com/cccteam/logger
+            - github.com/cccteam/ccc/pkg
+            - github.com/cccteam/session
+            - github.com/cccteam/session/sessioninfo
+            - github.com/cccteam/spxscan
+            - github.com/cccteam/spxscan/spxapi
+            - github.com/cenkalti
+            - github.com/coreos/go-oidc
+            - github.com/docker
+            - github.com/dslipak
+            - github.com/exaring/otelpgx
+            - github.com/flowerinthenight/casbin-spanner-adapter
+            - github.com/georgysavva
+            - github.com/go-chi/chi/v5
+            - github.com/go-ldap
+            - github.com/go-playground
+            - github.com/go-test
+            - github.com/gofrs/uuid
+            - github.com/golang
+            - github.com/google
+            - github.com/gorilla/securecookie
+            - github.com/goware/emailx
+            - github.com/ianlopshire/go-fixedwidth
+            - github.com/jackc
+            - github.com/jtwatson
+            - github.com/korylprince
+            - github.com/sethvargo/go-envconfig
+            - github.com/shopspring/decimal
+            - github.com/stretchr/testify
+            - github.com/testcontainers
+            - go.opentelemetry.io/otel
+            - go.uber.org/mock
+            - golang.org/x/crypto/pbkdf2
+            - google.golang.org/api/iterator
+            - $gostd
+    dupl:
+      threshold: 100
+    exhaustive:
+      default-signifies-exhaustive: true
+    funlen:
+      lines: 100
+      statements: 50
+    gocognit:
+      min-complexity: 50
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+    gocyclo:
+      min-complexity: 25
+    godox:
+      keywords:
+        - TODO
+        - BUG
+    misspell:
+      locale: US
+    nestif:
+      min-complexity: 10
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+        use-field-name: true
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .Cause(
+        - .RetryableError(
+      ignore-package-globs:
+        - github.com/cccteam/httpio*
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      - linters:
+          - bodyclose
+          - funlen
+          - gochecknoglobals
+          - gochecknoinits
+          - gocognit
+          - goconst
+          - gocyclo
+          - lll
+          - mnd
+          - nlreturn
+          - scopelint
+        path: _test\.go
+    paths:
+      - gui/node_modules
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - gui/node_modules
+      - third_party$
+      - builtin$
+      - examples$
