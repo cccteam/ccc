@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -59,13 +60,22 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 		return nil, errors.Wrap(err, "os.Chdir()")
 	}
 
+	gCache, err := cache.New(genCacheDir)
+	if err != nil {
+		return nil, errors.Wrap(err, "cache.New()")
+	}
+
 	c := &client{
 		migrationSourceURL: migrationSourceURL,
-		genCache:           cache.New(genCacheDir),
+		genCache:           gCache,
 	}
 	if err := resolveOptions(c, opts); err != nil {
 		return nil, err
 	}
+
+	runtime.AddCleanup(c, func(gCache *cache.Cache) {
+		_ = gCache.Close()
+	}, c.genCache)
 
 	isSchemaClean, err := c.isSchemaClean()
 	if err != nil {
