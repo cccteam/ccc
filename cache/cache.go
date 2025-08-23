@@ -205,7 +205,7 @@ func (c *Cache) DeleteSubpath(subpath string) error {
 		return nil
 	}
 
-	return deletePath(c.path)
+	return deletePath(filepath.Join(c.path, subpath))
 }
 
 func (c *Cache) DeleteAll() error {

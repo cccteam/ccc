@@ -58,11 +58,22 @@ func Test_Cache(t *testing.T) {
 		{
 			name: "removing subpath removes all keys",
 			args: args{t.TempDir(), []transaction{
-				{store, "subpath1", "key1", foo{Int: 2}},
+				{store, "subpath1", "key1", foo{Int: 1}},
+				{store, "subpath1", "key2", foo{Int: 2}},
 				{remove, "subpath1", "", foo{}},
 				{load, "subpath1", "key1", foo{}},
+				{load, "subpath1", "key2", foo{}},
 			}},
 			wantFail: true,
+		},
+		{
+			name: "removing subpath does not remove other subpaths",
+			args: args{t.TempDir(), []transaction{
+				{store, "subpath", "key", foo{Int: 1}},
+				{store, "subpath1", "key", foo{Int: 2}},
+				{remove, "subpath1", "", foo{}},
+				{load, "subpath", "key", foo{Int: 1}},
+			}},
 		},
 		{
 			name: "error when path is not a directory",
