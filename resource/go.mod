@@ -1,13 +1,13 @@
 module github.com/cccteam/ccc/resource
 
-go 1.24.6
+go 1.25.0
 
 require (
 	cloud.google.com/go v0.121.6
 	cloud.google.com/go/spanner v1.84.1
 	github.com/cccteam/ccc v0.2.13
 	github.com/cccteam/ccc/accesstypes v0.5.2
-	github.com/cccteam/ccc/cache v0.0.2
+	github.com/cccteam/ccc/cache v0.0.3
 	github.com/cccteam/ccc/pkg v0.0.2
 	github.com/cccteam/db-initiator v0.2.12
 	github.com/cccteam/httpio v0.7.8
