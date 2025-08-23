@@ -9,6 +9,7 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/go-playground/errors/v5"
@@ -26,7 +27,7 @@ func WithPermission(perms uint32) Option {
 	}
 }
 
-func New(path string, opts ...Option) *Cache {
+func New(path string, opts ...Option) (*Cache, error) {
 	c := &Cache{
 		permissionBits: 0o755,
 		path:           filepath.Join(path, cachePrefix),
@@ -36,7 +37,27 @@ func New(path string, opts ...Option) *Cache {
 		opt(c)
 	}
 
-	return c
+	// Require path exists so we don't need to make permission
+	// assumptions on any parent directories.
+	if exist, err := c.pathExists(".."); err != nil {
+		return nil, err
+	} else if !exist {
+		return nil, errors.Newf("cache path %q does not exist", path)
+	}
+
+	if exist, err := c.pathExists(""); err != nil {
+		return nil, err
+	} else if !exist {
+		if err := os.Mkdir(c.path, fs.FileMode(c.permissionBits)); err != nil {
+			return c, errors.Wrap(err, "os.Mkdir()")
+		}
+
+		if err := os.Chmod(c.path, fs.FileMode(c.permissionBits)); err != nil {
+			return c, errors.Wrap(err, "os.Chmod()")
+		}
+	}
+
+	return c, nil
 }
 
 type Cache struct {
@@ -50,9 +71,9 @@ func (c *Cache) Load(subpath, key string, dst any) (bool, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	if ok, err := c.pathExists(subpath); err != nil {
+	if exist, err := c.pathExists(subpath); err != nil {
 		return false, err
-	} else if !ok {
+	} else if !exist {
 		return false, nil
 	}
 
@@ -81,9 +102,9 @@ func (c *Cache) Keys(subpath string) (iter.Seq[string], error) {
 
 	empty := func(yield func(string) bool) {}
 
-	if ok, err := c.pathExists(subpath); err != nil {
+	if exist, err := c.pathExists(subpath); err != nil {
 		return nil, err
-	} else if !ok {
+	} else if !exist {
 		return empty, nil
 	}
 
@@ -119,16 +140,21 @@ func (c *Cache) Store(subpath, key string, data any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if ok, err := c.pathExists(subpath); err != nil {
+	if exist, err := c.pathExists(subpath); err != nil {
 		return err
-	} else if !ok {
-		path := filepath.Join(c.path, subpath)
-		if err := os.MkdirAll(path, fs.ModeDir|fs.FileMode(c.permissionBits)); err != nil {
-			return errors.Wrap(err, "os.MkdirAll()")
-		}
+	} else if !exist {
+		path := c.path
+		for part := range strings.SplitSeq(filepath.Clean(subpath), string(os.PathSeparator)) {
+			path = filepath.Join(path, part)
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				if err := os.Mkdir(path, fs.FileMode(c.permissionBits)); err != nil {
+					return errors.Wrapf(err, "os.Mkdir(%q)", path)
+				}
 
-		if err := os.Chmod(path, fs.FileMode(c.permissionBits)); err != nil {
-			return errors.Wrap(err, "os.Chmod()")
+				if err := os.Chmod(path, fs.FileMode(c.permissionBits)); err != nil {
+					return errors.Wrap(err, "os.Chmod()")
+				}
+			}
 		}
 	}
 
@@ -144,7 +170,8 @@ func (c *Cache) Store(subpath, key string, data any) error {
 	}
 	f.Close()
 
-	if err := os.Chmod(fileName, fs.FileMode(c.permissionBits)); err != nil {
+	// Files should not be executable, so drop execute bits
+	if err := os.Chmod(fileName, fs.FileMode(c.permissionBits&^0o111)); err != nil {
 		return errors.Wrap(err, "os.Chmod()")
 	}
 
@@ -155,9 +182,9 @@ func (c *Cache) DeleteKey(subpath, key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if ok, err := c.pathExists(subpath); err != nil {
+	if exist, err := c.pathExists(subpath); err != nil {
 		return err
-	} else if !ok {
+	} else if !exist {
 		return nil
 	}
 
@@ -172,9 +199,9 @@ func (c *Cache) DeleteSubpath(subpath string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if ok, err := c.pathExists(subpath); err != nil {
+	if exist, err := c.pathExists(subpath); err != nil {
 		return err
-	} else if !ok {
+	} else if !exist {
 		return nil
 	}
 
@@ -189,7 +216,7 @@ func (c *Cache) DeleteAll() error {
 		return err
 	}
 
-	if err := os.Mkdir(c.path, fs.ModeDir|fs.FileMode(c.permissionBits)); err != nil {
+	if err := os.Mkdir(c.path, fs.FileMode(c.permissionBits)); err != nil {
 		return errors.Wrap(err, "os.Mkdir")
 	}
 

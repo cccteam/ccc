@@ -76,7 +76,13 @@ func Test_Cache(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			c := cache.New(tt.args.dir)
+			c, err := cache.New(tt.args.dir)
+			if err != nil {
+				if !tt.wantErr {
+					t.Errorf("cache.New() error = %v", err)
+				}
+				return
+			}
 			for _, transaction := range tt.args.transactions {
 				switch transaction.op {
 				case store:
