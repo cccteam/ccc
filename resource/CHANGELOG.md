@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.20](https://github.com/cccteam/ccc/compare/resource/v0.2.19...resource/v0.2.20) (2025-08-23)
+
+
+### Code Upgrade
+
+* Upgrade to latest cache package ([#430](https://github.com/cccteam/ccc/issues/430)) ([7cdc03a](https://github.com/cccteam/ccc/commit/7cdc03aa7eeea8f66104306ad106c09b8796dbc8))
+
 ## [0.2.19](https://github.com/cccteam/ccc/compare/resource/v0.2.18...resource/v0.2.19) (2025-08-19)
 
 
