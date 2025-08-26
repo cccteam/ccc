@@ -201,6 +201,26 @@ type resourceInfo struct {
 	PkCount            int
 }
 
+func (r resourceInfo) ListHandlerDisabled() bool {
+	return slices.Contains(r.SuppressedHandlers[:], ListHandler)
+}
+
+func (r resourceInfo) ReadHandlerDisabled() bool {
+	return slices.Contains(r.SuppressedHandlers[:], ReadHandler)
+}
+
+func (r resourceInfo) CreateHandlerDisabled() bool {
+	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
+}
+
+func (r resourceInfo) UpdateHandlerDisabled() bool {
+	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
+}
+
+func (r resourceInfo) DeleteHandlerDisabled() bool {
+	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
+}
+
 func (r resourceInfo) SearchIndexes() []searchIndex {
 	typeIndexMap := make(map[resource.SearchType]string)
 	for searchIndex, expressionFields := range r.searchIndexes {
@@ -580,6 +600,10 @@ func (f resourceField) IsView() bool {
 }
 
 func (f resourceField) IsRequired() bool {
+	if f.IsPrimaryKey && f.Parent.PkCount > 1 {
+		return true
+	}
+
 	if f.IsPrimaryKey && f.Type() != "ccc.UUID" {
 		return true
 	}
@@ -611,22 +635,6 @@ func (s searchExpression) String() string {
 func generatedFileName(name string) string {
 	return fmt.Sprintf("%s_%s.go", genPrefix, name)
 }
-
-type TSGenMode interface {
-	mode()
-}
-
-type tsGenMode int
-
-func (t tsGenMode) mode() {}
-
-const (
-	// Adds permission.ts to generator output
-	TSPerm tsGenMode = 1 << iota
-
-	// Adds resource.ts to generator output
-	TSMeta
-)
 
 const (
 	enumerateKeyword string = "enumerate" // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)

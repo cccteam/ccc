@@ -157,12 +157,12 @@ func (r *resourceGenerator) generateRPCInterfaces() error {
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	output, err = r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 
@@ -187,12 +187,12 @@ func (r *resourceGenerator) generateBusinessLayerInterfaces() error {
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	output, err = r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 

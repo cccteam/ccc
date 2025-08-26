@@ -1,17 +1,14 @@
 package generation
 
 import (
-	"bytes"
 	"context"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
-	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -154,12 +151,12 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	output, err = r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 
@@ -183,12 +180,12 @@ func (r *resourceGenerator) generateResourceTests() error {
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	output, err = r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 
@@ -214,12 +211,12 @@ func (r *resourceGenerator) generateResources(res resourceInfo) error {
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	output, err = r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 
@@ -249,61 +246,16 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	output, err = r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func (r *resourceGenerator) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]enumData, error) {
-	enumMap := make(map[string][]enumData)
-	for _, namedType := range namedTypes {
-		scanner := genlang.NewScanner(keywords())
-		result, err := scanner.ScanNamedType(namedType)
-		if err != nil {
-			return nil, errors.Wrap(err, "scanner.ScanNamedType()")
-		}
-
-		var tableName string
-		if result.Named.Has(enumerateKeyword) {
-			tableName = result.Named.GetOne(enumerateKeyword).Arg1
-		} else {
-			continue
-		}
-
-		if t := namedType.TypeInfo.TypeName(); t != "string" {
-			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), "string", t)
-		}
-
-		data, ok := r.enumValues[tableName]
-		if !ok {
-			return nil, errors.Newf("cannot enumerate type %q, tableName %q has no values or does not exist", namedType.Name(), tableName)
-		}
-
-		enumMap[namedType.Name()] = data
-	}
-
-	return enumMap, nil
-}
-
-func (r *resourceGenerator) generateTemplateOutput(templateName, fileTemplate string, data map[string]any) ([]byte, error) {
-	tmpl, err := template.New(templateName).Funcs(r.templateFuncs()).Parse(fileTemplate)
-	if err != nil {
-		return nil, errors.Wrap(err, "template.Parse()")
-	}
-
-	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, data); err != nil {
-		return nil, errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	return buf.Bytes(), nil
 }
 
 func (r *resourceGenerator) doesResourceExist(resourceName string) bool {

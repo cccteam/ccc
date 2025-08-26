@@ -8,15 +8,17 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
+	"text/template"
 	"unicode/utf8"
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/cache"
 	"github.com/cccteam/ccc/pkg"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/generation/parser"
+	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/cccteam/spxscan"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
@@ -73,10 +75,6 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 		return nil, err
 	}
 
-	runtime.AddCleanup(c, func(gCache *cache.Cache) {
-		_ = gCache.Close()
-	}, c.genCache)
-
 	isSchemaClean, err := c.isSchemaClean()
 	if err != nil {
 		return nil, err
@@ -107,6 +105,7 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 
 func (c *client) Close() {
 	c.cleanup()
+	c.genCache.Close()
 }
 
 func (c *client) localPackageImports() string {
@@ -439,6 +438,51 @@ func (c *client) templateFuncs() map[string]any {
 	}
 
 	return templateFuncs
+}
+
+func (c *client) generateTemplateOutput(templateName, fileTemplate string, data map[string]any) ([]byte, error) {
+	tmpl, err := template.New(templateName).Funcs(c.templateFuncs()).Parse(fileTemplate)
+	if err != nil {
+		return nil, errors.Wrap(err, "template.Parse()")
+	}
+
+	buf := bytes.NewBuffer([]byte{})
+	if err := tmpl.Execute(buf, data); err != nil {
+		return nil, errors.Wrap(err, "tmpl.Execute()")
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]enumData, error) {
+	enumMap := make(map[string][]enumData)
+	for _, namedType := range namedTypes {
+		scanner := genlang.NewScanner(keywords())
+		result, err := scanner.ScanNamedType(namedType)
+		if err != nil {
+			return nil, errors.Wrap(err, "scanner.ScanNamedType()")
+		}
+
+		var tableName string
+		if result.Named.Has(enumerateKeyword) {
+			tableName = result.Named.GetOne(enumerateKeyword).Arg1
+		} else {
+			continue
+		}
+
+		if t := namedType.TypeInfo.TypeName(); t != "string" {
+			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), "string", t)
+		}
+
+		data, ok := c.enumValues[tableName]
+		if !ok {
+			return nil, errors.Newf("cannot enumerate type %q, tableName %q has no values or does not exist", namedType.Name(), tableName)
+		}
+
+		enumMap[namedType.Name()] = data
+	}
+
+	return enumMap, nil
 }
 
 func (c *client) pluralize(value string) string {

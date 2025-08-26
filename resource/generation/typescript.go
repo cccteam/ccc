@@ -1,13 +1,11 @@
 package generation
 
 import (
-	"bytes"
 	"context"
 	"log"
 	"os"
 	"path/filepath"
 	"slices"
-	"text/template"
 	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -20,6 +18,7 @@ type typescriptGenerator struct {
 	*client
 	genPermission          bool
 	genMetadata            bool
+	genEnums               bool
 	typescriptDestination  string
 	typescriptOverrides    map[string]string
 	rc                     *resource.Collection
@@ -27,31 +26,15 @@ type typescriptGenerator struct {
 	spannerEmulatorVersion string
 }
 
-func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TSOption) (Generator, error) {
+func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, targetDir string, rc *resource.Collection, options ...TSOption) (Generator, error) {
 	if rc == nil {
 		return nil, errors.New("resource collection cannot be nil")
-	}
-
-	var (
-		genPermission bool
-		genMetadata   bool
-	)
-	switch mode {
-	case TSPerm | TSMeta:
-		genPermission = true
-		genMetadata = true
-	case TSPerm:
-		genPermission = true
-	case TSMeta:
-		genMetadata = true
 	}
 
 	t := &typescriptGenerator{
 		rc:                    rc,
 		routerResources:       rc.Resources(),
 		typescriptDestination: targetDir,
-		genPermission:         genPermission,
-		genMetadata:           genMetadata,
 	}
 
 	opts := make([]option, 0, len(options))
@@ -124,8 +107,27 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 			return err
 		}
 	}
+	if t.genEnums {
+		if err := t.runTypescriptEnumGeneration(resourcesPkg.NamedTypes); err != nil {
+			return err
+		}
+	}
 
 	log.Printf("Finished Typescript generation in %s\n", time.Since(begin))
+
+	return nil
+}
+
+func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.NamedType) error {
+	if !t.genMetadata && !t.genPermission {
+		if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+			return errors.Wrap(err, "RemoveGeneratedFiles()")
+		}
+	}
+
+	if err := t.generateEnums(namedTypes); err != nil {
+		return errors.Wrap(err, "generateEnums")
+	}
 
 	return nil
 }
@@ -134,7 +136,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	begin := time.Now()
 	if !t.genMetadata {
 		if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
-			return errors.Wrap(err, "removeGeneratedFiles()")
+			return errors.Wrap(err, "RemoveGeneratedFiles()")
 		}
 	}
 
@@ -155,7 +157,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 		templateData["RPCMethods"] = t.rpcMethods
 	}
 
-	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, templateData)
+	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, typescriptConstantsTemplate, templateData)
 	if err != nil {
 		return errors.Wrap(err, "c.generateTemplateOutput()")
 	}
@@ -188,20 +190,6 @@ func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
 	return nil
 }
 
-func (t *typescriptGenerator) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
-	tmpl, err := template.New(fileTemplate).Funcs(t.templateFuncs()).Parse(fileTemplate)
-	if err != nil {
-		return nil, errors.Wrap(err, "template.Parse()")
-	}
-
-	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, data); err != nil {
-		return nil, errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	return buf.Bytes(), nil
-}
-
 func (t *typescriptGenerator) generateTypescriptMetadata() error {
 	begin := time.Now()
 	log.Println("Starting typescript metadata generation...")
@@ -222,7 +210,7 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 func (t *typescriptGenerator) generateResourceMetadata() error {
 	begin := time.Now()
 	log.Println("Starting resource metadata generation...")
-	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, map[string]any{
+	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, map[string]any{
 		"Resources":         t.resources,
 		"ConsolidatedRoute": t.ConsolidatedRoute,
 	})
@@ -250,7 +238,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	begin := time.Now()
 	log.Println("Starting method metadata generation...")
 
-	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, map[string]any{
+	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, typescriptMethodsTemplate, map[string]any{
 		"RPCMethods": t.rpcMethods,
 	})
 	if err != nil {
@@ -269,6 +257,39 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	}
 
 	log.Printf("Generated methods metadata in %s: %s\n", time.Since(begin), file.Name())
+
+	return nil
+}
+
+func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) error {
+	begin := time.Now()
+	log.Println("Starting enum generation...")
+
+	enumMap, err := t.retrieveDatabaseEnumValues(namedTypes)
+	if err != nil {
+		return err
+	}
+
+	output, err := t.generateTemplateOutput("typescriptEnumsTemplate", typescriptEnumsTemplate, map[string]any{
+		"Source":     t.resourceFilePath,
+		"NamedTypes": namedTypes,
+		"EnumMap":    enumMap,
+	})
+	if err != nil {
+		return errors.Wrap(err, "generateTemplateOutput()")
+	}
+
+	file, err := os.Create(filepath.Join(t.typescriptDestination, "enums.ts"))
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	if err := t.WriteBytesToFile(file, output); err != nil {
+		return err
+	}
+
+	log.Printf("Generated enums in %s: %s\n", time.Since(begin), file.Name())
 
 	return nil
 }
