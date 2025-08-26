@@ -1,13 +1,11 @@
 package generation
 
 import (
-	"bytes"
 	"context"
 	"log"
 	"os"
 	"path/filepath"
 	"slices"
-	"text/template"
 	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -155,7 +153,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 		templateData["RPCMethods"] = t.rpcMethods
 	}
 
-	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, templateData)
+	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, typescriptConstantsTemplate, templateData)
 	if err != nil {
 		return errors.Wrap(err, "c.generateTemplateOutput()")
 	}
@@ -188,20 +186,6 @@ func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
 	return nil
 }
 
-func (t *typescriptGenerator) generateTemplateOutput(fileTemplate string, data map[string]any) ([]byte, error) {
-	tmpl, err := template.New(fileTemplate).Funcs(t.templateFuncs()).Parse(fileTemplate)
-	if err != nil {
-		return nil, errors.Wrap(err, "template.Parse()")
-	}
-
-	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, data); err != nil {
-		return nil, errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	return buf.Bytes(), nil
-}
-
 func (t *typescriptGenerator) generateTypescriptMetadata() error {
 	begin := time.Now()
 	log.Println("Starting typescript metadata generation...")
@@ -222,7 +206,7 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 func (t *typescriptGenerator) generateResourceMetadata() error {
 	begin := time.Now()
 	log.Println("Starting resource metadata generation...")
-	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, map[string]any{
+	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, map[string]any{
 		"Resources":         t.resources,
 		"ConsolidatedRoute": t.ConsolidatedRoute,
 	})
@@ -250,7 +234,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	begin := time.Now()
 	log.Println("Starting method metadata generation...")
 
-	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, map[string]any{
+	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, typescriptMethodsTemplate, map[string]any{
 		"RPCMethods": t.rpcMethods,
 	})
 	if err != nil {
