@@ -90,6 +90,14 @@ func GenerateMetadata() TSOption {
 	})
 }
 
+func GenerateEnums() TSOption {
+	return tsOption(func(t *typescriptGenerator) error {
+		t.genEnums = true
+
+		return nil
+	})
+}
+
 func WithSpannerEmulatorVersion(version string) Option {
 	return func(g any) error {
 		switch t := g.(type) {

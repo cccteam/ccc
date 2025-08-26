@@ -18,6 +18,7 @@ type typescriptGenerator struct {
 	*client
 	genPermission          bool
 	genMetadata            bool
+	genEnums               bool
 	typescriptDestination  string
 	typescriptOverrides    map[string]string
 	rc                     *resource.Collection
@@ -106,8 +107,27 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 			return err
 		}
 	}
+	if t.genEnums {
+		if err := t.runTypescriptEnumGeneration(resourcesPkg.NamedTypes); err != nil {
+			return err
+		}
+	}
 
 	log.Printf("Finished Typescript generation in %s\n", time.Since(begin))
+
+	return nil
+}
+
+func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.NamedType) error {
+	if !t.genMetadata && !t.genPermission {
+		if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+			return errors.Wrap(err, "RemoveGeneratedFiles()")
+		}
+	}
+
+	if err := t.generateEnums(namedTypes); err != nil {
+		return errors.Wrap(err, "generateEnums")
+	}
 
 	return nil
 }
@@ -116,7 +136,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	begin := time.Now()
 	if !t.genMetadata {
 		if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
-			return errors.Wrap(err, "removeGeneratedFiles()")
+			return errors.Wrap(err, "RemoveGeneratedFiles()")
 		}
 	}
 
@@ -237,6 +257,39 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	}
 
 	log.Printf("Generated methods metadata in %s: %s\n", time.Since(begin), file.Name())
+
+	return nil
+}
+
+func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) error {
+	begin := time.Now()
+	log.Println("Starting enum generation...")
+
+	enumMap, err := t.retrieveDatabaseEnumValues(namedTypes)
+	if err != nil {
+		return err
+	}
+
+	output, err := t.generateTemplateOutput("typescriptEnumsTemplate", typescriptEnumsTemplate, map[string]any{
+		"Source":     t.resourceFilePath,
+		"NamedTypes": namedTypes,
+		"EnumMap":    enumMap,
+	})
+	if err != nil {
+		return errors.Wrap(err, "generateTemplateOutput()")
+	}
+
+	file, err := os.Create(filepath.Join(t.typescriptDestination, "enums.ts"))
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	if err := t.WriteBytesToFile(file, output); err != nil {
+		return err
+	}
+
+	log.Printf("Generated enums in %s: %s\n", time.Since(begin), file.Name())
 
 	return nil
 }
