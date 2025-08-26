@@ -600,6 +600,10 @@ func (f resourceField) IsView() bool {
 }
 
 func (f resourceField) IsRequired() bool {
+	if f.IsPrimaryKey && f.Parent.PkCount > 1 {
+		return true
+	}
+
 	if f.IsPrimaryKey && f.Type() != "ccc.UUID" {
 		return true
 	}
