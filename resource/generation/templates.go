@@ -959,6 +959,21 @@ const resourceMap: ResourceMap = {
     {{- if eq $resource.IsConsolidated true }}
     consolidatedRoute: '{{ $consolidatedRoute }}',
     {{- end }}
+	{{- if eq $resource.ListHandlerDisabled true }}
+    listDisabled: true,
+    {{- end }}
+	{{- if eq $resource.ReadHandlerDisabled true }}
+    readDisabled: true,
+    {{- end }}
+	{{- if eq $resource.CreateHandlerDisabled true }}
+    createDisabled: true,
+    {{- end }}
+	{{- if eq $resource.UpdateHandlerDisabled true }}
+    updateDisabled: true,
+    {{- end }}
+	{{- if eq $resource.DeleteHandlerDisabled true }}
+    deleteDisabled: true,
+    {{- end }}
     fields: [
       {{- range $field := $resource.Fields }}
       { fieldName: '{{ Camel $field.Name }}', 

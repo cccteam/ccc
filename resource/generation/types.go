@@ -201,6 +201,26 @@ type resourceInfo struct {
 	PkCount            int
 }
 
+func (r resourceInfo) ListHandlerDisabled() bool {
+	return slices.Contains(r.SuppressedHandlers[:], ListHandler)
+}
+
+func (r resourceInfo) ReadHandlerDisabled() bool {
+	return slices.Contains(r.SuppressedHandlers[:], ReadHandler)
+}
+
+func (r resourceInfo) CreateHandlerDisabled() bool {
+	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
+}
+
+func (r resourceInfo) UpdateHandlerDisabled() bool {
+	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
+}
+
+func (r resourceInfo) DeleteHandlerDisabled() bool {
+	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
+}
+
 func (r resourceInfo) SearchIndexes() []searchIndex {
 	typeIndexMap := make(map[resource.SearchType]string)
 	for searchIndex, expressionFields := range r.searchIndexes {
