@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -73,10 +72,6 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 		return nil, err
 	}
 
-	runtime.AddCleanup(c, func(gCache *cache.Cache) {
-		_ = gCache.Close()
-	}, c.genCache)
-
 	isSchemaClean, err := c.isSchemaClean()
 	if err != nil {
 		return nil, err
@@ -107,6 +102,7 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 
 func (c *client) Close() {
 	c.cleanup()
+	c.genCache.Close()
 }
 
 func (c *client) localPackageImports() string {
