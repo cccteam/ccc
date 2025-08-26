@@ -151,12 +151,12 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	output, err = r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 
@@ -180,12 +180,12 @@ func (r *resourceGenerator) generateResourceTests() error {
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	output, err = r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 
@@ -211,12 +211,12 @@ func (r *resourceGenerator) generateResources(res resourceInfo) error {
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	output, err = r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 
@@ -246,12 +246,12 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 	}
 	defer file.Close()
 
-	formattedBytes, err := r.GoFormatBytes(file.Name(), output)
+	output, err = r.GoFormatBytes(file.Name(), output)
 	if err != nil {
 		return err
 	}
 
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
+	if err := r.WriteBytesToFile(file, output); err != nil {
 		return err
 	}
 
