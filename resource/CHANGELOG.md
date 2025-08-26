@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.21](https://github.com/cccteam/ccc/compare/resource/v0.2.20...resource/v0.2.21) (2025-08-26)
+
+
+### Features
+
+* Add typescript metadata for disabled endpoints ([#432](https://github.com/cccteam/ccc/issues/432)) ([7a09a66](https://github.com/cccteam/ccc/commit/7a09a665f4a7b8c1a9bd77e33c6545902c9d2776))
+* Implement Typescript Enum generation ([#432](https://github.com/cccteam/ccc/issues/432)) ([7a09a66](https://github.com/cccteam/ccc/commit/7a09a665f4a7b8c1a9bd77e33c6545902c9d2776))
+
+
+### Bug Fixes
+
+* Fix required fields for compound keys in typescript metadata ([#432](https://github.com/cccteam/ccc/issues/432)) ([7a09a66](https://github.com/cccteam/ccc/commit/7a09a665f4a7b8c1a9bd77e33c6545902c9d2776))
+
 ## [0.2.20](https://github.com/cccteam/ccc/compare/resource/v0.2.19...resource/v0.2.20) (2025-08-23)
 
 
