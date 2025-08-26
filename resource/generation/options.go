@@ -74,6 +74,22 @@ func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	})
 }
 
+func GeneratePermissions() TSOption {
+	return tsOption(func(t *typescriptGenerator) error {
+		t.genPermission = true
+
+		return nil
+	})
+}
+
+func GenerateMetadata() TSOption {
+	return tsOption(func(t *typescriptGenerator) error {
+		t.genMetadata = true
+
+		return nil
+	})
+}
+
 func WithSpannerEmulatorVersion(version string) Option {
 	return func(g any) error {
 		switch t := g.(type) {

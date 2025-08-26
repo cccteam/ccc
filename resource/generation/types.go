@@ -636,22 +636,6 @@ func generatedFileName(name string) string {
 	return fmt.Sprintf("%s_%s.go", genPrefix, name)
 }
 
-type TSGenMode interface {
-	mode()
-}
-
-type tsGenMode int
-
-func (t tsGenMode) mode() {}
-
-const (
-	// Adds permission.ts to generator output
-	TSPerm tsGenMode = 1 << iota
-
-	// Adds resource.ts to generator output
-	TSMeta
-)
-
 const (
 	enumerateKeyword string = "enumerate" // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
 	suppressKeyword  string = "suppress"  // Suppresses specified handler types from being generated

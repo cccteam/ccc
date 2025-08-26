@@ -25,31 +25,15 @@ type typescriptGenerator struct {
 	spannerEmulatorVersion string
 }
 
-func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, targetDir string, rc *resource.Collection, mode TSGenMode, options ...TSOption) (Generator, error) {
+func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, targetDir string, rc *resource.Collection, options ...TSOption) (Generator, error) {
 	if rc == nil {
 		return nil, errors.New("resource collection cannot be nil")
-	}
-
-	var (
-		genPermission bool
-		genMetadata   bool
-	)
-	switch mode {
-	case TSPerm | TSMeta:
-		genPermission = true
-		genMetadata = true
-	case TSPerm:
-		genPermission = true
-	case TSMeta:
-		genMetadata = true
 	}
 
 	t := &typescriptGenerator{
 		rc:                    rc,
 		routerResources:       rc.Resources(),
 		typescriptDestination: targetDir,
-		genPermission:         genPermission,
-		genMetadata:           genMetadata,
 	}
 
 	opts := make([]option, 0, len(options))
