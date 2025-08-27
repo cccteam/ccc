@@ -19,6 +19,7 @@ type (
 		keywordArguments map[string][]Args
 		keywords         map[string]KeywordOpts
 		pos              int
+		maxKeywordLength int
 	}
 
 	StructResults struct {
@@ -38,9 +39,17 @@ const (
 )
 
 func NewScanner(keywords map[string]KeywordOpts) Scanner {
+	maxKeywordLength := 0
+	for k := range keywords {
+		if l := len(k); l > maxKeywordLength {
+			maxKeywordLength = l
+		}
+	}
+
 	return &scanner{
 		keywordArguments: make(map[string][]Args),
 		keywords:         keywords,
+		maxKeywordLength: maxKeywordLength,
 	}
 }
 
@@ -304,8 +313,7 @@ func (s *scanner) consumeIdentifier() []byte {
 	buf := make([]byte, 0)
 	for {
 		char, eof := s.next()
-		// If buffer is longer than any known identifier we should return
-		if isWhitespace(char) || len(buf) > 12 || eof {
+		if isWhitespace(char) || len(buf) > s.maxKeywordLength || eof {
 			break
 		}
 
