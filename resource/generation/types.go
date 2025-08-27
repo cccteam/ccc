@@ -199,6 +199,8 @@ type resourceInfo struct {
 	IsView             bool                           // Determines how CreatePatch is rendered in resource generation.
 	IsConsolidated     bool
 	PkCount            int
+	DefaultsCreateFunc string
+	DefaultsUpdateFunc string
 }
 
 func (r resourceInfo) ListHandlerDisabled() bool {
@@ -219,6 +221,14 @@ func (r resourceInfo) UpdateHandlerDisabled() bool {
 
 func (r resourceInfo) DeleteHandlerDisabled() bool {
 	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
+}
+
+func (r resourceInfo) HasDefaultsCreateFunc() bool {
+	return r.DefaultsCreateFunc != ""
+}
+
+func (r resourceInfo) HasDefaultsUpdateFunc() bool {
+	return r.DefaultsUpdateFunc != ""
 }
 
 func (r resourceInfo) SearchIndexes() []searchIndex {
@@ -645,13 +655,17 @@ func generatedFileName(name string, suffix string) string {
 }
 
 const (
-	enumerateKeyword string = "enumerate" // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
-	suppressKeyword  string = "suppress"  // Suppresses specified handler types from being generated
+	enumerateKeyword          string = "enumerate"        // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
+	suppressKeyword           string = "suppress"         // Suppresses specified handler types from being generated
+	defaultsCreateFuncKeyword string = "defaultsCreateFn" // Specifies a function to call for setting defaults on resource creation
+	defaultsUpdateFuncKeyword string = "defaultsUpdateFn" // Specifies a function to call for setting defaults on resource update
 )
 
 func keywords() map[string]genlang.KeywordOpts {
 	return map[string]genlang.KeywordOpts{
-		enumerateKeyword: {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
-		suppressKeyword:  {genlang.ScanStruct: genlang.ArgsRequired},
+		enumerateKeyword:          {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
+		suppressKeyword:           {genlang.ScanStruct: genlang.ArgsRequired},
+		defaultsCreateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
+		defaultsUpdateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
 	}
 }

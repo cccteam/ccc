@@ -14,7 +14,10 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-type FieldDefaultFunc func(ctx context.Context, txn TxnBuffer) (any, error)
+type (
+	FieldDefaultFunc                 func(ctx context.Context, txn TxnBuffer) (any, error)
+	DefaultsFunc[Resource Resourcer] func(ctx context.Context, txn TxnBuffer, patch *PatchSet[Resource]) error
+)
 
 type Resourcer interface {
 	Resource() accesstypes.Resource
