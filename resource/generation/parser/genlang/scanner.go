@@ -2,6 +2,7 @@ package genlang
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
@@ -117,6 +118,7 @@ func (s *scanner) scan() error {
 		case isWhitespace(char):
 
 		case char == byte('@'):
+			log.Println(s)
 			key, ok := s.matchKeyword()
 			if !ok {
 				if key != "" {
@@ -328,6 +330,8 @@ func (s *scanner) matchKeyword() (string, bool) {
 
 	ident := s.consumeIdentifier()
 	for key := range s.keywords {
+		log.Println(key)
+		log.Println(ident)
 		if len(ident) == len(key) && string(ident) == key {
 			return key, true
 		}
