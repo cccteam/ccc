@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/resource/v0.2.21...resource/v0.3.0) (2025-08-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* Old generated TypeScript files will need all Angular imports updated to the new filename `(constants.ts, resources.ts, methods.ts, and enums.ts)` ([#434](https://github.com/cccteam/ccc/issues/434))
+* use zz_gen prefix for TypeScript generated files ([#434](https://github.com/cccteam/ccc/issues/434))
+
+### Features
+
+* Old generated TypeScript files will need all Angular imports updated to the new filename `(constants.ts, resources.ts, methods.ts, and enums.ts)` ([#434](https://github.com/cccteam/ccc/issues/434)) ([6cff30f](https://github.com/cccteam/ccc/commit/6cff30f4647b407d09d3a83b365b14ed542ba2cb))
+* use zz_gen prefix for TypeScript generated files ([#434](https://github.com/cccteam/ccc/issues/434)) ([6cff30f](https://github.com/cccteam/ccc/commit/6cff30f4647b407d09d3a83b365b14ed542ba2cb))
+
+
+### Bug Fixes
+
+* Fix bug in generated Typescript code where import paths were missing file generation prefix ([#436](https://github.com/cccteam/ccc/issues/436)) ([252bc3a](https://github.com/cccteam/ccc/commit/252bc3a849cd0abff23c02b08cabbe883dd94490))
+
 ## [0.2.21](https://github.com/cccteam/ccc/compare/resource/v0.2.20...resource/v0.2.21) (2025-08-26)
 
 
