@@ -162,7 +162,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 		return errors.Wrap(err, "c.generateTemplateOutput()")
 	}
 
-	destinationFilePath := filepath.Join(t.typescriptDestination, "constants.ts")
+	destinationFilePath := filepath.Join(t.typescriptDestination, "zz_gen_constants.ts")
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
@@ -218,7 +218,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFilePath := filepath.Join(t.typescriptDestination, "resources.ts")
+	destinationFilePath := filepath.Join(t.typescriptDestination, "zz_gen_resources.ts")
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
@@ -245,7 +245,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFilePath := filepath.Join(t.typescriptDestination, "methods.ts")
+	destinationFilePath := filepath.Join(t.typescriptDestination, "zz_gen_methods.ts")
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
