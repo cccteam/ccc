@@ -16,8 +16,11 @@ import (
 
 type (
 	FieldDefaultFunc func(ctx context.Context, txn TxnBuffer) (any, error)
-	DefaultsFunc     func(ctx context.Context, txn TxnBuffer, patch any) error
 	defaultsFunc     func(ctx context.Context, txn TxnBuffer) error
+
+	// Required signature for user-defined functions that handle settting resource default values (on update or create).
+	// The patch parameter should be the resource-specific patch type (e.g. *UserCreatePatch or *UserUpdatePatch for a "User" resource).
+	DefaultsFunc func(ctx context.Context, txn TxnBuffer, patch any) error
 )
 
 type Resourcer interface {
