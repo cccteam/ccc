@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.14](https://github.com/cccteam/ccc/compare/v0.2.13...v0.2.14) (2025-08-28)
+
+
+### Features
+
+* include new cache package in release-please config ([#420](https://github.com/cccteam/ccc/issues/420)) ([0c37a55](https://github.com/cccteam/ccc/commit/0c37a55811d88d8e87120417145f070c7ff24ed6))
+
+
+### Bug Fixes
+
+* update cache release please version ([#422](https://github.com/cccteam/ccc/issues/422)) ([ba4467e](https://github.com/cccteam/ccc/commit/ba4467e75dee6396a216c1f48867c4d60864da45))
+
+
+### Code Refactoring
+
+* Move Release Please from Bot to GitHub Action ([be3979c](https://github.com/cccteam/ccc/commit/be3979cd374b7aa60ba77cf3eecd2acb89549775))
+
 ## [0.2.13](https://github.com/cccteam/ccc/compare/v0.2.12...v0.2.13) (2025-07-21)
 
 
