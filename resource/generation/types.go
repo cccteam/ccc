@@ -384,7 +384,7 @@ func (f resourceField) TypescriptDataType() string {
 		return "Date"
 	}
 	if f.typescriptType == "boolean" && f.IsNullable {
-		return "TriState"
+		return "NullBoolean"
 	}
 
 	return f.typescriptType
@@ -396,7 +396,7 @@ func (f resourceField) TypescriptDisplayType() string {
 	}
 
 	if f.typescriptType == "boolean" && f.IsNullable {
-		return "TriState"
+		return "nullboolean"
 	}
 
 	return f.typescriptType
