@@ -31,8 +31,8 @@ type PatchSet[Resource Resourcer] struct {
 	patchType          PatchType
 	defaultCreateFuncs map[accesstypes.Field]FieldDefaultFunc
 	defaultUpdateFuncs map[accesstypes.Field]FieldDefaultFunc
-	defaultsCreateFunc DefaultsFunc[Resource]
-	defaultsUpdateFunc DefaultsFunc[Resource]
+	defaultsCreateFunc defaultsFunc
+	defaultsUpdateFunc defaultsFunc
 }
 
 func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSet[Resource] {
@@ -214,7 +214,7 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuf
 	}
 
 	if p.defaultsCreateFunc != nil {
-		if err := p.defaultsCreateFunc(ctx, txn, p); err != nil {
+		if err := p.defaultsCreateFunc(ctx, txn); err != nil {
 			return errors.Wrap(err, "defaultsCreateFunc()")
 		}
 	}
@@ -259,7 +259,7 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuf
 	}
 
 	if p.defaultsUpdateFunc != nil {
-		if err := p.defaultsUpdateFunc(ctx, txn, p); err != nil {
+		if err := p.defaultsUpdateFunc(ctx, txn); err != nil {
 			return errors.Wrap(err, "defaultsUpdateFunc()")
 		}
 	}
@@ -637,11 +637,11 @@ func (p *PatchSet[Resource]) RegisterDefaultUpdateFunc(field accesstypes.Field, 
 	p.defaultUpdateFuncs[field] = fn
 }
 
-func (p *PatchSet[Resource]) RegisterDefaultsCreateFunc(fn DefaultsFunc[Resource]) {
+func (p *PatchSet[Resource]) RegisterDefaultsCreateFunc(fn defaultsFunc) {
 	p.defaultsCreateFunc = fn
 }
 
-func (p *PatchSet[Resource]) RegisterDefaultsUpdateFunc(fn DefaultsFunc[Resource]) {
+func (p *PatchSet[Resource]) RegisterDefaultsUpdateFunc(fn defaultsFunc) {
 	p.defaultsUpdateFunc = fn
 }
 

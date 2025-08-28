@@ -15,8 +15,9 @@ import (
 )
 
 type (
-	FieldDefaultFunc                 func(ctx context.Context, txn TxnBuffer) (any, error)
-	DefaultsFunc[Resource Resourcer] func(ctx context.Context, txn TxnBuffer, patch *PatchSet[Resource]) error
+	FieldDefaultFunc func(ctx context.Context, txn TxnBuffer) (any, error)
+	DefaultsFunc     func(ctx context.Context, txn TxnBuffer, patch any) error
+	defaultsFunc     func(ctx context.Context, txn TxnBuffer) error
 )
 
 type Resourcer interface {

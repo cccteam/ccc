@@ -345,7 +345,9 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 {{- end }}
 {{- end }}
 {{- if .Resource.HasDefaultsCreateFunc }}
-	p.patchSet.RegisterDefaultsCreateFunc({{ .Resource.DefaultsCreateFunc }})
+	p.patchSet.RegisterDefaultsCreateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+		return {{ .Resource.DefaultsCreateFunc }}(ctx, txn, p)
+	})
 {{- end }}
 }
 
@@ -408,7 +410,9 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 {{- end }}
 {{- end }}
 {{- if .Resource.HasDefaultsUpdateFunc }}
-	p.patchSet.RegisterDefaultsUpdateFunc({{ .Resource.DefaultsUpdateFunc }})
+	p.patchSet.RegisterDefaultsUpdateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+		return {{ .Resource.DefaultsUpdateFunc }}(ctx, txn, p)
+	})
 {{- end }}
 }
 
