@@ -235,6 +235,14 @@ func (r resourceInfo) HasDefaultsUpdateFunc() bool {
 	return r.DefaultsUpdateFunc != ""
 }
 
+func (r resourceInfo) HasValidateCreateFunc() bool {
+	return r.ValidateCreateFunc != ""
+}
+
+func (r resourceInfo) HasValidateUpdateFunc() bool {
+	return r.ValidateUpdateFunc != ""
+}
+
 func (r resourceInfo) SearchIndexes() []searchIndex {
 	typeIndexMap := make(map[resource.SearchType]string)
 	for searchIndex, expressionFields := range r.searchIndexes {
