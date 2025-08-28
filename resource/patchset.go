@@ -31,6 +31,10 @@ type PatchSet[Resource Resourcer] struct {
 	patchType          PatchType
 	defaultCreateFuncs map[accesstypes.Field]FieldDefaultFunc
 	defaultUpdateFuncs map[accesstypes.Field]FieldDefaultFunc
+	defaultsCreateFunc defaultsFunc
+	defaultsUpdateFunc defaultsFunc
+	validateCreateFunc validateFunc
+	validateUpdateFunc validateFunc
 }
 
 func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSet[Resource] {
@@ -211,6 +215,18 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuf
 		return err
 	}
 
+	if p.validateCreateFunc != nil {
+		if err := p.validateCreateFunc(ctx, txn); err != nil {
+			return errors.Wrap(err, "validateCreateFunc()")
+		}
+	}
+
+	if p.defaultsCreateFunc != nil {
+		if err := p.defaultsCreateFunc(ctx, txn); err != nil {
+			return errors.Wrap(err, "defaultsCreateFunc()")
+		}
+	}
+
 	for field, defaultFunc := range p.defaultCreateFuncs {
 		if !p.IsSet(field) {
 			d, err := defaultFunc(ctx, txn)
@@ -248,6 +264,18 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuf
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
 		return err
+	}
+
+	if p.defaultUpdateFuncs != nil {
+		if err := p.validateUpdateFunc(ctx, txn); err != nil {
+			return errors.Wrap(err, "validateUpdateFunc()")
+		}
+	}
+
+	if p.defaultsUpdateFunc != nil {
+		if err := p.defaultsUpdateFunc(ctx, txn); err != nil {
+			return errors.Wrap(err, "defaultsUpdateFunc()")
+		}
 	}
 
 	for field, defaultFunc := range p.defaultUpdateFuncs {
@@ -621,6 +649,22 @@ func (p *PatchSet[Resource]) RegisterDefaultCreateFunc(field accesstypes.Field, 
 
 func (p *PatchSet[Resource]) RegisterDefaultUpdateFunc(field accesstypes.Field, fn FieldDefaultFunc) {
 	p.defaultUpdateFuncs[field] = fn
+}
+
+func (p *PatchSet[Resource]) RegisterDefaultsCreateFunc(fn defaultsFunc) {
+	p.defaultsCreateFunc = fn
+}
+
+func (p *PatchSet[Resource]) RegisterDefaultsUpdateFunc(fn defaultsFunc) {
+	p.defaultsUpdateFunc = fn
+}
+
+func (p *PatchSet[Resource]) RegisterValidateCreateFunc(fn validateFunc) {
+	p.validateCreateFunc = fn
+}
+
+func (p *PatchSet[Resource]) RegisterValidateUpdateFunc(fn validateFunc) {
+	p.validateUpdateFunc = fn
 }
 
 // all returns an iterator over key-value pairs from m.

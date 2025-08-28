@@ -55,6 +55,38 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 			}
 		}
 
+		if result.Struct.Has(defaultsCreateFuncKeyword) {
+			args := result.Struct.Get(defaultsCreateFuncKeyword)
+			if len(args) != 1 {
+				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", defaultsCreateFuncKeyword, len(args), resourceName)
+			}
+			resource.DefaultsCreateFunc = args[0].Arg1
+		}
+
+		if result.Struct.Has(defaultsUpdateFuncKeyword) {
+			args := result.Struct.Get(defaultsUpdateFuncKeyword)
+			if len(args) != 1 {
+				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", defaultsUpdateFuncKeyword, len(args), resourceName)
+			}
+			resource.DefaultsUpdateFunc = args[0].Arg1
+		}
+
+		if result.Struct.Has(validateCreateFuncKeyword) {
+			args := result.Struct.Get(validateCreateFuncKeyword)
+			if len(args) != 1 {
+				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", validateCreateFuncKeyword, len(args), resourceName)
+			}
+			resource.ValidateCreateFunc = args[0].Arg1
+		}
+
+		if result.Struct.Has(validateUpdateFuncKeyword) {
+			args := result.Struct.Get(validateUpdateFuncKeyword)
+			if len(args) != 1 {
+				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", validateUpdateFuncKeyword, len(args), resourceName)
+			}
+			resource.ValidateUpdateFunc = args[0].Arg1
+		}
+
 		for i, field := range pStruct.Fields() {
 			spannerTag, ok := field.LookupTag("spanner")
 			if !ok {
