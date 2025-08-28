@@ -3,7 +3,7 @@
   "sns": "0.2.5",
   "accesstypes": "0.5.2",
   "pkg": "0.0.2",
-  "resource": "0.2.21",
+  "resource": "0.3.0",
   "lint": "0.0.2",
   "cache": "0.0.3"
 }
