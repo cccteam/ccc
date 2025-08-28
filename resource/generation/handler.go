@@ -88,7 +88,7 @@ func (r *resourceGenerator) generateHandlers(resource resourceInfo) error {
 
 	if len(handlerData) > 0 {
 		begin := time.Now()
-		fileName := generatedFileNameInGo(strings.ToLower(r.caser.ToSnake(r.pluralize(resource.Name()))))
+		fileName := generatedGoFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(resource.Name()))))
 		destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
 		file, err := os.Create(destinationFilePath)
@@ -127,7 +127,7 @@ func (r *resourceGenerator) generateHandlers(resource resourceInfo) error {
 
 func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []resourceInfo) error {
 	begin := time.Now()
-	fileName := generatedFileNameInGo(consolidatedHandlerOutputName)
+	fileName := generatedGoFileName(consolidatedHandlerOutputName)
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
 	file, err := os.Create(destinationFilePath)

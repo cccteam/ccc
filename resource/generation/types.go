@@ -632,11 +632,11 @@ func (s searchExpression) String() string {
 	return fmt.Sprintf("TOKENIZE_%s(%s)", strings.ToUpper(string(s.TokenType)), s.Argument)
 }
 
-func generatedFileNameInGo(name string) string {
+func generatedGoFileName(name string) string {
 	return generatedFileName(name, "go")
 }
 
-func generatedFileNameInTypescript(name string) string {
+func generatedTypescriptFileName(name string) string {
 	return generatedFileName(name, "ts")
 }
 
