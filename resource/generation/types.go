@@ -661,6 +661,8 @@ const (
 	suppressKeyword           string = "suppress"         // Suppresses specified handler types from being generated
 	defaultsCreateFuncKeyword string = "defaultsCreateFn" // Specifies a function to call for setting defaults on resource creation
 	defaultsUpdateFuncKeyword string = "defaultsUpdateFn" // Specifies a function to call for setting defaults on resource update
+	validateCreateFuncKeyword string = "validateCreateFn" // Specifies a function to call for validating a resource on creation
+	validateUpdateFuncKeyword string = "validateUpdateFn" // Specifies a function to call for validating a resource on update
 )
 
 func keywords() map[string]genlang.KeywordOpts {
@@ -669,5 +671,7 @@ func keywords() map[string]genlang.KeywordOpts {
 		suppressKeyword:           {genlang.ScanStruct: genlang.ArgsRequired},
 		defaultsCreateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
 		defaultsUpdateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
+		validateCreateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
+		validateUpdateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
 	}
 }

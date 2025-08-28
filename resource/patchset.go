@@ -33,6 +33,8 @@ type PatchSet[Resource Resourcer] struct {
 	defaultUpdateFuncs map[accesstypes.Field]FieldDefaultFunc
 	defaultsCreateFunc DefaultsFunc
 	defaultsUpdateFunc DefaultsFunc
+	validateCreateFunc ValidateFunc
+	validateUpdateFunc ValidateFunc
 }
 
 func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSet[Resource] {
@@ -229,6 +231,12 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuf
 		}
 	}
 
+	if p.validateCreateFunc != nil {
+		if err := p.validateCreateFunc(ctx, txn); err != nil {
+			return errors.Wrap(err, "validateCreateFunc()")
+		}
+	}
+
 	patch, err := p.Resolve()
 	if err != nil {
 		return errors.Wrap(err, "Resolve()")
@@ -271,6 +279,12 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuf
 	if p.defaultsUpdateFunc != nil {
 		if err := p.defaultsUpdateFunc(ctx, txn); err != nil {
 			return errors.Wrap(err, "defaultsUpdateFunc()")
+		}
+	}
+
+	if p.validateUpdateFunc != nil {
+		if err := p.validateUpdateFunc(ctx, txn); err != nil {
+			return errors.Wrap(err, "validateUpdateFunc()")
 		}
 	}
 
@@ -647,6 +661,14 @@ func (p *PatchSet[Resource]) RegisterDefaultsCreateFunc(fn DefaultsFunc) {
 // Update Patches just before the patch is buffered
 func (p *PatchSet[Resource]) RegisterDefaultsUpdateFunc(fn DefaultsFunc) {
 	p.defaultsUpdateFunc = fn
+}
+
+func (p *PatchSet[Resource]) RegisterValidateCreateFunc(fn ValidateFunc) {
+	p.validateCreateFunc = fn
+}
+
+func (p *PatchSet[Resource]) RegisterValidateUpdateFunc(fn ValidateFunc) {
+	p.validateUpdateFunc = fn
 }
 
 // all returns an iterator over key-value pairs from m.
