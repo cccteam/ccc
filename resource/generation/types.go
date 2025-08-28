@@ -201,6 +201,8 @@ type resourceInfo struct {
 	PkCount            int
 	DefaultsCreateFunc string
 	DefaultsUpdateFunc string
+	ValidateCreateFunc string
+	ValidateUpdateFunc string
 }
 
 func (r resourceInfo) ListHandlerDisabled() bool {
