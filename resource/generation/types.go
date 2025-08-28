@@ -632,8 +632,16 @@ func (s searchExpression) String() string {
 	return fmt.Sprintf("TOKENIZE_%s(%s)", strings.ToUpper(string(s.TokenType)), s.Argument)
 }
 
-func generatedFileName(name string) string {
-	return fmt.Sprintf("%s_%s.go", genPrefix, name)
+func generatedGoFileName(name string) string {
+	return generatedFileName(name, "go")
+}
+
+func generatedTypescriptFileName(name string) string {
+	return generatedFileName(name, "ts")
+}
+
+func generatedFileName(name string, suffix string) string {
+	return fmt.Sprintf("%s_%s.%s", genPrefix, name, suffix)
 }
 
 const (

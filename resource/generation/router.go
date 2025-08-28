@@ -54,13 +54,13 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 
 	if len(generatedRoutesMap) > 0 {
-		routesDestination := filepath.Join(r.routerDestination, generatedFileName(routesOutputName))
+		routesDestination := filepath.Join(r.routerDestination, generatedGoFileName(routesOutputName))
 		if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, r.resources, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRoutes()")
 		}
 		log.Printf("Generated routes file in %s: %s\n", time.Since(begin), routesDestination)
 
-		routerTestsDestination := filepath.Join(r.routerDestination, generatedFileName(routerTestOutputName))
+		routerTestsDestination := filepath.Join(r.routerDestination, generatedGoFileName(routerTestOutputName))
 		begin = time.Now()
 		if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, r.resources, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRouterTests()")
