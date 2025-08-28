@@ -4,7 +4,6 @@
 
 ## Features
 
-- Installs a specific version of `golangci-lint`.
 - Clones the `ccc` repository and checks out the specified plugin version.
 - Builds a custom `golangci-lint` with the custom linter and installs it in your `$GOPATH/bin`.
 - Supports verbose output for debugging.
@@ -27,7 +26,6 @@ ccclint
 
 ### Command-Line Flags
 
-- `-g, --golangci-lint-version`: Specify the version of `golangci-lint` to install (default: `v1.64`).
 - `-p, --plugin-version`: Specify the version of the `ccc/lint` plugin to use.
 - `-v, --verbose`: Enable verbose output.
 - `-h, --help`: Print usage information.
@@ -36,5 +34,5 @@ ccclint
 ### Example
 
 ```sh
-ccclint --golangci-lint-version v1.64 --plugin-version v0.0.3 --verbose
+ccclint --plugin-version v0.0.3 --verbose
 ```
