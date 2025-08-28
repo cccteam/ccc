@@ -17,9 +17,6 @@ func main() {
 }
 
 func run() error {
-	var golangiCiLintVersion string
-	pflag.StringVarP(&golangiCiLintVersion, "golangci-lint-version", "g", "v1.64", "golangci-lint CLI version")
-
 	buildInfo, available := debug.ReadBuildInfo()
 	if !available {
 		return errors.New("build info not available")
@@ -50,14 +47,12 @@ func run() error {
 	}
 
 	if verbose {
-		fmt.Printf("golangci-lint version: %s\n", golangiCiLintVersion)
 		fmt.Printf("plugin version: %s\n", pluginVersion)
 	}
 
 	c := &ccclint{
-		golangiCiLintVersion: golangiCiLintVersion,
-		pluginVersion:        pluginVersion,
-		verbose:              verbose,
+		pluginVersion: pluginVersion,
+		verbose:       verbose,
 	}
 
 	return c.run()
