@@ -12,19 +12,14 @@ import (
 )
 
 type ccclint struct {
-	golangiCiLintVersion string
-	pluginVersion        string
-	verbose              bool
+	pluginVersion string
+	verbose       bool
 }
 
 func (c *ccclint) run() error {
 	wd, err := os.Getwd()
 	if err != nil {
 		return errors.Wrap(err, "os.Getwd()")
-	}
-
-	if err := c.execCommand(wd, "go", "install", fmt.Sprintf("github.com/golangci/golangci-lint/cmd/golangci-lint@%s", c.golangiCiLintVersion)); err != nil {
-		return errors.Wrap(err, "failed to install golangci-lint")
 	}
 
 	cloneDir := filepath.Join(wd, uuid.New().String())
