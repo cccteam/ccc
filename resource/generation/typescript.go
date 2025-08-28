@@ -213,6 +213,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, map[string]any{
 		"Resources":         t.resources,
 		"ConsolidatedRoute": t.ConsolidatedRoute,
+		"GenPrefix":         genPrefix,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -240,6 +241,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 
 	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, typescriptMethodsTemplate, map[string]any{
 		"RPCMethods": t.rpcMethods,
+		"GenPrefix": genPrefix,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
