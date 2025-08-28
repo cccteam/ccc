@@ -143,7 +143,7 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(r.resourceDestination, generatedFileName(resourceInterfaceOutputName))
+	destinationFile := filepath.Join(r.resourceDestination, generatedFileNameInGo(resourceInterfaceOutputName))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -194,7 +194,7 @@ func (r *resourceGenerator) generateResourceTests() error {
 
 func (r *resourceGenerator) generateResources(res resourceInfo) error {
 	begin := time.Now()
-	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
+	fileName := generatedFileNameInGo(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
 	destinationFilePath := filepath.Join(r.resourceDestination, fileName)
 
 	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
@@ -240,7 +240,7 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	file, err := os.Create(filepath.Join(r.resourceDestination, generatedFileName(resourceEnumsFileName)))
+	file, err := os.Create(filepath.Join(r.resourceDestination, generatedFileNameInGo(resourceEnumsFileName)))
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
 	}

@@ -64,7 +64,7 @@ func (r *resourceGenerator) runRPCGeneration() error {
 
 func (r *resourceGenerator) generateRPCHandler(rpcMethod rpcMethodInfo) error {
 	begin := time.Now()
-	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
+	fileName := generatedFileNameInGo(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
 	file, err := os.Create(destinationFilePath)
@@ -102,7 +102,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod rpcMethodInfo) error {
 }
 
 func (r *resourceGenerator) generateRPCMethod(rpcMethod rpcMethodInfo) error {
-	fileName := generatedFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
+	fileName := generatedFileNameInGo(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
 	destinationFilePath := filepath.Join(r.businessLayerPackageDir, fileName)
 
 	file, err := os.Create(destinationFilePath)
@@ -149,7 +149,7 @@ func (r *resourceGenerator) generateRPCInterfaces() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join("./businesslayer/rpc", generatedFileName("rpc_iface"))
+	destinationFile := filepath.Join("./businesslayer/rpc", generatedFileNameInGo("rpc_iface"))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -179,7 +179,7 @@ func (r *resourceGenerator) generateBusinessLayerInterfaces() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join("./businesslayer", generatedFileName("iface"))
+	destinationFile := filepath.Join("./businesslayer", generatedFileNameInGo("iface"))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {

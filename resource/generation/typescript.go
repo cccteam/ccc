@@ -162,7 +162,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 		return errors.Wrap(err, "c.generateTemplateOutput()")
 	}
 
-	destinationFilePath := filepath.Join(t.typescriptDestination, "zz_gen_constants.ts")
+	destinationFilePath := filepath.Join(t.typescriptDestination, generatedFileNameInTypescript("constants"))
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
@@ -218,7 +218,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFilePath := filepath.Join(t.typescriptDestination, "zz_gen_resources.ts")
+	destinationFilePath := filepath.Join(t.typescriptDestination, generatedFileNameInTypescript("resources"))
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
@@ -245,7 +245,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFilePath := filepath.Join(t.typescriptDestination, "zz_gen_methods.ts")
+	destinationFilePath := filepath.Join(t.typescriptDestination, generatedFileNameInTypescript("methods"))
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
@@ -279,7 +279,7 @@ func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) erro
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	file, err := os.Create(filepath.Join(t.typescriptDestination, "enums.ts"))
+	file, err := os.Create(filepath.Join(t.typescriptDestination, generatedFileNameInTypescript("enums")))
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
 	}
