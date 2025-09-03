@@ -51,15 +51,6 @@ linters:
     - whitespace
     - wrapcheck
   settings:
-    revive:
-      rules:
-        - name: exported
-          severity: warning
-          arguments:
-            - 'disable-checks-on-functions'
-            - 'disable-checks-on-methods'
-            - 'disable-checks-on-types'
-            - 'disable-checks-on-constants'
     cyclop:
       max-complexity: 25
     depguard:
