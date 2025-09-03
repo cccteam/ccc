@@ -1,5 +1,9 @@
 # github.com/cccteam/ccc/lint
 
+## Prerequisites
+
+- Make sure golangci-lint is installed, but VS Code should already have this taken care of
+
 ## Setup
 
 1. Install the ccclint utility.
@@ -28,15 +32,15 @@ linters-settings:
       description: CCC custom linter
 ```
 
-5. Update your project to use `golang-ci.yml@v5.4.0` or greater and make sure golangci-lint-version is 'v1.64' or later. You can also set the ccclint-version.
+5. Update your project to use `golang-ci.yml@v5.13.0` or greater and make sure golangci-lint-version is 'v2.4' or later. You can also set the ccclint-version.
 
 ```yml
 golang-ci:
   needs: env-setup
-  uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@v5.4.0
+  uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@v5.13.0
   with:
     build-tags: '["", "dev"]'
-    golangci-lint-version: 'v1.64'
+    golangci-lint-version: 'v2.4'
     ccclint-version: v0.0.3
 ```
 
