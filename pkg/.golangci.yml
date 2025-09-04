@@ -59,8 +59,6 @@ linters:
           files:
             - $all
           allow:
-            - github.com/cccteam/ccc/cache
-            - github.com/google/go-cmp/cmp
             - github.com/go-playground/errors/v5
             - $gostd
     dupl:
