@@ -652,21 +652,25 @@ func (p *PatchSet[Resource]) RegisterDefaultUpdateFunc(field accesstypes.Field, 
 }
 
 // RegisterDefaultsCreateFunc registers a function that will be called on all
-// Create Patches just before the patch is buffered
+// Create Patches just before the patch is buffered to set necessary default values
 func (p *PatchSet[Resource]) RegisterDefaultsCreateFunc(fn DefaultsFunc) {
 	p.defaultsCreateFunc = fn
 }
 
 // RegisterDefaultsUpdateFunc registers a function that will be called on all
-// Update Patches just before the patch is buffered
+// Update Patches just before the patch is buffered to set necessary default values
 func (p *PatchSet[Resource]) RegisterDefaultsUpdateFunc(fn DefaultsFunc) {
 	p.defaultsUpdateFunc = fn
 }
 
+// RegisterValidateCreateFunc registers a function that will be called on all
+// Create Patches just before the patch is buffered to validate the patch
 func (p *PatchSet[Resource]) RegisterValidateCreateFunc(fn ValidateFunc) {
 	p.validateCreateFunc = fn
 }
 
+// RegisterValidateUpdateFunc registers a function that will be called on all
+// Update Patches just before the patch is buffered to validate the patch
 func (p *PatchSet[Resource]) RegisterValidateUpdateFunc(fn ValidateFunc) {
 	p.validateUpdateFunc = fn
 }

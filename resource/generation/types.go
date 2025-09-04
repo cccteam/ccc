@@ -235,10 +235,12 @@ func (r resourceInfo) HasDefaultsUpdateFunc() bool {
 	return r.DefaultsUpdateFunc != ""
 }
 
+// HasValidateCreateFunc indicates if a validate create function has been registered
 func (r resourceInfo) HasValidateCreateFunc() bool {
 	return r.ValidateCreateFunc != ""
 }
 
+// HasValidateUpdateFunc indicates if a validate update function has been registered
 func (r resourceInfo) HasValidateUpdateFunc() bool {
 	return r.ValidateUpdateFunc != ""
 }
