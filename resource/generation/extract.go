@@ -55,6 +55,22 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 			}
 		}
 
+		if result.Struct.Has(defaultsCreateFuncKeyword) {
+			args := result.Struct.Get(defaultsCreateFuncKeyword)
+			if len(args) != 1 {
+				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", defaultsCreateFuncKeyword, len(args), resourceName)
+			}
+			resource.DefaultsCreateFunc = args[0].Arg1
+		}
+
+		if result.Struct.Has(defaultsUpdateFuncKeyword) {
+			args := result.Struct.Get(defaultsUpdateFuncKeyword)
+			if len(args) != 1 {
+				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", defaultsUpdateFuncKeyword, len(args), resourceName)
+			}
+			resource.DefaultsUpdateFunc = args[0].Arg1
+		}
+
 		for i, field := range pStruct.Fields() {
 			spannerTag, ok := field.LookupTag("spanner")
 			if !ok {

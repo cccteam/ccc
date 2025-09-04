@@ -14,7 +14,13 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-type FieldDefaultFunc func(ctx context.Context, txn TxnBuffer) (any, error)
+type (
+	// FieldDefaultFunc is the signature for a function that applies a default value to one field of a PatchSet.
+	FieldDefaultFunc func(ctx context.Context, txn TxnBuffer) (any, error)
+
+	// DefaultsFunc is the signature for a function that applies default values to a PatchSet.
+	DefaultsFunc func(ctx context.Context, txn TxnBuffer) error
+)
 
 type Resourcer interface {
 	Resource() accesstypes.Resource

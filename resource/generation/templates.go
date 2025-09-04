@@ -344,6 +344,11 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 	p.patchSet.RegisterDefaultCreateFunc("{{ $field.Name }}", {{ $field.DefaultCreateFuncName }})
 {{- end }}
 {{- end }}
+{{- if .Resource.HasDefaultsCreateFunc }}
+	p.patchSet.RegisterDefaultsCreateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+		return {{ .Resource.DefaultsCreateFunc }}(ctx, txn, p)
+	})
+{{- end }}
 }
 
 ` + fieldAccessors(CreatePatch) + `
@@ -403,6 +408,11 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 {{- if $field.HasDefaultUpdateFunc }}
 	p.patchSet.RegisterDefaultUpdateFunc("{{ $field.Name }}", {{ $field.DefaultUpdateFuncName }})
 {{- end }}
+{{- end }}
+{{- if .Resource.HasDefaultsUpdateFunc }}
+	p.patchSet.RegisterDefaultsUpdateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+		return {{ .Resource.DefaultsUpdateFunc }}(ctx, txn, p)
+	})
 {{- end }}
 }
 
