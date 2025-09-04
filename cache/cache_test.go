@@ -13,10 +13,11 @@ const (
 	load op = 1 << iota
 	store
 	remove
-	delete
+	del
 )
 
 func Test_Cache(t *testing.T) {
+	t.Parallel()
 	type foo struct {
 		Int    int
 		String string
@@ -72,7 +73,7 @@ func Test_Cache(t *testing.T) {
 			args: args{t.TempDir(), []transaction{
 				{store, "subpath", "key", foo{Int: 1}},
 				{store, "subpath1", "key1", foo{Int: 2}},
-				{op: delete},
+				{op: del},
 				{load, "subpath", "key", foo{}},
 				{load, "subpath1", "key1", foo{}},
 			}},
@@ -137,7 +138,7 @@ func Test_Cache(t *testing.T) {
 						t.Errorf("cache.Cache.DeleteSubpath() error = %v", err)
 						return
 					}
-				case delete:
+				case del:
 					if err := c.DeleteAll(); err != nil {
 						t.Errorf("cache.Cache.DeleteAll() error = %v", err)
 						return

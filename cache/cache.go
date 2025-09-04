@@ -1,4 +1,4 @@
-// package cache provides a thread-safe key-value interface for persisting data to disk.
+// Package cache provides a thread-safe key-value interface for persisting data to disk.
 // Ideal use case is for caching data that is expensive to compute in devtools and unlikely to change.
 // Do NOT use it to store sensitive information.
 package cache
@@ -17,8 +17,11 @@ import (
 
 const cachePrefix string = ".ccc-cache"
 
+// Option is a functional option for configuring the Cache.
 type Option func(*Cache) *Cache
 
+// WithPermission configures the the unix permission bits on each
+// file and directory within the Cache.
 func WithPermission(perms uint32) Option {
 	return func(c *Cache) *Cache {
 		c.permissionBits = perms
@@ -27,6 +30,9 @@ func WithPermission(perms uint32) Option {
 	}
 }
 
+// Cache is an instance of persistence storage on disk. It provides methods
+// for storing, loading, and removing encoded data on disk. It is safe to use concurrently.
+// The Close method must be called when the cache is no longer needed.
 type Cache struct {
 	permissionBits uint32
 	mu             sync.RWMutex
@@ -34,6 +40,8 @@ type Cache struct {
 	root           *os.Root
 }
 
+// New creates a new Cache, with its storage located at `path“ concatenated with `.ccc-cache/`.
+// Example: New("./foo") returns a Cache instance that stores data at `./foo/.ccc-cache/`.
 func New(path string, opts ...Option) (*Cache, error) {
 	c := &Cache{
 		permissionBits: 0o755,
@@ -73,6 +81,7 @@ func New(path string, opts ...Option) (*Cache, error) {
 	return c, nil
 }
 
+// Close must be called when you are done using the cache
 func (c *Cache) Close() error {
 	if err := c.root.Close(); err != nil {
 		return errors.Wrap(err, "os.Root.Close()")
@@ -81,7 +90,7 @@ func (c *Cache) Close() error {
 	return nil
 }
 
-// Loads data from path/subpath and stores in dst
+// Load reads data from path/subpath and stores in dst
 func (c *Cache) Load(subpath, key string, dst any) (bool, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -111,11 +120,12 @@ func (c *Cache) Load(subpath, key string, dst any) (bool, error) {
 	return true, nil
 }
 
+// Keys returns an iterator over the file names in the given Cache subpath.
 func (c *Cache) Keys(subpath string) (iter.Seq[string], error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	empty := func(yield func(string) bool) {}
+	empty := func(func(string) bool) {}
 
 	if exist, err := c.pathExists(subpath); err != nil {
 		return nil, err
@@ -151,6 +161,7 @@ func (c *Cache) Keys(subpath string) (iter.Seq[string], error) {
 	}, nil
 }
 
+// Store encodes given data and writes it to file at "/path/subpath/key"
 func (c *Cache) Store(subpath, key string, data any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -183,7 +194,9 @@ func (c *Cache) Store(subpath, key string, data any) error {
 	if err := encoder.Encode(data); err != nil {
 		return errors.Wrap(err, "gob.Encoder.Encode()")
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return errors.Wrap(err, "os.File.Close()")
+	}
 
 	// Files should not be executable, so drop execute bits
 	if err := c.root.Chmod(fileName, fs.FileMode(c.permissionBits&^0o111)); err != nil {
@@ -193,6 +206,8 @@ func (c *Cache) Store(subpath, key string, data any) error {
 	return nil
 }
 
+// DeleteKey deletes a file whose name matches the key at the given subpath.
+// The subpath must exist. If the key does not exist, DeleteKey returns nil (no error).
 func (c *Cache) DeleteKey(subpath, key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -210,6 +225,8 @@ func (c *Cache) DeleteKey(subpath, key string) error {
 	return nil
 }
 
+// DeleteSubpath deletes a directory whose name matches the subpath.
+// If the subpath does not exist, DeleteSubpath returns nil (no error).
 func (c *Cache) DeleteSubpath(subpath string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -227,6 +244,8 @@ func (c *Cache) DeleteSubpath(subpath string) error {
 	return nil
 }
 
+// DeleteAll removes all directories and file in the Cache.
+// If the Cache is empty, DeleteAll returns nil (no error).
 func (c *Cache) DeleteAll() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
