@@ -213,12 +213,6 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuf
 		return err
 	}
 
-	if p.defaultsCreateFunc != nil {
-		if err := p.defaultsCreateFunc(ctx, txn); err != nil {
-			return errors.Wrap(err, "defaultsCreateFunc()")
-		}
-	}
-
 	for field, defaultFunc := range p.defaultCreateFuncs {
 		if !p.IsSet(field) {
 			d, err := defaultFunc(ctx, txn)
@@ -226,6 +220,12 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuf
 				return errors.Wrap(err, "defaultFunc()")
 			}
 			p.Set(field, d)
+		}
+	}
+
+	if p.defaultsCreateFunc != nil {
+		if err := p.defaultsCreateFunc(ctx, txn); err != nil {
+			return errors.Wrap(err, "defaultsCreateFunc()")
 		}
 	}
 
@@ -258,12 +258,6 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuf
 		return err
 	}
 
-	if p.defaultsUpdateFunc != nil {
-		if err := p.defaultsUpdateFunc(ctx, txn); err != nil {
-			return errors.Wrap(err, "defaultsUpdateFunc()")
-		}
-	}
-
 	for field, defaultFunc := range p.defaultUpdateFuncs {
 		if !p.IsSet(field) {
 			d, err := defaultFunc(ctx, txn)
@@ -271,6 +265,12 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuf
 				return errors.Wrap(err, "defaultFunc()")
 			}
 			p.Set(field, d)
+		}
+	}
+
+	if p.defaultsUpdateFunc != nil {
+		if err := p.defaultsUpdateFunc(ctx, txn); err != nil {
+			return errors.Wrap(err, "defaultsUpdateFunc()")
 		}
 	}
 
