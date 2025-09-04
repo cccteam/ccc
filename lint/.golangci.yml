@@ -59,13 +59,13 @@ linters:
             - $all
           allow:
             - $gostd
-            - cloud.google.com/go/spanner
-            - github.com/cccteam
-            - github.com/ettle/strcase
+            - github.com/cccteam/ccc/lint/errwrap
+            - github.com/cccteam/ccc/lint/otelspanname
             - github.com/go-playground/errors/v5
-            - github.com/gofrs/uuid
-            - github.com/google/go-cmp/cmp
-            - github.com/momaek/formattag/align
+            - github.com/golangci/plugin-module-register/register
+            - github.com/google/uuid
+            - github.com/spf13/pflag
+            - golang.org/x/tools/go/analysis
     dupl:
       threshold: 100
     exhaustive:

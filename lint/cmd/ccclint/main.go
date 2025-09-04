@@ -38,11 +38,13 @@ func run() error {
 
 	if help {
 		pflag.Usage()
+
 		return nil
 	}
 
 	if version {
 		fmt.Printf("ccclint version: %s\n", buildInfo.Main.Version)
+
 		return nil
 	}
 
