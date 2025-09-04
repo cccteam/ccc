@@ -353,7 +353,7 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 	p.patchSet.RegisterValidateCreateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
 		return {{ .Resource.ValidateCreateFunc }}(ctx, txn, p)
 	})
-{{- end }
+{{- end }}
 }
 
 ` + fieldAccessors(CreatePatch) + `
@@ -423,7 +423,7 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 	p.patchSet.RegisterValidateUpdateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
 		return {{ .Resource.ValidateUpdateFunc }}(ctx, txn, p)
 	})
-{{- end }
+{{- end }}
 }
 
 ` + fieldAccessors(UpdatePatch) + `
