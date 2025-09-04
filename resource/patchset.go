@@ -31,8 +31,8 @@ type PatchSet[Resource Resourcer] struct {
 	patchType          PatchType
 	defaultCreateFuncs map[accesstypes.Field]FieldDefaultFunc
 	defaultUpdateFuncs map[accesstypes.Field]FieldDefaultFunc
-	defaultsCreateFunc defaultsFunc
-	defaultsUpdateFunc defaultsFunc
+	defaultsCreateFunc DefaultsFunc
+	defaultsUpdateFunc DefaultsFunc
 }
 
 func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSet[Resource] {
@@ -637,11 +637,11 @@ func (p *PatchSet[Resource]) RegisterDefaultUpdateFunc(field accesstypes.Field, 
 	p.defaultUpdateFuncs[field] = fn
 }
 
-func (p *PatchSet[Resource]) RegisterDefaultsCreateFunc(fn defaultsFunc) {
+func (p *PatchSet[Resource]) RegisterDefaultsCreateFunc(fn DefaultsFunc) {
 	p.defaultsCreateFunc = fn
 }
 
-func (p *PatchSet[Resource]) RegisterDefaultsUpdateFunc(fn defaultsFunc) {
+func (p *PatchSet[Resource]) RegisterDefaultsUpdateFunc(fn DefaultsFunc) {
 	p.defaultsUpdateFunc = fn
 }
 

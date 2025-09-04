@@ -16,7 +16,7 @@ import (
 
 type (
 	FieldDefaultFunc func(ctx context.Context, txn TxnBuffer) (any, error)
-	defaultsFunc     func(ctx context.Context, txn TxnBuffer) error
+	DefaultsFunc     func(ctx context.Context, txn TxnBuffer) error
 )
 
 type Resourcer interface {
