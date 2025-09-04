@@ -38,10 +38,10 @@ type TestRequest struct {
 	Status             string   `json:"status"`
 	Email              *string  `json:"email"                index:"true"`
 	Salary             float64  `json:"salary"               index:"true"`
-	IsActive           bool     `json:"active"               index:"true"`
-	ItemIDs            []int    `json:"ids"                  index:"true"`
-	Tags               []string `json:"names"                index:"true"`
-	LegacyIndexedField string   `json:"legacy_indexed_field" index:"true"`
+	IsActive           bool     `json:"isActive"               index:"true"`
+	ItemIDs            []int    `json:"itemIDs"                  index:"true"`
+	Tags               []string `json:"tags"                index:"true"`
+	LegacyIndexedField string   `json:"legacyIndexedField" index:"true"`
 }
 
 func TestQueryDecoder_parseQuery(t *testing.T) {
@@ -94,7 +94,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 		},
 		{
 			name:           "columns with legacy filter (now unsupported)",
-			queryValues:    url.Values{"columns": []string{"name"}, "legacy_indexed_field": []string{"value"}},
+			queryValues:    url.Values{"columns": []string{"name"}, "legacyIndexedField": []string{"value"}},
 			wantErr:        true,
 			expectedErrMsg: "unknown query parameters",
 		},
@@ -144,10 +144,10 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			},
 		},
 
-		// Conflict Check (legacy_indexed_field is now an unknown parameter)
+		// Conflict Check (legacyIndexedField is now an unknown parameter)
 		{
 			name:           "filter with legacy field (now unknown param)",
-			queryValues:    url.Values{"filter": []string{"name:eq:John"}, "legacy_indexed_field": []string{"value"}},
+			queryValues:    url.Values{"filter": []string{"name:eq:John"}, "legacyIndexedField": []string{"value"}},
 			wantErr:        true,
 			expectedErrMsg: "unknown query parameters",
 		},
@@ -161,7 +161,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 		// Interaction and error propagation
 		{
 			name:           "invalid filter with legacy field (now unknown param)",
-			queryValues:    url.Values{"filter": []string{"name:badop:John"}, "legacy_indexed_field": []string{"value"}},
+			queryValues:    url.Values{"filter": []string{"name:badop:John"}, "legacyIndexedField": []string{"value"}},
 			wantErr:        true,
 			expectedErrMsg: "unknown operator 'badop' in condition 'name:badop:John'",
 		},
@@ -173,19 +173,19 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 		},
 		{
 			name:           "legacy field (now unknown) with another unknown parameter",
-			queryValues:    url.Values{"legacy_indexed_field": []string{"value"}, "unknown": []string{"value"}},
+			queryValues:    url.Values{"legacyIndexedField": []string{"value"}, "unknown": []string{"value"}},
 			wantErr:        true,
 			expectedErrMsg: "unknown query parameters",
 		},
 		{
 			name:           "columns, valid filter, legacy field (now unsupported), and unknown param",
-			queryValues:    url.Values{"columns": []string{"age"}, "filter": []string{"name:eq:John"}, "legacy_indexed_field": []string{"value"}, "unknown": []string{"value"}},
+			queryValues:    url.Values{"columns": []string{"age"}, "filter": []string{"name:eq:John"}, "legacyIndexedField": []string{"value"}, "unknown": []string{"value"}},
 			wantErr:        true,
 			expectedErrMsg: "unknown query parameters",
 		},
 		{
 			name:           "empty filter string with legacy field (now unsupported)",
-			queryValues:    url.Values{"filter": []string{""}, "legacy_indexed_field": []string{"value"}},
+			queryValues:    url.Values{"filter": []string{""}, "legacyIndexedField": []string{"value"}},
 			wantErr:        true,
 			expectedErrMsg: "unknown query parameters",
 		},
@@ -197,13 +197,13 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 		},
 		{
 			name:              "boolean true equality",
-			queryValues:       url.Values{"filter": []string{"active:eq:true"}},
+			queryValues:       url.Values{"filter": []string{"isActive:eq:true"}},
 			wantErr:           false,
 			expectedASTString: "active_sql:eq:true",
 		},
 		{
 			name:              "boolean false equality",
-			queryValues:       url.Values{"filter": []string{"active:eq:false"}},
+			queryValues:       url.Values{"filter": []string{"isActive:eq:false"}},
 			wantErr:           false,
 			expectedASTString: "active_sql:eq:false",
 		},
@@ -215,13 +215,13 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 		},
 		{
 			name:              "IN list of integers",
-			queryValues:       url.Values{"filter": []string{"ids:in:(1,2,3)"}},
+			queryValues:       url.Values{"filter": []string{"itemIDs:in:(1,2,3)"}},
 			wantErr:           false,
 			expectedASTString: "item_ids_sql:in:(1,2,3)",
 		},
 		{
 			name:              "IN list of strings",
-			queryValues:       url.Values{"filter": []string{"names:in:(Alice,Bob,Charlie)"}},
+			queryValues:       url.Values{"filter": []string{"tags:in:(Alice,Bob,Charlie)"}},
 			wantErr:           false,
 			expectedASTString: "tags_sql:in:(Alice,Bob,Charlie)",
 		},
@@ -251,9 +251,9 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 		},
 		{
 			name:           "conversion error - bool",
-			queryValues:    url.Values{"filter": []string{"active:eq:notabool"}},
+			queryValues:    url.Values{"filter": []string{"isActive:eq:notabool"}},
 			wantErr:        true,
-			expectedErrMsg: "value 'notabool' in condition 'active:eq:notabool' is not a valid boolean",
+			expectedErrMsg: "value 'notabool' in condition 'isActive:eq:notabool' is not a valid boolean",
 		},
 		{
 			name:           "conversion error - float",
@@ -310,8 +310,8 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			expectedErrMsg: "unknown sort field: nonexistent",
 		},
 		{
-			name:        "sort legacy_indexed_field (is sortable)",
-			queryValues: url.Values{"sort": []string{"legacy_indexed_field:asc"}},
+			name:        "sort legacyIndexedField (is sortable)",
+			queryValues: url.Values{"sort": []string{"legacyIndexedField:asc"}},
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "LegacyIndexedField", Direction: SortAscending}},

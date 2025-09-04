@@ -14,6 +14,7 @@ linters:
     - exhaustive
     - forcetypeassert
     - funlen
+    - gochecknoglobals
     - gochecknoinits
     - gocognit
     - goconst
@@ -26,7 +27,6 @@ linters:
     - govet
     - importas
     - ineffassign
-    - lll
     - makezero
     - misspell
     - nakedret
@@ -46,6 +46,7 @@ linters:
     - tparallel
     - unconvert
     - unparam
+    - unused
     - wastedassign
     - whitespace
     - wrapcheck
@@ -58,14 +59,8 @@ linters:
           files:
             - $all
           allow:
-            - $gostd
-            - cloud.google.com/go/spanner
-            - github.com/cccteam
-            - github.com/ettle/strcase
             - github.com/go-playground/errors/v5
-            - github.com/gofrs/uuid
-            - github.com/google/go-cmp/cmp
-            - github.com/momaek/formattag/align
+            - $gostd
     dupl:
       threshold: 100
     exhaustive:
@@ -91,8 +86,6 @@ linters:
       keywords:
         - TODO
         - BUG
-    lll:
-      line-length: 200
     misspell:
       locale: US
     nestif:
@@ -112,6 +105,9 @@ linters:
         - .WithMessage(
         - .WithMessagef(
         - .Cause(
+        - .RetryableError(
+      ignore-package-globs:
+        - github.com/cccteam/httpio*
   exclusions:
     generated: lax
     presets:
@@ -119,9 +115,11 @@ linters:
       - std-error-handling
     rules:
       - linters:
+          - bodyclose
           - funlen
           - gochecknoglobals
           - gochecknoinits
+          - gocognit
           - goconst
           - gocyclo
           - lll
@@ -130,6 +128,7 @@ linters:
           - scopelint
         path: _test\.go
     paths:
+      - gui/node_modules
       - third_party$
       - builtin$
       - examples$
@@ -144,6 +143,7 @@ formatters:
   exclusions:
     generated: lax
     paths:
+      - gui/node_modules
       - third_party$
       - builtin$
       - examples$

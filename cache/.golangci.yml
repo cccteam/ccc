@@ -51,15 +51,6 @@ linters:
     - whitespace
     - wrapcheck
   settings:
-    revive:
-      rules:
-        - name: exported
-          severity: warning
-          arguments:
-            - 'disable-checks-on-functions'
-            - 'disable-checks-on-methods'
-            - 'disable-checks-on-types'
-            - 'disable-checks-on-constants'
     cyclop:
       max-complexity: 25
     depguard:
@@ -68,51 +59,9 @@ linters:
           files:
             - $all
           allow:
-            - cloud.google.com/go/civil
-            - cloud.google.com/go/spanner
-            - github.com/AscendiumApps
-            - github.com/aws
-            - github.com/casbin
-            - github.com/cccteam/access
-            - github.com/cccteam/ccc
-            - github.com/cccteam/ccc/accesstypes
-            - github.com/cccteam/ccc/resource
-            - github.com/cccteam/db-initiator
-            - github.com/cccteam/httpio
-            - github.com/cccteam/logger
-            - github.com/cccteam/ccc/pkg
-            - github.com/cccteam/session
-            - github.com/cccteam/session/sessioninfo
-            - github.com/cccteam/spxscan
-            - github.com/cccteam/spxscan/spxapi
-            - github.com/cenkalti
-            - github.com/coreos/go-oidc
-            - github.com/docker
-            - github.com/dslipak
-            - github.com/exaring/otelpgx
-            - github.com/flowerinthenight/casbin-spanner-adapter
-            - github.com/georgysavva
-            - github.com/go-chi/chi/v5
-            - github.com/go-ldap
-            - github.com/go-playground
-            - github.com/go-test
-            - github.com/gofrs/uuid
-            - github.com/golang
-            - github.com/google
-            - github.com/gorilla/securecookie
-            - github.com/goware/emailx
-            - github.com/ianlopshire/go-fixedwidth
-            - github.com/jackc
-            - github.com/jtwatson
-            - github.com/korylprince
-            - github.com/sethvargo/go-envconfig
-            - github.com/shopspring/decimal
-            - github.com/stretchr/testify
-            - github.com/testcontainers
-            - go.opentelemetry.io/otel
-            - go.uber.org/mock
-            - golang.org/x/crypto/pbkdf2
-            - google.golang.org/api/iterator
+            - github.com/cccteam/ccc/cache
+            - github.com/google/go-cmp/cmp
+            - github.com/go-playground/errors/v5
             - $gostd
     dupl:
       threshold: 100

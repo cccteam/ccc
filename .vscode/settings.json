@@ -13,7 +13,6 @@
     "transform": "camelcase"
   },
   "go.generateTestsFlags": ["-parallel"],
-  "go.lintTool": "golangci-lint",
   "go.lintOnSave": "workspace",
   "go.toolsManagement.autoUpdate": true,
   "go.useLanguageServer": true,

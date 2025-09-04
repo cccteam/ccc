@@ -1,0 +1,42 @@
+{
+  "folders": [
+    {
+      "name": "ccc",
+      "path": "."
+    },
+    {
+      "name": "accesstypes",
+      "path": "accesstypes"
+    },
+    {
+      "name": "cache",
+      "path": "cache"
+    },
+    {
+      "name": "resource",
+      "path": "resource"
+    },
+    {
+      "name": "pkg",
+      "path": "pkg"
+    },
+    {
+      "name": "sns",
+      "path": "sns"
+    },
+    {
+      "name": "lint",
+      "path": "lint"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "accesstypes": true,
+      "cache": true,
+      "resource": true,
+      "pkg": true,
+      "sns": true,
+      "lint": true
+    }
+  }
+}
