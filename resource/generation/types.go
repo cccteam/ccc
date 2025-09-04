@@ -223,10 +223,12 @@ func (r resourceInfo) DeleteHandlerDisabled() bool {
 	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
 }
 
+// HasDefaultsCreateFunc indicates if a default create function has been registered
 func (r resourceInfo) HasDefaultsCreateFunc() bool {
 	return r.DefaultsCreateFunc != ""
 }
 
+// HasDefaultsUpdateFunc indicates if a default update function has been registered
 func (r resourceInfo) HasDefaultsUpdateFunc() bool {
 	return r.DefaultsUpdateFunc != ""
 }

@@ -15,8 +15,11 @@ import (
 )
 
 type (
+	// FieldDefaultFunc is the signature for a function that applies a default value to one field of a PatchSet.
 	FieldDefaultFunc func(ctx context.Context, txn TxnBuffer) (any, error)
-	DefaultsFunc     func(ctx context.Context, txn TxnBuffer) error
+
+	// DefaultsFunc is the signature for a function that applies default values to a PatchSet.
+	DefaultsFunc func(ctx context.Context, txn TxnBuffer) error
 )
 
 type Resourcer interface {
