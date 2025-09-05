@@ -1,4 +1,4 @@
-// package pkg
+// Package pkg provides information about the current package
 package pkg
 
 import (
@@ -10,12 +10,16 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-type PkgInfo struct {
+// Information holds information about the current package
+type Information struct {
 	AbsolutePath string
 	PackageName  string
 }
 
-func Info() (*PkgInfo, error) {
+// Info returns Information about the current package. The current package is determined
+// by searching the current path downward until it finds the first go.mod file. It
+// then uses the path and content of go.mod to populate Information
+func Info() (*Information, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, errors.Wrap(err, "os.Getwd()")
@@ -49,7 +53,7 @@ func Info() (*PkgInfo, error) {
 				return nil, errors.New("pkg.Info(): failed to find module path in go.mod")
 			}
 
-			return &PkgInfo{
+			return &Information{
 				AbsolutePath: cwd,
 				PackageName:  parts[1],
 			}, nil
