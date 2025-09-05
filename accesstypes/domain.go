@@ -11,8 +11,10 @@ const GlobalDomain = Domain("global")
 
 const domainPrefix = "domain:"
 
+// Domain represents a domain in the authorization system
 type Domain string
 
+// UnmarshalDomain unmarshals a domain string into a Domain type.
 func UnmarshalDomain(domain string) Domain {
 	d := Domain(strings.TrimPrefix(domain, domainPrefix))
 	if !d.isValid() {
@@ -22,6 +24,7 @@ func UnmarshalDomain(domain string) Domain {
 	return d
 }
 
+// Marshal marshals a Domain type into a string.
 func (d Domain) Marshal() string {
 	if !d.isValid() {
 		panic(fmt.Sprintf("invalid domain %q, type can not contain prefix", string(d)))
