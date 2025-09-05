@@ -4,7 +4,6 @@
 package cache
 
 import (
-	"encoding/gob"
 	"io/fs"
 	"iter"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -38,6 +38,7 @@ type Cache struct {
 	mu             sync.RWMutex
 	cacheFolder    string
 	root           *os.Root
+	decoderOpts    cbor.DecOptions
 }
 
 // New creates a new Cache, with its storage located at `path“ concatenated with `.ccc-cache/`.
@@ -46,6 +47,7 @@ func New(path string, opts ...Option) (*Cache, error) {
 	c := &Cache{
 		permissionBits: 0o755,
 		cacheFolder:    filepath.Join(path, cachePrefix),
+		decoderOpts:    cbor.DecOptions{MaxMapPairs: 2147483647},
 	}
 
 	for _, opt := range opts {
@@ -112,9 +114,14 @@ func (c *Cache) Load(subpath, key string, dst any) (bool, error) {
 	}
 	defer f.Close()
 
-	decoder := gob.NewDecoder(f)
+	decOpts, err := c.decoderOpts.DecMode()
+	if err != nil {
+		return false, errors.Wrap(err, "cbor.DecOptions.DecMode()")
+	}
+
+	decoder := decOpts.NewDecoder(f)
 	if err := decoder.Decode(dst); err != nil {
-		return false, errors.Wrap(err, "gob.Decoder.Decode()")
+		return false, errors.Wrap(err, "cbor.Decoder.Decode()")
 	}
 
 	return true, nil
@@ -185,14 +192,20 @@ func (c *Cache) Store(subpath, key string, data any) error {
 	}
 
 	fileName := filepath.Join(subpath, key)
+	if err := c.root.Remove(fileName); err != nil {
+		if !os.IsNotExist(err) {
+			return errors.Wrap(err, "os.Root.Remove()")
+		}
+	}
+
 	f, err := c.root.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, fs.FileMode(c.permissionBits))
 	if err != nil {
 		return errors.Wrap(err, "os.Root.OpenFile()")
 	}
 
-	encoder := gob.NewEncoder(f)
+	encoder := cbor.NewEncoder(f)
 	if err := encoder.Encode(data); err != nil {
-		return errors.Wrap(err, "gob.Encoder.Encode()")
+		return errors.Wrap(err, "cbor.Encoder.Encode()")
 	}
 	if err := f.Close(); err != nil {
 		return errors.Wrap(err, "os.File.Close()")
