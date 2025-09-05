@@ -91,6 +91,10 @@ linters:
       keywords:
         - TODO
         - BUG
+    gosec:
+      excludes:
+        - G401 # Detect the usage of MD5 or SHA1
+        - G505 # Import blocklist: crypto/sha1
     lll:
       line-length: 200
     misspell:
