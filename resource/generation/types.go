@@ -201,6 +201,8 @@ type resourceInfo struct {
 	PkCount            int
 	DefaultsCreateFunc string
 	DefaultsUpdateFunc string
+	ValidateCreateFunc string
+	ValidateUpdateFunc string
 }
 
 func (r resourceInfo) ListHandlerDisabled() bool {
@@ -231,6 +233,16 @@ func (r resourceInfo) HasDefaultsCreateFunc() bool {
 // HasDefaultsUpdateFunc indicates if a default update function has been registered
 func (r resourceInfo) HasDefaultsUpdateFunc() bool {
 	return r.DefaultsUpdateFunc != ""
+}
+
+// HasValidateCreateFunc indicates if a validate create function has been registered
+func (r resourceInfo) HasValidateCreateFunc() bool {
+	return r.ValidateCreateFunc != ""
+}
+
+// HasValidateUpdateFunc indicates if a validate update function has been registered
+func (r resourceInfo) HasValidateUpdateFunc() bool {
+	return r.ValidateUpdateFunc != ""
 }
 
 func (r resourceInfo) SearchIndexes() []searchIndex {
@@ -661,6 +673,8 @@ const (
 	suppressKeyword           string = "suppress"         // Suppresses specified handler types from being generated
 	defaultsCreateFuncKeyword string = "defaultsCreateFn" // Specifies a function to call for setting defaults on resource creation
 	defaultsUpdateFuncKeyword string = "defaultsUpdateFn" // Specifies a function to call for setting defaults on resource update
+	validateCreateFuncKeyword string = "validateCreateFn" // Specifies a function to call for validating a resource on creation
+	validateUpdateFuncKeyword string = "validateUpdateFn" // Specifies a function to call for validating a resource on update
 )
 
 func keywords() map[string]genlang.KeywordOpts {
@@ -669,5 +683,7 @@ func keywords() map[string]genlang.KeywordOpts {
 		suppressKeyword:           {genlang.ScanStruct: genlang.ArgsRequired},
 		defaultsCreateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
 		defaultsUpdateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
+		validateCreateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
+		validateUpdateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
 	}
 }

@@ -20,6 +20,9 @@ type (
 
 	// DefaultsFunc is the signature for a function that applies default values to a PatchSet.
 	DefaultsFunc func(ctx context.Context, txn TxnBuffer) error
+
+	// ValidateFunc is the signature for a function that validates a PatchSet prior to committing it.
+	ValidateFunc func(ctx context.Context, txn TxnBuffer) error
 )
 
 type Resourcer interface {
