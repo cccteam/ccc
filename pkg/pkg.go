@@ -17,7 +17,7 @@ type Information struct {
 }
 
 // Info returns Information about the current package. The current package is determined
-// by searching the current path twards root until it finds the first go.mod file. It
+// by searching the current path towards root until it finds the first go.mod file. It
 // then uses the path and content of go.mod to populate Information
 func Info() (*Information, error) {
 	cwd, err := os.Getwd()
