@@ -7,8 +7,12 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// JSONMap is a map that can be unmarshalled from JSON,
+// converting all json.Number values to their appropriate
+// int or float64 types.
 type JSONMap map[string]any
 
+// UnmarshalJSON implements the json.Unmarshaler interface
 func (jM *JSONMap) UnmarshalJSON(b []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(b))
 	decoder.UseNumber()
