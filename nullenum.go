@@ -9,11 +9,16 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// NullEnum represents a generic enum that may be null.
+// NullEnum implements the Spanner (DecodeSpanner, EncodeSpanner),
+// JSON (MarshalJSON, UnmarshalJSON), and Text (MarshalText, UnmarshalText)
+// interfaces.
 type NullEnum[T ~string | ~int | ~int64 | ~float64] struct {
 	Value T
 	Valid bool
 }
 
+// DecodeSpanner implements the spanner.Decoder interface
 func (n *NullEnum[T]) DecodeSpanner(val any) error {
 	if val == nil {
 		return nil
@@ -105,6 +110,7 @@ func (n *NullEnum[T]) DecodeSpanner(val any) error {
 	return nil
 }
 
+// EncodeSpanner implements the spanner.Encoder interface
 func (n NullEnum[T]) EncodeSpanner() (any, error) {
 	if !n.Valid {
 		return nil, nil
@@ -125,6 +131,7 @@ func (n NullEnum[T]) EncodeSpanner() (any, error) {
 	}
 }
 
+// MarshalText implements the encoding.TextMarshaler interface
 func (n NullEnum[T]) MarshalText() ([]byte, error) {
 	if !n.Valid {
 		return nil, nil
@@ -143,6 +150,7 @@ func (n NullEnum[T]) MarshalText() ([]byte, error) {
 	}
 }
 
+// UnmarshalText implements the encoding.TextUnmarshaler interface
 func (n *NullEnum[T]) UnmarshalText(text []byte) error {
 	if len(text) == 0 {
 		return nil
@@ -183,6 +191,7 @@ func (n *NullEnum[T]) UnmarshalText(text []byte) error {
 	return nil
 }
 
+// MarshalJSON implements json.Marshaler interface for NullEnum.
 func (n NullEnum[T]) MarshalJSON() ([]byte, error) {
 	if !n.Valid {
 		return []byte(jsonNull), nil
@@ -196,6 +205,7 @@ func (n NullEnum[T]) MarshalJSON() ([]byte, error) {
 	return b, nil
 }
 
+// UnmarshalJSON implements json.Unmarshaler.UnmarshalJSON for NullEnum.
 func (n *NullEnum[T]) UnmarshalJSON(b []byte) error {
 	var s *T
 	if err := json.Unmarshal(b, &s); err != nil {
