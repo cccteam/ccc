@@ -22,6 +22,7 @@ import (
 
 var hostPattern = regexp.MustCompile(`^sns\.[a-zA-Z0-9\-]{3,}\.amazonaws\.com(\.cn)?$`)
 
+// Payload represents the payload of an SNS message.
 type Payload struct {
 	Message          string `json:"Message"`
 	MessageID        string `json:"MessageId"`
@@ -37,8 +38,10 @@ type Payload struct {
 	UnsubscribeURL   string `json:"UnsubscribeURL"`
 }
 
+// Client provides methods for interacting with AWS SNS.
 type Client struct{}
 
+// New returns a Client ready to use
 func New() *Client {
 	return &Client{}
 }

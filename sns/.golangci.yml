@@ -95,7 +95,7 @@ linters:
     tagliatelle:
       case:
         rules:
-          json: camel
+          json: goPascal
         use-field-name: true
     wrapcheck:
       ignore-sigs:
@@ -127,51 +127,7 @@ linters:
       - linters:
           - tagliatelle
         path: sns\.go
-        text: got 'Message' want 'message'
-      - linters:
-          - tagliatelle
-        path: sns\.go
-        text: got 'MessageId' want 'messageId'
-      - linters:
-          - tagliatelle
-        path: sns\.go
-        text: got 'Signature' want 'signature'
-      - linters:
-          - tagliatelle
-        path: sns\.go
-        text: got 'SignatureVersion' want 'SignatureVersion'
-      - linters:
-          - tagliatelle
-        path: sns\.go
-        text: got 'SigningCertURL' want 'signingCertURL'
-      - linters:
-          - tagliatelle
-        path: sns\.go
-        text: got 'SubscribeURL' want 'subscribeURL'
-      - linters:
-          - tagliatelle
-        path: sns\.go
-        text: got 'Subject' want 'subject'
-      - linters:
-          - tagliatelle
-        path: sns\.go
-        text: got 'Timestamp' want 'timestamp'
-      - linters:
-          - tagliatelle
-        path: sns\.go
-        text: got 'Token' want 'token'
-      - linters:
-          - tagliatelle
-        path: sns\.go
-        text: got 'TopicArn' want 'topicArn'
-      - linters:
-          - tagliatelle
-        path: sns\.go
-        text: got 'Type' want 'type'
-      - linters:
-          - tagliatelle
-        path: sns\.go
-        text: got 'UnsubscribeURL' want 'unsubscribeURL'
+        text: got 'MessageId' want 'MessageID'
     paths:
       - third_party$
       - builtin$
