@@ -192,6 +192,12 @@ func (c *Cache) Store(subpath, key string, data any) error {
 	}
 
 	fileName := filepath.Join(subpath, key)
+	if err := c.root.Remove(fileName); err != nil {
+		if !os.IsNotExist(err) {
+			return errors.Wrap(err, "os.Root.Remove()")
+		}
+	}
+
 	f, err := c.root.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, fs.FileMode(c.permissionBits))
 	if err != nil {
 		return errors.Wrap(err, "os.Root.OpenFile()")
