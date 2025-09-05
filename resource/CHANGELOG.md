@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.1](https://github.com/cccteam/ccc/compare/resource/v0.3.0...resource/v0.3.1) (2025-09-05)
+
+
+### Features
+
+* Setup code workspace file to handle linting mono-repo ([#441](https://github.com/cccteam/ccc/issues/441)) ([13d81e6](https://github.com/cccteam/ccc/commit/13d81e6ce7dedf538c8e2dff5cbf030d1ef626d1))
+* Support generation of appropriate display type for Nullable booleans ([#392](https://github.com/cccteam/ccc/issues/392)) ([565a2ca](https://github.com/cccteam/ccc/commit/565a2cab77334eb9151bcaf069c9038705b506c7))
+* Support resource-level defaults for create & update ([#437](https://github.com/cccteam/ccc/issues/437)) ([9f12c61](https://github.com/cccteam/ccc/commit/9f12c6122e320626a19d689d0989500fc063c1f0))
+* Support resource-level validate functions for create & update ([#438](https://github.com/cccteam/ccc/issues/438)) ([f063c90](https://github.com/cccteam/ccc/commit/f063c90b08885e3a19811867a2940d8bdd5aaa12))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group across 1 directory with 3 updates ([#450](https://github.com/cccteam/ccc/issues/450)) ([77d3c8a](https://github.com/cccteam/ccc/commit/77d3c8af889ccb6ffe53b964e632b5a604ad2276))
+
 ## [0.3.0](https://github.com/cccteam/ccc/compare/resource/v0.2.21...resource/v0.3.0) (2025-08-28)
 
 
