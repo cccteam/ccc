@@ -407,6 +407,9 @@ func (f resourceField) TypescriptDataType() string {
 	if f.typescriptType == "civilDate" {
 		return "Date"
 	}
+	if f.IsNullable && f.typescriptType == "boolean" {
+		return "NullBoolean"
+	}
 
 	return f.typescriptType
 }
@@ -414,6 +417,10 @@ func (f resourceField) TypescriptDataType() string {
 func (f resourceField) TypescriptDisplayType() string {
 	if f.IsEnumerated {
 		return "enumerated"
+	}
+
+	if f.IsNullable && f.typescriptType == "boolean" {
+		return "nullboolean"
 	}
 
 	return f.typescriptType
