@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/go-playground/errors/v5"
-	"github.com/google/uuid"
 )
 
 type ccclint struct {
@@ -17,36 +16,25 @@ type ccclint struct {
 }
 
 func (c *ccclint) run() error {
-	wd, err := os.Getwd()
+	cloneDir, err := os.MkdirTemp("", "ccc-lint-")
 	if err != nil {
-		return errors.Wrap(err, "os.Getwd()")
+		return errors.Wrap(err, "os.MkdirTemp()")
 	}
+	defer os.RemoveAll(cloneDir)
 
-	cloneDir := filepath.Join(wd, uuid.New().String())
-
-	if err := c.execCommand(wd, "git", "clone", "https://github.com/cccteam/ccc.git", cloneDir); err != nil {
+	if err := c.execCommand("", "git", "clone", "https://github.com/cccteam/ccc.git", cloneDir); err != nil {
 		return errors.Wrap(err, "git clone")
 	}
-
-	defer func() {
-		if err := c.execCommand(wd, "rm", "-rf", cloneDir); err != nil {
-			fmt.Printf("failed to remove clone dir: %s\n", cloneDir)
-		}
-	}()
 
 	if err := c.execCommand(cloneDir, "git", "checkout", "lint/"+c.pluginVersion); err != nil {
 		return errors.Wrap(err, "git checkout")
 	}
-	if err := c.execCommand(cloneDir+"/lint", "golangci-lint", "custom"); err != nil {
+	if err := c.execCommand(filepath.Join(cloneDir, "lint"), "golangci-lint", "custom"); err != nil {
 		return errors.Wrap(err, "golangci-lint custom")
 	}
 
-	gopath := os.Getenv("GOPATH")
-	if gopath == "" {
-		gopath = build.Default.GOPATH
-	}
-
-	if err := c.execCommand(cloneDir+"/lint", "mv", "custom-gcl", fmt.Sprintf("%s/bin/golangci-lint", gopath)); err != nil {
+	// FIXME(jwatson): If we dynamically create .custom-gcl.yml, we can avoid this mv step
+	if err := c.execCommand(filepath.Join(cloneDir, "lint"), "mv", "custom-gcl", filepath.Join(goBinPath(), "golangci-lint-ccc")); err != nil {
 		return errors.Wrap(err, "mv custom-gcl")
 	}
 
@@ -74,4 +62,17 @@ func (c *ccclint) execCommand(dir, command string, args ...string) error {
 	}
 
 	return nil
+}
+
+func goBinPath() string {
+	gobin := os.Getenv("GOBIN")
+	if gobin == "" {
+		gopath := os.Getenv("GOPATH")
+		if gopath == "" {
+			gopath = build.Default.GOPATH
+		}
+		gobin = filepath.Join(gopath, "bin")
+	}
+
+	return gobin
 }
