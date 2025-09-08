@@ -163,7 +163,7 @@ func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
 
 func (c *client) populateCache() error {
 	if err := c.genCache.Store("spanner", tableMapCache, c.tableMap); err != nil {
-		return err
+		return errors.Wrap(err, "cache.Cache.Store()")
 	}
 
 	if err := c.cacheSchemaHashes(); err != nil {
@@ -171,7 +171,7 @@ func (c *client) populateCache() error {
 	}
 
 	if err := c.genCache.Store("spanner", enumValueCache, c.enumValues); err != nil {
-		return err
+		return errors.Wrap(err, "cache.Cache.Store()")
 	}
 
 	return nil
