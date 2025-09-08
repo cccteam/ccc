@@ -254,13 +254,3 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 
 	return nil
 }
-
-func (r *resourceGenerator) doesResourceExist(resourceName string) bool {
-	for i := range r.resources {
-		if r.pluralize(r.resources[i].Name()) == resourceName {
-			return true
-		}
-	}
-
-	return false
-}
