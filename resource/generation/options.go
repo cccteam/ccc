@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"fmt"
 	"maps"
 	"path/filepath"
 	"reflect"
@@ -103,6 +104,9 @@ func WithSpannerEmulatorVersion(version string) Option {
 		switch t := g.(type) {
 		case *client:
 			t.spannerEmulatorVersion = version
+		case *resourceGenerator, *typescriptGenerator: // no-op
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithSpannerEmulatorVersion(): %T", t))
 		}
 
 		return nil
@@ -117,6 +121,9 @@ func WithPluralOverrides(overrides map[string]string) Option {
 		switch t := g.(type) {
 		case *client:
 			t.pluralOverrides = tempMap
+		case *resourceGenerator, *typescriptGenerator: // no-op
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithPluralOverrides(): %T", t))
 		}
 
 		return nil
@@ -128,6 +135,9 @@ func CaserInitialismOverrides(overrides map[string]bool) Option {
 		switch t := g.(type) {
 		case *client:
 			t.caser = strcase.NewCaser(false, overrides, nil)
+		case *resourceGenerator, *typescriptGenerator: // no-op
+		default:
+			panic(fmt.Sprintf("unexpected generator type in CaserInitialismOverrides(): %T", t))
 		}
 
 		return nil
@@ -145,6 +155,9 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 			t.ConsolidatedRoute = route
 			t.ConsolidateAll = consolidateAll
 			t.ConsolidatedResourceNames = resources
+		case *resourceGenerator, *typescriptGenerator: // no-op
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithConsolidatedHandlers(): %T", t))
 		}
 
 		return nil
@@ -159,15 +172,20 @@ func WithRPC(rpcPackageDir string, businessPackageDir string) Option {
 		case *resourceGenerator:
 			t.rpcPackageDir = rpcPackageDir
 			t.businessLayerPackageDir = businessPackageDir
+		case *typescriptGenerator: // no-op
 		case *client:
 			t.genRPCMethods = true
 			t.loadPackages = append(t.loadPackages, rpcPackageDir)
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithRPC(): %T", t))
 		}
 
 		return nil
 	}
 }
 
+// resolveOptions is called twice, once in the client constructor and once in either the resource or typescript generator's constructor.
+// That is why no-op cases are included to prevent falling through to the default panic case.
 func resolveOptions(generator any, options []option) error {
 	for _, optionFunc := range options {
 		if optionFunc != nil {
@@ -178,6 +196,9 @@ func resolveOptions(generator any, options []option) error {
 					if err := fn(g); err != nil {
 						return err
 					}
+				case *client: // no-op
+				default:
+					panic(fmt.Sprintf("unexpected generator type in resourceOption: %T", g))
 				}
 			case tsOption:
 				switch g := generator.(type) {
@@ -185,6 +206,9 @@ func resolveOptions(generator any, options []option) error {
 					if err := fn(g); err != nil {
 						return err
 					}
+				case *client: // no-op
+				default:
+					panic(fmt.Sprintf("unexpected generator type in tsOption: %T", g))
 				}
 			case Option:
 				if err := fn(generator); err != nil {
@@ -213,6 +237,9 @@ func resolveOptions(generator any, options []option) error {
 		if g.spannerEmulatorVersion == "" {
 			g.spannerEmulatorVersion = "latest"
 		}
+	case *client: // no-op
+	default:
+		panic(fmt.Sprintf("unexpected generator type: %T", g))
 	}
 
 	return nil
