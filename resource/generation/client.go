@@ -470,8 +470,8 @@ func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map
 			continue
 		}
 
-		if t := namedType.TypeInfo.TypeName(); t != "string" {
-			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), "stringGoType, t)
+		if t := namedType.TypeName(); t != stringGoType {
+			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), stringGoType, t)
 		}
 
 		data, ok := c.enumValues[tableName]
