@@ -59,6 +59,7 @@ linters:
             - $all
           allow:
             - $gostd
+            - cloud.google.com/go/civil
             - cloud.google.com/go/spanner
             - github.com/cccteam
             - github.com/ettle/strcase
@@ -66,6 +67,8 @@ linters:
             - github.com/gofrs/uuid
             - github.com/google/go-cmp/cmp
             - github.com/momaek/formattag/align
+            - github.com/shopspring/decimal
+            - golang.org/x/tools/go/packages
     dupl:
       threshold: 100
     exhaustive:
