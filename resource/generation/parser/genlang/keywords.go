@@ -8,7 +8,7 @@ const (
 	ArgsRequired keywordFlag = 1 << iota
 	DualArgsRequired
 	NoArgs
-	Exclusive // limit usage of the keyword to 1 per instance 
+	Exclusive // limit usage of the keyword to 1 per instance
 )
 
 type KeywordOpts map[scanMode]keywordFlag
@@ -23,7 +23,7 @@ type MultiMap struct {
 }
 
 func (m MultiMap) Keys() iter.Seq[string] {
-	iter := func(yield func(string) bool) {
+	iterator := func(yield func(string) bool) {
 		for keyword := range m.m {
 			if !yield(keyword) {
 				return
@@ -31,7 +31,7 @@ func (m MultiMap) Keys() iter.Seq[string] {
 		}
 	}
 
-	return iter
+	return iterator
 }
 
 func (m MultiMap) Get(s string) []Args {
@@ -49,7 +49,7 @@ func (m MultiMap) Has(s string) bool {
 }
 
 func (m MultiMap) GetSingleArgs(s string) iter.Seq[string] {
-	iter := func(yield func(string) bool) {
+	iterator := func(yield func(string) bool) {
 		for _, arg := range m.m[s] {
 			if !yield(arg.Arg1) {
 				return
@@ -57,11 +57,11 @@ func (m MultiMap) GetSingleArgs(s string) iter.Seq[string] {
 		}
 	}
 
-	return iter
+	return iterator
 }
 
 func (m MultiMap) GetDualArgs(s string) iter.Seq2[string, *string] {
-	iter := func(yield func(string, *string) bool) {
+	iterator := func(yield func(string, *string) bool) {
 		for _, arg := range m.m[s] {
 			if !yield(arg.Arg1, arg.Arg2) {
 				return
@@ -69,11 +69,11 @@ func (m MultiMap) GetDualArgs(s string) iter.Seq2[string, *string] {
 		}
 	}
 
-	return iter
+	return iterator
 }
 
 func (m MultiMap) GetIter(s string) iter.Seq[Args] {
-	iter := func(yield func(Args) bool) {
+	iterator := func(yield func(Args) bool) {
 		for _, arg := range m.m[s] {
 			if !yield(arg) {
 				return
@@ -81,5 +81,5 @@ func (m MultiMap) GetIter(s string) iter.Seq[Args] {
 		}
 	}
 
-	return iter
+	return iterator
 }

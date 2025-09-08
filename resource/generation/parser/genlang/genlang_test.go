@@ -112,7 +112,6 @@ func Test_ScanStruct(t *testing.T) {
 
 				got := make(map[string][]string)
 				for key := range results.Struct.Keys() {
-
 					if _, ok := got[key]; !ok {
 						got[key] = make([]string, 0)
 					}
@@ -153,7 +152,6 @@ func Test_ScanStruct(t *testing.T) {
 					if diff := cmp.Diff(tt.wantFields[i], gotField); diff != "" {
 						t.Errorf("%s: genlang.Result() fields mismatch (-want +gotField):\n%s", t.Name(), diff)
 					}
-
 				}
 			}
 		})
