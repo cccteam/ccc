@@ -117,7 +117,7 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 
 func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.NamedType) error {
 	if !t.genMetadata && !t.genPermission {
-		if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+		if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 			return errors.Wrap(err, "RemoveGeneratedFiles()")
 		}
 	}
@@ -132,7 +132,7 @@ func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.N
 func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	begin := time.Now()
 	if !t.genMetadata {
-		if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+		if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 			return errors.Wrap(err, "RemoveGeneratedFiles()")
 		}
 	}
@@ -176,7 +176,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 }
 
 func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
-	if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+	if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
