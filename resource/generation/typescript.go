@@ -301,7 +301,7 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []resourceFiel
 		if override, ok := t.typescriptOverrides[fields[i].TypeName()]; ok {
 			fields[i].typescriptType = override
 		} else {
-			fields[i].typescriptType = "string"
+			fields[i].typescriptType = stringGoType
 		}
 
 		if fields[i].IsIterable() {
@@ -324,7 +324,7 @@ func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []rpcField) []rpcFi
 			}
 			fields[i].typescriptType = override
 		} else {
-			fields[i].typescriptType = "string"
+			fields[i].typescriptType = stringGoType
 		}
 
 		if fields[i].IsIterable() {

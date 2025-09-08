@@ -251,6 +251,26 @@ func defaultPluralOverrides() map[string]string {
 	}
 }
 
+const (
+	stringGoType     = "string"
+	boolGoType       = "bool"
+	intGoType        = "int"
+	int8GoType       = "int8"
+	int16GoType      = "int16"
+	int32GoType      = "int32"
+	int64GoType      = "int64"
+	uintGoType       = "uint"
+	uint8GoType      = "uint8"
+	uint16GoType     = "uint16"
+	uint32GoType     = "uint32"
+	uint64GoType     = "uint64"
+	uintptrGoType    = "uintptr"
+	float32GoType    = "float32"
+	float64GoType    = "float64"
+	complex64GoType  = "complex64"
+	complex128GoType = "complex128"
+)
+
 func defaultTypescriptOverrides() map[string]string {
 	return map[string]string{
 		reflect.TypeOf(ccc.UUID{}).String():            "uuid",
@@ -261,22 +281,22 @@ func defaultTypescriptOverrides() map[string]string {
 		reflect.TypeOf(decimal.NullDecimal{}).String(): "number",
 		reflect.TypeOf(time.Time{}).String():           "Date",
 		reflect.TypeOf(civil.Date{}).String():          "civilDate",
-		"bool":                                         "boolean",
-		"string":                                       "string",
-		"int":                                          "number",
-		"int8":                                         "number",
-		"int16":                                        "number",
-		"int32":                                        "number",
-		"int64":                                        "number",
-		"uint":                                         "number",
-		"uint8":                                        "number",
-		"uint16":                                       "number",
-		"uint32":                                       "number",
-		"uint64":                                       "number",
-		"uintptr":                                      "number",
-		"float32":                                      "number",
-		"float64":                                      "number",
-		"complex64":                                    "number",
-		"complex128":                                   "number",
+		boolGoType:                                     "boolean",
+		stringGoType:                                   "string",
+		intGoType:                                      "number",
+		int8GoType:                                     "number",
+		int16GoType:                                    "number",
+		int32GoType:                                    "number",
+		int64GoType:                                    "number",
+		uintGoType:                                     "number",
+		uint8GoType:                                    "number",
+		uint16GoType:                                   "number",
+		uint32GoType:                                   "number",
+		uint64GoType:                                   "number",
+		uintptrGoType:                                  "number",
+		float32GoType:                                  "number",
+		float64GoType:                                  "number",
+		complex64GoType:                                "number",
+		complex128GoType:                               "number",
 	}
 }

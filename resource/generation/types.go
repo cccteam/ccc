@@ -179,9 +179,9 @@ func (r rpcField) JSONTag() string {
 func (f *rpcField) TypescriptDataType() string {
 	switch f.typescriptType {
 	case "uuid":
-		return "string"
+		return stringGoType
 	case "uuid[]":
-		return "string[]"
+		return stringGoType + "[]"
 	case "civilDate":
 		return "Date"
 	case "civilDate[]":
@@ -406,7 +406,7 @@ func (f resourceField) UnwrappedNullType() *string {
 
 func (f resourceField) TypescriptDataType() string {
 	if f.typescriptType == "uuid" {
-		return "string"
+		return stringGoType
 	}
 	if f.typescriptType == "civilDate" {
 		return "Date"
