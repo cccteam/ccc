@@ -1,3 +1,4 @@
+// Package parser is a simplified abstraction over go/parser, tailored for the go:generate resource/generation tool.
 package parser
 
 import (
@@ -11,7 +12,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// Loads and type checks a package. Returns any errors encountered during
+// LoadPackages loads and type checks a package. Returns any errors encountered during
 // loading or typechecking, otherwise returns the package's data.
 // Useful for static type analysis with the [types] package instead of
 // manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
