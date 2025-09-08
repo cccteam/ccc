@@ -15,10 +15,10 @@ import (
 )
 
 func (r *resourceGenerator) runRPCGeneration() error {
-	if err := removeGeneratedFiles(r.rpcPackageDir, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.rpcPackageDir, prefix); err != nil {
 		return err
 	}
-	if err := removeGeneratedFiles(r.businessLayerPackageDir, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.businessLayerPackageDir, prefix); err != nil {
 		return err
 	}
 
@@ -56,7 +56,7 @@ func (r *resourceGenerator) runRPCGeneration() error {
 	}
 
 	if rpcMethodErrors != nil {
-		return rpcMethodErrors
+		return errors.Wrap(rpcMethodErrors, "resourceGenerator.generateRPCMethod()")
 	}
 
 	return nil
@@ -149,7 +149,7 @@ func (r *resourceGenerator) generateRPCInterfaces() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join("./businesslayer/rpc", generatedGoFileName("rpc_iface"))
+	destinationFile := filepath.Join(".", "businesslayer", "rpc", generatedGoFileName("rpc_iface"))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -179,7 +179,7 @@ func (r *resourceGenerator) generateBusinessLayerInterfaces() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join("./businesslayer", generatedGoFileName("iface"))
+	destinationFile := filepath.Join(".", "businesslayer", generatedGoFileName("iface"))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {

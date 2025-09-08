@@ -18,15 +18,20 @@ import (
 type (
 	resourceOption func(*resourceGenerator) error
 	tsOption       func(*typescriptGenerator) error
-	Option         func(any) error
+	// Option is a functional option for configuring a Generator
+	Option func(any) error
 
 	option interface {
 		isOption()
 	}
+
+	// ResourceOption is a functional option for configuring a ResourceGenerator
 	ResourceOption interface {
 		option
 		isResourceOption()
 	}
+
+	// TSOption is a functional option for configuring a TypescriptGenerator
 	TSOption interface {
 		option
 		isTypescriptOption()
@@ -43,8 +48,8 @@ func (Option) isOption()           {}
 func (Option) isResourceOption()   {}
 func (Option) isTypescriptOption() {}
 
-// ignoredHandlers maps the name of a resource and to handler types (list, read, patch)
-// that you do not want generated for that resource
+// GenerateHandlers enables generating a handler file for each resource.
+// To generate resource handlers in a single file use WithConsolidatedHandlers.
 func GenerateHandlers(targetDir string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genHandlers = true
@@ -54,6 +59,7 @@ func GenerateHandlers(targetDir string) ResourceOption {
 	})
 }
 
+// GenerateRoutes enables generating a router file containing routes for all handlers and RPC methods.
 func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genRoutes = true
@@ -65,6 +71,7 @@ func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption
 	})
 }
 
+// WithTypescriptOverrides sets the Typescript type for a given Go type.
 func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
 		tempMap := defaultTypescriptOverrides()
@@ -75,6 +82,8 @@ func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	})
 }
 
+// GeneratePermissions enables generating resource and resource-field level permission mappings,
+// based on the routes registered in the app router. Requires `collect_resource_permissions` build tag.
 func GeneratePermissions() TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
 		t.genPermission = true
@@ -83,6 +92,7 @@ func GeneratePermissions() TSOption {
 	})
 }
 
+// GenerateMetadata enables generating information necessary for Typescript configuration of resources.
 func GenerateMetadata() TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
 		t.genMetadata = true
@@ -91,6 +101,8 @@ func GenerateMetadata() TSOption {
 	})
 }
 
+// GenerateEnums enables generating constants for resources that have been tagged with `@enumerate`
+// and have Id and Description values in the schema migrations directory.
 func GenerateEnums() TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
 		t.genEnums = true
@@ -99,6 +111,7 @@ func GenerateEnums() TSOption {
 	})
 }
 
+// WithSpannerEmulatorVersion sets the version of the Spanner image pulled from gcr.io
 func WithSpannerEmulatorVersion(version string) Option {
 	return func(g any) error {
 		switch t := g.(type) {
@@ -113,6 +126,7 @@ func WithSpannerEmulatorVersion(version string) Option {
 	}
 }
 
+// WithPluralOverrides sets the pluralization for any resources that are not covered by the default pluralizations.
 func WithPluralOverrides(overrides map[string]string) Option {
 	tempMap := defaultPluralOverrides()
 	maps.Copy(tempMap, overrides)
@@ -130,6 +144,7 @@ func WithPluralOverrides(overrides map[string]string) Option {
 	}
 }
 
+// CaserInitialismOverrides sets the initialism for any resources that are not covered by the default initialisms.
 func CaserInitialismOverrides(overrides map[string]bool) Option {
 	return func(g any) error {
 		switch t := g.(type) {
@@ -144,6 +159,7 @@ func CaserInitialismOverrides(overrides map[string]bool) Option {
 	}
 }
 
+// WithConsolidatedHandlers enables generating a handler file for all or a list of resources.
 func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...string) Option {
 	return func(g any) error {
 		if !consolidateAll && len(resources) == 0 {
@@ -164,7 +180,8 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 	}
 }
 
-func WithRPC(rpcPackageDir string, businessPackageDir string) Option {
+// WithRPC enables generating RPC method handlers.
+func WithRPC(rpcPackageDir, businessPackageDir string) Option {
 	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
 
 	return func(g any) error {

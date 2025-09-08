@@ -1,4 +1,5 @@
-// package generation provides the ability to generate resource, handler, and typescript permissions and metadata code from a resource file.
+// Package generation provides tools for generating resource-driven API boilerplate
+// in Go & TypeScript based on Go structures and a Spanner DB schema.
 package generation
 
 import (
@@ -266,46 +267,46 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 		m[r.TableName] = table
 	}
 
-	for _, r := range result {
-		if r.SpannerType != "TOKENLIST" {
+	for i := range results {
+		if results[i].SpannerType != "TOKENLIST" {
 			continue
 		}
 
-		table := m[r.TableName]
+		table := schemaMetadata[results[i].TableName]
 
 		var generationExpr string
 		switch {
 		// If the TokenList column is in a View, we don't have direct access to
 		// the generation expression. We need to grab the source table's name from
 		// the view definition then find it in the information schema results.
-		case r.IsView:
-			sourceTableName, err := originTableName(*r.ViewDefinition, r.ColumnName)
+		case results[i].IsView:
+			sourceTableName, err := originTableName(*results[i].ViewDefinition, results[i].ColumnName)
 			if err != nil {
 				return nil, err
 			}
 
-			sourceTableIndex := slices.IndexFunc(result, func(e InformationSchemaResult) bool {
-				return e.TableName == sourceTableName && e.ColumnName == r.ColumnName
+			sourceTableIndex := slices.IndexFunc(results, func(e informationSchemaResult) bool {
+				return e.TableName == sourceTableName && e.ColumnName == results[i].ColumnName
 			})
 			if sourceTableIndex < 0 {
-				return nil, errors.Newf("could not find source table %q for TOKENLIST column %q in %q", sourceTableName, r.ColumnName, r.TableName)
+				return nil, errors.Newf("could not find source table %q for TOKENLIST column %q in %q", sourceTableName, results[i].ColumnName, results[i].TableName)
 			}
 
-			generationExpr = *result[sourceTableIndex].GenerationExpression
+			generationExpr = *results[sourceTableIndex].GenerationExpression
 
-		case r.GenerationExpression == nil:
-			return nil, errors.Newf("generation expression not found for tokenlist column=`%s` table=`%s`", r.ColumnName, r.TableName)
+		case results[i].GenerationExpression == nil:
+			return nil, errors.Newf("generation expression not found for tokenlist column=`%s` table=`%s`", results[i].ColumnName, results[i].TableName)
 
 		default:
-			generationExpr = *r.GenerationExpression
+			generationExpr = *results[i].GenerationExpression
 		}
 
 		expressionFields, err := searchExpressionFields(generationExpr, table.Columns)
 		if err != nil {
-			return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
+			return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", results[i].TableName)
 		}
 
-		table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], expressionFields...)
+		table.SearchIndexes[results[i].ColumnName] = append(table.SearchIndexes[results[i].ColumnName], expressionFields...)
 	}
 
 	return m, nil
@@ -378,7 +379,9 @@ func (c *client) templateFuncs() map[string]any {
 			}
 		},
 		"DetermineTestURL": func(resource resourceInfo, routePrefix string, route generatedRoute) string {
-			if !resource.IsView && strings.EqualFold(route.Method, "get") && (strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
+			if !resource.IsView &&
+				strings.EqualFold(route.Method, "get") &&
+				(strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
 				if resource.HasCompoundPrimaryKey() {
 					url := fmt.Sprintf("/%s/%s", routePrefix, c.caser.ToKebab(c.pluralize(resource.Name())))
 
@@ -399,7 +402,9 @@ func (c *client) templateFuncs() map[string]any {
 			return route.Path
 		},
 		"DetermineParameters": func(resource resourceInfo, route generatedRoute) string {
-			if !resource.IsView && strings.EqualFold(route.Method, "get") && (strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
+			if !resource.IsView &&
+				strings.EqualFold(route.Method, "get") &&
+				(strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
 				if resource.HasCompoundPrimaryKey() {
 					params := "map[string]string{"
 					for _, key := range resource.PrimaryKeys() {
@@ -508,7 +513,7 @@ func (c *client) pluralize(value string) string {
 	return pluralValue
 }
 
-func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) error {
+func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) error {
 	log.Printf("removing generated files in directory %q...", directory)
 	dir, err := os.Open(directory)
 	if err != nil {
@@ -531,11 +536,11 @@ func removeGeneratedFiles(directory string, method GeneratedFileDeleteMethod) er
 		}
 
 		switch method {
-		case Prefix:
+		case prefix:
 			if err := removeGeneratedFileByPrefix(directory, f); err != nil {
 				return errors.Wrap(err, "removeGeneratedFileByPrefix()")
 			}
-		case HeaderComment:
+		case headerComment:
 			if err := removeGeneratedFileByHeaderComment(directory, f); err != nil {
 				return errors.Wrap(err, "removeGeneratedFileByHeaderComment()")
 			}
@@ -600,8 +605,8 @@ func formatInterfaceTypes(types []string) string {
 
 func formatResourceInterfaceTypes(resources []resourceInfo) string {
 	names := make([]string, len(resources))
-	for i, resource := range resources {
-		names[i] = resource.Name()
+	for i := range resources {
+		names[i] = resources[i].Name()
 	}
 
 	return formatInterfaceTypes(names)
@@ -617,9 +622,10 @@ func formatRPCInterfaceTypes(rpcMethods []rpcMethodInfo) string {
 }
 
 func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*searchExpression, error) {
-	var flds []*searchExpression
+	matches := tokenizeRegex.FindAllStringSubmatch(expression, -1)
+	flds := make([]*searchExpression, 0, len(matches))
 
-	for _, match := range tokenizeRegex.FindAllStringSubmatch(expression, -1) {
+	for _, match := range matches {
 		if len(match) != 3 {
 			return nil, errors.Newf("expression `%s` has unexpected number of matches: `%d` (expected 3)", expression, len(match))
 		}
@@ -655,19 +661,19 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*s
 // Views do not have Read handlers.
 // Consolidated resources do not have Patch handlers.
 // Ignored handler types are filtered out.
-func (c *client) resourceEndpoints(resource resourceInfo) []HandlerType {
+func (c *client) resourceEndpoints(res *resourceInfo) []HandlerType {
 	handlerTypes := []HandlerType{ListHandler}
 
-	if !resource.IsView {
+	if !res.IsView {
 		handlerTypes = append(handlerTypes, ReadHandler)
 
-		if !resource.IsConsolidated {
+		if !res.IsConsolidated {
 			handlerTypes = append(handlerTypes, PatchHandler)
 		}
 	}
 
 	handlerTypes = slices.DeleteFunc(handlerTypes, func(ht HandlerType) bool {
-		return slices.Contains(resource.SuppressedHandlers[:], ht)
+		return slices.Contains(res.SuppressedHandlers[:], ht)
 	})
 
 	return handlerTypes

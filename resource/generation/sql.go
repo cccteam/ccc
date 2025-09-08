@@ -27,7 +27,7 @@ func originTableName(query, columnName string) (string, error) {
 	}
 
 	tableNames := make(map[string]string)
-	if err = fromClauseIdentities(selectStmt.From.Source, tableNames); err != nil {
+	if err := fromClauseIdentities(selectStmt.From.Source, tableNames); err != nil {
 		return "", err
 	}
 
@@ -115,8 +115,13 @@ func fromClauseIdentities(fromExpr ast.TableExpr, accumulator map[string]string)
 		// There is no implicit alias for subqueries, so we ignore it
 
 	case *ast.Join:
-		fromClauseIdentities(tt.Left, accumulator)
-		fromClauseIdentities(tt.Right, accumulator)
+		if err := fromClauseIdentities(tt.Left, accumulator); err != nil {
+			return err
+		}
+
+		if err := fromClauseIdentities(tt.Right, accumulator); err != nil {
+			return err
+		}
 
 	case *ast.TVFCallExpr:
 		return errors.Newf("table-valued function call expressions are not supported: %q", tt.SQL())

@@ -10,7 +10,8 @@ import (
 
 type (
 	scanMode int
-	Scanner  interface {
+	// Scanner provides methods for parsing godoc annotations on various types from the generation/parser package.
+	Scanner interface {
 		ScanStruct(*parser.Struct) (StructResults, error)
 		ScanNamedType(*parser.NamedType) (NamedTypeResults, error)
 	}
@@ -23,22 +24,26 @@ type (
 		maxKeywordLength int
 	}
 
+	// StructResults holds the MultiMaps of keywords and arguments for a parser.Struct and each of its fields.
 	StructResults struct {
 		Struct MultiMap
 		Fields []MultiMap
 	}
 
+	// NamedTypeResults holds the MultiMap of keywords and arguments for a parser.NamedType
 	NamedTypeResults struct {
 		Named MultiMap
 	}
 )
 
+// Scanning modes configure the scanner for different generation/parser types.
 const (
 	ScanStruct scanMode = iota
 	ScanField
 	ScanNamedType
 )
 
+// NewScanner constructs a Scanner with the given keywords and keyword options.
 func NewScanner(keywords map[string]KeywordOpts) Scanner {
 	maxKeywordLength := 0
 	for k := range keywords {
@@ -54,6 +59,7 @@ func NewScanner(keywords map[string]KeywordOpts) Scanner {
 	}
 }
 
+// ScanStruct scans the godoc annotations of a parser.Struct using the keywords & flags provided to the scanner.
 func (s *scanner) ScanStruct(pStruct *parser.Struct) (StructResults, error) {
 	s.src = []byte(pStruct.Comments())
 	s.mode = ScanStruct
@@ -80,6 +86,7 @@ func (s *scanner) ScanStruct(pStruct *parser.Struct) (StructResults, error) {
 	return StructResults{structResults, fieldResults}, nil
 }
 
+// ScanNamedType scans the godoc annotations of a parser.NamedType using the keywords & flags provided to the scanner.
 func (s *scanner) ScanNamedType(namedType *parser.NamedType) (NamedTypeResults, error) {
 	s.src = []byte(namedType.Comments)
 	s.mode = ScanNamedType

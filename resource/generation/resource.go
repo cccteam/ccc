@@ -25,6 +25,7 @@ type resourceGenerator struct {
 	businessLayerPackageDir string
 }
 
+// NewResourceGenerator constructs a new Generator for generating a resource-driven API.
 func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, localPackages []string, options ...ResourceOption) (Generator, error) {
 	r := &resourceGenerator{
 		resourceDestination: filepath.Dir(resourceSourcePath),
@@ -42,7 +43,7 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 
 	// We always want to cache the consolidatedRoute data for the typescript gen
 	if err := c.genCache.Store("app", consolidatedRouteCache, c.consolidateConfig); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "cache.Cache.Store()")
 	}
 
 	r.client = c
@@ -61,7 +62,7 @@ func (r *resourceGenerator) Generate(ctx context.Context) error {
 
 	packageMap, err := parser.LoadPackages(r.loadPackages...)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "parser.LoadPackages()")
 	}
 
 	resourcesPkg := parser.ParsePackage(packageMap["resources"])
@@ -110,7 +111,7 @@ func (r *resourceGenerator) Generate(ctx context.Context) error {
 }
 
 func (r *resourceGenerator) runResourcesGeneration() error {
-	if err := removeGeneratedFiles(r.resourceDestination, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.resourceDestination, prefix); err != nil {
 		return err
 	}
 
@@ -119,7 +120,7 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 	}
 
 	for i := range r.resources {
-		if err := r.generateResources(r.resources[i]); err != nil {
+		if err := r.generateResources(&r.resources[i]); err != nil {
 			return errors.Wrap(err, "c.generateResources()")
 		}
 	}
@@ -189,7 +190,7 @@ func (r *resourceGenerator) generateResourceTests() error {
 	return nil
 }
 
-func (r *resourceGenerator) generateResources(res resourceInfo) error {
+func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	begin := time.Now()
 	fileName := generatedGoFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
 	destinationFilePath := filepath.Join(r.resourceDestination, fileName)

@@ -292,6 +292,8 @@ func pkgAndObjName(name string) (pkg *types.Package, objName string) {
 	if s := strings.Split(name, "."); len(s) > 1 {
 		pkgName = s[0]
 		objName = s[1]
+	} else {
+		objName = name
 	}
 
 	return types.NewPackage(pkgName, pkgName), objName

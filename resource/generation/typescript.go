@@ -63,7 +63,7 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 
 	packageMap, err := parser.LoadPackages(t.loadPackages...)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "parser.LoadPackages()")
 	}
 
 	resourcesPkg := parser.ParsePackage(packageMap["resources"])
@@ -75,8 +75,8 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 
 	t.resources = make([]resourceInfo, 0, len(resources))
 	for i := range resources {
-		resource := accesstypes.Resource(t.pluralize(resources[i].Name()))
-		if t.rc.ResourceExists(resource) {
+		res := accesstypes.Resource(t.pluralize(resources[i].Name()))
+		if t.rc.ResourceExists(res) {
 			resources[i].Fields = t.resourceFieldsTypescriptType(resources[i].Fields)
 			t.resources = append(t.resources, resources[i])
 		}
@@ -117,7 +117,7 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 
 func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.NamedType) error {
 	if !t.genMetadata && !t.genPermission {
-		if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+		if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
 			return errors.Wrap(err, "RemoveGeneratedFiles()")
 		}
 	}
@@ -132,7 +132,7 @@ func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.N
 func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	begin := time.Now()
 	if !t.genMetadata {
-		if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+		if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
 			return errors.Wrap(err, "RemoveGeneratedFiles()")
 		}
 	}
@@ -176,7 +176,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 }
 
 func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
-	if err := removeGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+	if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 

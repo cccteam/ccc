@@ -356,7 +356,7 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 {{- end }}
 }
 
-` + fieldAccessors(CreatePatch) + `
+` + fieldAccessors(createPatch) + `
 
 type {{ .Resource.Name }}UpdatePatch struct {
 	patchSet *resource.PatchSet[{{ .Resource.Name }}]
@@ -426,7 +426,7 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 {{- end }}
 }
 
-` + fieldAccessors(UpdatePatch) + `
+` + fieldAccessors(updatePatch) + `
 
 type {{ .Resource.Name }}DeletePatch struct {
 	patchSet *resource.PatchSet[{{ .Resource.Name }}]
@@ -1317,7 +1317,7 @@ func (c *Client) {{ .RPCMethod.Name }}(ctx context.Context, runner rpc.{{ if .RP
 `
 )
 
-func fieldAccessors(patchType PatchType) string {
+func fieldAccessors(patchType patchType) string {
 	return fmt.Sprintf(`
 		{{- range $field := .Resource.Fields }}
 		{{ if eq false $field.IsPrimaryKey }}

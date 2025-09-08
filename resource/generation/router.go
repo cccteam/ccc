@@ -15,30 +15,30 @@ import (
 
 func (r *resourceGenerator) runRouteGeneration() error {
 	begin := time.Now()
-	if err := removeGeneratedFiles(r.routerDestination, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.routerDestination, prefix); err != nil {
 		return err
 	}
 
 	generatedRoutesMap := make(map[string][]generatedRoute)
-	for _, resource := range r.resources {
-		handlerTypes := r.resourceEndpoints(resource)
+	for i := range r.resources {
+		handlerTypes := r.resourceEndpoints(&r.resources[i])
 
 		for _, ht := range handlerTypes {
-			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(resource.Name())))
+			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(r.resources[i].Name())))
 			if ht == ReadHandler {
-				if resource.HasCompoundPrimaryKey() {
-					for _, field := range resource.PrimaryKeys() {
-						path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name()+field.Name()))
+				if r.resources[i].HasCompoundPrimaryKey() {
+					for _, field := range r.resources[i].PrimaryKeys() {
+						path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(r.resources[i].Name()+field.Name()))
 					}
 				} else {
-					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name()+"ID"))
+					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(r.resources[i].Name()+"ID"))
 				}
 			}
 
-			generatedRoutesMap[resource.Name()] = append(generatedRoutesMap[resource.Name()], generatedRoute{
+			generatedRoutesMap[r.resources[i].Name()] = append(generatedRoutesMap[r.resources[i].Name()], generatedRoute{
 				Method:      ht.Method(),
 				Path:        path,
-				HandlerFunc: r.handlerName(resource.Name(), ht),
+				HandlerFunc: r.handlerName(r.resources[i].Name(), ht),
 			})
 		}
 	}

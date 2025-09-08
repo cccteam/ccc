@@ -2,6 +2,7 @@ package generation
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 )
 
 func (r *resourceGenerator) runHandlerGeneration() error {
-	if err := removeGeneratedFiles(r.handlerDestination, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.handlerDestination, prefix); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
@@ -24,17 +25,17 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 
 		errChan = make(chan error)
 	)
-	for _, resource := range r.resources {
+	for i := range r.resources {
 		wg.Add(1)
-		go func(resource resourceInfo) {
+		go func(resource *resourceInfo) {
 			if err := r.generateHandlers(resource); err != nil {
 				errChan <- err
 			}
 			wg.Done()
-		}(resource)
+		}(&r.resources[i])
 
-		if resource.IsConsolidated {
-			consolidatedResources = append(consolidatedResources, resource)
+		if r.resources[i].IsConsolidated {
+			consolidatedResources = append(consolidatedResources, r.resources[i])
 		}
 	}
 
@@ -73,12 +74,12 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 	return nil
 }
 
-func (r *resourceGenerator) generateHandlers(resource resourceInfo) error {
-	handlerTypes := r.resourceEndpoints(resource)
+func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
+	handlerTypes := r.resourceEndpoints(res)
 
-	var handlerData [][]byte
+	handlerData := make([][]byte, 0, len(handlerTypes))
 	for _, handlerTyp := range handlerTypes {
-		data, err := r.handlerContent(handlerTyp, resource)
+		data, err := r.handlerContent(handlerTyp, res)
 		if err != nil {
 			return errors.Wrap(err, "replaceHandlerFileContent()")
 		}
@@ -88,7 +89,7 @@ func (r *resourceGenerator) generateHandlers(resource resourceInfo) error {
 
 	if len(handlerData) > 0 {
 		begin := time.Now()
-		fileName := generatedGoFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(resource.Name()))))
+		fileName := generatedGoFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
 		destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
 		file, err := os.Create(destinationFilePath)
@@ -164,7 +165,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []resourc
 	return nil
 }
 
-func (r *resourceGenerator) handlerContent(handler HandlerType, resource resourceInfo) ([]byte, error) {
+func (r *resourceGenerator) handlerContent(handler HandlerType, res *resourceInfo) ([]byte, error) {
 	tmpl, err := template.New("handler").Funcs(r.templateFuncs()).Parse(handler.template())
 	if err != nil {
 		return nil, errors.Wrap(err, "template.New().Parse()")
@@ -172,7 +173,7 @@ func (r *resourceGenerator) handlerContent(handler HandlerType, resource resourc
 
 	buf := bytes.NewBuffer([]byte{})
 	if err := tmpl.Execute(buf, map[string]any{
-		"Resource": resource,
+		"Resource": res,
 	}); err != nil {
 		return nil, errors.Wrap(err, "tmpl.Execute()")
 	}
@@ -189,6 +190,8 @@ func (c *client) handlerName(structName string, handlerType HandlerType) string 
 		functionName = structName
 	case PatchHandler:
 		functionName = "Patch" + c.pluralize(structName)
+	default:
+		panic(fmt.Sprintf("unexpected HandlerType: %q", handlerType))
 	}
 
 	return functionName
