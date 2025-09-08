@@ -87,10 +87,7 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
-		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs)
-		if err != nil {
-			return err
-		}
+		t.rpcMethods = t.structsToRPCMethods(rpcStructs)
 
 		for i := range t.rpcMethods {
 			t.rpcMethods[i].Fields = t.rpcFieldsTypescriptType(t.rpcMethods[i].Fields)

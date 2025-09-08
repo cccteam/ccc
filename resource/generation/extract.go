@@ -123,7 +123,7 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 	return resources, nil
 }
 
-func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]rpcMethodInfo, error) {
+func (c *client) structsToRPCMethods(structs []*parser.Struct) []rpcMethodInfo {
 	rpcMethods := make([]rpcMethodInfo, 0, len(structs))
 	for _, s := range structs {
 		rpcMethod := rpcMethodInfo{
@@ -137,5 +137,5 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]rpcMethodInfo,
 		rpcMethods = append(rpcMethods, rpcMethod)
 	}
 
-	return rpcMethods, nil
+	return rpcMethods
 }
