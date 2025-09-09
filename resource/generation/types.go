@@ -191,6 +191,10 @@ func (f *rpcField) TypescriptDataType() string {
 	}
 }
 
+func (f *rpcField) TypescriptDisplayType() string {
+	return f.typescriptType
+}
+
 type resourceInfo struct {
 	*parser.TypeInfo
 	Fields             []resourceField

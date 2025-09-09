@@ -241,7 +241,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 
 	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, typescriptMethodsTemplate, map[string]any{
 		"RPCMethods": t.rpcMethods,
-		"GenPrefix": genPrefix,
+		"GenPrefix":  genPrefix,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -319,6 +319,9 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []resourceFiel
 func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []rpcField) []rpcField {
 	for i := range fields {
 		if override, ok := t.typescriptOverrides[fields[i].TypeName()]; ok {
+			if override == "boolean" && fields[i].Type() == "*bool" {
+				panic("Bool pointer (*bool) not currently supported for rpc methods.")
+			}
 			fields[i].typescriptType = override
 		} else {
 			fields[i].typescriptType = "string"
