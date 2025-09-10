@@ -89,7 +89,7 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 
 	if len(handlerData) > 0 {
 		begin := time.Now()
-		fileName := generatedGoFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
+		fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
 		destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
 		file, err := os.Create(destinationFilePath)

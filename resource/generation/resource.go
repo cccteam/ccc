@@ -192,7 +192,7 @@ func (r *resourceGenerator) generateResourceTests() error {
 
 func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	begin := time.Now()
-	fileName := generatedGoFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
+	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
 	destinationFilePath := filepath.Join(r.resourceDestination, fileName)
 
 	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{

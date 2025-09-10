@@ -149,7 +149,7 @@ func CaserInitialismOverrides(overrides map[string]bool) Option {
 	return func(g any) error {
 		switch t := g.(type) {
 		case *client:
-			t.caser = strcase.NewCaser(false, overrides, nil)
+			caser = strcase.NewCaser(false, overrides, nil)
 		case *resourceGenerator, *typescriptGenerator: // no-op
 		default:
 			panic(fmt.Sprintf("unexpected generator type in CaserInitialismOverrides(): %T", t))

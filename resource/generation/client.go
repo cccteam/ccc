@@ -32,6 +32,8 @@ const (
 	typeScriptGeneratorType generatorType = "typescript"
 )
 
+var caser = strcase.NewCaser(false, nil, nil)
+
 type client struct {
 	loadPackages       []string
 	resourceFilePath   string
@@ -40,7 +42,6 @@ type client struct {
 	localPackages      []string
 	migrationSourceURL string
 	db                 *spanner.Client
-	caser              *strcase.Caser
 	tableMap           map[string]*tableMetadata
 	enumValues         map[string][]enumData
 	handlerOptions     map[string]map[HandlerType][]OptionType
@@ -98,7 +99,6 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 	c.loadPackages = append(c.loadPackages, resourceFilePath)
 	c.resourceFilePath = resourceFilePath
 	c.localPackages = localPackages
-	c.caser = strcase.NewCaser(false, nil, nil)
 	c.migrationSourceURL = migrationSourceURL
 
 	return c, nil
@@ -360,9 +360,9 @@ func (c *client) templateFuncs() map[string]any {
 	templateFuncs := map[string]any{
 		"Pluralize":                    c.pluralize,
 		"GoCamel":                      strcase.ToGoCamel,
-		"Camel":                        c.caser.ToCamel,
-		"Pascal":                       c.caser.ToPascal,
-		"Kebab":                        c.caser.ToKebab,
+		"Camel":                        strcase.ToCamel,
+		"Pascal":                       strcase.ToPascal,
+		"Kebab":                        strcase.ToKebab,
 		"Lower":                        strings.ToLower,
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
 		"FormatRPCInterfaceTypes":      formatRPCInterfaceTypes,
@@ -383,10 +383,10 @@ func (c *client) templateFuncs() map[string]any {
 				strings.EqualFold(route.Method, "get") &&
 				(strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
 				if resource.HasCompoundPrimaryKey() {
-					url := fmt.Sprintf("/%s/%s", routePrefix, c.caser.ToKebab(c.pluralize(resource.Name())))
+					url := fmt.Sprintf("/%s/%s", routePrefix, caser.ToKebab(c.pluralize(resource.Name())))
 
 					for _, key := range resource.PrimaryKeys() {
-						url += fmt.Sprintf("/test%s%s", c.caser.ToPascal(resource.Name()), key.Name())
+						url += fmt.Sprintf("/test%s%s", caser.ToPascal(resource.Name()), key.Name())
 					}
 
 					return url
@@ -394,8 +394,8 @@ func (c *client) templateFuncs() map[string]any {
 
 				return fmt.Sprintf("/%s/%s/%s",
 					routePrefix,
-					c.caser.ToKebab(c.pluralize(resource.Name())),
-					strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(resource.Name()))),
+					caser.ToKebab(c.pluralize(resource.Name())),
+					strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(resource.Name()))),
 				)
 			}
 
@@ -408,7 +408,7 @@ func (c *client) templateFuncs() map[string]any {
 				if resource.HasCompoundPrimaryKey() {
 					params := "map[string]string{"
 					for _, key := range resource.PrimaryKeys() {
-						params += fmt.Sprintf(`"%[1]s%[3]s": "test%[2]s%[3]s", `, strcase.ToGoCamel(resource.Name()), c.caser.ToPascal(resource.Name()), key.Name())
+						params += fmt.Sprintf(`"%[1]s%[3]s": "test%[2]s%[3]s", `, strcase.ToGoCamel(resource.Name()), caser.ToPascal(resource.Name()), key.Name())
 					}
 
 					params += "}"
@@ -416,7 +416,7 @@ func (c *client) templateFuncs() map[string]any {
 					return params
 				}
 
-				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(resource.Name()+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(resource.Name()))))
+				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(resource.Name()+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(resource.Name()))))
 			}
 
 			return "map[string]string{}"
@@ -439,7 +439,7 @@ func (c *client) templateFuncs() map[string]any {
 
 			return lowerFirst + s[runeWidth:]
 		},
-		"SanitizeIdentifier": c.sanitizeEnumIdentifier,
+		"SanitizeIdentifier": sanitizeEnumIdentifier,
 	}
 
 	return templateFuncs
@@ -679,7 +679,7 @@ func (c *client) resourceEndpoints(res *resourceInfo) []HandlerType {
 	return handlerTypes
 }
 
-func (c *client) sanitizeEnumIdentifier(name string) string {
+func sanitizeEnumIdentifier(name string) string {
 	var result []byte
 	for _, b := range []byte(name) {
 		switch {
@@ -695,7 +695,7 @@ func (c *client) sanitizeEnumIdentifier(name string) string {
 		}
 	}
 
-	return c.caser.ToPascal(string(result))
+	return caser.ToPascal(string(result))
 }
 
 func startStandaloneNumber(result []byte, b byte) bool {
