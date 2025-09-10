@@ -55,8 +55,8 @@ func (h HandlerType) template() string {
 	}
 }
 
-// Method returns the proper http method type for a HandlerType
-func (h HandlerType) Method() string {
+// method returns the proper http method type for a HandlerType
+func (h HandlerType) method() string {
 	switch h {
 	case ReadHandler, ListHandler:
 		return "GET"

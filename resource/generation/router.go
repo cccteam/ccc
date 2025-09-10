@@ -36,7 +36,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 			}
 
 			generatedRoutesMap[r.resources[i].Name()] = append(generatedRoutesMap[r.resources[i].Name()], generatedRoute{
-				Method:      ht.Method(),
+				Method:      ht.method(),
 				Path:        path,
 				HandlerFunc: r.handlerName(r.resources[i].Name(), ht),
 			})
