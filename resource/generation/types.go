@@ -203,10 +203,10 @@ type resourceInfo struct {
 	IsView             bool                           // Determines how CreatePatch is rendered in resource generation.
 	IsConsolidated     bool
 	PkCount            int
-	DefaultsCreateFunc string
-	DefaultsUpdateFunc string
-	ValidateCreateFunc string
-	ValidateUpdateFunc string
+	DefaultsCreateType string
+	DefaultsUpdateType string
+	ValidateCreateType string
+	ValidateUpdateType string
 }
 
 func (r resourceInfo) ListHandlerDisabled() bool {
@@ -229,24 +229,24 @@ func (r resourceInfo) DeleteHandlerDisabled() bool {
 	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
 }
 
-// HasDefaultsCreateFunc indicates if a default create function has been registered
-func (r resourceInfo) HasDefaultsCreateFunc() bool {
-	return r.DefaultsCreateFunc != ""
+// HasDefaultsCreateType indicates if a default create type has been registered
+func (r resourceInfo) HasDefaultsCreateType() bool {
+	return r.DefaultsCreateType != ""
 }
 
-// HasDefaultsUpdateFunc indicates if a default update function has been registered
-func (r resourceInfo) HasDefaultsUpdateFunc() bool {
-	return r.DefaultsUpdateFunc != ""
+// HasDefaultsUpdateType indicates if a default update type has been registered
+func (r resourceInfo) HasDefaultsUpdateType() bool {
+	return r.DefaultsUpdateType != ""
 }
 
-// HasValidateCreateFunc indicates if a validate create function has been registered
-func (r resourceInfo) HasValidateCreateFunc() bool {
-	return r.ValidateCreateFunc != ""
+// HasValidateCreateType indicates if a validate create type has been registered
+func (r resourceInfo) HasValidateCreateType() bool {
+	return r.ValidateCreateType != ""
 }
 
-// HasValidateUpdateFunc indicates if a validate update function has been registered
-func (r resourceInfo) HasValidateUpdateFunc() bool {
-	return r.ValidateUpdateFunc != ""
+// HasValidateUpdateType indicates if a validate update type has been registered
+func (r resourceInfo) HasValidateUpdateType() bool {
+	return r.ValidateUpdateType != ""
 }
 
 func (r resourceInfo) SearchIndexes() []searchIndex {
@@ -680,21 +680,21 @@ func generatedFileName(name string, suffix string) string {
 }
 
 const (
-	enumerateKeyword          string = "enumerate"        // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
-	suppressKeyword           string = "suppress"         // Suppresses specified handler types from being generated
-	defaultsCreateFuncKeyword string = "defaultsCreateFn" // Specifies a function to call for setting defaults on resource creation
-	defaultsUpdateFuncKeyword string = "defaultsUpdateFn" // Specifies a function to call for setting defaults on resource update
-	validateCreateFuncKeyword string = "validateCreateFn" // Specifies a function to call for validating a resource on creation
-	validateUpdateFuncKeyword string = "validateUpdateFn" // Specifies a function to call for validating a resource on update
+	enumerateKeyword          string = "enumerate"          // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
+	suppressKeyword           string = "suppress"           // Suppresses specified handler types from being generated
+	defaultsCreateTypeKeyword string = "defaultsCreateType" // Specifies a type to call "Defaults()" on for setting defaults on resource creation
+	defaultsUpdateTypeKeyword string = "defaultsUpdateType" // Specifies a type to call "Defaults()" on for setting defaults on resource update
+	validateCreateTypeKeyword string = "validateCreateType" // Specifies a type to call "Validate()" on for validating a resource on creation
+	validateUpdateTypeKeyword string = "validateUpdateType" // Specifies a type to call "Validate()" on for validating a resource on update
 )
 
 func keywords() map[string]genlang.KeywordOpts {
 	return map[string]genlang.KeywordOpts{
 		enumerateKeyword:          {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
 		suppressKeyword:           {genlang.ScanStruct: genlang.ArgsRequired},
-		defaultsCreateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
-		defaultsUpdateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
-		validateCreateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
-		validateUpdateFuncKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
+		defaultsCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		defaultsUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		validateCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		validateUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }

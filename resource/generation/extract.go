@@ -55,36 +55,36 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 			}
 		}
 
-		if result.Struct.Has(defaultsCreateFuncKeyword) {
-			args := result.Struct.Get(defaultsCreateFuncKeyword)
+		if result.Struct.Has(defaultsCreateTypeKeyword) {
+			args := result.Struct.Get(defaultsCreateTypeKeyword)
 			if len(args) != 1 {
-				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", defaultsCreateFuncKeyword, len(args), resourceName)
+				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", defaultsCreateTypeKeyword, len(args), resourceName)
 			}
-			resource.DefaultsCreateFunc = args[0].Arg1
+			resource.DefaultsCreateType = args[0].Arg1
 		}
 
-		if result.Struct.Has(defaultsUpdateFuncKeyword) {
-			args := result.Struct.Get(defaultsUpdateFuncKeyword)
+		if result.Struct.Has(defaultsUpdateTypeKeyword) {
+			args := result.Struct.Get(defaultsUpdateTypeKeyword)
 			if len(args) != 1 {
-				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", defaultsUpdateFuncKeyword, len(args), resourceName)
+				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", defaultsUpdateTypeKeyword, len(args), resourceName)
 			}
-			resource.DefaultsUpdateFunc = args[0].Arg1
+			resource.DefaultsUpdateType = args[0].Arg1
 		}
 
-		if result.Struct.Has(validateCreateFuncKeyword) {
-			args := result.Struct.Get(validateCreateFuncKeyword)
+		if result.Struct.Has(validateCreateTypeKeyword) {
+			args := result.Struct.Get(validateCreateTypeKeyword)
 			if len(args) != 1 {
-				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", validateCreateFuncKeyword, len(args), resourceName)
+				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", validateCreateTypeKeyword, len(args), resourceName)
 			}
-			resource.ValidateCreateFunc = args[0].Arg1
+			resource.ValidateCreateType = args[0].Arg1
 		}
 
-		if result.Struct.Has(validateUpdateFuncKeyword) {
-			args := result.Struct.Get(validateUpdateFuncKeyword)
+		if result.Struct.Has(validateUpdateTypeKeyword) {
+			args := result.Struct.Get(validateUpdateTypeKeyword)
 			if len(args) != 1 {
-				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", validateUpdateFuncKeyword, len(args), resourceName)
+				return nil, errors.Newf("@%s should have exactly one argument, found %d on %s", validateUpdateTypeKeyword, len(args), resourceName)
 			}
-			resource.ValidateUpdateFunc = args[0].Arg1
+			resource.ValidateUpdateType = args[0].Arg1
 		}
 
 		for i, field := range pStruct.Fields() {

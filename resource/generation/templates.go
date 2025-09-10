@@ -344,14 +344,14 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 	p.patchSet.RegisterDefaultCreateFunc("{{ $field.Name }}", {{ $field.DefaultCreateFuncName }})
 {{- end }}
 {{- end }}
-{{- if .Resource.HasDefaultsCreateFunc }}
+{{- if .Resource.HasDefaultsCreateType }}
 	p.patchSet.RegisterDefaultsCreateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
-		return {{ .Resource.DefaultsCreateFunc }}(ctx, txn, p)
+		return new({{ .Resource.DefaultsCreateType }}).Defaults(ctx, txn, p)
 	})
 {{- end }}
-{{- if .Resource.HasValidateCreateFunc }}
+{{- if .Resource.HasValidateCreateType }}
 	p.patchSet.RegisterValidateCreateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
-		return {{ .Resource.ValidateCreateFunc }}(ctx, txn, p)
+		return new({{ .Resource.ValidateCreateType }}).Validate(ctx, txn, p)
 	})
 {{- end }}
 }
@@ -414,14 +414,14 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 	p.patchSet.RegisterDefaultUpdateFunc("{{ $field.Name }}", {{ $field.DefaultUpdateFuncName }})
 {{- end }}
 {{- end }}
-{{- if .Resource.HasDefaultsUpdateFunc }}
+{{- if .Resource.HasDefaultsUpdateType }}
 	p.patchSet.RegisterDefaultsUpdateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
-		return {{ .Resource.DefaultsUpdateFunc }}(ctx, txn, p)
+		return new({{ .Resource.DefaultsUpdateType }}).Defaults(ctx, txn, p)
 	})
 {{- end }}
-{{- if .Resource.HasValidateUpdateFunc }}
+{{- if .Resource.HasValidateUpdateType }}
 	p.patchSet.RegisterValidateUpdateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
-		return {{ .Resource.ValidateUpdateFunc }}(ctx, txn, p)
+		return new({{ .Resource.ValidateUpdateType }}).Validate(ctx, txn, p)
 	})
 {{- end }}
 }
