@@ -85,12 +85,19 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 		if ok, err := c.loadAllCachedData(genType); err != nil {
 			return nil, err
 		} else if !ok {
-			if err := c.runSpanner(ctx); err != nil {
+			if err := c.genCache.DeleteSubpath("migrations"); err != nil {
+				return nil, errors.Wrap(err, "cache.Cache.DeleteSubpath()")
+			}
+
+			if err := c.runSpanner(ctx, c.spannerEmulatorVersion, migrationSourceURL); err != nil {
 				return nil, err
 			}
 		}
 	} else {
-		if err := c.runSpanner(ctx); err != nil {
+		if err := c.genCache.DeleteSubpath("migrations"); err != nil {
+			return nil, errors.Wrap(err, "cache.Cache.DeleteSubpath()")
+		}
+		if err := c.runSpanner(ctx, c.spannerEmulatorVersion, migrationSourceURL); err != nil {
 			return nil, err
 		}
 	}
