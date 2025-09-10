@@ -75,7 +75,7 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 }
 
 func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
-	handlerTypes := r.resourceEndpoints(res)
+	handlerTypes := resourceEndpoints(res)
 
 	handlerData := make([][]byte, 0, len(handlerTypes))
 	for _, handlerTyp := range handlerTypes {

@@ -21,7 +21,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 
 	generatedRoutesMap := make(map[string][]generatedRoute)
 	for i := range r.resources {
-		handlerTypes := r.resourceEndpoints(&r.resources[i])
+		handlerTypes := resourceEndpoints(&r.resources[i])
 
 		for _, ht := range handlerTypes {
 			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(r.resources[i].Name())))

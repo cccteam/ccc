@@ -660,7 +660,7 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*s
 // Views do not have Read handlers.
 // Consolidated resources do not have Patch handlers.
 // Ignored handler types are filtered out.
-func (c *client) resourceEndpoints(res *resourceInfo) []HandlerType {
+func resourceEndpoints(res *resourceInfo) []HandlerType {
 	handlerTypes := []HandlerType{ListHandler}
 
 	if !res.IsView {
