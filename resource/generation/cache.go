@@ -156,8 +156,6 @@ func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
 		}
 	}
 
-	c.cleanup = func() {}
-
 	return true, nil
 }
 
