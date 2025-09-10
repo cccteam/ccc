@@ -135,8 +135,7 @@ func (c *client) localPackageImports() string {
 	return `"` + strings.Join(c.localPackages, "\"\n\t\"") + `"`
 }
 
-func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, error) {
-	qry := `WITH DEPENDENCIES AS (
+const tableMapQuery string = `WITH DEPENDENCIES AS (
 		SELECT
 			kcu1.TABLE_NAME, 
 			kcu1.COLUMN_NAME, 
@@ -210,79 +209,81 @@ func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, er
 	IS_VIEW, v.VIEW_DEFINITION, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
 
-	return c.createTableMapUsingQuery(ctx, qry)
-}
+func readInformationSchema(ctx context.Context, db *spanner.Client) ([]informationSchemaResult, error) {
+	stmt := spanner.Statement{SQL: tableMapQuery}
 
-func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[string]*tableMetadata, error) {
-	log.Println("Creating spanner table lookup...")
-
-	stmt := spanner.Statement{SQL: qry}
-
-	var result []InformationSchemaResult
-	if err := spxscan.Select(ctx, c.db.Single(), &result, stmt); err != nil {
+	var result []informationSchemaResult
+	if err := spxscan.Select(ctx, db.Single(), &result, stmt); err != nil {
 		return nil, errors.Wrap(err, "spxscan.Select()")
 	}
 
-	m := make(map[string]*tableMetadata)
-	for _, r := range result {
-		table, ok := m[r.TableName]
+	return result, nil
+}
+
+func (t *tableMetadata) addSchemaResult(result *informationSchemaResult) {
+	column, ok := t.Columns[result.ColumnName]
+	if !ok {
+		column = columnMeta{
+			SpannerType:        result.SpannerType,
+			OrdinalPosition:    result.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
+			KeyOrdinalPosition: result.KeyOrdinalPosition - 1,
+		}
+	}
+
+	if result.IsView {
+		// TODO: find nullability of view columns
+	}
+
+	if result.IsPrimaryKey {
+		t.PkCount++
+		column.IsPrimaryKey = true
+	}
+
+	if result.IsForeignKey {
+		column.IsForeignKey = true
+
+		if result.ReferencedTable != nil {
+			column.ReferencedTable = *result.ReferencedTable
+		}
+
+		if result.ReferencedColumn != nil {
+			column.ReferencedColumn = *result.ReferencedColumn
+		}
+	}
+
+	column.IsNullable = result.IsNullable
+	column.IsIndex = result.IsIndex
+	column.IsUniqueIndex = result.IsUniqueIndex
+	column.HasDefault = result.HasDefault
+
+	t.Columns[result.ColumnName] = column
+}
+
+func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[string]*tableMetadata, error) {
+	log.Println("Creating spanner table lookup...")
+
+	results, err := readInformationSchema(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+
+	schemaMetadata := make(map[string]*tableMetadata)
+	for i := range results {
+		table, ok := schemaMetadata[results[i].TableName]
 		if !ok {
 			table = &tableMetadata{
 				Columns:       make(map[string]columnMeta),
 				SearchIndexes: make(map[string][]*searchExpression),
-				IsView:        r.IsView,
+				IsView:        results[i].IsView,
 			}
 		}
 
-		if r.SpannerType == "TOKENLIST" {
+		if results[i].SpannerType == "TOKENLIST" {
 			continue
 		}
 
-		column, ok := table.Columns[r.ColumnName]
-		if !ok {
-			column = columnMeta{
-				ColumnName:         r.ColumnName,
-				SpannerType:        r.SpannerType,
-				OrdinalPosition:    r.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
-				KeyOrdinalPosition: r.KeyOrdinalPosition - 1,
-			}
-		}
-
-		if r.IsPrimaryKey {
-			table.PkCount++
-			column.IsPrimaryKey = true
-		}
-
-		if r.IsForeignKey {
-			column.IsForeignKey = true
-
-			if r.ReferencedTable != nil {
-				column.ReferencedTable = *r.ReferencedTable
-			}
-
-			if r.ReferencedColumn != nil {
-				column.ReferencedColumn = *r.ReferencedColumn
-			}
-		}
-
-		if r.IsNullable {
-			column.IsNullable = true
-		}
-
-		if r.IsIndex {
-			column.IsIndex = true
-		}
-
-		if r.IsUniqueIndex {
-			column.IsUniqueIndex = true
-		}
-
-		if r.HasDefault {
-			column.HasDefault = true
-		}
-
-		table.Columns[r.ColumnName] = column
-		m[r.TableName] = table
+		table.addSchemaResult(&results[i])
+		schemaMetadata[results[i].TableName] = table
 	}
 
 	for i := range results {
@@ -327,19 +328,10 @@ func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[
 		table.SearchIndexes[results[i].ColumnName] = append(table.SearchIndexes[results[i].ColumnName], expressionFields...)
 	}
 
-	return m, nil
+	return schemaMetadata, nil
 }
 
-func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
-	table, ok := c.tableMap[c.pluralize(resourceName)]
-	if !ok {
-		return nil, errors.Newf("resource %q pluralized as %q not in tableMetadata", resourceName, c.pluralize(resourceName))
-	}
-
-	return table, nil
-}
-
-func (c *client) fetchEnumValues(ctx context.Context) (map[string][]enumData, error) {
+func fetchEnumValues(ctx context.Context, db *spanner.Client) (map[string][]enumData, error) {
 	qry := `
 	SELECT DISTINCT
 		c.TABLE_NAME
@@ -355,7 +347,7 @@ func (c *client) fetchEnumValues(ctx context.Context) (map[string][]enumData, er
 	}
 
 	var results []tableNameResults
-	if err := spxscan.Select(ctx, c.db.Single(), &results, stmt); err != nil {
+	if err := spxscan.Select(ctx, db.Single(), &results, stmt); err != nil {
 		return nil, errors.Wrap(err, "spxscan.Select()")
 	}
 
@@ -364,7 +356,7 @@ func (c *client) fetchEnumValues(ctx context.Context) (map[string][]enumData, er
 		stmt := spanner.Statement{SQL: fmt.Sprintf("SELECT DISTINCT Id, Description FROM %s ORDER BY Id", tnr.TableName)}
 
 		var results []enumData
-		if err := spxscan.Select(ctx, c.db.Single(), &results, stmt); err != nil {
+		if err := spxscan.Select(ctx, db.Single(), &results, stmt); err != nil {
 			return nil, errors.Wrap(err, "spxscan.Select()")
 		}
 
@@ -372,6 +364,15 @@ func (c *client) fetchEnumValues(ctx context.Context) (map[string][]enumData, er
 	}
 
 	return enumResults, nil
+}
+
+func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
+	table, ok := c.tableMap[c.pluralize(resourceName)]
+	if !ok {
+		return nil, errors.Newf("resource %q pluralized as %q not in tableMetadata", resourceName, c.pluralize(resourceName))
+	}
+
+	return table, nil
 }
 
 func (c *client) templateFuncs() map[string]any {

@@ -143,7 +143,6 @@ type tableMetadata struct {
 }
 
 type columnMeta struct {
-	ColumnName         string
 	IsPrimaryKey       bool
 	IsForeignKey       bool
 	SpannerType        string

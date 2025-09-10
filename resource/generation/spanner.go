@@ -8,49 +8,45 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *client) runSpanner(ctx context.Context) error {
-	if err := c.genCache.DeleteSubpath("migrations"); err != nil {
-		return errors.Wrap(err, "cache.Cache.DeleteSubpath()")
-	}
-
+func createSpannerDB(ctx context.Context, emulatorVersion, migrationSourceURL string) (*initiator.SpannerDB, error) {
 	log.Println("Starting Spanner Container...")
-	spannerContainer, err := initiator.NewSpannerContainer(ctx, c.spannerEmulatorVersion)
+	spannerContainer, err := initiator.NewSpannerContainer(ctx, emulatorVersion)
 	if err != nil {
-		return errors.Wrap(err, "initiator.NewSpannerContainer()")
+		return nil, errors.Wrap(err, "initiator.NewSpannerContainer()")
 	}
 
 	db, err := spannerContainer.CreateDatabase(ctx, "resourcegeneration")
 	if err != nil {
-		return errors.Wrap(err, "initiator.SpannerContainer.CreateDatabase()")
+		return nil, errors.Wrap(err, "initiator.SpannerContainer.CreateDatabase()")
 	}
 
 	log.Println("Starting Spanner Migration...")
-	if err := db.MigrateUp(c.migrationSourceURL); err != nil {
-		return errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
+	if err := db.MigrateUp(migrationSourceURL); err != nil {
+		return nil, errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
 	}
 
-	c.db = db.Client
-	if c.tableMap, err = c.newTableMap(ctx); err != nil {
+	return db, nil
+}
+
+func (c *client) runSpanner(ctx context.Context, emulatorVersion, migrationSourceURL string) error {
+	db, err := createSpannerDB(ctx, emulatorVersion, migrationSourceURL)
+	if err != nil {
+		return err
+	}
+
+	tableMap, err := createTableMapUsingQuery(ctx, db.Client)
+	if err != nil {
 		return errors.Wrap(err, "newTableMap()")
 	}
 
-	if c.enumValues, err = c.fetchEnumValues(ctx); err != nil {
+	enumValues, err := fetchEnumValues(ctx, db.Client)
+	if err != nil {
 		return errors.Wrap(err, "fetchEnumValues()")
 	}
 
-	c.cleanup = func() {
-		if err := db.DropDatabase(ctx); err != nil {
-			panic(err)
-		}
-
-		if err := db.Close(); err != nil {
-			panic(err)
-		}
-
-		if err := c.populateCache(); err != nil {
-			panic(err)
-		}
-	}
+	c.db = db
+	c.tableMap = tableMap
+	c.enumValues = enumValues
 
 	return nil
 }
