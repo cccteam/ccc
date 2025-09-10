@@ -26,7 +26,8 @@ type typescriptGenerator struct {
 	spannerEmulatorVersion string
 }
 
-func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, targetDir string, rc *resource.Collection, options ...TSOption) (Generator, error) {
+// NewTypescriptGenerator constructs a new Generator for generating Typescript for a resource-driven Angular app.
+func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL, targetDir string, rc *resource.Collection, options ...TSOption) (Generator, error) {
 	if rc == nil {
 		return nil, errors.New("resource collection cannot be nil")
 	}
@@ -56,7 +57,7 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 	return t, nil
 }
 
-func (t *typescriptGenerator) Generate(ctx context.Context) error {
+func (t *typescriptGenerator) Generate() error {
 	log.Println("Starting TypescriptGenerator Generation")
 
 	begin := time.Now()

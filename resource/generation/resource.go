@@ -55,7 +55,7 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 	return r, nil
 }
 
-func (r *resourceGenerator) Generate(ctx context.Context) error {
+func (r *resourceGenerator) Generate() error {
 	log.Println("Starting ResourceGenerator Generation")
 
 	begin := time.Now()
