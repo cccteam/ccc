@@ -68,8 +68,6 @@ func (h HandlerType) Method() string {
 	}
 }
 
-type optionType string
-
 type patchType string
 
 const (

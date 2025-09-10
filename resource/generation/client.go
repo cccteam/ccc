@@ -44,7 +44,6 @@ type client struct {
 	db                 *spanner.Client
 	tableMap           map[string]*tableMetadata
 	enumValues         map[string][]enumData
-	handlerOptions     map[string]map[HandlerType][]OptionType
 	pluralOverrides    map[string]string
 	consolidateConfig
 	genRPCMethods          bool
