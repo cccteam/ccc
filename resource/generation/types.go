@@ -703,9 +703,9 @@ func keywords() map[string]genlang.KeywordOpts {
 	return map[string]genlang.KeywordOpts{
 		enumerateKeyword:          {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
 		suppressKeyword:           {genlang.ScanStruct: genlang.ArgsRequired},
-		defaultsCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
-		defaultsUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
-		validateCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
-		validateUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		defaultsCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
+		defaultsUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
+		validateCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
+		validateUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
 	}
 }

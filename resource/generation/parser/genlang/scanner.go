@@ -3,6 +3,7 @@ package genlang
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
@@ -179,14 +180,14 @@ func (s *scanner) scan() error {
 }
 
 func (s *scanner) keywordArgs(key string) (*Args, error) {
-	if s.keywords[key][s.mode]&DualArgsRequired != 0 {
+	if hasFlag(s.keywords[key][s.mode], DualArgsRequired) {
 		arg1, err := s.scanArguments()
 		if err != nil {
 			return nil, err
 		}
 
 		if peek, ok := s.peekNext(); !ok || peek != byte('(') {
-			return nil, errors.New(s.error("expected second argument for %s, found %q", key, string(peek)))
+			return nil, errors.New(s.error("expected second argument for @%s, found %q", key, string(peek)))
 		}
 
 		arg2b, err := s.scanArguments()
@@ -202,6 +203,13 @@ func (s *scanner) keywordArgs(key string) (*Args, error) {
 	arg, err := s.scanArguments()
 	if err != nil {
 		return nil, err
+	}
+
+	if hasFlag(s.keywords[key][s.mode], StrictSingleArgs) && slices.Contains(arg, ',') {
+		position := slices.Index(arg, ',')
+		highlightedComma := fmt.Sprintf("\"%s\033[91m%s <--\033[0m\"", string(arg[:position]), string(arg[position]))
+
+		return nil, errors.New(s.errorPostscript(fmt.Sprintf("@%s should have exactly one argument", key), "illegal comma %s", highlightedComma))
 	}
 
 	return &Args{Arg1: string(arg)}, nil

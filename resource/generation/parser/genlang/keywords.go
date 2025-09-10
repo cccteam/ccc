@@ -12,6 +12,8 @@ const (
 	DualArgsRequired
 	// NoArgs requires a keyword to be called without arguments.
 	NoArgs
+	// StrictSingleArgs limits the number of comma-separated arguments to one
+	StrictSingleArgs
 	// Exclusive limits the keyword to a single use per instance of field or struct.
 	Exclusive
 )
