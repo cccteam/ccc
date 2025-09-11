@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/cccteam/ccc/compare/resource/v0.3.1...resource/v0.3.2) (2025-09-10)
+
+
+### Bug Fixes
+
+* Correct display type info for rpc methods ([#454](https://github.com/cccteam/ccc/issues/454)) ([027c5d2](https://github.com/cccteam/ccc/commit/027c5d294b136e2befc746fa1cbeb772335ec8d0))
+
 ## [0.3.1](https://github.com/cccteam/ccc/compare/resource/v0.3.0...resource/v0.3.1) (2025-09-05)
 
 
