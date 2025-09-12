@@ -2,6 +2,7 @@ package generation
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cloudspannerecosystem/memefish"
 	"github.com/cloudspannerecosystem/memefish/ast"
@@ -16,9 +17,19 @@ func originTableName(query, columnName string) (string, error) {
 		return "", errors.Wrap(err, "memefish.ParseQuery()")
 	}
 
-	selectStmt, ok := stmt.Query.(*ast.Select)
-	if !ok {
-		return "", errors.Newf("could not cast Query=%q to *ast.Select", stmt.SQL())
+	var selectStmt *ast.Select
+	switch t := stmt.Query.(type) {
+	case *ast.Select:
+		selectStmt = t
+	case *ast.Query:
+		s, ok := t.Query.(*ast.Select)
+		if !ok {
+			return "", errors.Newf("could not cast %T to *ast.Select", stmt.Query)
+		}
+
+		selectStmt = s
+	default:
+		return "", errors.Newf("columnName=%q not found (%T)", columnName, t)
 	}
 
 	pathName, err := baseIdentifier(selectStmt.Results, columnName)
@@ -26,21 +37,80 @@ func originTableName(query, columnName string) (string, error) {
 		return "", err
 	}
 
-	tableNames := make(map[string]string)
+	tableNames := make(map[string]string) // map[tableName|tableAlias]tableName
 	if err := fromClauseIdentities(selectStmt.From.Source, tableNames); err != nil {
 		return "", err
 	}
 
 	tableName, ok := tableNames[pathName]
 	if !ok {
-		return "", errors.Newf("columnName=%q not found", columnName)
+		return "", errors.Newf("columnName=%q not found, pathName=%q not in fromClause=%q", columnName, pathName, selectStmt.From.SQL())
 	}
 
 	return tableName, nil
 }
 
+func originColumnName(query, columnName string) (string, error) {
+	stmt, err := memefish.ParseQuery("", query)
+	if err != nil {
+		return "", errors.Wrap(err, "memefish.ParseQuery()")
+	}
+
+	var selectStmt *ast.Select
+	switch t := stmt.Query.(type) {
+	case *ast.Select:
+		selectStmt = t
+	case *ast.Query:
+		s, ok := t.Query.(*ast.Select)
+		if !ok {
+			return "", errors.Newf("could not cast %T to *ast.Select", stmt.Query)
+		}
+
+		selectStmt = s
+	default:
+		return "", errors.Newf("columnName=%q not found, unexpected *ast.QueryExpr type (%T)", columnName, t)
+	}
+
+	for _, item := range selectStmt.Results {
+		switch tt := item.(type) {
+		case *ast.ExprSelectItem:
+			path, ok := tt.Expr.(*ast.Path)
+			if !ok || len(path.Idents) < 2 {
+				continue
+			}
+
+			if path.Idents[len(path.Idents)-1].Name == columnName {
+				return columnName, nil
+			}
+		case *ast.Alias:
+			if tt.As.Alias.Name != columnName {
+				continue
+			}
+
+			switch aliasExprType := tt.Expr.(type) {
+			case *ast.Path:
+				return aliasExprType.Idents[0].Name, nil
+			case *ast.ParenExpr:
+				path, ok := aliasExprType.Expr.(*ast.Path)
+				if !ok {
+					return "", errors.Newf("columnName=%q not found, *ast.ParenExpr (%T) unsupported", columnName, aliasExprType.Expr)
+				}
+
+				return path.Idents[0].Name, nil
+			default:
+				return "", errors.Newf("columnName=%q not found, *ast.Alias.Expr (%T) unsupported", columnName, aliasExprType)
+			}
+		default:
+			continue
+		}
+	}
+
+	return "", errors.Newf("could not find columnName=%q in query=%q", columnName, query)
+}
+
 // Returns the first identity of a path whose last identity matches columnName,
 // or an error is the columnName doesn't match any path.
+// e.g. in Foo.Id the base identifier is Foo
 func baseIdentifier(items []ast.SelectItem, columnName string) (string, error) {
 	for _, item := range items {
 		switch tt := item.(type) {
@@ -50,7 +120,7 @@ func baseIdentifier(items []ast.SelectItem, columnName string) (string, error) {
 				continue
 			}
 
-			if path.Idents[1].Name == columnName {
+			if path.Idents[len(path.Idents)-1].Name == columnName {
 				return path.Idents[0].Name, nil
 			}
 		case *ast.Alias:
@@ -58,12 +128,19 @@ func baseIdentifier(items []ast.SelectItem, columnName string) (string, error) {
 				continue
 			}
 
-			path, ok := tt.Expr.(*ast.Path)
-			if !ok {
-				continue
-			}
+			switch aliasExprType := tt.Expr.(type) {
+			case *ast.Path:
+				return aliasExprType.Idents[0].Name, nil
+			case *ast.ParenExpr:
+				path, ok := aliasExprType.Expr.(*ast.Path)
+				if !ok {
+					return "", errors.Newf("columnName=%q not found, *ast.ParenExpr (%T) unsupported", columnName, aliasExprType.Expr)
+				}
 
-			return path.Idents[0].Name, nil
+				return path.Idents[0].Name, nil
+			default:
+				return "", errors.Newf("columnName=%q not found, *ast.Alias.Expr (%T) unsupported", columnName, aliasExprType)
+			}
 		default:
 			continue
 		}
@@ -131,4 +208,39 @@ func fromClauseIdentities(fromExpr ast.TableExpr, accumulator map[string]string)
 	}
 
 	return nil
+}
+
+// Adds nullability information to view columns in schemaMetadata if it can be determined from the view's definition.
+func viewColumnNullability(schemaMetadata map[string]*tableMetadata, viewColumns []*informationSchemaResult) (map[string]*tableMetadata, error) {
+	for i := range viewColumns {
+		sourceTableName, err := originTableName(*viewColumns[i].ViewDefinition, viewColumns[i].ColumnName)
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				continue // if the view definition is too complex, we'll just let the view column be nullable
+			}
+
+			return nil, err
+		}
+
+		sourceTable, ok := schemaMetadata[sourceTableName]
+		if !ok {
+			continue
+		}
+
+		sourceColumnName, err := originColumnName(*viewColumns[i].ViewDefinition, viewColumns[i].ColumnName)
+		if err != nil {
+			return nil, err
+		}
+
+		sourceColumn, ok := sourceTable.Columns[sourceColumnName]
+		if !ok {
+			continue
+		}
+
+		viewColumn := schemaMetadata[viewColumns[i].TableName].Columns[viewColumns[i].ColumnName]
+		viewColumn.IsNullable = sourceColumn.IsNullable
+		schemaMetadata[viewColumns[i].TableName].Columns[viewColumns[i].ColumnName] = viewColumn
+	}
+
+	return schemaMetadata, nil
 }

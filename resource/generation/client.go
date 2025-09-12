@@ -209,7 +209,7 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 	IS_VIEW, v.VIEW_DEFINITION, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
 
-func readInformationSchema(ctx context.Context, db *spanner.Client) ([]informationSchemaResult, error) {
+func queryInformationSchema(ctx context.Context, db *spanner.Client) ([]informationSchemaResult, error) {
 	stmt := spanner.Statement{SQL: tableMapQuery}
 
 	var result []informationSchemaResult
@@ -228,10 +228,6 @@ func (t *tableMetadata) addSchemaResult(result *informationSchemaResult) {
 			OrdinalPosition:    result.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
 			KeyOrdinalPosition: result.KeyOrdinalPosition - 1,
 		}
-	}
-
-	if result.IsView {
-		// TODO: find nullability of view columns
 	}
 
 	if result.IsPrimaryKey {
@@ -262,12 +258,13 @@ func (t *tableMetadata) addSchemaResult(result *informationSchemaResult) {
 func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[string]*tableMetadata, error) {
 	log.Println("Creating spanner table lookup...")
 
-	results, err := readInformationSchema(ctx, db)
+	results, err := queryInformationSchema(ctx, db)
 	if err != nil {
 		return nil, err
 	}
 
 	schemaMetadata := make(map[string]*tableMetadata)
+	viewColumns := make([]*informationSchemaResult, 0, 16)
 	for i := range results {
 		table, ok := schemaMetadata[results[i].TableName]
 		if !ok {
@@ -278,6 +275,10 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 			}
 		}
 
+		if results[i].IsView {
+			viewColumns = append(viewColumns, &results[i])
+		}
+
 		if results[i].SpannerType == "TOKENLIST" {
 			continue
 		}
@@ -285,6 +286,12 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 		table.addSchemaResult(&results[i])
 		schemaMetadata[results[i].TableName] = table
 	}
+
+	nullableViews, err := viewColumnNullability(schemaMetadata, viewColumns)
+	if err != nil {
+		return nil, err
+	}
+	schemaMetadata = nullableViews
 
 	for i := range results {
 		if results[i].SpannerType != "TOKENLIST" {
