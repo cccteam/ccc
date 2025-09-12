@@ -297,9 +297,9 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 	schemaMetadata = nullableViews
 
 	searchIndexMetadata, err := tokenListSearchIndexes(schemaMetadata, tokenListColumns)
-			if err != nil {
-				return nil, err
-			}
+	if err != nil {
+		return nil, err
+	}
 	schemaMetadata = searchIndexMetadata
 
 	return schemaMetadata, nil

@@ -194,8 +194,8 @@ func (r *rpcField) TypescriptDataType() string {
 	}
 }
 
-func (f *rpcField) TypescriptDisplayType() string {
-	return f.typescriptType
+func (r *rpcField) TypescriptDisplayType() string {
+	return r.typescriptType
 }
 
 type resourceInfo struct {
