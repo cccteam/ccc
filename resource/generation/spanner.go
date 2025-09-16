@@ -44,7 +44,14 @@ func (c *client) runSpanner(ctx context.Context, emulatorVersion, migrationSourc
 		return errors.Wrap(err, "fetchEnumValues()")
 	}
 
-	c.db = db
+	if err := db.DropDatabase(context.Background()); err != nil {
+		return errors.Wrap(err, "db-initiator.SpannerDB.DropDatabase()")
+	}
+
+	if err := db.Close(); err != nil {
+		return errors.Wrap(err, "db-initiator.SpannerDB.Close()")
+	}
+
 	c.tableMap = tableMap
 	c.enumValues = enumValues
 

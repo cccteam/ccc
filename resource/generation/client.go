@@ -20,7 +20,6 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
-	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
@@ -42,7 +41,6 @@ type client struct {
 	rpcMethods         []rpcMethodInfo
 	localPackages      []string
 	migrationSourceURL string
-	db                 *initiator.SpannerDB
 	tableMap           map[string]*tableMetadata
 	enumValues         map[string][]enumData
 	pluralOverrides    map[string]string
@@ -108,23 +106,6 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 	c.migrationSourceURL = migrationSourceURL
 
 	return c, nil
-}
-
-// Close drops and closes en emulator database, if it exists.
-func (c *client) Close() error {
-	if c.db == nil {
-		return nil
-	}
-
-	if err := c.db.DropDatabase(context.Background()); err != nil {
-		return errors.Wrap(err, "db-initiator.SpannerDB.DropDatabase()")
-	}
-
-	if err := c.db.Close(); err != nil {
-		return errors.Wrap(err, "db-initiator.SpannerDB.Close()")
-	}
-
-	return nil
 }
 
 func (c *client) localPackageImports() string {
