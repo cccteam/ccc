@@ -145,9 +145,10 @@ func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 	}
 
 	var errRows []string
-	for columnName, columnMetadata := range table.Columns {
-		if nullableFields[columnName] != columnMetadata.IsNullable {
-			errRow := fmt.Sprintf("| %-32s | %13t | %15t |", columnName, nullableFields[columnName], columnMetadata.IsNullable)
+	for _, field := range pStruct.Fields() {
+		spannerTag, _ := field.LookupTag("spanner")
+		if nullableFields[spannerTag] != table.Columns[spannerTag].IsNullable {
+			errRow := fmt.Sprintf("| %-32s | %13t | %15t |", spannerTag, nullableFields[spannerTag], table.Columns[spannerTag].IsNullable)
 			errRows = append(errRows, errRow)
 		}
 	}
