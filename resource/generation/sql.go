@@ -90,14 +90,14 @@ func originColumnName(query, columnName string) (string, error) {
 
 			switch aliasExprType := tt.Expr.(type) {
 			case *ast.Path:
-				return aliasExprType.Idents[0].Name, nil
+				return aliasExprType.Idents[len(aliasExprType.Idents)-1].Name, nil
 			case *ast.ParenExpr:
 				path, ok := aliasExprType.Expr.(*ast.Path)
 				if !ok {
 					return "", errors.Newf("columnName=%q not found, *ast.ParenExpr (%T) unsupported", columnName, aliasExprType.Expr)
 				}
 
-				return path.Idents[0].Name, nil
+				return path.Idents[len(path.Idents)-1].Name, nil
 			default:
 				return "", errors.Newf("columnName=%q not found, *ast.Alias.Expr (%T) unsupported", columnName, aliasExprType)
 			}
