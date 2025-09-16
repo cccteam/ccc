@@ -10,29 +10,9 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// Parses a SQL query string and returns the table name columnName originates from,
+// Parses select query's ast and returns the table name columnName originates from,
 // or an error if the column does not exist.
-func originTableName(query, columnName string) (string, error) {
-	stmt, err := memefish.ParseQuery("", query)
-	if err != nil {
-		return "", errors.Wrap(err, "memefish.ParseQuery()")
-	}
-
-	var selectStmt *ast.Select
-	switch t := stmt.Query.(type) {
-	case *ast.Select:
-		selectStmt = t
-	case *ast.Query:
-		s, ok := t.Query.(*ast.Select)
-		if !ok {
-			return "", errors.Newf("could not cast %T to *ast.Select", stmt.Query)
-		}
-
-		selectStmt = s
-	default:
-		return "", errors.Newf("columnName=%q not found (%T)", columnName, t)
-	}
-
+func originTableName(selectStmt *ast.Select, columnName string) (string, error) {
 	pathName, err := baseIdentifier(selectStmt.Results, columnName)
 	if err != nil {
 		return "", err
@@ -51,27 +31,7 @@ func originTableName(query, columnName string) (string, error) {
 	return tableName, nil
 }
 
-func originColumnName(query, columnName string) (string, error) {
-	stmt, err := memefish.ParseQuery("", query)
-	if err != nil {
-		return "", errors.Wrap(err, "memefish.ParseQuery()")
-	}
-
-	var selectStmt *ast.Select
-	switch t := stmt.Query.(type) {
-	case *ast.Select:
-		selectStmt = t
-	case *ast.Query:
-		s, ok := t.Query.(*ast.Select)
-		if !ok {
-			return "", errors.Newf("could not cast %T to *ast.Select", stmt.Query)
-		}
-
-		selectStmt = s
-	default:
-		return "", errors.Newf("columnName=%q not found, unexpected *ast.QueryExpr type (%T)", columnName, t)
-	}
-
+func originColumnName(selectStmt *ast.Select, columnName string) (string, error) {
 	for _, item := range selectStmt.Results {
 		switch tt := item.(type) {
 		case *ast.ExprSelectItem:
@@ -106,7 +66,7 @@ func originColumnName(query, columnName string) (string, error) {
 		}
 	}
 
-	return "", errors.Newf("could not find columnName=%q in query=%q", columnName, query)
+	return "", errors.Newf("could not find columnName=%q in query=%q", columnName, selectStmt.SQL())
 }
 
 // Returns the first identity of a path whose last identity matches columnName,
@@ -211,10 +171,53 @@ func fromClauseIdentities(fromExpr ast.TableExpr, accumulator map[string]string)
 	return nil
 }
 
+func isTableLeftJoined(source ast.TableExpr, tableName string, hasLeftJoin bool) bool {
+	switch t := source.(type) {
+	case *ast.Join:
+		if t.Op == ast.LeftOuterJoin {
+			return isTableLeftJoined(t.Right, tableName, true) || isTableLeftJoined(t.Left, tableName, false)
+		}
+
+		return isTableLeftJoined(t.Left, tableName, false) || isTableLeftJoined(t.Right, tableName, false)
+	case *ast.TableName:
+		return hasLeftJoin && (t.Table.Name == tableName)
+	case *ast.SubQueryTableExpr:
+		if t.As == nil {
+			return false
+		}
+
+		return hasLeftJoin && (t.As.Alias.Name == tableName) // an aliased subquery expr is a black box I don't wanna traverse so we're gonna just call it a lefty
+	default:
+		panic(fmt.Sprintf("unhandled ast.TableExpr case %T", t))
+	}
+}
+
 // Adds nullability information to view columns in schemaMetadata if it can be determined from the view's definition.
 func viewColumnNullability(schemaMetadata map[string]*tableMetadata, viewColumns []*informationSchemaResult) (map[string]*tableMetadata, error) {
+	viewAstMap := make(map[string]*ast.Select)
 	for i := range viewColumns {
-		sourceTableName, err := originTableName(*viewColumns[i].ViewDefinition, viewColumns[i].ColumnName)
+		if _, ok := viewAstMap[viewColumns[i].TableName]; !ok {
+			stmt, err := memefish.ParseQuery("", *viewColumns[i].ViewDefinition)
+			if err != nil {
+				return nil, errors.Wrap(err, "memefish.ParseQuery()")
+			}
+
+			switch t := stmt.Query.(type) {
+			case *ast.Select:
+				viewAstMap[viewColumns[i].TableName] = t
+			case *ast.Query:
+				s, ok := t.Query.(*ast.Select)
+				if !ok {
+					return nil, errors.Newf("could not cast %T to *ast.Select", stmt.Query)
+				}
+
+				viewAstMap[viewColumns[i].TableName] = s
+			default:
+				continue
+			}
+		}
+
+		sourceTableName, err := originTableName(viewAstMap[viewColumns[i].TableName], viewColumns[i].ColumnName)
 		if err != nil {
 			if strings.Contains(err.Error(), "not found") {
 				continue // if the view definition is too complex, we'll just let the view column be nullable
@@ -223,12 +226,16 @@ func viewColumnNullability(schemaMetadata map[string]*tableMetadata, viewColumns
 			return nil, err
 		}
 
+		if isTableLeftJoined(viewAstMap[viewColumns[i].TableName].From.Source, sourceTableName, false) {
+			continue // left joined tables are automatically nullable
+		}
+
 		sourceTable, ok := schemaMetadata[sourceTableName]
 		if !ok {
 			continue
 		}
 
-		sourceColumnName, err := originColumnName(*viewColumns[i].ViewDefinition, viewColumns[i].ColumnName)
+		sourceColumnName, err := originColumnName(viewAstMap[viewColumns[i].TableName], viewColumns[i].ColumnName)
 		if err != nil {
 			return nil, err
 		}
@@ -247,6 +254,7 @@ func viewColumnNullability(schemaMetadata map[string]*tableMetadata, viewColumns
 }
 
 func tokenListSearchIndexes(schemaMetadata map[string]*tableMetadata, tokenLists []*informationSchemaResult) (map[string]*tableMetadata, error) {
+	viewAstMap := make(map[string]*ast.Select)
 	for i := range tokenLists {
 		if tokenLists[i].SpannerType != "TOKENLIST" {
 			continue
@@ -260,7 +268,28 @@ func tokenListSearchIndexes(schemaMetadata map[string]*tableMetadata, tokenLists
 		// the generation expression. We need to grab the source table's name from
 		// the view definition then find it in the information schema tokenLists.
 		case tokenLists[i].IsView:
-			sourceTableName, err := originTableName(*tokenLists[i].ViewDefinition, tokenLists[i].ColumnName)
+			if _, ok := viewAstMap[tokenLists[i].TableName]; !ok {
+				stmt, err := memefish.ParseQuery("", *tokenLists[i].ViewDefinition)
+				if err != nil {
+					return nil, errors.Wrap(err, "memefish.ParseQuery()")
+				}
+
+				switch t := stmt.Query.(type) {
+				case *ast.Select:
+					viewAstMap[tokenLists[i].TableName] = t
+				case *ast.Query:
+					s, ok := t.Query.(*ast.Select)
+					if !ok {
+						return nil, errors.Newf("could not cast %T to *ast.Select", stmt.Query)
+					}
+
+					viewAstMap[tokenLists[i].TableName] = s
+				default:
+					return nil, errors.Newf("unknown *ast.QueryStatement.Query type (%T)", t)
+				}
+			}
+
+			sourceTableName, err := originTableName(viewAstMap[tokenLists[i].TableName], tokenLists[i].ColumnName)
 			if err != nil {
 				return nil, err
 			}
