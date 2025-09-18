@@ -35,12 +35,12 @@ var caser = strcase.NewCaser(false, nil, nil)
 type client struct {
 	loadPackages       []string
 	resourceFilePath   string
-	resources          []resourceInfo
-	rpcMethods         []rpcMethodInfo
+	resources          []*resourceInfo
+	rpcMethods         []*rpcMethodInfo
 	localPackages      []string
 	migrationSourceURL string
 	tableMap           map[string]*tableMetadata
-	enumValues         map[string][]enumData
+	enumValues         map[string][]*enumData
 	pluralOverrides    map[string]string
 	consolidateConfig
 	genRPCMethods          bool
@@ -272,8 +272,8 @@ func (c *client) generateTemplateOutput(templateName, fileTemplate string, data 
 	return buf.Bytes(), nil
 }
 
-func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]enumData, error) {
-	enumMap := make(map[string][]enumData)
+func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]*enumData, error) {
+	enumMap := make(map[string][]*enumData)
 	for _, namedType := range namedTypes {
 		scanner := genlang.NewScanner(keywords())
 		result, err := scanner.ScanNamedType(namedType)
@@ -416,19 +416,19 @@ func formatInterfaceTypes(types []string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
 }
 
-func formatResourceInterfaceTypes(resources []resourceInfo) string {
+func formatResourceInterfaceTypes(resources []*resourceInfo) string {
 	names := make([]string, 0, len(resources))
-	for i := range resources {
-		names = append(names, resources[i].Name())
+	for _, res := range resources {
+		names = append(names, res.Name())
 	}
 
 	return formatInterfaceTypes(names)
 }
 
-func formatRPCInterfaceTypes(rpcMethods []rpcMethodInfo) string {
-	names := make([]string, len(rpcMethods))
-	for i, rpcMethod := range rpcMethods {
-		names[i] = rpcMethod.Name()
+func formatRPCInterfaceTypes(rpcMethods []*rpcMethodInfo) string {
+	names := make([]string, 0, len(rpcMethods))
+	for _, rpcMethod := range rpcMethods {
+		names = append(names, rpcMethod.Name())
 	}
 
 	return formatInterfaceTypes(names)

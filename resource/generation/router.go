@@ -20,25 +20,25 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 
 	generatedRoutesMap := make(map[string][]generatedRoute)
-	for i := range r.resources {
-		handlerTypes := resourceEndpoints(&r.resources[i])
+	for _, res := range r.resources {
+		handlerTypes := resourceEndpoints(res)
 
 		for _, ht := range handlerTypes {
-			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(r.resources[i].Name())))
+			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
 			if ht == ReadHandler {
-				if r.resources[i].HasCompoundPrimaryKey() {
-					for _, field := range r.resources[i].PrimaryKeys() {
-						path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(r.resources[i].Name()+field.Name()))
+				if res.HasCompoundPrimaryKey() {
+					for _, field := range res.PrimaryKeys() {
+						path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(res.Name()+field.Name()))
 					}
 				} else {
-					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(r.resources[i].Name()+"ID"))
+					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(res.Name()+"ID"))
 				}
 			}
 
-			generatedRoutesMap[r.resources[i].Name()] = append(generatedRoutesMap[r.resources[i].Name()], generatedRoute{
+			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
 				Method:      ht.method(),
 				Path:        path,
-				HandlerFunc: r.handlerName(r.resources[i].Name(), ht),
+				HandlerFunc: r.handlerName(res.Name(), ht),
 			})
 		}
 	}
@@ -71,7 +71,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	return nil
 }
 
-func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, resources []resourceInfo, generatedRoutes map[string][]generatedRoute) error {
+func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, resources []*resourceInfo, generatedRoutes map[string][]generatedRoute) error {
 	file, err := os.Create(destinationFile)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")

@@ -20,34 +20,34 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 	}
 
 	var (
-		consolidatedResources []resourceInfo
+		consolidatedResources []*resourceInfo
 		wg                    sync.WaitGroup
 
 		errChan = make(chan error)
 	)
-	for i := range r.resources {
+	for _, res := range r.resources {
 		wg.Add(1)
-		go func(resource *resourceInfo) {
-			if err := r.generateHandlers(resource); err != nil {
+		go func() {
+			if err := r.generateHandlers(res); err != nil {
 				errChan <- err
 			}
 			wg.Done()
-		}(&r.resources[i])
+		}()
 
-		if r.resources[i].IsConsolidated {
-			consolidatedResources = append(consolidatedResources, r.resources[i])
+		if res.IsConsolidated {
+			consolidatedResources = append(consolidatedResources, res)
 		}
 	}
 
 	if r.genRPCMethods {
 		for _, rpcMethod := range r.rpcMethods {
 			wg.Add(1)
-			go func(rpcMethod rpcMethodInfo) {
+			go func() {
 				if err := r.generateRPCHandler(rpcMethod); err != nil {
 					errChan <- err
 				}
 				wg.Done()
-			}(rpcMethod)
+			}()
 		}
 	}
 
@@ -126,7 +126,7 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 	return nil
 }
 
-func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []resourceInfo) error {
+func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resourceInfo) error {
 	begin := time.Now()
 	fileName := generatedGoFileName(consolidatedHandlerOutputName)
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)

@@ -164,7 +164,7 @@ type generatedRoute struct {
 
 type rpcMethodInfo struct {
 	*parser.Struct
-	Fields []rpcField
+	Fields []*rpcField
 }
 
 type rpcField struct {
@@ -200,7 +200,7 @@ func (r *rpcField) TypescriptDisplayType() string {
 
 type resourceInfo struct {
 	*parser.TypeInfo
-	Fields             []resourceField
+	Fields             []*resourceField
 	SuppressedHandlers [3]HandlerType
 	searchIndexes      map[string][]*searchExpression // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
 	IsView             bool                           // Determines how CreatePatch is rendered in resource generation.
@@ -271,10 +271,10 @@ func (r *resourceInfo) SearchIndexes() []searchIndex {
 	return indexes
 }
 
-func (r *resourceInfo) PrimaryKeys() iter.Seq2[int, resourceField] {
+func (r *resourceInfo) PrimaryKeys() iter.Seq2[int, *resourceField] {
 	i := 1
 
-	return func(yield func(int, resourceField) bool) {
+	return func(yield func(int, *resourceField) bool) {
 		for _, f := range r.Fields {
 			if !f.IsPrimaryKey {
 				continue
@@ -337,7 +337,7 @@ func (r *resourceInfo) PrimaryKeyType() string {
 func (r *resourceInfo) PrimaryKey() *resourceField {
 	for _, f := range r.Fields {
 		if f.IsPrimaryKey {
-			return &f
+			return f
 		}
 	}
 

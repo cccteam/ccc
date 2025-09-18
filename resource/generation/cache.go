@@ -141,7 +141,7 @@ func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
 		return false, nil
 	}
 
-	c.enumValues = make(map[string][]enumData)
+	c.enumValues = make(map[string][]*enumData)
 	if ok, err := c.genCache.Load("spanner", enumValueCache, &c.enumValues); err != nil {
 		return false, errors.Wrapf(err, "cache.Cache.Load() for %q", enumValueCache)
 	} else if !ok {

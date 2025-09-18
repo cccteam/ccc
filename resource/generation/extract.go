@@ -11,8 +11,8 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, error) {
-	resources := make([]resourceInfo, 0, len(structs))
+func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, error) {
+	resources := make([]*resourceInfo, 0, len(structs))
 	var resourceErrors []error
 	for _, pStruct := range structs {
 		resourceName := pStruct.Name()
@@ -27,18 +27,16 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 			continue
 		}
 
-		resource := resourceInfo{
-			TypeInfo:      pStruct.TypeInfo,
-			Fields:        make([]resourceField, len(pStruct.Fields())),
-			IsView:        table.IsView,
-			searchIndexes: table.SearchIndexes,
-			// Consolidate resource if it is not a view and it is in consolidated list
+		resource := &resourceInfo{
+			TypeInfo:       pStruct.TypeInfo,
+			Fields:         make([]*resourceField, 0, len(pStruct.Fields())),
+			IsView:         table.IsView,
+			searchIndexes:  table.SearchIndexes,
 			IsConsolidated: !table.IsView && c.IsConsolidated(resourceName),
 			PkCount:        table.PkCount,
 		}
 
-		scanner := genlang.NewScanner(keywords())
-		result, err := scanner.ScanStruct(pStruct)
+		result, err := genlang.NewScanner(keywords()).ScanStruct(pStruct)
 		if err != nil {
 			return nil, errors.Wrap(err, "scanner.ScanStruct()")
 		}
@@ -68,15 +66,12 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 		if result.Struct.Has(defaultsCreateTypeKeyword) {
 			resource.DefaultsCreateType = result.Struct.GetOne(defaultsCreateTypeKeyword).Arg1
 		}
-
 		if result.Struct.Has(defaultsUpdateTypeKeyword) {
 			resource.DefaultsUpdateType = result.Struct.GetOne(defaultsUpdateTypeKeyword).Arg1
 		}
-
 		if result.Struct.Has(validateCreateTypeKeyword) {
 			resource.ValidateCreateType = result.Struct.GetOne(validateCreateTypeKeyword).Arg1
 		}
-
 		if result.Struct.Has(validateUpdateTypeKeyword) {
 			resource.ValidateUpdateType = result.Struct.GetOne(validateUpdateTypeKeyword).Arg1
 		}
@@ -94,10 +89,9 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 			if !table.IsView && hasIndexTag {
 				return nil, errors.Newf("cannot use index tag on field %s because resource %s is not virtual/view", field.Name(), resource.Name())
 			}
-
-			resource.Fields[i] = resourceField{
+			resource.Fields = append(resource.Fields, &resourceField{
 				Field:              field,
-				Parent:             &resource,
+				Parent:             resource,
 				IsPrimaryKey:       tableColumn.IsPrimaryKey,
 				IsForeignKey:       tableColumn.IsForeignKey,
 				IsIndex:            tableColumn.IsIndex || hasIndexTag,
@@ -108,9 +102,8 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 				ReferencedResource: tableColumn.ReferencedTable,
 				ReferencedField:    tableColumn.ReferencedColumn,
 				HasDefault:         tableColumn.HasDefault,
-			}
+			})
 		}
-
 		resources = append(resources, resource)
 	}
 
@@ -121,16 +114,16 @@ func (c *client) extractResources(structs []*parser.Struct) ([]resourceInfo, err
 	return resources, nil
 }
 
-func (c *client) structsToRPCMethods(structs []*parser.Struct) []rpcMethodInfo {
-	rpcMethods := make([]rpcMethodInfo, 0, len(structs))
+func (c *client) structsToRPCMethods(structs []*parser.Struct) []*rpcMethodInfo {
+	rpcMethods := make([]*rpcMethodInfo, 0, len(structs))
 	for _, s := range structs {
-		rpcMethod := rpcMethodInfo{
+		rpcMethod := &rpcMethodInfo{
 			Struct: s,
-			Fields: make([]rpcField, len(s.Fields())),
+			Fields: make([]*rpcField, 0, len(s.Fields())),
 		}
 
-		for i, field := range s.Fields() {
-			rpcMethod.Fields[i] = rpcField{Field: field}
+		for _, field := range s.Fields() {
+			rpcMethod.Fields = append(rpcMethod.Fields, &rpcField{Field: field})
 		}
 		rpcMethods = append(rpcMethods, rpcMethod)
 	}

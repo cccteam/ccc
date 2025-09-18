@@ -119,8 +119,8 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 		return errors.Wrap(err, "c.generateResourceInterfaces()")
 	}
 
-	for i := range r.resources {
-		if err := r.generateResources(&r.resources[i]); err != nil {
+	for _, res := range r.resources {
+		if err := r.generateResources(res); err != nil {
 			return errors.Wrap(err, "c.generateResources()")
 		}
 	}

@@ -196,7 +196,7 @@ func queryInformationSchema(ctx context.Context, db *spanner.Client) ([]informat
 	return result, nil
 }
 
-func fetchEnumValues(ctx context.Context, db *spanner.Client) (map[string][]enumData, error) {
+func fetchEnumValues(ctx context.Context, db *spanner.Client) (map[string][]*enumData, error) {
 	qry := `
 	SELECT DISTINCT
 		c.TABLE_NAME
@@ -216,11 +216,11 @@ func fetchEnumValues(ctx context.Context, db *spanner.Client) (map[string][]enum
 		return nil, errors.Wrap(err, "spxscan.Select()")
 	}
 
-	enumResults := make(map[string][]enumData, len(results))
+	enumResults := make(map[string][]*enumData, len(results))
 	for _, tnr := range results {
 		stmt := spanner.Statement{SQL: fmt.Sprintf("SELECT DISTINCT Id, Description FROM %s ORDER BY Id", tnr.TableName)}
 
-		var results []enumData
+		var results []*enumData
 		if err := spxscan.Select(ctx, db.Single(), &results, stmt); err != nil {
 			return nil, errors.Wrap(err, "spxscan.Select()")
 		}

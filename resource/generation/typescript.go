@@ -74,12 +74,11 @@ func (t *typescriptGenerator) Generate() error {
 		return err
 	}
 
-	t.resources = make([]resourceInfo, 0, len(resources))
-	for i := range resources {
-		res := accesstypes.Resource(t.pluralize(resources[i].Name()))
-		if t.rc.ResourceExists(res) {
-			resources[i].Fields = t.resourceFieldsTypescriptType(resources[i].Fields)
-			t.resources = append(t.resources, resources[i])
+	t.resources = make([]*resourceInfo, 0, len(resources))
+	for _, res := range resources {
+		if t.rc.ResourceExists(accesstypes.Resource(t.pluralize(res.Name()))) {
+			res.Fields = t.resourceFieldsTypescriptType(res.Fields)
+			t.resources = append(t.resources, res)
 		}
 	}
 
@@ -90,8 +89,8 @@ func (t *typescriptGenerator) Generate() error {
 
 		t.rpcMethods = t.structsToRPCMethods(rpcStructs)
 
-		for i := range t.rpcMethods {
-			t.rpcMethods[i].Fields = t.rpcFieldsTypescriptType(t.rpcMethods[i].Fields)
+		for _, rpcMethod := range t.rpcMethods {
+			rpcMethod.Fields = t.rpcFieldsTypescriptType(rpcMethod.Fields)
 		}
 	}
 
@@ -294,39 +293,39 @@ func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) erro
 	return nil
 }
 
-func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []resourceField) []resourceField {
-	for i := range fields {
-		if override, ok := t.typescriptOverrides[fields[i].TypeName()]; ok {
-			fields[i].typescriptType = override
+func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceField) []*resourceField {
+	for _, field := range fields {
+		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
+			field.typescriptType = override
 		} else {
-			fields[i].typescriptType = stringGoType
+			field.typescriptType = stringGoType
 		}
 
-		if fields[i].IsIterable() {
-			fields[i].typescriptType += "[]"
+		if field.IsIterable() {
+			field.typescriptType += "[]"
 		}
 
-		if fields[i].IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(fields[i].ReferencedResource)) {
-			fields[i].IsEnumerated = true
+		if field.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
+			field.IsEnumerated = true
 		}
 	}
 
 	return fields
 }
 
-func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []rpcField) []rpcField {
-	for i := range fields {
-		if override, ok := t.typescriptOverrides[fields[i].TypeName()]; ok {
-			if override == "boolean" && fields[i].Type() == "*bool" {
+func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []*rpcField) []*rpcField {
+	for _, field := range fields {
+		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
+			if override == "boolean" && field.Type() == "*bool" {
 				panic("Bool pointer (*bool) not currently supported for rpc methods.")
 			}
-			fields[i].typescriptType = override
+			field.typescriptType = override
 		} else {
-			fields[i].typescriptType = stringGoType
+			field.typescriptType = stringGoType
 		}
 
-		if fields[i].IsIterable() {
-			fields[i].typescriptType += "[]"
+		if field.IsIterable() {
+			field.typescriptType += "[]"
 		}
 	}
 
