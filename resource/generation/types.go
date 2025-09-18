@@ -19,6 +19,7 @@ import (
 // Generator provides methods for generating Go or Typescript for a resource-driven web application.
 type Generator interface {
 	Generate() error
+	Close() error
 }
 
 var tokenizeRegex = regexp.MustCompile(`(TOKENIZE_[^)]+)\(([^)]+)\)`)

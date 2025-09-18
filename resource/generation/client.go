@@ -106,6 +106,17 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 	return c, nil
 }
 
+func (c *client) Close() error {
+	if err := c.populateCache(); err != nil {
+		return err
+	}
+	if err := c.genCache.Close(); err != nil {
+		return errors.Wrap(err, "cache.Cache.Close()")
+	}
+
+	return nil
+}
+
 func (c *client) localPackageImports() string {
 	if len(c.localPackages) == 0 {
 		return ""

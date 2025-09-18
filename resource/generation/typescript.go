@@ -111,13 +111,6 @@ func (t *typescriptGenerator) Generate() error {
 		}
 	}
 
-	if err := t.populateCache(); err != nil {
-		return err
-	}
-	if err := t.genCache.Close(); err != nil {
-		return errors.Wrap(err, "cache.Cache.Close()")
-	}
-
 	log.Printf("Finished Typescript generation in %s\n", time.Since(begin))
 
 	return nil

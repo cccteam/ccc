@@ -105,13 +105,6 @@ func (r *resourceGenerator) Generate() error {
 		}
 	}
 
-	if err := r.populateCache(); err != nil {
-		return err
-	}
-	if err := r.genCache.Close(); err != nil {
-		return errors.Wrap(err, "cache.Cache.Close()")
-	}
-
 	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
 
 	return nil
