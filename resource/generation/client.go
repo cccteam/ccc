@@ -417,9 +417,9 @@ func formatInterfaceTypes(types []string) string {
 }
 
 func formatResourceInterfaceTypes(resources []resourceInfo) string {
-	names := make([]string, len(resources))
+	names := make([]string, 0, len(resources))
 	for i := range resources {
-		names[i] = resources[i].Name()
+		names = append(names, resources[i].Name())
 	}
 
 	return formatInterfaceTypes(names)
