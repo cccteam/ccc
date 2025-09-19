@@ -129,10 +129,6 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 		}
 	}
 
-	if err := r.generateResourceTests(); err != nil {
-		return errors.Wrap(err, "c.generateResourceTests()")
-	}
-
 	return nil
 }
 
@@ -146,35 +142,6 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 	}
 
 	destinationFile := filepath.Join(r.resourceDestination, generatedGoFileName(resourceInterfaceOutputName))
-
-	file, err := os.Create(destinationFile)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	output, err = r.GoFormatBytes(file.Name(), output)
-	if err != nil {
-		return err
-	}
-
-	if err := r.WriteBytesToFile(file, output); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (r *resourceGenerator) generateResourceTests() error {
-	output, err := r.generateTemplateOutput("resourcesTestTemplate", resourcesTestTemplate, map[string]any{
-		"Source":    r.resourceFilePath,
-		"Resources": r.resources,
-	})
-	if err != nil {
-		return errors.Wrap(err, "generateTemplateOutput()")
-	}
-
-	destinationFile := filepath.Join(r.resourceDestination, resourcesTestFileName)
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
