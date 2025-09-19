@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4.0](https://github.com/cccteam/ccc/compare/resource/v0.3.2...resource/v0.4.0) (2025-09-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* Removed unused ctx param from `generation.Generator.Generate()` method ([#460](https://github.com/cccteam/ccc/issues/460))
+
+### Features
+
+* Determine nullability of most view columns ([#460](https://github.com/cccteam/ccc/issues/460)) ([a743208](https://github.com/cccteam/ccc/commit/a743208fa06e536269e5f4414940e25af4e48f50))
+
+
+### Code Refactoring
+
+* Update design for resource-level defaults & validation to improve safeguards ([#457](https://github.com/cccteam/ccc/issues/457)) ([4bdde52](https://github.com/cccteam/ccc/commit/4bdde52f9e57f396dcc4bef5ad72e2614ea0dfbc))
+
+
+### Code Cleanup
+
+* Addresses most linter warnings in resource/generation ([#460](https://github.com/cccteam/ccc/issues/460)) ([a743208](https://github.com/cccteam/ccc/commit/a743208fa06e536269e5f4414940e25af4e48f50))
+* Removed unused ctx param from `generation.Generator.Generate()` method ([#460](https://github.com/cccteam/ccc/issues/460)) ([a743208](https://github.com/cccteam/ccc/commit/a743208fa06e536269e5f4414940e25af4e48f50))
+
 ## [0.3.2](https://github.com/cccteam/ccc/compare/resource/v0.3.1...resource/v0.3.2) (2025-09-10)
 
 
