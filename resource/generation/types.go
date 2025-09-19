@@ -169,7 +169,9 @@ type rpcMethodInfo struct {
 
 type rpcField struct {
 	*parser.Field
-	typescriptType string
+	typescriptType     string
+	IsEnumerated       bool
+	ReferencedResource string
 }
 
 func (r rpcField) JSONTag() string {
@@ -195,6 +197,10 @@ func (r *rpcField) TypescriptDataType() string {
 }
 
 func (r *rpcField) TypescriptDisplayType() string {
+	if r.IsEnumerated {
+		return "enumerated"
+	}
+
 	return r.typescriptType
 }
 

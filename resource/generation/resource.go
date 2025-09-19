@@ -82,7 +82,10 @@ func (r *resourceGenerator) Generate() error {
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
-		r.rpcMethods = r.structsToRPCMethods(rpcStructs)
+		r.rpcMethods, err = r.structsToRPCMethods(rpcStructs)
+		if err != nil {
+			return err
+		}
 
 		if err := r.runRPCGeneration(); err != nil {
 			return err
