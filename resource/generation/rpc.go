@@ -15,10 +15,10 @@ import (
 )
 
 func (r *resourceGenerator) runRPCGeneration() error {
-	if err := RemoveGeneratedFiles(r.rpcPackageDir, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.rpcPackageDir, prefix); err != nil {
 		return err
 	}
-	if err := RemoveGeneratedFiles(r.businessLayerPackageDir, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.businessLayerPackageDir, prefix); err != nil {
 		return err
 	}
 
@@ -37,12 +37,12 @@ func (r *resourceGenerator) runRPCGeneration() error {
 	)
 	for _, rpcMethod := range r.rpcMethods {
 		wg.Add(1)
-		go func(rpcMethod rpcMethodInfo) {
+		go func() {
 			if err := r.generateRPCMethod(rpcMethod); err != nil {
 				errChan <- err
 			}
 			wg.Done()
-		}(rpcMethod)
+		}()
 	}
 
 	go func() {
@@ -56,15 +56,15 @@ func (r *resourceGenerator) runRPCGeneration() error {
 	}
 
 	if rpcMethodErrors != nil {
-		return rpcMethodErrors
+		return errors.Wrap(rpcMethodErrors, "resourceGenerator.generateRPCMethod()")
 	}
 
 	return nil
 }
 
-func (r *resourceGenerator) generateRPCHandler(rpcMethod rpcMethodInfo) error {
+func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 	begin := time.Now()
-	fileName := generatedGoFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
+	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(rpcMethod.Name())))
 	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
 
 	file, err := os.Create(destinationFilePath)
@@ -101,8 +101,8 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod rpcMethodInfo) error {
 	return nil
 }
 
-func (r *resourceGenerator) generateRPCMethod(rpcMethod rpcMethodInfo) error {
-	fileName := generatedGoFileName(strings.ToLower(r.caser.ToSnake(rpcMethod.Name())))
+func (r *resourceGenerator) generateRPCMethod(rpcMethod *rpcMethodInfo) error {
+	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(rpcMethod.Name())))
 	destinationFilePath := filepath.Join(r.businessLayerPackageDir, fileName)
 
 	file, err := os.Create(destinationFilePath)
@@ -149,7 +149,7 @@ func (r *resourceGenerator) generateRPCInterfaces() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join("./businesslayer/rpc", generatedGoFileName("rpc_iface"))
+	destinationFile := filepath.Join(".", "businesslayer", "rpc", generatedGoFileName("rpc_iface"))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -179,7 +179,7 @@ func (r *resourceGenerator) generateBusinessLayerInterfaces() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join("./businesslayer", generatedGoFileName("iface"))
+	destinationFile := filepath.Join(".", "businesslayer", generatedGoFileName("iface"))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {

@@ -1,7 +1,7 @@
 package generation
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -19,14 +19,14 @@ const (
 	consolidatedRouteCache string = "consolidatedroutes" + genCacheSuffix
 )
 
-// Calculate the SHA1 checksum of a file
+// Calculate the sha256 checksum of a file
 func hashFile(filePath string) ([]byte, error) {
 	stat, err := os.Stat(filePath)
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not stat %q: os.Stat()", filePath)
 	}
 	if stat.IsDir() {
-		return nil, errors.Newf("cannot compute SHA1 of the directory %q. pass each of its files to this function individually", filePath)
+		return nil, errors.Newf("cannot compute sha256 of the directory %q. pass each of its files to this function individually", filePath)
 	}
 
 	f, err := os.Open(filePath)
@@ -35,7 +35,7 @@ func hashFile(filePath string) ([]byte, error) {
 	}
 	defer f.Close()
 
-	h := sha1.New()
+	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return nil, errors.Wrap(err, "io.Copy()")
 	}
@@ -43,7 +43,7 @@ func hashFile(filePath string) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-// Compute the SHA1 checksum of each file in a directory
+// Compute the sha256 checksum of each file in a directory
 func hashFilesInDir(path string) (map[string]struct{}, error) {
 	stat, err := os.Stat(path)
 	if err != nil {
@@ -85,7 +85,7 @@ func (c *client) cacheSchemaHashes() error {
 
 	for hash := range schemaMigrationHashes {
 		if err := c.genCache.Store("migrations", fmt.Sprintf("%x", []byte(hash)), ""); err != nil {
-			return errors.Wrap(err, "could not store SHA1 hash in gencache: cache.Cache.Store()")
+			return errors.Wrap(err, "could not store sha256 hash in gencache: cache.Cache.Store()")
 		}
 	}
 
@@ -141,7 +141,7 @@ func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
 		return false, nil
 	}
 
-	c.enumValues = make(map[string][]enumData)
+	c.enumValues = make(map[string][]*enumData)
 	if ok, err := c.genCache.Load("spanner", enumValueCache, &c.enumValues); err != nil {
 		return false, errors.Wrapf(err, "cache.Cache.Load() for %q", enumValueCache)
 	} else if !ok {
@@ -156,14 +156,12 @@ func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
 		}
 	}
 
-	c.cleanup = func() {}
-
 	return true, nil
 }
 
 func (c *client) populateCache() error {
 	if err := c.genCache.Store("spanner", tableMapCache, c.tableMap); err != nil {
-		return err
+		return errors.Wrap(err, "cache.Cache.Store()")
 	}
 
 	if err := c.cacheSchemaHashes(); err != nil {
@@ -171,7 +169,7 @@ func (c *client) populateCache() error {
 	}
 
 	if err := c.genCache.Store("spanner", enumValueCache, c.enumValues); err != nil {
-		return err
+		return errors.Wrap(err, "cache.Cache.Store()")
 	}
 
 	return nil

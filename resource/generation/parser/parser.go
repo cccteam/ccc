@@ -1,3 +1,4 @@
+// Package parser is a simplified abstraction over go/parser, tailored for the go:generate resource/generation tool.
 package parser
 
 import (
@@ -11,8 +12,10 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// Loads and type checks a package. Returns any errors encountered during
-// loading or typechecking, otherwise returns the package's data.
+// LoadPackages loads and type checks a list of packages. Returns package names mapped to a *packages.Package.
+// Package data contains package name, file names, ast, and types' info. Returns an error if
+// a package pattern does not match any packages, no files are loaded in a matched package, or parsing & typechecking
+// yield any errors.
 // Useful for static type analysis with the [types] package instead of
 // manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
 func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, error) {
@@ -56,7 +59,12 @@ func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, erro
 	return packMap, nil
 }
 
-// Loads a single package
+// LoadPackage loads and type checks a single package.
+// Package data contains package name, file names, ast, and types' info. Returns an error if
+// a package pattern does not match any packages, no files are loaded in a matched package,
+// or parsing & typechecking yield any errors.
+// Useful for static type analysis with the [types] package instead of
+// manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
 func LoadPackage(packagePattern string) (*packages.Package, error) {
 	pkgs, err := loadPackages(packagePattern)
 	if err != nil {
@@ -88,7 +96,7 @@ func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 				err = errors.Join(e)
 			}
 
-			return nil, errors.Wrap(err, "packages.Load() package error(s):")
+			return nil, errors.Wrap(err, "packages.Load() package error(s)")
 		}
 
 		if len(pkg.GoFiles) == 0 || pkg.GoFiles[0] == "" {
@@ -99,11 +107,14 @@ func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 	return pkgs, nil
 }
 
-// We can iterate over the declarations at the package level a single time
-// to extract all the data necessary for generation. Any new data that needs
-// to be added to the struct definitions can be extracted here.
+// ParsePackage parses a package's ast and type info and returns data about structs and named types
+// necessary for resource generation.
 func ParsePackage(pkg *packages.Package) *Package {
 	log.Printf("Parsing structs from package %q...", pkg.Types.Name())
+
+	// We can iterate over the declarations at the package level a single time
+	// to extract all the data necessary for generation. Any new data that needs
+	// to be added to the struct definitions can be extracted here.
 
 	// Gather all type definitions from generic (top-level) declarations
 	typeSpecs := make([]*ast.TypeSpec, 0, 256)
@@ -145,7 +156,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 		case *ast.StructType:
 			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
 			pStruct := newStruct(obj)
-			if pStruct.TypeInfo.obj == nil { // nil pStruct is anonymous struct
+			if pStruct.obj == nil { // nil pStruct is anonymous struct
 				continue
 			}
 
@@ -175,7 +186,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 		for j := range interfaces {
 			// Necessary to check non-pointer and pointer receivers
 			if types.Implements(parsedStructs[i].obj.Type(), interfaces[j].iface) || types.Implements(types.NewPointer(parsedStructs[i].obj.Type()), interfaces[j].iface) {
-				parsedStructs[i].SetInterface(interfaces[j].Name)
+				parsedStructs[i].setInterface(interfaces[j].Name)
 			}
 		}
 	}
@@ -189,6 +200,7 @@ func ParsePackage(pkg *packages.Package) *Package {
 	return &Package{Structs: slices.Clip(parsedStructs), NamedTypes: slices.Clip(namedTypes)}
 }
 
+// FilterStructsByInterface returns a filtered slice of structs that satisfy one or more from the list of interface names.
 func FilterStructsByInterface(pStructs []*Struct, interfaceNames []string) []*Struct {
 	filteredStructs := make([]*Struct, 0, len(pStructs))
 	for _, pStruct := range pStructs {
@@ -232,14 +244,12 @@ func decodeToExpr[T ast.Expr](v ast.Expr) (T, bool) {
 	}
 
 	switch t := v.(type) {
+	case *ast.StarExpr: // unwraps pointer types e.g. *ccc.UUID -> ccc.UUID
+		return decodeToExpr[T](t.X)
+	case *ast.SelectorExpr: // captures the expression immediately following the dot e.g. ccc.UUID -> UUID
+		return decodeToExpr[T](t.Sel)
 	case T:
 		return t, true
-	// unwraps pointer types e.g. *ccc.UUID -> ccc.UUID
-	case *ast.StarExpr:
-		return decodeToExpr[T](t.X)
-	// captures the expression immediately following the dot e.g. ccc.UUID -> UUID
-	case *ast.SelectorExpr:
-		return decodeToExpr[T](t.Sel)
 	default:
 		var zero T
 

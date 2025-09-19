@@ -3,7 +3,6 @@ package generation
 import (
 	"testing"
 
-	"github.com/ettle/strcase"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -287,11 +286,9 @@ func Test_client_sanitizeEnumIdentifier(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			c := &client{
-				caser: strcase.NewCaser(false, nil, nil),
-			}
-			if got := c.sanitizeEnumIdentifier(tt.args.name); got != tt.want {
-				t.Errorf("client.sanitizeEnumIdentifier() = %v, want %v, from %s", got, tt.want, tt.args.name)
+
+			if got := sanitizeEnumIdentifier(tt.args.name); got != tt.want {
+				t.Errorf("sanitizeEnumIdentifier() = %v, want %v, from %s", got, tt.want, tt.args.name)
 			}
 		})
 	}

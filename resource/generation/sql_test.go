@@ -3,6 +3,8 @@ package generation
 import (
 	"testing"
 
+	"github.com/cloudspannerecosystem/memefish"
+	"github.com/cloudspannerecosystem/memefish/ast"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -94,7 +96,37 @@ func Test_originTableName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := originTableName(tt.args.sql, tt.args.columnName)
+
+			stmt, err := memefish.ParseQuery("", tt.args.sql)
+			if err != nil {
+				if tt.wantErr {
+					return
+				}
+				t.Fatalf("could not parse query: %v", err)
+			}
+
+			var selectStmt *ast.Select
+			switch typ := stmt.Query.(type) {
+			case *ast.Select:
+				selectStmt = typ
+			case *ast.Query:
+				s, ok := typ.Query.(*ast.Select)
+				if !ok {
+					if tt.wantErr {
+						return
+					}
+					t.Fatalf("could not convert %T to *ast.Select", stmt.Query)
+				}
+
+				selectStmt = s
+			default:
+				if tt.wantErr {
+					return
+				}
+				t.Fatalf("could not convert %T to *ast.Select", stmt.Query)
+			}
+
+			got, err := originTableName(selectStmt, tt.args.columnName)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("originTableName() wantErr=%v err=%v", tt.wantErr, err)
 			}

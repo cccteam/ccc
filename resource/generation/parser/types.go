@@ -10,65 +10,71 @@ import (
 	"strings"
 )
 
+// Package holds a slice of each high level type used in resource generation.
 type Package struct {
 	Structs    []*Struct
 	NamedTypes []*NamedType
 }
 
+// TypeInfo provides convience methods over a go/types' Object.
 type TypeInfo struct {
 	obj types.Object
 }
 
+// Name is the type's local object name.
 func (t *TypeInfo) Name() string {
 	return t.obj.Name()
 }
 
+// Type is the qualified type name.
 // e.g. ccc.UUID, []ccc.UUID
 func (t *TypeInfo) Type() string {
 	return typeStringer(t.obj.Type())
 }
 
+// DerefType returns non-pointer qualified type.
 // e.g. *ccc.UUID -> ccc.UUID
 func (t *TypeInfo) DerefType() string {
 	return typeStringer(derefType(t.obj.Type()))
 }
 
-// Type without package prefix.
+// UnqualifiedType is the type name without package prefix.
 // e.g. ccc.UUID -> UUID, []ccc.UUID -> []UUID
 func (t *TypeInfo) UnqualifiedType() string {
-	qualifier := func(p *types.Package) string {
+	qualifier := func(*types.Package) string {
 		return ""
 	}
 
 	return types.TypeString(t.obj.Type(), qualifier)
 }
 
-// Type without pointer and package prefix removed
+// DerefUnqualifiedType is the non-pointer type name without package prefix.
 // e.g. *ccc.UUID -> UUID
 func (t *TypeInfo) DerefUnqualifiedType() string {
-	qualifier := func(p *types.Package) string {
+	qualifier := func(*types.Package) string {
 		return ""
 	}
 
 	return types.TypeString(derefType(t.obj.Type()), qualifier)
 }
 
-// Qualified type without array/slice/pointer prefix.
+// TypeName is the qualified type name without array/slice/pointer prefix.
 // e.g. *ccc.UUID -> ccc.UUID, []ccc.UUID -> ccc.UUID
 func (t *TypeInfo) TypeName() string {
 	return typeStringer(unwrapType(t.obj.Type()))
 }
 
-// Type without array/slice/pointer or package prefix.
+// UnqualifiedTypeName is the type name without array/slice/pointer or package prefix.
 // e.g. *ccc.UUID -> UUID, []ccc.UUID -> UUID
 func (t *TypeInfo) UnqualifiedTypeName() string {
-	qualifier := func(p *types.Package) string {
+	qualifier := func(*types.Package) string {
 		return ""
 	}
 
 	return types.TypeString(unwrapType(t.obj.Type()), qualifier)
 }
 
+// IsPointer returns true if the declaration is a pointer
 func (t *TypeInfo) IsPointer() bool {
 	switch t.obj.Type().(type) {
 	case *types.Pointer:
@@ -78,7 +84,7 @@ func (t *TypeInfo) IsPointer() bool {
 	}
 }
 
-// Returns true if type is slice or array
+// IsIterable returns true if type is slice or array
 func (t *TypeInfo) IsIterable() bool {
 	switch t.obj.Type().(type) {
 	case *types.Slice, *types.Array:
@@ -88,11 +94,13 @@ func (t *TypeInfo) IsIterable() bool {
 	}
 }
 
+// Interface is an abstraction over types.Interface
 type Interface struct {
 	Name  string
 	iface *types.Interface
 }
 
+// Struct is an abstraction combining types.Struct and ast.StructType for simpler parsing.
 type Struct struct {
 	*TypeInfo
 	fields     []*Field
@@ -138,21 +146,22 @@ func newStruct(obj types.Object) *Struct {
 	return s
 }
 
+// Comments returns the godoc comment text on the struct's type declaration
 func (s *Struct) Comments() string {
 	return s.comments
 }
 
-func (s *Struct) SetInterface(iface string) {
+func (s *Struct) setInterface(iface string) {
 	if !slices.Contains(s.interfaces, iface) {
 		s.interfaces = append(s.interfaces, iface)
 	}
 }
 
-func (s *Struct) Implements(iface string) bool {
-	return slices.Contains(s.interfaces, iface)
+// Implements returns true if the interface's name matches a name in the set of interfaces the Struct satisfies.
+func (s *Struct) Implements(interfaceName string) bool {
+	return slices.Contains(s.interfaces, interfaceName)
 }
 
-// Pretty prints the struct name and its fields. Useful for debugging.
 func (s *Struct) String() string {
 	var (
 		maxNameLength int
@@ -177,6 +186,7 @@ func (s *Struct) String() string {
 	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
 }
 
+// PrintWithFieldError pretty-formats the struct, highlighting a field with an error message.
 func (s *Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
 	var (
 		maxNameLength int
@@ -200,26 +210,29 @@ func (s *Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
 		} else {
 			fields += fmt.Sprintf("\t%s%s%s%s%s\n", field.Name(), nameTabs, field.Type(), typeTabs, field.tags)
 		}
-
 	}
 
 	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
 }
 
+// NumFields is the number of fields in the struct's type declaration.
 func (s *Struct) NumFields() int {
 	return len(s.fields)
 }
 
+// Fields returns a slice of the fields belonging to the struct.
 func (s *Struct) Fields() []*Field {
 	return s.fields
 }
 
+// HasMethod returns true if the method name matches a name in the set of methods belonging to the struct.
 func (s *Struct) HasMethod(methodName string) bool {
 	_, ok := s.methodSet[methodName]
 
 	return ok
 }
 
+// Field is an abstraction combining types.Var and ast.Field for simpler parsing.
 type Field struct {
 	TypeInfo
 	astInfo     *ast.Field
@@ -232,33 +245,37 @@ func (f Field) String() string {
 	return fmt.Sprintf("%s\t\t%s\t\t%s", f.Name(), f.Type(), f.tags)
 }
 
+// LookupTag returns a struct tag's value and whether or not the struct tag exists on this field.
 func (f Field) LookupTag(key string) (string, bool) {
 	return f.tags.Lookup(key)
 }
 
+// HasTag returns true if this field has a matching struct tag.
 func (f Field) HasTag(key string) bool {
 	_, ok := f.tags.Lookup(key)
 
 	return ok
 }
 
+// AsStruct converts this Field to a Struct. Returns nil if the Field's type is not a struct type.
 func (f Field) AsStruct() *Struct {
+	// TODO: convert to function that takes Field as an argument and use function in template funcMap
 	s := newStruct(f.obj)
 
-	if s.TypeInfo.obj == nil {
+	if s.obj == nil {
 		return nil
 	}
 
 	return s
 }
 
-// Returns true if the field's type originates from the same package
+// IsLocalType returns true if this Field's type originates from the same package
 // its parent struct is defined in.
 func (f Field) IsLocalType() bool {
 	return f.isLocalType
 }
 
-// Returns the field's unqualified type if it's local, and the qualified type otherwise.
+// ResolvedType returns this Field's unqualified type if it's local, or its qualified type otherwise.
 func (f Field) ResolvedType() string {
 	if f.IsLocalType() {
 		return f.UnqualifiedType()
@@ -267,7 +284,7 @@ func (f Field) ResolvedType() string {
 	return f.Type()
 }
 
-// Returns the field's unqualified type if it's local, and the qualified type otherwise.
+// DerefResolvedType returns this Field's unqualified type if it's local, or its qualified type otherwise.
 func (f Field) DerefResolvedType() string {
 	if f.IsLocalType() {
 		return f.DerefUnqualifiedType()
@@ -276,11 +293,12 @@ func (f Field) DerefResolvedType() string {
 	return f.DerefType()
 }
 
+// Comments returns the godoc comment text on the field's declaration.
 func (f Field) Comments() string {
 	return f.comments
 }
 
-// If the type is a generic instantiation, returns the origin of the generic type.
+// OriginType returns the origin type if this Field's type is a generic instantiation.
 // e.g. ccc.Foo[bool] returns ccc.Foo
 func (f Field) OriginType() string {
 	indexExpr, ok := decodeToExpr[*ast.IndexExpr](f.astInfo.Type)
@@ -296,6 +314,8 @@ func (f Field) OriginType() string {
 	return f.Type()
 }
 
+// TypeArgs returns any type arguments if this field's type is a generic instantiation.
+// e.g. ccc.Foo[bool] -> bool, ccc.Foo[ccc.UUID] -> ccc.UUID
 func (f Field) TypeArgs() string {
 	indexExpr, ok := decodeToExpr[*ast.IndexExpr](f.astInfo.Type)
 	if !ok {
@@ -310,10 +330,13 @@ func (f Field) TypeArgs() string {
 	return ""
 }
 
-func (f Field) Error(fset *token.FileSet) string {
+// positionString formats the Field's name and position in a token.FileSet. Intended for debugging.
+func (f Field) positionString(fset *token.FileSet) string {
 	return fmt.Sprintf("%s at %s", f.Name(), fset.Position(f.astInfo.Pos()))
 }
 
+// NamedType is any distinct named type
+// e.g. type MyNamedType string, type MyOtherNamedType ccc.UUID
 type NamedType struct {
 	TypeInfo
 	Comments string

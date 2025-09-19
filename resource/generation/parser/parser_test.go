@@ -9,6 +9,7 @@ import (
 )
 
 func Test_LoadPackages(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		packagePatterns []string
 	}
@@ -74,6 +75,7 @@ func Test_LoadPackages(t *testing.T) {
 }
 
 func Test_ParseStructs(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		packageName string
 		packagePath string
@@ -153,6 +155,7 @@ func Test_ParseStructs(t *testing.T) {
 }
 
 func Test_FilterStructsByInterface(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		packagePath string
 		packageName string
@@ -172,10 +175,8 @@ func Test_FilterStructsByInterface(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			pkgMap, err := LoadPackages(tt.args.packagePath)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("loadPackages() error = %v, wantErr %v", err, tt.wantErr)
@@ -199,6 +200,7 @@ func Test_FilterStructsByInterface(t *testing.T) {
 }
 
 func Test_typeStringer(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		t types.Type
 	}
@@ -234,6 +236,7 @@ func Test_typeStringer(t *testing.T) {
 }
 
 func Test_localTypesFromStruct(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		packagePath string
 		pkgName     string
@@ -284,14 +287,16 @@ type testField struct {
 	tag  string
 }
 
-func pkgAndObjName(name string) (*types.Package, string) {
+func pkgAndObjName(name string) (pkg *types.Package, objName string) {
 	var pkgName string
 	if s := strings.Split(name, "."); len(s) > 1 {
 		pkgName = s[0]
-		name = s[1]
+		objName = s[1]
+	} else {
+		objName = name
 	}
 
-	return types.NewPackage(pkgName, pkgName), name
+	return types.NewPackage(pkgName, pkgName), objName
 }
 
 func typeName(name string, pkg *types.Package, typ types.Type) *types.TypeName {

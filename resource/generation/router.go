@@ -15,30 +15,30 @@ import (
 
 func (r *resourceGenerator) runRouteGeneration() error {
 	begin := time.Now()
-	if err := RemoveGeneratedFiles(r.routerDestination, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.routerDestination, prefix); err != nil {
 		return err
 	}
 
 	generatedRoutesMap := make(map[string][]generatedRoute)
-	for _, resource := range r.resources {
-		handlerTypes := r.resourceEndpoints(resource)
+	for _, res := range r.resources {
+		handlerTypes := resourceEndpoints(res)
 
 		for _, ht := range handlerTypes {
-			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(resource.Name())))
+			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
 			if ht == ReadHandler {
-				if resource.HasCompoundPrimaryKey() {
-					for _, field := range resource.PrimaryKeys() {
-						path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name()+field.Name()))
+				if res.HasCompoundPrimaryKey() {
+					for _, field := range res.PrimaryKeys() {
+						path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(res.Name()+field.Name()))
 					}
 				} else {
-					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(resource.Name()+"ID"))
+					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(res.Name()+"ID"))
 				}
 			}
 
-			generatedRoutesMap[resource.Name()] = append(generatedRoutesMap[resource.Name()], generatedRoute{
-				Method:      ht.Method(),
+			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
+				Method:      ht.method(),
 				Path:        path,
-				HandlerFunc: r.handlerName(resource.Name(), ht),
+				HandlerFunc: r.handlerName(res.Name(), ht),
 			})
 		}
 	}
@@ -71,7 +71,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	return nil
 }
 
-func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, resources []resourceInfo, generatedRoutes map[string][]generatedRoute) error {
+func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, resources []*resourceInfo, generatedRoutes map[string][]generatedRoute) error {
 	file, err := os.Create(destinationFile)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")

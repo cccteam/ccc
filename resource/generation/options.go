@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"fmt"
 	"maps"
 	"path/filepath"
 	"reflect"
@@ -17,15 +18,20 @@ import (
 type (
 	resourceOption func(*resourceGenerator) error
 	tsOption       func(*typescriptGenerator) error
-	Option         func(any) error
+	// Option is a functional option for configuring a Generator
+	Option func(any) error
 
 	option interface {
 		isOption()
 	}
+
+	// ResourceOption is a functional option for configuring a ResourceGenerator
 	ResourceOption interface {
 		option
 		isResourceOption()
 	}
+
+	// TSOption is a functional option for configuring a TypescriptGenerator
 	TSOption interface {
 		option
 		isTypescriptOption()
@@ -42,8 +48,8 @@ func (Option) isOption()           {}
 func (Option) isResourceOption()   {}
 func (Option) isTypescriptOption() {}
 
-// ignoredHandlers maps the name of a resource and to handler types (list, read, patch)
-// that you do not want generated for that resource
+// GenerateHandlers enables generating a handler file for each resource.
+// To generate resource handlers in a single file use WithConsolidatedHandlers.
 func GenerateHandlers(targetDir string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genHandlers = true
@@ -53,6 +59,7 @@ func GenerateHandlers(targetDir string) ResourceOption {
 	})
 }
 
+// GenerateRoutes enables generating a router file containing routes for all handlers and RPC methods.
 func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genRoutes = true
@@ -64,6 +71,7 @@ func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption
 	})
 }
 
+// WithTypescriptOverrides sets the Typescript type for a given Go type.
 func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
 		tempMap := defaultTypescriptOverrides()
@@ -74,6 +82,8 @@ func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	})
 }
 
+// GeneratePermissions enables generating resource and resource-field level permission mappings,
+// based on the routes registered in the app router. Requires `collect_resource_permissions` build tag.
 func GeneratePermissions() TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
 		t.genPermission = true
@@ -82,6 +92,7 @@ func GeneratePermissions() TSOption {
 	})
 }
 
+// GenerateMetadata enables generating information necessary for Typescript configuration of resources.
 func GenerateMetadata() TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
 		t.genMetadata = true
@@ -90,6 +101,8 @@ func GenerateMetadata() TSOption {
 	})
 }
 
+// GenerateEnums enables generating constants for resources that have been tagged with `@enumerate`
+// and have Id and Description values in the schema migrations directory.
 func GenerateEnums() TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
 		t.genEnums = true
@@ -98,17 +111,22 @@ func GenerateEnums() TSOption {
 	})
 }
 
+// WithSpannerEmulatorVersion sets the version of the Spanner image pulled from gcr.io
 func WithSpannerEmulatorVersion(version string) Option {
 	return func(g any) error {
 		switch t := g.(type) {
 		case *client:
 			t.spannerEmulatorVersion = version
+		case *resourceGenerator, *typescriptGenerator: // no-op
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithSpannerEmulatorVersion(): %T", t))
 		}
 
 		return nil
 	}
 }
 
+// WithPluralOverrides sets the pluralization for any resources that are not covered by the default pluralizations.
 func WithPluralOverrides(overrides map[string]string) Option {
 	tempMap := defaultPluralOverrides()
 	maps.Copy(tempMap, overrides)
@@ -117,23 +135,31 @@ func WithPluralOverrides(overrides map[string]string) Option {
 		switch t := g.(type) {
 		case *client:
 			t.pluralOverrides = tempMap
+		case *resourceGenerator, *typescriptGenerator: // no-op
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithPluralOverrides(): %T", t))
 		}
 
 		return nil
 	}
 }
 
+// CaserInitialismOverrides sets the initialism for any resources that are not covered by the default initialisms.
 func CaserInitialismOverrides(overrides map[string]bool) Option {
 	return func(g any) error {
 		switch t := g.(type) {
 		case *client:
-			t.caser = strcase.NewCaser(false, overrides, nil)
+			caser = strcase.NewCaser(false, overrides, nil)
+		case *resourceGenerator, *typescriptGenerator: // no-op
+		default:
+			panic(fmt.Sprintf("unexpected generator type in CaserInitialismOverrides(): %T", t))
 		}
 
 		return nil
 	}
 }
 
+// WithConsolidatedHandlers enables generating a handler file for all or a list of resources.
 func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...string) Option {
 	return func(g any) error {
 		if !consolidateAll && len(resources) == 0 {
@@ -145,13 +171,17 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 			t.ConsolidatedRoute = route
 			t.ConsolidateAll = consolidateAll
 			t.ConsolidatedResourceNames = resources
+		case *resourceGenerator, *typescriptGenerator: // no-op
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithConsolidatedHandlers(): %T", t))
 		}
 
 		return nil
 	}
 }
 
-func WithRPC(rpcPackageDir string, businessPackageDir string) Option {
+// WithRPC enables generating RPC method handlers.
+func WithRPC(rpcPackageDir, businessPackageDir string) Option {
 	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
 
 	return func(g any) error {
@@ -159,15 +189,20 @@ func WithRPC(rpcPackageDir string, businessPackageDir string) Option {
 		case *resourceGenerator:
 			t.rpcPackageDir = rpcPackageDir
 			t.businessLayerPackageDir = businessPackageDir
+		case *typescriptGenerator: // no-op
 		case *client:
 			t.genRPCMethods = true
 			t.loadPackages = append(t.loadPackages, rpcPackageDir)
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithRPC(): %T", t))
 		}
 
 		return nil
 	}
 }
 
+// resolveOptions is called twice, once in the client constructor and once in either the resource or typescript generator's constructor.
+// That is why no-op cases are included to prevent falling through to the default panic case.
 func resolveOptions(generator any, options []option) error {
 	for _, optionFunc := range options {
 		if optionFunc != nil {
@@ -178,6 +213,9 @@ func resolveOptions(generator any, options []option) error {
 					if err := fn(g); err != nil {
 						return err
 					}
+				case *client: // no-op
+				default:
+					panic(fmt.Sprintf("unexpected generator type in resourceOption: %T", g))
 				}
 			case tsOption:
 				switch g := generator.(type) {
@@ -185,6 +223,9 @@ func resolveOptions(generator any, options []option) error {
 					if err := fn(g); err != nil {
 						return err
 					}
+				case *client: // no-op
+				default:
+					panic(fmt.Sprintf("unexpected generator type in tsOption: %T", g))
 				}
 			case Option:
 				if err := fn(generator); err != nil {
@@ -213,6 +254,9 @@ func resolveOptions(generator any, options []option) error {
 		if g.spannerEmulatorVersion == "" {
 			g.spannerEmulatorVersion = "latest"
 		}
+	case *client: // no-op
+	default:
+		panic(fmt.Sprintf("unexpected generator type: %T", g))
 	}
 
 	return nil
@@ -224,6 +268,26 @@ func defaultPluralOverrides() map[string]string {
 	}
 }
 
+const (
+	stringGoType     = "string"
+	boolGoType       = "bool"
+	intGoType        = "int"
+	int8GoType       = "int8"
+	int16GoType      = "int16"
+	int32GoType      = "int32"
+	int64GoType      = "int64"
+	uintGoType       = "uint"
+	uint8GoType      = "uint8"
+	uint16GoType     = "uint16"
+	uint32GoType     = "uint32"
+	uint64GoType     = "uint64"
+	uintptrGoType    = "uintptr"
+	float32GoType    = "float32"
+	float64GoType    = "float64"
+	complex64GoType  = "complex64"
+	complex128GoType = "complex128"
+)
+
 func defaultTypescriptOverrides() map[string]string {
 	return map[string]string{
 		reflect.TypeOf(ccc.UUID{}).String():            "uuid",
@@ -234,22 +298,22 @@ func defaultTypescriptOverrides() map[string]string {
 		reflect.TypeOf(decimal.NullDecimal{}).String(): "number",
 		reflect.TypeOf(time.Time{}).String():           "Date",
 		reflect.TypeOf(civil.Date{}).String():          "civilDate",
-		"bool":                                         "boolean",
-		"string":                                       "string",
-		"int":                                          "number",
-		"int8":                                         "number",
-		"int16":                                        "number",
-		"int32":                                        "number",
-		"int64":                                        "number",
-		"uint":                                         "number",
-		"uint8":                                        "number",
-		"uint16":                                       "number",
-		"uint32":                                       "number",
-		"uint64":                                       "number",
-		"uintptr":                                      "number",
-		"float32":                                      "number",
-		"float64":                                      "number",
-		"complex64":                                    "number",
-		"complex128":                                   "number",
+		boolGoType:                                     "boolean",
+		stringGoType:                                   "string",
+		intGoType:                                      "number",
+		int8GoType:                                     "number",
+		int16GoType:                                    "number",
+		int32GoType:                                    "number",
+		int64GoType:                                    "number",
+		uintGoType:                                     "number",
+		uint8GoType:                                    "number",
+		uint16GoType:                                   "number",
+		uint32GoType:                                   "number",
+		uint64GoType:                                   "number",
+		uintptrGoType:                                  "number",
+		float32GoType:                                  "number",
+		float64GoType:                                  "number",
+		complex64GoType:                                "number",
+		complex128GoType:                               "number",
 	}
 }

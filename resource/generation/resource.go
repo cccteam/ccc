@@ -25,6 +25,7 @@ type resourceGenerator struct {
 	businessLayerPackageDir string
 }
 
+// NewResourceGenerator constructs a new Generator for generating a resource-driven API.
 func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, localPackages []string, options ...ResourceOption) (Generator, error) {
 	r := &resourceGenerator{
 		resourceDestination: filepath.Dir(resourceSourcePath),
@@ -40,11 +41,6 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 		return nil, err
 	}
 
-	// We always want to cache the consolidatedRoute data for the typescript gen
-	if err := c.genCache.Store("app", consolidatedRouteCache, c.consolidateConfig); err != nil {
-		return nil, err
-	}
-
 	r.client = c
 
 	if err := resolveOptions(r, opts); err != nil {
@@ -54,14 +50,14 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 	return r, nil
 }
 
-func (r *resourceGenerator) Generate(ctx context.Context) error {
+func (r *resourceGenerator) Generate() error {
 	log.Println("Starting ResourceGenerator Generation")
 
 	begin := time.Now()
 
 	packageMap, err := parser.LoadPackages(r.loadPackages...)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "parser.LoadPackages()")
 	}
 
 	resourcesPkg := parser.ParsePackage(packageMap["resources"])
@@ -86,10 +82,7 @@ func (r *resourceGenerator) Generate(ctx context.Context) error {
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
-		r.rpcMethods, err = r.structsToRPCMethods(rpcStructs)
-		if err != nil {
-			return err
-		}
+		r.rpcMethods = r.structsToRPCMethods(rpcStructs)
 
 		if err := r.runRPCGeneration(); err != nil {
 			return err
@@ -107,13 +100,22 @@ func (r *resourceGenerator) Generate(ctx context.Context) error {
 		}
 	}
 
+	// We always want to cache the consolidatedRoute data for the typescript gen
+	if err := r.genCache.Store("app", consolidatedRouteCache, r.consolidateConfig); err != nil {
+		return errors.Wrap(err, "cache.Cache.Store()")
+	}
+
+	if err := r.populateCache(); err != nil {
+		return err
+	}
+
 	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
 
 	return nil
 }
 
 func (r *resourceGenerator) runResourcesGeneration() error {
-	if err := RemoveGeneratedFiles(r.resourceDestination, Prefix); err != nil {
+	if err := removeGeneratedFiles(r.resourceDestination, prefix); err != nil {
 		return err
 	}
 
@@ -121,14 +123,10 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 		return errors.Wrap(err, "c.generateResourceInterfaces()")
 	}
 
-	for i := range r.resources {
-		if err := r.generateResources(r.resources[i]); err != nil {
+	for _, res := range r.resources {
+		if err := r.generateResources(res); err != nil {
 			return errors.Wrap(err, "c.generateResources()")
 		}
-	}
-
-	if err := r.generateResourceTests(); err != nil {
-		return errors.Wrap(err, "c.generateResourceTests()")
 	}
 
 	return nil
@@ -163,38 +161,9 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 	return nil
 }
 
-func (r *resourceGenerator) generateResourceTests() error {
-	output, err := r.generateTemplateOutput("resourcesTestTemplate", resourcesTestTemplate, map[string]any{
-		"Source":    r.resourceFilePath,
-		"Resources": r.resources,
-	})
-	if err != nil {
-		return errors.Wrap(err, "generateTemplateOutput()")
-	}
-
-	destinationFile := filepath.Join(r.resourceDestination, resourcesTestFileName)
-
-	file, err := os.Create(destinationFile)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	output, err = r.GoFormatBytes(file.Name(), output)
-	if err != nil {
-		return err
-	}
-
-	if err := r.WriteBytesToFile(file, output); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (r *resourceGenerator) generateResources(res resourceInfo) error {
+func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	begin := time.Now()
-	fileName := generatedGoFileName(strings.ToLower(r.caser.ToSnake(r.pluralize(res.Name()))))
+	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
 	destinationFilePath := filepath.Join(r.resourceDestination, fileName)
 
 	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
@@ -256,14 +225,4 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 	}
 
 	return nil
-}
-
-func (r *resourceGenerator) doesResourceExist(resourceName string) bool {
-	for i := range r.resources {
-		if r.pluralize(r.resources[i].Name()) == resourceName {
-			return true
-		}
-	}
-
-	return false
 }

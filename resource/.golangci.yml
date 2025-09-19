@@ -59,13 +59,19 @@ linters:
             - $all
           allow:
             - $gostd
+            - cloud.google.com/go/civil
             - cloud.google.com/go/spanner
             - github.com/cccteam
+            - github.com/cloudspannerecosystem/memefish
+            - github.com/cloudspannerecosystem/memefish/ast
             - github.com/ettle/strcase
             - github.com/go-playground/errors/v5
             - github.com/gofrs/uuid
             - github.com/google/go-cmp/cmp
             - github.com/momaek/formattag/align
+            - github.com/shopspring/decimal
+            - golang.org/x/tools/go/packages
+            - golang.org/x/tools/imports
     dupl:
       threshold: 100
     exhaustive:
@@ -129,6 +135,9 @@ linters:
           - nlreturn
           - scopelint
         path: _test\.go
+      - linters:
+          - lll
+        path: generation/templates\.go
     paths:
       - third_party$
       - builtin$

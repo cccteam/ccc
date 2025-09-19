@@ -1,7 +1,9 @@
+// Package genlang provides parsing for godoc comment annotations
 package genlang
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
@@ -9,7 +11,8 @@ import (
 
 type (
 	scanMode int
-	Scanner  interface {
+	// Scanner provides methods for parsing godoc annotations on various types from the generation/parser package.
+	Scanner interface {
 		ScanStruct(*parser.Struct) (StructResults, error)
 		ScanNamedType(*parser.NamedType) (NamedTypeResults, error)
 	}
@@ -22,22 +25,26 @@ type (
 		maxKeywordLength int
 	}
 
+	// StructResults holds the MultiMaps of keywords and arguments for a parser.Struct and each of its fields.
 	StructResults struct {
 		Struct MultiMap
 		Fields []MultiMap
 	}
 
+	// NamedTypeResults holds the MultiMap of keywords and arguments for a parser.NamedType
 	NamedTypeResults struct {
 		Named MultiMap
 	}
 )
 
+// Scanning modes configure the scanner for different generation/parser types.
 const (
 	ScanStruct scanMode = iota
 	ScanField
 	ScanNamedType
 )
 
+// NewScanner constructs a Scanner with the given keywords and keyword options.
 func NewScanner(keywords map[string]KeywordOpts) Scanner {
 	maxKeywordLength := 0
 	for k := range keywords {
@@ -53,6 +60,7 @@ func NewScanner(keywords map[string]KeywordOpts) Scanner {
 	}
 }
 
+// ScanStruct scans the godoc annotations of a parser.Struct using the keywords & flags provided to the scanner.
 func (s *scanner) ScanStruct(pStruct *parser.Struct) (StructResults, error) {
 	s.src = []byte(pStruct.Comments())
 	s.mode = ScanStruct
@@ -79,6 +87,7 @@ func (s *scanner) ScanStruct(pStruct *parser.Struct) (StructResults, error) {
 	return StructResults{structResults, fieldResults}, nil
 }
 
+// ScanNamedType scans the godoc annotations of a parser.NamedType using the keywords & flags provided to the scanner.
 func (s *scanner) ScanNamedType(namedType *parser.NamedType) (NamedTypeResults, error) {
 	s.src = []byte(namedType.Comments)
 	s.mode = ScanNamedType
@@ -96,7 +105,7 @@ func (s *scanner) next() (byte, bool) {
 	}
 
 	char := s.src[s.pos]
-	s.pos += 1
+	s.pos++
 
 	return char, false
 }
@@ -145,7 +154,8 @@ func (s *scanner) scan() error {
 			)
 			if peek, ok := s.peekNext(); ok && peek == byte('(') {
 				if !s.canHaveArguments(key) {
-					s.pos += 1 // push error caret to start of arguments
+					s.pos++ // push error caret to start of arguments
+
 					return errors.New(s.errorPostscript("unexpected argument", "%s keyword cannot take arguments here", key))
 				}
 
@@ -170,14 +180,14 @@ func (s *scanner) scan() error {
 }
 
 func (s *scanner) keywordArgs(key string) (*Args, error) {
-	if s.keywords[key][s.mode]&DualArgsRequired != 0 {
+	if hasFlag(s.keywords[key][s.mode], DualArgsRequired) {
 		arg1, err := s.scanArguments()
 		if err != nil {
 			return nil, err
 		}
 
 		if peek, ok := s.peekNext(); !ok || peek != byte('(') {
-			return nil, errors.New(s.error("expected second argument for %s, found %q", key, string(peek)))
+			return nil, errors.New(s.error("expected second argument for @%s, found %q", key, string(peek)))
 		}
 
 		arg2b, err := s.scanArguments()
@@ -193,6 +203,13 @@ func (s *scanner) keywordArgs(key string) (*Args, error) {
 	arg, err := s.scanArguments()
 	if err != nil {
 		return nil, err
+	}
+
+	if hasFlag(s.keywords[key][s.mode], StrictSingleArgs) && slices.Contains(arg, ',') {
+		position := slices.Index(arg, ',')
+		highlightedComma := fmt.Sprintf("\"%s\033[91m%s <--\033[0m\"", string(arg[:position]), string(arg[position]))
+
+		return nil, errors.New(s.errorPostscript(fmt.Sprintf("@%s should have exactly one argument", key), "illegal comma %s", highlightedComma))
 	}
 
 	return &Args{Arg1: string(arg)}, nil
@@ -276,7 +293,7 @@ loop:
 			buf = append(buf, char)
 
 		case char == byte('('):
-			openParenthesis += 1
+			openParenthesis++
 			if opened {
 				buf = append(buf, char)
 			} else {
@@ -284,7 +301,7 @@ loop:
 			}
 
 		case char == byte(')'):
-			openParenthesis -= 1
+			openParenthesis--
 			if openParenthesis == 0 {
 				break loop
 			}
@@ -299,6 +316,7 @@ loop:
 
 	if openParenthesis > 0 {
 		s.pos = currentPos
+
 		return nil, errors.New(s.error("unclosed parenthesis"))
 	}
 
@@ -319,7 +337,8 @@ func (s *scanner) consumeIdentifier() []byte {
 
 		if char == byte('(') {
 			// we want s.peek or s.next to pick this `(` up so we wind the position back by one
-			s.pos -= 1
+			s.pos--
+
 			break
 		}
 
@@ -344,7 +363,7 @@ func (s *scanner) matchKeyword() (string, bool) {
 		// so we should only do it if they're nearly the same length
 		v := len(ident) - len(key)
 		if -2 <= v && v <= 2 {
-			if ss := similarity(string(ident), string(key)); ss > matchSimilarity && ss > 0.65 {
+			if ss := similarity(string(ident), key); ss > matchSimilarity && ss > 0.65 {
 				possibleMatch = key
 				matchSimilarity = ss
 			}
@@ -377,7 +396,8 @@ func similarity(a, b string) float64 {
 
 	for i := range short {
 		if short[i] == long[i] {
-			matches += 1
+			matches++
+
 			continue
 		}
 
@@ -394,8 +414,8 @@ func similarity(a, b string) float64 {
 
 		for j := left; j < right; j++ {
 			if short[i] == long[j] {
-				matches += 1
-				outOfOrder += 1
+				matches++
+				outOfOrder++
 			}
 		}
 	}
@@ -426,7 +446,7 @@ func (s *scanner) peekNext() (byte, bool) {
 			break
 		}
 
-		counter += 1
+		counter++
 	}
 
 	return s.src[s.pos+counter], true
@@ -443,7 +463,7 @@ func (s *scanner) errorPostscript(msg, postscript string, a ...any) string {
 
 	// rewind the position back 1 character for error printing
 	if s.pos > 0 {
-		s.pos -= 1
+		s.pos--
 	}
 
 	buffer := make([]byte, 0, len(s.src)+len(postscript))
@@ -454,13 +474,14 @@ srcLoop:
 		case s.src[i] == byte('\n') && i < s.pos:
 			buffer = make([]byte, 0, len(s.src)+len(postscript)-offset)
 			offset = 0
+
 			continue
 		case s.src[i] == byte('\n') && i >= s.pos:
 			break srcLoop
 		case s.src[i] == byte('\t') && i < s.pos:
 			offset += 4
 		case i < s.pos:
-			offset += 1
+			offset++
 		}
 		buffer = append(buffer, s.src[i])
 	}
@@ -487,9 +508,5 @@ func isWhitespace(b byte) bool {
 }
 
 func hasFlag(option, flag keywordFlag) bool {
-	if option&flag != 0 {
-		return true
-	}
-
-	return false
+	return option&flag != 0
 }

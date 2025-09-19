@@ -26,7 +26,8 @@ type typescriptGenerator struct {
 	spannerEmulatorVersion string
 }
 
-func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, targetDir string, rc *resource.Collection, options ...TSOption) (Generator, error) {
+// NewTypescriptGenerator constructs a new Generator for generating Typescript for a resource-driven Angular app.
+func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL, targetDir string, rc *resource.Collection, options ...TSOption) (Generator, error) {
 	if rc == nil {
 		return nil, errors.New("resource collection cannot be nil")
 	}
@@ -56,14 +57,14 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 	return t, nil
 }
 
-func (t *typescriptGenerator) Generate(ctx context.Context) error {
+func (t *typescriptGenerator) Generate() error {
 	log.Println("Starting TypescriptGenerator Generation")
 
 	begin := time.Now()
 
 	packageMap, err := parser.LoadPackages(t.loadPackages...)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "parser.LoadPackages()")
 	}
 
 	resourcesPkg := parser.ParsePackage(packageMap["resources"])
@@ -73,12 +74,11 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 		return err
 	}
 
-	t.resources = make([]resourceInfo, 0, len(resources))
-	for i := range resources {
-		resource := accesstypes.Resource(t.pluralize(resources[i].Name()))
-		if t.rc.ResourceExists(resource) {
-			resources[i].Fields = t.resourceFieldsTypescriptType(resources[i].Fields)
-			t.resources = append(t.resources, resources[i])
+	t.resources = make([]*resourceInfo, 0, len(resources))
+	for _, res := range resources {
+		if t.rc.ResourceExists(accesstypes.Resource(t.pluralize(res.Name()))) {
+			res.Fields = t.resourceFieldsTypescriptType(res.Fields)
+			t.resources = append(t.resources, res)
 		}
 	}
 
@@ -87,13 +87,10 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
-		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs)
-		if err != nil {
-			return err
-		}
+		t.rpcMethods = t.structsToRPCMethods(rpcStructs)
 
-		for i := range t.rpcMethods {
-			t.rpcMethods[i].Fields = t.rpcFieldsTypescriptType(t.rpcMethods[i].Fields)
+		for _, rpcMethod := range t.rpcMethods {
+			rpcMethod.Fields = t.rpcFieldsTypescriptType(rpcMethod.Fields)
 		}
 	}
 
@@ -120,7 +117,7 @@ func (t *typescriptGenerator) Generate(ctx context.Context) error {
 
 func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.NamedType) error {
 	if !t.genMetadata && !t.genPermission {
-		if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+		if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
 			return errors.Wrap(err, "RemoveGeneratedFiles()")
 		}
 	}
@@ -135,7 +132,7 @@ func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.N
 func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	begin := time.Now()
 	if !t.genMetadata {
-		if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+		if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
 			return errors.Wrap(err, "RemoveGeneratedFiles()")
 		}
 	}
@@ -179,7 +176,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 }
 
 func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
-	if err := RemoveGeneratedFiles(t.typescriptDestination, HeaderComment); err != nil {
+	if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
@@ -296,39 +293,39 @@ func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) erro
 	return nil
 }
 
-func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []resourceField) []resourceField {
-	for i := range fields {
-		if override, ok := t.typescriptOverrides[fields[i].TypeName()]; ok {
-			fields[i].typescriptType = override
+func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceField) []*resourceField {
+	for _, field := range fields {
+		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
+			field.typescriptType = override
 		} else {
-			fields[i].typescriptType = "string"
+			field.typescriptType = stringGoType
 		}
 
-		if fields[i].IsIterable() {
-			fields[i].typescriptType += "[]"
+		if field.IsIterable() {
+			field.typescriptType += "[]"
 		}
 
-		if fields[i].IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(fields[i].ReferencedResource)) {
-			fields[i].IsEnumerated = true
+		if field.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
+			field.IsEnumerated = true
 		}
 	}
 
 	return fields
 }
 
-func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []rpcField) []rpcField {
-	for i := range fields {
-		if override, ok := t.typescriptOverrides[fields[i].TypeName()]; ok {
-			if override == "boolean" && fields[i].Type() == "*bool" {
+func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []*rpcField) []*rpcField {
+	for _, field := range fields {
+		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
+			if override == "boolean" && field.Type() == "*bool" {
 				panic("Bool pointer (*bool) not currently supported for rpc methods.")
 			}
-			fields[i].typescriptType = override
+			field.typescriptType = override
 		} else {
-			fields[i].typescriptType = "string"
+			field.typescriptType = stringGoType
 		}
 
-		if fields[i].IsIterable() {
-			fields[i].typescriptType += "[]"
+		if field.IsIterable() {
+			field.typescriptType += "[]"
 		}
 	}
 

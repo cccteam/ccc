@@ -1,4 +1,5 @@
-// package generation provides the ability to generate resource, handler, and typescript permissions and metadata code from a resource file.
+// Package generation provides tools for generating resource-driven API boilerplate
+// in Go & TypeScript based on Go structures and a Spanner DB schema.
 package generation
 
 import (
@@ -13,13 +14,11 @@ import (
 	"text/template"
 	"unicode/utf8"
 
-	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/cache"
 	"github.com/cccteam/ccc/pkg"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
-	"github.com/cccteam/spxscan"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
@@ -31,22 +30,20 @@ const (
 	typeScriptGeneratorType generatorType = "typescript"
 )
 
+var caser = strcase.NewCaser(false, nil, nil)
+
 type client struct {
 	loadPackages       []string
 	resourceFilePath   string
-	resources          []resourceInfo
-	rpcMethods         []rpcMethodInfo
+	resources          []*resourceInfo
+	rpcMethods         []*rpcMethodInfo
 	localPackages      []string
 	migrationSourceURL string
-	db                 *spanner.Client
-	caser              *strcase.Caser
 	tableMap           map[string]*tableMetadata
-	enumValues         map[string][]enumData
-	handlerOptions     map[string]map[HandlerType][]OptionType
+	enumValues         map[string][]*enumData
 	pluralOverrides    map[string]string
 	consolidateConfig
 	genRPCMethods          bool
-	cleanup                func()
 	spannerEmulatorVersion string
 	FileWriter
 	genCache *cache.Cache
@@ -80,16 +77,23 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 		return nil, err
 	}
 
-	if isSchemaClean {
-		if ok, err := c.loadAllCachedData(genType); err != nil {
+	switch {
+	case isSchemaClean:
+		if loaded, err := c.loadAllCachedData(genType); err != nil {
 			return nil, err
-		} else if !ok {
-			if err := c.runSpanner(ctx); err != nil {
-				return nil, err
-			}
+		} else if loaded {
+			break
 		}
-	} else {
-		if err := c.runSpanner(ctx); err != nil {
+
+		fallthrough
+	default:
+		if genType == typeScriptGeneratorType {
+			return nil, errors.New("schema cache is out of date, please run Resource Generator first")
+		}
+		if err := c.genCache.DeleteSubpath("migrations"); err != nil {
+			return nil, errors.Wrap(err, "cache.Cache.DeleteSubpath()")
+		}
+		if err := c.runSpanner(ctx, c.spannerEmulatorVersion, migrationSourceURL); err != nil {
 			return nil, err
 		}
 	}
@@ -97,15 +101,17 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 	c.loadPackages = append(c.loadPackages, resourceFilePath)
 	c.resourceFilePath = resourceFilePath
 	c.localPackages = localPackages
-	c.caser = strcase.NewCaser(false, nil, nil)
 	c.migrationSourceURL = migrationSourceURL
 
 	return c, nil
 }
 
-func (c *client) Close() {
-	c.cleanup()
-	c.genCache.Close()
+func (c *client) Close() error {
+	if err := c.genCache.Close(); err != nil {
+		return errors.Wrap(err, "cache.Cache.Close()")
+	}
+
+	return nil
 }
 
 func (c *client) localPackageImports() string {
@@ -116,199 +122,39 @@ func (c *client) localPackageImports() string {
 	return `"` + strings.Join(c.localPackages, "\"\n\t\"") + `"`
 }
 
-func (c *client) newTableMap(ctx context.Context) (map[string]*tableMetadata, error) {
-	qry := `WITH DEPENDENCIES AS (
-		SELECT
-			kcu1.TABLE_NAME, 
-			kcu1.COLUMN_NAME, 
-			(SUM(CASE tc.CONSTRAINT_TYPE WHEN 'PRIMARY KEY' THEN 1 ELSE 0 END)) AS IS_PRIMARY_KEY,
-			(SUM(CASE tc.CONSTRAINT_TYPE WHEN 'FOREIGN KEY' THEN 1 ELSE 0 END)) AS IS_FOREIGN_KEY,
-			SUM(CASE tc.CONSTRAINT_TYPE WHEN 'PRIMARY KEY' THEN kcu1.ORDINAL_POSITION ELSE NULL END) AS KEY_ORDINAL_POSITION,
-			(CASE MIN(CASE 
-					WHEN kcu4.TABLE_NAME IS NOT NULL THEN 1
-					WHEN kcu2.TABLE_NAME IS NOT NULL THEN 2
-					ELSE 3
-					END)
-			WHEN 1 THEN MAX(kcu4.TABLE_NAME)
-			WHEN 2 THEN MAX(kcu2.TABLE_NAME)
-			ELSE NULL
-			END) AS REFERENCED_TABLE,
-			(CASE MIN(CASE 
-					WHEN kcu4.COLUMN_NAME IS NOT NULL THEN 1
-					WHEN kcu2.COLUMN_NAME IS NOT NULL THEN 2
-					ELSE 3
-					END)
-			WHEN 1 THEN MAX(kcu4.COLUMN_NAME)
-			WHEN 2 THEN MAX(kcu2.COLUMN_NAME)
-			ELSE NULL
-			END) AS REFERENCED_COLUMN
-		FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu1 -- All columns that are Primary Key or Foreign Key
-		JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON tc.CONSTRAINT_NAME = kcu1.CONSTRAINT_NAME -- Identify whether column is Primary Key or Foreign Key
-		-- All unique constraints (e.g. PK_Persons) referenced by foreign key constraints (e.g. FK_PersonPhones_PersonId)
-		LEFT JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_NAME = kcu1.CONSTRAINT_NAME 
-		LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu2 ON kcu2.CONSTRAINT_NAME = rc.UNIQUE_CONSTRAINT_NAME -- Table & Column belonging to referenced unique constraint (e.g. Persons, Id)
-			AND kcu2.ORDINAL_POSITION = kcu1.ORDINAL_POSITION
-		LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu3 ON kcu3.TABLE_NAME = kcu2.TABLE_NAME AND kcu3.COLUMN_NAME = kcu2.COLUMN_NAME
-		LEFT JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc2 ON rc2.CONSTRAINT_NAME = kcu3.CONSTRAINT_NAME
-		LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu4 ON kcu4.CONSTRAINT_NAME = rc2.UNIQUE_CONSTRAINT_NAME -- Table & Column belonging to 1-jump referenced unique constraint (e.g. DoeInstitutions, Id)
-			AND kcu4.ORDINAL_POSITION = kcu1.ORDINAL_POSITION
-		WHERE
-			kcu1.CONSTRAINT_SCHEMA != 'INFORMATION_SCHEMA'
-			AND tc.CONSTRAINT_TYPE IN ('PRIMARY KEY', 'FOREIGN KEY')
-		GROUP BY kcu1.TABLE_NAME, kcu1.COLUMN_NAME
-	)
-	SELECT
-		c.TABLE_NAME,
-		c.COLUMN_NAME,
-		(c.IS_NULLABLE = 'YES') AS IS_NULLABLE,
-		c.SPANNER_TYPE,
-		(d.IS_PRIMARY_KEY > 0 and d.IS_PRIMARY_KEY IS NOT NULL) as IS_PRIMARY_KEY,
-		(d.IS_FOREIGN_KEY > 0 and d.IS_FOREIGN_KEY IS NOT NULL) as IS_FOREIGN_KEY,
-		d.REFERENCED_TABLE,
-		d.REFERENCED_COLUMN,
-		(t.TABLE_NAME IS NULL AND v.TABLE_NAME IS NOT NULL) as IS_VIEW,
-		v.VIEW_DEFINITION,
-		ic.INDEX_NAME IS NOT NULL AS IS_INDEX,
-		MAX(COALESCE(i.IS_UNIQUE, false)) AS IS_UNIQUE_INDEX,
-		c.GENERATION_EXPRESSION,
-		c.ORDINAL_POSITION,
-		COALESCE(d.KEY_ORDINAL_POSITION, 1) AS KEY_ORDINAL_POSITION,
-		c.COLUMN_DEFAULT IS NOT NULL AS HAS_DEFAULT,
-	FROM INFORMATION_SCHEMA.COLUMNS c
-		LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
-			AND t.TABLE_TYPE = 'BASE TABLE'
-		LEFT JOIN INFORMATION_SCHEMA.VIEWS v ON c.TABLE_NAME = v.TABLE_NAME
-		LEFT JOIN DEPENDENCIES d ON c.TABLE_NAME = d.TABLE_NAME
-			AND c.COLUMN_NAME = d.COLUMN_NAME
-		LEFT JOIN INFORMATION_SCHEMA.INDEX_COLUMNS ic ON c.COLUMN_NAME = ic.COLUMN_NAME
-			AND c.TABLE_NAME = ic.TABLE_NAME
-		LEFT JOIN INFORMATION_SCHEMA.INDEXES i ON ic.INDEX_NAME = i.INDEX_NAME 
-	WHERE 
-		c.TABLE_SCHEMA != 'INFORMATION_SCHEMA'
-		AND c.COLUMN_NAME NOT LIKE '%_HIDDEN'
-	GROUP BY c.TABLE_NAME, c.COLUMN_NAME, IS_NULLABLE, c.SPANNER_TYPE,
-	d.IS_PRIMARY_KEY, d.IS_FOREIGN_KEY, d.REFERENCED_COLUMN, d.REFERENCED_TABLE,
-	IS_VIEW, v.VIEW_DEFINITION, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT
-	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
-
-	return c.createTableMapUsingQuery(ctx, qry)
-}
-
-func (c *client) createTableMapUsingQuery(ctx context.Context, qry string) (map[string]*tableMetadata, error) {
-	log.Println("Creating spanner table lookup...")
-
-	stmt := spanner.Statement{SQL: qry}
-
-	var result []InformationSchemaResult
-	if err := spxscan.Select(ctx, c.db.Single(), &result, stmt); err != nil {
-		return nil, errors.Wrap(err, "spxscan.Select()")
+func (t *tableMetadata) addSchemaResult(result *informationSchemaResult) {
+	column, ok := t.Columns[result.ColumnName]
+	if !ok {
+		column = columnMeta{
+			SpannerType:        result.SpannerType,
+			OrdinalPosition:    result.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
+			KeyOrdinalPosition: result.KeyOrdinalPosition - 1,
+		}
 	}
 
-	m := make(map[string]*tableMetadata)
-	for _, r := range result {
-		table, ok := m[r.TableName]
-		if !ok {
-			table = &tableMetadata{
-				Columns:       make(map[string]columnMeta),
-				SearchIndexes: make(map[string][]*searchExpression),
-				IsView:        r.IsView,
-			}
-		}
-
-		if r.SpannerType == "TOKENLIST" {
-			continue
-		}
-
-		column, ok := table.Columns[r.ColumnName]
-		if !ok {
-			column = columnMeta{
-				ColumnName:         r.ColumnName,
-				SpannerType:        r.SpannerType,
-				OrdinalPosition:    r.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
-				KeyOrdinalPosition: r.KeyOrdinalPosition - 1,
-			}
-		}
-
-		if r.IsPrimaryKey {
-			table.PkCount++
-			column.IsPrimaryKey = true
-		}
-
-		if r.IsForeignKey {
-			column.IsForeignKey = true
-
-			if r.ReferencedTable != nil {
-				column.ReferencedTable = *r.ReferencedTable
-			}
-
-			if r.ReferencedColumn != nil {
-				column.ReferencedColumn = *r.ReferencedColumn
-			}
-		}
-
-		if r.IsNullable {
-			column.IsNullable = true
-		}
-
-		if r.IsIndex {
-			column.IsIndex = true
-		}
-
-		if r.IsUniqueIndex {
-			column.IsUniqueIndex = true
-		}
-
-		if r.HasDefault {
-			column.HasDefault = true
-		}
-
-		table.Columns[r.ColumnName] = column
-		m[r.TableName] = table
+	if result.IsPrimaryKey {
+		t.PkCount++
+		column.IsPrimaryKey = true
 	}
 
-	for _, r := range result {
-		if r.SpannerType != "TOKENLIST" {
-			continue
+	if result.IsForeignKey {
+		column.IsForeignKey = true
+
+		if result.ReferencedTable != nil {
+			column.ReferencedTable = *result.ReferencedTable
 		}
 
-		table := m[r.TableName]
-
-		var generationExpr string
-		switch {
-		// If the TokenList column is in a View, we don't have direct access to
-		// the generation expression. We need to grab the source table's name from
-		// the view definition then find it in the information schema results.
-		case r.IsView:
-			sourceTableName, err := originTableName(*r.ViewDefinition, r.ColumnName)
-			if err != nil {
-				return nil, err
-			}
-
-			sourceTableIndex := slices.IndexFunc(result, func(e InformationSchemaResult) bool {
-				return e.TableName == sourceTableName && e.ColumnName == r.ColumnName
-			})
-			if sourceTableIndex < 0 {
-				return nil, errors.Newf("could not find source table %q for TOKENLIST column %q in %q", sourceTableName, r.ColumnName, r.TableName)
-			}
-
-			generationExpr = *result[sourceTableIndex].GenerationExpression
-
-		case r.GenerationExpression == nil:
-			return nil, errors.Newf("generation expression not found for tokenlist column=`%s` table=`%s`", r.ColumnName, r.TableName)
-
-		default:
-			generationExpr = *r.GenerationExpression
+		if result.ReferencedColumn != nil {
+			column.ReferencedColumn = *result.ReferencedColumn
 		}
-
-		expressionFields, err := searchExpressionFields(generationExpr, table.Columns)
-		if err != nil {
-			return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", r.TableName)
-		}
-
-		table.SearchIndexes[r.ColumnName] = append(table.SearchIndexes[r.ColumnName], expressionFields...)
 	}
 
-	return m, nil
+	column.IsNullable = result.IsNullable
+	column.IsIndex = result.IsIndex
+	column.IsUniqueIndex = result.IsUniqueIndex
+	column.HasDefault = result.HasDefault
+
+	t.Columns[result.ColumnName] = column
 }
 
 func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
@@ -320,48 +166,13 @@ func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
 	return table, nil
 }
 
-func (c *client) fetchEnumValues(ctx context.Context) (map[string][]enumData, error) {
-	qry := `
-	SELECT DISTINCT
-		c.TABLE_NAME
-	FROM INFORMATION_SCHEMA.COLUMNS c
-	LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
-		AND t.TABLE_TYPE = 'BASE TABLE'
-	WHERE c.COLUMN_NAME = 'Description';
-	`
-	stmt := spanner.Statement{SQL: qry}
-
-	type tableNameResults struct {
-		TableName string `spanner:"TABLE_NAME"`
-	}
-
-	var results []tableNameResults
-	if err := spxscan.Select(ctx, c.db.Single(), &results, stmt); err != nil {
-		return nil, errors.Wrap(err, "spxscan.Select()")
-	}
-
-	enumResults := make(map[string][]enumData, len(results))
-	for _, tnr := range results {
-		stmt := spanner.Statement{SQL: fmt.Sprintf("SELECT DISTINCT Id, Description FROM %s ORDER BY Id", tnr.TableName)}
-
-		var results []enumData
-		if err := spxscan.Select(ctx, c.db.Single(), &results, stmt); err != nil {
-			return nil, errors.Wrap(err, "spxscan.Select()")
-		}
-
-		enumResults[tnr.TableName] = results
-	}
-
-	return enumResults, nil
-}
-
 func (c *client) templateFuncs() map[string]any {
 	templateFuncs := map[string]any{
 		"Pluralize":                    c.pluralize,
 		"GoCamel":                      strcase.ToGoCamel,
-		"Camel":                        c.caser.ToCamel,
-		"Pascal":                       c.caser.ToPascal,
-		"Kebab":                        c.caser.ToKebab,
+		"Camel":                        strcase.ToCamel,
+		"Pascal":                       strcase.ToPascal,
+		"Kebab":                        strcase.ToKebab,
 		"Lower":                        strings.ToLower,
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
 		"FormatRPCInterfaceTypes":      formatRPCInterfaceTypes,
@@ -378,12 +189,14 @@ func (c *client) templateFuncs() map[string]any {
 			}
 		},
 		"DetermineTestURL": func(resource resourceInfo, routePrefix string, route generatedRoute) string {
-			if !resource.IsView && strings.EqualFold(route.Method, "get") && (strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
+			if !resource.IsView &&
+				strings.EqualFold(route.Method, "get") &&
+				(strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
 				if resource.HasCompoundPrimaryKey() {
-					url := fmt.Sprintf("/%s/%s", routePrefix, c.caser.ToKebab(c.pluralize(resource.Name())))
+					url := fmt.Sprintf("/%s/%s", routePrefix, caser.ToKebab(c.pluralize(resource.Name())))
 
 					for _, key := range resource.PrimaryKeys() {
-						url += fmt.Sprintf("/test%s%s", c.caser.ToPascal(resource.Name()), key.Name())
+						url += fmt.Sprintf("/test%s%s", caser.ToPascal(resource.Name()), key.Name())
 					}
 
 					return url
@@ -391,19 +204,21 @@ func (c *client) templateFuncs() map[string]any {
 
 				return fmt.Sprintf("/%s/%s/%s",
 					routePrefix,
-					c.caser.ToKebab(c.pluralize(resource.Name())),
-					strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(resource.Name()))),
+					caser.ToKebab(c.pluralize(resource.Name())),
+					strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(resource.Name()))),
 				)
 			}
 
 			return route.Path
 		},
 		"DetermineParameters": func(resource resourceInfo, route generatedRoute) string {
-			if !resource.IsView && strings.EqualFold(route.Method, "get") && (strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
+			if !resource.IsView &&
+				strings.EqualFold(route.Method, "get") &&
+				(strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
 				if resource.HasCompoundPrimaryKey() {
 					params := "map[string]string{"
 					for _, key := range resource.PrimaryKeys() {
-						params += fmt.Sprintf(`"%[1]s%[3]s": "test%[2]s%[3]s", `, strcase.ToGoCamel(resource.Name()), c.caser.ToPascal(resource.Name()), key.Name())
+						params += fmt.Sprintf(`"%[1]s%[3]s": "test%[2]s%[3]s", `, strcase.ToGoCamel(resource.Name()), caser.ToPascal(resource.Name()), key.Name())
 					}
 
 					params += "}"
@@ -411,7 +226,7 @@ func (c *client) templateFuncs() map[string]any {
 					return params
 				}
 
-				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(resource.Name()+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", c.caser.ToPascal(resource.Name()))))
+				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(resource.Name()+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(resource.Name()))))
 			}
 
 			return "map[string]string{}"
@@ -434,7 +249,7 @@ func (c *client) templateFuncs() map[string]any {
 
 			return lowerFirst + s[runeWidth:]
 		},
-		"SanitizeIdentifier": c.sanitizeEnumIdentifier,
+		"SanitizeIdentifier": sanitizeEnumIdentifier,
 	}
 
 	return templateFuncs
@@ -454,8 +269,8 @@ func (c *client) generateTemplateOutput(templateName, fileTemplate string, data 
 	return buf.Bytes(), nil
 }
 
-func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]enumData, error) {
-	enumMap := make(map[string][]enumData)
+func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]*enumData, error) {
+	enumMap := make(map[string][]*enumData)
 	for _, namedType := range namedTypes {
 		scanner := genlang.NewScanner(keywords())
 		result, err := scanner.ScanNamedType(namedType)
@@ -470,8 +285,8 @@ func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map
 			continue
 		}
 
-		if t := namedType.TypeInfo.TypeName(); t != "string" {
-			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), "string", t)
+		if t := namedType.TypeName(); t != stringGoType {
+			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), stringGoType, t)
 		}
 
 		data, ok := c.enumValues[tableName]
@@ -508,7 +323,7 @@ func (c *client) pluralize(value string) string {
 	return pluralValue
 }
 
-func RemoveGeneratedFiles(directory string, method GeneratedFileDeleteMethod) error {
+func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) error {
 	log.Printf("removing generated files in directory %q...", directory)
 	dir, err := os.Open(directory)
 	if err != nil {
@@ -531,11 +346,11 @@ func RemoveGeneratedFiles(directory string, method GeneratedFileDeleteMethod) er
 		}
 
 		switch method {
-		case Prefix:
+		case prefix:
 			if err := removeGeneratedFileByPrefix(directory, f); err != nil {
 				return errors.Wrap(err, "removeGeneratedFileByPrefix()")
 			}
-		case HeaderComment:
+		case headerComment:
 			if err := removeGeneratedFileByHeaderComment(directory, f); err != nil {
 				return errors.Wrap(err, "removeGeneratedFileByHeaderComment()")
 			}
@@ -598,28 +413,29 @@ func formatInterfaceTypes(types []string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
 }
 
-func formatResourceInterfaceTypes(resources []resourceInfo) string {
-	names := make([]string, len(resources))
-	for i, resource := range resources {
-		names[i] = resource.Name()
+func formatResourceInterfaceTypes(resources []*resourceInfo) string {
+	names := make([]string, 0, len(resources))
+	for _, res := range resources {
+		names = append(names, res.Name())
 	}
 
 	return formatInterfaceTypes(names)
 }
 
-func formatRPCInterfaceTypes(rpcMethods []rpcMethodInfo) string {
-	names := make([]string, len(rpcMethods))
-	for i, rpcMethod := range rpcMethods {
-		names[i] = rpcMethod.Name()
+func formatRPCInterfaceTypes(rpcMethods []*rpcMethodInfo) string {
+	names := make([]string, 0, len(rpcMethods))
+	for _, rpcMethod := range rpcMethods {
+		names = append(names, rpcMethod.Name())
 	}
 
 	return formatInterfaceTypes(names)
 }
 
 func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*searchExpression, error) {
-	var flds []*searchExpression
+	matches := tokenizeRegex.FindAllStringSubmatch(expression, -1)
+	flds := make([]*searchExpression, 0, len(matches))
 
-	for _, match := range tokenizeRegex.FindAllStringSubmatch(expression, -1) {
+	for _, match := range matches {
 		if len(match) != 3 {
 			return nil, errors.Newf("expression `%s` has unexpected number of matches: `%d` (expected 3)", expression, len(match))
 		}
@@ -655,25 +471,25 @@ func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*s
 // Views do not have Read handlers.
 // Consolidated resources do not have Patch handlers.
 // Ignored handler types are filtered out.
-func (c *client) resourceEndpoints(resource resourceInfo) []HandlerType {
+func resourceEndpoints(res *resourceInfo) []HandlerType {
 	handlerTypes := []HandlerType{ListHandler}
 
-	if !resource.IsView {
+	if !res.IsView {
 		handlerTypes = append(handlerTypes, ReadHandler)
 
-		if !resource.IsConsolidated {
+		if !res.IsConsolidated {
 			handlerTypes = append(handlerTypes, PatchHandler)
 		}
 	}
 
 	handlerTypes = slices.DeleteFunc(handlerTypes, func(ht HandlerType) bool {
-		return slices.Contains(resource.SuppressedHandlers[:], ht)
+		return slices.Contains(res.SuppressedHandlers[:], ht)
 	})
 
 	return handlerTypes
 }
 
-func (c *client) sanitizeEnumIdentifier(name string) string {
+func sanitizeEnumIdentifier(name string) string {
 	var result []byte
 	for _, b := range []byte(name) {
 		switch {
@@ -689,7 +505,7 @@ func (c *client) sanitizeEnumIdentifier(name string) string {
 		}
 	}
 
-	return c.caser.ToPascal(string(result))
+	return caser.ToPascal(string(result))
 }
 
 func startStandaloneNumber(result []byte, b byte) bool {
