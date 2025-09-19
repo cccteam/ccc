@@ -124,12 +124,11 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo
 
 		for i, field := range s.Fields() {
 			field := rpcField{Field: field}
-			if referencedResource, hasEnumeratedTag := field.LookupTag("enumerated"); hasEnumeratedTag {
-				if !c.doesResourceExist(referencedResource) {
-					return nil, errors.Newf("field %s \n%s", field.Name(), s.PrintWithFieldError(i, fmt.Sprintf("referenced resource %q in enumerated tag does not exist", referencedResource)))
+			if enumeratedResource, hasEnumeratedTag := field.LookupTag("enumerated"); hasEnumeratedTag {
+				if !c.doesResourceExist(enumeratedResource) {
+					return nil, errors.Newf("field %s \n%s", field.Name(), s.PrintWithFieldError(i, fmt.Sprintf("referenced resource %q in enumerated tag does not exist", enumeratedResource)))
 				}
-				field.IsEnumerated = true
-				field.ReferencedResource = referencedResource
+				field.enumeratedResource = &enumeratedResource
 			}
 
 			rpcMethod.Fields = append(rpcMethod.Fields, &field)
