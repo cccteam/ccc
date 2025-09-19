@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/cccteam/ccc/compare/resource/v0.4.0...resource/v0.4.1) (2025-09-19)
+
+
+### Features
+
+* Support enumerated rpc fields via 'enumerated' json tag ([#461](https://github.com/cccteam/ccc/issues/461)) ([54aef53](https://github.com/cccteam/ccc/commit/54aef538ebc00e33734da80ecec0507fe7937583))
+
 ## [0.4.0](https://github.com/cccteam/ccc/compare/resource/v0.3.2...resource/v0.4.0) (2025-09-19)
 
 
