@@ -77,19 +77,19 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 		return nil, err
 	}
 
-	if isSchemaClean {
-		if ok, err := c.loadAllCachedData(genType); err != nil {
+	switch {
+	case isSchemaClean:
+		if loaded, err := c.loadAllCachedData(genType); err != nil {
 			return nil, err
-		} else if !ok {
-			if err := c.genCache.DeleteSubpath("migrations"); err != nil {
-				return nil, errors.Wrap(err, "cache.Cache.DeleteSubpath()")
-			}
-
-			if err := c.runSpanner(ctx, c.spannerEmulatorVersion, migrationSourceURL); err != nil {
-				return nil, err
-			}
+		} else if loaded {
+			break
 		}
-	} else {
+
+		fallthrough
+	default:
+		if genType == typeScriptGeneratorType {
+			return nil, errors.New("schema cache is out of date, please run Resource Generator first")
+		}
 		if err := c.genCache.DeleteSubpath("migrations"); err != nil {
 			return nil, errors.Wrap(err, "cache.Cache.DeleteSubpath()")
 		}
@@ -107,9 +107,6 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 }
 
 func (c *client) Close() error {
-	if err := c.populateCache(); err != nil {
-		return err
-	}
 	if err := c.genCache.Close(); err != nil {
 		return errors.Wrap(err, "cache.Cache.Close()")
 	}

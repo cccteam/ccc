@@ -41,11 +41,6 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 		return nil, err
 	}
 
-	// We always want to cache the consolidatedRoute data for the typescript gen
-	if err := c.genCache.Store("app", consolidatedRouteCache, c.consolidateConfig); err != nil {
-		return nil, errors.Wrap(err, "cache.Cache.Store()")
-	}
-
 	r.client = c
 
 	if err := resolveOptions(r, opts); err != nil {
@@ -103,6 +98,15 @@ func (r *resourceGenerator) Generate() error {
 		if err := r.runHandlerGeneration(); err != nil {
 			return err
 		}
+	}
+
+	// We always want to cache the consolidatedRoute data for the typescript gen
+	if err := r.genCache.Store("app", consolidatedRouteCache, r.consolidateConfig); err != nil {
+		return errors.Wrap(err, "cache.Cache.Store()")
+	}
+
+	if err := r.populateCache(); err != nil {
+		return err
 	}
 
 	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
