@@ -114,7 +114,7 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 	return resources, nil
 }
 
-func (c *client) structsToRPCMethods(structs []*parser.Struct) []*rpcMethodInfo {
+func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo, error) {
 	rpcMethods := make([]*rpcMethodInfo, 0, len(structs))
 	for _, s := range structs {
 		rpcMethod := &rpcMethodInfo{
@@ -122,13 +122,21 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct) []*rpcMethodInfo 
 			Fields: make([]*rpcField, 0, len(s.Fields())),
 		}
 
-		for _, field := range s.Fields() {
-			rpcMethod.Fields = append(rpcMethod.Fields, &rpcField{Field: field})
+		for i, field := range s.Fields() {
+			field := rpcField{Field: field}
+			if enumeratedResource, hasEnumeratedTag := field.LookupTag("enumerated"); hasEnumeratedTag {
+				if !c.doesResourceExist(enumeratedResource) {
+					return nil, errors.Newf("field %s \n%s", field.Name(), s.PrintWithFieldError(i, fmt.Sprintf("referenced resource %q in enumerated tag does not exist", enumeratedResource)))
+				}
+				field.enumeratedResource = &enumeratedResource
+			}
+
+			rpcMethod.Fields = append(rpcMethod.Fields, &field)
 		}
 		rpcMethods = append(rpcMethods, rpcMethod)
 	}
 
-	return rpcMethods
+	return rpcMethods, nil
 }
 
 func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {

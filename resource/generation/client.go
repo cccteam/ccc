@@ -508,6 +508,16 @@ func sanitizeEnumIdentifier(name string) string {
 	return caser.ToPascal(string(result))
 }
 
+func (c *client) doesResourceExist(resourceName string) bool {
+	for i := range c.resources {
+		if c.pluralize(c.resources[i].Name()) == resourceName {
+			return true
+		}
+	}
+
+	return false
+}
+
 func startStandaloneNumber(result []byte, b byte) bool {
 	if len(result) == 0 && ('0' <= b && b <= '9') {
 		return true
