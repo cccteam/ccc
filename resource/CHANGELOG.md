@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.2](https://github.com/cccteam/ccc/compare/resource/v0.4.1...resource/v0.4.2) (2025-09-20)
+
+
+### Bug Fixes
+
+* Remove hard coded paths for RPC generation ([#463](https://github.com/cccteam/ccc/issues/463)) ([2fcca2c](https://github.com/cccteam/ccc/commit/2fcca2c067c1763faf1586b68deec3b3b03ec786))
+
+
+### Code Refactoring
+
+* Remove undefined for fields in rpc  ([#456](https://github.com/cccteam/ccc/issues/456)) ([fa703b8](https://github.com/cccteam/ccc/commit/fa703b88573f3260330567268ada804763682aba))
+
 ## [0.4.1](https://github.com/cccteam/ccc/compare/resource/v0.4.0...resource/v0.4.1) (2025-09-19)
 
 
