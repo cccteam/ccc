@@ -149,7 +149,7 @@ func (r *resourceGenerator) generateRPCInterfaces() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(".", "businesslayer", "rpc", generatedGoFileName("rpc_iface"))
+	destinationFile := filepath.Join(".", r.rpcPackageDir, generatedGoFileName("rpc_iface"))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -179,7 +179,7 @@ func (r *resourceGenerator) generateBusinessLayerInterfaces() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(".", "businesslayer", generatedGoFileName("iface"))
+	destinationFile := filepath.Join(".", r.businessLayerPackageDir, generatedGoFileName("iface"))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
