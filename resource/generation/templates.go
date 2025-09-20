@@ -1031,7 +1031,7 @@ export interface RPCFieldMeta {
 
 export interface MethodMeta {
   route: string;
-  fields?: RPCFieldMeta[];
+  fields: RPCFieldMeta[];
 }
 
 export type MethodMap = Record<Method, MethodMeta>;
