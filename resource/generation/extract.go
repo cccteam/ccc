@@ -21,12 +21,6 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 			return nil, err
 		}
 
-		if err := validateNullability(pStruct, table); err != nil {
-			resourceErrors = append(resourceErrors, err)
-
-			continue
-		}
-
 		resource := &resourceInfo{
 			TypeInfo:       pStruct.TypeInfo,
 			Fields:         make([]*resourceField, 0, len(pStruct.Fields())),
@@ -36,9 +30,25 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 			PkCount:        table.PkCount,
 		}
 
+		fields, err := newResourceFields(resource, pStruct, table)
+		if err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+		resource.Fields = fields
+
+		if err := validateNullability(pStruct, table); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
 		result, err := genlang.NewScanner(keywords()).ScanStruct(pStruct)
 		if err != nil {
-			return nil, errors.Wrap(err, "scanner.ScanStruct()")
+			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
+
+			continue
 		}
 
 		if result.Struct.Has(suppressKeyword) {
@@ -58,7 +68,9 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 					resource.SuppressedHandlers[i] = PatchHandler
 					resource.IsConsolidated = false
 				default:
-					return nil, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s", handlerArg.Arg1, resourceName)
+					resourceErrors = append(resourceErrors, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s", handlerArg.Arg1, resourceName))
+
+					continue
 				}
 			}
 		}
@@ -76,42 +88,58 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 			resource.ValidateUpdateType = result.Struct.GetOne(validateUpdateTypeKeyword).Arg1
 		}
 
-		for i, field := range pStruct.Fields() {
-			spannerTag, ok := field.LookupTag("spanner")
-			if !ok {
-				return nil, errors.Newf("field %s \n%s", field.Name(), pStruct.PrintWithFieldError(i, "missing spanner tag"))
-			}
-			tableColumn, ok := table.Columns[spannerTag]
-			if !ok {
-				return nil, errors.Newf("field %s \n%s", field.Name(), pStruct.PrintWithFieldError(i, fmt.Sprintf("not a valid column in table %q", c.pluralize(resourceName))))
-			}
-			_, hasIndexTag := field.LookupTag("index")
-			if !table.IsView && hasIndexTag {
-				return nil, errors.Newf("cannot use index tag on field %s because resource %s is not virtual/view", field.Name(), resource.Name())
-			}
-			resource.Fields = append(resource.Fields, &resourceField{
-				Field:              field,
-				Parent:             resource,
-				IsPrimaryKey:       tableColumn.IsPrimaryKey,
-				IsForeignKey:       tableColumn.IsForeignKey,
-				IsIndex:            tableColumn.IsIndex || hasIndexTag,
-				IsUniqueIndex:      tableColumn.IsUniqueIndex,
-				IsNullable:         tableColumn.IsNullable,
-				OrdinalPosition:    tableColumn.OrdinalPosition,
-				KeyOrdinalPosition: tableColumn.KeyOrdinalPosition,
-				ReferencedResource: tableColumn.ReferencedTable,
-				ReferencedField:    tableColumn.ReferencedColumn,
-				HasDefault:         tableColumn.HasDefault,
-			})
-		}
 		resources = append(resources, resource)
 	}
 
 	if len(resourceErrors) > 0 {
-		return nil, errors.Join(resourceErrors...)
+		return nil, errors.Wrapf(errors.Join(resourceErrors...), "encountered %d errors converting structs to resources", len(resourceErrors))
 	}
 
 	return resources, nil
+}
+
+func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tableMetadata) ([]*resourceField, error) {
+	fields := make([]*resourceField, 0, len(pStruct.Fields()))
+	for i, field := range pStruct.Fields() {
+		spannerTag, ok := field.LookupTag("spanner")
+		if !ok {
+			pStruct.AddFieldError(i, "missing spanner tag")
+
+			continue
+		}
+		tableColumn, ok := table.Columns[spannerTag]
+		if !ok {
+			pStruct.AddFieldError(i, "spanner tag does not match any table columns")
+
+			continue
+		}
+		if !table.IsView && field.HasTag("index") {
+			pStruct.AddFieldError(i, "cannot use index tag in non-virtual resource")
+
+			continue
+		}
+
+		fields = append(fields, &resourceField{
+			Field:              field,
+			Parent:             parent,
+			IsPrimaryKey:       tableColumn.IsPrimaryKey,
+			IsForeignKey:       tableColumn.IsForeignKey,
+			IsIndex:            tableColumn.IsIndex || field.HasTag("index"),
+			IsUniqueIndex:      tableColumn.IsUniqueIndex,
+			IsNullable:         tableColumn.IsNullable,
+			OrdinalPosition:    tableColumn.OrdinalPosition,
+			KeyOrdinalPosition: tableColumn.KeyOrdinalPosition,
+			ReferencedResource: tableColumn.ReferencedTable,
+			ReferencedField:    tableColumn.ReferencedColumn,
+			HasDefault:         tableColumn.HasDefault,
+		})
+	}
+
+	if pStruct.HasErrors() {
+		return nil, errors.Newf("struct %s has field errors:\n%s", pStruct.Name(), pStruct.PrintErrors())
+	}
+
+	return fields, nil
 }
 
 func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo, error) {
