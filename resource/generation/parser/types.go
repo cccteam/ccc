@@ -103,10 +103,11 @@ type Interface struct {
 // Struct is an abstraction combining types.Struct and ast.StructType for simpler parsing.
 type Struct struct {
 	*TypeInfo
-	fields     []*Field
-	interfaces []string
-	methodSet  map[string]struct{}
-	comments   string
+	fields      []*Field
+	interfaces  []string
+	methodSet   map[string]struct{}
+	comments    string
+	fieldErrors [][]string
 }
 
 func newStruct(obj types.Object) *Struct {
@@ -213,6 +214,84 @@ func (s *Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
 	}
 
 	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
+}
+
+// PrintErrors pretty-prints the struct annotated with field errors
+// if any have been stored with AddFieldError.
+func (s *Struct) PrintErrors() string {
+	if s.fieldErrors == nil {
+		return ""
+	}
+
+	var (
+		maxNameLength int
+		maxTypeLength int
+	)
+
+	for _, field := range s.fields {
+		maxNameLength = max(len(field.Name()), maxNameLength)
+		maxTypeLength = max(len(field.Type()), maxTypeLength)
+	}
+
+	numNameTabs := maxNameLength/8 + 1
+	numTypeTabs := maxTypeLength/8 + 1
+
+	msg := strings.Builder{}
+	msg.WriteString(fmt.Sprintf("type %s struct {\n", s.Name()))
+	for i, field := range s.fields {
+		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.Name())/8))
+		typeTabs := strings.Repeat("\t", numTypeTabs-(len(field.Type())/8))
+
+		if len(s.fieldErrors[i]) == 0 {
+			msg.WriteString("\t")
+			msg.WriteString(field.Name() + nameTabs)
+			msg.WriteString(field.Type() + typeTabs)
+			msg.WriteString(string(field.tags))
+			msg.WriteString("\n")
+
+			continue
+		}
+
+		msg.WriteString("\033[91m\t")
+		msg.WriteString(field.Name() + nameTabs)
+		msg.WriteString(field.Type() + typeTabs)
+		msg.WriteString(string(field.tags))
+		msg.WriteString(" << ")
+		if len(s.fieldErrors[i]) > 1 {
+			msg.WriteString(fmt.Sprintf("[%d] ", len(s.fieldErrors[i])))
+		}
+		msg.WriteString("[")
+		for j, fieldError := range s.fieldErrors[i] {
+			if j > 0 {
+				msg.WriteString(", ")
+			}
+			msg.WriteString(fieldError)
+
+			if j == len(s.fieldErrors[i])-1 {
+				msg.WriteString("]\033[0m\n")
+			}
+		}
+	}
+	msg.WriteString("}")
+
+	return msg.String()
+}
+
+// AddFieldError stores an error message on a struct field to be printed in PrintErrors
+func (s *Struct) AddFieldError(fieldIndex int, errMsg string) {
+	if fieldIndex > len(s.fields) {
+		panic("fieldIndex out of range")
+	}
+	if s.fieldErrors == nil {
+		s.fieldErrors = make([][]string, len(s.fields))
+	}
+
+	s.fieldErrors[fieldIndex] = append(s.fieldErrors[fieldIndex], errMsg)
+}
+
+// HasErrors returns true if a field error has been stored by AddFieldError
+func (s *Struct) HasErrors() bool {
+	return s.fieldErrors != nil
 }
 
 // NumFields is the number of fields in the struct's type declaration.
