@@ -23,6 +23,7 @@ type QuerySet[Resource Resourcer] struct {
 	fields                 []accesstypes.Field
 	sortFields             []SortField
 	limit                  *uint64
+	offset                 *uint64
 	returnAccessableFields bool
 	rMeta                  *ResourceMetadata[Resource]
 	resourceSet            *ResourceSet[Resource]
@@ -296,13 +297,19 @@ func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
 		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
 	}
 
+	offsetClause := ""
+	if q.offset != nil {
+		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
+	}
+
 	stmt := spanner.NewStatement(fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s
 			%s
 			%s
-			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause,
+			%s
+			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause, offsetClause,
 	))
 	maps.Insert(stmt.Params, maps.All(where.SpannerParams))
 
@@ -367,13 +374,19 @@ func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
 	}
 
+	offsetClause := ""
+	if q.offset != nil {
+		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
+	}
+
 	sql := fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s
 			%s
 			%s
-			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause,
+			%s
+			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause, offsetClause,
 	)
 
 	resolvedSQL, err := substituteSQLParams(where.SQL, where.PostgreSQLParams, PostgreSQL)
@@ -451,6 +464,10 @@ func (q *QuerySet[Resource]) SetSortFields(sortFields []SortField) {
 
 func (q *QuerySet[Resource]) SetLimit(limit *uint64) {
 	q.limit = limit
+}
+
+func (q *QuerySet[Resource]) SetOffset(offset *uint64) {
+	q.offset = offset
 }
 
 func moreThan(cnt int, exp ...bool) bool {
