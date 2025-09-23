@@ -463,7 +463,7 @@ func TestQueryClause_Validate(t *testing.T) {
 				}
 				// Specific error message check, as per original assert.EqualError
 				// The Validate() method returns a static error string.
-				expectedErrMsg := "Invalid filter query. Filter must contain at least one column that is indexed"
+				expectedErrMsg := "invalid filter query, filter must contain at least one column that is indexed"
 				if err != nil && err.Error() != expectedErrMsg {
 					t.Errorf("%s: expected error message %q, got %q", tc.name, expectedErrMsg, err.Error())
 				}
