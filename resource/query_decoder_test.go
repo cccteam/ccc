@@ -45,6 +45,8 @@ type TestRequest struct {
 }
 
 func TestQueryDecoder_parseQuery(t *testing.T) {
+	t.Parallel()
+
 	test := []struct {
 		name                string
 		queryValues         url.Values
@@ -363,6 +365,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 
 	for _, tt := range test {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			resSet, err := NewResourceSet[TestResource, TestRequest]()
 			if err != nil {
 				t.Fatalf("Failed to create ResourceSet for test case %s: %v", tt.name, err)

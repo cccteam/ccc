@@ -96,7 +96,6 @@ const (
 
 const (
 	resourceInterfaceOutputName   = "resources_iface"
-	resourcesTestFileName         = "resource_types_test.go"
 	resourceEnumsFileName         = "enums"
 	routesOutputName              = "routes"
 	routerTestOutputName          = "routes_test"

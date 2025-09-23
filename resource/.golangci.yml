@@ -26,7 +26,6 @@ linters:
     - govet
     - importas
     - ineffassign
-    - lll
     - makezero
     - misspell
     - nakedret
@@ -65,9 +64,11 @@ linters:
             - github.com/cloudspannerecosystem/memefish
             - github.com/cloudspannerecosystem/memefish/ast
             - github.com/ettle/strcase
+            - github.com/go-chi/chi/v5
             - github.com/go-playground/errors/v5
             - github.com/gofrs/uuid
             - github.com/google/go-cmp/cmp
+            - github.com/google/uuid
             - github.com/momaek/formattag/align
             - github.com/shopspring/decimal
             - golang.org/x/tools/go/packages
@@ -97,8 +98,6 @@ linters:
       keywords:
         - TODO
         - BUG
-    lll:
-      line-length: 200
     misspell:
       locale: US
     nestif:
@@ -130,14 +129,40 @@ linters:
           - gochecknoinits
           - goconst
           - gocyclo
-          - lll
           - mnd
           - nlreturn
           - scopelint
+          - gocognit
+          - funlen
+          - cyclop
+          - nestif
         path: _test\.go
       - linters:
-          - lll
-        path: generation/templates\.go
+          - funlen
+        path: resourceset\.go
+        text: permissionsFromTags
+      - linters:
+          - gocyclo
+          - cyclop
+          - funlen
+        path: patchset\.go
+        text: 'match'
+      - linters:
+          - gocognit
+        path: parser\.go
+        text: 'ParsePackage'
+      - linters:
+          - funlen
+        path: filterparser\.go
+        text: 'parseConditionToken'
+      - linters:
+          - funlen
+        path: decoder\.go
+        text: 'decodeToPatch'
+      - linters:
+          - staticcheck
+        path: query_decoder_test\.go
+        text: 'QF1001: could apply De Morgan''s law'
     paths:
       - third_party$
       - builtin$

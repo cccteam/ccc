@@ -2,6 +2,7 @@ package resource
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"reflect"
 	"strings"
@@ -67,7 +68,11 @@ func (p KeySet) KeySet() spanner.KeySet {
 			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 				keys = append(keys, refVal.Int())
 			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-				keys = append(keys, int64(refVal.Uint()))
+				if u := refVal.Uint(); u <= uint64(math.MaxInt64) {
+					keys = append(keys, int64(u))
+				} else {
+					keys = append(keys, v.Value)
+				}
 			case reflect.String:
 				keys = append(keys, refVal.String())
 			case reflect.Float32, reflect.Float64:
@@ -101,7 +106,7 @@ func (p KeySet) Len() int {
 }
 
 func (p KeySet) keys() []accesstypes.Field {
-	var pKeys []accesstypes.Field
+	pKeys := make([]accesstypes.Field, 0, len(p.keyParts))
 	for _, keypart := range p.keyParts {
 		pKeys = append(pKeys, keypart.Key)
 	}

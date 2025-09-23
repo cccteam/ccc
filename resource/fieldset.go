@@ -35,5 +35,6 @@ func (p *fieldSet) KeySet() KeySet {
 
 func (p *fieldSet) IsSet(field accesstypes.Field) bool {
 	_, found := p.data[field]
+
 	return found
 }

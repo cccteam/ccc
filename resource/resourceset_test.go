@@ -153,7 +153,6 @@ func TestNewResourceSet(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		tt.testFn(t, tt.name, tt.args.permissions, tt.wants)
 	}
 }

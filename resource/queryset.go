@@ -145,7 +145,7 @@ func (q *QuerySet[Resource]) KeySet() KeySet {
 }
 
 func (q *QuerySet[Resource]) buildOrderByClause() (string, error) {
-	var orderByParts []string
+	orderByParts := make([]string, 0, len(q.sortFields))
 	for _, sf := range q.sortFields {
 		cacheEntry, ok := q.rMeta.fieldMap[accesstypes.Field(sf.Field)]
 		if !ok {

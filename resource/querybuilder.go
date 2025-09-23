@@ -38,7 +38,7 @@ type QueryClause struct {
 // Validate checks if the query clause has at least one indexed field.
 func (qc QueryClause) Validate() error {
 	if !qc.hasIndexedField {
-		return stderr.New("Invalid filter query. Filter must contain at least one column that is indexed")
+		return stderr.New("invalid filter query, filter must contain at least one column that is indexed")
 	}
 
 	return nil

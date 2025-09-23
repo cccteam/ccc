@@ -3,7 +3,6 @@ package parser
 import (
 	"fmt"
 	"go/ast"
-	"go/token"
 	"go/types"
 	"reflect"
 	"slices"
@@ -338,7 +337,6 @@ func (f Field) HasTag(key string) bool {
 
 // AsStruct converts this Field to a Struct. Returns nil if the Field's type is not a struct type.
 func (f Field) AsStruct() *Struct {
-	// TODO: convert to function that takes Field as an argument and use function in template funcMap
 	s := newStruct(f.obj)
 
 	if s.obj == nil {
@@ -407,11 +405,6 @@ func (f Field) TypeArgs() string {
 	}
 
 	return ""
-}
-
-// positionString formats the Field's name and position in a token.FileSet. Intended for debugging.
-func (f Field) positionString(fset *token.FileSet) string {
-	return fmt.Sprintf("%s at %s", f.Name(), fset.Position(f.astInfo.Pos()))
 }
 
 // NamedType is any distinct named type

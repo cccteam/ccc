@@ -49,7 +49,6 @@ func TestNewFieldMapper(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := NewRequestFieldMapper(tt.args.v)
@@ -96,7 +95,6 @@ func TestFieldMapper_StructFieldName(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			f := &RequestFieldMapper{
@@ -136,7 +134,6 @@ func TestFieldMapper_Len(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			f := &RequestFieldMapper{
@@ -180,7 +177,6 @@ func TestFieldMapper_Fields(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			f := &RequestFieldMapper{
@@ -307,7 +303,6 @@ func Test_tagToFieldMap(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, gotFileds, err := tagToFieldMap(tt.args.v)

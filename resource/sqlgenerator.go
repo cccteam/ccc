@@ -145,7 +145,7 @@ func (s *sqlGenerator) generateLogicalOpSQL(ln *LogicalOpNode) (string, []QueryP
 		return "", nil, errors.Wrap(err, "failed to generate right side of logical operation")
 	}
 
-	sqlOperator := ""
+	var sqlOperator string
 	switch ln.Operator {
 	case OperatorAnd:
 		sqlOperator = "AND"
@@ -267,7 +267,7 @@ func substituteSQLParams(sql string, params any, dialect SQLDialect) (string, er
 			placeholder := "@" + k
 			// Using fmt.Sprintf for value substitution, similar to original behavior.
 			// String values ideally should be SQL-escaped and quoted for actual query execution.
-			valStr := ""
+			var valStr string
 			if strVal, isStr := v.(string); isStr {
 				// Simple quoting for strings for debug output
 				valStr = "'" + strings.ReplaceAll(strVal, "'", "''") + "'"
@@ -298,7 +298,7 @@ func substituteSQLParams(sql string, params any, dialect SQLDialect) (string, er
 			v := pgParams[i]
 			// Using fmt.Sprintf for value substitution.
 			// String values ideally should be SQL-escaped and quoted for actual query execution.
-			valStr := ""
+			var valStr string
 			if strVal, isStr := v.(string); isStr {
 				// Simple quoting for strings for debug output
 				valStr = "'" + strings.ReplaceAll(strVal, "'", "''") + "'"
