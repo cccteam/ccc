@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.3](https://github.com/cccteam/ccc/compare/resource/v0.4.2...resource/v0.4.3) (2025-09-23)
+
+
+### Bug Fixes
+
+* validate spanner tag before validating field-column nullability ([#465](https://github.com/cccteam/ccc/issues/465)) ([6a5e859](https://github.com/cccteam/ccc/commit/6a5e859febc5e9fbf3700795beabeb83be109e65))
+
+
+### Code Refactoring
+
+* Remove business layer ([#467](https://github.com/cccteam/ccc/issues/467)) ([58241eb](https://github.com/cccteam/ccc/commit/58241eb9132e65fd1075c30d688508ca17751263))
+
 ## [0.4.2](https://github.com/cccteam/ccc/compare/resource/v0.4.1...resource/v0.4.2) (2025-09-20)
 
 
