@@ -315,11 +315,12 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 
 			ast, parseErr := parser.Parse()
 			if tt.wantErrMsg != "" {
-				if parseErr == nil {
+				switch {
+				case parseErr == nil:
 					// If parseErr is nil, proceed to generation, the error might be from generation step
-				} else if !strings.Contains(parseErr.Error(), tt.wantErrMsg) {
+				case !strings.Contains(parseErr.Error(), tt.wantErrMsg):
 					t.Fatalf("parser.Parse() error = %v, wantErrMsg %s", parseErr, tt.wantErrMsg)
-				} else { // Expected parse error occurred
+				default: // Expected parse error occurred
 					return // Test successful
 				}
 			} else if parseErr != nil { // Unexpected parse error

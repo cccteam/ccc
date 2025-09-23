@@ -111,7 +111,7 @@ func TestQuerySet_SpannerStmt_OrderBy_Limit(t *testing.T) {
 				t.Fatalf("SpannerStmt() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			sql := stmt.Statement.SQL // Access as a field, not a function
+			sql := stmt.SQL // Access as a field, not a function
 			if tt.assertFunc != nil {
 				tt.assertFunc(t, sql, tt.wantQueryContains)
 			} else {

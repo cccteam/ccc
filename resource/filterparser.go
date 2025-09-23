@@ -130,8 +130,10 @@ func (cn *ConditionNode) String() string {
 		for i, v := range cn.Condition.Values {
 			strValues[i] = fmt.Sprintf("%v", v)
 		}
+
 		return fmt.Sprintf("%s:%s:(%s)", cn.Condition.Field, cn.Condition.Operator, strings.Join(strValues, ","))
 	}
+
 	return fmt.Sprintf("%s:%s:%v", cn.Condition.Field, cn.Condition.Operator, cn.Condition.Value)
 }
 
@@ -260,7 +262,11 @@ func (p *Parser) expectPeek(t TokenType) error {
 func (p *Parser) parseExpression() (ExpressionNode, error) {
 	prefix := p.prefixParseFns[p.current.Type]
 	if prefix == nil {
-		return nil, httpio.NewBadRequestMessagef("Invalid filter query. Unexpected token '%s' (type: %s) at the beginning of an expression or after an operator. Please ensure your query is correctly formatted (e.g., 'field:operator:value').", p.current.Value, p.current.Type)
+		return nil, httpio.NewBadRequestMessagef(
+			"Invalid filter query. Unexpected token '%s' (type: %s) at the beginning of an expression or after an operator. Please ensure your query is correctly formatted (e.g., 'field:operator:value').",
+			p.current.Value,
+			p.current.Type,
+		)
 	}
 
 	leftExp, err := prefix()
@@ -408,12 +414,14 @@ func (p *Parser) convertValue(strValue string, kind reflect.Kind) (any, error) {
 		if err != nil {
 			return nil, httpio.NewBadRequestMessagef("value '%s' in condition '%s' is not a valid integer: %v", strValue, p.current.Value, err)
 		}
+
 		return i, nil
 	case reflect.Bool:
 		b, err := strconv.ParseBool(strValue)
 		if err != nil {
 			return nil, httpio.NewBadRequestMessagef("value '%s' in condition '%s' is not a valid boolean: %v", strValue, p.current.Value, err)
 		}
+
 		return b, nil
 	case reflect.Float32, reflect.Float64:
 		f, err := strconv.ParseFloat(strValue, 64)
@@ -423,6 +431,7 @@ func (p *Parser) convertValue(strValue string, kind reflect.Kind) (any, error) {
 		if kind == reflect.Float32 {
 			return float32(f), nil
 		}
+
 		return f, nil
 	default:
 		return nil, httpio.NewBadRequestMessagef("Invalid value format. The value '%s' in condition '%s' cannot be processed due to an unsupported data type: %v.", strValue, p.current.Value, kind)

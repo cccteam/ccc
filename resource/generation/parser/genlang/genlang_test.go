@@ -28,6 +28,8 @@ var keywords = map[string]genlang.KeywordOpts{
 }
 
 func Test_ScanStruct(t *testing.T) {
+	t.Parallel()
+
 	type args struct {
 		filepath string
 	}

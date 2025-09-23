@@ -41,7 +41,6 @@ func TestConfig_SetDBType(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			originalCfgPtr := &tt.initialCfg
@@ -94,7 +93,6 @@ func TestConfig_SetChangeTrackingTable(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			originalCfgPtr := &tt.initialCfg
@@ -153,7 +151,6 @@ func TestConfig_SetTrackChanges(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			originalCfgPtr := &tt.initialCfg

@@ -215,7 +215,6 @@ func TestCollection_AddResource_And_AddMethodResource(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := NewCollection()
@@ -251,14 +250,12 @@ func TestCollection_AddResource_And_AddMethodResource(t *testing.T) {
 					t.Errorf("%s: resourceStore for scope %v or resource %v is nil, expected permissions %v", tt.name, tt.scope, tt.resource, tt.expectedPermissionsInStore)
 				}
 				c.mu.RUnlock()
-			} else {
-				if err == nil && tt.wantErrMsg == "" {
-					c.mu.RLock()
-					if c.resourceStore != nil && c.resourceStore[tt.scope] != nil && len(c.resourceStore[tt.scope][tt.resource]) > 0 {
-						t.Errorf("%s: expected resourceStore to be empty/nil when collectResourcePermissions is false, but found items for resource %v", tt.name, tt.resource)
-					}
-					c.mu.RUnlock()
+			} else if err == nil && tt.wantErrMsg == "" {
+				c.mu.RLock()
+				if c.resourceStore != nil && c.resourceStore[tt.scope] != nil && len(c.resourceStore[tt.scope][tt.resource]) > 0 {
+					t.Errorf("%s: expected resourceStore to be empty/nil when collectResourcePermissions is false, but found items for resource %v", tt.name, tt.resource)
 				}
+				c.mu.RUnlock()
 			}
 		})
 	}
@@ -428,15 +425,13 @@ func TestCollection_TypescriptData(t *testing.T) {
 				}
 			}
 		}
-	} else {
+	} else if len(data.Permissions) != 0 || len(data.ResourcePermissions) != 0 || len(data.Resources) != 0 ||
 		// This path taken if collectResourcePermissions is true by default.
 		// For an empty collection, all these should still be empty.
-		if len(data.Permissions) != 0 || len(data.ResourcePermissions) != 0 || len(data.Resources) != 0 ||
-			len(data.ResourceTags) != 0 ||
-			len(data.ResourcePermissionMap) != 0 ||
-			len(data.Domains) != 0 {
-			t.Errorf("TypescriptData is not zero-valued for an empty collection even when collectResourcePermissions=true. Got: %+v", data)
-		}
+		len(data.ResourceTags) != 0 ||
+		len(data.ResourcePermissionMap) != 0 ||
+		len(data.Domains) != 0 {
+		t.Errorf("TypescriptData is not zero-valued for an empty collection even when collectResourcePermissions=true. Got: %+v", data)
 	}
 }
 

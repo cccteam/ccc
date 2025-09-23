@@ -31,7 +31,6 @@ func TestNewPatchSet(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := NewPatchSet(NewResourceMetadata[nilResource]())
@@ -108,7 +107,6 @@ func TestPatchSet_Set(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet[nilResource]{
@@ -157,7 +155,6 @@ func TestPatchSet_Get(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet[nilResource]{
@@ -237,7 +234,6 @@ func TestPatchSet_SetKey(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet[nilResource]{
@@ -296,7 +292,6 @@ func TestPatchSet_Fields(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet[nilResource]{
@@ -348,7 +343,6 @@ func TestPatchSet_Len(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet[nilResource]{
@@ -413,7 +407,6 @@ func TestPatchSet_Data(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet[nilResource]{
@@ -490,7 +483,6 @@ func TestPatchSet_PrimaryKey(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet[nilResource]{
@@ -513,6 +505,8 @@ func TestPatchSet_PrimaryKey(t *testing.T) {
 }
 
 func TestPatchSet_HasKey(t *testing.T) {
+	t.Parallel()
+
 	type fields struct {
 		data    map[accesstypes.Field]any
 		pkey    map[accesstypes.Field]any
@@ -542,7 +536,6 @@ func TestPatchSet_HasKey(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet[nilResource]{
@@ -662,7 +655,6 @@ func Test_match(t *testing.T) {
 		{name: "*ccc.UUID matched", args: args{v: ccc.Ptr(ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423"))), v2: ccc.Ptr(ccc.Must(ccc.UUIDFromString("B517b48d-63a9-4c1f-b45b-8474b164e423")))}, wantMatched: false},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 

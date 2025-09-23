@@ -175,7 +175,6 @@ func TestCommitBuffer_Buffer(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			commitCalledCount := 0
@@ -283,7 +282,6 @@ func TestCommitBuffer_Commit(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			executeFuncCalled := false
