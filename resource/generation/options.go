@@ -181,14 +181,13 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 }
 
 // WithRPC enables generating RPC method handlers.
-func WithRPC(rpcPackageDir, businessPackageDir string) Option {
+func WithRPC(rpcPackageDir string) Option {
 	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
 
 	return func(g any) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
 			t.rpcPackageDir = rpcPackageDir
-			t.businessLayerPackageDir = businessPackageDir
 		case *typescriptGenerator: // no-op
 		case *client:
 			t.genRPCMethods = true
