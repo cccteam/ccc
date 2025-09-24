@@ -563,10 +563,26 @@ func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 		expectErr         bool
 	}{
 		{
+			name:              "GET with filter in query",
+			method:            http.MethodGet,
+			urlValues:         "filter=name:eq:John",
+			body:              "",
+			expectedASTString: "name_sql:eq:John",
+			expectErr:         false,
+		},
+		{
 			name:              "POST with filter in body",
 			method:            http.MethodPost,
 			urlValues:         "",
 			body:              `{"filter": "name:eq:John"}`,
+			expectedASTString: "name_sql:eq:John",
+			expectErr:         false,
+		},
+		{
+			name:              "POST with filter in URL",
+			method:            http.MethodPost,
+			urlValues:         "filter=name:eq:John",
+			body:              "{}",
 			expectedASTString: "name_sql:eq:John",
 			expectErr:         false,
 		},
@@ -577,14 +593,6 @@ func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 			body:           `{"filter": "name:eq:John"}`,
 			expectedErrMsg: "cannot have 'filter' parameter in both query and body",
 			expectErr:      true,
-		},
-		{
-			name:              "GET with filter in query",
-			method:            http.MethodGet,
-			urlValues:         "filter=name:eq:John",
-			body:              "",
-			expectedASTString: "name_sql:eq:John",
-			expectErr:         false,
 		},
 		{
 			name:           "POST with invalid JSON body",
@@ -599,15 +607,15 @@ func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 			method:    http.MethodPost,
 			urlValues: "",
 			body:      "",
-			expectErr: false,
+			expectErr: true,
 		},
 		{
-			name:              "POST with filter in URL",
+			name:              "POST invalid field in body",
 			method:            http.MethodPost,
 			urlValues:         "filter=name:eq:John",
-			body:              "",
-			expectedASTString: "name_sql:eq:John",
-			expectErr:         false,
+			body:              `{"a": "value"}`,
+			expectedASTString: "",
+			expectErr:         true,
 		},
 	}
 
