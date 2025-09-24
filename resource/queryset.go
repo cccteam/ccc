@@ -292,12 +292,12 @@ func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
 		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
 
-	limitClause := ""
+	var limitClause string
 	if q.limit != nil {
 		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
 	}
 
-	offsetClause := ""
+	var offsetClause string
 	if q.offset != nil {
 		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
 	}
@@ -369,12 +369,12 @@ func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
 
-	limitClause := ""
+	var limitClause string
 	if q.limit != nil {
 		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
 	}
 
-	offsetClause := ""
+	var offsetClause string
 	if q.offset != nil {
 		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
 	}
