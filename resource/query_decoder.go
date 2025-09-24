@@ -29,6 +29,10 @@ type parsedQueryParams struct {
 	Offset       *uint64
 }
 
+type filterBody struct {
+	Filter string `json:"filter"`
+}
+
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
@@ -36,10 +40,6 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	resourceSet        *ResourceSet[Resource]
 	parserFields       map[string]FieldInfo
 	structDecoder      *StructDecoder[filterBody]
-}
-
-type filterBody struct {
-	Filter string `json:"filter"`
 }
 
 func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource]) (*QueryDecoder[Resource, Request], error) {
