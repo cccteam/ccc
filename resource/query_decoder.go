@@ -25,6 +25,7 @@ type parsedQueryParams struct {
 	Search       *Search
 	ParsedAST    ExpressionNode
 	Limit        *uint64
+	Offset       *uint64
 }
 
 // QueryDecoder is a struct that returns columns that a given user has access to view
@@ -68,6 +69,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	qSet.SetSearchParam(parsedQuery.Search)
 	qSet.SetSortFields(parsedQuery.SortFields)
 	qSet.SetLimit(parsedQuery.Limit)
+	qSet.SetOffset(parsedQuery.Offset)
 	if len(parsedQuery.ColumnFields) == 0 {
 		qSet.ReturnAccessableFields(true)
 	} else {
@@ -101,6 +103,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 	var search *Search
 	var parsedAST ExpressionNode
 	var limit *uint64
+	var offset *uint64
 	var err error
 
 	if sortParamValue := query.Get("sort"); sortParamValue != "" {
@@ -119,6 +122,18 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		}
 		limit = &limitVal
 		delete(query, "limit")
+	} else {
+		defaultLimit := uint64(50)
+		limit = &defaultLimit
+	}
+
+	if offsetStr := query.Get("offset"); offsetStr != "" {
+		offsetVal, err := strconv.ParseUint(offsetStr, 10, 64)
+		if err != nil {
+			return nil, httpio.NewBadRequestMessagef("invalid offset value: %s", offsetStr)
+		}
+		offset = &offsetVal
+		delete(query, "offset")
 	}
 
 	if cols := query.Get("columns"); cols != "" {
@@ -167,6 +182,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		Search:       search,
 		ParsedAST:    parsedAST,
 		Limit:        limit,
+		Offset:       offset,
 	}, nil
 }
 

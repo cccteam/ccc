@@ -120,6 +120,12 @@ func (q *{{ .Resource.Name }}Query) Limit(n uint64) *{{ .Resource.Name }}Query {
 
 	return q
 }
+
+func (q *{{ .Resource.Name }}Query) Offset(n uint64) *{{ .Resource.Name }}Query {
+	q.qSet.SetOffset(&n)
+
+	return q
+}
 {{- end }}
 
 type {{ .Resource.Name }}Columns struct {

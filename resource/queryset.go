@@ -23,6 +23,7 @@ type QuerySet[Resource Resourcer] struct {
 	fields                 []accesstypes.Field
 	sortFields             []SortField
 	limit                  *uint64
+	offset                 *uint64
 	returnAccessableFields bool
 	rMeta                  *ResourceMetadata[Resource]
 	resourceSet            *ResourceSet[Resource]
@@ -291,9 +292,14 @@ func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
 		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
 
-	limitClause := ""
+	var limitClause string
 	if q.limit != nil {
 		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
+	}
+
+	var offsetClause string
+	if q.offset != nil {
+		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
 	}
 
 	stmt := spanner.NewStatement(fmt.Sprintf(`
@@ -302,7 +308,8 @@ func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
 			FROM %s
 			%s
 			%s
-			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause,
+			%s
+			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause, offsetClause,
 	))
 	maps.Insert(stmt.Params, maps.All(where.SpannerParams))
 
@@ -362,9 +369,14 @@ func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
 
-	limitClause := ""
+	var limitClause string
 	if q.limit != nil {
 		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
+	}
+
+	var offsetClause string
+	if q.offset != nil {
+		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
 	}
 
 	sql := fmt.Sprintf(`
@@ -373,7 +385,8 @@ func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 			FROM %s
 			%s
 			%s
-			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause,
+			%s
+			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause, offsetClause,
 	)
 
 	resolvedSQL, err := substituteSQLParams(where.SQL, where.PostgreSQLParams, PostgreSQL)
@@ -451,6 +464,10 @@ func (q *QuerySet[Resource]) SetSortFields(sortFields []SortField) {
 
 func (q *QuerySet[Resource]) SetLimit(limit *uint64) {
 	q.limit = limit
+}
+
+func (q *QuerySet[Resource]) SetOffset(offset *uint64) {
+	q.offset = offset
 }
 
 func moreThan(cnt int, exp ...bool) bool {
