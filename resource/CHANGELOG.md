@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.4](https://github.com/cccteam/ccc/compare/resource/v0.4.3...resource/v0.4.4) (2025-09-24)
+
+
+### Features
+
+* Implement Paging support for querying data by REST or generated resources ([#469](https://github.com/cccteam/ccc/issues/469)) ([8fe79d7](https://github.com/cccteam/ccc/commit/8fe79d735642a5f3d2c937131cfe0fa7d69e14e7))
+
+
+### Bug Fixes
+
+* Modify list and read endpoints to filter json fields according to columns requested ([#471](https://github.com/cccteam/ccc/issues/471)) ([7dcb1d4](https://github.com/cccteam/ccc/commit/7dcb1d4801b43327c69b5f5f7b8e314d7d3d5a47))
+
+
+### Code Cleanup
+
+* Clean up linter issues ([#468](https://github.com/cccteam/ccc/issues/468)) ([a8fa2de](https://github.com/cccteam/ccc/commit/a8fa2de4b9e6980ec1288f2108c63158297e9dcc))
+* RPC Generation enhancements: convert instead of coping param object ([#472](https://github.com/cccteam/ccc/issues/472)) ([67549f4](https://github.com/cccteam/ccc/commit/67549f4ef18b1c6f50522f5169b23c7b720d9de7))
+
 ## [0.4.3](https://github.com/cccteam/ccc/compare/resource/v0.4.2...resource/v0.4.3) (2025-09-23)
 
 
