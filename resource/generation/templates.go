@@ -519,7 +519,7 @@ import (
 		{{- end }}
 	}
 
-	type response []*{{ GoCamel .Resource.Name }}
+	type response []map[string]interface{}
 
 	decoder := NewQueryDecoder[resources.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](a, accesstypes.List)
 
@@ -539,7 +539,17 @@ import (
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			resp = append(resp, (*{{ GoCamel .Resource.Name }})(r))
+			rec := (*{{ GoCamel .Resource.Name }})(r)
+			rmap := make(map[string]interface{})
+			for _, field := range querySet.Fields() {
+				switch string(field) {
+				{{- range .Resource.Fields }}
+				case "{{ .Name }}":
+					rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+				{{- end }}
+				}
+			}
+			resp = append(resp, rmap)
 		}
 
 		return httpio.NewEncoder(w).Ok(resp)
@@ -581,8 +591,18 @@ import (
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		rec := (*response)(row)
+		rmap := make(map[string]interface{})
+		for _, field := range querySet.Fields() {
+			switch string(field) {
+			{{- range .Resource.Fields }}
+			case "{{ .Name }}":
+				rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+			{{- end }}
+			}
+		}
 
-		return httpio.NewEncoder(w).Ok((*response)(row))
+		return httpio.NewEncoder(w).Ok(rmap)
 	})
 }`
 
