@@ -123,7 +123,6 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		limit = &limitVal
 		delete(query, "limit")
 	} else {
-		// set a default limit
 		defaultLimit := uint64(50)
 		limit = &defaultLimit
 	}
