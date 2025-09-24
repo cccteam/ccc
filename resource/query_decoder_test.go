@@ -596,6 +596,21 @@ func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 			expectedErrMsg: "failed to decode request body",
 			expectErr:      true,
 		},
+		{
+			name:      "POST with empty body",
+			method:    http.MethodPost,
+			urlValues: "",
+			body:      "",
+			expectErr: false,
+		},
+		{
+			name:              "POST with filter in URL",
+			method:            http.MethodPost,
+			urlValues:         "filter=name:eq:John",
+			body:              "",
+			expectedASTString: "name_sql:eq:John",
+			expectErr:         false,
+		},
 	}
 
 	for _, tc := range testCases {

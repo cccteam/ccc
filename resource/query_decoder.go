@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -74,11 +75,11 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 
 	if request.Method == http.MethodPost {
 		body, err := d.structDecoder.Decode(request)
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return nil, err
 		}
 
-		if body.Filter != "" {
+		if body != nil && body.Filter != "" {
 			if queryParams.Get("filter") != "" {
 				return nil, httpio.NewBadRequestMessagef("cannot have 'filter' parameter in both query and body")
 			}
