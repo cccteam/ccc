@@ -591,8 +591,18 @@ import (
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		rec := (*response)(row)
+		rmap := make(map[string]interface{})
+		for _, field := range querySet.Fields() {
+			switch string(field) {
+			{{- range .Resource.Fields }}
+			case "{{ .Name }}":
+				rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+			{{- end }}
+			}
+		}
 
-		return httpio.NewEncoder(w).Ok((*response)(row))
+		return httpio.NewEncoder(w).Ok(rmap)
 	})
 }`
 
