@@ -1,6 +1,8 @@
 package resource
 
 import (
+	"bytes"
+	"net/http"
 	"net/url"
 	"reflect"
 	"strings"
@@ -8,6 +10,7 @@ import (
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/httpio"
 )
 
 type TestResource struct {
@@ -535,6 +538,94 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			} else if parsedQuery != nil && parsedQuery.ParsedAST != nil && !tt.wantErr { // If no AST string is expected and no error, AST should be nil
 				if !(tt.expectConflictError && err != nil && strings.Contains(err.Error(), "cannot use 'filter' parameter")) {
 					t.Errorf("Expected nil parsedAST for test '%s' (no expected AST string and no error), got: %s", tt.name, parsedQuery.ParsedAST.String())
+				}
+			}
+		})
+	}
+}
+
+func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
+	t.Parallel()
+	resSet, err := NewResourceSet[TestResource, TestRequest]()
+	if err != nil {
+		t.Fatalf("Failed to create ResourceSet: %v", err)
+	}
+	decoder, err := NewQueryDecoder[TestResource, TestRequest](resSet)
+	if err != nil {
+		t.Fatalf("NewQueryDecoder should not fail with default setup: %v", err)
+	}
+
+	testCases := []struct {
+		name              string
+		method            string
+		urlValues         string
+		body              string
+		expectedASTString string
+		expectedErrMsg    string
+		expectErr         bool
+	}{
+		{
+			name:              "POST with filter in body",
+			method:            http.MethodPost,
+			urlValues:         "",
+			body:              `{"filter": "name:eq:John"}`,
+			expectedASTString: "name_sql:eq:John",
+			expectErr:         false,
+		},
+		{
+			name:           "POST with filter in body and query",
+			method:         http.MethodPost,
+			urlValues:      "filter=age:gt:30",
+			body:           `{"filter": "name:eq:John"}`,
+			expectedErrMsg: "cannot have 'filter' parameter in both query and body",
+			expectErr:      true,
+		},
+		{
+			name:              "GET with filter in query",
+			method:            http.MethodGet,
+			urlValues:         "filter=name:eq:John",
+			body:              "",
+			expectedASTString: "name_sql:eq:John",
+			expectErr:         false,
+		},
+		{
+			name:           "POST with invalid JSON body",
+			method:         http.MethodPost,
+			urlValues:      "",
+			body:           `{"filter": "name:eq:John"`,
+			expectedErrMsg: "failed to decode request body",
+			expectErr:      true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req, err := http.NewRequest(tc.method, "http://test?"+tc.urlValues, strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+			if tc.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+
+			qSet, err := decoder.DecodeWithoutPermissions(req)
+
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("Expected an error, got nil")
+				} else if !strings.Contains(err.Error(), tc.expectedErrMsg) {
+					t.Errorf("Expected error message to contain '%s', got '%s'", tc.expectedErrMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Did not expect an error, got: %v", err)
+				}
+				if qSet.filterAst == nil {
+					t.Errorf("Expected AST to be parsed, but it was nil")
+				} else if qSet.filterAst.String() != tc.expectedASTString {
+					t.Errorf("Expected AST string '%s', got '%s'", tc.expectedASTString, qSet.filterAst.String())
 				}
 			}
 		})
