@@ -1,7 +1,6 @@
 package resource
 
 import (
-	"bytes"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/httpio"
 )
 
 type TestResource struct {
