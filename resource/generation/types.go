@@ -166,6 +166,16 @@ type rpcMethodInfo struct {
 	Fields []*rpcField
 }
 
+func (r *rpcMethodInfo) HasLocalType() bool {
+	for _, field := range r.Fields {
+		if field.IsLocalType() {
+			return true
+		}
+	}
+
+	return false
+}
+
 type rpcField struct {
 	*parser.Field
 	typescriptType     string
