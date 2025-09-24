@@ -1253,6 +1253,7 @@ func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
+		{{- if .RPCMethod.HasLocalType }}
 		p := &{{ .RPCMethod.Type }}{
 			{{- range $field := .RPCMethod.Fields }}
 			{{- if not $field.IsIterable }}
@@ -1266,6 +1267,10 @@ func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
 			p.{{ $field.Name }} = append(p.{{ $field.Name }}, {{ $field.TypeName }}(e))
 		}
 		{{- end }}
+		{{- end }}
+		{{- else }}
+
+		p := (*{{ .RPCMethod.Type }})(params)
 		{{- end }}
 
 		if err := {{ if .RPCMethod.Implements "DBRunner"}}p.Execute(ctx, a.db){{else}}a.db.Execute(ctx, p){{end}}; err != nil {
