@@ -3,7 +3,6 @@ package resource
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"reflect"
