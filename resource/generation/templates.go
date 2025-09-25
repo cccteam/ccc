@@ -1137,7 +1137,11 @@ type GeneratedHandlers interface {
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
-	{{ range $Struct, $Routes := .RoutesMap }}{{ range $Routes }}r.{{ Pascal .Method }}("{{ .Path }}", h.{{ .HandlerFunc }}())
+	{{ range $Struct, $Routes := .RoutesMap }}{{ range $Routes -}}
+	{{ if eq .SharedHandler true }}{{ Camel .HandlerFunc }}Handler := h.{{ .HandlerFunc }}()
+	{{ end }}r.{{ Pascal .Method }}("{{ .Path }}", {{ if eq .SharedHandler true }}{{ Camel .HandlerFunc }}Handler{{ else }}h.{{ .HandlerFunc }}(){{ end }})
+	{{ if eq .SharedHandler true }}r.Post("{{ .Path }}", {{ Camel .HandlerFunc }}Handler)
+	{{ end }}
 	{{ end }}
 	{{ end -}}
 	{{- if eq .HasConsolidatedHandler true }}r.Patch("/{{ .RoutePrefix }}/{{ .ConsolidatedRoute }}", h.PatchResources()){{ end }}
@@ -1185,7 +1189,12 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "{{ DetermineTestURL $resource $routePrefix $route }}", method: {{ MethodToHttpConst $route.Method }},
 			handlerFunc: "{{ $route.HandlerFunc }}",
 			parameters: {{ DetermineParameters $resource $route }},
-		},
+		},{{ if eq .SharedHandler true }}
+		{
+			url: "{{ DetermineTestURL $resource $routePrefix $route }}", method: http.MethodPost,
+			handlerFunc: "{{ $route.HandlerFunc }}",
+			parameters: {{ DetermineParameters $resource $route }},
+		},{{ end }}
 		{{ end }}{{ end }}
 		{{- if eq .HasConsolidatedHandler true -}}
 		{

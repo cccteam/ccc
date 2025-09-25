@@ -36,9 +36,10 @@ func (r *resourceGenerator) runRouteGeneration() error {
 			}
 
 			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
-				Method:      ht.method(),
-				Path:        path,
-				HandlerFunc: r.handlerName(res.Name(), ht),
+				Method:        ht.method(),
+				Path:          path,
+				HandlerFunc:   r.handlerName(res.Name(), ht),
+				SharedHandler: ht == ReadHandler || ht == ListHandler,
 			})
 		}
 	}
