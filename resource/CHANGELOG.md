@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/cccteam/ccc/compare/resource/v0.4.4...resource/v0.4.5) (2025-09-25)
+
+
+### Features
+
+* **request:** Allow filter in POST request body ([#473](https://github.com/cccteam/ccc/issues/473)) ([7a110cd](https://github.com/cccteam/ccc/commit/7a110cd52004d31247aade1534b349d236327442))
+
 ## [0.4.4](https://github.com/cccteam/ccc/compare/resource/v0.4.3...resource/v0.4.4) (2025-09-24)
 
 
