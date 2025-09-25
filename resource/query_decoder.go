@@ -28,12 +28,17 @@ type parsedQueryParams struct {
 	Offset       *uint64
 }
 
+type filterBody struct {
+	Filter string `json:"filter"`
+}
+
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
 	searchKeys         *SearchKeys
 	resourceSet        *ResourceSet[Resource]
 	parserFields       map[string]FieldInfo
+	structDecoder      *StructDecoder[filterBody]
 }
 
 func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource]) (*QueryDecoder[Resource, Request], error) {
@@ -50,16 +55,38 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 		return nil, err
 	}
 
+	structDecoder, err := NewStructDecoder[filterBody]()
+	if err != nil {
+		return nil, errors.Wrap(err, "NewStructDecoder[filterBody]()")
+	}
+
 	return &QueryDecoder[Resource, Request]{
 		requestFieldMapper: mapper,
 		searchKeys:         NewSearchKeys[Request](res),
 		resourceSet:        resSet,
 		parserFields:       parserFields,
+		structDecoder:      structDecoder,
 	}, nil
 }
 
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
-	parsedQuery, err := d.parseQuery(request.URL.Query())
+	queryParams := request.URL.Query()
+
+	if request.Method == http.MethodPost {
+		body, err := d.structDecoder.Decode(request)
+		if err != nil {
+			return nil, err
+		}
+
+		if body.Filter != "" {
+			if queryParams.Get("filter") != "" {
+				return nil, httpio.NewBadRequestMessagef("cannot have 'filter' parameter in both query and body")
+			}
+			queryParams.Add("filter", body.Filter)
+		}
+	}
+
+	parsedQuery, err := d.parseQuery(queryParams)
 	if err != nil {
 		return nil, err
 	}

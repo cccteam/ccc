@@ -156,9 +156,10 @@ type columnMeta struct {
 }
 
 type generatedRoute struct {
-	Method      string
-	Path        string
-	HandlerFunc string
+	Method        string
+	Path          string
+	HandlerFunc   string
+	SharedHandler bool
 }
 
 type rpcMethodInfo struct {
