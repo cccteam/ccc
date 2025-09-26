@@ -515,7 +515,7 @@ import (
 	listTemplate = `func (a *App) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.ListPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.ListPermTag }} {{ $field.SearchIndexTags }}`" + `
 		{{- end }}
 	}
 
@@ -559,7 +559,7 @@ import (
 	readTemplate = `func (a *App) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.AllowFilterTag }} {{ $field.ReadPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.AllowFilterTag }} {{ $field.ReadPermTag }} {{ $field.SearchIndexTags }}`" + `
 		{{- end }}
 	}
 
@@ -609,7 +609,7 @@ import (
 	patchTemplate = `func (a *App) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type request struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }}`" + `
 		{{- end }}
 	}
 	
@@ -742,7 +742,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 	{{- range $resource := .Resources }}
 	type {{ GoCamel $resource.Name }}Request struct {
 		{{- range $field := .Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }}`" + `
 		{{- end }}
 	}
 	{{ GoCamel $resource.Name}}Decoder := NewDecoder[resources.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)

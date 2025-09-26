@@ -576,15 +576,6 @@ func (f *resourceField) HasDefaultUpdateFunc() bool {
 	return f.DefaultUpdateFuncName() != ""
 }
 
-func (f *resourceField) QueryTag() string {
-	query, ok := f.LookupTag("query")
-	if !ok {
-		return ""
-	}
-
-	return fmt.Sprintf("query:%q", query)
-}
-
 func (f *resourceField) ReadPermTag() string {
 	tag, ok := f.LookupTag("perm")
 	if !ok {
