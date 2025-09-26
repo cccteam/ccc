@@ -348,16 +348,9 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 	fields := make(map[string]FilterFieldInfo)
 
 	for i := range reqType.NumField() {
-		var indexed bool
 		structField := reqType.Field(i)
-		tag := structField.Tag.Get("index")
-		if tag == "true" {
-			indexed = true
-		} else {
-			tag := structField.Tag.Get("allow_filter")
-			if tag != "true" {
-				continue
-			}
+		if structField.Tag.Get("index") != "true" && structField.Tag.Get("allow_filter") != "true" {
+			continue
 		}
 
 		goStructFieldName := structField.Name
@@ -383,7 +376,7 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 			Name:      cacheEntry.tag,
 			Kind:      fieldKind,
 			FieldType: fieldType,
-			Indexed:   indexed,
+			Indexed:   structField.Tag.Get("index") == "true",
 			PII:       structField.Tag.Get("pii") == "true",
 		}
 	}
