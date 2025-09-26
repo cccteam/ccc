@@ -37,7 +37,7 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
 	searchKeys         *SearchKeys
 	resourceSet        *ResourceSet[Resource]
-	parserFields       map[string]FieldInfo
+	filterParserFields map[string]FilterFieldInfo
 	structDecoder      *StructDecoder[filterBody]
 }
 
@@ -50,7 +50,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	parserFields, err := newParserFields(reflect.TypeOf(req), resSet.ResourceMetadata())
+	filterParserFields, err := newFilterParserFields(reflect.TypeOf(req), resSet.ResourceMetadata())
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 		requestFieldMapper: mapper,
 		searchKeys:         NewSearchKeys[Request](res),
 		resourceSet:        resSet,
-		parserFields:       parserFields,
+		filterParserFields: filterParserFields,
 		structDecoder:      structDecoder,
 	}, nil
 }
@@ -186,7 +186,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		delete(query, "filter")
 	}
 
-	search, query, err = d.parseFilterParam(query)
+	search, query, err = d.parseSearchParam(query)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +260,7 @@ func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) 
 
 // parseFilterExpression parses the filter string and returns an AST.
 func (d *QueryDecoder[Resource, Request]) parseFilterExpression(filterStr string) (ExpressionNode, error) {
-	parser, err := NewParser(NewLexer(filterStr), d.parserFields)
+	parser, err := NewFilterParser(NewFilterLexer(filterStr), d.filterParserFields)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create filter expression parser")
 	}
@@ -273,7 +273,7 @@ func (d *QueryDecoder[Resource, Request]) parseFilterExpression(filterStr string
 	return ast, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseFilterParam(queryParams url.Values) (searchSet *Search, query url.Values, err error) {
+func (d *QueryDecoder[Resource, Request]) parseSearchParam(queryParams url.Values) (searchSet *Search, query url.Values, err error) {
 	searchValues := make(map[SearchKey]string)
 	var typ SearchType
 	for searchKey, searchKeyType := range d.searchKeys.keys {
@@ -310,8 +310,8 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(queryParams url.Value
 	return NewSearch(typ, searchValues), queryParams, nil
 }
 
-func newParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *ResourceMetadata[Resource]) (map[string]FieldInfo, error) {
-	fields := make(map[string]FieldInfo)
+func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *ResourceMetadata[Resource]) (map[string]FilterFieldInfo, error) {
+	fields := make(map[string]FilterFieldInfo)
 
 	for i := range reqType.NumField() {
 		var indexed bool
@@ -345,7 +345,7 @@ func newParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata 
 			fieldKind = fieldType.Kind()
 		}
 
-		fields[jsonFieldName] = FieldInfo{
+		fields[jsonFieldName] = FilterFieldInfo{
 			Name:      cacheEntry.tag,
 			Kind:      fieldKind,
 			FieldType: fieldType,

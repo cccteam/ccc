@@ -9,7 +9,7 @@ import (
 )
 
 // defaultTestJsonToSqlNameMap provides a standard map for most test cases.
-var defaultTestJsonToSqlNameMap = map[string]FieldInfo{
+var defaultTestJsonToSqlNameMap = map[string]FilterFieldInfo{
 	"status":   {Name: "Status", Kind: reflect.String, Indexed: true},
 	"user_id":  {Name: "UserId", Kind: reflect.Int, Indexed: true},
 	"price":    {Name: "Price", Kind: reflect.Float64, Indexed: true},
@@ -260,7 +260,7 @@ func TestNewLexer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			l := NewLexer(tt.args.input)
+			l := NewFilterLexer(tt.args.input)
 			var tokens []Token
 			for {
 				token, err := l.NextToken()
@@ -290,7 +290,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 		name               string
 		filterString       string
 		wantErrMsgContains string
-		customMap          map[string]FieldInfo
+		customMap          map[string]FilterFieldInfo
 		isHttpError        bool
 	}
 	tests := []errorTestCase{
@@ -418,20 +418,20 @@ func TestParser_Parse_Errors(t *testing.T) {
 			name:               "invalid field name - using empty map",
 			filterString:       "unknown_field:eq:value",
 			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
-			customMap:          map[string]FieldInfo{},
+			customMap:          map[string]FilterFieldInfo{},
 			isHttpError:        true,
 		},
 		{
 			name:               "invalid field name in group - using empty map",
 			filterString:       "(unknown_field:eq:value,another_unknown:eq:Test)",
-			customMap:          map[string]FieldInfo{},
+			customMap:          map[string]FilterFieldInfo{},
 			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
 			isHttpError:        true,
 		},
 		{
 			name:               "invalid field name with pipe - using map without the specific field",
 			filterString:       "name:eq:Test|unknown_field:eq:value",
-			customMap:          map[string]FieldInfo{"name": {Name: "Name", Kind: reflect.String}},
+			customMap:          map[string]FilterFieldInfo{"name": {Name: "Name", Kind: reflect.String}},
 			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
 			isHttpError:        true,
 		},
@@ -463,7 +463,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 		{
 			name:         "unsupported value type in convertValue",
 			filterString: "unsupported_field:eq:somevalue",
-			customMap: map[string]FieldInfo{
+			customMap: map[string]FilterFieldInfo{
 				"unsupported_field": {Name: "UnsupportedField", Kind: reflect.Chan},
 			},
 			wantErrMsgContains: "Invalid value format. The value 'somevalue' in condition 'unsupported_field:eq:somevalue' cannot be processed due to an unsupported data type: chan.",
@@ -480,14 +480,14 @@ func TestParser_Parse_Errors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			lexer := NewLexer(tt.filterString)
+			lexer := NewFilterLexer(tt.filterString)
 			currentMap := defaultTestJsonToSqlNameMap
 			if tt.customMap != nil {
 				currentMap = tt.customMap
 			}
 
 			// Test NewParser for errors first, especially for lexer errors
-			parser, err := NewParser(lexer, currentMap)
+			parser, err := NewFilterParser(lexer, currentMap)
 			if err != nil { // Error from NewParser
 				if tt.wantErrMsgContains == "" {
 					t.Fatalf("NewParser() error = %v, want no error. Input: %q", err, tt.filterString)
@@ -615,8 +615,8 @@ func TestParser_Parse_Successful(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			lexer := NewLexer(tt.filterString)
-			parser, err := NewParser(lexer, defaultTestJsonToSqlNameMap)
+			lexer := NewFilterLexer(tt.filterString)
+			parser, err := NewFilterParser(lexer, defaultTestJsonToSqlNameMap)
 			if err != nil {
 				t.Fatalf("NewParser() error = %v for input '%s'", err, tt.filterString)
 			}

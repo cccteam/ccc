@@ -7,7 +7,7 @@ import (
 )
 
 // sqlGeneratorTestMap provides the necessary field name mappings for these tests.
-var sqlGeneratorTestMap = map[string]FieldInfo{
+var sqlGeneratorTestMap = map[string]FilterFieldInfo{
 	"status":   {Name: "Status", Kind: reflect.String, Indexed: true},
 	"user_id":  {Name: "UserId", Kind: reflect.Int, Indexed: true},
 	"price":    {Name: "Price", Kind: reflect.Float64, Indexed: true},
@@ -307,8 +307,8 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			lexer := NewLexer(tt.filterString)
-			parser, err := NewParser(lexer, sqlGeneratorTestMap)
+			lexer := NewFilterLexer(tt.filterString)
+			parser, err := NewFilterParser(lexer, sqlGeneratorTestMap)
 			if err != nil {
 				t.Fatalf("NewParser() error = %v, wantErr %v", err, tt.wantErrMsg)
 			}
