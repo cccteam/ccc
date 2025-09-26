@@ -177,6 +177,7 @@ type FilterFieldInfo struct {
 	Kind      reflect.Kind
 	FieldType reflect.Type
 	Indexed   bool
+	PII       bool
 }
 
 // FilterParser builds an AST from tokens.

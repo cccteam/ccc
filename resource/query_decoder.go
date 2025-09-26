@@ -72,6 +72,12 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
 	queryParams := request.URL.Query()
 
+	if filterStr := queryParams.Get("filter"); filterStr != "" {
+		if err := d.checkForPII(filterStr); err != nil {
+			return nil, err
+		}
+	}
+
 	if request.Method == http.MethodPost {
 		body, err := d.structDecoder.Decode(request)
 		if err != nil {
@@ -310,6 +316,34 @@ func (d *QueryDecoder[Resource, Request]) parseSearchParam(queryParams url.Value
 	return NewSearch(typ, searchValues), queryParams, nil
 }
 
+func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
+	lexer := NewFilterLexer(filterStr)
+	for {
+		token, err := lexer.NextToken()
+		if err != nil {
+			return errors.Wrap(err, "failed to get next token")
+		}
+
+		if token.Type == TokenEOF {
+			break
+		}
+
+		if token.Type == TokenCondition {
+			parts := strings.SplitN(token.Value, ":", 2)
+			if len(parts) > 0 {
+				jsonFieldName := strings.TrimSpace(parts[0])
+				if fieldInfo, found := d.filterParserFields[jsonFieldName]; found {
+					if fieldInfo.PII {
+						return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: %s", jsonFieldName)
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *ResourceMetadata[Resource]) (map[string]FilterFieldInfo, error) {
 	fields := make(map[string]FilterFieldInfo)
 
@@ -350,6 +384,7 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 			Kind:      fieldKind,
 			FieldType: fieldType,
 			Indexed:   indexed,
+			PII:       structField.Tag.Get("pii") == "true",
 		}
 	}
 
