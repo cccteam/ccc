@@ -501,6 +501,14 @@ func (f *resourceField) IndexTag() string {
 	return ""
 }
 
+func (f *resourceField) PIITag() string {
+	if f.IsPII() {
+		return `pii:"true"`
+	}
+
+	return ""
+}
+
 func (f *resourceField) UniqueIndexTag() string {
 	if f.IsUniqueIndex {
 		return indexTrue
@@ -515,6 +523,17 @@ func (f *resourceField) AllowFilterTag() string {
 	}
 
 	return ""
+}
+
+func (f *resourceField) IsPII() bool {
+	tag, ok := f.LookupTag("conditions")
+	if !ok {
+		return false
+	}
+
+	conditions := strings.Split(tag, ",")
+
+	return slices.Contains(conditions, "pii")
 }
 
 func (f *resourceField) IsImmutable() bool {

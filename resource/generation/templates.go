@@ -515,7 +515,7 @@ import (
 	listTemplate = `func (a *App) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.ListPermTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.ListPermTag }} {{ $field.SearchIndexTags }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
@@ -559,7 +559,7 @@ import (
 	readTemplate = `func (a *App) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.AllowFilterTag }} {{ $field.ReadPermTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.AllowFilterTag }} {{ $field.ReadPermTag }} {{ $field.SearchIndexTags }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
