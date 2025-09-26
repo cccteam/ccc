@@ -152,7 +152,7 @@ func (q *QuerySet[Resource]) buildOrderByClause() (string, error) {
 		if !ok {
 			return "", errors.Newf("sort field '%s' not found in resource metadata for query", sf.Field)
 		}
-		dbColumnName := cacheEntry.tag
+		dbColumnName := cacheEntry.dbColumnName
 
 		var quotedColumnName string
 		switch q.rMeta.dbType {
@@ -194,7 +194,7 @@ func (q *QuerySet[Resource]) Columns() (Columns, error) {
 
 	columns := make([]string, 0, len(columnEntries))
 	for _, c := range columnEntries {
-		columns = append(columns, c.tag)
+		columns = append(columns, c.dbColumnName)
 	}
 
 	switch q.rMeta.dbType {
@@ -246,7 +246,7 @@ func (q *QuerySet[Resource]) where() (*Statement, error) {
 		if !ok {
 			return nil, errors.Newf("field %s not found in struct", part.Key)
 		}
-		key := c.tag
+		key := c.dbColumnName
 		switch q.rMeta.dbType {
 		case SpannerDBType:
 			builder.WriteString(fmt.Sprintf(" AND `%s` = @%s", key, strings.ToLower(key)))

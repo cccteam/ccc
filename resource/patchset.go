@@ -578,7 +578,7 @@ func (p *PatchSet[Resource]) Resolve() (map[string]any, error) {
 		if !ok {
 			return nil, errors.Newf("field %s not found in struct", structField)
 		}
-		newMap[c.tag] = value
+		newMap[c.dbColumnName] = value
 	}
 
 	return newMap, nil

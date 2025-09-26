@@ -173,11 +173,11 @@ type (
 )
 
 type FilterFieldInfo struct {
-	Name      string
-	Kind      reflect.Kind
-	FieldType reflect.Type
-	Indexed   bool
-	PII       bool
+	DbColumnName string
+	Kind         reflect.Kind
+	FieldType    reflect.Type
+	Indexed      bool
+	PII          bool
 }
 
 // FilterParser builds an AST from tokens.
@@ -189,10 +189,10 @@ type FilterParser struct {
 
 	prefixParseFns  map[TokenType]prefixParseFn
 	infixParseFns   map[TokenType]infixParseFn
-	jsonToFieldInfo map[string]FilterFieldInfo
+	jsonToFieldInfo map[jsonFieldName]FilterFieldInfo
 }
 
-func NewFilterParser(lexer *FilterLexer, jsonToFieldInfo map[string]FilterFieldInfo) (*FilterParser, error) {
+func NewFilterParser(lexer *FilterLexer, jsonToFieldInfo map[jsonFieldName]FilterFieldInfo) (*FilterParser, error) {
 	p := &FilterParser{
 		lexer:           lexer,
 		prefixParseFns:  make(map[TokenType]prefixParseFn),
@@ -330,21 +330,21 @@ func (p *FilterParser) parseConditionToken() (ExpressionNode, error) {
 		return nil, httpio.NewBadRequestMessagef("condition '%s' must have at least field:operator", p.current.Value)
 	}
 
-	jsonFieldName := strings.TrimSpace(parts[0])
-	if jsonFieldName == "" {
+	jsonFieldNameStr := strings.TrimSpace(parts[0])
+	if jsonFieldNameStr == "" {
 		return nil, httpio.NewBadRequestMessagef("field name cannot be empty in condition '%s'", p.current.Value)
 	}
 
-	fieldInfo, found := p.jsonToFieldInfo[jsonFieldName]
+	fieldInfo, found := p.jsonToFieldInfo[jsonFieldName(jsonFieldNameStr)]
 	if !found {
-		return nil, httpio.NewBadRequestMessagef("'%s' is not indexed but was included in condition '%s'", jsonFieldName, p.current.Value)
+		return nil, httpio.NewBadRequestMessagef("'%s' is not indexed but was included in condition '%s'", jsonFieldNameStr, p.current.Value)
 	}
 	if fieldInfo.Indexed {
 		p.hasIndexedField = true
 	}
 
 	condition := Condition{
-		Field:    fieldInfo.Name,
+		Field:    fieldInfo.DbColumnName,
 		Operator: strings.ToLower(strings.TrimSpace(parts[1])),
 	}
 
@@ -377,7 +377,7 @@ func (p *FilterParser) parseConditionToken() (ExpressionNode, error) {
 			valueKind := fieldInfo.Kind
 			if valueKind == reflect.Slice || valueKind == reflect.Array {
 				if fieldInfo.FieldType == nil {
-					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", fieldInfo.Name)
+					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", fieldInfo.DbColumnName)
 				}
 				valueKind = fieldInfo.FieldType.Elem().Kind()
 			}

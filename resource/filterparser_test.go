@@ -9,18 +9,18 @@ import (
 )
 
 // defaultTestJsonToSqlNameMap provides a standard map for most test cases.
-var defaultTestJsonToSqlNameMap = map[string]FilterFieldInfo{
-	"status":   {Name: "Status", Kind: reflect.String, Indexed: true},
-	"user_id":  {Name: "UserId", Kind: reflect.Int, Indexed: true},
-	"price":    {Name: "Price", Kind: reflect.Float64, Indexed: true},
-	"stock":    {Name: "Stock", Kind: reflect.Int, Indexed: true},
-	"rating":   {Name: "Rating", Kind: reflect.Int, Indexed: true},
-	"name":     {Name: "Name", Kind: reflect.String, Indexed: true},
-	"age":      {Name: "Age", Kind: reflect.Int64, Indexed: true},
-	"category": {Name: "Category", Kind: reflect.String, Indexed: true},
-	"email":    {Name: "Email", Kind: reflect.String, Indexed: true},
-	"active":   {Name: "Active", Kind: reflect.Bool, Indexed: true},
-	"field":    {Name: "Field", Kind: reflect.String, Indexed: true},
+var defaultTestJsonToSqlNameMap = map[jsonFieldName]FilterFieldInfo{
+	"status":   {DbColumnName: "Status", Kind: reflect.String, Indexed: true},
+	"user_id":  {DbColumnName: "UserId", Kind: reflect.Int, Indexed: true},
+	"price":    {DbColumnName: "Price", Kind: reflect.Float64, Indexed: true},
+	"stock":    {DbColumnName: "Stock", Kind: reflect.Int, Indexed: true},
+	"rating":   {DbColumnName: "Rating", Kind: reflect.Int, Indexed: true},
+	"name":     {DbColumnName: "Name", Kind: reflect.String, Indexed: true},
+	"age":      {DbColumnName: "Age", Kind: reflect.Int64, Indexed: true},
+	"category": {DbColumnName: "Category", Kind: reflect.String, Indexed: true},
+	"email":    {DbColumnName: "Email", Kind: reflect.String, Indexed: true},
+	"active":   {DbColumnName: "Active", Kind: reflect.Bool, Indexed: true},
+	"field":    {DbColumnName: "Field", Kind: reflect.String, Indexed: true},
 }
 
 func TestNewLexer(t *testing.T) {
@@ -290,7 +290,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 		name               string
 		filterString       string
 		wantErrMsgContains string
-		customMap          map[string]FilterFieldInfo
+		customMap          map[jsonFieldName]FilterFieldInfo
 		isHttpError        bool
 	}
 	tests := []errorTestCase{
@@ -418,20 +418,20 @@ func TestParser_Parse_Errors(t *testing.T) {
 			name:               "invalid field name - using empty map",
 			filterString:       "unknown_field:eq:value",
 			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
-			customMap:          map[string]FilterFieldInfo{},
+			customMap:          map[jsonFieldName]FilterFieldInfo{},
 			isHttpError:        true,
 		},
 		{
 			name:               "invalid field name in group - using empty map",
 			filterString:       "(unknown_field:eq:value,another_unknown:eq:Test)",
-			customMap:          map[string]FilterFieldInfo{},
+			customMap:          map[jsonFieldName]FilterFieldInfo{},
 			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
 			isHttpError:        true,
 		},
 		{
 			name:               "invalid field name with pipe - using map without the specific field",
 			filterString:       "name:eq:Test|unknown_field:eq:value",
-			customMap:          map[string]FilterFieldInfo{"name": {Name: "Name", Kind: reflect.String}},
+			customMap:          map[jsonFieldName]FilterFieldInfo{"name": {DbColumnName: "Name", Kind: reflect.String}},
 			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
 			isHttpError:        true,
 		},
@@ -463,8 +463,8 @@ func TestParser_Parse_Errors(t *testing.T) {
 		{
 			name:         "unsupported value type in convertValue",
 			filterString: "unsupported_field:eq:somevalue",
-			customMap: map[string]FilterFieldInfo{
-				"unsupported_field": {Name: "UnsupportedField", Kind: reflect.Chan},
+			customMap: map[jsonFieldName]FilterFieldInfo{
+				"unsupported_field": {DbColumnName: "UnsupportedField", Kind: reflect.Chan},
 			},
 			wantErrMsgContains: "Invalid value format. The value 'somevalue' in condition 'unsupported_field:eq:somevalue' cannot be processed due to an unsupported data type: chan.",
 			isHttpError:        true,

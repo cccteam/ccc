@@ -37,7 +37,7 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
 	searchKeys         *SearchKeys
 	resourceSet        *ResourceSet[Resource]
-	filterParserFields map[string]FilterFieldInfo
+	filterParserFields map[jsonFieldName]FilterFieldInfo
 	structDecoder      *StructDecoder[filterBody]
 }
 
@@ -329,13 +329,10 @@ func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
 		}
 
 		if token.Type == TokenCondition {
-			parts := strings.SplitN(token.Value, ":", 2)
-			if len(parts) > 0 {
-				jsonFieldName := strings.TrimSpace(parts[0])
-				if fieldInfo, found := d.filterParserFields[jsonFieldName]; found {
-					if fieldInfo.PII {
-						return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: %s", jsonFieldName)
-					}
+			jsonFieldNameStr := strings.SplitN(token.Value, ":", 2)[0]
+			if fieldInfo, found := d.filterParserFields[jsonFieldName(jsonFieldNameStr)]; found {
+				if fieldInfo.PII {
+					return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: %s", jsonFieldNameStr)
 				}
 			}
 		}
@@ -344,8 +341,8 @@ func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
 	return nil
 }
 
-func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *ResourceMetadata[Resource]) (map[string]FilterFieldInfo, error) {
-	fields := make(map[string]FilterFieldInfo)
+func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *ResourceMetadata[Resource]) (map[jsonFieldName]FilterFieldInfo, error) {
+	fields := make(map[jsonFieldName]FilterFieldInfo)
 
 	for i := range reqType.NumField() {
 		structField := reqType.Field(i)
@@ -355,14 +352,14 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 
 		goStructFieldName := structField.Name
 		jsonTag := structField.Tag.Get("json")
-		jsonFieldName, _, _ := strings.Cut(jsonTag, ",")
-		if jsonFieldName == "" || jsonFieldName == "-" {
+		jsonFieldNameStr, _, _ := strings.Cut(jsonTag, ",")
+		if jsonFieldNameStr == "" || jsonFieldNameStr == "-" {
 			return nil, errors.Newf("indexed field %s must have a json tag", goStructFieldName)
 		}
 
 		cacheEntry, found := resourceMetadata.fieldMap[accesstypes.Field(goStructFieldName)]
 		if !found {
-			return nil, errors.Newf("field %s (json: %s) not found in resource metadata", goStructFieldName, jsonFieldName)
+			return nil, errors.Newf("field %s (json: %s) not found in resource metadata", goStructFieldName, jsonFieldNameStr)
 		}
 
 		fieldType := structField.Type
@@ -372,12 +369,12 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 			fieldKind = fieldType.Kind()
 		}
 
-		fields[jsonFieldName] = FilterFieldInfo{
-			Name:      cacheEntry.tag,
-			Kind:      fieldKind,
-			FieldType: fieldType,
-			Indexed:   structField.Tag.Get("index") == "true",
-			PII:       structField.Tag.Get("pii") == "true",
+		fields[jsonFieldName(jsonFieldNameStr)] = FilterFieldInfo{
+			DbColumnName: cacheEntry.dbColumnName,
+			Kind:         fieldKind,
+			FieldType:    fieldType,
+			Indexed:      structField.Tag.Get("index") == "true",
+			PII:          structField.Tag.Get("pii") == "true",
 		}
 	}
 

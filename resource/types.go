@@ -21,9 +21,11 @@ type DiffElem struct {
 	New any
 }
 
+type jsonFieldName string
+
 type cacheEntry struct {
-	index int
-	tag   string
+	index        int
+	dbColumnName string
 }
 
 type TypescriptData struct {

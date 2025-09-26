@@ -260,12 +260,12 @@ func structTags(t reflect.Type, key string) map[accesstypes.Field]cacheEntry {
 		field := t.Field(i)
 		tag := field.Tag.Get(key)
 
-		list := strings.Split(tag, ",")
-		if len(list) == 0 || list[0] == "" || list[0] == "-" {
+		parts := strings.Split(tag, ",")
+		if len(parts) == 0 || parts[0] == "" || parts[0] == "-" {
 			continue
 		}
 
-		tagMap[accesstypes.Field(field.Name)] = cacheEntry{index: i, tag: list[0]}
+		tagMap[accesstypes.Field(field.Name)] = cacheEntry{index: i, dbColumnName: parts[0]}
 	}
 
 	return tagMap

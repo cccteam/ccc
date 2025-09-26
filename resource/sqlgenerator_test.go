@@ -7,18 +7,18 @@ import (
 )
 
 // sqlGeneratorTestMap provides the necessary field name mappings for these tests.
-var sqlGeneratorTestMap = map[string]FilterFieldInfo{
-	"status":   {Name: "Status", Kind: reflect.String, Indexed: true},
-	"user_id":  {Name: "UserId", Kind: reflect.Int, Indexed: true},
-	"price":    {Name: "Price", Kind: reflect.Float64, Indexed: true},
-	"stock":    {Name: "Stock", Kind: reflect.Int, Indexed: true},
-	"rating":   {Name: "Rating", Kind: reflect.Int, Indexed: true},
-	"name":     {Name: "Name", Kind: reflect.String, Indexed: true},
-	"age":      {Name: "Age", Kind: reflect.Int64, Indexed: true},
-	"category": {Name: "Category", Kind: reflect.String, Indexed: true},
-	"email":    {Name: "Email", Kind: reflect.String, Indexed: true},
-	"active":   {Name: "Active", Kind: reflect.Bool, Indexed: true},
-	"field":    {Name: "Field", Kind: reflect.String, Indexed: true},
+var sqlGeneratorTestMap = map[jsonFieldName]FilterFieldInfo{
+	"status":   {DbColumnName: "Status", Kind: reflect.String, Indexed: true},
+	"user_id":  {DbColumnName: "UserId", Kind: reflect.Int, Indexed: true},
+	"price":    {DbColumnName: "Price", Kind: reflect.Float64, Indexed: true},
+	"stock":    {DbColumnName: "Stock", Kind: reflect.Int, Indexed: true},
+	"rating":   {DbColumnName: "Rating", Kind: reflect.Int, Indexed: true},
+	"name":     {DbColumnName: "Name", Kind: reflect.String, Indexed: true},
+	"age":      {DbColumnName: "Age", Kind: reflect.Int64, Indexed: true},
+	"category": {DbColumnName: "Category", Kind: reflect.String, Indexed: true},
+	"email":    {DbColumnName: "Email", Kind: reflect.String, Indexed: true},
+	"active":   {DbColumnName: "Active", Kind: reflect.Bool, Indexed: true},
+	"field":    {DbColumnName: "Field", Kind: reflect.String, Indexed: true},
 }
 
 func TestSQLGenerator_GenerateSQL(t *testing.T) {
