@@ -41,6 +41,7 @@ linters:
     - rowserrcheck
     - sqlclosecheck
     - staticcheck
+    - tagalign
     - tagliatelle
     - tparallel
     - unconvert
@@ -102,6 +103,10 @@ linters:
       locale: US
     nestif:
       min-complexity: 10
+    tagalign:
+      order:
+        - json
+        - spanner
     tagliatelle:
       case:
         rules:

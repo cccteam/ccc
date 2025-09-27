@@ -41,7 +41,7 @@ type FRequest struct {
 
 type GRequest struct {
 	Field1 string `json:"field1"`
-	Field2 string `json:"-" perm:"Read"`
+	Field2 string `json:"-"      perm:"Read"`
 }
 
 type HRequest struct {
