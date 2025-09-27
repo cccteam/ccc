@@ -43,7 +43,7 @@ type PatchSet[Resource Resourcer] struct {
 }
 
 // NewPatchSet creates a new, empty PatchSet for a given resource metadata.
-func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSet[Resource] {
+func NewPatchSet[Resource Resourcer](rMeta *Metadata[Resource]) *PatchSet[Resource] {
 	return &PatchSet[Resource]{
 		querySet:           NewQuerySet(rMeta),
 		data:               newFieldSet(),
@@ -65,7 +65,7 @@ func (p *PatchSet[Resource]) PatchType() PatchType {
 }
 
 // EnableUserPermissionEnforcement enables the checking of user permissions for the PatchSet.
-func (p *PatchSet[Resource]) EnableUserPermissionEnforcement(rSet *ResourceSet[Resource], userPermissions UserPermissions, requiredPermission accesstypes.Permission) *PatchSet[Resource] {
+func (p *PatchSet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource], userPermissions UserPermissions, requiredPermission accesstypes.Permission) *PatchSet[Resource] {
 	p.querySet.EnableUserPermissionEnforcement(rSet, userPermissions, requiredPermission)
 
 	return p

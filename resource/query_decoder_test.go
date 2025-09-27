@@ -443,7 +443,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 	for _, tt := range test {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			resSet, err := NewResourceSet[TestResource, TestRequest]()
+			resSet, err := NewSet[TestResource, TestRequest]()
 			if err != nil {
 				t.Fatalf("Failed to create ResourceSet for test case %s: %v", tt.name, err)
 			}
@@ -546,7 +546,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 
 func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 	t.Parallel()
-	resSet, err := NewResourceSet[TestResource, TestRequest]()
+	resSet, err := NewSet[TestResource, TestRequest]()
 	if err != nil {
 		t.Fatalf("Failed to create ResourceSet: %v", err)
 	}

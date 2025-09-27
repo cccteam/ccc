@@ -38,13 +38,13 @@ type filterBody struct {
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
 	searchKeys         *SearchKeys
-	resourceSet        *ResourceSet[Resource]
+	resourceSet        *Set[Resource]
 	filterParserFields map[jsonFieldName]FilterFieldInfo
 	structDecoder      *StructDecoder[filterBody]
 }
 
 // NewQueryDecoder creates a new QueryDecoder for a given Resource and Request type.
-func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource]) (*QueryDecoder[Resource, Request], error) {
+func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*QueryDecoder[Resource, Request], error) {
 	var req Request
 	var res Resource
 
@@ -346,7 +346,7 @@ func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
 	return nil
 }
 
-func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *ResourceMetadata[Resource]) (map[jsonFieldName]FilterFieldInfo, error) {
+func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *Metadata[Resource]) (map[jsonFieldName]FilterFieldInfo, error) {
 	fields := make(map[jsonFieldName]FilterFieldInfo)
 
 	for i := range reqType.NumField() {

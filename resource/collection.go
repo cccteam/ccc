@@ -17,7 +17,7 @@ type (
 
 // AddResources adds all the resources and permissions from a ResourceSet to the collection.
 // It is a no-op if collectResourcePermissions is false.
-func AddResources[Resource Resourcer](c *Collection, scope accesstypes.PermissionScope, rSet *ResourceSet[Resource]) error {
+func AddResources[Resource Resourcer](c *Collection, scope accesstypes.PermissionScope, rSet *Set[Resource]) error {
 	if !collectResourcePermissions {
 		return nil
 	}
@@ -363,13 +363,13 @@ func (s *Collection) Scope(resource accesstypes.Resource) accesstypes.Permission
 }
 
 // TypescriptData returns a struct containing all the data needed for TypeScript code generation.
-func (c *Collection) TypescriptData() TypescriptData {
+func (s *Collection) TypescriptData() TypescriptData {
 	return TypescriptData{
-		Permissions:           c.permissions(),
-		ResourcePermissions:   c.resourcePermissions(),
-		Resources:             c.Resources(),
-		ResourceTags:          c.tags(),
-		ResourcePermissionMap: c.resourcePermissionMap(),
-		Domains:               c.domains(),
+		Permissions:           s.permissions(),
+		ResourcePermissions:   s.resourcePermissions(),
+		Resources:             s.Resources(),
+		ResourceTags:          s.tags(),
+		ResourcePermissionMap: s.resourcePermissionMap(),
+		Domains:               s.domains(),
 	}
 }

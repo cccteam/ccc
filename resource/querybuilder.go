@@ -49,24 +49,24 @@ func (qc QueryClause) Validate() error {
 }
 
 // And starts a logical AND operation, returning a PartialQueryClause to which the right-hand side can be appended.
-func (x QueryClause) And() PartialQueryClause {
+func (qc QueryClause) And() PartialQueryClause {
 	return PartialQueryClause{
 		tree: &LogicalOpNode{
-			Left:     x.tree,
+			Left:     qc.tree,
 			Operator: OperatorAnd,
 		},
-		hasIndexedField: x.hasIndexedField,
+		hasIndexedField: qc.hasIndexedField,
 	}
 }
 
 // Or starts a logical OR operation, returning a PartialQueryClause to which the right-hand side can be appended.
-func (x QueryClause) Or() PartialQueryClause {
+func (qc QueryClause) Or() PartialQueryClause {
 	return PartialQueryClause{
 		tree: &LogicalOpNode{
-			Left:     x.tree,
+			Left:     qc.tree,
 			Operator: OperatorOr,
 		},
-		hasIndexedField: x.hasIndexedField,
+		hasIndexedField: qc.hasIndexedField,
 	}
 }
 

@@ -26,8 +26,8 @@ type QuerySet[Resource Resourcer] struct {
 	limit                  *uint64
 	offset                 *uint64
 	returnAccessableFields bool
-	rMeta                  *ResourceMetadata[Resource]
-	resourceSet            *ResourceSet[Resource]
+	rMeta                  *Metadata[Resource]
+	resourceSet            *Set[Resource]
 	userPermissions        UserPermissions
 	requiredPermission     accesstypes.Permission
 	filterAst              ExpressionNode
@@ -62,7 +62,7 @@ func (q *QuerySet[Resource]) ReturnAccessableFields(b bool) *QuerySet[Resource] 
 }
 
 // EnableUserPermissionEnforcement enables the checking of user permissions for the QuerySet.
-func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *ResourceSet[Resource], userPermissions UserPermissions, requiredPermission accesstypes.Permission) *QuerySet[Resource] {
+func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource], userPermissions UserPermissions, requiredPermission accesstypes.Permission) *QuerySet[Resource] {
 	q.resourceSet = rSet
 	q.userPermissions = userPermissions
 	q.requiredPermission = requiredPermission

@@ -33,11 +33,11 @@ type (
 type Decoder[Resource Resourcer, Request any] struct {
 	validate    ValidatorFunc
 	fieldMapper *RequestFieldMapper
-	resourceSet *ResourceSet[Resource]
+	resourceSet *Set[Resource]
 }
 
 // NewDecoder creates a new Decoder for a given Resource and Request type.
-func NewDecoder[Resource Resourcer, Request any](rSet *ResourceSet[Resource]) (*Decoder[Resource, Request], error) {
+func NewDecoder[Resource Resourcer, Request any](rSet *Set[Resource]) (*Decoder[Resource, Request], error) {
 	target := new(Request)
 	m, err := NewRequestFieldMapper(target)
 	if err != nil {
@@ -108,7 +108,7 @@ func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermis
 	return patchSet, nil
 }
 
-func decodeToPatch[Resource Resourcer, Request any](rSet *ResourceSet[Resource], fieldMapper *RequestFieldMapper, req *http.Request, validate ValidatorFunc, operationPerm accesstypes.Permission) (*PatchSet[Resource], *Request, error) {
+func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMapper *RequestFieldMapper, req *http.Request, validate ValidatorFunc, operationPerm accesstypes.Permission) (*PatchSet[Resource], *Request, error) {
 	request := new(Request)
 	pr, pw := io.Pipe()
 	tr := io.TeeReader(req.Body, pw)

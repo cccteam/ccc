@@ -154,7 +154,7 @@ func TestCommitBuffer_Buffer(t *testing.T) {
 			autoCommitSize: 2,
 			itemsToBuffer: []SpannerBuffer{
 				&MockSpannerBuffer{id: "sb1"},
-				&MockSpannerBuffer{id: "sb2-fail", SpannerBufferFn: func(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+				&MockSpannerBuffer{id: "sb2-fail", SpannerBufferFn: func(_ context.Context, _ TxnBuffer, _ ...string) error {
 					return fmt.Errorf("spanner buffer error")
 				}},
 			},
@@ -267,7 +267,7 @@ func TestCommitBuffer_Commit(t *testing.T) {
 			name: "Commit non-empty buffer with SpannerBuffer error",
 			initialBufferItems: []SpannerBuffer{
 				&MockSpannerBuffer{id: "ok1"},
-				&MockSpannerBuffer{id: "fail", SpannerBufferFn: func(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+				&MockSpannerBuffer{id: "fail", SpannerBufferFn: func(_ context.Context, _ TxnBuffer, _ ...string) error {
 					return fmt.Errorf("spanner buffer error from item")
 				}},
 				&MockSpannerBuffer{id: "ok2-notcalled"},
@@ -289,7 +289,7 @@ func TestCommitBuffer_Commit(t *testing.T) {
 			if tt.spannerBufferShouldFail && tt.failingSpannerBufferIndex < len(tt.initialBufferItems) {
 				itemToFail, ok := tt.initialBufferItems[tt.failingSpannerBufferIndex].(*MockSpannerBuffer)
 				if ok && itemToFail.SpannerBufferFn == nil {
-					itemToFail.SpannerBufferFn = func(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+					itemToFail.SpannerBufferFn = func(_ context.Context, _ TxnBuffer, _ ...string) error {
 						return fmt.Errorf("forced spanner buffer error for %s", itemToFail.id)
 					}
 				}

@@ -35,7 +35,7 @@ func TestQuerySet_SpannerStmt_OrderBy_Limit(t *testing.T) {
 		wantQueryContains    string
 		wantErrorMsgContains string
 		wantErr              bool
-		assertFunc           func(t *testing.T, sql string, wantContains string)
+		assertFunc           func(t *testing.T, sql string, _ string)
 	}{
 		{
 			name:              "with limit",
@@ -45,7 +45,7 @@ func TestQuerySet_SpannerStmt_OrderBy_Limit(t *testing.T) {
 		{
 			name:       "no sort fields or limit",
 			sortFields: []SortField{},
-			assertFunc: func(t *testing.T, sql string, wantContains string) {
+			assertFunc: func(t *testing.T, sql string, _ string) {
 				if strings.Contains(sql, "ORDER BY") {
 					t.Errorf("Expected SQL NOT to contain 'ORDER BY', but got: %s", sql)
 				}
@@ -86,7 +86,7 @@ func TestQuerySet_SpannerStmt_OrderBy_Limit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rMetaPostgres := NewResourceMetadata[SortTestResource]()
+			rMetaPostgres := NewMetadata[SortTestResource]()
 			rMetaPostgres.dbType = SpannerDBType
 
 			qSet := NewQuerySet(rMetaPostgres)
@@ -131,7 +131,7 @@ func TestQuerySet_PostgresStmt_OrderBy_Limit(t *testing.T) {
 		wantQueryContains    string
 		wantErrorMsgContains string
 		wantErr              bool
-		assertFunc           func(t *testing.T, sql string, wantContains string)
+		assertFunc           func(t *testing.T, sql string, _ string)
 	}{
 		{
 			name:              "with limit",
@@ -141,7 +141,7 @@ func TestQuerySet_PostgresStmt_OrderBy_Limit(t *testing.T) {
 		{
 			name:       "no sort fields or limit",
 			sortFields: []SortField{},
-			assertFunc: func(t *testing.T, sql string, wantContains string) {
+			assertFunc: func(t *testing.T, sql string, _ string) {
 				if strings.Contains(sql, "ORDER BY") {
 					t.Errorf("Expected SQL NOT to contain 'ORDER BY', but got: %s", sql)
 				}
@@ -182,7 +182,7 @@ func TestQuerySet_PostgresStmt_OrderBy_Limit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rMetaPostgres := NewResourceMetadata[SortTestResource]()
+			rMetaPostgres := NewMetadata[SortTestResource]()
 			rMetaPostgres.dbType = PostgresDBType
 
 			qSet := NewQuerySet(rMetaPostgres)

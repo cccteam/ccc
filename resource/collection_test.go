@@ -266,15 +266,11 @@ func TestAddResources(t *testing.T) {
 	c := NewCollection()
 	scope := accesstypes.PermissionScope("global")
 
-	rs := &ResourceSet[Resourcer]{}
+	rs := &Set[Resourcer]{}
 
 	err := AddResources(c, scope, rs)
 
-	if collectResourcePermissions {
-		// This branch is unlikely if default is false.
-		// If it were true, and rs is empty, err should ideally be nil or a specific error if an empty set is invalid.
-		// For now, no assertion if err is nil.
-	} else {
+	if !collectResourcePermissions {
 		if err != nil {
 			t.Errorf("AddResources() with collectResourcePermissions=false: expected no error, got %v", err)
 		}

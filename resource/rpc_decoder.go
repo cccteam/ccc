@@ -41,17 +41,17 @@ func (s *RPCDecoder[Request]) WithValidator(v ValidatorFunc) *RPCDecoder[Request
 }
 
 // Decode decodes the HTTP request body into the Request struct and checks user permissions.
-func (r *RPCDecoder[Request]) Decode(request *http.Request) (*Request, error) {
-	req, err := r.d.Decode(request)
+func (s *RPCDecoder[Request]) Decode(request *http.Request) (*Request, error) {
+	req, err := s.d.Decode(request)
 	if err != nil {
 		return nil, errors.Wrap(err, "resource.StructDecoder.Decode()")
 	}
 
-	userPermissions := r.userPermissions(request)
-	if ok, missing, err := userPermissions.Check(request.Context(), r.requiredPermission, r.res); err != nil {
+	userPermissions := s.userPermissions(request)
+	if ok, missing, err := userPermissions.Check(request.Context(), s.requiredPermission, s.res); err != nil {
 		return nil, errors.Wrap(err, "enforcer.RequireResource()")
 	} else if !ok {
-		return nil, httpio.NewForbiddenMessagef("user %s, domain %s, does not have %s on %s", userPermissions.User(), userPermissions.Domain(), r.requiredPermission, missing)
+		return nil, httpio.NewForbiddenMessagef("user %s, domain %s, does not have %s on %s", userPermissions.User(), userPermissions.Domain(), s.requiredPermission, missing)
 	}
 
 	return req, nil
