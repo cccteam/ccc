@@ -319,7 +319,7 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceFie
 func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []*rpcField) []*rpcField {
 	for _, field := range fields {
 		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
-			if override == "boolean" && field.Type() == "*bool" {
+			if override == booleanStr && field.Type() == "*bool" {
 				panic("Bool pointer (*bool) not currently supported for rpc methods.")
 			}
 			field.typescriptType = override

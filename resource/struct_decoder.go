@@ -21,9 +21,10 @@ func (n nilResource) DefaultConfig() Config {
 type StructDecoder[Request any] struct {
 	validate    ValidatorFunc
 	fieldMapper *RequestFieldMapper
-	resourceSet *ResourceSet[nilResource]
+	resourceSet *Set[nilResource]
 }
 
+// NewStructDecoder creates a new StructDecoder for a given request type.
 func NewStructDecoder[Request any]() (*StructDecoder[Request], error) {
 	target := new(Request)
 
@@ -32,9 +33,9 @@ func NewStructDecoder[Request any]() (*StructDecoder[Request], error) {
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	rSet, err := NewResourceSet[nilResource, Request]()
+	rSet, err := NewSet[nilResource, Request]()
 	if err != nil {
-		return nil, errors.Wrap(err, "NewResourceSet()")
+		return nil, errors.Wrap(err, "NewSet()")
 	}
 
 	return &StructDecoder[Request]{
@@ -43,6 +44,7 @@ func NewStructDecoder[Request any]() (*StructDecoder[Request], error) {
 	}, nil
 }
 
+// WithValidator sets a validator function on the decoder.
 func (s *StructDecoder[Request]) WithValidator(v ValidatorFunc) *StructDecoder[Request] {
 	decoder := *s
 	decoder.validate = v
@@ -50,6 +52,7 @@ func (s *StructDecoder[Request]) WithValidator(v ValidatorFunc) *StructDecoder[R
 	return &decoder
 }
 
+// Decode decodes the HTTP request body into the target Request struct.
 func (s *StructDecoder[Request]) Decode(request *http.Request) (*Request, error) {
 	_, target, err := decodeToPatch[nilResource, Request](s.resourceSet, s.fieldMapper, request, s.validate, accesstypes.NullPermission)
 	if err != nil {

@@ -46,6 +46,7 @@ type TxnFuncRunner interface {
 // RunnerFunc is a function that converts a TxnFuncRunner into a TxnRunner
 type RunnerFunc func(ctx context.Context, txn TxnBuffer) error
 
+// Execute runs the function.
 func (fn RunnerFunc) Execute(ctx context.Context, txn TxnBuffer) error {
 	return fn(ctx, txn)
 }

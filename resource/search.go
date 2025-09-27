@@ -9,25 +9,32 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// SearchKey is the key used in a search query, typically corresponding to a field name.
 type SearchKey string
 
 func (f SearchKey) String() string {
 	return string(f)
 }
 
+// SearchType defines the type of search to be performed (e.g., substring, full-text).
 type SearchType string
 
 const (
+	// SubString search type.
 	SubString SearchType = "substring"
-	FullText  SearchType = "fulltext"
-	Ngram     SearchType = "ngram"
+	// FullText search type.
+	FullText SearchType = "fulltext"
+	// Ngram search type.
+	Ngram SearchType = "ngram"
 )
 
+// Search represents a search query with a specific type and values.
 type Search struct {
 	typ    SearchType
 	values map[SearchKey]string
 }
 
+// NewSearch creates a new Search object.
 func NewSearch(typ SearchType, values map[SearchKey]string) *Search {
 	return &Search{
 		typ:    typ,

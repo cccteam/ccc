@@ -8,11 +8,14 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// RequestFieldMapper provides a mapping between JSON field names (from struct tags)
+// and their corresponding Go struct field names.
 type RequestFieldMapper struct {
 	jsonTagToFields map[string]accesstypes.Field
 	fields          []accesstypes.Field
 }
 
+// NewRequestFieldMapper creates a new RequestFieldMapper by inspecting the struct tags of the provided value.
 func NewRequestFieldMapper(v any) (*RequestFieldMapper, error) {
 	jsonTagToFields, fields, err := tagToFieldMap(v)
 	if err != nil {
@@ -25,16 +28,19 @@ func NewRequestFieldMapper(v any) (*RequestFieldMapper, error) {
 	}, nil
 }
 
+// StructFieldName retrieves the Go struct field name for a given JSON tag.
 func (f *RequestFieldMapper) StructFieldName(jsonTag string) (accesstypes.Field, bool) {
 	fieldName, ok := f.jsonTagToFields[jsonTag]
 
 	return fieldName, ok
 }
 
+// Len returns the number of mapped fields.
 func (f *RequestFieldMapper) Len() int {
 	return len(f.jsonTagToFields)
 }
 
+// Fields returns a slice of all Go struct field names.
 func (f *RequestFieldMapper) Fields() []accesstypes.Field {
 	return f.fields
 }

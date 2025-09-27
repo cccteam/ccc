@@ -41,6 +41,7 @@ linters:
     - rowserrcheck
     - sqlclosecheck
     - staticcheck
+    - tagalign
     - tagliatelle
     - tparallel
     - unconvert
@@ -102,6 +103,10 @@ linters:
       locale: US
     nestif:
       min-complexity: 10
+    tagalign:
+      order:
+        - json
+        - spanner
     tagliatelle:
       case:
         rules:
@@ -142,6 +147,10 @@ linters:
         path: resourceset\.go
         text: permissionsFromTags
       - linters:
+          - gocritic
+        path: query_decoder_test\.go
+        text: 'hugeParam: tr is heavy'
+      - linters:
           - gocyclo
           - cyclop
           - funlen
@@ -163,6 +172,10 @@ linters:
           - staticcheck
         path: query_decoder_test\.go
         text: 'QF1001: could apply De Morgan''s law'
+      - linters:
+          - gocritic
+        path: queryset\.go
+        text: 'sprintfQuotedString: use %q instead of "%s" for quoted strings'
     paths:
       - third_party$
       - builtin$

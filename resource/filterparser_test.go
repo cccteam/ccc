@@ -8,19 +8,19 @@ import (
 	"github.com/cccteam/httpio"
 )
 
-// defaultTestJsonToSqlNameMap provides a standard map for most test cases.
-var defaultTestJsonToSqlNameMap = map[string]FieldInfo{
-	"status":   {Name: "Status", Kind: reflect.String, Indexed: true},
-	"user_id":  {Name: "UserId", Kind: reflect.Int, Indexed: true},
-	"price":    {Name: "Price", Kind: reflect.Float64, Indexed: true},
-	"stock":    {Name: "Stock", Kind: reflect.Int, Indexed: true},
-	"rating":   {Name: "Rating", Kind: reflect.Int, Indexed: true},
-	"name":     {Name: "Name", Kind: reflect.String, Indexed: true},
-	"age":      {Name: "Age", Kind: reflect.Int64, Indexed: true},
-	"category": {Name: "Category", Kind: reflect.String, Indexed: true},
-	"email":    {Name: "Email", Kind: reflect.String, Indexed: true},
-	"active":   {Name: "Active", Kind: reflect.Bool, Indexed: true},
-	"field":    {Name: "Field", Kind: reflect.String, Indexed: true},
+// defaultTestJSONToSQLNameMap provides a standard map for most test cases.
+var defaultTestJSONToSQLNameMap = map[jsonFieldName]FilterFieldInfo{
+	"status":   {DbColumnName: "Status", Kind: reflect.String, Indexed: true},
+	"user_id":  {DbColumnName: "UserId", Kind: reflect.Int, Indexed: true},
+	"price":    {DbColumnName: "Price", Kind: reflect.Float64, Indexed: true},
+	"stock":    {DbColumnName: "Stock", Kind: reflect.Int, Indexed: true},
+	"rating":   {DbColumnName: "Rating", Kind: reflect.Int, Indexed: true},
+	"name":     {DbColumnName: "Name", Kind: reflect.String, Indexed: true},
+	"age":      {DbColumnName: "Age", Kind: reflect.Int64, Indexed: true},
+	"category": {DbColumnName: "Category", Kind: reflect.String, Indexed: true},
+	"email":    {DbColumnName: "Email", Kind: reflect.String, Indexed: true},
+	"active":   {DbColumnName: "Active", Kind: reflect.Bool, Indexed: true},
+	"field":    {DbColumnName: "Field", Kind: reflect.String, Indexed: true},
 }
 
 func TestNewLexer(t *testing.T) {
@@ -260,7 +260,7 @@ func TestNewLexer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			l := NewLexer(tt.args.input)
+			l := NewFilterLexer(tt.args.input)
 			var tokens []Token
 			for {
 				token, err := l.NextToken()
@@ -290,204 +290,204 @@ func TestParser_Parse_Errors(t *testing.T) {
 		name               string
 		filterString       string
 		wantErrMsgContains string
-		customMap          map[string]FieldInfo
-		isHttpError        bool
+		customMap          map[jsonFieldName]FilterFieldInfo
+		isHTTPError        bool
 	}
 	tests := []errorTestCase{
 		{
 			name:               "invalid condition - missing value",
 			filterString:       "name:eq",
 			wantErrMsgContains: "operator 'eq' requires a value",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "invalid condition - empty field",
 			filterString:       ":eq:value",
 			wantErrMsgContains: "field name cannot be empty in condition ':eq:value'",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "in operator with empty value list",
 			filterString:       "category:in:()",
 			wantErrMsgContains: "value list for 'in' cannot be empty in condition 'category:in:()'",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "notin operator with empty value list",
 			filterString:       "category:notin:()",
 			wantErrMsgContains: "value list for 'notin' cannot be empty in condition 'category:notin:()'",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "unknown operator",
 			filterString:       "name:badop:John",
 			wantErrMsgContains: "unknown operator 'badop' in condition 'name:badop:John'",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "missing closing parenthesis",
 			filterString:       "(name:eq:John",
 			wantErrMsgContains: "expected next token to be TokenRParen, got TokenEOF instead",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "unmatched closing parenthesis at start",
 			filterString:       ")name:eq:John",
 			wantErrMsgContains: "Invalid filter query. Unexpected token ')' (type: TokenRParen) at the beginning of an expression",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "unmatched closing parenthesis after expression",
 			filterString:       "name:eq:John)",
 			wantErrMsgContains: "Invalid filter query. Unexpected characters ')' (type: TokenRParen) found after the end of the query",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "unexpected token - double comma",
 			filterString:       "name:eq:John,,age:gte:30",
 			wantErrMsgContains: "Invalid filter query. Unexpected token ',' (type: TokenComma) at the beginning of an expression",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "operator isnull with value",
 			filterString:       "name:isnull:extra",
 			wantErrMsgContains: "operator 'isnull' does not take a value, but got 'extra' in condition 'name:isnull:extra'",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "operator isnotnull with value",
 			filterString:       "name:isnotnull:extra",
 			wantErrMsgContains: "operator 'isnotnull' does not take a value, but got 'extra' in condition 'name:isnotnull:extra'",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "empty group",
 			filterString:       "()",
 			wantErrMsgContains: "Invalid filter query. Empty groups '()' are not allowed.",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "group with only operator",
 			filterString:       "(,)",
 			wantErrMsgContains: "Invalid filter query. Unexpected token ',' (type: TokenComma) at the beginning of an expression",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "trailing operator comma",
 			filterString:       "name:eq:John,",
 			wantErrMsgContains: "Invalid filter query. Unexpected token '' (type: TokenEOF) at the beginning of an expression",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "trailing operator pipe",
 			filterString:       "name:eq:John|",
 			wantErrMsgContains: "Invalid filter query. Unexpected token '' (type: TokenEOF) at the beginning of an expression",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "leading operator comma - NEW",
 			filterString:       ",name:eq:John",
 			wantErrMsgContains: "Invalid filter query. Unexpected token ',' (type: TokenComma) at the beginning of an expression",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "leading operator pipe",
 			filterString:       "|name:eq:John",
 			wantErrMsgContains: "Invalid filter query. Unexpected token '|' (type: TokenPipe) at the beginning of an expression",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "condition with invalid value format for in",
 			filterString:       "field:in:novalue",
 			wantErrMsgContains: "value for 'in' must be in parentheses, e.g., (v1,v2), got 'novalue' in condition 'field:in:novalue'",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "condition with invalid value format for notin (missing closing paren)",
 			filterString:       "field:notin:(v1,v2",
 			wantErrMsgContains: "value for 'notin' must be in parentheses, e.g., (v1,v2), got '(v1,v2' in condition 'field:notin:(v1,v2'",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "condition with empty item in 'in' list",
 			filterString:       "field:in:(v1,,v2)",
 			wantErrMsgContains: "empty value in list for operator 'in' in condition 'field:in:(v1,,v2)'",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "invalid field name - using empty map",
 			filterString:       "unknown_field:eq:value",
 			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
-			customMap:          map[string]FieldInfo{},
-			isHttpError:        true,
+			customMap:          map[jsonFieldName]FilterFieldInfo{},
+			isHTTPError:        true,
 		},
 		{
 			name:               "invalid field name in group - using empty map",
 			filterString:       "(unknown_field:eq:value,another_unknown:eq:Test)",
-			customMap:          map[string]FieldInfo{},
+			customMap:          map[jsonFieldName]FilterFieldInfo{},
 			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "invalid field name with pipe - using map without the specific field",
 			filterString:       "name:eq:Test|unknown_field:eq:value",
-			customMap:          map[string]FieldInfo{"name": {Name: "Name", Kind: reflect.String}},
+			customMap:          map[jsonFieldName]FilterFieldInfo{"name": {DbColumnName: "Name", Kind: reflect.String}},
 			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		// New test cases
 		{
 			name:               "unexpected token at beginning (original issue)",
 			filterString:       ",submittalSource:eq:M",
 			wantErrMsgContains: "Invalid filter query. Unexpected token ',' (type: TokenComma) at the beginning of an expression",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "two conditions back-to-back - (Lexer makes this one token, so parser sees valid single condition)",
 			filterString:       "name:eq:Value1 name:eq:Value2",
 			wantErrMsgContains: "", // No error expected with current lexer/parser (i.e. will become name = 'Value1 name:eq:Value2')
-			isHttpError:        false,
+			isHTTPError:        false,
 		},
 		{
 			name:               "unexpected characters at end - revised (Lexer makes this one token, so parser sees valid single condition)",
 			filterString:       "name:eq:Value1 (name:eq:Value2)",
 			wantErrMsgContains: "", // No error expected with current lexer
-			isHttpError:        false,
+			isHTTPError:        false,
 		},
 		{
 			name:               "nested parentheses in condition token (Lexer error)",
 			filterString:       "field:op:(val(nested))",
 			wantErrMsgContains: "Invalid filter query. Nested parentheses are not allowed within a single condition segment. Found near character 14 of field:op:(val(nested))",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:         "unsupported value type in convertValue",
 			filterString: "unsupported_field:eq:somevalue",
-			customMap: map[string]FieldInfo{
-				"unsupported_field": {Name: "UnsupportedField", Kind: reflect.Chan},
+			customMap: map[jsonFieldName]FilterFieldInfo{
+				"unsupported_field": {DbColumnName: "UnsupportedField", Kind: reflect.Chan, Indexed: true},
 			},
 			wantErrMsgContains: "Invalid value format. The value 'somevalue' in condition 'unsupported_field:eq:somevalue' cannot be processed due to an unsupported data type: chan.",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 		{
 			name:               "Lexer error during advance (NewParser)",
 			filterString:       "field:op:(val(nes)ted)",
 			wantErrMsgContains: "Invalid filter query. Nested parentheses are not allowed",
-			isHttpError:        true,
+			isHTTPError:        true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			lexer := NewLexer(tt.filterString)
-			currentMap := defaultTestJsonToSqlNameMap
+			lexer := NewFilterLexer(tt.filterString)
+			currentMap := defaultTestJSONToSQLNameMap
 			if tt.customMap != nil {
 				currentMap = tt.customMap
 			}
 
 			// Test NewParser for errors first, especially for lexer errors
-			parser, err := NewParser(lexer, currentMap)
+			parser, err := NewFilterParser(lexer, currentMap)
 			if err != nil { // Error from NewParser
 				if tt.wantErrMsgContains == "" {
 					t.Fatalf("NewParser() error = %v, want no error. Input: %q", err, tt.filterString)
@@ -495,7 +495,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 				if !strings.Contains(err.Error(), tt.wantErrMsgContains) {
 					t.Fatalf("NewParser() error = %q, wantErrMsg substring %q. Input: %q", err.Error(), tt.wantErrMsgContains, tt.filterString)
 				}
-				if tt.isHttpError {
+				if tt.isHTTPError {
 					if !httpio.HasBadRequest(err) {
 						t.Errorf("NewParser() error: Input %q: Expected HTTP 400 Bad Request error, but got: %v", tt.filterString, err)
 					}
@@ -523,7 +523,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 				t.Errorf("parser.Parse() error = %q, wantErrMsg substring %q. Input: %q", parseErr.Error(), tt.wantErrMsgContains, tt.filterString)
 			}
 
-			if tt.isHttpError {
+			if tt.isHTTPError {
 				if !httpio.HasBadRequest(parseErr) {
 					t.Errorf("parser.Parse() error: Input %q: Expected HTTP 400 Bad Request error, but got: %v", tt.filterString, parseErr)
 				}
@@ -542,42 +542,42 @@ func TestParser_Parse_Successful(t *testing.T) {
 		{
 			name:         "simple condition with status",
 			filterString: "status:eq:active",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: "eq", Value: "active"}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: eqStr, Value: "active"}},
 		},
 		{
 			name:         "simple condition with empty status",
 			filterString: "status:eq:",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: "eq", Value: ""}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: eqStr, Value: ""}},
 		},
 		{
 			name:         "True condition with active",
 			filterString: "active:eq:true",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Active", Operator: "eq", Value: true}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Active", Operator: eqStr, Value: true}},
 		},
 		{
 			name:         "False condition with active",
 			filterString: "active:eq:false",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Active", Operator: "eq", Value: false}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Active", Operator: eqStr, Value: false}},
 		},
 		{
 			name:         "simple condition with user_id",
 			filterString: "user_id:in:(1,2,3)",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: "in", Values: []any{1, 2, 3}}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: inStr, Values: []any{1, 2, 3}}},
 		},
 		{
 			name:         "simple condition with price",
 			filterString: "price:gte:100.50",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Price", Operator: "gte", Value: 100.50}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Price", Operator: gteStr, Value: 100.50}},
 		},
 		{
 			name:         "simple condition with name - mapped",
 			filterString: "name:eq:Test Name",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Name", Operator: "eq", Value: "Test Name"}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Name", Operator: eqStr, Value: "Test Name"}},
 		},
 		{
 			name:         "simple condition with age - mapped",
 			filterString: "age:lt:30",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Age", Operator: "lt", Value: "30"}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Age", Operator: ltStr, Value: "30"}},
 		},
 		{
 			name:         "simple condition with category - mapped",
@@ -587,7 +587,7 @@ func TestParser_Parse_Successful(t *testing.T) {
 		{
 			name:         "simple condition with email - mapped",
 			filterString: "email:notin:(a@b.com,c@d.com)",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Email", Operator: "notin", Values: []any{"a@b.com", "c@d.com"}}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Email", Operator: notinStr, Values: []any{"a@b.com", "c@d.com"}}},
 		},
 		{
 			name:         "grouped condition with translated fields",
@@ -595,13 +595,13 @@ func TestParser_Parse_Successful(t *testing.T) {
 			wantNode: &LogicalOpNode{
 				Left: &GroupNode{
 					Expression: &LogicalOpNode{
-						Left:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: "eq", Value: 10}},
+						Left:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: eqStr, Value: 10}},
 						Operator: OperatorAnd,
-						Right:    &ConditionNode{Condition: Condition{Field: "Status", Operator: "eq", Value: "pending"}},
+						Right:    &ConditionNode{Condition: Condition{Field: "Status", Operator: eqStr, Value: "pending"}},
 					},
 				},
 				Operator: OperatorOr,
-				Right:    &ConditionNode{Condition: Condition{Field: "Price", Operator: "gt", Value: 50}},
+				Right:    &ConditionNode{Condition: Condition{Field: "Price", Operator: gtStr, Value: 50}},
 			},
 		},
 		{
@@ -615,8 +615,8 @@ func TestParser_Parse_Successful(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			lexer := NewLexer(tt.filterString)
-			parser, err := NewParser(lexer, defaultTestJsonToSqlNameMap)
+			lexer := NewFilterLexer(tt.filterString)
+			parser, err := NewFilterParser(lexer, defaultTestJSONToSQLNameMap)
 			if err != nil {
 				t.Fatalf("NewParser() error = %v for input '%s'", err, tt.filterString)
 			}

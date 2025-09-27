@@ -52,7 +52,7 @@ type {{ .Resource.Name }}Query struct {
 }
 
 func New{{ .Resource.Name }}Query() *{{ .Resource.Name }}Query {
-	return &{{ .Resource.Name }}Query{qSet: resource.NewQuerySet(resource.NewResourceMetadata[{{ .Resource.Name }}]())}
+	return &{{ .Resource.Name }}Query{qSet: resource.NewQuerySet(resource.NewMetadata[{{ .Resource.Name }}]())}
 }
 
 func New{{ .Resource.Name }}QueryFromQuerySet(qSet *resource.QuerySet[{{ .Resource.Name }}]) *{{ .Resource.Name }}Query {
@@ -297,7 +297,7 @@ func New{{ .Resource.Name }}CreatePatch() (*{{ .Resource.Name }}CreatePatch, err
 		return nil, errors.Wrap(err, "ccc.NewUUID()")
 	}
 	
-	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
+	patchSet := resource.NewPatchSet(resource.NewMetadata[{{ .Resource.Name }}]()).
 		SetKey("{{ .Resource.PrimaryKey.Name }}", id).
 		SetPatchType(resource.CreatePatchType)
 	patch := &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}
@@ -326,7 +326,7 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(
 func New{{ .Resource.Name }}CreatePatch(
 {{- range $isNotFirstIteration, $field := .Resource.Fields }}
 {{- if $field.IsPrimaryKey }}{{- if $isNotFirstIteration }}, {{ end }}{{ GoCamel $field.Name }} {{ $field.ResolvedType }}{{ end }}{{ end }}) *{{ .Resource.Name }}CreatePatch {
-	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
+	patchSet := resource.NewPatchSet(resource.NewMetadata[{{ .Resource.Name }}]()).
 	{{ range $field := .Resource.Fields }}
 	{{ if $field.IsPrimaryKey }}
 	 	SetKey("{{ $field.Name }}", {{ GoCamel $field.Name }}).
@@ -396,7 +396,7 @@ func New{{ .Resource.Name }}UpdatePatch(
 		{{- GoCamel $field.Name }} {{ $field.ResolvedType }}
 	{{- end -}}
 {{- end }}) *{{ .Resource.Name }}UpdatePatch {
-	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
+	patchSet := resource.NewPatchSet(resource.NewMetadata[{{ .Resource.Name }}]()).
 {{- range $field := .Resource.Fields }}
 	{{- if $field.IsPrimaryKey }}
 		SetKey("{{ $field.Name }}", {{ GoCamel $field.Name }}).
@@ -463,7 +463,7 @@ func New{{ .Resource.Name }}DeletePatch(
 		{{- GoCamel $field.Name }} {{ $field.ResolvedType }}
 	{{- end -}}
 {{- end }}) *{{ .Resource.Name }}DeletePatch {
-	patchSet := resource.NewPatchSet(resource.NewResourceMetadata[{{ .Resource.Name }}]()).
+	patchSet := resource.NewPatchSet(resource.NewMetadata[{{ .Resource.Name }}]()).
 {{- range $field := .Resource.Fields }}
 		{{- if $field.IsPrimaryKey }}
 		SetKey("{{ $field.Name }}", {{ GoCamel $field.Name }}).
@@ -515,7 +515,7 @@ import (
 	listTemplate = `func (a *App) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.ListPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.ListPermTag }} {{ $field.SearchIndexTags }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
@@ -559,7 +559,7 @@ import (
 	readTemplate = `func (a *App) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.AllowFilterTag }} {{ $field.ReadPermTag }} {{ $field.QueryTag }} {{ $field.SearchIndexTags }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.SearchIndexTags }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
@@ -609,7 +609,7 @@ import (
 	patchTemplate = `func (a *App) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type request struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }}`" + `
 		{{- end }}
 	}
 	
@@ -742,7 +742,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 	{{- range $resource := .Resources }}
 	type {{ GoCamel $resource.Name }}Request struct {
 		{{- range $field := .Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }} {{ $field.QueryTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }}`" + `
 		{{- end }}
 	}
 	{{ GoCamel $resource.Name}}Decoder := NewDecoder[resources.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)

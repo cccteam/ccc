@@ -25,7 +25,7 @@ func TestNewPatchSet(t *testing.T) {
 		{
 			name: "New",
 			want: &PatchSet[nilResource]{
-				querySet: NewQuerySet(NewResourceMetadata[nilResource]()),
+				querySet: NewQuerySet(NewMetadata[nilResource]()),
 				data:     newFieldSet(),
 			},
 		},
@@ -33,7 +33,7 @@ func TestNewPatchSet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := NewPatchSet(NewResourceMetadata[nilResource]())
+			got := NewPatchSet(NewMetadata[nilResource]())
 			if diff := cmp.Diff(tt.want, got, cmp.Comparer(PatchsetCompare)); diff != "" {
 				t.Errorf("NewPatchSet() mismatch (-want +got):\n%s", diff)
 			}
@@ -66,7 +66,7 @@ func TestPatchSet_Set(t *testing.T) {
 				},
 			},
 			want: &PatchSet[nilResource]{
-				querySet: NewQuerySet(NewResourceMetadata[nilResource]()).AddField("field1").AddField("field2"),
+				querySet: NewQuerySet(NewMetadata[nilResource]()).AddField("field1").AddField("field2"),
 				data: &fieldSet{
 					data: map[accesstypes.Field]any{
 						"field1": "value1",
@@ -92,7 +92,7 @@ func TestPatchSet_Set(t *testing.T) {
 				},
 			},
 			want: &PatchSet[nilResource]{
-				querySet: NewQuerySet(NewResourceMetadata[nilResource]()).AddField("field2").AddField("field1"),
+				querySet: NewQuerySet(NewMetadata[nilResource]()).AddField("field2").AddField("field1"),
 				data: &fieldSet{
 					data: map[accesstypes.Field]any{
 						"field1": "value1",
@@ -110,7 +110,7 @@ func TestPatchSet_Set(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet[nilResource]{
-				querySet: NewQuerySet(NewResourceMetadata[nilResource]()),
+				querySet: NewQuerySet(NewMetadata[nilResource]()),
 				data:     newFieldSet(),
 			}
 			for _, i := range tt.args {
@@ -201,7 +201,7 @@ func TestPatchSet_SetKey(t *testing.T) {
 						},
 						fields: []accesstypes.Field{"field1", "field2"},
 					},
-					rMeta: NewResourceMetadata[nilResource](),
+					rMeta: NewMetadata[nilResource](),
 				},
 				data: newFieldSet(),
 			},
@@ -227,7 +227,7 @@ func TestPatchSet_SetKey(t *testing.T) {
 						},
 						fields: []accesstypes.Field{"field2", "field1"},
 					},
-					rMeta: NewResourceMetadata[nilResource](),
+					rMeta: NewMetadata[nilResource](),
 				},
 				data: newFieldSet(),
 			},
@@ -237,7 +237,7 @@ func TestPatchSet_SetKey(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &PatchSet[nilResource]{
-				querySet: NewQuerySet(NewResourceMetadata[nilResource]()),
+				querySet: NewQuerySet(NewMetadata[nilResource]()),
 				data:     newFieldSet(),
 			}
 			for _, i := range tt.args {

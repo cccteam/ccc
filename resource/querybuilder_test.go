@@ -11,7 +11,7 @@ type testQuery struct {
 
 func newTestQuery(dbType DBType) *testQuery {
 	return &testQuery{
-		qSet: NewQuerySet(&ResourceMetadata[AResource]{
+		qSet: NewQuerySet(&Metadata[AResource]{
 			dbType: dbType,
 		}),
 	}
@@ -42,27 +42,27 @@ func (px testQueryPartialExpr) Group(x testQueryExpr) testQueryExpr {
 	return testQueryExpr{px.partialExpr.Group(x.expr)}
 }
 
-func (o testQueryPartialExpr) ID() testQueryIdent[int] {
+func (px testQueryPartialExpr) ID() testQueryIdent[int] {
 	return testQueryIdent[int]{
-		Ident: NewIdent[int]("ID", o.partialExpr, true),
+		Ident: NewIdent[int]("ID", px.partialExpr, true),
 	}
 }
 
-func (o testQueryPartialExpr) Name() testQueryIdent[string] {
+func (px testQueryPartialExpr) Name() testQueryIdent[string] {
 	return testQueryIdent[string]{
-		Ident: NewIdent[string]("Name", o.partialExpr, true),
+		Ident: NewIdent[string]("Name", px.partialExpr, true),
 	}
 }
 
-func (o testQueryPartialExpr) IndexedID() testQueryIdent[int] {
+func (px testQueryPartialExpr) IndexedID() testQueryIdent[int] {
 	return testQueryIdent[int]{
-		Ident: NewIdent[int]("ID", o.partialExpr, true),
+		Ident: NewIdent[int]("ID", px.partialExpr, true),
 	}
 }
 
-func (o testQueryPartialExpr) NonIndexedField() testQueryIdent[string] {
+func (px testQueryPartialExpr) NonIndexedField() testQueryIdent[string] {
 	return testQueryIdent[string]{
-		Ident: NewIdent[string]("NonIndexedField", o.partialExpr, false),
+		Ident: NewIdent[string]("NonIndexedField", px.partialExpr, false),
 	}
 }
 

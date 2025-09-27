@@ -16,6 +16,10 @@ import (
 	"github.com/ettle/strcase"
 )
 
+const (
+	booleanStr = "boolean"
+)
+
 // Generator provides methods for generating Go or Typescript for a resource-driven web application.
 type Generator interface {
 	Generate() error
@@ -443,7 +447,7 @@ func (f *resourceField) TypescriptDataType() string {
 	if f.typescriptType == "civilDate" {
 		return "Date"
 	}
-	if f.IsNullable && f.typescriptType == "boolean" {
+	if f.IsNullable && f.typescriptType == booleanStr {
 		return "NullBoolean"
 	}
 
@@ -455,7 +459,7 @@ func (f *resourceField) TypescriptDisplayType() string {
 		return "enumerated"
 	}
 
-	if f.IsNullable && f.typescriptType == "boolean" {
+	if f.IsNullable && f.typescriptType == booleanStr {
 		return "nullboolean"
 	}
 
@@ -501,6 +505,14 @@ func (f *resourceField) IndexTag() string {
 	return ""
 }
 
+func (f *resourceField) PIITag() string {
+	if f.IsPII() {
+		return `pii:"true"`
+	}
+
+	return ""
+}
+
 func (f *resourceField) UniqueIndexTag() string {
 	if f.IsUniqueIndex {
 		return indexTrue
@@ -515,6 +527,17 @@ func (f *resourceField) AllowFilterTag() string {
 	}
 
 	return ""
+}
+
+func (f *resourceField) IsPII() bool {
+	tag, ok := f.LookupTag("conditions")
+	if !ok {
+		return false
+	}
+
+	conditions := strings.Split(tag, ",")
+
+	return slices.Contains(conditions, "pii")
 }
 
 func (f *resourceField) IsImmutable() bool {
@@ -574,15 +597,6 @@ func (f *resourceField) DefaultUpdateFuncName() string {
 
 func (f *resourceField) HasDefaultUpdateFunc() bool {
 	return f.DefaultUpdateFuncName() != ""
-}
-
-func (f *resourceField) QueryTag() string {
-	query, ok := f.LookupTag("query")
-	if !ok {
-		return ""
-	}
-
-	return fmt.Sprintf("query:%q", query)
 }
 
 func (f *resourceField) ReadPermTag() string {

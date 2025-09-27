@@ -22,6 +22,7 @@ type TestResource struct {
 	ItemIDs            []int    `spanner:"item_ids_sql"`
 	Tags               []string `spanner:"tags_sql"`
 	LegacyIndexedField string   `spanner:"legacy_indexed_field_sql"`
+	Ssn                string   `spanner:"ssn_sql"`
 }
 
 func (tr TestResource) Resource() accesstypes.Resource { return "testresources" }
@@ -34,15 +35,16 @@ func (tr TestResource) DefaultConfig() Config {
 }
 
 type TestRequest struct {
-	Name               string   `json:"name"                 index:"true"  substring:"SearchTokens"`
-	Age                int      `json:"age"                  index:"true"`
+	Name               string   `json:"name"               index:"true" substring:"SearchTokens"`
+	Age                int      `json:"age"                index:"true"`
 	Status             string   `json:"status"`
-	Email              *string  `json:"email"                index:"true"`
-	Salary             float64  `json:"salary"               index:"true"`
-	IsActive           bool     `json:"isActive"               index:"true"`
-	ItemIDs            []int    `json:"itemIDs"                  index:"true"`
-	Tags               []string `json:"tags"                index:"true"`
+	Email              *string  `json:"email"              index:"true"`
+	Salary             float64  `json:"salary"             index:"true"`
+	IsActive           bool     `json:"isActive"           index:"true"`
+	ItemIDs            []int    `json:"itemIDs"            index:"true"`
+	Tags               []string `json:"tags"               index:"true"`
 	LegacyIndexedField string   `json:"legacyIndexedField" index:"true"`
+	Ssn                string   `json:"ssn"                index:"true" pii:"true"`
 }
 
 func TestQueryDecoder_parseQuery(t *testing.T) {
@@ -441,7 +443,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 	for _, tt := range test {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			resSet, err := NewResourceSet[TestResource, TestRequest]()
+			resSet, err := NewSet[TestResource, TestRequest]()
 			if err != nil {
 				t.Fatalf("Failed to create ResourceSet for test case %s: %v", tt.name, err)
 			}
@@ -544,7 +546,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 
 func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 	t.Parallel()
-	resSet, err := NewResourceSet[TestResource, TestRequest]()
+	resSet, err := NewSet[TestResource, TestRequest]()
 	if err != nil {
 		t.Fatalf("Failed to create ResourceSet: %v", err)
 	}
@@ -587,6 +589,30 @@ func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 			expectErr:         false,
 		},
 		{
+			name:              "POST with pii in body filter",
+			method:            http.MethodPost,
+			urlValues:         "",
+			body:              `{"filter": "ssn:eq:123456789"}`,
+			expectedASTString: "ssn_sql:eq:123456789",
+			expectErr:         false,
+		},
+		{
+			name:           "GET with pii in URL filter",
+			method:         http.MethodGet,
+			urlValues:      "filter=ssn:eq:123456789",
+			body:           "",
+			expectedErrMsg: "cannot filter on sensitive field in URL: ssn",
+			expectErr:      true,
+		},
+		{
+			name:           "POST with pii in URL filter",
+			method:         http.MethodPost,
+			urlValues:      "filter=ssn:eq:123456789",
+			body:           "",
+			expectedErrMsg: "cannot filter on sensitive field in URL: ssn",
+			expectErr:      true,
+		},
+		{
 			name:           "POST with filter in body and query",
 			method:         http.MethodPost,
 			urlValues:      "filter=age:gt:30",
@@ -623,7 +649,7 @@ func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			req, err := http.NewRequest(tc.method, "http://test?"+tc.urlValues, strings.NewReader(tc.body))
+			req, err := http.NewRequestWithContext(t.Context(), tc.method, "http://test?"+tc.urlValues, strings.NewReader(tc.body))
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}

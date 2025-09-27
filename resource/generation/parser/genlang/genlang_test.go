@@ -20,7 +20,6 @@ var keywords = map[string]genlang.KeywordOpts{
 	"index":       {genlang.ScanStruct: genlang.ArgsRequired, genlang.ScanField: genlang.NoArgs},
 	"uniqueindex": {genlang.ScanStruct: genlang.ArgsRequired, genlang.ScanField: genlang.NoArgs},
 	"view":        {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
-	"query":       {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	"using":       {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 	"suppress":    {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
 	"omit":        {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},

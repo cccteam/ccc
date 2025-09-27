@@ -1,4 +1,4 @@
-// package resource provides a set of types and functions for working with resources.
+// Package resource provides a set of types and functions for working with resources.
 package resource
 
 import (
@@ -25,63 +25,73 @@ type (
 	ValidateFunc func(ctx context.Context, txn TxnBuffer) error
 )
 
+// Resourcer is an interface that all resource structs must implement.
 type Resourcer interface {
 	Resource() accesstypes.Resource
 	DefaultConfig() Config
 }
 
-type ResourceSet[Resource Resourcer] struct {
+// Set holds metadata about a resource, including its permissions and field-to-tag mappings.
+type Set[Resource Resourcer] struct {
 	permissions     []accesstypes.Permission
 	requiredTagPerm accesstypes.TagPermissions
 	fieldToTag      map[accesstypes.Field]accesstypes.Tag
 	immutableFields map[accesstypes.Tag]struct{}
-	rMeta           *ResourceMetadata[Resource]
+	rMeta           *Metadata[Resource]
 }
 
-func NewResourceSet[Resource Resourcer, Request any](permissions ...accesstypes.Permission) (*ResourceSet[Resource], error) {
+// NewSet creates a new Set for a given Resource and Request type, parsing permissions from struct tags.
+func NewSet[Resource Resourcer, Request any](permissions ...accesstypes.Permission) (*Set[Resource], error) {
 	requiredTagPerm, fieldToTag, permissions, immutableFields, err := permissionsFromTags(reflect.TypeFor[Request](), permissions)
 	if err != nil {
 		return nil, errors.Wrap(err, "permissionsFromTags()")
 	}
 
-	return &ResourceSet[Resource]{
+	return &Set[Resource]{
 		permissions:     permissions,
 		requiredTagPerm: requiredTagPerm,
 		fieldToTag:      fieldToTag,
 		immutableFields: immutableFields,
-		rMeta:           NewResourceMetadata[Resource](),
+		rMeta:           NewMetadata[Resource](),
 	}, nil
 }
 
-func (r *ResourceSet[Resource]) BaseResource() accesstypes.Resource {
+// BaseResource returns the base name of the resource (without any tags).
+func (r *Set[Resource]) BaseResource() accesstypes.Resource {
 	var res Resource
 
 	return res.Resource()
 }
 
-func (r *ResourceSet[Resource]) ImmutableFields() map[accesstypes.Tag]struct{} {
+// ImmutableFields returns a map of tags for fields that are marked as immutable.
+func (r *Set[Resource]) ImmutableFields() map[accesstypes.Tag]struct{} {
 	return r.immutableFields
 }
 
-func (r *ResourceSet[Resource]) ResourceMetadata() *ResourceMetadata[Resource] {
+// ResourceMetadata returns the metadata for the resource.
+func (r *Set[Resource]) ResourceMetadata() *Metadata[Resource] {
 	return r.rMeta
 }
 
-func (r *ResourceSet[Resource]) PermissionRequired(fieldName accesstypes.Field, perm accesstypes.Permission) bool {
+// PermissionRequired checks if a specific permission is required for a given field.
+func (r *Set[Resource]) PermissionRequired(fieldName accesstypes.Field, perm accesstypes.Permission) bool {
 	return slices.Contains(r.requiredTagPerm[r.fieldToTag[fieldName]], perm)
 }
 
-func (r *ResourceSet[Resource]) Permissions() []accesstypes.Permission {
+// Permissions returns all permissions associated with the resource set.
+func (r *Set[Resource]) Permissions() []accesstypes.Permission {
 	return r.permissions
 }
 
-func (r *ResourceSet[Resource]) Resource(fieldName accesstypes.Field) accesstypes.Resource {
+// Resource returns the full resource name for a field, including its tag (e.g., "myresource.myfield").
+func (r *Set[Resource]) Resource(fieldName accesstypes.Field) accesstypes.Resource {
 	var res Resource
 
 	return accesstypes.Resource(fmt.Sprintf("%s.%s", res.Resource(), r.fieldToTag[fieldName]))
 }
 
-func (r *ResourceSet[Resource]) TagPermissions() accesstypes.TagPermissions {
+// TagPermissions returns the mapping of tags to their required permissions.
+func (r *Set[Resource]) TagPermissions() accesstypes.TagPermissions {
 	return r.requiredTagPerm
 }
 
@@ -116,7 +126,7 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 		permTag := field.Tag.Get("perm")
 		perms := strings.Split(permTag, ",")
 
-		if immutableTag == "true" {
+		if immutableTag == trueStr {
 			immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
 
 			// immutability is implemented by requiring the update permission (here) and then
@@ -170,19 +180,21 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 	return tags, fieldToTag, permissions, immutableFields, nil
 }
 
-type ResourceMetadata[Resource Resourcer] struct {
+// Metadata contains cached metadata about a resource, such as its database schema mapping and configuration.
+type Metadata[Resource Resourcer] struct {
 	fieldMap            map[accesstypes.Field]cacheEntry
 	dbType              DBType
 	changeTrackingTable string
 	trackChanges        bool
 }
 
-func NewResourceMetadata[Resource Resourcer]() *ResourceMetadata[Resource] {
+// NewMetadata creates or retrieves cached metadata for a resource.
+func NewMetadata[Resource Resourcer]() *Metadata[Resource] {
 	var res Resource
 
 	c := resMetadataCache.get(res)
 
-	return &ResourceMetadata[Resource]{
+	return &Metadata[Resource]{
 		fieldMap:            c.fieldMap,
 		dbType:              c.cfg.DBType,
 		changeTrackingTable: c.cfg.ChangeTrackingTable,
@@ -190,11 +202,13 @@ func NewResourceMetadata[Resource Resourcer]() *ResourceMetadata[Resource] {
 	}
 }
 
-func (r *ResourceMetadata[Resource]) Fields() []accesstypes.Field {
+// Fields returns a slice of all field names for the resource.
+func (r *Metadata[Resource]) Fields() []accesstypes.Field {
 	return slices.Collect(maps.Keys(r.fieldMap))
 }
 
-func (r *ResourceMetadata[Resource]) Len() int {
+// Len returns the number of fields in the resource.
+func (r *Metadata[Resource]) Len() int {
 	return len(r.fieldMap)
 }
 
@@ -260,12 +274,12 @@ func structTags(t reflect.Type, key string) map[accesstypes.Field]cacheEntry {
 		field := t.Field(i)
 		tag := field.Tag.Get(key)
 
-		list := strings.Split(tag, ",")
-		if len(list) == 0 || list[0] == "" || list[0] == "-" {
+		parts := strings.Split(tag, ",")
+		if len(parts) == 0 || parts[0] == "" || parts[0] == "-" {
 			continue
 		}
 
-		tagMap[accesstypes.Field(field.Name)] = cacheEntry{index: i, tag: list[0]}
+		tagMap[accesstypes.Field(field.Name)] = cacheEntry{index: i, dbColumnName: parts[0]}
 	}
 
 	return tagMap

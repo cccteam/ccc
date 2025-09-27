@@ -41,7 +41,7 @@ type FRequest struct {
 
 type GRequest struct {
 	Field1 string `json:"field1"`
-	Field2 string `json:"-" perm:"Read"`
+	Field2 string `json:"-"      perm:"Read"`
 }
 
 type HRequest struct {
@@ -62,7 +62,7 @@ func (r AResource) DefaultConfig() Config {
 	return defaultConfig
 }
 
-func TestNewResourceSet(t *testing.T) {
+func TestNewSet(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
@@ -76,7 +76,7 @@ func TestNewResourceSet(t *testing.T) {
 	}{
 		{
 			name:   "New only tag permissions",
-			testFn: testNewResourceSetRun[AResource, ARequest],
+			testFn: testNewSetRun[AResource, ARequest],
 			wants: wantResourceSetRun{
 				wantPermissions: []accesstypes.Permission{accesstypes.Read},
 				requiredTagPerm: accesstypes.TagPermissions{"field2": {accesstypes.Read}},
@@ -89,7 +89,7 @@ func TestNewResourceSet(t *testing.T) {
 			args: args{
 				permissions: []accesstypes.Permission{accesstypes.Read},
 			},
-			testFn: testNewResourceSetRun[AResource, ARequest],
+			testFn: testNewSetRun[AResource, ARequest],
 			wants: wantResourceSetRun{
 				wantPermissions: []accesstypes.Permission{accesstypes.Read},
 				requiredTagPerm: accesstypes.TagPermissions{"field2": {accesstypes.Read}},
@@ -102,7 +102,7 @@ func TestNewResourceSet(t *testing.T) {
 			args: args{
 				permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update},
 			},
-			testFn: testNewResourceSetRun[AResource, BRequest],
+			testFn: testNewSetRun[AResource, BRequest],
 			wants: wantResourceSetRun{
 				wantPermissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update},
 				requiredTagPerm: accesstypes.TagPermissions{"field2": {accesstypes.Create}},
@@ -112,7 +112,7 @@ func TestNewResourceSet(t *testing.T) {
 		},
 		{
 			name:   "New with multiple permissions",
-			testFn: testNewResourceSetRun[AResource, CRequest],
+			testFn: testNewSetRun[AResource, CRequest],
 			wants: wantResourceSetRun{
 				wantPermissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update},
 				requiredTagPerm: accesstypes.TagPermissions{"field2": {accesstypes.Create, accesstypes.Update}},
@@ -122,14 +122,14 @@ func TestNewResourceSet(t *testing.T) {
 		},
 		{
 			name:   "New with invalid permission mix on tags",
-			testFn: testNewResourceSetRun[AResource, DRequest],
+			testFn: testNewSetRun[AResource, DRequest],
 			wants: wantResourceSetRun{
 				wantErr: true,
 			},
 		},
 		{
 			name:   "New with invalid permission mix on input",
-			testFn: testNewResourceSetRun[AResource, ERequest],
+			testFn: testNewSetRun[AResource, ERequest],
 			args: args{
 				permissions: []accesstypes.Permission{accesstypes.Read, accesstypes.Update},
 			},
@@ -139,14 +139,14 @@ func TestNewResourceSet(t *testing.T) {
 		},
 		{
 			name:   "New with invalid Delete permission",
-			testFn: testNewResourceSetRun[AResource, FRequest],
+			testFn: testNewSetRun[AResource, FRequest],
 			wants: wantResourceSetRun{
 				wantErr: true,
 			},
 		},
 		{
 			name:   "New with permission on ignored field",
-			testFn: testNewResourceSetRun[AResource, GRequest],
+			testFn: testNewSetRun[AResource, GRequest],
 			wants: wantResourceSetRun{
 				wantErr: true,
 			},
@@ -165,27 +165,27 @@ type wantResourceSetRun struct {
 	wantErr         bool
 }
 
-func testNewResourceSetRun[Resource Resourcer, Request any](t *testing.T, name string, permissions []accesstypes.Permission, w wantResourceSetRun) {
-	var want *ResourceSet[Resource]
+func testNewSetRun[Resource Resourcer, Request any](t *testing.T, name string, permissions []accesstypes.Permission, w wantResourceSetRun) {
+	var want *Set[Resource]
 	if !w.wantErr {
-		want = &ResourceSet[Resource]{
+		want = &Set[Resource]{
 			permissions:     w.wantPermissions,
 			requiredTagPerm: w.requiredTagPerm,
 			fieldToTag:      w.fieldToTag,
 			immutableFields: w.immutableFields,
-			rMeta:           NewResourceMetadata[Resource](),
+			rMeta:           NewMetadata[Resource](),
 		}
 	}
 
 	t.Run(name, func(t *testing.T) {
 		t.Parallel()
-		got, err := NewResourceSet[Resource, Request](permissions...)
+		got, err := NewSet[Resource, Request](permissions...)
 		if (err != nil) != w.wantErr {
-			t.Errorf("NewResourceSet() error = %v, wantErr %v", err, w.wantErr)
+			t.Errorf("NewSet() error = %v, wantErr %v", err, w.wantErr)
 			return
 		}
-		if diff := cmp.Diff(want, got, cmp.AllowUnexported(ResourceSet[Resource]{}, ResourceMetadata[Resource]{}, cacheEntry{})); diff != "" {
-			t.Errorf("NewResourceSet() mismatch (-want +got):\n%s", diff)
+		if diff := cmp.Diff(want, got, cmp.AllowUnexported(Set[Resource]{}, Metadata[Resource]{}, cacheEntry{})); diff != "" {
+			t.Errorf("NewSet() mismatch (-want +got):\n%s", diff)
 		}
 	})
 }
@@ -224,10 +224,10 @@ var defaultConfig = Config{
 	TrackChanges:        true,
 }
 
-func BenchmarkNewResourceMetadata(b *testing.B) {
+func BenchmarkNewMetadata(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = NewResourceMetadata[DoeInstitution]()
+		_ = NewMetadata[DoeInstitution]()
 	}
 }

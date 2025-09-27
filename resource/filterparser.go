@@ -16,12 +16,18 @@ import (
 type TokenType int
 
 const (
-	TokenEOF       TokenType = iota // End of File
-	TokenLParen                     // (
-	TokenRParen                     // )
-	TokenComma                      // ,
-	TokenPipe                       // |
-	TokenCondition                  // field:operator:value or field:operator:(value1,value2,...) or field:operator
+	// TokenEOF represents the end of the input string.
+	TokenEOF TokenType = iota
+	// TokenLParen represents '('
+	TokenLParen
+	// TokenRParen represents ')'
+	TokenRParen
+	// TokenComma represents ','
+	TokenComma
+	// TokenPipe represents '|'
+	TokenPipe
+	// TokenCondition represents 'field:operator:value' or 'field:operator:(value1,value2,...)' or 'field:operator'
+	TokenCondition
 )
 
 // Token represents a single token.
@@ -30,20 +36,22 @@ type Token struct {
 	Value string
 }
 
-// Lexer parses the filter producing tokens
-type Lexer struct {
+// FilterLexer parses the filter producing tokens
+type FilterLexer struct {
 	input string
 	pos   int
 }
 
-func NewLexer(input string) *Lexer {
-	return &Lexer{
+// NewFilterLexer creates a new lexer for the given input filter string.
+func NewFilterLexer(input string) *FilterLexer {
+	return &FilterLexer{
 		input: input,
 		pos:   0,
 	}
 }
 
-func (l *Lexer) NextToken() (Token, error) {
+// NextToken returns the next token from the input string.
+func (l *FilterLexer) NextToken() (Token, error) {
 	if l.pos >= len(l.input) {
 		return Token{Type: TokenEOF}, nil
 	}
@@ -141,8 +149,10 @@ func (cn *ConditionNode) String() string {
 type LogicalOperator string
 
 const (
+	// OperatorAnd represents a logical AND.
 	OperatorAnd LogicalOperator = "AND"
-	OperatorOr  LogicalOperator = "OR"
+	// OperatorOr represents a logical OR.
+	OperatorOr LogicalOperator = "OR"
 )
 
 // LogicalOpNode represents a logical operation (AND/OR) in the AST.
@@ -172,27 +182,30 @@ type (
 	infixParseFn  func(ExpressionNode) (ExpressionNode, error)
 )
 
-type FieldInfo struct {
-	Name      string
-	Kind      reflect.Kind
-	FieldType reflect.Type
-	Indexed   bool
+// FilterFieldInfo holds metadata about a field that can be used in a filter.
+type FilterFieldInfo struct {
+	DbColumnName string
+	Kind         reflect.Kind
+	FieldType    reflect.Type
+	Indexed      bool
+	PII          bool
 }
 
-// Parser builds an AST from tokens.
-type Parser struct {
-	lexer           *Lexer
+// FilterParser builds an AST from tokens.
+type FilterParser struct {
+	lexer           *FilterLexer
 	current         Token
 	peek            Token
 	hasIndexedField bool
 
 	prefixParseFns  map[TokenType]prefixParseFn
 	infixParseFns   map[TokenType]infixParseFn
-	jsonToFieldInfo map[string]FieldInfo
+	jsonToFieldInfo map[jsonFieldName]FilterFieldInfo
 }
 
-func NewParser(lexer *Lexer, jsonToFieldInfo map[string]FieldInfo) (*Parser, error) {
-	p := &Parser{
+// NewFilterParser creates a new parser with the given lexer and field information map.
+func NewFilterParser(lexer *FilterLexer, jsonToFieldInfo map[jsonFieldName]FilterFieldInfo) (*FilterParser, error) {
+	p := &FilterParser{
 		lexer:           lexer,
 		prefixParseFns:  make(map[TokenType]prefixParseFn),
 		infixParseFns:   make(map[TokenType]infixParseFn),
@@ -219,7 +232,7 @@ func NewParser(lexer *Lexer, jsonToFieldInfo map[string]FieldInfo) (*Parser, err
 }
 
 // Parse is the main entry point for parsing the filter string.
-func (p *Parser) Parse() (ExpressionNode, error) {
+func (p *FilterParser) Parse() (ExpressionNode, error) {
 	if p.current.Type == TokenEOF && p.peek.Type == TokenEOF {
 		return nil, nil
 	}
@@ -240,7 +253,7 @@ func (p *Parser) Parse() (ExpressionNode, error) {
 	return expression, nil
 }
 
-func (p *Parser) advance() error {
+func (p *FilterParser) advance() error {
 	p.current = p.peek
 	var err error
 	p.peek, err = p.lexer.NextToken()
@@ -251,7 +264,7 @@ func (p *Parser) advance() error {
 	return nil
 }
 
-func (p *Parser) expectPeek(t TokenType) error {
+func (p *FilterParser) expectPeek(t TokenType) error {
 	if p.peek.Type == t {
 		return p.advance()
 	}
@@ -259,7 +272,7 @@ func (p *Parser) expectPeek(t TokenType) error {
 	return httpio.NewBadRequestMessagef("expected next token to be %s, got %s instead", t, p.peek.Type)
 }
 
-func (p *Parser) parseExpression() (ExpressionNode, error) {
+func (p *FilterParser) parseExpression() (ExpressionNode, error) {
 	prefix := p.prefixParseFns[p.current.Type]
 	if prefix == nil {
 		return nil, httpio.NewBadRequestMessagef(
@@ -294,7 +307,7 @@ func (p *Parser) parseExpression() (ExpressionNode, error) {
 	return leftExp, nil
 }
 
-func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, error) {
+func (p *FilterParser) parseInfixExpression(left ExpressionNode) (ExpressionNode, error) {
 	node := &LogicalOpNode{
 		Left: left,
 	}
@@ -323,27 +336,27 @@ func (p *Parser) parseInfixExpression(left ExpressionNode) (ExpressionNode, erro
 	return node, nil
 }
 
-func (p *Parser) parseConditionToken() (ExpressionNode, error) {
+func (p *FilterParser) parseConditionToken() (ExpressionNode, error) {
 	parts := strings.SplitN(p.current.Value, ":", 3)
 	if len(parts) < 2 {
 		return nil, httpio.NewBadRequestMessagef("condition '%s' must have at least field:operator", p.current.Value)
 	}
 
-	jsonFieldName := strings.TrimSpace(parts[0])
-	if jsonFieldName == "" {
+	jsonFieldNameStr := strings.TrimSpace(parts[0])
+	if jsonFieldNameStr == "" {
 		return nil, httpio.NewBadRequestMessagef("field name cannot be empty in condition '%s'", p.current.Value)
 	}
 
-	fieldInfo, found := p.jsonToFieldInfo[jsonFieldName]
+	fieldInfo, found := p.jsonToFieldInfo[jsonFieldName(jsonFieldNameStr)]
 	if !found {
-		return nil, httpio.NewBadRequestMessagef("'%s' is not indexed but was included in condition '%s'", jsonFieldName, p.current.Value)
+		return nil, httpio.NewBadRequestMessagef("'%s' is not indexed but was included in condition '%s'", jsonFieldNameStr, p.current.Value)
 	}
 	if fieldInfo.Indexed {
 		p.hasIndexedField = true
 	}
 
 	condition := Condition{
-		Field:    fieldInfo.Name,
+		Field:    fieldInfo.DbColumnName,
 		Operator: strings.ToLower(strings.TrimSpace(parts[1])),
 	}
 
@@ -353,7 +366,7 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 			return nil, httpio.NewBadRequestMessagef("operator '%s' does not take a value, but got '%s' in condition '%s'", condition.Operator, parts[2], p.current.Value)
 		}
 		condition.IsNullOp = true
-	case "in", "notin":
+	case inStr, notinStr:
 		if len(parts) < 3 {
 			return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value part in condition '%s'	", condition.Operator, p.current.Value)
 		}
@@ -376,7 +389,7 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 			valueKind := fieldInfo.Kind
 			if valueKind == reflect.Slice || valueKind == reflect.Array {
 				if fieldInfo.FieldType == nil {
-					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", fieldInfo.Name)
+					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", fieldInfo.DbColumnName)
 				}
 				valueKind = fieldInfo.FieldType.Elem().Kind()
 			}
@@ -387,7 +400,7 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 			}
 			condition.Values = append(condition.Values, typedValue)
 		}
-	case "eq", "ne", "gt", "lt", "gte", "lte":
+	case eqStr, neStr, gtStr, ltStr, gteStr, lteStr:
 		if len(parts) < 3 {
 			return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value in condition '%s'", condition.Operator, p.current.Value)
 		}
@@ -405,7 +418,7 @@ func (p *Parser) parseConditionToken() (ExpressionNode, error) {
 }
 
 // convertValue converts a string value to the specified reflect.Kind.
-func (p *Parser) convertValue(strValue string, kind reflect.Kind) (any, error) {
+func (p *FilterParser) convertValue(strValue string, kind reflect.Kind) (any, error) {
 	switch kind {
 	case reflect.String, reflect.Struct:
 		return strValue, nil
@@ -438,7 +451,7 @@ func (p *Parser) convertValue(strValue string, kind reflect.Kind) (any, error) {
 	}
 }
 
-func (p *Parser) parseGroupedExpression() (ExpressionNode, error) {
+func (p *FilterParser) parseGroupedExpression() (ExpressionNode, error) {
 	if err := p.advance(); err != nil { // Consume '('
 		return nil, err
 	}

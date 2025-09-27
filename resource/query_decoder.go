@@ -15,8 +15,10 @@ import (
 )
 
 type (
+	// DomainFromCtx is a function that extracts a domain from a context.
 	DomainFromCtx func(context.Context) accesstypes.Domain
-	UserFromCtx   func(context.Context) accesstypes.User
+	// UserFromCtx is a function that extracts a user from a context.
+	UserFromCtx func(context.Context) accesstypes.User
 )
 
 type parsedQueryParams struct {
@@ -36,12 +38,13 @@ type filterBody struct {
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
 	searchKeys         *SearchKeys
-	resourceSet        *ResourceSet[Resource]
-	parserFields       map[string]FieldInfo
+	resourceSet        *Set[Resource]
+	filterParserFields map[jsonFieldName]FilterFieldInfo
 	structDecoder      *StructDecoder[filterBody]
 }
 
-func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource]) (*QueryDecoder[Resource, Request], error) {
+// NewQueryDecoder creates a new QueryDecoder for a given Resource and Request type.
+func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*QueryDecoder[Resource, Request], error) {
 	var req Request
 	var res Resource
 
@@ -50,7 +53,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	parserFields, err := newParserFields(reflect.TypeOf(req), resSet.ResourceMetadata())
+	filterParserFields, err := newFilterParserFields(reflect.TypeOf(req), resSet.ResourceMetadata())
 	if err != nil {
 		return nil, err
 	}
@@ -64,13 +67,20 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 		requestFieldMapper: mapper,
 		searchKeys:         NewSearchKeys[Request](res),
 		resourceSet:        resSet,
-		parserFields:       parserFields,
+		filterParserFields: filterParserFields,
 		structDecoder:      structDecoder,
 	}, nil
 }
 
+// DecodeWithoutPermissions decodes an http.Request into a QuerySet without enforcing user permissions.
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
 	queryParams := request.URL.Query()
+
+	if filterStr := queryParams.Get("filter"); filterStr != "" {
+		if err := d.checkForPII(filterStr); err != nil {
+			return nil, err
+		}
+	}
 
 	if request.Method == http.MethodPost {
 		body, err := d.structDecoder.Decode(request)
@@ -108,6 +118,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	return qSet, nil
 }
 
+// Decode decodes an http.Request into a QuerySet and enables user permission enforcement.
 func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions) (*QuerySet[Resource], error) {
 	qSet, err := d.DecodeWithoutPermissions(request)
 	if err != nil {
@@ -186,7 +197,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		delete(query, "filter")
 	}
 
-	search, query, err = d.parseFilterParam(query)
+	search, query, err = d.parseSearchParam(query)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +271,7 @@ func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) 
 
 // parseFilterExpression parses the filter string and returns an AST.
 func (d *QueryDecoder[Resource, Request]) parseFilterExpression(filterStr string) (ExpressionNode, error) {
-	parser, err := NewParser(NewLexer(filterStr), d.parserFields)
+	parser, err := NewFilterParser(NewFilterLexer(filterStr), d.filterParserFields)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create filter expression parser")
 	}
@@ -273,7 +284,7 @@ func (d *QueryDecoder[Resource, Request]) parseFilterExpression(filterStr string
 	return ast, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseFilterParam(queryParams url.Values) (searchSet *Search, query url.Values, err error) {
+func (d *QueryDecoder[Resource, Request]) parseSearchParam(queryParams url.Values) (searchSet *Search, query url.Values, err error) {
 	searchValues := make(map[SearchKey]string)
 	var typ SearchType
 	for searchKey, searchKeyType := range d.searchKeys.keys {
@@ -310,32 +321,50 @@ func (d *QueryDecoder[Resource, Request]) parseFilterParam(queryParams url.Value
 	return NewSearch(typ, searchValues), queryParams, nil
 }
 
-func newParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *ResourceMetadata[Resource]) (map[string]FieldInfo, error) {
-	fields := make(map[string]FieldInfo)
+func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
+	lexer := NewFilterLexer(filterStr)
+	for {
+		token, err := lexer.NextToken()
+		if err != nil {
+			return errors.Wrap(err, "failed to get next token")
+		}
+
+		if token.Type == TokenEOF {
+			break
+		}
+
+		if token.Type == TokenCondition {
+			jsonFieldNameStr := strings.SplitN(token.Value, ":", 2)[0]
+			if fieldInfo, found := d.filterParserFields[jsonFieldName(jsonFieldNameStr)]; found {
+				if fieldInfo.PII {
+					return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: %s", jsonFieldNameStr)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *Metadata[Resource]) (map[jsonFieldName]FilterFieldInfo, error) {
+	fields := make(map[jsonFieldName]FilterFieldInfo)
 
 	for i := range reqType.NumField() {
-		var indexed bool
 		structField := reqType.Field(i)
-		tag := structField.Tag.Get("index")
-		if tag == "true" {
-			indexed = true
-		} else {
-			tag := structField.Tag.Get("allow_filter")
-			if tag != "true" {
-				continue
-			}
+		if structField.Tag.Get("index") != trueStr && structField.Tag.Get("allow_filter") != trueStr {
+			continue
 		}
 
 		goStructFieldName := structField.Name
 		jsonTag := structField.Tag.Get("json")
-		jsonFieldName, _, _ := strings.Cut(jsonTag, ",")
-		if jsonFieldName == "" || jsonFieldName == "-" {
+		jsonFieldNameStr, _, _ := strings.Cut(jsonTag, ",")
+		if jsonFieldNameStr == "" || jsonFieldNameStr == "-" {
 			return nil, errors.Newf("indexed field %s must have a json tag", goStructFieldName)
 		}
 
 		cacheEntry, found := resourceMetadata.fieldMap[accesstypes.Field(goStructFieldName)]
 		if !found {
-			return nil, errors.Newf("field %s (json: %s) not found in resource metadata", goStructFieldName, jsonFieldName)
+			return nil, errors.Newf("field %s (json: %s) not found in resource metadata", goStructFieldName, jsonFieldNameStr)
 		}
 
 		fieldType := structField.Type
@@ -345,11 +374,12 @@ func newParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata 
 			fieldKind = fieldType.Kind()
 		}
 
-		fields[jsonFieldName] = FieldInfo{
-			Name:      cacheEntry.tag,
-			Kind:      fieldKind,
-			FieldType: fieldType,
-			Indexed:   indexed,
+		fields[jsonFieldName(jsonFieldNameStr)] = FilterFieldInfo{
+			DbColumnName: cacheEntry.dbColumnName,
+			Kind:         fieldKind,
+			FieldType:    fieldType,
+			Indexed:      structField.Tag.Get("index") == trueStr,
+			PII:          structField.Tag.Get("pii") == trueStr,
 		}
 	}
 

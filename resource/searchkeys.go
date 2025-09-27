@@ -5,10 +5,12 @@ import (
 	"strings"
 )
 
+// SearchKeys holds the mapping of search keys to their corresponding search types, parsed from struct tags.
 type SearchKeys struct {
 	keys map[SearchKey]SearchType
 }
 
+// NewSearchKeys creates a new SearchKeys instance by inspecting the struct tags of a request type.
 func NewSearchKeys[Req any](res Resourcer) *SearchKeys {
 	var searchTypes []SearchType
 

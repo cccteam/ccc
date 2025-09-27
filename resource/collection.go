@@ -15,7 +15,9 @@ type (
 	immutableFieldMap map[accesstypes.Resource]map[accesstypes.Tag]struct{}
 )
 
-func AddResources[Resource Resourcer](c *Collection, scope accesstypes.PermissionScope, rSet *ResourceSet[Resource]) error {
+// AddResources adds all the resources and permissions from a ResourceSet to the collection.
+// It is a no-op if collectResourcePermissions is false.
+func AddResources[Resource Resourcer](c *Collection, scope accesstypes.PermissionScope, rSet *Set[Resource]) error {
 	if !collectResourcePermissions {
 		return nil
 	}
@@ -64,6 +66,8 @@ func AddResources[Resource Resourcer](c *Collection, scope accesstypes.Permissio
 	return nil
 }
 
+// Collection stores information about resources, their permissions, and tags.
+// It is used during code generation to create TypeScript definitions and Go handlers.
 type Collection struct {
 	mu              sync.RWMutex
 	tagStore        map[accesstypes.PermissionScope]tagStore
@@ -71,6 +75,7 @@ type Collection struct {
 	immutableFields map[accesstypes.PermissionScope]immutableFieldMap
 }
 
+// NewCollection creates and initializes a new Collection.
 func NewCollection() *Collection {
 	if !collectResourcePermissions {
 		return &Collection{}
@@ -83,10 +88,14 @@ func NewCollection() *Collection {
 	}
 }
 
+// AddResource adds a resource with a specific permission to the collection.
+// It is a no-op if collectResourcePermissions is false.
 func (s *Collection) AddResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
 	return s.add(true, scope, permission, res)
 }
 
+// AddMethodResource adds a resource associated with a method, allowing duplicate permission registrations.
+// It is a no-op if collectResourcePermissions is false.
 func (s *Collection) AddMethodResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
 	return s.add(false, scope, permission, res)
 }
@@ -122,6 +131,8 @@ func (s *Collection) addResource(allowDuplicateRegistration bool, scope accessty
 	return nil
 }
 
+// IsResourceImmutable checks if a resource is marked as immutable within a given scope.
+// It always returns false if collectResourcePermissions is false.
 func (s *Collection) IsResourceImmutable(scope accesstypes.PermissionScope, res accesstypes.Resource) bool {
 	resource, tag := res.ResourceAndTag()
 	_, ok := s.immutableFields[scope][resource][tag]
@@ -181,6 +192,8 @@ func (s *Collection) resourcePermissions() []accesstypes.Permission {
 	return slices.Compact(filteredPermissions)
 }
 
+// Resources returns a sorted list of all unique base resource names in the collection.
+// It returns an empty slice if collectResourcePermissions is false.
 func (s *Collection) Resources() []accesstypes.Resource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -201,6 +214,8 @@ func (s *Collection) Resources() []accesstypes.Resource {
 	return slices.Compact(resources)
 }
 
+// ResourceExists checks if a resource exists in the collection.
+// It always returns false if collectResourcePermissions is false.
 func (s *Collection) ResourceExists(r accesstypes.Resource) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -297,6 +312,8 @@ func (s *Collection) domains() []accesstypes.PermissionScope {
 	return domains
 }
 
+// List returns a map of permissions to the resources that have them.
+// It returns an empty map if collectResourcePermissions is false.
 func (s *Collection) List() map[accesstypes.Permission][]accesstypes.Resource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -323,6 +340,8 @@ func (s *Collection) List() map[accesstypes.Permission][]accesstypes.Resource {
 	return permissionResources
 }
 
+// Scope returns the permission scope for a given resource.
+// It returns an empty scope if the resource is not found or if collectResourcePermissions is false.
 func (s *Collection) Scope(resource accesstypes.Resource) accesstypes.PermissionScope {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -343,13 +362,14 @@ func (s *Collection) Scope(resource accesstypes.Resource) accesstypes.Permission
 	return ""
 }
 
-func (c *Collection) TypescriptData() TypescriptData {
+// TypescriptData returns a struct containing all the data needed for TypeScript code generation.
+func (s *Collection) TypescriptData() TypescriptData {
 	return TypescriptData{
-		Permissions:           c.permissions(),
-		ResourcePermissions:   c.resourcePermissions(),
-		Resources:             c.Resources(),
-		ResourceTags:          c.tags(),
-		ResourcePermissionMap: c.resourcePermissionMap(),
-		Domains:               c.domains(),
+		Permissions:           s.permissions(),
+		ResourcePermissions:   s.resourcePermissions(),
+		Resources:             s.Resources(),
+		ResourceTags:          s.tags(),
+		ResourcePermissionMap: s.resourcePermissionMap(),
+		Domains:               s.domains(),
 	}
 }
