@@ -17,14 +17,19 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+// PatchType defines the type of operation for a PatchSet.
 type PatchType string
 
 const (
+	// CreatePatchType indicates an insert operation.
 	CreatePatchType PatchType = "CreatePatchType"
+	// UpdatePatchType indicates an update operation.
 	UpdatePatchType PatchType = "UpdatePatchType"
+	// DeletePatchType indicates a delete operation.
 	DeletePatchType PatchType = "DeletePatchType"
 )
 
+// PatchSet represents a set of changes to be applied to a resource.
 type PatchSet[Resource Resourcer] struct {
 	querySet           *QuerySet[Resource]
 	data               *fieldSet
@@ -37,6 +42,7 @@ type PatchSet[Resource Resourcer] struct {
 	validateUpdateFunc ValidateFunc
 }
 
+// NewPatchSet creates a new, empty PatchSet for a given resource metadata.
 func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSet[Resource] {
 	return &PatchSet[Resource]{
 		querySet:           NewQuerySet(rMeta),
@@ -46,26 +52,31 @@ func NewPatchSet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *PatchSe
 	}
 }
 
+// SetPatchType sets the type of the patch (Create, Update, or Delete).
 func (p *PatchSet[Resource]) SetPatchType(t PatchType) *PatchSet[Resource] {
 	p.patchType = t
 
 	return p
 }
 
+// PatchType returns the type of the patch.
 func (p *PatchSet[Resource]) PatchType() PatchType {
 	return p.patchType
 }
 
+// EnableUserPermissionEnforcement enables the checking of user permissions for the PatchSet.
 func (p *PatchSet[Resource]) EnableUserPermissionEnforcement(rSet *ResourceSet[Resource], userPermissions UserPermissions, requiredPermission accesstypes.Permission) *PatchSet[Resource] {
 	p.querySet.EnableUserPermissionEnforcement(rSet, userPermissions, requiredPermission)
 
 	return p
 }
 
+// Set adds or updates a field's value in the PatchSet.
 func (p *PatchSet[Resource]) checkPermissions(ctx context.Context) error {
 	return p.querySet.checkPermissions(ctx)
 }
 
+// Set adds or updates a field's value in the PatchSet.
 func (p *PatchSet[Resource]) Set(field accesstypes.Field, value any) *PatchSet[Resource] {
 	p.data.Set(field, value)
 	p.querySet.AddField(field)
@@ -73,44 +84,54 @@ func (p *PatchSet[Resource]) Set(field accesstypes.Field, value any) *PatchSet[R
 	return p
 }
 
+// Get retrieves the value of a field from the PatchSet.
 func (p *PatchSet[Resource]) Get(field accesstypes.Field) any {
 	return p.data.Get(field)
 }
 
+// IsSet checks if a field has been set in the PatchSet.
 func (p *PatchSet[Resource]) IsSet(field accesstypes.Field) bool {
 	return p.data.IsSet(field)
 }
 
+// SetKey sets a primary key field and value for the PatchSet.
 func (p *PatchSet[Resource]) SetKey(field accesstypes.Field, value any) *PatchSet[Resource] {
 	p.querySet.SetKey(field, value)
 
 	return p
 }
 
+// Key retrieves the value of a primary key field.
 func (p *PatchSet[Resource]) Key(field accesstypes.Field) any {
 	return p.querySet.Key(field)
 }
 
+// Fields returns a slice of all fields that have been set in the PatchSet.
 func (p *PatchSet[Resource]) Fields() []accesstypes.Field {
 	return p.querySet.Fields()
 }
 
+// Len returns the number of fields in the PatchSet.
 func (p *PatchSet[Resource]) Len() int {
 	return p.querySet.Len()
 }
 
+// Data returns the underlying map of field-value pairs.
 func (p *PatchSet[Resource]) Data() map[accesstypes.Field]any {
 	return p.data.data
 }
 
+// PrimaryKey returns the KeySet containing the primary key(s) for the resource.
 func (p *PatchSet[Resource]) PrimaryKey() KeySet {
 	return p.querySet.KeySet()
 }
 
+// HasKey checks if any primary key has been set.
 func (p *PatchSet[Resource]) HasKey() bool {
 	return len(p.querySet.Fields()) > 0
 }
 
+// deleteQuerySet configures the internal QuerySet to select all fields for a delete operation.
 func (p *PatchSet[Resource]) deleteQuerySet() *QuerySet[Resource] {
 	for _, field := range p.querySet.rMeta.Fields() {
 		p.querySet.AddField(field)
@@ -119,10 +140,12 @@ func (p *PatchSet[Resource]) deleteQuerySet() *QuerySet[Resource] {
 	return p.querySet
 }
 
+// Resource returns the name of the resource this PatchSet applies to.
 func (p *PatchSet[Resource]) Resource() accesstypes.Resource {
 	return p.querySet.Resource()
 }
 
+// SpannerApply applies the patch within a new read-write transaction.
 func (p *PatchSet[Resource]) SpannerApply(ctx context.Context, committer SpannerCommitter, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
@@ -136,6 +159,7 @@ func (p *PatchSet[Resource]) SpannerApply(ctx context.Context, committer Spanner
 	}
 }
 
+// SpannerBuffer buffers the patch's mutations into an existing transaction buffer.
 func (p *PatchSet[Resource]) SpannerBuffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
@@ -177,6 +201,7 @@ func (p *PatchSet[Resource]) spannerUpdate(ctx context.Context, s SpannerCommitt
 	return nil
 }
 
+// SpannerInsertOrUpdate applies an insert-or-update operation within a new read-write transaction.
 func (p *PatchSet[Resource]) SpannerInsertOrUpdate(ctx context.Context, s *spanner.Client, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
 		if err := p.SpannerBufferInsertOrUpdate(ctx, txn, eventSource...); err != nil {
@@ -307,6 +332,7 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuf
 	return nil
 }
 
+// SpannerBufferInsertOrUpdate buffers an insert-or-update mutation into an existing transaction buffer.
 func (p *PatchSet[Resource]) SpannerBufferInsertOrUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
@@ -643,10 +669,12 @@ func (p *PatchSet[Resource]) validateEventSource(eventSource []string) (string, 
 	return event, nil
 }
 
+// RegisterDefaultCreateFunc registers a function to set a default value for a field during a create operation.
 func (p *PatchSet[Resource]) RegisterDefaultCreateFunc(field accesstypes.Field, fn FieldDefaultFunc) {
 	p.defaultCreateFuncs[field] = fn
 }
 
+// RegisterDefaultUpdateFunc registers a function to set a default value for a field during an update operation.
 func (p *PatchSet[Resource]) RegisterDefaultUpdateFunc(field accesstypes.Field, fn FieldDefaultFunc) {
 	p.defaultUpdateFuncs[field] = fn
 }
@@ -929,6 +957,7 @@ func matchTextMarshaler[T encoding.TextMarshaler](v, v2 T) (bool, error) {
 	return false, nil
 }
 
+// PatchSetComparer is an interface for comparing two PatchSet-like objects.
 type PatchSetComparer interface {
 	Data() map[accesstypes.Field]any
 	Fields() []accesstypes.Field
@@ -936,6 +965,7 @@ type PatchSetComparer interface {
 	PrimaryKey() KeySet
 }
 
+// PatchsetCompare compares two PatchSetComparer objects for equality. It checks patch type, data, fields, and primary keys.
 func PatchsetCompare(a, b PatchSetComparer) bool {
 	if a.PatchType() != b.PatchType() {
 		return false

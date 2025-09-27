@@ -17,20 +17,27 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// OperationType defines the type of a patch operation (add, patch, remove).
 type OperationType string
 
 const (
+	// OperationCreate corresponds to an "add" operation.
 	OperationCreate OperationType = "add"
+	// OperationUpdate corresponds to a "patch" operation.
 	OperationUpdate OperationType = "patch"
+	// OperationDelete corresponds to a "remove" operation.
 	OperationDelete OperationType = "remove"
 )
 
+// Operation represents a single operation within a batch request, containing its type and a corresponding http.Request.
 type Operation struct {
 	Type       OperationType
 	Req        *http.Request
 	pathPrefix string
 }
 
+// ReqWithPattern creates a new http.Request from the operation, applying a new URL pattern to its context.
+// This is useful when a batch operation's path contains more segments than the initial prefix pattern.
 func (o *Operation) ReqWithPattern(pattern string, opts ...Option) (*http.Request, error) {
 	var os options
 	for _, opt := range opts {
@@ -61,8 +68,10 @@ type options struct {
 	matchPrefix       bool
 }
 
+// Option is a function that configures the behavior of the Operations parser.
 type Option func(opt options) options
 
+// RequireCreatePath is an option that mandates a path for "add" operations.
 func RequireCreatePath() Option {
 	return func(o options) options {
 		o.requireCreatePath = true
@@ -71,6 +80,7 @@ func RequireCreatePath() Option {
 	}
 }
 
+// MatchPrefix is an option that allows matching only the prefix of an operation's path against the provided pattern.
 func MatchPrefix() Option {
 	return func(o options) options {
 		o.matchPrefix = true
@@ -79,6 +89,7 @@ func MatchPrefix() Option {
 	}
 }
 
+// Operations parses a batch JSON patch request and yields an iterator of individual Operation objects.
 func Operations(r *http.Request, pattern string, opts ...Option) iter.Seq2[*Operation, error] {
 	var o options
 	for _, opt := range opts {

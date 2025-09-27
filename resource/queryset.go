@@ -17,6 +17,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// QuerySet represents a query for a resource, including fields, keys, filters, and permissions.
 type QuerySet[Resource Resourcer] struct {
 	keys                   *fieldSet
 	search                 *Search
@@ -32,29 +33,35 @@ type QuerySet[Resource Resourcer] struct {
 	filterAst              ExpressionNode
 }
 
-func NewQuerySet[Resource Resourcer](rMeta *ResourceMetadata[Resource]) *QuerySet[Resource] {
+// NewQuerySet creates a new, empty QuerySet for a given resource metadata.
+func NewQuerySet[Resource Resourcer](rMeta *Metadata[Resource]) *QuerySet[Resource] {
 	return &QuerySet[Resource]{
 		keys:  newFieldSet(),
 		rMeta: rMeta,
 	}
 }
 
+// Resource returns the name of the resource this QuerySet applies to.
 func (q *QuerySet[Resource]) Resource() accesstypes.Resource {
 	var r Resource
 
 	return r.Resource()
 }
 
+// RequiredPermission returns the permission required to execute the query.
 func (q *QuerySet[Resource]) RequiredPermission() accesstypes.Permission {
 	return q.requiredPermission
 }
 
+// ReturnAccessableFields configures the QuerySet to automatically include all fields
+// the user has access to if no specific fields are requested.
 func (q *QuerySet[Resource]) ReturnAccessableFields(b bool) *QuerySet[Resource] {
 	q.returnAccessableFields = b
 
 	return q
 }
 
+// EnableUserPermissionEnforcement enables the checking of user permissions for the QuerySet.
 func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *ResourceSet[Resource], userPermissions UserPermissions, requiredPermission accesstypes.Permission) *QuerySet[Resource] {
 	q.resourceSet = rSet
 	q.userPermissions = userPermissions
@@ -117,6 +124,7 @@ func (q *QuerySet[Resource]) addAccessableFields(ctx context.Context) error {
 	return nil
 }
 
+// AddField adds a field to be returned by the query.
 func (q *QuerySet[Resource]) AddField(field accesstypes.Field) *QuerySet[Resource] {
 	if !slices.Contains(q.fields, field) {
 		q.fields = append(q.fields, field)
@@ -125,26 +133,32 @@ func (q *QuerySet[Resource]) AddField(field accesstypes.Field) *QuerySet[Resourc
 	return q
 }
 
+// Fields returns the list of fields to be returned by the query.
 func (q *QuerySet[Resource]) Fields() []accesstypes.Field {
 	return q.fields
 }
 
+// SetKey sets a primary key field and value for the query's WHERE clause.
 func (q *QuerySet[Resource]) SetKey(field accesstypes.Field, value any) {
 	q.keys.Set(field, value)
 }
 
+// Key retrieves the value of a primary key field.
 func (q *QuerySet[Resource]) Key(field accesstypes.Field) any {
 	return q.keys.Get(field)
 }
 
+// Len returns the number of fields to be returned by the query.
 func (q *QuerySet[Resource]) Len() int {
 	return len(q.fields)
 }
 
+// KeySet returns the KeySet containing the primary key(s) for the resource.
 func (q *QuerySet[Resource]) KeySet() KeySet {
 	return q.keys.KeySet()
 }
 
+// Columns returns a comma-separated string of database column names for the selected fields.
 func (q *QuerySet[Resource]) buildOrderByClause() (string, error) {
 	orderByParts := make([]string, 0, len(q.sortFields))
 	for _, sf := range q.sortFields {
@@ -264,6 +278,7 @@ func (q *QuerySet[Resource]) where() (*Statement, error) {
 	}, nil
 }
 
+// SpannerStmt builds a Spanner SQL statement from the QuerySet.
 func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
 	if q.rMeta.dbType != SpannerDBType {
 		return nil, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
@@ -349,6 +364,7 @@ func (q *QuerySet[Resource]) spannerSearchStmt() (*SpannerStatement, error) {
 	return &SpannerStatement{resolvedWhereClause: resolvedSQL, Statement: stmt}, nil
 }
 
+// PostgresStmt builds a PostgreSQL SQL statement from the QuerySet.
 func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 	if q.rMeta.dbType != PostgresDBType {
 		return nil, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", PostgresDBType, q.rMeta.dbType)
@@ -401,6 +417,7 @@ func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 	}, nil
 }
 
+// SpannerRead executes the query and returns a single result.
 func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, db spxapi.Querier) (*Resource, error) {
 	if err := q.checkPermissions(ctx); err != nil {
 		return nil, err
@@ -423,6 +440,7 @@ func (q *QuerySet[Resource]) SpannerRead(ctx context.Context, db spxapi.Querier)
 	return dst, nil
 }
 
+// SpannerList executes the query and returns an iterator for the results.
 func (q *QuerySet[Resource]) SpannerList(ctx context.Context, db spxapi.Querier) iter.Seq2[*Resource, error] {
 	return func(yield func(*Resource, error) bool) {
 		if err := q.checkPermissions(ctx); err != nil {
@@ -446,30 +464,37 @@ func (q *QuerySet[Resource]) SpannerList(ctx context.Context, db spxapi.Querier)
 	}
 }
 
+// SetSearchParam sets the search parameters for the query.
 func (q *QuerySet[Resource]) SetSearchParam(search *Search) {
 	q.search = search
 }
 
+// SetWhereClause sets the filter condition for the query using a QueryClause.
 func (q *QuerySet[Resource]) SetWhereClause(qc QueryClause) {
 	q.filterAst = qc.tree
 }
 
+// SetFilterAst sets the filter condition for the query using a raw expression tree.
 func (q *QuerySet[Resource]) SetFilterAst(ast ExpressionNode) {
 	q.filterAst = ast
 }
 
+// SetSortFields sets the sorting order for the query results.
 func (q *QuerySet[Resource]) SetSortFields(sortFields []SortField) {
 	q.sortFields = sortFields
 }
 
+// SetLimit sets the maximum number of results to return.
 func (q *QuerySet[Resource]) SetLimit(limit *uint64) {
 	q.limit = limit
 }
 
+// SetOffset sets the starting point for returning results.
 func (q *QuerySet[Resource]) SetOffset(offset *uint64) {
 	q.offset = offset
 }
 
+// moreThan checks if more than a given count of boolean expressions are true.
 func moreThan(cnt int, exp ...bool) bool {
 	count := 0
 	for _, v := range exp {

@@ -6,6 +6,8 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// CommitBuffer provides a way to buffer Spanner mutations and commit them in batches.
+// This can improve performance by reducing the number of round trips to the database.
 type CommitBuffer struct {
 	db             TxnFuncRunner
 	eventSource    string
@@ -26,6 +28,8 @@ func NewCommitBuffer(db TxnFuncRunner, eventSource string, autoCommitSize int) *
 	}
 }
 
+// Buffer adds one or more SpannerBuffer items to the internal buffer.
+// If the number of items in the buffer reaches the `autoCommitSize`, it will automatically trigger a commit.
 func (cb *CommitBuffer) Buffer(ctx context.Context, ps ...SpannerBuffer) error {
 	cb.buffer = append(cb.buffer, ps...)
 
@@ -38,6 +42,8 @@ func (cb *CommitBuffer) Buffer(ctx context.Context, ps ...SpannerBuffer) error {
 	return nil
 }
 
+// Commit manually triggers a commit of all items currently in the buffer.
+// If the buffer is empty, this is a no-op. After a successful commit, the buffer is cleared.
 func (cb *CommitBuffer) Commit(ctx context.Context) error {
 	if len(cb.buffer) == 0 {
 		return nil

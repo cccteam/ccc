@@ -8,6 +8,10 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// CloneRequest creates a deep copy of an http.Request, including its body.
+// This is useful when the request body needs to be read multiple times, as the
+// original body can only be read once. The cloned request gets a new body that
+// can be read and seeked independently.
 func CloneRequest(r *http.Request) (*http.Request, error) {
 	r2 := r.Clone(r.Context())
 

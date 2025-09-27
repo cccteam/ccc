@@ -14,6 +14,7 @@ import (
 	guid "github.com/google/uuid"
 )
 
+// KeyPart represents a single component of a primary key, consisting of a field name and its value.
 type KeyPart struct {
 	Key   accesstypes.Field
 	Value any
@@ -36,6 +37,7 @@ func (p KeySet) Add(key accesstypes.Field, value any) KeySet {
 	return p
 }
 
+// RowID generates a string representation of the key set, typically for use in logging or as a unique identifier.
 func (p KeySet) RowID() string {
 	if len(p.keyParts) == 0 {
 		return ""
@@ -49,6 +51,7 @@ func (p KeySet) RowID() string {
 	return id.String()[1:]
 }
 
+// KeySet converts the resource KeySet into a `spanner.KeySet`, which can be used in Spanner read or delete operations.
 func (p KeySet) KeySet() spanner.KeySet {
 	keys := make(spanner.Key, 0, len(p.keyParts))
 	for _, v := range p.keyParts {
@@ -88,6 +91,7 @@ func (p KeySet) KeySet() spanner.KeySet {
 	return keys
 }
 
+// KeyMap returns a map representation of the key set, with field names as keys and their values as values.
 func (p KeySet) KeyMap() map[accesstypes.Field]any {
 	pKeyMap := make(map[accesstypes.Field]any)
 	for _, keypart := range p.keyParts {
@@ -97,10 +101,12 @@ func (p KeySet) KeyMap() map[accesstypes.Field]any {
 	return pKeyMap
 }
 
+// Parts returns the slice of KeyPart components that make up the key set.
 func (p KeySet) Parts() []KeyPart {
 	return p.keyParts
 }
 
+// Len returns the number of parts in the key set (for composite keys, this will be greater than 1).
 func (p KeySet) Len() int {
 	return len(p.keyParts)
 }

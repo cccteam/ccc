@@ -16,12 +16,18 @@ import (
 type TokenType int
 
 const (
-	TokenEOF       TokenType = iota // End of File
-	TokenLParen                     // (
-	TokenRParen                     // )
-	TokenComma                      // ,
-	TokenPipe                       // |
-	TokenCondition                  // field:operator:value or field:operator:(value1,value2,...) or field:operator
+	// TokenEOF represents the end of the input string.
+	TokenEOF TokenType = iota
+	// TokenLParen represents '('
+	TokenLParen
+	// TokenRParen represents ')'
+	TokenRParen
+	// TokenComma represents ','
+	TokenComma
+	// TokenPipe represents '|'
+	TokenPipe
+	// TokenCondition represents 'field:operator:value' or 'field:operator:(value1,value2,...)' or 'field:operator'
+	TokenCondition
 )
 
 // Token represents a single token.
@@ -36,6 +42,7 @@ type FilterLexer struct {
 	pos   int
 }
 
+// NewFilterLexer creates a new lexer for the given input filter string.
 func NewFilterLexer(input string) *FilterLexer {
 	return &FilterLexer{
 		input: input,
@@ -43,6 +50,7 @@ func NewFilterLexer(input string) *FilterLexer {
 	}
 }
 
+// NextToken returns the next token from the input string.
 func (l *FilterLexer) NextToken() (Token, error) {
 	if l.pos >= len(l.input) {
 		return Token{Type: TokenEOF}, nil
@@ -141,8 +149,10 @@ func (cn *ConditionNode) String() string {
 type LogicalOperator string
 
 const (
+	// OperatorAnd represents a logical AND.
 	OperatorAnd LogicalOperator = "AND"
-	OperatorOr  LogicalOperator = "OR"
+	// OperatorOr represents a logical OR.
+	OperatorOr LogicalOperator = "OR"
 )
 
 // LogicalOpNode represents a logical operation (AND/OR) in the AST.
@@ -172,6 +182,7 @@ type (
 	infixParseFn  func(ExpressionNode) (ExpressionNode, error)
 )
 
+// FilterFieldInfo holds metadata about a field that can be used in a filter.
 type FilterFieldInfo struct {
 	DbColumnName string
 	Kind         reflect.Kind
@@ -192,6 +203,7 @@ type FilterParser struct {
 	jsonToFieldInfo map[jsonFieldName]FilterFieldInfo
 }
 
+// NewFilterParser creates a new parser with the given lexer and field information map.
 func NewFilterParser(lexer *FilterLexer, jsonToFieldInfo map[jsonFieldName]FilterFieldInfo) (*FilterParser, error) {
 	p := &FilterParser{
 		lexer:           lexer,

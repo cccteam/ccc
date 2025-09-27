@@ -6,15 +6,18 @@ import (
 	stderr "errors"
 )
 
+// PartialQueryClause represents an incomplete query clause, typically the left-hand side of a logical operation.
 type PartialQueryClause struct {
 	tree            ExpressionNode
 	hasIndexedField bool
 }
 
+// NewPartialQueryClause creates an empty PartialQueryClause.
 func NewPartialQueryClause() PartialQueryClause {
 	return PartialQueryClause{tree: nil}
 }
 
+// Group wraps a QueryClause in parentheses.
 func (p PartialQueryClause) Group(qc QueryClause) QueryClause {
 	groupedExpr := &GroupNode{Expression: qc.tree}
 	if p.tree == nil {
@@ -30,6 +33,7 @@ func (p PartialQueryClause) Group(qc QueryClause) QueryClause {
 	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
+// QueryClause represents a complete, valid query expression that can be part of a WHERE clause.
 type QueryClause struct {
 	tree            ExpressionNode
 	hasIndexedField bool
@@ -44,6 +48,7 @@ func (qc QueryClause) Validate() error {
 	return nil
 }
 
+// And starts a logical AND operation, returning a PartialQueryClause to which the right-hand side can be appended.
 func (x QueryClause) And() PartialQueryClause {
 	return PartialQueryClause{
 		tree: &LogicalOpNode{
@@ -54,6 +59,7 @@ func (x QueryClause) And() PartialQueryClause {
 	}
 }
 
+// Or starts a logical OR operation, returning a PartialQueryClause to which the right-hand side can be appended.
 func (x QueryClause) Or() PartialQueryClause {
 	return PartialQueryClause{
 		tree: &LogicalOpNode{
@@ -64,16 +70,19 @@ func (x QueryClause) Or() PartialQueryClause {
 	}
 }
 
+// Ident represents a database column identifier in a query, typed to ensure compile-time correctness of comparisons.
 type Ident[T comparable] struct {
 	column      string
 	partialExpr PartialQueryClause
 	indexed     bool
 }
 
+// NewIdent creates a new identifier for a column.
 func NewIdent[T comparable](column string, px PartialQueryClause, indexed bool) Ident[T] {
 	return Ident[T]{column, px, indexed}
 }
 
+// Equal creates an equality (`=`) or `IN` condition.
 func (i Ident[T]) Equal(v ...T) QueryClause {
 	var conditionNode *ConditionNode
 	if len(v) == 1 {
@@ -113,6 +122,7 @@ func (i Ident[T]) Equal(v ...T) QueryClause {
 	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
+// NotEqual creates a not-equal (`<>`) or `NOT IN` condition.
 func (i Ident[T]) NotEqual(v ...T) QueryClause {
 	var conditionNode *ConditionNode
 	if len(v) == 1 {
@@ -152,6 +162,7 @@ func (i Ident[T]) NotEqual(v ...T) QueryClause {
 	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
+// IsNull creates an `IS NULL` condition.
 func (i Ident[T]) IsNull() QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{
@@ -175,6 +186,7 @@ func (i Ident[T]) IsNull() QueryClause {
 	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
+// IsNotNull creates an `IS NOT NULL` condition.
 func (i Ident[T]) IsNotNull() QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{
@@ -198,6 +210,7 @@ func (i Ident[T]) IsNotNull() QueryClause {
 	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
+// GreaterThan creates a `>` condition.
 func (i Ident[T]) GreaterThan(v T) QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{
@@ -221,6 +234,7 @@ func (i Ident[T]) GreaterThan(v T) QueryClause {
 	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
+// GreaterThanEq creates a `>=` condition.
 func (i Ident[T]) GreaterThanEq(v T) QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{
@@ -244,6 +258,7 @@ func (i Ident[T]) GreaterThanEq(v T) QueryClause {
 	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
+// LessThan creates a `<` condition.
 func (i Ident[T]) LessThan(v T) QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{
@@ -267,6 +282,7 @@ func (i Ident[T]) LessThan(v T) QueryClause {
 	return QueryClause{tree: logicalNode, hasIndexedField: finalHasIndexedField}
 }
 
+// LessThanEq creates a `<=` condition.
 func (i Ident[T]) LessThanEq(v T) QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{

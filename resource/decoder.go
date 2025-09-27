@@ -23,8 +23,10 @@ type ValidatorFunc interface {
 }
 
 type (
+	// DomainFromReq is a function that extracts a domain from an http.Request.
 	DomainFromReq func(*http.Request) accesstypes.Domain
-	UserFromReq   func(*http.Request) accesstypes.User
+	// UserFromReq is a function that extracts a user from an http.Request.
+	UserFromReq func(*http.Request) accesstypes.User
 )
 
 // Decoder is a struct that can be used for decoding http requests and validating those requests
@@ -34,6 +36,7 @@ type Decoder[Resource Resourcer, Request any] struct {
 	resourceSet *ResourceSet[Resource]
 }
 
+// NewDecoder creates a new Decoder for a given Resource and Request type.
 func NewDecoder[Resource Resourcer, Request any](rSet *ResourceSet[Resource]) (*Decoder[Resource, Request], error) {
 	target := new(Request)
 	m, err := NewRequestFieldMapper(target)
@@ -47,6 +50,7 @@ func NewDecoder[Resource Resourcer, Request any](rSet *ResourceSet[Resource]) (*
 	}, nil
 }
 
+// WithValidator sets the validator function for the Decoder.
 func (d *Decoder[Resource, Request]) WithValidator(v ValidatorFunc) *Decoder[Resource, Request] {
 	decoder := *d
 	decoder.validate = v
@@ -54,6 +58,7 @@ func (d *Decoder[Resource, Request]) WithValidator(v ValidatorFunc) *Decoder[Res
 	return &decoder
 }
 
+// DecodeWithoutPermissions decodes an http.Request into a PatchSet without enforcing any user permissions.
 func (d *Decoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*PatchSet[Resource], error) {
 	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate, accesstypes.NullPermission)
 	if err != nil {
@@ -63,6 +68,7 @@ func (d *Decoder[Resource, Request]) DecodeWithoutPermissions(request *http.Requ
 	return p, nil
 }
 
+// Decode decodes an http.Request into a PatchSet and enables user permission enforcement.
 func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, requiredPermission accesstypes.Permission) (*PatchSet[Resource], error) {
 	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate, requiredPermission)
 	if err != nil {
@@ -74,6 +80,7 @@ func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissio
 	return p, nil
 }
 
+// DecodeOperationWithoutPermissions decodes an Operation into a PatchSet without enforcing user permissions.
 func (d *Decoder[Resource, Request]) DecodeOperationWithoutPermissions(oper *Operation) (*PatchSet[Resource], error) {
 	if oper.Type == OperationDelete {
 		return NewPatchSet(d.resourceSet.ResourceMetadata()), nil
@@ -87,6 +94,7 @@ func (d *Decoder[Resource, Request]) DecodeOperationWithoutPermissions(oper *Ope
 	return patchSet, nil
 }
 
+// DecodeOperation decodes an Operation into a PatchSet and enables user permission enforcement.
 func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermissions UserPermissions) (*PatchSet[Resource], error) {
 	if oper.Type == OperationDelete {
 		return NewPatchSet(d.resourceSet.ResourceMetadata()).EnableUserPermissionEnforcement(d.resourceSet, userPermissions, permissionFromType(oper.Type)), nil

@@ -15,8 +15,10 @@ import (
 )
 
 type (
+	// DomainFromCtx is a function that extracts a domain from a context.
 	DomainFromCtx func(context.Context) accesstypes.Domain
-	UserFromCtx   func(context.Context) accesstypes.User
+	// UserFromCtx is a function that extracts a user from a context.
+	UserFromCtx func(context.Context) accesstypes.User
 )
 
 type parsedQueryParams struct {
@@ -41,6 +43,7 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	structDecoder      *StructDecoder[filterBody]
 }
 
+// NewQueryDecoder creates a new QueryDecoder for a given Resource and Request type.
 func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resource]) (*QueryDecoder[Resource, Request], error) {
 	var req Request
 	var res Resource
@@ -69,6 +72,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *ResourceSet[Resour
 	}, nil
 }
 
+// DecodeWithoutPermissions decodes an http.Request into a QuerySet without enforcing user permissions.
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
 	queryParams := request.URL.Query()
 
@@ -114,6 +118,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	return qSet, nil
 }
 
+// Decode decodes an http.Request into a QuerySet and enables user permission enforcement.
 func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions) (*QuerySet[Resource], error) {
 	qSet, err := d.DecodeWithoutPermissions(request)
 	if err != nil {

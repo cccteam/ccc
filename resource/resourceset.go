@@ -25,6 +25,7 @@ type (
 	ValidateFunc func(ctx context.Context, txn TxnBuffer) error
 )
 
+// Resourcer is an interface that all resource structs must implement.
 type Resourcer interface {
 	Resource() accesstypes.Resource
 	DefaultConfig() Config
@@ -53,34 +54,41 @@ func NewResourceSet[Resource Resourcer, Request any](permissions ...accesstypes.
 	}, nil
 }
 
+// BaseResource returns the base name of the resource (without any tags).
 func (r *ResourceSet[Resource]) BaseResource() accesstypes.Resource {
 	var res Resource
 
 	return res.Resource()
 }
 
+// ImmutableFields returns a map of tags for fields that are marked as immutable.
 func (r *ResourceSet[Resource]) ImmutableFields() map[accesstypes.Tag]struct{} {
 	return r.immutableFields
 }
 
+// ResourceMetadata returns the metadata for the resource.
 func (r *ResourceSet[Resource]) ResourceMetadata() *ResourceMetadata[Resource] {
 	return r.rMeta
 }
 
+// PermissionRequired checks if a specific permission is required for a given field.
 func (r *ResourceSet[Resource]) PermissionRequired(fieldName accesstypes.Field, perm accesstypes.Permission) bool {
 	return slices.Contains(r.requiredTagPerm[r.fieldToTag[fieldName]], perm)
 }
 
+// Permissions returns all permissions associated with the resource set.
 func (r *ResourceSet[Resource]) Permissions() []accesstypes.Permission {
 	return r.permissions
 }
 
+// Resource returns the full resource name for a field, including its tag (e.g., "myresource.myfield").
 func (r *ResourceSet[Resource]) Resource(fieldName accesstypes.Field) accesstypes.Resource {
 	var res Resource
 
 	return accesstypes.Resource(fmt.Sprintf("%s.%s", res.Resource(), r.fieldToTag[fieldName]))
 }
 
+// TagPermissions returns the mapping of tags to their required permissions.
 func (r *ResourceSet[Resource]) TagPermissions() accesstypes.TagPermissions {
 	return r.requiredTagPerm
 }
@@ -190,10 +198,12 @@ func NewResourceMetadata[Resource Resourcer]() *ResourceMetadata[Resource] {
 	}
 }
 
+// Fields returns a slice of all field names for the resource.
 func (r *ResourceMetadata[Resource]) Fields() []accesstypes.Field {
 	return slices.Collect(maps.Keys(r.fieldMap))
 }
 
+// Len returns the number of fields in the resource.
 func (r *ResourceMetadata[Resource]) Len() int {
 	return len(r.fieldMap)
 }

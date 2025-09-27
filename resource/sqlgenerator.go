@@ -12,7 +12,9 @@ import (
 type SQLDialect int
 
 const (
+	// PostgreSQL dialect.
 	PostgreSQL SQLDialect = iota
+	// Spanner dialect.
 	Spanner
 )
 
