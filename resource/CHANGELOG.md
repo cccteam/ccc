@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.0](https://github.com/cccteam/ccc/compare/resource/v0.4.5...resource/v0.5.0) (2025-09-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* Changed public  method name `resource.NewResourceSet` -> `resource.NewSet` ([#475](https://github.com/cccteam/ccc/issues/475))
+* Changed public  method name `resource.NewResourceMetadata` -> `resource.NewMetadata` ([#475](https://github.com/cccteam/ccc/issues/475))
+
+### Features
+
+* Reject URL Filters on Sensitive Fields ([#475](https://github.com/cccteam/ccc/issues/475)) ([1c58c34](https://github.com/cccteam/ccc/commit/1c58c34313971927c3ded1eee1d782111994292a))
+
+
+### Code Refactoring
+
+* Address all remaining linter issues ([#475](https://github.com/cccteam/ccc/issues/475)) ([1c58c34](https://github.com/cccteam/ccc/commit/1c58c34313971927c3ded1eee1d782111994292a))
+* Changed public  method name `resource.NewResourceMetadata` -&gt; `resource.NewMetadata` ([#475](https://github.com/cccteam/ccc/issues/475)) ([1c58c34](https://github.com/cccteam/ccc/commit/1c58c34313971927c3ded1eee1d782111994292a))
+* Changed public  method name `resource.NewResourceSet` -&gt; `resource.NewSet` ([#475](https://github.com/cccteam/ccc/issues/475)) ([1c58c34](https://github.com/cccteam/ccc/commit/1c58c34313971927c3ded1eee1d782111994292a))
+
 ## [0.4.5](https://github.com/cccteam/ccc/compare/resource/v0.4.4...resource/v0.4.5) (2025-09-25)
 
 
