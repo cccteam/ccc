@@ -91,27 +91,27 @@ func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryP
 	var params []QueryParam
 
 	switch op {
-	case "eq", "ne", "gt", "lt", "gte", "lte":
+	case eqStr, neStr, gtStr, ltStr, gteStr, lteStr:
 		placeholder := s.nextPlaceholder()
 		params = append(params, QueryParam{Name: strings.TrimPrefix(placeholder, "@"), Value: cn.Condition.Value})
 		sqlOp := ""
 		switch op {
-		case "eq":
+		case eqStr:
 			sqlOp = "="
-		case "ne":
+		case neStr:
 			sqlOp = "<>"
-		case "gt":
+		case gtStr:
 			sqlOp = ">"
-		case "lt":
+		case ltStr:
 			sqlOp = "<"
-		case "gte":
+		case gteStr:
 			sqlOp = ">="
-		case "lte":
+		case lteStr:
 			sqlOp = "<="
 		}
 
 		return fmt.Sprintf("%s %s %s", field, sqlOp, placeholder), params, nil
-	case "in", "notin":
+	case inStr, notinStr:
 		placeholders := make([]string, len(cn.Condition.Values))
 		params = make([]QueryParam, 0, len(cn.Condition.Values))
 		for i, v := range cn.Condition.Values {
@@ -120,7 +120,7 @@ func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryP
 			params = append(params, QueryParam{Name: strings.TrimPrefix(placeholder, "@"), Value: v})
 		}
 		sqlOp := "IN"
-		if op == "notin" {
+		if op == notinStr {
 			sqlOp = "NOT IN"
 		}
 
@@ -156,7 +156,9 @@ func (s *sqlGenerator) generateLogicalOpSQL(ln *LogicalOpNode) (string, []QueryP
 	}
 
 	combinedSQL := fmt.Sprintf("%s %s %s", leftSQL, sqlOperator, rightSQL)
-	allParams := append(leftParams, rightParams...)
+	allParams := make([]QueryParam, 0, len(leftParams)+len(rightParams))
+	allParams = append(allParams, leftParams...)
+	allParams = append(allParams, rightParams...)
 
 	return combinedSQL, allParams, nil
 }

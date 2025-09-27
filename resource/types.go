@@ -8,6 +8,18 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 )
 
+const (
+	trueStr  = "true"
+	eqStr    = "eq"
+	neStr    = "ne"
+	gtStr    = "gt"
+	ltStr    = "lt"
+	gteStr   = "gte"
+	lteStr   = "lte"
+	inStr    = "in"
+	notinStr = "notin"
+)
+
 type DataChangeEvent struct {
 	TableName   accesstypes.Resource `spanner:"TableName"`
 	RowID       string               `spanner:"RowId"`

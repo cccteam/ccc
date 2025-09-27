@@ -16,6 +16,10 @@ import (
 	"github.com/ettle/strcase"
 )
 
+const (
+	booleanStr = "boolean"
+)
+
 // Generator provides methods for generating Go or Typescript for a resource-driven web application.
 type Generator interface {
 	Generate() error
@@ -443,7 +447,7 @@ func (f *resourceField) TypescriptDataType() string {
 	if f.typescriptType == "civilDate" {
 		return "Date"
 	}
-	if f.IsNullable && f.typescriptType == "boolean" {
+	if f.IsNullable && f.typescriptType == booleanStr {
 		return "NullBoolean"
 	}
 
@@ -455,7 +459,7 @@ func (f *resourceField) TypescriptDisplayType() string {
 		return "enumerated"
 	}
 
-	if f.IsNullable && f.typescriptType == "boolean" {
+	if f.IsNullable && f.typescriptType == booleanStr {
 		return "nullboolean"
 	}
 

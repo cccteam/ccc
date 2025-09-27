@@ -649,7 +649,7 @@ func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			req, err := http.NewRequest(tc.method, "http://test?"+tc.urlValues, strings.NewReader(tc.body))
+			req, err := http.NewRequestWithContext(t.Context(), tc.method, "http://test?"+tc.urlValues, strings.NewReader(tc.body))
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}

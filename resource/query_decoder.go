@@ -346,7 +346,7 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 
 	for i := range reqType.NumField() {
 		structField := reqType.Field(i)
-		if structField.Tag.Get("index") != "true" && structField.Tag.Get("allow_filter") != "true" {
+		if structField.Tag.Get("index") != trueStr && structField.Tag.Get("allow_filter") != trueStr {
 			continue
 		}
 
@@ -373,8 +373,8 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 			DbColumnName: cacheEntry.dbColumnName,
 			Kind:         fieldKind,
 			FieldType:    fieldType,
-			Indexed:      structField.Tag.Get("index") == "true",
-			PII:          structField.Tag.Get("pii") == "true",
+			Indexed:      structField.Tag.Get("index") == trueStr,
+			PII:          structField.Tag.Get("pii") == trueStr,
 		}
 	}
 

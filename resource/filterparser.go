@@ -354,7 +354,7 @@ func (p *FilterParser) parseConditionToken() (ExpressionNode, error) {
 			return nil, httpio.NewBadRequestMessagef("operator '%s' does not take a value, but got '%s' in condition '%s'", condition.Operator, parts[2], p.current.Value)
 		}
 		condition.IsNullOp = true
-	case "in", "notin":
+	case inStr, notinStr:
 		if len(parts) < 3 {
 			return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value part in condition '%s'	", condition.Operator, p.current.Value)
 		}
@@ -388,7 +388,7 @@ func (p *FilterParser) parseConditionToken() (ExpressionNode, error) {
 			}
 			condition.Values = append(condition.Values, typedValue)
 		}
-	case "eq", "ne", "gt", "lt", "gte", "lte":
+	case eqStr, neStr, gtStr, ltStr, gteStr, lteStr:
 		if len(parts) < 3 {
 			return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value in condition '%s'", condition.Operator, p.current.Value)
 		}

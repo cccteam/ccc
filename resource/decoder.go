@@ -150,8 +150,7 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *ResourceSet[Resource],
 
 		field := vValue.FieldByName(string(fieldName))
 		value := field.Interface()
-		switch jsonValue.(type) {
-		case nil:
+		if jsonValue == nil {
 			if field.Kind() != reflect.Ptr {
 				switch value.(type) {
 				// Taken from cloud.google.com/go/spanner@v1.83.0/value.go

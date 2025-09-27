@@ -116,7 +116,7 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 		permTag := field.Tag.Get("perm")
 		perms := strings.Split(permTag, ",")
 
-		if immutableTag == "true" {
+		if immutableTag == trueStr {
 			immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
 
 			// immutability is implemented by requiring the update permission (here) and then

@@ -114,10 +114,8 @@ func TestQuerySet_SpannerStmt_OrderBy_Limit(t *testing.T) {
 			sql := stmt.SQL // Access as a field, not a function
 			if tt.assertFunc != nil {
 				tt.assertFunc(t, sql, tt.wantQueryContains)
-			} else {
-				if !strings.Contains(sql, tt.wantQueryContains) {
-					t.Errorf("SpannerStmt() SQL = \n%s\nWant to contain:\n%s", sql, tt.wantQueryContains)
-				}
+			} else if !strings.Contains(sql, tt.wantQueryContains) {
+				t.Errorf("SpannerStmt() SQL = \n%s\nWant to contain:\n%s", sql, tt.wantQueryContains)
 			}
 		})
 	}
@@ -211,10 +209,8 @@ func TestQuerySet_PostgresStmt_OrderBy_Limit(t *testing.T) {
 			sql := stmt.SQL
 			if tt.assertFunc != nil {
 				tt.assertFunc(t, sql, tt.wantQueryContains)
-			} else {
-				if !strings.Contains(sql, tt.wantQueryContains) {
-					t.Errorf("PostgresStmt() SQL = \n%s\nWant to contain:\n%s", sql, tt.wantQueryContains)
-				}
+			} else if !strings.Contains(sql, tt.wantQueryContains) {
+				t.Errorf("PostgresStmt() SQL = \n%s\nWant to contain:\n%s", sql, tt.wantQueryContains)
 			}
 		})
 	}

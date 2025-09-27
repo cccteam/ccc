@@ -542,42 +542,42 @@ func TestParser_Parse_Successful(t *testing.T) {
 		{
 			name:         "simple condition with status",
 			filterString: "status:eq:active",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: "eq", Value: "active"}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: eqStr, Value: "active"}},
 		},
 		{
 			name:         "simple condition with empty status",
 			filterString: "status:eq:",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: "eq", Value: ""}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Status", Operator: eqStr, Value: ""}},
 		},
 		{
 			name:         "True condition with active",
 			filterString: "active:eq:true",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Active", Operator: "eq", Value: true}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Active", Operator: eqStr, Value: true}},
 		},
 		{
 			name:         "False condition with active",
 			filterString: "active:eq:false",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Active", Operator: "eq", Value: false}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Active", Operator: eqStr, Value: false}},
 		},
 		{
 			name:         "simple condition with user_id",
 			filterString: "user_id:in:(1,2,3)",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: "in", Values: []any{1, 2, 3}}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: inStr, Values: []any{1, 2, 3}}},
 		},
 		{
 			name:         "simple condition with price",
 			filterString: "price:gte:100.50",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Price", Operator: "gte", Value: 100.50}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Price", Operator: gteStr, Value: 100.50}},
 		},
 		{
 			name:         "simple condition with name - mapped",
 			filterString: "name:eq:Test Name",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Name", Operator: "eq", Value: "Test Name"}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Name", Operator: eqStr, Value: "Test Name"}},
 		},
 		{
 			name:         "simple condition with age - mapped",
 			filterString: "age:lt:30",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Age", Operator: "lt", Value: "30"}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Age", Operator: ltStr, Value: "30"}},
 		},
 		{
 			name:         "simple condition with category - mapped",
@@ -587,7 +587,7 @@ func TestParser_Parse_Successful(t *testing.T) {
 		{
 			name:         "simple condition with email - mapped",
 			filterString: "email:notin:(a@b.com,c@d.com)",
-			wantNode:     &ConditionNode{Condition: Condition{Field: "Email", Operator: "notin", Values: []any{"a@b.com", "c@d.com"}}},
+			wantNode:     &ConditionNode{Condition: Condition{Field: "Email", Operator: notinStr, Values: []any{"a@b.com", "c@d.com"}}},
 		},
 		{
 			name:         "grouped condition with translated fields",
@@ -595,13 +595,13 @@ func TestParser_Parse_Successful(t *testing.T) {
 			wantNode: &LogicalOpNode{
 				Left: &GroupNode{
 					Expression: &LogicalOpNode{
-						Left:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: "eq", Value: 10}},
+						Left:     &ConditionNode{Condition: Condition{Field: "UserId", Operator: eqStr, Value: 10}},
 						Operator: OperatorAnd,
-						Right:    &ConditionNode{Condition: Condition{Field: "Status", Operator: "eq", Value: "pending"}},
+						Right:    &ConditionNode{Condition: Condition{Field: "Status", Operator: eqStr, Value: "pending"}},
 					},
 				},
 				Operator: OperatorOr,
-				Right:    &ConditionNode{Condition: Condition{Field: "Price", Operator: "gt", Value: 50}},
+				Right:    &ConditionNode{Condition: Condition{Field: "Price", Operator: gtStr, Value: 50}},
 			},
 		},
 		{

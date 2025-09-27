@@ -80,7 +80,7 @@ func (i Ident[T]) Equal(v ...T) QueryClause {
 		conditionNode = &ConditionNode{
 			Condition: Condition{
 				Field:    i.column,
-				Operator: "eq",
+				Operator: eqStr,
 				Value:    v[0],
 			},
 		}
@@ -92,7 +92,7 @@ func (i Ident[T]) Equal(v ...T) QueryClause {
 		conditionNode = &ConditionNode{
 			Condition: Condition{
 				Field:    i.column,
-				Operator: "in",
+				Operator: inStr,
 				Values:   values,
 			},
 		}
@@ -119,7 +119,7 @@ func (i Ident[T]) NotEqual(v ...T) QueryClause {
 		conditionNode = &ConditionNode{
 			Condition: Condition{
 				Field:    i.column,
-				Operator: "ne",
+				Operator: neStr,
 				Value:    v[0],
 			},
 		}
@@ -131,7 +131,7 @@ func (i Ident[T]) NotEqual(v ...T) QueryClause {
 		conditionNode = &ConditionNode{
 			Condition: Condition{
 				Field:    i.column,
-				Operator: "notin",
+				Operator: notinStr,
 				Values:   values,
 			},
 		}
@@ -202,7 +202,7 @@ func (i Ident[T]) GreaterThan(v T) QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{
 			Field:    i.column,
-			Operator: "gt",
+			Operator: gtStr,
 			Value:    v,
 		},
 	}
@@ -225,7 +225,7 @@ func (i Ident[T]) GreaterThanEq(v T) QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{
 			Field:    i.column,
-			Operator: "gte",
+			Operator: gteStr,
 			Value:    v,
 		},
 	}
@@ -248,7 +248,7 @@ func (i Ident[T]) LessThan(v T) QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{
 			Field:    i.column,
-			Operator: "lt",
+			Operator: ltStr,
 			Value:    v,
 		},
 	}
@@ -271,7 +271,7 @@ func (i Ident[T]) LessThanEq(v T) QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{
 			Field:    i.column,
-			Operator: "lte",
+			Operator: lteStr,
 			Value:    v,
 		},
 	}
