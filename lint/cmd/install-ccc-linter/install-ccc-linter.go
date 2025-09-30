@@ -1,6 +1,8 @@
+// Command install-ccc-linter installs the ccc-lint golangci-lint plugin.
 package main
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"go/build"
@@ -21,12 +23,12 @@ type cccLintInstaller struct {
 	verbose             bool
 }
 
-func (c *cccLintInstaller) run() error {
+func (c *cccLintInstaller) run(ctx context.Context) error {
 	cloneDir, err := os.MkdirTemp("", "ccc-lint-")
 	if err != nil {
 		return errors.Wrap(err, "os.MkdirTemp()")
 	}
-	// defer os.RemoveAll(cloneDir)
+	defer os.RemoveAll(cloneDir)
 
 	lintDir := filepath.Join(cloneDir, "lint")
 
@@ -34,7 +36,7 @@ func (c *cccLintInstaller) run() error {
 		fmt.Printf("Generating custom golangci-lint config in %s\n", lintDir)
 	}
 
-	if err := os.MkdirAll(lintDir, 0o755); err != nil {
+	if err := os.MkdirAll(lintDir, 0o750); err != nil {
 		return errors.Wrap(err, "os.MkdirAll()")
 	}
 
@@ -42,7 +44,7 @@ func (c *cccLintInstaller) run() error {
 		return errors.Wrap(err, "generateCustomGclFile()")
 	}
 
-	if err := c.execCommand(lintDir, "golangci-lint", "custom"); err != nil {
+	if err := c.execCommand(ctx, lintDir, "golangci-lint", "custom"); err != nil {
 		return errors.Wrap(err, "golangci-lint custom")
 	}
 
@@ -83,7 +85,7 @@ func (c *cccLintInstaller) generateCustomGclFile(lintDir string) error {
 	return nil
 }
 
-func (c *cccLintInstaller) execCommand(dir, command string, args ...string) error {
+func (c *cccLintInstaller) execCommand(ctx context.Context, dir, command string, args ...string) error {
 	if c.verbose {
 		fmt.Printf("Command(%s): %s", dir, command)
 		for _, arg := range args {
@@ -92,7 +94,7 @@ func (c *cccLintInstaller) execCommand(dir, command string, args ...string) erro
 		fmt.Println()
 	}
 
-	cmd := exec.Command(command, args...)
+	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

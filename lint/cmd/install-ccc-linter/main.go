@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -27,7 +28,10 @@ func run() error {
 	var pluginVersion string
 	pflag.StringVarP(&pluginVersion, "plugin-version", "p", buildInfo.Main.Version, "Version of the ccc/lint plugin")
 
-	defaultVersion, err := getLatestGolangciLintVersion()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	defaultVersion, err := getLatestGolangciLintVersion(ctx)
 	if err != nil {
 		return errors.Wrap(err, "getLatestGolangciLintVersion()")
 	}
@@ -69,12 +73,12 @@ func run() error {
 		verbose:             verbose,
 	}
 
-	return c.run()
+	return c.run(ctx)
 }
 
-func getLatestGolangciLintVersion() (string, error) {
+func getLatestGolangciLintVersion(ctx context.Context) (string, error) {
 	// Use go list to get the latest v2 version from the Go module proxy
-	cmd := exec.Command("go", "list", "-m", "github.com/golangci/golangci-lint/v2@latest")
+	cmd := exec.CommandContext(ctx, "go", "list", "-m", "github.com/golangci/golangci-lint/v2@latest")
 	output, err := cmd.Output()
 	if err != nil {
 		return "", errors.Wrap(err, "exec.Command()")

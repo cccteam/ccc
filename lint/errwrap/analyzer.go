@@ -1,3 +1,4 @@
+// Package errwrap defines a linter that checks if error wrapping has the correct function name.
 package errwrap
 
 import (
@@ -9,6 +10,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
+// New creates a new instance of the errwrap analyzer.
 func New() (*analysis.Analyzer, error) {
 	return &analysis.Analyzer{
 		Name: "ccc_errwrap",
@@ -20,88 +22,109 @@ func New() (*analysis.Analyzer, error) {
 func run(pass *analysis.Pass) (interface{}, error) {
 	for _, file := range pass.Files {
 		ast.Inspect(file, func(node ast.Node) bool {
-			stmt, ok := node.(*ast.IfStmt)
-			if !ok {
-				return true
+			if stmt, ok := node.(*ast.IfStmt); ok {
+				checkErrorHandlingStatement(pass, stmt)
 			}
-
-			// Ensure it is checking for an error
-			binExpr, ok := stmt.Cond.(*ast.BinaryExpr)
-			if !ok {
-				return true
-			}
-
-			if binExpr.Op != token.NEQ {
-				return true
-			}
-
-			ident, ok := binExpr.X.(*ast.Ident)
-			if !ok || ident.Name != "err" {
-				return true
-			}
-
-			// Look for return statements inside the if block
-			ast.Inspect(stmt.Body, func(n ast.Node) bool {
-				retStmt, ok := n.(*ast.ReturnStmt)
-				if !ok {
-					return true
-				}
-
-				for _, expr := range retStmt.Results {
-					callExpr, ok := expr.(*ast.CallExpr)
-					if !ok {
-						continue
-					}
-
-					fun, ok := callExpr.Fun.(*ast.SelectorExpr)
-					if !ok {
-						continue
-					}
-
-					ident, ok := fun.X.(*ast.Ident)
-					if !ok || ident.Name != "errors" || fun.Sel.Name != "Wrap" {
-						continue
-					}
-
-					// Check if second argument is a string
-					if len(callExpr.Args) == 2 {
-						lit, ok := callExpr.Args[1].(*ast.BasicLit)
-						if !ok {
-							continue
-						}
-
-						expected := getExpectedFunctionName(stmt)
-
-						if expected == "" || strings.Contains(lit.Value, expected) {
-							continue
-						}
-
-						// Calculate the offset to report the error at the correct position
-						offset := 0
-						if strings.Contains(lit.Value, ".") {
-							argSplit := strings.Split(strings.Trim(lit.Value, "\""), ".")
-
-							for _, part := range argSplit[:len(argSplit)-1] {
-								offset += len(part) + 1 // +1 for the dot
-							}
-
-							if offset > 0 {
-								offset += 1 // Account for the starting quote
-							}
-						}
-
-						pass.Reportf(lit.Pos()+token.Pos(offset), "error wrapping message should match function: expected \"*.%s\", found %s", expected, lit.Value)
-					}
-				}
-
-				return true
-			})
 
 			return true
 		})
 	}
 
 	return nil, nil
+}
+
+// checkErrorHandlingStatement checks if an if statement is handling an error and validates error wrapping
+func checkErrorHandlingStatement(pass *analysis.Pass, stmt *ast.IfStmt) {
+	if !isErrorCheckStatement(stmt) {
+		return
+	}
+
+	// Look for return statements inside the if block
+	ast.Inspect(stmt.Body, func(n ast.Node) bool {
+		if retStmt, ok := n.(*ast.ReturnStmt); ok {
+			checkReturnStatement(pass, stmt, retStmt)
+		}
+
+		return true
+	})
+}
+
+// isErrorCheckStatement checks if the if statement is checking for an error (err != nil)
+func isErrorCheckStatement(stmt *ast.IfStmt) bool {
+	binExpr, ok := stmt.Cond.(*ast.BinaryExpr)
+	if !ok || binExpr.Op != token.NEQ {
+		return false
+	}
+
+	ident, ok := binExpr.X.(*ast.Ident)
+
+	return ok && ident.Name == "err"
+}
+
+// checkReturnStatement checks return statements for error wrapping calls
+func checkReturnStatement(pass *analysis.Pass, stmt *ast.IfStmt, retStmt *ast.ReturnStmt) {
+	for _, expr := range retStmt.Results {
+		if callExpr, ok := expr.(*ast.CallExpr); ok {
+			checkErrorWrapCall(pass, stmt, callExpr)
+		}
+	}
+}
+
+// checkErrorWrapCall checks if a call expression is an errors.Wrap call and validates it
+func checkErrorWrapCall(pass *analysis.Pass, stmt *ast.IfStmt, callExpr *ast.CallExpr) {
+	if !isErrorsWrapCall(callExpr) {
+		return
+	}
+
+	// Check if second argument is a string
+	if len(callExpr.Args) != 2 {
+		return
+	}
+
+	lit, ok := callExpr.Args[1].(*ast.BasicLit)
+	if !ok {
+		return
+	}
+
+	expected := getExpectedFunctionName(stmt)
+	if expected == "" || strings.Contains(lit.Value, expected) {
+		return
+	}
+
+	offset := calculateErrorOffset(lit.Value)
+	pass.Reportf(lit.Pos()+token.Pos(offset), "error wrapping message should match function: expected \"*.%s\", found %s", expected, lit.Value)
+}
+
+// isErrorsWrapCall checks if a call expression is errors.Wrap
+func isErrorsWrapCall(callExpr *ast.CallExpr) bool {
+	fun, ok := callExpr.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	ident, ok := fun.X.(*ast.Ident)
+
+	return ok && ident.Name == "errors" && fun.Sel.Name == "Wrap"
+}
+
+// calculateErrorOffset calculates the position offset for error reporting
+func calculateErrorOffset(value string) int {
+	if !strings.Contains(value, ".") {
+		return 0
+	}
+
+	offset := 0
+	argSplit := strings.Split(strings.Trim(value, "\""), ".")
+
+	for _, part := range argSplit[:len(argSplit)-1] {
+		offset += len(part) + 1 // +1 for the dot
+	}
+
+	if offset > 0 {
+		offset++ // Account for the starting quote
+	}
+
+	return offset
 }
 
 func getExpectedFunctionName(stmt *ast.IfStmt) string {

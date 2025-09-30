@@ -129,6 +129,9 @@ linters:
           - nlreturn
           - scopelint
         path: _test\.go
+      - linters:
+          - gochecknoinits
+        path: lint\.go
     paths:
       - third_party$
       - builtin$
