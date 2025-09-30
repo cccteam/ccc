@@ -11,6 +11,7 @@ name: golangci-lint-v2
 destination: {{.Destination}}
 
 plugins:
-  - module: 'github.com/cccteam/ccc/lint'
+  - module: 'github.com/cccteam/ccc/lint'{{if .LocalInstallPath}}
+    path: {{.LocalInstallPath}}{{else}}
     import: 'github.com/cccteam/ccc/lint'
-    version: {{.PluginVersion}}
+    version: {{.PluginVersion}}{{end}}

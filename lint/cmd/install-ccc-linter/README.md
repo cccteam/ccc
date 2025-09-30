@@ -31,6 +31,7 @@ install-ccc-linter
 
 - `-p, --plugin-version`: Specify the version of the `ccc/lint` plugin to use.
 - `-g, --golangci-lint-version`: Specify the version of golangci-lint to use (default: latest stable).
+- `-l, --local-install-path`: Allow for a local plugin path to be used, this is mainly for debugging while developing the custom linter
 - `-v, --verbose`: Enable verbose output.
 - `-h, --help`: Print usage information.
 - `--version`: Print the version of `install-ccc-linter`.
@@ -46,4 +47,7 @@ install-ccc-linter -g v2.5.0
 
 # Install with both versions specified
 install-ccc-linter -p v0.0.3 -g v2.5.0 -v
+
+# Install plugin from local
+install-ccc-linter -l=$HOME/dev/github.com/cccteam/ccc/lint
 ```

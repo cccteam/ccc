@@ -21,6 +21,7 @@ type cccLintInstaller struct {
 	pluginVersion       string
 	golangciLintVersion string
 	verbose             bool
+	localInstallPath    string
 }
 
 func (c *cccLintInstaller) run(ctx context.Context) error {
@@ -45,7 +46,7 @@ func (c *cccLintInstaller) run(ctx context.Context) error {
 	}
 
 	if err := c.execCommand(ctx, lintDir, "golangci-lint", "custom"); err != nil {
-		return errors.Wrap(err, "golangci-lint custom")
+		return errors.Wrap(err, "execCommand()")
 	}
 
 	return nil
@@ -65,13 +66,15 @@ func (c *cccLintInstaller) generateCustomGclFile(lintDir string) error {
 	defer file.Close()
 
 	data := struct {
-		Version       string
-		Destination   string
-		PluginVersion string
+		Version          string
+		Destination      string
+		PluginVersion    string
+		LocalInstallPath string
 	}{
-		Version:       c.golangciLintVersion,
-		Destination:   goBinPath() + "/",
-		PluginVersion: c.pluginVersion,
+		Version:          c.golangciLintVersion,
+		Destination:      goBinPath() + "/",
+		PluginVersion:    c.pluginVersion,
+		LocalInstallPath: c.localInstallPath,
 	}
 
 	if err := tmpl.Execute(file, data); err != nil {
@@ -98,7 +101,7 @@ func (c *cccLintInstaller) execCommand(ctx context.Context, dir, command string,
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return errors.Wrap(errors.Wrap(err, "Output: "+string(out)), "exec.Command.CombineOutput()")
+		return errors.Wrap(errors.Wrap(err, "Output: "+string(out)), "exec.Command.CombinedOutput()")
 	}
 
 	if c.verbose && len(out) > 0 {

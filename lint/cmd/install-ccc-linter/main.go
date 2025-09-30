@@ -39,6 +39,9 @@ func run() error {
 	var golangciLintVersion string
 	pflag.StringVarP(&golangciLintVersion, "golangci-lint-version", "g", defaultVersion, "Version of golangci-lint to use (default: latest stable)")
 
+	var localInstallPath string
+	pflag.StringVarP(&localInstallPath, "local-install-path", "l", "", "Path to install plugin from")
+
 	var verbose bool
 	pflag.BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 
@@ -71,6 +74,7 @@ func run() error {
 		pluginVersion:       pluginVersion,
 		golangciLintVersion: golangciLintVersion,
 		verbose:             verbose,
+		localInstallPath:    localInstallPath,
 	}
 
 	return c.run(ctx)
@@ -81,7 +85,7 @@ func getLatestGolangciLintVersion(ctx context.Context) (string, error) {
 	cmd := exec.CommandContext(ctx, "go", "list", "-m", "github.com/golangci/golangci-lint/v2@latest")
 	output, err := cmd.Output()
 	if err != nil {
-		return "", errors.Wrap(err, "exec.Command()")
+		return "", errors.Wrap(err, "cmd.Output()")
 	}
 
 	// Output format: "github.com/golangci/golangci-lint/v2 v2.5.0"

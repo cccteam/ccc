@@ -49,6 +49,8 @@ linters:
     - wastedassign
     - whitespace
     - wrapcheck
+    # TODO: Add back after github-workflows PR is merged in and workflow in this project is updated
+    # - ccclint
   settings:
     cyclop:
       max-complexity: 25
@@ -112,6 +114,11 @@ linters:
         - .WithMessage(
         - .WithMessagef(
         - .Cause(
+    # TODO: Add back after github-workflows PR is merged in and workflow in this project is updated
+    # custom:
+    #   ccclint:
+    #     type: module
+    #     description: CCC custom linter
   exclusions:
     generated: lax
     presets:

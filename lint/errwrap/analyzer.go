@@ -23,7 +23,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	for _, file := range pass.Files {
 		ast.Inspect(file, func(node ast.Node) bool {
 			if stmt, ok := node.(*ast.IfStmt); ok {
-				checkErrorHandlingStatement(pass, stmt)
+				checkErrorHandlingStatement(pass, file, stmt)
 			}
 
 			return true
@@ -34,7 +34,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 }
 
 // checkErrorHandlingStatement checks if an if statement is handling an error and validates error wrapping
-func checkErrorHandlingStatement(pass *analysis.Pass, stmt *ast.IfStmt) {
+func checkErrorHandlingStatement(pass *analysis.Pass, file *ast.File, stmt *ast.IfStmt) {
 	if !isErrorCheckStatement(stmt) {
 		return
 	}
@@ -42,7 +42,7 @@ func checkErrorHandlingStatement(pass *analysis.Pass, stmt *ast.IfStmt) {
 	// Look for return statements inside the if block
 	ast.Inspect(stmt.Body, func(n ast.Node) bool {
 		if retStmt, ok := n.(*ast.ReturnStmt); ok {
-			checkReturnStatement(pass, stmt, retStmt)
+			checkReturnStatement(pass, file, stmt, retStmt)
 		}
 
 		return true
@@ -62,16 +62,16 @@ func isErrorCheckStatement(stmt *ast.IfStmt) bool {
 }
 
 // checkReturnStatement checks return statements for error wrapping calls
-func checkReturnStatement(pass *analysis.Pass, stmt *ast.IfStmt, retStmt *ast.ReturnStmt) {
+func checkReturnStatement(pass *analysis.Pass, file *ast.File, stmt *ast.IfStmt, retStmt *ast.ReturnStmt) {
 	for _, expr := range retStmt.Results {
 		if callExpr, ok := expr.(*ast.CallExpr); ok {
-			checkErrorWrapCall(pass, stmt, callExpr)
+			checkErrorWrapCall(pass, file, stmt, callExpr)
 		}
 	}
 }
 
 // checkErrorWrapCall checks if a call expression is an errors.Wrap call and validates it
-func checkErrorWrapCall(pass *analysis.Pass, stmt *ast.IfStmt, callExpr *ast.CallExpr) {
+func checkErrorWrapCall(pass *analysis.Pass, file *ast.File, stmt *ast.IfStmt, callExpr *ast.CallExpr) {
 	if !isErrorsWrapCall(callExpr) {
 		return
 	}
@@ -81,12 +81,13 @@ func checkErrorWrapCall(pass *analysis.Pass, stmt *ast.IfStmt, callExpr *ast.Cal
 		return
 	}
 
+	// Second argument should be a string literal
 	lit, ok := callExpr.Args[1].(*ast.BasicLit)
 	if !ok {
 		return
 	}
 
-	expected := getExpectedFunctionName(stmt)
+	expected := getExpectedFunctionName(file, stmt)
 	if expected == "" || strings.Contains(lit.Value, expected) {
 		return
 	}
@@ -127,25 +128,97 @@ func calculateErrorOffset(value string) int {
 	return offset
 }
 
-func getExpectedFunctionName(stmt *ast.IfStmt) string {
-	assignStmt, ok := stmt.Init.(*ast.AssignStmt)
-	if !ok {
-		return ""
+func getExpectedFunctionName(file *ast.File, stmt *ast.IfStmt) string {
+	// First try to get function name from if statement init
+	if stmt.Init != nil {
+		if assignStmt, ok := stmt.Init.(*ast.AssignStmt); ok {
+			if funcName := extractFunctionNameFromAssignment(assignStmt); funcName != "" {
+				return funcName
+			}
+		}
 	}
 
+	// If not found in init, look for preceding assignment statements
+	return findPrecedingAssignment(file, stmt)
+}
+
+// extractFunctionNameFromAssignment extracts function name from an assignment statement
+func extractFunctionNameFromAssignment(assignStmt *ast.AssignStmt) string {
 	for _, expr := range assignStmt.Rhs {
-		callExpr, ok := expr.(*ast.CallExpr)
-		if !ok {
-			continue
+		if funcName := extractFunctionNameFromExpr(expr); funcName != "" {
+			return funcName
 		}
-
-		fun, ok := callExpr.Fun.(*ast.SelectorExpr)
-		if !ok {
-			continue
-		}
-
-		return fmt.Sprintf("%s()", fun.Sel.Name)
 	}
 
 	return ""
+}
+
+// extractFunctionNameFromExpr extracts function name from an expression
+func extractFunctionNameFromExpr(expr ast.Expr) string {
+	if e, ok := expr.(*ast.CallExpr); ok {
+		if fun, ok := e.Fun.(*ast.SelectorExpr); ok {
+			return fmt.Sprintf("%s()", fun.Sel.Name)
+		}
+		// Handle chained calls like template.New().Parse()
+		if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
+			if innerCall, ok := sel.X.(*ast.CallExpr); ok {
+				// For chained calls, use the last method name
+				if _, ok := innerCall.Fun.(*ast.SelectorExpr); ok {
+					return fmt.Sprintf("%s()", sel.Sel.Name)
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// findPrecedingAssignment looks for assignment statements before the if statement
+func findPrecedingAssignment(file *ast.File, ifStmt *ast.IfStmt) string {
+	var result string
+	var closestPos token.Pos
+	ifPos := ifStmt.Pos()
+
+	ast.Inspect(file, func(node ast.Node) bool {
+		assignStmt, ok := node.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+
+		// Only consider assignments that come before the if statement
+		if assignStmt.Pos() >= ifPos {
+			return true
+		}
+
+		// Check if this assignment assigns to 'err' variable
+		if !assignsToErrVariable(assignStmt) {
+			return true
+		}
+
+		funcName := extractFunctionNameFromAssignment(assignStmt)
+		if funcName == "" {
+			return true
+		}
+
+		// Keep track of the closest assignment to the if statement
+		if assignStmt.Pos() > closestPos {
+			result = funcName
+			closestPos = assignStmt.Pos()
+		}
+
+		return true
+	})
+
+	return result
+}
+
+// assignsToErrVariable checks if an assignment statement assigns to an 'err' variable
+func assignsToErrVariable(assignStmt *ast.AssignStmt) bool {
+	for _, lhs := range assignStmt.Lhs {
+		if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "err" {
+			return true
+		}
+	}
+
+	return false
 }
