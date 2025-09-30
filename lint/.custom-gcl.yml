@@ -1,4 +1,0 @@
-version: v2.4.0
-plugins:
-  - module: 'github.com/cccteam/ccc/lint'
-    path: ./

@@ -1,23 +1,35 @@
 # github.com/cccteam/ccc/lint
 
+This package provides custom linting rules for CCC projects. The `install-ccc-linter` utility builds and installs a custom `golangci-lint` binary with CCC's custom linters integrated.
+
 ## Prerequisites
 
 - Make sure golangci-lint is installed, but VS Code should already have this taken care of
 
 ## Setup
 
-1. Install the ccclint utility.
+1. Install the install-ccc-linter utility.
 
 ```sh
-go install github.com/cccteam/ccc/lint/cmd/ccclint@latest
+go install github.com/cccteam/ccc/lint/cmd/install-ccc-linter@latest
 ```
 
 2. Make sure your `$GOPATH/bin` is included in your `$PATH`.
 
-3. Run the ccclint utility:
+3. Run the install-ccc-linter utility:
 
 ```sh
-ccclint
+install-ccc-linter
+```
+
+You can also specify specific versions if needed:
+
+```sh
+# Specify plugin version
+install-ccc-linter --plugin-version v0.0.3
+
+# Specify both plugin and golangci-lint versions
+install-ccc-linter --plugin-version v0.0.3 --golangci-lint-version v2.5.0
 ```
 
 4. Add a `custom` section to the `linters-settings` section of the project's `.golangci.yml` as shown below.
@@ -48,6 +60,6 @@ golang-ci:
    Note: This should only need to be done at most every time you change your go version.
 
 ```sh
-go install github.com/cccteam/ccc/lint/cmd/ccclint@latest
-ccclint
+go install github.com/cccteam/ccc/lint/cmd/install-ccc-linter@latest
+install-ccc-linter
 ```
