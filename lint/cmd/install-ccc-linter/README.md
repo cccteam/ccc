@@ -1,11 +1,11 @@
 # install-ccc-linter
 
-`install-ccc-linter` is a command-line utility for building and installing a custom `golangci-lint` with the CCC custom linter built into it.
+`install-ccc-linter` is a command-line utility for building and installing a custom `golangci-lint-v2` with the CCC custom linter built into it.
 
 ## Features
 
 - Generates a custom `.custom-gcl.yml` configuration file from an embedded template (`custom-gcl.yml.tmpl`).
-- Builds a custom `golangci-lint` with the custom linter and installs it in your `$GOPATH/bin`.
+- Builds a custom `golangci-lint-v2` with the custom linter and installs it in your `$GOPATH/bin`.
 - Supports specifying both plugin version and golangci-lint version.
 - Automatically detects the latest stable golangci-lint version if not specified.
 - Supports verbose output for debugging.
