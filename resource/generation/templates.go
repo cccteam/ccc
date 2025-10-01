@@ -893,7 +893,9 @@ export const Domains = {
 
 export const Resources = {
 {{- range $resource := $resources }}
+  {{- if not (index $.ExcludedResources $resource) }}
   {{ $resource }}: '{{ $resource }}' as Resource,
+  {{- end }}
 {{- end}}
 };
 
@@ -904,6 +906,7 @@ export const Methods = {
 };
 
 {{ range $resource, $tags := $resourcetags }}
+{{- if not (index $.ExcludedResources $resource) }}
 export namespace {{ $resource }} {
   export const fieldName = {
   {{- range $_, $tag := $tags }}
@@ -916,6 +919,7 @@ export namespace {{ $resource }} {
   {{- end }}
   };
 };
+{{- end }}
 {{ end }}
 {{ range $rpcMethod := $rpcMethods }}
 export namespace {{ $rpcMethod.Name }} {
@@ -931,6 +935,7 @@ type PermissionMappings = Record<Resource, ResourcePermissions>;
 
 const Mappings: PermissionMappings = {
   {{- range $resource := $resources }}
+  {{- if not (index $.ExcludedResources $resource) }}
   [Resources.{{ $resource }}]: {
     {{- range $perm := $resourcePermissions }}
     [Permissions.{{ $perm }}]: {{ index $resourcePermMap $resource $perm }},
@@ -943,6 +948,7 @@ const Mappings: PermissionMappings = {
       {{- end }}
   },
     {{- end }}
+  {{- end }}
   {{- end }}
 };
 
