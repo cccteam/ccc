@@ -241,7 +241,6 @@ type resourceInfo struct {
 	DefaultsUpdateType string
 	ValidateCreateType string
 	ValidateUpdateType string
-	noTypescript       bool
 }
 
 func (r *resourceInfo) ListHandlerDisabled() bool {
@@ -735,7 +734,6 @@ const (
 	defaultsUpdateTypeKeyword string = "defaultsUpdateType" // Specifies a type to call "Defaults()" on for setting defaults on resource update
 	validateCreateTypeKeyword string = "validateCreateType" // Specifies a type to call "Validate()" on for validating a resource on creation
 	validateUpdateTypeKeyword string = "validateUpdateType" // Specifies a type to call "Validate()" on for validating a resource on update
-	noTypescriptKeyword       string = "notypescript"       // Excludes struct from all typescript output
 )
 
 func keywords() map[string]genlang.KeywordOpts {
@@ -746,6 +744,5 @@ func keywords() map[string]genlang.KeywordOpts {
 		defaultsUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
 		validateCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
 		validateUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
-		noTypescriptKeyword:       {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 	}
 }
