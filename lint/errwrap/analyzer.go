@@ -40,8 +40,13 @@ func checkErrorHandlingStatement(pass *analysis.Pass, file *ast.File, stmt *ast.
 	}
 
 	// Look for return statements inside the if block
-	ast.Inspect(stmt.Body, func(n ast.Node) bool {
-		if retStmt, ok := n.(*ast.ReturnStmt); ok {
+	ast.Inspect(stmt.Body, func(node ast.Node) bool {
+		// Skip nested if statements here, let the outer call handle them so we're not handling them twice
+		if _, ok := node.(*ast.IfStmt); ok {
+			return false
+		}
+
+		if retStmt, ok := node.(*ast.ReturnStmt); ok {
 			checkReturnStatement(pass, file, stmt, retStmt)
 		}
 
@@ -156,9 +161,11 @@ func extractFunctionNameFromAssignment(assignStmt *ast.AssignStmt) string {
 // extractFunctionNameFromExpr extracts function name from an expression
 func extractFunctionNameFromExpr(expr ast.Expr) string {
 	if e, ok := expr.(*ast.CallExpr); ok {
-		if fun, ok := e.Fun.(*ast.SelectorExpr); ok {
-			return fmt.Sprintf("%s()", fun.Sel.Name)
+		// Handle simple function calls
+		if fun, ok := e.Fun.(*ast.Ident); ok {
+			return fmt.Sprintf("%s()", fun.Name)
 		}
+
 		// Handle chained calls like template.New().Parse()
 		if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
 			if innerCall, ok := sel.X.(*ast.CallExpr); ok {
