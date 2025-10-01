@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/cccteam/ccc/compare/resource/v0.5.0...resource/v0.5.1) (2025-10-01)
+
+
+### Features
+
+* exclude resource from typescript generator with notypescript keyword ([#478](https://github.com/cccteam/ccc/issues/478)) ([b4c9b8d](https://github.com/cccteam/ccc/commit/b4c9b8da187e0cc195f5d65700dd2adeb394eeb8))
+
 ## [0.5.0](https://github.com/cccteam/ccc/compare/resource/v0.4.5...resource/v0.5.0) (2025-09-27)
 
 
