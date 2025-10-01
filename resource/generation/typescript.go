@@ -23,6 +23,7 @@ type typescriptGenerator struct {
 	typescriptOverrides    map[string]string
 	rc                     *resource.Collection
 	routerResources        []accesstypes.Resource
+	excludedResources      map[accesstypes.Resource]bool
 	spannerEmulatorVersion string
 }
 
@@ -36,6 +37,7 @@ func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSo
 		rc:                    rc,
 		routerResources:       rc.Resources(),
 		typescriptDestination: targetDir,
+		excludedResources:     make(map[accesstypes.Resource]bool),
 	}
 
 	opts := make([]option, 0, len(options))
@@ -69,13 +71,19 @@ func (t *typescriptGenerator) Generate() error {
 
 	resourcesPkg := parser.ParsePackage(packageMap["resources"])
 
-	resources, err := t.extractResources(resourcesPkg.Structs)
+	unfilteredResources, err := t.extractResources(resourcesPkg.Structs)
 	if err != nil {
 		return err
 	}
 
-	t.resources = make([]*resourceInfo, 0, len(resources))
-	for _, res := range resources {
+	t.resources = make([]*resourceInfo, 0, len(unfilteredResources))
+	for _, res := range unfilteredResources {
+		if res.noTypescript {
+			t.excludedResources[accesstypes.Resource(t.pluralize(res.Name()))] = true
+
+			continue
+		}
+
 		if t.rc.ResourceExists(accesstypes.Resource(t.pluralize(res.Name()))) {
 			res.Fields = t.resourceFieldsTypescriptType(res.Fields)
 			t.resources = append(t.resources, res)
@@ -151,6 +159,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 		"ResourceTags":           routerData.ResourceTags,
 		"ResourcePermissionsMap": routerData.ResourcePermissionMap,
 		"Domains":                routerData.Domains,
+		"ExcludedResources":      t.excludedResources,
 	}
 
 	if t.genRPCMethods {
