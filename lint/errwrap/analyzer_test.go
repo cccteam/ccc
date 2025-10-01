@@ -12,27 +12,71 @@ import (
 func TestNestedScopeAssignment(t *testing.T) {
 	t.Parallel()
 
-	// Create a new ast.File from the testdata/test.go file
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "testdata/test.go", nil, parser.ParseComments)
-	if err != nil {
-		t.Fatalf("Failed to parse source: %v", err)
-	}
-
-	pass := &analysis.Pass{
-		Files: []*ast.File{file},
-		Report: func(d analysis.Diagnostic) {
-			// We expect no diagnostic reports, so log and fail if we get one
-			t.Logf("Diagnostic: %s at %v", d.Message, fset.Position(d.Pos))
-			t.Fail()
+	tests := []struct {
+		name           string
+		file           string
+		Report         func(d analysis.Diagnostic)
+		expectedReport bool
+	}{
+		{
+			name: "Nested if with inner assignment",
+			file: "testdata/nested_if_test.go",
+			Report: func(d analysis.Diagnostic) {
+				t.Logf("Diagnostic: %s at %v", d.Message, d.Pos)
+				t.Fail()
+			},
+			expectedReport: false,
+		},
+		{
+			name: "Error wrap with logical AND error check",
+			file: "testdata/logical_and_err_check.go",
+			Report: func(d analysis.Diagnostic) {
+				switch d.Message[46:] {
+				case `expected "*.method2()", found "t.s1.method1().incorrect()"`:
+				case `expected "*.method2()", found "t.s1.method1().incorrect2()"`:
+					// These are expected diagnostics
+				default:
+					t.Logf("Unexpected Diagnostic: %s at %v", d.Message, d.Pos)
+					t.Fail()
+				}
+			},
+			expectedReport: true,
 		},
 	}
 
-	ret, err := run(pass)
-	if err != nil {
-		t.Fatalf("Analyzer run failed: %v", err)
-	}
-	if ret != nil {
-		t.Logf("Analyzer returned: %v", ret)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Create a new ast.File from the testdata/nested_if_test.go file
+			fset := token.NewFileSet()
+			file, err := parser.ParseFile(fset, tt.file, nil, parser.ParseComments)
+			if err != nil {
+				t.Fatalf("Failed to parse source: %v", err)
+			}
+
+			var reportCalled bool
+
+			pass := &analysis.Pass{
+				Files: []*ast.File{file},
+				Report: func(d analysis.Diagnostic) {
+					tt.Report(d)
+
+					reportCalled = true
+				},
+			}
+
+			ret, err := run(pass)
+			if err != nil {
+				t.Fatalf("Analyzer run failed: %v", err)
+			}
+			if ret != nil {
+				t.Logf("Analyzer returned: %v", ret)
+			}
+
+			if tt.expectedReport && !reportCalled {
+				t.Fatal("Expected report was not called")
+			}
+		})
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"log"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -23,6 +24,8 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	for _, file := range pass.Files {
 		ast.Inspect(file, func(node ast.Node) bool {
 			if stmt, ok := node.(*ast.IfStmt); ok {
+				log.Printf("Inspecting if statement at %v", stmt.Pos())
+
 				checkErrorHandlingStatement(pass, file, stmt)
 			}
 
@@ -38,6 +41,8 @@ func checkErrorHandlingStatement(pass *analysis.Pass, file *ast.File, stmt *ast.
 	if !isErrorCheckStatement(stmt) {
 		return
 	}
+
+	log.Printf("Found error handling if statement at %v", stmt.Pos())
 
 	// Look for return statements inside the if block
 	ast.Inspect(stmt.Body, func(node ast.Node) bool {
@@ -56,11 +61,42 @@ func checkErrorHandlingStatement(pass *analysis.Pass, file *ast.File, stmt *ast.
 
 // isErrorCheckStatement checks if the if statement is checking for an error (err != nil)
 func isErrorCheckStatement(stmt *ast.IfStmt) bool {
-	binExpr, ok := stmt.Cond.(*ast.BinaryExpr)
-	if !ok || binExpr.Op != token.NEQ {
+	if stmt.Cond == nil {
 		return false
 	}
 
+	// Check for binary expression (err != nil)
+	binExpr, ok := stmt.Cond.(*ast.BinaryExpr)
+	if !ok {
+		return false
+	}
+
+	if binExpr.Op == token.NEQ && isErrNotNilCheck(binExpr) {
+		return true
+	}
+
+	if binExpr.Op == token.LAND {
+		if binExpr.X != nil {
+			// Check for binary expression (err != nil)
+			left, ok := binExpr.X.(*ast.BinaryExpr)
+			if ok && left.Op == token.NEQ && isErrNotNilCheck(left) {
+				return true
+			}
+		}
+
+		if binExpr.Y != nil {
+			// Check for binary expression (err != nil)
+			right, ok := binExpr.Y.(*ast.BinaryExpr)
+			if ok && right.Op == token.NEQ && isErrNotNilCheck(right) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func isErrNotNilCheck(binExpr *ast.BinaryExpr) bool {
 	ident, ok := binExpr.X.(*ast.Ident)
 
 	return ok && ident.Name == "err"
@@ -70,6 +106,8 @@ func isErrorCheckStatement(stmt *ast.IfStmt) bool {
 func checkReturnStatement(pass *analysis.Pass, file *ast.File, stmt *ast.IfStmt, retStmt *ast.ReturnStmt) {
 	for _, expr := range retStmt.Results {
 		if callExpr, ok := expr.(*ast.CallExpr); ok {
+			log.Printf("Found return statement with call expression at %v", retStmt.Pos())
+
 			checkErrorWrapCall(pass, file, stmt, callExpr)
 		}
 	}
@@ -91,6 +129,8 @@ func checkErrorWrapCall(pass *analysis.Pass, file *ast.File, stmt *ast.IfStmt, c
 	if !ok {
 		return
 	}
+
+	log.Printf("Found errors.Wrap call with message: %s", lit.Value)
 
 	expected := getExpectedFunctionName(file, stmt)
 	if expected == "" || strings.Contains(lit.Value, expected) {
@@ -138,6 +178,8 @@ func getExpectedFunctionName(file *ast.File, stmt *ast.IfStmt) string {
 	if stmt.Init != nil {
 		if assignStmt, ok := stmt.Init.(*ast.AssignStmt); ok {
 			if funcName := extractFunctionNameFromAssignment(assignStmt); funcName != "" {
+				log.Printf("Extracted function name from if init: %s", funcName)
+
 				return funcName
 			}
 		}
@@ -161,8 +203,12 @@ func extractFunctionNameFromAssignment(assignStmt *ast.AssignStmt) string {
 // extractFunctionNameFromExpr extracts function name from an expression
 func extractFunctionNameFromExpr(expr ast.Expr) string {
 	if e, ok := expr.(*ast.CallExpr); ok {
+		log.Printf("Extracting function name from call expression at %v", e.Pos())
+
 		// Handle simple function calls
 		if fun, ok := e.Fun.(*ast.Ident); ok {
+			log.Printf("Found simple function call: %s()", fun.Name)
+
 			return fmt.Sprintf("%s()", fun.Name)
 		}
 
@@ -171,10 +217,25 @@ func extractFunctionNameFromExpr(expr ast.Expr) string {
 			if innerCall, ok := sel.X.(*ast.CallExpr); ok {
 				// For chained calls, use the last method name
 				if _, ok := innerCall.Fun.(*ast.SelectorExpr); ok {
+					log.Printf("Found chained method call: %s()", sel.Sel.Name)
+
 					return fmt.Sprintf("%s()", sel.Sel.Name)
 				}
 			}
+
+			// Handle method calls like obj.Method()
+			if ident, ok := sel.X.(*ast.Ident); ok {
+				log.Printf("Found method call: %s.%s()", ident.Name, sel.Sel.Name)
+
+				return fmt.Sprintf("%s()", sel.Sel.Name)
+			}
+
+			log.Printf("Found selector expression call: %s", sel.Sel.Name)
+
+			return fmt.Sprintf("%s()", sel.Sel.Name)
 		}
+
+		log.Printf("Unhandled call expression type: %T", e.Fun)
 	}
 
 	return ""
@@ -206,6 +267,8 @@ func findPrecedingAssignment(file *ast.File, ifStmt *ast.IfStmt) string {
 		if funcName == "" {
 			return true
 		}
+
+		log.Printf("Found preceding assignment to err with function: %s at %v", funcName, assignStmt.Pos())
 
 		// Keep track of the closest assignment to the if statement
 		if assignStmt.Pos() > closestPos {
