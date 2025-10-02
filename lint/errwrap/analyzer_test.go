@@ -15,32 +15,58 @@ func TestNestedScopeAssignment(t *testing.T) {
 	tests := []struct {
 		name           string
 		file           string
-		Report         func(d analysis.Diagnostic)
+		makeReport     func(t *testing.T) func(d analysis.Diagnostic)
 		expectedReport bool
 	}{
 		{
 			name: "Nested if with inner assignment",
 			file: "testdata/nested_if_test.go",
-			Report: func(d analysis.Diagnostic) {
-				t.Logf("Diagnostic: %s at %v", d.Message, d.Pos)
-				t.Fail()
+			makeReport: func(t *testing.T) func(d analysis.Diagnostic) {
+				return func(d analysis.Diagnostic) {
+					t.Logf("Diagnostic: %s at %v", d.Message, d.Pos)
+					t.Fail()
+				}
 			},
 			expectedReport: false,
 		},
 		{
 			name: "Error wrap with logical AND error check",
 			file: "testdata/logical_and_err_check.go",
-			Report: func(d analysis.Diagnostic) {
-				switch d.Message[46:] {
-				case `expected "*.method2()", found "t.s1.method1().incorrect()"`:
-				case `expected "*.method2()", found "t.s1.method1().incorrect2()"`:
-					// These are expected diagnostics
-				default:
-					t.Logf("Unexpected Diagnostic: %s at %v", d.Message, d.Pos)
-					t.Fail()
+			makeReport: func(t *testing.T) func(d analysis.Diagnostic) {
+				return func(d analysis.Diagnostic) {
+					switch d.Message[46:] {
+					case `expected "*.method2()", found "t.s1.method1().incorrect()"`:
+					case `expected "*.method2()", found "t.s1.method1().incorrect2()"`:
+						// These are expected diagnostics
+					default:
+						t.Logf("Unexpected Diagnostic: %s at %v", d.Message, d.Pos)
+						t.Fail()
+					}
 				}
 			},
 			expectedReport: true,
+		},
+		{
+			name: "For range with error assignment",
+			file: "testdata/for_err_test.go",
+			makeReport: func(t *testing.T) func(d analysis.Diagnostic) {
+				return func(d analysis.Diagnostic) {
+					t.Logf("Diagnostic: %s at %v", d.Message, d.Pos)
+					t.Fail()
+				}
+			},
+			expectedReport: false,
+		},
+		{
+			name: "Error wrap with no function call",
+			file: "testdata/err_wrap_no_fn_call.go",
+			makeReport: func(t *testing.T) func(d analysis.Diagnostic) {
+				return func(d analysis.Diagnostic) {
+					t.Logf("Diagnostic: %s at %v", d.Message, d.Pos)
+					t.Fail()
+				}
+			},
+			expectedReport: false,
 		},
 	}
 
@@ -60,7 +86,7 @@ func TestNestedScopeAssignment(t *testing.T) {
 			pass := &analysis.Pass{
 				Files: []*ast.File{file},
 				Report: func(d analysis.Diagnostic) {
-					tt.Report(d)
+					tt.makeReport(t)(d)
 
 					reportCalled = true
 				},

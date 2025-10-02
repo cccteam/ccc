@@ -11,6 +11,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
+const errVarName = "err"
+
 // New creates a new instance of the errwrap analyzer.
 func New() (*analysis.Analyzer, error) {
 	return &analysis.Analyzer{
@@ -99,7 +101,7 @@ func isErrorCheckStatement(stmt *ast.IfStmt) bool {
 func isErrNotNilCheck(binExpr *ast.BinaryExpr) bool {
 	ident, ok := binExpr.X.(*ast.Ident)
 
-	return ok && ident.Name == "err"
+	return ok && ident.Name == errVarName
 }
 
 // checkReturnStatement checks return statements for error wrapping calls
@@ -245,35 +247,45 @@ func extractFunctionNameFromExpr(expr ast.Expr) string {
 func findPrecedingAssignment(file *ast.File, ifStmt *ast.IfStmt) string {
 	var result string
 	var closestPos token.Pos
-	ifPos := ifStmt.Pos()
 
 	ast.Inspect(file, func(node ast.Node) bool {
-		assignStmt, ok := node.(*ast.AssignStmt)
-		if !ok {
-			return true
+		funcName := ""
+		pos := token.Pos(0)
+
+		// If we've reached the if statement, stop inspecting
+		if node != nil && node.Pos() >= ifStmt.Pos() {
+			return false
 		}
 
-		// Only consider assignments that come before the if statement
-		if assignStmt.Pos() >= ifPos {
-			return true
+		// We can get an error from either an assignment or a range statement
+		switch stmt := node.(type) {
+		case *ast.AssignStmt:
+			funcName, pos = checkAssignmentStatement(stmt)
+		case *ast.RangeStmt:
+			var skip bool
+			funcName, pos, skip = checkRangeStatement(stmt)
+			if skip {
+				result = ""
+				closestPos = 0
+
+				return false
+			}
+		case *ast.FuncDecl:
+			// Reset tracking when entering a new function so we don't accidentally get a function from outside scope
+			log.Printf("Entering function: %s at %v", stmt.Name.Name, stmt.Pos())
+
+			result = ""
+			closestPos = 0
 		}
 
-		// Check if this assignment assigns to 'err' variable
-		if !assignsToErrVariable(assignStmt) {
-			return true
-		}
+		// If we've found a result, track the closest one and keep going
+		if funcName != "" && pos > 0 {
+			if pos > closestPos {
+				result = funcName
+				closestPos = pos
+			}
 
-		funcName := extractFunctionNameFromAssignment(assignStmt)
-		if funcName == "" {
-			return true
-		}
-
-		log.Printf("Found preceding assignment to err with function: %s at %v", funcName, assignStmt.Pos())
-
-		// Keep track of the closest assignment to the if statement
-		if assignStmt.Pos() > closestPos {
-			result = funcName
-			closestPos = assignStmt.Pos()
+			log.Printf("Found preceding assignment to err with function: %s at %v", funcName, pos)
 		}
 
 		return true
@@ -282,10 +294,48 @@ func findPrecedingAssignment(file *ast.File, ifStmt *ast.IfStmt) string {
 	return result
 }
 
+func checkAssignmentStatement(assignStmt *ast.AssignStmt) (string, token.Pos) {
+	// Check if this assignment assigns to 'err' variable
+	if !assignsToErrVariable(assignStmt) {
+		return "", 0
+	}
+
+	funcName := extractFunctionNameFromAssignment(assignStmt)
+	if funcName == "" {
+		return "", 0
+	}
+
+	return funcName, assignStmt.Pos()
+}
+
+// checkRangeStatement checks if a range statement assigns to 'err' variable and extracts function name
+// Returns function name, position, and a bool indicating whether to skip further processing
+func checkRangeStatement(rangeStmt *ast.RangeStmt) (string, token.Pos, bool) {
+	// Make sure the range statement assigns to 'err' variable
+	if ident, ok := rangeStmt.Value.(*ast.Ident); !ok || ident.Name != errVarName {
+		return "", 0, false
+	}
+
+	if _, ok := rangeStmt.Value.(*ast.Ident); ok {
+		// Error is assigned from a variable, need to bail since we can't determine
+		// source function name and we don't want to report false positives
+		log.Print("Range statement assigns from variable, skipping")
+
+		return "", 0, true
+	}
+
+	funcName := extractFunctionNameFromExpr(rangeStmt.X)
+	if funcName == "" {
+		return "", 0, false
+	}
+
+	return funcName, rangeStmt.Pos(), false
+}
+
 // assignsToErrVariable checks if an assignment statement assigns to an 'err' variable
 func assignsToErrVariable(assignStmt *ast.AssignStmt) bool {
 	for _, lhs := range assignStmt.Lhs {
-		if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "err" {
+		if ident, ok := lhs.(*ast.Ident); ok && ident.Name == errVarName {
 			return true
 		}
 	}

@@ -36,21 +36,7 @@ func (s *Struct4) Method4() (t1, t2 interface{}, err error) {
 
 var foo = &Struct1{}
 
-func main() {
-	if err := test(); err != nil {
-		panic(err)
-	}
-	if err := test2(); err != nil {
-		panic(err)
-	}
-
-	s := &Struct1{}
-	if _, err := s.Test(context.Background()); err != nil {
-		panic(err)
-	}
-}
-
-func test() error {
+func nestedIfTest() error {
 	// Outer assignment
 	_, err := outerFunc()
 	if err != nil {
@@ -66,7 +52,7 @@ func test() error {
 	return nil
 }
 
-func test2() error {
+func nestedIfTest2() error {
 	// Outer assignment
 	_, err := outerFunc()
 	if err != nil {
