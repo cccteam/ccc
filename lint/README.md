@@ -56,7 +56,9 @@ golang-ci:
     ccclint-version: 'v0.0.3'
 ```
 
-6. Update your project's readme with the steps to install the lint plugin:
+6. Ensure VSCode is configured to use the linter `golangci-lint-v2`.
+
+7. Update your project's readme with the steps to install the lint plugin:
    Note: This should only need to be done at most every time you change your go version.
 
 ```sh
