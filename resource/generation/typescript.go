@@ -151,10 +151,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 		"ResourceTags":           routerData.ResourceTags,
 		"ResourcePermissionsMap": routerData.ResourcePermissionMap,
 		"Domains":                routerData.Domains,
-	}
-
-	if t.genRPCMethods {
-		templateData["RPCMethods"] = t.rpcMethods
+		"RPCMethods":             t.rpcMethods,
 	}
 
 	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, typescriptConstantsTemplate, templateData)
