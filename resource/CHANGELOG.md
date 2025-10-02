@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/cccteam/ccc/compare/resource/v0.5.1...resource/v0.5.2) (2025-10-02)
+
+
+### Features
+
+* Add more robustness to typescript imports to capture only the imports that are used ([#481](https://github.com/cccteam/ccc/issues/481)) ([df43c73](https://github.com/cccteam/ccc/commit/df43c736894283c7799c408b362156db65c64c99))
+
 ## [0.5.1](https://github.com/cccteam/ccc/compare/resource/v0.5.0...resource/v0.5.1) (2025-10-01)
 
 
