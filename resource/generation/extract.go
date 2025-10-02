@@ -88,10 +88,6 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 			resource.ValidateUpdateType = result.Struct.GetOne(validateUpdateTypeKeyword).Arg1
 		}
 
-		if result.Struct.Has(noTypescriptKeyword) {
-			resource.noTypescript = true
-		}
-
 		resources = append(resources, resource)
 	}
 
