@@ -25,8 +25,13 @@ func run() error {
 		return errors.New("build info not available")
 	}
 
+	defaultVersion := buildInfo.Main.Version
+	if idx := strings.Index(defaultVersion, "+"); idx != -1 {
+		defaultVersion = defaultVersion[:idx]
+	}
+
 	var pluginVersion string
-	pflag.StringVarP(&pluginVersion, "plugin-version", "p", buildInfo.Main.Version, "Version of the ccc/lint plugin")
+	pflag.StringVarP(&pluginVersion, "plugin-version", "p", defaultVersion, "Version of the ccc/lint plugin")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
