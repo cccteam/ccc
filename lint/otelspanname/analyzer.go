@@ -1,3 +1,4 @@
+// Package otelspanname defines a linter that checks if OpenTelemetry span names match function names.
 package otelspanname
 
 import (
@@ -8,6 +9,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
+// New creates a new instance of the otelspanname analyzer.
 func New() (*analysis.Analyzer, error) {
 	return &analysis.Analyzer{
 		Name: "ccc_otelspanname",
@@ -65,7 +67,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 				}
 
 				if offset > 0 {
-					offset += 1 // Account for the starting quote
+					offset++ // Account for the starting quote
 				}
 
 				// Check if the function name matches expected format
