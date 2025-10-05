@@ -412,7 +412,7 @@ func TestCollection_TypescriptData(t *testing.T) {
 			t.Errorf("TypescriptData.Domains should be empty, got %v", data.Domains)
 		}
 		// Check for RPCMethods field if it exists, expecting it to be empty.
-		val := reflect.ValueOf(data)
+		val := reflect.ValueOf(data).Elem()
 		field := val.FieldByName("RPCMethods") // Assuming this field name from previous error
 		if field.IsValid() {
 			if field.Kind() == reflect.Slice || field.Kind() == reflect.Map {
