@@ -23,7 +23,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/momaek/formattag v0.0.10
 	github.com/shopspring/decimal v1.4.0
-	github.com/stretchr/testify v1.10.0
 	golang.org/x/tools v0.36.0
 )
 
@@ -103,6 +102,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.25.7 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
+	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/testcontainers/testcontainers-go v0.38.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
