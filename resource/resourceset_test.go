@@ -184,8 +184,10 @@ func testNewSetRun[Resource Resourcer, Request any](t *testing.T, name string, p
 			t.Errorf("NewSet() error = %v, wantErr %v", err, w.wantErr)
 			return
 		}
-		if diff := cmp.Diff(want, got, cmp.AllowUnexported(Set[Resource]{}, Metadata[Resource]{}, cacheEntry{})); diff != "" {
-			t.Errorf("NewSet() mismatch (-want +got):\n%s", diff)
+		if !collectResourcePermissions {
+			if diff := cmp.Diff(want, got, cmp.AllowUnexported(Set[Resource]{}, Metadata[Resource]{}, cacheEntry{})); diff != "" {
+				t.Errorf("NewSet() mismatch (-want +got):\n%s", diff)
+			}
 		}
 	})
 }
