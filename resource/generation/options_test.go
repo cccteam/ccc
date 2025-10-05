@@ -6,6 +6,8 @@ import (
 )
 
 func TestApplicationName(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name                    string
 		opt                     ResourceOption
@@ -28,6 +30,8 @@ func TestApplicationName(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			opts := []ResourceOption{
 				WithSpannerEmulatorVersion("1.5.41"),
 			}
