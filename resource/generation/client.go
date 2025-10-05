@@ -273,38 +273,9 @@ func (c *client) templateFuncs() map[string]any {
 
 			return lowerFirst + s[runeWidth:]
 		},
-		"SanitizeIdentifier": sanitizeEnumIdentifier,
-		"TypescriptMethodImports": func(t *typescriptGenerator) string {
-			pkgs := make([]string, 0, 2)
-			if t.hasRPCMethods() {
-				pkgs = append(pkgs, "Methods")
-			}
-			if t.hasRPCMethodWithEnumeratedResource() {
-				pkgs = append(pkgs, "Resources")
-			}
-
-			return strings.Join(pkgs, ", ")
-		},
-		"TypescriptConstImports": func(t *typescriptGenerator, d *resource.TypescriptData) string {
-			pkgs := make([]string, 0, 2)
-			if len(d.Domains) > 0 {
-				pkgs = append(pkgs, "Domain")
-			}
-			if len(d.ResourceTags) > 0 || len(t.rpcMethods) > 0 {
-				pkgs = append(pkgs, "FieldName")
-			}
-			if len(t.rpcMethods) > 0 {
-				pkgs = append(pkgs, "Method")
-			}
-			if len(d.Permissions) > 0 {
-				pkgs = append(pkgs, "Permission")
-			}
-			if len(d.Resources) > 0 {
-				pkgs = append(pkgs, "Resource")
-			}
-
-			return strings.Join(pkgs, ", ")
-		},
+		"SanitizeIdentifier":      sanitizeEnumIdentifier,
+		"TypescriptMethodImports": typescriptMethodImports,
+		"TypescriptConstImports":  typescriptConsImports,
 	}
 
 	return templateFuncs
@@ -561,6 +532,39 @@ func sanitizeEnumIdentifier(name string) string {
 	}
 
 	return caser.ToPascal(string(result))
+}
+
+func typescriptMethodImports(t *typescriptGenerator) string {
+	pkgs := make([]string, 0, 2)
+	if t.hasRPCMethods() {
+		pkgs = append(pkgs, "Methods")
+	}
+	if t.hasRPCMethodWithEnumeratedResource() {
+		pkgs = append(pkgs, "Resources")
+	}
+
+	return strings.Join(pkgs, ", ")
+}
+
+func typescriptConsImports(t *typescriptGenerator, d *resource.TypescriptData) string {
+	pkgs := make([]string, 0, 2)
+	if len(d.Domains) > 0 {
+		pkgs = append(pkgs, "Domain")
+	}
+	if len(d.ResourceTags) > 0 || len(t.rpcMethods) > 0 {
+		pkgs = append(pkgs, "FieldName")
+	}
+	if len(t.rpcMethods) > 0 {
+		pkgs = append(pkgs, "Method")
+	}
+	if len(d.Permissions) > 0 {
+		pkgs = append(pkgs, "Permission")
+	}
+	if len(d.Resources) > 0 {
+		pkgs = append(pkgs, "Resource")
+	}
+
+	return strings.Join(pkgs, ", ")
 }
 
 func (c *client) doesResourceExist(resourceName string) bool {
