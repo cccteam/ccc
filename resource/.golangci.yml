@@ -143,6 +143,10 @@ linters:
           - nestif
         path: _test\.go
       - linters:
+          - gomoddirectives
+        path: go\.mod
+        text: golang-migrate
+      - linters:
           - funlen
         path: resourceset\.go
         text: permissionsFromTags

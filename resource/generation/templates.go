@@ -512,7 +512,7 @@ import (
 
 {{ .Handlers }}`
 
-	listTemplate = `func (a *App) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
+	listTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
 		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.ListPermTag }} {{ $field.SearchIndexTags }} {{ $field.PIITag }}`" + `
@@ -521,13 +521,13 @@ import (
 
 	type response []map[string]interface{}
 
-	decoder := NewQueryDecoder[resources.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}]({{ .ReceiverName }}, accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ Pluralize .Resource.Name }}()")
+		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.{{ Pluralize .Resource.Name }}()")
 		defer span.End()
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -535,7 +535,7 @@ import (
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
 		resp := response{}
-		for r, err := range res.Query().SpannerList(ctx, a.ReadTxn()) {
+		for r, err := range res.Query().SpannerList(ctx, {{ .ReceiverName }}.ReadTxn()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -556,17 +556,17 @@ import (
 	})
 }`
 
-	readTemplate = `func (a *App) {{ .Resource.Name }}() http.HandlerFunc {
+	readTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
 		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.SearchIndexTags }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
-	decoder := NewQueryDecoder[resources.{{ .Resource.Name }}, response](a, accesstypes.Read)
+	decoder := NewQueryDecoder[resources.{{ .Resource.Name }}, response]({{ .ReceiverName }}, accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ .Resource.Name }}()")
+		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.{{ .Resource.Name }}()")
 		defer span.End()
 
 	{{ if .Resource.HasCompoundPrimaryKey }}
@@ -576,7 +576,7 @@ import (
 	{{ else }}
 		id := httpio.Param[{{ .Resource.PrimaryKeyType }}](r, router.{{ .Resource.Name }}ID)
 	{{ end }}
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -587,7 +587,7 @@ import (
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id)
 	{{- end }}
 
-		row, err := res.Query().SpannerRead(ctx, a.ReadTxn())
+		row, err := res.Query().SpannerRead(ctx, {{ .ReceiverName }}.ReadTxn())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -606,7 +606,7 @@ import (
 	})
 }`
 
-	patchTemplate = `func (a *App) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
+	patchTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type request struct {
 		{{- range $field := .Resource.Fields }}
 		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }}`" + `
@@ -621,10 +621,10 @@ import (
 	}
 	{{- end }}
 
-	decoder := NewDecoder[resources.{{ .Resource.Name }}, request](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+	decoder := NewDecoder[resources.{{ .Resource.Name }}, request]({{ .ReceiverName }}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "App.Patch{{ Pluralize .Resource.Name }}()")
+		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.Patch{{ Pluralize .Resource.Name }}()")
 		defer span.End()
 
 		{{ if $PrimaryKeyIsGeneratedUUID }}
@@ -632,7 +632,7 @@ import (
 		{{- end }}
 		eventSource := resource.UserEvent(ctx)
 
-		if err := a.ExecuteFunc(ctx, func(ctx context.Context, txn resource.TxnBuffer) error {
+		if err := {{ .ReceiverName }}.ExecuteFunc(ctx, func(ctx context.Context, txn resource.TxnBuffer) error {
 			{{- if $PrimaryKeyIsGeneratedUUID }}
 			resp = response{}
 			{{- end }}
@@ -646,7 +646,7 @@ import (
 					return errors.Wrap(err, "resource.Operations()")
 				}
 
-				patchSet, err := decoder.DecodeOperation(op, a.UserPermissions(r))
+				patchSet, err := decoder.DecodeOperation(op, {{ .ReceiverName }}.UserPermissions(r))
 				if err != nil {
 					return errors.Wrap(err, "decoder.DecodeOperation()")
 				}
@@ -738,20 +738,20 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-func (a *App) PatchResources() http.HandlerFunc {
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.HandlerFunc {
 	{{- range $resource := .Resources }}
 	type {{ GoCamel $resource.Name }}Request struct {
 		{{- range $field := .Fields }}
 		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }}`" + `
 		{{- end }}
 	}
-	{{ GoCamel $resource.Name}}Decoder := NewDecoder[resources.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+	{{ GoCamel $resource.Name}}Decoder := NewDecoder[resources.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request]({{ $.ReceiverName }}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 	{{ end }}
 
 	type response map[string][]ccc.UUID
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "App.PatchResources()")
+		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.PatchResources()")
 		defer span.End()
 
 		var (
@@ -759,7 +759,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 			resp    response
 		)
 
-		if err := a.ExecuteFunc(ctx, func(ctx context.Context, txn resource.TxnBuffer) error {
+		if err := {{ .ReceiverName }}.ExecuteFunc(ctx, func(ctx context.Context, txn resource.TxnBuffer) error {
 			resp = response{}
 			r, err := resource.CloneRequest(r)
 			if err != nil {
@@ -775,7 +775,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 					{{- range $resource := .Resources -}}
 					{{- $primaryKeyType := $resource.PrimaryKeyType }}
 					case "{{ Kebab (Pluralize $resource.Name) }}":
-						patchSet, err := {{ GoCamel $resource.Name}}Decoder.DecodeOperation(op, a.UserPermissions(op.Req))
+						patchSet, err := {{ GoCamel $resource.Name}}Decoder.DecodeOperation(op, {{ $.ReceiverName }}.UserPermissions(op.Req))
 						if err != nil {
 							return errors.Wrap(err, "{{ GoCamel $resource.Name}}Decoder.DecodeOperation()")
 						}
@@ -1250,7 +1250,7 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.HandlerFunc {
 	{{- range $field := .RPCMethod.Fields }}
 	{{- if $field.IsLocalType }}
 	type {{ Lower $field.UnqualifiedTypeName }} 
@@ -1270,10 +1270,10 @@ func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
 		{{- end }}
 	}
 
-	decoder := NewRPCDecoder[{{ .RPCMethod.Type }}, request](a, accesstypes.Execute)
+	decoder := NewRPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error { 
-		ctx, span := otel.Tracer(name).Start(r.Context(), "App.{{ .RPCMethod.Name }}()")
+		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.{{ .RPCMethod.Name }}()")
 		defer span.End()
 
 		params, err := decoder.Decode(r)
@@ -1301,7 +1301,7 @@ func (a *App) {{ .RPCMethod.Name }}() http.HandlerFunc {
 		p := (*{{ .RPCMethod.Type }})(params)
 		{{- end }}
 
-		if err := {{ if .RPCMethod.Implements "DBRunner"}}p.Execute(ctx, a.db){{else}}a.db.Execute(ctx, p){{end}}; err != nil {
+		if err := {{ if .RPCMethod.Implements "DBRunner"}}p.Execute(ctx, {{ $.ReceiverName }}.db){{else}}{{ $.ReceiverName }}.db.Execute(ctx, p){{end}}; err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 

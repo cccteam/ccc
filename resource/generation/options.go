@@ -5,6 +5,7 @@ import (
 	"maps"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/civil"
@@ -54,6 +55,16 @@ func GenerateHandlers(targetDir string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genHandlers = true
 		r.handlerDestination = targetDir
+
+		return nil
+	})
+}
+
+// ApplicationName sets the name of the application struct.
+// The default is "App".
+func ApplicationName(name string) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		r.applicationName = name
 
 		return nil
 	})
@@ -242,6 +253,10 @@ func resolveOptions(generator any, options []option) error {
 		if g.spannerEmulatorVersion == "" {
 			g.spannerEmulatorVersion = "latest"
 		}
+		if g.applicationName == "" {
+			g.applicationName = "App"
+		}
+		g.receiverName = strings.ToLower(string(g.applicationName[0]))
 
 	case *typescriptGenerator:
 		if g.pluralOverrides == nil {

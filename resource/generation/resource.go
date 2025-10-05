@@ -22,6 +22,8 @@ type resourceGenerator struct {
 	routerPackage       string
 	routePrefix         string
 	rpcPackageDir       string
+	applicationName     string
+	receiverName        string
 }
 
 // NewResourceGenerator constructs a new Generator for generating a resource-driven API.
