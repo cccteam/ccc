@@ -2,6 +2,8 @@ module github.com/cccteam/ccc/resource
 
 go 1.25.0
 
+replace github.com/golang-migrate/migrate/v4 v4.19.0 => github.com/jtwatson/migrate/v4 v4.19.1-beta.0
+
 require (
 	cloud.google.com/go v0.122.0
 	cloud.google.com/go/spanner v1.85.0
@@ -21,6 +23,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/momaek/formattag v0.0.10
 	github.com/shopspring/decimal v1.4.0
+	github.com/stretchr/testify v1.10.0
 	golang.org/x/tools v0.36.0
 )
 
@@ -66,7 +69,7 @@ require (
 	github.com/go-playground/pkg/v5 v5.30.0 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-migrate/migrate/v4 v4.18.3 // indirect
+	github.com/golang-migrate/migrate/v4 v4.19.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
@@ -100,7 +103,6 @@ require (
 	github.com/shirou/gopsutil/v4 v4.25.7 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/testcontainers/testcontainers-go v0.38.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
@@ -116,7 +118,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.37.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/mod v0.27.0 // indirect
 	golang.org/x/net v0.43.0 // indirect
