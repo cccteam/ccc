@@ -16,7 +16,7 @@ func TestApplicationName(t *testing.T) {
 			"file://generation/testdata/migrations",
 			[]string{},
 			ApplicationName("Server"),
-			WithSpannerEmulatorVersion("gcr.io/cloud-spanner-emulator/emulator:latest"),
+			WithSpannerEmulatorVersion("1.5.4"),
 		)
 		require.NoError(t, err)
 
@@ -31,7 +31,7 @@ func TestApplicationName(t *testing.T) {
 			"testdata/resources.go",
 			"file://generation/testdata/migrations",
 			[]string{},
-			WithSpannerEmulatorVersion("gcr.io/cloud-spanner-emulator/emulator:latest"),
+			WithSpannerEmulatorVersion("1.5.4"),
 		)
 		require.NoError(t, err)
 
