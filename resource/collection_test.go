@@ -56,38 +56,6 @@ func ResourceStringAndTag(res accesstypes.Resource) (accesstypes.Resource, acces
 	return res, ""
 }
 
-type MockResourcer struct {
-	baseRes         accesstypes.Resource
-	tagPerms        map[accesstypes.Tag][]accesstypes.Permission
-	perms           []accesstypes.Permission
-	immutableFields map[accesstypes.Tag]struct{}
-	configData      Config
-}
-
-func NewMockResourcer(baseResourceString accesstypes.Resource) *MockResourcer {
-	return &MockResourcer{
-		baseRes:         baseResourceString,
-		tagPerms:        make(map[accesstypes.Tag][]accesstypes.Permission),
-		perms:           []accesstypes.Permission{},
-		immutableFields: make(map[accesstypes.Tag]struct{}),
-		configData:      Config{},
-	}
-}
-
-func (m *MockResourcer) BaseResource() accesstypes.Resource { return m.baseRes }
-func (m *MockResourcer) TagPermissions() map[accesstypes.Tag][]accesstypes.Permission {
-	return m.tagPerms
-}
-func (m *MockResourcer) Permissions() []accesstypes.Permission { return m.perms }
-func (m *MockResourcer) ImmutableFields() map[accesstypes.Tag]struct{} {
-	if m.immutableFields == nil {
-		return make(map[accesstypes.Tag]struct{})
-	}
-	return m.immutableFields
-}
-func (m *MockResourcer) DefaultConfig() Config          { return m.configData }
-func (m *MockResourcer) Resource() accesstypes.Resource { return m.baseRes }
-
 var sortResourceStrings = cmpopts.SortSlices(func(a, b accesstypes.Resource) bool {
 	return a < b
 })
@@ -166,8 +134,8 @@ func TestCollection_AddResource_And_AddMethodResource(t *testing.T) {
 			expectedPermissionsInStore: []accesstypes.Permission{perm1},
 		},
 		{
-			name:       "AddResource: duplicate permission to same resource should error",
-			method:     "AddResource",
+			name:       "AddMethodResource: duplicate permission to same resource should error when collectResourcePermissions is true",
+			method:     "AddMethodResource",
 			scope:      scopeGlobal,
 			permission: perm1,
 			resource:   res1Str,
@@ -176,12 +144,18 @@ func TestCollection_AddResource_And_AddMethodResource(t *testing.T) {
 					_ = c.AddResource(scopeGlobal, perm1, res1Str)
 				}
 			},
-			wantErrMsg:                 "",
-			expectedPermissionsInStore: []accesstypes.Permission{},
+			wantErrMsg: func() string {
+				if collectResourcePermissions {
+					return "found existing entry under resource"
+				}
+
+				return ""
+			}(),
+			expectedPermissionsInStore: []accesstypes.Permission{"perm1"},
 		},
 		{
-			name:       "AddMethodResource: duplicate permission should not error",
-			method:     "AddMethodResource",
+			name:       "AddResource: duplicate permission should not error",
+			method:     "AddResource",
 			scope:      scopeGlobal,
 			permission: perm1,
 			resource:   res1Str,
@@ -261,21 +235,35 @@ func TestCollection_AddResource_And_AddMethodResource(t *testing.T) {
 	}
 }
 
+type (
+	MockRequest   struct{}
+	MockResourcer struct{}
+)
+
+func (m MockResourcer) DefaultConfig() Config          { return Config{} }
+func (m MockResourcer) Resource() accesstypes.Resource { return "MockResourcer" }
+
 func TestAddResources(t *testing.T) {
 	t.Parallel()
 	c := NewCollection()
 	scope := accesstypes.PermissionScope("global")
 
-	rs := &Set[Resourcer]{}
+	rs, err := NewSet[MockResourcer, MockRequest](accesstypes.Create)
+	if err != nil {
+		t.Fatalf("NewSet() expected no error, got %v", err)
+	}
 
-	err := AddResources(c, scope, rs)
+	if err := AddResources(c, scope, rs); err != nil {
+		t.Errorf("AddResources() expected no error, got %v", err)
+	}
 
 	if !collectResourcePermissions {
-		if err != nil {
-			t.Errorf("AddResources() with collectResourcePermissions=false: expected no error, got %v", err)
-		}
 		if len(c.permissions()) != 0 {
 			t.Errorf("AddResources() with collectResourcePermissions=false: expected collection to be empty, got %d permissions", len(c.permissions()))
+		}
+	} else {
+		if len(c.permissions()) == 0 {
+			t.Errorf("AddResources() with collectResourcePermissions=true: expected collection not to be empty, got %d permissions", len(c.permissions()))
 		}
 	}
 }
@@ -412,7 +400,7 @@ func TestCollection_TypescriptData(t *testing.T) {
 			t.Errorf("TypescriptData.Domains should be empty, got %v", data.Domains)
 		}
 		// Check for RPCMethods field if it exists, expecting it to be empty.
-		val := reflect.ValueOf(data)
+		val := reflect.ValueOf(data).Elem()
 		field := val.FieldByName("RPCMethods") // Assuming this field name from previous error
 		if field.IsValid() {
 			if field.Kind() == reflect.Slice || field.Kind() == reflect.Map {

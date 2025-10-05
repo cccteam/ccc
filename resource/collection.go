@@ -363,8 +363,8 @@ func (s *Collection) Scope(resource accesstypes.Resource) accesstypes.Permission
 }
 
 // TypescriptData returns a struct containing all the data needed for TypeScript code generation.
-func (s *Collection) TypescriptData() TypescriptData {
-	return TypescriptData{
+func (s *Collection) TypescriptData() *TypescriptData {
+	return &TypescriptData{
 		Permissions:           s.permissions(),
 		ResourcePermissions:   s.resourcePermissions(),
 		Resources:             s.Resources(),
