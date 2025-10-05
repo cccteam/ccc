@@ -46,7 +46,10 @@ func TestApplicationName(t *testing.T) {
 				t.Fatalf("NewResourceGenerator() error = %v, want no error", err)
 			}
 
-			rg := r.(*resourceGenerator)
+			rg, ok := r.(*resourceGenerator)
+			if !ok {
+				t.Fatalf("expected a *resourceGenerator, got %T", r)
+			}
 			if rg.applicationName != tc.expectedApplicationName {
 				t.Errorf("expected application name %q, got %q", tc.expectedApplicationName, rg.applicationName)
 			}
