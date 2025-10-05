@@ -145,13 +145,9 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	routerData := t.rc.TypescriptData()
 
 	templateData := map[string]any{
-		"Permissions":            routerData.Permissions,
-		"ResourcePermissions":    routerData.ResourcePermissions,
-		"Resources":              routerData.Resources,
-		"ResourceTags":           routerData.ResourceTags,
-		"ResourcePermissionsMap": routerData.ResourcePermissionMap,
-		"Domains":                routerData.Domains,
-		"RPCMethods":             t.rpcMethods,
+		"File":       t,
+		"Data":       routerData,
+		"RPCMethods": t.rpcMethods,
 	}
 
 	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, typescriptConstantsTemplate, templateData)
@@ -208,6 +204,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 	begin := time.Now()
 	log.Println("Starting resource metadata generation...")
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, map[string]any{
+		"File":              t,
 		"Resources":         t.resources,
 		"ConsolidatedRoute": t.ConsolidatedRoute,
 		"GenPrefix":         genPrefix,
@@ -237,6 +234,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	log.Println("Starting method metadata generation...")
 
 	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, typescriptMethodsTemplate, map[string]any{
+		"File":       t,
 		"RPCMethods": t.rpcMethods,
 		"GenPrefix":  genPrefix,
 	})

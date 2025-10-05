@@ -171,6 +171,16 @@ type rpcMethodInfo struct {
 	Fields []*rpcField
 }
 
+func (r *rpcMethodInfo) hasEnumeratedResource() bool {
+	for _, field := range r.Fields {
+		if field.IsEnumerated() {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (r *rpcMethodInfo) HasLocalType() bool {
 	for _, field := range r.Fields {
 		if field.IsLocalType() {
@@ -241,6 +251,16 @@ type resourceInfo struct {
 	DefaultsUpdateType string
 	ValidateCreateType string
 	ValidateUpdateType string
+}
+
+func (r *resourceInfo) HasNullBool() bool {
+	for _, field := range r.Fields {
+		if field.IsNullable && field.typescriptType == booleanStr {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (r *resourceInfo) ListHandlerDisabled() bool {
