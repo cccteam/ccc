@@ -5,6 +5,7 @@ import (
 	"maps"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/civil"
@@ -64,6 +65,7 @@ func GenerateHandlers(targetDir string) ResourceOption {
 func ApplicationName(name string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.applicationName = name
+
 		return nil
 	})
 }
@@ -249,8 +251,12 @@ func resolveOptions(generator any, options []option) error {
 			g.pluralOverrides = defaultPluralOverrides()
 		}
 		if g.spannerEmulatorVersion == "" {
-			g.spannerEmulatorVersion = "gcr.io/cloud-spanner-emulator/emulator:latest"
+			g.spannerEmulatorVersion = "latest"
 		}
+		if g.applicationName == "" {
+			g.applicationName = "App"
+		}
+		g.receiverName = strings.ToLower(string(g.applicationName[0]))
 
 	case *typescriptGenerator:
 		if g.pluralOverrides == nil {
@@ -260,7 +266,7 @@ func resolveOptions(generator any, options []option) error {
 			g.typescriptOverrides = defaultTypescriptOverrides()
 		}
 		if g.spannerEmulatorVersion == "" {
-			g.spannerEmulatorVersion = "gcr.io/cloud-spanner-emulator/emulator:latest"
+			g.spannerEmulatorVersion = "latest"
 		}
 	case *client: // no-op
 	default:

@@ -30,7 +30,6 @@ type resourceGenerator struct {
 func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, localPackages []string, options ...ResourceOption) (Generator, error) {
 	r := &resourceGenerator{
 		resourceDestination: filepath.Dir(resourceSourcePath),
-		applicationName:     "App",
 	}
 
 	opts := make([]option, 0, len(options))
@@ -48,11 +47,6 @@ func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSour
 	if err := resolveOptions(r, opts); err != nil {
 		return nil, err
 	}
-
-	if r.applicationName == "" {
-		r.applicationName = "App"
-	}
-	r.receiverName = strings.ToLower(string(r.applicationName[0]))
 
 	return r, nil
 }
