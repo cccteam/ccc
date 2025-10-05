@@ -72,6 +72,10 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 		return nil, err
 	}
 
+	if c.spannerEmulatorVersion == "" {
+		c.spannerEmulatorVersion = "gcr.io/cloud-spanner-emulator/emulator:latest"
+	}
+
 	isSchemaClean, err := c.isSchemaClean()
 	if err != nil {
 		return nil, err

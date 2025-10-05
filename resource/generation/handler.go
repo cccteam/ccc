@@ -149,6 +149,8 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 		"LocalPackageImports": r.localPackageImports(),
 		"Resources":           resources,
 		"Package":             filepath.Base(r.handlerDestination),
+		"ApplicationName":     r.applicationName,
+		"ReceiverName":        r.receiverName,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
@@ -175,7 +177,9 @@ func (r *resourceGenerator) handlerContent(handler HandlerType, res *resourceInf
 
 	buf := bytes.NewBuffer([]byte{})
 	if err := tmpl.Execute(buf, map[string]any{
-		"Resource": res,
+		"Resource":        res,
+		"ApplicationName": r.applicationName,
+		"ReceiverName":    r.receiverName,
 	}); err != nil {
 		return nil, errors.Wrap(err, "tmpl.Execute()")
 	}

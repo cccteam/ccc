@@ -59,6 +59,15 @@ func GenerateHandlers(targetDir string) ResourceOption {
 	})
 }
 
+// ApplicationName sets the name of the application struct.
+// The default is "App".
+func ApplicationName(name string) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		r.applicationName = name
+		return nil
+	})
+}
+
 // GenerateRoutes enables generating a router file containing routes for all handlers and RPC methods.
 func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
@@ -240,7 +249,7 @@ func resolveOptions(generator any, options []option) error {
 			g.pluralOverrides = defaultPluralOverrides()
 		}
 		if g.spannerEmulatorVersion == "" {
-			g.spannerEmulatorVersion = "latest"
+			g.spannerEmulatorVersion = "gcr.io/cloud-spanner-emulator/emulator:latest"
 		}
 
 	case *typescriptGenerator:
@@ -251,7 +260,7 @@ func resolveOptions(generator any, options []option) error {
 			g.typescriptOverrides = defaultTypescriptOverrides()
 		}
 		if g.spannerEmulatorVersion == "" {
-			g.spannerEmulatorVersion = "latest"
+			g.spannerEmulatorVersion = "gcr.io/cloud-spanner-emulator/emulator:latest"
 		}
 	case *client: // no-op
 	default:

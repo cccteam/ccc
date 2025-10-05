@@ -47,6 +47,8 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 		"LocalPackageImports": r.localPackageImports(),
 		"RPCMethod":           rpcMethod,
 		"Package":             r.handlerDestination,
+		"ApplicationName":     r.applicationName,
+		"ReceiverName":        r.receiverName,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
