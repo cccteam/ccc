@@ -134,8 +134,8 @@ func TestCollection_AddResource_And_AddMethodResource(t *testing.T) {
 			expectedPermissionsInStore: []accesstypes.Permission{perm1},
 		},
 		{
-			name:       "AddResource: duplicate permission to same resource should error",
-			method:     "AddResource",
+			name:       "AddMethodResource: duplicate permission to same resource should error when collectResourcePermissions is true",
+			method:     "AddMethodResource",
 			scope:      scopeGlobal,
 			permission: perm1,
 			resource:   res1Str,
@@ -144,12 +144,18 @@ func TestCollection_AddResource_And_AddMethodResource(t *testing.T) {
 					_ = c.AddResource(scopeGlobal, perm1, res1Str)
 				}
 			},
-			wantErrMsg:                 "",
-			expectedPermissionsInStore: []accesstypes.Permission{},
+			wantErrMsg: func() string {
+				if collectResourcePermissions {
+					return "found existing entry under resource"
+				}
+
+				return ""
+			}(),
+			expectedPermissionsInStore: []accesstypes.Permission{"perm1"},
 		},
 		{
-			name:       "AddMethodResource: duplicate permission should not error",
-			method:     "AddMethodResource",
+			name:       "AddResource: duplicate permission should not error",
+			method:     "AddResource",
 			scope:      scopeGlobal,
 			permission: perm1,
 			resource:   res1Str,
