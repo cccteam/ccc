@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.3](https://github.com/cccteam/ccc/compare/resource/v0.5.2...resource/v0.5.3) (2025-10-05)
+
+
+### Features
+
+* **generation:** Add ApplicationName option to NewResourceGenerator ([#483](https://github.com/cccteam/ccc/issues/483)) ([4e1c3b4](https://github.com/cccteam/ccc/commit/4e1c3b4409885baae3feeb9abc05a7f7ed8a89d9))
+
+
+### Code Cleanup
+
+* Remove Placeholders and re-consolidate imports ([#486](https://github.com/cccteam/ccc/issues/486)) ([7dd0142](https://github.com/cccteam/ccc/commit/7dd01426aa5ed7104a5f28dabce22293c0f73328))
+
 ## [0.5.2](https://github.com/cccteam/ccc/compare/resource/v0.5.1...resource/v0.5.2) (2025-10-02)
 
 
