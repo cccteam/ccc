@@ -82,6 +82,20 @@ func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption
 	})
 }
 
+// WithComputedResources enables generating routes and handlers for Computed Resources.
+func WithComputedResources(compResourcesPkgDir, compResourcesPkgName string) ResourceOption {
+	compResourcesPkgDir = "./" + filepath.Clean(compResourcesPkgDir)
+
+	return resourceOption(func(r *resourceGenerator) error {
+		r.genComputedResources = true
+		r.compPackageDir = compResourcesPkgDir
+		r.compPackageName = compResourcesPkgName
+		r.loadPackages = append(r.loadPackages, compResourcesPkgDir)
+
+		return nil
+	})
+}
+
 // WithTypescriptOverrides sets the Typescript type for a given Go type.
 func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
@@ -192,15 +206,16 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 }
 
 // WithRPC enables generating RPC method handlers.
-func WithRPC(rpcPackageDir string) Option {
+func WithRPC(rpcPackageDir, rpcPackageName string) Option {
 	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
 
 	return func(g any) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
-			t.rpcPackageDir = rpcPackageDir
 		case *typescriptGenerator: // no-op
 		case *client:
+			t.rpcPackageDir = rpcPackageDir
+			t.rpcPackageName = rpcPackageName
 			t.genRPCMethods = true
 			t.loadPackages = append(t.loadPackages, rpcPackageDir)
 		default:

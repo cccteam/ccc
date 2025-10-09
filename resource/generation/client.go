@@ -38,6 +38,8 @@ type client struct {
 	resources          []*resourceInfo
 	rpcMethods         []*rpcMethodInfo
 	localPackages      []string
+	rpcPackageDir      string
+	rpcPackageName     string
 	migrationSourceURL string
 	tableMap           map[string]*tableMetadata
 	enumValues         map[string][]*enumData

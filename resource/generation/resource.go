@@ -14,16 +14,18 @@ import (
 
 type resourceGenerator struct {
 	*client
-	genHandlers         bool
-	genRoutes           bool
-	resourceDestination string
-	handlerDestination  string
-	routerDestination   string
-	routerPackage       string
-	routePrefix         string
-	rpcPackageDir       string
-	applicationName     string
-	receiverName        string
+	genHandlers          bool
+	genRoutes            bool
+	genComputedResources bool
+	resourceDestination  string
+	handlerDestination   string
+	routerDestination    string
+	routerPackage        string
+	routePrefix          string
+	compPackageDir       string
+	compPackageName      string
+	applicationName      string
+	receiverName         string
 }
 
 // NewResourceGenerator constructs a new Generator for generating a resource-driven API.
@@ -79,7 +81,7 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	if r.genRPCMethods {
-		rpcStructs := parser.ParsePackage(packageMap["rpc"]).Structs
+		rpcStructs := parser.ParsePackage(packageMap[r.rpcPackageName]).Structs
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 

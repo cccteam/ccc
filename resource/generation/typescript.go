@@ -83,7 +83,7 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genRPCMethods {
-		rpcStructs := parser.ParsePackage(packageMap["rpc"]).Structs
+		rpcStructs := parser.ParsePackage(packageMap[t.rpcPackageName]).Structs
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
