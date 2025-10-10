@@ -12,7 +12,7 @@ type CommitBuffer struct {
 	db             TxnFuncRunner
 	eventSource    string
 	autoCommitSize int
-	buffer         []SpannerBuffer
+	buffer         []Buffer
 }
 
 // NewCommitBuffer returns a CommitBuffer that flushes the buffer when it reaches autoCommitSize, committing the content in a single transaction.
@@ -24,13 +24,13 @@ func NewCommitBuffer(db TxnFuncRunner, eventSource string, autoCommitSize int) *
 		db:             db,
 		eventSource:    eventSource,
 		autoCommitSize: autoCommitSize,
-		buffer:         make([]SpannerBuffer, 0, autoCommitSize),
+		buffer:         make([]Buffer, 0, autoCommitSize),
 	}
 }
 
 // Buffer adds one or more SpannerBuffer items to the internal buffer.
 // If the number of items in the buffer reaches the `autoCommitSize`, it will automatically trigger a commit.
-func (cb *CommitBuffer) Buffer(ctx context.Context, ps ...SpannerBuffer) error {
+func (cb *CommitBuffer) Buffer(ctx context.Context, ps ...Buffer) error {
 	cb.buffer = append(cb.buffer, ps...)
 
 	if cb.autoCommitSize > 0 && len(cb.buffer) >= cb.autoCommitSize {
@@ -51,8 +51,8 @@ func (cb *CommitBuffer) Commit(ctx context.Context) error {
 
 	if err := cb.db.ExecuteFunc(ctx, func(ctx context.Context, txn TxnBuffer) error {
 		for _, rs := range cb.buffer {
-			if err := rs.SpannerBuffer(ctx, txn, cb.eventSource); err != nil {
-				return errors.Wrap(err, "spanner.DB.SpannerBuffer()")
+			if err := rs.Buffer(ctx, txn, cb.eventSource); err != nil {
+				return errors.Wrap(err, "spanner.DB.Buffer()")
 			}
 		}
 
