@@ -83,7 +83,9 @@ func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption
 }
 
 // WithComputedResources enables generating routes and handlers for Computed Resources.
-func WithComputedResources(compResourcesPkgDir, compResourcesPkgName string) ResourceOption {
+// The package's name is expected to be the same as its directory name.
+func WithComputedResources(compResourcesPkgDir string) ResourceOption {
+	compResourcesPkgName := filepath.Base(compResourcesPkgDir)
 	compResourcesPkgDir = "./" + filepath.Clean(compResourcesPkgDir)
 
 	return resourceOption(func(r *resourceGenerator) error {
@@ -206,7 +208,9 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 }
 
 // WithRPC enables generating RPC method handlers.
-func WithRPC(rpcPackageDir, rpcPackageName string) Option {
+// The package's name is expected to be the same as its directory name.
+func WithRPC(rpcPackageDir string) Option {
+	rpcPackageName := filepath.Base(rpcPackageDir)
 	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
 
 	return func(g any) error {
