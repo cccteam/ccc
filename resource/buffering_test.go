@@ -67,7 +67,7 @@ type MockSpannerBuffer struct {
 	Called          bool
 }
 
-func (m *MockSpannerBuffer) SpannerBuffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+func (m *MockSpannerBuffer) Buffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	m.Called = true
 	if m.SpannerBufferFn != nil {
 		return m.SpannerBufferFn(ctx, txn, eventSource...)
@@ -110,7 +110,7 @@ func TestCommitBuffer_Buffer(t *testing.T) {
 	tests := []struct {
 		name                       string
 		autoCommitSize             int
-		itemsToBuffer              []SpannerBuffer
+		itemsToBuffer              []Buffer
 		mockExecuteFuncShouldError bool
 		spannerBufferShouldError   bool
 		expectedErr                bool
@@ -120,7 +120,7 @@ func TestCommitBuffer_Buffer(t *testing.T) {
 		{
 			name:                     "Buffer items without auto-commit",
 			autoCommitSize:           3,
-			itemsToBuffer:            []SpannerBuffer{&MockSpannerBuffer{id: "1"}, &MockSpannerBuffer{id: "2"}},
+			itemsToBuffer:            []Buffer{&MockSpannerBuffer{id: "1"}, &MockSpannerBuffer{id: "2"}},
 			expectedErr:              false,
 			expectedBufferLenAfterOp: 2,
 			expectCommitCall:         false,
@@ -128,7 +128,7 @@ func TestCommitBuffer_Buffer(t *testing.T) {
 		{
 			name:                     "Buffer items with auto-commit successful",
 			autoCommitSize:           2,
-			itemsToBuffer:            []SpannerBuffer{&MockSpannerBuffer{id: "1"}, &MockSpannerBuffer{id: "2"}},
+			itemsToBuffer:            []Buffer{&MockSpannerBuffer{id: "1"}, &MockSpannerBuffer{id: "2"}},
 			expectedErr:              false,
 			expectedBufferLenAfterOp: 0,
 			expectCommitCall:         true,
@@ -136,7 +136,7 @@ func TestCommitBuffer_Buffer(t *testing.T) {
 		{
 			name:                     "Buffer items with auto-commit (more items than size, success)",
 			autoCommitSize:           2,
-			itemsToBuffer:            []SpannerBuffer{&MockSpannerBuffer{id: "1"}, &MockSpannerBuffer{id: "2"}, &MockSpannerBuffer{id: "3"}},
+			itemsToBuffer:            []Buffer{&MockSpannerBuffer{id: "1"}, &MockSpannerBuffer{id: "2"}, &MockSpannerBuffer{id: "3"}},
 			expectedErr:              false,
 			expectedBufferLenAfterOp: 0,
 			expectCommitCall:         true,
@@ -144,7 +144,7 @@ func TestCommitBuffer_Buffer(t *testing.T) {
 		{
 			name:                     "Buffer items with autoCommitSize 0 (no auto-commit)",
 			autoCommitSize:           0,
-			itemsToBuffer:            []SpannerBuffer{&MockSpannerBuffer{id: "1"}, &MockSpannerBuffer{id: "2"}},
+			itemsToBuffer:            []Buffer{&MockSpannerBuffer{id: "1"}, &MockSpannerBuffer{id: "2"}},
 			expectedErr:              false,
 			expectedBufferLenAfterOp: 2,
 			expectCommitCall:         false,
@@ -152,7 +152,7 @@ func TestCommitBuffer_Buffer(t *testing.T) {
 		{
 			name:           "Auto-commit failure (SpannerBuffer error)",
 			autoCommitSize: 2,
-			itemsToBuffer: []SpannerBuffer{
+			itemsToBuffer: []Buffer{
 				&MockSpannerBuffer{id: "sb1"},
 				&MockSpannerBuffer{id: "sb2-fail", SpannerBufferFn: func(_ context.Context, _ TxnBuffer, _ ...string) error {
 					return fmt.Errorf("spanner buffer error")
@@ -166,7 +166,7 @@ func TestCommitBuffer_Buffer(t *testing.T) {
 		{
 			name:                       "Auto-commit failure (ExecuteFunc error)",
 			autoCommitSize:             2,
-			itemsToBuffer:              []SpannerBuffer{&MockSpannerBuffer{id: "1"}, &MockSpannerBuffer{id: "2"}},
+			itemsToBuffer:              []Buffer{&MockSpannerBuffer{id: "1"}, &MockSpannerBuffer{id: "2"}},
 			mockExecuteFuncShouldError: true,
 			expectedErr:                true,
 			expectedBufferLenAfterOp:   2,
@@ -224,7 +224,7 @@ func TestCommitBuffer_Commit(t *testing.T) {
 
 	tests := []struct {
 		name                      string
-		initialBufferItems        []SpannerBuffer
+		initialBufferItems        []Buffer
 		dbExecuteShouldFail       bool
 		spannerBufferShouldFail   bool
 		failingSpannerBufferIndex int
@@ -235,7 +235,7 @@ func TestCommitBuffer_Commit(t *testing.T) {
 	}{
 		{
 			name:                   "Commit empty buffer",
-			initialBufferItems:     []SpannerBuffer{},
+			initialBufferItems:     []Buffer{},
 			wantErr:                false,
 			expectedBufferLenAfter: 0,
 			expectExecuteFuncCall:  false,
@@ -243,7 +243,7 @@ func TestCommitBuffer_Commit(t *testing.T) {
 		},
 		{
 			name: "Commit non-empty buffer successfully",
-			initialBufferItems: []SpannerBuffer{
+			initialBufferItems: []Buffer{
 				&MockSpannerBuffer{id: "1"},
 				&MockSpannerBuffer{id: "2"},
 			},
@@ -254,7 +254,7 @@ func TestCommitBuffer_Commit(t *testing.T) {
 		},
 		{
 			name: "Commit non-empty buffer with ExecuteFunc error",
-			initialBufferItems: []SpannerBuffer{
+			initialBufferItems: []Buffer{
 				&MockSpannerBuffer{id: "1"},
 			},
 			dbExecuteShouldFail:    true,
@@ -265,7 +265,7 @@ func TestCommitBuffer_Commit(t *testing.T) {
 		},
 		{
 			name: "Commit non-empty buffer with SpannerBuffer error",
-			initialBufferItems: []SpannerBuffer{
+			initialBufferItems: []Buffer{
 				&MockSpannerBuffer{id: "ok1"},
 				&MockSpannerBuffer{id: "fail", SpannerBufferFn: func(_ context.Context, _ TxnBuffer, _ ...string) error {
 					return fmt.Errorf("spanner buffer error from item")

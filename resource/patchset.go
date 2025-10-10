@@ -25,6 +25,8 @@ const (
 	CreatePatchType PatchType = "CreatePatchType"
 	// UpdatePatchType indicates an update operation.
 	UpdatePatchType PatchType = "UpdatePatchType"
+	// CreateOrUpdatePatchType indicates an insert or update operation.
+	CreateOrUpdatePatchType PatchType = "CreateOrUpdatePatchType"
 	// DeletePatchType indicates a delete operation.
 	DeletePatchType PatchType = "DeletePatchType"
 )
@@ -145,37 +147,41 @@ func (p *PatchSet[Resource]) Resource() accesstypes.Resource {
 	return p.querySet.Resource()
 }
 
-// SpannerApply applies the patch within a new read-write transaction.
-func (p *PatchSet[Resource]) SpannerApply(ctx context.Context, committer SpannerCommitter, eventSource ...string) error {
+// Apply applies the patch within a new read-write transaction.
+func (p *PatchSet[Resource]) Apply(ctx context.Context, committer Committer, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
-		return p.spannerInsert(ctx, committer, eventSource...)
+		return p.applyInsert(ctx, committer, eventSource...)
 	case UpdatePatchType:
-		return p.spannerUpdate(ctx, committer, eventSource...)
+		return p.applyUpdate(ctx, committer, eventSource...)
+	case CreateOrUpdatePatchType:
+		return p.applyInsertOrUpdate(ctx, committer, eventSource...)
 	case DeletePatchType:
-		return p.spannerDelete(ctx, committer, eventSource...)
+		return p.applyDelete(ctx, committer, eventSource...)
 	default:
 		return errors.Newf("PatchType %s not supported", p.patchType)
 	}
 }
 
-// SpannerBuffer buffers the patch's mutations into an existing transaction buffer.
-func (p *PatchSet[Resource]) SpannerBuffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+// Buffer buffers the patch's mutations into an existing transaction buffer.
+func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
-		return p.spannerBufferInsert(ctx, txn, eventSource...)
+		return p.bufferInsert(ctx, txn, eventSource...)
 	case UpdatePatchType:
-		return p.spannerBufferUpdate(ctx, txn, eventSource...)
+		return p.bufferUpdate(ctx, txn, eventSource...)
+	case CreateOrUpdatePatchType:
+		return p.bufferInsertOrUpdate(ctx, txn, eventSource...)
 	case DeletePatchType:
-		return p.spannerBufferDelete(ctx, txn, eventSource...)
+		return p.bufferDelete(ctx, txn, eventSource...)
 	default:
 		return errors.Newf("PatchType %s not supported", p.patchType)
 	}
 }
 
-func (p *PatchSet[Resource]) spannerInsert(ctx context.Context, s SpannerCommitter, eventSource ...string) error {
+func (p *PatchSet[Resource]) applyInsert(ctx context.Context, s Committer, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.spannerBufferInsert(ctx, txn, eventSource...); err != nil {
+		if err := p.bufferInsert(ctx, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -187,9 +193,9 @@ func (p *PatchSet[Resource]) spannerInsert(ctx context.Context, s SpannerCommitt
 	return nil
 }
 
-func (p *PatchSet[Resource]) spannerUpdate(ctx context.Context, s SpannerCommitter, eventSource ...string) error {
+func (p *PatchSet[Resource]) applyUpdate(ctx context.Context, s Committer, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.spannerBufferUpdate(ctx, txn, eventSource...); err != nil {
+		if err := p.bufferUpdate(ctx, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -201,10 +207,10 @@ func (p *PatchSet[Resource]) spannerUpdate(ctx context.Context, s SpannerCommitt
 	return nil
 }
 
-// SpannerInsertOrUpdate applies an insert-or-update operation within a new read-write transaction.
-func (p *PatchSet[Resource]) SpannerInsertOrUpdate(ctx context.Context, s *spanner.Client, eventSource ...string) error {
+// applyInsertOrUpdate applies an insert-or-update operation within a new read-write transaction.
+func (p *PatchSet[Resource]) applyInsertOrUpdate(ctx context.Context, s Committer, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.SpannerBufferInsertOrUpdate(ctx, txn, eventSource...); err != nil {
+		if err := p.bufferInsertOrUpdate(ctx, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -216,9 +222,9 @@ func (p *PatchSet[Resource]) SpannerInsertOrUpdate(ctx context.Context, s *spann
 	return nil
 }
 
-func (p *PatchSet[Resource]) spannerDelete(ctx context.Context, s SpannerCommitter, eventSource ...string) error {
+func (p *PatchSet[Resource]) applyDelete(ctx context.Context, s Committer, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.spannerBufferDelete(ctx, txn, eventSource...); err != nil {
+		if err := p.bufferDelete(ctx, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -230,7 +236,7 @@ func (p *PatchSet[Resource]) spannerDelete(ctx context.Context, s SpannerCommitt
 	return nil
 }
 
-func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
@@ -281,7 +287,7 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuf
 	return nil
 }
 
-func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
@@ -332,8 +338,8 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuf
 	return nil
 }
 
-// SpannerBufferInsertOrUpdate buffers an insert-or-update mutation into an existing transaction buffer.
-func (p *PatchSet[Resource]) SpannerBufferInsertOrUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+// bufferInsertOrUpdate buffers an insert-or-update mutation into an existing transaction buffer.
+func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
@@ -362,7 +368,7 @@ func (p *PatchSet[Resource]) SpannerBufferInsertOrUpdate(ctx context.Context, tx
 	return nil
 }
 
-func (p *PatchSet[Resource]) spannerBufferDelete(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}

@@ -17,10 +17,10 @@ type UserPermissions interface {
 	User() accesstypes.User
 }
 
-// SpannerCommitter is an interface that abstracts the Spanner client's transaction functionality.
+// Committer is an interface that abstracts the Spanner client's transaction functionality.
 // It is used by PatchSet.SpannerApply() to allow for mocking the Spanner client in tests.
 // It is satisfied by *spanner.Client.
-type SpannerCommitter interface {
+type Committer interface {
 	ReadWriteTransaction(ctx context.Context, f func(context.Context, *spanner.ReadWriteTransaction) error) (commitTimestamp time.Time, err error)
 }
 
@@ -32,11 +32,11 @@ type TxnBuffer interface {
 	spxapi.Querier
 }
 
-// SpannerBuffer is an interface for types that can buffer their Spanner mutations
-// into a transaction via the SpannerBuffer method. This is used for batching
+// Buffer is an interface for types that can buffer their Spanner mutations
+// into a transaction via the Buffer method. This is used for batching
 // operations.
-type SpannerBuffer interface {
-	SpannerBuffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error
+type Buffer interface {
+	Buffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error
 }
 
 // TxnRunner will have its Execute() method called inside the *spanner.ReadWriteTransaction provided by TxnBuffer
