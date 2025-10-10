@@ -171,6 +171,14 @@ type rpcMethodInfo struct {
 	Fields []*rpcField
 }
 
+func (r *rpcMethodInfo) IsTxnRunner() bool {
+	return r.Implements("TxnRunner")
+}
+
+func (r *rpcMethodInfo) IsDBRunner() bool {
+	return r.Implements("DBRunner")
+}
+
 func (r *rpcMethodInfo) hasEnumeratedResource() bool {
 	for _, field := range r.Fields {
 		if field.IsEnumerated() {

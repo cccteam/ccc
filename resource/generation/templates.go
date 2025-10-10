@@ -1219,6 +1219,7 @@ import (
 	"time"
 
 	{{ .LocalPackageImports }}
+	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
@@ -1277,10 +1278,21 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 
 		p := (*{{ .RPCMethod.Type }})(params)
 		{{- end }}
+		{{- if .RPCMethod.IsTxnRunner }}
+			if _, err := {{ $.ReceiverName }}.DB().ReadWriteTransaction(ctx, func(ctx context.Context, txn *cloudspanner.ReadWriteTransaction) error {
+				if err := p.Execute(ctx, txn, {{ $.ReceiverName }}.RPCClient()); err != nil {
+					return errors.Wrap(err, "Transaction.Execute()")
+				}
 
-		if err := {{ if .RPCMethod.Implements "DBRunner"}}p.Execute(ctx, {{ $.ReceiverName }}.db){{else}}{{ $.ReceiverName }}.db.Execute(ctx, p){{end}}; err != nil {
+				return nil
+			}); err != nil {
+				return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
+			}
+		{{- else if .RPCMethod.IsDBRunner }}
+		if err := p.Execute(ctx, {{ $.ReceiverName }}.DB(), {{ $.ReceiverName }}.RPCClient()); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		{{- end }}
 
 		return httpio.NewEncoder(w).Ok(nil)
 	})

@@ -84,6 +84,9 @@ func (r *resourceGenerator) Generate() error {
 		rpcStructs := parser.ParsePackage(packageMap[r.rpcPackageName]).Structs
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
+		if len(rpcStructs) == 0 {
+			log.Printf("(RPC Generation) No %s package structs match TxnRunner or DBRunner interface.", r.rpcPackageName)
+		}
 
 		r.rpcMethods, err = r.structsToRPCMethods(rpcStructs)
 		if err != nil {
