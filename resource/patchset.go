@@ -269,7 +269,7 @@ func (p *PatchSet[Resource]) spannerBufferInsert(ctx context.Context, txn TxnBuf
 	m := spanner.InsertMap(string(p.Resource()), patch)
 
 	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
+		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -320,7 +320,7 @@ func (p *PatchSet[Resource]) spannerBufferUpdate(ctx context.Context, txn TxnBuf
 	m := spanner.UpdateMap(string(p.Resource()), patch)
 
 	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
+		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -350,7 +350,7 @@ func (p *PatchSet[Resource]) SpannerBufferInsertOrUpdate(ctx context.Context, tx
 	m := spanner.InsertOrUpdateMap(string(p.Resource()), patch)
 
 	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
+		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -375,7 +375,7 @@ func (p *PatchSet[Resource]) spannerBufferDelete(ctx context.Context, txn TxnBuf
 	m := spanner.Delete(string(p.Resource()), p.PrimaryKey().KeySet())
 
 	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
+		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -407,7 +407,7 @@ func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn TxnBuffer, even
 	}
 
 	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
+		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
 	}
 
 	return nil
@@ -439,7 +439,7 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context
 	}
 
 	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
+		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
 	}
 
 	return nil
@@ -465,7 +465,7 @@ func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context
 	}
 
 	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
+		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
 	}
 
 	return nil
@@ -492,7 +492,7 @@ func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context
 	}
 
 	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
+		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
 	}
 
 	return nil
