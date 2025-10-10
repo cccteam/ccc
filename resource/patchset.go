@@ -25,6 +25,8 @@ const (
 	CreatePatchType PatchType = "CreatePatchType"
 	// UpdatePatchType indicates an update operation.
 	UpdatePatchType PatchType = "UpdatePatchType"
+	// CreateOrUpdatePatchType indicates an insert or update operation.
+	CreateOrUpdatePatchType PatchType = "CreateOrUpdatePatchType"
 	// DeletePatchType indicates a delete operation.
 	DeletePatchType PatchType = "DeletePatchType"
 )
@@ -152,6 +154,8 @@ func (p *PatchSet[Resource]) Apply(ctx context.Context, committer Committer, eve
 		return p.applyInsert(ctx, committer, eventSource...)
 	case UpdatePatchType:
 		return p.applyUpdate(ctx, committer, eventSource...)
+	case CreateOrUpdatePatchType:
+		return p.applyInsertOrUpdate(ctx, committer, eventSource...)
 	case DeletePatchType:
 		return p.applyDelete(ctx, committer, eventSource...)
 	default:
@@ -166,6 +170,8 @@ func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn TxnBuffer, eventSou
 		return p.bufferInsert(ctx, txn, eventSource...)
 	case UpdatePatchType:
 		return p.bufferUpdate(ctx, txn, eventSource...)
+	case CreateOrUpdatePatchType:
+		return p.bufferInsertOrUpdate(ctx, txn, eventSource...)
 	case DeletePatchType:
 		return p.bufferDelete(ctx, txn, eventSource...)
 	default:
@@ -201,10 +207,10 @@ func (p *PatchSet[Resource]) applyUpdate(ctx context.Context, s Committer, event
 	return nil
 }
 
-// InsertOrUpdate applies an insert-or-update operation within a new read-write transaction.
-func (p *PatchSet[Resource]) InsertOrUpdate(ctx context.Context, s Committer, eventSource ...string) error {
+// applyInsertOrUpdate applies an insert-or-update operation within a new read-write transaction.
+func (p *PatchSet[Resource]) applyInsertOrUpdate(ctx context.Context, s Committer, eventSource ...string) error {
 	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.BufferInsertOrUpdate(ctx, txn, eventSource...); err != nil {
+		if err := p.bufferInsertOrUpdate(ctx, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -332,8 +338,8 @@ func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn TxnBuffer, ev
 	return nil
 }
 
-// BufferInsertOrUpdate buffers an insert-or-update mutation into an existing transaction buffer.
-func (p *PatchSet[Resource]) BufferInsertOrUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+// bufferInsertOrUpdate buffers an insert-or-update mutation into an existing transaction buffer.
+func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
