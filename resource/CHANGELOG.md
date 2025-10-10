@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.0](https://github.com/cccteam/ccc/compare/resource/v0.5.3...resource/v0.6.0) (2025-10-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* Move InsertOrUpdate methods under Apply and Buffer, and made them private ([#489](https://github.com/cccteam/ccc/issues/489))
+* Remove Spanner prefix from public interface of PatchSet and interfaces ([#489](https://github.com/cccteam/ccc/issues/489))
+
+### Code Refactoring
+
+* Move InsertOrUpdate methods under Apply and Buffer, and made them private ([#489](https://github.com/cccteam/ccc/issues/489)) ([ba5219a](https://github.com/cccteam/ccc/commit/ba5219a30727568ce4e6c559e7a3a457940d28af))
+* Remove Spanner prefix from public interface of PatchSet and interfaces ([#489](https://github.com/cccteam/ccc/issues/489)) ([ba5219a](https://github.com/cccteam/ccc/commit/ba5219a30727568ce4e6c559e7a3a457940d28af))
+
+
+### Code Cleanup
+
+* Cleanup interface documentation ([#487](https://github.com/cccteam/ccc/issues/487)) ([b93ab41](https://github.com/cccteam/ccc/commit/b93ab412203688d27f26f54f34655af4c2a147b6))
+* Remove iteration by indexes ([#487](https://github.com/cccteam/ccc/issues/487)) ([b93ab41](https://github.com/cccteam/ccc/commit/b93ab412203688d27f26f54f34655af4c2a147b6))
+
 ## [0.5.3](https://github.com/cccteam/ccc/compare/resource/v0.5.2...resource/v0.5.3) (2025-10-05)
 
 
