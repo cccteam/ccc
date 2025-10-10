@@ -118,9 +118,9 @@ func ParsePackage(pkg *packages.Package) *Package {
 
 	// Gather all type definitions from generic (top-level) declarations
 	typeSpecs := make([]*ast.TypeSpec, 0, 256)
-	for i := range pkg.Syntax {
-		for j := range pkg.Syntax[i].Decls {
-			if genDecl, ok := pkg.Syntax[i].Decls[j].(*ast.GenDecl); ok {
+	for _, syntax := range pkg.Syntax {
+		for _, decl := range syntax.Decls {
+			if genDecl, ok := decl.(*ast.GenDecl); ok {
 				for k := range genDecl.Specs {
 					if typeSpec, ok := genDecl.Specs[k].(*ast.TypeSpec); ok {
 						typeSpecs = append(typeSpecs, typeSpec)
@@ -133,48 +133,48 @@ func ParsePackage(pkg *packages.Package) *Package {
 	interfaces := make([]*Interface, 0, 16)
 	parsedStructs := make([]*Struct, 0, 128)
 	namedTypes := make([]*NamedType, 0, 16)
-	for i := range typeSpecs {
-		switch astNode := typeSpecs[i].Type.(type) {
+	for _, typeSpec := range typeSpecs {
+		switch astNode := typeSpec.Type.(type) {
 		case *ast.InterfaceType:
-			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
+			obj := pkg.TypesInfo.ObjectOf(typeSpec.Name)
 			iface, _ := decodeToType[*types.Interface](obj.Type())
-			interfaces = append(interfaces, &Interface{Name: typeSpecs[i].Name.Name, iface: iface})
+			interfaces = append(interfaces, &Interface{Name: typeSpec.Name.Name, iface: iface})
 		case *ast.Ident:
 			namedType := &NamedType{}
-			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name) // NamedType's name
+			obj := pkg.TypesInfo.ObjectOf(typeSpec.Name) // NamedType's name
 
 			namedType.TypeInfo = TypeInfo{obj}
 
-			if typeSpecs[i].Doc != nil {
-				namedType.Comments = typeSpecs[i].Doc.Text()
+			if typeSpec.Doc != nil {
+				namedType.Comments = typeSpec.Doc.Text()
 			}
-			if typeSpecs[i].Comment != nil {
-				namedType.Comments += typeSpecs[i].Comment.Text()
+			if typeSpec.Comment != nil {
+				namedType.Comments += typeSpec.Comment.Text()
 			}
 
 			namedTypes = append(namedTypes, namedType)
 		case *ast.StructType:
-			obj := pkg.TypesInfo.ObjectOf(typeSpecs[i].Name)
+			obj := pkg.TypesInfo.ObjectOf(typeSpec.Name)
 			pStruct := newStruct(obj)
 			if pStruct.obj == nil { // nil pStruct is anonymous struct
 				continue
 			}
 
-			if typeSpecs[i].Doc != nil {
-				pStruct.comments = typeSpecs[i].Doc.Text()
+			if typeSpec.Doc != nil {
+				pStruct.comments = typeSpec.Doc.Text()
 			}
-			if typeSpecs[i].Comment != nil {
-				pStruct.comments += typeSpecs[i].Comment.Text()
+			if typeSpec.Comment != nil {
+				pStruct.comments += typeSpec.Comment.Text()
 			}
 
-			for j := range pStruct.fields {
-				pStruct.fields[j].astInfo = astNode.Fields.List[j]
+			for j, field := range pStruct.fields {
+				field.astInfo = astNode.Fields.List[j]
 
-				if pStruct.fields[j].astInfo.Doc != nil {
-					pStruct.fields[j].comments = pStruct.fields[j].astInfo.Doc.Text()
+				if field.astInfo.Doc != nil {
+					field.comments = field.astInfo.Doc.Text()
 				}
-				if pStruct.fields[j].astInfo.Comment != nil {
-					pStruct.fields[j].comments += pStruct.fields[j].astInfo.Comment.Text()
+				if field.astInfo.Comment != nil {
+					field.comments += field.astInfo.Comment.Text()
 				}
 			}
 
@@ -182,11 +182,11 @@ func ParsePackage(pkg *packages.Package) *Package {
 		}
 	}
 
-	for i := range parsedStructs {
-		for j := range interfaces {
+	for _, ps := range parsedStructs {
+		for _, i := range interfaces {
 			// Necessary to check non-pointer and pointer receivers
-			if types.Implements(parsedStructs[i].obj.Type(), interfaces[j].iface) || types.Implements(types.NewPointer(parsedStructs[i].obj.Type()), interfaces[j].iface) {
-				parsedStructs[i].setInterface(interfaces[j].Name)
+			if types.Implements(ps.obj.Type(), i.iface) || types.Implements(types.NewPointer(ps.obj.Type()), i.iface) {
+				ps.setInterface(i.Name)
 			}
 		}
 	}
