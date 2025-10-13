@@ -128,10 +128,6 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 		return err
 	}
 
-	if err := r.generateResourceInterfaces(); err != nil {
-		return errors.Wrap(err, "c.generateResourceInterfaces()")
-	}
-
 	for _, res := range r.resources {
 		if err := r.generateResources(res); err != nil {
 			return errors.Wrap(err, "c.generateResources()")
@@ -143,14 +139,15 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 
 func (r *resourceGenerator) generateResourceInterfaces() error {
 	output, err := r.generateTemplateOutput("resourcesInterfaceTemplate", resourcesInterfaceTemplate, map[string]any{
-		"Source": r.resourceFilePath,
-		"Types":  r.resources,
+		"Source":  r.resourceFilePath,
+		"Package": filepath.Base(r.handlerDestination),
+		"Types":   r.resources,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(r.resourceDestination, generatedGoFileName(resourceInterfaceOutputName))
+	destinationFile := filepath.Join(r.handlerDestination, generatedGoFileName(resourceInterfaceOutputName))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {

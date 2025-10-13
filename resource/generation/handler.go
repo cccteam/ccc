@@ -19,6 +19,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
+	if err := r.generateResourceInterfaces(); err != nil {
+		return errors.Wrap(err, "c.generateResourceInterfaces()")
+	}
+
 	var (
 		consolidatedResources []*resourceInfo
 		wg                    sync.WaitGroup
