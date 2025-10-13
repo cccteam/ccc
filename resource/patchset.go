@@ -180,8 +180,8 @@ func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn TxnBuffer, eventSou
 }
 
 func (p *PatchSet[Resource]) applyInsert(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.bufferInsert(ctx, txn, eventSource...); err != nil {
+	if _, err := s.ReadWriteTransaction(ctx, func(c context.Context, txn *spanner.ReadWriteTransaction) error {
+		if err := p.bufferInsert(c, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -194,8 +194,8 @@ func (p *PatchSet[Resource]) applyInsert(ctx context.Context, s Committer, event
 }
 
 func (p *PatchSet[Resource]) applyUpdate(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.bufferUpdate(ctx, txn, eventSource...); err != nil {
+	if _, err := s.ReadWriteTransaction(ctx, func(c context.Context, txn *spanner.ReadWriteTransaction) error {
+		if err := p.bufferUpdate(c, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -209,8 +209,8 @@ func (p *PatchSet[Resource]) applyUpdate(ctx context.Context, s Committer, event
 
 // applyInsertOrUpdate applies an insert-or-update operation within a new read-write transaction.
 func (p *PatchSet[Resource]) applyInsertOrUpdate(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.bufferInsertOrUpdate(ctx, txn, eventSource...); err != nil {
+	if _, err := s.ReadWriteTransaction(ctx, func(c context.Context, txn *spanner.ReadWriteTransaction) error {
+		if err := p.bufferInsertOrUpdate(c, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -223,8 +223,8 @@ func (p *PatchSet[Resource]) applyInsertOrUpdate(ctx context.Context, s Committe
 }
 
 func (p *PatchSet[Resource]) applyDelete(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.bufferDelete(ctx, txn, eventSource...); err != nil {
+	if _, err := s.ReadWriteTransaction(ctx, func(c context.Context, txn *spanner.ReadWriteTransaction) error {
+		if err := p.bufferDelete(c, txn, eventSource...); err != nil {
 			return err
 		}
 
