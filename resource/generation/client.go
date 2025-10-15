@@ -570,8 +570,8 @@ func typescriptConsImports(t *typescriptGenerator, d *resource.TypescriptData) s
 }
 
 func (c *client) doesResourceExist(resourceName string) bool {
-	for i := range c.resources {
-		if c.pluralize(c.resources[i].Name()) == resourceName {
+	for _, res := range c.resources {
+		if c.pluralize(res.Name()) == resourceName {
 			return true
 		}
 	}
