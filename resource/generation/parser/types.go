@@ -95,8 +95,9 @@ func (t *TypeInfo) IsIterable() bool {
 
 // Interface is an abstraction over types.Interface
 type Interface struct {
-	Name  string
-	iface *types.Interface
+	Name      string
+	named     *types.Named
+	isGeneric bool
 }
 
 // Struct is an abstraction combining types.Struct and ast.StructType for simpler parsing.
