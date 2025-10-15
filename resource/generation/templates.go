@@ -37,10 +37,8 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-const {{ Pluralize .Resource.Name }} accesstypes.Resource = "{{ Pluralize .Resource.Name }}"
-
 func ({{ .Resource.Name }}) Resource() accesstypes.Resource {
-	return {{ Pluralize .Resource.Name }}
+	return "{{ Pluralize .Resource.Name }}"
 }
 
 func ({{ .Resource.Name }}) DefaultConfig() resource.Config {
