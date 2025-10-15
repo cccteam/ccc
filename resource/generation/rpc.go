@@ -69,8 +69,9 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 
 func (r *resourceGenerator) generateRPCInterfaces() error {
 	output, err := r.generateTemplateOutput("rpcInterfacesTemplate", rpcInterfacesTemplate, map[string]any{
-		"Source": r.resourceFilePath,
-		"Types":  r.rpcMethods,
+		"Package": r.rpcPackageName,
+		"Source":  r.resourceFilePath,
+		"Types":   r.rpcMethods,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
