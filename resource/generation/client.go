@@ -36,6 +36,7 @@ type client struct {
 	loadPackages       []string
 	resourceFilePath   string
 	resources          []*resourceInfo
+	computedResources  []*computedResource
 	rpcMethods         []*rpcMethodInfo
 	localPackages      []string
 	rpcPackageDir      string
@@ -441,10 +442,14 @@ func formatInterfaceTypes(types []string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
 }
 
-func formatResourceInterfaceTypes(resources []*resourceInfo) string {
-	names := make([]string, 0, len(resources))
+func formatResourceInterfaceTypes(resourcesPackage, computedResourcePackage string, resources []*resourceInfo, computedResources []*computedResource) string {
+	names := make([]string, 0, len(resources)+len(computedResources))
 	for _, res := range resources {
-		names = append(names, fmt.Sprintf("resources.%s", res.Name()))
+		names = append(names, fmt.Sprintf("%s.%s", resourcesPackage, res.Name()))
+	}
+
+	for _, res := range computedResources {
+		names = append(names, fmt.Sprintf("%s.%s", computedResourcePackage, res.Name()))
 	}
 
 	return formatInterfaceTypes(names)

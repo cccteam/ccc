@@ -107,6 +107,7 @@ const (
 )
 
 var rpcInterfaces = [...]string{"TxnRunner", "DBRunner"}
+var computedInterfaces = [...]string{"ComputedResource"}
 
 type searchIndex struct {
 	Name       string
@@ -245,6 +246,15 @@ func (r *rpcField) TypescriptDisplayType() string {
 	}
 
 	return r.typescriptType
+}
+
+type computedResource struct {
+	*parser.Struct
+	Fields []*compResourceField
+}
+
+type compResourceField struct {
+	*parser.Field
 }
 
 type resourceInfo struct {

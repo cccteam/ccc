@@ -72,6 +72,15 @@ func (r *resourceGenerator) Generate() error {
 
 	r.resources = resources
 
+	// needs to run before resource generation so the data can be sneakily snuck into resource generation
+	if r.genComputedResources {
+		compStructs := parser.ParsePackage(packageMap[r.compPackageName]).Structs
+		compStructs = parser.FilterStructsByInterface(compStructs, computedInterfaces[:])
+		computedResources := structsToCompResources(compStructs)
+
+		r.computedResources = computedResources
+	}
+
 	if err := r.runResourcesGeneration(); err != nil {
 		return err
 	}
@@ -138,9 +147,12 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 
 func (r *resourceGenerator) generateResourceInterfaces() error {
 	output, err := r.generateTemplateOutput("resourcesInterfaceTemplate", resourcesInterfaceTemplate, map[string]any{
-		"Source":  r.resourceFilePath,
-		"Package": filepath.Base(r.handlerDestination),
-		"Types":   r.resources,
+		"Source":                   r.resourceFilePath,
+		"Package":                  filepath.Base(r.handlerDestination),
+		"ResourcesPackage":         filepath.Base(r.resourceDestination),
+		"ComputedResourcesPackage": filepath.Base(r.compPackageDir),
+		"Types":                    r.resources,
+		"ComputedResourceTypes":    r.computedResources,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

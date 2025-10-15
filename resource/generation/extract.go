@@ -167,6 +167,25 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo
 	return rpcMethods, nil
 }
 
+func structsToCompResources(structs []*parser.Struct) []*computedResource {
+	compResources := make([]*computedResource, 0, len(structs))
+	for _, s := range structs {
+		compRes := &computedResource{
+			Struct: s,
+			Fields: make([]*compResourceField, 0, len(s.Fields())),
+		}
+
+		for _, field := range s.Fields() {
+			field := compResourceField{Field: field}
+
+			compRes.Fields = append(compRes.Fields, &field)
+		}
+		compResources = append(compResources, compRes)
+	}
+
+	return compResources
+}
+
 func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 	nullableFields, err := fieldNullability(pStruct)
 	if err != nil {
