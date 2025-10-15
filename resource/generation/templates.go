@@ -1121,6 +1121,9 @@ const (
 	{{ $resource.Name }}ID httpio.ParamType = "{{ GoCamel $resource.Name }}ID"
 {{- end }}
 {{- end }}
+{{- range $resource := .ComputedResources }}
+	{{ $resource.Name }}ID httpio.ParamType = "{{ GoCamel $resource.Name }}ID"
+{{- end }}
 )
 
 type GeneratedHandlers interface {
