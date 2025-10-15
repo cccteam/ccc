@@ -706,7 +706,7 @@ import (
 
 			return nil
 		}); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, spanner.HandleError[resources.{{ .Resource.Name }}](err))
+			return httpio.NewEncoder(w).ClientMessage(ctx, handleError[resources.{{ .Resource.Name }}](err))
 		}
 
 		{{ if $PrimaryKeyIsGeneratedUUID  }}
@@ -791,7 +791,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 								return errors.Wrap(err, "{{ GoCamel $resource.Name}}CreatePatchFromPatchSet()")
 							}
 							if err := patch.PatchSet().Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.Buffer()")
+								return errors.Wrap(handleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.Buffer()")
 							}
 							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.{{ $resource.PrimaryKey.Name }}())
 						{{- else if $resource.HasCompoundPrimaryKey }}
@@ -799,12 +799,12 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
 							{{- end }}
 							if err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.Buffer()")
+								return errors.Wrap(handleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.Buffer()")
 							}
 						{{- else }}
 							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
 							if err := resources.New{{ $resource.Name }}CreatePatchFromPatchSet(id, patchSet).PatchSet().Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.Buffer()")
+								return errors.Wrap(handleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}CreatePatch.Buffer()")
 							}
 						{{- end }}
 						case resource.OperationUpdate:
@@ -813,12 +813,12 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
 							{{- end }}
 							if err := resources.New{{ $resource.Name }}UpdatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}UpdatePatch.Buffer()")
+								return errors.Wrap(handleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}UpdatePatch.Buffer()")
 							}
 							{{- else}}
 							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
 							if err := resources.New{{ $resource.Name }}UpdatePatchFromPatchSet(id, patchSet).PatchSet().Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}UpdatePatch.Buffer()")
+								return errors.Wrap(handleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}UpdatePatch.Buffer()")
 							}
 							{{- end }}
 						case resource.OperationDelete:
@@ -827,12 +827,12 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
 							{{- end }}
 							if err := resources.New{{ $resource.Name }}DeletePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).PatchSet().Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}DeletePatch.Buffer()")
+								return errors.Wrap(handleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}DeletePatch.Buffer()")
 							}
 							{{- else }}
 							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
 							if err := resources.New{{ $resource.Name }}DeletePatchFromPatchSet(id, patchSet).PatchSet().Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(spanner.HandleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}DeletePatch.Buffer()")
+								return errors.Wrap(handleError[resources.{{ $resource.Name }}](err), "resources.{{ $resource.Name }}DeletePatch.Buffer()")
 							}
 							{{- end }}
 						}
