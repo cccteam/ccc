@@ -76,7 +76,10 @@ func (r *resourceGenerator) Generate() error {
 	if r.genComputedResources {
 		compStructs := parser.ParsePackage(packageMap[r.compPackageName]).Structs
 		compStructs = parser.FilterStructsByInterface(compStructs, computedInterfaces[:])
-		computedResources := structsToCompResources(compStructs)
+		computedResources, err := structsToCompResources(compStructs)
+		if err != nil {
+			return err
+		}
 
 		r.computedResources = computedResources
 	}

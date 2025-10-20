@@ -250,11 +250,71 @@ func (r *rpcField) TypescriptDisplayType() string {
 
 type computedResource struct {
 	*parser.Struct
-	Fields []*compResourceField
+	Fields              []*computedField
+	SuppressReadHandler bool
+	SuppressListHandler bool
 }
 
-type compResourceField struct {
+func (c *computedResource) HasCompoundPrimaryKey() bool {
+	var count uint
+	for _, field := range c.Fields {
+		if field.IsPrimaryKey {
+			count++
+		}
+	}
+
+	return count > 0
+}
+
+func (c *computedResource) PrimaryKey() *computedField {
+	for _, field := range c.Fields {
+		if field.IsPrimaryKey {
+			return field
+		}
+	}
+
+	return nil
+}
+
+func (c *computedResource) PrimaryKeys() []*computedField {
+	keys := make([]*computedField, 0)
+	for _, field := range c.Fields {
+		if field.IsPrimaryKey {
+			keys = append(keys, field)
+		}
+	}
+
+	return keys
+}
+
+type computedField struct {
 	*parser.Field
+	IsPrimaryKey bool
+}
+
+func (c *computedField) JSONTag() string {
+	camelCaseName := caser.ToCamel(c.Name())
+
+	return fmt.Sprintf("json:%q", camelCaseName)
+}
+
+func (c *computedField) IsPII() bool {
+	tag, ok := c.LookupTag("conditions")
+	if !ok {
+		return false
+	}
+
+	conditions := strings.Split(tag, ",")
+
+	return slices.Contains(conditions, "pii")
+}
+
+func (c *computedField) PIITag() string {
+	if c.IsPII() {
+		return `pii:"true"`
+	}
+
+	return ""
 }
 
 type resourceInfo struct {
@@ -772,6 +832,7 @@ const (
 	defaultsUpdateTypeKeyword string = "defaultsUpdateType" // Specifies a type to call "Defaults()" on for setting defaults on resource update
 	validateCreateTypeKeyword string = "validateCreateType" // Specifies a type to call "Validate()" on for validating a resource on creation
 	validateUpdateTypeKeyword string = "validateUpdateType" // Specifies a type to call "Validate()" on for validating a resource on update
+	primarykeyKeyword         string = "primarykey"         // Designates a field as a primary key in a Computed Resource
 )
 
 func keywords() map[string]genlang.KeywordOpts {
@@ -782,5 +843,6 @@ func keywords() map[string]genlang.KeywordOpts {
 		defaultsUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
 		validateCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
 		validateUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
+		primarykeyKeyword:         {genlang.ScanField: genlang.NoArgs},
 	}
 }

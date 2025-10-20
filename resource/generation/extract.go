@@ -167,23 +167,48 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo
 	return rpcMethods, nil
 }
 
-func structsToCompResources(structs []*parser.Struct) []*computedResource {
+func structsToCompResources(structs []*parser.Struct) ([]*computedResource, error) {
 	compResources := make([]*computedResource, 0, len(structs))
+	var resourceErrors []error
 	for _, s := range structs {
-		compRes := &computedResource{
+		res := &computedResource{
 			Struct: s,
-			Fields: make([]*compResourceField, 0, len(s.Fields())),
+			Fields: make([]*computedField, 0, len(s.Fields())),
 		}
 
-		for _, field := range s.Fields() {
-			field := compResourceField{Field: field}
+		result, err := genlang.NewScanner(keywords()).ScanStruct(s)
+		if err != nil {
+			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
 
-			compRes.Fields = append(compRes.Fields, &field)
+			continue
 		}
-		compResources = append(compResources, compRes)
+
+		if result.Struct.Has(suppressKeyword) {
+			suppress := result.Struct.GetOne(suppressKeyword).Arg1
+			if !strings.Contains(suppress, string(ReadHandler)) {
+				res.SuppressReadHandler = true
+			}
+			if !strings.Contains(suppress, string(ListHandler)) {
+				res.SuppressListHandler = true
+			}
+		}
+
+		for i, field := range s.Fields() {
+			field := &computedField{
+				Field:        field,
+				IsPrimaryKey: result.Fields[i].Has(primarykeyKeyword),
+			}
+
+			res.Fields = append(res.Fields, field)
+		}
+		compResources = append(compResources, res)
 	}
 
-	return compResources
+	if resourceErrors != nil {
+		return nil, errors.Wrap(errors.Join(resourceErrors...), "structsToCompResources()")
+	}
+
+	return compResources, nil
 }
 
 func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {

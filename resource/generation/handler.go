@@ -53,6 +53,16 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		}
 	}
 
+	if r.genComputedResources {
+		for _, res := range r.computedResources {
+			wg.Go(func() {
+				if err := r.generateComputedResourceHandler(res); err != nil {
+					errChan <- err
+				}
+			})
+		}
+	}
+
 	go func() {
 		wg.Wait()
 		close(errChan)
