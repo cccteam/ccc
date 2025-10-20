@@ -971,8 +971,7 @@ export function requiresMethodPermission(resource: Method, permission: Permissio
 import { Resource } from '@cccteam/ccc-lib';
 import { ResourceMap, ResourceMeta{{ if .File.HasNullBoolean }}, NullBoolean{{ end }} } from '@components/Resource/resources-helpers';
 import { Resources } from './{{ .GenPrefix }}_constants';
-{{- $resources := .Resources }}
-{{ range $resource := $resources }}
+{{ range $resource := .Resources }}
 export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
   {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
@@ -981,7 +980,7 @@ export interface {{ Pluralize $resource.Name }} {
 {{ end }}
 {{ $consolidatedRoute := .ConsolidatedRoute -}}
 const resourceMap: ResourceMap = {
-  {{- range $resource := $resources }}
+  {{- range $resource := $.Resources }}
   [Resources.{{ Pluralize $resource.Name }}]: {
     route: '{{ Kebab (Pluralize $resource.Name) }}',
     {{- if eq $resource.IsConsolidated true }}
