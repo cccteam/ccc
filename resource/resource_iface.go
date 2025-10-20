@@ -2,11 +2,9 @@ package resource
 
 import (
 	"context"
-	"time"
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/spxscan/spxapi"
 )
 
 // UserPermissions is an interface that provides methods to check user permissions and retrieve user information, and is used
@@ -17,43 +15,24 @@ type UserPermissions interface {
 	User() accesstypes.User
 }
 
-// Committer is an interface that abstracts the Spanner client's transaction functionality.
-// It is used by PatchSet.SpannerApply() to allow for mocking the Spanner client in tests.
-// It is satisfied by *spanner.Client.
-type Committer interface {
-	ReadWriteTransaction(ctx context.Context, f func(context.Context, *spanner.ReadWriteTransaction) error) (commitTimestamp time.Time, err error)
+type SpannerQuerier interface {
+	Query(ctx context.Context, statement spanner.Statement) *spanner.RowIterator
 }
 
-// TxnBuffer is an interface that abstracts a Spanner read-write transaction,
-// allowing mutations to be buffered and queries to be executed within the transaction.
-// It is satisfied by *spanner.ReadWriteTransaction.
-type TxnBuffer interface {
-	BufferWrite(ms []*spanner.Mutation) error
-	spxapi.Querier
+// ResourceReader is an interface that wraps methods for reading resources from a database.
+type ResourceReader interface {
+	DBType() DBType
+	SpannerReadTransaction() SpannerQuerier
+	PostgresReadTransaction()
 }
 
-// Buffer is an interface for types that can buffer their Spanner mutations
-// into a transaction via the Buffer method. This is used for batching
-// operations.
+// Buffer is an interface for types that can buffer their mutations
+// into a transaction. This is used for batching operations.
 type Buffer interface {
-	Buffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error
+	Buffer(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error
 }
 
-// TxnRunner will have its Execute() method called inside the *spanner.ReadWriteTransaction provided by TxnBuffer
+// TxnRunner will have its Execute() method called inside the ReadWriteTransaction
 type TxnRunner interface {
-	Execute(ctx context.Context, txn TxnBuffer) error
-}
-
-// TxnFuncRunner provides a way to execute a function within a read-write transaction.
-// This is useful for batching operations that need to be committed together.
-type TxnFuncRunner interface {
-	ExecuteFunc(ctx context.Context, runnerFn func(ctx context.Context, txn TxnBuffer) error) error
-}
-
-// RunnerFunc is a function that converts a TxnFuncRunner into a TxnRunner
-type RunnerFunc func(ctx context.Context, txn TxnBuffer) error
-
-// Execute runs the function.
-func (fn RunnerFunc) Execute(ctx context.Context, txn TxnBuffer) error {
-	return fn(ctx, txn)
+	Execute(ctx context.Context, txn *ReadWriteTransaction) error
 }

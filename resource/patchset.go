@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding"
+	"fmt"
 	"iter"
 	"reflect"
 	"time"
@@ -148,7 +149,7 @@ func (p *PatchSet[Resource]) Resource() accesstypes.Resource {
 }
 
 // Apply applies the patch within a new read-write transaction.
-func (p *PatchSet[Resource]) Apply(ctx context.Context, committer Committer, eventSource ...string) error {
+func (p *PatchSet[Resource]) Apply(ctx context.Context, committer *Client, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
 		return p.applyInsert(ctx, committer, eventSource...)
@@ -164,7 +165,7 @@ func (p *PatchSet[Resource]) Apply(ctx context.Context, committer Committer, eve
 }
 
 // Buffer buffers the patch's mutations into an existing transaction buffer.
-func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
 		return p.bufferInsert(ctx, txn, eventSource...)
@@ -179,8 +180,8 @@ func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn TxnBuffer, eventSou
 	}
 }
 
-func (p *PatchSet[Resource]) applyInsert(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(c context.Context, txn *spanner.ReadWriteTransaction) error {
+func (p *PatchSet[Resource]) applyInsert(ctx context.Context, s *Client, eventSource ...string) error {
+	if err := s.ExecuteFunc(ctx, func(c context.Context, txn *ReadWriteTransaction) error {
 		if err := p.bufferInsert(c, txn, eventSource...); err != nil {
 			return err
 		}
@@ -193,8 +194,8 @@ func (p *PatchSet[Resource]) applyInsert(ctx context.Context, s Committer, event
 	return nil
 }
 
-func (p *PatchSet[Resource]) applyUpdate(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(c context.Context, txn *spanner.ReadWriteTransaction) error {
+func (p *PatchSet[Resource]) applyUpdate(ctx context.Context, s *Client, eventSource ...string) error {
+	if err := s.ExecuteFunc(ctx, func(c context.Context, txn *ReadWriteTransaction) error {
 		if err := p.bufferUpdate(c, txn, eventSource...); err != nil {
 			return err
 		}
@@ -208,8 +209,8 @@ func (p *PatchSet[Resource]) applyUpdate(ctx context.Context, s Committer, event
 }
 
 // applyInsertOrUpdate applies an insert-or-update operation within a new read-write transaction.
-func (p *PatchSet[Resource]) applyInsertOrUpdate(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(c context.Context, txn *spanner.ReadWriteTransaction) error {
+func (p *PatchSet[Resource]) applyInsertOrUpdate(ctx context.Context, s *Client, eventSource ...string) error {
+	if err := s.ExecuteFunc(ctx, func(c context.Context, txn *ReadWriteTransaction) error {
 		if err := p.bufferInsertOrUpdate(c, txn, eventSource...); err != nil {
 			return err
 		}
@@ -222,8 +223,8 @@ func (p *PatchSet[Resource]) applyInsertOrUpdate(ctx context.Context, s Committe
 	return nil
 }
 
-func (p *PatchSet[Resource]) applyDelete(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(c context.Context, txn *spanner.ReadWriteTransaction) error {
+func (p *PatchSet[Resource]) applyDelete(ctx context.Context, s *Client, eventSource ...string) error {
+	if err := s.ExecuteFunc(ctx, func(c context.Context, txn *ReadWriteTransaction) error {
 		if err := p.bufferDelete(c, txn, eventSource...); err != nil {
 			return err
 		}
@@ -236,7 +237,7 @@ func (p *PatchSet[Resource]) applyDelete(ctx context.Context, s Committer, event
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
@@ -274,8 +275,15 @@ func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn TxnBuffer, ev
 	}
 	m := spanner.InsertMap(string(p.Resource()), patch)
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+	switch txn.DBType() {
+	case SpannerDBType:
+		if err := txn.spanner.BufferWrite([]*spanner.Mutation{m}); err != nil {
+			return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		}
+	case PostgresDBType:
+		panic(fmt.Sprintf("operation not implemented for database type: %s", txn.DBType()))
+	default:
+		panic(fmt.Sprintf("unsupported db type: %s", txn.DBType()))
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -287,7 +295,7 @@ func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn TxnBuffer, ev
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
@@ -323,10 +331,18 @@ func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn TxnBuffer, ev
 	if err != nil {
 		return errors.Wrap(err, "Resolve()")
 	}
-	m := spanner.UpdateMap(string(p.Resource()), patch)
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+	switch txn.DBType() {
+	case SpannerDBType:
+		m := spanner.UpdateMap(string(p.Resource()), patch)
+
+		if err := txn.spanner.BufferWrite([]*spanner.Mutation{m}); err != nil {
+			return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		}
+	case PostgresDBType:
+		panic(fmt.Sprintf("operation not implemented for database type: %s", txn.DBType()))
+	default:
+		panic(fmt.Sprintf("unsupported db type: %s", txn.DBType()))
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -339,7 +355,7 @@ func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn TxnBuffer, ev
 }
 
 // bufferInsertOrUpdate buffers an insert-or-update mutation into an existing transaction buffer.
-func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
@@ -353,10 +369,18 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn TxnBu
 	if err != nil {
 		return errors.Wrap(err, "Resolve()")
 	}
-	m := spanner.InsertOrUpdateMap(string(p.Resource()), patch)
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+	switch txn.DBType() {
+	case SpannerDBType:
+		m := spanner.InsertOrUpdateMap(string(p.Resource()), patch)
+
+		if err := txn.spanner.BufferWrite([]*spanner.Mutation{m}); err != nil {
+			return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		}
+	case PostgresDBType:
+		panic(fmt.Sprintf("operation not implemented for database type: %s", txn.DBType()))
+	default:
+		panic(fmt.Sprintf("unsupported db type: %s", txn.DBType()))
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -368,7 +392,7 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn TxnBu
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error {
 	if err := p.checkPermissions(ctx); err != nil {
 		return err
 	}
@@ -378,10 +402,17 @@ func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn TxnBuffer, ev
 		return err
 	}
 
-	m := spanner.Delete(string(p.Resource()), p.PrimaryKey().KeySet())
+	switch txn.DBType() {
+	case SpannerDBType:
+		m := spanner.Delete(string(p.Resource()), p.PrimaryKey().KeySet())
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		if err := txn.spanner.BufferWrite([]*spanner.Mutation{m}); err != nil {
+			return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		}
+	case PostgresDBType:
+		panic(fmt.Sprintf("operation not implemented for database type: %s", txn.DBType()))
+	default:
+		panic(fmt.Sprintf("unsupported db type: %s", txn.DBType()))
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -393,33 +424,40 @@ func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn TxnBuffer, ev
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn TxnBuffer, eventSource string) error {
+func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn *ReadWriteTransaction, eventSource string) error {
 	changeSet, err := p.insertChangeSet()
 	if err != nil {
 		return err
 	}
 
-	m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
-		&DataChangeEvent{
-			TableName:   p.Resource(),
-			RowID:       p.PrimaryKey().RowID(),
-			EventTime:   spanner.CommitTimestamp,
-			EventSource: eventSource,
-			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
-		},
-	)
-	if err != nil {
-		return errors.Wrap(err, "spanner.InsertStruct()")
-	}
+	switch txn.DBType() {
+	case SpannerDBType:
+		m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
+			&DataChangeEvent{
+				TableName:   p.Resource(),
+				RowID:       p.PrimaryKey().RowID(),
+				EventTime:   spanner.CommitTimestamp,
+				EventSource: eventSource,
+				ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
+			},
+		)
+		if err != nil {
+			return errors.Wrap(err, "spanner.InsertStruct()")
+		}
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		if err := txn.spanner.BufferWrite([]*spanner.Mutation{m}); err != nil {
+			return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		}
+	case PostgresDBType:
+		panic(fmt.Sprintf("operation not implemented for database type: %s", txn.DBType()))
+	default:
+		panic(fmt.Sprintf("unsupported db type: %s", txn.DBType()))
 	}
 
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context.Context, txn TxnBuffer, eventSource string) error {
+func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context.Context, txn *ReadWriteTransaction, eventSource string) error {
 	changeSet, err := p.updateChangeSet(ctx, txn)
 	if err != nil {
 		if !errors.Is(err, spxscan.ErrNotFound) {
@@ -431,74 +469,97 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context
 		}
 	}
 
-	m, err := spanner.InsertOrUpdateStruct(p.querySet.rMeta.changeTrackingTable,
-		&DataChangeEvent{
-			TableName:   p.Resource(),
-			RowID:       p.PrimaryKey().RowID(),
-			EventTime:   spanner.CommitTimestamp,
-			EventSource: eventSource,
-			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
-		},
-	)
-	if err != nil {
-		return errors.Wrap(err, "spanner.InsertStruct()")
-	}
+	rowId := p.PrimaryKey().RowID()
+	switch txn.DBType() {
+	case SpannerDBType:
+		m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
+			&DataChangeEvent{
+				TableName:   p.Resource(),
+				RowID:       rowId,
+				Sequence:    txn.dataChangeEventIndex(p.Resource(), rowId),
+				EventTime:   spanner.CommitTimestamp,
+				EventSource: eventSource,
+				ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
+			},
+		)
+		if err != nil {
+			return errors.Wrap(err, "spanner.InsertStruct()")
+		}
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		if err := txn.spanner.BufferWrite([]*spanner.Mutation{m}); err != nil {
+			return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		}
+	case PostgresDBType:
+		panic(fmt.Sprintf("operation not implemented for database type: %s", txn.DBType()))
+	default:
+		panic(fmt.Sprintf("unsupported db type: %s", txn.DBType()))
 	}
 
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context, txn TxnBuffer, eventSource string) error {
+func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context, txn *ReadWriteTransaction, eventSource string) error {
 	changeSet, err := p.updateChangeSet(ctx, txn)
 	if err != nil {
 		return err
 	}
 
-	m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
-		&DataChangeEvent{
-			TableName:   p.Resource(),
-			RowID:       p.PrimaryKey().RowID(),
-			EventTime:   spanner.CommitTimestamp,
-			EventSource: eventSource,
-			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
-		},
-	)
-	if err != nil {
-		return errors.Wrap(err, "spanner.InsertStruct()")
-	}
+	switch txn.DBType() {
+	case SpannerDBType:
+		m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
+			&DataChangeEvent{
+				TableName:   p.Resource(),
+				RowID:       p.PrimaryKey().RowID(),
+				EventTime:   spanner.CommitTimestamp,
+				EventSource: eventSource,
+				ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
+			},
+		)
+		if err != nil {
+			return errors.Wrap(err, "spanner.InsertStruct()")
+		}
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		if err := txn.spanner.BufferWrite([]*spanner.Mutation{m}); err != nil {
+			return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		}
+	case PostgresDBType:
+		panic(fmt.Sprintf("operation not implemented for database type: %s", txn.DBType()))
+	default:
+		panic(fmt.Sprintf("unsupported db type: %s", txn.DBType()))
 	}
 
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context, txn TxnBuffer, eventSource string) error {
+func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context, txn *ReadWriteTransaction, eventSource string) error {
 	keySet := p.PrimaryKey()
 	changeSet, err := p.jsonDeleteSet(ctx, txn)
 	if err != nil {
 		return err
 	}
 
-	m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
-		&DataChangeEvent{
-			TableName:   p.Resource(),
-			RowID:       keySet.RowID(),
-			EventTime:   spanner.CommitTimestamp,
-			EventSource: eventSource,
-			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
-		},
-	)
-	if err != nil {
-		return errors.Wrap(err, "spanner.InsertStruct()")
-	}
+	switch txn.DBType() {
+	case SpannerDBType:
+		m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
+			&DataChangeEvent{
+				TableName:   p.Resource(),
+				RowID:       keySet.RowID(),
+				EventTime:   spanner.CommitTimestamp,
+				EventSource: eventSource,
+				ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
+			},
+		)
+		if err != nil {
+			return errors.Wrap(err, "spanner.InsertStruct()")
+		}
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		if err := txn.spanner.BufferWrite([]*spanner.Mutation{m}); err != nil {
+			return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+		}
+	case PostgresDBType:
+		panic(fmt.Sprintf("operation not implemented for database type: %s", txn.DBType()))
+	default:
+		panic(fmt.Sprintf("unsupported db type: %s", txn.DBType()))
 	}
 
 	return nil
@@ -519,19 +580,28 @@ func (p *PatchSet[Resource]) insertChangeSet() (map[accesstypes.Field]DiffElem, 
 	return changeSet, nil
 }
 
-func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn TxnBuffer) (map[accesstypes.Field]DiffElem, error) {
-	stmt, err := p.querySet.SpannerStmt()
-	if err != nil {
-		return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
-	}
-
+func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn *ReadWriteTransaction) (map[accesstypes.Field]DiffElem, error) {
 	oldValues := new(Resource)
-	if err := spxscan.Get(ctx, txn, oldValues, stmt.Statement); err != nil {
-		if errors.Is(err, spxscan.ErrNotFound) {
-			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), stmt.resolvedWhereClause)
-		}
+	var resolvedWhereClause string
 
-		return nil, errors.Wrap(err, "spxscan.Get()")
+	switch txn.DBType() {
+	case SpannerDBType:
+		stmt, err := p.querySet.SpannerStmt()
+		if err != nil {
+			return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
+		}
+		if err := spxscan.Get(ctx, txn.spanner, oldValues, stmt.Statement); err != nil {
+			if errors.Is(err, spxscan.ErrNotFound) {
+				return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), stmt.resolvedWhereClause)
+			}
+
+			return nil, errors.Wrap(err, "spxscan.Get()")
+		}
+		resolvedWhereClause = stmt.resolvedWhereClause
+	case PostgresDBType:
+		panic(fmt.Sprintf("operation not implemented for database type: %s", txn.DBType()))
+	default:
+		panic(fmt.Sprintf("unsupported db type: %s", txn.DBType()))
 	}
 
 	changeSet, err := p.Diff(oldValues)
@@ -540,25 +610,32 @@ func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn TxnBuffer)
 	}
 
 	if len(changeSet) == 0 {
-		return nil, httpio.NewBadRequestMessagef("No changes to apply for %s (%s)", p.Resource(), stmt.resolvedWhereClause)
+		return nil, httpio.NewBadRequestMessagef("No changes to apply for %s (%s)", p.Resource(), resolvedWhereClause)
 	}
 
 	return changeSet, nil
 }
 
-func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn TxnBuffer) (map[accesstypes.Field]DiffElem, error) {
-	stmt, err := p.deleteQuerySet().SpannerStmt()
-	if err != nil {
-		return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")
-	}
-
+func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn *ReadWriteTransaction) (map[accesstypes.Field]DiffElem, error) {
 	oldValues := new(Resource)
-	if err := spxscan.Get(ctx, txn, oldValues, stmt.Statement); err != nil {
-		if errors.Is(err, spxscan.ErrNotFound) {
-			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), stmt.resolvedWhereClause)
-		}
 
-		return nil, errors.Wrap(err, "spxscan.Get()")
+	switch txn.DBType() {
+	case SpannerDBType:
+		stmt, err := p.deleteQuerySet().SpannerStmt()
+		if err != nil {
+			return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")
+		}
+		if err := spxscan.Get(ctx, txn.spanner, oldValues, stmt.Statement); err != nil {
+			if errors.Is(err, spxscan.ErrNotFound) {
+				return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), stmt.resolvedWhereClause)
+			}
+
+			return nil, errors.Wrap(err, "spxscan.Get()")
+		}
+	case PostgresDBType:
+		panic(fmt.Sprintf("operation not implemented for database type: %s", txn.DBType()))
+	default:
+		panic(fmt.Sprintf("unsupported db type: %s", txn.DBType()))
 	}
 
 	changeSet, err := p.deleteChangeSet(oldValues)

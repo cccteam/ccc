@@ -349,12 +349,12 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 {{- end }}
 {{- end }}
 {{- if .Resource.HasDefaultsCreateType }}
-	p.patchSet.RegisterDefaultsCreateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+	p.patchSet.RegisterDefaultsCreateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 		return new({{ .Resource.DefaultsCreateType }}).Defaults(ctx, txn, p)
 	})
 {{- end }}
 {{- if .Resource.HasValidateCreateType }}
-	p.patchSet.RegisterValidateCreateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+	p.patchSet.RegisterValidateCreateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 		return new({{ .Resource.ValidateCreateType }}).Validate(ctx, txn, p)
 	})
 {{- end }}
@@ -419,12 +419,12 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 {{- end }}
 {{- end }}
 {{- if .Resource.HasDefaultsUpdateType }}
-	p.patchSet.RegisterDefaultsUpdateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+	p.patchSet.RegisterDefaultsUpdateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 		return new({{ .Resource.DefaultsUpdateType }}).Defaults(ctx, txn, p)
 	})
 {{- end }}
 {{- if .Resource.HasValidateUpdateType }}
-	p.patchSet.RegisterValidateUpdateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+	p.patchSet.RegisterValidateUpdateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 		return new({{ .Resource.ValidateUpdateType }}).Validate(ctx, txn, p)
 	})
 {{- end }}
@@ -533,7 +533,7 @@ import (
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
 		resp := response{}
-		for r, err := range res.Query().SpannerList(ctx, {{ .ReceiverName }}.ReadTxn()) {
+		for r, err := range res.Query().List(ctx, {{ .ReceiverName }}.ResourceClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -585,7 +585,7 @@ import (
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id)
 	{{- end }}
 
-		row, err := res.Query().SpannerRead(ctx, {{ .ReceiverName }}.ReadTxn())
+		row, err := res.Query().Read(ctx, {{ .ReceiverName }}.ResourceClient())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -630,7 +630,7 @@ import (
 		{{- end }}
 		eventSource := resource.UserEvent(ctx)
 
-		if err := {{ .ReceiverName }}.ExecuteFunc(ctx, func(ctx context.Context, txn resource.TxnBuffer) error {
+		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 			{{- if $PrimaryKeyIsGeneratedUUID }}
 			resp = response{}
 			{{- end }}
@@ -757,7 +757,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 			resp    response
 		)
 
-		if err := {{ .ReceiverName }}.ExecuteFunc(ctx, func(ctx context.Context, txn resource.TxnBuffer) error {
+		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 			resp = response{}
 			r, err := resource.CloneRequest(r)
 			if err != nil {

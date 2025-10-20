@@ -70,6 +70,7 @@ linters:
             - github.com/gofrs/uuid
             - github.com/google/go-cmp/cmp
             - github.com/google/uuid
+            - github.com/jackc/pgx/v5/pgxpool
             - github.com/momaek/formattag/align
             - github.com/shopspring/decimal
             - golang.org/x/tools/go/packages

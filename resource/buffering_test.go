@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/accesstypes"
 )
 
 // MockTxnBuffer is a mock implementation of TxnBuffer for testing.
@@ -46,6 +47,12 @@ func (m *MockTxnBuffer) Query(ctx context.Context, statement spanner.Statement) 
 	// Return a default *spanner.RowIterator or nil.
 	// For tests where Query is called but not explicitly mocked, returning nil might be appropriate.
 	return nil
+}
+
+func (m *MockTxnBuffer) Lock(accesstypes.Resource, string) {
+}
+
+func (m *MockTxnBuffer) RequireLock(accesstypes.Resource, string, LockFunc) {
 }
 
 // MockTxnFuncRunner is a mock implementation of TxnFuncRunner for testing.
