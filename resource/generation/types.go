@@ -289,7 +289,9 @@ func (c *computedResource) PrimaryKeys() []*computedField {
 
 type computedField struct {
 	*parser.Field
-	IsPrimaryKey bool
+	typescriptType     string
+	IsPrimaryKey       bool
+	KeyOrdinalPosition int
 }
 
 func (c *computedField) JSONTag() string {
@@ -315,6 +317,17 @@ func (c *computedField) PIITag() string {
 	}
 
 	return ""
+}
+
+func (c *computedField) TypescriptDataType() string {
+	if c.typescriptType == "uuid" {
+		return stringGoType
+	}
+	if c.typescriptType == "civilDate" {
+		return "Date"
+	}
+
+	return c.typescriptType
 }
 
 type resourceInfo struct {

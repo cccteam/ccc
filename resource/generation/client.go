@@ -41,12 +41,15 @@ type client struct {
 	localPackages      []string
 	rpcPackageDir      string
 	rpcPackageName     string
+	compPackageDir     string
+	compPackageName    string
 	migrationSourceURL string
 	tableMap           map[string]*tableMetadata
 	enumValues         map[string][]*enumData
 	pluralOverrides    map[string]string
 	consolidateConfig
 	genRPCMethods          bool
+	genComputedResources   bool
 	spannerEmulatorVersion string
 	FileWriter
 	genCache *cache.Cache

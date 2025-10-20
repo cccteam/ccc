@@ -978,6 +978,13 @@ export interface {{ Pluralize $resource.Name }} {
 {{- end }}
 }
 {{ end }}
+{{- range $resource := .ComputedResources }}
+export interface {{ Pluralize $resource.Name }} {
+{{- range $field := $resource.Fields }}
+  {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
+{{- end }}
+}
+{{ end }}
 {{ $consolidatedRoute := .ConsolidatedRoute -}}
 const resourceMap: ResourceMap = {
   {{- range $resource := $.Resources }}
@@ -1007,6 +1014,22 @@ const resourceMap: ResourceMap = {
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
        {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex -}}
       {{- if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
+      {{- end }}
+    ],
+  },
+
+  {{- end }}
+  {{- range $resource := $.ComputedResources }}
+  [Resources.{{ Pluralize $resource.Name }}]: {
+    route: '{{ Kebab (Pluralize $resource.Name) }}',
+	{{- if $resource.SuppressListHandler }}listDisabled: true, {{ end }}
+	{{- if $resource.SuppressReadHandler }}readDisabled: true, {{ end -}}
+	createDisabled: true, updateDisabled: true, deleteDisabled: true,
+    fields: [
+      {{- range $field := $resource.Fields }}
+      { fieldName: '{{ Camel $field.Name }}', 
+       {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
+       {{- end }} displayType: '{{ Lower $field.TypescriptDataType }}', required: {{ $field.IsPrimaryKey }}, isIndex: false },
       {{- end }}
     ],
   },

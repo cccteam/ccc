@@ -193,10 +193,17 @@ func structsToCompResources(structs []*parser.Struct) ([]*computedResource, erro
 			}
 		}
 
+		var keyCount int
 		for i, field := range s.Fields() {
 			field := &computedField{
 				Field:        field,
 				IsPrimaryKey: result.Fields[i].Has(primarykeyKeyword),
+			}
+
+			if result.Fields[i].Has(primarykeyKeyword) {
+				field.IsPrimaryKey = true
+				field.KeyOrdinalPosition = keyCount
+				keyCount++
 			}
 
 			res.Fields = append(res.Fields, field)

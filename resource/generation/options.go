@@ -82,22 +82,6 @@ func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption
 	})
 }
 
-// WithComputedResources enables generating routes and handlers for Computed Resources.
-// The package's name is expected to be the same as its directory name.
-func WithComputedResources(compResourcesPkgDir string) ResourceOption {
-	compResourcesPkgName := filepath.Base(compResourcesPkgDir)
-	compResourcesPkgDir = "./" + filepath.Clean(compResourcesPkgDir)
-
-	return resourceOption(func(r *resourceGenerator) error {
-		r.genComputedResources = true
-		r.compPackageDir = compResourcesPkgDir
-		r.compPackageName = compResourcesPkgName
-		r.loadPackages = append(r.loadPackages, compResourcesPkgDir)
-
-		return nil
-	})
-}
-
 // WithTypescriptOverrides sets the Typescript type for a given Go type.
 func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
@@ -201,6 +185,29 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 		case *resourceGenerator, *typescriptGenerator: // no-op
 		default:
 			panic(fmt.Sprintf("unexpected generator type in WithConsolidatedHandlers(): %T", t))
+		}
+
+		return nil
+	}
+}
+
+// WithComputedResources enables generating routes and handlers for Computed Resources.
+// The package's name is expected to be the same as its directory name.
+func WithComputedResources(compResourcesPkgDir string) Option {
+	compResourcesPkgName := filepath.Base(compResourcesPkgDir)
+	compResourcesPkgDir = "./" + filepath.Clean(compResourcesPkgDir)
+
+	return func(g any) error {
+		switch t := g.(type) {
+		case *resourceGenerator:
+		case *typescriptGenerator: // no-op
+		case *client:
+			t.genComputedResources = true
+			t.compPackageDir = compResourcesPkgDir
+			t.compPackageName = compResourcesPkgName
+			t.loadPackages = append(t.loadPackages, compResourcesPkgDir)
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithComputedResources(): %T", t))
 		}
 
 		return nil
