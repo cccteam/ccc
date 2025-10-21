@@ -71,11 +71,11 @@ func ApplicationName(name string) ResourceOption {
 }
 
 // GenerateRoutes enables generating a router file containing routes for all handlers and RPC methods.
-func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption {
+func GenerateRoutes(targetDir, routePrefix string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genRoutes = true
 		r.routerDestination = targetDir
-		r.routerPackage = targetPackage
+		r.routerPackage = filepath.Base(targetDir)
 		r.routePrefix = routePrefix
 
 		return nil
