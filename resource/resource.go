@@ -64,6 +64,8 @@ func (c *Client) Execute(ctx context.Context, runner TxnRunner) error {
 		return nil
 	case PostgresDBType:
 		panic(fmt.Sprintf("operation not implemented for database type: %s", c.dbType))
+	case mockDBType:
+		return runner.Execute(ctx, newMockReadWriteTransaction())
 	default:
 		panic(fmt.Sprintf("unsupported db type: %s", c.dbType))
 	}
@@ -93,6 +95,13 @@ func newSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction) *ReadWrit
 	return &ReadWriteTransaction{
 		dbType:           SpannerDBType,
 		spanner:          txn,
+		resourceRowIndex: make(map[string]int),
+	}
+}
+
+func newMockReadWriteTransaction() *ReadWriteTransaction {
+	return &ReadWriteTransaction{
+		dbType:           mockDBType,
 		resourceRowIndex: make(map[string]int),
 	}
 }

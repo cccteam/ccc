@@ -8,8 +8,11 @@ type DBType string
 const (
 	// SpannerDBType represents the Google Cloud Spanner database.
 	SpannerDBType DBType = "spanner"
+
 	// PostgresDBType represents the PostgreSQL database.
 	PostgresDBType DBType = "postgres"
+
+	mockDBType DBType = "mock"
 )
 
 // Statement is a generic container for a SQL statement and its parameters,
