@@ -180,6 +180,10 @@ linters:
           - gocritic
         path: queryset\.go
         text: 'sprintfQuotedString: use %q instead of "%s" for quoted strings'
+      - linters:
+          - goconst
+        path: generation/types\.go
+        text: uuid|civilDate|Date
     paths:
       - third_party$
       - builtin$
