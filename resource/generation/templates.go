@@ -1236,19 +1236,23 @@ func generatedRouteParameters() []string {
 {{ $routePrefix := .RoutePrefix -}}
 func generatedRouterTests() []*generatedRouterTest {
 	routerTests := []*generatedRouterTest {
-		{{ range $resource := .Resources }}
-		{{- range $route := (index $.RoutesMap $resource.Name) }}{
+		{{- range $resource := .Resources }}
+		{{- range $route := (index $.RoutesMap $resource.Name) }}
+		{
 			url: "{{ DetermineTestURL $resource $routePrefix $route }}", method: {{ MethodToHttpConst $route.Method }},
 			handlerFunc: "{{ $route.HandlerFunc }}",
 			parameters: {{ DetermineParameters $resource $route }},
-		},{{ if eq .SharedHandler true }}
+		},
+		{{- if .SharedHandler }}
 		{
 			url: "{{ DetermineTestURL $resource $routePrefix $route }}", method: http.MethodPost,
 			handlerFunc: "{{ $route.HandlerFunc }}",
 			parameters: {{ DetermineParameters $resource $route }},
-		},{{ end }}
-		{{ end }}{{ end }}
-		{{- if eq .HasConsolidatedHandler true -}}
+		},
+		{{- end }}
+		{{- end }}
+		{{- end }}
+		{{- if .HasConsolidatedHandler }}
 		{
 			url: "/{{ .RoutePrefix }}/{{ .ConsolidatedRoute }}", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
