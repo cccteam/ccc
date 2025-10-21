@@ -48,9 +48,10 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
 		if !res.SuppressListHandler {
 			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
-				Method:      ListHandler.method(),
-				Path:        path,
-				HandlerFunc: r.handlerName(res.Name(), ListHandler),
+				Method:        ListHandler.method(),
+				Path:          path,
+				HandlerFunc:   r.handlerName(res.Name(), ListHandler),
+				SharedHandler: true,
 			})
 		}
 
@@ -61,9 +62,10 @@ func (r *resourceGenerator) runRouteGeneration() error {
 			}
 
 			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
-				Method:      ReadHandler.method(),
-				Path:        path + pathKeys,
-				HandlerFunc: r.handlerName(res.Name(), ReadHandler),
+				Method:        ReadHandler.method(),
+				Path:          path + pathKeys,
+				HandlerFunc:   r.handlerName(res.Name(), ReadHandler),
+				SharedHandler: true,
 			})
 		}
 	}
