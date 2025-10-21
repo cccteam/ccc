@@ -44,6 +44,30 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		}
 	}
 
+	for _, res := range r.computedResources {
+		path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
+		if !res.SuppressListHandler {
+			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
+				Method:      ListHandler.method(),
+				Path:        path,
+				HandlerFunc: r.handlerName(res.Name(), ListHandler),
+			})
+		}
+
+		if !res.SuppressReadHandler {
+			var pathKeys string
+			for _, field := range res.PrimaryKeys() {
+				pathKeys += fmt.Sprintf("/{%s}", strcase.ToGoCamel(res.Name()+field.Name()))
+			}
+
+			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
+				Method:      ReadHandler.method(),
+				Path:        path + pathKeys,
+				HandlerFunc: r.handlerName(res.Name(), ReadHandler),
+			})
+		}
+	}
+
 	if r.genRPCMethods {
 		for _, rpcStruct := range r.rpcMethods {
 			generatedRoutesMap[rpcStruct.Name()] = []generatedRoute{{
