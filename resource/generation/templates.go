@@ -1219,6 +1219,15 @@ func generatedRouteParameters() []string {
 		"{{ GoCamel $resource.Name }}ID",
 	{{- end }}
 	{{- end }}
+	{{- range $resource := .ComputedResources }}
+	{{- if $resource.HasCompoundPrimaryKey }}
+		{{- range $_, $field := $resource.PrimaryKeys }}
+		"{{ GoCamel $resource.Name }}{{ $field.Name }}",
+		{{- end }}
+	{{- else if $resource.PrimaryKey }}
+		"{{ GoCamel $resource.Name }}{{ $resource.PrimaryKey.Name }}",
+	{{- end }}
+	{{- end }}
 	}
 
 	return keys
