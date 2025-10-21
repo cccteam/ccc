@@ -91,6 +91,7 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 		"LocalPackageImports":    r.localPackageImports(),
 		"RoutesMap":              generatedRoutes,
 		"Resources":              resources,
+		"ComputedResources":      r.computedResources,
 		"HasConsolidatedHandler": r.ConsolidatedRoute != "",
 		"RoutePrefix":            r.routePrefix,
 		"ConsolidatedRoute":      r.ConsolidatedRoute,

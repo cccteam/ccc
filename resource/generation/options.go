@@ -71,11 +71,11 @@ func ApplicationName(name string) ResourceOption {
 }
 
 // GenerateRoutes enables generating a router file containing routes for all handlers and RPC methods.
-func GenerateRoutes(targetDir, targetPackage, routePrefix string) ResourceOption {
+func GenerateRoutes(targetDir, routePrefix string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genRoutes = true
 		r.routerDestination = targetDir
-		r.routerPackage = targetPackage
+		r.routerPackage = filepath.Base(targetDir)
 		r.routePrefix = routePrefix
 
 		return nil
@@ -191,16 +191,42 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 	}
 }
 
+// WithComputedResources enables generating routes and handlers for Computed Resources.
+// The package's name is expected to be the same as its directory name.
+func WithComputedResources(compResourcesPkgDir string) Option {
+	compResourcesPkgName := filepath.Base(compResourcesPkgDir)
+	compResourcesPkgDir = "./" + filepath.Clean(compResourcesPkgDir)
+
+	return func(g any) error {
+		switch t := g.(type) {
+		case *resourceGenerator:
+		case *typescriptGenerator: // no-op
+		case *client:
+			t.genComputedResources = true
+			t.compPackageDir = compResourcesPkgDir
+			t.compPackageName = compResourcesPkgName
+			t.loadPackages = append(t.loadPackages, compResourcesPkgDir)
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithComputedResources(): %T", t))
+		}
+
+		return nil
+	}
+}
+
 // WithRPC enables generating RPC method handlers.
+// The package's name is expected to be the same as its directory name.
 func WithRPC(rpcPackageDir string) Option {
+	rpcPackageName := filepath.Base(rpcPackageDir)
 	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
 
 	return func(g any) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
-			t.rpcPackageDir = rpcPackageDir
 		case *typescriptGenerator: // no-op
 		case *client:
+			t.rpcPackageDir = rpcPackageDir
+			t.rpcPackageName = rpcPackageName
 			t.genRPCMethods = true
 			t.loadPackages = append(t.loadPackages, rpcPackageDir)
 		default:

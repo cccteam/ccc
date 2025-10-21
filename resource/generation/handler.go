@@ -19,6 +19,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
+	if err := r.generateResourceInterfaces(); err != nil {
+		return errors.Wrap(err, "c.generateResourceInterfaces()")
+	}
+
 	var (
 		consolidatedResources []*resourceInfo
 		wg                    sync.WaitGroup
@@ -41,13 +45,21 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 
 	if r.genRPCMethods {
 		for _, rpcMethod := range r.rpcMethods {
-			wg.Add(1)
-			go func() {
+			wg.Go(func() {
 				if err := r.generateRPCHandler(rpcMethod); err != nil {
 					errChan <- err
 				}
-				wg.Done()
-			}()
+			})
+		}
+	}
+
+	if r.genComputedResources {
+		for _, res := range r.computedResources {
+			wg.Go(func() {
+				if err := r.generateComputedResourceHandler(res); err != nil {
+					errChan <- err
+				}
+			})
 		}
 	}
 

@@ -167,6 +167,57 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo
 	return rpcMethods, nil
 }
 
+func structsToCompResources(structs []*parser.Struct) ([]*computedResource, error) {
+	compResources := make([]*computedResource, 0, len(structs))
+	var resourceErrors []error
+	for _, s := range structs {
+		res := &computedResource{
+			Struct: s,
+			Fields: make([]*computedField, 0, len(s.Fields())),
+		}
+
+		result, err := genlang.NewScanner(keywords()).ScanStruct(s)
+		if err != nil {
+			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
+
+			continue
+		}
+
+		if result.Struct.Has(suppressKeyword) {
+			suppress := result.Struct.GetOne(suppressKeyword).Arg1
+			if !strings.Contains(suppress, string(ReadHandler)) {
+				res.SuppressReadHandler = true
+			}
+			if !strings.Contains(suppress, string(ListHandler)) {
+				res.SuppressListHandler = true
+			}
+		}
+
+		var keyCount int
+		for i, field := range s.Fields() {
+			field := &computedField{
+				Field:        field,
+				IsPrimaryKey: result.Fields[i].Has(primarykeyKeyword),
+			}
+
+			if result.Fields[i].Has(primarykeyKeyword) {
+				field.IsPrimaryKey = true
+				field.KeyOrdinalPosition = keyCount
+				keyCount++
+			}
+
+			res.Fields = append(res.Fields, field)
+		}
+		compResources = append(compResources, res)
+	}
+
+	if resourceErrors != nil {
+		return nil, errors.Wrap(errors.Join(resourceErrors...), "structsToCompResources()")
+	}
+
+	return compResources, nil
+}
+
 func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 	nullableFields, err := fieldNullability(pStruct)
 	if err != nil {

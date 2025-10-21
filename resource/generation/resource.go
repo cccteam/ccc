@@ -21,7 +21,6 @@ type resourceGenerator struct {
 	routerDestination   string
 	routerPackage       string
 	routePrefix         string
-	rpcPackageDir       string
 	applicationName     string
 	receiverName        string
 }
@@ -70,6 +69,18 @@ func (r *resourceGenerator) Generate() error {
 
 	r.resources = resources
 
+	// needs to run before resource generation so the data can be sneakily snuck into resource generation
+	if r.genComputedResources {
+		compStructs := parser.ParsePackage(packageMap[r.compPackageName]).Structs
+		compStructs = parser.FilterStructsByInterface(compStructs, computedInterfaces[:])
+		computedResources, err := structsToCompResources(compStructs)
+		if err != nil {
+			return err
+		}
+
+		r.computedResources = computedResources
+	}
+
 	if err := r.runResourcesGeneration(); err != nil {
 		return err
 	}
@@ -79,9 +90,11 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	if r.genRPCMethods {
-		rpcStructs := parser.ParsePackage(packageMap["rpc"]).Structs
-
+		rpcStructs := parser.ParsePackage(packageMap[r.rpcPackageName]).Structs
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
+		if len(rpcStructs) == 0 {
+			log.Printf("(RPC Generation) No %s package structs match TxnRunner or DBRunner interface.", r.rpcPackageName)
+		}
 
 		r.rpcMethods, err = r.structsToRPCMethods(rpcStructs)
 		if err != nil {
@@ -123,10 +136,6 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 		return err
 	}
 
-	if err := r.generateResourceInterfaces(); err != nil {
-		return errors.Wrap(err, "c.generateResourceInterfaces()")
-	}
-
 	for _, res := range r.resources {
 		if err := r.generateResources(res); err != nil {
 			return errors.Wrap(err, "c.generateResources()")
@@ -138,14 +147,18 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 
 func (r *resourceGenerator) generateResourceInterfaces() error {
 	output, err := r.generateTemplateOutput("resourcesInterfaceTemplate", resourcesInterfaceTemplate, map[string]any{
-		"Source": r.resourceFilePath,
-		"Types":  r.resources,
+		"Source":                   r.resourceFilePath,
+		"Package":                  filepath.Base(r.handlerDestination),
+		"ResourcesPackage":         filepath.Base(r.resourceDestination),
+		"ComputedResourcesPackage": filepath.Base(r.compPackageDir),
+		"Types":                    r.resources,
+		"ComputedResourceTypes":    r.computedResources,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(r.resourceDestination, generatedGoFileName(resourceInterfaceOutputName))
+	destinationFile := filepath.Join(r.handlerDestination, generatedGoFileName(resourceInterfaceOutputName))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {

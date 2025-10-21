@@ -2,6 +2,7 @@ package generation
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -74,6 +75,21 @@ func (t *typescriptGenerator) Generate() error {
 		return err
 	}
 
+	if t.genComputedResources {
+		compStructs := parser.ParsePackage(packageMap[t.compPackageName]).Structs
+		compStructs = parser.FilterStructsByInterface(compStructs, computedInterfaces[:])
+		computedResources, err := structsToCompResources(compStructs)
+		if err != nil {
+			return err
+		}
+
+		for _, res := range computedResources {
+			res.Fields = t.computedFieldsTypescriptType(res.Fields)
+		}
+
+		t.computedResources = computedResources
+	}
+
 	t.resources = make([]*resourceInfo, 0, len(resources))
 	for _, res := range resources {
 		if t.rc.ResourceExists(accesstypes.Resource(t.pluralize(res.Name()))) {
@@ -83,7 +99,7 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genRPCMethods {
-		rpcStructs := parser.ParsePackage(packageMap["rpc"]).Structs
+		rpcStructs := parser.ParsePackage(packageMap[t.rpcPackageName]).Structs
 
 		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 
@@ -206,6 +222,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, map[string]any{
 		"File":              t,
 		"Resources":         t.resources,
+		"ComputedResources": t.computedResources,
 		"ConsolidatedRoute": t.ConsolidatedRoute,
 		"GenPrefix":         genPrefix,
 	})
@@ -300,11 +317,27 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceFie
 		}
 
 		if field.IsIterable() {
-			field.typescriptType += "[]"
+			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
 		}
 
 		if field.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
 			field.IsEnumerated = true
+		}
+	}
+
+	return fields
+}
+
+func (t *typescriptGenerator) computedFieldsTypescriptType(fields []*computedField) []*computedField {
+	for _, field := range fields {
+		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
+			field.typescriptType = override
+		} else {
+			field.typescriptType = stringGoType
+		}
+
+		if field.IsIterable() {
+			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
 		}
 	}
 
@@ -323,7 +356,7 @@ func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []*rpcField) []*rpc
 		}
 
 		if field.IsIterable() {
-			field.typescriptType += "[]"
+			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
 		}
 	}
 
