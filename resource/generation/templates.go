@@ -12,7 +12,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 )
 
-type Resource interface {
+type Resourcer interface {
 	resource.Resourcer
 {{ FormatResourceInterfaceTypes .ResourcesPackage .ComputedResourcesPackage .Types .ComputedResourceTypes }}
 }`
