@@ -106,8 +106,10 @@ const (
 	consolidatedHandlerOutputName = "consolidated_handler"
 )
 
-var rpcInterfaces = [...]string{"TxnRunner", "DBRunner"}
-var computedInterfaces = [...]string{"ComputedResource"}
+var (
+	rpcInterfaces      = [...]string{"TxnRunner", "DBRunner"}
+	computedInterfaces = [...]string{"ComputedResource"}
+)
 
 type searchIndex struct {
 	Name       string
