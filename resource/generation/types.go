@@ -167,6 +167,7 @@ type generatedRoute struct {
 	Path          string
 	HandlerFunc   string
 	SharedHandler bool
+	HandlerType   HandlerType
 }
 
 type rpcMethodInfo struct {
