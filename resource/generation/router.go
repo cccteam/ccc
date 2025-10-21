@@ -40,6 +40,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 				Path:          path,
 				HandlerFunc:   r.handlerName(res.Name(), ht),
 				SharedHandler: ht == ReadHandler || ht == ListHandler,
+				HandlerType:   ht,
 			})
 		}
 	}
@@ -52,6 +53,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 				Path:          path,
 				HandlerFunc:   r.handlerName(res.Name(), ListHandler),
 				SharedHandler: true,
+				HandlerType:   ListHandler,
 			})
 		}
 
@@ -66,6 +68,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 				Path:          path + pathKeys,
 				HandlerFunc:   r.handlerName(res.Name(), ReadHandler),
 				SharedHandler: true,
+				HandlerType:   ReadHandler,
 			})
 		}
 	}
