@@ -1345,7 +1345,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		p := (*{{ .RPCMethod.Type }})(params)
 		{{- end }}
 		{{- if .RPCMethod.IsTxnRunner }}
-			if _, err := {{ $.ReceiverName }}.DB().ReadWriteTransaction(ctx, func(ctx context.Context, txn *cloudspanner.ReadWriteTransaction) error {
+			if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 				if err := p.Execute(ctx, txn, {{ $.ReceiverName }}.RPCClient()); err != nil {
 					return errors.Wrap(err, "Transaction.Execute()")
 				}
@@ -1355,7 +1355,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 				return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 			}
 		{{- else if .RPCMethod.IsDBRunner }}
-		if err := p.Execute(ctx, {{ $.ReceiverName }}.DB(), {{ $.ReceiverName }}.RPCClient()); err != nil {
+		if err := p.Execute(ctx, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.RPCClient()); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		{{- end }}
@@ -1420,7 +1420,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 		}
 
 		resp := response{}
-		for r, err := range {{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ReadTxn(), {{ .ReceiverName }}.ComputedClient()) {
+		for r, err := range {{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -1470,9 +1470,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 		}
 
 		{{ if .Resource.HasCompoundPrimaryKey }}
-		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, {{ range $i, $field := .Resource.PrimaryKeys }}{{ if $i }}, {{ end }}{{ GoCamel $field.Name }}{{ end }}, querySet, {{ .ReceiverName }}.ReadTxn(), {{ .ReceiverName }}.ComputedClient())
+		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, {{ range $i, $field := .Resource.PrimaryKeys }}{{ if $i }}, {{ end }}{{ GoCamel $field.Name }}{{ end }}, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient())
 		{{ else if .Resource.PrimaryKey }}
-		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, id, querySet, {{ .ReceiverName }}.ReadTxn(), {{ .ReceiverName }}.ComputedClient()))
+		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, id, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()))
 		{{ end }}
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
