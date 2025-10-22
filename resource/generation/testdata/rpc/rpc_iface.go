@@ -9,5 +9,5 @@ import (
 
 type TxnRunner interface {
 	Method() accesstypes.Resource
-	Execute(ctx context.Context, txn resource.TxnBuffer) error
+	Execute(ctx context.Context, txn *resource.ReadWriteTransaction, client *resource.Client) error
 }

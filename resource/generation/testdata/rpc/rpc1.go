@@ -13,8 +13,10 @@ func (a Apple) Method() accesstypes.Resource { return "" }
 
 type Banana struct{}
 
-func (c *Banana) Method() accesstypes.Resource                              { return "" }
-func (c *Banana) Execute(ctx context.Context, txn resource.TxnBuffer) error { return nil }
+func (c *Banana) Method() accesstypes.Resource { return "" }
+func (c *Banana) Execute(ctx context.Context, txn *resource.ReadWriteTransaction, client *resource.Client) error {
+	return nil
+}
 
 type Cofveve struct{}
 
