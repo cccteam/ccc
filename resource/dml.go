@@ -18,28 +18,18 @@ const (
 // Statement is a generic container for a SQL statement and its parameters,
 // supporting both Spanner and PostgreSQL.
 type Statement struct {
-	SQL              string
-	SpannerParams    map[string]any
-	PostgreSQLParams []any
-}
-
-// SpannerStatement wraps a `spanner.Statement` and includes a resolved WHERE clause for debugging.
-type SpannerStatement struct {
 	// resolvedWhereClause is used to carry contextual information for error messages
 	// and is not used in the query.
 	resolvedWhereClause string
-
-	spanner.Statement
+	SQL                 string
+	Params              map[string]any
 }
 
-// PostgresStatement holds a SQL string and its parameters for a PostgreSQL query.
-type PostgresStatement struct {
-	// resolvedWhereClause is used to carry contextual information for error messages
-	// and is not used in the query.
-	resolvedWhereClause string
-
-	SQL    string
-	Params []any
+func (s *Statement) SpannerStatement() spanner.Statement {
+	return spanner.Statement{
+		SQL:    s.SQL,
+		Params: s.Params,
+	}
 }
 
 // Columns is a string representing a comma-separated list of database column names.

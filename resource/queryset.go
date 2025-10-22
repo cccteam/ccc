@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"iter"
-	"maps"
 	"slices"
 	"sort"
 	"strings"
 
-	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/spxscan"
@@ -228,14 +226,14 @@ func (q *QuerySet[Resource]) astWhereClause() (*Statement, error) {
 			return nil, errors.Wrap(err, "SpannerGenerator.GenerateSQL()")
 		}
 
-		return &Statement{SQL: "WHERE " + sql, SpannerParams: params}, nil
+		return &Statement{SQL: "WHERE " + sql, Params: params}, nil
 	case PostgresDBType:
 		sql, params, err := NewPostgreSQLGenerator().GenerateSQL(q.filterAst)
 		if err != nil {
 			return nil, errors.Wrap(err, "PostgreSQLGenerator.GenerateSQL()")
 		}
 
-		return &Statement{SQL: "WHERE " + sql, PostgreSQLParams: params}, nil
+		return &Statement{SQL: "WHERE " + sql, Params: params}, nil
 	}
 
 	return nil, errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
@@ -272,13 +270,13 @@ func (q *QuerySet[Resource]) where() (*Statement, error) {
 	}
 
 	return &Statement{
-		SQL:           "WHERE " + builder.String()[5:],
-		SpannerParams: params,
+		SQL:    "WHERE " + builder.String()[5:],
+		Params: params,
 	}, nil
 }
 
 // SpannerStmt builds a Spanner SQL statement from the QuerySet.
-func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
+func (q *QuerySet[Resource]) SpannerStmt() (*Statement, error) {
 	if q.rMeta.dbType != SpannerDBType {
 		return nil, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
 	}
@@ -291,51 +289,10 @@ func (q *QuerySet[Resource]) SpannerStmt() (*SpannerStatement, error) {
 		return q.spannerSearchStmt()
 	}
 
-	columns, err := q.Columns()
-	if err != nil {
-		return nil, errors.Wrap(err, "QuerySet.Columns()")
-	}
-
-	where, err := q.where()
-	if err != nil {
-		return nil, errors.Wrap(err, "patcher.Where()")
-	}
-
-	orderByClause, err := q.buildOrderByClause()
-	if err != nil {
-		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
-	}
-
-	var limitClause string
-	if q.limit != nil {
-		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
-	}
-
-	var offsetClause string
-	if q.offset != nil {
-		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
-	}
-
-	stmt := spanner.NewStatement(fmt.Sprintf(`
-			SELECT
-				%s
-			FROM %s
-			%s
-			%s
-			%s
-			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause, offsetClause,
-	))
-	maps.Insert(stmt.Params, maps.All(where.SpannerParams))
-
-	resolvedSQL, err := substituteSQLParams(where.SQL, where.SpannerParams, Spanner)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause")
-	}
-
-	return &SpannerStatement{resolvedWhereClause: resolvedSQL, Statement: stmt}, nil
+	return q.PostgresStmt()
 }
 
-func (q *QuerySet[Resource]) spannerSearchStmt() (*SpannerStatement, error) {
+func (q *QuerySet[Resource]) spannerSearchStmt() (*Statement, error) {
 	columns, err := q.Columns()
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.Columns()")
@@ -346,25 +303,23 @@ func (q *QuerySet[Resource]) spannerSearchStmt() (*SpannerStatement, error) {
 		return nil, err
 	}
 
-	stmt := spanner.NewStatement(fmt.Sprintf(`
+	sql := fmt.Sprintf(`
 			SELECT
 				%s
 			FROM %s
 			%s`,
-		columns, q.Resource(), search.SQL))
+		columns, q.Resource(), search.SQL)
 
-	stmt.Params = search.SpannerParams
-
-	resolvedSQL, err := substituteSQLParams(search.SQL, search.SpannerParams, Spanner)
+	resolvedSQL, err := substituteSQLParams(search.SQL, search.Params)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause")
 	}
 
-	return &SpannerStatement{resolvedWhereClause: resolvedSQL, Statement: stmt}, nil
+	return &Statement{resolvedWhereClause: resolvedSQL, SQL: sql, Params: search.Params}, nil
 }
 
 // PostgresStmt builds a PostgreSQL SQL statement from the QuerySet.
-func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
+func (q *QuerySet[Resource]) PostgresStmt() (*Statement, error) {
 	if q.rMeta.dbType != PostgresDBType {
 		return nil, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", PostgresDBType, q.rMeta.dbType)
 	}
@@ -404,16 +359,12 @@ func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause, offsetClause,
 	)
 
-	resolvedSQL, err := substituteSQLParams(where.SQL, where.PostgreSQLParams, PostgreSQL)
+	resolvedSQL, err := substituteSQLParams(where.SQL, where.Params)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause")
 	}
 
-	return &PostgresStatement{
-		resolvedWhereClause: resolvedSQL,
-		SQL:                 sql,
-		Params:              where.PostgreSQLParams,
-	}, nil
+	return &Statement{resolvedWhereClause: resolvedSQL, SQL: sql, Params: where.Params}, nil
 }
 
 // Read executes the query and returns a single result.
@@ -430,7 +381,7 @@ func (q *QuerySet[Resource]) Read(ctx context.Context, db Reader) (*Resource, er
 		}
 
 		dst := new(Resource)
-		if err := spxscan.Get(ctx, db.SpannerReadTransaction(), dst, stmt.Statement); err != nil {
+		if err := spxscan.Get(ctx, db.SpannerReadTransaction(), dst, stmt.SpannerStatement()); err != nil {
 			if errors.Is(err, spxscan.ErrNotFound) {
 				return nil, httpio.NewNotFoundMessagef("%s (%s) not found", q.Resource(), stmt.resolvedWhereClause)
 			}
@@ -464,7 +415,7 @@ func (q *QuerySet[Resource]) List(ctx context.Context, db Reader) iter.Seq2[*Res
 				return
 			}
 
-			for r, err := range spxscan.SelectSeq[Resource](ctx, db.SpannerReadTransaction(), stmt.Statement) {
+			for r, err := range spxscan.SelectSeq[Resource](ctx, db.SpannerReadTransaction(), stmt.SpannerStatement()) {
 				if !yield(r, err) {
 					return
 				}

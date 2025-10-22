@@ -56,12 +56,12 @@ func (s Search) spannerStmt() (Statement, error) {
 		}
 
 		sql := fmt.Sprintf("WHERE %s\nORDER BY %s", searchStatement.SQL, scoreStatement.SQL)
-		params := make(map[string]any, len(searchStatement.SpannerParams)+len(scoreStatement.SpannerParams))
+		params := make(map[string]any, len(searchStatement.Params)+len(scoreStatement.Params))
 
-		maps.Insert(params, maps.All(searchStatement.SpannerParams))
-		maps.Insert(params, maps.All(scoreStatement.SpannerParams))
+		maps.Insert(params, maps.All(searchStatement.Params))
+		maps.Insert(params, maps.All(scoreStatement.Params))
 
-		return Statement{SQL: sql, SpannerParams: params}, nil
+		return Statement{SQL: sql, Params: params}, nil
 	case FullText, Ngram:
 		return Statement{}, errors.Newf("%s search is not yet implemented", s.typ)
 	default:
@@ -91,8 +91,8 @@ func (s Search) parseToSearchSubstring() (Statement, error) {
 	sql := strings.Join(exprs, " OR ")
 
 	return Statement{
-		SQL:           sql,
-		SpannerParams: params,
+		SQL:    sql,
+		Params: params,
 	}, nil
 }
 
@@ -117,7 +117,7 @@ func (s Search) parseToNgramScore() (Statement, error) {
 	sql := strings.Join(exprs, " + ")
 
 	return Statement{
-		SQL:           sql,
-		SpannerParams: params,
+		SQL:    sql,
+		Params: params,
 	}, nil
 }

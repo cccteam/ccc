@@ -15,6 +15,7 @@ type UserPermissions interface {
 	User() accesstypes.User
 }
 
+// SpannerQuerier is an interface for querying Spanner.
 type SpannerQuerier interface {
 	Query(ctx context.Context, statement spanner.Statement) *spanner.RowIterator
 }

@@ -590,7 +590,7 @@ func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn *ReadWrite
 		if err != nil {
 			return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
 		}
-		if err := spxscan.Get(ctx, txn.spanner, oldValues, stmt.Statement); err != nil {
+		if err := spxscan.Get(ctx, txn.spanner, oldValues, stmt.SpannerStatement()); err != nil {
 			if errors.Is(err, spxscan.ErrNotFound) {
 				return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), stmt.resolvedWhereClause)
 			}
@@ -625,7 +625,7 @@ func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn *ReadWriteTr
 		if err != nil {
 			return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")
 		}
-		if err := spxscan.Get(ctx, txn.spanner, oldValues, stmt.Statement); err != nil {
+		if err := spxscan.Get(ctx, txn.spanner, oldValues, stmt.SpannerStatement()); err != nil {
 			if errors.Is(err, spxscan.ErrNotFound) {
 				return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), stmt.resolvedWhereClause)
 			}

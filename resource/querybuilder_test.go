@@ -118,32 +118,31 @@ func Test_QueryClause(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		filter       *testQuery
-		wantSQL      string
-		wantSpParams map[string]any
-		wantPgParams []any
-		wantErr      bool
+		name       string
+		filter     *testQuery
+		wantSQL    string
+		wantParams map[string]any
+		wantErr    bool
 	}{
 		{
 			name:    "basic output spanner",
 			filter:  newTestQuery(SpannerDBType).Where(newTestQueryFilter().Name().Equal("test")),
 			wantSQL: "`Name` = @p1",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": "test",
 			},
 		},
 		{
-			name:         "basic output pg",
-			filter:       newTestQuery(PostgresDBType).Where(newTestQueryFilter().Name().Equal("test")),
-			wantSQL:      `"Name" = $1`,
-			wantPgParams: []any{"test"},
+			name:       "basic output pg",
+			filter:     newTestQuery(PostgresDBType).Where(newTestQueryFilter().Name().Equal("test")),
+			wantSQL:    `"Name" = @p1`,
+			wantParams: map[string]any{"p1": "test"},
 		},
 		{
 			name:    "AND has higher precedence than OR spanner",
 			filter:  newTestQuery(SpannerDBType).Where(newTestQueryFilter().ID().NotEqual(1).Or().ID().GreaterThan(1).And().Name().Equal("test")),
 			wantSQL: "`ID` <> @p1 OR `ID` > @p2 AND `Name` = @p3",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": 1,
 				"p2": 1,
 				"p3": "test",
@@ -153,7 +152,7 @@ func Test_QueryClause(t *testing.T) {
 			name:    "AND has same precedence as Group spanner",
 			filter:  newTestQuery(SpannerDBType).Where(newTestQueryFilter().Group(newTestQueryFilter().ID().Equal(10).Or().ID().GreaterThan(2)).And().Name().Equal("test")),
 			wantSQL: "(`ID` = @p1 OR `ID` > @p2) AND `Name` = @p3",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": 10,
 				"p2": 2,
 				"p3": "test",
@@ -163,7 +162,7 @@ func Test_QueryClause(t *testing.T) {
 			name:    "multiple AND's has higher precedence as OR spanner",
 			filter:  newTestQuery(SpannerDBType).Where(newTestQueryFilter().ID().Equal(10).And().Name().Equal("test").Or().ID().GreaterThan(2)),
 			wantSQL: "`ID` = @p1 AND `Name` = @p2 OR `ID` > @p3",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": 10,
 				"p2": "test",
 				"p3": 2,
@@ -173,29 +172,29 @@ func Test_QueryClause(t *testing.T) {
 			name:    "Group later in expression spanner",
 			filter:  newTestQuery(SpannerDBType).Where(newTestQueryFilter().ID().Equal(10).And().Group(newTestQueryFilter().Name().Equal("test").Or().ID().GreaterThan(2))),
 			wantSQL: "`ID` = @p1 AND (`Name` = @p2 OR `ID` > @p3)",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": 10,
 				"p2": "test",
 				"p3": 2,
 			},
 		},
 		{
-			name:         "IS NULL check spanner",
-			filter:       newTestQuery(SpannerDBType).Where(newTestQueryFilter().Name().IsNull()),
-			wantSQL:      "`Name` IS NULL",
-			wantSpParams: map[string]any{},
+			name:       "IS NULL check spanner",
+			filter:     newTestQuery(SpannerDBType).Where(newTestQueryFilter().Name().IsNull()),
+			wantSQL:    "`Name` IS NULL",
+			wantParams: map[string]any{},
 		},
 		{
-			name:         "IS NOT NULL check spanner",
-			filter:       newTestQuery(SpannerDBType).Where(newTestQueryFilter().Name().IsNotNull()),
-			wantSQL:      "`Name` IS NOT NULL",
-			wantSpParams: map[string]any{},
+			name:       "IS NOT NULL check spanner",
+			filter:     newTestQuery(SpannerDBType).Where(newTestQueryFilter().Name().IsNotNull()),
+			wantSQL:    "`Name` IS NOT NULL",
+			wantParams: map[string]any{},
 		},
 		{
 			name:    "basic output with NOT NULL spanner",
 			filter:  newTestQuery(SpannerDBType).Where(newTestQueryFilter().Name().Equal("test").And().Name().IsNotNull()),
 			wantSQL: "`Name` = @p1 AND `Name` IS NOT NULL",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": "test",
 			},
 		},
@@ -203,7 +202,7 @@ func Test_QueryClause(t *testing.T) {
 			name:    "GreaterThanEq spanner",
 			filter:  newTestQuery(SpannerDBType).Where(newTestQueryFilter().ID().GreaterThanEq(5)),
 			wantSQL: "`ID` >= @p1",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": 5,
 			},
 		},
@@ -211,7 +210,7 @@ func Test_QueryClause(t *testing.T) {
 			name:    "LessThan spanner",
 			filter:  newTestQuery(SpannerDBType).Where(newTestQueryFilter().ID().LessThan(10)),
 			wantSQL: "`ID` < @p1",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": 10,
 			},
 		},
@@ -219,7 +218,7 @@ func Test_QueryClause(t *testing.T) {
 			name:    "LessThanEq spanner",
 			filter:  newTestQuery(SpannerDBType).Where(newTestQueryFilter().ID().LessThanEq(15)),
 			wantSQL: "`ID` <= @p1",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": 15,
 			},
 		},
@@ -227,7 +226,7 @@ func Test_QueryClause(t *testing.T) {
 			name:    "IN clause with multiple integer values spanner",
 			filter:  newTestQuery(SpannerDBType).Where(newTestQueryFilter().ID().Equal(5, 6, 7)),
 			wantSQL: "`ID` IN (@p1, @p2, @p3)",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": 5,
 				"p2": 6,
 				"p3": 7,
@@ -237,7 +236,7 @@ func Test_QueryClause(t *testing.T) {
 			name:    "NOT IN clause with multiple string values spanner",
 			filter:  newTestQuery(SpannerDBType).Where(newTestQueryFilter().Name().NotEqual("abc", "def")),
 			wantSQL: "`Name` NOT IN (@p1, @p2)",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": "abc",
 				"p2": "def",
 			},
@@ -248,7 +247,7 @@ func Test_QueryClause(t *testing.T) {
 				newTestQueryFilter().Group(newTestQueryFilter().ID().Equal(1).And().Name().Equal("X")).Or().Group(newTestQueryFilter().ID().Equal(2).Or().Group(newTestQueryFilter().Name().Equal("Y").And().ID().Equal(3))),
 			),
 			wantSQL: "(`ID` = @p1 AND `Name` = @p2) OR (`ID` = @p3 OR (`Name` = @p4 AND `ID` = @p5))",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1": 1,
 				"p2": "X",
 				"p3": 2,
@@ -257,16 +256,16 @@ func Test_QueryClause(t *testing.T) {
 			},
 		},
 		{
-			name:         "nil whereClause (no .Where called) spanner",
-			filter:       newTestQuery(SpannerDBType),
-			wantSQL:      "", // Empty SQL for nil expression
-			wantSpParams: map[string]any{},
+			name:       "nil whereClause (no .Where called) spanner",
+			filter:     newTestQuery(SpannerDBType),
+			wantSQL:    "", // Empty SQL for nil expression
+			wantParams: map[string]any{},
 		},
 		{
-			name:         "whereClause with nil tree spanner",
-			filter:       newTestQuery(SpannerDBType).Where(testQueryExpr{expr: QueryClause{tree: nil, hasIndexedField: true}}),
-			wantSQL:      "", // Empty SQL for nil expression
-			wantSpParams: map[string]any{},
+			name:       "whereClause with nil tree spanner",
+			filter:     newTestQuery(SpannerDBType).Where(testQueryExpr{expr: QueryClause{tree: nil, hasIndexedField: true}}),
+			wantSQL:    "", // Empty SQL for nil expression
+			wantParams: map[string]any{},
 		},
 		{
 			name: "parameter generation with many repeated column names spanner",
@@ -285,7 +284,7 @@ func Test_QueryClause(t *testing.T) {
 					Or().ID().Equal(11),
 			),
 			wantSQL: "`ID` = @p1 OR `ID` = @p2 OR `ID` = @p3 OR `ID` = @p4 OR `ID` = @p5 OR `ID` = @p6 OR `ID` = @p7 OR `ID` = @p8 OR `ID` = @p9 OR `ID` = @p10 OR `ID` = @p11 OR `ID` = @p12",
-			wantSpParams: map[string]any{
+			wantParams: map[string]any{
 				"p1":  0,
 				"p2":  1,
 				"p3":  2,
@@ -306,17 +305,16 @@ func Test_QueryClause(t *testing.T) {
 			t.Parallel()
 
 			var gotSQL string
-			var gotSpParams map[string]any
-			var gotPgParams []any
+			var gotParams map[string]any
 			var err error
 			expressionNode := tt.filter.qSet.filterAst
 
 			dbType := tt.filter.qSet.rMeta.dbType
 			switch dbType {
 			case SpannerDBType:
-				gotSQL, gotSpParams, err = NewSpannerGenerator().GenerateSQL(expressionNode)
+				gotSQL, gotParams, err = NewSpannerGenerator().GenerateSQL(expressionNode)
 			case PostgresDBType:
-				gotSQL, gotPgParams, err = NewPostgreSQLGenerator().GenerateSQL(expressionNode)
+				gotSQL, gotParams, err = NewPostgreSQLGenerator().GenerateSQL(expressionNode)
 			case mockDBType:
 				t.Fatalf("unsupported dbType for testing: %s", dbType)
 			}
@@ -333,19 +331,19 @@ func Test_QueryClause(t *testing.T) {
 
 			switch dbType {
 			case SpannerDBType:
-				for k := range tt.wantSpParams {
-					v, ok := gotSpParams[k]
+				for k := range tt.wantParams {
+					v, ok := gotParams[k]
 					if !ok {
 						t.Errorf("wanted param %s not in output params", k)
 					}
 
-					if tt.wantSpParams[k] != v {
-						t.Errorf("value for param %s does not match: got=%v, want=%v", k, v, tt.wantSpParams[k])
+					if tt.wantParams[k] != v {
+						t.Errorf("value for param %s does not match: got=%v, want=%v", k, v, tt.wantParams[k])
 					}
 				}
 			case PostgresDBType:
-				if !reflect.DeepEqual(tt.wantPgParams, gotPgParams) {
-					t.Errorf("output params != wantParams\ngot = %v\nwant = %v", gotPgParams, tt.wantPgParams)
+				if !reflect.DeepEqual(tt.wantParams, gotParams) {
+					t.Errorf("output params != wantParams\ngot = %v\nwant = %v", gotParams, tt.wantParams)
 				}
 			case mockDBType:
 				t.Fatalf("unsupported dbType for testing: %s", dbType)
