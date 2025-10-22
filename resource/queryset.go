@@ -417,7 +417,7 @@ func (q *QuerySet[Resource]) PostgresStmt() (*PostgresStatement, error) {
 }
 
 // Read executes the query and returns a single result.
-func (q *QuerySet[Resource]) Read(ctx context.Context, db ResourceReader) (*Resource, error) {
+func (q *QuerySet[Resource]) Read(ctx context.Context, db Reader) (*Resource, error) {
 	if err := q.checkPermissions(ctx); err != nil {
 		return nil, err
 	}
@@ -447,7 +447,7 @@ func (q *QuerySet[Resource]) Read(ctx context.Context, db ResourceReader) (*Reso
 }
 
 // List executes the query and returns an iterator for the results.
-func (q *QuerySet[Resource]) List(ctx context.Context, db ResourceReader) iter.Seq2[*Resource, error] {
+func (q *QuerySet[Resource]) List(ctx context.Context, db Reader) iter.Seq2[*Resource, error] {
 	switch db.DBType() {
 	case SpannerDBType:
 		return func(yield func(*Resource, error) bool) {

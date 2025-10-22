@@ -19,8 +19,8 @@ type SpannerQuerier interface {
 	Query(ctx context.Context, statement spanner.Statement) *spanner.RowIterator
 }
 
-// ResourceReader is an interface that wraps methods for reading resources from a database.
-type ResourceReader interface {
+// Reader is an interface that wraps methods for reading resources from a database.
+type Reader interface {
 	DBType() DBType
 	SpannerReadTransaction() SpannerQuerier
 	PostgresReadTransaction()
