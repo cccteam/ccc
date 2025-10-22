@@ -106,11 +106,11 @@ func newMockReadWriteTransaction() *ReadWriteTransaction {
 	}
 }
 
-func (r *ReadWriteTransaction) dataChangeEventIndex(res accesstypes.Resource, rowId string) int {
-	indexId := fmt.Sprintf("%s_%s", res, rowId)
-	r.resourceRowIndex[indexId]++
+func (r *ReadWriteTransaction) dataChangeEventIndex(res accesstypes.Resource, rowID string) int {
+	indexID := fmt.Sprintf("%s_%s", res, rowID)
+	r.resourceRowIndex[indexID]++
 
-	return r.resourceRowIndex[indexId]
+	return r.resourceRowIndex[indexID]
 }
 
 // DBType returns the database type.

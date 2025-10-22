@@ -469,14 +469,14 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context
 		}
 	}
 
-	rowId := p.PrimaryKey().RowID()
+	rowID := p.PrimaryKey().RowID()
 	switch txn.DBType() {
 	case SpannerDBType:
 		m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
 			&DataChangeEvent{
 				TableName:   p.Resource(),
-				RowID:       rowId,
-				Sequence:    txn.dataChangeEventIndex(p.Resource(), rowId),
+				RowID:       rowID,
+				Sequence:    txn.dataChangeEventIndex(p.Resource(), rowID),
 				EventTime:   spanner.CommitTimestamp,
 				EventSource: eventSource,
 				ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
