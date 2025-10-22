@@ -317,6 +317,8 @@ func Test_QueryClause(t *testing.T) {
 				gotSQL, gotSpParams, err = NewSpannerGenerator().GenerateSQL(expressionNode)
 			case PostgresDBType:
 				gotSQL, gotPgParams, err = NewPostgreSQLGenerator().GenerateSQL(expressionNode)
+			case mockDBType:
+				t.Fatalf("unsupported dbType for testing: %s", dbType)
 			}
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("GenerateSQL() error = %v, wantErr %v", err, tt.wantErr)
@@ -345,6 +347,8 @@ func Test_QueryClause(t *testing.T) {
 				if !reflect.DeepEqual(tt.wantPgParams, gotPgParams) {
 					t.Errorf("output params != wantParams\ngot = %v\nwant = %v", gotPgParams, tt.wantPgParams)
 				}
+			case mockDBType:
+				t.Fatalf("unsupported dbType for testing: %s", dbType)
 			}
 		})
 	}

@@ -19,6 +19,8 @@ func NewSearchKeys[Req any](res Resourcer) *SearchKeys {
 		searchTypes = []SearchType{FullText, Ngram, SubString}
 	case PostgresDBType:
 		searchTypes = []SearchType{}
+	case mockDBType:
+		panic("mockDBType not supported")
 	}
 
 	keys := make(map[SearchKey]SearchType, 0)
