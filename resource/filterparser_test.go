@@ -10,17 +10,17 @@ import (
 
 // defaultTestJSONToSQLNameMap provides a standard map for most test cases.
 var defaultTestJSONToSQLNameMap = map[jsonFieldName]FilterFieldInfo{
-	"status":   {DbColumnName: "Status", Kind: reflect.String, Indexed: true},
-	"user_id":  {DbColumnName: "UserId", Kind: reflect.Int, Indexed: true},
-	"price":    {DbColumnName: "Price", Kind: reflect.Float64, Indexed: true},
-	"stock":    {DbColumnName: "Stock", Kind: reflect.Int, Indexed: true},
-	"rating":   {DbColumnName: "Rating", Kind: reflect.Int, Indexed: true},
-	"name":     {DbColumnName: "Name", Kind: reflect.String, Indexed: true},
-	"age":      {DbColumnName: "Age", Kind: reflect.Int64, Indexed: true},
-	"category": {DbColumnName: "Category", Kind: reflect.String, Indexed: true},
-	"email":    {DbColumnName: "Email", Kind: reflect.String, Indexed: true},
-	"active":   {DbColumnName: "Active", Kind: reflect.Bool, Indexed: true},
-	"field":    {DbColumnName: "Field", Kind: reflect.String, Indexed: true},
+	"status":   {dbColumnNames: map[DBType]string{SpannerDBType: "Status"}, Kind: reflect.String, Indexed: true},
+	"user_id":  {dbColumnNames: map[DBType]string{SpannerDBType: "UserId"}, Kind: reflect.Int, Indexed: true},
+	"price":    {dbColumnNames: map[DBType]string{SpannerDBType: "Price"}, Kind: reflect.Float64, Indexed: true},
+	"stock":    {dbColumnNames: map[DBType]string{SpannerDBType: "Stock"}, Kind: reflect.Int, Indexed: true},
+	"rating":   {dbColumnNames: map[DBType]string{SpannerDBType: "Rating"}, Kind: reflect.Int, Indexed: true},
+	"name":     {dbColumnNames: map[DBType]string{SpannerDBType: "Name"}, Kind: reflect.String, Indexed: true},
+	"age":      {dbColumnNames: map[DBType]string{SpannerDBType: "Age"}, Kind: reflect.Int64, Indexed: true},
+	"category": {dbColumnNames: map[DBType]string{SpannerDBType: "Category"}, Kind: reflect.String, Indexed: true},
+	"email":    {dbColumnNames: map[DBType]string{SpannerDBType: "Email"}, Kind: reflect.String, Indexed: true},
+	"active":   {dbColumnNames: map[DBType]string{SpannerDBType: "Active"}, Kind: reflect.Bool, Indexed: true},
+	"field":    {dbColumnNames: map[DBType]string{SpannerDBType: "Field"}, Kind: reflect.String, Indexed: true},
 }
 
 func TestNewLexer(t *testing.T) {
@@ -431,7 +431,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 		{
 			name:               "invalid field name with pipe - using map without the specific field",
 			filterString:       "name:eq:Test|unknown_field:eq:value",
-			customMap:          map[jsonFieldName]FilterFieldInfo{"name": {DbColumnName: "Name", Kind: reflect.String}},
+			customMap:          map[jsonFieldName]FilterFieldInfo{"name": {dbColumnNames: map[DBType]string{SpannerDBType: "Name"}, Kind: reflect.String}},
 			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
 			isHTTPError:        true,
 		},
@@ -464,7 +464,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 			name:         "unsupported value type in convertValue",
 			filterString: "unsupported_field:eq:somevalue",
 			customMap: map[jsonFieldName]FilterFieldInfo{
-				"unsupported_field": {DbColumnName: "UnsupportedField", Kind: reflect.Chan, Indexed: true},
+				"unsupported_field": {dbColumnNames: map[DBType]string{SpannerDBType: "UnsupportedField"}, Kind: reflect.Chan, Indexed: true},
 			},
 			wantErrMsgContains: "Invalid value format. The value 'somevalue' in condition 'unsupported_field:eq:somevalue' cannot be processed due to an unsupported data type: chan.",
 			isHTTPError:        true,
@@ -505,7 +505,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 			}
 
 			// Proceed to test parser.Parse() if NewParser succeeded
-			_, parseErr := parser.Parse()
+			_, parseErr := parser.Parse(SpannerDBType)
 			if tt.wantErrMsgContains == "" { // No error expected from Parse()
 				if parseErr != nil {
 					t.Errorf("parser.Parse() error = %v, want no error. Input: %q", parseErr, tt.filterString)
@@ -621,7 +621,7 @@ func TestParser_Parse_Successful(t *testing.T) {
 				t.Fatalf("NewParser() error = %v for input '%s'", err, tt.filterString)
 			}
 
-			gotNode, parseErr := parser.Parse()
+			gotNode, parseErr := parser.Parse(SpannerDBType)
 			if parseErr != nil {
 				t.Fatalf("parser.Parse() for input '%s', error = %v, want no error for successful parse tests", tt.filterString, parseErr)
 			}

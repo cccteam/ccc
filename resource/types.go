@@ -38,9 +38,9 @@ type DiffElem struct {
 
 type jsonFieldName string
 
-type cacheEntry struct {
-	index        int
-	dbColumnName string
+type dbFieldMetadata struct {
+	index      int
+	ColumnName string
 }
 
 // TypescriptData holds all the collected resource and permission information needed for TypeScript code generation.

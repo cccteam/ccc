@@ -24,7 +24,7 @@ type (
 type parsedQueryParams struct {
 	ColumnFields []accesstypes.Field
 	SortFields   []SortField
-	ParsedAST    ExpressionNode
+	FilterParser func(DBType) (ExpressionNode, error)
 	Limit        *uint64
 	Offset       *uint64
 }
@@ -98,7 +98,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
-	qSet.SetFilterAst(parsedQuery.ParsedAST)
+	qSet.SetFilterParser(parsedQuery.FilterParser)
 	qSet.SetSortFields(parsedQuery.SortFields)
 	qSet.SetLimit(parsedQuery.Limit)
 	qSet.SetOffset(parsedQuery.Offset)
@@ -133,7 +133,7 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQueryParams, error) {
 	var columnFields []accesstypes.Field
 	var sortFields []SortField
-	var parsedAST ExpressionNode
+	var filterParser func(DBType) (ExpressionNode, error)
 	var limit *uint64
 	var offset *uint64
 	var err error
@@ -183,7 +183,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 	}
 
 	if filterStr := query.Get("filter"); filterStr != "" {
-		parsedAST, err = d.parseFilterExpression(filterStr)
+		filterParser, err = d.filterExpressionParser(filterStr)
 		if err != nil {
 			return nil, err
 		}
@@ -198,7 +198,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 	return &parsedQueryParams{
 		ColumnFields: columnFields,
 		SortFields:   sortFields,
-		ParsedAST:    parsedAST,
+		FilterParser: filterParser,
 		Limit:        limit,
 		Offset:       offset,
 	}, nil
@@ -225,10 +225,6 @@ func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) 
 			if !found {
 				return nil, httpio.NewBadRequestMessagef("unknown sort field: %s", jsonFieldName)
 			}
-			// Ensure the field exists in the resource metadata
-			if _, fieldMetaExists := d.resourceSet.ResourceMetadata().fieldMap[goFieldName]; !fieldMetaExists {
-				return nil, httpio.NewBadRequestMessagef("sort field '%s' (resolved to '%s') not found in resource", jsonFieldName, goFieldName)
-			}
 
 			direction := SortAscending // Default direction
 			if len(fieldAndDir) == 2 {
@@ -249,19 +245,14 @@ func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) 
 	return sortFields, nil
 }
 
-// parseFilterExpression parses the filter string and returns an AST.
-func (d *QueryDecoder[Resource, Request]) parseFilterExpression(filterStr string) (ExpressionNode, error) {
+// filterExpressionParser returns a filter parser.
+func (d *QueryDecoder[Resource, Request]) filterExpressionParser(filterStr string) (func(DBType) (ExpressionNode, error), error) {
 	parser, err := NewFilterParser(NewFilterLexer(filterStr), d.filterParserFields)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create filter expression parser")
 	}
 
-	ast, err := parser.Parse()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse filter expression")
-	}
-
-	return ast, nil
+	return parser.Parse, nil
 }
 
 func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
@@ -305,9 +296,14 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 			return nil, errors.Newf("indexed field %s must have a json tag", goStructFieldName)
 		}
 
-		cacheEntry, found := resourceMetadata.fieldMap[accesstypes.Field(goStructFieldName)]
-		if !found {
-			return nil, errors.Newf("field %s (json: %s) not found in resource metadata", goStructFieldName, jsonFieldNameStr)
+		dbColumnNames := make(map[DBType]string)
+		for _, dbType := range dbTypes() {
+			cacheEntry, found := resourceMetadata.dbFieldMap(dbType)[accesstypes.Field(goStructFieldName)]
+			if !found {
+				continue
+			}
+
+			dbColumnNames[dbType] = cacheEntry.ColumnName
 		}
 
 		fieldType := structField.Type
@@ -318,11 +314,13 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 		}
 
 		fields[jsonFieldName(jsonFieldNameStr)] = FilterFieldInfo{
-			DbColumnName: cacheEntry.dbColumnName,
-			Kind:         fieldKind,
-			FieldType:    fieldType,
-			Indexed:      structField.Tag.Get("index") == trueStr,
-			PII:          structField.Tag.Get("pii") == trueStr,
+			JSONFieldName: jsonFieldNameStr,
+			GOFieldName:   goStructFieldName,
+			dbColumnNames: dbColumnNames,
+			Kind:          fieldKind,
+			FieldType:     fieldType,
+			Indexed:       structField.Tag.Get("index") == trueStr,
+			PII:           structField.Tag.Get("pii") == trueStr,
 		}
 	}
 

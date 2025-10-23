@@ -65,7 +65,11 @@ func (c *Client) Execute(ctx context.Context, runner TxnRunner) error {
 	case PostgresDBType:
 		panic(fmt.Sprintf("operation not implemented for database type: %s", c.dbType))
 	case mockDBType:
-		return runner.Execute(ctx, newMockReadWriteTransaction())
+		if err := runner.Execute(ctx, newMockReadWriteTransaction()); err != nil {
+			return errors.Wrap(err, "runner()")
+		}
+
+		return nil
 	default:
 		panic(fmt.Sprintf("unsupported db type: %s", c.dbType))
 	}

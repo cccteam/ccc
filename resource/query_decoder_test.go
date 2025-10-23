@@ -28,7 +28,6 @@ type TestResource struct {
 func (tr TestResource) Resource() accesstypes.Resource { return "testresources" }
 func (tr TestResource) DefaultConfig() Config {
 	return Config{
-		DBType:              SpannerDBType,
 		ChangeTrackingTable: "",
 		TrackChanges:        false,
 	}
@@ -192,7 +191,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:           "invalid filter with legacy field (now unknown param)",
 			queryValues:    url.Values{"filter": []string{"name:badop:John"}, "legacyIndexedField": []string{"value"}},
 			wantErr:        true,
-			expectedErrMsg: "unknown operator 'badop' in condition 'name:badop:John'",
+			expectedErrMsg: "unknown query parameters",
 		},
 		{
 			name:           "valid filter with unknown parameter",
@@ -427,6 +426,9 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			}
 
 			parsedQuery, err := decoder.parseQuery(tt.queryValues)
+			if err == nil && parsedQuery.FilterParser != nil {
+				_, err = parsedQuery.FilterParser(SpannerDBType)
+			}
 
 			if tt.wantErr {
 				if err == nil {
@@ -483,16 +485,26 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 
 			// Check AST string representation
 			if tt.expectedASTString != "" {
-				if parsedQuery.ParsedAST == nil {
+				if parsedQuery.FilterParser == nil {
 					if !tt.wantErr { // Only error if we didn't expect an error that might prevent AST parsing
 						t.Errorf("parsedAST is nil for test '%s', but expected AST string: %s", tt.name, tt.expectedASTString)
 					}
-				} else if actualASTString := parsedQuery.ParsedAST.String(); actualASTString != tt.expectedASTString {
-					t.Errorf("AST string representation mismatch for test '%s':\nExpected: %s\nActual:   %s", tt.name, tt.expectedASTString, actualASTString)
+				} else {
+					ast, err := parsedQuery.FilterParser(SpannerDBType)
+					if err != nil {
+						t.Fatalf("Failed to parse AST for test '%s': %v", tt.name, err)
+					}
+					if actualASTString := ast.String(); actualASTString != tt.expectedASTString {
+						t.Errorf("AST string representation mismatch for test '%s':\nExpected: %s\nActual:   %s", tt.name, tt.expectedASTString, actualASTString)
+					}
 				}
-			} else if parsedQuery != nil && parsedQuery.ParsedAST != nil && !tt.wantErr { // If no AST string is expected and no error, AST should be nil
+			} else if parsedQuery != nil && parsedQuery.FilterParser != nil && !tt.wantErr { // If no AST string is expected and no error, AST should be nil
 				if !(tt.expectConflictError && err != nil && strings.Contains(err.Error(), "cannot use 'filter' parameter")) {
-					t.Errorf("Expected nil parsedAST for test '%s' (no expected AST string and no error), got: %s", tt.name, parsedQuery.ParsedAST.String())
+					ast, err := parsedQuery.FilterParser(SpannerDBType)
+					if err != nil {
+						t.Fatalf("Failed to parse AST for test '%s': %v", tt.name, err)
+					}
+					t.Errorf("Expected nil parsedAST for test '%s' (no expected AST string and no error), got: %s", tt.name, ast.String())
 				}
 			}
 		})
@@ -624,10 +636,14 @@ func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 				if err != nil {
 					t.Errorf("Did not expect an error, got: %v", err)
 				}
-				if qSet.filterAst == nil {
+				ast, err := qSet.filterParser(SpannerDBType)
+				if err != nil {
+					t.Fatalf("Failed to parse AST from qSet: %v", err)
+				}
+				if ast == nil {
 					t.Errorf("Expected AST to be parsed, but it was nil")
-				} else if qSet.filterAst.String() != tc.expectedASTString {
-					t.Errorf("Expected AST string '%s', got '%s'", tc.expectedASTString, qSet.filterAst.String())
+				} else if ast.String() != tc.expectedASTString {
+					t.Errorf("Expected AST string '%s', got '%s'", tc.expectedASTString, ast.String())
 				}
 			}
 		})

@@ -15,6 +15,11 @@ const (
 	mockDBType DBType = "mock"
 )
 
+// dbTypes should return DBType constants for all supported databases
+func dbTypes() []DBType {
+	return []DBType{SpannerDBType, PostgresDBType}
+}
+
 // Statement is a generic container for a SQL statement and its parameters,
 // supporting both Spanner and PostgreSQL.
 type Statement struct {
@@ -25,6 +30,7 @@ type Statement struct {
 	Params              map[string]any
 }
 
+// SpannerStatement converts the generic Statement into a Spanner-specific Statement.
 func (s *Statement) SpannerStatement() spanner.Statement {
 	return spanner.Statement{
 		SQL:    s.SQL,
@@ -37,16 +43,8 @@ type Columns string
 
 // Config holds database-specific configuration for a resource.
 type Config struct {
-	DBType              DBType
 	ChangeTrackingTable string
 	TrackChanges        bool
-}
-
-// SetDBType returns a new Config with the DBType set.
-func (c Config) SetDBType(dbType DBType) Config {
-	c.DBType = dbType
-
-	return c
 }
 
 // SetChangeTrackingTable returns a new Config with the change tracking table name set.

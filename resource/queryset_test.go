@@ -20,12 +20,10 @@ func (SortTestResource) Resource() accesstypes.Resource {
 }
 
 func (s SortTestResource) DefaultConfig() Config {
-	return Config{
-		DBType: SpannerDBType,
-	}
+	return Config{}
 }
 
-func TestQuerySet_SpannerStmt_OrderBy_Limit(t *testing.T) {
+func TestQuerySet_Stmt_OrderBy_Limit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -86,17 +84,16 @@ func TestQuerySet_SpannerStmt_OrderBy_Limit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rMetaPostgres := NewMetadata[SortTestResource]()
-			rMetaPostgres.dbType = SpannerDBType
+			rMeta := NewMetadata[SortTestResource]()
 
-			qSet := NewQuerySet(rMetaPostgres)
+			qSet := NewQuerySet(rMeta)
 			qSet.AddField("ID")
 
 			qSet.SetSortFields(tt.sortFields)
 			if tt.limit != nil {
 				qSet.SetLimit(tt.limit)
 			}
-			stmt, err := qSet.Stmt()
+			stmt, err := qSet.stmt(SpannerDBType)
 
 			if tt.wantErr {
 				if err == nil {

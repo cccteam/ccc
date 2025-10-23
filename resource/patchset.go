@@ -75,8 +75,8 @@ func (p *PatchSet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource]
 }
 
 // Set adds or updates a field's value in the PatchSet.
-func (p *PatchSet[Resource]) checkPermissions(ctx context.Context) error {
-	return p.querySet.checkPermissions(ctx)
+func (p *PatchSet[Resource]) checkPermissions(ctx context.Context, dbType DBType) error {
+	return p.querySet.checkPermissions(ctx, dbType)
 }
 
 // Set adds or updates a field's value in the PatchSet.
@@ -135,8 +135,8 @@ func (p *PatchSet[Resource]) HasKey() bool {
 }
 
 // deleteQuerySet configures the internal QuerySet to select all fields for a delete operation.
-func (p *PatchSet[Resource]) deleteQuerySet() *QuerySet[Resource] {
-	for _, field := range p.querySet.rMeta.Fields() {
+func (p *PatchSet[Resource]) deleteQuerySet(dbType DBType) *QuerySet[Resource] {
+	for _, field := range p.querySet.rMeta.DBFields(dbType) {
 		p.querySet.AddField(field)
 	}
 
@@ -238,7 +238,7 @@ func (p *PatchSet[Resource]) applyDelete(ctx context.Context, s *Client, eventSo
 }
 
 func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error {
-	if err := p.checkPermissions(ctx); err != nil {
+	if err := p.checkPermissions(ctx, txn.DBType()); err != nil {
 		return err
 	}
 
@@ -269,7 +269,7 @@ func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn *ReadWriteTra
 		}
 	}
 
-	patch, err := p.Resolve()
+	patch, err := p.Resolve(txn.DBType())
 	if err != nil {
 		return errors.Wrap(err, "Resolve()")
 	}
@@ -296,7 +296,7 @@ func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn *ReadWriteTra
 }
 
 func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error {
-	if err := p.checkPermissions(ctx); err != nil {
+	if err := p.checkPermissions(ctx, txn.DBType()); err != nil {
 		return err
 	}
 
@@ -327,7 +327,7 @@ func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn *ReadWriteTra
 		}
 	}
 
-	patch, err := p.Resolve()
+	patch, err := p.Resolve(txn.DBType())
 	if err != nil {
 		return errors.Wrap(err, "Resolve()")
 	}
@@ -356,7 +356,7 @@ func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn *ReadWriteTra
 
 // bufferInsertOrUpdate buffers an insert-or-update mutation into an existing transaction buffer.
 func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error {
-	if err := p.checkPermissions(ctx); err != nil {
+	if err := p.checkPermissions(ctx, txn.DBType()); err != nil {
 		return err
 	}
 
@@ -365,7 +365,7 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn *Read
 		return err
 	}
 
-	patch, err := p.Resolve()
+	patch, err := p.Resolve(txn.DBType())
 	if err != nil {
 		return errors.Wrap(err, "Resolve()")
 	}
@@ -393,7 +393,7 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn *Read
 }
 
 func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error {
-	if err := p.checkPermissions(ctx); err != nil {
+	if err := p.checkPermissions(ctx, txn.DBType()); err != nil {
 		return err
 	}
 
@@ -586,7 +586,7 @@ func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn *ReadWrite
 
 	switch txn.DBType() {
 	case SpannerDBType:
-		stmt, err := p.querySet.Stmt()
+		stmt, err := p.querySet.stmt(txn.DBType())
 		if err != nil {
 			return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
 		}
@@ -621,7 +621,7 @@ func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn *ReadWriteTr
 
 	switch txn.DBType() {
 	case SpannerDBType:
-		stmt, err := p.deleteQuerySet().Stmt()
+		stmt, err := p.deleteQuerySet(txn.DBType()).stmt(txn.DBType())
 		if err != nil {
 			return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")
 		}
@@ -675,7 +675,7 @@ func (p *PatchSet[Resource]) deleteChangeSet(old any) (map[accesstypes.Field]Dif
 }
 
 // Resolve returns a map with the keys set to the database struct tags found on databaseType, and the values set to the values in patchSet.
-func (p *PatchSet[Resource]) Resolve() (map[string]any, error) {
+func (p *PatchSet[Resource]) Resolve(dbType DBType) (map[string]any, error) {
 	keySet := p.PrimaryKey()
 	if keySet.Len() == 0 {
 		return nil, errors.New("PatchSet must include at least one primary key in call to Resolve")
@@ -683,11 +683,11 @@ func (p *PatchSet[Resource]) Resolve() (map[string]any, error) {
 
 	newMap := make(map[string]any, p.Len()+keySet.Len())
 	for structField, value := range all(p.Data(), keySet.KeyMap()) {
-		c, ok := p.querySet.rMeta.fieldMap[structField]
+		f, ok := p.querySet.rMeta.dbFieldMap(dbType)[structField]
 		if !ok {
 			return nil, errors.Newf("field %s not found in struct", structField)
 		}
-		newMap[c.dbColumnName] = value
+		newMap[f.ColumnName] = value
 	}
 
 	return newMap, nil

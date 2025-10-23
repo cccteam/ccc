@@ -8,17 +8,17 @@ import (
 
 // sqlGeneratorTestMap provides the necessary field name mappings for these tests.
 var sqlGeneratorTestMap = map[jsonFieldName]FilterFieldInfo{
-	"status":   {DbColumnName: "Status", Kind: reflect.String, Indexed: true},
-	"user_id":  {DbColumnName: "UserId", Kind: reflect.Int, Indexed: true},
-	"price":    {DbColumnName: "Price", Kind: reflect.Float64, Indexed: true},
-	"stock":    {DbColumnName: "Stock", Kind: reflect.Int, Indexed: true},
-	"rating":   {DbColumnName: "Rating", Kind: reflect.Int, Indexed: true},
-	"name":     {DbColumnName: "Name", Kind: reflect.String, Indexed: true},
-	"age":      {DbColumnName: "Age", Kind: reflect.Int64, Indexed: true},
-	"category": {DbColumnName: "Category", Kind: reflect.String, Indexed: true},
-	"email":    {DbColumnName: "Email", Kind: reflect.String, Indexed: true},
-	"active":   {DbColumnName: "Active", Kind: reflect.Bool, Indexed: true},
-	"field":    {DbColumnName: "Field", Kind: reflect.String, Indexed: true},
+	"status":   {dbColumnNames: map[DBType]string{SpannerDBType: "Status", PostgresDBType: "Status"}, Kind: reflect.String, Indexed: true},
+	"user_id":  {dbColumnNames: map[DBType]string{SpannerDBType: "UserId", PostgresDBType: "UserId"}, Kind: reflect.Int, Indexed: true},
+	"price":    {dbColumnNames: map[DBType]string{SpannerDBType: "Price", PostgresDBType: "Price"}, Kind: reflect.Float64, Indexed: true},
+	"stock":    {dbColumnNames: map[DBType]string{SpannerDBType: "Stock", PostgresDBType: "Stock"}, Kind: reflect.Int, Indexed: true},
+	"rating":   {dbColumnNames: map[DBType]string{SpannerDBType: "Rating", PostgresDBType: "Rating"}, Kind: reflect.Int, Indexed: true},
+	"name":     {dbColumnNames: map[DBType]string{SpannerDBType: "Name", PostgresDBType: "Name"}, Kind: reflect.String, Indexed: true},
+	"age":      {dbColumnNames: map[DBType]string{SpannerDBType: "Age", PostgresDBType: "Age"}, Kind: reflect.Int64, Indexed: true},
+	"category": {dbColumnNames: map[DBType]string{SpannerDBType: "Category", PostgresDBType: "Category"}, Kind: reflect.String, Indexed: true},
+	"email":    {dbColumnNames: map[DBType]string{SpannerDBType: "Email", PostgresDBType: "Email"}, Kind: reflect.String, Indexed: true},
+	"active":   {dbColumnNames: map[DBType]string{SpannerDBType: "Active", PostgresDBType: "Active"}, Kind: reflect.Bool, Indexed: true},
+	"field":    {dbColumnNames: map[DBType]string{SpannerDBType: "Field", PostgresDBType: "Field"}, Kind: reflect.String, Indexed: true},
 }
 
 func TestSQLGenerator_GenerateSQL(t *testing.T) {
@@ -313,7 +313,15 @@ func TestSQLGenerator_GenerateSQL(t *testing.T) {
 				t.Fatalf("NewParser() error = %v, wantErr %v", err, tt.wantErrMsg)
 			}
 
-			ast, parseErr := parser.Parse()
+			var dbType DBType
+			switch tt.dialect {
+			case PostgreSQL:
+				dbType = PostgresDBType
+			case Spanner:
+				dbType = SpannerDBType
+			}
+
+			ast, parseErr := parser.Parse(dbType)
 			if tt.wantErrMsg != "" {
 				switch {
 				case parseErr == nil:

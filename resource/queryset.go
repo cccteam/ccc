@@ -27,6 +27,7 @@ type QuerySet[Resource Resourcer] struct {
 	userPermissions        UserPermissions
 	requiredPermission     accesstypes.Permission
 	filterAst              ExpressionNode
+	filterParser           func(DBType) (ExpressionNode, error)
 }
 
 // NewQuerySet creates a new, empty QuerySet for a given resource metadata.
@@ -66,11 +67,11 @@ func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource]
 	return q
 }
 
-func (q *QuerySet[Resource]) checkPermissions(ctx context.Context) error {
+func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType) error {
 	fields := q.Fields()
 
 	if len(fields) == 0 && q.returnAccessableFields {
-		return q.addAccessableFields(ctx)
+		return q.addAccessableFields(ctx, dbType)
 	}
 
 	if q.resourceSet != nil {
@@ -93,11 +94,11 @@ func (q *QuerySet[Resource]) checkPermissions(ctx context.Context) error {
 	return nil
 }
 
-func (q *QuerySet[Resource]) addAccessableFields(ctx context.Context) error {
-	fields := make([]accesstypes.Field, 0, q.rMeta.Len())
+func (q *QuerySet[Resource]) addAccessableFields(ctx context.Context, dbType DBType) error {
+	fields := make([]accesstypes.Field, 0, q.rMeta.DBFieldCount(dbType))
 
 	if q.resourceSet != nil {
-		for _, field := range q.rMeta.Fields() {
+		for _, field := range q.rMeta.DBFields(dbType) {
 			if !q.resourceSet.PermissionRequired(field, q.RequiredPermission()) {
 				fields = append(fields, field)
 			} else {
@@ -110,7 +111,7 @@ func (q *QuerySet[Resource]) addAccessableFields(ctx context.Context) error {
 		}
 	} else {
 		// If we don't have a resourceSet, just return all fields
-		fields = q.rMeta.Fields()
+		fields = q.rMeta.DBFields(dbType)
 	}
 
 	for _, field := range fields {
@@ -155,23 +156,22 @@ func (q *QuerySet[Resource]) KeySet() KeySet {
 }
 
 // Columns returns a comma-separated string of database column names for the selected fields.
-func (q *QuerySet[Resource]) buildOrderByClause() (string, error) {
+func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
 	orderByParts := make([]string, 0, len(q.sortFields))
 	for _, sf := range q.sortFields {
-		cacheEntry, ok := q.rMeta.fieldMap[accesstypes.Field(sf.Field)]
+		dbField, ok := q.rMeta.dbFieldMap(dbType)[accesstypes.Field(sf.Field)]
 		if !ok {
 			return "", errors.Newf("sort field '%s' not found in resource metadata for query", sf.Field)
 		}
-		dbColumnName := cacheEntry.dbColumnName
 
 		var quotedColumnName string
-		switch q.rMeta.dbType {
+		switch dbType {
 		case SpannerDBType:
-			quotedColumnName = fmt.Sprintf("`%s`", dbColumnName)
+			quotedColumnName = fmt.Sprintf("`%s`", dbField.ColumnName)
 		case PostgresDBType:
-			quotedColumnName = fmt.Sprintf(`"%s"`, dbColumnName)
+			quotedColumnName = fmt.Sprintf(`"%s"`, dbField.ColumnName)
 		default:
-			return "", errors.Newf("unsupported dbType for sorting: %s", q.rMeta.dbType)
+			return "", errors.Newf("unsupported dbType for sorting: %s", dbType)
 		}
 
 		directionSQL := "ASC"
@@ -187,61 +187,61 @@ func (q *QuerySet[Resource]) buildOrderByClause() (string, error) {
 	return "ORDER BY " + strings.Join(orderByParts, ", "), nil
 }
 
-// Columns returns the database struct tags for the fields in databaseType that the user has access to view.
-func (q *QuerySet[Resource]) Columns() (Columns, error) {
-	columnEntries := make([]cacheEntry, 0, q.Len())
+// columns returns the database struct tags for the fields in databaseType that the user has access to view.
+func (q *QuerySet[Resource]) columns(dbType DBType) (Columns, error) {
+	dbFields := make([]dbFieldMetadata, 0, q.Len())
 	for _, field := range q.Fields() {
-		c, ok := q.rMeta.fieldMap[field]
+		dbField, ok := q.rMeta.dbFieldMap(dbType)[field]
 		if !ok {
-			return "", errors.Newf("field %s not found in struct", field)
+			return "", errors.Newf("field %s not found in db struct", field)
 		}
 
-		columnEntries = append(columnEntries, c)
+		dbFields = append(dbFields, dbField)
 	}
-	sort.Slice(columnEntries, func(i, j int) bool {
-		return columnEntries[i].index < columnEntries[j].index
+	sort.Slice(dbFields, func(i, j int) bool {
+		return dbFields[i].index < dbFields[j].index
 	})
 
-	columns := make([]string, 0, len(columnEntries))
-	for _, c := range columnEntries {
-		columns = append(columns, c.dbColumnName)
+	columns := make([]string, 0, len(dbFields))
+	for _, dbField := range dbFields {
+		columns = append(columns, dbField.ColumnName)
 	}
 
-	switch q.rMeta.dbType {
+	switch dbType {
 	case SpannerDBType:
 		return Columns(strings.Join(columns, ", ")), nil
 	case PostgresDBType:
 		return Columns(fmt.Sprintf(`"%s"`, strings.Join(columns, `", "`))), nil
 	default:
-		return "", errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
+		return "", errors.Newf("unsupported dbType: %s", dbType)
 	}
 }
 
-func (q *QuerySet[Resource]) astWhereClause() (*Statement, error) {
-	switch q.rMeta.dbType {
+func (q *QuerySet[Resource]) astWhereClause(dbType DBType, filterAst ExpressionNode) (*Statement, error) {
+	switch dbType {
 	case SpannerDBType:
-		sql, params, err := NewSpannerGenerator().GenerateSQL(q.filterAst)
+		sql, params, err := NewSpannerGenerator().GenerateSQL(filterAst)
 		if err != nil {
 			return nil, errors.Wrap(err, "SpannerGenerator.GenerateSQL()")
 		}
 
 		return &Statement{SQL: "WHERE " + sql, Params: params}, nil
 	case PostgresDBType:
-		sql, params, err := NewPostgreSQLGenerator().GenerateSQL(q.filterAst)
+		sql, params, err := NewPostgreSQLGenerator().GenerateSQL(filterAst)
 		if err != nil {
 			return nil, errors.Wrap(err, "PostgreSQLGenerator.GenerateSQL()")
 		}
 
 		return &Statement{SQL: "WHERE " + sql, Params: params}, nil
+	default:
+		return nil, errors.Newf("unsupported dbType: %s", dbType)
 	}
-
-	return nil, errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
 }
 
 // where translates the the fields to database struct tags in databaseType when building the where clause
-func (q *QuerySet[Resource]) where() (*Statement, error) {
-	if q.filterAst != nil {
-		return q.astWhereClause()
+func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*Statement, error) {
+	if filterAst != nil {
+		return q.astWhereClause(dbType, filterAst)
 	}
 
 	parts := q.KeySet().Parts()
@@ -252,20 +252,19 @@ func (q *QuerySet[Resource]) where() (*Statement, error) {
 	builder := strings.Builder{}
 	params := make(map[string]any, len(parts))
 	for _, part := range parts {
-		c, ok := q.rMeta.fieldMap[part.Key]
+		f, ok := q.rMeta.dbFieldMap(dbType)[part.Key]
 		if !ok {
 			return nil, errors.Newf("field %s not found in struct", part.Key)
 		}
-		key := c.dbColumnName
-		switch q.rMeta.dbType {
+		switch dbType {
 		case SpannerDBType:
-			builder.WriteString(fmt.Sprintf(" AND `%s` = @%s", key, strings.ToLower(key)))
+			builder.WriteString(fmt.Sprintf(" AND `%s` = @%s", f.ColumnName, strings.ToLower(f.ColumnName)))
 		case PostgresDBType:
-			builder.WriteString(fmt.Sprintf(` AND "%s" = @%s`, key, strings.ToLower(key)))
+			builder.WriteString(fmt.Sprintf(` AND "%s" = @%s`, f.ColumnName, strings.ToLower(f.ColumnName)))
 		default:
-			return nil, errors.Newf("unsupported dbType: %s", q.rMeta.dbType)
+			return nil, errors.Newf("unsupported dbType: %s", dbType)
 		}
-		params[strings.ToLower(key)] = part.Value
+		params[strings.ToLower(f.ColumnName)] = part.Value
 	}
 
 	return &Statement{
@@ -274,23 +273,28 @@ func (q *QuerySet[Resource]) where() (*Statement, error) {
 	}, nil
 }
 
-// Stmt builds a Spanner SQL statement from the QuerySet.
-func (q *QuerySet[Resource]) Stmt() (*Statement, error) {
-	if moreThan(1, q.KeySet().Len() != 0, q.filterAst != nil) {
+// stmt builds a Spanner SQL statement from the QuerySet.
+func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
+	filterAst, err := q.FilterAst(dbType)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.FilterAst()")
+	}
+
+	if moreThan(1, q.KeySet().Len() != 0, filterAst != nil) {
 		return nil, httpio.NewBadRequestMessage("cannot use multiple sources for WHERE clause together (e.g. QueryClause and KeySet)")
 	}
 
-	columns, err := q.Columns()
+	columns, err := q.columns(dbType)
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	where, err := q.where()
+	where, err := q.where(dbType, filterAst)
 	if err != nil {
 		return nil, errors.Wrap(err, "patcher.Where()")
 	}
 
-	orderByClause, err := q.buildOrderByClause()
+	orderByClause, err := q.buildOrderByClause(dbType)
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
@@ -325,13 +329,13 @@ func (q *QuerySet[Resource]) Stmt() (*Statement, error) {
 
 // Read executes the query and returns a single result.
 func (q *QuerySet[Resource]) Read(ctx context.Context, db Reader) (*Resource, error) {
-	if err := q.checkPermissions(ctx); err != nil {
+	if err := q.checkPermissions(ctx, db.DBType()); err != nil {
 		return nil, err
 	}
 
 	switch db.DBType() {
 	case SpannerDBType:
-		stmt, err := q.Stmt()
+		stmt, err := q.stmt(db.DBType())
 		if err != nil {
 			return nil, errors.Wrap(err, "patcher.Stmt()")
 		}
@@ -358,13 +362,13 @@ func (q *QuerySet[Resource]) List(ctx context.Context, db Reader) iter.Seq2[*Res
 	switch db.DBType() {
 	case SpannerDBType:
 		return func(yield func(*Resource, error) bool) {
-			if err := q.checkPermissions(ctx); err != nil {
+			if err := q.checkPermissions(ctx, db.DBType()); err != nil {
 				yield(nil, err)
 
 				return
 			}
 
-			stmt, err := q.Stmt()
+			stmt, err := q.stmt(db.DBType())
 			if err != nil {
 				yield(nil, errors.Wrap(err, "patcher.Stmt()"))
 
@@ -392,6 +396,25 @@ func (q *QuerySet[Resource]) SetWhereClause(qc QueryClause) {
 // SetFilterAst sets the filter condition for the query using a raw expression tree.
 func (q *QuerySet[Resource]) SetFilterAst(ast ExpressionNode) {
 	q.filterAst = ast
+}
+
+// FilterAst returns the filter AST for the query.
+func (q *QuerySet[Resource]) FilterAst(dbType DBType) (ExpressionNode, error) {
+	if q.filterAst == nil && q.filterParser != nil {
+		filterAst, err := q.filterParser(dbType)
+		if err != nil {
+			return nil, errors.Wrap(err, "filterParser()")
+		}
+
+		return filterAst, nil
+	}
+
+	return q.filterAst, nil
+}
+
+// SetFilterParser sets the filter parser.
+func (q *QuerySet[Resource]) SetFilterParser(parser func(DBType) (ExpressionNode, error)) {
+	q.filterParser = parser
 }
 
 // SetSortFields sets the sorting order for the query results.
