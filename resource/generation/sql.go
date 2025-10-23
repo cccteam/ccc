@@ -2,7 +2,6 @@ package generation
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/cloudspannerecosystem/memefish"
@@ -248,74 +247,6 @@ func viewColumnNullability(schemaMetadata map[string]*tableMetadata, viewColumns
 		viewColumn := schemaMetadata[viewColumns[i].TableName].Columns[viewColumns[i].ColumnName]
 		viewColumn.IsNullable = sourceColumn.IsNullable
 		schemaMetadata[viewColumns[i].TableName].Columns[viewColumns[i].ColumnName] = viewColumn
-	}
-
-	return schemaMetadata, nil
-}
-
-func tokenListSearchIndexes(schemaMetadata map[string]*tableMetadata, tokenLists []*informationSchemaResult) (map[string]*tableMetadata, error) {
-	viewAstMap := make(map[string]*ast.Select)
-	for i := range tokenLists {
-		if tokenLists[i].SpannerType != "TOKENLIST" {
-			continue
-		}
-
-		table := schemaMetadata[tokenLists[i].TableName]
-
-		var generationExpr string
-		switch {
-		// If the TokenList column is in a View, we don't have direct access to
-		// the generation expression. We need to grab the source table's name from
-		// the view definition then find it in the information schema tokenLists.
-		case tokenLists[i].IsView:
-			if _, ok := viewAstMap[tokenLists[i].TableName]; !ok {
-				stmt, err := memefish.ParseQuery("", *tokenLists[i].ViewDefinition)
-				if err != nil {
-					return nil, errors.Wrap(err, "memefish.ParseQuery()")
-				}
-
-				switch t := stmt.Query.(type) {
-				case *ast.Select:
-					viewAstMap[tokenLists[i].TableName] = t
-				case *ast.Query:
-					s, ok := t.Query.(*ast.Select)
-					if !ok {
-						return nil, errors.Newf("could not cast %T to *ast.Select", stmt.Query)
-					}
-
-					viewAstMap[tokenLists[i].TableName] = s
-				default:
-					return nil, errors.Newf("unknown *ast.QueryStatement.Query type (%T)", t)
-				}
-			}
-
-			sourceTableName, err := originTableName(viewAstMap[tokenLists[i].TableName], tokenLists[i].ColumnName)
-			if err != nil {
-				return nil, err
-			}
-
-			sourceTableIndex := slices.IndexFunc(tokenLists, func(e *informationSchemaResult) bool {
-				return e.TableName == sourceTableName && e.ColumnName == tokenLists[i].ColumnName
-			})
-			if sourceTableIndex < 0 {
-				return nil, errors.Newf("could not find source table %q for TOKENLIST column %q in %q", sourceTableName, tokenLists[i].ColumnName, tokenLists[i].TableName)
-			}
-
-			generationExpr = *tokenLists[sourceTableIndex].GenerationExpression
-
-		case tokenLists[i].GenerationExpression == nil:
-			return nil, errors.Newf("generation expression not found for tokenlist column=`%s` table=`%s`", tokenLists[i].ColumnName, tokenLists[i].TableName)
-
-		default:
-			generationExpr = *tokenLists[i].GenerationExpression
-		}
-
-		expressionFields, err := searchExpressionFields(generationExpr, table.Columns)
-		if err != nil {
-			return nil, errors.Wrapf(err, "searchExpressionFields table=`%s`", tokenLists[i].TableName)
-		}
-
-		table.SearchIndexes[tokenLists[i].ColumnName] = append(table.SearchIndexes[tokenLists[i].ColumnName], expressionFields...)
 	}
 
 	return schemaMetadata, nil

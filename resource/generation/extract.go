@@ -25,7 +25,6 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 			TypeInfo:       pStruct.TypeInfo,
 			Fields:         make([]*resourceField, 0, len(pStruct.Fields())),
 			IsView:         table.IsView,
-			searchIndexes:  table.SearchIndexes,
 			IsConsolidated: !table.IsView && c.IsConsolidated(resourceName),
 			PkCount:        table.PkCount,
 		}

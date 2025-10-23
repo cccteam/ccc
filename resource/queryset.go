@@ -17,7 +17,6 @@ import (
 // QuerySet represents a query for a resource, including fields, keys, filters, and permissions.
 type QuerySet[Resource Resourcer] struct {
 	keys                   *fieldSet
-	search                 *Search
 	fields                 []accesstypes.Field
 	sortFields             []SortField
 	limit                  *uint64
@@ -275,53 +274,10 @@ func (q *QuerySet[Resource]) where() (*Statement, error) {
 	}, nil
 }
 
-// SpannerStmt builds a Spanner SQL statement from the QuerySet.
-func (q *QuerySet[Resource]) SpannerStmt() (*Statement, error) {
-	if q.rMeta.dbType != SpannerDBType {
-		return nil, errors.Newf("can only use SpannerStmt() with dbType %s, got %s", SpannerDBType, q.rMeta.dbType)
-	}
-
-	if moreThan(1, q.KeySet().Len() != 0, q.search != nil, q.filterAst != nil) {
-		return nil, httpio.NewBadRequestMessage("cannot use multiple sources for WHERE clause together (e.g. QueryClause, KeySet, and Search)")
-	}
-
-	if q.search != nil {
-		return q.spannerSearchStmt()
-	}
-
-	return q.PostgresStmt()
-}
-
-func (q *QuerySet[Resource]) spannerSearchStmt() (*Statement, error) {
-	columns, err := q.Columns()
-	if err != nil {
-		return nil, errors.Wrap(err, "QuerySet.Columns()")
-	}
-
-	search, err := q.search.spannerStmt()
-	if err != nil {
-		return nil, err
-	}
-
-	sql := fmt.Sprintf(`
-			SELECT
-				%s
-			FROM %s
-			%s`,
-		columns, q.Resource(), search.SQL)
-
-	resolvedSQL, err := substituteSQLParams(search.SQL, search.Params)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause")
-	}
-
-	return &Statement{resolvedWhereClause: resolvedSQL, SQL: sql, Params: search.Params}, nil
-}
-
-// PostgresStmt builds a PostgreSQL SQL statement from the QuerySet.
-func (q *QuerySet[Resource]) PostgresStmt() (*Statement, error) {
-	if q.rMeta.dbType != PostgresDBType {
-		return nil, errors.Newf("can only use PostgresStmt() with dbType %s, got %s", PostgresDBType, q.rMeta.dbType)
+// Stmt builds a Spanner SQL statement from the QuerySet.
+func (q *QuerySet[Resource]) Stmt() (*Statement, error) {
+	if moreThan(1, q.KeySet().Len() != 0, q.filterAst != nil) {
+		return nil, httpio.NewBadRequestMessage("cannot use multiple sources for WHERE clause together (e.g. QueryClause and KeySet)")
 	}
 
 	columns, err := q.Columns()
@@ -375,7 +331,7 @@ func (q *QuerySet[Resource]) Read(ctx context.Context, db Reader) (*Resource, er
 
 	switch db.DBType() {
 	case SpannerDBType:
-		stmt, err := q.SpannerStmt()
+		stmt, err := q.Stmt()
 		if err != nil {
 			return nil, errors.Wrap(err, "patcher.Stmt()")
 		}
@@ -408,7 +364,7 @@ func (q *QuerySet[Resource]) List(ctx context.Context, db Reader) iter.Seq2[*Res
 				return
 			}
 
-			stmt, err := q.SpannerStmt()
+			stmt, err := q.Stmt()
 			if err != nil {
 				yield(nil, errors.Wrap(err, "patcher.Stmt()"))
 
@@ -426,11 +382,6 @@ func (q *QuerySet[Resource]) List(ctx context.Context, db Reader) iter.Seq2[*Res
 	default:
 		panic(fmt.Sprintf("unsupported db type: %s", db.DBType()))
 	}
-}
-
-// SetSearchParam sets the search parameters for the query.
-func (q *QuerySet[Resource]) SetSearchParam(search *Search) {
-	q.search = search
 }
 
 // SetWhereClause sets the filter condition for the query using a QueryClause.

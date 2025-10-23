@@ -35,7 +35,7 @@ func (tr TestResource) DefaultConfig() Config {
 }
 
 type TestRequest struct {
-	Name               string   `json:"name"               index:"true" substring:"SearchTokens"`
+	Name               string   `json:"name"               index:"true"`
 	Age                int      `json:"age"                index:"true"`
 	Status             string   `json:"status"`
 	Email              *string  `json:"email"              index:"true"`
@@ -161,20 +161,6 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			},
 		},
 		{
-			name:        "valid search",
-			queryValues: url.Values{"SearchTokens": []string{"find this and this"}},
-			wantErr:     false,
-			expectedResult: &parsedQueryParams{
-				Search: &Search{
-					typ: SubString,
-					values: map[SearchKey]string{
-						"SearchTokens": "find this and this",
-					},
-				},
-				Limit: ccc.Ptr(uint64(50)),
-			},
-		},
-		{
 			name:           "invalid filter only",
 			queryValues:    url.Values{"filter": []string{"name:badop:John"}},
 			wantErr:        true,
@@ -199,12 +185,6 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			queryValues:    url.Values{"filter": []string{"name:eq:John"}, "legacyIndexedField": []string{"value"}},
 			wantErr:        true,
 			expectedErrMsg: "unknown query parameters",
-		},
-		{
-			name:           "filter with search parameter",
-			queryValues:    url.Values{"filter": []string{"name:eq:John"}, "SearchTokens": []string{"find this and this"}},
-			wantErr:        true,
-			expectedErrMsg: "cannot use 'filter' parameter alongside 'search' parameter",
 		},
 
 		// Interaction and error propagation
@@ -403,12 +383,6 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			expectedErrMsg: "invalid sort direction for field 'name': invalid. Must be 'asc' or 'desc'",
 		},
 		{
-			name:           "sort with search parameter",
-			queryValues:    url.Values{"sort": []string{"name:asc"}, "SearchTokens": []string{"find this"}},
-			wantErr:        true,
-			expectedErrMsg: "sorting ('sort=' parameter) cannot be used in conjunction with search parameters",
-		},
-		{
 			name:           "sort empty parameter",
 			queryValues:    url.Values{"sort": []string{""}},
 			wantErr:        true,
@@ -503,25 +477,6 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 					isNilOrEmpty := func(s []accesstypes.Field) bool { return len(s) == 0 }
 					if !(tt.wantErr && isNilOrEmpty(tt.expectedResult.ColumnFields) && isNilOrEmpty(parsedQuery.ColumnFields)) {
 						t.Errorf("ColumnFields mismatch for test '%s':\nExpected: %#v\nActual:   %#v", tt.name, tt.expectedResult.ColumnFields, parsedQuery.ColumnFields)
-					}
-				}
-
-				if tt.expectedResult.Search != nil {
-					if parsedQuery.Search == nil {
-						if !tt.wantErr {
-							t.Errorf("searchSet is nil for test '%s', but expected: %#v", tt.name, tt.expectedResult.Search)
-						}
-					} else {
-						if tt.expectedResult.Search.typ != parsedQuery.Search.typ {
-							t.Errorf("FilterSet Type mismatch for test '%s':\nExpected: %v\nActual:   %v", tt.name, tt.expectedResult.Search.typ, parsedQuery.Search.typ)
-						}
-						if !reflect.DeepEqual(tt.expectedResult.Search.values, parsedQuery.Search.values) {
-							t.Errorf("FilterSet Values mismatch for test '%s':\nExpected: %#v\nActual:   %#v", tt.name, tt.expectedResult.Search.values, parsedQuery.Search.values)
-						}
-					}
-				} else if parsedQuery.Search != nil && !tt.wantErr {
-					if !(tt.expectConflictError && err != nil && strings.Contains(err.Error(), "cannot use 'filter' parameter")) {
-						t.Errorf("searchSet should be nil for test '%s', got: %#v", tt.name, parsedQuery.Search)
 					}
 				}
 			}

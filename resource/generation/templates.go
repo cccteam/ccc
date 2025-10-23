@@ -73,18 +73,6 @@ func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.ResolvedTy
 {{ end }}
 {{ end }}
 
-{{ if ne (len .Resource.SearchIndexes) 0 }}
-{{ $resource := .Resource }}
-{{ range $searchIndex := .Resource.SearchIndexes }}
-func (q *{{ $resource.Name }}Query) SearchBy{{ $searchIndex.Name }}(v string) *{{ $resource.Name }}Query {
-	searchSet := resource.NewSearch({{ ResourceSearchType $searchIndex.SearchType }}, map[resource.SearchKey]string{"{{ $searchIndex.Name }}": v})
-	q.qSet.SetSearchParam(searchSet)
-
-	return q
-}
-{{ end }}
-{{ end }}
-
 func (q *{{ .Resource.Name }}Query) Query() *resource.QuerySet[{{ .Resource.Name }}] {
 	return q.qSet
 }
@@ -513,7 +501,7 @@ import (
 	listTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.ListPermTag }} {{ $field.SearchIndexTags }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.ListPermTag }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
@@ -557,7 +545,7 @@ import (
 	readTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.SearchIndexTags }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 

@@ -586,7 +586,7 @@ func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn *ReadWrite
 
 	switch txn.DBType() {
 	case SpannerDBType:
-		stmt, err := p.querySet.SpannerStmt()
+		stmt, err := p.querySet.Stmt()
 		if err != nil {
 			return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
 		}
@@ -621,7 +621,7 @@ func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn *ReadWriteTr
 
 	switch txn.DBType() {
 	case SpannerDBType:
-		stmt, err := p.deleteQuerySet().SpannerStmt()
+		stmt, err := p.deleteQuerySet().Stmt()
 		if err != nil {
 			return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")
 		}

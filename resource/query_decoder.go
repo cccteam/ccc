@@ -24,7 +24,6 @@ type (
 type parsedQueryParams struct {
 	ColumnFields []accesstypes.Field
 	SortFields   []SortField
-	Search       *Search
 	ParsedAST    ExpressionNode
 	Limit        *uint64
 	Offset       *uint64
@@ -37,7 +36,6 @@ type filterBody struct {
 // QueryDecoder is a struct that returns columns that a given user has access to view
 type QueryDecoder[Resource Resourcer, Request any] struct {
 	requestFieldMapper *RequestFieldMapper
-	searchKeys         *SearchKeys
 	resourceSet        *Set[Resource]
 	filterParserFields map[jsonFieldName]FilterFieldInfo
 	structDecoder      *StructDecoder[filterBody]
@@ -46,7 +44,6 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 // NewQueryDecoder creates a new QueryDecoder for a given Resource and Request type.
 func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*QueryDecoder[Resource, Request], error) {
 	var req Request
-	var res Resource
 
 	mapper, err := NewRequestFieldMapper(req)
 	if err != nil {
@@ -65,7 +62,6 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 
 	return &QueryDecoder[Resource, Request]{
 		requestFieldMapper: mapper,
-		searchKeys:         NewSearchKeys[Request](res),
 		resourceSet:        resSet,
 		filterParserFields: filterParserFields,
 		structDecoder:      structDecoder,
@@ -103,7 +99,6 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
 	qSet.SetFilterAst(parsedQuery.ParsedAST)
-	qSet.SetSearchParam(parsedQuery.Search)
 	qSet.SetSortFields(parsedQuery.SortFields)
 	qSet.SetLimit(parsedQuery.Limit)
 	qSet.SetOffset(parsedQuery.Offset)
@@ -138,7 +133,6 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQueryParams, error) {
 	var columnFields []accesstypes.Field
 	var sortFields []SortField
-	var search *Search
 	var parsedAST ExpressionNode
 	var limit *uint64
 	var offset *uint64
@@ -197,19 +191,6 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		delete(query, "filter")
 	}
 
-	search, query, err = d.parseSearchParam(query)
-	if err != nil {
-		return nil, err
-	}
-
-	if parsedAST != nil && search != nil {
-		return nil, httpio.NewBadRequestMessagef("cannot use 'filter' parameter alongside 'search' parameter")
-	}
-
-	if search != nil && len(sortFields) > 0 {
-		return nil, httpio.NewBadRequestMessage("sorting ('sort=' parameter) cannot be used in conjunction with search parameters")
-	}
-
 	if len(query) > 0 {
 		return nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
 	}
@@ -217,7 +198,6 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 	return &parsedQueryParams{
 		ColumnFields: columnFields,
 		SortFields:   sortFields,
-		Search:       search,
 		ParsedAST:    parsedAST,
 		Limit:        limit,
 		Offset:       offset,
@@ -282,43 +262,6 @@ func (d *QueryDecoder[Resource, Request]) parseFilterExpression(filterStr string
 	}
 
 	return ast, nil
-}
-
-func (d *QueryDecoder[Resource, Request]) parseSearchParam(queryParams url.Values) (searchSet *Search, query url.Values, err error) {
-	searchValues := make(map[SearchKey]string)
-	var typ SearchType
-	for searchKey, searchKeyType := range d.searchKeys.keys {
-		if paramCount := len(queryParams[string(searchKey)]); paramCount == 0 {
-			continue
-		} else if paramCount > 1 {
-			return nil, queryParams, httpio.NewBadRequestMessagef("only one search parameter is allowed, found: %v", queryParams[string(searchKey)])
-		}
-
-		switch searchKeyType {
-		case SubString, Ngram, FullText:
-			searchValues[searchKey] = queryParams.Get(searchKey.String())
-		default:
-			return nil, queryParams, httpio.NewBadRequestMessagef("search type not implemented: %s", searchKeyType)
-		}
-
-		if typ == "" {
-			typ = searchKeyType
-		} else if typ != searchKeyType {
-			return nil, queryParams, httpio.NewBadRequestMessagef("only one search type is allowed, found: %s and %s", typ, searchKeyType)
-		}
-
-		delete(queryParams, string(searchKey))
-	}
-
-	if len(searchValues) == 0 {
-		return nil, queryParams, nil
-	}
-
-	if len(searchValues) > 1 {
-		return nil, queryParams, httpio.NewBadRequestMessagef("only one search parameter is allowed for: %s", typ)
-	}
-
-	return NewSearch(typ, searchValues), queryParams, nil
 }
 
 func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
