@@ -430,12 +430,14 @@ func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn *ReadWriteTrans
 		return err
 	}
 
+	rowID := p.PrimaryKey().RowID()
 	switch txn.DBType() {
 	case SpannerDBType:
 		m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
 			&DataChangeEvent{
 				TableName:   p.Resource(),
-				RowID:       p.PrimaryKey().RowID(),
+				RowID:       rowID,
+				Sequence:    txn.dataChangeEventIndex(p.Resource(), rowID),
 				EventTime:   spanner.CommitTimestamp,
 				EventSource: eventSource,
 				ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
@@ -504,12 +506,14 @@ func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context
 		return err
 	}
 
+	rowID := p.PrimaryKey().RowID()
 	switch txn.DBType() {
 	case SpannerDBType:
 		m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
 			&DataChangeEvent{
 				TableName:   p.Resource(),
-				RowID:       p.PrimaryKey().RowID(),
+				RowID:       rowID,
+				Sequence:    txn.dataChangeEventIndex(p.Resource(), rowID),
 				EventTime:   spanner.CommitTimestamp,
 				EventSource: eventSource,
 				ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
@@ -538,12 +542,14 @@ func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context
 		return err
 	}
 
+	rowID := keySet.RowID()
 	switch txn.DBType() {
 	case SpannerDBType:
 		m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
 			&DataChangeEvent{
 				TableName:   p.Resource(),
-				RowID:       keySet.RowID(),
+				RowID:       rowID,
+				Sequence:    txn.dataChangeEventIndex(p.Resource(), rowID),
 				EventTime:   spanner.CommitTimestamp,
 				EventSource: eventSource,
 				ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
