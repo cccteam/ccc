@@ -156,7 +156,6 @@ func (t *tableMetadata) addSchemaResult(result *informationSchemaResult) {
 	column, ok := t.Columns[result.ColumnName]
 	if !ok {
 		column = columnMeta{
-			SpannerType:        result.SpannerType,
 			OrdinalPosition:    result.OrdinalPosition - 1, // SQL is 1-indexed. For consistency with JavaScript & Go we translate to 0-indexed
 			KeyOrdinalPosition: result.KeyOrdinalPosition - 1,
 		}
@@ -206,18 +205,6 @@ func (c *client) templateFuncs() map[string]any {
 		"Lower":                        strings.ToLower,
 		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
 		"FormatRPCInterfaceTypes":      formatRPCInterfaceTypes,
-		"ResourceSearchType": func(searchType string) string {
-			switch strings.ToUpper(searchType) {
-			case "SUBSTRING":
-				return "resource.SubString"
-			case "FULLTEXT":
-				return "resource.FullText"
-			case "NGRAMS":
-				return "resource.Ngram"
-			default:
-				return ""
-			}
-		},
 		"DetermineTestURL": func(resource resourceInfo, routePrefix string, route generatedRoute) string {
 			if !resource.IsView &&
 				strings.EqualFold(route.Method, "get") &&
@@ -465,41 +452,6 @@ func formatRPCInterfaceTypes(rpcMethods []*rpcMethodInfo) string {
 	}
 
 	return formatInterfaceTypes(names)
-}
-
-func searchExpressionFields(expression string, cols map[string]columnMeta) ([]*searchExpression, error) {
-	matches := tokenizeRegex.FindAllStringSubmatch(expression, -1)
-	flds := make([]*searchExpression, 0, len(matches))
-
-	for _, match := range matches {
-		if len(match) != 3 {
-			return nil, errors.Newf("expression `%s` has unexpected number of matches: `%d` (expected 3)", expression, len(match))
-		}
-
-		var tokenType resource.SearchType
-		switch match[1] {
-		case "TOKENIZE_SUBSTRING":
-			tokenType = resource.SubString
-		case "TOKENIZE_FULLTEXT":
-			tokenType = resource.FullText
-		case "TOKENIZE_NGRAMS":
-			tokenType = resource.Ngram
-		default:
-			continue
-		}
-
-		fieldName := match[2]
-		if _, ok := cols[fieldName]; !ok { // sanity check that the field name is a real column. just in case the regex leaks something improper
-			return nil, errors.Newf("column `%s` from expression `%s` was not found in table (is the tokenizeRegex working?)", fieldName, match[0])
-		}
-
-		flds = append(flds, &searchExpression{
-			TokenType: tokenType,
-			Argument:  match[2],
-		})
-	}
-
-	return flds, nil
 }
 
 // Returns slice of applicable handler types for a given resource.

@@ -185,7 +185,7 @@ func testNewSetRun[Resource Resourcer, Request any](t *testing.T, name string, p
 			return
 		}
 		if !collectResourcePermissions {
-			if diff := cmp.Diff(want, got, cmp.AllowUnexported(Set[Resource]{}, Metadata[Resource]{}, cacheEntry{})); diff != "" {
+			if diff := cmp.Diff(want, got, cmp.AllowUnexported(Set[Resource]{}, Metadata[Resource]{}, dbFieldMetadata{})); diff != "" {
 				t.Errorf("NewSet() mismatch (-want +got):\n%s", diff)
 			}
 		}
@@ -221,7 +221,6 @@ func (DoeInstitution) DefaultConfig() Config {
 }
 
 var defaultConfig = Config{
-	DBType:              SpannerDBType,
 	ChangeTrackingTable: "DataChangeEvents",
 	TrackChanges:        true,
 }

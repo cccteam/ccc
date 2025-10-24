@@ -71,14 +71,12 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 
 	schemaMetadata := make(map[string]*tableMetadata)
 	viewColumns := make([]*informationSchemaResult, 0, 16)
-	tokenListColumns := make([]*informationSchemaResult, 0, 16)
 	for i := range results {
 		table, ok := schemaMetadata[results[i].TableName]
 		if !ok {
 			table = &tableMetadata{
-				Columns:       make(map[string]columnMeta),
-				SearchIndexes: make(map[string][]*searchExpression),
-				IsView:        results[i].IsView,
+				Columns: make(map[string]columnMeta),
+				IsView:  results[i].IsView,
 			}
 		}
 
@@ -87,8 +85,6 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 		}
 
 		if results[i].SpannerType == "TOKENLIST" {
-			tokenListColumns = append(tokenListColumns, &results[i])
-
 			continue
 		}
 
@@ -101,12 +97,6 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 		return nil, err
 	}
 	schemaMetadata = nullableViews
-
-	searchIndexMetadata, err := tokenListSearchIndexes(schemaMetadata, tokenListColumns)
-	if err != nil {
-		return nil, err
-	}
-	schemaMetadata = searchIndexMetadata
 
 	return schemaMetadata, nil
 }

@@ -28,14 +28,13 @@ type TestResource struct {
 func (tr TestResource) Resource() accesstypes.Resource { return "testresources" }
 func (tr TestResource) DefaultConfig() Config {
 	return Config{
-		DBType:              SpannerDBType,
 		ChangeTrackingTable: "",
 		TrackChanges:        false,
 	}
 }
 
 type TestRequest struct {
-	Name               string   `json:"name"               index:"true" substring:"SearchTokens"`
+	Name               string   `json:"name"               index:"true"`
 	Age                int      `json:"age"                index:"true"`
 	Status             string   `json:"status"`
 	Email              *string  `json:"email"              index:"true"`
@@ -161,20 +160,6 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			},
 		},
 		{
-			name:        "valid search",
-			queryValues: url.Values{"SearchTokens": []string{"find this and this"}},
-			wantErr:     false,
-			expectedResult: &parsedQueryParams{
-				Search: &Search{
-					typ: SubString,
-					values: map[SearchKey]string{
-						"SearchTokens": "find this and this",
-					},
-				},
-				Limit: ccc.Ptr(uint64(50)),
-			},
-		},
-		{
 			name:           "invalid filter only",
 			queryValues:    url.Values{"filter": []string{"name:badop:John"}},
 			wantErr:        true,
@@ -200,19 +185,13 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:        true,
 			expectedErrMsg: "unknown query parameters",
 		},
-		{
-			name:           "filter with search parameter",
-			queryValues:    url.Values{"filter": []string{"name:eq:John"}, "SearchTokens": []string{"find this and this"}},
-			wantErr:        true,
-			expectedErrMsg: "cannot use 'filter' parameter alongside 'search' parameter",
-		},
 
 		// Interaction and error propagation
 		{
 			name:           "invalid filter with legacy field (now unknown param)",
 			queryValues:    url.Values{"filter": []string{"name:badop:John"}, "legacyIndexedField": []string{"value"}},
 			wantErr:        true,
-			expectedErrMsg: "unknown operator 'badop' in condition 'name:badop:John'",
+			expectedErrMsg: "unknown query parameters",
 		},
 		{
 			name:           "valid filter with unknown parameter",
@@ -403,12 +382,6 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			expectedErrMsg: "invalid sort direction for field 'name': invalid. Must be 'asc' or 'desc'",
 		},
 		{
-			name:           "sort with search parameter",
-			queryValues:    url.Values{"sort": []string{"name:asc"}, "SearchTokens": []string{"find this"}},
-			wantErr:        true,
-			expectedErrMsg: "sorting ('sort=' parameter) cannot be used in conjunction with search parameters",
-		},
-		{
 			name:           "sort empty parameter",
 			queryValues:    url.Values{"sort": []string{""}},
 			wantErr:        true,
@@ -453,6 +426,9 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			}
 
 			parsedQuery, err := decoder.parseQuery(tt.queryValues)
+			if err == nil && parsedQuery.FilterParser != nil {
+				_, err = parsedQuery.FilterParser(SpannerDBType)
+			}
 
 			if tt.wantErr {
 				if err == nil {
@@ -505,39 +481,30 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 						t.Errorf("ColumnFields mismatch for test '%s':\nExpected: %#v\nActual:   %#v", tt.name, tt.expectedResult.ColumnFields, parsedQuery.ColumnFields)
 					}
 				}
-
-				if tt.expectedResult.Search != nil {
-					if parsedQuery.Search == nil {
-						if !tt.wantErr {
-							t.Errorf("searchSet is nil for test '%s', but expected: %#v", tt.name, tt.expectedResult.Search)
-						}
-					} else {
-						if tt.expectedResult.Search.typ != parsedQuery.Search.typ {
-							t.Errorf("FilterSet Type mismatch for test '%s':\nExpected: %v\nActual:   %v", tt.name, tt.expectedResult.Search.typ, parsedQuery.Search.typ)
-						}
-						if !reflect.DeepEqual(tt.expectedResult.Search.values, parsedQuery.Search.values) {
-							t.Errorf("FilterSet Values mismatch for test '%s':\nExpected: %#v\nActual:   %#v", tt.name, tt.expectedResult.Search.values, parsedQuery.Search.values)
-						}
-					}
-				} else if parsedQuery.Search != nil && !tt.wantErr {
-					if !(tt.expectConflictError && err != nil && strings.Contains(err.Error(), "cannot use 'filter' parameter")) {
-						t.Errorf("searchSet should be nil for test '%s', got: %#v", tt.name, parsedQuery.Search)
-					}
-				}
 			}
 
 			// Check AST string representation
 			if tt.expectedASTString != "" {
-				if parsedQuery.ParsedAST == nil {
+				if parsedQuery.FilterParser == nil {
 					if !tt.wantErr { // Only error if we didn't expect an error that might prevent AST parsing
 						t.Errorf("parsedAST is nil for test '%s', but expected AST string: %s", tt.name, tt.expectedASTString)
 					}
-				} else if actualASTString := parsedQuery.ParsedAST.String(); actualASTString != tt.expectedASTString {
-					t.Errorf("AST string representation mismatch for test '%s':\nExpected: %s\nActual:   %s", tt.name, tt.expectedASTString, actualASTString)
+				} else {
+					ast, err := parsedQuery.FilterParser(SpannerDBType)
+					if err != nil {
+						t.Fatalf("Failed to parse AST for test '%s': %v", tt.name, err)
+					}
+					if actualASTString := ast.String(); actualASTString != tt.expectedASTString {
+						t.Errorf("AST string representation mismatch for test '%s':\nExpected: %s\nActual:   %s", tt.name, tt.expectedASTString, actualASTString)
+					}
 				}
-			} else if parsedQuery != nil && parsedQuery.ParsedAST != nil && !tt.wantErr { // If no AST string is expected and no error, AST should be nil
+			} else if parsedQuery != nil && parsedQuery.FilterParser != nil && !tt.wantErr { // If no AST string is expected and no error, AST should be nil
 				if !(tt.expectConflictError && err != nil && strings.Contains(err.Error(), "cannot use 'filter' parameter")) {
-					t.Errorf("Expected nil parsedAST for test '%s' (no expected AST string and no error), got: %s", tt.name, parsedQuery.ParsedAST.String())
+					ast, err := parsedQuery.FilterParser(SpannerDBType)
+					if err != nil {
+						t.Fatalf("Failed to parse AST for test '%s': %v", tt.name, err)
+					}
+					t.Errorf("Expected nil parsedAST for test '%s' (no expected AST string and no error), got: %s", tt.name, ast.String())
 				}
 			}
 		})
@@ -669,10 +636,14 @@ func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 				if err != nil {
 					t.Errorf("Did not expect an error, got: %v", err)
 				}
-				if qSet.filterAst == nil {
+				ast, err := qSet.filterParser(SpannerDBType)
+				if err != nil {
+					t.Fatalf("Failed to parse AST from qSet: %v", err)
+				}
+				if ast == nil {
 					t.Errorf("Expected AST to be parsed, but it was nil")
-				} else if qSet.filterAst.String() != tc.expectedASTString {
-					t.Errorf("Expected AST string '%s', got '%s'", tc.expectedASTString, qSet.filterAst.String())
+				} else if ast.String() != tc.expectedASTString {
+					t.Errorf("Expected AST string '%s', got '%s'", tc.expectedASTString, ast.String())
 				}
 			}
 		})

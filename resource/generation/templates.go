@@ -73,18 +73,6 @@ func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.ResolvedTy
 {{ end }}
 {{ end }}
 
-{{ if ne (len .Resource.SearchIndexes) 0 }}
-{{ $resource := .Resource }}
-{{ range $searchIndex := .Resource.SearchIndexes }}
-func (q *{{ $resource.Name }}Query) SearchBy{{ $searchIndex.Name }}(v string) *{{ $resource.Name }}Query {
-	searchSet := resource.NewSearch({{ ResourceSearchType $searchIndex.SearchType }}, map[resource.SearchKey]string{"{{ $searchIndex.Name }}": v})
-	q.qSet.SetSearchParam(searchSet)
-
-	return q
-}
-{{ end }}
-{{ end }}
-
 func (q *{{ .Resource.Name }}Query) Query() *resource.QuerySet[{{ .Resource.Name }}] {
 	return q.qSet
 }
@@ -349,12 +337,12 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 {{- end }}
 {{- end }}
 {{- if .Resource.HasDefaultsCreateType }}
-	p.patchSet.RegisterDefaultsCreateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+	p.patchSet.RegisterDefaultsCreateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 		return new({{ .Resource.DefaultsCreateType }}).Defaults(ctx, txn, p)
 	})
 {{- end }}
 {{- if .Resource.HasValidateCreateType }}
-	p.patchSet.RegisterValidateCreateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+	p.patchSet.RegisterValidateCreateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 		return new({{ .Resource.ValidateCreateType }}).Validate(ctx, txn, p)
 	})
 {{- end }}
@@ -419,12 +407,12 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 {{- end }}
 {{- end }}
 {{- if .Resource.HasDefaultsUpdateType }}
-	p.patchSet.RegisterDefaultsUpdateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+	p.patchSet.RegisterDefaultsUpdateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 		return new({{ .Resource.DefaultsUpdateType }}).Defaults(ctx, txn, p)
 	})
 {{- end }}
 {{- if .Resource.HasValidateUpdateType }}
-	p.patchSet.RegisterValidateUpdateFunc(func(ctx context.Context, txn resource.TxnBuffer) error {
+	p.patchSet.RegisterValidateUpdateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 		return new({{ .Resource.ValidateUpdateType }}).Validate(ctx, txn, p)
 	})
 {{- end }}
@@ -513,7 +501,7 @@ import (
 	listTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.ListPermTag }} {{ $field.SearchIndexTags }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.ListPermTag }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
@@ -533,7 +521,7 @@ import (
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
 		resp := response{}
-		for r, err := range res.Query().SpannerList(ctx, {{ .ReceiverName }}.ReadTxn()) {
+		for r, err := range res.Query().List(ctx, {{ .ReceiverName }}.ResourceClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -557,7 +545,7 @@ import (
 	readTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.SearchIndexTags }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
@@ -585,7 +573,7 @@ import (
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id)
 	{{- end }}
 
-		row, err := res.Query().SpannerRead(ctx, {{ .ReceiverName }}.ReadTxn())
+		row, err := res.Query().Read(ctx, {{ .ReceiverName }}.ResourceClient())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -630,7 +618,7 @@ import (
 		{{- end }}
 		eventSource := resource.UserEvent(ctx)
 
-		if err := {{ .ReceiverName }}.ExecuteFunc(ctx, func(ctx context.Context, txn resource.TxnBuffer) error {
+		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 			{{- if $PrimaryKeyIsGeneratedUUID }}
 			resp = response{}
 			{{- end }}
@@ -757,7 +745,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 			resp    response
 		)
 
-		if err := {{ .ReceiverName }}.ExecuteFunc(ctx, func(ctx context.Context, txn resource.TxnBuffer) error {
+		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 			resp = response{}
 			r, err := resource.CloneRequest(r)
 			if err != nil {
@@ -1345,7 +1333,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		p := (*{{ .RPCMethod.Type }})(params)
 		{{- end }}
 		{{- if .RPCMethod.IsTxnRunner }}
-			if _, err := {{ $.ReceiverName }}.DB().ReadWriteTransaction(ctx, func(ctx context.Context, txn *cloudspanner.ReadWriteTransaction) error {
+			if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
 				if err := p.Execute(ctx, txn, {{ $.ReceiverName }}.RPCClient()); err != nil {
 					return errors.Wrap(err, "Transaction.Execute()")
 				}
@@ -1355,7 +1343,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 				return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 			}
 		{{- else if .RPCMethod.IsDBRunner }}
-		if err := p.Execute(ctx, {{ $.ReceiverName }}.DB(), {{ $.ReceiverName }}.RPCClient()); err != nil {
+		if err := p.Execute(ctx, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.RPCClient()); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		{{- end }}
@@ -1420,7 +1408,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 		}
 
 		resp := response{}
-		for r, err := range {{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ReadTxn(), {{ .ReceiverName }}.ComputedClient()) {
+		for r, err := range {{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -1470,9 +1458,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 		}
 
 		{{ if .Resource.HasCompoundPrimaryKey }}
-		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, {{ range $i, $field := .Resource.PrimaryKeys }}{{ if $i }}, {{ end }}{{ GoCamel $field.Name }}{{ end }}, querySet, {{ .ReceiverName }}.ReadTxn(), {{ .ReceiverName }}.ComputedClient())
+		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, {{ range $i, $field := .Resource.PrimaryKeys }}{{ if $i }}, {{ end }}{{ GoCamel $field.Name }}{{ end }}, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient())
 		{{ else if .Resource.PrimaryKey }}
-		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, id, querySet, {{ .ReceiverName }}.ReadTxn(), {{ .ReceiverName }}.ComputedClient()))
+		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, id, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()))
 		{{ end }}
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
