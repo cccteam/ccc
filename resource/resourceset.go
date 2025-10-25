@@ -16,13 +16,13 @@ import (
 
 type (
 	// FieldDefaultFunc is the signature for a function that applies a default value to one field of a PatchSet.
-	FieldDefaultFunc func(ctx context.Context, txn *ReadWriteTransaction) (any, error)
+	FieldDefaultFunc func(ctx context.Context, txn *SpannerReadWriteTransaction) (any, error)
 
 	// DefaultsFunc is the signature for a function that applies default values to a PatchSet.
-	DefaultsFunc func(ctx context.Context, txn *ReadWriteTransaction) error
+	DefaultsFunc func(ctx context.Context, txn *SpannerReadWriteTransaction) error
 
 	// ValidateFunc is the signature for a function that validates a PatchSet prior to committing it.
-	ValidateFunc func(ctx context.Context, txn *ReadWriteTransaction) error
+	ValidateFunc func(ctx context.Context, txn *SpannerReadWriteTransaction) error
 )
 
 // Resourcer is an interface that all resource structs must implement.
