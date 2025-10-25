@@ -8,12 +8,12 @@ import (
 
 // MockSpannerBuffer is a mock implementation of SpannerBuffer for testing.
 type MockSpannerBuffer struct {
-	SpannerBufferFn func(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error
+	SpannerBufferFn func(ctx context.Context, txn *SpannerReadWriteTransaction, eventSource ...string) error
 	id              string
 	Called          bool
 }
 
-func (m *MockSpannerBuffer) Buffer(ctx context.Context, txn *ReadWriteTransaction, eventSource ...string) error {
+func (m *MockSpannerBuffer) Buffer(ctx context.Context, txn *SpannerReadWriteTransaction, eventSource ...string) error {
 	m.Called = true
 	if m.SpannerBufferFn != nil {
 		return m.SpannerBufferFn(ctx, txn, eventSource...)
@@ -24,7 +24,7 @@ func (m *MockSpannerBuffer) Buffer(ctx context.Context, txn *ReadWriteTransactio
 
 func TestNewCommitBuffer(t *testing.T) {
 	t.Parallel()
-	db := &Client{
+	db := &SpannerClient{
 		dbType: mockDBType,
 	}
 	eventSource := "test_source"
@@ -98,7 +98,7 @@ func TestCommitBuffer_Buffer(t *testing.T) {
 			autoCommitSize: 2,
 			itemsToBuffer: []Buffer{
 				&MockSpannerBuffer{id: "sb1"},
-				&MockSpannerBuffer{id: "sb2-fail", SpannerBufferFn: func(_ context.Context, _ *ReadWriteTransaction, _ ...string) error {
+				&MockSpannerBuffer{id: "sb2-fail", SpannerBufferFn: func(_ context.Context, _ *SpannerReadWriteTransaction, _ ...string) error {
 					return fmt.Errorf("spanner buffer error")
 				}},
 			},
@@ -112,7 +112,7 @@ func TestCommitBuffer_Buffer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := &Client{
+			client := &SpannerClient{
 				dbType: mockDBType,
 			}
 
@@ -163,7 +163,7 @@ func TestCommitBuffer_Commit(t *testing.T) {
 			name: "Commit non-empty buffer with SpannerBuffer error",
 			initialBufferItems: []Buffer{
 				&MockSpannerBuffer{id: "ok1"},
-				&MockSpannerBuffer{id: "fail", SpannerBufferFn: func(_ context.Context, _ *ReadWriteTransaction, _ ...string) error {
+				&MockSpannerBuffer{id: "fail", SpannerBufferFn: func(_ context.Context, _ *SpannerReadWriteTransaction, _ ...string) error {
 					return fmt.Errorf("spanner buffer error from item")
 				}},
 				&MockSpannerBuffer{id: "ok2-notcalled"},
@@ -183,13 +183,13 @@ func TestCommitBuffer_Commit(t *testing.T) {
 			if tt.spannerBufferShouldFail && tt.failingSpannerBufferIndex < len(tt.initialBufferItems) {
 				itemToFail, ok := tt.initialBufferItems[tt.failingSpannerBufferIndex].(*MockSpannerBuffer)
 				if ok && itemToFail.SpannerBufferFn == nil {
-					itemToFail.SpannerBufferFn = func(_ context.Context, _ *ReadWriteTransaction, _ ...string) error {
+					itemToFail.SpannerBufferFn = func(_ context.Context, _ *SpannerReadWriteTransaction, _ ...string) error {
 						return fmt.Errorf("forced spanner buffer error for %s", itemToFail.id)
 					}
 				}
 			}
 
-			mockDB := &Client{dbType: mockDBType}
+			mockDB := &SpannerClient{dbType: mockDBType}
 
 			cb := NewCommitBuffer(mockDB, "test_source_commit", 0)
 			if len(tt.initialBufferItems) > 0 {

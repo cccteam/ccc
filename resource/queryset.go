@@ -10,7 +10,6 @@ import (
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
-	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -328,63 +327,45 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 }
 
 // Read executes the query and returns a single result.
-func (q *QuerySet[Resource]) Read(ctx context.Context, db Reader) (*Resource, error) {
-	if err := q.checkPermissions(ctx, db.DBType()); err != nil {
+func (q *QuerySet[Resource]) Read(ctx context.Context, r Reader[Resource]) (*Resource, error) {
+	if err := q.checkPermissions(ctx, r.DBType()); err != nil {
 		return nil, err
 	}
 
-	switch db.DBType() {
-	case SpannerDBType:
-		stmt, err := q.stmt(db.DBType())
-		if err != nil {
-			return nil, errors.Wrap(err, "patcher.Stmt()")
-		}
-
-		dst := new(Resource)
-		if err := spxscan.Get(ctx, db.SpannerReadTransaction(), dst, stmt.SpannerStatement()); err != nil {
-			if errors.Is(err, spxscan.ErrNotFound) {
-				return nil, httpio.NewNotFoundMessagef("%s (%s) not found", q.Resource(), stmt.resolvedWhereClause)
-			}
-
-			return nil, errors.Wrap(err, "spxscan.Get()")
-		}
-
-		return dst, nil
-	case PostgresDBType:
-		panic(fmt.Sprintf("operation not implemented for database type: %s", db.DBType()))
-	default:
-		panic(fmt.Sprintf("unsupported db type: %s", db.DBType()))
+	stmt, err := q.stmt(r.DBType())
+	if err != nil {
+		return nil, errors.Wrap(err, "patcher.Stmt()")
 	}
+
+	dst, err := r.Read(ctx, stmt)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Reader[%s].Read()", q.Resource())
+	}
+
+	return dst, nil
 }
 
 // List executes the query and returns an iterator for the results.
-func (q *QuerySet[Resource]) List(ctx context.Context, db Reader) iter.Seq2[*Resource, error] {
-	switch db.DBType() {
-	case SpannerDBType:
-		return func(yield func(*Resource, error) bool) {
-			if err := q.checkPermissions(ctx, db.DBType()); err != nil {
-				yield(nil, err)
+func (q *QuerySet[Resource]) List(ctx context.Context, r Reader[Resource]) iter.Seq2[*Resource, error] {
+	return func(yield func(*Resource, error) bool) {
+		if err := q.checkPermissions(ctx, r.DBType()); err != nil {
+			yield(nil, err)
 
+			return
+		}
+
+		stmt, err := q.stmt(r.DBType())
+		if err != nil {
+			yield(nil, errors.Wrap(err, "patcher.Stmt()"))
+
+			return
+		}
+
+		for r, err := range r.List(ctx, stmt) {
+			if !yield(r, err) {
 				return
-			}
-
-			stmt, err := q.stmt(db.DBType())
-			if err != nil {
-				yield(nil, errors.Wrap(err, "patcher.Stmt()"))
-
-				return
-			}
-
-			for r, err := range spxscan.SelectSeq[Resource](ctx, db.SpannerReadTransaction(), stmt.SpannerStatement()) {
-				if !yield(r, err) {
-					return
-				}
 			}
 		}
-	case PostgresDBType:
-		panic(fmt.Sprintf("operation not implemented for database type: %s", db.DBType()))
-	default:
-		panic(fmt.Sprintf("unsupported db type: %s", db.DBType()))
 	}
 }
 
