@@ -7,31 +7,17 @@ import (
 )
 
 // NewReader creates a new Reader for the given transaction.
-func NewReader[Resource Resourcer](c Client) Reader[Resource] {
-	switch c.DBType() {
-	case SpannerDBType:
+func NewReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
+	switch t := txn.(type) {
+	case *SpannerClient:
 		return &SpannerReader[Resource]{
-			dbType:  SpannerDBType,
-			readTxn: func() spxscan.Querier { return c.Single() },
+			readTxn: func() spxscan.Querier { return txn.SpannerReadOnlyTransaction() },
 		}
-	case PostgresDBType:
-		panic(fmt.Sprintf("unimplemented database type: %s", c.DBType()))
-	default:
-		panic(fmt.Sprintf("unsupported database type: %s", c.DBType()))
-	}
-}
-
-// NewReadWriter
-func NewReadWriter[Resource Resourcer](txn Txn) Reader[Resource] {
-	switch txn.DBType() {
-	case SpannerDBType:
-		return &SpannerReader[Resource]{
-			dbType:  SpannerDBType,
-			readTxn: txn,
+	case *PostgresClient:
+		return &PostgresReader[Resource]{
+			readTxn: func() any { return txn.PostgresReadOnlyTransaction() },
 		}
-	case PostgresDBType:
-		panic(fmt.Sprintf("unimplemented database type: %s", txn.DBType()))
 	default:
-		panic(fmt.Sprintf("unsupported database type: %s", txn.DBType()))
+		panic(fmt.Sprintf("unsupported Client type: %T", t))
 	}
 }

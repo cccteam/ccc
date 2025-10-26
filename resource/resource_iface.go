@@ -3,12 +3,9 @@ package resource
 import (
 	"context"
 	"iter"
-	"time"
 
-	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/spxscan"
-	"github.com/cccteam/spxscan/spxapi"
 )
 
 // UserPermissions is an interface that provides methods to check user permissions and retrieve user information, and is used
@@ -19,23 +16,32 @@ type UserPermissions interface {
 	User() accesstypes.User
 }
 
+// Client is an interface for the supported database Client's to implement. It is not intended
+// for mocking since each database requires an implementation in this package.
 type Client interface {
-	DBType() DBType
-	Single() spxscan.Querier
-	ReadWriteTransaction(ctx context.Context, f func(context.Context, *spanner.ReadWriteTransaction) error) (commitTimestamp time.Time, err error)
-	// Postgres() *pgxpool.Pool
+	ReadOnlyTransaction
+	Executor
 }
 
-type Txn interface {
+// ReadWriteTransaction is an interface that represents a database transaction that can be used for both reads and writes.
+type ReadWriteTransaction interface {
 	DBType() DBType
-	spxapi.Querier
-	BufferWrite(ms []*spanner.Mutation) error
-	// PosgtresTxn()
+	ReadOnlyTransaction
+	BufferMap(patchType PatchType, res ResourcePatch, patch map[string]any) error
+	BufferStruct(patchType PatchType, res ResourcePatch, in any) error
+
+	// DataChangeEventIndex() provides a sequence number for data change events on the same Resource inside the same transaction
+	DataChangeEventIndex(res accesstypes.Resource, rowID string) int
 }
 
-// SpannerQuerier is an interface for querying Spanner.
-type SpannerQuerier interface {
-	Query(ctx context.Context, statement spanner.Statement) *spanner.RowIterator
+// ReadOnlyTransaction is an interface that represents a database transaction that can be used for reads.
+type ReadOnlyTransaction interface {
+	SpannerReadOnlyTransaction() spxscan.Querier
+	PostgresReadOnlyTransaction() any
+}
+
+type Executor interface {
+	ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error
 }
 
 // Reader is an interface that wraps methods for reading resources from a database.
@@ -45,18 +51,14 @@ type Reader[Resource Resourcer] interface {
 	List(ctx context.Context, stmt *Statement) iter.Seq2[*Resource, error]
 }
 
-type Executor[Resource Resourcer] interface {
-	Execute(ctx context.Context, runner TxnRunner[Resource]) error
-	ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn *SpannerReadWriteTransaction[Resource]) error) error
+// ResourcePatch is an interface that all PatchSet types must implement to allow their mutations to be buffered
+type ResourcePatch interface {
+	PrimaryKey() KeySet
+	Resource() accesstypes.Resource
 }
 
 // Buffer is an interface for types that can buffer their mutations
 // into a transaction. This is used for batching operations.
-type Buffer[Resource Resourcer] interface {
-	Buffer(ctx context.Context, txn *SpannerReadWriteTransaction[Resource], eventSource ...string) error
-}
-
-// TxnRunner will have its Execute() method called inside the ReadWriteTransaction
-type TxnRunner[Resource Resourcer] interface {
-	Execute(ctx context.Context, txn *SpannerReadWriteTransaction[Resource]) error
+type Buffer interface {
+	Buffer(ctx context.Context, txn ReadWriteTransaction, eventSource ...string) error
 }
