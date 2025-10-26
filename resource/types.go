@@ -32,10 +32,12 @@ type DataChangeEvent struct {
 	ChangeSet   spanner.NullJSON     `spanner:"ChangeSet"`
 }
 
+// Resource() returns the Resource name for DataChangeEvent
 func (d DataChangeEvent) Resource() accesstypes.Resource {
 	return "DataChangeEvents"
 }
 
+// PrimaryKey returns an empty key sent since this resource is only used for inserts, not deletes.
 func (d *DataChangeEvent) PrimaryKey() KeySet {
 	return KeySet{}
 }
