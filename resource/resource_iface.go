@@ -30,7 +30,7 @@ type ReadWriteTransaction interface {
 	BufferMap(patchType PatchType, res PatchSetMetadata, patch map[string]any) error
 	BufferStruct(patchType PatchType, res PatchSetMetadata, in any) error
 
-	// DataChangeEventIndex() provides a sequence number for data change events on the same Resource inside the same transaction
+	// DataChangeEventIndex provides a sequence number for data change events on the same Resource inside the same transaction
 	DataChangeEventIndex(res accesstypes.Resource, rowID string) int
 }
 
@@ -40,6 +40,7 @@ type ReadOnlyTransaction interface {
 	PostgresReadOnlyTransaction() any
 }
 
+// Executor interface exposes ability to run a function inside a transaction.
 type Executor interface {
 	ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error
 }

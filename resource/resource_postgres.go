@@ -29,22 +29,25 @@ func (c *PostgresClient) Close() {
 	c.postgres.Close()
 }
 
+// PostgresReadOnlyTransaction panics because it is not implemented for the PostgresClient.
 func (c *PostgresClient) PostgresReadOnlyTransaction() any {
-	panic(fmt.Sprintf("operation not implemented for database type: %s", PostgresDBType))
+	panic("PostgresReadOnlyTransaction() not implemented for PostgresClient")
 }
 
 // ExecuteFunc executes a function within a read-write transaction.
 func (c *PostgresClient) ExecuteFunc(_ context.Context, _ func(ctx context.Context, _ ReadWriteTransaction) error) error {
 	_ = newPostgresPostgresReadWriteTransaction(nil)
-	panic(fmt.Sprintf("operation not implemented for database type: %s", PostgresDBType))
+	panic("ExecuteFunc() not implemented for PostgresClient")
 }
 
+// SpannerReadOnlyTransaction panics because it is not implemented for the PostgresClient.
 func (c *PostgresClient) SpannerReadOnlyTransaction() spxscan.Querier {
 	panic("PostgresClient.SpannerReadOnlyTransaction() should never be called.")
 }
 
 var _ Reader[nilResource] = (*PostgresReader[nilResource])(nil)
 
+// PostgresReader is a reader implementation for Postgres.
 type PostgresReader[Resource Resourcer] struct {
 	readTxn func() any
 }
@@ -56,12 +59,12 @@ func (c *PostgresReader[Resource]) DBType() DBType {
 
 // Read reads a single resource from the database.
 func (c *PostgresReader[Resource]) Read(_ context.Context, _ *Statement) (*Resource, error) {
-	panic("Read not implemented for PostgresReader[Resource]")
+	panic("Read() not implemented for PostgresReader[Resource]")
 }
 
 // List reads a list of resources from the database.
 func (c *PostgresReader[Resource]) List(_ context.Context, _ *Statement) iter.Seq2[*Resource, error] {
-	panic("List not implemented for PostgresReader[Resource]")
+	panic("List() not implemented for PostgresReader[Resource]")
 }
 
 var _ ReadWriteTransaction = (*PostgresReadWriteTransaction)(nil)
@@ -81,7 +84,7 @@ func newPostgresPostgresReadWriteTransaction(txn *pgxpool.Pool) *PostgresReadWri
 
 // Read reads a single resource from the database.
 func (c *PostgresReadWriteTransaction) Read(_ context.Context, _ Resourcer, _ any, _ *Statement) error {
-	panic("xxx not implemented for xxx")
+	panic("Read() not implemented for PostgresReadWriteTransaction")
 }
 
 // List reads a list of resources from the database.
@@ -94,7 +97,7 @@ func (c *PostgresReadWriteTransaction) DBType() DBType {
 	return PostgresDBType
 }
 
-// DataChangeEventIndex() provides a sequence number for data change events on the same Resource inside the same transaction
+// DataChangeEventIndex provides a sequence number for data change events on the same Resource inside the same transaction.
 func (c *PostgresReadWriteTransaction) DataChangeEventIndex(res accesstypes.Resource, rowID string) int {
 	indexID := fmt.Sprintf("%s_%s", res, rowID)
 	c.resourceRowIndex[indexID]++
@@ -102,18 +105,22 @@ func (c *PostgresReadWriteTransaction) DataChangeEventIndex(res accesstypes.Reso
 	return c.resourceRowIndex[indexID]
 }
 
+// PostgresReadOnlyTransaction panics because it is not implemented for the PostgresReadWriteTransaction.
 func (c *PostgresReadWriteTransaction) PostgresReadOnlyTransaction() any {
 	panic("PostgresReadOnlyTransaction() not implemented for PostgresReadWriteTransaction")
 }
 
+// BufferMap panics because it is not implemented for the PostgresReadWriteTransaction.
 func (c *PostgresReadWriteTransaction) BufferMap(_ PatchType, _ PatchSetMetadata, _ map[string]any) error {
-	panic("BufferMap not implemented for PostgresReadWriteTransaction")
+	panic("BufferMap() not implemented for PostgresReadWriteTransaction")
 }
 
+// BufferStruct panics because it is not implemented for the PostgresReadWriteTransaction.
 func (c *PostgresReadWriteTransaction) BufferStruct(_ PatchType, _ PatchSetMetadata, _ any) error {
-	panic("BufferStruct not implemented for PostgresReadWriteTransaction")
+	panic("BufferStruct() not implemented for PostgresReadWriteTransaction")
 }
 
+// SpannerReadOnlyTransaction panics because it is not implemented for the PostgresReadWriteTransaction.
 func (c *PostgresReadWriteTransaction) SpannerReadOnlyTransaction() spxscan.Querier {
 	panic("PostgresReadWriteTransaction.SpannerReadOnlyTransaction() should never be called.")
 }

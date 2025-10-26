@@ -31,6 +31,7 @@ func (c *SpannerClient) Close() {
 	c.spanner.Close()
 }
 
+// SpannerReadOnlyTransaction returns a read-only transaction for the Spanner client.
 func (c *SpannerClient) SpannerReadOnlyTransaction() spxscan.Querier {
 	return c.spanner.Single()
 }
@@ -51,12 +52,14 @@ func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Cont
 	return nil
 }
 
+// PostgresReadOnlyTransaction panics because it is not implemented for the SpannerClient.
 func (c *SpannerClient) PostgresReadOnlyTransaction() any {
 	panic("SpannerClient.PostgresReadOnlyTransaction() should never be called.")
 }
 
 var _ Reader[nilResource] = (*SpannerReader[nilResource])(nil)
 
+// SpannerReader is a reader for Spanner.
 type SpannerReader[Resource Resourcer] struct {
 	readTxn func() spxscan.Querier
 }
@@ -117,7 +120,7 @@ func (c *SpannerReadWriteTransaction) DBType() DBType {
 	return SpannerDBType
 }
 
-// DataChangeEventIndex() provides a sequence number for data change events on the same Resource inside the same transaction
+// DataChangeEventIndex provides a sequence number for data change events on the same Resource inside the same transaction.
 func (c *SpannerReadWriteTransaction) DataChangeEventIndex(res accesstypes.Resource, rowID string) int {
 	indexID := fmt.Sprintf("%s_%s", res, rowID)
 	c.resourceRowIndex[indexID]++
@@ -125,10 +128,12 @@ func (c *SpannerReadWriteTransaction) DataChangeEventIndex(res accesstypes.Resou
 	return c.resourceRowIndex[indexID]
 }
 
+// SpannerReadOnlyTransaction returns a read-only transaction for the Spanner client.
 func (c *SpannerReadWriteTransaction) SpannerReadOnlyTransaction() spxscan.Querier {
 	return c.txn
 }
 
+// BufferMap buffers a map of changes to be applied to the database.
 func (c *SpannerReadWriteTransaction) BufferMap(patchType PatchType, r PatchSetMetadata, patch map[string]any) error {
 	var m *spanner.Mutation
 
@@ -152,6 +157,7 @@ func (c *SpannerReadWriteTransaction) BufferMap(patchType PatchType, r PatchSetM
 	return nil
 }
 
+// BufferStruct buffers a struct of changes to be applied to the database.
 func (c *SpannerReadWriteTransaction) BufferStruct(patchType PatchType, r PatchSetMetadata, patch any) error {
 	var m *spanner.Mutation
 	var err error
@@ -183,6 +189,7 @@ func (c *SpannerReadWriteTransaction) BufferStruct(patchType PatchType, r PatchS
 	return nil
 }
 
+// PostgresReadOnlyTransaction panics because it is not implemented for the SpannerReadWriteTransaction.
 func (c *SpannerReadWriteTransaction) PostgresReadOnlyTransaction() any {
 	panic("SpannerReadWriteTransaction.PostgresReadOnlyTransaction() should never be called.")
 }
