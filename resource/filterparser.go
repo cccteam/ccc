@@ -253,16 +253,19 @@ func NewFilterParser(lexer *FilterLexer, jsonToFieldInfo map[jsonFieldName]Filte
 
 // reset resets the parser's internal state to allow for parsing for a new DBType,
 // while preserving the cache of already parsed expressions.
-func (p *FilterParser) reset() {
+func (p *FilterParser) reset() error {
 	p.lexer.Reset()
 	p.hasIndexedField = false
 
 	// Reprime the parser by advancing the tokens back to the start of the input.
-	// Errors are ignored here because a reset should always be possible on a
-	// parser that was validly created. If the lexer had an error initially,
-	// NewFilterParser would have already failed.
-	_ = p.advance()
-	_ = p.advance()
+	if err := p.advance(); err != nil {
+		return errors.Wrap(err, "failed to advance for current token")
+	}
+	if err := p.advance(); err != nil {
+		return errors.Wrap(err, "failed to advance for peek token")
+	}
+
+	return nil
 }
 
 // Parse is the main entry point for parsing the filter string.
@@ -289,7 +292,9 @@ func (p *FilterParser) Parse(dbType DBType) (ExpressionNode, error) {
 	}
 
 	p.parsedExpression[dbType] = expression
-	p.reset()
+	if err := p.reset(); err != nil {
+		return nil, err
+	}
 
 	return expression, nil
 }
