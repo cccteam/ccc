@@ -32,7 +32,7 @@ type DataChangeEvent struct {
 	ChangeSet   spanner.NullJSON     `spanner:"ChangeSet"`
 }
 
-// Resource() returns the Resource name for DataChangeEvent
+// Resource returns the Resource name for DataChangeEvent
 func (d DataChangeEvent) Resource() accesstypes.Resource {
 	return "DataChangeEvents"
 }
