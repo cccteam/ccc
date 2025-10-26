@@ -14,7 +14,7 @@ func (a Apple) Method() accesstypes.Resource { return "" }
 type Banana struct{}
 
 func (c *Banana) Method() accesstypes.Resource { return "" }
-func (c *Banana) Execute(ctx context.Context, txn *resource.ReadWriteTransaction, client *resource.Client) error {
+func (c *Banana) Execute(ctx context.Context, txn resource.ReadWriteTransaction, client *resource.Client) error {
 	return nil
 }
 

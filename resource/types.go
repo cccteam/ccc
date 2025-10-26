@@ -72,28 +72,28 @@ type SortField struct {
 var _ FieldDefaultFunc = CommitTimestamp
 
 // CommitTimestamp is a FieldDefaultFunc that returns the Spanner commit timestamp.
-func CommitTimestamp(_ context.Context, _ *ReadWriteTransaction) (any, error) {
+func CommitTimestamp(_ context.Context, _ ReadWriteTransaction) (any, error) {
 	return spanner.CommitTimestamp, nil
 }
 
 var _ FieldDefaultFunc = CommitTimestampPtr
 
 // CommitTimestampPtr is a FieldDefaultFunc that returns a pointer to the Spanner commit timestamp.
-func CommitTimestampPtr(_ context.Context, _ *ReadWriteTransaction) (any, error) {
+func CommitTimestampPtr(_ context.Context, _ ReadWriteTransaction) (any, error) {
 	return &spanner.CommitTimestamp, nil
 }
 
 var _ FieldDefaultFunc = DefaultFalse
 
 // DefaultFalse is a FieldDefaultFunc that returns false.
-func DefaultFalse(_ context.Context, _ *ReadWriteTransaction) (any, error) {
+func DefaultFalse(_ context.Context, _ ReadWriteTransaction) (any, error) {
 	return false, nil
 }
 
 var _ FieldDefaultFunc = DefaultTrue
 
 // DefaultTrue is a FieldDefaultFunc that returns true.
-func DefaultTrue(_ context.Context, _ *ReadWriteTransaction) (any, error) {
+func DefaultTrue(_ context.Context, _ ReadWriteTransaction) (any, error) {
 	return true, nil
 }
 
@@ -101,7 +101,7 @@ var _ FieldDefaultFunc = DefaultString("test")
 
 // DefaultString returns a FieldDefaultFunc that provides the given string value.
 func DefaultString(v string) FieldDefaultFunc {
-	return func(_ context.Context, _ *ReadWriteTransaction) (any, error) {
+	return func(_ context.Context, _ ReadWriteTransaction) (any, error) {
 		return v, nil
 	}
 }

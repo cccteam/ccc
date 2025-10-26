@@ -45,6 +45,10 @@ func ({{ .Resource.Name }}) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+func New{{ .Resource.Name }}Reader(txn resource.ReadOnlyTransaction) resource.Reader[{{ .Resource.Name }}] {
+	return resource.NewReader[{{ .Resource.Name }}](txn)
+}
+
 type {{ .Resource.Name }}Query struct {
 	qSet *resource.QuerySet[{{ .Resource.Name }}]
 }
@@ -337,12 +341,12 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 {{- end }}
 {{- end }}
 {{- if .Resource.HasDefaultsCreateType }}
-	p.patchSet.RegisterDefaultsCreateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
+	p.patchSet.RegisterDefaultsCreateFunc(func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 		return new({{ .Resource.DefaultsCreateType }}).Defaults(ctx, txn, p)
 	})
 {{- end }}
 {{- if .Resource.HasValidateCreateType }}
-	p.patchSet.RegisterValidateCreateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
+	p.patchSet.RegisterValidateCreateFunc(func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 		return new({{ .Resource.ValidateCreateType }}).Validate(ctx, txn, p)
 	})
 {{- end }}
@@ -407,12 +411,12 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 {{- end }}
 {{- end }}
 {{- if .Resource.HasDefaultsUpdateType }}
-	p.patchSet.RegisterDefaultsUpdateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
+	p.patchSet.RegisterDefaultsUpdateFunc(func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 		return new({{ .Resource.DefaultsUpdateType }}).Defaults(ctx, txn, p)
 	})
 {{- end }}
 {{- if .Resource.HasValidateUpdateType }}
-	p.patchSet.RegisterValidateUpdateFunc(func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
+	p.patchSet.RegisterValidateUpdateFunc(func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 		return new({{ .Resource.ValidateUpdateType }}).Validate(ctx, txn, p)
 	})
 {{- end }}
@@ -521,7 +525,7 @@ import (
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
 		resp := response{}
-		for r, err := range res.Query().List(ctx, {{ .ReceiverName }}.ResourceClient()) {
+		for r, err := range res.Query().List(ctx, resource.NewReader[resources.{{ .Resource.Name }}]({{ .ReceiverName }}.ResourceClient())) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -573,7 +577,7 @@ import (
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id)
 	{{- end }}
 
-		row, err := res.Query().Read(ctx, {{ .ReceiverName }}.ResourceClient())
+		row, err := res.Query().Read(ctx, resource.NewReader[resources.{{ .Resource.Name }}]({{ .ReceiverName }}.ResourceClient()))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -618,7 +622,7 @@ import (
 		{{- end }}
 		eventSource := resource.UserEvent(ctx)
 
-		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
+		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			{{- if $PrimaryKeyIsGeneratedUUID }}
 			resp = response{}
 			{{- end }}
@@ -745,7 +749,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 			resp    response
 		)
 
-		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
+		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			resp = response{}
 			r, err := resource.CloneRequest(r)
 			if err != nil {
@@ -1333,7 +1337,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		p := (*{{ .RPCMethod.Type }})(params)
 		{{- end }}
 		{{- if .RPCMethod.IsTxnRunner }}
-			if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn *resource.ReadWriteTransaction) error {
+			if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 				if err := p.Execute(ctx, txn, {{ $.ReceiverName }}.RPCClient()); err != nil {
 					return errors.Wrap(err, "Transaction.Execute()")
 				}
