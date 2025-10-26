@@ -20,6 +20,8 @@ const (
 	notinStr = "notin"
 )
 
+var _ PatchSetMetadata = (*DataChangeEvent)(nil)
+
 // DataChangeEvent represents a record of a change made to a database table.
 type DataChangeEvent struct {
 	TableName   accesstypes.Resource `spanner:"TableName"`
@@ -28,6 +30,14 @@ type DataChangeEvent struct {
 	EventTime   time.Time            `spanner:"EventTime"`
 	EventSource string               `spanner:"EventSource"`
 	ChangeSet   spanner.NullJSON     `spanner:"ChangeSet"`
+}
+
+func (d DataChangeEvent) Resource() accesstypes.Resource {
+	return "DataChangeEvents"
+}
+
+func (d *DataChangeEvent) PrimaryKey() KeySet {
+	return KeySet{}
 }
 
 // DiffElem represents the old and new values of a field that has been changed.

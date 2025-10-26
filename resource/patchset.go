@@ -406,7 +406,7 @@ func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn ReadWriteTransa
 		ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 	}
 
-	if err := txn.BufferStruct(CreatePatchType, p, event); err != nil {
+	if err := txn.BufferStruct(CreatePatchType, event, event); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
 
@@ -438,7 +438,7 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context
 		return errors.Wrap(err, "spanner.InsertStruct()")
 	}
 
-	if err := txn.BufferStruct(CreatePatchType, p, event); err != nil {
+	if err := txn.BufferStruct(CreatePatchType, event, event); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.BufferStruct()")
 	}
 
@@ -461,7 +461,7 @@ func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context
 		ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 	}
 
-	if err := txn.BufferStruct(CreatePatchType, p, event); err != nil {
+	if err := txn.BufferStruct(CreatePatchType, event, event); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.BufferStruct()")
 	}
 
@@ -485,7 +485,7 @@ func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context
 		ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 	}
 
-	if err := txn.BufferStruct(CreatePatchType, p, event); err != nil {
+	if err := txn.BufferStruct(CreatePatchType, event, event); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.BufferStruct()")
 	}
 
