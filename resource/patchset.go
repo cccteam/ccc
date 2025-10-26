@@ -31,7 +31,7 @@ const (
 	DeletePatchType PatchType = "DeletePatchType"
 )
 
-var _ ResourcePatch = (*PatchSet[nilResource])(nil)
+var _ PatchSetMetadata = (*PatchSet[nilResource])(nil)
 
 // PatchSet represents a set of changes to be applied to a resource.
 type PatchSet[Resource Resourcer] struct {
@@ -404,9 +404,6 @@ func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn ReadWriteTransa
 		EventTime:   spanner.CommitTimestamp,
 		EventSource: eventSource,
 		ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
-	}
-	if err != nil {
-		return errors.Wrap(err, "spanner.InsertStruct()")
 	}
 
 	if err := txn.BufferStruct(CreatePatchType, p, event); err != nil {

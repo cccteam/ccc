@@ -118,18 +118,18 @@ func (c *SpannerReadWriteTransaction) DBType() DBType {
 }
 
 // DataChangeEventIndex() provides a sequence number for data change events on the same Resource inside the same transaction
-func (r *SpannerReadWriteTransaction) DataChangeEventIndex(res accesstypes.Resource, rowID string) int {
+func (c *SpannerReadWriteTransaction) DataChangeEventIndex(res accesstypes.Resource, rowID string) int {
 	indexID := fmt.Sprintf("%s_%s", res, rowID)
-	r.resourceRowIndex[indexID]++
+	c.resourceRowIndex[indexID]++
 
-	return r.resourceRowIndex[indexID]
+	return c.resourceRowIndex[indexID]
 }
 
 func (c *SpannerReadWriteTransaction) SpannerReadOnlyTransaction() spxscan.Querier {
 	return c.txn
 }
 
-func (c *SpannerReadWriteTransaction) BufferMap(patchType PatchType, r ResourcePatch, patch map[string]any) error {
+func (c *SpannerReadWriteTransaction) BufferMap(patchType PatchType, r PatchSetMetadata, patch map[string]any) error {
 	var m *spanner.Mutation
 
 	switch patchType {
@@ -152,7 +152,7 @@ func (c *SpannerReadWriteTransaction) BufferMap(patchType PatchType, r ResourceP
 	return nil
 }
 
-func (c *SpannerReadWriteTransaction) BufferStruct(patchType PatchType, r ResourcePatch, patch any) error {
+func (c *SpannerReadWriteTransaction) BufferStruct(patchType PatchType, r PatchSetMetadata, patch any) error {
 	var m *spanner.Mutation
 	var err error
 

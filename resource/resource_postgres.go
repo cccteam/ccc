@@ -34,7 +34,8 @@ func (c *PostgresClient) PostgresReadOnlyTransaction() any {
 }
 
 // ExecuteFunc executes a function within a read-write transaction.
-func (c *PostgresClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
+func (c *PostgresClient) ExecuteFunc(_ context.Context, _ func(ctx context.Context, _ ReadWriteTransaction) error) error {
+	_ = newPostgresPostgresReadWriteTransaction(nil)
 	panic(fmt.Sprintf("operation not implemented for database type: %s", PostgresDBType))
 }
 
@@ -54,39 +55,37 @@ func (c *PostgresReader[Resource]) DBType() DBType {
 }
 
 // Read reads a single resource from the database.
-func (c *PostgresReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Resource, error) {
-	panic(fmt.Sprintf("operation not implemented for database type: %s", SpannerDBType))
+func (c *PostgresReader[Resource]) Read(_ context.Context, _ *Statement) (*Resource, error) {
+	panic("Read not implemented for PostgresReader[Resource]")
 }
 
 // List reads a list of resources from the database.
-func (c *PostgresReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Resource, error] {
-	panic(fmt.Sprintf("operation not implemented for database type: %s", SpannerDBType))
+func (c *PostgresReader[Resource]) List(_ context.Context, _ *Statement) iter.Seq2[*Resource, error] {
+	panic("List not implemented for PostgresReader[Resource]")
 }
 
 var _ ReadWriteTransaction = (*PostgresReadWriteTransaction)(nil)
 
 // PostgresReadWriteTransaction represents a database transaction that can be used for both reads and writes.
 type PostgresReadWriteTransaction struct {
-	dbType           DBType
 	postgres         *pgxpool.Pool
 	resourceRowIndex map[string]int
 }
 
 func newPostgresPostgresReadWriteTransaction(txn *pgxpool.Pool) *PostgresReadWriteTransaction {
 	return &PostgresReadWriteTransaction{
-		dbType:           PostgresDBType,
 		postgres:         txn,
 		resourceRowIndex: make(map[string]int),
 	}
 }
 
 // Read reads a single resource from the database.
-func (c *PostgresReadWriteTransaction) Read(ctx context.Context, res Resourcer, dst any, stmt *Statement) error {
-	return nil
+func (c *PostgresReadWriteTransaction) Read(_ context.Context, _ Resourcer, _ any, _ *Statement) error {
+	panic("xxx not implemented for xxx")
 }
 
 // List reads a list of resources from the database.
-func (c *PostgresReadWriteTransaction) List(ctx context.Context, res Resourcer, dst []any, stmt *Statement) error {
+func (c *PostgresReadWriteTransaction) List(_ context.Context, _ Resourcer, _ []any, _ *Statement) error {
 	panic("you should never call List() on a PostgresReadWriteTransaction")
 }
 
@@ -104,15 +103,15 @@ func (c *PostgresReadWriteTransaction) DataChangeEventIndex(res accesstypes.Reso
 }
 
 func (c *PostgresReadWriteTransaction) PostgresReadOnlyTransaction() any {
-	panic("PostgresReadOnlyTransaction() not yet implemented")
+	panic("PostgresReadOnlyTransaction() not implemented for PostgresReadWriteTransaction")
 }
 
-func (c *PostgresReadWriteTransaction) BufferMap(_ PatchType, _ ResourcePatch, _ map[string]any) error {
-	panic(fmt.Sprintf("operation not implemented for database type: %s", c.DBType()))
+func (c *PostgresReadWriteTransaction) BufferMap(_ PatchType, _ PatchSetMetadata, _ map[string]any) error {
+	panic("BufferMap not implemented for PostgresReadWriteTransaction")
 }
 
-func (c *PostgresReadWriteTransaction) BufferStruct(_ PatchType, _ ResourcePatch, _ any) error {
-	panic(fmt.Sprintf("operation not implemented for database type: %s", c.DBType()))
+func (c *PostgresReadWriteTransaction) BufferStruct(_ PatchType, _ PatchSetMetadata, _ any) error {
+	panic("BufferStruct not implemented for PostgresReadWriteTransaction")
 }
 
 func (c *PostgresReadWriteTransaction) SpannerReadOnlyTransaction() spxscan.Querier {
