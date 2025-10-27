@@ -134,10 +134,10 @@ func (c *SpannerReadWriteTransaction) SpannerReadOnlyTransaction() spxscan.Queri
 }
 
 // BufferMap buffers a map of changes to be applied to the database.
-func (c *SpannerReadWriteTransaction) BufferMap(patchType PatchType, r PatchSetMetadata, patch map[string]any) error {
+func (c *SpannerReadWriteTransaction) BufferMap(r PatchSetMetadata, patch map[string]any) error {
 	var m *spanner.Mutation
 
-	switch patchType {
+	switch r.PatchType() {
 	case CreatePatchType:
 		m = spanner.InsertMap(string(r.Resource()), patch)
 	case UpdatePatchType:
@@ -147,7 +147,7 @@ func (c *SpannerReadWriteTransaction) BufferMap(patchType PatchType, r PatchSetM
 	case CreateOrUpdatePatchType:
 		m = spanner.InsertOrUpdateMap(string(r.Resource()), patch)
 	default:
-		panic(fmt.Sprintf("unsupported operation: %s", patchType))
+		panic(fmt.Sprintf("unsupported operation: %s", r.PatchType()))
 	}
 
 	if err := c.txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
@@ -158,28 +158,28 @@ func (c *SpannerReadWriteTransaction) BufferMap(patchType PatchType, r PatchSetM
 }
 
 // BufferStruct buffers a struct of changes to be applied to the database.
-func (c *SpannerReadWriteTransaction) BufferStruct(patchType PatchType, r PatchSetMetadata, patch any) error {
+func (c *SpannerReadWriteTransaction) BufferStruct(patch PatchSetMetadata) error {
 	var m *spanner.Mutation
 	var err error
 
-	switch patchType {
+	switch patch.PatchType() {
 	case CreatePatchType:
-		m, err = spanner.InsertStruct(string(r.Resource()), patch)
+		m, err = spanner.InsertStruct(string(patch.Resource()), patch)
 		if err != nil {
 			return errors.Wrap(err, "spanner.InsertStruct()")
 		}
 	case UpdatePatchType:
-		m, err = spanner.UpdateStruct(string(r.Resource()), patch)
+		m, err = spanner.UpdateStruct(string(patch.Resource()), patch)
 		if err != nil {
 			return errors.Wrap(err, "spanner.UpdateStruct()")
 		}
 	case CreateOrUpdatePatchType:
-		m, err = spanner.InsertOrUpdateStruct(string(r.Resource()), patch)
+		m, err = spanner.InsertOrUpdateStruct(string(patch.Resource()), patch)
 		if err != nil {
 			return errors.Wrap(err, "spanner.InsertOrUpdateStruct()")
 		}
 	default:
-		panic(fmt.Sprintf("unsupported operation: %s", patchType))
+		panic(fmt.Sprintf("unsupported operation: %s", patch.PatchType()))
 	}
 
 	if err := c.txn.BufferWrite([]*spanner.Mutation{m}); err != nil {

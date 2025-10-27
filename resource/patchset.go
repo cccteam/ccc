@@ -275,7 +275,7 @@ func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn ReadWriteTran
 		return errors.Wrap(err, "Resolve()")
 	}
 
-	if err := txn.BufferMap(p.PatchType(), p, patch); err != nil {
+	if err := txn.BufferMap(p, patch); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
 
@@ -325,7 +325,7 @@ func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn ReadWriteTran
 		return errors.Wrap(err, "Resolve()")
 	}
 
-	if err := txn.BufferMap(p.PatchType(), p, patch); err != nil {
+	if err := txn.BufferMap(p, patch); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
 
@@ -354,7 +354,7 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn ReadW
 		return errors.Wrap(err, "Resolve()")
 	}
 
-	if err := txn.BufferMap(p.PatchType(), p, patch); err != nil {
+	if err := txn.BufferMap(p, patch); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
 
@@ -377,7 +377,7 @@ func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn ReadWriteTran
 		return err
 	}
 
-	if err := txn.BufferMap(p.PatchType(), p, nil); err != nil {
+	if err := txn.BufferMap(p, nil); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
 
@@ -406,7 +406,7 @@ func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn ReadWriteTransa
 		ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 	}
 
-	if err := txn.BufferStruct(CreatePatchType, event, event); err != nil {
+	if err := txn.BufferStruct(event); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
 
@@ -438,7 +438,7 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context
 		return errors.Wrap(err, "spanner.InsertStruct()")
 	}
 
-	if err := txn.BufferStruct(CreatePatchType, event, event); err != nil {
+	if err := txn.BufferStruct(event); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.BufferStruct()")
 	}
 
@@ -461,7 +461,7 @@ func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context
 		ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 	}
 
-	if err := txn.BufferStruct(CreatePatchType, event, event); err != nil {
+	if err := txn.BufferStruct(event); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.BufferStruct()")
 	}
 
@@ -485,7 +485,7 @@ func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context
 		ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 	}
 
-	if err := txn.BufferStruct(CreatePatchType, event, event); err != nil {
+	if err := txn.BufferStruct(event); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.BufferStruct()")
 	}
 

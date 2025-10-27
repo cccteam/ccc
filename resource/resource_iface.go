@@ -27,8 +27,8 @@ type Client interface {
 type ReadWriteTransaction interface {
 	DBType() DBType
 	ReadOnlyTransaction
-	BufferMap(patchType PatchType, res PatchSetMetadata, patch map[string]any) error
-	BufferStruct(patchType PatchType, res PatchSetMetadata, in any) error
+	BufferMap(res PatchSetMetadata, patch map[string]any) error
+	BufferStruct(res PatchSetMetadata) error
 
 	// DataChangeEventIndex provides a sequence number for data change events on the same Resource inside the same transaction
 	DataChangeEventIndex(res accesstypes.Resource, rowID string) int
@@ -54,6 +54,7 @@ type Reader[Resource Resourcer] interface {
 
 // PatchSetMetadata is an interface that all PatchSet types must implement to allow their mutations to be buffered
 type PatchSetMetadata interface {
+	PatchType() PatchType
 	PrimaryKey() KeySet
 	Resource() accesstypes.Resource
 }

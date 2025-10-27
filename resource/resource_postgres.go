@@ -111,12 +111,12 @@ func (c *PostgresReadWriteTransaction) PostgresReadOnlyTransaction() any {
 }
 
 // BufferMap panics because it is not implemented for the PostgresReadWriteTransaction.
-func (c *PostgresReadWriteTransaction) BufferMap(_ PatchType, _ PatchSetMetadata, _ map[string]any) error {
+func (c *PostgresReadWriteTransaction) BufferMap(_ PatchSetMetadata, _ map[string]any) error {
 	panic("BufferMap() not implemented for PostgresReadWriteTransaction")
 }
 
 // BufferStruct panics because it is not implemented for the PostgresReadWriteTransaction.
-func (c *PostgresReadWriteTransaction) BufferStruct(_ PatchType, _ PatchSetMetadata, _ any) error {
+func (c *PostgresReadWriteTransaction) BufferStruct(_ PatchSetMetadata) error {
 	panic("BufferStruct() not implemented for PostgresReadWriteTransaction")
 }
 

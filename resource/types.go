@@ -32,8 +32,13 @@ type DataChangeEvent struct {
 	ChangeSet   spanner.NullJSON     `spanner:"ChangeSet"`
 }
 
+// PatchType returns the PatchType for DataChangeEvent
+func (DataChangeEvent) PatchType() PatchType {
+	return CreatePatchType
+}
+
 // Resource returns the Resource name for DataChangeEvent
-func (d DataChangeEvent) Resource() accesstypes.Resource {
+func (DataChangeEvent) Resource() accesstypes.Resource {
 	return "DataChangeEvents"
 }
 

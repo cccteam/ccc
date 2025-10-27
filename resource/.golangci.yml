@@ -185,10 +185,6 @@ linters:
           - goconst
         path: generation/types\.go
         text: uuid|civilDate|Date
-      - linters:
-          - gocritic
-        path: types\.go
-        text: d is heavy
     paths:
       - third_party$
       - builtin$
