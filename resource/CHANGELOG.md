@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.7.0](https://github.com/cccteam/ccc/compare/resource/v0.6.0...resource/v0.7.0) (2025-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* Resource package now has a Client that implements its public interface. Requires refactor.
+* Numerous breaking changes in the generated code ([#490](https://github.com/cccteam/ccc/issues/490))
+
+### Features
+
+* Computed Resources ([#490](https://github.com/cccteam/ccc/issues/490)) ([37ffcec](https://github.com/cccteam/ccc/commit/37ffcecfff47a7620661490cdbbcfaaa019bb3d5))
+* Now has full mocking support ([18bead9](https://github.com/cccteam/ccc/commit/18bead9b6755a3fa0795b6dd76a3b19c3fb355da))
+
+
+### Bug Fixes
+
+* add computed resources to router test template ([#493](https://github.com/cccteam/ccc/issues/493)) ([8dc007d](https://github.com/cccteam/ccc/commit/8dc007de63ab5e75f93145656a82b62d8419aba7))
+* Template for router tests ([#494](https://github.com/cccteam/ccc/issues/494)) ([b773d22](https://github.com/cccteam/ccc/commit/b773d22f6a4b66f25542c56fc95cf587b1ebfd38))
+
+
+### Code Refactoring
+
+* Numerous breaking changes in the generated code ([#490](https://github.com/cccteam/ccc/issues/490)) ([37ffcec](https://github.com/cccteam/ccc/commit/37ffcecfff47a7620661490cdbbcfaaa019bb3d5))
+* Resource package now has a Client that implements its public interface. Requires refactor. ([18bead9](https://github.com/cccteam/ccc/commit/18bead9b6755a3fa0795b6dd76a3b19c3fb355da))
+
 ## [0.6.0](https://github.com/cccteam/ccc/compare/resource/v0.5.3...resource/v0.6.0) (2025-10-10)
 
 
