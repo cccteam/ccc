@@ -17,7 +17,21 @@ func NewReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
 		return &PostgresReader[Resource]{
 			readTxn: func() any { return txn.PostgresReadOnlyTransaction() },
 		}
+	case *MockClient:
+		return selectMock[Resource](t.ReadOnlyMocks())
+	case *MockReadWriteTransaction:
+		return selectMock[Resource](t.TxnReadMocks())
 	default:
 		panic(fmt.Sprintf("unsupported Client type: %T", t))
 	}
+}
+
+func selectMock[Resource Resourcer](mocks []any) Reader[Resource] {
+	for _, mock := range mocks {
+		if m, ok := mock.(Reader[Resource]); ok {
+			return m
+		}
+	}
+
+	panic(fmt.Sprintf("mock for type %T not found", new(Resource)))
 }

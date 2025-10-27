@@ -11,6 +11,9 @@ const (
 
 	// PostgresDBType represents the PostgreSQL database.
 	PostgresDBType DBType = "postgres"
+
+	// MockDBType represents a database type for mocking
+	MockDBType DBType = "mock"
 )
 
 // dbTypes should return DBType constants for all supported databases
