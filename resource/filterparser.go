@@ -50,6 +50,11 @@ func NewFilterLexer(input string) *FilterLexer {
 	}
 }
 
+// Reset resets the lexer to its beginning state so it can be used again
+func (l *FilterLexer) Reset() {
+	l.pos = 0
+}
+
 // NextToken returns the next token from the input string.
 func (l *FilterLexer) NextToken() (Token, error) {
 	if l.pos >= len(l.input) {
@@ -178,17 +183,29 @@ func (gn *GroupNode) String() string {
 }
 
 type (
-	prefixParseFn func() (ExpressionNode, error)
-	infixParseFn  func(ExpressionNode) (ExpressionNode, error)
+	prefixParseFn func(DBType) (ExpressionNode, error)
+	infixParseFn  func(ExpressionNode, DBType) (ExpressionNode, error)
 )
 
 // FilterFieldInfo holds metadata about a field that can be used in a filter.
 type FilterFieldInfo struct {
-	DbColumnName string
-	Kind         reflect.Kind
-	FieldType    reflect.Type
-	Indexed      bool
-	PII          bool
+	JSONFieldName string
+	GOFieldName   string
+	dbColumnNames map[DBType]string
+	Kind          reflect.Kind
+	FieldType     reflect.Type
+	Indexed       bool
+	PII           bool
+}
+
+// ColumnName returns the column name for the given DBType.
+func (f FilterFieldInfo) ColumnName(dbType DBType) (string, error) {
+	name, ok := f.dbColumnNames[dbType]
+	if !ok {
+		return name, errors.Newf("field %s (json: %s) not found in resource metadata for db type %s", f.GOFieldName, f.JSONFieldName, dbType)
+	}
+
+	return name, nil
 }
 
 // FilterParser builds an AST from tokens.
@@ -201,15 +218,18 @@ type FilterParser struct {
 	prefixParseFns  map[TokenType]prefixParseFn
 	infixParseFns   map[TokenType]infixParseFn
 	jsonToFieldInfo map[jsonFieldName]FilterFieldInfo
+
+	parsedExpression map[DBType]ExpressionNode
 }
 
 // NewFilterParser creates a new parser with the given lexer and field information map.
 func NewFilterParser(lexer *FilterLexer, jsonToFieldInfo map[jsonFieldName]FilterFieldInfo) (*FilterParser, error) {
 	p := &FilterParser{
-		lexer:           lexer,
-		prefixParseFns:  make(map[TokenType]prefixParseFn),
-		infixParseFns:   make(map[TokenType]infixParseFn),
-		jsonToFieldInfo: jsonToFieldInfo,
+		lexer:            lexer,
+		prefixParseFns:   make(map[TokenType]prefixParseFn),
+		infixParseFns:    make(map[TokenType]infixParseFn),
+		jsonToFieldInfo:  jsonToFieldInfo,
+		parsedExpression: make(map[DBType]ExpressionNode),
 	}
 
 	// Register prefix parsing functions
@@ -231,13 +251,34 @@ func NewFilterParser(lexer *FilterLexer, jsonToFieldInfo map[jsonFieldName]Filte
 	return p, nil
 }
 
+// reset resets the parser's internal state to allow for parsing for a new DBType,
+// while preserving the cache of already parsed expressions.
+func (p *FilterParser) reset() error {
+	p.lexer.Reset()
+	p.hasIndexedField = false
+
+	// Reprime the parser by advancing the tokens back to the start of the input.
+	if err := p.advance(); err != nil {
+		return errors.Wrap(err, "failed to advance for current token")
+	}
+	if err := p.advance(); err != nil {
+		return errors.Wrap(err, "failed to advance for peek token")
+	}
+
+	return nil
+}
+
 // Parse is the main entry point for parsing the filter string.
-func (p *FilterParser) Parse() (ExpressionNode, error) {
+func (p *FilterParser) Parse(dbType DBType) (ExpressionNode, error) {
+	if exp, found := p.parsedExpression[dbType]; found {
+		return exp, nil
+	}
+
 	if p.current.Type == TokenEOF && p.peek.Type == TokenEOF {
 		return nil, nil
 	}
 
-	expression, err := p.parseExpression()
+	expression, err := p.parseExpression(dbType)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +288,12 @@ func (p *FilterParser) Parse() (ExpressionNode, error) {
 	}
 
 	if !p.hasIndexedField {
-		return nil, httpio.NewBadRequestMessage("Invalid filter query. Filter must contain at least one column that is indexed")
+		return nil, httpio.NewBadRequestMessagef("Invalid filter query. Filter must contain at least one column that is indexed for dbType %s", dbType)
+	}
+
+	p.parsedExpression[dbType] = expression
+	if err := p.reset(); err != nil {
+		return nil, err
 	}
 
 	return expression, nil
@@ -272,7 +318,7 @@ func (p *FilterParser) expectPeek(t TokenType) error {
 	return httpio.NewBadRequestMessagef("expected next token to be %s, got %s instead", t, p.peek.Type)
 }
 
-func (p *FilterParser) parseExpression() (ExpressionNode, error) {
+func (p *FilterParser) parseExpression(dbType DBType) (ExpressionNode, error) {
 	prefix := p.prefixParseFns[p.current.Type]
 	if prefix == nil {
 		return nil, httpio.NewBadRequestMessagef(
@@ -282,7 +328,7 @@ func (p *FilterParser) parseExpression() (ExpressionNode, error) {
 		)
 	}
 
-	leftExp, err := prefix()
+	leftExp, err := prefix(dbType)
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +344,7 @@ func (p *FilterParser) parseExpression() (ExpressionNode, error) {
 		if err := p.advance(); err != nil { // Consume the operator
 			return nil, err
 		}
-		leftExp, err = infix(leftExp)
+		leftExp, err = infix(leftExp, dbType)
 		if err != nil {
 			return nil, err // Error already added by infix function
 		}
@@ -307,7 +353,7 @@ func (p *FilterParser) parseExpression() (ExpressionNode, error) {
 	return leftExp, nil
 }
 
-func (p *FilterParser) parseInfixExpression(left ExpressionNode) (ExpressionNode, error) {
+func (p *FilterParser) parseInfixExpression(left ExpressionNode, dbType DBType) (ExpressionNode, error) {
 	node := &LogicalOpNode{
 		Left: left,
 	}
@@ -325,7 +371,7 @@ func (p *FilterParser) parseInfixExpression(left ExpressionNode) (ExpressionNode
 		return nil, err
 	}
 	var err error
-	node.Right, err = p.parseExpression()
+	node.Right, err = p.parseExpression(dbType)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +382,7 @@ func (p *FilterParser) parseInfixExpression(left ExpressionNode) (ExpressionNode
 	return node, nil
 }
 
-func (p *FilterParser) parseConditionToken() (ExpressionNode, error) {
+func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error) {
 	parts := strings.SplitN(p.current.Value, ":", 3)
 	if len(parts) < 2 {
 		return nil, httpio.NewBadRequestMessagef("condition '%s' must have at least field:operator", p.current.Value)
@@ -355,8 +401,13 @@ func (p *FilterParser) parseConditionToken() (ExpressionNode, error) {
 		p.hasIndexedField = true
 	}
 
+	field, err := fieldInfo.ColumnName(dbType)
+	if err != nil {
+		return nil, err
+	}
+
 	condition := Condition{
-		Field:    fieldInfo.DbColumnName,
+		Field:    field,
 		Operator: strings.ToLower(strings.TrimSpace(parts[1])),
 	}
 
@@ -389,7 +440,7 @@ func (p *FilterParser) parseConditionToken() (ExpressionNode, error) {
 			valueKind := fieldInfo.Kind
 			if valueKind == reflect.Slice || valueKind == reflect.Array {
 				if fieldInfo.FieldType == nil {
-					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", fieldInfo.DbColumnName)
+					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", field)
 				}
 				valueKind = fieldInfo.FieldType.Elem().Kind()
 			}
@@ -451,7 +502,7 @@ func (p *FilterParser) convertValue(strValue string, kind reflect.Kind) (any, er
 	}
 }
 
-func (p *FilterParser) parseGroupedExpression() (ExpressionNode, error) {
+func (p *FilterParser) parseGroupedExpression(dbType DBType) (ExpressionNode, error) {
 	if err := p.advance(); err != nil { // Consume '('
 		return nil, err
 	}
@@ -460,7 +511,7 @@ func (p *FilterParser) parseGroupedExpression() (ExpressionNode, error) {
 		return nil, httpio.NewBadRequestMessagef("Invalid filter query. Empty groups '()' are not allowed.")
 	}
 
-	expression, err := p.parseExpression()
+	expression, err := p.parseExpression(dbType)
 	if err != nil {
 		return nil, err
 	}

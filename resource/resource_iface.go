@@ -2,11 +2,10 @@ package resource
 
 import (
 	"context"
-	"time"
+	"iter"
 
-	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/spxscan/spxapi"
+	"github.com/cccteam/spxscan"
 )
 
 // UserPermissions is an interface that provides methods to check user permissions and retrieve user information, and is used
@@ -17,43 +16,51 @@ type UserPermissions interface {
 	User() accesstypes.User
 }
 
-// Committer is an interface that abstracts the Spanner client's transaction functionality.
-// It is used by PatchSet.SpannerApply() to allow for mocking the Spanner client in tests.
-// It is satisfied by *spanner.Client.
-type Committer interface {
-	ReadWriteTransaction(ctx context.Context, f func(context.Context, *spanner.ReadWriteTransaction) error) (commitTimestamp time.Time, err error)
+// Client is an interface for the supported database Client's to implement. It is not intended
+// for mocking since each database requires an implementation in this package.
+type Client interface {
+	ReadOnlyTransaction
+	Executor
 }
 
-// TxnBuffer is an interface that abstracts a Spanner read-write transaction,
-// allowing mutations to be buffered and queries to be executed within the transaction.
-// It is satisfied by *spanner.ReadWriteTransaction.
-type TxnBuffer interface {
-	BufferWrite(ms []*spanner.Mutation) error
-	spxapi.Querier
+// ReadWriteTransaction is an interface that represents a database transaction that can be used for both reads and writes.
+type ReadWriteTransaction interface {
+	DBType() DBType
+	ReadOnlyTransaction
+	BufferMap(res PatchSetMetadata, patch map[string]any) error
+	BufferStruct(res PatchSetMetadata) error
+
+	// DataChangeEventIndex provides a sequence number for data change events on the same Resource inside the same transaction
+	DataChangeEventIndex(res accesstypes.Resource, rowID string) int
 }
 
-// Buffer is an interface for types that can buffer their Spanner mutations
-// into a transaction via the Buffer method. This is used for batching
-// operations.
+// ReadOnlyTransaction is an interface that represents a database transaction that can be used for reads.
+type ReadOnlyTransaction interface {
+	SpannerReadOnlyTransaction() spxscan.Querier
+	PostgresReadOnlyTransaction() any
+}
+
+// Executor interface exposes ability to run a function inside a transaction.
+type Executor interface {
+	ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error
+}
+
+// Reader is an interface that wraps methods for reading resources from a database.
+type Reader[Resource Resourcer] interface {
+	DBType() DBType
+	Read(ctx context.Context, stmt *Statement) (*Resource, error)
+	List(ctx context.Context, stmt *Statement) iter.Seq2[*Resource, error]
+}
+
+// PatchSetMetadata is an interface that all PatchSet types must implement to allow their mutations to be buffered
+type PatchSetMetadata interface {
+	PatchType() PatchType
+	PrimaryKey() KeySet
+	Resource() accesstypes.Resource
+}
+
+// Buffer is an interface for types that can buffer their mutations
+// into a transaction. This is used for batching operations.
 type Buffer interface {
-	Buffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error
-}
-
-// TxnRunner will have its Execute() method called inside the *spanner.ReadWriteTransaction provided by TxnBuffer
-type TxnRunner interface {
-	Execute(ctx context.Context, txn TxnBuffer) error
-}
-
-// TxnFuncRunner provides a way to execute a function within a read-write transaction.
-// This is useful for batching operations that need to be committed together.
-type TxnFuncRunner interface {
-	ExecuteFunc(ctx context.Context, runnerFn func(ctx context.Context, txn TxnBuffer) error) error
-}
-
-// RunnerFunc is a function that converts a TxnFuncRunner into a TxnRunner
-type RunnerFunc func(ctx context.Context, txn TxnBuffer) error
-
-// Execute runs the function.
-func (fn RunnerFunc) Execute(ctx context.Context, txn TxnBuffer) error {
-	return fn(ctx, txn)
+	Buffer(ctx context.Context, txn ReadWriteTransaction, eventSource ...string) error
 }

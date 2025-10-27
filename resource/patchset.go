@@ -31,6 +31,8 @@ const (
 	DeletePatchType PatchType = "DeletePatchType"
 )
 
+var _ PatchSetMetadata = (*PatchSet[nilResource])(nil)
+
 // PatchSet represents a set of changes to be applied to a resource.
 type PatchSet[Resource Resourcer] struct {
 	querySet           *QuerySet[Resource]
@@ -74,8 +76,8 @@ func (p *PatchSet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource]
 }
 
 // Set adds or updates a field's value in the PatchSet.
-func (p *PatchSet[Resource]) checkPermissions(ctx context.Context) error {
-	return p.querySet.checkPermissions(ctx)
+func (p *PatchSet[Resource]) checkPermissions(ctx context.Context, dbType DBType) error {
+	return p.querySet.checkPermissions(ctx, dbType)
 }
 
 // Set adds or updates a field's value in the PatchSet.
@@ -134,8 +136,8 @@ func (p *PatchSet[Resource]) HasKey() bool {
 }
 
 // deleteQuerySet configures the internal QuerySet to select all fields for a delete operation.
-func (p *PatchSet[Resource]) deleteQuerySet() *QuerySet[Resource] {
-	for _, field := range p.querySet.rMeta.Fields() {
+func (p *PatchSet[Resource]) deleteQuerySet(dbType DBType) *QuerySet[Resource] {
+	for _, field := range p.querySet.rMeta.DBFields(dbType) {
 		p.querySet.AddField(field)
 	}
 
@@ -148,23 +150,23 @@ func (p *PatchSet[Resource]) Resource() accesstypes.Resource {
 }
 
 // Apply applies the patch within a new read-write transaction.
-func (p *PatchSet[Resource]) Apply(ctx context.Context, committer Committer, eventSource ...string) error {
+func (p *PatchSet[Resource]) Apply(ctx context.Context, client Client, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
-		return p.applyInsert(ctx, committer, eventSource...)
+		return p.applyInsert(ctx, client, eventSource...)
 	case UpdatePatchType:
-		return p.applyUpdate(ctx, committer, eventSource...)
+		return p.applyUpdate(ctx, client, eventSource...)
 	case CreateOrUpdatePatchType:
-		return p.applyInsertOrUpdate(ctx, committer, eventSource...)
+		return p.applyInsertOrUpdate(ctx, client, eventSource...)
 	case DeletePatchType:
-		return p.applyDelete(ctx, committer, eventSource...)
+		return p.applyDelete(ctx, client, eventSource...)
 	default:
 		return errors.Newf("PatchType %s not supported", p.patchType)
 	}
 }
 
 // Buffer buffers the patch's mutations into an existing transaction buffer.
-func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
+func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn ReadWriteTransaction, eventSource ...string) error {
 	switch p.patchType {
 	case CreatePatchType:
 		return p.bufferInsert(ctx, txn, eventSource...)
@@ -179,9 +181,9 @@ func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn TxnBuffer, eventSou
 	}
 }
 
-func (p *PatchSet[Resource]) applyInsert(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.bufferInsert(ctx, txn, eventSource...); err != nil {
+func (p *PatchSet[Resource]) applyInsert(ctx context.Context, c Client, eventSource ...string) error {
+	if err := c.ExecuteFunc(ctx, func(c context.Context, txn ReadWriteTransaction) error {
+		if err := p.bufferInsert(c, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -193,9 +195,9 @@ func (p *PatchSet[Resource]) applyInsert(ctx context.Context, s Committer, event
 	return nil
 }
 
-func (p *PatchSet[Resource]) applyUpdate(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.bufferUpdate(ctx, txn, eventSource...); err != nil {
+func (p *PatchSet[Resource]) applyUpdate(ctx context.Context, c Client, eventSource ...string) error {
+	if err := c.ExecuteFunc(ctx, func(c context.Context, txn ReadWriteTransaction) error {
+		if err := p.bufferUpdate(c, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -208,9 +210,9 @@ func (p *PatchSet[Resource]) applyUpdate(ctx context.Context, s Committer, event
 }
 
 // applyInsertOrUpdate applies an insert-or-update operation within a new read-write transaction.
-func (p *PatchSet[Resource]) applyInsertOrUpdate(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.bufferInsertOrUpdate(ctx, txn, eventSource...); err != nil {
+func (p *PatchSet[Resource]) applyInsertOrUpdate(ctx context.Context, c Client, eventSource ...string) error {
+	if err := c.ExecuteFunc(ctx, func(c context.Context, txn ReadWriteTransaction) error {
+		if err := p.bufferInsertOrUpdate(c, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -222,9 +224,9 @@ func (p *PatchSet[Resource]) applyInsertOrUpdate(ctx context.Context, s Committe
 	return nil
 }
 
-func (p *PatchSet[Resource]) applyDelete(ctx context.Context, s Committer, eventSource ...string) error {
-	if _, err := s.ReadWriteTransaction(ctx, func(_ context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := p.bufferDelete(ctx, txn, eventSource...); err != nil {
+func (p *PatchSet[Resource]) applyDelete(ctx context.Context, c Client, eventSource ...string) error {
+	if err := c.ExecuteFunc(ctx, func(c context.Context, txn ReadWriteTransaction) error {
+		if err := p.bufferDelete(c, txn, eventSource...); err != nil {
 			return err
 		}
 
@@ -236,8 +238,8 @@ func (p *PatchSet[Resource]) applyDelete(ctx context.Context, s Committer, event
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
-	if err := p.checkPermissions(ctx); err != nil {
+func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn ReadWriteTransaction, eventSource ...string) error {
+	if err := p.checkPermissions(ctx, txn.DBType()); err != nil {
 		return err
 	}
 
@@ -268,14 +270,13 @@ func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn TxnBuffer, ev
 		}
 	}
 
-	patch, err := p.Resolve()
+	patch, err := p.Resolve(txn.DBType())
 	if err != nil {
 		return errors.Wrap(err, "Resolve()")
 	}
-	m := spanner.InsertMap(string(p.Resource()), patch)
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+	if err := txn.BufferMap(p, patch); err != nil {
+		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -287,8 +288,8 @@ func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn TxnBuffer, ev
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
-	if err := p.checkPermissions(ctx); err != nil {
+func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn ReadWriteTransaction, eventSource ...string) error {
+	if err := p.checkPermissions(ctx, txn.DBType()); err != nil {
 		return err
 	}
 
@@ -319,14 +320,13 @@ func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn TxnBuffer, ev
 		}
 	}
 
-	patch, err := p.Resolve()
+	patch, err := p.Resolve(txn.DBType())
 	if err != nil {
 		return errors.Wrap(err, "Resolve()")
 	}
-	m := spanner.UpdateMap(string(p.Resource()), patch)
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+	if err := txn.BufferMap(p, patch); err != nil {
+		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -339,8 +339,8 @@ func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn TxnBuffer, ev
 }
 
 // bufferInsertOrUpdate buffers an insert-or-update mutation into an existing transaction buffer.
-func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
-	if err := p.checkPermissions(ctx); err != nil {
+func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn ReadWriteTransaction, eventSource ...string) error {
+	if err := p.checkPermissions(ctx, txn.DBType()); err != nil {
 		return err
 	}
 
@@ -349,14 +349,13 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn TxnBu
 		return err
 	}
 
-	patch, err := p.Resolve()
+	patch, err := p.Resolve(txn.DBType())
 	if err != nil {
 		return errors.Wrap(err, "Resolve()")
 	}
-	m := spanner.InsertOrUpdateMap(string(p.Resource()), patch)
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+	if err := txn.BufferMap(p, patch); err != nil {
+		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -368,8 +367,8 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn TxnBu
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn TxnBuffer, eventSource ...string) error {
-	if err := p.checkPermissions(ctx); err != nil {
+func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn ReadWriteTransaction, eventSource ...string) error {
+	if err := p.checkPermissions(ctx, txn.DBType()); err != nil {
 		return err
 	}
 
@@ -378,10 +377,8 @@ func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn TxnBuffer, ev
 		return err
 	}
 
-	m := spanner.Delete(string(p.Resource()), p.PrimaryKey().KeySet())
-
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+	if err := txn.BufferMap(p, nil); err != nil {
+		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
 
 	if p.querySet.rMeta.trackChanges {
@@ -393,33 +390,30 @@ func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn TxnBuffer, ev
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn TxnBuffer, eventSource string) error {
+func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn ReadWriteTransaction, eventSource string) error {
 	changeSet, err := p.insertChangeSet()
 	if err != nil {
 		return err
 	}
 
-	m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
-		&DataChangeEvent{
-			TableName:   p.Resource(),
-			RowID:       p.PrimaryKey().RowID(),
-			EventTime:   spanner.CommitTimestamp,
-			EventSource: eventSource,
-			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
-		},
-	)
-	if err != nil {
-		return errors.Wrap(err, "spanner.InsertStruct()")
+	rowID := p.PrimaryKey().RowID()
+	event := &DataChangeEvent{
+		TableName:   p.Resource(),
+		RowID:       rowID,
+		Sequence:    txn.DataChangeEventIndex(p.Resource(), rowID),
+		EventTime:   spanner.CommitTimestamp,
+		EventSource: eventSource,
+		ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 	}
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+	if err := txn.BufferStruct(event); err != nil {
+		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
 
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context.Context, txn TxnBuffer, eventSource string) error {
+func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context.Context, txn ReadWriteTransaction, eventSource string) error {
 	changeSet, err := p.updateChangeSet(ctx, txn)
 	if err != nil {
 		if !errors.Is(err, spxscan.ErrNotFound) {
@@ -431,74 +425,68 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context
 		}
 	}
 
-	m, err := spanner.InsertOrUpdateStruct(p.querySet.rMeta.changeTrackingTable,
-		&DataChangeEvent{
-			TableName:   p.Resource(),
-			RowID:       p.PrimaryKey().RowID(),
-			EventTime:   spanner.CommitTimestamp,
-			EventSource: eventSource,
-			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
-		},
-	)
+	rowID := p.PrimaryKey().RowID()
+	event := &DataChangeEvent{
+		TableName:   p.Resource(),
+		RowID:       rowID,
+		Sequence:    txn.DataChangeEventIndex(p.Resource(), rowID),
+		EventTime:   spanner.CommitTimestamp,
+		EventSource: eventSource,
+		ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
+	}
 	if err != nil {
 		return errors.Wrap(err, "spanner.InsertStruct()")
 	}
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+	if err := txn.BufferStruct(event); err != nil {
+		return errors.Wrap(err, "ReadWriteTransaction.BufferStruct()")
 	}
 
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context, txn TxnBuffer, eventSource string) error {
+func (p *PatchSet[Resource]) bufferUpdateWithDataChangeEvent(ctx context.Context, txn ReadWriteTransaction, eventSource string) error {
 	changeSet, err := p.updateChangeSet(ctx, txn)
 	if err != nil {
 		return err
 	}
 
-	m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
-		&DataChangeEvent{
-			TableName:   p.Resource(),
-			RowID:       p.PrimaryKey().RowID(),
-			EventTime:   spanner.CommitTimestamp,
-			EventSource: eventSource,
-			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
-		},
-	)
-	if err != nil {
-		return errors.Wrap(err, "spanner.InsertStruct()")
+	rowID := p.PrimaryKey().RowID()
+	event := &DataChangeEvent{
+		TableName:   p.Resource(),
+		RowID:       rowID,
+		Sequence:    txn.DataChangeEventIndex(p.Resource(), rowID),
+		EventTime:   spanner.CommitTimestamp,
+		EventSource: eventSource,
+		ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 	}
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+	if err := txn.BufferStruct(event); err != nil {
+		return errors.Wrap(err, "ReadWriteTransaction.BufferStruct()")
 	}
 
 	return nil
 }
 
-func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context, txn TxnBuffer, eventSource string) error {
+func (p *PatchSet[Resource]) bufferDeleteWithDataChangeEvent(ctx context.Context, txn ReadWriteTransaction, eventSource string) error {
 	keySet := p.PrimaryKey()
 	changeSet, err := p.jsonDeleteSet(ctx, txn)
 	if err != nil {
 		return err
 	}
 
-	m, err := spanner.InsertStruct(p.querySet.rMeta.changeTrackingTable,
-		&DataChangeEvent{
-			TableName:   p.Resource(),
-			RowID:       keySet.RowID(),
-			EventTime:   spanner.CommitTimestamp,
-			EventSource: eventSource,
-			ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
-		},
-	)
-	if err != nil {
-		return errors.Wrap(err, "spanner.InsertStruct()")
+	rowID := keySet.RowID()
+	event := &DataChangeEvent{
+		TableName:   p.Resource(),
+		RowID:       rowID,
+		Sequence:    txn.DataChangeEventIndex(p.Resource(), rowID),
+		EventTime:   spanner.CommitTimestamp,
+		EventSource: eventSource,
+		ChangeSet:   spanner.NullJSON{Valid: true, Value: changeSet},
 	}
 
-	if err := txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
-		return errors.Wrap(err, "TxnBuffer.BufferWrite()")
+	if err := txn.BufferStruct(event); err != nil {
+		return errors.Wrap(err, "ReadWriteTransaction.BufferStruct()")
 	}
 
 	return nil
@@ -519,19 +507,15 @@ func (p *PatchSet[Resource]) insertChangeSet() (map[accesstypes.Field]DiffElem, 
 	return changeSet, nil
 }
 
-func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn TxnBuffer) (map[accesstypes.Field]DiffElem, error) {
-	stmt, err := p.querySet.SpannerStmt()
+func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn ReadWriteTransaction) (map[accesstypes.Field]DiffElem, error) {
+	stmt, err := p.querySet.stmt(txn.DBType())
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
 	}
 
-	oldValues := new(Resource)
-	if err := spxscan.Get(ctx, txn, oldValues, stmt.Statement); err != nil {
-		if errors.Is(err, spxscan.ErrNotFound) {
-			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), stmt.resolvedWhereClause)
-		}
-
-		return nil, errors.Wrap(err, "spxscan.Get()")
+	oldValues, err := NewReader[Resource](txn).Read(ctx, stmt)
+	if err != nil {
+		return nil, errors.Wrap(err, "Reader[Resource].Read()")
 	}
 
 	changeSet, err := p.Diff(oldValues)
@@ -546,19 +530,15 @@ func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn TxnBuffer)
 	return changeSet, nil
 }
 
-func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn TxnBuffer) (map[accesstypes.Field]DiffElem, error) {
-	stmt, err := p.deleteQuerySet().SpannerStmt()
+func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn ReadWriteTransaction) (map[accesstypes.Field]DiffElem, error) {
+	stmt, err := p.deleteQuerySet(txn.DBType()).stmt(txn.DBType())
 	if err != nil {
 		return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")
 	}
 
-	oldValues := new(Resource)
-	if err := spxscan.Get(ctx, txn, oldValues, stmt.Statement); err != nil {
-		if errors.Is(err, spxscan.ErrNotFound) {
-			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", p.Resource(), stmt.resolvedWhereClause)
-		}
-
-		return nil, errors.Wrap(err, "spxscan.Get()")
+	oldValues, err := NewReader[Resource](txn).Read(ctx, stmt)
+	if err != nil {
+		return nil, errors.Wrap(err, "Reader.Read()")
 	}
 
 	changeSet, err := p.deleteChangeSet(oldValues)
@@ -598,7 +578,7 @@ func (p *PatchSet[Resource]) deleteChangeSet(old any) (map[accesstypes.Field]Dif
 }
 
 // Resolve returns a map with the keys set to the database struct tags found on databaseType, and the values set to the values in patchSet.
-func (p *PatchSet[Resource]) Resolve() (map[string]any, error) {
+func (p *PatchSet[Resource]) Resolve(dbType DBType) (map[string]any, error) {
 	keySet := p.PrimaryKey()
 	if keySet.Len() == 0 {
 		return nil, errors.New("PatchSet must include at least one primary key in call to Resolve")
@@ -606,11 +586,11 @@ func (p *PatchSet[Resource]) Resolve() (map[string]any, error) {
 
 	newMap := make(map[string]any, p.Len()+keySet.Len())
 	for structField, value := range all(p.Data(), keySet.KeyMap()) {
-		c, ok := p.querySet.rMeta.fieldMap[structField]
+		f, ok := p.querySet.rMeta.dbFieldMap(dbType)[structField]
 		if !ok {
 			return nil, errors.Newf("field %s not found in struct", structField)
 		}
-		newMap[c.dbColumnName] = value
+		newMap[f.ColumnName] = value
 	}
 
 	return newMap, nil

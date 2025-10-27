@@ -3,13 +3,11 @@ package generation
 import (
 	"fmt"
 	"iter"
-	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 
@@ -25,8 +23,6 @@ type Generator interface {
 	Generate() error
 	Close() error
 }
-
-var tokenizeRegex = regexp.MustCompile(`(TOKENIZE_[^)]+)\(([^)]+)\)`)
 
 const (
 	genPrefix = "zz_gen"
@@ -111,11 +107,6 @@ var (
 	computedInterfaces = [...]string{"ComputedResource"}
 )
 
-type searchIndex struct {
-	Name       string
-	SearchType string
-}
-
 type informationSchemaResult struct {
 	TableName            string  `spanner:"TABLE_NAME"`
 	ColumnName           string  `spanner:"COLUMN_NAME"`
@@ -142,16 +133,14 @@ type enumData struct {
 }
 
 type tableMetadata struct {
-	Columns       map[string]columnMeta
-	SearchIndexes map[string][]*searchExpression
-	IsView        bool
-	PkCount       int
+	Columns map[string]columnMeta
+	IsView  bool
+	PkCount int
 }
 
 type columnMeta struct {
 	IsPrimaryKey       bool
 	IsForeignKey       bool
-	SpannerType        string
 	IsNullable         bool
 	IsIndex            bool
 	IsUniqueIndex      bool
@@ -337,8 +326,7 @@ type resourceInfo struct {
 	*parser.TypeInfo
 	Fields             []*resourceField
 	SuppressedHandlers [3]HandlerType
-	searchIndexes      map[string][]*searchExpression // Search Indexes are hidden columns in Spanner that are not present in Go struct definitions
-	IsView             bool                           // Determines how CreatePatch is rendered in resource generation.
+	IsView             bool // Determines how CreatePatch is rendered in resource generation.
 	IsConsolidated     bool
 	PkCount            int
 	DefaultsCreateType string
@@ -395,25 +383,6 @@ func (r *resourceInfo) HasValidateCreateType() bool {
 // HasValidateUpdateType indicates if a validate update type has been registered
 func (r *resourceInfo) HasValidateUpdateType() bool {
 	return r.ValidateUpdateType != ""
-}
-
-func (r *resourceInfo) SearchIndexes() []searchIndex {
-	typeIndexMap := make(map[resource.SearchType]string)
-	for searchIndex, expressionFields := range r.searchIndexes {
-		for _, exprField := range expressionFields {
-			typeIndexMap[exprField.TokenType] = searchIndex
-		}
-	}
-
-	indexes := make([]searchIndex, 0, len(typeIndexMap))
-	for tokenType, indexName := range typeIndexMap {
-		indexes = append(indexes, searchIndex{
-			Name:       indexName,
-			SearchType: string(tokenType),
-		})
-	}
-
-	return indexes
 }
 
 func (r *resourceInfo) PrimaryKeys() iter.Seq2[int, *resourceField] {
@@ -773,25 +742,6 @@ func (f *resourceField) ImmutableTag() string {
 	return ""
 }
 
-func (f *resourceField) SearchIndexTags() string {
-	typeIndexMap := make(map[resource.SearchType][]string)
-	for searchIndex, expressionFields := range f.Parent.searchIndexes {
-		for _, exprField := range expressionFields {
-			if spannerTag, ok := f.LookupTag("spanner"); ok && spannerTag == exprField.Argument {
-				typeIndexMap[exprField.TokenType] = append(typeIndexMap[exprField.TokenType], searchIndex)
-				typeIndexMap[exprField.TokenType] = slices.Compact(typeIndexMap[exprField.TokenType])
-			}
-		}
-	}
-
-	tags := make([]string, 0, len(typeIndexMap))
-	for tokenType, indexes := range typeIndexMap {
-		tags = append(tags, fmt.Sprintf("%s:%q", tokenType, strings.Join(indexes, ",")))
-	}
-
-	return strings.Join(tags, " ")
-}
-
 func (f *resourceField) IsView() bool {
 	return f.Parent.IsView
 }
@@ -818,15 +768,6 @@ func (f *resourceField) IsQueryClauseEligible() bool {
 	}
 
 	return f.HasTag("allow_filter")
-}
-
-type searchExpression struct {
-	TokenType resource.SearchType
-	Argument  string
-}
-
-func (s searchExpression) String() string {
-	return fmt.Sprintf("TOKENIZE_%s(%s)", strings.ToUpper(string(s.TokenType)), s.Argument)
 }
 
 func generatedGoFileName(name string) string {

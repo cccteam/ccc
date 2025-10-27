@@ -16,13 +16,13 @@ import (
 
 type (
 	// FieldDefaultFunc is the signature for a function that applies a default value to one field of a PatchSet.
-	FieldDefaultFunc func(ctx context.Context, txn TxnBuffer) (any, error)
+	FieldDefaultFunc func(ctx context.Context, txn ReadWriteTransaction) (any, error)
 
 	// DefaultsFunc is the signature for a function that applies default values to a PatchSet.
-	DefaultsFunc func(ctx context.Context, txn TxnBuffer) error
+	DefaultsFunc func(ctx context.Context, txn ReadWriteTransaction) error
 
 	// ValidateFunc is the signature for a function that validates a PatchSet prior to committing it.
-	ValidateFunc func(ctx context.Context, txn TxnBuffer) error
+	ValidateFunc func(ctx context.Context, txn ReadWriteTransaction) error
 )
 
 // Resourcer is an interface that all resource structs must implement.
@@ -182,8 +182,7 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 
 // Metadata contains cached metadata about a resource, such as its database schema mapping and configuration.
 type Metadata[Resource Resourcer] struct {
-	fieldMap            map[accesstypes.Field]cacheEntry
-	dbType              DBType
+	dbMap               map[DBType]map[accesstypes.Field]dbFieldMetadata
 	changeTrackingTable string
 	trackChanges        bool
 }
@@ -195,21 +194,25 @@ func NewMetadata[Resource Resourcer]() *Metadata[Resource] {
 	c := resMetadataCache.get(res)
 
 	return &Metadata[Resource]{
-		fieldMap:            c.fieldMap,
-		dbType:              c.cfg.DBType,
+		dbMap:               c.dbMap,
 		changeTrackingTable: c.cfg.ChangeTrackingTable,
 		trackChanges:        c.cfg.TrackChanges,
 	}
 }
 
-// Fields returns a slice of all field names for the resource.
-func (r *Metadata[Resource]) Fields() []accesstypes.Field {
-	return slices.Collect(maps.Keys(r.fieldMap))
+// dbFieldMap returns the mapping of field names to their database column names for a given database type.
+func (r *Metadata[Resource]) dbFieldMap(dbType DBType) map[accesstypes.Field]dbFieldMetadata {
+	return r.dbMap[dbType]
 }
 
-// Len returns the number of fields in the resource.
-func (r *Metadata[Resource]) Len() int {
-	return len(r.fieldMap)
+// DBFields returns a slice of all field names for a given database type.
+func (r *Metadata[Resource]) DBFields(dbType DBType) []accesstypes.Field {
+	return slices.Collect(maps.Keys(r.dbMap[dbType]))
+}
+
+// DBFieldCount returns the number of fields for a given database type.
+func (r *Metadata[Resource]) DBFieldCount(dbType DBType) int {
+	return len(r.dbMap[dbType])
 }
 
 var resMetadataCache = resourceMetadataCache{
@@ -217,8 +220,8 @@ var resMetadataCache = resourceMetadataCache{
 }
 
 type resourceMetadataCacheEntry struct {
-	fieldMap map[accesstypes.Field]cacheEntry
-	cfg      Config
+	dbMap map[DBType]map[accesstypes.Field]dbFieldMetadata
+	cfg   Config
 }
 
 type resourceMetadataCache struct {
@@ -258,28 +261,33 @@ func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
 	} else {
 		cfg = res.DefaultConfig()
 	}
-	fieldMap := structTags(t, string(cfg.DBType))
+
+	dbMap := make(map[DBType]map[accesstypes.Field]dbFieldMetadata)
+	for _, dbType := range dbTypes() {
+		dbFieldMap := dbStructTags(t, dbType)
+		dbMap[dbType] = dbFieldMap
+	}
 
 	c.cache[t] = &resourceMetadataCacheEntry{
-		fieldMap: fieldMap,
-		cfg:      cfg,
+		dbMap: dbMap,
+		cfg:   cfg,
 	}
 
 	return c.cache[t]
 }
 
-func structTags(t reflect.Type, key string) map[accesstypes.Field]cacheEntry {
-	tagMap := make(map[accesstypes.Field]cacheEntry)
+func dbStructTags(t reflect.Type, dbType DBType) map[accesstypes.Field]dbFieldMetadata {
+	tagMap := make(map[accesstypes.Field]dbFieldMetadata)
 	for i := range t.NumField() {
 		field := t.Field(i)
-		tag := field.Tag.Get(key)
+		tag := field.Tag.Get(string(dbType))
 
 		parts := strings.Split(tag, ",")
 		if len(parts) == 0 || parts[0] == "" || parts[0] == "-" {
 			continue
 		}
 
-		tagMap[accesstypes.Field(field.Name)] = cacheEntry{index: i, dbColumnName: parts[0]}
+		tagMap[accesstypes.Field(field.Name)] = dbFieldMetadata{index: i, ColumnName: parts[0]}
 	}
 
 	return tagMap
