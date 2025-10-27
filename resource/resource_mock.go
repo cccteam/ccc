@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"iter"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/spxscan"
@@ -113,4 +114,21 @@ func (c *MockReadWriteTransaction) BufferStruct(p PatchSetMetadata) error {
 // PostgresReadOnlyTransaction panics because it is not implemented for the MockReadWriteTransaction.
 func (c *MockReadWriteTransaction) PostgresReadOnlyTransaction() any {
 	panic("MockReadWriteTransaction.PostgresReadOnlyTransaction() should never be called.")
+}
+
+// MockIterSeq2 is used for mocking iter.Seq2[Resourcer, error] type. If both err and resource are
+// provided, it will yield all elements in resource first and then err
+func MockIterSeq2[Resource Resourcer](err error, resource ...*Resource) iter.Seq2[*Resource, error] {
+	return func(yield func(*Resource, error) bool) {
+		for _, r := range resource {
+			if !yield(r, nil) {
+				return
+			}
+		}
+		if err != nil {
+			yield(nil, err)
+
+			return
+		}
+	}
 }
