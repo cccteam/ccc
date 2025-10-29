@@ -130,7 +130,7 @@ type NullUUID struct {
 func NewNullUUID() (NullUUID, error) {
 	uid, err := uuid.NewV4()
 	if err != nil {
-		return NullUUID{}, errors.Wrap(err, "NewUUID()")
+		return NullUUID{}, errors.Wrap(err, "NewV4()")
 	}
 
 	return NullUUID{UUID: UUID{UUID: uid}, Valid: true}, nil
@@ -206,7 +206,7 @@ func (u NullUUID) MarshalText() ([]byte, error) {
 func (u *NullUUID) UnmarshalText(text []byte) error {
 	uid := &UUID{}
 	if err := uid.UnmarshalText(text); err != nil {
-		return errors.Wrap(err, "uid.UnmarchalText()")
+		return errors.Wrap(err, "uid.UnmarshalText()")
 	}
 
 	u.UUID = *uid

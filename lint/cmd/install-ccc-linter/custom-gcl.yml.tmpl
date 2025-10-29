@@ -1,0 +1,18 @@
+version: {{.Version}}
+
+# The name of the custom binary.
+# Optional.
+# Default: custom-gcl
+name: golangci-lint-v2
+
+# The directory path used to store the custom binary.
+# Optional.
+# Default: .
+destination: {{.Destination}}
+
+plugins:
+  - module: 'github.com/cccteam/ccc/lint'{{if .LocalInstallPath}}
+    path: {{.LocalInstallPath}}{{else}}
+    import: 'github.com/cccteam/ccc/lint'
+    version: {{.PluginVersion}}
+{{end}}
