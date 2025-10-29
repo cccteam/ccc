@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/cccteam/ccc/compare/resource/v0.7.0...resource/v0.7.1) (2025-10-29)
+
+
+### Code Refactoring
+
+* Replace the CommitBuffer with BatchList() iterator for batching commits ([#498](https://github.com/cccteam/ccc/issues/498)) ([6eca588](https://github.com/cccteam/ccc/commit/6eca5884880fafe4fb17fbe1f286f83e21ae13b1))
+
 ## [0.7.0](https://github.com/cccteam/ccc/compare/resource/v0.6.0...resource/v0.7.0) (2025-10-27)
 
 
