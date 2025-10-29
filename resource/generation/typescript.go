@@ -160,10 +160,34 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 
 	routerData := t.rc.TypescriptData()
 
+	piiResourceFields := make(map[accesstypes.Resource]map[accesstypes.Tag]bool, len(t.resources)+len(t.computedResources))
+	for _, res := range t.resources {
+		for _, field := range res.Fields {
+			if field.IsPII() {
+				if _, ok := piiResourceFields[accesstypes.Resource(t.pluralize(res.Name()))]; !ok {
+					piiResourceFields[accesstypes.Resource(t.pluralize(res.Name()))] = make(map[accesstypes.Tag]bool)
+				}
+				piiResourceFields[accesstypes.Resource(t.pluralize(res.Name()))][accesstypes.Tag(caser.ToCamel(field.Name()))] = true
+			}
+		}
+	}
+
+	for _, res := range t.computedResources {
+		for _, field := range res.Fields {
+			if field.IsPII() {
+				if _, ok := piiResourceFields[accesstypes.Resource(t.pluralize(res.Name()))]; !ok {
+					piiResourceFields[accesstypes.Resource(t.pluralize(res.Name()))] = make(map[accesstypes.Tag]bool)
+				}
+				piiResourceFields[accesstypes.Resource(t.pluralize(res.Name()))][accesstypes.Tag(caser.ToCamel(field.Name()))] = true
+			}
+		}
+	}
+
 	templateData := map[string]any{
 		"File":       t,
 		"Data":       routerData,
 		"RPCMethods": t.rpcMethods,
+		"PIIMap":     piiResourceFields,
 	}
 
 	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, typescriptConstantsTemplate, templateData)

@@ -898,9 +898,20 @@ export const Methods = {
 export namespace {{ $resource }} {
   export const fieldName = {
   {{- range $_, $tag := $tags }}
+  {{- if not (index $.PIIMap $resource $tag) }}
     {{ $tag }}: '{{ $tag }}' as FieldName,
   {{- end }}
+  {{- end }}
   };
+  {{- if index $.PIIMap $resource }}
+  export const piiFieldName = {
+  {{- range $_, $tag := $tags }}
+  {{- if index $.PIIMap $resource $tag }}
+    {{ $tag }}: '{{ $tag }}' as FieldName,
+  {{- end }}
+  {{- end }}
+  };
+  {{- end }}
   export const resourceName = {
   {{- range $_, $tag := $tags }}
     {{ $tag }}: '{{ $resource.ResourceWithTag $tag }}' as Resource,
