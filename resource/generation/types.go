@@ -42,6 +42,15 @@ const (
 	PatchHandler HandlerType = "patchHandler"
 )
 
+func (HandlerType) enumerate() []HandlerType {
+	return []HandlerType{
+		AllHandlers,
+		ListHandler,
+		ReadHandler,
+		PatchHandler,
+	}
+}
+
 func (h HandlerType) template() string {
 	switch h {
 	case ReadHandler:
