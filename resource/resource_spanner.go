@@ -39,7 +39,7 @@ func (c *SpannerClient) SpannerReadOnlyTransaction() spxscan.Querier {
 // ExecuteFunc executes a function within a read-write transaction.
 func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
 	_, err := c.spanner.ReadWriteTransaction(ctx, func(ctx context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := f(ctx, newSpannerReadWriteTransaction(txn)); err != nil {
+		if err := f(ctx, NewSpannerReadWriteTransaction(txn)); err != nil {
 			return errors.Wrap(err, "f()")
 		}
 
@@ -108,7 +108,8 @@ type SpannerReadWriteTransaction struct {
 	resourceRowIndex map[string]int
 }
 
-func newSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction) ReadWriteTransaction {
+// NewSpannerReadWriteTransaction creates a new SpannerReadWriteTransaction from a spanner.ReadWriteTransaction
+func NewSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction) ReadWriteTransaction {
 	return &SpannerReadWriteTransaction{
 		txn:              txn,
 		resourceRowIndex: make(map[string]int),
