@@ -68,6 +68,7 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 					resource.IsConsolidated = false
 				default:
 					resourceErrors = append(resourceErrors, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg.Arg1, resourceName, new(HandlerType).enumerate()))
+
 					continue
 				}
 			}
