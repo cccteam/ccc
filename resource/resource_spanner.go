@@ -26,11 +26,6 @@ func NewSpannerClient(db *spanner.Client) *SpannerClient {
 	}
 }
 
-// Close closes the database connection.
-func (c *SpannerClient) Close() {
-	c.spanner.Close()
-}
-
 // SpannerReadOnlyTransaction returns a read-only transaction for the Spanner client.
 func (c *SpannerClient) SpannerReadOnlyTransaction() spxscan.Querier {
 	return c.spanner.Single()
