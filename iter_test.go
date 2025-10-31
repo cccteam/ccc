@@ -2,6 +2,7 @@ package ccc
 
 import (
 	"errors"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -392,5 +393,200 @@ func TestIter2Batch_shutdown(t *testing.T) {
 				t.Errorf("iterator did not shutdown")
 			}
 		})
+	}
+}
+
+// itemReaderMock is a mock implementation of the ItemReader interface for testing.
+type itemReaderMock[T any] struct {
+	items []struct {
+		val T
+		err error
+	}
+	idx int
+}
+
+func (r *itemReaderMock[T]) Read() (T, error) {
+	if r.idx >= len(r.items) {
+		var zero T
+		return zero, io.EOF
+	}
+	item := r.items[r.idx]
+	r.idx++
+	return item.val, item.err
+}
+
+func TestItemIter(t *testing.T) {
+	t.Parallel()
+
+	type input struct {
+		val int
+		err error
+	}
+
+	testCases := []struct {
+		name    string
+		input   []input
+		want    []int
+		wantErr bool
+		errText string
+	}{
+		{
+			name:  "empty input",
+			input: []input{},
+			want:  nil,
+		},
+		{
+			name: "normal iteration",
+			input: []input{
+				{val: 1, err: nil},
+				{val: 2, err: nil},
+				{val: 3, err: nil},
+			},
+			want: []int{1, 2, 3},
+		},
+		{
+			name: "error in stream",
+			input: []input{
+				{val: 1, err: nil},
+				{val: 0, err: errors.New("stream error")},
+				{val: 3, err: nil},
+			},
+			want:    []int{1, 3},
+			wantErr: true,
+			errText: "stream error",
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockReader := &itemReaderMock[int]{
+				items: make([]struct {
+					val int
+					err error
+				}, len(tt.input)),
+			}
+			for i, v := range tt.input {
+				mockReader.items[i] = v
+			}
+
+			iter := ItemIter(mockReader)
+
+			var got []int
+			var errs []error
+
+			for item, err := range iter {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				if err != nil {
+					errs = append(errs, err)
+					continue // Do not process the item if there was an error
+				}
+				got = append(got, item)
+			}
+
+			if tt.wantErr {
+				if len(errs) == 0 {
+					t.Fatal("expected an error, but got none")
+				}
+				if !strings.Contains(errs[0].Error(), tt.errText) {
+					t.Errorf("expected error text to contain '%s', got '%s'", tt.errText, errs[0].Error())
+				}
+			} else if len(errs) > 0 {
+				t.Fatalf("unexpected error(s): %v", errs)
+			}
+
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ItemIter() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestItemIter_shutdown(t *testing.T) {
+	t.Parallel()
+
+	readerDone := make(chan struct{})
+
+	mockReader := &itemReaderMock[int]{
+		items: []struct {
+			val int
+			err error
+		}{{1, nil}, {2, nil}, {3, nil}},
+	}
+
+	// Wrap the mock reader to signal when the iteration is over
+	inputIter := func(yield func(int, error) bool) {
+		defer close(readerDone)
+		// The actual iterator from the function under test
+		iter := ItemIter(mockReader)
+		for item, err := range iter {
+			if !yield(item, err) {
+				return
+			}
+			// Manually check for EOF as the consumer would
+			if errors.Is(err, io.EOF) {
+				return
+			}
+		}
+	}
+
+	// Consume only the first item and then break
+	for range inputIter {
+		break
+	}
+
+	select {
+	case <-readerDone:
+	case <-time.After(time.Second):
+		t.Errorf("iterator did not shutdown when consumer stopped")
+	}
+}
+
+func TestItemIter_continue(t *testing.T) {
+	t.Parallel()
+
+	mockReader := &itemReaderMock[int]{
+		items: []struct {
+			val int
+			err error
+		}{
+			{1, nil},
+			{2, nil},
+			{3, nil},
+			{4, nil},
+			{5, nil},
+		},
+	}
+
+	iter := ItemIter(mockReader)
+	got := make([]int, 0, len(mockReader.items))
+
+	// First loop, consume two items and break
+	count := 0
+	for item, err := range iter {
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		got = append(got, item)
+		count++
+		if count >= 2 {
+			break
+		}
+	}
+
+	// Second loop, consume the rest
+	for item, err := range iter {
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		got = append(got, item)
+	}
+
+	want := []int{1, 2, 3, 4, 5}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ItemIter() continuation failed: got %v, want %v", got, want)
 	}
 }
