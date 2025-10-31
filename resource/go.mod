@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/resource
 
-go 1.25.0
+go 1.25.3
 
 replace github.com/golang-migrate/migrate/v4 v4.19.0 => github.com/jtwatson/migrate/v4 v4.19.1-beta.0
 

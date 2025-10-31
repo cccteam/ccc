@@ -271,10 +271,9 @@ func TestQuerySet_BatchList(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			mockReader := newMockReader(sourceResources, SpannerDBType)
-			batchIterator := tt.qSet.BatchList(context.Background(), mockReader, tt.batchSize)
 
 			var collectedResources []*SortTestResource
-			for batch := range batchIterator {
+			for batch := range tt.qSet.BatchList(t.Context(), tt.batchSize, mockReader) {
 				for resource, err := range batch {
 					if tt.expectError {
 						if err == nil {
