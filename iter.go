@@ -29,7 +29,7 @@ import (
 //			fmt.Println(resource)
 //		}
 //	}
-func BatchIter2[T any](size int, iter2 iter.Seq2[T, error]) iter.Seq[iter.Seq2[T, error]] {
+func BatchIter2[T any](iter2 iter.Seq2[T, error], size int) iter.Seq[iter.Seq2[T, error]] {
 	var zero T
 
 	return func(yield func(iter.Seq2[T, error]) bool) {

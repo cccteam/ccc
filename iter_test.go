@@ -118,7 +118,7 @@ func TestIter2Batch(t *testing.T) {
 			var got [][]int
 			var errs []error
 
-			for batch := range BatchIter2(tt.batch, inputIter) {
+			for batch := range BatchIter2(inputIter, tt.batch) {
 				var currentBatch []int
 				for item, err := range batch {
 					if err != nil {
@@ -194,7 +194,7 @@ func TestIter2Batch_struct(t *testing.T) {
 			var got [][]ts
 			var errs []error
 
-			for batch := range BatchIter2(tt.batch, inputIter) {
+			for batch := range BatchIter2(inputIter, tt.batch) {
 				var currentBatch []ts
 				for item, err := range batch {
 					if err != nil {
@@ -275,7 +275,7 @@ func TestIter2Batch_slice(t *testing.T) {
 			var got [][][]string
 			var errs []error
 
-			for batch := range BatchIter2(tt.batch, inputIter) {
+			for batch := range BatchIter2(inputIter, tt.batch) {
 				var currentBatch [][]string
 				for item, err := range batch {
 					if err != nil {
@@ -374,7 +374,7 @@ func TestIter2Batch_shutdown(t *testing.T) {
 				}
 			}
 
-			for batch := range BatchIter2(10, inputIter) {
+			for batch := range BatchIter2(inputIter, 10) {
 				if tt.outterBreak {
 					break
 				}
