@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.2](https://github.com/cccteam/ccc/compare/resource/v0.7.1...resource/v0.7.2) (2025-10-31)
+
+
+### Features
+
+* Better feedback to the user when suppressing handler incorrectly ([#502](https://github.com/cccteam/ccc/issues/502)) ([199b5af](https://github.com/cccteam/ccc/commit/199b5afbc7edf7c1fa94d7ae7937e54047ef3b1c))
+
+
+### Bug Fixes
+
+* Export constructor function for better interoperability with old code ([#500](https://github.com/cccteam/ccc/issues/500)) ([3c1cd8f](https://github.com/cccteam/ccc/commit/3c1cd8fd0d7856f540a1e907e1528b3b190d8d14))
+* SpannerClient should not close client it was provided ([#503](https://github.com/cccteam/ccc/issues/503)) ([ed4c6d6](https://github.com/cccteam/ccc/commit/ed4c6d65ce3fb9676da604c23af78c53e690be77))
+
+
+### Code Refactoring
+
+* Use BatchIter2() from ccc ([#505](https://github.com/cccteam/ccc/issues/505)) ([5bbb227](https://github.com/cccteam/ccc/commit/5bbb227e4a40274e3a8bf6ce7cea9d0a66fc02e8))
+
 ## [0.7.1](https://github.com/cccteam/ccc/compare/resource/v0.7.0...resource/v0.7.1) (2025-10-29)
 
 
