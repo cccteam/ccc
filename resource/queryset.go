@@ -371,8 +371,8 @@ func (q *QuerySet[Resource]) List(ctx context.Context, r Reader[Resource]) iter.
 }
 
 // BatchList executes the query and returns an iterator for the results in batches.
-func (q *QuerySet[Resource]) BatchList(ctx context.Context, size int, r Reader[Resource]) iter.Seq[iter.Seq2[*Resource, error]] {
-	return ccc.BatchIter2(size, q.List(ctx, r))
+func (q *QuerySet[Resource]) BatchList(ctx context.Context, r Reader[Resource], size int) iter.Seq[iter.Seq2[*Resource, error]] {
+	return ccc.BatchIter2(q.List(ctx, r), size)
 }
 
 // SetWhereClause sets the filter condition for the query using a QueryClause.
