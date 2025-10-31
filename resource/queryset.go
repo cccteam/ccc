@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
@@ -371,63 +372,7 @@ func (q *QuerySet[Resource]) List(ctx context.Context, r Reader[Resource]) iter.
 
 // BatchList executes the query and returns an iterator for the results in batches.
 func (q *QuerySet[Resource]) BatchList(ctx context.Context, r Reader[Resource], size int) iter.Seq[iter.Seq2[*Resource, error]] {
-	return func(yield func(iter.Seq2[*Resource, error]) bool) {
-		if size <= 0 {
-			yield(func(yield func(*Resource, error) bool) {
-				yield(nil, fmt.Errorf("invalid batch size %d, expected a positive integer", size))
-			})
-
-			return
-		}
-
-		next, stop := iter.Pull2(q.List(ctx, r))
-		defer stop()
-
-		var done bool
-		for !done {
-			done = true
-
-			firstRecord, err, ok := next()
-			if !ok {
-				return
-			}
-			if !yield(func(yield func(*Resource, error) bool) {
-				if err != nil {
-					yield(nil, err)
-
-					return
-				}
-
-				if !yield(firstRecord, nil) {
-					return
-				}
-
-				count := 1
-				for {
-					if count >= size {
-						done = false
-
-						return
-					}
-					record, err, ok := next()
-					if !ok {
-						return
-					}
-					if err != nil {
-						yield(nil, err)
-
-						return
-					}
-					if !yield(record, nil) {
-						return
-					}
-					count++
-				}
-			}) {
-				return
-			}
-		}
-	}
+	return ccc.BatchIter2(q.List(ctx, r), size)
 }
 
 // SetWhereClause sets the filter condition for the query using a QueryClause.
