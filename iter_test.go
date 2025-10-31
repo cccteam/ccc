@@ -140,10 +140,8 @@ func TestIter2Batch(t *testing.T) {
 				if !strings.Contains(errs[0].Error(), tt.errText) {
 					t.Errorf("expected error text to contain '%s', got '%s'", tt.errText, errs[0].Error())
 				}
-			} else {
-				if len(errs) > 0 {
-					t.Fatalf("unexpected error(s): %v", errs)
-				}
+			} else if len(errs) > 0 {
+				t.Fatalf("unexpected error(s): %v", errs)
 			}
 
 			if !reflect.DeepEqual(got, tt.want) {
