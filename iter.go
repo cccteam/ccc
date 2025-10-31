@@ -7,6 +7,13 @@ import (
 
 // BatchIter2 takes an iter.Seq2 and returns an iter.Seq of iter.Seq2,
 // where each inner iter.Seq2 yields a batch of T of the specified size.
+//
+// BatchIter2 returns a single-use iterator, but can take in a reusable iterator.
+//
+// The inner batch iterator must be fully consumed before the next outer iterator
+// can be accessed. If the inner iterator is aborted, the outer iterator will
+// also abort.
+//
 // If the provided size is not a positive integer, the returned iterator will
 // yield a single error.
 //
