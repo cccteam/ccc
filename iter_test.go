@@ -2,7 +2,6 @@ package ccc
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -389,7 +388,6 @@ func TestIter2Batch_shutdown(t *testing.T) {
 
 			select {
 			case <-done:
-				fmt.Println("iterator shutdown")
 			case <-time.After(time.Second):
 				t.Errorf("iterator did not shutdown")
 			}
