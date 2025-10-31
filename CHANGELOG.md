@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.2.14](https://github.com/cccteam/ccc/compare/v0.2.13...v0.2.14) (2025-10-31)
+
+
+### Features
+
+* Implement BatchIter2(), an iterator to break a larger iterator stream into batches ([#504](https://github.com/cccteam/ccc/issues/504)) ([c2f37c4](https://github.com/cccteam/ccc/commit/c2f37c4b352fc3f8653630fded9b5a3b2415a530))
+* Implement NextIter(), which will generate a iter.Seq2 from any thing that implements NextIterator ([#506](https://github.com/cccteam/ccc/issues/506)) ([8136761](https://github.com/cccteam/ccc/commit/81367617912967ff45f546bd1a364c4ed3ed537a))
+* Implement ReadIter(), which will generate a iter.Seq2 from any thing that implements ReadIterator ([#506](https://github.com/cccteam/ccc/issues/506)) ([8136761](https://github.com/cccteam/ccc/commit/81367617912967ff45f546bd1a364c4ed3ed537a))
+* include new cache package in release-please config ([#420](https://github.com/cccteam/ccc/issues/420)) ([0c37a55](https://github.com/cccteam/ccc/commit/0c37a55811d88d8e87120417145f070c7ff24ed6))
+* Setup code workspace file to handle linting mono-repo ([#441](https://github.com/cccteam/ccc/issues/441)) ([13d81e6](https://github.com/cccteam/ccc/commit/13d81e6ce7dedf538c8e2dff5cbf030d1ef626d1))
+
+
+### Bug Fixes
+
+* update cache release please version ([#422](https://github.com/cccteam/ccc/issues/422)) ([ba4467e](https://github.com/cccteam/ccc/commit/ba4467e75dee6396a216c1f48867c4d60864da45))
+
+
+### Code Refactoring
+
+* Move Release Please from Bot to GitHub Action ([be3979c](https://github.com/cccteam/ccc/commit/be3979cd374b7aa60ba77cf3eecd2acb89549775))
+
+
+### Code Cleanup
+
+* Fix linter issues ([#449](https://github.com/cccteam/ccc/issues/449)) ([cdbf85a](https://github.com/cccteam/ccc/commit/cdbf85ac3a7695f18d1d76939e23e274309561b6))
+* Remove Placeholders and re-consolidate imports ([#486](https://github.com/cccteam/ccc/issues/486)) ([7dd0142](https://github.com/cccteam/ccc/commit/7dd01426aa5ed7104a5f28dabce22293c0f73328))
+
 ## [0.2.13](https://github.com/cccteam/ccc/compare/v0.2.12...v0.2.13) (2025-07-21)
 
 
