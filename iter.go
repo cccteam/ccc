@@ -20,6 +20,8 @@ import (
 // Example:
 //
 //	for batch := range BatchIter2(myIter, 10) {
+//		// Do some operation between batches such as start a new db transaction
+//
 //		for resource, err := range batch {
 //			if err != nil {
 //				log.Fatal(err)
