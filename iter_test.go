@@ -396,7 +396,7 @@ func TestIter2Batch_shutdown(t *testing.T) {
 	}
 }
 
-// itemReaderMock is a mock implementation of the ItemReader interface for testing.
+// itemReaderMock is a mock implementation of the ReadIterator interface for testing.
 type itemReaderMock[T any] struct {
 	items []struct {
 		val T
@@ -415,7 +415,7 @@ func (r *itemReaderMock[T]) Read() (T, error) {
 	return item.val, item.err
 }
 
-func TestItemIter(t *testing.T) {
+func TestReadIter(t *testing.T) {
 	t.Parallel()
 
 	type input struct {
@@ -471,7 +471,7 @@ func TestItemIter(t *testing.T) {
 				mockReader.items[i] = v
 			}
 
-			iter := ItemIter(mockReader)
+			iter := ReadIter(mockReader)
 
 			var got []int
 			var errs []error
@@ -499,13 +499,13 @@ func TestItemIter(t *testing.T) {
 			}
 
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ItemIter() = %v, want %v", got, tt.want)
+				t.Errorf("ReadIter() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestItemIter_shutdown(t *testing.T) {
+func TestReadIter_shutdown(t *testing.T) {
 	t.Parallel()
 
 	readerDone := make(chan struct{})
@@ -521,7 +521,7 @@ func TestItemIter_shutdown(t *testing.T) {
 	inputIter := func(yield func(int, error) bool) {
 		defer close(readerDone)
 		// The actual iterator from the function under test
-		iter := ItemIter(mockReader)
+		iter := ReadIter(mockReader)
 		for item, err := range iter {
 			if !yield(item, err) {
 				return
@@ -545,7 +545,7 @@ func TestItemIter_shutdown(t *testing.T) {
 	}
 }
 
-func TestItemIter_continue(t *testing.T) {
+func TestReadIter_continue(t *testing.T) {
 	t.Parallel()
 
 	mockReader := &itemReaderMock[int]{
@@ -561,7 +561,7 @@ func TestItemIter_continue(t *testing.T) {
 		},
 	}
 
-	iter := ItemIter(mockReader)
+	iter := ReadIter(mockReader)
 	got := make([]int, 0, len(mockReader.items))
 
 	// First loop, consume two items and break
@@ -587,6 +587,166 @@ func TestItemIter_continue(t *testing.T) {
 
 	want := []int{1, 2, 3, 4, 5}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("ItemIter() continuation failed: got %v, want %v", got, want)
+		t.Errorf("ReadIter() continuation failed: got %v, want %v", got, want)
+	}
+}
+
+// nextIteratorMock is a mock implementation of the NextIterator interface for testing.
+type nextIteratorMock[T any] struct {
+	items    []T
+	finalErr error
+	idx      int
+	val      T
+}
+
+func (r *nextIteratorMock[T]) Next() bool {
+	if r.idx >= len(r.items) {
+		return false
+	}
+	r.val = r.items[r.idx]
+	r.idx++
+
+	return true
+}
+
+func (r *nextIteratorMock[T]) Value() T {
+	return r.val
+}
+
+func (r *nextIteratorMock[T]) Error() error {
+	return r.finalErr
+}
+
+func TestNextIter(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    []int
+		finalErr error
+		want     []int
+		wantErr  bool
+		errText  string
+	}{
+		{
+			name:  "empty input",
+			input: []int{},
+			want:  nil,
+		},
+		{
+			name:  "normal iteration",
+			input: []int{1, 2, 3},
+			want:  []int{1, 2, 3},
+		},
+		{
+			name:     "iteration with final error",
+			input:    []int{1, 2, 3},
+			finalErr: errors.New("final error"),
+			want:     []int{1, 2, 3, 0},
+			wantErr:  true,
+			errText:  "final error",
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockIter := &nextIteratorMock[int]{
+				items:    tt.input,
+				finalErr: tt.finalErr,
+			}
+
+			var got []int
+			var errs []error
+			for item, err := range NextIter(mockIter) {
+				if err != nil {
+					errs = append(errs, err)
+				}
+				got = append(got, item)
+			}
+
+			if tt.wantErr {
+				if len(errs) == 0 {
+					t.Fatal("expected an error, but got none")
+				}
+				if !strings.Contains(errs[0].Error(), tt.errText) {
+					t.Errorf("expected error text to contain '%s', got '%s'", tt.errText, errs[0].Error())
+				}
+			} else if len(errs) > 0 {
+				t.Fatalf("unexpected error(s): %v", errs)
+			}
+
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NextIter() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNextIter_shutdown(t *testing.T) {
+	t.Parallel()
+
+	shutdown := make(chan struct{})
+	mockIter := &nextIteratorMock[int]{
+		items: []int{1, 2, 3, 4, 5},
+	}
+
+	// Wrap the mock iterator to signal when the iteration is over
+	inputIter := func(yield func(int, error) bool) {
+		defer close(shutdown)
+		iter := NextIter(mockIter)
+		for item, err := range iter {
+			if !yield(item, err) {
+				return
+			}
+		}
+	}
+
+	// Consume only the first item and then break
+	for range inputIter {
+		break
+	}
+
+	select {
+	case <-shutdown:
+	case <-time.After(time.Second):
+		t.Errorf("iterator did not shutdown when consumer stopped")
+	}
+}
+
+func TestNextIter_continue(t *testing.T) {
+	t.Parallel()
+
+	mockIter := &nextIteratorMock[int]{
+		items: []int{1, 2, 3, 4, 5},
+	}
+
+	iter := NextIter(mockIter)
+	got := make([]int, 0, len(mockIter.items))
+
+	// First loop, consume two items and break
+	count := 0
+	for item := range iter {
+		got = append(got, item)
+		count++
+		if count >= 2 {
+			break
+		}
+	}
+
+	// Second loop, consume the rest
+	for item, err := range iter {
+		if err != nil {
+			// Also append the value that comes with the error, per implementation
+			got = append(got, item)
+			break
+		}
+		got = append(got, item)
+	}
+
+	want := []int{1, 2, 3, 4, 5}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("NextIter() continuation failed: got %v, want %v", got, want)
 	}
 }
