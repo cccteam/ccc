@@ -73,6 +73,10 @@ linters:
             - github.com/jackc/pgx/v5/pgxpool
             - github.com/momaek/formattag/align
             - github.com/shopspring/decimal
+            - go.uber.org/mock/gomock
+            - go/ast
+            - go/format
+            - go/types
             - golang.org/x/tools/go/packages
             - golang.org/x/tools/imports
     dupl:
