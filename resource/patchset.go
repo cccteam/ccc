@@ -513,7 +513,7 @@ func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn ReadWriteT
 		return nil, errors.Wrap(err, "QuerySet.SpannerStmt()")
 	}
 
-	oldValues, err := rewReader[Resource](txn).Read(ctx, stmt)
+	oldValues, err := newReader[Resource](txn).Read(ctx, stmt)
 	if err != nil {
 		return nil, errors.Wrap(err, "Reader[Resource].Read()")
 	}
@@ -536,7 +536,7 @@ func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn ReadWriteTra
 		return nil, errors.Wrap(err, "PatchSet.deleteQuerySet().SpannerStmt()")
 	}
 
-	oldValues, err := rewReader[Resource](txn).Read(ctx, stmt)
+	oldValues, err := newReader[Resource](txn).Read(ctx, stmt)
 	if err != nil {
 		return nil, errors.Wrap(err, "Reader.Read()")
 	}

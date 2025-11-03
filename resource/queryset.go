@@ -329,7 +329,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 
 // Read executes the query and returns a single result.
 func (q *QuerySet[Resource]) Read(ctx context.Context, txn ReadOnlyTransaction) (*Resource, error) {
-	r := rewReader[Resource](txn)
+	r := newReader[Resource](txn)
 	if err := q.checkPermissions(ctx, r.DBType()); err != nil {
 		return nil, err
 	}
@@ -350,7 +350,7 @@ func (q *QuerySet[Resource]) Read(ctx context.Context, txn ReadOnlyTransaction) 
 // List executes the query and returns an iterator for the results.
 func (q *QuerySet[Resource]) List(ctx context.Context, txn ReadOnlyTransaction) iter.Seq2[*Resource, error] {
 	return func(yield func(*Resource, error) bool) {
-		r := rewReader[Resource](txn)
+		r := newReader[Resource](txn)
 		if err := q.checkPermissions(ctx, r.DBType()); err != nil {
 			yield(nil, err)
 

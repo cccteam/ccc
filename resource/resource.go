@@ -6,8 +6,8 @@ import (
 	"github.com/cccteam/spxscan"
 )
 
-// rewReader creates a new Reader for the given transaction.
-func rewReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
+// newReader creates a new Reader for the given transaction.
+func newReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
 	switch t := txn.(type) {
 	case *SpannerClient, *SpannerReadWriteTransaction:
 		return &spannerReader[Resource]{
