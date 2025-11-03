@@ -16,7 +16,7 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 	var resourceErrors []error
 	for _, pStruct := range structs {
 		resourceName := pStruct.Name()
-		table, err := c.lookupTable(resourceName)
+		table, err := c.tableMetadataFor(resourceName)
 		if err != nil {
 			return nil, err
 		}
