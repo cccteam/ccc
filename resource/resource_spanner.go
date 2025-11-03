@@ -52,20 +52,20 @@ func (c *SpannerClient) PostgresReadOnlyTransaction() any {
 	panic("SpannerClient.PostgresReadOnlyTransaction() should never be called.")
 }
 
-var _ Reader[nilResource] = (*SpannerReader[nilResource])(nil)
+var _ Reader[nilResource] = (*spannerReader[nilResource])(nil)
 
-// SpannerReader is a reader for Spanner.
-type SpannerReader[Resource Resourcer] struct {
+// spannerReader is a reader for Spanner.
+type spannerReader[Resource Resourcer] struct {
 	readTxn func() spxscan.Querier
 }
 
 // DBType returns the database type.
-func (c *SpannerReader[Resource]) DBType() DBType {
+func (c *spannerReader[Resource]) DBType() DBType {
 	return SpannerDBType
 }
 
 // Read reads a single resource from the database.
-func (c *SpannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Resource, error) {
+func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Resource, error) {
 	var res Resource
 	dst := new(Resource)
 	if err := spxscan.Get(ctx, c.readTxn(), dst, stmt.SpannerStatement()); err != nil {
@@ -80,7 +80,7 @@ func (c *SpannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*R
 }
 
 // List reads a list of resources from the database.
-func (c *SpannerReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Resource, error] {
+func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Resource, error] {
 	return func(yield func(*Resource, error) bool) {
 		for r, err := range spxscan.SelectSeq[Resource](ctx, c.readTxn(), stmt.SpannerStatement()) {
 			if err != nil {

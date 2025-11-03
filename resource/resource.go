@@ -6,15 +6,15 @@ import (
 	"github.com/cccteam/spxscan"
 )
 
-// NewReader creates a new Reader for the given transaction.
-func NewReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
+// newReader creates a new Reader for the given transaction.
+func newReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
 	switch t := txn.(type) {
 	case *SpannerClient, *SpannerReadWriteTransaction:
-		return &SpannerReader[Resource]{
+		return &spannerReader[Resource]{
 			readTxn: func() spxscan.Querier { return txn.SpannerReadOnlyTransaction() },
 		}
 	case *PostgresClient, *PostgresReadWriteTransaction:
-		return &PostgresReader[Resource]{
+		return &postgresReader[Resource]{
 			readTxn: func() any { return txn.PostgresReadOnlyTransaction() },
 		}
 	case *MockClient:
@@ -27,11 +27,20 @@ func NewReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
 }
 
 func selectMock[Resource Resourcer](mocks []any) Reader[Resource] {
+	var foundMock Reader[Resource]
+	var found bool
 	for _, mock := range mocks {
 		if m, ok := mock.(Reader[Resource]); ok {
-			return m
+			if found {
+				panic(fmt.Sprintf("found multiple mocks for type %T, only one is allowed", mock))
+			}
+			foundMock = m
+			found = true
 		}
 	}
+	if found {
+		return foundMock
+	}
 
-	panic(fmt.Sprintf("mock for type %T not found", new(Resource)))
+	panic(fmt.Sprintf("mock for type %T not found", *new(Resource)))
 }

@@ -24,6 +24,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/momaek/formattag v0.0.10
 	github.com/shopspring/decimal v1.4.0
+	go.uber.org/mock v0.5.2
 	golang.org/x/tools v0.36.0
 )
 

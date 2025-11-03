@@ -45,25 +45,25 @@ func (c *PostgresClient) SpannerReadOnlyTransaction() spxscan.Querier {
 	panic("PostgresClient.SpannerReadOnlyTransaction() should never be called.")
 }
 
-var _ Reader[nilResource] = (*PostgresReader[nilResource])(nil)
+var _ Reader[nilResource] = (*postgresReader[nilResource])(nil)
 
-// PostgresReader is a reader implementation for Postgres.
-type PostgresReader[Resource Resourcer] struct {
+// postgresReader is a reader implementation for Postgres.
+type postgresReader[Resource Resourcer] struct {
 	readTxn func() any
 }
 
 // DBType returns the database type.
-func (c *PostgresReader[Resource]) DBType() DBType {
+func (c *postgresReader[Resource]) DBType() DBType {
 	return PostgresDBType
 }
 
 // Read reads a single resource from the database.
-func (c *PostgresReader[Resource]) Read(_ context.Context, _ *Statement) (*Resource, error) {
+func (c *postgresReader[Resource]) Read(_ context.Context, _ *Statement) (*Resource, error) {
 	panic("Read() not implemented for PostgresReader[Resource]")
 }
 
 // List reads a list of resources from the database.
-func (c *PostgresReader[Resource]) List(_ context.Context, _ *Statement) iter.Seq2[*Resource, error] {
+func (c *postgresReader[Resource]) List(_ context.Context, _ *Statement) iter.Seq2[*Resource, error] {
 	panic("List() not implemented for PostgresReader[Resource]")
 }
 
