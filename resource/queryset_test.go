@@ -1,14 +1,15 @@
 package resource
 
 import (
-	"context"
-	"iter"
 	"strings"
 	"testing"
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"go.uber.org/mock/gomock"
 )
+
+//go:generate mockgen -destination mock_resource_iface.go -package=resource . Reader
 
 // SortTestResource is used for testing sorting functionality.
 type SortTestResource struct {
@@ -120,45 +121,6 @@ func TestQuerySet_Stmt_OrderBy_Limit(t *testing.T) {
 	}
 }
 
-// mockReader is a mock implementation of the Reader interface for testing.
-type mockReader[Resource Resourcer] struct {
-	resources []*Resource
-	dbType    DBType
-}
-
-// newMockReader creates a new mockReader with the given resources.
-func newMockReader[Resource Resourcer](resources []*Resource, dbType DBType) *mockReader[Resource] {
-	return &mockReader[Resource]{
-		resources: resources,
-		dbType:    dbType,
-	}
-}
-
-// Read is a mock implementation of the Reader's Read method.
-func (m *mockReader[Resource]) Read(_ context.Context, _ *Statement) (*Resource, error) {
-	if len(m.resources) > 0 {
-		return m.resources[0], nil
-	}
-
-	return nil, nil // Or an error indicating not found
-}
-
-// List is a mock implementation of the Reader's List method.
-func (m *mockReader[Resource]) List(_ context.Context, _ *Statement) iter.Seq2[*Resource, error] {
-	return func(yield func(*Resource, error) bool) {
-		for _, r := range m.resources {
-			if !yield(r, nil) {
-				return
-			}
-		}
-	}
-}
-
-// DBType is a mock implementation of the Reader's DBType method.
-func (m *mockReader[Resource]) DBType() DBType {
-	return m.dbType
-}
-
 func TestQuerySet_BatchList(t *testing.T) {
 	t.Parallel()
 
@@ -174,8 +136,9 @@ func TestQuerySet_BatchList(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
-		qSet *QuerySet[SortTestResource]
+		name    string
+		prepare func(ctrl *gomock.Controller) Client
+		qSet    *QuerySet[SortTestResource]
 
 		batchSize             int
 		expectError           bool
@@ -183,6 +146,15 @@ func TestQuerySet_BatchList(t *testing.T) {
 	}{
 		{
 			name: "batch size (3) not evenly divisable with without loss",
+			prepare: func(ctrl *gomock.Controller) Client {
+				sortTestResource := NewMockReader[SortTestResource](ctrl)
+				sortTestResource.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
+				sortTestResource.EXPECT().List(gomock.Any(), gomock.Any()).Return(
+					MockIterSeq2(nil, sourceResources...),
+				)
+
+				return NewMockClient(nil, []any{sortTestResource}, nil)
+			},
 			qSet: func() *QuerySet[SortTestResource] {
 				rMeta := NewMetadata[SortTestResource]()
 				qSet := NewQuerySet(rMeta)
@@ -195,6 +167,15 @@ func TestQuerySet_BatchList(t *testing.T) {
 		},
 		{
 			name: "batch size (1) evenly divisable without loss",
+			prepare: func(ctrl *gomock.Controller) Client {
+				sortTestResource := NewMockReader[SortTestResource](ctrl)
+				sortTestResource.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
+				sortTestResource.EXPECT().List(gomock.Any(), gomock.Any()).Return(
+					MockIterSeq2(nil, sourceResources...),
+				)
+
+				return NewMockClient(nil, []any{sortTestResource}, nil)
+			},
 			qSet: func() *QuerySet[SortTestResource] {
 				rMeta := NewMetadata[SortTestResource]()
 				qSet := NewQuerySet(rMeta)
@@ -207,6 +188,15 @@ func TestQuerySet_BatchList(t *testing.T) {
 		},
 		{
 			name: "batch size (2) evenly divisable without loss",
+			prepare: func(ctrl *gomock.Controller) Client {
+				sortTestResource := NewMockReader[SortTestResource](ctrl)
+				sortTestResource.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
+				sortTestResource.EXPECT().List(gomock.Any(), gomock.Any()).Return(
+					MockIterSeq2(nil, sourceResources...),
+				)
+
+				return NewMockClient(nil, []any{sortTestResource}, nil)
+			},
 			qSet: func() *QuerySet[SortTestResource] {
 				rMeta := NewMetadata[SortTestResource]()
 				qSet := NewQuerySet(rMeta)
@@ -219,6 +209,15 @@ func TestQuerySet_BatchList(t *testing.T) {
 		},
 		{
 			name: "batch size (4) evenly divisable without loss",
+			prepare: func(ctrl *gomock.Controller) Client {
+				sortTestResource := NewMockReader[SortTestResource](ctrl)
+				sortTestResource.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
+				sortTestResource.EXPECT().List(gomock.Any(), gomock.Any()).Return(
+					MockIterSeq2(nil, sourceResources...),
+				)
+
+				return NewMockClient(nil, []any{sortTestResource}, nil)
+			},
 			qSet: func() *QuerySet[SortTestResource] {
 				rMeta := NewMetadata[SortTestResource]()
 				qSet := NewQuerySet(rMeta)
@@ -231,6 +230,15 @@ func TestQuerySet_BatchList(t *testing.T) {
 		},
 		{
 			name: "batch size (8) evenly divisable without loss",
+			prepare: func(ctrl *gomock.Controller) Client {
+				sortTestResource := NewMockReader[SortTestResource](ctrl)
+				sortTestResource.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
+				sortTestResource.EXPECT().List(gomock.Any(), gomock.Any()).Return(
+					MockIterSeq2(nil, sourceResources...),
+				)
+
+				return NewMockClient(nil, []any{sortTestResource}, nil)
+			},
 			qSet: func() *QuerySet[SortTestResource] {
 				rMeta := NewMetadata[SortTestResource]()
 				qSet := NewQuerySet(rMeta)
@@ -243,6 +251,15 @@ func TestQuerySet_BatchList(t *testing.T) {
 		},
 		{
 			name: "batch size (10) larger then data without loss",
+			prepare: func(ctrl *gomock.Controller) Client {
+				sortTestResource := NewMockReader[SortTestResource](ctrl)
+				sortTestResource.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
+				sortTestResource.EXPECT().List(gomock.Any(), gomock.Any()).Return(
+					MockIterSeq2(nil, sourceResources...),
+				)
+
+				return NewMockClient(nil, []any{sortTestResource}, nil)
+			},
 			qSet: func() *QuerySet[SortTestResource] {
 				rMeta := NewMetadata[SortTestResource]()
 				qSet := NewQuerySet(rMeta)
@@ -255,6 +272,11 @@ func TestQuerySet_BatchList(t *testing.T) {
 		},
 		{
 			name: "returns an error for invalid batch size",
+			prepare: func(ctrl *gomock.Controller) Client {
+				sortTestResource := NewMockReader[SortTestResource](ctrl)
+
+				return NewMockClient(nil, []any{sortTestResource}, nil)
+			},
 			qSet: func() *QuerySet[SortTestResource] {
 				rMeta := NewMetadata[SortTestResource]()
 				qSet := NewQuerySet(rMeta)
@@ -270,10 +292,11 @@ func TestQuerySet_BatchList(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mockReader := newMockReader(sourceResources, SpannerDBType)
+			ctrl := gomock.NewController(t)
+			txn := tt.prepare(ctrl)
 
 			var collectedResources []*SortTestResource
-			for batch := range tt.qSet.BatchList(t.Context(), mockReader, tt.batchSize) {
+			for batch := range tt.qSet.BatchList(t.Context(), txn, tt.batchSize) {
 				for resource, err := range batch {
 					if tt.expectError {
 						if err == nil {
