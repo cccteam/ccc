@@ -19,7 +19,16 @@ type MockClient struct {
 	txnMock       ReadWriteTransaction
 }
 
-// NewMockClient creates a new Client.
+// NewMockClient creates a new MockClient for testing resource database interactions.
+//
+// It uses the following mocks:
+// - txnMock: Mocks Buffer calls.
+// - readOnlyMocks: Mocks Read/List calls outside a transaction.
+// - txnReadMocks: Mocks Read/List calls inside a transaction.
+//
+// IMPORTANT: For readOnlyMocks and txnReadMocks, provide only one mock per
+// resource type (e.g., Read[MyResource]). Multiple calls for the same Resource
+// must be configured on that single mock.
 func NewMockClient(txnMock ReadWriteTransaction, readOnlyMocks, txnReadMocks []any) *MockClient {
 	return &MockClient{
 		dbType:        SpannerDBType,
