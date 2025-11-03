@@ -45,10 +45,6 @@ func ({{ .Resource.Name }}) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
-func New{{ .Resource.Name }}Reader(txn resource.ReadOnlyTransaction) resource.Reader[{{ .Resource.Name }}] {
-	return resource.NewReader[{{ .Resource.Name }}](txn)
-}
-
 type {{ .Resource.Name }}Query struct {
 	qSet *resource.QuerySet[{{ .Resource.Name }}]
 }
@@ -525,7 +521,7 @@ import (
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
 		resp := response{}
-		for r, err := range res.Query().List(ctx, resource.NewReader[resources.{{ .Resource.Name }}]({{ .ReceiverName }}.ResourceClient())) {
+		for r, err := range res.Query().List(ctx, {{ .ReceiverName }}.ResourceClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -577,7 +573,7 @@ import (
 		res := resources.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id)
 	{{- end }}
 
-		row, err := res.Query().Read(ctx, resource.NewReader[resources.{{ .Resource.Name }}]({{ .ReceiverName }}.ResourceClient()))
+		row, err := res.Query().Read(ctx, {{ .ReceiverName }}.ResourceClient())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}

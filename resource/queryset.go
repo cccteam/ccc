@@ -328,7 +328,8 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 }
 
 // Read executes the query and returns a single result.
-func (q *QuerySet[Resource]) Read(ctx context.Context, r Reader[Resource]) (*Resource, error) {
+func (q *QuerySet[Resource]) Read(ctx context.Context, txn ReadOnlyTransaction) (*Resource, error) {
+	r := rewReader[Resource](txn)
 	if err := q.checkPermissions(ctx, r.DBType()); err != nil {
 		return nil, err
 	}
@@ -347,8 +348,9 @@ func (q *QuerySet[Resource]) Read(ctx context.Context, r Reader[Resource]) (*Res
 }
 
 // List executes the query and returns an iterator for the results.
-func (q *QuerySet[Resource]) List(ctx context.Context, r Reader[Resource]) iter.Seq2[*Resource, error] {
+func (q *QuerySet[Resource]) List(ctx context.Context, txn ReadOnlyTransaction) iter.Seq2[*Resource, error] {
 	return func(yield func(*Resource, error) bool) {
+		r := rewReader[Resource](txn)
 		if err := q.checkPermissions(ctx, r.DBType()); err != nil {
 			yield(nil, err)
 
@@ -371,8 +373,8 @@ func (q *QuerySet[Resource]) List(ctx context.Context, r Reader[Resource]) iter.
 }
 
 // BatchList executes the query and returns an iterator for the results in batches.
-func (q *QuerySet[Resource]) BatchList(ctx context.Context, r Reader[Resource], size int) iter.Seq[iter.Seq2[*Resource, error]] {
-	return ccc.BatchIter2(q.List(ctx, r), size)
+func (q *QuerySet[Resource]) BatchList(ctx context.Context, client Client, size int) iter.Seq[iter.Seq2[*Resource, error]] {
+	return ccc.BatchIter2(q.List(ctx, client), size)
 }
 
 // SetWhereClause sets the filter condition for the query using a QueryClause.
