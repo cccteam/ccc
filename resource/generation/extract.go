@@ -15,6 +15,17 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 	resources := make([]*resourceInfo, 0, len(structs))
 	var resourceErrors []error
 	for _, pStruct := range structs {
+		result, err := genlang.NewScanner(resourceKeywords()).ScanStruct(pStruct)
+		if err != nil {
+			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
+
+			continue
+		}
+
+		if !result.Struct.Has(resourceKeyword) {
+			continue
+		}
+
 		resourceName := pStruct.Name()
 		table, err := c.tableMetadataFor(resourceName)
 		if err != nil {
@@ -39,13 +50,6 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 
 		if err := validateNullability(pStruct, table); err != nil {
 			resourceErrors = append(resourceErrors, err)
-
-			continue
-		}
-
-		result, err := genlang.NewScanner(keywords()).ScanStruct(pStruct)
-		if err != nil {
-			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
 
 			continue
 		}
@@ -175,7 +179,7 @@ func structsToCompResources(structs []*parser.Struct) ([]*computedResource, erro
 			Fields: make([]*computedField, 0, len(s.Fields())),
 		}
 
-		result, err := genlang.NewScanner(keywords()).ScanStruct(s)
+		result, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
 		if err != nil {
 			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
 

@@ -792,6 +792,9 @@ func generatedFileName(name, suffix string) string {
 }
 
 const (
+	resourceKeyword           string = "resource"           // Designates a struct as a resource
+	virtualKeyword            string = "virtual"            // Designates a struct as a virtual resource
+	computedKeyword           string = "computed"           // Designates a struct as a computed resource
 	enumerateKeyword          string = "enumerate"          // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
 	suppressKeyword           string = "suppress"           // Suppresses specified handler types from being generated
 	defaultsCreateTypeKeyword string = "defaultsCreateType" // Specifies a type to call "Defaults()" on for setting defaults on resource creation
@@ -801,8 +804,11 @@ const (
 	primarykeyKeyword         string = "primarykey"         // Designates a field as a primary key in a Computed Resource
 )
 
-func keywords() map[string]genlang.KeywordOpts {
+func resourceKeywords() map[string]genlang.KeywordOpts {
 	return map[string]genlang.KeywordOpts{
+		resourceKeyword:           {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
+		virtualKeyword:            {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
+		computedKeyword:           {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		enumerateKeyword:          {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
 		suppressKeyword:           {genlang.ScanStruct: genlang.ArgsRequired},
 		defaultsCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},

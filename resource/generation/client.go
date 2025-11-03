@@ -291,7 +291,7 @@ func (c *client) generateTemplateOutput(templateName, fileTemplate string, data 
 func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]*enumData, error) {
 	enumMap := make(map[string][]*enumData)
 	for _, namedType := range namedTypes {
-		scanner := genlang.NewScanner(keywords())
+		scanner := genlang.NewScanner(resourceKeywords())
 		result, err := scanner.ScanNamedType(namedType)
 		if err != nil {
 			return nil, errors.Wrap(err, "scanner.ScanNamedType()")
