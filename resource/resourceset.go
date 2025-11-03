@@ -28,6 +28,15 @@ type (
 // Resourcer is an interface that all resource structs must implement.
 type Resourcer interface {
 	Resource() accesstypes.Resource
+}
+
+// configurer is an interface for types that can provide a resource configuration.
+type configurer interface {
+	Config() Config
+}
+
+// defaultConfigurer is an interface for types that can provide a resource default configuration.
+type defaultConfigurer interface {
 	DefaultConfig() Config
 }
 
@@ -256,10 +265,11 @@ func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
 	}
 
 	var cfg Config
-	if t, ok := res.(Configurer); ok {
+	switch t := res.(type) {
+	case configurer:
 		cfg = t.Config()
-	} else {
-		cfg = res.DefaultConfig()
+	case defaultConfigurer:
+		cfg = t.DefaultConfig()
 	}
 
 	dbMap := make(map[DBType]map[accesstypes.Field]dbFieldMetadata)

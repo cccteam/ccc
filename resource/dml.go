@@ -61,8 +61,3 @@ func (c Config) SetTrackChanges(trackChanges bool) Config {
 
 	return c
 }
-
-// Configurer is an interface for types that can provide a resource configuration.
-type Configurer interface {
-	Config() Config
-}
