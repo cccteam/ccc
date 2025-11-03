@@ -27,11 +27,20 @@ func rewReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
 }
 
 func selectMock[Resource Resourcer](mocks []any) Reader[Resource] {
+	var foundMock Reader[Resource]
+	var found bool
 	for _, mock := range mocks {
 		if m, ok := mock.(Reader[Resource]); ok {
-			return m
+			if found {
+				panic(fmt.Sprintf("found multiple mocks for type %T, only one is allowed", mock))
+			}
+			foundMock = m
+			found = true
 		}
 	}
+	if found {
+		return foundMock
+	}
 
-	panic(fmt.Sprintf("mock for type %T not found", new(Resource)))
+	panic(fmt.Sprintf("mock for type %T not found", *new(Resource)))
 }
