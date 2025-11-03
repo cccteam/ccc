@@ -10,11 +10,11 @@ import (
 func rewReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
 	switch t := txn.(type) {
 	case *SpannerClient, *SpannerReadWriteTransaction:
-		return &SpannerReader[Resource]{
+		return &spannerReader[Resource]{
 			readTxn: func() spxscan.Querier { return txn.SpannerReadOnlyTransaction() },
 		}
 	case *PostgresClient, *PostgresReadWriteTransaction:
-		return &PostgresReader[Resource]{
+		return &postgresReader[Resource]{
 			readTxn: func() any { return txn.PostgresReadOnlyTransaction() },
 		}
 	case *MockClient:
