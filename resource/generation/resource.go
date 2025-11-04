@@ -27,8 +27,12 @@ type resourceGenerator struct {
 
 // NewResourceGenerator constructs a new Generator for generating a resource-driven API.
 func NewResourceGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL string, localPackages []string, options ...ResourceOption) (Generator, error) {
-	r := &resourceGenerator{
-		resourceDestination: filepath.Dir(resourceSourcePath),
+	r := &resourceGenerator{}
+
+	if filepath.Ext(resourceSourcePath) != "" {
+		r.resourceDestination = filepath.Dir(resourceSourcePath)
+	} else {
+		r.resourceDestination = resourceSourcePath
 	}
 
 	opts := make([]option, 0, len(options))
