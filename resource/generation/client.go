@@ -186,7 +186,7 @@ func (t *tableMetadata) addSchemaResult(result *informationSchemaResult) {
 	t.Columns[result.ColumnName] = column
 }
 
-func (c *client) lookupTable(resourceName string) (*tableMetadata, error) {
+func (c *client) tableMetadataFor(resourceName string) (*tableMetadata, error) {
 	table, ok := c.tableMap[c.pluralize(resourceName)]
 	if !ok {
 		return nil, errors.Newf("resource %q pluralized as %q not in tableMetadata", resourceName, c.pluralize(resourceName))
@@ -291,7 +291,7 @@ func (c *client) generateTemplateOutput(templateName, fileTemplate string, data 
 func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]*enumData, error) {
 	enumMap := make(map[string][]*enumData)
 	for _, namedType := range namedTypes {
-		scanner := genlang.NewScanner(keywords())
+		scanner := genlang.NewScanner(resourceKeywords())
 		result, err := scanner.ScanNamedType(namedType)
 		if err != nil {
 			return nil, errors.Wrap(err, "scanner.ScanNamedType()")

@@ -72,7 +72,6 @@ func (r *resourceGenerator) Generate() error {
 	// needs to run before resource generation so the data can be sneakily snuck into resource generation
 	if r.genComputedResources {
 		compStructs := parser.ParsePackage(packageMap[r.compPackageName]).Structs
-		compStructs = parser.FilterStructsByInterface(compStructs, computedInterfaces[:])
 		computedResources, err := structsToCompResources(compStructs)
 		if err != nil {
 			return err
@@ -91,7 +90,6 @@ func (r *resourceGenerator) Generate() error {
 
 	if r.genRPCMethods {
 		rpcStructs := parser.ParsePackage(packageMap[r.rpcPackageName]).Structs
-		rpcStructs = parser.FilterStructsByInterface(rpcStructs, rpcInterfaces[:])
 		if len(rpcStructs) == 0 {
 			log.Printf("(RPC Generation) No %s package structs match TxnRunner or DBRunner interface.", r.rpcPackageName)
 		}

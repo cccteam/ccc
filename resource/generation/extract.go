@@ -15,8 +15,19 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 	resources := make([]*resourceInfo, 0, len(structs))
 	var resourceErrors []error
 	for _, pStruct := range structs {
+		result, err := genlang.NewScanner(resourceKeywords()).ScanStruct(pStruct)
+		if err != nil {
+			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
+
+			continue
+		}
+
+		if !result.Struct.Has(resourceKeyword) {
+			continue
+		}
+
 		resourceName := pStruct.Name()
-		table, err := c.lookupTable(resourceName)
+		table, err := c.tableMetadataFor(resourceName)
 		if err != nil {
 			return nil, err
 		}
@@ -39,13 +50,6 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 
 		if err := validateNullability(pStruct, table); err != nil {
 			resourceErrors = append(resourceErrors, err)
-
-			continue
-		}
-
-		result, err := genlang.NewScanner(keywords()).ScanStruct(pStruct)
-		if err != nil {
-			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
 
 			continue
 		}
@@ -144,6 +148,15 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo, error) {
 	rpcMethods := make([]*rpcMethodInfo, 0, len(structs))
 	for _, s := range structs {
+		result, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
+		if err != nil {
+			return nil, errors.Wrap(err, "Scanner.ScanStruct()")
+		}
+
+		if !result.Struct.Has(rpcKeyword) {
+			continue
+		}
+
 		rpcMethod := &rpcMethodInfo{
 			Struct: s,
 			Fields: make([]*rpcField, 0, len(s.Fields())),
@@ -170,16 +183,20 @@ func structsToCompResources(structs []*parser.Struct) ([]*computedResource, erro
 	compResources := make([]*computedResource, 0, len(structs))
 	var resourceErrors []error
 	for _, s := range structs {
-		res := &computedResource{
-			Struct: s,
-			Fields: make([]*computedField, 0, len(s.Fields())),
-		}
-
-		result, err := genlang.NewScanner(keywords()).ScanStruct(s)
+		result, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
 		if err != nil {
 			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
 
 			continue
+		}
+
+		if !result.Struct.Has(computedKeyword) {
+			continue
+		}
+
+		res := &computedResource{
+			Struct: s,
+			Fields: make([]*computedField, 0, len(s.Fields())),
 		}
 
 		if result.Struct.Has(suppressKeyword) {
