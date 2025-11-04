@@ -42,7 +42,7 @@ const (
 	PatchHandler HandlerType = "patchHandler"
 )
 
-func (HandlerType) enumerate() []HandlerType {
+func handlerTypes() []HandlerType {
 	return []HandlerType{
 		AllHandlers,
 		ListHandler,
@@ -329,7 +329,7 @@ func (c *computedField) TypescriptDataType() string {
 type resourceInfo struct {
 	*parser.TypeInfo
 	Fields             []*resourceField
-	SuppressedHandlers [3]HandlerType
+	SuppressedHandlers []HandlerType
 	IsView             bool // Determines how CreatePatch is rendered in resource generation.
 	IsConsolidated     bool
 	PkCount            int
@@ -350,23 +350,23 @@ func (r *resourceInfo) HasNullBool() bool {
 }
 
 func (r *resourceInfo) ListHandlerDisabled() bool {
-	return slices.Contains(r.SuppressedHandlers[:], ListHandler)
+	return slices.Contains(r.SuppressedHandlers, ListHandler)
 }
 
 func (r *resourceInfo) ReadHandlerDisabled() bool {
-	return slices.Contains(r.SuppressedHandlers[:], ReadHandler)
+	return slices.Contains(r.SuppressedHandlers, ReadHandler)
 }
 
 func (r *resourceInfo) CreateHandlerDisabled() bool {
-	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
+	return slices.Contains(r.SuppressedHandlers, PatchHandler)
 }
 
 func (r *resourceInfo) UpdateHandlerDisabled() bool {
-	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
+	return slices.Contains(r.SuppressedHandlers, PatchHandler)
 }
 
 func (r *resourceInfo) DeleteHandlerDisabled() bool {
-	return slices.Contains(r.SuppressedHandlers[:], PatchHandler)
+	return slices.Contains(r.SuppressedHandlers, PatchHandler)
 }
 
 // HasDefaultsCreateType indicates if a default create type has been registered
@@ -808,10 +808,10 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		rpcKeyword:                {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		enumerateKeyword:          {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
 		suppressKeyword:           {genlang.ScanStruct: genlang.ArgsRequired},
-		defaultsCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
-		defaultsUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
-		validateCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
-		validateUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.StrictSingleArgs | genlang.Exclusive},
+		defaultsCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		defaultsUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		validateCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		validateUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		primarykeyKeyword:         {genlang.ScanField: genlang.NoArgs},
 	}
 }

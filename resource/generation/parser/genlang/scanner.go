@@ -3,7 +3,6 @@ package genlang
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
@@ -13,27 +12,27 @@ type (
 	scanMode int
 	// Scanner provides methods for parsing godoc annotations on various types from the generation/parser package.
 	Scanner interface {
-		ScanStruct(*parser.Struct) (StructResults, error)
-		ScanNamedType(*parser.NamedType) (NamedTypeResults, error)
+		ScanStruct(*parser.Struct) (StructAnnotations, error)
+		ScanNamedType(*parser.NamedType) (NamedTypeAnnotations, error)
 	}
 	scanner struct {
 		src              []byte
 		mode             scanMode
-		keywordArguments map[string][]Args
+		keywordArguments map[string]Arg
 		keywords         map[string]KeywordOpts
 		pos              int
 		maxKeywordLength int
 	}
 
-	// StructResults holds the MultiMaps of keywords and arguments for a parser.Struct and each of its fields.
-	StructResults struct {
-		Struct MultiMap
-		Fields []MultiMap
+	// StructAnnotations holds the MultiMaps of keywords and arguments for a parser.Struct and each of its fields.
+	StructAnnotations struct {
+		Struct ArgMap
+		Fields []ArgMap
 	}
 
-	// NamedTypeResults holds the MultiMap of keywords and arguments for a parser.NamedType
-	NamedTypeResults struct {
-		Named MultiMap
+	// NamedTypeAnnotations holds the MultiMap of keywords and arguments for a parser.NamedType
+	NamedTypeAnnotations struct {
+		Named ArgMap
 	}
 )
 
@@ -54,48 +53,48 @@ func NewScanner(keywords map[string]KeywordOpts) Scanner {
 	}
 
 	return &scanner{
-		keywordArguments: make(map[string][]Args),
+		keywordArguments: make(map[string]Arg),
 		keywords:         keywords,
 		maxKeywordLength: maxKeywordLength,
 	}
 }
 
 // ScanStruct scans the godoc annotations of a parser.Struct using the keywords & flags provided to the scanner.
-func (s *scanner) ScanStruct(pStruct *parser.Struct) (StructResults, error) {
+func (s *scanner) ScanStruct(pStruct *parser.Struct) (StructAnnotations, error) {
 	s.src = []byte(pStruct.Comments())
 	s.mode = ScanStruct
 	if err := s.scan(); err != nil {
-		return StructResults{}, err
+		return StructAnnotations{}, err
 	}
 
-	structResults := MultiMap{s.result()}
+	structResults := ArgMap{s.result()}
 
 	s.mode = ScanField
-	fieldResults := make([]MultiMap, 0, len(pStruct.Fields()))
+	fieldResults := make([]ArgMap, 0, len(pStruct.Fields()))
 	for _, f := range pStruct.Fields() {
 		s.src = []byte(f.Comments())
 		s.pos = 0
-		s.keywordArguments = make(map[string][]Args)
+		s.keywordArguments = make(map[string]Arg)
 
 		if err := s.scan(); err != nil {
-			return StructResults{}, err
+			return StructAnnotations{}, err
 		}
 
-		fieldResults = append(fieldResults, MultiMap{s.result()})
+		fieldResults = append(fieldResults, ArgMap{s.result()})
 	}
 
-	return StructResults{structResults, fieldResults}, nil
+	return StructAnnotations{structResults, fieldResults}, nil
 }
 
 // ScanNamedType scans the godoc annotations of a parser.NamedType using the keywords & flags provided to the scanner.
-func (s *scanner) ScanNamedType(namedType *parser.NamedType) (NamedTypeResults, error) {
+func (s *scanner) ScanNamedType(namedType *parser.NamedType) (NamedTypeAnnotations, error) {
 	s.src = []byte(namedType.Comments)
 	s.mode = ScanNamedType
 	if err := s.scan(); err != nil {
-		return NamedTypeResults{}, err
+		return NamedTypeAnnotations{}, err
 	}
 
-	return NamedTypeResults{MultiMap{s.result()}}, nil
+	return NamedTypeAnnotations{ArgMap{s.result()}}, nil
 }
 
 // moves the position pointer forward and returns the current character
@@ -122,6 +121,16 @@ func (s *scanner) consumeWhitespace() (byte, bool) {
 	return char, eof
 }
 
+func (s *scanner) skipUntil(b byte) {
+	var (
+		char byte
+		eof  bool
+	)
+	for !eof && char != b {
+		char, eof = s.next()
+	}
+}
+
 func (s *scanner) scan() error {
 	var (
 		char byte
@@ -133,6 +142,9 @@ func (s *scanner) scan() error {
 	for !eof {
 		switch {
 		case isWhitespace(char):
+
+		case char != byte('@'): // if a line doesn't start with @ we ignore the comment
+			s.skipUntil('\n')
 
 		case char == byte('@'):
 			key, ok := s.matchKeyword()
@@ -149,7 +161,7 @@ func (s *scanner) scan() error {
 			}
 
 			var (
-				arg *Args
+				arg Arg
 				err error
 			)
 			if peek, ok := s.peekNext(); ok && peek == byte('(') {
@@ -159,7 +171,7 @@ func (s *scanner) scan() error {
 					return errors.New(s.errorPostscript("unexpected argument", "%s keyword cannot take arguments here", key))
 				}
 
-				arg, err = s.keywordArgs(key)
+				arg, err = s.scanArguments()
 				if err != nil {
 					return err
 				}
@@ -179,50 +191,14 @@ func (s *scanner) scan() error {
 	return nil
 }
 
-func (s *scanner) keywordArgs(key string) (*Args, error) {
-	if hasFlag(s.keywords[key][s.mode], DualArgsRequired) {
-		arg1, err := s.scanArguments()
-		if err != nil {
-			return nil, err
-		}
-
-		if peek, ok := s.peekNext(); !ok || peek != byte('(') {
-			return nil, errors.New(s.error("expected second argument for @%s, found %q", key, string(peek)))
-		}
-
-		arg2b, err := s.scanArguments()
-		if err != nil {
-			return nil, err
-		}
-
-		arg2 := string(arg2b)
-
-		return &Args{string(arg1), &arg2}, nil
-	}
-
-	arg, err := s.scanArguments()
-	if err != nil {
-		return nil, err
-	}
-
-	if hasFlag(s.keywords[key][s.mode], StrictSingleArgs) && slices.Contains(arg, ',') {
-		position := slices.Index(arg, ',')
-		highlightedComma := fmt.Sprintf("\"%s\033[91m%s <--\033[0m\"", string(arg[:position]), string(arg[position]))
-
-		return nil, errors.New(s.errorPostscript(fmt.Sprintf("@%s should have exactly one argument", key), "illegal comma %s", highlightedComma))
-	}
-
-	return &Args{Arg1: string(arg)}, nil
-}
-
-func (s *scanner) addKeywordArgument(key string, arg *Args) {
+func (s *scanner) addKeywordArgument(key string, arg Arg) {
 	if _, ok := s.keywordArguments[key]; !ok {
-		s.keywordArguments[key] = make([]Args, 0, 1)
+		s.keywordArguments[key] = arg
+
+		return
 	}
 
-	if arg != nil {
-		s.keywordArguments[key] = append(s.keywordArguments[key], *arg)
-	}
+	s.keywordArguments[key] += Arg(fmt.Sprintf("\x00%s", arg)) // use a zero byte for separating multiple arguments
 }
 
 func (s scanner) canHaveArguments(key string) bool {
@@ -248,10 +224,6 @@ func (s scanner) requiresArguments(key string) bool {
 		return true
 	}
 
-	if hasFlag(opts, DualArgsRequired) {
-		return true
-	}
-
 	return false
 }
 
@@ -268,7 +240,7 @@ func (s scanner) isExclusive(key string) bool {
 	return false
 }
 
-func (s *scanner) scanArguments() ([]byte, error) {
+func (s *scanner) scanArguments() (Arg, error) {
 	var (
 		opened          bool
 		openParenthesis int
@@ -317,13 +289,13 @@ loop:
 	if openParenthesis > 0 {
 		s.pos = currentPos
 
-		return nil, errors.New(s.error("unclosed parenthesis"))
+		return Arg(""), errors.New(s.error("unclosed parenthesis"))
 	}
 
-	return buf, nil
+	return Arg(buf), nil
 }
 
-func (s *scanner) result() map[string][]Args {
+func (s *scanner) result() map[string]Arg {
 	return s.keywordArguments
 }
 

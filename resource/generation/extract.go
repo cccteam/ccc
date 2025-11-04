@@ -15,14 +15,14 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 	resources := make([]*resourceInfo, 0, len(structs))
 	var resourceErrors []error
 	for _, pStruct := range structs {
-		result, err := genlang.NewScanner(resourceKeywords()).ScanStruct(pStruct)
+		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(pStruct)
 		if err != nil {
 			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
 
 			continue
 		}
 
-		if !result.Struct.Has(resourceKeyword) {
+		if !annotations.Struct.Has(resourceKeyword) {
 			continue
 		}
 
@@ -54,41 +54,38 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 			continue
 		}
 
-		if result.Struct.Has(suppressKeyword) {
-		suppressLoop:
-			for i, handlerArg := range result.Struct.Get(suppressKeyword) {
-				switch HandlerType(handlerArg.Arg1) {
+		if annotations.Struct.Has(suppressKeyword) {
+			for handlerArg := range annotations.Struct.Get(suppressKeyword).Seq() {
+				switch HandlerType(handlerArg) {
 				case AllHandlers:
-					resource.SuppressedHandlers = [3]HandlerType{ListHandler, ReadHandler, PatchHandler}
+					resource.SuppressedHandlers = []HandlerType{ListHandler, ReadHandler, PatchHandler}
 					resource.IsConsolidated = false
-
-					break suppressLoop
 				case ListHandler:
-					resource.SuppressedHandlers[i] = ListHandler
+					resource.SuppressedHandlers = append(resource.SuppressedHandlers, ListHandler)
 				case ReadHandler:
-					resource.SuppressedHandlers[i] = ReadHandler
+					resource.SuppressedHandlers = append(resource.SuppressedHandlers, ReadHandler)
 				case PatchHandler:
-					resource.SuppressedHandlers[i] = PatchHandler
+					resource.SuppressedHandlers = append(resource.SuppressedHandlers, PatchHandler)
 					resource.IsConsolidated = false
 				default:
-					resourceErrors = append(resourceErrors, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg.Arg1, resourceName, new(HandlerType).enumerate()))
+					resourceErrors = append(resourceErrors, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg, resourceName, handlerTypes()))
 
 					continue
 				}
 			}
 		}
 
-		if result.Struct.Has(defaultsCreateTypeKeyword) {
-			resource.DefaultsCreateType = result.Struct.GetOne(defaultsCreateTypeKeyword).Arg1
+		if annotations.Struct.Has(defaultsCreateTypeKeyword) {
+			resource.DefaultsCreateType = string(annotations.Struct.Get(defaultsCreateTypeKeyword))
 		}
-		if result.Struct.Has(defaultsUpdateTypeKeyword) {
-			resource.DefaultsUpdateType = result.Struct.GetOne(defaultsUpdateTypeKeyword).Arg1
+		if annotations.Struct.Has(defaultsUpdateTypeKeyword) {
+			resource.DefaultsUpdateType = string(annotations.Struct.Get(defaultsUpdateTypeKeyword))
 		}
-		if result.Struct.Has(validateCreateTypeKeyword) {
-			resource.ValidateCreateType = result.Struct.GetOne(validateCreateTypeKeyword).Arg1
+		if annotations.Struct.Has(validateCreateTypeKeyword) {
+			resource.ValidateCreateType = string(annotations.Struct.Get(validateCreateTypeKeyword))
 		}
-		if result.Struct.Has(validateUpdateTypeKeyword) {
-			resource.ValidateUpdateType = result.Struct.GetOne(validateUpdateTypeKeyword).Arg1
+		if annotations.Struct.Has(validateUpdateTypeKeyword) {
+			resource.ValidateUpdateType = string(annotations.Struct.Get(validateUpdateTypeKeyword))
 		}
 
 		resources = append(resources, resource)
@@ -148,12 +145,12 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo, error) {
 	rpcMethods := make([]*rpcMethodInfo, 0, len(structs))
 	for _, s := range structs {
-		result, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
+		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
 		if err != nil {
 			return nil, errors.Wrap(err, "Scanner.ScanStruct()")
 		}
 
-		if !result.Struct.Has(rpcKeyword) {
+		if !annotations.Struct.Has(rpcKeyword) {
 			continue
 		}
 
@@ -183,14 +180,14 @@ func structsToCompResources(structs []*parser.Struct) ([]*computedResource, erro
 	compResources := make([]*computedResource, 0, len(structs))
 	var resourceErrors []error
 	for _, s := range structs {
-		result, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
+		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
 		if err != nil {
 			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
 
 			continue
 		}
 
-		if !result.Struct.Has(computedKeyword) {
+		if !annotations.Struct.Has(computedKeyword) {
 			continue
 		}
 
@@ -199,12 +196,12 @@ func structsToCompResources(structs []*parser.Struct) ([]*computedResource, erro
 			Fields: make([]*computedField, 0, len(s.Fields())),
 		}
 
-		if result.Struct.Has(suppressKeyword) {
-			suppress := result.Struct.GetOne(suppressKeyword).Arg1
-			if !strings.Contains(suppress, string(ReadHandler)) {
+		if annotations.Struct.Has(suppressKeyword) {
+			handlerArg := annotations.Struct.Get(suppressKeyword)
+			if !strings.Contains(string(handlerArg), string(ReadHandler)) {
 				res.SuppressReadHandler = true
 			}
-			if !strings.Contains(suppress, string(ListHandler)) {
+			if !strings.Contains(string(handlerArg), string(ListHandler)) {
 				res.SuppressListHandler = true
 			}
 		}
@@ -213,10 +210,10 @@ func structsToCompResources(structs []*parser.Struct) ([]*computedResource, erro
 		for i, field := range s.Fields() {
 			field := &computedField{
 				Field:        field,
-				IsPrimaryKey: result.Fields[i].Has(primarykeyKeyword),
+				IsPrimaryKey: annotations.Fields[i].Has(primarykeyKeyword),
 			}
 
-			if result.Fields[i].Has(primarykeyKeyword) {
+			if annotations.Fields[i].Has(primarykeyKeyword) {
 				field.IsPrimaryKey = true
 				field.KeyOrdinalPosition = keyCount
 				keyCount++
