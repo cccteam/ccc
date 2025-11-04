@@ -111,11 +111,6 @@ const (
 	consolidatedHandlerOutputName = "consolidated_handler"
 )
 
-var (
-	rpcInterfaces      = [...]string{"TxnRunner", "DBRunner"}
-	computedInterfaces = [...]string{"ComputedResource"}
-)
-
 type informationSchemaResult struct {
 	TableName            string  `spanner:"TABLE_NAME"`
 	ColumnName           string  `spanner:"COLUMN_NAME"`
