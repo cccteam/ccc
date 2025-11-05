@@ -170,8 +170,8 @@ func testNewSetRun[Resource Resourcer, Request any](t *testing.T, name string, p
 	if !w.wantErr {
 		want = &Set[Resource]{
 			permissions:     w.wantPermissions,
-			requiredTagPerm: w.requiredTagPerm,
-			fieldToTag:      w.fieldToTag,
+			requiredJSONTagPerm: w.requiredTagPerm,
+			fieldToJSONTag:      w.fieldToTag,
 			immutableFields: w.immutableFields,
 			rMeta:           NewMetadata[Resource](),
 		}
