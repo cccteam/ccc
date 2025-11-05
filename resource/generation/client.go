@@ -34,15 +34,13 @@ var caser = strcase.NewCaser(false, nil, nil)
 
 type client struct {
 	loadPackages       []string
-	resourceFilePath   string
+	resourcePackageDir string
 	resources          []*resourceInfo
 	computedResources  []*computedResource
 	rpcMethods         []*rpcMethodInfo
 	localPackages      []string
 	rpcPackageDir      string
-	rpcPackageName     string
 	compPackageDir     string
-	compPackageName    string
 	migrationSourceURL string
 	tableMap           map[string]*tableMetadata
 	enumValues         map[string][]*enumData
@@ -55,7 +53,7 @@ type client struct {
 	genCache *cache.Cache
 }
 
-func newClient(ctx context.Context, genType generatorType, resourceFilePath, migrationSourceURL string, localPackages []string, opts []option) (*client, error) {
+func newClient(ctx context.Context, genType generatorType, resourcePackageDir, migrationSourceURL string, localPackages []string, opts []option) (*client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -104,8 +102,8 @@ func newClient(ctx context.Context, genType generatorType, resourceFilePath, mig
 		}
 	}
 
-	c.loadPackages = append(c.loadPackages, resourceFilePath)
-	c.resourceFilePath = resourceFilePath
+	c.loadPackages = append(c.loadPackages, resourcePackageDir)
+	c.resourcePackageDir = resourcePackageDir
 	c.localPackages = localPackages
 	c.migrationSourceURL = migrationSourceURL
 
