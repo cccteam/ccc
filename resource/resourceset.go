@@ -70,13 +70,6 @@ func NewSet[Resource Resourcer, Request any](permissions ...accesstypes.Permissi
 	}, nil
 }
 
-// BaseResource returns the base name of the resource (without any tags).
-func (r *Set[Resource]) BaseResource() accesstypes.Resource {
-	var res Resource
-
-	return res.Resource()
-}
-
 // ImmutableFields returns a map of tags for fields that are marked as immutable.
 func (r *Set[Resource]) ImmutableFields() map[accesstypes.Tag]struct{} {
 	return r.immutableFields
