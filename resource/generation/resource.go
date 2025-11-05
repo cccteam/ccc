@@ -28,12 +28,6 @@ type resourceGenerator struct {
 func NewResourceGenerator(ctx context.Context, resourcePackageDir, migrationSourceURL string, localPackages []string, options ...ResourceOption) (Generator, error) {
 	r := &resourceGenerator{}
 
-	if filepath.Ext(resourcePackageDir) != "" {
-		r.resourcePackageDir = filepath.Dir(resourcePackageDir)
-	} else {
-		r.resourcePackageDir = resourcePackageDir
-	}
-
 	opts := make([]option, 0, len(options))
 	for _, opt := range options {
 		opts = append(opts, opt)
