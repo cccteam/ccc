@@ -76,7 +76,7 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genComputedResources {
-		compStructs := parser.ParsePackage(packageMap[t.compPackageName]).Structs
+		compStructs := parser.ParsePackage(packageMap[filepath.Base(t.compPackageDir)]).Structs
 		computedResources, err := structsToCompResources(compStructs)
 		if err != nil {
 			return err
@@ -98,7 +98,7 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genRPCMethods {
-		rpcStructs := parser.ParsePackage(packageMap[t.rpcPackageName]).Structs
+		rpcStructs := parser.ParsePackage(packageMap[filepath.Base(t.rpcPackageDir)]).Structs
 		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs)
 		if err != nil {
 			return err
@@ -305,7 +305,7 @@ func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) erro
 	}
 
 	output, err := t.generateTemplateOutput("typescriptEnumsTemplate", typescriptEnumsTemplate, map[string]any{
-		"Source":     t.resourceFilePath,
+		"Source":     t.resourcePackageDir,
 		"NamedTypes": namedTypes,
 		"EnumMap":    enumMap,
 	})

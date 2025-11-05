@@ -117,7 +117,7 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 
 		buf := bytes.NewBuffer(nil)
 		if err := tmpl.Execute(buf, map[string]any{
-			"Source":              r.resourceFilePath,
+			"Source":              r.resourcePackageDir,
 			"LocalPackageImports": r.localPackageImports(),
 			"Handlers":            string(bytes.Join(handlerData, []byte("\n\n"))),
 			"Package":             filepath.Base(r.handlerDestination),
@@ -157,7 +157,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 
 	buf := bytes.NewBuffer(nil)
 	if err := tmpl.Execute(buf, map[string]any{
-		"Source":              r.resourceFilePath,
+		"Source":              r.resourcePackageDir,
 		"LocalPackageImports": r.localPackageImports(),
 		"Resources":           resources,
 		"Package":             filepath.Base(r.handlerDestination),

@@ -194,7 +194,6 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 // WithComputedResources enables generating routes and handlers for Computed Resources.
 // The package's name is expected to be the same as its directory name.
 func WithComputedResources(compResourcesPkgDir string) Option {
-	compResourcesPkgName := filepath.Base(compResourcesPkgDir)
 	compResourcesPkgDir = "./" + filepath.Clean(compResourcesPkgDir)
 
 	return func(g any) error {
@@ -204,7 +203,6 @@ func WithComputedResources(compResourcesPkgDir string) Option {
 		case *client:
 			t.genComputedResources = true
 			t.compPackageDir = compResourcesPkgDir
-			t.compPackageName = compResourcesPkgName
 			t.loadPackages = append(t.loadPackages, compResourcesPkgDir)
 		default:
 			panic(fmt.Sprintf("unexpected generator type in WithComputedResources(): %T", t))
@@ -217,7 +215,6 @@ func WithComputedResources(compResourcesPkgDir string) Option {
 // WithRPC enables generating RPC method handlers.
 // The package's name is expected to be the same as its directory name.
 func WithRPC(rpcPackageDir string) Option {
-	rpcPackageName := filepath.Base(rpcPackageDir)
 	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
 
 	return func(g any) error {
@@ -226,7 +223,6 @@ func WithRPC(rpcPackageDir string) Option {
 		case *typescriptGenerator: // no-op
 		case *client:
 			t.rpcPackageDir = rpcPackageDir
-			t.rpcPackageName = rpcPackageName
 			t.genRPCMethods = true
 			t.loadPackages = append(t.loadPackages, rpcPackageDir)
 		default:
