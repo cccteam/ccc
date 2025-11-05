@@ -10,7 +10,7 @@ import (
 
 var keywords = map[string]genlang.KeywordOpts{
 	"primarykey":  {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
-	"foreignkey":  {genlang.ScanStruct: genlang.DualArgsRequired, genlang.ScanField: genlang.ArgsRequired},
+	"foreignkey":  {genlang.ScanStruct: genlang.ArgsRequired, genlang.ScanField: genlang.ArgsRequired},
 	"check":       {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 	"default":     {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 	"hidden":      {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
@@ -35,8 +35,8 @@ func Test_ScanStruct(t *testing.T) {
 	tests := []struct {
 		name       string
 		args       args
-		wantStruct map[string][]string
-		wantFields []map[string][]string
+		wantStruct map[string]genlang.Arg
+		wantFields []map[string]genlang.Arg
 		wantErr    bool
 	}{
 		{
@@ -44,27 +44,27 @@ func Test_ScanStruct(t *testing.T) {
 			args: args{
 				filepath: "./testdata/multiline.go",
 			},
-			wantStruct: map[string][]string{
-				"uniqueindex": {"Id, Description"},
-				"foreignkey":  {"Type", "StatusTypes(Id)", "Status", "Statuses(Id)"},
+			wantStruct: map[string]genlang.Arg{
+				"uniqueindex": genlang.Arg("Id, Description"),
+				"foreignkey":  genlang.Arg("Type, StatusTypes(Id)\x00Status, Statuses(Id)"),
 			},
-			wantFields: []map[string][]string{
+			wantFields: []map[string]genlang.Arg{
 				{
-					"primarykey": {},
-					"check":      {"@self = 'N'"},
-					"hidden":     {},
-					"substring":  {"@self"},
+					"primarykey": genlang.Arg(""),
+					"check":      genlang.Arg("@self = 'N'"),
+					"hidden":     genlang.Arg(""),
+					"substring":  genlang.Arg("@self"),
 				},
 			},
 		},
 		{
 			name: "single-line comments",
 			args: args{filepath: "./testdata/singular.go"},
-			wantStruct: map[string][]string{
-				"primarykey": {"Id, Description"},
+			wantStruct: map[string]genlang.Arg{
+				"primarykey": genlang.Arg("Id, Description"),
 			},
-			wantFields: []map[string][]string{
-				{"primarykey": {}},
+			wantFields: []map[string]genlang.Arg{
+				{"primarykey": genlang.Arg("")},
 			},
 		},
 		{
@@ -111,19 +111,9 @@ func Test_ScanStruct(t *testing.T) {
 					return
 				}
 
-				got := make(map[string][]string)
+				got := make(map[string]genlang.Arg)
 				for key := range results.Struct.Keys() {
-					if _, ok := got[key]; !ok {
-						got[key] = make([]string, 0)
-					}
-
-					for arg1, arg2 := range results.Struct.GetDualArgs(key) {
-						got[key] = append(got[key], arg1)
-
-						if arg2 != nil {
-							got[key] = append(got[key], *arg2)
-						}
-					}
+					got[key] = results.Struct.Get(key)
 				}
 
 				if diff := cmp.Diff(tt.wantStruct, got); diff != "" {
@@ -135,19 +125,9 @@ func Test_ScanStruct(t *testing.T) {
 				}
 
 				for i := range pStruct.Fields() {
-					gotField := make(map[string][]string)
+					gotField := make(map[string]genlang.Arg)
 					for key := range results.Fields[i].Keys() {
-						if _, ok := gotField[key]; !ok {
-							gotField[key] = make([]string, 0)
-						}
-
-						for arg1, arg2 := range results.Fields[i].GetDualArgs(key) {
-							gotField[key] = append(gotField[key], arg1)
-
-							if arg2 != nil {
-								gotField[key] = append(gotField[key], *arg2)
-							}
-						}
+						gotField[key] = results.Fields[i].Get(key)
 					}
 
 					if diff := cmp.Diff(tt.wantFields[i], gotField); diff != "" {

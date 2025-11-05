@@ -292,14 +292,14 @@ func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map
 	enumMap := make(map[string][]*enumData)
 	for _, namedType := range namedTypes {
 		scanner := genlang.NewScanner(resourceKeywords())
-		result, err := scanner.ScanNamedType(namedType)
+		annotations, err := scanner.ScanNamedType(namedType)
 		if err != nil {
 			return nil, errors.Wrap(err, "scanner.ScanNamedType()")
 		}
 
 		var tableName string
-		if result.Named.Has(enumerateKeyword) {
-			tableName = result.Named.GetOne(enumerateKeyword).Arg1
+		if annotations.Named.Has(enumerateKeyword) {
+			tableName = string(annotations.Named.Get(enumerateKeyword))
 		} else {
 			continue
 		}
@@ -471,7 +471,7 @@ func resourceEndpoints(res *resourceInfo) []HandlerType {
 	}
 
 	handlerTypes = slices.DeleteFunc(handlerTypes, func(ht HandlerType) bool {
-		return slices.Contains(res.SuppressedHandlers[:], ht)
+		return slices.Contains(res.SuppressedHandlers, ht)
 	})
 
 	return handlerTypes
