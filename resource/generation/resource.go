@@ -57,7 +57,12 @@ func (r *resourceGenerator) Generate() error {
 		return errors.Wrap(err, "parser.LoadPackages()")
 	}
 
-	resourcesPkg := parser.ParsePackage(packageMap[filepath.Base(r.resourcePackageDir)])
+	pkg := packageMap[filepath.Base(r.resourcePackageDir)]
+	if pkg == nil {
+		return errors.Newf("no packages found in %q", r.resourcePackageDir)
+	}
+
+	resourcesPkg := parser.ParsePackage(pkg)
 
 	resources, err := r.extractResources(resourcesPkg.Structs)
 	if err != nil {
