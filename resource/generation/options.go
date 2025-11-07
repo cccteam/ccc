@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"maps"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -183,6 +184,27 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 		case *resourceGenerator, *typescriptGenerator: // no-op
 		default:
 			panic(fmt.Sprintf("unexpected generator type in WithConsolidatedHandlers(): %T", t))
+		}
+
+		return nil
+	}
+}
+
+// WithVirtualResources enables generating resources utilities, routes and handlers for Virtual Resources.
+// The package's name is expected to be the same as its directory name.
+func WithVirtualResources(virtualResourcesPkgDir string) Option {
+	virtualResourcesPkgDir = "./" + filepath.Clean(virtualResourcesPkgDir)
+
+	return func(g any) error {
+		switch t := g.(type) {
+		case *resourceGenerator:
+		case *typescriptGenerator: // no-op
+		case *client:
+			t.genVirtualResources = true
+			t.virtualResourcesPkgDir = virtualResourcesPkgDir
+			t.loadPackages = append(t.loadPackages, virtualResourcesPkgDir)
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithVirtualResources(): %T", t))
 		}
 
 		return nil

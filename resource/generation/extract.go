@@ -11,7 +11,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, error) {
+func (c *client) structsToResources(structs []*parser.Struct) ([]*resourceInfo, error) {
 	resources := make([]*resourceInfo, 0, len(structs))
 	var resourceErrors []error
 	for _, pStruct := range structs {
@@ -26,8 +26,7 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 			continue
 		}
 
-		resourceName := pStruct.Name()
-		table, err := c.tableMetadataFor(resourceName)
+		table, err := c.tableMetadataFor(pStruct.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -35,8 +34,7 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 		resource := &resourceInfo{
 			TypeInfo:       pStruct.TypeInfo,
 			Fields:         make([]*resourceField, 0, len(pStruct.Fields())),
-			IsView:         table.IsView,
-			IsConsolidated: !table.IsView && c.IsConsolidated(resourceName),
+			IsConsolidated: c.IsConsolidated(pStruct.Name()),
 			PkCount:        table.PkCount,
 		}
 
@@ -68,7 +66,7 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 					resource.SuppressedHandlers = append(resource.SuppressedHandlers, PatchHandler)
 					resource.IsConsolidated = false
 				default:
-					resourceErrors = append(resourceErrors, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg, resourceName, handlerTypes()))
+					resourceErrors = append(resourceErrors, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg, pStruct.Name(), handlerTypes()))
 
 					continue
 				}
@@ -98,7 +96,80 @@ func (c *client) extractResources(structs []*parser.Struct) ([]*resourceInfo, er
 	return resources, nil
 }
 
+func (c *client) structsToVirtualResources(structs []*parser.Struct) ([]*resourceInfo, error) {
+	resources := make([]*resourceInfo, 0, len(structs))
+	var errs []error
+	for _, pStruct := range structs {
+		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(pStruct)
+		if err != nil {
+			errs = append(errs, errors.Wrap(err, "scanner.ScanStruct()"))
+
+			continue
+		}
+
+		if !annotations.Struct.Has(virtualKeyword) {
+			continue
+		}
+
+		resource := &resourceInfo{
+			TypeInfo:  pStruct.TypeInfo,
+			IsVirtual: true,
+		}
+
+		fields, err := newVirtualFields(resource, pStruct)
+		if err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+		resource.Fields = fields
+
+		nullableFields, err := fieldNullability(pStruct)
+		if err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
+		for _, field := range resource.Fields {
+			spannerTag, _ := field.LookupTag("spanner")
+			nullability, ok := nullableFields[spannerTag]
+			if !ok {
+				continue
+			}
+
+			field.IsNullable = nullability
+		}
+
+		if annotations.Struct.Has(suppressKeyword) {
+			for handlerArg := range annotations.Struct.Get(suppressKeyword).Seq() {
+				switch HandlerType(handlerArg) {
+				case AllHandlers:
+					resource.SuppressedHandlers = []HandlerType{ListHandler, ReadHandler, PatchHandler}
+				case ListHandler, ReadHandler, PatchHandler:
+					resource.SuppressedHandlers = append(resource.SuppressedHandlers, HandlerType(handlerArg))
+				default:
+					errs = append(errs, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg, pStruct.Name(), handlerTypes()))
+
+					continue
+				}
+			}
+		}
+
+		resources = append(resources, resource)
+	}
+
+	if len(errs) > 0 {
+		return nil, errors.Wrapf(errors.Join(errs...), "encountered %d errors converting structs to resources", len(errs))
+	}
+
+	return resources, nil
+}
+
 func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tableMetadata) ([]*resourceField, error) {
+	if parent.IsVirtual {
+		panic("newResourceFields cannot be used with virtual resources")
+	}
 	fields := make([]*resourceField, 0, len(pStruct.Fields()))
 	for i, field := range pStruct.Fields() {
 		spannerTag, ok := field.LookupTag("spanner")
@@ -113,7 +184,7 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 
 			continue
 		}
-		if !table.IsView && field.HasTag("index") {
+		if field.HasTag("index") {
 			pStruct.AddFieldError(i, "cannot use index tag in non-virtual resource")
 
 			continue
@@ -132,6 +203,33 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 			ReferencedResource: tableColumn.ReferencedTable,
 			ReferencedField:    tableColumn.ReferencedColumn,
 			HasDefault:         tableColumn.HasDefault,
+		})
+	}
+
+	if pStruct.HasErrors() {
+		return nil, errors.Newf("struct %s has field errors:\n%s", pStruct.Name(), pStruct.PrintErrors())
+	}
+
+	return fields, nil
+}
+
+func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resourceField, error) {
+	if !parent.IsVirtual {
+		panic("newVirtualFields cannot be used with concrete resources")
+	}
+	fields := make([]*resourceField, 0, len(pStruct.Fields()))
+	for i, field := range pStruct.Fields() {
+		_, ok := field.LookupTag("spanner")
+		if !ok {
+			pStruct.AddFieldError(i, "missing spanner tag")
+
+			continue
+		}
+
+		fields = append(fields, &resourceField{
+			Field:   field,
+			Parent:  parent,
+			IsIndex: field.HasTag("index"),
 		})
 	}
 

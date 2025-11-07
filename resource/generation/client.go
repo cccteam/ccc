@@ -33,21 +33,23 @@ const (
 var caser = strcase.NewCaser(false, nil, nil)
 
 type client struct {
-	loadPackages       []string
-	resource           packageDir
-	resources          []*resourceInfo
-	computedResources  []*computedResource
-	rpcMethods         []*rpcMethodInfo
-	localPackages      []string
-	rpc                packageDir
-	computed           packageDir
-	migrationSourceURL string
-	tableMap           map[string]*tableMetadata
-	enumValues         map[string][]*enumData
-	pluralOverrides    map[string]string
+	loadPackages           []string
+	resource               packageDir
+	resources              []*resourceInfo
+	computedResources      []*computedResource
+	rpcMethods             []*rpcMethodInfo
+	localPackages          []string
+	rpc                    packageDir
+	computed               packageDir
+	virtualResourcesPkgDir string
+	migrationSourceURL     string
+	tableMap               map[string]*tableMetadata
+	enumValues             map[string][]*enumData
+	pluralOverrides        map[string]string
 	consolidateConfig
 	genRPCMethods          bool
 	genComputedResources   bool
+	genVirtualResources    bool
 	spannerEmulatorVersion string
 	FileWriter
 	genCache *cache.Cache
@@ -201,10 +203,10 @@ func (c *client) templateFuncs() map[string]any {
 		"Pascal":                       strcase.ToPascal,
 		"Kebab":                        strcase.ToKebab,
 		"Lower":                        strings.ToLower,
-		"FormatResourceInterfaceTypes": formatResourceInterfaceTypes,
+		"FormatResourceInterfaceTypes": c.formatResourceInterfaceTypes,
 		"FormatRPCInterfaceTypes":      formatRPCInterfaceTypes,
 		"DetermineTestURL": func(resource resourceInfo, routePrefix string, route generatedRoute) string {
-			if !resource.IsView &&
+			if !resource.IsVirtual &&
 				strings.EqualFold(route.Method, "get") &&
 				(strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
 				if resource.HasCompoundPrimaryKey() {
@@ -227,7 +229,7 @@ func (c *client) templateFuncs() map[string]any {
 			return route.Path
 		},
 		"DetermineParameters": func(resource resourceInfo, route generatedRoute) string {
-			if !resource.IsView &&
+			if !resource.IsVirtual &&
 				strings.EqualFold(route.Method, "get") &&
 				(strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
 				if resource.HasCompoundPrimaryKey() {
@@ -430,14 +432,18 @@ func formatInterfaceTypes(types []string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
 }
 
-func formatResourceInterfaceTypes(resourcesPackage, computedResourcePackage string, resources []*resourceInfo, computedResources []*computedResource) string {
+func (c *client) formatResourceInterfaceTypes(resources []*resourceInfo, computedResources []*computedResource) string {
 	names := make([]string, 0, len(resources)+len(computedResources))
 	for _, res := range resources {
-		names = append(names, fmt.Sprintf("%s.%s", resourcesPackage, res.Name()))
+		if res.IsVirtual {
+			names = append(names, fmt.Sprintf("%s.%s", filepath.Base(c.virtualResourcesPkgDir), res.Name()))
+		} else {
+			names = append(names, fmt.Sprintf("%s.%s", c.resource.Package(), res.Name()))
+		}
 	}
 
 	for _, res := range computedResources {
-		names = append(names, fmt.Sprintf("%s.%s", computedResourcePackage, res.Name()))
+		names = append(names, fmt.Sprintf("%s.%s", c.computed.Package(), res.Name()))
 	}
 
 	return formatInterfaceTypes(names)
@@ -460,7 +466,7 @@ func formatRPCInterfaceTypes(rpcMethods []*rpcMethodInfo) string {
 func resourceEndpoints(res *resourceInfo) []HandlerType {
 	handlerTypes := []HandlerType{ListHandler}
 
-	if !res.IsView {
+	if !res.IsVirtual {
 		handlerTypes = append(handlerTypes, ReadHandler)
 
 		if !res.IsConsolidated {

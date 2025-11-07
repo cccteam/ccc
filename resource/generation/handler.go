@@ -190,10 +190,11 @@ func (r *resourceGenerator) handlerContent(handler HandlerType, res *resourceInf
 
 	buf := bytes.NewBuffer([]byte{})
 	if err := tmpl.Execute(buf, map[string]any{
-		"ResourcePackage": r.resource.Package(),
-		"Resource":        res,
-		"ApplicationName": r.applicationName,
-		"ReceiverName":    r.receiverName,
+		"ResourcePackage":         r.resource.Package(),
+		"Resource":                res,
+		"VirtualResourcesPackage": filepath.Base(r.virtualResourcesPkgDir),
+		"ApplicationName":         r.applicationName,
+		"ReceiverName":            r.receiverName,
 	}); err != nil {
 		return nil, errors.Wrap(err, "tmpl.Execute()")
 	}

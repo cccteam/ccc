@@ -70,9 +70,20 @@ func (t *typescriptGenerator) Generate() error {
 
 	resourcesPkg := parser.ParsePackage(packageMap["resources"])
 
-	resources, err := t.extractResources(resourcesPkg.Structs)
+	resources, err := t.structsToResources(resourcesPkg.Structs)
 	if err != nil {
 		return err
+	}
+
+	if t.genVirtualResources {
+		virtualStructs := parser.ParsePackage(packageMap[filepath.Base(t.virtualResourcesPkgDir)]).Structs
+		virtualResources, err := t.structsToVirtualResources(virtualStructs)
+		if err != nil {
+			return err
+		}
+
+		resources = append(resources, virtualResources...)
+		sortResources(resources)
 	}
 
 	if t.genComputedResources {

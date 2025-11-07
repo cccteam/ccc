@@ -70,33 +70,17 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 	}
 
 	schemaMetadata := make(map[string]*tableMetadata)
-	viewColumns := make([]*informationSchemaResult, 0, 16)
 	for i := range results {
 		table, ok := schemaMetadata[results[i].TableName]
 		if !ok {
 			table = &tableMetadata{
 				Columns: make(map[string]columnMeta),
-				IsView:  results[i].IsView,
 			}
-		}
-
-		if results[i].IsView {
-			viewColumns = append(viewColumns, &results[i])
-		}
-
-		if results[i].SpannerType == "TOKENLIST" {
-			continue
 		}
 
 		table.addSchemaResult(&results[i])
 		schemaMetadata[results[i].TableName] = table
 	}
-
-	nullableViews, err := viewColumnNullability(schemaMetadata, viewColumns)
-	if err != nil {
-		return nil, err
-	}
-	schemaMetadata = nullableViews
 
 	return schemaMetadata, nil
 }
@@ -150,8 +134,6 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 		(d.IS_FOREIGN_KEY > 0 and d.IS_FOREIGN_KEY IS NOT NULL) as IS_FOREIGN_KEY,
 		d.REFERENCED_TABLE,
 		d.REFERENCED_COLUMN,
-		(t.TABLE_NAME IS NULL AND v.TABLE_NAME IS NOT NULL) as IS_VIEW,
-		v.VIEW_DEFINITION,
 		ic.INDEX_NAME IS NOT NULL AS IS_INDEX,
 		MAX(COALESCE(i.IS_UNIQUE, false)) AS IS_UNIQUE_INDEX,
 		c.GENERATION_EXPRESSION,
@@ -161,7 +143,6 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 	FROM INFORMATION_SCHEMA.COLUMNS c
 		LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
 			AND t.TABLE_TYPE = 'BASE TABLE'
-		LEFT JOIN INFORMATION_SCHEMA.VIEWS v ON c.TABLE_NAME = v.TABLE_NAME
 		LEFT JOIN DEPENDENCIES d ON c.TABLE_NAME = d.TABLE_NAME
 			AND c.COLUMN_NAME = d.COLUMN_NAME
 		LEFT JOIN INFORMATION_SCHEMA.INDEX_COLUMNS ic ON c.COLUMN_NAME = ic.COLUMN_NAME
@@ -172,7 +153,7 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 		AND c.COLUMN_NAME NOT LIKE '%_HIDDEN'
 	GROUP BY c.TABLE_NAME, c.COLUMN_NAME, IS_NULLABLE, c.SPANNER_TYPE,
 	d.IS_PRIMARY_KEY, d.IS_FOREIGN_KEY, d.REFERENCED_COLUMN, d.REFERENCED_TABLE,
-	IS_VIEW, v.VIEW_DEFINITION, IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT
+	IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
 
 func queryInformationSchema(ctx context.Context, db *spanner.Client) ([]informationSchemaResult, error) {
