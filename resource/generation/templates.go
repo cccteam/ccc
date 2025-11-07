@@ -43,7 +43,11 @@ func ({{ .Resource.Name }}) Resource() accesstypes.Resource {
 }
 
 func ({{ .Resource.Name }}) DefaultConfig() resource.Config {
+	{{- if not .Resource.IsVirtual }}
 	return defaultConfig()
+	{{- else }}
+	return resource.Config{}
+	{{- end }}
 }
 
 type {{ .Resource.Name }}Query struct {
