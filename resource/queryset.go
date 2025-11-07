@@ -45,6 +45,21 @@ func (q *QuerySet[Resource]) Resource() accesstypes.Resource {
 	return r.Resource()
 }
 
+func (q *QuerySet[Resource]) subquery() (query string, params map[string]any) {
+	var r Resource
+
+	switch t := any(r).(type) {
+	case virtualQuerier:
+		query, params = t.Subquery()
+		// newlines before final parenthesis is necessary to combat any trailing comments
+		query = fmt.Sprintf("(%s\n)", query)
+
+		return query, params
+	default:
+		return string(r.Resource()), nil
+	}
+}
+
 // RequiredPermission returns the permission required to execute the query.
 func (q *QuerySet[Resource]) RequiredPermission() accesstypes.Permission {
 	return q.requiredPermission
@@ -309,14 +324,23 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
 	}
 
+	subquerySQL, subqueryParams := q.subquery()
+	for k := range subqueryParams {
+		if _, ok := where.Params[k]; ok {
+			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
+		}
+
+		where.Params[k] = subqueryParams[k]
+	}
+
 	sql := fmt.Sprintf(`
 			SELECT
 				%s
-			FROM %s
+			FROM %s AS %s
 			%s
 			%s
 			%s
-			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause, offsetClause,
+			%s`, columns, subquerySQL, q.Resource(), where.SQL, orderByClause, limitClause, offsetClause,
 	)
 
 	resolvedSQL, err := substituteSQLParams(where.SQL, where.Params)

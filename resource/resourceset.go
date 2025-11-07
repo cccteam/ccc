@@ -40,6 +40,11 @@ type defaultConfigurer interface {
 	DefaultConfig() Config
 }
 
+// virtualQuerier is an interface for types that can provide a subquery with params.
+type virtualQuerier interface {
+	Subquery() (string, map[string]any)
+}
+
 // Set holds metadata about a resource, including its permissions and field-to-tag mappings.
 type Set[Resource Resourcer] struct {
 	permissions     []accesstypes.Permission
