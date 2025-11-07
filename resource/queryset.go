@@ -54,6 +54,12 @@ func (q *QuerySet[Resource]) subquery() (query string, params map[string]any) {
 		// newlines before final parenthesis is necessary to combat any trailing comments
 		query = fmt.Sprintf("(%s\n)", query)
 
+		for pramName := range params {
+			if strings.HasPrefix(pramName, "_") {
+				panic(fmt.Sprintf("Subquery params for %s can not start with an _", r.Resource()))
+			}
+		}
+
 		return query, params
 	default:
 		return string(r.Resource()), nil
