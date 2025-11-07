@@ -81,7 +81,7 @@ func (s *sqlGenerator) quoteIdentifier(identifier string) string {
 func (s *sqlGenerator) nextPlaceholder() string {
 	s.paramCount++
 
-	return fmt.Sprintf("@p%d", s.paramCount)
+	return fmt.Sprintf("@_p%d", s.paramCount)
 }
 
 func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryParam, error) {
