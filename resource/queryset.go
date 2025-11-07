@@ -267,7 +267,7 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*St
 
 	parts := q.KeySet().Parts()
 	if len(parts) == 0 {
-		return &Statement{}, nil
+		return &Statement{Params: map[string]any{}}, nil
 	}
 
 	builder := strings.Builder{}
