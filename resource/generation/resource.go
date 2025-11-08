@@ -184,6 +184,7 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 
 	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
 		"Source":   r.resource.Dir(),
+		"Package":  r.resource.Package(),
 		"Resource": res,
 	})
 	if err != nil {
@@ -218,6 +219,7 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 
 	output, err := r.generateTemplateOutput("resourceEnumsTemplate", resourceEnumsTemplate, map[string]any{
 		"Source":     r.resource.Dir(),
+		"Package":    r.resource.Package(),
 		"NamedTypes": namedTypes,
 		"EnumMap":    enumMap,
 	})
