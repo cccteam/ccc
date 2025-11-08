@@ -34,7 +34,7 @@ func (r *resourceGenerator) generateComputedResourceHandler(res *computedResourc
 		"Source":              r.resourcePackageDir,
 		"LocalPackageImports": r.localPackageImports(),
 		"Resource":            res,
-		"Package":             r.handlerDestination,
+		"Package":             filepath.Base(r.handlerDestination),
 		"ComputedPackage":     filepath.Base(r.compPackageDir),
 		"ApplicationName":     r.applicationName,
 		"ReceiverName":        r.receiverName,
