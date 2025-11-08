@@ -34,13 +34,13 @@ var caser = strcase.NewCaser(false, nil, nil)
 
 type client struct {
 	loadPackages       []string
-	resourcePackageDir string
+	resource           packageDir
 	resources          []*resourceInfo
 	computedResources  []*computedResource
 	rpcMethods         []*rpcMethodInfo
 	localPackages      []string
-	rpcPackageDir      string
-	compPackageDir     string
+	rpc                packageDir
+	comp               packageDir
 	migrationSourceURL string
 	tableMap           map[string]*tableMetadata
 	enumValues         map[string][]*enumData
@@ -103,7 +103,7 @@ func newClient(ctx context.Context, genType generatorType, resourcePackageDir, m
 	}
 
 	c.loadPackages = append(c.loadPackages, resourcePackageDir)
-	c.resourcePackageDir = resourcePackageDir
+	c.resource = packageDir(resourcePackageDir)
 	c.localPackages = localPackages
 	c.migrationSourceURL = migrationSourceURL
 

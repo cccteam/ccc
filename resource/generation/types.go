@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"iter"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -41,6 +42,16 @@ const (
 	// PatchHandler is the patch handler.
 	PatchHandler HandlerType = "patchHandler"
 )
+
+type packageDir string
+
+func (p packageDir) Dir() string {
+	return string(p)
+}
+
+func (p packageDir) Package() string {
+	return filepath.Base(string(p))
+}
 
 func handlerTypes() []HandlerType {
 	return []HandlerType{

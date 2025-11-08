@@ -115,7 +115,7 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 
 	buf := bytes.NewBuffer([]byte{})
 	if err := tmpl.Execute(buf, map[string]any{
-		"Source":                 r.resourcePackageDir,
+		"Source":                 r.resource.Dir(),
 		"Package":                r.routerPackage,
 		"LocalPackageImports":    r.localPackageImports(),
 		"RoutesMap":              generatedRoutes,

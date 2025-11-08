@@ -15,7 +15,7 @@ import (
 )
 
 func (r *resourceGenerator) runHandlerGeneration() error {
-	if err := removeGeneratedFiles(r.handlerDestination, prefix); err != nil {
+	if err := removeGeneratedFiles(r.handler.Dir(), prefix); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
 
@@ -102,7 +102,7 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 	if len(handlerData) > 0 {
 		begin := time.Now()
 		fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
-		destinationFilePath := filepath.Join(r.handlerDestination, fileName)
+		destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
 		file, err := os.Create(destinationFilePath)
 		if err != nil {
@@ -117,10 +117,10 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 
 		buf := bytes.NewBuffer(nil)
 		if err := tmpl.Execute(buf, map[string]any{
-			"Source":              r.resourcePackageDir,
+			"Source":              r.resource.Dir(),
 			"LocalPackageImports": r.localPackageImports(),
 			"Handlers":            string(bytes.Join(handlerData, []byte("\n\n"))),
-			"Package":             filepath.Base(r.handlerDestination),
+			"Package":             r.handler.Package(),
 		}); err != nil {
 			return errors.Wrap(err, "tmpl.Execute()")
 		}
@@ -142,7 +142,7 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resourceInfo) error {
 	begin := time.Now()
 	fileName := generatedGoFileName(consolidatedHandlerOutputName)
-	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
+	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
@@ -157,10 +157,10 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 
 	buf := bytes.NewBuffer(nil)
 	if err := tmpl.Execute(buf, map[string]any{
-		"Source":              r.resourcePackageDir,
+		"Source":              r.resource.Dir(),
 		"LocalPackageImports": r.localPackageImports(),
 		"Resources":           resources,
-		"Package":             filepath.Base(r.handlerDestination),
+		"Package":             r.handler.Package(),
 		"ApplicationName":     r.applicationName,
 		"ReceiverName":        r.receiverName,
 	}); err != nil {

@@ -54,7 +54,7 @@ func (Option) isTypescriptOption() {}
 func GenerateHandlers(targetDir string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genHandlers = true
-		r.handlerDestination = targetDir
+		r.handler = packageDir(targetDir)
 
 		return nil
 	})
@@ -202,7 +202,7 @@ func WithComputedResources(compResourcesPkgDir string) Option {
 		case *typescriptGenerator: // no-op
 		case *client:
 			t.genComputedResources = true
-			t.compPackageDir = compResourcesPkgDir
+			t.comp = packageDir(compResourcesPkgDir)
 			t.loadPackages = append(t.loadPackages, compResourcesPkgDir)
 		default:
 			panic(fmt.Sprintf("unexpected generator type in WithComputedResources(): %T", t))
@@ -222,7 +222,7 @@ func WithRPC(rpcPackageDir string) Option {
 		case *resourceGenerator:
 		case *typescriptGenerator: // no-op
 		case *client:
-			t.rpcPackageDir = rpcPackageDir
+			t.rpc = packageDir(rpcPackageDir)
 			t.genRPCMethods = true
 			t.loadPackages = append(t.loadPackages, rpcPackageDir)
 		default:
