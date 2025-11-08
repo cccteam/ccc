@@ -54,6 +54,7 @@ type client struct {
 }
 
 func newClient(ctx context.Context, genType generatorType, resourcePackageDir, migrationSourceURL string, localPackages []string, opts []option) (*client, error) {
+	resourcePackageDir = "./" + filepath.Clean(resourcePackageDir)
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")

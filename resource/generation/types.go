@@ -46,10 +46,18 @@ const (
 type packageDir string
 
 func (p packageDir) Dir() string {
-	return string(p)
+	if strings.HasSuffix(string(p), ".go") {
+		return filepath.Dir(string(p))
+	}
+
+	return filepath.Clean(string(p))
 }
 
 func (p packageDir) Package() string {
+	if strings.HasSuffix(string(p), ".go") {
+		return filepath.Base(filepath.Dir(string(p)))
+	}
+
 	return filepath.Base(string(p))
 }
 
