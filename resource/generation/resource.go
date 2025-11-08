@@ -14,14 +14,13 @@ import (
 
 type resourceGenerator struct {
 	*client
-	genHandlers       bool
-	genRoutes         bool
-	handler           packageDir
-	routerDestination string
-	routerPackage     string
-	routePrefix       string
-	applicationName   string
-	receiverName      string
+	genHandlers     bool
+	genRoutes       bool
+	handler         packageDir
+	router          packageDir
+	routePrefix     string
+	applicationName string
+	receiverName    string
 }
 
 // NewResourceGenerator constructs a new Generator for generating a resource-driven API.

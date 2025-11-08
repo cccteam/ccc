@@ -15,7 +15,7 @@ import (
 
 func (r *resourceGenerator) runRouteGeneration() error {
 	begin := time.Now()
-	if err := removeGeneratedFiles(r.routerDestination, prefix); err != nil {
+	if err := removeGeneratedFiles(r.router.Dir(), prefix); err != nil {
 		return err
 	}
 
@@ -84,13 +84,13 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 
 	if len(generatedRoutesMap) > 0 {
-		routesDestination := filepath.Join(r.routerDestination, generatedGoFileName(routesOutputName))
+		routesDestination := filepath.Join(r.router.Dir(), generatedGoFileName(routesOutputName))
 		if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, r.resources, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRoutes()")
 		}
 		log.Printf("Generated routes file in %s: %s\n", time.Since(begin), routesDestination)
 
-		routerTestsDestination := filepath.Join(r.routerDestination, generatedGoFileName(routerTestOutputName))
+		routerTestsDestination := filepath.Join(r.router.Dir(), generatedGoFileName(routerTestOutputName))
 		begin = time.Now()
 		if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, r.resources, generatedRoutesMap); err != nil {
 			return errors.Wrap(err, "c.writeRouterTests()")
@@ -116,7 +116,7 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 	buf := bytes.NewBuffer([]byte{})
 	if err := tmpl.Execute(buf, map[string]any{
 		"Source":                 r.resource.Dir(),
-		"Package":                r.routerPackage,
+		"Package":                r.router.Package(),
 		"LocalPackageImports":    r.localPackageImports(),
 		"RoutesMap":              generatedRoutes,
 		"Resources":              resources,

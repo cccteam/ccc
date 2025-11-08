@@ -74,8 +74,7 @@ func ApplicationName(name string) ResourceOption {
 func GenerateRoutes(targetDir, routePrefix string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genRoutes = true
-		r.routerDestination = targetDir
-		r.routerPackage = filepath.Base(targetDir)
+		r.router = packageDir(targetDir)
 		r.routePrefix = routePrefix
 
 		return nil
