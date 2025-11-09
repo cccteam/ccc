@@ -21,7 +21,6 @@ type Resourcer interface {
 // Source: {{ .Source }}
 
 package {{ .Package }}
-package {{ .Package }}
 
 import (
 	"context"
