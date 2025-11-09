@@ -198,7 +198,7 @@ func WithComputedResources(compResourcesPkgDir string) Option {
 		case *typescriptGenerator: // no-op
 		case *client:
 			t.genComputedResources = true
-			t.comp = packageDir(compResourcesPkgDir)
+			t.computed = packageDir(compResourcesPkgDir)
 			t.loadPackages = append(t.loadPackages, compResourcesPkgDir)
 		default:
 			panic(fmt.Sprintf("unexpected generator type in WithComputedResources(): %T", t))

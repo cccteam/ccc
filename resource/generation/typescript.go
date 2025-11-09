@@ -76,7 +76,7 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genComputedResources {
-		compStructs := parser.ParsePackage(packageMap[t.comp.Package()]).Structs
+		compStructs := parser.ParsePackage(packageMap[t.computed.Package()]).Structs
 		computedResources, err := structsToCompResources(compStructs)
 		if err != nil {
 			return err

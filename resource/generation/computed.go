@@ -35,7 +35,7 @@ func (r *resourceGenerator) generateComputedResourceHandler(res *computedResourc
 		"LocalPackageImports": r.localPackageImports(),
 		"Resource":            res,
 		"Package":             r.handler.Package(),
-		"ComputedPackage":     r.comp.Package(),
+		"ComputedPackage":     r.computed.Package(),
 		"ApplicationName":     r.applicationName,
 		"ReceiverName":        r.receiverName,
 	}); err != nil {

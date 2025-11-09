@@ -40,7 +40,7 @@ type client struct {
 	rpcMethods         []*rpcMethodInfo
 	localPackages      []string
 	rpc                packageDir
-	comp               packageDir
+	computed           packageDir
 	migrationSourceURL string
 	tableMap           map[string]*tableMetadata
 	enumValues         map[string][]*enumData
