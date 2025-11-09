@@ -76,7 +76,7 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genVirtualResources {
-		virtualStructs := parser.ParsePackage(packageMap[filepath.Base(t.virtualResourcesPkgDir)]).Structs
+		virtualStructs := parser.ParsePackage(packageMap[t.virtual.Package()]).Structs
 		virtualResources, err := t.structsToVirtualResources(virtualStructs)
 		if err != nil {
 			return err

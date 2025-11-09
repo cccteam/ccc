@@ -192,7 +192,7 @@ func (r *resourceGenerator) handlerContent(handler HandlerType, res *resourceInf
 	if err := tmpl.Execute(buf, map[string]any{
 		"ResourcePackage":         r.resource.Package(),
 		"Resource":                res,
-		"VirtualResourcesPackage": filepath.Base(r.virtualResourcesPkgDir),
+		"VirtualResourcesPackage": r.virtual.Package(),
 		"ApplicationName":         r.applicationName,
 		"ReceiverName":            r.receiverName,
 	}); err != nil {

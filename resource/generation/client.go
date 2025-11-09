@@ -33,19 +33,19 @@ const (
 var caser = strcase.NewCaser(false, nil, nil)
 
 type client struct {
-	loadPackages           []string
-	resource               packageDir
-	resources              []*resourceInfo
-	computedResources      []*computedResource
-	rpcMethods             []*rpcMethodInfo
-	localPackages          []string
-	rpc                    packageDir
-	computed               packageDir
-	virtualResourcesPkgDir string
-	migrationSourceURL     string
-	tableMap               map[string]*tableMetadata
-	enumValues             map[string][]*enumData
-	pluralOverrides        map[string]string
+	loadPackages       []string
+	resource           packageDir
+	resources          []*resourceInfo
+	computedResources  []*computedResource
+	rpcMethods         []*rpcMethodInfo
+	localPackages      []string
+	rpc                packageDir
+	computed           packageDir
+	virtual            packageDir
+	migrationSourceURL string
+	tableMap           map[string]*tableMetadata
+	enumValues         map[string][]*enumData
+	pluralOverrides    map[string]string
 	consolidateConfig
 	genRPCMethods          bool
 	genComputedResources   bool
@@ -436,7 +436,7 @@ func (c *client) formatResourceInterfaceTypes(resources []*resourceInfo, compute
 	names := make([]string, 0, len(resources)+len(computedResources))
 	for _, res := range resources {
 		if res.IsVirtual {
-			names = append(names, fmt.Sprintf("%s.%s", filepath.Base(c.virtualResourcesPkgDir), res.Name()))
+			names = append(names, fmt.Sprintf("%s.%s", c.virtual.Package(), res.Name()))
 		} else {
 			names = append(names, fmt.Sprintf("%s.%s", c.resource.Package(), res.Name()))
 		}

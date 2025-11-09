@@ -70,7 +70,7 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	if r.genVirtualResources {
-		virtualStructs := parser.ParsePackage(packageMap[filepath.Base(r.virtualResourcesPkgDir)]).Structs
+		virtualStructs := parser.ParsePackage(packageMap[r.virtual.Package()]).Structs
 		virtualResources, err := r.structsToVirtualResources(virtualStructs)
 		if err != nil {
 			return err
@@ -198,8 +198,8 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 		packageName = r.resource.Package()
 		destinationFilePath = filepath.Join(r.resource.Dir(), fileName)
 	} else {
-		packageName = filepath.Base(r.virtualResourcesPkgDir)
-		destinationFilePath = filepath.Join(r.virtualResourcesPkgDir, fileName)
+		packageName = r.virtual.Package()
+		destinationFilePath = filepath.Join(r.virtual.Dir(), fileName)
 	}
 
 	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
