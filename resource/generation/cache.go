@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	cacheVersion           string = "v1"
 	genCacheDir            string = "."
 	genCacheSuffix         string = ".gen"
 	tableMapCache          string = "tablemap" + genCacheSuffix
@@ -84,7 +85,7 @@ func (c *client) cacheSchemaHashes() error {
 	}
 
 	for hash := range schemaMigrationHashes {
-		if err := c.genCache.Store("migrations", fmt.Sprintf("%x", []byte(hash)), ""); err != nil {
+		if err := c.genCache.Store("migrations", fmt.Sprintf("%s_%x", cacheVersion, []byte(hash)), ""); err != nil {
 			return errors.Wrap(err, "could not store sha256 hash in gencache: cache.Cache.Store()")
 		}
 	}
@@ -102,6 +103,9 @@ func (c *client) isSchemaClean() (bool, error) {
 
 	cachedHashes := make(map[string]struct{})
 	for key := range keys {
+		if !strings.HasPrefix(key, cacheVersion+"_") {
+			return false, nil
+		}
 		cachedHashes[key] = struct{}{}
 	}
 
@@ -125,7 +129,7 @@ func (c *client) isSchemaClean() (bool, error) {
 			return false, err
 		}
 
-		if _, ok := cachedHashes[fmt.Sprintf("%x", hash)]; !ok {
+		if _, ok := cachedHashes[fmt.Sprintf("%s_%x", cacheVersion, hash)]; !ok {
 			return false, nil
 		}
 	}
