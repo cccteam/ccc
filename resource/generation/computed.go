@@ -31,7 +31,7 @@ func (r *resourceGenerator) generateComputedResourceHandler(res *computedResourc
 
 	buf := bytes.NewBuffer(nil)
 	if err := tmpl.Execute(buf, map[string]any{
-		"Source":              r.resource.Dir(),
+		"Source":              r.computed.Dir(),
 		"LocalPackageImports": r.localPackageImports(),
 		"Resource":            res,
 		"Package":             r.handler.Package(),

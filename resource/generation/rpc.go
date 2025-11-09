@@ -43,7 +43,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 
 	buf := bytes.NewBuffer(nil)
 	if err := tmpl.Execute(buf, map[string]any{
-		"Source":              r.resource.Dir(),
+		"Source":              r.rpc.Dir(),
 		"LocalPackageImports": r.localPackageImports(),
 		"RPCMethod":           rpcMethod,
 		"Package":             r.handler.Package(),
@@ -69,7 +69,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 
 func (r *resourceGenerator) generateRPCInterfaces() error {
 	output, err := r.generateTemplateOutput("rpcInterfacesTemplate", rpcInterfacesTemplate, map[string]any{
-		"Source":  r.resource.Dir(),
+		"Source":  r.rpc.Dir(),
 		"Package": r.rpc.Package(),
 		"Types":   r.rpcMethods,
 	})
