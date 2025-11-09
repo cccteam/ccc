@@ -3,7 +3,6 @@ package generation
 import (
 	"fmt"
 	"maps"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -193,8 +192,6 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 // WithComputedResources enables generating routes and handlers for Computed Resources.
 // The package's name is expected to be the same as its directory name.
 func WithComputedResources(compResourcesPkgDir string) Option {
-	compResourcesPkgDir = "./" + filepath.Clean(compResourcesPkgDir)
-
 	return func(g any) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
@@ -214,8 +211,6 @@ func WithComputedResources(compResourcesPkgDir string) Option {
 // WithRPC enables generating RPC method handlers.
 // The package's name is expected to be the same as its directory name.
 func WithRPC(rpcPackageDir string) Option {
-	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
-
 	return func(g any) error {
 		switch t := g.(type) {
 		case *resourceGenerator:

@@ -30,7 +30,7 @@ func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, erro
 		if strings.HasSuffix(pattern, ".go") {
 			files = append(files, filepath.Clean(pattern))
 		} else {
-			directories = append(directories, pattern)
+			directories = append(directories, "./"+filepath.Clean(pattern))
 		}
 	}
 

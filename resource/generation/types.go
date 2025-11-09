@@ -47,10 +47,15 @@ type packageDir string
 
 func (p packageDir) Dir() string {
 	if strings.HasSuffix(string(p), ".go") {
-		return filepath.Dir(string(p))
+		s := strings.TrimSuffix(string(p), filepath.Base(string(p)))
+		if s != "" {
+			s = s[:len(s)-1]
+		}
+
+		return s
 	}
 
-	return filepath.Clean(string(p))
+	return string(p)
 }
 
 func (p packageDir) Package() string {
