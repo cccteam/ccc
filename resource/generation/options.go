@@ -3,7 +3,6 @@ package generation
 import (
 	"fmt"
 	"maps"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -54,7 +53,7 @@ func (Option) isTypescriptOption() {}
 func GenerateHandlers(targetDir string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genHandlers = true
-		r.handlerDestination = targetDir
+		r.handler = packageDir(targetDir)
 
 		return nil
 	})
@@ -74,8 +73,7 @@ func ApplicationName(name string) ResourceOption {
 func GenerateRoutes(targetDir, routePrefix string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genRoutes = true
-		r.routerDestination = targetDir
-		r.routerPackage = filepath.Base(targetDir)
+		r.router = packageDir(targetDir)
 		r.routePrefix = routePrefix
 
 		return nil
@@ -194,15 +192,13 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 // WithComputedResources enables generating routes and handlers for Computed Resources.
 // The package's name is expected to be the same as its directory name.
 func WithComputedResources(compResourcesPkgDir string) Option {
-	compResourcesPkgDir = "./" + filepath.Clean(compResourcesPkgDir)
-
 	return func(g any) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
 		case *typescriptGenerator: // no-op
 		case *client:
 			t.genComputedResources = true
-			t.compPackageDir = compResourcesPkgDir
+			t.computed = packageDir(compResourcesPkgDir)
 			t.loadPackages = append(t.loadPackages, compResourcesPkgDir)
 		default:
 			panic(fmt.Sprintf("unexpected generator type in WithComputedResources(): %T", t))
@@ -215,14 +211,12 @@ func WithComputedResources(compResourcesPkgDir string) Option {
 // WithRPC enables generating RPC method handlers.
 // The package's name is expected to be the same as its directory name.
 func WithRPC(rpcPackageDir string) Option {
-	rpcPackageDir = "./" + filepath.Clean(rpcPackageDir)
-
 	return func(g any) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
 		case *typescriptGenerator: // no-op
 		case *client:
-			t.rpcPackageDir = rpcPackageDir
+			t.rpc = packageDir(rpcPackageDir)
 			t.genRPCMethods = true
 			t.loadPackages = append(t.loadPackages, rpcPackageDir)
 		default:

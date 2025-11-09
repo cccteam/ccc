@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/types"
 	"log"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -27,9 +28,9 @@ func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, erro
 
 	for _, pattern := range packagePatterns {
 		if strings.HasSuffix(pattern, ".go") {
-			files = append(files, pattern)
+			files = append(files, filepath.Clean(pattern))
 		} else {
-			directories = append(directories, pattern)
+			directories = append(directories, "./"+filepath.Clean(pattern))
 		}
 	}
 

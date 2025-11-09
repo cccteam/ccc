@@ -14,7 +14,7 @@ import (
 )
 
 func (r *resourceGenerator) runRPCGeneration() error {
-	if err := removeGeneratedFiles(r.rpcPackageDir, prefix); err != nil {
+	if err := removeGeneratedFiles(r.rpc.Dir(), prefix); err != nil {
 		return err
 	}
 
@@ -28,7 +28,7 @@ func (r *resourceGenerator) runRPCGeneration() error {
 func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 	begin := time.Now()
 	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(rpcMethod.Name())))
-	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
+	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
@@ -43,10 +43,10 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 
 	buf := bytes.NewBuffer(nil)
 	if err := tmpl.Execute(buf, map[string]any{
-		"Source":              r.resourcePackageDir,
+		"Source":              r.rpc.Dir(),
 		"LocalPackageImports": r.localPackageImports(),
 		"RPCMethod":           rpcMethod,
-		"Package":             r.handlerDestination,
+		"Package":             r.handler.Package(),
 		"ApplicationName":     r.applicationName,
 		"ReceiverName":        r.receiverName,
 	}); err != nil {
@@ -69,15 +69,15 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 
 func (r *resourceGenerator) generateRPCInterfaces() error {
 	output, err := r.generateTemplateOutput("rpcInterfacesTemplate", rpcInterfacesTemplate, map[string]any{
-		"Package": filepath.Base(r.rpcPackageDir),
-		"Source":  r.resourcePackageDir,
+		"Source":  r.rpc.Dir(),
+		"Package": r.rpc.Package(),
 		"Types":   r.rpcMethods,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(".", r.rpcPackageDir, generatedGoFileName("rpc_iface"))
+	destinationFile := filepath.Join(".", r.rpc.Dir(), generatedGoFileName("rpc_iface"))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {

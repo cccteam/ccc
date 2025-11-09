@@ -16,7 +16,7 @@ import (
 func (r *resourceGenerator) generateComputedResourceHandler(res *computedResource) error {
 	begin := time.Now()
 	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(res.Name())))
-	destinationFilePath := filepath.Join(r.handlerDestination, fileName)
+	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
 	file, err := os.Create(destinationFilePath)
 	if err != nil {
@@ -31,11 +31,11 @@ func (r *resourceGenerator) generateComputedResourceHandler(res *computedResourc
 
 	buf := bytes.NewBuffer(nil)
 	if err := tmpl.Execute(buf, map[string]any{
-		"Source":              r.resourcePackageDir,
+		"Source":              r.computed.Dir(),
 		"LocalPackageImports": r.localPackageImports(),
 		"Resource":            res,
-		"Package":             r.handlerDestination,
-		"ComputedPackage":     filepath.Base(r.compPackageDir),
+		"Package":             r.handler.Package(),
+		"ComputedPackage":     r.computed.Package(),
 		"ApplicationName":     r.applicationName,
 		"ReceiverName":        r.receiverName,
 	}); err != nil {

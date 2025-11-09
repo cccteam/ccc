@@ -14,14 +14,13 @@ import (
 
 type resourceGenerator struct {
 	*client
-	genHandlers        bool
-	genRoutes          bool
-	handlerDestination string
-	routerDestination  string
-	routerPackage      string
-	routePrefix        string
-	applicationName    string
-	receiverName       string
+	genHandlers     bool
+	genRoutes       bool
+	handler         packageDir
+	router          packageDir
+	routePrefix     string
+	applicationName string
+	receiverName    string
 }
 
 // NewResourceGenerator constructs a new Generator for generating a resource-driven API.
@@ -57,9 +56,9 @@ func (r *resourceGenerator) Generate() error {
 		return errors.Wrap(err, "parser.LoadPackages()")
 	}
 
-	pkg := packageMap[filepath.Base(r.resourcePackageDir)]
+	pkg := packageMap[r.resource.Package()]
 	if pkg == nil {
-		return errors.Newf("no packages found in %q", r.resourcePackageDir)
+		return errors.Newf("no packages found in %q", r.resource.Dir())
 	}
 
 	resourcesPkg := parser.ParsePackage(pkg)
@@ -73,7 +72,7 @@ func (r *resourceGenerator) Generate() error {
 
 	// needs to run before resource generation so the data can be sneakily snuck into resource generation
 	if r.genComputedResources {
-		compStructs := parser.ParsePackage(packageMap[filepath.Base(r.compPackageDir)]).Structs
+		compStructs := parser.ParsePackage(packageMap[r.computed.Package()]).Structs
 		computedResources, err := structsToCompResources(compStructs)
 		if err != nil {
 			return err
@@ -91,9 +90,9 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	if r.genRPCMethods {
-		rpcStructs := parser.ParsePackage(packageMap[filepath.Base(r.rpcPackageDir)]).Structs
+		rpcStructs := parser.ParsePackage(packageMap[r.rpc.Package()]).Structs
 		if len(rpcStructs) == 0 {
-			log.Printf("(RPC Generation) No structs in package %q annotated with @rpc", r.rpcPackageDir)
+			log.Printf("(RPC Generation) No structs in package %q annotated with @rpc", r.rpc.Dir())
 		}
 
 		r.rpcMethods, err = r.structsToRPCMethods(rpcStructs)
@@ -132,7 +131,7 @@ func (r *resourceGenerator) Generate() error {
 }
 
 func (r *resourceGenerator) runResourcesGeneration() error {
-	if err := removeGeneratedFiles(r.resourcePackageDir, prefix); err != nil {
+	if err := removeGeneratedFiles(r.resource.Dir(), prefix); err != nil {
 		return err
 	}
 
@@ -147,10 +146,10 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 
 func (r *resourceGenerator) generateResourceInterfaces() error {
 	output, err := r.generateTemplateOutput("resourcesInterfaceTemplate", resourcesInterfaceTemplate, map[string]any{
-		"Source":                   r.resourcePackageDir,
-		"Package":                  filepath.Base(r.handlerDestination),
-		"ResourcesPackage":         filepath.Base(r.resourcePackageDir),
-		"ComputedResourcesPackage": filepath.Base(r.compPackageDir),
+		"Source":                   r.resource.Dir(),
+		"Package":                  r.handler.Package(),
+		"ResourcesPackage":         r.resource.Package(),
+		"ComputedResourcesPackage": r.computed.Package(),
 		"Types":                    r.resources,
 		"ComputedResourceTypes":    r.computedResources,
 	})
@@ -158,7 +157,7 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	destinationFile := filepath.Join(r.handlerDestination, generatedGoFileName(resourceInterfaceOutputName))
+	destinationFile := filepath.Join(r.handler.Dir(), generatedGoFileName(resourceInterfaceOutputName))
 
 	file, err := os.Create(destinationFile)
 	if err != nil {
@@ -181,10 +180,11 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	begin := time.Now()
 	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
-	destinationFilePath := filepath.Join(r.resourcePackageDir, fileName)
+	destinationFilePath := filepath.Join(r.resource.Dir(), fileName)
 
 	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
-		"Source":   r.resourcePackageDir,
+		"Source":   r.resource.Dir(),
+		"Package":  r.resource.Package(),
 		"Resource": res,
 	})
 	if err != nil {
@@ -218,7 +218,8 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 	}
 
 	output, err := r.generateTemplateOutput("resourceEnumsTemplate", resourceEnumsTemplate, map[string]any{
-		"Source":     r.resourcePackageDir,
+		"Source":     r.resource.Dir(),
+		"Package":    r.resource.Package(),
 		"NamedTypes": namedTypes,
 		"EnumMap":    enumMap,
 	})
@@ -226,7 +227,7 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	file, err := os.Create(filepath.Join(r.resourcePackageDir, generatedGoFileName(resourceEnumsFileName)))
+	file, err := os.Create(filepath.Join(r.resource.Dir(), generatedGoFileName(resourceEnumsFileName)))
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
 	}

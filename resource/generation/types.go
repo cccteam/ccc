@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"iter"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -41,6 +42,29 @@ const (
 	// PatchHandler is the patch handler.
 	PatchHandler HandlerType = "patchHandler"
 )
+
+type packageDir string
+
+func (p packageDir) Dir() string {
+	if strings.HasSuffix(string(p), ".go") {
+		s := strings.TrimSuffix(string(p), filepath.Base(string(p)))
+		if s != "" {
+			s = s[:len(s)-1]
+		}
+
+		return s
+	}
+
+	return string(p)
+}
+
+func (p packageDir) Package() string {
+	if strings.HasSuffix(string(p), ".go") {
+		return filepath.Base(filepath.Dir(string(p)))
+	}
+
+	return filepath.Base(string(p))
+}
 
 func handlerTypes() []HandlerType {
 	return []HandlerType{
