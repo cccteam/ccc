@@ -145,8 +145,6 @@ type informationSchemaResult struct {
 	ReferencedColumn     *string `spanner:"REFERENCED_COLUMN"`
 	SpannerType          string  `spanner:"SPANNER_TYPE"`
 	IsNullable           bool    `spanner:"IS_NULLABLE"`
-	IsView               bool    `spanner:"IS_VIEW"`
-	ViewDefinition       *string `spanner:"VIEW_DEFINITION"`
 	IsIndex              bool    `spanner:"IS_INDEX"`
 	IsUniqueIndex        bool    `spanner:"IS_UNIQUE_INDEX"`
 	GenerationExpression *string `spanner:"GENERATION_EXPRESSION"`
@@ -162,7 +160,6 @@ type enumData struct {
 
 type tableMetadata struct {
 	Columns map[string]columnMeta
-	IsView  bool
 	PkCount int
 }
 
@@ -354,7 +351,7 @@ type resourceInfo struct {
 	*parser.TypeInfo
 	Fields             []*resourceField
 	SuppressedHandlers []HandlerType
-	IsView             bool // Determines how CreatePatch is rendered in resource generation.
+	IsVirtual          bool // Determines how CreatePatch is rendered in resource generation.
 	IsConsolidated     bool
 	PkCount            int
 	DefaultsCreateType string
@@ -606,7 +603,7 @@ func (f *resourceField) IndexTag() string {
 		return indexTrue
 	}
 
-	if f.Parent.IsView {
+	if f.Parent.IsVirtual {
 		t, ok := f.LookupTag("index")
 		if ok && t == "true" {
 			return indexTrue
@@ -771,7 +768,7 @@ func (f *resourceField) ImmutableTag() string {
 }
 
 func (f *resourceField) IsView() bool {
-	return f.Parent.IsView
+	return f.Parent.IsVirtual
 }
 
 func (f *resourceField) IsRequired() bool {

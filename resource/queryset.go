@@ -45,6 +45,27 @@ func (q *QuerySet[Resource]) Resource() accesstypes.Resource {
 	return r.Resource()
 }
 
+func (q *QuerySet[Resource]) subquery() (query string, params map[string]any) {
+	var r Resource
+
+	switch t := any(r).(type) {
+	case virtualQuerier:
+		query, params = t.Subquery()
+		// newlines before final parenthesis is necessary to combat any trailing comments
+		query = fmt.Sprintf("(%s\n)", query)
+
+		for pramName := range params {
+			if strings.HasPrefix(pramName, "_") {
+				panic(fmt.Sprintf("Subquery params for %s can not start with an _", r.Resource()))
+			}
+		}
+
+		return query, params
+	default:
+		return string(r.Resource()), nil
+	}
+}
+
 // RequiredPermission returns the permission required to execute the query.
 func (q *QuerySet[Resource]) RequiredPermission() accesstypes.Permission {
 	return q.requiredPermission
@@ -246,7 +267,7 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*St
 
 	parts := q.KeySet().Parts()
 	if len(parts) == 0 {
-		return &Statement{}, nil
+		return &Statement{Params: map[string]any{}}, nil
 	}
 
 	builder := strings.Builder{}
@@ -258,13 +279,13 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*St
 		}
 		switch dbType {
 		case SpannerDBType:
-			builder.WriteString(fmt.Sprintf(" AND `%s` = @%s", f.ColumnName, strings.ToLower(f.ColumnName)))
+			builder.WriteString(fmt.Sprintf(" AND `%s` = @_%s", f.ColumnName, strings.ToLower(f.ColumnName)))
 		case PostgresDBType:
-			builder.WriteString(fmt.Sprintf(` AND "%s" = @%s`, f.ColumnName, strings.ToLower(f.ColumnName)))
+			builder.WriteString(fmt.Sprintf(` AND "%s" = @_%s`, f.ColumnName, strings.ToLower(f.ColumnName)))
 		default:
 			return nil, errors.Newf("unsupported dbType: %s", dbType)
 		}
-		params[strings.ToLower(f.ColumnName)] = part.Value
+		params["_"+strings.ToLower(f.ColumnName)] = part.Value
 	}
 
 	return &Statement{
@@ -309,14 +330,23 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
 	}
 
+	subquerySQL, subqueryParams := q.subquery()
+	for k := range subqueryParams {
+		if _, ok := where.Params[k]; ok {
+			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
+		}
+
+		where.Params[k] = subqueryParams[k]
+	}
+
 	sql := fmt.Sprintf(`
 			SELECT
 				%s
-			FROM %s
+			FROM %s AS %s
 			%s
 			%s
 			%s
-			%s`, columns, q.Resource(), where.SQL, orderByClause, limitClause, offsetClause,
+			%s`, columns, subquerySQL, q.Resource(), where.SQL, orderByClause, limitClause, offsetClause,
 	)
 
 	resolvedSQL, err := substituteSQLParams(where.SQL, where.Params)

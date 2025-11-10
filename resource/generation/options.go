@@ -189,6 +189,25 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 	}
 }
 
+// WithVirtualResources enables generating resources utilities, routes and handlers for Virtual Resources.
+// The package's name is expected to be the same as its directory name.
+func WithVirtualResources(virtualResourcesPkgDir string) Option {
+	return func(g any) error {
+		switch t := g.(type) {
+		case *resourceGenerator:
+		case *typescriptGenerator: // no-op
+		case *client:
+			t.genVirtualResources = true
+			t.virtual = packageDir(virtualResourcesPkgDir)
+			t.loadPackages = append(t.loadPackages, virtualResourcesPkgDir)
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithVirtualResources(): %T", t))
+		}
+
+		return nil
+	}
+}
+
 // WithComputedResources enables generating routes and handlers for Computed Resources.
 // The package's name is expected to be the same as its directory name.
 func WithComputedResources(compResourcesPkgDir string) Option {

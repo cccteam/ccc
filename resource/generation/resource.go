@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -63,12 +64,21 @@ func (r *resourceGenerator) Generate() error {
 
 	resourcesPkg := parser.ParsePackage(pkg)
 
-	resources, err := r.extractResources(resourcesPkg.Structs)
+	r.resources, err = r.structsToResources(resourcesPkg.Structs)
 	if err != nil {
 		return err
 	}
 
-	r.resources = resources
+	if r.genVirtualResources {
+		virtualStructs := parser.ParsePackage(packageMap[r.virtual.Package()]).Structs
+		virtualResources, err := r.structsToVirtualResources(virtualStructs)
+		if err != nil {
+			return err
+		}
+
+		r.resources = append(r.resources, virtualResources...)
+		sortResources(r.resources)
+	}
 
 	// needs to run before resource generation so the data can be sneakily snuck into resource generation
 	if r.genComputedResources {
@@ -180,11 +190,21 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	begin := time.Now()
 	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
-	destinationFilePath := filepath.Join(r.resource.Dir(), fileName)
+	var (
+		packageName         string
+		destinationFilePath string
+	)
+	if !res.IsVirtual {
+		packageName = r.resource.Package()
+		destinationFilePath = filepath.Join(r.resource.Dir(), fileName)
+	} else {
+		packageName = r.virtual.Package()
+		destinationFilePath = filepath.Join(r.virtual.Dir(), fileName)
+	}
 
 	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
 		"Source":   r.resource.Dir(),
-		"Package":  r.resource.Package(),
+		"Package":  packageName,
 		"Resource": res,
 	})
 	if err != nil {
@@ -243,4 +263,16 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 	}
 
 	return nil
+}
+
+func sortResources(s []*resourceInfo) {
+	slices.SortFunc(s, func(a, b *resourceInfo) int {
+		if a.Name() > b.Name() {
+			return 1
+		} else if a.Name() < b.Name() {
+			return -1
+		}
+
+		return 0
+	})
 }
