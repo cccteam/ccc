@@ -62,6 +62,7 @@ linters:
             - github.com/go-playground/errors/v5
             - github.com/gofrs/uuid
             - github.com/google/go-cmp/cmp
+            - go.opentelemetry.io/otel
     dupl:
       threshold: 100
     exhaustive:
@@ -131,6 +132,15 @@ linters:
           - gocyclo
         path: nullenum\.go
         text: DecodeSpanner
+      - linters:
+          - paralleltest
+          - tparallel
+        path: tracing_test\.go
+        text: TestStartTrace
+      - linters:
+          - gocritic
+        path: tracing_test\.go
+        text: unlambda
     paths:
       - third_party$
       - builtin$
