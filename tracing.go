@@ -26,6 +26,8 @@ type traceInfo struct {
 // The Tracer name is set to the fully qualified package path
 // (e.g., "github.com/cccteam/ccc").
 // The Span name is set to the short function name (e.g., "Struct.Method()").
+//
+//go:noinline
 func StartTrace(ctx context.Context) (context.Context, trace.Span) {
 	pc, _, _, ok := runtime.Caller(callerStackDepth)
 	if !ok {
