@@ -2,12 +2,23 @@ package ccc
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 )
+
+const callerStackDepth = 1 // Caller of StartTrace is at depth 1
+
+var traceCache = &sync.Map{}
+
+type traceInfo struct {
+	tracerName string
+	spanName   string
+}
 
 // StartTrace uses runtime reflection to determine the fully qualified
 // package path and the function/method name of the caller.
@@ -16,9 +27,18 @@ import (
 // (e.g., "github.com/cccteam/ccc").
 // The Span name is set to the short function name (e.g., "Struct.Method()").
 func StartTrace(ctx context.Context) (context.Context, trace.Span) {
-	pc, _, _, ok := runtime.Caller(1)
+	pc, _, _, ok := runtime.Caller(callerStackDepth)
 	if !ok {
 		return otel.Tracer("unknown").Start(ctx, "unknown-func")
+	}
+
+	if i, ok := traceCache.Load(pc); ok {
+		switch info := i.(type) {
+		case traceInfo:
+			return otel.Tracer(info.tracerName).Start(ctx, info.spanName)
+		default:
+			panic(fmt.Sprintf("unexpected type %T in traceCache for pc %v", i, pc))
+		}
 	}
 
 	fn := runtime.FuncForPC(pc)
@@ -51,5 +71,8 @@ func StartTrace(ctx context.Context) (context.Context, trace.Span) {
 		spanName = strings.Replace(spanName[2:], ")", "", 1)
 	}
 
-	return otel.Tracer(tracerName).Start(ctx, spanName+"()")
+	spanName += "()"
+	traceCache.Store(pc, traceInfo{tracerName: tracerName, spanName: spanName})
+
+	return otel.Tracer(tracerName).Start(ctx, spanName)
 }
