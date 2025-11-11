@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.15](https://github.com/cccteam/ccc/compare/v0.2.14...v0.2.15) (2025-11-11)
+
+
+### Features
+
+* Implement a StartTrace() function to resolve package and function name. ([#519](https://github.com/cccteam/ccc/issues/519)) ([eb9a318](https://github.com/cccteam/ccc/commit/eb9a3184ffa5f63fbe07af9b4b46e7cef682ac7c))
+
 ## [0.2.14](https://github.com/cccteam/ccc/compare/v0.2.13...v0.2.14) (2025-10-31)
 
 
