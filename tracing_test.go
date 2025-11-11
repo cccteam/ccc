@@ -80,7 +80,6 @@ func TestStartTrace(t *testing.T) {
 			exporter := tracetest.NewInMemoryExporter()
 			tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
 			otel.SetTracerProvider(tp)
-			defer otel.SetTracerProvider(trace.NewNoopTracerProvider())
 
 			ctx, span := tc.callingFn(context.Background())
 			span.End()
