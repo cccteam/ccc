@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 	"reflect"
 	"slices"
