@@ -297,24 +297,24 @@ func (f *Field) AddError(msg string) {
 	f.errs = append(f.errs, msg)
 }
 
-func (f Field) String() string {
+func (f *Field) String() string {
 	return fmt.Sprintf("%s\t\t%s\t\t%s", f.Name(), f.Type(), f.tags)
 }
 
 // LookupTag returns a struct tag's value and whether or not the struct tag exists on this field.
-func (f Field) LookupTag(key string) (string, bool) {
+func (f *Field) LookupTag(key string) (string, bool) {
 	return f.tags.Lookup(key)
 }
 
 // HasTag returns true if this field has a matching struct tag.
-func (f Field) HasTag(key string) bool {
+func (f *Field) HasTag(key string) bool {
 	_, ok := f.tags.Lookup(key)
 
 	return ok
 }
 
 // AsStruct converts this Field to a Struct. Returns nil if the Field's type is not a struct type.
-func (f Field) AsStruct() *Struct {
+func (f *Field) AsStruct() *Struct {
 	s := newStruct(f.obj)
 
 	if s.obj == nil {
@@ -326,12 +326,12 @@ func (f Field) AsStruct() *Struct {
 
 // IsLocalType returns true if this Field's type originates from the same package
 // its parent struct is defined in.
-func (f Field) IsLocalType() bool {
+func (f *Field) IsLocalType() bool {
 	return f.isLocalType
 }
 
 // ResolvedType returns this Field's unqualified type if it's local, or its qualified type otherwise.
-func (f Field) ResolvedType() string {
+func (f *Field) ResolvedType() string {
 	if f.IsLocalType() {
 		return f.UnqualifiedType()
 	}
@@ -340,7 +340,7 @@ func (f Field) ResolvedType() string {
 }
 
 // DerefResolvedType returns this Field's unqualified type if it's local, or its qualified type otherwise.
-func (f Field) DerefResolvedType() string {
+func (f *Field) DerefResolvedType() string {
 	if f.IsLocalType() {
 		return f.DerefUnqualifiedType()
 	}
@@ -349,13 +349,13 @@ func (f Field) DerefResolvedType() string {
 }
 
 // Comments returns the godoc comment text on the field's declaration.
-func (f Field) Comments() string {
+func (f *Field) Comments() string {
 	return f.comments
 }
 
 // OriginType returns the origin type if this Field's type is a generic instantiation.
 // e.g. ccc.Foo[bool] returns ccc.Foo
-func (f Field) OriginType() string {
+func (f *Field) OriginType() string {
 	indexExpr, ok := decodeToExpr[*ast.IndexExpr](f.astInfo.Type)
 	if !ok {
 		return f.Type()
@@ -371,7 +371,7 @@ func (f Field) OriginType() string {
 
 // TypeArgs returns any type arguments if this field's type is a generic instantiation.
 // e.g. ccc.Foo[bool] -> bool, ccc.Foo[ccc.UUID] -> ccc.UUID
-func (f Field) TypeArgs() string {
+func (f *Field) TypeArgs() string {
 	indexExpr, ok := decodeToExpr[*ast.IndexExpr](f.astInfo.Type)
 	if !ok {
 		return ""

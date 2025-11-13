@@ -58,38 +58,10 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 
-		if annotations.Struct.Has(suppressKeyword) {
-			for handlerArg := range annotations.Struct.Get(suppressKeyword).Seq() {
-				switch HandlerType(handlerArg) {
-				case AllHandlers:
-					resource.SuppressedHandlers = []HandlerType{ListHandler, ReadHandler, PatchHandler}
-					resource.IsConsolidated = false
-				case ListHandler:
-					resource.SuppressedHandlers = append(resource.SuppressedHandlers, ListHandler)
-				case ReadHandler:
-					resource.SuppressedHandlers = append(resource.SuppressedHandlers, ReadHandler)
-				case PatchHandler:
-					resource.SuppressedHandlers = append(resource.SuppressedHandlers, PatchHandler)
-					resource.IsConsolidated = false
-				default:
-					resourceErrors = append(resourceErrors, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg, pStruct.Name(), handlerTypes()))
+		if err := resolveResourceAnnotations(resource, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
 
-					continue
-				}
-			}
-		}
-
-		if annotations.Struct.Has(defaultsCreateTypeKeyword) {
-			resource.DefaultsCreateType = string(annotations.Struct.Get(defaultsCreateTypeKeyword))
-		}
-		if annotations.Struct.Has(defaultsUpdateTypeKeyword) {
-			resource.DefaultsUpdateType = string(annotations.Struct.Get(defaultsUpdateTypeKeyword))
-		}
-		if annotations.Struct.Has(validateCreateTypeKeyword) {
-			resource.ValidateCreateType = string(annotations.Struct.Get(validateCreateTypeKeyword))
-		}
-		if annotations.Struct.Has(validateUpdateTypeKeyword) {
-			resource.ValidateUpdateType = string(annotations.Struct.Get(validateUpdateTypeKeyword))
+			continue
 		}
 
 		resources = append(resources, resource)
@@ -100,6 +72,42 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 	}
 
 	return resources, nil
+}
+
+func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnnotations) error {
+	if annotations.Struct.Has(suppressKeyword) {
+		for handlerArg := range annotations.Struct.Get(suppressKeyword).Seq() {
+			switch HandlerType(handlerArg) {
+			case AllHandlers:
+				res.SuppressedHandlers = []HandlerType{ListHandler, ReadHandler, PatchHandler}
+				res.IsConsolidated = false
+			case ListHandler:
+				res.SuppressedHandlers = append(res.SuppressedHandlers, ListHandler)
+			case ReadHandler:
+				res.SuppressedHandlers = append(res.SuppressedHandlers, ReadHandler)
+			case PatchHandler:
+				res.SuppressedHandlers = append(res.SuppressedHandlers, PatchHandler)
+				res.IsConsolidated = false
+			default:
+				return errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg, res.Name(), handlerTypes())
+			}
+		}
+	}
+
+	if annotations.Struct.Has(defaultsCreateTypeKeyword) {
+		res.DefaultsCreateType = string(annotations.Struct.Get(defaultsCreateTypeKeyword))
+	}
+	if annotations.Struct.Has(defaultsUpdateTypeKeyword) {
+		res.DefaultsUpdateType = string(annotations.Struct.Get(defaultsUpdateTypeKeyword))
+	}
+	if annotations.Struct.Has(validateCreateTypeKeyword) {
+		res.ValidateCreateType = string(annotations.Struct.Get(validateCreateTypeKeyword))
+	}
+	if annotations.Struct.Has(validateUpdateTypeKeyword) {
+		res.ValidateUpdateType = string(annotations.Struct.Get(validateUpdateTypeKeyword))
+	}
+
+	return nil
 }
 
 func (c *client) structsToVirtualResources(structs []*parser.Struct, validators ...structValidator) ([]*resourceInfo, error) {

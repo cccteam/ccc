@@ -26,13 +26,13 @@ func forEachGo[T any](s []*T, fn func(*T) error) error {
 		close(errChan)
 	}()
 
-	var errs []error
+	var errs error
 	for err := range errChan {
-		errs = append(errs, err)
+		errs = errors.Join(errs, err)
 	}
 
-	if len(errs) != 0 {
-		return errors.Wrap(errors.Join(errs...), runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name())
+	if errs != nil {
+		return errors.Wrap(errs, runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name())
 	}
 
 	return nil

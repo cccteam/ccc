@@ -93,7 +93,7 @@ func (t *typescriptGenerator) Generate() error {
 
 	if t.genComputedResources {
 		pkg := packageMap[t.computed.Package()]
-		compStructs := parser.ParsePackage(packageMap[t.computed.Package()]).Structs
+		compStructs := parser.ParsePackage(pkg).Structs
 		computedResources, err := structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true))
 		if err != nil {
 			return err
@@ -127,20 +127,16 @@ func (t *typescriptGenerator) Generate() error {
 		}
 	}
 
-	if t.genMetadata {
-		if err := t.runTypescriptMetadataGeneration(); err != nil {
-			return err
-		}
+	if err := t.runTypescriptMetadataGeneration(); err != nil {
+		return err
 	}
-	if t.genPermission {
-		if err := t.runTypescriptPermissionGeneration(); err != nil {
-			return err
-		}
+
+	if err := t.runTypescriptPermissionGeneration(); err != nil {
+		return err
 	}
-	if t.genEnums {
-		if err := t.runTypescriptEnumGeneration(resourcesPkg.NamedTypes); err != nil {
-			return err
-		}
+
+	if err := t.runTypescriptEnumGeneration(resourcesPkg.NamedTypes); err != nil {
+		return err
 	}
 
 	log.Printf("Finished Typescript generation in %s\n", time.Since(begin))
@@ -149,6 +145,10 @@ func (t *typescriptGenerator) Generate() error {
 }
 
 func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.NamedType) error {
+	if !t.genEnums {
+		return nil
+	}
+
 	if !t.genMetadata && !t.genPermission {
 		if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
 			return errors.Wrap(err, "RemoveGeneratedFiles()")
@@ -163,6 +163,9 @@ func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.N
 }
 
 func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
+	if !t.genPermission {
+		return nil
+	}
 	begin := time.Now()
 	if !t.genMetadata {
 		if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
@@ -226,6 +229,10 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 }
 
 func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
+	if !t.genMetadata {
+		return nil
+	}
+
 	if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
