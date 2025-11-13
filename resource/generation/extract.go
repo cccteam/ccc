@@ -171,21 +171,21 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 		panic("newResourceFields cannot be used with virtual resources")
 	}
 	fields := make([]*resourceField, 0, len(pStruct.Fields()))
-	for i, field := range pStruct.Fields() {
+	for _, field := range pStruct.Fields() {
 		spannerTag, ok := field.LookupTag("spanner")
 		if !ok {
-			pStruct.AddFieldError(i, "missing spanner tag")
+			field.AddError("missing spanner tag")
 
 			continue
 		}
 		tableColumn, ok := table.Columns[spannerTag]
 		if !ok {
-			pStruct.AddFieldError(i, "spanner tag does not match any table columns")
+			field.AddError("spanner tag does not match any table columns")
 
 			continue
 		}
 		if field.HasTag("index") {
-			pStruct.AddFieldError(i, "cannot use index tag in non-virtual resource")
+			field.AddError("cannot use index tag in non-virtual resource")
 
 			continue
 		}
@@ -218,10 +218,10 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resource
 		panic("newVirtualFields cannot be used with concrete resources")
 	}
 	fields := make([]*resourceField, 0, len(pStruct.Fields()))
-	for i, field := range pStruct.Fields() {
+	for _, field := range pStruct.Fields() {
 		_, ok := field.LookupTag("spanner")
 		if !ok {
-			pStruct.AddFieldError(i, "missing spanner tag")
+			field.AddError("missing spanner tag")
 
 			continue
 		}
@@ -242,10 +242,11 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resource
 
 func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo, error) {
 	rpcMethods := make([]*rpcMethodInfo, 0, len(structs))
+	var errs []error
 	for _, s := range structs {
 		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
 		if err != nil {
-			return nil, errors.Wrap(err, "Scanner.ScanStruct()")
+			errs = append(errs, errors.Wrap(err, "scanner.ScanStruct()"))
 		}
 
 		if !annotations.Struct.Has(rpcKeyword) {
@@ -257,18 +258,31 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo
 			Fields: make([]*rpcField, 0, len(s.Fields())),
 		}
 
-		for i, field := range s.Fields() {
+		for _, field := range s.Fields() {
 			field := rpcField{Field: field}
 			if enumeratedResource, hasEnumeratedTag := field.LookupTag("enumerated"); hasEnumeratedTag {
 				if !c.doesResourceExist(enumeratedResource) {
-					return nil, errors.Newf("field %s \n%s", field.Name(), s.PrintWithFieldError(i, fmt.Sprintf("referenced resource %q in enumerated tag does not exist", enumeratedResource)))
+					field.AddError(fmt.Sprintf("referenced resource %q in enumerated tag does not exist", enumeratedResource))
+
+					continue
 				}
 				field.enumeratedResource = &enumeratedResource
 			}
 
 			rpcMethod.Fields = append(rpcMethod.Fields, &field)
 		}
+
+		if s.HasErrors() {
+			errs = append(errs, errors.Newf("%s has errors:\n%s", s.Name(), s.PrintErrors()))
+
+			continue
+		}
+
 		rpcMethods = append(rpcMethods, rpcMethod)
+	}
+
+	if len(errs) != 0 {
+		return nil, errors.Wrap(errors.Join(errs...), "RPC method errors")
 	}
 
 	return rpcMethods, nil

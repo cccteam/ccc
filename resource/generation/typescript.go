@@ -68,7 +68,11 @@ func (t *typescriptGenerator) Generate() error {
 		return errors.Wrap(err, "parser.LoadPackages()")
 	}
 
-	resourcesPkg := parser.ParsePackage(packageMap["resources"])
+	pkg := packageMap[t.resource.Package()]
+	if pkg == nil {
+		return errors.Newf("no packages found in %q", t.resource.Dir())
+	}
+	resourcesPkg := parser.ParsePackage(pkg)
 
 	resources, err := t.structsToResources(resourcesPkg.Structs)
 	if err != nil {

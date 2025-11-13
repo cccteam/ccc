@@ -103,11 +103,10 @@ type Interface struct {
 // Struct is an abstraction combining types.Struct and ast.StructType for simpler parsing.
 type Struct struct {
 	*TypeInfo
-	fields      []*Field
-	interfaces  []string
-	methodSet   map[string]struct{}
-	comments    string
-	fieldErrors [][]string
+	fields     []*Field
+	interfaces []string
+	methodSet  map[string]struct{}
+	comments   string
 }
 
 func newStruct(obj types.Object) *Struct {
@@ -219,7 +218,7 @@ func (s *Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
 // PrintErrors pretty-prints the struct annotated with field errors
 // if any have been stored with AddFieldError.
 func (s *Struct) PrintErrors() string {
-	if s.fieldErrors == nil {
+	if !s.HasErrors() {
 		return ""
 	}
 
@@ -238,11 +237,11 @@ func (s *Struct) PrintErrors() string {
 
 	msg := strings.Builder{}
 	msg.WriteString(fmt.Sprintf("type %s struct {\n", s.Name()))
-	for i, field := range s.fields {
+	for _, field := range s.fields {
 		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.Name())/8))
 		typeTabs := strings.Repeat("\t", numTypeTabs-(len(field.Type())/8))
 
-		if len(s.fieldErrors[i]) == 0 {
+		if len(field.errs) == 0 {
 			msg.WriteString("\t")
 			msg.WriteString(field.Name() + nameTabs)
 			msg.WriteString(field.Type() + typeTabs)
@@ -257,17 +256,17 @@ func (s *Struct) PrintErrors() string {
 		msg.WriteString(field.Type() + typeTabs)
 		msg.WriteString(string(field.tags))
 		msg.WriteString(" << ")
-		if len(s.fieldErrors[i]) > 1 {
-			msg.WriteString(fmt.Sprintf("[%d] ", len(s.fieldErrors[i])))
+		if len(field.errs) > 1 {
+			msg.WriteString(fmt.Sprintf("[%d] ", len(field.errs)))
 		}
 		msg.WriteString("[")
-		for j, fieldError := range s.fieldErrors[i] {
+		for j, fieldError := range field.errs {
 			if j > 0 {
 				msg.WriteString(", ")
 			}
 			msg.WriteString(fieldError)
 
-			if j == len(s.fieldErrors[i])-1 {
+			if j == len(field.errs)-1 {
 				msg.WriteString("]\033[0m\n")
 			}
 		}
@@ -277,21 +276,15 @@ func (s *Struct) PrintErrors() string {
 	return msg.String()
 }
 
-// AddFieldError stores an error message on a struct field to be printed in PrintErrors
-func (s *Struct) AddFieldError(fieldIndex int, errMsg string) {
-	if fieldIndex > len(s.fields) {
-		panic("fieldIndex out of range")
-	}
-	if s.fieldErrors == nil {
-		s.fieldErrors = make([][]string, len(s.fields))
-	}
-
-	s.fieldErrors[fieldIndex] = append(s.fieldErrors[fieldIndex], errMsg)
-}
-
 // HasErrors returns true if a field error has been stored by AddFieldError
 func (s *Struct) HasErrors() bool {
-	return s.fieldErrors != nil
+	for _, field := range s.fields {
+		if len(field.errs) != 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // NumFields is the number of fields in the struct's type declaration.
@@ -318,6 +311,12 @@ type Field struct {
 	tags        reflect.StructTag
 	comments    string
 	isLocalType bool
+	errs        []string
+}
+
+// AddError stores an error message to be printed in the parent struct's PrintErrors method
+func (f *Field) AddError(msg string) {
+	f.errs = append(f.errs, msg)
 }
 
 func (f Field) String() string {

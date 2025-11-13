@@ -189,7 +189,7 @@ func (t *tableMetadata) addSchemaResult(result *informationSchemaResult) {
 func (c *client) tableMetadataFor(resourceName string) (*tableMetadata, error) {
 	table, ok := c.tableMap[c.pluralize(resourceName)]
 	if !ok {
-		return nil, errors.Newf("resource %q pluralized as %q not in tableMetadata", resourceName, c.pluralize(resourceName))
+		return nil, errors.Newf("table %q not found in database", c.pluralize(resourceName))
 	}
 
 	return table, nil
