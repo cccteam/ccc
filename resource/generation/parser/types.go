@@ -193,35 +193,6 @@ func (s *Struct) String() string {
 	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
 }
 
-// PrintWithFieldError pretty-formats the struct, highlighting a field with an error message.
-func (s *Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
-	var (
-		maxNameLength int
-		maxTypeLength int
-	)
-
-	for _, field := range s.fields {
-		maxNameLength = max(len(field.Name()), maxNameLength)
-		maxTypeLength = max(len(field.Type()), maxTypeLength)
-	}
-
-	numNameTabs := maxNameLength/8 + 1
-	numTypeTabs := maxTypeLength/8 + 1
-
-	var fields string
-	for i, field := range s.fields {
-		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.Name())/8))
-		typeTabs := strings.Repeat("\t", numTypeTabs-(len(field.Type())/8))
-		if i == fieldIndex {
-			fields += fmt.Sprintf("\033[91m\t%s%s%s%s%s << %s\033[0m\n", field.Name(), nameTabs, field.Type(), typeTabs, field.tags, errMsg)
-		} else {
-			fields += fmt.Sprintf("\t%s%s%s%s%s\n", field.Name(), nameTabs, field.Type(), typeTabs, field.tags)
-		}
-	}
-
-	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
-}
-
 // PrintErrors pretty-prints the struct annotated with field errors
 // if any have been stored with AddFieldError.
 func (s *Struct) PrintErrors() string {
