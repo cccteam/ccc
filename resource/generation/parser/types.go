@@ -103,6 +103,7 @@ type Interface struct {
 // Struct is an abstraction combining types.Struct and ast.StructType for simpler parsing.
 type Struct struct {
 	*TypeInfo
+	astInfo    *ast.StructType
 	fields     []*Field
 	interfaces []string
 	methodSet  map[string]struct{}
@@ -149,6 +150,11 @@ func newStruct(obj types.Object) *Struct {
 // Comments returns the godoc comment text on the struct's type declaration
 func (s *Struct) Comments() string {
 	return s.comments
+}
+
+// Pos returns the position of the struct keyword in its fileset.
+func (s *Struct) Pos() token.Pos {
+	return s.astInfo.Struct
 }
 
 func (s *Struct) setInterface(iface string) {

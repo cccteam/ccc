@@ -74,14 +74,15 @@ func (t *typescriptGenerator) Generate() error {
 	}
 	resourcesPkg := parser.ParsePackage(pkg)
 
-	resources, err := t.structsToResources(resourcesPkg.Structs)
+	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true))
 	if err != nil {
 		return err
 	}
 
 	if t.genVirtualResources {
-		virtualStructs := parser.ParsePackage(packageMap[t.virtual.Package()]).Structs
-		virtualResources, err := t.structsToVirtualResources(virtualStructs)
+		pkg := packageMap[t.virtual.Package()]
+		virtualStructs := parser.ParsePackage(pkg).Structs
+		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true))
 		if err != nil {
 			return err
 		}
@@ -91,8 +92,9 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genComputedResources {
+		pkg := packageMap[t.computed.Package()]
 		compStructs := parser.ParsePackage(packageMap[t.computed.Package()]).Structs
-		computedResources, err := structsToCompResources(compStructs)
+		computedResources, err := structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true))
 		if err != nil {
 			return err
 		}
@@ -113,8 +115,9 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genRPCMethods {
-		rpcStructs := parser.ParsePackage(packageMap[t.rpc.Package()]).Structs
-		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs)
+		pkg := packageMap[t.rpc.Package()]
+		rpcStructs := parser.ParsePackage(pkg).Structs
+		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false))
 		if err != nil {
 			return err
 		}

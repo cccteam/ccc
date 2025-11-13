@@ -11,7 +11,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *client) structsToResources(structs []*parser.Struct) ([]*resourceInfo, error) {
+func (c *client) structsToResources(structs []*parser.Struct, validators ...structValidator) ([]*resourceInfo, error) {
 	resources := make([]*resourceInfo, 0, len(structs))
 	var resourceErrors []error
 	for _, pStruct := range structs {
@@ -23,6 +23,12 @@ func (c *client) structsToResources(structs []*parser.Struct) ([]*resourceInfo, 
 		}
 
 		if !annotations.Struct.Has(resourceKeyword) {
+			continue
+		}
+
+		if err := validate(pStruct, validators...); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
 			continue
 		}
 
@@ -96,7 +102,7 @@ func (c *client) structsToResources(structs []*parser.Struct) ([]*resourceInfo, 
 	return resources, nil
 }
 
-func (c *client) structsToVirtualResources(structs []*parser.Struct) ([]*resourceInfo, error) {
+func (c *client) structsToVirtualResources(structs []*parser.Struct, validators ...structValidator) ([]*resourceInfo, error) {
 	resources := make([]*resourceInfo, 0, len(structs))
 	var errs []error
 	for _, pStruct := range structs {
@@ -108,6 +114,12 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct) ([]*resourc
 		}
 
 		if !annotations.Struct.Has(virtualKeyword) {
+			continue
+		}
+
+		if err := validate(pStruct, validators...); err != nil {
+			errs = append(errs, err)
+
 			continue
 		}
 
@@ -240,7 +252,7 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resource
 	return fields, nil
 }
 
-func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo, error) {
+func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...structValidator) ([]*rpcMethodInfo, error) {
 	rpcMethods := make([]*rpcMethodInfo, 0, len(structs))
 	var errs []error
 	for _, s := range structs {
@@ -250,6 +262,12 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo
 		}
 
 		if !annotations.Struct.Has(rpcKeyword) {
+			continue
+		}
+
+		if err := validate(s, validators...); err != nil {
+			errs = append(errs, err)
+
 			continue
 		}
 
@@ -288,7 +306,7 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo
 	return rpcMethods, nil
 }
 
-func structsToCompResources(structs []*parser.Struct) ([]*computedResource, error) {
+func structsToCompResources(structs []*parser.Struct, validators ...structValidator) ([]*computedResource, error) {
 	compResources := make([]*computedResource, 0, len(structs))
 	var resourceErrors []error
 	for _, s := range structs {
@@ -300,6 +318,12 @@ func structsToCompResources(structs []*parser.Struct) ([]*computedResource, erro
 		}
 
 		if !annotations.Struct.Has(computedKeyword) {
+			continue
+		}
+
+		if err := validate(s, validators...); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
 			continue
 		}
 
