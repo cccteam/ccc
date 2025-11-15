@@ -68,16 +68,21 @@ func (t *typescriptGenerator) Generate() error {
 		return errors.Wrap(err, "parser.LoadPackages()")
 	}
 
-	resourcesPkg := parser.ParsePackage(packageMap["resources"])
+	pkg := packageMap[t.resource.Package()]
+	if pkg == nil {
+		return errors.Newf("no packages found in %q", t.resource.Dir())
+	}
+	resourcesPkg := parser.ParsePackage(pkg)
 
-	resources, err := t.structsToResources(resourcesPkg.Structs)
+	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true))
 	if err != nil {
 		return err
 	}
 
 	if t.genVirtualResources {
-		virtualStructs := parser.ParsePackage(packageMap[t.virtual.Package()]).Structs
-		virtualResources, err := t.structsToVirtualResources(virtualStructs)
+		pkg := packageMap[t.virtual.Package()]
+		virtualStructs := parser.ParsePackage(pkg).Structs
+		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true))
 		if err != nil {
 			return err
 		}
@@ -87,8 +92,9 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genComputedResources {
-		compStructs := parser.ParsePackage(packageMap[t.computed.Package()]).Structs
-		computedResources, err := structsToCompResources(compStructs)
+		pkg := packageMap[t.computed.Package()]
+		compStructs := parser.ParsePackage(pkg).Structs
+		computedResources, err := structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true))
 		if err != nil {
 			return err
 		}
@@ -109,8 +115,9 @@ func (t *typescriptGenerator) Generate() error {
 	}
 
 	if t.genRPCMethods {
-		rpcStructs := parser.ParsePackage(packageMap[t.rpc.Package()]).Structs
-		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs)
+		pkg := packageMap[t.rpc.Package()]
+		rpcStructs := parser.ParsePackage(pkg).Structs
+		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false))
 		if err != nil {
 			return err
 		}
@@ -120,20 +127,16 @@ func (t *typescriptGenerator) Generate() error {
 		}
 	}
 
-	if t.genMetadata {
-		if err := t.runTypescriptMetadataGeneration(); err != nil {
-			return err
-		}
+	if err := t.runTypescriptMetadataGeneration(); err != nil {
+		return err
 	}
-	if t.genPermission {
-		if err := t.runTypescriptPermissionGeneration(); err != nil {
-			return err
-		}
+
+	if err := t.runTypescriptPermissionGeneration(); err != nil {
+		return err
 	}
-	if t.genEnums {
-		if err := t.runTypescriptEnumGeneration(resourcesPkg.NamedTypes); err != nil {
-			return err
-		}
+
+	if err := t.runTypescriptEnumGeneration(resourcesPkg.NamedTypes); err != nil {
+		return err
 	}
 
 	log.Printf("Finished Typescript generation in %s\n", time.Since(begin))
@@ -142,6 +145,10 @@ func (t *typescriptGenerator) Generate() error {
 }
 
 func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.NamedType) error {
+	if !t.genEnums {
+		return nil
+	}
+
 	if !t.genMetadata && !t.genPermission {
 		if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
 			return errors.Wrap(err, "RemoveGeneratedFiles()")
@@ -156,6 +163,9 @@ func (t *typescriptGenerator) runTypescriptEnumGeneration(namedTypes []*parser.N
 }
 
 func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
+	if !t.genPermission {
+		return nil
+	}
 	begin := time.Now()
 	if !t.genMetadata {
 		if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
@@ -219,6 +229,10 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 }
 
 func (t *typescriptGenerator) runTypescriptMetadataGeneration() error {
+	if !t.genMetadata {
+		return nil
+	}
+
 	if err := removeGeneratedFiles(t.typescriptDestination, headerComment); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}

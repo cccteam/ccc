@@ -77,7 +77,7 @@ func LoadPackage(packagePattern string) (*packages.Package, error) {
 }
 
 func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
-	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypesInfo}
+	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedCompiledGoFiles | packages.NeedSyntax | packages.NeedTypesInfo}
 	pkgs, err := packages.Load(cfg, packagePatterns...)
 	if err != nil {
 		return nil, errors.Wrap(err, "packages.Load()")
@@ -101,7 +101,7 @@ func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
 			return nil, errors.Wrap(err, "packages.Load() package error(s)")
 		}
 
-		if len(pkg.GoFiles) == 0 || pkg.GoFiles[0] == "" {
+		if len(pkg.CompiledGoFiles) == 0 || pkg.CompiledGoFiles[0] == "" {
 			return nil, errors.Newf("no files were loaded for package %q", pkg.Name)
 		}
 	}
@@ -155,6 +155,8 @@ func ParsePackage(pkg *packages.Package) *Package {
 			if pStruct.obj == nil { // nil pStruct is anonymous struct
 				continue
 			}
+
+			pStruct.astInfo = astNode
 
 			if typeSpec.Doc != nil {
 				pStruct.comments = typeSpec.Doc.Text()

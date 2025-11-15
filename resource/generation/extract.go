@@ -11,7 +11,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (c *client) structsToResources(structs []*parser.Struct) ([]*resourceInfo, error) {
+func (c *client) structsToResources(structs []*parser.Struct, validators ...structValidator) ([]*resourceInfo, error) {
 	resources := make([]*resourceInfo, 0, len(structs))
 	var resourceErrors []error
 	for _, pStruct := range structs {
@@ -23,6 +23,12 @@ func (c *client) structsToResources(structs []*parser.Struct) ([]*resourceInfo, 
 		}
 
 		if !annotations.Struct.Has(resourceKeyword) {
+			continue
+		}
+
+		if err := validate(pStruct, validators...); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
 			continue
 		}
 
@@ -52,38 +58,10 @@ func (c *client) structsToResources(structs []*parser.Struct) ([]*resourceInfo, 
 			continue
 		}
 
-		if annotations.Struct.Has(suppressKeyword) {
-			for handlerArg := range annotations.Struct.Get(suppressKeyword).Seq() {
-				switch HandlerType(handlerArg) {
-				case AllHandlers:
-					resource.SuppressedHandlers = []HandlerType{ListHandler, ReadHandler, PatchHandler}
-					resource.IsConsolidated = false
-				case ListHandler:
-					resource.SuppressedHandlers = append(resource.SuppressedHandlers, ListHandler)
-				case ReadHandler:
-					resource.SuppressedHandlers = append(resource.SuppressedHandlers, ReadHandler)
-				case PatchHandler:
-					resource.SuppressedHandlers = append(resource.SuppressedHandlers, PatchHandler)
-					resource.IsConsolidated = false
-				default:
-					resourceErrors = append(resourceErrors, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg, pStruct.Name(), handlerTypes()))
+		if err := resolveResourceAnnotations(resource, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
 
-					continue
-				}
-			}
-		}
-
-		if annotations.Struct.Has(defaultsCreateTypeKeyword) {
-			resource.DefaultsCreateType = string(annotations.Struct.Get(defaultsCreateTypeKeyword))
-		}
-		if annotations.Struct.Has(defaultsUpdateTypeKeyword) {
-			resource.DefaultsUpdateType = string(annotations.Struct.Get(defaultsUpdateTypeKeyword))
-		}
-		if annotations.Struct.Has(validateCreateTypeKeyword) {
-			resource.ValidateCreateType = string(annotations.Struct.Get(validateCreateTypeKeyword))
-		}
-		if annotations.Struct.Has(validateUpdateTypeKeyword) {
-			resource.ValidateUpdateType = string(annotations.Struct.Get(validateUpdateTypeKeyword))
+			continue
 		}
 
 		resources = append(resources, resource)
@@ -96,7 +74,43 @@ func (c *client) structsToResources(structs []*parser.Struct) ([]*resourceInfo, 
 	return resources, nil
 }
 
-func (c *client) structsToVirtualResources(structs []*parser.Struct) ([]*resourceInfo, error) {
+func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnnotations) error {
+	if annotations.Struct.Has(suppressKeyword) {
+		for handlerArg := range annotations.Struct.Get(suppressKeyword).Seq() {
+			switch HandlerType(handlerArg) {
+			case AllHandlers:
+				res.SuppressedHandlers = []HandlerType{ListHandler, ReadHandler, PatchHandler}
+				res.IsConsolidated = false
+			case ListHandler:
+				res.SuppressedHandlers = append(res.SuppressedHandlers, ListHandler)
+			case ReadHandler:
+				res.SuppressedHandlers = append(res.SuppressedHandlers, ReadHandler)
+			case PatchHandler:
+				res.SuppressedHandlers = append(res.SuppressedHandlers, PatchHandler)
+				res.IsConsolidated = false
+			default:
+				return errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg, res.Name(), handlerTypes())
+			}
+		}
+	}
+
+	if annotations.Struct.Has(defaultsCreateTypeKeyword) {
+		res.DefaultsCreateType = string(annotations.Struct.Get(defaultsCreateTypeKeyword))
+	}
+	if annotations.Struct.Has(defaultsUpdateTypeKeyword) {
+		res.DefaultsUpdateType = string(annotations.Struct.Get(defaultsUpdateTypeKeyword))
+	}
+	if annotations.Struct.Has(validateCreateTypeKeyword) {
+		res.ValidateCreateType = string(annotations.Struct.Get(validateCreateTypeKeyword))
+	}
+	if annotations.Struct.Has(validateUpdateTypeKeyword) {
+		res.ValidateUpdateType = string(annotations.Struct.Get(validateUpdateTypeKeyword))
+	}
+
+	return nil
+}
+
+func (c *client) structsToVirtualResources(structs []*parser.Struct, validators ...structValidator) ([]*resourceInfo, error) {
 	resources := make([]*resourceInfo, 0, len(structs))
 	var errs []error
 	for _, pStruct := range structs {
@@ -108,6 +122,12 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct) ([]*resourc
 		}
 
 		if !annotations.Struct.Has(virtualKeyword) {
+			continue
+		}
+
+		if err := validate(pStruct, validators...); err != nil {
+			errs = append(errs, err)
+
 			continue
 		}
 
@@ -171,21 +191,21 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 		panic("newResourceFields cannot be used with virtual resources")
 	}
 	fields := make([]*resourceField, 0, len(pStruct.Fields()))
-	for i, field := range pStruct.Fields() {
+	for _, field := range pStruct.Fields() {
 		spannerTag, ok := field.LookupTag("spanner")
 		if !ok {
-			pStruct.AddFieldError(i, "missing spanner tag")
+			field.AddError("missing spanner tag")
 
 			continue
 		}
 		tableColumn, ok := table.Columns[spannerTag]
 		if !ok {
-			pStruct.AddFieldError(i, "spanner tag does not match any table columns")
+			field.AddError("spanner tag does not match any table columns")
 
 			continue
 		}
 		if field.HasTag("index") {
-			pStruct.AddFieldError(i, "cannot use index tag in non-virtual resource")
+			field.AddError("cannot use index tag in non-virtual resource")
 
 			continue
 		}
@@ -218,10 +238,10 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resource
 		panic("newVirtualFields cannot be used with concrete resources")
 	}
 	fields := make([]*resourceField, 0, len(pStruct.Fields()))
-	for i, field := range pStruct.Fields() {
+	for _, field := range pStruct.Fields() {
 		_, ok := field.LookupTag("spanner")
 		if !ok {
-			pStruct.AddFieldError(i, "missing spanner tag")
+			field.AddError("missing spanner tag")
 
 			continue
 		}
@@ -240,15 +260,22 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resource
 	return fields, nil
 }
 
-func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo, error) {
+func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...structValidator) ([]*rpcMethodInfo, error) {
 	rpcMethods := make([]*rpcMethodInfo, 0, len(structs))
+	var errs []error
 	for _, s := range structs {
 		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
 		if err != nil {
-			return nil, errors.Wrap(err, "Scanner.ScanStruct()")
+			errs = append(errs, errors.Wrap(err, "scanner.ScanStruct()"))
 		}
 
 		if !annotations.Struct.Has(rpcKeyword) {
+			continue
+		}
+
+		if err := validate(s, validators...); err != nil {
+			errs = append(errs, err)
+
 			continue
 		}
 
@@ -257,24 +284,37 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct) ([]*rpcMethodInfo
 			Fields: make([]*rpcField, 0, len(s.Fields())),
 		}
 
-		for i, field := range s.Fields() {
+		for _, field := range s.Fields() {
 			field := rpcField{Field: field}
 			if enumeratedResource, hasEnumeratedTag := field.LookupTag("enumerated"); hasEnumeratedTag {
 				if !c.doesResourceExist(enumeratedResource) {
-					return nil, errors.Newf("field %s \n%s", field.Name(), s.PrintWithFieldError(i, fmt.Sprintf("referenced resource %q in enumerated tag does not exist", enumeratedResource)))
+					field.AddError(fmt.Sprintf("referenced resource %q in enumerated tag does not exist", enumeratedResource))
+
+					continue
 				}
 				field.enumeratedResource = &enumeratedResource
 			}
 
 			rpcMethod.Fields = append(rpcMethod.Fields, &field)
 		}
+
+		if s.HasErrors() {
+			errs = append(errs, errors.Newf("%s has errors:\n%s", s.Name(), s.PrintErrors()))
+
+			continue
+		}
+
 		rpcMethods = append(rpcMethods, rpcMethod)
+	}
+
+	if len(errs) != 0 {
+		return nil, errors.Wrap(errors.Join(errs...), "RPC method errors")
 	}
 
 	return rpcMethods, nil
 }
 
-func structsToCompResources(structs []*parser.Struct) ([]*computedResource, error) {
+func structsToCompResources(structs []*parser.Struct, validators ...structValidator) ([]*computedResource, error) {
 	compResources := make([]*computedResource, 0, len(structs))
 	var resourceErrors []error
 	for _, s := range structs {
@@ -286,6 +326,12 @@ func structsToCompResources(structs []*parser.Struct) ([]*computedResource, erro
 		}
 
 		if !annotations.Struct.Has(computedKeyword) {
+			continue
+		}
+
+		if err := validate(s, validators...); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
 			continue
 		}
 

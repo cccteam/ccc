@@ -76,6 +76,7 @@ linters:
             - go.uber.org/mock/gomock
             - go/ast
             - go/format
+            - go/token
             - go/types
             - golang.org/x/tools/go/packages
             - golang.org/x/tools/imports
@@ -180,7 +181,7 @@ linters:
       - linters:
           - staticcheck
         path: query_decoder_test\.go
-        text: 'QF1001: could apply De Morgan''s law'
+        text: "QF1001: could apply De Morgan's law"
       - linters:
           - gocritic
         path: queryset\.go

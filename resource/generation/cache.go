@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,6 +117,12 @@ func (c *client) isSchemaClean() (bool, error) {
 	fileNames, err := dir.Readdirnames(0)
 	if err != nil {
 		return false, errors.Wrap(err, "os.File.Readdirnames()")
+	}
+
+	if len(fileNames) != len(cachedHashes) {
+		log.Printf("\x1b[33mNumber of schema files (%d) does not match number of cached files (%d). Invalidating cache.\x1b[39m\n", len(fileNames), len(cachedHashes))
+
+		return false, nil
 	}
 
 	// check cache for hash of each schema migration file

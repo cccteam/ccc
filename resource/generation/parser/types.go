@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 	"reflect"
 	"slices"
@@ -103,11 +104,11 @@ type Interface struct {
 // Struct is an abstraction combining types.Struct and ast.StructType for simpler parsing.
 type Struct struct {
 	*TypeInfo
-	fields      []*Field
-	interfaces  []string
-	methodSet   map[string]struct{}
-	comments    string
-	fieldErrors [][]string
+	astInfo    *ast.StructType
+	fields     []*Field
+	interfaces []string
+	methodSet  map[string]struct{}
+	comments   string
 }
 
 func newStruct(obj types.Object) *Struct {
@@ -152,6 +153,11 @@ func (s *Struct) Comments() string {
 	return s.comments
 }
 
+// Pos returns the position of the struct keyword in its fileset.
+func (s *Struct) Pos() token.Pos {
+	return s.astInfo.Struct
+}
+
 func (s *Struct) setInterface(iface string) {
 	if !slices.Contains(s.interfaces, iface) {
 		s.interfaces = append(s.interfaces, iface)
@@ -187,39 +193,10 @@ func (s *Struct) String() string {
 	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
 }
 
-// PrintWithFieldError pretty-formats the struct, highlighting a field with an error message.
-func (s *Struct) PrintWithFieldError(fieldIndex int, errMsg string) string {
-	var (
-		maxNameLength int
-		maxTypeLength int
-	)
-
-	for _, field := range s.fields {
-		maxNameLength = max(len(field.Name()), maxNameLength)
-		maxTypeLength = max(len(field.Type()), maxTypeLength)
-	}
-
-	numNameTabs := maxNameLength/8 + 1
-	numTypeTabs := maxTypeLength/8 + 1
-
-	var fields string
-	for i, field := range s.fields {
-		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.Name())/8))
-		typeTabs := strings.Repeat("\t", numTypeTabs-(len(field.Type())/8))
-		if i == fieldIndex {
-			fields += fmt.Sprintf("\033[91m\t%s%s%s%s%s << %s\033[0m\n", field.Name(), nameTabs, field.Type(), typeTabs, field.tags, errMsg)
-		} else {
-			fields += fmt.Sprintf("\t%s%s%s%s%s\n", field.Name(), nameTabs, field.Type(), typeTabs, field.tags)
-		}
-	}
-
-	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
-}
-
 // PrintErrors pretty-prints the struct annotated with field errors
 // if any have been stored with AddFieldError.
 func (s *Struct) PrintErrors() string {
-	if s.fieldErrors == nil {
+	if !s.HasErrors() {
 		return ""
 	}
 
@@ -238,11 +215,11 @@ func (s *Struct) PrintErrors() string {
 
 	msg := strings.Builder{}
 	msg.WriteString(fmt.Sprintf("type %s struct {\n", s.Name()))
-	for i, field := range s.fields {
+	for _, field := range s.fields {
 		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.Name())/8))
 		typeTabs := strings.Repeat("\t", numTypeTabs-(len(field.Type())/8))
 
-		if len(s.fieldErrors[i]) == 0 {
+		if len(field.errs) == 0 {
 			msg.WriteString("\t")
 			msg.WriteString(field.Name() + nameTabs)
 			msg.WriteString(field.Type() + typeTabs)
@@ -257,17 +234,17 @@ func (s *Struct) PrintErrors() string {
 		msg.WriteString(field.Type() + typeTabs)
 		msg.WriteString(string(field.tags))
 		msg.WriteString(" << ")
-		if len(s.fieldErrors[i]) > 1 {
-			msg.WriteString(fmt.Sprintf("[%d] ", len(s.fieldErrors[i])))
+		if len(field.errs) > 1 {
+			msg.WriteString(fmt.Sprintf("[%d] ", len(field.errs)))
 		}
 		msg.WriteString("[")
-		for j, fieldError := range s.fieldErrors[i] {
+		for j, fieldError := range field.errs {
 			if j > 0 {
 				msg.WriteString(", ")
 			}
 			msg.WriteString(fieldError)
 
-			if j == len(s.fieldErrors[i])-1 {
+			if j == len(field.errs)-1 {
 				msg.WriteString("]\033[0m\n")
 			}
 		}
@@ -277,21 +254,15 @@ func (s *Struct) PrintErrors() string {
 	return msg.String()
 }
 
-// AddFieldError stores an error message on a struct field to be printed in PrintErrors
-func (s *Struct) AddFieldError(fieldIndex int, errMsg string) {
-	if fieldIndex > len(s.fields) {
-		panic("fieldIndex out of range")
-	}
-	if s.fieldErrors == nil {
-		s.fieldErrors = make([][]string, len(s.fields))
-	}
-
-	s.fieldErrors[fieldIndex] = append(s.fieldErrors[fieldIndex], errMsg)
-}
-
 // HasErrors returns true if a field error has been stored by AddFieldError
 func (s *Struct) HasErrors() bool {
-	return s.fieldErrors != nil
+	for _, field := range s.fields {
+		if len(field.errs) != 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // NumFields is the number of fields in the struct's type declaration.
@@ -318,26 +289,32 @@ type Field struct {
 	tags        reflect.StructTag
 	comments    string
 	isLocalType bool
+	errs        []string
 }
 
-func (f Field) String() string {
+// AddError stores an error message to be printed in the parent struct's PrintErrors method
+func (f *Field) AddError(msg string) {
+	f.errs = append(f.errs, msg)
+}
+
+func (f *Field) String() string {
 	return fmt.Sprintf("%s\t\t%s\t\t%s", f.Name(), f.Type(), f.tags)
 }
 
 // LookupTag returns a struct tag's value and whether or not the struct tag exists on this field.
-func (f Field) LookupTag(key string) (string, bool) {
+func (f *Field) LookupTag(key string) (string, bool) {
 	return f.tags.Lookup(key)
 }
 
 // HasTag returns true if this field has a matching struct tag.
-func (f Field) HasTag(key string) bool {
+func (f *Field) HasTag(key string) bool {
 	_, ok := f.tags.Lookup(key)
 
 	return ok
 }
 
 // AsStruct converts this Field to a Struct. Returns nil if the Field's type is not a struct type.
-func (f Field) AsStruct() *Struct {
+func (f *Field) AsStruct() *Struct {
 	s := newStruct(f.obj)
 
 	if s.obj == nil {
@@ -349,12 +326,12 @@ func (f Field) AsStruct() *Struct {
 
 // IsLocalType returns true if this Field's type originates from the same package
 // its parent struct is defined in.
-func (f Field) IsLocalType() bool {
+func (f *Field) IsLocalType() bool {
 	return f.isLocalType
 }
 
 // ResolvedType returns this Field's unqualified type if it's local, or its qualified type otherwise.
-func (f Field) ResolvedType() string {
+func (f *Field) ResolvedType() string {
 	if f.IsLocalType() {
 		return f.UnqualifiedType()
 	}
@@ -363,7 +340,7 @@ func (f Field) ResolvedType() string {
 }
 
 // DerefResolvedType returns this Field's unqualified type if it's local, or its qualified type otherwise.
-func (f Field) DerefResolvedType() string {
+func (f *Field) DerefResolvedType() string {
 	if f.IsLocalType() {
 		return f.DerefUnqualifiedType()
 	}
@@ -372,13 +349,13 @@ func (f Field) DerefResolvedType() string {
 }
 
 // Comments returns the godoc comment text on the field's declaration.
-func (f Field) Comments() string {
+func (f *Field) Comments() string {
 	return f.comments
 }
 
 // OriginType returns the origin type if this Field's type is a generic instantiation.
 // e.g. ccc.Foo[bool] returns ccc.Foo
-func (f Field) OriginType() string {
+func (f *Field) OriginType() string {
 	indexExpr, ok := decodeToExpr[*ast.IndexExpr](f.astInfo.Type)
 	if !ok {
 		return f.Type()
@@ -394,7 +371,7 @@ func (f Field) OriginType() string {
 
 // TypeArgs returns any type arguments if this field's type is a generic instantiation.
 // e.g. ccc.Foo[bool] -> bool, ccc.Foo[ccc.UUID] -> ccc.UUID
-func (f Field) TypeArgs() string {
+func (f *Field) TypeArgs() string {
 	indexExpr, ok := decodeToExpr[*ast.IndexExpr](f.astInfo.Type)
 	if !ok {
 		return ""
