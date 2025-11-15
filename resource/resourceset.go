@@ -47,34 +47,27 @@ type virtualQuerier interface {
 
 // Set holds metadata about a resource, including its permissions and field-to-tag mappings.
 type Set[Resource Resourcer] struct {
-	permissions     []accesstypes.Permission
-	requiredTagPerm accesstypes.TagPermissions
-	fieldToTag      map[accesstypes.Field]accesstypes.Tag
-	immutableFields map[accesstypes.Tag]struct{}
-	rMeta           *Metadata[Resource]
+	permissions         []accesstypes.Permission
+	requiredJSONTagPerm accesstypes.TagPermissions
+	fieldToJSONTag      map[accesstypes.Field]accesstypes.Tag
+	immutableFields     map[accesstypes.Tag]struct{}
+	rMeta               *Metadata[Resource]
 }
 
 // NewSet creates a new Set for a given Resource and Request type, parsing permissions from struct tags.
 func NewSet[Resource Resourcer, Request any](permissions ...accesstypes.Permission) (*Set[Resource], error) {
-	requiredTagPerm, fieldToTag, permissions, immutableFields, err := permissionsFromTags(reflect.TypeFor[Request](), permissions)
+	requiredJSONTagPerm, fieldToJSONTag, permissions, immutableFields, err := permissionsFromTags(reflect.TypeFor[Request](), permissions)
 	if err != nil {
 		return nil, errors.Wrap(err, "permissionsFromTags()")
 	}
 
 	return &Set[Resource]{
-		permissions:     permissions,
-		requiredTagPerm: requiredTagPerm,
-		fieldToTag:      fieldToTag,
-		immutableFields: immutableFields,
-		rMeta:           NewMetadata[Resource](),
+		permissions:         permissions,
+		requiredJSONTagPerm: requiredJSONTagPerm,
+		fieldToJSONTag:      fieldToJSONTag,
+		immutableFields:     immutableFields,
+		rMeta:               NewMetadata[Resource](),
 	}, nil
-}
-
-// BaseResource returns the base name of the resource (without any tags).
-func (r *Set[Resource]) BaseResource() accesstypes.Resource {
-	var res Resource
-
-	return res.Resource()
 }
 
 // ImmutableFields returns a map of tags for fields that are marked as immutable.
@@ -89,7 +82,7 @@ func (r *Set[Resource]) ResourceMetadata() *Metadata[Resource] {
 
 // PermissionRequired checks if a specific permission is required for a given field.
 func (r *Set[Resource]) PermissionRequired(fieldName accesstypes.Field, perm accesstypes.Permission) bool {
-	return slices.Contains(r.requiredTagPerm[r.fieldToTag[fieldName]], perm)
+	return slices.Contains(r.requiredJSONTagPerm[r.fieldToJSONTag[fieldName]], perm)
 }
 
 // Permissions returns all permissions associated with the resource set.
@@ -101,21 +94,21 @@ func (r *Set[Resource]) Permissions() []accesstypes.Permission {
 func (r *Set[Resource]) Resource(fieldName accesstypes.Field) accesstypes.Resource {
 	var res Resource
 
-	return accesstypes.Resource(fmt.Sprintf("%s.%s", res.Resource(), r.fieldToTag[fieldName]))
+	return accesstypes.Resource(fmt.Sprintf("%s.%s", res.Resource(), r.fieldToJSONTag[fieldName]))
 }
 
 // TagPermissions returns the mapping of tags to their required permissions.
 func (r *Set[Resource]) TagPermissions() accesstypes.TagPermissions {
-	return r.requiredTagPerm
+	return r.requiredJSONTagPerm
 }
 
-func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags accesstypes.TagPermissions, fieldToTag map[accesstypes.Field]accesstypes.Tag, permissions []accesstypes.Permission, immutableFields map[accesstypes.Tag]struct{}, err error) {
+func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (jsonTags accesstypes.TagPermissions, fieldToJSONTag map[accesstypes.Field]accesstypes.Tag, permissions []accesstypes.Permission, immutableFields map[accesstypes.Tag]struct{}, err error) {
 	if t.Kind() != reflect.Struct {
 		return nil, nil, nil, nil, errors.Newf("expected a struct, got %s", t.Kind())
 	}
 
-	tags = make(accesstypes.TagPermissions)
-	fieldToTag = make(map[accesstypes.Field]accesstypes.Tag)
+	jsonTags = make(accesstypes.TagPermissions)
+	fieldToJSONTag = make(map[accesstypes.Field]accesstypes.Tag)
 	permissionMap := make(map[accesstypes.Permission]struct{})
 	mutating := make(map[accesstypes.Permission]struct{})
 	nonmutating := make(map[accesstypes.Permission]struct{})
@@ -137,45 +130,45 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 		field := t.Field(i)
 		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		immutableTag, _, _ := strings.Cut(field.Tag.Get("immutable"), ",")
-		permTag := field.Tag.Get("perm")
-		perms := strings.Split(permTag, ",")
 
 		if immutableTag == trueStr {
 			immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
 
 			// immutability is implemented by requiring the update permission (here) and then
 			// disallowing it from being assigned to a role (elsewhere)
-			if !slices.Contains(perms, string(accesstypes.Update)) {
-				perms = append(perms, string(accesstypes.Update))
+			if !slices.Contains(perms, accesstypes.Update) {
+				perms = append(perms, accesstypes.Update)
 			}
 		}
 
 		var collected bool
-		for _, s := range perms {
-			permission := accesstypes.Permission(strings.TrimSpace(s))
+		for _, permission := range perms {
 			switch permission {
 			case accesstypes.NullPermission:
 				continue
 			case accesstypes.Delete:
-				return nil, nil, nil, nil, errors.Newf("delete permission is not allowed in struct tag")
+				continue
 			case accesstypes.Create, accesstypes.Update:
 				mutating[permission] = struct{}{}
 			default:
 				nonmutating[permission] = struct{}{}
 			}
 
-			if jsonTag == "" || jsonTag == "-" {
-				return nil, nil, nil, nil, errors.Newf("can not set %s permission on the %s field when json tag is empty", permission, field.Name)
+			if jsonTag == "" {
+				return nil, nil, nil, nil, errors.Newf("missing json tag on field %s", field.Name)
 			}
-			tags[accesstypes.Tag(jsonTag)] = append(tags[accesstypes.Tag(jsonTag)], permission)
-			fieldToTag[accesstypes.Field(field.Name)] = accesstypes.Tag(jsonTag)
+			if jsonTag == "-" {
+				jsonTag = field.Name
+			}
+			jsonTags[accesstypes.Tag(jsonTag)] = append(jsonTags[accesstypes.Tag(jsonTag)], permission)
+			fieldToJSONTag[accesstypes.Field(field.Name)] = accesstypes.Tag(jsonTag)
 			permissionMap[permission] = struct{}{}
 			collected = true
 		}
 		if !collected && registerAllResources {
 			if jsonTag != "" && jsonTag != "-" {
-				tags[accesstypes.Tag(jsonTag)] = append(tags[accesstypes.Tag(jsonTag)], accesstypes.NullPermission)
-				fieldToTag[accesstypes.Field(field.Name)] = accesstypes.Tag(jsonTag)
+				jsonTags[accesstypes.Tag(jsonTag)] = append(jsonTags[accesstypes.Tag(jsonTag)], accesstypes.NullPermission)
+				fieldToJSONTag[accesstypes.Field(field.Name)] = accesstypes.Tag(jsonTag)
 			}
 		}
 	}
@@ -191,7 +184,7 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 	permissions = slices.Collect(maps.Keys(permissionMap))
 	slices.Sort(permissions)
 
-	return tags, fieldToTag, permissions, immutableFields, nil
+	return jsonTags, fieldToJSONTag, permissions, immutableFields, nil
 }
 
 // Metadata contains cached metadata about a resource, such as its database schema mapping and configuration.

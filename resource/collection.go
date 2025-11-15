@@ -18,6 +18,8 @@ type (
 // AddResources adds all the resources and permissions from a ResourceSet to the collection.
 // It is a no-op if collectResourcePermissions is false.
 func AddResources[Resource Resourcer](c *Collection, scope accesstypes.PermissionScope, rSet *Set[Resource]) error {
+	var r Resource
+
 	if !collectResourcePermissions {
 		return nil
 	}
@@ -25,7 +27,7 @@ func AddResources[Resource Resourcer](c *Collection, scope accesstypes.Permissio
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	res := rSet.BaseResource()
+	res := r.Resource()
 	tags := rSet.TagPermissions()
 
 	for _, perm := range rSet.Permissions() {
