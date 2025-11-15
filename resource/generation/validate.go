@@ -38,7 +38,7 @@ func (c *client) validateStructNameMatchesFile(pkg *packages.Package, plural boo
 		}
 
 		if caser.ToSnake(sName) != strings.TrimSuffix(fileName, ".go") {
-			return errors.Newf("%s (%s) does not match its file name %s (expected %q)", s.Name(), caser.ToSnake(sName), fileName, strings.TrimSuffix(fileName, ".go"))
+			return errors.Newf("%s (%s) does not match its file name %s (expected %q)", s.Name(), caser.ToSnake(sName), fileName, caser.ToSnake(sName)+".go")
 		}
 
 		return nil
