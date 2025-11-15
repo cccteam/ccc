@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.8.0](https://github.com/cccteam/ccc/compare/resource/v0.7.2...resource/v0.8.0) (2025-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove PatchSet() method, replace with Apply & Buffer directly on named patchset ([#526](https://github.com/cccteam/ccc/issues/526))
+* Remove Query() method, replace with List & Read directly on named patchset ([#526](https://github.com/cccteam/ccc/issues/526))
+* generate Resourcer methods and validate resource/filenames ([#522](https://github.com/cccteam/ccc/issues/522))
+* virtual resources redesign ([#517](https://github.com/cccteam/ccc/issues/517))
+* consolidate package dirs, expect resources package ([#514](https://github.com/cccteam/ccc/issues/514))
+* reduce cruft around single and zero arg keywords in annotations ([#512](https://github.com/cccteam/ccc/issues/512))
+* require annotations for resource generation ([#511](https://github.com/cccteam/ccc/issues/511))
+* QuerySet methods, Read(), and List() changed parameter from Reader[Resource] to ReadOnlyTransaction ([#507](https://github.com/cccteam/ccc/issues/507))
+* QuerySet method, BatchList() changed parameter from Reader[Resource] to ReadOnlyTransaction ([#507](https://github.com/cccteam/ccc/issues/507))
+* Move Reader interface internal and simplify package public interface ([#507](https://github.com/cccteam/ccc/issues/507))
+
+### Features
+
+* generate Resourcer methods and validate resource/filenames ([#522](https://github.com/cccteam/ccc/issues/522)) ([6df30a4](https://github.com/cccteam/ccc/commit/6df30a4879240bda545c09f6de01fd175a2ce837))
+* support scanning resources from a single file or an entire package ([#513](https://github.com/cccteam/ccc/issues/513)) ([901efea](https://github.com/cccteam/ccc/commit/901efea4ec6665e636840657012c6ba516da8b3c))
+
+
+### Bug Fixes
+
+* Correct package extraction for computed resource and RPC handler generation ([#518](https://github.com/cccteam/ccc/issues/518)) ([793dcf7](https://github.com/cccteam/ccc/commit/793dcf7c5b2504f150c089e11f5fa87f35e81506))
+* Fix error message ([#524](https://github.com/cccteam/ccc/issues/524)) ([e27e287](https://github.com/cccteam/ccc/commit/e27e287a3039d0d03e73448262f5d6bbeffa66f2))
+* Fix nil-ptr-exception when no package are found in resourcePackageDir ([#515](https://github.com/cccteam/ccc/issues/515)) ([9227a9b](https://github.com/cccteam/ccc/commit/9227a9b5b44530da462739a484a647be01cf9bba))
+
+
+### Documentation
+
+* Document MockClient usage ([#507](https://github.com/cccteam/ccc/issues/507)) ([20ddd61](https://github.com/cccteam/ccc/commit/20ddd61630eb9f4abf9b6ba07ed9681ad5893143))
+
+
+### Code Refactoring
+
+* consolidate package dirs, expect resources package ([#514](https://github.com/cccteam/ccc/issues/514)) ([d506584](https://github.com/cccteam/ccc/commit/d506584631b4f9ccd88f56c2fe44d9ee79275d35))
+* Make spannerReader[Resource] and postgresReader[Resource] private ([#507](https://github.com/cccteam/ccc/issues/507)) ([20ddd61](https://github.com/cccteam/ccc/commit/20ddd61630eb9f4abf9b6ba07ed9681ad5893143))
+* Move Reader interface internal and simplify package public interface ([#507](https://github.com/cccteam/ccc/issues/507)) ([20ddd61](https://github.com/cccteam/ccc/commit/20ddd61630eb9f4abf9b6ba07ed9681ad5893143))
+* QuerySet method, BatchList() changed parameter from Reader[Resource] to ReadOnlyTransaction ([#507](https://github.com/cccteam/ccc/issues/507)) ([20ddd61](https://github.com/cccteam/ccc/commit/20ddd61630eb9f4abf9b6ba07ed9681ad5893143))
+* QuerySet methods, Read(), and List() changed parameter from Reader[Resource] to ReadOnlyTransaction ([#507](https://github.com/cccteam/ccc/issues/507)) ([20ddd61](https://github.com/cccteam/ccc/commit/20ddd61630eb9f4abf9b6ba07ed9681ad5893143))
+* reduce cruft around single and zero arg keywords in annotations ([#512](https://github.com/cccteam/ccc/issues/512)) ([000c3be](https://github.com/cccteam/ccc/commit/000c3bea1e4cbf5c6b4412a2ac9730a4b7d1dba3))
+* Remove DefautlConfig() from Resourcer interface ([#510](https://github.com/cccteam/ccc/issues/510)) ([888735b](https://github.com/cccteam/ccc/commit/888735b1b55b5d9e445a54e36917a5e1f84b4331))
+* Remove PatchSet() method, replace with Apply & Buffer directly on named patchset ([#526](https://github.com/cccteam/ccc/issues/526)) ([1844295](https://github.com/cccteam/ccc/commit/1844295026e2421bb027a5dfdde75bd24989b7ae))
+* Remove Query() method, replace with List & Read directly on named patchset ([#526](https://github.com/cccteam/ccc/issues/526)) ([1844295](https://github.com/cccteam/ccc/commit/1844295026e2421bb027a5dfdde75bd24989b7ae))
+* require annotations for resource generation ([#511](https://github.com/cccteam/ccc/issues/511)) ([a187d2e](https://github.com/cccteam/ccc/commit/a187d2ea062b919b1201499e0c158f2d23733130))
+* virtual resources redesign ([#517](https://github.com/cccteam/ccc/issues/517)) ([b843c79](https://github.com/cccteam/ccc/commit/b843c796d00ba100ff7292e14f4fc81c04283f2d))
+
 ## [0.7.2](https://github.com/cccteam/ccc/compare/resource/v0.7.1...resource/v0.7.2) (2025-10-31)
 
 
