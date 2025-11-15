@@ -54,7 +54,7 @@ func Test_LoadPackages(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			packageMap, err := LoadPackages(tt.args.packagePatterns...)
+			_, packageMap, err := LoadPackages(false, tt.args.packagePatterns...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("loadPackages() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -120,7 +120,7 @@ func Test_ParseStructs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			pkgMap, err := LoadPackages(tt.args.packagePath)
+			_, pkgMap, err := LoadPackages(false, tt.args.packagePath)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("loadPackages() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -177,7 +177,7 @@ func Test_FilterStructsByInterface(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			pkgMap, err := LoadPackages(tt.args.packagePath)
+			_, pkgMap, err := LoadPackages(false, tt.args.packagePath)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("loadPackages() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -257,7 +257,7 @@ func Test_localTypesFromStruct(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			pkgMap, err := LoadPackages(tt.args.packagePath)
+			_, pkgMap, err := LoadPackages(false, tt.args.packagePath)
 			if err != nil {
 				t.Errorf("loadPackages() error = %v", err)
 				return
