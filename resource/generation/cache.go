@@ -121,6 +121,7 @@ func (c *client) isSchemaClean() (bool, error) {
 
 	if len(fileNames) != len(cachedHashes) {
 		log.Printf("\x1b[33mNumber of schema files (%d) does not match number of cached files (%d). Invalidating cache.\x1b[39m\n", len(fileNames), len(cachedHashes))
+
 		return false, nil
 	}
 
