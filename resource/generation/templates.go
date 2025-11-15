@@ -77,8 +77,16 @@ func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.ResolvedTy
 {{ end }}
 {{ end }}
 
-func (q *{{ .Resource.Name }}Query) Query() *resource.QuerySet[{{ .Resource.Name }}] {
-	return q.qSet
+func (q *{{ .Resource.Name }}Query) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*{{ .Resource.Name }}, error) {
+	return q.qSet.Read(ctx, txn)
+}
+
+func (q *{{ .Resource.Name }}Query) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*{{ .Resource.Name }}, error] {
+	return q.qSet.List(ctx, txn)
+}
+
+func (q *{{ .Resource.Name }}Query) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*{{ .Resource.Name }}, error]] {
+	return q.qSet.BatchList(ctx, client, size)
 }
 
 func (q *{{ .Resource.Name }}Query) AddColumns(c *{{ .Resource.Name }}Columns) *{{ .Resource.Name }}Query {
@@ -525,7 +533,7 @@ import (
 		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
 		resp := response{}
-		for r, err := range res.Query().List(ctx, {{ .ReceiverName }}.ResourceClient()) {
+		for r, err := range res.List(ctx, {{ .ReceiverName }}.ResourceClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
@@ -577,7 +585,7 @@ import (
 		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id)
 	{{- end }}
 
-		row, err := res.Query().Read(ctx, {{ .ReceiverName }}.ResourceClient())
+		row, err := res.Read(ctx, {{ .ReceiverName }}.ResourceClient())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
