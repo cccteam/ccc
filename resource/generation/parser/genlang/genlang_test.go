@@ -87,7 +87,7 @@ func Test_ScanStruct(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			pkgMap, err := parser.LoadPackages(tt.args.filepath)
+			_, pkgMap, err := parser.LoadPackages(false, tt.args.filepath)
 			if err != nil {
 				t.Errorf("loadPackages() error = %v", err)
 				return
