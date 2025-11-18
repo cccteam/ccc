@@ -134,9 +134,6 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 			a2k.Times = uint32(times)
 
 		case parallelismP:
-			if len(v) > 1 {
-				return errors.Newf("expected 8bit value for key %s, found %d", k, 1<<(len(v)-1)*8)
-			}
 			parallelism, err := strconv.Atoi(string(v))
 			if err != nil {
 				return errors.Wrap(err, "strconv.Atoi()")
