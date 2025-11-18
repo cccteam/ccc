@@ -27,6 +27,10 @@ var (
 
 func (a2k *argon2Key) validate() error {
 	switch {
+	case a2k.key == nil:
+		return errors.New("found a zero length key")
+	case a2k.salt == nil:
+		return errors.New("found a zero length salt")
 	case a2k.Memory == 0:
 		return errors.New("found a zero value for Argon2 memory parameter")
 	case a2k.Times == 0:
@@ -35,6 +39,8 @@ func (a2k *argon2Key) validate() error {
 		return errors.New("found a zero value for Argon2 parallelism parameter")
 	case a2k.KeyLen == 0:
 		return errors.New("found a zero value for Argon2 key length parameter")
+	case a2k.SaltLen == 0:
+		return errors.New("found a zero value for Argon2 salt length parameter")
 	}
 
 	return nil
