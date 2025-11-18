@@ -20,29 +20,29 @@ func TestKeyHasher_Key(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			kh, err := NewKeyHasher(CustomArgon2(1*MiB, 1, 1, 8, 8))
+			kh, err := NewHasher(Argon2())
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
 
-			key, err := kh.Key(tt.plaintext)
+			hash, err := kh.Hash(tt.plaintext)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			upgrade, err := kh.Compare(key, []byte(string(tt.plaintext)+"a"))
+			upgrade, err := kh.Compare(hash, []byte(string(tt.plaintext)+"a"))
 			if err != nil {
 				t.Logf("err: %v", err)
 			}
 
 			t.Logf("key needs upgraded: %v", upgrade)
 
-			kh2, err := NewKeyHasher(CustomArgon2(1*MiB, 2, 1, 8, 8))
+			kh2, err := NewHasher(argon2WithOptions(1*1024, 2, 1, 8, 8))
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
 
-			upgrade, err = kh2.Compare(key, tt.plaintext)
+			upgrade, err = kh2.Compare(hash, tt.plaintext)
 			if err != nil {
 				t.Logf("err: %v", err)
 			}

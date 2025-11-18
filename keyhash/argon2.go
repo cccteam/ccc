@@ -165,8 +165,8 @@ type argon2Options struct {
 	SaltLen     uint32
 }
 
-// DefaultArgon2 initializes argon2 with Owasp recommended settings.
-func DefaultArgon2() Initialization {
+// Argon2 initializes argon2 with Owasp recommended settings.
+func Argon2() HashAlgorithm {
 	return func(kh *KeyHasher) error {
 		kh.argon2 = &argon2Options{
 			Memory:      7 * 1024,
@@ -180,10 +180,10 @@ func DefaultArgon2() Initialization {
 	}
 }
 
-// CustomArgon2 initializes argon2 with user defined settings.
+// argon2WithOptions initializes argon2 with user defined settings.
 // This is for specialized use and most users should use the DefaultArgon2 initializer instead.
 // The memory parameter specifies the size of the memory in KiB
-func CustomArgon2(memory, times uint32, parallelism uint8, keyLen, saltLen uint32) Initialization {
+func argon2WithOptions(memory, times uint32, parallelism uint8, keyLen, saltLen uint32) HashAlgorithm {
 	return func(kh *KeyHasher) error {
 		kh.argon2 = &argon2Options{
 			Memory:      memory,
@@ -198,11 +198,7 @@ func CustomArgon2(memory, times uint32, parallelism uint8, keyLen, saltLen uint3
 }
 
 func (a2 *argon2Options) cmpOptions(target *argon2Options) bool {
-	return a2.Memory == target.Memory &&
-		a2.Times == target.Times &&
-		a2.Parallelism == target.Parallelism &&
-		a2.KeyLen == target.KeyLen &&
-		a2.SaltLen == target.SaltLen
+	return *a2 == *target
 }
 
 func (a2 *argon2Options) key(plaintext []byte) (*argon2Key, error) {
