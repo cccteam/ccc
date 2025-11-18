@@ -25,6 +25,10 @@
       "path": "sns"
     },
     {
+      "name": "keyhash",
+      "path": "keyhash"
+    },
+    {
       "name": "lint",
       "path": "lint"
     }
@@ -36,6 +40,7 @@
       "resource": true,
       "pkg": true,
       "sns": true,
+      "keyhash": true,
       "lint": true
     }
   }

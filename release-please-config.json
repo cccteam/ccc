@@ -32,6 +32,7 @@
         "resource",
         "pkg",
         "sns",
+        "keyhash",
         "lint",
         "resourcestore",
         "resourceset",
@@ -53,6 +54,9 @@
     },
     "sns": {
       "package-name": "sns"
+    },
+    "keyhash": {
+      "package-name": "keyhash"
     },
     "lint": {
       "package-name": "lint"
