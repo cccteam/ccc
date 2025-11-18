@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/cccteam/ccc/compare/resource/v0.8.0...resource/v0.8.1) (2025-11-18)
+
+
+### Bug Fixes
+
+* Correct logic for suppressing read and list handlers on computed resources ([#527](https://github.com/cccteam/ccc/issues/527)) ([653b1b4](https://github.com/cccteam/ccc/commit/653b1b4b858b8d9eecdfb4af3bc139303e5b9ce4))
+
 ## [0.8.0](https://github.com/cccteam/ccc/compare/resource/v0.7.2...resource/v0.8.0) (2025-11-15)
 
 
