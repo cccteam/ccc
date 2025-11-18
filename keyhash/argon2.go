@@ -3,7 +3,6 @@ package keyhash
 import (
 	"bytes"
 	"encoding"
-	"encoding/base64"
 	"fmt"
 	"strconv"
 
@@ -12,6 +11,13 @@ import (
 )
 
 const argon2Kdf = "argon2ID"
+
+const (
+	argon2Memory      = "memory"
+	argon2Times       = "times"
+	argon2Parallelism = "parallelism"
+	argon2Salt        = "salt"
+)
 
 type argon2Key struct {
 	key  []byte
@@ -55,29 +61,16 @@ func (a2k *argon2Key) MarshalText() ([]byte, error) {
 		return nil, errors.Wrap(err, "Argon2Key failed validation when attempting to marshall")
 	}
 
-	encKey := make([]byte, base64.StdEncoding.EncodedLen(len(a2k.key)))
-	base64.StdEncoding.Encode(encKey, a2k.key)
-
-	encSalt := make([]byte, base64.StdEncoding.EncodedLen(len(a2k.salt)))
-	base64.StdEncoding.Encode(encSalt, a2k.salt)
-
-	b := fmt.Appendf(nil, "$memory=%s", strconv.Itoa(int(a2k.Memory)))
-	b = fmt.Appendf(b, "$times=%s", strconv.Itoa(int(a2k.Times)))
-	b = fmt.Appendf(b, "$parallelism=%s", strconv.Itoa(int(a2k.Parallelism)))
-	b = fmt.Appendf(b, "$salt=%v", string(encSalt))
-	b = fmt.Appendf(b, ".%v", string(encKey))
+	b := fmt.Appendf(nil, "$%s=%d", argon2Memory, a2k.Memory)
+	b = fmt.Appendf(b, "$%s=%d", argon2Times, a2k.Times)
+	b = fmt.Appendf(b, "$%s=%d", argon2Parallelism, a2k.Parallelism)
+	b = fmt.Appendf(b, "$%s=%s", argon2Salt, encodeBase64(a2k.salt))
+	b = fmt.Appendf(b, ".%s", encodeBase64(a2k.key))
 
 	return b, nil
 }
 
 func (a2k *argon2Key) UnmarshalText(b []byte) error {
-	const (
-		memoryP      = "memory"
-		timesP       = "times"
-		parallelismP = "parallelism"
-		saltP        = "salt"
-	)
-
 	parts := bytes.Split(b, []byte{dot})
 	if len(parts) != 2 {
 		return errors.Newf("expected to find a single %q sep in input, found %d", dot, len(parts)-1)
@@ -94,12 +87,11 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 		return errors.New("found empty key in input")
 	}
 
-	decKey := make([]byte, base64.StdEncoding.DecodedLen(len(keyPart)))
-	keyN, err := base64.StdEncoding.Decode(decKey, keyPart)
+	key, err := decodeBase64(keyPart)
 	if err != nil {
-		return errors.Wrap(err, "base64.Encoding.Decode()")
+		return err
 	}
-	a2k.key = decKey[:keyN]
+	a2k.key = key
 	a2k.KeyLen = uint32(len(a2k.key))
 
 	paramsParts := bytes.Split(paramsPart[1:], []byte{paramSep})
@@ -119,35 +111,33 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 		}
 
 		switch strK := string(k); strK {
-		case memoryP:
+		case argon2Memory:
 			memory, err := strconv.Atoi(string(v))
 			if err != nil {
 				return errors.Wrap(err, "strconv.Atoi()")
 			}
 			a2k.Memory = uint32(memory)
 
-		case timesP:
+		case argon2Times:
 			times, err := strconv.Atoi(string(v))
 			if err != nil {
 				return errors.Wrap(err, "strconv.Atoi()")
 			}
 			a2k.Times = uint32(times)
 
-		case parallelismP:
+		case argon2Parallelism:
 			parallelism, err := strconv.Atoi(string(v))
 			if err != nil {
 				return errors.Wrap(err, "strconv.Atoi()")
 			}
 			a2k.Parallelism = uint8(parallelism)
 
-		case saltP:
-			salt := v
-			decSalt := make([]byte, base64.StdEncoding.DecodedLen(len(salt)))
-			saltN, err := base64.StdEncoding.Decode(decSalt, salt)
+		case argon2Salt:
+			salt, err := decodeBase64(v)
 			if err != nil {
-				return errors.Wrap(err, "base64.Encoding.Decode()")
+				return err
 			}
-			a2k.salt = decSalt[:saltN]
+			a2k.salt = salt
 			a2k.SaltLen = uint32(len(a2k.salt))
 
 		default:

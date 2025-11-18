@@ -17,7 +17,6 @@ const (
 	paramSep   = '$'
 )
 
-
 // Initialization is used to specify a configuration for a new KeyHasher.
 type Initialization func(*KeyHasher) error
 
