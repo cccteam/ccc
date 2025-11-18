@@ -30,12 +30,21 @@ func TestKeyHasher_Key(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			t.Log(key)
-			t.Log(string(key))
-
-			upgrade, err := kh.Compare(key, tt.plaintext)
+			upgrade, err := kh.Compare(key, []byte(string(tt.plaintext)+"a"))
 			if err != nil {
-				t.Logf("matches: %v", err)
+				t.Logf("err: %v", err)
+			}
+
+			t.Logf("key needs upgraded: %v", upgrade)
+
+			kh2, err := NewKeyHasher(CustomArgon2(1*MiB, 2, 1, 8, 8))
+			if err != nil {
+				t.Fatalf("could not construct receiver type: %v", err)
+			}
+
+			upgrade, err = kh2.Compare(key, tt.plaintext)
+			if err != nil {
+				t.Logf("err: %v", err)
 			}
 
 			t.Logf("key needs upgraded: %v", upgrade)

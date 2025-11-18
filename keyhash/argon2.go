@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding"
 	"encoding/base64"
-	"encoding/binary"
 	"fmt"
+	"strconv"
 
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/crypto/argon2"
 )
+
+const argon2Kdf = "argon2ID"
 
 type argon2Key struct {
 	key  []byte
@@ -53,9 +55,9 @@ func (a2k *argon2Key) MarshalText() ([]byte, error) {
 	encSalt := make([]byte, base64.StdEncoding.EncodedLen(len(a2k.salt)))
 	base64.StdEncoding.Encode(encSalt, a2k.salt)
 
-	b := fmt.Appendf(nil, "$memory=%d", a2k.Memory)
-	b = fmt.Appendf(b, "$times=%d", a2k.Times)
-	b = fmt.Appendf(b, "$parallelism=%d", a2k.Parallelism)
+	b := fmt.Appendf(nil, "$memory=%s", strconv.Itoa(int(a2k.Memory)))
+	b = fmt.Appendf(b, "$times=%s", strconv.Itoa(int(a2k.Times)))
+	b = fmt.Appendf(b, "$parallelism=%s", strconv.Itoa(int(a2k.Parallelism)))
 	b = fmt.Appendf(b, "$salt=%v", string(encSalt))
 	b = fmt.Appendf(b, ".%v", string(encKey))
 
@@ -91,18 +93,14 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 	if err != nil {
 		return errors.Wrap(err, "base64.Encoding.Decode()")
 	}
-
-	if keyN > 1<<32 {
-		return errors.Newf("key length overflows uint32")
-	}
-	keylen := uint32(keyN)
+	a2k.key = decKey[:keyN]
+	a2k.KeyLen = uint32(len(a2k.key))
 
 	paramsParts := bytes.Split(paramsPart[1:], []byte{paramSep})
 	if len(paramsParts) != 4 {
 		return errors.Newf("expected to find a four params in input, found %d", len(paramsParts))
 	}
 
-	paramMap := make(map[string][]byte, 4)
 	for _, param := range paramsParts {
 		parts := bytes.SplitN(param, []byte{assignment}, 2)
 		if len(parts) != 2 {
@@ -114,38 +112,47 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 			return errors.Newf("found empty value for key %s", k)
 		}
 
-		if paramMap[string(k)] != nil {
-			return errors.Newf("found duplicated param in input %s", string(k))
-		}
-
 		switch strK := string(k); strK {
-		case memoryP, timesP, saltP:
-			paramMap[strK] = v
+		case memoryP:
+			memory, err := strconv.Atoi(string(v))
+			if err != nil {
+				return errors.Wrap(err, "strconv.Atoi()")
+			}
+			a2k.Memory = uint32(memory)
+
+		case timesP:
+			times, err := strconv.Atoi(string(v))
+			if err != nil {
+				return errors.Wrap(err, "strconv.Atoi()")
+			}
+			a2k.Times = uint32(times)
+
 		case parallelismP:
 			if len(v) > 1 {
 				return errors.Newf("expected 8bit value for key %s, found %d", k, 1<<(len(v)-1)*8)
 			}
-			paramMap[strK] = v
+			parallelism, err := strconv.Atoi(string(v))
+			if err != nil {
+				return errors.Wrap(err, "strconv.Atoi()")
+			}
+			a2k.Parallelism = uint8(parallelism)
+
+		case saltP:
+			salt := v
+			decSalt := make([]byte, base64.StdEncoding.DecodedLen(len(salt)))
+			saltN, err := base64.StdEncoding.Decode(decSalt, salt)
+			if err != nil {
+				return errors.Wrap(err, "base64.Encoding.Decode()")
+			}
+			a2k.salt = decSalt[:saltN]
+			a2k.SaltLen = uint32(len(a2k.salt))
+
 		default:
 			return errors.Newf("did not recognize param key %s", k)
 		}
 	}
 
-	salt := paramMap[saltP]
-	decSalt := make([]byte, base64.StdEncoding.DecodedLen(len(salt)))
-	saltN, err := base64.StdEncoding.Decode(decSalt, salt)
-	if err != nil {
-		return errors.Wrap(err, "base64.Encoding.Decode()")
-	}
-
-	a2k.key = decKey[:keyN]
-	a2k.KeyLen = keylen
-	a2k.salt = decSalt[:saltN]
-	a2k.Memory = binary.BigEndian.Uint32(paramMap[memoryP]) // TODO(bswaney): move these conversions up into the switch
-	a2k.Times = binary.BigEndian.Uint32(paramMap[timesP])
-	a2k.Parallelism = paramMap[parallelismP][0]
-
-	return nil
+	return a2k.validate()
 }
 
 type argon2Options struct {
@@ -188,7 +195,11 @@ func CustomArgon2(memory, times uint32, parallelism uint8, keyLen, saltLen uint3
 }
 
 func (a2 *argon2Options) cmpOptions(target *argon2Options) bool {
-	return false
+	return a2.Memory == target.Memory &&
+		a2.Times == target.Times &&
+		a2.Parallelism == target.Parallelism &&
+		a2.KeyLen == target.KeyLen &&
+		a2.SaltLen == target.SaltLen
 }
 
 func (a2 *argon2Options) key(plaintext []byte) (*argon2Key, error) {
