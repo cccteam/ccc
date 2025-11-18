@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding"
 	"fmt"
+	"math"
 	"strconv"
 
 	"github.com/go-playground/errors/v5"
@@ -92,7 +93,11 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 		return err
 	}
 	a2k.key = key
-	a2k.KeyLen = uint32(len(a2k.key))
+	if l := len(a2k.key); l <= math.MaxUint32 {
+		a2k.KeyLen = uint32(l)
+	} else {
+		return errors.New("key is too long")
+	}
 
 	paramsParts := bytes.Split(paramsPart[1:], []byte{paramSep})
 	if len(paramsParts) != 4 {
@@ -138,7 +143,11 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 				return err
 			}
 			a2k.salt = salt
-			a2k.SaltLen = uint32(len(a2k.salt))
+			if l := len(a2k.salt); l <= math.MaxUint32 {
+				a2k.SaltLen = uint32(l)
+			} else {
+				return errors.New("salt is too long")
+			}
 
 		default:
 			return errors.Newf("did not recognize param key %s", k)
@@ -160,11 +169,11 @@ type argon2Options struct {
 func DefaultArgon2() Initialization {
 	return func(kh *KeyHasher) error {
 		kh.argon2 = &argon2Options{
-			Memory:      7 * MiB,
+			Memory:      7 * 1024,
 			Times:       5,
 			Parallelism: 1,
-			KeyLen:      128,
-			SaltLen:     32,
+			KeyLen:      16,
+			SaltLen:     8,
 		}
 
 		return nil
@@ -173,6 +182,7 @@ func DefaultArgon2() Initialization {
 
 // CustomArgon2 initializes argon2 with user defined settings.
 // This is for specialized use and most users should use the DefaultArgon2 initializer instead.
+// The memory parameter specifies the size of the memory in KiB
 func CustomArgon2(memory, times uint32, parallelism uint8, keyLen, saltLen uint32) Initialization {
 	return func(kh *KeyHasher) error {
 		kh.argon2 = &argon2Options{

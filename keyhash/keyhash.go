@@ -8,9 +8,6 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// MiB data size constant
-const MiB = 1 << (10 * 2)
-
 const (
 	dot        = '.'
 	assignment = '='
