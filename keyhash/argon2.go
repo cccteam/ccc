@@ -112,21 +112,21 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 
 		switch strK := string(k); strK {
 		case argon2Memory:
-			memory, err := strconv.Atoi(string(v))
+			memory, err := strconv.ParseUint(string(v), 10, 32)
 			if err != nil {
 				return errors.Wrap(err, "strconv.Atoi()")
 			}
 			a2k.Memory = uint32(memory)
 
 		case argon2Times:
-			times, err := strconv.Atoi(string(v))
+			times, err := strconv.ParseUint(string(v), 10, 32)
 			if err != nil {
 				return errors.Wrap(err, "strconv.Atoi()")
 			}
 			a2k.Times = uint32(times)
 
 		case argon2Parallelism:
-			parallelism, err := strconv.Atoi(string(v))
+			parallelism, err := strconv.ParseUint(string(v), 10, 8)
 			if err != nil {
 				return errors.Wrap(err, "strconv.Atoi()")
 			}
