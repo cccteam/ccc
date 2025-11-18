@@ -342,10 +342,10 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 
 		if annotations.Struct.Has(suppressKeyword) {
 			handlerArg := annotations.Struct.Get(suppressKeyword)
-			if !strings.Contains(string(handlerArg), string(ReadHandler)) {
+			if strings.Contains(string(handlerArg), string(ReadHandler)) {
 				res.SuppressReadHandler = true
 			}
-			if !strings.Contains(string(handlerArg), string(ListHandler)) {
+			if strings.Contains(string(handlerArg), string(ListHandler)) {
 				res.SuppressListHandler = true
 			}
 		}
