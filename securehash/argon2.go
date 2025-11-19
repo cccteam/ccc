@@ -11,8 +11,6 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-const argon2Kdf = "argon2ID"
-
 type argon2Key struct {
 	key  []byte
 	salt []byte

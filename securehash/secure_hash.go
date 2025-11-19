@@ -8,12 +8,17 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+const (
+	bcryptKdf = "0"
+	argon2Kdf = "1"
+)
+
 // HashAlgorithm is used to specify a configuration for a new SecureHasher.
 type HashAlgorithm func(*SecureHasher) error
 
 // SecureHasher is used for deriving and comparing
 type SecureHasher struct {
-	// bcrypt *BcryptOptions
+	bcrypt *bcryptOptions
 	argon2 *argon2Options
 }
 
@@ -32,10 +37,24 @@ func NewSecureHasher(algo HashAlgorithm) (*SecureHasher, error) {
 func (kh *SecureHasher) Compare(hash, plaintext []byte) (bool, error) {
 	firstSep := bytes.Index(hash, []byte{sep})
 	if firstSep == 0 {
-		return false, errors.New("did not find a kdf function name prefix")
+		hash = append([]byte(bcryptKdf), hash...)
 	}
 
 	switch kdfName := string(hash[:firstSep]); kdfName {
+	case bcryptKdf:
+		k := &bcryptKey{}
+		if err := k.UnmarshalText(hash[firstSep:]); err != nil {
+			return false, errors.Wrap(err, "bcryptKey.UnmarshalText()")
+		}
+
+		if err := k.compare(plaintext); err != nil {
+			return false, err
+		}
+
+		if !k.cmpOptions(kh.bcrypt) || firstSep == 0 {
+			return true, nil
+		}
+
 	case argon2Kdf:
 		k := &argon2Key{}
 		if err := k.UnmarshalText(hash[firstSep:]); err != nil {
@@ -50,11 +69,11 @@ func (kh *SecureHasher) Compare(hash, plaintext []byte) (bool, error) {
 			return true, nil
 		}
 
-		return false, nil
-
 	default:
 		return false, errors.Newf("did not recognize kdf function name prefix %s", kdfName)
 	}
+
+	return false, nil
 }
 
 // Hash builds and returns a hashed and safe to store key based off the provided plaintext input.
@@ -71,6 +90,18 @@ func (kh *SecureHasher) Hash(plaintext []byte) ([]byte, error) {
 		}
 
 		return fmt.Append([]byte(argon2Kdf), string(bKey)), nil
+	} else if kh.bcrypt != nil {
+		key, err := kh.bcrypt.key(plaintext)
+		if err != nil {
+			return nil, err
+		}
+
+		bKey, err := key.MarshalText()
+		if err != nil {
+			return nil, err
+		}
+
+		return fmt.Append([]byte(bcryptKdf), string(bKey)), nil
 	}
 
 	return nil, errors.New("SecureHasher is not initialized")
