@@ -53,7 +53,7 @@ updates:
         patterns:
           - '*'
   - package-ecosystem: 'gomod'
-    directory: '/keyhash'
+    directory: '/securehash'
     schedule:
       interval: 'weekly'
     groups:
