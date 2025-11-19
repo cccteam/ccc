@@ -13,13 +13,6 @@ import (
 
 const argon2Kdf = "argon2ID"
 
-const (
-	argon2Memory      = "memory"
-	argon2Times       = "times"
-	argon2Parallelism = "parallelism"
-	argon2Salt        = "salt"
-)
-
 type argon2Key struct {
 	key  []byte
 	salt []byte
@@ -32,63 +25,27 @@ var (
 	_ encoding.TextUnmarshaler = &argon2Key{}
 )
 
-func (a2k *argon2Key) validate() error {
-	switch {
-	case a2k.key == nil:
-		return errors.New("found a zero length key")
-	case a2k.salt == nil:
-		return errors.New("found a zero length salt")
-	case a2k.Memory == 0:
-		return errors.New("found a zero value for Argon2 memory parameter")
-	case a2k.Times == 0:
-		return errors.New("found a zero value for Argon2 times parameter")
-	case a2k.Parallelism == 0:
-		return errors.New("found a zero value for Argon2 parallelism parameter")
-	case a2k.KeyLen == 0:
-		return errors.New("found a zero value for Argon2 key length parameter")
-	case a2k.SaltLen == 0:
-		return errors.New("found a zero value for Argon2 salt length parameter")
-	}
-
-	return nil
-}
-
 func (a2k *argon2Key) compare(plaintext []byte) bool {
 	return bytes.Equal(a2k.key, a2k.keyWithSalt(plaintext, a2k.salt))
 }
 
 func (a2k *argon2Key) MarshalText() ([]byte, error) {
-	if err := a2k.validate(); err != nil {
-		return nil, errors.Wrap(err, "Argon2Key failed validation when attempting to marshall")
-	}
-
-	b := fmt.Appendf(nil, "$%s=%d", argon2Memory, a2k.Memory)
-	b = fmt.Appendf(b, "$%s=%d", argon2Times, a2k.Times)
-	b = fmt.Appendf(b, "$%s=%d", argon2Parallelism, a2k.Parallelism)
-	b = fmt.Appendf(b, "$%s=%s", argon2Salt, encodeBase64(a2k.salt))
+	b := fmt.Appendf(nil, "$%d", a2k.Memory)
+	b = fmt.Appendf(b, "$%d", a2k.Times)
+	b = fmt.Appendf(b, "$%d", a2k.Parallelism)
+	b = fmt.Appendf(b, "$%s", encodeBase64(a2k.salt))
 	b = fmt.Appendf(b, ".%s", encodeBase64(a2k.key))
 
 	return b, nil
 }
 
 func (a2k *argon2Key) UnmarshalText(b []byte) error {
-	parts := bytes.Split(b, []byte{dot})
-	if len(parts) != 2 {
-		return errors.Newf("expected to find a single %q sep in input, found %d", dot, len(parts)-1)
+	parts, err := parse("$memory$times$parallelism$salt.hash", b)
+	if err != nil {
+		return err
 	}
 
-	paramsPart := parts[0]
-	keyPart := parts[1]
-
-	if len(paramsPart) == 0 {
-		return errors.New("found empty params in input")
-	}
-
-	if len(keyPart) == 0 {
-		return errors.New("found empty key in input")
-	}
-
-	key, err := decodeBase64(keyPart)
+	key, err := decodeBase64(parts["hash"])
 	if err != nil {
 		return err
 	}
@@ -99,62 +56,36 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 		return errors.New("key is too long")
 	}
 
-	paramsParts := bytes.Split(paramsPart[1:], []byte{sep})
-	if len(paramsParts) != 4 {
-		return errors.Newf("expected to find a four params in input, found %d", len(paramsParts))
+	memory, err := strconv.ParseUint(string(parts["memory"]), 10, 32)
+	if err != nil {
+		return errors.Wrap(err, "strconv.Atoi()")
+	}
+	a2k.Memory = uint32(memory)
+
+	times, err := strconv.ParseUint(string(parts["times"]), 10, 32)
+	if err != nil {
+		return errors.Wrap(err, "strconv.Atoi()")
+	}
+	a2k.Times = uint32(times)
+
+	parallelism, err := strconv.ParseUint(string(parts["parallelism"]), 10, 8)
+	if err != nil {
+		return errors.Wrap(err, "strconv.Atoi()")
+	}
+	a2k.Parallelism = uint8(parallelism)
+
+	salt, err := decodeBase64(parts["salt"])
+	if err != nil {
+		return err
+	}
+	a2k.salt = salt
+	if l := len(a2k.salt); l <= math.MaxUint32 {
+		a2k.SaltLen = uint32(l)
+	} else {
+		return errors.New("salt is too long")
 	}
 
-	for _, param := range paramsParts {
-		parts := bytes.SplitN(param, []byte{eql}, 2)
-		if len(parts) != 2 {
-			return errors.Newf("did not find params in \"$<param name>%s<param value>\" format", string(eql))
-		}
-
-		k, v := parts[0], parts[1]
-		if len(v) == 0 {
-			return errors.Newf("found empty value for key %s", k)
-		}
-
-		switch strK := string(k); strK {
-		case argon2Memory:
-			memory, err := strconv.ParseUint(string(v), 10, 32)
-			if err != nil {
-				return errors.Wrap(err, "strconv.Atoi()")
-			}
-			a2k.Memory = uint32(memory)
-
-		case argon2Times:
-			times, err := strconv.ParseUint(string(v), 10, 32)
-			if err != nil {
-				return errors.Wrap(err, "strconv.Atoi()")
-			}
-			a2k.Times = uint32(times)
-
-		case argon2Parallelism:
-			parallelism, err := strconv.ParseUint(string(v), 10, 8)
-			if err != nil {
-				return errors.Wrap(err, "strconv.Atoi()")
-			}
-			a2k.Parallelism = uint8(parallelism)
-
-		case argon2Salt:
-			salt, err := decodeBase64(v)
-			if err != nil {
-				return err
-			}
-			a2k.salt = salt
-			if l := len(a2k.salt); l <= math.MaxUint32 {
-				a2k.SaltLen = uint32(l)
-			} else {
-				return errors.New("salt is too long")
-			}
-
-		default:
-			return errors.Newf("did not recognize param key %s", k)
-		}
-	}
-
-	return a2k.validate()
+	return nil
 }
 
 type argon2Options struct {
