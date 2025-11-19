@@ -23,8 +23,12 @@ var (
 	_ encoding.TextUnmarshaler = &argon2Key{}
 )
 
-func (a2k *argon2Key) compare(plaintext []byte) bool {
-	return bytes.Equal(a2k.key, a2k.keyWithSalt(plaintext, a2k.salt))
+func (a2k *argon2Key) compare(plaintext []byte) error {
+	if !bytes.Equal(a2k.key, a2k.keyWithSalt(plaintext, a2k.salt)) {
+		return errors.New("plaintext does not match key")
+	}
+
+	return nil
 }
 
 func (a2k *argon2Key) MarshalText() ([]byte, error) {
@@ -97,6 +101,7 @@ type argon2Options struct {
 // Argon2 initializes argon2 with Owasp recommended settings.
 func Argon2() HashAlgorithm {
 	return func(kh *SecureHasher) error {
+		kh.kdf = argon2Kdf
 		kh.argon2 = &argon2Options{
 			Memory:      7 * 1024,
 			Times:       5,

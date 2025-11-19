@@ -30,24 +30,41 @@ func TestSecureHasher_Key(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			upgrade, err := kh.Compare(hash, []byte(string(tt.plaintext)+"a"))
+			th, err := (hash.MarshalText())
+			t.Log(string(th), err)
+
+			kh, err = NewSecureHasher(Bcrypt())
 			if err != nil {
-				t.Logf("err: %v", err)
+				t.Fatalf("could not construct receiver type: %v", err)
 			}
 
-			t.Logf("key needs upgraded: %v", upgrade)
+			hash, err = kh.Hash(tt.plaintext)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			th, err = (hash.MarshalText())
+			t.Log(string(th), err)
+
+			// upgrade, err := kh.Compare(hash, []byte(string(tt.plaintext)+"a"))
+			// if err != nil {
+			// 	t.Logf("err: %v", err)
+			// }
+
+			// t.Logf("key needs upgraded: %v", upgrade)
 
 			kh2, err := NewSecureHasher(argon2WithOptions(1*1024, 2, 1, 8, 8))
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
 
-			upgrade, err = kh2.Compare(hash, tt.plaintext)
+			upgrade, err := kh2.Compare(hash, tt.plaintext)
 			if err != nil {
 				t.Logf("err: %v", err)
 			}
 
 			t.Logf("key needs upgraded: %v", upgrade)
+			t.Fatal()
 		})
 	}
 }

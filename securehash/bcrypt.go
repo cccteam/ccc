@@ -50,6 +50,7 @@ type bcryptOptions struct {
 // Bcrypt initializes bcrypt with recommended settings.
 func Bcrypt() HashAlgorithm {
 	return func(kh *SecureHasher) error {
+		kh.kdf = bcryptKdf
 		kh.bcrypt = &bcryptOptions{Cost: 15}
 
 		return nil
