@@ -99,15 +99,15 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 		return errors.New("key is too long")
 	}
 
-	paramsParts := bytes.Split(paramsPart[1:], []byte{paramSep})
+	paramsParts := bytes.Split(paramsPart[1:], []byte{sep})
 	if len(paramsParts) != 4 {
 		return errors.Newf("expected to find a four params in input, found %d", len(paramsParts))
 	}
 
 	for _, param := range paramsParts {
-		parts := bytes.SplitN(param, []byte{assignment}, 2)
+		parts := bytes.SplitN(param, []byte{eql}, 2)
 		if len(parts) != 2 {
-			return errors.Newf("did not find params in \"$<param name>%s<param value>\" format", string(assignment))
+			return errors.Newf("did not find params in \"$<param name>%s<param value>\" format", string(eql))
 		}
 
 		k, v := parts[0], parts[1]

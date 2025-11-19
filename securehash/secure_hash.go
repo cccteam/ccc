@@ -8,12 +8,6 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-const (
-	dot        = '.'
-	assignment = '='
-	paramSep   = '$'
-)
-
 // HashAlgorithm is used to specify a configuration for a new SecureHasher.
 type HashAlgorithm func(*SecureHasher) error
 
@@ -36,7 +30,7 @@ func NewSecureHasher(algo HashAlgorithm) (*SecureHasher, error) {
 // Compare compares a key of any supported type and a plaintext secret. It returns an error if they do not match, and a boolean indicating if the
 // key needs to be upgraded(rehashed) with the current configuration.
 func (kh *SecureHasher) Compare(hash, plaintext []byte) (bool, error) {
-	firstSep := bytes.Index(hash, []byte{paramSep})
+	firstSep := bytes.Index(hash, []byte{sep})
 	if firstSep == 0 {
 		return false, errors.New("did not find a kdf function name prefix")
 	}

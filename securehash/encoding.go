@@ -6,6 +6,12 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+const (
+	dot = '.'
+	eql = '='
+	sep = '$'
+)
+
 func encodeBase64(dec []byte) []byte {
 	enc := make([]byte, base64.StdEncoding.EncodedLen(len(dec)))
 	base64.StdEncoding.Encode(enc, dec)
