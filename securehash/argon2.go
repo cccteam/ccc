@@ -33,8 +33,8 @@ func (a2k *argon2Key) MarshalText() ([]byte, error) {
 	b := fmt.Appendf(nil, "$%d", a2k.Memory)
 	b = fmt.Appendf(b, "$%d", a2k.Times)
 	b = fmt.Appendf(b, "$%d", a2k.Parallelism)
-	b = fmt.Appendf(b, "$%s", encodeBase64(a2k.salt))
-	b = fmt.Appendf(b, ".%s", encodeBase64(a2k.key))
+	b = fmt.Appendf(b, "$%s", encodeHex(a2k.salt))
+	b = fmt.Appendf(b, ".%s", encodeHex(a2k.key))
 
 	return b, nil
 }
@@ -45,7 +45,7 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 		return err
 	}
 
-	key, err := decodeBase64(parts["hash"])
+	key, err := decodeHex(parts["hash"])
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 	}
 	a2k.Parallelism = uint8(parallelism)
 
-	salt, err := decodeBase64(parts["salt"])
+	salt, err := decodeHex(parts["salt"])
 	if err != nil {
 		return err
 	}

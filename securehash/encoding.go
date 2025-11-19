@@ -1,7 +1,7 @@
 package securehash
 
 import (
-	"encoding/base64"
+	"encoding/hex"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -16,7 +16,7 @@ type token struct {
 	val []byte
 }
 
-// parse parses a hash into a map according to a template. The template must be in the form of a concatenated list of [<param-type><key>, ...].
+// parse parses a hash into a map according to a template. The template must be in the form of a concatenated list of [<separator><key>, ...].
 //
 // Example: "$mem$salt.key"
 func parse(template string, hash []byte) (map[string][]byte, error) {
@@ -78,18 +78,18 @@ func tokenize(bytes []byte) ([]token, error) {
 	return tokens, nil
 }
 
-func encodeBase64(dec []byte) []byte {
-	enc := make([]byte, base64.StdEncoding.EncodedLen(len(dec)))
-	base64.StdEncoding.Encode(enc, dec)
+func encodeHex(src []byte) []byte {
+	enc := make([]byte, hex.EncodedLen(len(src)))
+	hex.Encode(enc, src)
 
 	return enc
 }
 
-func decodeBase64(enc []byte) ([]byte, error) {
-	dec := make([]byte, base64.StdEncoding.DecodedLen(len(enc)))
-	n, err := base64.StdEncoding.Decode(dec, enc)
+func decodeHex(src []byte) ([]byte, error) {
+	dec := make([]byte, hex.DecodedLen(len(src)))
+	n, err := hex.Decode(dec, src)
 	if err != nil {
-		return nil, errors.Wrap(err, "base64.Encoding.Decode()")
+		return nil, errors.Wrap(err, "hex.Decode()")
 	}
 
 	return dec[:n], nil
