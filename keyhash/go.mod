@@ -1,4 +1,4 @@
-module github.com/cccteam/ccc/keyhash
+module github.com/cccteam/ccc/securehash
 
 go 1.25.1
 

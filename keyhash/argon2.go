@@ -1,4 +1,4 @@
-package keyhash
+package securehash
 
 import (
 	"bytes"
@@ -167,7 +167,7 @@ type argon2Options struct {
 
 // Argon2 initializes argon2 with Owasp recommended settings.
 func Argon2() HashAlgorithm {
-	return func(kh *KeyHasher) error {
+	return func(kh *SecureHasher) error {
 		kh.argon2 = &argon2Options{
 			Memory:      7 * 1024,
 			Times:       5,
@@ -184,7 +184,7 @@ func Argon2() HashAlgorithm {
 // This is for specialized use and most users should use the DefaultArgon2 initializer instead.
 // The memory parameter specifies the size of the memory in KiB
 func argon2WithOptions(memory, times uint32, parallelism uint8, keyLen, saltLen uint32) HashAlgorithm {
-	return func(kh *KeyHasher) error {
+	return func(kh *SecureHasher) error {
 		kh.argon2 = &argon2Options{
 			Memory:      memory,
 			Times:       times,

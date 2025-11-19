@@ -1,4 +1,4 @@
-package keyhash
+package securehash
 
 import (
 	"bytes"
@@ -14,18 +14,18 @@ const (
 	paramSep   = '$'
 )
 
-// HashAlgorithm is used to specify a configuration for a new KeyHasher.
-type HashAlgorithm func(*KeyHasher) error
+// HashAlgorithm is used to specify a configuration for a new SecureHasher.
+type HashAlgorithm func(*SecureHasher) error
 
-// KeyHasher is used for deriving and comparing
-type KeyHasher struct {
+// SecureHasher is used for deriving and comparing
+type SecureHasher struct {
 	// bcrypt *BcryptOptions
 	argon2 *argon2Options
 }
 
-// NewHasher takes configures a KeyHasher using the provided initialization function.
-func NewHasher(algo HashAlgorithm) (*KeyHasher, error) {
-	kh := &KeyHasher{}
+// NewSecureHasher configures a SecureHasher using the provided initialization function.
+func NewSecureHasher(algo HashAlgorithm) (*SecureHasher, error) {
+	kh := &SecureHasher{}
 	if err := algo(kh); err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func NewHasher(algo HashAlgorithm) (*KeyHasher, error) {
 
 // Compare compares a key of any supported type and a plaintext secret. It returns an error if they do not match, and a boolean indicating if the
 // key needs to be upgraded(rehashed) with the current configuration.
-func (kh *KeyHasher) Compare(hash, plaintext []byte) (bool, error) {
+func (kh *SecureHasher) Compare(hash, plaintext []byte) (bool, error) {
 	firstSep := bytes.Index(hash, []byte{paramSep})
 	if firstSep == 0 {
 		return false, errors.New("did not find a kdf function name prefix")
@@ -64,7 +64,7 @@ func (kh *KeyHasher) Compare(hash, plaintext []byte) (bool, error) {
 }
 
 // Hash builds and returns a hashed and safe to store key based off the provided plaintext input.
-func (kh *KeyHasher) Hash(plaintext []byte) ([]byte, error) {
+func (kh *SecureHasher) Hash(plaintext []byte) ([]byte, error) {
 	if kh.argon2 != nil {
 		key, err := kh.argon2.key(plaintext)
 		if err != nil {
@@ -79,7 +79,7 @@ func (kh *KeyHasher) Hash(plaintext []byte) ([]byte, error) {
 		return fmt.Append([]byte(argon2Kdf), string(bKey)), nil
 	}
 
-	return nil, errors.New("KeyHasher is not initialized")
+	return nil, errors.New("SecureHasher is not initialized")
 }
 
 func newSalt(size uint32) ([]byte, error) {

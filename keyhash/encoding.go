@@ -1,4 +1,4 @@
-package keyhash
+package securehash
 
 import (
 	"encoding/base64"

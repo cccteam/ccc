@@ -1,10 +1,10 @@
-package keyhash
+package securehash
 
 import (
 	"testing"
 )
 
-func TestKeyHasher_Key(t *testing.T) {
+func TestSecureHasher_Key(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -20,7 +20,7 @@ func TestKeyHasher_Key(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			kh, err := NewHasher(Argon2())
+			kh, err := NewSecureHasher(Argon2())
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
@@ -37,7 +37,7 @@ func TestKeyHasher_Key(t *testing.T) {
 
 			t.Logf("key needs upgraded: %v", upgrade)
 
-			kh2, err := NewHasher(argon2WithOptions(1*1024, 2, 1, 8, 8))
+			kh2, err := NewSecureHasher(argon2WithOptions(1*1024, 2, 1, 8, 8))
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
