@@ -22,7 +22,7 @@ func TestHash_MarshalText(t *testing.T) {
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 				},
 			},
-			want: []byte("0$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
+			want: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 		},
 		{
 			name: "Argon2ID",
@@ -40,7 +40,7 @@ func TestHash_MarshalText(t *testing.T) {
 					},
 				},
 			},
-			want: []byte(`1$12$8$4$6d792d73616c74.6d792d6b6579`),
+			want: []byte(`1$12$8$4$bXktc2FsdA==.bXkta2V5`),
 		},
 	}
 	for _, tt := range tests {
@@ -60,6 +60,8 @@ func TestHash_MarshalText(t *testing.T) {
 }
 
 func TestHash_UnmarshalText(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		hash    []byte
@@ -68,7 +70,7 @@ func TestHash_UnmarshalText(t *testing.T) {
 	}{
 		{
 			name: "Bcrypt",
-			hash: []byte("0$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
+			hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 			want: Hash{
 				kdf: bcryptKdf,
 				underlying: &bcryptKey{
@@ -81,7 +83,7 @@ func TestHash_UnmarshalText(t *testing.T) {
 		},
 		{
 			name: "Argon2ID",
-			hash: []byte(`1$12$8$4$6d792d73616c74.6d792d6b6579`),
+			hash: []byte(`1$12$8$4$bXktc2FsdA==.bXkta2V5`),
 			want: Hash{
 				kdf: argon2Kdf,
 				underlying: &argon2Key{

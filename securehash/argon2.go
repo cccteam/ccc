@@ -3,9 +3,9 @@ package securehash
 import (
 	"crypto/subtle"
 	"encoding"
+	"encoding/base64"
 	"fmt"
 	"math"
-	"strconv"
 
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/crypto/argon2"
@@ -33,59 +33,50 @@ func (a2k *argon2Key) compare(plaintext []byte) error {
 }
 
 func (a2k *argon2Key) MarshalText() ([]byte, error) {
-	b := fmt.Appendf(nil, "$%d", a2k.Memory)
+	b := make([]byte, 0, 28+base64.StdEncoding.EncodedLen((len(a2k.salt))+base64.StdEncoding.EncodedLen(len(a2k.key))))
+	b = fmt.Appendf(b, "$%d", a2k.Memory)
 	b = fmt.Appendf(b, "$%d", a2k.Times)
 	b = fmt.Appendf(b, "$%d", a2k.Parallelism)
-	b = fmt.Appendf(b, "$%s", encodeHex(a2k.salt))
-	b = fmt.Appendf(b, ".%s", encodeHex(a2k.key))
+	b = fmt.Appendf(b, "$%s", encodeBase64(a2k.salt))
+	b = fmt.Appendf(b, ".%s", encodeBase64(a2k.key))
 
 	return b, nil
 }
 
 func (a2k *argon2Key) UnmarshalText(b []byte) error {
-	parts, err := parse("$memory$times$parallelism$salt.hash", b)
+	var err error
+	a2k.Memory, b, err = parseUint32(sep, b)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse memory")
+	}
+
+	a2k.Times, b, err = parseUint32(sep, b)
 	if err != nil {
 		return err
 	}
 
-	key, err := decodeHex(parts["hash"])
+	a2k.Parallelism, b, err = parseUint8(sep, b)
 	if err != nil {
 		return err
 	}
-	a2k.key = key
-	if l := len(a2k.key); l <= math.MaxUint32 {
-		a2k.KeyLen = uint32(l)
-	} else {
-		return errors.New("key is too long")
-	}
-
-	memory, err := strconv.ParseUint(string(parts["memory"]), 10, 32)
-	if err != nil {
-		return errors.Wrap(err, "strconv.ParseUint()")
-	}
-	a2k.Memory = uint32(memory)
-
-	times, err := strconv.ParseUint(string(parts["times"]), 10, 32)
-	if err != nil {
-		return errors.Wrap(err, "strconv.ParseUint()")
-	}
-	a2k.Times = uint32(times)
-
-	parallelism, err := strconv.ParseUint(string(parts["parallelism"]), 10, 8)
-	if err != nil {
-		return errors.Wrap(err, "strconv.ParseUint()")
-	}
-	a2k.Parallelism = uint8(parallelism)
-
-	salt, err := decodeHex(parts["salt"])
+	a2k.salt, b, err = parseBase64(dot, b)
 	if err != nil {
 		return err
 	}
-	a2k.salt = salt
 	if l := len(a2k.salt); l <= math.MaxUint32 {
 		a2k.SaltLen = uint32(l)
 	} else {
 		return errors.New("salt is too long")
+	}
+
+	a2k.key, _, err = parseBase64(eol, b)
+	if err != nil {
+		return err
+	}
+	if l := len(a2k.key); l <= math.MaxUint32 {
+		a2k.KeyLen = uint32(l)
+	} else {
+		return errors.New("key is too long")
 	}
 
 	return nil
@@ -95,8 +86,8 @@ type argon2Options struct {
 	Memory      uint32
 	Times       uint32
 	Parallelism uint8
-	KeyLen      uint32
 	SaltLen     uint32
+	KeyLen      uint32
 }
 
 // Argon2 initializes argon2 with Owasp recommended settings.
@@ -107,8 +98,8 @@ func Argon2() HashAlgorithm {
 			Memory:      12 * 1024,
 			Times:       3,
 			Parallelism: 1,
-			KeyLen:      16,
 			SaltLen:     16,
+			KeyLen:      32,
 		}
 
 		return nil
@@ -125,8 +116,8 @@ func argon2WithOptions(memory, times uint32, parallelism uint8, keyLen, saltLen 
 			Memory:      memory,
 			Times:       times,
 			Parallelism: parallelism,
-			KeyLen:      keyLen,
 			SaltLen:     saltLen,
+			KeyLen:      keyLen,
 		}
 
 		return nil

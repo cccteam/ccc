@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	bcryptKdf = "0"
+	bcryptKdf = ""
 	argon2Kdf = "1"
 )
 
@@ -28,8 +28,8 @@ type SecureHasher struct {
 	argon2 *argon2Options
 }
 
-// NewSecureHasher configures a SecureHasher using the provided initialization function.
-func NewSecureHasher(algo HashAlgorithm) (*SecureHasher, error) {
+// New configures a SecureHasher using the provided initialization function.
+func New(algo HashAlgorithm) (*SecureHasher, error) {
 	kh := &SecureHasher{}
 	if err := algo(kh); err != nil {
 		return nil, err
@@ -72,21 +72,21 @@ func (kh *SecureHasher) Hash(plaintext []byte) (*Hash, error) {
 	h := &Hash{
 		kdf: kh.kdf,
 	}
-	if kh.argon2 != nil {
+	switch kh.kdf {
+	case argon2Kdf:
 		key, err := kh.argon2.key(plaintext)
 		if err != nil {
 			return nil, err
 		}
 		h.underlying = key
-
-	} else if kh.bcrypt != nil {
+	case bcryptKdf:
 		key, err := kh.bcrypt.key(plaintext)
 		if err != nil {
 			return nil, err
 		}
 		h.underlying = key
-	} else {
-		return nil, errors.New("SecureHasher is not initialized")
+	default:
+		panic("internal error: invalid kdf")
 	}
 
 	return h, nil

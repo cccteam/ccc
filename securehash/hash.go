@@ -54,10 +54,6 @@ func (h *Hash) UnmarshalText(hash []byte) error {
 	if firstSep == -1 {
 		return errors.Newf("invalid hash format: does not contain params")
 	}
-	if firstSep == 0 { // legacy bcrypt support
-		firstSep = len(bcryptKdf)
-		hash = append([]byte(bcryptKdf), hash...)
-	}
 
 	kdfName := string(hash[:firstSep])
 	switch kdfName {
@@ -68,7 +64,7 @@ func (h *Hash) UnmarshalText(hash []byte) error {
 		k = &argon2Key{}
 
 	default:
-		return errors.Newf("did not recognize kdf function name prefix %s", kdfName)
+		return errors.Newf("did not recognize kdf function name prefix %q", kdfName)
 	}
 
 	if err := k.UnmarshalText(hash[firstSep:]); err != nil {

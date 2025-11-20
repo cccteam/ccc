@@ -20,7 +20,7 @@ func TestSecureHasher_Key(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			kh, err := NewSecureHasher(Argon2())
+			kh, err := New(Argon2())
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
@@ -30,10 +30,10 @@ func TestSecureHasher_Key(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			th, err := (hash.MarshalText())
+			th, err := hash.MarshalText()
 			t.Log(string(th), err)
 
-			kh, err = NewSecureHasher(Bcrypt())
+			kh, err = New(Bcrypt())
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
@@ -53,7 +53,7 @@ func TestSecureHasher_Key(t *testing.T) {
 
 			// t.Logf("key needs upgraded: %v", upgrade)
 
-			kh2, err := NewSecureHasher(argon2WithOptions(1*1024, 2, 1, 8, 8))
+			kh2, err := New(argon2WithOptions(1*1024, 2, 1, 8, 8))
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
