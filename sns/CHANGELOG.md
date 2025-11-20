@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.6](https://github.com/cccteam/ccc/compare/sns/v0.2.5...sns/v0.2.6) (2025-11-20)
+
+
+### Features
+
+* Setup code workspace file to handle linting mono-repo ([#441](https://github.com/cccteam/ccc/issues/441)) ([13d81e6](https://github.com/cccteam/ccc/commit/13d81e6ce7dedf538c8e2dff5cbf030d1ef626d1))
+
+
+### Code Cleanup
+
+* Fix linter issues ([#451](https://github.com/cccteam/ccc/issues/451)) ([4b08f38](https://github.com/cccteam/ccc/commit/4b08f388927cc8919b1c90140292f0bbdf51151a))
+
 ## [0.2.5](https://github.com/cccteam/ccc/compare/sns/v0.2.4...sns/v0.2.5) (2025-06-02)
 
 
