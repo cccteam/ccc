@@ -1,8 +1,18 @@
+// Package securehash provides a secure and easy way to hash and compare secrets.
+// It supports bcrypt and argon2 as hashing algorithms and can be used to upgrade
+// hashes over time as security best practices change.
+//
+// A SecureHasher is created with a specific algorithm and its parameters. It can
+// then be used to hash new secrets or compare existing hashes with a plaintext
+// secret. When comparing, it will also indicate if the hash needs to be upgraded
+// to the current configuration.
+//
+// The Hash type represents a hashed secret and can be marshaled to and unmarshaled
+// from text for easy storage.
 package securehash
 
 import (
 	"crypto/rand"
-	"encoding"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -12,30 +22,19 @@ const (
 	argon2Kdf = "1"
 )
 
-type comparer interface {
-	compare(plaintext []byte) error
-	encoding.TextMarshaler
-	encoding.TextUnmarshaler
-}
-
-// HashAlgorithm is used to specify a configuration for a new SecureHasher.
-type HashAlgorithm func(*SecureHasher) error
-
 // SecureHasher is used for deriving and comparing
 type SecureHasher struct {
 	kdf    string
-	bcrypt *bcryptOptions
-	argon2 *argon2Options
+	bcrypt *BcryptOptions
+	argon2 *Argon2Options
 }
 
 // New configures a SecureHasher using the provided initialization function.
-func New(algo HashAlgorithm) (*SecureHasher, error) {
+func New(algo HashAlgorithm) *SecureHasher {
 	kh := &SecureHasher{}
-	if err := algo(kh); err != nil {
-		return nil, err
-	}
+	algo.apply(kh)
 
-	return kh, nil
+	return kh
 }
 
 // Compare compares a key of any supported type and a plaintext secret. It returns an error if they do not match, and a boolean indicating if the

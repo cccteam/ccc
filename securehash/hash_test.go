@@ -8,6 +8,8 @@ import (
 )
 
 func TestHash_MarshalText(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		h       *Hash
@@ -31,12 +33,12 @@ func TestHash_MarshalText(t *testing.T) {
 				underlying: &argon2Key{
 					key:  []byte("my-key"),
 					salt: []byte("my-salt"),
-					argon2Options: argon2Options{
-						Memory:      12,
-						Times:       8,
-						Parallelism: 4,
-						SaltLen:     7,
-						KeyLen:      6,
+					Argon2Options: Argon2Options{
+						memory:      12,
+						times:       8,
+						parallelism: 4,
+						saltLen:     7,
+						keyLen:      6,
 					},
 				},
 			},
@@ -75,8 +77,8 @@ func TestHash_UnmarshalText(t *testing.T) {
 				kdf: bcryptKdf,
 				underlying: &bcryptKey{
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
-					bcryptOptions: bcryptOptions{
-						Cost: 15,
+					BcryptOptions: BcryptOptions{
+						cost: 15,
 					},
 				},
 			},
@@ -89,12 +91,12 @@ func TestHash_UnmarshalText(t *testing.T) {
 				underlying: &argon2Key{
 					key:  []byte("my-key"),
 					salt: []byte("my-salt"),
-					argon2Options: argon2Options{
-						Memory:      12,
-						Times:       8,
-						Parallelism: 4,
-						SaltLen:     7,
-						KeyLen:      6,
+					Argon2Options: Argon2Options{
+						memory:      12,
+						times:       8,
+						parallelism: 4,
+						saltLen:     7,
+						keyLen:      6,
 					},
 				},
 			},

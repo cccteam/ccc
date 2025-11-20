@@ -8,16 +8,18 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-type Hash struct {
-	kdf        string
-	underlying comparer
-}
-
 var (
 	_ encoding.TextMarshaler   = &Hash{}
 	_ encoding.TextUnmarshaler = &Hash{}
 )
 
+// Hash represents a hashed secret.
+type Hash struct {
+	kdf        string
+	underlying comparer
+}
+
+// MarshalText implements encoding.TextMarshaler for storing a hashed secret.
 func (h *Hash) MarshalText() ([]byte, error) {
 	var k comparer
 
@@ -41,12 +43,13 @@ func (h *Hash) MarshalText() ([]byte, error) {
 
 	key, err := k.MarshalText()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "encoding.MarshalText()")
 	}
 
 	return fmt.Append([]byte(h.kdf), string(key)), nil
 }
 
+// UnmarshalText implements encoding.TextUnmarshaler for loading a secret from storage
 func (h *Hash) UnmarshalText(hash []byte) error {
 	var k comparer
 

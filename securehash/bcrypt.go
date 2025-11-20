@@ -7,16 +7,47 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type bcryptKey struct {
-	hash []byte
+// BcryptOptions hold options for generating a bcrypt hash
+type BcryptOptions struct {
+	cost int
+}
 
-	bcryptOptions
+// Bcrypt initializes bcrypt with recommended settings.
+func Bcrypt() *BcryptOptions {
+	return &BcryptOptions{cost: 15}
+}
+
+func (bcr *BcryptOptions) apply(kh *SecureHasher) {
+	kh.kdf = bcryptKdf
+	kh.bcrypt = bcr
+}
+
+func (bcr *BcryptOptions) cmpOptions(target *BcryptOptions) bool {
+	return *bcr == *target
+}
+
+func (bcr *BcryptOptions) key(plaintext []byte) (*bcryptKey, error) {
+	hash, err := bcrypt.GenerateFromPassword(plaintext, bcr.cost)
+	if err != nil {
+		return nil, errors.Wrap(err, "bcrypt.GenerateFromPassword()")
+	}
+
+	return &bcryptKey{
+		hash:          hash,
+		BcryptOptions: *bcr,
+	}, nil
 }
 
 var (
 	_ encoding.TextMarshaler   = &bcryptKey{}
 	_ encoding.TextUnmarshaler = &bcryptKey{}
 )
+
+type bcryptKey struct {
+	hash []byte
+
+	BcryptOptions
+}
 
 func (bk *bcryptKey) MarshalText() ([]byte, error) {
 	return bk.hash, nil
@@ -30,7 +61,7 @@ func (bk *bcryptKey) UnmarshalText(b []byte) error {
 		return errors.Wrap(err, "bcrypt.Cost()")
 	}
 
-	bk.Cost = cost
+	bk.cost = cost
 
 	return nil
 }
@@ -41,34 +72,4 @@ func (bk *bcryptKey) compare(plaintext []byte) error {
 	}
 
 	return nil
-}
-
-type bcryptOptions struct {
-	Cost int
-}
-
-// Bcrypt initializes bcrypt with recommended settings.
-func Bcrypt() HashAlgorithm {
-	return func(kh *SecureHasher) error {
-		kh.kdf = bcryptKdf
-		kh.bcrypt = &bcryptOptions{Cost: 15}
-
-		return nil
-	}
-}
-
-func (bcr *bcryptOptions) cmpOptions(target *bcryptOptions) bool {
-	return *bcr == *target
-}
-
-func (bcr *bcryptOptions) key(plaintext []byte) (*bcryptKey, error) {
-	hash, err := bcrypt.GenerateFromPassword(plaintext, bcr.Cost)
-	if err != nil {
-		return nil, errors.Wrap(err, "bcrypt.GenerateFromPassword()")
-	}
-
-	return &bcryptKey{
-		hash:          hash,
-		bcryptOptions: *bcr,
-	}, nil
 }

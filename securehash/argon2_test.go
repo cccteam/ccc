@@ -11,7 +11,7 @@ func Test_argon2Key_MarshalText(t *testing.T) {
 	type fields struct {
 		key           []byte
 		salt          []byte
-		argon2Options argon2Options
+		argon2Options Argon2Options
 	}
 	tests := []struct {
 		name    string
@@ -24,12 +24,12 @@ func Test_argon2Key_MarshalText(t *testing.T) {
 			fields: fields{
 				key:  []byte("my-key"),
 				salt: []byte("my-salt"),
-				argon2Options: argon2Options{
-					Memory:      12,
-					Times:       8,
-					Parallelism: 4,
-					SaltLen:     7,
-					KeyLen:      6,
+				argon2Options: Argon2Options{
+					memory:      12,
+					times:       8,
+					parallelism: 4,
+					saltLen:     7,
+					keyLen:      6,
 				},
 			},
 			want: []byte(`$12$8$4$bXktc2FsdA==.bXkta2V5`),
@@ -42,7 +42,7 @@ func Test_argon2Key_MarshalText(t *testing.T) {
 			a2k := &argon2Key{
 				key:           tt.fields.key,
 				salt:          tt.fields.salt,
-				argon2Options: tt.fields.argon2Options,
+				Argon2Options: tt.fields.argon2Options,
 			}
 			got, err := a2k.MarshalText()
 			if (err != nil) != tt.wantErr {
