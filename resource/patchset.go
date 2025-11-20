@@ -155,8 +155,16 @@ func (p *PatchSet[Resource]) Apply(ctx context.Context, client Client, eventSour
 	case CreatePatchType:
 		return p.applyInsert(ctx, client, eventSource...)
 	case UpdatePatchType:
+		if p.Len() == 0 {
+			return nil
+		}
+
 		return p.applyUpdate(ctx, client, eventSource...)
 	case CreateOrUpdatePatchType:
+		if p.Len() == 0 {
+			return nil
+		}
+
 		return p.applyInsertOrUpdate(ctx, client, eventSource...)
 	case DeletePatchType:
 		return p.applyDelete(ctx, client, eventSource...)
@@ -171,8 +179,16 @@ func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn ReadWriteTransactio
 	case CreatePatchType:
 		return p.bufferInsert(ctx, txn, eventSource...)
 	case UpdatePatchType:
+		if p.Len() == 0 {
+			return nil
+		}
+
 		return p.bufferUpdate(ctx, txn, eventSource...)
 	case CreateOrUpdatePatchType:
+		if p.Len() == 0 {
+			return nil
+		}
+
 		return p.bufferInsertOrUpdate(ctx, txn, eventSource...)
 	case DeletePatchType:
 		return p.bufferDelete(ctx, txn, eventSource...)
