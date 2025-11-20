@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.3](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.2...accesstypes/v0.5.3) (2025-11-20)
+
+
+### Features
+
+* Setup code workspace file to handle linting mono-repo ([#441](https://github.com/cccteam/ccc/issues/441)) ([13d81e6](https://github.com/cccteam/ccc/commit/13d81e6ce7dedf538c8e2dff5cbf030d1ef626d1))
+
+
+### Code Cleanup
+
+* Fix linter issues ([#452](https://github.com/cccteam/ccc/issues/452)) ([a07d8d7](https://github.com/cccteam/ccc/commit/a07d8d72f4772a1dbee9098647ec01da03658d00))
+
 ## [0.5.2](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.1...accesstypes/v0.5.2) (2025-04-04)
 
 
