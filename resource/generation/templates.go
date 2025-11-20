@@ -413,18 +413,10 @@ func New{{ .Resource.Name }}UpdatePatch(
 }
 
 func (p *{{ .Resource.Name }}UpdatePatch) Apply(ctx context.Context, client resource.Client, eventSource ...string) error {
-	if p.patchSet.Len() == 0 {
-		return nil
-	}
-
 	return p.patchSet.Apply(ctx, client, eventSource...)
 }
 
 func (p *{{ .Resource.Name }}UpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
-	if p.patchSet.Len() == 0 {
-		return nil
-	}
-
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
