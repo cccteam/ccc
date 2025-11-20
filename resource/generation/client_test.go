@@ -62,6 +62,163 @@ func Test_formatInterfaceTypes(t *testing.T) {
 	}
 }
 
+func Test_client_HasCustomTypesInResources(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		resources         []*resourceInfo
+		computedResources []*computedResource
+		want              bool
+	}{
+		{
+			name: "no custom types",
+			resources: []*resourceInfo{
+				{
+					Fields: []*resourceField{
+						{typescriptType: "string"},
+						{typescriptType: "number"},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "has CustomTypes in resource field",
+			resources: []*resourceInfo{
+				{
+					Fields: []*resourceField{
+						{typescriptType: "string"},
+						{typescriptType: "CustomTypes.RichText"},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "has CustomTypes in computed resource field",
+			computedResources: []*computedResource{
+				{
+					Fields: []*computedField{
+						{typescriptType: "CustomTypes.CustomDate"},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "has CustomTypes in both resource and computed resource",
+			resources: []*resourceInfo{
+				{
+					Fields: []*resourceField{
+						{typescriptType: "CustomTypes.Type1"},
+					},
+				},
+			},
+			computedResources: []*computedResource{
+				{
+					Fields: []*computedField{
+						{typescriptType: "CustomTypes.Type2"},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name:              "empty resources",
+			resources:         []*resourceInfo{},
+			computedResources: []*computedResource{},
+			want:              false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{
+				resources:         tt.resources,
+				computedResources: tt.computedResources,
+			}
+
+			got := c.HasCustomTypesInResources()
+			if got != tt.want {
+				t.Errorf("HasCustomTypesInResources() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_client_HasCustomTypesInMethods(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		rpcMethods []*rpcMethodInfo
+		want       bool
+	}{
+		{
+			name: "no custom types",
+			rpcMethods: []*rpcMethodInfo{
+				{
+					Fields: []*rpcField{
+						{typescriptType: "string"},
+						{typescriptType: "number"},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "has CustomTypes in rpc method field",
+			rpcMethods: []*rpcMethodInfo{
+				{
+					Fields: []*rpcField{
+						{typescriptType: "CustomTypes.SpecialType"},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "has CustomTypes in multiple rpc methods",
+			rpcMethods: []*rpcMethodInfo{
+				{
+					Fields: []*rpcField{
+						{typescriptType: "string"},
+					},
+				},
+				{
+					Fields: []*rpcField{
+						{typescriptType: "CustomTypes.Type1"},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name:       "empty rpc methods",
+			rpcMethods: []*rpcMethodInfo{},
+			want:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{
+				rpcMethods: tt.rpcMethods,
+			}
+
+			got := c.HasCustomTypesInMethods()
+			if got != tt.want {
+				t.Errorf("HasCustomTypesInMethods() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_client_sanitizeEnumIdentifier(t *testing.T) {
 	t.Parallel()
 
