@@ -14,20 +14,24 @@ const (
 	sep = '$'
 )
 
-func parseUint32(s rune, b []byte) (u32 uint32, remaining []byte, err error) {
+func removeLeadingSeperator(s rune, b []byte) ([]byte, error) {
 	if len(b) == 0 {
-		return 0, nil, errors.New("parseUint32: provided empty hash")
+		return nil, errors.New("provided empty hash")
 	}
 	if !bytes.HasPrefix(b, []byte("$")) {
-		return 0, nil, errors.Newf("parseUint32: initial byte must be %s, found %s", string(s), string(b[0]))
+		return nil, errors.Newf("initial byte must be %s, found %s", string(s), string(b[0]))
 	}
 	b = b[1:]
 
+	return b, nil
+}
+
+func parseUint32(s rune, b []byte) (u32 uint32, remaining []byte, err error) {
 	i := len(b)
 	if s != 0 {
-		i = bytes.Index(b, []byte(strconv.QuoteRune(s)))
+		i = bytes.IndexRune(b, s)
 		if i < 0 {
-			return 0, nil, errors.New("parseBase64: failed to find separator")
+			return 0, nil, errors.New("failed to find separator")
 		}
 	}
 
@@ -40,15 +44,11 @@ func parseUint32(s rune, b []byte) (u32 uint32, remaining []byte, err error) {
 }
 
 func parseUint8(s rune, b []byte) (u8 uint8, remaining []byte, err error) {
-	if len(b) == 0 {
-		return 0, nil, errors.New("parseUint8: provided empty hash")
-	}
-
 	i := len(b)
 	if s != 0 {
-		i = bytes.Index(b, []byte(strconv.QuoteRune(s)))
+		i = bytes.IndexRune(b, s)
 		if i < 0 {
-			return 0, nil, errors.New("parseBase64: failed to find separator")
+			return 0, nil, errors.New("failed to find separator")
 		}
 	}
 
@@ -62,14 +62,14 @@ func parseUint8(s rune, b []byte) (u8 uint8, remaining []byte, err error) {
 
 func parseBase64(s rune, b []byte) (val, remainder []byte, err error) {
 	if len(b) == 0 {
-		return nil, nil, errors.New("parseBase64: provided empty hash")
+		return nil, nil, errors.New("provided empty hash")
 	}
 
 	i := len(b)
 	if s != 0 {
-		i = bytes.Index(b, []byte(strconv.QuoteRune(s)))
+		i = bytes.IndexRune(b, s)
 		if i < 0 {
-			return nil, nil, errors.New("parseBase64: failed to find separator")
+			return nil, nil, errors.New("failed to find separator")
 		}
 	}
 
@@ -78,7 +78,11 @@ func parseBase64(s rune, b []byte) (val, remainder []byte, err error) {
 		return nil, nil, err
 	}
 
-	return salt, b[i+1:], nil
+	if s != eol {
+		i++
+	}
+
+	return salt, b[i:], nil
 }
 
 func encodeBase64(dec []byte) []byte {

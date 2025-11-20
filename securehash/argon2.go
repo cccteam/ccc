@@ -91,6 +91,11 @@ func (a2k *argon2Key) MarshalText() ([]byte, error) {
 
 func (a2k *argon2Key) UnmarshalText(b []byte) error {
 	var err error
+	b, err = removeLeadingSeperator(sep, b)
+	if err != nil {
+		return err
+	}
+
 	a2k.memory, b, err = parseUint32(sep, b)
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse memory")
@@ -98,16 +103,16 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 
 	a2k.times, b, err = parseUint32(sep, b)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to parse times")
 	}
 
 	a2k.parallelism, b, err = parseUint8(sep, b)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to parse parallelism")
 	}
 	a2k.salt, b, err = parseBase64(dot, b)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to parse salt")
 	}
 	if l := len(a2k.salt); l <= math.MaxUint32 {
 		a2k.saltLen = uint32(l)
@@ -117,7 +122,7 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 
 	a2k.key, _, err = parseBase64(eol, b)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to parse key")
 	}
 	if l := len(a2k.key); l <= math.MaxUint32 {
 		a2k.keyLen = uint32(l)

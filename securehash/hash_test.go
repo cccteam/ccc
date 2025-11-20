@@ -46,9 +46,9 @@ func TestHash_MarshalText(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := tt.h.MarshalText()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Hash.MarshalText() error = %v, wantErr %v", err, tt.wantErr)
@@ -89,8 +89,8 @@ func TestHash_UnmarshalText(t *testing.T) {
 			want: Hash{
 				kdf: argon2Kdf,
 				underlying: &argon2Key{
-					key:  []byte("my-key"),
 					salt: []byte("my-salt"),
+					key:  []byte("my-key"),
 					Argon2Options: Argon2Options{
 						memory:      12,
 						times:       8,
@@ -107,17 +107,17 @@ func TestHash_UnmarshalText(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			h := &Hash{}
 
+			h := &Hash{}
 			if err := h.UnmarshalText(tt.hash); (err != nil) != tt.wantErr {
 				t.Errorf("Hash.UnmarshalText() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
 			if diff := (cmp.Diff(tt.want.kdf, h.kdf)); diff != "" {
-				t.Errorf("kdf does not match, diff = %s", diff)
+				t.Errorf("UnmarshalText() mismatch (-want +got): kdf does not match\n%s", diff)
 			}
-			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, bcryptKey{}))); diff != "" {
-				t.Errorf("underlying object does not match, diff = %s", diff)
+			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptKey{}, BcryptOptions{}))); diff != "" {
+				t.Errorf("UnmarshalText() mismatch (-want +got): underlying object does not match\n%s", diff)
 			}
 		})
 	}
