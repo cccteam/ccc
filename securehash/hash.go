@@ -51,7 +51,11 @@ func (h *Hash) UnmarshalText(hash []byte) error {
 	var k comparer
 
 	firstSep := bytes.Index(hash, []byte{sep})
-	if firstSep == 0 {
+	if firstSep == -1 {
+		return errors.Newf("invalid hash format: does not contain params")
+	}
+	if firstSep == 0 { // legacy bcrypt support
+		firstSep = len(bcryptKdf)
 		hash = append([]byte(bcryptKdf), hash...)
 	}
 

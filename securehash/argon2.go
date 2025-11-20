@@ -1,7 +1,7 @@
 package securehash
 
 import (
-	"bytes"
+	"crypto/subtle"
 	"encoding"
 	"fmt"
 	"math"
@@ -24,7 +24,8 @@ var (
 )
 
 func (a2k *argon2Key) compare(plaintext []byte) error {
-	if !bytes.Equal(a2k.key, a2k.keyWithSalt(plaintext, a2k.salt)) {
+	key := a2k.keyWithSalt(plaintext, a2k.salt)
+	if len(key) != len(a2k.key) || subtle.ConstantTimeCompare(a2k.key, key) != 1 {
 		return errors.New("plaintext does not match key")
 	}
 
@@ -60,19 +61,19 @@ func (a2k *argon2Key) UnmarshalText(b []byte) error {
 
 	memory, err := strconv.ParseUint(string(parts["memory"]), 10, 32)
 	if err != nil {
-		return errors.Wrap(err, "strconv.Atoi()")
+		return errors.Wrap(err, "strconv.ParseUint()")
 	}
 	a2k.Memory = uint32(memory)
 
 	times, err := strconv.ParseUint(string(parts["times"]), 10, 32)
 	if err != nil {
-		return errors.Wrap(err, "strconv.Atoi()")
+		return errors.Wrap(err, "strconv.ParseUint()")
 	}
 	a2k.Times = uint32(times)
 
 	parallelism, err := strconv.ParseUint(string(parts["parallelism"]), 10, 8)
 	if err != nil {
-		return errors.Wrap(err, "strconv.Atoi()")
+		return errors.Wrap(err, "strconv.ParseUint()")
 	}
 	a2k.Parallelism = uint8(parallelism)
 
@@ -103,11 +104,11 @@ func Argon2() HashAlgorithm {
 	return func(kh *SecureHasher) error {
 		kh.kdf = argon2Kdf
 		kh.argon2 = &argon2Options{
-			Memory:      7 * 1024,
-			Times:       5,
+			Memory:      12 * 1024,
+			Times:       3,
 			Parallelism: 1,
 			KeyLen:      16,
-			SaltLen:     8,
+			SaltLen:     16,
 		}
 
 		return nil
@@ -119,6 +120,7 @@ func Argon2() HashAlgorithm {
 // The memory parameter specifies the size of the memory in KiB
 func argon2WithOptions(memory, times uint32, parallelism uint8, keyLen, saltLen uint32) HashAlgorithm {
 	return func(kh *SecureHasher) error {
+		kh.kdf = argon2Kdf
 		kh.argon2 = &argon2Options{
 			Memory:      memory,
 			Times:       times,
