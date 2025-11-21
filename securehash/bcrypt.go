@@ -17,24 +17,24 @@ func Bcrypt() *BcryptOptions {
 	return &BcryptOptions{cost: 15}
 }
 
-func (bcr *BcryptOptions) apply(kh *SecureHasher) {
+func (b *BcryptOptions) apply(kh *SecureHasher) {
 	kh.kdf = bcryptKdf
-	kh.bcrypt = bcr
+	kh.bcrypt = b
 }
 
-func (bcr *BcryptOptions) cmpOptions(target *BcryptOptions) bool {
-	return *bcr == *target
+func (b *BcryptOptions) cmpOptions(target *BcryptOptions) bool {
+	return *b == *target
 }
 
-func (bcr *BcryptOptions) key(plaintext []byte) (*bcryptKey, error) {
-	hash, err := bcrypt.GenerateFromPassword(plaintext, bcr.cost)
+func (b *BcryptOptions) key(plaintext []byte) (*bcryptKey, error) {
+	hash, err := bcrypt.GenerateFromPassword(plaintext, b.cost)
 	if err != nil {
 		return nil, errors.Wrap(err, "bcrypt.GenerateFromPassword()")
 	}
 
 	return &bcryptKey{
 		hash:          hash,
-		BcryptOptions: *bcr,
+		BcryptOptions: *b,
 	}, nil
 }
 
@@ -49,25 +49,25 @@ type bcryptKey struct {
 	BcryptOptions
 }
 
-func (bk *bcryptKey) MarshalText() ([]byte, error) {
-	return bk.hash, nil
+func (b *bcryptKey) MarshalText() ([]byte, error) {
+	return b.hash, nil
 }
 
-func (bk *bcryptKey) UnmarshalText(b []byte) error {
-	bk.hash = b
+func (b *bcryptKey) UnmarshalText(hash []byte) error {
+	b.hash = hash
 
-	cost, err := bcrypt.Cost(b)
+	cost, err := bcrypt.Cost(hash)
 	if err != nil {
 		return errors.Wrap(err, "bcrypt.Cost()")
 	}
 
-	bk.cost = cost
+	b.cost = cost
 
 	return nil
 }
 
-func (bk *bcryptKey) compare(plaintext []byte) error {
-	if err := bcrypt.CompareHashAndPassword(bk.hash, plaintext); err != nil {
+func (b *bcryptKey) compare(plaintext []byte) error {
+	if err := bcrypt.CompareHashAndPassword(b.hash, plaintext); err != nil {
 		return errors.Wrap(err, "bcrypt.CompareHashAndPassword()")
 	}
 
