@@ -79,3 +79,32 @@ func (h *Hash) UnmarshalText(hash []byte) error {
 
 	return nil
 }
+
+// DecodeSpanner implements the spanner.Decoder interface
+func (h *Hash) DecodeSpanner(val any) error {
+	var b []byte
+	switch t := val.(type) {
+	case string:
+		b = []byte(t)
+	case []byte:
+		b = t
+	default:
+		return errors.Newf("failed to parse %+v (type %T) as Hash", val, val)
+	}
+
+	if err := h.UnmarshalText(b); err != nil {
+		return errors.Wrap(err, "u.UnmarshalText()")
+	}
+
+	return nil
+}
+
+// EncodeSpanner implements the spanner.Encoder interface
+func (h Hash) EncodeSpanner() (any, error) {
+	b, err := h.MarshalText()
+	if err != nil {
+		return nil, errors.Wrap(err, "u.MarshalText()")
+	}
+
+	return b, nil
+}
