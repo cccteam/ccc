@@ -125,6 +125,7 @@ linters:
           - mnd
           - nlreturn
           - scopelint
+          - gocognit
         path: _test\.go
       - linters:
           - cyclop

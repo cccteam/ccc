@@ -10,9 +10,10 @@ import (
 //
 // BatchIter2 returns a single-use iterator, but can take in a reusable iterator.
 //
-// The inner batch iterator must be fully consumed before the next outer iterator
-// can be accessed. If the inner iterator is aborted, the outer iterator will
-// also abort.
+// The inner batch iterator must be ranged over with a range loop (or iter.Pull) before
+// the next outer iterator can be accessed. It is acceptable to break early from a range
+// loop, in which case the remaining items will be returned by the next outer iterator.
+// If the inner iterator is not propery ranged over, the outer iterator will panic.
 //
 // If the provided size is not a positive integer, the returned iterator will
 // yield a single error.
@@ -44,15 +45,19 @@ func BatchIter2[T any](iter2 iter.Seq2[T, error], size int) iter.Seq[iter.Seq2[T
 		next, stop := iter.Pull2(iter2)
 		defer stop()
 
-		var done bool
-		for !done {
-			done = true
-
+		var innerIterActive bool
+		for {
 			firstRecord, err, ok := next()
 			if !ok {
 				return
 			}
+
+			innerIterActive = true
 			if !yield(func(yield func(T, error) bool) {
+				defer func() {
+					innerIterActive = false
+				}()
+
 				if !yield(firstRecord, err) {
 					return
 				}
@@ -60,8 +65,6 @@ func BatchIter2[T any](iter2 iter.Seq2[T, error], size int) iter.Seq[iter.Seq2[T
 				count := 1
 				for {
 					if count >= size {
-						done = false
-
 						return
 					}
 					record, err, ok := next()
@@ -75,6 +78,10 @@ func BatchIter2[T any](iter2 iter.Seq2[T, error], size int) iter.Seq[iter.Seq2[T
 				}
 			}) {
 				return
+			}
+
+			if innerIterActive {
+				panic("BatchIter2(): inner iterators must be read from and properly closed out before fetching the next outer iterator")
 			}
 		}
 	}
