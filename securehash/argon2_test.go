@@ -156,7 +156,7 @@ func Test_argon2Key_UnmarshalText(t *testing.T) {
 			if !reflect.DeepEqual(got.salt, tt.wantSalt) {
 				t.Errorf("argon2Key.UnmarshalText(): salt = %v, want %v", string(got.salt), string(tt.wantSalt))
 			}
-			if diff := (cmp.Diff(tt.wantArgon2Options, got.Argon2Options, cmp.AllowUnexported(Argon2Options{}))); diff != "" {
+			if diff := cmp.Diff(tt.wantArgon2Options, got.Argon2Options, cmp.AllowUnexported(Argon2Options{})); diff != "" {
 				t.Errorf("UnmarshalText() Argon2Options mismatch (-want +got):\n%s", diff)
 			}
 		})
