@@ -39,12 +39,12 @@ func New(algo HashAlgorithm) *SecureHasher {
 
 // Compare compares a key of any supported type and a plaintext secret. It returns an error if they do not match, and a boolean indicating if the
 // key needs to be upgraded(rehashed) with the current configuration.
-func (kh *SecureHasher) Compare(hash *Hash, plaintext []byte) (bool, error) {
+func (s *SecureHasher) Compare(hash *Hash, plaintext []byte) (bool, error) {
 	if err := hash.underlying.compare(plaintext); err != nil {
 		return false, err
 	}
 
-	if kh.kdf != hash.kdf {
+	if s.kdf != hash.kdf {
 		return true, nil
 	}
 
@@ -52,13 +52,13 @@ func (kh *SecureHasher) Compare(hash *Hash, plaintext []byte) (bool, error) {
 	switch hash.kdf {
 	case bcryptKdf:
 		bk, _ := hash.underlying.(*bcryptKey)
-		if !bk.cmpOptions(kh.bcrypt) {
+		if !bk.cmpOptions(s.bcrypt) {
 			return true, nil
 		}
 
 	case argon2Kdf:
 		a2k, _ := hash.underlying.(*argon2Key)
-		if !a2k.cmpOptions(kh.argon2) {
+		if !a2k.cmpOptions(s.argon2) {
 			return true, nil
 		}
 	}
@@ -67,19 +67,19 @@ func (kh *SecureHasher) Compare(hash *Hash, plaintext []byte) (bool, error) {
 }
 
 // Hash builds and returns a hashed and safe to store key based off the provided plaintext input.
-func (kh *SecureHasher) Hash(plaintext []byte) (*Hash, error) {
+func (s *SecureHasher) Hash(plaintext []byte) (*Hash, error) {
 	h := &Hash{
-		kdf: kh.kdf,
+		kdf: s.kdf,
 	}
-	switch kh.kdf {
+	switch s.kdf {
 	case argon2Kdf:
-		key, err := kh.argon2.key(plaintext)
+		key, err := s.argon2.key(plaintext)
 		if err != nil {
 			return nil, err
 		}
 		h.underlying = key
 	case bcryptKdf:
-		key, err := kh.bcrypt.key(plaintext)
+		key, err := s.bcrypt.key(plaintext)
 		if err != nil {
 			return nil, err
 		}

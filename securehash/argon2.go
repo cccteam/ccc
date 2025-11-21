@@ -44,30 +44,30 @@ func argon2WithOptions(memory, times uint32, parallelism uint8, saltLen, keyLen 
 	}
 }
 
-func (a2 *Argon2Options) apply(kh *SecureHasher) {
+func (a *Argon2Options) apply(kh *SecureHasher) {
 	kh.kdf = argon2Kdf
-	kh.argon2 = a2
+	kh.argon2 = a
 }
 
-func (a2 *Argon2Options) cmpOptions(target *Argon2Options) bool {
-	return *a2 == *target
+func (a *Argon2Options) cmpOptions(target *Argon2Options) bool {
+	return *a == *target
 }
 
-func (a2 *Argon2Options) key(plaintext []byte) (*argon2Key, error) {
-	salt, err := newSalt(a2.saltLen)
+func (a *Argon2Options) key(plaintext []byte) (*argon2Key, error) {
+	salt, err := newSalt(a.saltLen)
 	if err != nil {
 		return nil, err
 	}
 
 	return &argon2Key{
-		key:           a2.keyWithSalt(plaintext, salt),
+		key:           a.keyWithSalt(plaintext, salt),
 		salt:          salt,
-		Argon2Options: *a2,
+		Argon2Options: *a,
 	}, nil
 }
 
-func (a2 *Argon2Options) keyWithSalt(plaintext, salt []byte) []byte {
-	return argon2.IDKey(plaintext, salt, a2.times, a2.memory, a2.parallelism, a2.keyLen)
+func (a *Argon2Options) keyWithSalt(plaintext, salt []byte) []byte {
+	return argon2.IDKey(plaintext, salt, a.times, a.memory, a.parallelism, a.keyLen)
 }
 
 var (
@@ -82,63 +82,63 @@ type argon2Key struct {
 	Argon2Options
 }
 
-func (a2k *argon2Key) compare(plaintext []byte) error {
-	key := a2k.keyWithSalt(plaintext, a2k.salt)
-	if len(key) != len(a2k.key) || subtle.ConstantTimeCompare(a2k.key, key) != 1 {
+func (a *argon2Key) compare(plaintext []byte) error {
+	key := a.keyWithSalt(plaintext, a.salt)
+	if len(key) != len(a.key) || subtle.ConstantTimeCompare(a.key, key) != 1 {
 		return errors.New("plaintext does not match key")
 	}
 
 	return nil
 }
 
-func (a2k *argon2Key) MarshalText() ([]byte, error) {
-	b := make([]byte, 0, 28+base64.StdEncoding.EncodedLen((len(a2k.salt))+base64.StdEncoding.EncodedLen(len(a2k.key))))
-	b = fmt.Appendf(b, "$%d", a2k.memory)
-	b = fmt.Appendf(b, "$%d", a2k.times)
-	b = fmt.Appendf(b, "$%d", a2k.parallelism)
-	b = fmt.Appendf(b, "$%s", encodeBase64(a2k.salt))
-	b = fmt.Appendf(b, ".%s", encodeBase64(a2k.key))
+func (a *argon2Key) MarshalText() ([]byte, error) {
+	b := make([]byte, 0, 28+base64.StdEncoding.EncodedLen((len(a.salt))+base64.StdEncoding.EncodedLen(len(a.key))))
+	b = fmt.Appendf(b, "$%d", a.memory)
+	b = fmt.Appendf(b, "$%d", a.times)
+	b = fmt.Appendf(b, "$%d", a.parallelism)
+	b = fmt.Appendf(b, "$%s", encodeBase64(a.salt))
+	b = fmt.Appendf(b, ".%s", encodeBase64(a.key))
 
 	return b, nil
 }
 
-func (a2k *argon2Key) UnmarshalText(b []byte) error {
+func (a *argon2Key) UnmarshalText(hash []byte) error {
 	var err error
-	b, err = removeLeadingSeperator(sep, b)
+	hash, err = removeLeadingSeperator(sep, hash)
 	if err != nil {
 		return err
 	}
 
-	a2k.memory, b, err = parseUint32(sep, b)
+	a.memory, hash, err = parseUint32(sep, hash)
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse memory")
 	}
 
-	a2k.times, b, err = parseUint32(sep, b)
+	a.times, hash, err = parseUint32(sep, hash)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse times")
 	}
 
-	a2k.parallelism, b, err = parseUint8(sep, b)
+	a.parallelism, hash, err = parseUint8(sep, hash)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse parallelism")
 	}
-	a2k.salt, b, err = parseBase64(dot, b)
+	a.salt, hash, err = parseBase64(dot, hash)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse salt")
 	}
-	if l := len(a2k.salt); l <= math.MaxUint32 {
-		a2k.saltLen = uint32(l)
+	if l := len(a.salt); l <= math.MaxUint32 {
+		a.saltLen = uint32(l)
 	} else {
 		return errors.New("salt is too long")
 	}
 
-	a2k.key, _, err = parseBase64(eol, b)
+	a.key, _, err = parseBase64(eol, hash)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse key")
 	}
-	if l := len(a2k.key); l <= math.MaxUint32 {
-		a2k.keyLen = uint32(l)
+	if l := len(a.key); l <= math.MaxUint32 {
+		a.keyLen = uint32(l)
 	} else {
 		return errors.New("key is too long")
 	}
