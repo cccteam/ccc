@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.16](https://github.com/cccteam/ccc/compare/v0.2.15...v0.2.16) (2025-11-21)
+
+
+### Features
+
+* key hashing for secure storage ([#523](https://github.com/cccteam/ccc/issues/523)) ([663d639](https://github.com/cccteam/ccc/commit/663d6394f790a41be7a0ebef4ae056a2d4b4eac0))
+* UpdatePatch.Apply() and UpdatePatch.Buffer() will noop for empty patches ([#530](https://github.com/cccteam/ccc/issues/530)) ([0b58c07](https://github.com/cccteam/ccc/commit/0b58c07bde4fa81a9afce47546dcbd09bb9a2db5))
+
+
+### Bug Fixes
+
+* Force panic if iterators from BatchIter2 are not used properly ([#543](https://github.com/cccteam/ccc/issues/543)) ([2002d7a](https://github.com/cccteam/ccc/commit/2002d7a81044303840874c980561995db0d0c613))
+
 ## [0.2.15](https://github.com/cccteam/ccc/compare/v0.2.14...v0.2.15) (2025-11-11)
 
 
