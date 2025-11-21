@@ -32,6 +32,7 @@
         "resource",
         "pkg",
         "sns",
+        "securehash",
         "lint",
         "resourcestore",
         "resourceset",
@@ -53,6 +54,9 @@
     },
     "sns": {
       "package-name": "sns"
+    },
+    "securehash": {
+      "package-name": "securehash"
     },
     "lint": {
       "package-name": "lint"
