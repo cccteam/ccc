@@ -18,12 +18,14 @@ func TestIter2Batch(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name    string
-		input   []input
-		batch   int
-		want    [][]int
-		wantErr bool
-		errText string
+		name        string
+		input       []input
+		batch       int
+		breakAt     int
+		want        [][]int
+		wantErr     bool
+		errText     string
+		shouldPanic bool
 	}{
 		{
 			name:  "empty input",
@@ -74,6 +76,24 @@ func TestIter2Batch(t *testing.T) {
 			want:  [][]int{{1}, {2}, {3}},
 		},
 		{
+			name: "break before end of iterator",
+			input: []input{
+				{val: 1, err: nil},
+				{val: 2, err: nil},
+				{val: 3, err: nil},
+				{val: 4, err: nil},
+				{val: 5, err: nil},
+				{val: 6, err: nil},
+				{val: 7, err: nil},
+				{val: 8, err: nil},
+				{val: 9, err: nil},
+				{val: 10, err: nil},
+			},
+			batch:   10,
+			breakAt: 3,
+			want:    [][]int{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10}},
+		},
+		{
 			name:    "zero batch size",
 			input:   nil,
 			batch:   0,
@@ -101,11 +121,37 @@ func TestIter2Batch(t *testing.T) {
 			wantErr: true,
 			errText: "stream error",
 		},
+		{
+			name: "panic when inner iterator is not used before next outer iterator is received",
+			input: []input{
+				{val: 1, err: nil},
+				{val: 2, err: nil},
+				{val: 3, err: nil},
+				{val: 4, err: nil},
+				{val: 5, err: nil},
+			},
+			batch:       5,
+			shouldPanic: true,
+			errText:     "BatchIter2(): inner iterators must be read from and properly closed out before fetching the next outer iterator",
+		},
 	}
 
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			if tt.shouldPanic {
+				defer func() {
+					r := recover()
+					if r == nil {
+						t.Errorf("The code did not panic")
+						return
+					}
+					if r != tt.errText {
+						t.Errorf("expected panic message '%s', got '%s'", tt.errText, r)
+					}
+				}()
+			}
 
 			// Create an iter.Seq2 from the input slice
 			inputIter := func(yield func(int, error) bool) {
@@ -121,16 +167,28 @@ func TestIter2Batch(t *testing.T) {
 
 			for batch := range BatchIter2(inputIter, tt.batch) {
 				var currentBatch []int
+
+				// Not ranging over the inner iterator should cause a panic
+				if tt.shouldPanic {
+					continue
+				}
 				for item, err := range batch {
 					if err != nil {
 						errs = append(errs, err)
 						continue
 					}
 					currentBatch = append(currentBatch, item)
+					if len(currentBatch) == tt.breakAt {
+						break
+					}
 				}
 				if len(currentBatch) > 0 {
 					got = append(got, currentBatch)
 				}
+			}
+
+			if tt.shouldPanic {
+				return
 			}
 
 			if tt.wantErr {
