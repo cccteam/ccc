@@ -6,5 +6,5 @@
   "resource": "0.8.1",
   "lint": "0.0.2",
   "cache": "0.1.0",
-  "securehash": "0.0.1"
+  "securehash": "0.0.2"
 }
