@@ -54,7 +54,6 @@ func (s *SecureHasher) Compare(hash *Hash, plaintext string) (bool, error) {
 		if !t.cmpOptions(s.bcrypt) {
 			return true, nil
 		}
-
 	case *argon2Key:
 		if !t.cmpOptions(s.argon2) {
 			return true, nil
