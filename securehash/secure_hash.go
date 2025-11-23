@@ -13,6 +13,7 @@ package securehash
 
 import (
 	"crypto/rand"
+	"fmt"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -48,19 +49,18 @@ func (s *SecureHasher) Compare(hash *Hash, plaintext string) (bool, error) {
 		return true, nil
 	}
 
-	// fixme(bswaney): add a method to secure hasher to remove these type asserts
-	switch hash.kdf {
-	case bcryptKdf:
-		bk, _ := hash.underlying.(*bcryptKey)
-		if !bk.cmpOptions(s.bcrypt) {
+	switch t := hash.underlying.(type) {
+	case *bcryptKey:
+		if !t.cmpOptions(s.bcrypt) {
 			return true, nil
 		}
 
-	case argon2Kdf:
-		a2k, _ := hash.underlying.(*argon2Key)
-		if !a2k.cmpOptions(s.argon2) {
+	case *argon2Key:
+		if !t.cmpOptions(s.argon2) {
 			return true, nil
 		}
+	default:
+		panic(fmt.Sprintf("internal error: invalid underlying type %T in Hash", hash.underlying))
 	}
 
 	return false, nil

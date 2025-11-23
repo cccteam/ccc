@@ -23,22 +23,13 @@ type Hash struct {
 func (h *Hash) MarshalText() ([]byte, error) {
 	var k comparer
 
-	switch h.kdf {
-	case bcryptKdf:
-		bk, ok := h.underlying.(*bcryptKey)
-		if !ok {
-			panic("mismatched kdf and underlying type")
-		}
-
-		k = bk
-
-	case argon2Kdf:
-		a2k, ok := h.underlying.(*argon2Key)
-		if !ok {
-			panic("mismatched kdf and underlying type")
-		}
-
-		k = a2k
+	switch t := h.underlying.(type) {
+	case *bcryptKey:
+		k = t
+	case *argon2Key:
+		k = t
+	default:
+		panic("mismatched kdf and underlying type")
 	}
 
 	key, err := k.MarshalText()
