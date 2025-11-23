@@ -23,7 +23,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 	}
 	type args struct {
 		hash      *Hash
-		plaintext []byte
+		plaintext string
 	}
 	tests := []struct {
 		name    string
@@ -40,7 +40,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("$2a$15$lNp5edkiKI3BoUguAhJLnu4Ge26n7SZS.F6kTGIDnjNpMOinzYSbK"),
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 			want:    false,
 			wantErr: false,
@@ -53,7 +53,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("$2a$15$lNp5edkiKI3BoUguAhJLnu4Ge26n7SZS.F6kTGIDnjNpMOinzYSbK"),
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 			want:    true,
 			wantErr: false,
@@ -66,7 +66,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("$2a$15$lNp5edkiKI3BoUguAhJLnu4Ge26n7SZS.F6kTGIDnjNpMOinzYSbK"),
-				plaintext: []byte("wrongpassword"),
+				plaintext: "wrongpassword",
 			},
 			want:    false,
 			wantErr: true,
@@ -79,7 +79,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("$2a$15$lNp5edkiKI3BoUguAhJLnu4Ge26n7SZS.F6kTGIDnjNpMOinzYSbK"),
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 			want:    true,
 			wantErr: false,
@@ -92,7 +92,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("1$12288$3$1$53ANbCHo8otMACWky7sewg==.uswWZnTgaa6IuIxTlGNOfPaoUDfU3mZIcr3MLzjawdA="),
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 			want:    false,
 			wantErr: false,
@@ -105,7 +105,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("1$12288$3$1$53ANbCHo8otMACWky7sewg==.uswWZnTgaa6IuIxTlGNOfPaoUDfU3mZIcr3MLzjawdA="),
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 			want:    true,
 			wantErr: false,
@@ -118,7 +118,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("1$12288$3$1$53ANbCHo8otMACWky7sewg==.uswWZnTgaa6IuIxTlGNOfPaoUDfU3mZIcr3MLzjawdA="),
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 			want:    true,
 			wantErr: false,
@@ -131,7 +131,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("1$12288$3$1$53ANbCHo8otMACWky7sewg==.uswWZnTgaa6IuIxTlGNOfPaoUDfU3mZIcr3MLzjawdA="),
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 			want:    true,
 			wantErr: false,
@@ -144,7 +144,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("1$12288$3$1$53ANbCHo8otMACWky7sewg==.uswWZnTgaa6IuIxTlGNOfPaoUDfU3mZIcr3MLzjawdA="),
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 			want:    true,
 			wantErr: false,
@@ -157,7 +157,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("1$12288$3$1$53ANbCHo8otMACWky7sewg==.uswWZnTgaa6IuIxTlGNOfPaoUDfU3mZIcr3MLzjawdA="),
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 			want:    true,
 			wantErr: false,
@@ -170,7 +170,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("1$12288$3$1$53ANbCHo8otMACWky7sewg==.uswWZnTgaa6IuIxTlGNOfPaoUDfU3mZIcr3MLzjawdA="),
-				plaintext: []byte("wrongpassword"),
+				plaintext: "wrongpassword",
 			},
 			want:    false,
 			wantErr: true,
@@ -183,7 +183,7 @@ func TestSecureHasher_Compare(t *testing.T) {
 			},
 			args: args{
 				hash:      newHash("1$12288$3$1$53ANbCHo8otMACWky7sewg==.uswWZnTgaa6IuIxTlGNOfPaoUDfU3mZIcr3MLzjawdA="),
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 			want:    true,
 			wantErr: false,
@@ -220,7 +220,7 @@ func TestSecureHasher_Hash(t *testing.T) {
 		argon2 *Argon2Options
 	}
 	type args struct {
-		plaintext []byte
+		plaintext string
 	}
 	tests := []struct {
 		name    string
@@ -235,7 +235,7 @@ func TestSecureHasher_Hash(t *testing.T) {
 				bcrypt: Bcrypt(),
 			},
 			args: args{
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 		},
 		{
@@ -245,7 +245,7 @@ func TestSecureHasher_Hash(t *testing.T) {
 				argon2: Argon2(),
 			},
 			args: args{
-				plaintext: []byte("password"),
+				plaintext: "password",
 			},
 		},
 	}
@@ -279,7 +279,7 @@ func TestSecureHasher_Hash(t *testing.T) {
 				}
 
 				// Check that the hash fails with an incorrect password
-				_, err = kh.Compare(got, []byte("wrongpassword"))
+				_, err = kh.Compare(got, "wrongpassword")
 				if err == nil {
 					t.Errorf("SecureHasher.Compare() with incorrect password succeeded, but should have failed")
 				}

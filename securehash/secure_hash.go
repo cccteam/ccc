@@ -39,8 +39,8 @@ func New(algo HashAlgorithm) *SecureHasher {
 
 // Compare compares a key of any supported type and a plaintext secret. It returns an error if they do not match, and a boolean indicating if the
 // key needs to be upgraded(rehashed) with the current configuration.
-func (s *SecureHasher) Compare(hash *Hash, plaintext []byte) (bool, error) {
-	if err := hash.underlying.compare(plaintext); err != nil {
+func (s *SecureHasher) Compare(hash *Hash, plaintext string) (bool, error) {
+	if err := hash.underlying.compare([]byte(plaintext)); err != nil {
 		return false, err
 	}
 
@@ -67,19 +67,19 @@ func (s *SecureHasher) Compare(hash *Hash, plaintext []byte) (bool, error) {
 }
 
 // Hash builds and returns a hashed and safe to store key based off the provided plaintext input.
-func (s *SecureHasher) Hash(plaintext []byte) (*Hash, error) {
+func (s *SecureHasher) Hash(plaintext string) (*Hash, error) {
 	h := &Hash{
 		kdf: s.kdf,
 	}
 	switch s.kdf {
 	case argon2Kdf:
-		key, err := s.argon2.key(plaintext)
+		key, err := s.argon2.key([]byte(plaintext))
 		if err != nil {
 			return nil, err
 		}
 		h.underlying = key
 	case bcryptKdf:
-		key, err := s.bcrypt.key(plaintext)
+		key, err := s.bcrypt.key([]byte(plaintext))
 		if err != nil {
 			return nil, err
 		}
