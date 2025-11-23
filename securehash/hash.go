@@ -29,7 +29,7 @@ func (h *Hash) MarshalText() ([]byte, error) {
 	case *argon2Key:
 		k = t
 	default:
-		panic("mismatched kdf and underlying type")
+		panic(fmt.Sprintf("internal error: invalid underlying type %T in Hash", h.underlying))
 	}
 
 	key, err := k.MarshalText()
