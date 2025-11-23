@@ -20,7 +20,7 @@ func TestHash_MarshalText(t *testing.T) {
 			name: "Bcrypt",
 			h: &Hash{
 				kdf: bcryptKdf,
-				underlying: &bcryptKey{
+				underlying: &bcryptHash{
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 				},
 			},
@@ -75,7 +75,7 @@ func TestHash_UnmarshalText(t *testing.T) {
 			hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 			want: Hash{
 				kdf: bcryptKdf,
-				underlying: &bcryptKey{
+				underlying: &bcryptHash{
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 					BcryptOptions: BcryptOptions{
 						cost: 15,
@@ -115,7 +115,7 @@ func TestHash_UnmarshalText(t *testing.T) {
 			if diff := (cmp.Diff(tt.want.kdf, h.kdf)); diff != "" {
 				t.Errorf("UnmarshalText() mismatch (-want +got): kdf does not match\n%s", diff)
 			}
-			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptKey{}, BcryptOptions{}))); diff != "" {
+			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptHash{}, BcryptOptions{}))); diff != "" {
 				t.Errorf("UnmarshalText() mismatch (-want +got): underlying object does not match\n%s", diff)
 			}
 		})
@@ -135,7 +135,7 @@ func TestHash_EncodeSpanner(t *testing.T) {
 			name: "Bcrypt",
 			h: &Hash{
 				kdf: bcryptKdf,
-				underlying: &bcryptKey{
+				underlying: &bcryptHash{
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 				},
 			},
@@ -190,7 +190,7 @@ func TestHash_DecodeSpanner(t *testing.T) {
 			hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 			want: Hash{
 				kdf: bcryptKdf,
-				underlying: &bcryptKey{
+				underlying: &bcryptHash{
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 					BcryptOptions: BcryptOptions{
 						cost: 15,
@@ -203,7 +203,7 @@ func TestHash_DecodeSpanner(t *testing.T) {
 			hash: "$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q",
 			want: Hash{
 				kdf: bcryptKdf,
-				underlying: &bcryptKey{
+				underlying: &bcryptHash{
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 					BcryptOptions: BcryptOptions{
 						cost: 15,
@@ -261,7 +261,7 @@ func TestHash_DecodeSpanner(t *testing.T) {
 			if diff := (cmp.Diff(tt.want.kdf, h.kdf)); diff != "" {
 				t.Errorf("DecodeSpanner() mismatch (-want +got): kdf does not match\n%s", diff)
 			}
-			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptKey{}, BcryptOptions{}))); diff != "" {
+			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptHash{}, BcryptOptions{}))); diff != "" {
 				t.Errorf("DecodeSpanner() mismatch (-want +got): underlying object does not match\n%s", diff)
 			}
 		})

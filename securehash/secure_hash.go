@@ -50,7 +50,7 @@ func (s *SecureHasher) Compare(hash *Hash, plaintext string) (bool, error) {
 	}
 
 	switch t := hash.underlying.(type) {
-	case *bcryptKey:
+	case *bcryptHash:
 		if !t.cmpOptions(s.bcrypt) {
 			return true, nil
 		}

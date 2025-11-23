@@ -24,7 +24,7 @@ func (h *Hash) MarshalText() ([]byte, error) {
 	var k comparer
 
 	switch t := h.underlying.(type) {
-	case *bcryptKey:
+	case *bcryptHash:
 		k = t
 	case *argon2Key:
 		k = t
@@ -52,7 +52,7 @@ func (h *Hash) UnmarshalText(hash []byte) error {
 	kdfName := string(hash[:firstSep])
 	switch kdfName {
 	case bcryptKdf:
-		k = &bcryptKey{}
+		k = &bcryptHash{}
 
 	case argon2Kdf:
 		k = &argon2Key{}
