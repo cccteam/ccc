@@ -25,7 +25,6 @@ const (
 
 // SecureHasher is used for deriving and comparing
 type SecureHasher struct {
-	kdf    string
 	bcrypt *BcryptOptions
 	argon2 *Argon2Options
 }
@@ -45,16 +44,18 @@ func (s *SecureHasher) Compare(hash *Hash, plaintext string) (bool, error) {
 		return false, err
 	}
 
-	if s.kdf != hash.kdf {
-		return true, nil
-	}
-
 	switch t := hash.underlying.(type) {
 	case *bcryptHash:
+		if s.bcrypt == nil {
+			return true, nil
+		}
 		if !t.cmpOptions(s.bcrypt) {
 			return true, nil
 		}
 	case *argon2Key:
+		if s.argon2 == nil {
+			return true, nil
+		}
 		if !t.cmpOptions(s.argon2) {
 			return true, nil
 		}
@@ -67,27 +68,24 @@ func (s *SecureHasher) Compare(hash *Hash, plaintext string) (bool, error) {
 
 // Hash builds and returns a hashed and safe to store key based off the provided plaintext input.
 func (s *SecureHasher) Hash(plaintext string) (*Hash, error) {
-	h := &Hash{
-		kdf: s.kdf,
-	}
-	switch s.kdf {
-	case argon2Kdf:
-		key, err := s.argon2.key([]byte(plaintext))
-		if err != nil {
-			return nil, err
-		}
-		h.underlying = key
-	case bcryptKdf:
+	switch {
+	case s.bcrypt != nil:
 		key, err := s.bcrypt.key([]byte(plaintext))
 		if err != nil {
 			return nil, err
 		}
-		h.underlying = key
-	default:
-		panic("internal error: invalid kdf")
+
+		return &Hash{underlying: key}, nil
+	case s.argon2 != nil:
+		key, err := s.argon2.key([]byte(plaintext))
+		if err != nil {
+			return nil, err
+		}
+
+		return &Hash{underlying: key}, nil
 	}
 
-	return h, nil
+	panic("internal error: invalid kdf")
 }
 
 func newSalt(size uint32) ([]byte, error) {

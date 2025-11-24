@@ -17,7 +17,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 	t.Parallel()
 
 	type fields struct {
-		kdf    string
 		bcrypt *BcryptOptions
 		argon2 *Argon2Options
 	}
@@ -35,7 +34,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "bcrypt match",
 			fields: fields{
-				kdf:    bcryptKdf,
 				bcrypt: Bcrypt(),
 			},
 			args: args{
@@ -48,7 +46,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "bcrypt match, upgrade cost",
 			fields: fields{
-				kdf:    bcryptKdf,
 				bcrypt: &BcryptOptions{cost: 10},
 			},
 			args: args{
@@ -61,7 +58,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "bcrypt no match",
 			fields: fields{
-				kdf:    bcryptKdf,
 				bcrypt: Bcrypt(),
 			},
 			args: args{
@@ -74,7 +70,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "bcrypt match, upgrade to argon2",
 			fields: fields{
-				kdf:    argon2Kdf,
 				argon2: Argon2(),
 			},
 			args: args{
@@ -87,7 +82,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "argon2 match",
 			fields: fields{
-				kdf:    argon2Kdf,
 				argon2: Argon2(),
 			},
 			args: args{
@@ -100,7 +94,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "argon2 match, upgrade memory",
 			fields: fields{
-				kdf:    argon2Kdf,
 				argon2: argon2WithOptions(13*1024, 3, 1, 16, 32),
 			},
 			args: args{
@@ -113,7 +106,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "argon2 match, upgrade times",
 			fields: fields{
-				kdf:    argon2Kdf,
 				argon2: argon2WithOptions(12*1024, 4, 1, 16, 32),
 			},
 			args: args{
@@ -126,7 +118,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "argon2 match, upgrade parallelism",
 			fields: fields{
-				kdf:    argon2Kdf,
 				argon2: argon2WithOptions(12*1024, 3, 2, 16, 32),
 			},
 			args: args{
@@ -139,7 +130,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "argon2 match, upgrade salt length",
 			fields: fields{
-				kdf:    argon2Kdf,
 				argon2: argon2WithOptions(12*1024, 3, 1, 17, 32),
 			},
 			args: args{
@@ -152,7 +142,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "argon2 match, upgrade key length",
 			fields: fields{
-				kdf:    argon2Kdf,
 				argon2: argon2WithOptions(12*1024, 3, 1, 16, 33),
 			},
 			args: args{
@@ -165,7 +154,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "argon2 no match",
 			fields: fields{
-				kdf:    argon2Kdf,
 				argon2: Argon2(),
 			},
 			args: args{
@@ -178,7 +166,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 		{
 			name: "argon2 match, upgrade to bcrypt",
 			fields: fields{
-				kdf:    bcryptKdf,
 				bcrypt: Bcrypt(),
 			},
 			args: args{
@@ -194,7 +181,6 @@ func TestSecureHasher_Compare(t *testing.T) {
 			t.Parallel()
 
 			kh := &SecureHasher{
-				kdf:    tt.fields.kdf,
 				bcrypt: tt.fields.bcrypt,
 				argon2: tt.fields.argon2,
 			}
@@ -215,7 +201,6 @@ func TestSecureHasher_Hash(t *testing.T) {
 	t.Parallel()
 
 	type fields struct {
-		kdf    string
 		bcrypt *BcryptOptions
 		argon2 *Argon2Options
 	}
@@ -231,7 +216,6 @@ func TestSecureHasher_Hash(t *testing.T) {
 		{
 			name: "bcrypt",
 			fields: fields{
-				kdf:    bcryptKdf,
 				bcrypt: Bcrypt(),
 			},
 			args: args{
@@ -241,7 +225,6 @@ func TestSecureHasher_Hash(t *testing.T) {
 		{
 			name: "argon2",
 			fields: fields{
-				kdf:    argon2Kdf,
 				argon2: Argon2(),
 			},
 			args: args{
@@ -254,7 +237,6 @@ func TestSecureHasher_Hash(t *testing.T) {
 			t.Parallel()
 
 			kh := &SecureHasher{
-				kdf:    tt.fields.kdf,
 				bcrypt: tt.fields.bcrypt,
 				argon2: tt.fields.argon2,
 			}

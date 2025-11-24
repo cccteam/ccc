@@ -44,9 +44,8 @@ func argon2WithOptions(memory, times uint32, parallelism uint8, saltLen, keyLen 
 	}
 }
 
-func (a *Argon2Options) apply(kh *SecureHasher) {
-	kh.kdf = argon2Kdf
-	kh.argon2 = a
+func (a *Argon2Options) apply(h *SecureHasher) {
+	h.argon2 = a
 }
 
 func (a *Argon2Options) cmpOptions(target *Argon2Options) bool {

@@ -17,9 +17,8 @@ func Bcrypt() *BcryptOptions {
 	return &BcryptOptions{cost: 15}
 }
 
-func (b *BcryptOptions) apply(kh *SecureHasher) {
-	kh.kdf = bcryptKdf
-	kh.bcrypt = b
+func (b *BcryptOptions) apply(h *SecureHasher) {
+	h.bcrypt = b
 }
 
 func (b *BcryptOptions) cmpOptions(target *BcryptOptions) bool {
