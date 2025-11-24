@@ -15,30 +15,23 @@ var (
 
 // Hash represents a hashed secret.
 type Hash struct {
-	kdf        string
 	underlying comparer
 }
 
 // MarshalText implements encoding.TextMarshaler for storing a hashed secret.
 func (h *Hash) MarshalText() ([]byte, error) {
 	var k comparer
+	var kdf string
 
-	switch h.kdf {
-	case bcryptKdf:
-		bk, ok := h.underlying.(*bcryptKey)
-		if !ok {
-			panic("mismatched kdf and underlying type")
-		}
-
-		k = bk
-
-	case argon2Kdf:
-		a2k, ok := h.underlying.(*argon2Key)
-		if !ok {
-			panic("mismatched kdf and underlying type")
-		}
-
-		k = a2k
+	switch t := h.underlying.(type) {
+	case *bcryptHash:
+		kdf = bcryptKdf
+		k = t
+	case *argon2Key:
+		kdf = argon2Kdf
+		k = t
+	default:
+		panic(fmt.Sprintf("internal error: invalid underlying type %T in Hash", h.underlying))
 	}
 
 	key, err := k.MarshalText()
@@ -46,7 +39,7 @@ func (h *Hash) MarshalText() ([]byte, error) {
 		return nil, errors.Wrap(err, "encoding.MarshalText()")
 	}
 
-	return fmt.Append([]byte(h.kdf), string(key)), nil
+	return fmt.Append([]byte(kdf), string(key)), nil
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler for loading a secret from storage
@@ -61,7 +54,7 @@ func (h *Hash) UnmarshalText(hash []byte) error {
 	kdfName := string(hash[:firstSep])
 	switch kdfName {
 	case bcryptKdf:
-		k = &bcryptKey{}
+		k = &bcryptHash{}
 
 	case argon2Kdf:
 		k = &argon2Key{}
@@ -74,7 +67,6 @@ func (h *Hash) UnmarshalText(hash []byte) error {
 		return errors.Wrap(err, "encoding.UnmarshalText()")
 	}
 
-	h.kdf = kdfName
 	h.underlying = k
 
 	return nil

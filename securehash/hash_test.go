@@ -19,8 +19,7 @@ func TestHash_MarshalText(t *testing.T) {
 		{
 			name: "Bcrypt",
 			h: &Hash{
-				kdf: bcryptKdf,
-				underlying: &bcryptKey{
+				underlying: &bcryptHash{
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 				},
 			},
@@ -29,7 +28,6 @@ func TestHash_MarshalText(t *testing.T) {
 		{
 			name: "Argon2ID",
 			h: &Hash{
-				kdf: argon2Kdf,
 				underlying: &argon2Key{
 					key:  []byte("my-key"),
 					salt: []byte("my-salt"),
@@ -74,8 +72,7 @@ func TestHash_UnmarshalText(t *testing.T) {
 			name: "Bcrypt",
 			hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 			want: Hash{
-				kdf: bcryptKdf,
-				underlying: &bcryptKey{
+				underlying: &bcryptHash{
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 					BcryptOptions: BcryptOptions{
 						cost: 15,
@@ -87,7 +84,6 @@ func TestHash_UnmarshalText(t *testing.T) {
 			name: "Argon2ID",
 			hash: []byte(`1$12$8$4$bXktc2FsdA==.bXkta2V5`),
 			want: Hash{
-				kdf: argon2Kdf,
 				underlying: &argon2Key{
 					salt: []byte("my-salt"),
 					key:  []byte("my-key"),
@@ -112,10 +108,7 @@ func TestHash_UnmarshalText(t *testing.T) {
 				t.Errorf("Hash.UnmarshalText() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if diff := (cmp.Diff(tt.want.kdf, h.kdf)); diff != "" {
-				t.Errorf("UnmarshalText() mismatch (-want +got): kdf does not match\n%s", diff)
-			}
-			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptKey{}, BcryptOptions{}))); diff != "" {
+			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptHash{}, BcryptOptions{}))); diff != "" {
 				t.Errorf("UnmarshalText() mismatch (-want +got): underlying object does not match\n%s", diff)
 			}
 		})
@@ -134,8 +127,7 @@ func TestHash_EncodeSpanner(t *testing.T) {
 		{
 			name: "Bcrypt",
 			h: &Hash{
-				kdf: bcryptKdf,
-				underlying: &bcryptKey{
+				underlying: &bcryptHash{
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 				},
 			},
@@ -144,7 +136,6 @@ func TestHash_EncodeSpanner(t *testing.T) {
 		{
 			name: "Argon2ID",
 			h: &Hash{
-				kdf: argon2Kdf,
 				underlying: &argon2Key{
 					key:  []byte("my-key"),
 					salt: []byte("my-salt"),
@@ -189,8 +180,7 @@ func TestHash_DecodeSpanner(t *testing.T) {
 			name: "Bcrypt",
 			hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 			want: Hash{
-				kdf: bcryptKdf,
-				underlying: &bcryptKey{
+				underlying: &bcryptHash{
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 					BcryptOptions: BcryptOptions{
 						cost: 15,
@@ -202,8 +192,7 @@ func TestHash_DecodeSpanner(t *testing.T) {
 			name: "Bcrypt string",
 			hash: "$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q",
 			want: Hash{
-				kdf: bcryptKdf,
-				underlying: &bcryptKey{
+				underlying: &bcryptHash{
 					hash: []byte("$2a$15$sJmPZT22fY8WmU5IlKvlWO7W6io2lxylIyElzH9KmfA/Nr6v/Vc4q"),
 					BcryptOptions: BcryptOptions{
 						cost: 15,
@@ -215,7 +204,6 @@ func TestHash_DecodeSpanner(t *testing.T) {
 			name: "Argon2ID",
 			hash: []byte(`1$12$8$4$bXktc2FsdA==.bXkta2V5`),
 			want: Hash{
-				kdf: argon2Kdf,
 				underlying: &argon2Key{
 					salt: []byte("my-salt"),
 					key:  []byte("my-key"),
@@ -233,7 +221,6 @@ func TestHash_DecodeSpanner(t *testing.T) {
 			name: "Argon2ID string",
 			hash: `1$12$8$4$bXktc2FsdA==.bXkta2V5`,
 			want: Hash{
-				kdf: argon2Kdf,
 				underlying: &argon2Key{
 					salt: []byte("my-salt"),
 					key:  []byte("my-key"),
@@ -258,10 +245,7 @@ func TestHash_DecodeSpanner(t *testing.T) {
 				t.Errorf("Hash.DecodeSpanner() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if diff := (cmp.Diff(tt.want.kdf, h.kdf)); diff != "" {
-				t.Errorf("DecodeSpanner() mismatch (-want +got): kdf does not match\n%s", diff)
-			}
-			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptKey{}, BcryptOptions{}))); diff != "" {
+			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptHash{}, BcryptOptions{}))); diff != "" {
 				t.Errorf("DecodeSpanner() mismatch (-want +got): underlying object does not match\n%s", diff)
 			}
 		})
