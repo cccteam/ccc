@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.3](https://github.com/cccteam/ccc/compare/securehash/v0.0.2...securehash/v0.0.3) (2025-11-24)
+
+
+### Code Cleanup
+
+* Switch plaintext from []byte to string for better user experience ([#548](https://github.com/cccteam/ccc/issues/548)) ([6d2fa95](https://github.com/cccteam/ccc/commit/6d2fa95c20ca82017850bf4757624f24abe4f371))
+
+
+### Code Upgrade
+
+* **deps:** Bump golang.org/x/crypto ([#539](https://github.com/cccteam/ccc/issues/539)) ([7b8acde](https://github.com/cccteam/ccc/commit/7b8acde55c31ff4bafccf1b92bc18a55c06ba49a))
+
 ## [0.0.2](https://github.com/cccteam/ccc/compare/securehash/v0.0.1...securehash/v0.0.2) (2025-11-21)
 
 
