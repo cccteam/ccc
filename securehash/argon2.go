@@ -48,10 +48,6 @@ func (a *Argon2Options) apply(h *SecureHasher) {
 	h.argon2 = a
 }
 
-func (a *Argon2Options) cmpOptions(target *Argon2Options) bool {
-	return *a == *target
-}
-
 func (a *Argon2Options) key(plaintext []byte) (*argon2Key, error) {
 	salt, err := newSalt(a.saltLen)
 	if err != nil {
@@ -88,6 +84,14 @@ func (a *argon2Key) compare(plaintext []byte) error {
 	}
 
 	return nil
+}
+
+func (a *argon2Key) cmpOptions(target *SecureHasher) bool {
+	if target.argon2 == nil {
+		return false
+	}
+
+	return a.Argon2Options == *target.argon2
 }
 
 func (a *argon2Key) MarshalText() ([]byte, error) {

@@ -21,10 +21,6 @@ func (b *BcryptOptions) apply(h *SecureHasher) {
 	h.bcrypt = b
 }
 
-func (b *BcryptOptions) cmpOptions(target *BcryptOptions) bool {
-	return *b == *target
-}
-
 func (b *BcryptOptions) key(plaintext []byte) (*bcryptHash, error) {
 	hash, err := bcrypt.GenerateFromPassword(plaintext, b.cost)
 	if err != nil {
@@ -71,4 +67,12 @@ func (b *bcryptHash) compare(plaintext []byte) error {
 	}
 
 	return nil
+}
+
+func (b *bcryptHash) cmpOptions(target *SecureHasher) bool {
+	if target.bcrypt == nil {
+		return false
+	}
+
+	return b.BcryptOptions == *target.bcrypt
 }

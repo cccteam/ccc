@@ -4,6 +4,7 @@ import "encoding"
 
 type comparer interface {
 	compare(plaintext []byte) error
+	cmpOptions(target *SecureHasher) bool
 	encoding.TextMarshaler
 	encoding.TextUnmarshaler
 }

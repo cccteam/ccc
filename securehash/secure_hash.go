@@ -13,7 +13,6 @@ package securehash
 
 import (
 	"crypto/rand"
-	"fmt"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -44,23 +43,8 @@ func (s *SecureHasher) Compare(hash *Hash, plaintext string) (bool, error) {
 		return false, err
 	}
 
-	switch t := hash.underlying.(type) {
-	case *bcryptHash:
-		if s.bcrypt == nil {
-			return true, nil
-		}
-		if !t.cmpOptions(s.bcrypt) {
-			return true, nil
-		}
-	case *argon2Key:
-		if s.argon2 == nil {
-			return true, nil
-		}
-		if !t.cmpOptions(s.argon2) {
-			return true, nil
-		}
-	default:
-		panic(fmt.Sprintf("internal error: invalid underlying type %T in Hash", hash.underlying))
+	if !hash.underlying.cmpOptions(s) {
+		return true, nil
 	}
 
 	return false, nil
