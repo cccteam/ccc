@@ -26,19 +26,7 @@
     ".": {
       "package-name": "ccc",
       "include-component-in-tag": false,
-      "exclude-paths": [
-        "accesstypes",
-        "cache",
-        "resource",
-        "pkg",
-        "sns",
-        "securehash",
-        "lint",
-        "resourcestore",
-        "resourceset",
-        "patchset",
-        "columnset"
-      ]
+      "exclude-paths": ["accesstypes", "cache", "resource", "pkg", "sns", "securehash", "lint"]
     },
     "accesstypes": {
       "package-name": "accesstypes"
