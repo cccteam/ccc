@@ -517,7 +517,6 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
-	"go.opentelemetry.io/otel"
 )
 
 {{ .Handlers }}`
@@ -534,7 +533,7 @@ import (
 	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}]({{ .ReceiverName }}, accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.{{ Pluralize .Resource.Name }}()")
+		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
 		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
@@ -576,7 +575,7 @@ import (
 	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, response]({{ .ReceiverName }}, accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.{{ .Resource.Name }}()")
+		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
 	{{ if .Resource.HasCompoundPrimaryKey }}
@@ -634,7 +633,7 @@ import (
 	decoder := NewDecoder[{{ .ResourcePackage }}.{{ .Resource.Name }}, request]({{ .ReceiverName }}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.Patch{{ Pluralize .Resource.Name }}()")
+		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
 		{{ if $PrimaryKeyIsGeneratedUUID }}
@@ -745,7 +744,6 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/httpio"
-	"go.opentelemetry.io/otel"
 )
 
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.HandlerFunc {
@@ -762,7 +760,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 	type response map[string][]ccc.UUID
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.PatchResources()")
+		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
 		var (
@@ -1329,7 +1327,6 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/httpio"
 	"github.com/shopspring/decimal"
-	"go.opentelemetry.io/otel"
 )
 
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.HandlerFunc {
@@ -1355,7 +1352,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 	decoder := NewRPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error { 
-		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.{{ .RPCMethod.Name }}()")
+		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
 		params, err := decoder.Decode(r)
@@ -1433,7 +1430,6 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/httpio"
 	"github.com/shopspring/decimal"
-	"go.opentelemetry.io/otel"
 )
 
 {{- if not .Resource.SuppressListHandler }}
@@ -1449,7 +1445,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 	decoder := NewQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}]({{ .ReceiverName }}, accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.{{ Pluralize .Resource.Name }}()")
+		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
 		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
@@ -1491,7 +1487,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 	decoder := NewQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, response]({{ .ReceiverName }}, accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, span := otel.Tracer(name).Start(r.Context(), "{{ .ApplicationName }}.{{ .Resource.Name }}()")
+		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
 		{{ if .Resource.HasCompoundPrimaryKey }}
