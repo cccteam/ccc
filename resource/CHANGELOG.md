@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.2](https://github.com/cccteam/ccc/compare/resource/v0.8.1...resource/v0.8.2) (2025-11-26)
+
+
+### Features
+
+* Add support for using CustomTypes in resource & method fields ([#529](https://github.com/cccteam/ccc/issues/529)) ([05f2805](https://github.com/cccteam/ccc/commit/05f280503bc6423a5857ed72e16ba523f88319da))
+
+
+### Documentation
+
+* add QuerySet.BatchList() example usage ([#544](https://github.com/cccteam/ccc/issues/544)) ([c305f2b](https://github.com/cccteam/ccc/commit/c305f2b16c99c80a927317282670f959260e4e6a))
+
+
+### Code Upgrade
+
+* Go packages ([#545](https://github.com/cccteam/ccc/issues/545)) ([e9b5eda](https://github.com/cccteam/ccc/commit/e9b5eda50c6b6b7de90dcff561d64f91889420d5))
+
 ## [0.8.1](https://github.com/cccteam/ccc/compare/resource/v0.8.0...resource/v0.8.1) (2025-11-20)
 
 
