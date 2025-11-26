@@ -8,6 +8,11 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+const (
+	bcryptVersion = ""
+	argon2Version = "1"
+)
+
 var (
 	_ encoding.TextMarshaler   = &Hash{}
 	_ encoding.TextUnmarshaler = &Hash{}
@@ -18,17 +23,29 @@ type Hash struct {
 	underlying comparer
 }
 
+// KeyType returns the underlying key type
+func (h *Hash) KeyType() string {
+	switch h.underlying.(type) {
+	case *bcryptHash:
+		return "Bcrypt"
+	case *argon2Key:
+		return "Argon2"
+	default:
+		panic(fmt.Sprintf("internal error: invalid underlying type %T in Hash", h.underlying))
+	}
+}
+
 // MarshalText implements encoding.TextMarshaler for storing a hashed secret.
 func (h *Hash) MarshalText() ([]byte, error) {
 	var k comparer
-	var kdf string
+	var hashVersion string
 
 	switch t := h.underlying.(type) {
 	case *bcryptHash:
-		kdf = bcryptKdf
+		hashVersion = bcryptVersion
 		k = t
 	case *argon2Key:
-		kdf = argon2Kdf
+		hashVersion = argon2Version
 		k = t
 	default:
 		panic(fmt.Sprintf("internal error: invalid underlying type %T in Hash", h.underlying))
@@ -39,7 +56,7 @@ func (h *Hash) MarshalText() ([]byte, error) {
 		return nil, errors.Wrap(err, "encoding.MarshalText()")
 	}
 
-	return fmt.Append([]byte(kdf), string(key)), nil
+	return fmt.Append([]byte(hashVersion), string(key)), nil
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler for loading a secret from storage
@@ -51,16 +68,16 @@ func (h *Hash) UnmarshalText(hash []byte) error {
 		return errors.Newf("invalid hash format: does not contain params")
 	}
 
-	kdfName := string(hash[:firstSep])
-	switch kdfName {
-	case bcryptKdf:
+	hashVersion := string(hash[:firstSep])
+	switch hashVersion {
+	case bcryptVersion:
 		k = &bcryptHash{}
 
-	case argon2Kdf:
+	case argon2Version:
 		k = &argon2Key{}
 
 	default:
-		return errors.Newf("did not recognize kdf function name prefix %q", kdfName)
+		return errors.Newf("did not recognize hash version prefix %q", hashVersion)
 	}
 
 	if err := k.UnmarshalText(hash[firstSep:]); err != nil {
