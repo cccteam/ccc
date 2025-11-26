@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/cccteam/ccc/compare/securehash/v0.0.3...securehash/v0.0.4) (2025-11-26)
+
+
+### Features
+
+* Add KeyType methods ([#549](https://github.com/cccteam/ccc/issues/549)) ([9cc30f2](https://github.com/cccteam/ccc/commit/9cc30f2d6418cf2f2ce91f7d533e2dafd7438656))
+
 ## [0.0.3](https://github.com/cccteam/ccc/compare/securehash/v0.0.2...securehash/v0.0.3) (2025-11-24)
 
 
