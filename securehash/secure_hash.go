@@ -17,11 +17,6 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-const (
-	bcryptKdf = ""
-	argon2Kdf = "1"
-)
-
 // SecureHasher is used for deriving and comparing
 type SecureHasher struct {
 	bcrypt *BcryptOptions
@@ -44,7 +39,7 @@ func (s *SecureHasher) KeyType() string {
 	case s.argon2 != nil:
 		return "Argon2"
 	default:
-		panic("internal error: invalid kdf")
+		panic("internal error: invalid SecureHasher configuration")
 	}
 }
 
@@ -81,7 +76,7 @@ func (s *SecureHasher) Hash(plaintext string) (*Hash, error) {
 		return &Hash{underlying: key}, nil
 	}
 
-	panic("internal error: invalid kdf")
+	panic("internal error: invalid SecureHasher configuration")
 }
 
 func newSalt(size uint32) ([]byte, error) {
