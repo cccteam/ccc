@@ -36,6 +36,18 @@ func New(algo HashAlgorithm) *SecureHasher {
 	return kh
 }
 
+// KeyType returns the underlying key type
+func (s *SecureHasher) KeyType() string {
+	switch {
+	case s.bcrypt != nil:
+		return "Bcrypt"
+	case s.argon2 != nil:
+		return "Argon2"
+	default:
+		panic("internal error: invalid kdf")
+	}
+}
+
 // Compare compares a key of any supported type and a plaintext secret. It returns an error if they do not match, and a boolean indicating if the
 // key needs to be upgraded(rehashed) with the current configuration.
 func (s *SecureHasher) Compare(hash *Hash, plaintext string) (bool, error) {

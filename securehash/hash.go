@@ -18,6 +18,18 @@ type Hash struct {
 	underlying comparer
 }
 
+// KeyType returns the underlying key type
+func (h *Hash) KeyType() string {
+	switch h.underlying.(type) {
+	case *bcryptHash:
+		return "Bcrypt"
+	case *argon2Key:
+		return "Argon2"
+	default:
+		panic(fmt.Sprintf("internal error: invalid underlying type %T in Hash", h.underlying))
+	}
+}
+
 // MarshalText implements encoding.TextMarshaler for storing a hashed secret.
 func (h *Hash) MarshalText() ([]byte, error) {
 	var k comparer
