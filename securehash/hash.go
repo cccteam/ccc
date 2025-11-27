@@ -2,6 +2,7 @@ package securehash
 
 import (
 	"bytes"
+	"database/sql/driver"
 	"encoding"
 	"fmt"
 
@@ -95,8 +96,6 @@ func (h *Hash) DecodeSpanner(val any) error {
 	switch t := val.(type) {
 	case string:
 		b = []byte(t)
-	case []byte:
-		b = t
 	default:
 		return errors.Newf("failed to parse %+v (type %T) as Hash", val, val)
 	}
@@ -115,5 +114,29 @@ func (h Hash) EncodeSpanner() (any, error) {
 		return nil, errors.Wrap(err, "u.MarshalText()")
 	}
 
-	return b, nil
+	return string(b), nil
+}
+
+// Scan implements the sql.Scanner interface.
+func (h *Hash) Scan(src any) error {
+	if src == nil {
+		return nil
+	}
+
+	switch t := src.(type) {
+	case string:
+		if err := h.UnmarshalText([]byte(t)); err != nil {
+			return errors.Wrap(err, "u.UnmarshalText()")
+		}
+
+	default:
+		return errors.Newf("failed to parse %+v (type %T) as Hash", src, src)
+	}
+
+	return nil
+}
+
+// Value implements the driver.Valuer interface.
+func (h Hash) Value() (driver.Value, error) {
+	return h.EncodeSpanner()
 }
