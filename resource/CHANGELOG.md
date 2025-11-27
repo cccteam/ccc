@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/cccteam/ccc/compare/resource/v0.8.2...resource/v0.8.3) (2025-11-27)
+
+
+### Features
+
+* Switch to ccc.StartTrace() ([#553](https://github.com/cccteam/ccc/issues/553)) ([ed9c8ef](https://github.com/cccteam/ccc/commit/ed9c8ef84e9582af35311db6a88d725e49b639f8))
+
 ## [0.8.2](https://github.com/cccteam/ccc/compare/resource/v0.8.1...resource/v0.8.2) (2025-11-26)
 
 
