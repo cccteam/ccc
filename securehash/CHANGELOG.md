@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.5](https://github.com/cccteam/ccc/compare/securehash/v0.0.4...securehash/v0.0.5) (2025-11-27)
+
+
+### Features
+
+* Add Scanner and Valuer support for PostgreSQL ([#556](https://github.com/cccteam/ccc/issues/556)) ([6b1b41d](https://github.com/cccteam/ccc/commit/6b1b41d15662954c845f32d2231d6f68ebb356db))
+
+
+### Bug Fixes
+
+* Fix bug in Spanner Decoder support ([#556](https://github.com/cccteam/ccc/issues/556)) ([6b1b41d](https://github.com/cccteam/ccc/commit/6b1b41d15662954c845f32d2231d6f68ebb356db))
+
 ## [0.0.4](https://github.com/cccteam/ccc/compare/securehash/v0.0.3...securehash/v0.0.4) (2025-11-26)
 
 
