@@ -118,7 +118,7 @@ func (h Hash) EncodeSpanner() (any, error) {
 }
 
 // Scan implements the sql.Scanner interface.
-func (h *Hash) Scan(src interface{}) error {
+func (h *Hash) Scan(src any) error {
 	if src == nil {
 		return nil
 	}
