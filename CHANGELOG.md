@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.18](https://github.com/cccteam/ccc/compare/v0.2.17...v0.2.18) (2025-12-01)
+
+
+### Features
+
+* Rename workspace to show which repo the workspace is in ([#560](https://github.com/cccteam/ccc/issues/560)) ([084065d](https://github.com/cccteam/ccc/commit/084065d25c0fbad4a84e890a9aff3650b8a9e57f))
+
 ## [0.2.17](https://github.com/cccteam/ccc/compare/v0.2.16...v0.2.17) (2025-11-26)
 
 
