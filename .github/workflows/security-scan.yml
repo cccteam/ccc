@@ -1,12 +1,15 @@
 name: Security Scan
 
 on:
+  push:
+    branches:
+      - upgrade/security-scan-and-vulns
   schedule:
     - cron: '0 14 * * *' # Daily at 8:00 AM CDT
 
 jobs:
   security_scan:
-    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@v5.17.1
+    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@9bd33146fcf411a64a107e3435850761483bc64a
     with:
       execute-trivy-scan: false
     secrets:
