@@ -9,7 +9,7 @@ on:
 
 jobs:
   security_scan:
-    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@9bd33146fcf411a64a107e3435850761483bc64a
+    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@3edba859ae1f7d910764e218fb73c5f5cd9928ad
     with:
       execute-trivy-scan: false
     secrets:
