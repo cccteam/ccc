@@ -144,6 +144,12 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 		return err
 	}
 
+	if r.genVirtualResources {
+		if err := removeGeneratedFiles(r.virtual.Dir(), prefix); err != nil {
+			return err
+		}
+	}
+
 	for _, res := range r.resources {
 		if err := r.generateResources(res); err != nil {
 			return errors.Wrap(err, "c.generateResources()")

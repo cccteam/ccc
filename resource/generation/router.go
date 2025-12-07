@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"text/template"
 	"time"
 
@@ -20,11 +21,21 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 
 	var hasConsolidatedHandlers bool
+	constResources := make([]*resourceInfo, 0, len(r.resources))
+	resources := make([]*resourceInfo, 0, len(r.resources))
 	generatedRoutesMap := make(map[string][]generatedRoute)
 	for _, res := range r.resources {
 		handlerTypes := resourceEndpoints(res)
 		if hasConsolidatedHandler(res) {
 			hasConsolidatedHandlers = true
+		}
+
+		if slices.Contains(handlerTypes, ReadHandler) {
+			constResources = append(constResources, res)
+		}
+
+		if len(handlerTypes) > 0 {
+			resources = append(resources, res)
 		}
 
 		for _, ht := range handlerTypes {
@@ -49,6 +60,8 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		}
 	}
 
+	constComputedResources := make([]*computedResource, 0, len(r.computedResources))
+	computedResources := make([]*computedResource, 0, len(r.computedResources))
 	for _, res := range r.computedResources {
 		path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
 		if !res.SuppressListHandler {
@@ -74,6 +87,10 @@ func (r *resourceGenerator) runRouteGeneration() error {
 				SharedHandler: true,
 				HandlerType:   ReadHandler,
 			})
+			constComputedResources = append(constComputedResources, res)
+		}
+		if !res.SuppressListHandler || !res.SuppressReadHandler {
+			computedResources = append(computedResources, res)
 		}
 	}
 
@@ -88,14 +105,14 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 
 	routesDestination := filepath.Join(r.router.Dir(), generatedGoFileName(routesOutputName))
-	if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, r.resources, generatedRoutesMap, hasConsolidatedHandlers); err != nil {
+	if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, resources, constResources, computedResources, constComputedResources, generatedRoutesMap, hasConsolidatedHandlers); err != nil {
 		return errors.Wrap(err, "c.writeRoutes()")
 	}
 	log.Printf("Generated routes file in %s: %s\n", time.Since(begin), routesDestination)
 
 	routerTestsDestination := filepath.Join(r.router.Dir(), generatedGoFileName(routerTestOutputName))
 	begin = time.Now()
-	if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, r.resources, generatedRoutesMap, hasConsolidatedHandlers); err != nil {
+	if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, resources, constResources, computedResources, constComputedResources, generatedRoutesMap, hasConsolidatedHandlers); err != nil {
 		return errors.Wrap(err, "c.writeRouterTests()")
 	}
 	log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
@@ -103,7 +120,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	return nil
 }
 
-func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, resources []*resourceInfo, generatedRoutes map[string][]generatedRoute, hasConsolidatedHandlers bool) error {
+func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, resources, constResources []*resourceInfo, computedResources, constComputedResources []*computedResource, generatedRoutes map[string][]generatedRoute, hasConsolidatedHandlers bool) error {
 	file, err := os.Create(destinationFile)
 	if err != nil {
 		return errors.Wrap(err, "os.Create()")
@@ -121,8 +138,10 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 		"Package":                r.router.Package(),
 		"LocalPackageImports":    r.localPackageImports(),
 		"RoutesMap":              generatedRoutes,
+		"ConstResources":         constResources,
 		"Resources":              resources,
-		"ComputedResources":      r.computedResources,
+		"ComputedResources":      computedResources,
+		"ConstComputedResources": constComputedResources,
 		"HasConsolidatedHandler": hasConsolidatedHandlers,
 		"RoutePrefix":            r.routePrefix,
 		"ConsolidatedRoute":      r.ConsolidatedRoute,

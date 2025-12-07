@@ -583,7 +583,7 @@ import (
 		{{ GoCamel $field.Name }} := httpio.Param[{{ $field.Type }}](r, router.{{ $.Resource.Name }}{{ $field.Name }})
 	{{- end }}
 	{{ else }}
-		id := httpio.Param[{{ .Resource.PrimaryKeyType }}](r, router.{{ .Resource.Name }}ID)
+		id := httpio.Param[{{ .Resource.PrimaryKeyType }}](r, router.{{ .Resource.Name }}{{ .Resource.PrimaryKey.Name }})
 	{{ end }}
 		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
 		if err != nil {
@@ -1153,18 +1153,18 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-{{ if gt (len .RoutesMap) 0 -}}
+{{ if or (gt (len .ConstResources) 0) (gt (len .ConstComputedResources) 0) -}}
 const (
-{{- range $resource := .Resources }}
+{{- range $resource := .ConstResources }}
 {{- if $resource.HasCompoundPrimaryKey }}
 	{{- range $_, $field := $resource.PrimaryKeys }}
 	{{ $resource.Name }}{{ $field.Name }} httpio.ParamType = "{{ GoCamel $resource.Name }}{{ $field.Name }}"
 	{{- end }}
 {{- else }}
-	{{ $resource.Name }}ID httpio.ParamType = "{{ GoCamel $resource.Name }}ID"
+	{{ $resource.Name }}{{ $resource.PrimaryKey.Name }} httpio.ParamType = "{{ GoCamel $resource.Name }}{{ $resource.PrimaryKey.Name }}"
 {{- end }}
 {{- end }}
-{{- range $resource := .ComputedResources }}
+{{- range $resource := .ConstComputedResources }}
 	{{- range $_, $field := $resource.PrimaryKeys }}
 	{{ $resource.Name }}{{ $field.Name }} httpio.ParamType = "{{ GoCamel $resource.Name }}{{ $field.Name }}"
 	{{- end }}
@@ -1220,16 +1220,16 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string {
-	{{- range $resource := .Resources }}
+	{{- range $resource := .ConstResources }}
 	{{- if $resource.HasCompoundPrimaryKey }}
 		{{- range $_, $field := $resource.PrimaryKeys }}
 		"{{ GoCamel $resource.Name }}{{ $field.Name }}",
 		{{- end }}
 	{{- else }}
-		"{{ GoCamel $resource.Name }}ID",
+		"{{ GoCamel $resource.Name }}{{ $resource.PrimaryKey.Name }}",
 	{{- end }}
 	{{- end }}
-	{{- range $resource := .ComputedResources }}
+	{{- range $resource := .ConstComputedResources }}
 	{{- if $resource.HasCompoundPrimaryKey }}
 		{{- range $_, $field := $resource.PrimaryKeys }}
 		"{{ GoCamel $resource.Name }}{{ $field.Name }}",
@@ -1501,7 +1501,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 		{{ GoCamel $field.Name }} := httpio.Param[{{ $field.Type }}](r, router.{{ $.Resource.Name }}{{ $field.Name }})
 		{{- end }}
 		{{ else if $field := .Resource.PrimaryKey }}
-		id := httpio.Param[{{ $field.Type }}](r, router.{{ .Resource.Name }}ID)
+		id := httpio.Param[{{ $field.Type }}](r, router.{{ .Resource.Name }}{{ .Resource.PrimaryKey.Name }})
 		{{ end }}
 
 		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
