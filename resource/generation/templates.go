@@ -1153,7 +1153,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-{{ if gt (len .RoutesMap) 0 -}}
+{{ if or (gt (len .ConstResources) 0) (gt (len .ConstComputedResources) 0) -}}
 const (
 {{- range $resource := .ConstResources }}
 {{- if $resource.HasCompoundPrimaryKey }}
