@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"text/template"
 	"time"
 
@@ -28,7 +29,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 			hasConsolidatedHandlers = true
 		}
 
-		if len(handlerTypes) > 0 {
+		if slices.Contains(handlerTypes, ReadHandler) {
 			resources = append(resources, res)
 		}
 
