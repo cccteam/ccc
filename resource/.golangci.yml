@@ -190,6 +190,10 @@ linters:
           - goconst
         path: generation/types\.go
         text: uuid|civilDate|Date
+      - linters:
+          - funlen
+        path: generation/router\.go
+        text: runRouteGeneration
     paths:
       - third_party$
       - builtin$
