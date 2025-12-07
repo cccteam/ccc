@@ -1155,7 +1155,7 @@ import (
 
 {{ if gt (len .RoutesMap) 0 -}}
 const (
-{{- range $resource := .Resources }}
+{{- range $resource := .ConstResources }}
 {{- if $resource.HasCompoundPrimaryKey }}
 	{{- range $_, $field := $resource.PrimaryKeys }}
 	{{ $resource.Name }}{{ $field.Name }} httpio.ParamType = "{{ GoCamel $resource.Name }}{{ $field.Name }}"
@@ -1164,7 +1164,7 @@ const (
 	{{ $resource.Name }}{{ $resource.PrimaryKey.Name }} httpio.ParamType = "{{ GoCamel $resource.Name }}{{ $resource.PrimaryKey.Name }}"
 {{- end }}
 {{- end }}
-{{- range $resource := .ComputedResources }}
+{{- range $resource := .ConstComputedResources }}
 	{{- range $_, $field := $resource.PrimaryKeys }}
 	{{ $resource.Name }}{{ $field.Name }} httpio.ParamType = "{{ GoCamel $resource.Name }}{{ $field.Name }}"
 	{{- end }}
@@ -1220,7 +1220,7 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string {
-	{{- range $resource := .Resources }}
+	{{- range $resource := .ConstResources }}
 	{{- if $resource.HasCompoundPrimaryKey }}
 		{{- range $_, $field := $resource.PrimaryKeys }}
 		"{{ GoCamel $resource.Name }}{{ $field.Name }}",
@@ -1229,7 +1229,7 @@ func generatedRouteParameters() []string {
 		"{{ GoCamel $resource.Name }}{{ $resource.PrimaryKey.Name }}",
 	{{- end }}
 	{{- end }}
-	{{- range $resource := .ComputedResources }}
+	{{- range $resource := .ConstComputedResources }}
 	{{- if $resource.HasCompoundPrimaryKey }}
 		{{- range $_, $field := $resource.PrimaryKeys }}
 		"{{ GoCamel $resource.Name }}{{ $field.Name }}",
