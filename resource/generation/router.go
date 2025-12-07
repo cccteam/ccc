@@ -20,11 +20,16 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 
 	var hasConsolidatedHandlers bool
+	resources := make([]*resourceInfo, 0, len(r.resources))
 	generatedRoutesMap := make(map[string][]generatedRoute)
 	for _, res := range r.resources {
 		handlerTypes := resourceEndpoints(res)
 		if hasConsolidatedHandler(res) {
 			hasConsolidatedHandlers = true
+		}
+
+		if len(handlerTypes) > 0 {
+			resources = append(resources, res)
 		}
 
 		for _, ht := range handlerTypes {
@@ -88,14 +93,14 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 
 	routesDestination := filepath.Join(r.router.Dir(), generatedGoFileName(routesOutputName))
-	if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, r.resources, generatedRoutesMap, hasConsolidatedHandlers); err != nil {
+	if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, resources, generatedRoutesMap, hasConsolidatedHandlers); err != nil {
 		return errors.Wrap(err, "c.writeRoutes()")
 	}
 	log.Printf("Generated routes file in %s: %s\n", time.Since(begin), routesDestination)
 
 	routerTestsDestination := filepath.Join(r.router.Dir(), generatedGoFileName(routerTestOutputName))
 	begin = time.Now()
-	if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, r.resources, generatedRoutesMap, hasConsolidatedHandlers); err != nil {
+	if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, resources, generatedRoutesMap, hasConsolidatedHandlers); err != nil {
 		return errors.Wrap(err, "c.writeRouterTests()")
 	}
 	log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
