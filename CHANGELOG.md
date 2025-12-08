@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.19](https://github.com/cccteam/ccc/compare/v0.2.18...v0.2.19) (2025-12-08)
+
+
+### Code Upgrade
+
+* **deps:** Bump the github-actions group with 3 updates ([#567](https://github.com/cccteam/ccc/issues/567)) ([60c02c2](https://github.com/cccteam/ccc/commit/60c02c2175faaf73ac90d181c22954deb48db2e0))
+
 ## [0.2.18](https://github.com/cccteam/ccc/compare/v0.2.17...v0.2.18) (2025-12-01)
 
 
