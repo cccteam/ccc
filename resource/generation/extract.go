@@ -215,7 +215,7 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 			Parent:             parent,
 			IsPrimaryKey:       tableColumn.IsPrimaryKey,
 			IsForeignKey:       tableColumn.IsForeignKey,
-			IsIndex:            tableColumn.IsIndex || field.HasTag("index"),
+			IsIndex:            tableColumn.IsIndex,
 			IsUniqueIndex:      tableColumn.IsUniqueIndex,
 			IsNullable:         tableColumn.IsNullable,
 			OrdinalPosition:    tableColumn.OrdinalPosition,
