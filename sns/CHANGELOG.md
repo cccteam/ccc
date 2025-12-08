@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/cccteam/ccc/compare/sns/v0.2.6...sns/v0.2.7) (2025-12-08)
+
+
+### Code Upgrade
+
+* go =&gt; 1.25.5 and dependencies ([#570](https://github.com/cccteam/ccc/issues/570)) ([8476082](https://github.com/cccteam/ccc/commit/8476082d73d3844d454962f9850aec543bff1922))
+
 ## [0.2.6](https://github.com/cccteam/ccc/compare/sns/v0.2.5...sns/v0.2.6) (2025-11-26)
 
 
