@@ -247,9 +247,10 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resource
 		}
 
 		fields = append(fields, &resourceField{
-			Field:   field,
-			Parent:  parent,
-			IsIndex: field.HasTag("index"),
+			Field:         field,
+			Parent:        parent,
+			IsIndex:       field.HasTag("index") || field.HasTag("uniqueindex"),
+			IsUniqueIndex: field.HasTag("uniqueindex"),
 		})
 	}
 
