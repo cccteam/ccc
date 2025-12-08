@@ -40,6 +40,12 @@ func (c *PostgresClient) ExecuteFunc(_ context.Context, _ func(ctx context.Conte
 	panic("ExecuteFunc() not implemented for PostgresClient")
 }
 
+// ReadOnlyTransaction returns a ReadOnlyTransaction that can be used for multiple reads from the database.
+// You must call Close() when the ReadOnlyTransaction is no longer needed to release resources on the server.
+func (c *PostgresClient) ReadOnlyTransaction() ReadOnlyTransaction {
+	panic("ReadOnlyTransaction() not implemented for PostgresClient")
+}
+
 // SpannerReadOnlyTransaction panics because it is not implemented for the PostgresClient.
 func (c *PostgresClient) SpannerReadOnlyTransaction() spxscan.Querier {
 	panic("PostgresClient.SpannerReadOnlyTransaction() should never be called.")
