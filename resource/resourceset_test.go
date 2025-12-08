@@ -192,31 +192,24 @@ func testNewSetRun[Resource Resourcer, Request any](t *testing.T, name string, p
 	})
 }
 
-type DoeInstitution struct {
-	ID                    ccc.UUID   `spanner:"Id"`
-	InstitutionExternalID string     `spanner:"InstitutionExternalId" query:"uniqueIndex,partitioned"`
-	DoeInstitutionTypeID  string     `spanner:"DoeInstitutionTypeId"  query:"linked:DoeInstitutionTypes"`
-	Name                  string     `spanner:"Name"`
-	Alias                 *string    `spanner:"Alias"`
-	Note                  *string    `spanner:"Note"`
-	AddressLine1          *string    `spanner:"AddressLine1"`
-	AddressLine2          *string    `spanner:"AddressLine2"`
-	City                  *string    `spanner:"City"`
-	StateAbbreviation     *string    `spanner:"StateAbbreviation"`
-	ZipCode               *string    `spanner:"ZipCode"`
-	ZipCodeSuffix         *string    `spanner:"ZipCodeSuffix"`
-	Active                bool       `spanner:"Active"`
-	CreatedAt             time.Time  `spanner:"CreatedAt"`
-	UpdatedAt             *time.Time `spanner:"UpdatedAt"`
+type Organization struct {
+	ID           ccc.UUID   `spanner:"Id"`
+	Name         string     `spanner:"Name"`
+	AddressLine1 *string    `spanner:"AddressLine1"`
+	AddressLine2 *string    `spanner:"AddressLine2"`
+	City         *string    `spanner:"City"`
+	State        *string    `spanner:"State"`
+	ZipCode      *string    `spanner:"ZipCode"`
+	Active       bool       `spanner:"Active"`
+	CreatedAt    time.Time  `spanner:"CreatedAt"`
+	UpdatedAt    *time.Time `spanner:"UpdatedAt"`
 }
 
-const DoeInstitutions accesstypes.Resource = "DoeInstitutions"
-
-func (DoeInstitution) Resource() accesstypes.Resource {
-	return DoeInstitutions
+func (Organization) Resource() accesstypes.Resource {
+	return "Organizations"
 }
 
-func (DoeInstitution) DefaultConfig() Config {
+func (Organization) DefaultConfig() Config {
 	return defaultConfig
 }
 
@@ -229,6 +222,6 @@ func BenchmarkNewMetadata(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = NewMetadata[DoeInstitution]()
+		_ = NewMetadata[Organization]()
 	}
 }

@@ -215,7 +215,7 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 			Parent:             parent,
 			IsPrimaryKey:       tableColumn.IsPrimaryKey,
 			IsForeignKey:       tableColumn.IsForeignKey,
-			IsIndex:            tableColumn.IsIndex || field.HasTag("index"),
+			IsIndex:            tableColumn.IsIndex,
 			IsUniqueIndex:      tableColumn.IsUniqueIndex,
 			IsNullable:         tableColumn.IsNullable,
 			OrdinalPosition:    tableColumn.OrdinalPosition,
@@ -247,9 +247,10 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resource
 		}
 
 		fields = append(fields, &resourceField{
-			Field:   field,
-			Parent:  parent,
-			IsIndex: field.HasTag("index"),
+			Field:         field,
+			Parent:        parent,
+			IsIndex:       field.HasTag("index") || field.HasTag("uniqueindex"),
+			IsUniqueIndex: field.HasTag("uniqueindex"),
 		})
 	}
 
