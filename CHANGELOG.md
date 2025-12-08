@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.20](https://github.com/cccteam/ccc/compare/v0.2.19...v0.2.20) (2025-12-08)
+
+
+### Code Upgrade
+
+* go =&gt; 1.25.5 and dependencies ([#570](https://github.com/cccteam/ccc/issues/570)) ([8476082](https://github.com/cccteam/ccc/commit/8476082d73d3844d454962f9850aec543bff1922))
+
 ## [0.2.19](https://github.com/cccteam/ccc/compare/v0.2.18...v0.2.19) (2025-12-08)
 
 
