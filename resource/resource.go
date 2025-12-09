@@ -9,11 +9,11 @@ import (
 // newReader creates a new Reader for the given transaction.
 func newReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
 	switch t := txn.(type) {
-	case *SpannerClient, *SpannerReadWriteTransaction:
+	case *SpannerClient, *SpannerReadWriteTransaction, *SpannerReadOnlyTransaction:
 		return &spannerReader[Resource]{
 			readTxn: func() spxscan.Querier { return txn.SpannerReadOnlyTransaction() },
 		}
-	case *PostgresClient, *PostgresReadWriteTransaction:
+	case *PostgresClient, *PostgresReadWriteTransaction, *PostgresReadOnlyTransaction:
 		return &postgresReader[Resource]{
 			readTxn: func() any { return txn.PostgresReadOnlyTransaction() },
 		}
