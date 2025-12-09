@@ -19,7 +19,7 @@ type UserPermissions interface {
 // Client is an interface for the supported database Client's to implement. It is not intended
 // for mocking since each database requires an implementation in this package.
 type Client interface {
-	ReadOnlyTransaction() ReadOnlyTransaction
+	ReadOnlyTransaction() ReadOnlyTransactionCloser
 	ReadOnlyTransaction
 	Executor
 }
@@ -35,10 +35,17 @@ type ReadWriteTransaction interface {
 	DataChangeEventIndex(res accesstypes.Resource, rowID string) int
 }
 
-// ReadOnlyTransaction is an interface that represents a database transaction that can be used for reads.
+// ReadOnlyTransaction is an interface that represents a database transaction that can be used for reads only.
 type ReadOnlyTransaction interface {
 	SpannerReadOnlyTransaction() spxscan.Querier
 	PostgresReadOnlyTransaction() any
+}
+
+// ReadOnlyTransactionCloser is an interface that represents a database transaction that can be used for reads only
+// and must be closed when it is no longer needed.
+type ReadOnlyTransactionCloser interface {
+	ReadOnlyTransaction
+	Close()
 }
 
 // Executor interface exposes ability to run a function inside a transaction.

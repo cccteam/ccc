@@ -49,7 +49,7 @@ func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Cont
 
 // ReadOnlyTransaction returns a read-only transaction that can be used for multiple reads from the database.
 // You must call Close() when the ReadOnlyTransaction is no longer needed to release resources on the server.
-func (c *SpannerClient) ReadOnlyTransaction() ReadOnlyTransaction {
+func (c *SpannerClient) ReadOnlyTransaction() ReadOnlyTransactionCloser {
 	return newSpannerReadOnlyTransaction(c.spanner)
 }
 
@@ -101,7 +101,7 @@ func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) ite
 	}
 }
 
-var _ ReadOnlyTransaction = (*SpannerReadOnlyTransaction)(nil)
+var _ ReadOnlyTransactionCloser = (*SpannerReadOnlyTransaction)(nil)
 
 // SpannerReadOnlyTransaction represents a database transaction that can be used for both reads and writes.
 type SpannerReadOnlyTransaction struct {
@@ -110,7 +110,7 @@ type SpannerReadOnlyTransaction struct {
 }
 
 // newSpannerReadOnlyTransaction creates a new SpannerReadOnlyTransaction from a spanner.ReadOnlyTransaction
-func newSpannerReadOnlyTransaction(client *spanner.Client) ReadOnlyTransaction {
+func newSpannerReadOnlyTransaction(client *spanner.Client) ReadOnlyTransactionCloser {
 	return &SpannerReadOnlyTransaction{
 		txn:              client.ReadOnlyTransaction(),
 		resourceRowIndex: make(map[string]int),
