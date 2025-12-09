@@ -42,7 +42,7 @@ func (c *PostgresClient) ExecuteFunc(_ context.Context, _ func(ctx context.Conte
 
 // ReadOnlyTransaction returns a ReadOnlyTransaction that can be used for multiple reads from the database.
 // You must call Close() when the ReadOnlyTransaction is no longer needed to release resources on the server.
-func (c *PostgresClient) ReadOnlyTransaction() ReadOnlyTransaction {
+func (c *PostgresClient) ReadOnlyTransaction() ReadOnlyTransactionCloser {
 	panic("ReadOnlyTransaction() not implemented for PostgresClient")
 }
 
