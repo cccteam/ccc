@@ -47,6 +47,12 @@ func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Cont
 	return nil
 }
 
+// ReadOnlyTransaction returns a read-only transaction that can be used for multiple reads from the database.
+// You must call Close() when the ReadOnlyTransaction is no longer needed to release resources on the server.
+func (c *SpannerClient) ReadOnlyTransaction() ReadOnlyTransactionCloser {
+	return newSpannerReadOnlyTransaction(c.spanner)
+}
+
 // PostgresReadOnlyTransaction panics because it is not implemented for the SpannerClient.
 func (c *SpannerClient) PostgresReadOnlyTransaction() any {
 	panic("SpannerClient.PostgresReadOnlyTransaction() should never be called.")
@@ -93,6 +99,37 @@ func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) ite
 			}
 		}
 	}
+}
+
+var _ ReadOnlyTransactionCloser = (*SpannerReadOnlyTransaction)(nil)
+
+// SpannerReadOnlyTransaction represents a database transaction that can be used for both reads and writes.
+type SpannerReadOnlyTransaction struct {
+	txn              *spanner.ReadOnlyTransaction
+	resourceRowIndex map[string]int
+}
+
+// newSpannerReadOnlyTransaction creates a new SpannerReadOnlyTransaction from a spanner.ReadOnlyTransaction
+func newSpannerReadOnlyTransaction(client *spanner.Client) ReadOnlyTransactionCloser {
+	return &SpannerReadOnlyTransaction{
+		txn:              client.ReadOnlyTransaction(),
+		resourceRowIndex: make(map[string]int),
+	}
+}
+
+// Close closes the readonly transaction
+func (c *SpannerReadOnlyTransaction) Close() {
+	c.txn.Close()
+}
+
+// SpannerReadOnlyTransaction returns a read-only transaction for the Spanner client.
+func (c *SpannerReadOnlyTransaction) SpannerReadOnlyTransaction() spxscan.Querier {
+	return c.txn
+}
+
+// PostgresReadOnlyTransaction panics because it is not implemented for the SpannerReadOnlyTransaction.
+func (c *SpannerReadOnlyTransaction) PostgresReadOnlyTransaction() any {
+	panic("SpannerReadOnlyTransaction.PostgresReadOnlyTransaction() should never be called.")
 }
 
 var _ ReadWriteTransaction = (*SpannerReadWriteTransaction)(nil)

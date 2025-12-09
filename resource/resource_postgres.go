@@ -40,6 +40,12 @@ func (c *PostgresClient) ExecuteFunc(_ context.Context, _ func(ctx context.Conte
 	panic("ExecuteFunc() not implemented for PostgresClient")
 }
 
+// ReadOnlyTransaction returns a ReadOnlyTransaction that can be used for multiple reads from the database.
+// You must call Close() when the ReadOnlyTransaction is no longer needed to release resources on the server.
+func (c *PostgresClient) ReadOnlyTransaction() ReadOnlyTransactionCloser {
+	return newPostgresReadOnlyTransaction()
+}
+
 // SpannerReadOnlyTransaction panics because it is not implemented for the PostgresClient.
 func (c *PostgresClient) SpannerReadOnlyTransaction() spxscan.Querier {
 	panic("PostgresClient.SpannerReadOnlyTransaction() should never be called.")
@@ -65,6 +71,33 @@ func (c *postgresReader[Resource]) Read(_ context.Context, _ *Statement) (*Resou
 // List reads a list of resources from the database.
 func (c *postgresReader[Resource]) List(_ context.Context, _ *Statement) iter.Seq2[*Resource, error] {
 	panic("List() not implemented for PostgresReader[Resource]")
+}
+
+var _ ReadOnlyTransactionCloser = (*PostgresReadOnlyTransaction)(nil)
+
+// PostgresReadOnlyTransaction represents a database transaction that can be used for both reads and writes.
+type PostgresReadOnlyTransaction struct {
+	resourceRowIndex map[string]int
+}
+
+// newPostgresReadOnlyTransaction creates a new PostgresReadOnlyTransaction from a spanner.ReadOnlyTransaction
+func newPostgresReadOnlyTransaction() ReadOnlyTransactionCloser {
+	panic("newPostgresReadOnlyTransaction() not implemented for PostgresReader[Resource]")
+}
+
+// Close closes the readonly transaction
+func (c *PostgresReadOnlyTransaction) Close() {
+	panic("Close() not implemented for PostgresReader[Resource]")
+}
+
+// PostgresReadOnlyTransaction returns a read-only transaction for the Postgres client.
+func (c *PostgresReadOnlyTransaction) PostgresReadOnlyTransaction() any {
+	panic("PostgresReadOnlyTransaction() not implemented for PostgresReader[Resource]")
+}
+
+// SpannerReadOnlyTransaction panics because it is not implemented for the PostgresReadOnlyTransaction.
+func (c *PostgresReadOnlyTransaction) SpannerReadOnlyTransaction() spxscan.Querier {
+	panic("PostgresReadOnlyTransaction.SpannerReadOnlyTransaction() should never be called.")
 }
 
 var _ ReadWriteTransaction = (*PostgresReadWriteTransaction)(nil)

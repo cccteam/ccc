@@ -61,6 +61,12 @@ func (c *MockClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context
 	return nil
 }
 
+// ReadOnlyTransaction returns a ReadOnlyTransaction that can be used for multiple reads from the database.
+// You must call Close() when the ReadOnlyTransaction is no longer needed to release resources on the server.
+func (c *MockClient) ReadOnlyTransaction() ReadOnlyTransactionCloser {
+	return c
+}
+
 // PostgresReadOnlyTransaction panics because it is not implemented for the MockClient.
 func (c *MockClient) PostgresReadOnlyTransaction() any {
 	panic("MockClient.PostgresReadOnlyTransaction() should never be called.")
