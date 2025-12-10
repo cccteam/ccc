@@ -305,6 +305,8 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
+		rpcMethod.SuppressHandler = annotations.Struct.Has(suppressKeyword)
+
 		rpcMethods = append(rpcMethods, rpcMethod)
 	}
 
