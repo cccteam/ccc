@@ -186,7 +186,8 @@ type generatedRoute struct {
 
 type rpcMethodInfo struct {
 	*parser.Struct
-	Fields []*rpcField
+	Fields          []*rpcField
+	SuppressHandler bool
 }
 
 func (r *rpcMethodInfo) IsTxnRunner() bool {
