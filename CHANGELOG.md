@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.21](https://github.com/cccteam/ccc/compare/v0.2.20...v0.2.21) (2025-12-11)
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group with 3 updates ([#584](https://github.com/cccteam/ccc/issues/584)) ([e29f780](https://github.com/cccteam/ccc/commit/e29f780b979678fd648c8964ea4c7c9e31af05ff))
+
 ## [0.2.20](https://github.com/cccteam/ccc/compare/v0.2.19...v0.2.20) (2025-12-08)
 
 
