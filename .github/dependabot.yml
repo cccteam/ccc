@@ -60,11 +60,3 @@ updates:
       go-dependencies:
         patterns:
           - '*'
-  - package-ecosystem: 'gomod'
-    directory: '/lint'
-    schedule:
-      interval: 'weekly'
-    groups:
-      go-dependencies:
-        patterns:
-          - '*'
