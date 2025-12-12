@@ -662,12 +662,12 @@ func (f *resourceField) IsImmutable() bool {
 func (f *resourceField) IsOutputOnly() bool {
 	tag, ok := f.LookupTag("conditions")
 	if !ok {
-		return false
+		return f.HasOutputOnlyUpdateFunc()
 	}
 
 	conditions := strings.Split(tag, ",")
 
-	return slices.Contains(conditions, "output_only") || slices.Contains(conditions, "output_only_update_fn")
+	return slices.Contains(conditions, "output_only") || f.HasOutputOnlyUpdateFunc()
 }
 
 func (f *resourceField) IsInputOnly() bool {
