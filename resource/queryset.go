@@ -89,6 +89,14 @@ func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource]
 }
 
 func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType) error {
+	if q.resourceSet != nil {
+		if ok, missing, err := q.userPermissions.Check(ctx, q.requiredPermission, q.resourceSet.BaseResource()); err != nil {
+			return errors.Wrap(err, "enforcer.RequireResource()")
+		} else if !ok {
+			return httpio.NewForbiddenMessagef("domain (%s), user (%s) does not have (%s) on %s", q.userPermissions.Domain(), q.userPermissions.User(), q.requiredPermission, missing)
+		}
+	}
+
 	fields := q.Fields()
 
 	if len(fields) == 0 && q.returnAccessableFields {
@@ -97,7 +105,6 @@ func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType
 
 	if q.resourceSet != nil {
 		resources := make([]accesstypes.Resource, 0, len(fields)+1)
-		resources = append(resources, q.resourceSet.BaseResource())
 
 		for _, fieldName := range fields {
 			if q.resourceSet.PermissionRequired(fieldName, q.requiredPermission) {
