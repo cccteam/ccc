@@ -35,24 +35,24 @@ var _ PatchSetMetadata = (*PatchSet[nilResource])(nil)
 
 // PatchSet represents a set of changes to be applied to a resource.
 type PatchSet[Resource Resourcer] struct {
-	querySet           *QuerySet[Resource]
-	data               *fieldSet
-	patchType          PatchType
-	defaultCreateFuncs map[accesstypes.Field]FieldDefaultFunc
-	defaultUpdateFuncs map[accesstypes.Field]FieldDefaultFunc
-	defaultsCreateFunc DefaultsFunc
-	defaultsUpdateFunc DefaultsFunc
-	validateCreateFunc ValidateFunc
-	validateUpdateFunc ValidateFunc
+	querySet              *QuerySet[Resource]
+	data                  *fieldSet
+	patchType             PatchType
+	defaultCreateFuncs    map[accesstypes.Field]FieldDefaultFunc
+	outputOnlyUpdateFuncs map[accesstypes.Field]FieldDefaultFunc
+	defaultsCreateFunc    DefaultsFunc
+	defaultsUpdateFunc    DefaultsFunc
+	validateCreateFunc    ValidateFunc
+	validateUpdateFunc    ValidateFunc
 }
 
 // NewPatchSet creates a new, empty PatchSet for a given resource metadata.
 func NewPatchSet[Resource Resourcer](rMeta *Metadata[Resource]) *PatchSet[Resource] {
 	return &PatchSet[Resource]{
-		querySet:           NewQuerySet(rMeta),
-		data:               newFieldSet(),
-		defaultCreateFuncs: make(map[accesstypes.Field]FieldDefaultFunc),
-		defaultUpdateFuncs: make(map[accesstypes.Field]FieldDefaultFunc),
+		querySet:              NewQuerySet(rMeta),
+		data:                  newFieldSet(),
+		defaultCreateFuncs:    make(map[accesstypes.Field]FieldDefaultFunc),
+		outputOnlyUpdateFuncs: make(map[accesstypes.Field]FieldDefaultFunc),
 	}
 }
 
@@ -314,7 +314,7 @@ func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn ReadWriteTran
 		return err
 	}
 
-	for field, defaultFunc := range p.defaultUpdateFuncs {
+	for field, defaultFunc := range p.outputOnlyUpdateFuncs {
 		if !p.IsSet(field) {
 			d, err := defaultFunc(ctx, txn)
 			if err != nil {
@@ -676,9 +676,9 @@ func (p *PatchSet[Resource]) RegisterDefaultCreateFunc(field accesstypes.Field, 
 	p.defaultCreateFuncs[field] = fn
 }
 
-// RegisterDefaultUpdateFunc registers a function to set a default value for a field during an update operation.
-func (p *PatchSet[Resource]) RegisterDefaultUpdateFunc(field accesstypes.Field, fn FieldDefaultFunc) {
-	p.defaultUpdateFuncs[field] = fn
+// RegisterOutputOnlyUpdateFunc registers a function to set a default value for a field during an update operation.
+func (p *PatchSet[Resource]) RegisterOutputOnlyUpdateFunc(field accesstypes.Field, fn FieldDefaultFunc) {
+	p.outputOnlyUpdateFuncs[field] = fn
 }
 
 // RegisterDefaultsCreateFunc registers a function that will be called on all

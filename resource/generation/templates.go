@@ -422,8 +422,8 @@ func (p *{{ .Resource.Name }}UpdatePatch) Buffer(ctx context.Context, txn resour
 
 func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 {{- range $field := .Resource.Fields }}
-{{- if $field.HasDefaultUpdateFunc }}
-	p.patchSet.RegisterDefaultUpdateFunc("{{ $field.Name }}", {{ $field.DefaultUpdateFuncName }})
+{{- if $field.HasOutputOnlyUpdateFunc }}
+	p.patchSet.RegisterOutputOnlyUpdateFunc("{{ $field.Name }}", {{ $field.OutputOnlyUpdateFuncName }})
 {{- end }}
 {{- end }}
 {{- if .Resource.HasDefaultsUpdateType }}
