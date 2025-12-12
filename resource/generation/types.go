@@ -667,7 +667,7 @@ func (f *resourceField) IsOutputOnly() bool {
 
 	conditions := strings.Split(tag, ",")
 
-	return slices.Contains(conditions, "output_only")
+	return slices.Contains(conditions, "output_only") || slices.Contains(conditions, "output_only_update_fn")
 }
 
 func (f *resourceField) IsInputOnly() bool {
@@ -694,8 +694,8 @@ func (f *resourceField) HasDefaultCreateFunc() bool {
 	return f.DefaultCreateFuncName() != ""
 }
 
-func (f *resourceField) DefaultUpdateFuncName() string {
-	tag, ok := f.LookupTag("default_update_fn")
+func (f *resourceField) OutputOnlyUpdateFuncName() string {
+	tag, ok := f.LookupTag("output_only_update_fn")
 	if !ok {
 		return ""
 	}
@@ -703,8 +703,8 @@ func (f *resourceField) DefaultUpdateFuncName() string {
 	return tag
 }
 
-func (f *resourceField) HasDefaultUpdateFunc() bool {
-	return f.DefaultUpdateFuncName() != ""
+func (f *resourceField) HasOutputOnlyUpdateFunc() bool {
+	return f.OutputOnlyUpdateFuncName() != ""
 }
 
 func (f *resourceField) ReadPermTag() string {
