@@ -322,8 +322,10 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(
 }
 
 func New{{ .Resource.Name }}CreatePatch(
-{{- range $isNotFirstIteration, $field := .Resource.Fields }}
-{{- if $field.IsPrimaryKey }}{{- if $isNotFirstIteration }}, {{ end }}{{ GoCamel $field.Name }} {{ $field.ResolvedType }}{{ end }}{{ end }}) *{{ .Resource.Name }}CreatePatch {
+{{- range $i, $field := .Resource.PrimaryKeys -}}
+	{{- if gt $i 0 }}, {{ end -}}
+	{{ GoCamel $field.Name }} {{ $field.ResolvedType -}}
+{{- end -}}) *{{ .Resource.Name }}CreatePatch {
 	patchSet := resource.NewPatchSet(resource.NewMetadata[{{ .Resource.Name }}]()).
 	{{ range $field := .Resource.Fields }}
 	{{ if $field.IsPrimaryKey }}
@@ -392,12 +394,10 @@ patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}UpdatePa
 }
 
 func New{{ .Resource.Name }}UpdatePatch(
-{{- range $isNotFirstIteration, $field := .Resource.Fields -}}
-	{{- if $field.IsPrimaryKey }}
-		{{- if $isNotFirstIteration }}, {{ end -}}
-		{{- GoCamel $field.Name }} {{ $field.ResolvedType }}
-	{{- end -}}
-{{- end }}) *{{ .Resource.Name }}UpdatePatch {
+{{- range $i, $field := .Resource.PrimaryKeys -}}
+	{{- if gt $i 0 }}, {{ end -}}
+	{{- GoCamel $field.Name }} {{ $field.ResolvedType -}}
+{{- end -}}) *{{ .Resource.Name }}UpdatePatch {
 	patchSet := resource.NewPatchSet(resource.NewMetadata[{{ .Resource.Name }}]()).
 {{- range $field := .Resource.Fields }}
 	{{- if $field.IsPrimaryKey }}
@@ -463,12 +463,10 @@ patchSet *resource.PatchSet[{{ .Resource.Name }}]) *{{ .Resource.Name }}DeletePa
 }
 
 func New{{ .Resource.Name }}DeletePatch(
-{{- range $isNotFirstIteration, $field := .Resource.Fields }}
-	{{- if $field.IsPrimaryKey -}}
-		{{- if $isNotFirstIteration }}, {{ end -}}
-		{{- GoCamel $field.Name }} {{ $field.ResolvedType }}
-	{{- end -}}
-{{- end }}) *{{ .Resource.Name }}DeletePatch {
+{{- range $i, $field := .Resource.PrimaryKeys -}}
+	{{- if gt $i 0 }}, {{ end -}}
+	{{- GoCamel $field.Name }} {{ $field.ResolvedType -}}
+{{- end -}}) *{{ .Resource.Name }}DeletePatch {
 	patchSet := resource.NewPatchSet(resource.NewMetadata[{{ .Resource.Name }}]()).
 {{- range $field := .Resource.Fields }}
 		{{- if $field.IsPrimaryKey }}

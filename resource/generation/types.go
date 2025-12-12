@@ -411,7 +411,7 @@ func (r *resourceInfo) HasValidateUpdateType() bool {
 }
 
 func (r *resourceInfo) PrimaryKeys() iter.Seq2[int, *resourceField] {
-	i := 1
+	var i int
 
 	return func(yield func(int, *resourceField) bool) {
 		for _, f := range r.Fields {

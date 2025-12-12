@@ -103,7 +103,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	qSet.SetLimit(parsedQuery.Limit)
 	qSet.SetOffset(parsedQuery.Offset)
 	if len(parsedQuery.ColumnFields) == 0 {
-		qSet.ReturnAccessableFields(true)
+		qSet.ReturnAccessibleFields(true)
 	} else {
 		for _, field := range parsedQuery.ColumnFields {
 			qSet.AddField(field)

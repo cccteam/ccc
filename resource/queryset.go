@@ -21,7 +21,7 @@ type QuerySet[Resource Resourcer] struct {
 	sortFields             []SortField
 	limit                  *uint64
 	offset                 *uint64
-	returnAccessableFields bool
+	returnAccessibleFields bool
 	rMeta                  *Metadata[Resource]
 	resourceSet            *Set[Resource]
 	userPermissions        UserPermissions
@@ -71,10 +71,10 @@ func (q *QuerySet[Resource]) RequiredPermission() accesstypes.Permission {
 	return q.requiredPermission
 }
 
-// ReturnAccessableFields configures the QuerySet to automatically include all fields
+// ReturnAccessibleFields configures the QuerySet to automatically include all fields
 // the user has access to if no specific fields are requested.
-func (q *QuerySet[Resource]) ReturnAccessableFields(b bool) *QuerySet[Resource] {
-	q.returnAccessableFields = b
+func (q *QuerySet[Resource]) ReturnAccessibleFields(b bool) *QuerySet[Resource] {
+	q.returnAccessibleFields = b
 
 	return q
 }
@@ -99,8 +99,8 @@ func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType
 
 	fields := q.Fields()
 
-	if len(fields) == 0 && q.returnAccessableFields {
-		return q.addAccessableFields(ctx, dbType)
+	if len(fields) == 0 && q.returnAccessibleFields {
+		return q.addAccessibleFields(ctx, dbType)
 	}
 
 	if q.resourceSet != nil {
@@ -122,7 +122,7 @@ func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType
 	return nil
 }
 
-func (q *QuerySet[Resource]) addAccessableFields(ctx context.Context, dbType DBType) error {
+func (q *QuerySet[Resource]) addAccessibleFields(ctx context.Context, dbType DBType) error {
 	fields := make([]accesstypes.Field, 0, q.rMeta.DBFieldCount(dbType))
 
 	if q.resourceSet != nil {
