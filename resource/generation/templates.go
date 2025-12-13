@@ -340,6 +340,14 @@ func New{{ .Resource.Name }}CreatePatch(
 }
 {{ end }}
 
+func (p *{{ .Resource.Name }}CreatePatch) FromStruct(s any) error {
+	return p.patchSet.FromStruct(s)
+}
+
+func (p *{{ .Resource.Name }}CreatePatch) ToStruct() *{{ .Resource.Name }} {
+	return p.patchSet.ToStruct()
+}
+
 func (p *{{ .Resource.Name }}CreatePatch) Apply(ctx context.Context, client resource.Client, eventSource ...string) error {
 	return p.patchSet.Apply(ctx, client, eventSource...)
 }
@@ -410,6 +418,14 @@ func New{{ .Resource.Name }}UpdatePatch(
 	patch.registerDefaultFuncs()
 
 	return patch
+}
+
+func (p *{{ .Resource.Name }}UpdatePatch) FromStruct(s any) error {
+	return p.patchSet.FromStruct(s)
+}
+
+func (p *{{ .Resource.Name }}UpdatePatch) ToStruct() *{{ .Resource.Name }} {
+	return p.patchSet.ToStruct()
 }
 
 func (p *{{ .Resource.Name }}UpdatePatch) Apply(ctx context.Context, client resource.Client, eventSource ...string) error {
