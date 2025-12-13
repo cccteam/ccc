@@ -125,6 +125,49 @@ func (p *PatchSet[Resource]) Data() map[accesstypes.Field]any {
 	return p.data.data
 }
 
+// ToStruct returns an instance of Resource, with its struct fields populated with the contents of data.
+func (p *PatchSet[Resource]) ToStruct() *Resource {
+	var r Resource
+	t := reflect.TypeOf(r)
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		panic(errors.Newf("expected struct, got %s", t.Kind()))
+	}
+
+	newRVal := reflect.New(t)
+	newRElem := newRVal.Elem()
+
+	for fieldName, value := range p.Data() {
+		field := newRElem.FieldByName(string(fieldName))
+		if !field.IsValid() {
+			panic(errors.Newf("field %s from patchset not found in struct %s", fieldName, t.Name()))
+		}
+		if !field.CanSet() {
+			panic(errors.Newf("field %s from patchset is not settable in struct %s", fieldName, t.Name()))
+		}
+
+		if value == nil {
+			continue
+		}
+		val := reflect.ValueOf(value)
+		if val.Type().AssignableTo(field.Type()) {
+			field.Set(val)
+		} else {
+			panic(errors.Newf("cannot assign value of type %s to field %s of type %s", val.Type(), fieldName, field.Type()))
+		}
+	}
+
+	res, ok := newRVal.Interface().(*Resource)
+	if !ok {
+		panic(errors.Newf("failed to assert to *Resource"))
+	}
+
+	return res
+}
+
 // PrimaryKey returns the KeySet containing the primary key(s) for the resource.
 func (p *PatchSet[Resource]) PrimaryKey() KeySet {
 	return p.querySet.KeySet()

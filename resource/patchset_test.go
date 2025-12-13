@@ -669,3 +669,158 @@ func Test_match(t *testing.T) {
 		})
 	}
 }
+
+type myCustomType int
+
+type toStructTestResource struct {
+	StringField   string
+	IntField      int
+	PtrField      *string
+	TimeField     time.Time
+	unexported    string
+	SliceField    []string
+	IfaceField    any
+	MyCustomType  myCustomType
+	MyCustomType2 *myCustomType
+}
+
+func (toStructTestResource) Resource() accesstypes.Resource {
+	return "toStructTestResources"
+}
+
+func TestPatchSet_ToStruct(t *testing.T) {
+	t.Parallel()
+
+	strPtr := "pointed to string"
+	timeVal := time.Now().UTC()
+
+	tests := []struct {
+		name     string
+		patchSet *PatchSet[toStructTestResource]
+		want     *toStructTestResource
+		panic    bool
+	}{
+		{
+			name: "simple",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("StringField", "hello")
+				p.Set("IntField", 123)
+				p.Set("PtrField", &strPtr)
+				p.Set("TimeField", timeVal)
+				p.Set("MyCustomType", myCustomType(123))
+				p.Set("MyCustomType2", ccc.Ptr(myCustomType(123)))
+
+				return p
+			}(),
+			want: &toStructTestResource{
+				StringField:   "hello",
+				IntField:      123,
+				PtrField:      &strPtr,
+				TimeField:     timeVal,
+				MyCustomType:  123,
+				MyCustomType2: ccc.Ptr(myCustomType(123)),
+			},
+		},
+		{
+			name: "value to pointer field",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("PtrField", "a string for a pointer field")
+
+				return p
+			}(),
+			panic: true,
+		},
+		{
+			name: "nil values",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("PtrField", nil)
+				p.Set("SliceField", nil)
+				p.Set("IfaceField", nil)
+				p.Set("MyCustomType2", nil)
+
+				return p
+			}(),
+			want: &toStructTestResource{
+				PtrField:      nil,
+				SliceField:    nil,
+				IfaceField:    nil,
+				MyCustomType2: nil,
+			},
+		},
+		{
+			name: "unexported field panic",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("unexported", "should not be set")
+
+				return p
+			}(),
+			panic: true,
+		},
+		{
+			name: "field not in struct panic",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("NonExistentField", "should panic")
+
+				return p
+			}(),
+			panic: true,
+		},
+		{
+			name: "type mismatch panic",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("IntField", "not an int")
+
+				return p
+			}(),
+			panic: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tt.panic {
+				defer func() {
+					if r := recover(); r == nil {
+						t.Errorf("The code did not panic")
+					}
+				}()
+			}
+
+			got := tt.patchSet.ToStruct()
+
+			if tt.panic {
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(toStructTestResource{})); diff != "" {
+				t.Errorf("PatchSet.ToStruct() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+type notAStruct int
+
+func (r notAStruct) Resource() accesstypes.Resource {
+	return "notAStruct"
+}
+
+func TestPatchSet_ToStruct_NotStructPanic(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("The code did not panic")
+		}
+	}()
+
+	p := NewPatchSet(NewMetadata[notAStruct]())
+	p.ToStruct()
+}
