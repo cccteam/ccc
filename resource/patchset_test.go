@@ -829,6 +829,7 @@ type fromStructTestResource struct {
 	StringField string
 	IntField    int
 	BoolField   bool
+	PtrField    *string
 }
 
 func (fromStructTestResource) Resource() accesstypes.Resource {
@@ -947,6 +948,37 @@ func TestPatchSet_FromStruct(t *testing.T) {
 				p.Set("StringField", "all")
 				p.Set("IntField", 100)
 
+				return p
+			}(),
+		},
+		{
+			name: "struct with nil pointer field",
+			input: struct {
+				StringField string
+				PtrField    *string
+			}{
+				StringField: "hello",
+				PtrField:    nil,
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "hello")
+				return p
+			}(),
+		},
+		{
+			name: "struct with non-nil pointer field",
+			input: struct {
+				StringField string
+				PtrField    *string
+			}{
+				StringField: "hello",
+				PtrField:    ccc.Ptr("world"),
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "hello")
+				p.Set("PtrField", ccc.Ptr("world"))
 				return p
 			}(),
 		},

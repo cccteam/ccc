@@ -212,6 +212,14 @@ func (p *PatchSet[Resource]) FromStruct(input any, skip ...string) error {
 			return errors.Newf("FromStruct: field '%s' type mismatch, expected %s but got %s", fieldName, resourceField.Type, fieldValue.Type())
 		}
 
+		switch fieldValue.Kind() {
+		case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.UnsafePointer, reflect.Interface, reflect.Slice:
+			if fieldValue.IsNil() {
+				continue
+			}
+		default:
+		}
+
 		p.Set(accesstypes.Field(fieldName), fieldValue.Interface())
 	}
 
