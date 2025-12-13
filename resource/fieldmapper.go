@@ -48,7 +48,7 @@ func (f *RequestFieldMapper) Fields() []accesstypes.Field {
 func tagToFieldMap(v any) (map[string]accesstypes.Field, []accesstypes.Field, error) {
 	vType := reflect.TypeOf(v)
 
-	if vType.Kind() == reflect.Ptr {
+	if vType.Kind() == reflect.Pointer {
 		vType = vType.Elem()
 	}
 	if vType.Kind() != reflect.Struct {

@@ -247,7 +247,7 @@ func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
 	c.mu.RLock()
 
 	t := reflect.TypeOf(res)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 
