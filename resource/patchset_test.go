@@ -1159,3 +1159,164 @@ func TestPatchSet_insertChangeSet(t *testing.T) {
 		t.Errorf("PatchSet.insertChangeSet() mismatch (-want +got):\n%s", diff)
 	}
 }
+
+type fromStructTestResource struct {
+	StringField string
+	IntField    int
+	BoolField   bool
+}
+
+func (fromStructTestResource) Resource() accesstypes.Resource {
+	return "fromStructTestResources"
+}
+
+func TestPatchSet_FromStruct(t *testing.T) {
+	t.Parallel()
+
+	type inputStruct struct {
+		StringField string
+		IntField    int
+		ExtraField  string
+		unexported  string
+	}
+
+	tests := []struct {
+		name    string
+		input   any
+		skip    []string
+		want    *PatchSet[fromStructTestResource]
+		wantErr bool
+	}{
+		{
+			name: "simple struct",
+			input: struct {
+				StringField string
+				IntField    int
+			}{
+				StringField: "hello",
+				IntField:    42,
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "hello")
+				p.Set("IntField", 42)
+
+				return p
+			}(),
+		},
+		{
+			name: "pointer to struct",
+			input: &struct {
+				StringField string
+				IntField    int
+			}{
+				StringField: "hello",
+				IntField:    42,
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "hello")
+				p.Set("IntField", 42)
+
+				return p
+			}(),
+		},
+		{
+			name: "with fields to skip",
+			input: struct {
+				StringField string
+				ExtraField  string
+			}{
+				StringField: "world",
+				ExtraField:  "should be skipped",
+			},
+			skip: []string{"ExtraField"},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "world")
+
+				return p
+			}(),
+		},
+		{
+			name: "unexported fields are skipped",
+			input: struct {
+				StringField string
+				unexported  string
+			}{
+				StringField: "world",
+				unexported:  "should be skipped",
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "world")
+
+				return p
+			}(),
+		},
+		{
+			name: "field not in resource error",
+			input: struct {
+				StringField string
+				ExtraField  string
+			}{
+				StringField: "world",
+				ExtraField:  "should cause error",
+			},
+			wantErr: true,
+		},
+		{
+			name:    "not a struct error",
+			input:   "this is not a struct",
+			wantErr: true,
+		},
+		{
+			name: "struct with all fields",
+			input: inputStruct{
+				StringField: "all",
+				IntField:    100,
+				ExtraField:  "skip me",
+				unexported:  "i am not exported",
+			},
+			skip: []string{"ExtraField"},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "all")
+				p.Set("IntField", 100)
+
+				return p
+			}(),
+		},
+		{
+			name: "type mismatch returns error",
+			input: struct {
+				IntField string
+			}{
+				IntField: "not an int",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := NewPatchSet(NewMetadata[fromStructTestResource]())
+			err := p.FromStruct(tt.input, tt.skip...)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("PatchSet.FromStruct() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr {
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, p, cmp.Comparer(PatchsetCompare)); diff != "" {
+				t.Errorf("PatchSet.FromStruct() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

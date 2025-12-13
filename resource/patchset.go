@@ -164,6 +164,60 @@ func (p *PatchSet[Resource]) ToStruct() *Resource {
 	return res
 }
 
+// FromStruct populates the PatchSet from a given struct.
+// It reflects on the input struct and sets the fields in the PatchSet.
+// Fields from the input struct that do not exist in the resource and are not in the skip list will result in an error.
+func (p *PatchSet[Resource]) FromStruct(input any, skip ...string) error {
+	inputValue := reflect.ValueOf(input)
+	inputType := reflect.TypeOf(input)
+
+	if inputValue.Kind() == reflect.Pointer {
+		inputValue = inputValue.Elem()
+		inputType = inputType.Elem()
+	}
+
+	if inputValue.Kind() != reflect.Struct {
+		return errors.Newf("FromStruct: expected a struct, but got %s", inputValue.Kind())
+	}
+
+	skipSet := make(map[string]struct{}, len(skip))
+	for _, s := range skip {
+		skipSet[s] = struct{}{}
+	}
+
+	var r Resource
+	resourceType := reflect.TypeOf(r)
+	if resourceType.Kind() == reflect.Pointer {
+		resourceType = resourceType.Elem()
+	}
+
+	for _, field := range reflect.VisibleFields(inputType) {
+		fieldName := field.Name
+
+		if _, shouldSkip := skipSet[fieldName]; shouldSkip {
+			continue
+		}
+
+		if !field.IsExported() {
+			continue
+		}
+
+		resourceField, found := resourceType.FieldByName(fieldName)
+		if !found {
+			return errors.Newf("FromStruct: field '%s' not found in resource '%s'", fieldName, resourceType.Name())
+		}
+
+		fieldValue := inputValue.FieldByName(fieldName)
+		if !fieldValue.Type().AssignableTo(resourceField.Type) {
+			return errors.Newf("FromStruct: field '%s' type mismatch, expected %s but got %s", fieldName, resourceField.Type, fieldValue.Type())
+		}
+
+		p.Set(accesstypes.Field(fieldName), fieldValue.Interface())
+	}
+
+	return nil
+}
+
 // PrimaryKey returns the KeySet containing the primary key(s) for the resource.
 func (p *PatchSet[Resource]) PrimaryKey() KeySet {
 	return p.querySet.KeySet()
