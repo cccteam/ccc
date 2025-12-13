@@ -133,10 +133,6 @@ func (p *PatchSet[Resource]) ToStruct() *Resource {
 		t = t.Elem()
 	}
 
-	if t.Kind() != reflect.Struct {
-		panic(errors.Newf("expected struct, got %s", t.Kind()))
-	}
-
 	newRVal := reflect.New(t)
 	newRElem := newRVal.Elem()
 
