@@ -2,7 +2,7 @@ module github.com/cccteam/ccc/resource
 
 go 1.25.5
 
-replace github.com/golang-migrate/migrate/v4 v4.19.0 => github.com/jtwatson/migrate/v4 v4.19.1-beta.0
+replace github.com/golang-migrate/migrate/v4 v4.19.1 => github.com/jtwatson/migrate/v4 v4.19.2-beta.0
 
 require (
 	cloud.google.com/go v0.123.0
@@ -45,6 +45,7 @@ require (
 	github.com/cccteam/logger v0.1.14 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/cloudspannerecosystem/memefish v0.6.2 // indirect
 	github.com/cncf/xds/go v0.0.0-20251210132809-ee656c7534f5 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
