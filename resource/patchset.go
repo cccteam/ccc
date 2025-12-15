@@ -208,7 +208,19 @@ func (p *PatchSet[Resource]) FromStruct(input any, skip ...string) error {
 		}
 
 		fieldValue := inputValue.FieldByName(fieldName)
-		if !fieldValue.Type().AssignableTo(resourceField.Type) {
+		valToSet := fieldValue.Interface()
+
+		assignable := fieldValue.Type().AssignableTo(resourceField.Type)
+		if !assignable && fieldValue.Type().Kind() == reflect.Ptr {
+			if fieldValue.Type().Elem().AssignableTo(resourceField.Type) {
+				assignable = true
+				if !fieldValue.IsNil() {
+					valToSet = fieldValue.Elem().Interface()
+				}
+			}
+		}
+
+		if !assignable {
 			return errors.Newf("FromStruct: field '%s' type mismatch, expected %s but got %s", fieldName, resourceField.Type, fieldValue.Type())
 		}
 
@@ -220,7 +232,7 @@ func (p *PatchSet[Resource]) FromStruct(input any, skip ...string) error {
 		default:
 		}
 
-		p.Set(accesstypes.Field(fieldName), fieldValue.Interface())
+		p.Set(accesstypes.Field(fieldName), valToSet)
 	}
 
 	return nil

@@ -983,6 +983,31 @@ func TestPatchSet_FromStruct(t *testing.T) {
 			}(),
 		},
 		{
+			name: "pointer to value field is dereferenced",
+			input: struct {
+				StringField *string
+				IntField    *int
+			}{
+				StringField: ccc.Ptr("hello"),
+				IntField:    ccc.Ptr(42),
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "hello")
+				p.Set("IntField", 42)
+				return p
+			}(),
+		},
+		{
+			name: "type to pointer value returns error",
+			input: struct {
+				PtrField string
+			}{
+				PtrField: "not an int",
+			},
+			wantErr: true,
+		},
+		{
 			name: "type mismatch returns error",
 			input: struct {
 				IntField string
