@@ -132,7 +132,7 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMa
 	}
 
 	vValue := reflect.ValueOf(request)
-	if vValue.Kind() == reflect.Ptr {
+	if vValue.Kind() == reflect.Pointer {
 		vValue = vValue.Elem()
 	}
 
@@ -159,7 +159,7 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMa
 		field := vValue.FieldByName(string(fieldName))
 		value := field.Interface()
 		if jsonValue == nil {
-			if field.Kind() != reflect.Ptr {
+			if field.Kind() != reflect.Pointer {
 				switch value.(type) {
 				// Taken from cloud.google.com/go/spanner@v1.83.0/value.go
 				// these types are handled by the driver

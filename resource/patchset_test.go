@@ -669,3 +669,709 @@ func Test_match(t *testing.T) {
 		})
 	}
 }
+
+type myCustomType int
+
+type toStructTestResource struct {
+	StringField   string
+	IntField      int
+	PtrField      *string
+	TimeField     time.Time
+	unexported    string
+	SliceField    []string
+	IfaceField    any
+	MyCustomType  myCustomType
+	MyCustomType2 *myCustomType
+}
+
+func (toStructTestResource) Resource() accesstypes.Resource {
+	return "toStructTestResources"
+}
+
+func TestPatchSet_ToStruct(t *testing.T) {
+	t.Parallel()
+
+	strPtr := "pointed to string"
+	timeVal := time.Now().UTC()
+
+	tests := []struct {
+		name     string
+		patchSet *PatchSet[toStructTestResource]
+		want     *toStructTestResource
+		panic    bool
+	}{
+		{
+			name: "simple",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("StringField", "hello")
+				p.Set("IntField", 123)
+				p.Set("PtrField", &strPtr)
+				p.Set("TimeField", timeVal)
+				p.Set("MyCustomType", myCustomType(123))
+				p.Set("MyCustomType2", ccc.Ptr(myCustomType(123)))
+
+				return p
+			}(),
+			want: &toStructTestResource{
+				StringField:   "hello",
+				IntField:      123,
+				PtrField:      &strPtr,
+				TimeField:     timeVal,
+				MyCustomType:  123,
+				MyCustomType2: ccc.Ptr(myCustomType(123)),
+			},
+		},
+		{
+			name: "value to pointer field",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("PtrField", "a string for a pointer field")
+
+				return p
+			}(),
+			panic: true,
+		},
+		{
+			name: "nil values",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("PtrField", nil)
+				p.Set("SliceField", nil)
+				p.Set("IfaceField", nil)
+				p.Set("MyCustomType2", nil)
+
+				return p
+			}(),
+			want: &toStructTestResource{
+				PtrField:      nil,
+				SliceField:    nil,
+				IfaceField:    nil,
+				MyCustomType2: nil,
+			},
+		},
+		{
+			name: "unexported field panic",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("unexported", "should not be set")
+
+				return p
+			}(),
+			panic: true,
+		},
+		{
+			name: "field not in struct panic",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("NonExistentField", "should panic")
+
+				return p
+			}(),
+			panic: true,
+		},
+		{
+			name: "type mismatch panic",
+			patchSet: func() *PatchSet[toStructTestResource] {
+				p := NewPatchSet(NewMetadata[toStructTestResource]())
+				p.Set("IntField", "not an int")
+
+				return p
+			}(),
+			panic: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tt.panic {
+				defer func() {
+					if r := recover(); r == nil {
+						t.Errorf("The code did not panic")
+					}
+				}()
+			}
+
+			got := tt.patchSet.ToStruct()
+
+			if tt.panic {
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(toStructTestResource{})); diff != "" {
+				t.Errorf("PatchSet.ToStruct() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+type notAStruct int
+
+func (r notAStruct) Resource() accesstypes.Resource {
+	return "notAStruct"
+}
+
+func TestPatchSet_ToStruct_NotStructPanic(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("The code did not panic")
+		}
+	}()
+
+	p := NewPatchSet(NewMetadata[notAStruct]())
+	p.ToStruct()
+}
+
+type fromStructTestResource struct {
+	StringField string
+	IntField    int
+	BoolField   bool
+	PtrField    *string
+}
+
+func (fromStructTestResource) Resource() accesstypes.Resource {
+	return "fromStructTestResources"
+}
+
+func TestPatchSet_FromStruct(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   any
+		skip    []string
+		want    *PatchSet[fromStructTestResource]
+		wantErr bool
+	}{
+		{
+			name: "simple struct",
+			input: struct {
+				StringField string
+				IntField    int
+			}{
+				StringField: "hello",
+				IntField:    42,
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "hello")
+				p.Set("IntField", 42)
+
+				return p
+			}(),
+		},
+		{
+			name: "pointer to struct",
+			input: &struct {
+				StringField string
+				IntField    int
+			}{
+				StringField: "hello",
+				IntField:    42,
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "hello")
+				p.Set("IntField", 42)
+
+				return p
+			}(),
+		},
+		{
+			name: "with fields to skip",
+			input: struct {
+				StringField string
+				ExtraField  string
+			}{
+				StringField: "world",
+				ExtraField:  "should be skipped",
+			},
+			skip: []string{"ExtraField"},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "world")
+
+				return p
+			}(),
+		},
+		{
+			name: "unexported fields are skipped",
+			input: struct {
+				StringField string
+				unexported  string
+			}{
+				StringField: "world",
+				unexported:  "should be skipped",
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "world")
+
+				return p
+			}(),
+		},
+		{
+			name: "field not in resource error",
+			input: struct {
+				StringField string
+				ExtraField  string
+			}{
+				StringField: "world",
+				ExtraField:  "should cause error",
+			},
+			wantErr: true,
+		},
+		{
+			name:    "not a struct error",
+			input:   "this is not a struct",
+			wantErr: true,
+		},
+		{
+			name: "struct with all fields",
+			input: struct {
+				StringField string
+				IntField    int
+				ExtraField  string
+				unexported  string
+			}{
+				StringField: "all",
+				IntField:    100,
+				ExtraField:  "skip me",
+				unexported:  "i am not exported",
+			},
+			skip: []string{"ExtraField"},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "all")
+				p.Set("IntField", 100)
+
+				return p
+			}(),
+		},
+		{
+			name: "struct with nil pointer field",
+			input: struct {
+				StringField string
+				PtrField    *string
+			}{
+				StringField: "hello",
+				PtrField:    nil,
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "hello")
+				return p
+			}(),
+		},
+		{
+			name: "struct with non-nil pointer field",
+			input: struct {
+				StringField string
+				PtrField    *string
+			}{
+				StringField: "hello",
+				PtrField:    ccc.Ptr("world"),
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "hello")
+				p.Set("PtrField", ccc.Ptr("world"))
+				return p
+			}(),
+		},
+		{
+			name: "pointer to value field is dereferenced",
+			input: struct {
+				StringField *string
+				IntField    *int
+			}{
+				StringField: ccc.Ptr("hello"),
+				IntField:    ccc.Ptr(42),
+			},
+			want: func() *PatchSet[fromStructTestResource] {
+				p := NewPatchSet(NewMetadata[fromStructTestResource]())
+				p.Set("StringField", "hello")
+				p.Set("IntField", 42)
+				return p
+			}(),
+		},
+		{
+			name: "type to pointer value returns error",
+			input: struct {
+				PtrField string
+			}{
+				PtrField: "not an int",
+			},
+			wantErr: true,
+		},
+		{
+			name: "type mismatch returns error",
+			input: struct {
+				IntField string
+			}{
+				IntField: "not an int",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := NewPatchSet(NewMetadata[fromStructTestResource]())
+			err := p.FromStruct(tt.input, tt.skip...)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("PatchSet.FromStruct() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr {
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, p, cmp.Comparer(PatchsetCompare)); diff != "" {
+				t.Errorf("PatchSet.FromStruct() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestPatchSet_SetPatchType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		want PatchType
+	}{
+		{
+			name: "SetPatchType",
+			want: CreatePatchType,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			p := NewPatchSet(NewMetadata[nilResource]())
+			p.SetPatchType(tt.want)
+			if got := p.PatchType(); got != tt.want {
+				t.Errorf("PatchSet.PatchType() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+type resolveTestResourcer struct {
+	ID     int    `spanner:"id"     postgres:"id"`
+	Field1 string `spanner:"field1" postgres:"field1"`
+	Field2 string `spanner:"field2" postgres:"field2"`
+}
+
+func (r resolveTestResourcer) Resource() accesstypes.Resource {
+	return "resolveTestResourcer"
+}
+
+func TestPatchSet_Resolve(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		patchSet *PatchSet[resolveTestResourcer]
+		dbType   DBType
+		want     map[string]any
+		wantErr  bool
+	}{
+		{
+			name: "spanner",
+			patchSet: func() *PatchSet[resolveTestResourcer] {
+				p := NewPatchSet(NewMetadata[resolveTestResourcer]())
+				p.Set("Field1", "value1")
+				p.Set("Field2", "value2")
+				p.SetKey("ID", 1)
+
+				return p
+			}(),
+			dbType: SpannerDBType,
+			want: map[string]any{
+				"id":     1,
+				"field1": "value1",
+				"field2": "value2",
+			},
+		},
+		{
+			name: "postgres",
+			patchSet: func() *PatchSet[resolveTestResourcer] {
+				p := NewPatchSet(NewMetadata[resolveTestResourcer]())
+				p.Set("Field1", "value1")
+				p.Set("Field2", "value2")
+				p.SetKey("ID", 1)
+
+				return p
+			}(),
+			dbType: PostgresDBType,
+			want: map[string]any{
+				"id":     1,
+				"field1": "value1",
+				"field2": "value2",
+			},
+		},
+		{
+			name: "no pkey error",
+			patchSet: func() *PatchSet[resolveTestResourcer] {
+				p := NewPatchSet(NewMetadata[resolveTestResourcer]())
+				p.Set("Field1", "value1")
+
+				return p
+			}(),
+			dbType:  SpannerDBType,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := tt.patchSet.Resolve(tt.dbType)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("PatchSet.Resolve() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("PatchSet.Resolve() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+type diffTestResourcer struct {
+	Field1 string
+	Field2 int
+}
+
+func (r diffTestResourcer) Resource() accesstypes.Resource {
+	return "diffTestResourcer"
+}
+
+func TestPatchSet_Diff(t *testing.T) {
+	t.Parallel()
+
+	meta := NewMetadata[diffTestResourcer]()
+
+	tests := []struct {
+		name     string
+		patchSet *PatchSet[diffTestResourcer]
+		old      *diffTestResourcer
+		want     map[accesstypes.Field]DiffElem
+		wantErr  bool
+	}{
+		{
+			name: "no changes",
+			patchSet: func() *PatchSet[diffTestResourcer] {
+				p := NewPatchSet(meta)
+				p.Set("Field1", "value1")
+				p.Set("Field2", 2)
+				return p
+			}(),
+			old: &diffTestResourcer{
+				Field1: "value1",
+				Field2: 2,
+			},
+			want: map[accesstypes.Field]DiffElem{},
+		},
+		{
+			name: "with changes",
+			patchSet: func() *PatchSet[diffTestResourcer] {
+				p := NewPatchSet(meta)
+				p.Set("Field1", "value2")
+				p.Set("Field2", 3)
+				return p
+			}(),
+			old: &diffTestResourcer{
+				Field1: "value1",
+				Field2: 2,
+			},
+			want: map[accesstypes.Field]DiffElem{
+				"Field1": {Old: "value1", New: "value2"},
+				"Field2": {Old: 2, New: 3},
+			},
+		},
+		{
+			name: "field in patch not in old error",
+			patchSet: func() *PatchSet[diffTestResourcer] {
+				p := NewPatchSet(meta)
+				p.Set("Field3", "value3")
+				return p
+			}(),
+			old:     &diffTestResourcer{},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := tt.patchSet.Diff(tt.old)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("PatchSet.Diff() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("PatchSet.Diff() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+type deleteChangeSetTestResourcer struct {
+	Field1 string
+	Field2 int
+}
+
+func (r deleteChangeSetTestResourcer) Resource() accesstypes.Resource {
+	return "deleteChangeSetTestResourcer"
+}
+
+func TestPatchSet_deleteChangeSet(t *testing.T) {
+	t.Parallel()
+
+	meta := NewMetadata[deleteChangeSetTestResourcer]()
+	p := NewPatchSet(meta)
+
+	old := &deleteChangeSetTestResourcer{
+		Field1: "value1",
+		Field2: 2,
+	}
+
+	want := map[accesstypes.Field]DiffElem{
+		"Field1": {Old: "value1"},
+		"Field2": {Old: 2},
+	}
+
+	got, err := p.deleteChangeSet(old)
+	if err != nil {
+		t.Fatalf("PatchSet.deleteChangeSet() error = %v", err)
+	}
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("PatchSet.deleteChangeSet() mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func Test_all(t *testing.T) {
+	t.Parallel()
+
+	map1 := map[string]int{"a": 1, "b": 2}
+	map2 := map[string]int{"c": 3, "d": 4}
+	map3 := map[string]int{"a": 5} // Duplicate key
+
+	want := map[string]int{"a": 5, "b": 2, "c": 3, "d": 4}
+	got := make(map[string]int)
+
+	for k, v := range all(map1, map2, map3) {
+		got[k] = v
+	}
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("all() mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestPatchSet_validateEventSource(t *testing.T) {
+	t.Parallel()
+
+	metaWithTracking := NewMetadata[nilResource]()
+	metaWithTracking.trackChanges = true
+
+	metaWithoutTracking := NewMetadata[nilResource]()
+
+	tests := []struct {
+		name        string
+		patchSet    *PatchSet[nilResource]
+		eventSource []string
+		want        string
+		wantErr     bool
+	}{
+		{
+			name:        "tracking enabled, source provided",
+			patchSet:    NewPatchSet(metaWithTracking),
+			eventSource: []string{"test-source"},
+			want:        "test-source",
+		},
+		{
+			name:        "tracking enabled, no source",
+			patchSet:    NewPatchSet(metaWithTracking),
+			eventSource: []string{},
+			wantErr:     true,
+		},
+		{
+			name:        "tracking enabled, multiple sources",
+			patchSet:    NewPatchSet(metaWithTracking),
+			eventSource: []string{"source1", "source2"},
+			wantErr:     true,
+		},
+		{
+			name:        "tracking disabled, source provided",
+			patchSet:    NewPatchSet(metaWithoutTracking),
+			eventSource: []string{"test-source"},
+			want:        "test-source",
+		},
+		{
+			name:        "tracking disabled, no source",
+			patchSet:    NewPatchSet(metaWithoutTracking),
+			eventSource: []string{},
+			want:        "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := tt.patchSet.validateEventSource(tt.eventSource)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("PatchSet.validateEventSource() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("PatchSet.validateEventSource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+type insertChangeSetTestResourcer struct {
+	Field1 string
+	Field2 int
+}
+
+func (r insertChangeSetTestResourcer) Resource() accesstypes.Resource {
+	return "insertChangeSetTestResourcer"
+}
+
+func TestPatchSet_insertChangeSet(t *testing.T) {
+	t.Parallel()
+
+	meta := NewMetadata[insertChangeSetTestResourcer]()
+	p := NewPatchSet(meta)
+	p.Set("Field1", "value1")
+	p.Set("Field2", 2)
+
+	want := map[accesstypes.Field]DiffElem{
+		"Field1": {New: "value1"},
+		"Field2": {New: 2},
+	}
+
+	got, err := p.insertChangeSet()
+	if err != nil {
+		t.Fatalf("PatchSet.insertChangeSet() error = %v", err)
+	}
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("PatchSet.insertChangeSet() mismatch (-want +got):\n%s", diff)
+	}
+}
