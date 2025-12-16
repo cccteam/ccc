@@ -31,10 +31,8 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
-	"github.com/cccteam/ccc/queryset"
-	"github.com/cccteam/patcher"
 	"github.com/go-playground/errors/v5"
-	"github.com/shopspring/decimal"
+	"github.com/google/go-cmp/cmp"
 )
 
 func ({{ .Resource.Name }}) Resource() accesstypes.Resource {
@@ -1356,12 +1354,10 @@ import (
 	"time"
 
 	{{ .LocalPackageImports }}
-	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/httpio"
-	"github.com/shopspring/decimal"
 )
 
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.HandlerFunc {
@@ -1459,12 +1455,10 @@ import (
 	"time"
 
 	{{ .LocalPackageImports }}
-	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/httpio"
-	"github.com/shopspring/decimal"
 )
 
 {{- if not .Resource.SuppressListHandler }}
