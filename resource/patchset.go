@@ -1072,16 +1072,23 @@ func matchTextMarshaler[T encoding.TextMarshaler](v, v2 T) (bool, error) {
 	return false, nil
 }
 
+var _ PatchSetComparer = (*PatchSet[nilResource])(nil)
+
 // PatchSetComparer is an interface for comparing two PatchSet-like objects.
 type PatchSetComparer interface {
+	Resource() accesstypes.Resource
 	Data() map[accesstypes.Field]any
 	Fields() []accesstypes.Field
 	PatchType() PatchType
 	PrimaryKey() KeySet
 }
 
-// PatchsetCompare compares two PatchSetComparer objects for equality. It checks patch type, data, fields, and primary keys.
-func PatchsetCompare(a, b PatchSetComparer) bool {
+// PatchSetCompare compares two PatchSetComparer objects for equality. It checks patch type, data, fields, and primary keys.
+func PatchSetCompare(a, b PatchSetComparer) bool {
+	if a.Resource() != b.Resource() {
+		return false
+	}
+
 	if a.PatchType() != b.PatchType() {
 		return false
 	}

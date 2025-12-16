@@ -34,7 +34,7 @@ func TestNewPatchSet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := NewPatchSet(NewMetadata[nilResource]())
-			if diff := cmp.Diff(tt.want, got, cmp.Comparer(PatchsetCompare)); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmp.Comparer(PatchSetCompare)); diff != "" {
 				t.Errorf("NewPatchSet() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -117,7 +117,7 @@ func TestPatchSet_Set(t *testing.T) {
 				p.Set(i.field, i.value)
 			}
 			got := p
-			if diff := cmp.Diff(tt.want, got, cmp.Comparer(PatchsetCompare)); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmp.Comparer(PatchSetCompare)); diff != "" {
 				t.Errorf("PatchSet.Set() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -244,7 +244,7 @@ func TestPatchSet_SetKey(t *testing.T) {
 				p.SetKey(i.field, i.value)
 			}
 			got := p
-			if diff := cmp.Diff(tt.want, got, cmp.Comparer(PatchsetCompare)); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmp.Comparer(PatchSetCompare)); diff != "" {
 				t.Errorf("PatchSet.SetKey () mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -1034,7 +1034,7 @@ func TestPatchSet_FromStruct(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(tt.want, p, cmp.Comparer(PatchsetCompare)); diff != "" {
+			if diff := cmp.Diff(tt.want, p, cmp.Comparer(PatchSetCompare)); diff != "" {
 				t.Errorf("PatchSet.FromStruct() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -1373,5 +1373,147 @@ func TestPatchSet_insertChangeSet(t *testing.T) {
 
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("PatchSet.insertChangeSet() mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestPatchSetCompare(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		a        PatchSetComparer
+		b        PatchSetComparer
+		wantDiff bool
+	}{
+		{
+			name: "equal patch sets",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			wantDiff: true,
+		},
+		{
+			name: "different patch type",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "different data",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value2")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "different fields",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field2", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "different primary key",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 2)
+
+				return ps
+			}(),
+			wantDiff: true,
+		},
+		{
+			name: "different resource",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[nilResource]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tt.a, tt.b, cmp.Comparer(PatchSetCompare)); (diff != "") != tt.wantDiff {
+				t.Errorf("PatchSetCompare() mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/google/go-cmp/cmp"
 	"go.uber.org/mock/gomock"
 )
 
@@ -324,6 +325,100 @@ func TestQuerySet_BatchList(t *testing.T) {
 						t.Errorf("Resource at index %d does not match. Got %+v, want %+v", i, *res, *sourceResources[i])
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestQuerySetCompare(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		a        QuerySetComparer
+		b        QuerySetComparer
+		wantDiff bool
+	}{
+		{
+			name: "equal query sets",
+			a: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			b: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "different fields",
+			a: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			b: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field2")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			wantDiff: true,
+		},
+		{
+			name: "different key set",
+			a: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			b: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 2)
+
+				return qs
+			}(),
+			wantDiff: true,
+		},
+		{
+			name: "different resource",
+			a: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			b: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[nilResource]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			wantDiff: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tt.a, tt.b, cmp.Comparer(QuerySetCompare)); (diff != "") != tt.wantDiff {
+				t.Errorf("QuerySetCompare() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
+	"github.com/google/go-cmp/cmp"
 )
 
 // QuerySet represents a query for a resource, including fields, keys, filters, and permissions.
@@ -468,4 +469,30 @@ func moreThan(cnt int, exp ...bool) bool {
 	}
 
 	return count > cnt
+}
+
+var _ QuerySetComparer = (*QuerySet[nilResource])(nil)
+
+// QuerySetComparer is an interface for comparing two QuerySet-like objects.
+type QuerySetComparer interface {
+	Resource() accesstypes.Resource
+	Fields() []accesstypes.Field
+	KeySet() KeySet
+}
+
+// QuerySetCompare compares two QuerySetComparer objects for equality. It checks patch type, data, fields, and primary keys.
+func QuerySetCompare(a, b QuerySetComparer) bool {
+	if a.Resource() != b.Resource() {
+		return false
+	}
+
+	if cmp.Diff(a.Fields(), b.Fields()) != "" {
+		return false
+	}
+
+	if cmp.Diff(a.KeySet(), b.KeySet(), cmp.AllowUnexported(KeySet{})) != "" {
+		return false
+	}
+
+	return true
 }

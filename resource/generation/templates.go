@@ -124,6 +124,10 @@ func (q *{{ .Resource.Name }}Query) Offset(n uint64) *{{ .Resource.Name }}Query 
 
 	return q
 }
+
+func (q *{{ .Resource.Name }}Query) Equal(v *{{ .Resource.Name }}Query) bool {
+	return resource.QuerySetCompare(q.qSet, v.qSet)
+}
 {{- end }}
 
 type {{ .Resource.Name }}Columns struct {
@@ -376,6 +380,10 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 
 ` + fieldAccessors(createPatch) + `
 
+func (p *{{ .Resource.Name }}CreatePatch) Equal(v *{{ .Resource.Name }}CreatePatch) bool {
+	return resource.PatchSetCompare(p.patchSet, v.patchSet)
+}
+
 type {{ .Resource.Name }}UpdatePatch struct {
 	patchSet *resource.PatchSet[{{ .Resource.Name }}]
 }
@@ -455,6 +463,10 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 }
 
 ` + fieldAccessors(updatePatch) + `
+
+func (p *{{ .Resource.Name }}UpdatePatch) Equal(v *{{ .Resource.Name }}UpdatePatch) bool {
+	return resource.PatchSetCompare(p.patchSet, v.patchSet)
+}
 
 type {{ .Resource.Name }}DeletePatch struct {
 	patchSet *resource.PatchSet[{{ .Resource.Name }}]
