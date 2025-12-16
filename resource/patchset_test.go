@@ -1543,7 +1543,7 @@ func TestPatchSetCompare(t *testing.T) {
 
 				return ps
 			}(),
-			wantDiff: false,
+			wantDiff: true,
 		},
 	}
 

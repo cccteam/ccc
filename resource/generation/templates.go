@@ -125,8 +125,9 @@ func (q *{{ .Resource.Name }}Query) Offset(n uint64) *{{ .Resource.Name }}Query 
 	return q
 }
 
-func (q *{{ .Resource.Name }}Query) Equal(v *{{ .Resource.Name }}Query) bool {
-	return resource.QuerySetCompare(q.qSet, v.qSet)
+// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+func (q *{{ .Resource.Name }}Query) Diff(got *{{ .Resource.Name }}Query) string {
+	return cmp.Diff(q.qSet, got.qSet, cmp.Comparer(resource.QuerySetCompare))
 }
 {{- end }}
 
@@ -380,8 +381,9 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 
 ` + fieldAccessors(createPatch) + `
 
-func (p *{{ .Resource.Name }}CreatePatch) Equal(v *{{ .Resource.Name }}CreatePatch) bool {
-	return resource.PatchSetCompare(p.patchSet, v.patchSet)
+// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+func (p *{{ .Resource.Name }}CreatePatch) Diff(got *{{ .Resource.Name }}CreatePatch) string {
+	return cmp.Diff(p.patchSet, got.patchSet, cmp.Comparer(resource.PatchSetCompare))
 }
 
 type {{ .Resource.Name }}UpdatePatch struct {
@@ -464,8 +466,9 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 
 ` + fieldAccessors(updatePatch) + `
 
-func (p *{{ .Resource.Name }}UpdatePatch) Equal(v *{{ .Resource.Name }}UpdatePatch) bool {
-	return resource.PatchSetCompare(p.patchSet, v.patchSet)
+// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+func (p *{{ .Resource.Name }}UpdatePatch) Diff(got *{{ .Resource.Name }}UpdatePatch) string {
+	return cmp.Diff(p.patchSet, got.patchSet, cmp.Comparer(resource.PatchSetCompare))
 }
 
 type {{ .Resource.Name }}DeletePatch struct {
