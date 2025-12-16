@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding"
 	"iter"
+	"maps"
 	"reflect"
+	"slices"
 	"time"
 
 	"cloud.google.com/go/spanner"
@@ -1094,8 +1096,18 @@ func PatchSetCompare(a, b PatchSetComparer) bool {
 		return false
 	}
 
-	if cmp.Diff(a.Data(), b.Data()) != "" {
+	aData, bData := a.Data(), b.Data()
+	if cmp.Diff(
+		slices.Collect(maps.Keys(aData)),
+		slices.Collect(maps.Keys(bData)),
+		cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })) != "" {
 		return false
+	}
+
+	for k, v := range aData {
+		if !cmp.Equal(v, bData[k], cmpopts.EquateComparable(v)) {
+			return false
+		}
 	}
 
 	if cmp.Diff(a.Fields(), b.Fields(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })) != "" {
