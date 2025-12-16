@@ -136,7 +136,7 @@ func (p *PatchSet[Resource]) ToStruct() *Resource {
 	newRVal := reflect.New(t)
 	newRElem := newRVal.Elem()
 
-	for fieldName, value := range p.Data() {
+	for fieldName, value := range all(p.data.data, p.querySet.keys.data) {
 		field := newRElem.FieldByName(string(fieldName))
 		if !field.IsValid() {
 			panic(errors.Newf("field %s from patchset not found in struct %s", fieldName, t.Name()))
