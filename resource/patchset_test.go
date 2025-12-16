@@ -1406,6 +1406,68 @@ func TestPatchSetCompare(t *testing.T) {
 			wantDiff: false,
 		},
 		{
+			name: "equal patch sets with different field order",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value1")
+				ps.Set("field2", "value2")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.Set("field2", "value2")
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "equal patch sets with different primary key order on CreatePatchType",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.SetKey("id", 1)
+				ps.SetKey("name", "test")
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(CreatePatchType)
+				ps.SetKey("name", "test")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "equal patch sets with different primary key order on UpdatePatchType",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.SetKey("id", 1)
+				ps.SetKey("name", "test")
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.SetKey("name", "test")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
 			name: "different patch type",
 			a: func() PatchSetComparer {
 				ps := NewPatchSet(NewMetadata[resourcer]())

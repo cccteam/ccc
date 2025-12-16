@@ -15,6 +15,7 @@ import (
 	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 // PatchType defines the type of operation for a PatchSet.
@@ -1097,16 +1098,16 @@ func PatchSetCompare(a, b PatchSetComparer) bool {
 		return false
 	}
 
-	if cmp.Diff(a.Fields(), b.Fields()) != "" {
+	if cmp.Diff(a.Fields(), b.Fields(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })) != "" {
 		return false
 	}
 
 	if a.PatchType() == CreatePatchType {
-		if cmp.Diff(a.PrimaryKey().keys(), b.PrimaryKey().keys()) != "" {
+		if cmp.Diff(a.PrimaryKey().keys(), b.PrimaryKey().keys(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })) != "" {
 			return false
 		}
 	} else {
-		if cmp.Diff(a.PrimaryKey(), b.PrimaryKey(), cmp.AllowUnexported(KeySet{})) != "" {
+		if cmp.Diff(a.PrimaryKey(), b.PrimaryKey(), cmp.AllowUnexported(KeySet{}), cmpopts.SortSlices(func(x, y KeyPart) bool { return x.Key < y.Key })) != "" {
 			return false
 		}
 	}

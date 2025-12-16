@@ -13,6 +13,7 @@ import (
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 // QuerySet represents a query for a resource, including fields, keys, filters, and permissions.
@@ -486,11 +487,11 @@ func QuerySetCompare(a, b QuerySetComparer) bool {
 		return false
 	}
 
-	if cmp.Diff(a.Fields(), b.Fields()) != "" {
+	if cmp.Diff(a.Fields(), b.Fields(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })) != "" {
 		return false
 	}
 
-	if cmp.Diff(a.KeySet(), b.KeySet(), cmp.AllowUnexported(KeySet{})) != "" {
+	if cmp.Diff(a.KeySet().Parts(), b.KeySet().Parts(), cmp.AllowUnexported(KeySet{}), cmpopts.SortSlices(func(x, y KeyPart) bool { return x.Key < y.Key })) != "" {
 		return false
 	}
 

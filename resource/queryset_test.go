@@ -358,6 +358,44 @@ func TestQuerySetCompare(t *testing.T) {
 			wantDiff: false,
 		},
 		{
+			name: "equal query sets with different field order",
+			a: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.AddField("field2")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			b: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field2")
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "equal patch sets with different primary key order",
+			a: func() QuerySetComparer {
+				ps := NewQuerySet(NewMetadata[resourcer]())
+				ps.SetKey("id", 1)
+				ps.SetKey("name", "test")
+
+				return ps
+			}(),
+			b: func() QuerySetComparer {
+				ps := NewQuerySet(NewMetadata[resourcer]())
+				ps.SetKey("name", "test")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
 			name: "different fields",
 			a: func() QuerySetComparer {
 				qs := NewQuerySet(NewMetadata[resourcer]())
