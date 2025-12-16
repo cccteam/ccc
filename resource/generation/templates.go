@@ -524,6 +524,11 @@ func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.Reso
 }
 {{ end }}
 {{ end }}
+
+// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+func (p *{{ .Resource.Name }}DeletePatch) Diff(got *{{ .Resource.Name }}DeletePatch) string {
+	return cmp.Diff(p.patchSet, got.patchSet, cmp.Comparer(resource.PatchSetCompare))
+}
 {{ end }}`
 )
 
