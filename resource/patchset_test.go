@@ -1403,7 +1403,7 @@ func TestPatchSetCompare(t *testing.T) {
 
 				return ps
 			}(),
-			wantDiff: true,
+			wantDiff: false,
 		},
 		{
 			name: "different patch type",
@@ -1423,10 +1423,10 @@ func TestPatchSetCompare(t *testing.T) {
 
 				return ps
 			}(),
-			wantDiff: false,
+			wantDiff: true,
 		},
 		{
-			name: "different data",
+			name: "different data for create patch",
 			a: func() PatchSetComparer {
 				ps := NewPatchSet(NewMetadata[resourcer]())
 				ps.SetPatchType(CreatePatchType)
@@ -1443,7 +1443,27 @@ func TestPatchSetCompare(t *testing.T) {
 
 				return ps
 			}(),
-			wantDiff: false,
+			wantDiff: true,
+		},
+		{
+			name: "different data for other patch",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.Set("field1", "value2")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			wantDiff: true,
 		},
 		{
 			name: "different fields",
@@ -1463,10 +1483,10 @@ func TestPatchSetCompare(t *testing.T) {
 
 				return ps
 			}(),
-			wantDiff: false,
+			wantDiff: true,
 		},
 		{
-			name: "different primary key",
+			name: "different primary key for create patch",
 			a: func() PatchSetComparer {
 				ps := NewPatchSet(NewMetadata[resourcer]())
 				ps.SetPatchType(CreatePatchType)
@@ -1478,6 +1498,26 @@ func TestPatchSetCompare(t *testing.T) {
 			b: func() PatchSetComparer {
 				ps := NewPatchSet(NewMetadata[resourcer]())
 				ps.SetPatchType(CreatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 2)
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "different primary key for other patchs",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.Set("field1", "value1")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[resourcer]())
+				ps.SetPatchType(UpdatePatchType)
 				ps.Set("field1", "value1")
 				ps.SetKey("id", 2)
 
