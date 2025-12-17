@@ -11,6 +11,7 @@ require (
 	github.com/cccteam/ccc/accesstypes v0.5.4
 	github.com/cccteam/ccc/cache v0.1.1
 	github.com/cccteam/ccc/pkg v0.1.1
+	github.com/cccteam/ccc/securehash v0.0.7
 	github.com/cccteam/db-initiator v0.2.17
 	github.com/cccteam/httpio v0.7.9
 	github.com/cccteam/session v0.6.2
