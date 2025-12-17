@@ -10,7 +10,7 @@ import (
 type nilResource struct{}
 
 func (n nilResource) Resource() accesstypes.Resource {
-	return "nil"
+	return "nilResources"
 }
 
 func (n nilResource) DefaultConfig() Config {

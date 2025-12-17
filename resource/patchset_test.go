@@ -1,11 +1,13 @@
 package resource
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/securehash"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -34,7 +36,7 @@ func TestNewPatchSet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := NewPatchSet(NewMetadata[nilResource]())
-			if diff := cmp.Diff(tt.want, got, cmp.Comparer(PatchSetCompare)); diff != "" {
+			if diff := PatchSetDiff()(tt.want, got); diff != "" {
 				t.Errorf("NewPatchSet() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -117,7 +119,7 @@ func TestPatchSet_Set(t *testing.T) {
 				p.Set(i.field, i.value)
 			}
 			got := p
-			if diff := cmp.Diff(tt.want, got, cmp.Comparer(PatchSetCompare)); diff != "" {
+			if diff := PatchSetDiff()(tt.want, got); diff != "" {
 				t.Errorf("PatchSet.Set() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -244,7 +246,7 @@ func TestPatchSet_SetKey(t *testing.T) {
 				p.SetKey(i.field, i.value)
 			}
 			got := p
-			if diff := cmp.Diff(tt.want, got, cmp.Comparer(PatchSetCompare)); diff != "" {
+			if diff := PatchSetDiff()(tt.want, got); diff != "" {
 				t.Errorf("PatchSet.SetKey () mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -1034,7 +1036,7 @@ func TestPatchSet_FromStruct(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(tt.want, p, cmp.Comparer(PatchSetCompare)); diff != "" {
+			if diff := PatchSetDiff()(tt.want, p); diff != "" {
 				t.Errorf("PatchSet.FromStruct() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -1607,15 +1609,162 @@ func TestPatchSetCompare(t *testing.T) {
 			}(),
 			wantDiff: true,
 		},
+		{
+			name: "resource with securehash.Hash field",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[nilResource]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.Set("field1", func() securehash.Hash {
+					h := securehash.Hash{}
+					_ = h.UnmarshalText([]byte("1$12288$3$1$oGwawstCMOWozw2vbJgyyQ==.TwIukshFIMhe8brmzjO21FBjB/OeMiHHEEVVVRliDIc="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[nilResource]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.Set("field1", func() securehash.Hash {
+					h := securehash.Hash{}
+					_ = h.UnmarshalText([]byte("1$12288$3$1$oGwawstCMOWozw2vbJgyyQ==.TwIukshFIMhe8brmzjO21FBjB/OeMiHHEEVVVRliDIc="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "resource with *securehash.Hash field",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[nilResource]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.Set("field1", func() *securehash.Hash {
+					h := new(securehash.Hash)
+					_ = h.UnmarshalText([]byte("1$12288$3$1$oGwawstCMOWozw2vbJgyyQ==.TwIukshFIMhe8brmzjO21FBjB/OeMiHHEEVVVRliDIc="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[nilResource]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.Set("field1", func() *securehash.Hash {
+					h := new(securehash.Hash)
+					_ = h.UnmarshalText([]byte("1$12288$3$1$oGwawstCMOWozw2vbJgyyQ==.TwIukshFIMhe8brmzjO21FBjB/OeMiHHEEVVVRliDIc="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "resource with different securehash.Hash field",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[nilResource]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.Set("field1", func() *securehash.Hash {
+					h := new(securehash.Hash)
+					_ = h.UnmarshalText([]byte("1$12288$3$1$oGwawstCMOWozw2vbJgyyQ==.TwIukshFIMhe8brmzjO21FBjB/OeMiHHEEVVVRliDIc="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[nilResource]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.Set("field1", func() *securehash.Hash {
+					h := new(securehash.Hash)
+					_ = h.UnmarshalText([]byte("1$12288$3$1$nlP2592Ld9cIt2wwhyW7xw==.Cfghih+wTsPz00Fp4PraYRorRJim1RjxFXykoxtJjBM="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			wantDiff: true,
+		},
+		{
+			name: "resource with securehash.Hash key",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[nilResource]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.SetKey("field1", func() securehash.Hash {
+					h := securehash.Hash{}
+					_ = h.UnmarshalText([]byte("1$12288$3$1$oGwawstCMOWozw2vbJgyyQ==.TwIukshFIMhe8brmzjO21FBjB/OeMiHHEEVVVRliDIc="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[nilResource]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.SetKey("field1", func() securehash.Hash {
+					h := securehash.Hash{}
+					_ = h.UnmarshalText([]byte("1$12288$3$1$oGwawstCMOWozw2vbJgyyQ==.TwIukshFIMhe8brmzjO21FBjB/OeMiHHEEVVVRliDIc="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "resource with different securehash.Hash key",
+			a: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[nilResource]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.SetKey("field1", func() *securehash.Hash {
+					h := new(securehash.Hash)
+					_ = h.UnmarshalText([]byte("1$12288$3$1$oGwawstCMOWozw2vbJgyyQ==.TwIukshFIMhe8brmzjO21FBjB/OeMiHHEEVVVRliDIc="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			b: func() PatchSetComparer {
+				ps := NewPatchSet(NewMetadata[nilResource]())
+				ps.SetPatchType(UpdatePatchType)
+				ps.SetKey("field1", func() *securehash.Hash {
+					h := new(securehash.Hash)
+					_ = h.UnmarshalText([]byte("1$12288$3$1$nlP2592Ld9cIt2wwhyW7xw==.Cfghih+wTsPz00Fp4PraYRorRJim1RjxFXykoxtJjBM="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			wantDiff: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if diff := cmp.Diff(tt.a, tt.b, cmp.Comparer(PatchSetCompare)); (diff != "") != tt.wantDiff {
+			if diff := PatchSetDiff(cmp.Comparer(hashCompare))(tt.a, tt.b); (diff != "") != tt.wantDiff {
 				t.Errorf("PatchSetCompare() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
+}
+
+func hashCompare(h1, h2 securehash.Hash) bool {
+	v1, _ := h1.MarshalText()
+	v2, _ := h2.MarshalText()
+
+	return bytes.Equal(v1, v2)
 }

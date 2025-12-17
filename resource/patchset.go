@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding"
+	"fmt"
 	"iter"
 	"maps"
 	"reflect"
@@ -1086,43 +1087,43 @@ type PatchSetComparer interface {
 	PrimaryKey() KeySet
 }
 
-// PatchSetCompare compares two PatchSetComparer objects for equality. It checks patch type, data, fields, and primary keys.
-func PatchSetCompare(a, b PatchSetComparer) bool {
-	if a.Resource() != b.Resource() {
-		return false
-	}
-
-	if a.PatchType() != b.PatchType() {
-		return false
-	}
-
-	aData, bData := a.Data(), b.Data()
-	if cmp.Diff(
-		slices.Collect(maps.Keys(aData)),
-		slices.Collect(maps.Keys(bData)),
-		cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })) != "" {
-		return false
-	}
-
-	for k, v := range aData {
-		if !cmp.Equal(v, bData[k], cmpopts.EquateComparable(v)) {
-			return false
+// PatchSetDiff compares two PatchSetComparer objects for equality. It checks resource, patch type, data, fields, and primary keys.
+func PatchSetDiff(opts ...cmp.Option) func(a, b PatchSetComparer) string {
+	return func(a, b PatchSetComparer) string {
+		if a.Resource() != b.Resource() {
+			return fmt.Sprintf("Resource() mismatch, %s != %s", a.Resource(), b.Resource())
 		}
-	}
 
-	if cmp.Diff(a.Fields(), b.Fields(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })) != "" {
-		return false
-	}
-
-	if a.PatchType() == CreatePatchType {
-		if cmp.Diff(a.PrimaryKey().keys(), b.PrimaryKey().keys(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })) != "" {
-			return false
+		if a.PatchType() != b.PatchType() {
+			return fmt.Sprintf("PatchType() mismatch, %s != %s", a.PatchType(), b.PatchType())
 		}
-	} else {
-		if cmp.Diff(a.PrimaryKey(), b.PrimaryKey(), cmp.AllowUnexported(KeySet{}), cmpopts.SortSlices(func(x, y KeyPart) bool { return x.Key < y.Key })) != "" {
-			return false
-		}
-	}
 
-	return true
+		aData, bData := a.Data(), b.Data()
+		if diff := cmp.Diff(
+			slices.Collect(maps.Keys(aData)),
+			slices.Collect(maps.Keys(bData)),
+			cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })); diff != "" {
+			return fmt.Sprintf("Fields mismatch (-want +got):\n%s", diff)
+		}
+
+		for k, v := range aData {
+			if diff := cmp.Diff(v, bData[k], opts...); diff != "" {
+				return fmt.Sprintf("Value mismatch for field %s, (-want +got):\n%s", k, diff)
+			}
+		}
+
+		if diff := cmp.Diff(a.PrimaryKey().keys(), b.PrimaryKey().keys(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })); diff != "" {
+			return fmt.Sprintf("PrimaryKey mismatch (-want +got):\n%s", diff)
+		}
+		if a.PatchType() != CreatePatchType {
+			aKeyData, bKeyData := a.PrimaryKey().KeyMap(), b.PrimaryKey().KeyMap()
+			for k, v := range aKeyData {
+				if diff := cmp.Diff(v, bKeyData[k], opts...); diff != "" {
+					return fmt.Sprintf("Value mismatch for PrimaryKey field %s, (-want +got):\n%s", k, diff)
+				}
+			}
+		}
+
+		return ""
+	}
 }

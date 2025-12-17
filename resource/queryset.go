@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -481,19 +482,31 @@ type QuerySetComparer interface {
 	KeySet() KeySet
 }
 
-// QuerySetCompare compares two QuerySetComparer objects for equality. It checks patch type, data, fields, and primary keys.
-func QuerySetCompare(a, b QuerySetComparer) bool {
-	if a.Resource() != b.Resource() {
-		return false
-	}
+// QuerySetDiff compares two QuerySetComparer objects for equality. It checks patch type, data, fields, and primary keys.
+func QuerySetDiff(opts ...cmp.Option) func(a, b QuerySetComparer) string {
+	return func(a, b QuerySetComparer) string {
+		if a.Resource() != b.Resource() {
+			return fmt.Sprintf("Resource() mismatch, %s != %s", a.Resource(), b.Resource())
+		}
 
-	if cmp.Diff(a.Fields(), b.Fields(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })) != "" {
-		return false
-	}
+		if diff := cmp.Diff(a.Fields(), b.Fields(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })); diff != "" {
+			return fmt.Sprintf("Fileds mismatch (-want +got):\n%s", diff)
+		}
 
-	if cmp.Diff(a.KeySet().Parts(), b.KeySet().Parts(), cmp.AllowUnexported(KeySet{}), cmpopts.SortSlices(func(x, y KeyPart) bool { return x.Key < y.Key })) != "" {
-		return false
-	}
+		aKeyData, bKeyData := a.KeySet().KeyMap(), b.KeySet().KeyMap()
+		if diff := cmp.Diff(
+			slices.Collect(maps.Keys(aKeyData)),
+			slices.Collect(maps.Keys(bKeyData)),
+			cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })); diff != "" {
+			return fmt.Sprintf("Query Fields mismatch (-want +got):\n%s", diff)
+		}
 
-	return true
+		for k, v := range aKeyData {
+			if diff := cmp.Diff(v, bKeyData[k], opts...); diff != "" {
+				return fmt.Sprintf("Query Value mismatch for field %s, (-want +got):\n%s", k, diff)
+			}
+		}
+
+		return ""
+	}
 }
