@@ -48,14 +48,14 @@ func (q *QuerySet[Resource]) Resource() accesstypes.Resource {
 	return r.Resource()
 }
 
-func (q *QuerySet[Resource]) subquery() (query string, params map[string]any) {
+func (q *QuerySet[Resource]) query() (query string, params map[string]any) {
 	var r Resource
 
 	switch t := any(r).(type) {
 	case virtualQuerier:
 		query, params = t.Subquery()
 		// newlines before final parenthesis is necessary to combat any trailing comments
-		query = fmt.Sprintf("(%s\n)", query)
+		query = fmt.Sprintf("(%s\n) AS %s", query, r.Resource())
 
 		for pramName := range params {
 			if strings.HasPrefix(pramName, "_") {
@@ -340,7 +340,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
 	}
 
-	subquerySQL, subqueryParams := q.subquery()
+	query, subqueryParams := q.query()
 	for k := range subqueryParams {
 		if _, ok := where.Params[k]; ok {
 			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
@@ -352,11 +352,11 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	sql := fmt.Sprintf(`
 			SELECT
 				%s
-			FROM %s AS %s
+			FROM %s
 			%s
 			%s
 			%s
-			%s`, columns, subquerySQL, q.Resource(), where.SQL, orderByClause, limitClause, offsetClause,
+			%s`, columns, query, where.SQL, orderByClause, limitClause, offsetClause,
 	)
 
 	resolvedSQL, err := substituteSQLParams(where.SQL, where.Params)
