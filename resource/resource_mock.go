@@ -54,7 +54,7 @@ func (c *MockClient) SpannerReadOnlyTransaction() spxscan.Querier {
 
 // ExecuteFunc executes a function within a read-write transaction.
 func (c *MockClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
-	if err := f(ctx, NewMockReadWriteTransaction(c.txnMock, c.txnReadMocks)); err != nil {
+	if err := f(ctx, NewMockReadWriteTransaction(c.txnMock, c.txnReadMocks...)); err != nil {
 		return errors.Wrap(err, "f()")
 	}
 
