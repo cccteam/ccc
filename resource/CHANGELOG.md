@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/cccteam/ccc/compare/resource/v0.9.0...resource/v0.9.1) (2025-12-17)
+
+
+### Code Cleanup
+
+* Add deprecated method to help with migrations, and misc cleanup ([#596](https://github.com/cccteam/ccc/issues/596)) ([94185ac](https://github.com/cccteam/ccc/commit/94185ac4ff479f7be94b545fe37a77879438a487))
+
 ## [0.9.0](https://github.com/cccteam/ccc/compare/resource/v0.8.3...resource/v0.9.0) (2025-12-17)
 
 
