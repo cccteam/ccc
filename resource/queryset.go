@@ -486,7 +486,7 @@ type QuerySetComparer interface {
 func QuerySetDiff(opts ...cmp.Option) func(a, b QuerySetComparer) string {
 	return func(a, b QuerySetComparer) string {
 		if a.Resource() != b.Resource() {
-			return fmt.Sprintf("Resource() mismatch, %s != %s", a.Resource(), b.Resource())
+			return fmt.Sprintf("Resource() mismatch (-want +got):\n- %s\n+ %s", a.Resource(), b.Resource())
 		}
 
 		if diff := cmp.Diff(a.Fields(), b.Fields(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })); diff != "" {

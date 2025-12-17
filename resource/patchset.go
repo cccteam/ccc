@@ -1091,11 +1091,11 @@ type PatchSetComparer interface {
 func PatchSetDiff(opts ...cmp.Option) func(a, b PatchSetComparer) string {
 	return func(a, b PatchSetComparer) string {
 		if a.Resource() != b.Resource() {
-			return fmt.Sprintf("Resource() mismatch, %s != %s", a.Resource(), b.Resource())
+			return fmt.Sprintf("Resource() mismatch (-want +got):\n- %s\n+ %s", a.Resource(), b.Resource())
 		}
 
 		if a.PatchType() != b.PatchType() {
-			return fmt.Sprintf("PatchType() mismatch, %s != %s", a.PatchType(), b.PatchType())
+			return fmt.Sprintf("PatchType() mismatch (-want +got):\n- %s\n+ %s", a.PatchType(), b.PatchType())
 		}
 
 		aData, bData := a.Data(), b.Data()
