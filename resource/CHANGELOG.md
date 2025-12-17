@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/cccteam/ccc/compare/resource/v0.9.1...resource/v0.9.2) (2025-12-17)
+
+
+### Bug Fixes
+
+* spread txnReadMocks slice instead of passing slice as single arg to variadic any ([#598](https://github.com/cccteam/ccc/issues/598)) ([76eaba0](https://github.com/cccteam/ccc/commit/76eaba024361367a4f96f28adee36264aedb3770))
+
 ## [0.9.1](https://github.com/cccteam/ccc/compare/resource/v0.9.0...resource/v0.9.1) (2025-12-17)
 
 
