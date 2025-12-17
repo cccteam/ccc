@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.9.0](https://github.com/cccteam/ccc/compare/resource/v0.8.3...resource/v0.9.0) (2025-12-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* Renamed `default_update_fn` to `output_only_update_fn` ([#591](https://github.com/cccteam/ccc/issues/591))
+
+### Features
+
+* Add support for uniqueindex on virtual resources ([#566](https://github.com/cccteam/ccc/issues/566)) ([df63caf](https://github.com/cccteam/ccc/commit/df63caf4f2ca40757a2e28c71c2ab5cd2c9cb6d4))
+* Implement a ToStruct() and FromStruct() method on PatchSet. ([#592](https://github.com/cccteam/ccc/issues/592)) ([e376f40](https://github.com/cccteam/ccc/commit/e376f4080108231e2d20ff2b607a6331d11de2bd))
+* Implement read-only transaction ([#568](https://github.com/cccteam/ccc/issues/568)) ([764c175](https://github.com/cccteam/ccc/commit/764c175bf4609dfaaaaa2c21d4defb8d6b2ad531))
+* Implement support for comparing Named PatchSets and QuerySets ([#595](https://github.com/cccteam/ccc/issues/595)) ([a8c139e](https://github.com/cccteam/ccc/commit/a8c139ec01c303116fac7e057670722787181496))
+* Use ccc-lib for template imports ([#562](https://github.com/cccteam/ccc/issues/562)) ([a2549e6](https://github.com/cccteam/ccc/commit/a2549e650d3319e716785fa901f5247dfa970689))
+
+
+### Bug Fixes
+
+* Fix base permission check by-pass when adding all accessable fields ([#590](https://github.com/cccteam/ccc/issues/590)) ([e8136d9](https://github.com/cccteam/ccc/commit/e8136d98327c6397365581fc80a2cb2c54a741c8))
+* Fix bug where generated code is invalid when a non-primary key is first in a struct ([#589](https://github.com/cccteam/ccc/issues/589)) ([f892f43](https://github.com/cccteam/ccc/commit/f892f439d221a86f0919b652fd3eec060ba3ca95))
+* Fix ccc-lib import path for types ([#577](https://github.com/cccteam/ccc/issues/577)) ([76942ff](https://github.com/cccteam/ccc/commit/76942ff4bb0f84f9b9eb8f9e936e9e53167699d9))
+* Fix ccc-lib import path for types ([#578](https://github.com/cccteam/ccc/issues/578)) ([f586907](https://github.com/cccteam/ccc/commit/f58690736f95a3f37d0cb7328f7cc105b3c0311c))
+* Fix generation for consolidated handlers when all patch handlers are suppressed ([#563](https://github.com/cccteam/ccc/issues/563)) ([5749972](https://github.com/cccteam/ccc/commit/574997270d16f4ad424178ce96a7c5c64886638a))
+* Fix generation when all handlers are suppressed ([#563](https://github.com/cccteam/ccc/issues/563)) ([5749972](https://github.com/cccteam/ccc/commit/574997270d16f4ad424178ce96a7c5c64886638a))
+* Only include router constants for generated resources ([#565](https://github.com/cccteam/ccc/issues/565)) ([49b692c](https://github.com/cccteam/ccc/commit/49b692c96238d22ad47bf6d978bbc971fd61e7d2))
+* Remove generated files for virtual resource before re-generating ([#565](https://github.com/cccteam/ccc/issues/565)) ([49b692c](https://github.com/cccteam/ccc/commit/49b692c96238d22ad47bf6d978bbc971fd61e7d2))
+* Remove hard coded PKey name ([#565](https://github.com/cccteam/ccc/issues/565)) ([49b692c](https://github.com/cccteam/ccc/commit/49b692c96238d22ad47bf6d978bbc971fd61e7d2))
+* ToStruct was missing PKeys when populating resource struct ([#594](https://github.com/cccteam/ccc/issues/594)) ([2738676](https://github.com/cccteam/ccc/commit/2738676f5762b867314f35edfe16ed659368f8b3))
+
+
+### Code Refactoring
+
+* Rename Update to OutputOnly to clarify usage intent ([#591](https://github.com/cccteam/ccc/issues/591)) ([f673552](https://github.com/cccteam/ccc/commit/f673552f739fc5c3cdcfc18a559543fd8c321295))
+* Renamed `default_update_fn` to `output_only_update_fn` ([#591](https://github.com/cccteam/ccc/issues/591)) ([f673552](https://github.com/cccteam/ccc/commit/f673552f739fc5c3cdcfc18a559543fd8c321295))
+
+
+### Code Upgrade
+
+* **deps:** Bump github.com/cccteam/ccc ([#588](https://github.com/cccteam/ccc/issues/588)) ([ea6938f](https://github.com/cccteam/ccc/commit/ea6938fdb3b04f77908a0aa0f7de4de765e4b5b1))
+* **deps:** Bump the go-dependencies group ([#559](https://github.com/cccteam/ccc/issues/559)) ([ae23fb1](https://github.com/cccteam/ccc/commit/ae23fb117bfc7c25fae783cc95923b321d18bc11))
+* **deps:** Bump the go-dependencies group ([#585](https://github.com/cccteam/ccc/issues/585)) ([0935bab](https://github.com/cccteam/ccc/commit/0935bab46e0152a530a66f2327f11ec66ee0914b))
+* **deps:** Bump the go-dependencies group in /resource with 2 updates ([#593](https://github.com/cccteam/ccc/issues/593)) ([928b184](https://github.com/cccteam/ccc/commit/928b184387a3c19ffc77a97375627fec501d93e4))
+* go =&gt; 1.25.5 and dependencies ([#570](https://github.com/cccteam/ccc/issues/570)) ([8476082](https://github.com/cccteam/ccc/commit/8476082d73d3844d454962f9850aec543bff1922))
+
 ## [0.8.3](https://github.com/cccteam/ccc/compare/resource/v0.8.2...resource/v0.8.3) (2025-11-27)
 
 
