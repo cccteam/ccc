@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 // QuerySet represents a query for a resource, including fields, keys, filters, and permissions.
@@ -468,4 +471,42 @@ func moreThan(cnt int, exp ...bool) bool {
 	}
 
 	return count > cnt
+}
+
+var _ QuerySetComparer = (*QuerySet[nilResource])(nil)
+
+// QuerySetComparer is an interface for comparing two QuerySet-like objects.
+type QuerySetComparer interface {
+	Resource() accesstypes.Resource
+	Fields() []accesstypes.Field
+	KeySet() KeySet
+}
+
+// QuerySetDiff compares two QuerySetComparer objects for equality. It checks patch type, data, fields, and primary keys.
+func QuerySetDiff(opts ...cmp.Option) func(a, b QuerySetComparer) string {
+	return func(a, b QuerySetComparer) string {
+		if a.Resource() != b.Resource() {
+			return fmt.Sprintf("Resource() mismatch (-want +got):\n- %s\n+ %s", a.Resource(), b.Resource())
+		}
+
+		if diff := cmp.Diff(a.Fields(), b.Fields(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })); diff != "" {
+			return fmt.Sprintf("Fileds mismatch (-want +got):\n%s", diff)
+		}
+
+		aKeyData, bKeyData := a.KeySet().KeyMap(), b.KeySet().KeyMap()
+		if diff := cmp.Diff(
+			slices.Collect(maps.Keys(aKeyData)),
+			slices.Collect(maps.Keys(bKeyData)),
+			cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })); diff != "" {
+			return fmt.Sprintf("Query Fields mismatch (-want +got):\n%s", diff)
+		}
+
+		for k, v := range aKeyData {
+			if diff := cmp.Diff(v, bKeyData[k], opts...); diff != "" {
+				return fmt.Sprintf("Query Value mismatch for field %s, (-want +got):\n%s", k, diff)
+			}
+		}
+
+		return ""
+	}
 }

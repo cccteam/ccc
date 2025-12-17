@@ -6,6 +6,8 @@ import (
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/securehash"
+	"github.com/google/go-cmp/cmp"
 	"go.uber.org/mock/gomock"
 )
 
@@ -324,6 +326,190 @@ func TestQuerySet_BatchList(t *testing.T) {
 						t.Errorf("Resource at index %d does not match. Got %+v, want %+v", i, *res, *sourceResources[i])
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestQuerySetCompare(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		a        QuerySetComparer
+		b        QuerySetComparer
+		wantDiff bool
+	}{
+		{
+			name: "equal query sets",
+			a: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			b: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "equal query sets with different field order",
+			a: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.AddField("field2")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			b: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field2")
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "equal patch sets with different primary key order",
+			a: func() QuerySetComparer {
+				ps := NewQuerySet(NewMetadata[resourcer]())
+				ps.SetKey("id", 1)
+				ps.SetKey("name", "test")
+
+				return ps
+			}(),
+			b: func() QuerySetComparer {
+				ps := NewQuerySet(NewMetadata[resourcer]())
+				ps.SetKey("name", "test")
+				ps.SetKey("id", 1)
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "different fields",
+			a: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			b: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field2")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			wantDiff: true,
+		},
+		{
+			name: "different key set",
+			a: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			b: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 2)
+
+				return qs
+			}(),
+			wantDiff: true,
+		},
+		{
+			name: "different resource",
+			a: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[resourcer]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			b: func() QuerySetComparer {
+				qs := NewQuerySet(NewMetadata[nilResource]())
+				qs.AddField("field1")
+				qs.SetKey("id", 1)
+
+				return qs
+			}(),
+			wantDiff: true,
+		},
+		{
+			name: "resource with securehash.Hash key",
+			a: func() QuerySetComparer {
+				ps := NewQuerySet(NewMetadata[nilResource]())
+				ps.SetKey("field1", func() securehash.Hash {
+					h := securehash.Hash{}
+					_ = h.UnmarshalText([]byte("1$12288$3$1$oGwawstCMOWozw2vbJgyyQ==.TwIukshFIMhe8brmzjO21FBjB/OeMiHHEEVVVRliDIc="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			b: func() QuerySetComparer {
+				ps := NewQuerySet(NewMetadata[nilResource]())
+				ps.SetKey("field1", func() securehash.Hash {
+					h := securehash.Hash{}
+					_ = h.UnmarshalText([]byte("1$12288$3$1$oGwawstCMOWozw2vbJgyyQ==.TwIukshFIMhe8brmzjO21FBjB/OeMiHHEEVVVRliDIc="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			wantDiff: false,
+		},
+		{
+			name: "resource with different securehash.Hash key",
+			a: func() QuerySetComparer {
+				ps := NewQuerySet(NewMetadata[nilResource]())
+				ps.SetKey("field1", func() *securehash.Hash {
+					h := new(securehash.Hash)
+					_ = h.UnmarshalText([]byte("1$12288$3$1$oGwawstCMOWozw2vbJgyyQ==.TwIukshFIMhe8brmzjO21FBjB/OeMiHHEEVVVRliDIc="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			b: func() QuerySetComparer {
+				ps := NewQuerySet(NewMetadata[nilResource]())
+				ps.SetKey("field1", func() *securehash.Hash {
+					h := new(securehash.Hash)
+					_ = h.UnmarshalText([]byte("1$12288$3$1$nlP2592Ld9cIt2wwhyW7xw==.Cfghih+wTsPz00Fp4PraYRorRJim1RjxFXykoxtJjBM="))
+
+					return h
+				}())
+
+				return ps
+			}(),
+			wantDiff: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := QuerySetDiff(cmp.Comparer(hashCompare))(tt.a, tt.b); (diff != "") != tt.wantDiff {
+				t.Errorf("QuerySetCompare() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
