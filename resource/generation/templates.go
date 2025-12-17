@@ -124,8 +124,8 @@ func (q *{{ .Resource.Name }}Query) Offset(n uint64) *{{ .Resource.Name }}Query 
 }
 
 // Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
-func (q *{{ .Resource.Name }}Query) Diff(got *{{ .Resource.Name }}Query) string {
-	return cmp.Diff(q.qSet, got.qSet, cmp.Comparer(resource.QuerySetCompare))
+func (q *{{ .Resource.Name }}Query) Diff(got *{{ .Resource.Name }}Query, opts ...cmp.Option) string {
+	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)
 }
 {{- end }}
 
@@ -380,8 +380,8 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 ` + fieldAccessors(createPatch) + `
 
 // Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
-func (p *{{ .Resource.Name }}CreatePatch) Diff(got *{{ .Resource.Name }}CreatePatch) string {
-	return cmp.Diff(p.patchSet, got.patchSet, cmp.Comparer(resource.PatchSetCompare))
+func (p *{{ .Resource.Name }}CreatePatch) Diff(got *{{ .Resource.Name }}CreatePatch, opts ...cmp.Option) string {
+	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
 
 type {{ .Resource.Name }}UpdatePatch struct {
@@ -465,8 +465,8 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 ` + fieldAccessors(updatePatch) + `
 
 // Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
-func (p *{{ .Resource.Name }}UpdatePatch) Diff(got *{{ .Resource.Name }}UpdatePatch) string {
-	return cmp.Diff(p.patchSet, got.patchSet, cmp.Comparer(resource.PatchSetCompare))
+func (p *{{ .Resource.Name }}UpdatePatch) Diff(got *{{ .Resource.Name }}UpdatePatch, opts ...cmp.Option) string {
+	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
 
 type {{ .Resource.Name }}DeletePatch struct {
@@ -526,8 +526,8 @@ func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.Reso
 {{ end }}
 
 // Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
-func (p *{{ .Resource.Name }}DeletePatch) Diff(got *{{ .Resource.Name }}DeletePatch) string {
-	return cmp.Diff(p.patchSet, got.patchSet, cmp.Comparer(resource.PatchSetCompare))
+func (p *{{ .Resource.Name }}DeletePatch) Diff(got *{{ .Resource.Name }}DeletePatch, opts ...cmp.Option) string {
+	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
 {{ end }}`
 )
