@@ -1568,7 +1568,15 @@ func fieldAccessors(patchType patchType) string {
 		{{- range $field := .Resource.Fields }}
 		{{ if eq false $field.IsPrimaryKey }}
 		func (p *{{ $field.Parent.Name }}%[1]sPatch) Set{{ $field.Name }}(v {{ $field.ResolvedType }}) *{{ $field.Parent.Name }}%[1]sPatch {
-			p.patchSet.Set("{{ $field.Name }}", v)
+			{{ if $field.IsPointer -}}
+				if v != nil {
+					p.patchSet.Set("{{ $field.Name }}", v)
+				} else {
+					p.patchSet.Set("{{ $field.Name }}", nil)
+				}
+			{{- else -}}
+				p.patchSet.Set("{{ $field.Name }}", v)
+			{{- end }}
 
 			return p
 		}
