@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/cccteam/ccc/compare/resource/v0.9.2...resource/v0.9.3) (2025-12-18)
+
+
+### Bug Fixes
+
+* Fix issue where a nil value can not be saved to the database for types which use EncodeSpanner() (i.e. *ccc.UUID) ([#600](https://github.com/cccteam/ccc/issues/600)) ([d31c297](https://github.com/cccteam/ccc/commit/d31c297178c2e5f05c03100992b5993b6df38d78))
+
 ## [0.9.2](https://github.com/cccteam/ccc/compare/resource/v0.9.1...resource/v0.9.2) (2025-12-17)
 
 
