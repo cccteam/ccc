@@ -201,10 +201,10 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	}
 
 	templateData := map[string]any{
-		"File": t,
-		"Data": routerData,
-		// "RPCMethods": t.rpcMethods,
-		"PIIMap": piiResourceFields,
+		"File":       t,
+		"Data":       routerData,
+		"RPCMethods": t.rpcMethods,
+		"PIIMap":     piiResourceFields,
 	}
 
 	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, typescriptConstantsTemplate, templateData)
