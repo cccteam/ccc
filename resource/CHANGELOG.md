@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.4](https://github.com/cccteam/ccc/compare/resource/v0.9.3...resource/v0.9.4) (2025-12-24)
+
+
+### Features
+
+* Added rpc handler generation suppression ([#582](https://github.com/cccteam/ccc/issues/582)) ([1bb9438](https://github.com/cccteam/ccc/commit/1bb9438b7facd843076ed0d71ee21c0474601b8a))
+
 ## [0.9.3](https://github.com/cccteam/ccc/compare/resource/v0.9.2...resource/v0.9.3) (2025-12-18)
 
 
