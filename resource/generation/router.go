@@ -96,6 +96,10 @@ func (r *resourceGenerator) runRouteGeneration() error {
 
 	if r.genRPCMethods {
 		for _, rpcStruct := range r.rpcMethods {
+			if rpcStruct.SuppressHandler {
+				continue
+			}
+
 			generatedRoutesMap[rpcStruct.Name()] = []generatedRoute{{
 				Method:      "POST",
 				Path:        fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(rpcStruct.Name())),
