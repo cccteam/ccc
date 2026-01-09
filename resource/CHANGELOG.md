@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.4](https://github.com/cccteam/ccc/compare/resource/v0.9.3...resource/v0.9.4) (2026-01-09)
+
+
+### Features
+
+* Added rpc handler generation suppression ([#582](https://github.com/cccteam/ccc/issues/582)) ([1bb9438](https://github.com/cccteam/ccc/commit/1bb9438b7facd843076ed0d71ee21c0474601b8a))
+
+
+### Code Refactoring
+
+* prevent shadowing of request variable when listing resources ([#607](https://github.com/cccteam/ccc/issues/607)) ([3dbb8bb](https://github.com/cccteam/ccc/commit/3dbb8bbe1556015f8994a1f2b8118f1394efc21d))
+
 ## [0.9.3](https://github.com/cccteam/ccc/compare/resource/v0.9.2...resource/v0.9.3) (2025-12-18)
 
 
