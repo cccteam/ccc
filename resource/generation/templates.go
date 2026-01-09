@@ -576,11 +576,11 @@ import (
 		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
 		resp := response{}
-		for r, err := range res.List(ctx, {{ .ReceiverName }}.ResourceClient()) {
+		for row, err := range res.List(ctx, {{ .ReceiverName }}.ResourceClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			rec := (*{{ GoCamel .Resource.Name }})(r)
+			rec := (*{{ GoCamel .Resource.Name }})(row)
 			rmap := make(map[string]interface{})
 			for _, field := range querySet.Fields() {
 				switch string(field) {
@@ -1488,11 +1488,11 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 		}
 
 		resp := response{}
-		for r, err := range {{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()) {
+		for row, err := range {{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			rec := (*{{ GoCamel .Resource.Name }})(r)
+			rec := (*{{ GoCamel .Resource.Name }})(row)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {
