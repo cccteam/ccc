@@ -6,7 +6,7 @@ replace github.com/golang-migrate/migrate/v4 v4.19.1 => github.com/jtwatson/migr
 
 require (
 	cloud.google.com/go v0.123.0
-	cloud.google.com/go/spanner v1.86.1
+	cloud.google.com/go/spanner v1.87.0
 	github.com/cccteam/ccc v0.2.21
 	github.com/cccteam/ccc/accesstypes v0.5.4
 	github.com/cccteam/ccc/cache v0.1.1
@@ -21,7 +21,7 @@ require (
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.7.6
+	github.com/jackc/pgx/v5 v5.8.0
 	github.com/momaek/formattag v0.0.10
 	github.com/shopspring/decimal v1.4.0
 	go.uber.org/mock v0.6.0
