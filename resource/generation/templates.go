@@ -1138,13 +1138,11 @@ const methodMap: MethodMap = {
   {{- range $rpcMethod := .RPCMethods }}
   [Methods.{{ $rpcMethod.Name }}]: {
     route: '{{ Kebab ($rpcMethod.Name) }}',
-  {{- if gt $rpcMethod.NumFields 0 }}
     fields: [
     {{- range $field := $rpcMethod.Fields }}
       { fieldName: '{{ Camel $field.Name }}', displayType: '{{ Lower $field.TypescriptDisplayType }}'{{- if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }} },
     {{- end }}
     ],
-  {{- end }}
   },
 
   {{- end }}
