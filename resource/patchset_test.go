@@ -1768,3 +1768,145 @@ func hashCompare(h1, h2 securehash.Hash) bool {
 
 	return bytes.Equal(v1, v2)
 }
+
+func Test_matchPrimitive(t *testing.T) {
+	t.Parallel()
+
+	type args struct {
+		v  string
+		v2 any
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "equal strings",
+			args: args{v: "hello", v2: "hello"},
+			want: true,
+		},
+		{
+			name: "unequal strings",
+			args: args{v: "hello", v2: "world"},
+			want: false,
+		},
+		{
+			name:    "incompatible type",
+			args:    args{v: "hello", v2: 123},
+			wantErr: true,
+		},
+		{
+			name:    "v2 is nil",
+			args:    args{v: "hello", v2: nil},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := matchPrimitive(tt.args.v, tt.args.v2)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("matchPrimitive() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("matchPrimitive() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_matchPrimitivePtr_string(t *testing.T) {
+	t.Parallel()
+
+	type args struct {
+		v  *string
+		v2 any
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "both nil",
+			args: args{
+				v:  nil,
+				v2: nil,
+			},
+			want:    true,
+			wantErr: false,
+		},
+		{
+			name: "v nil",
+			args: args{
+				v:  nil,
+				v2: ccc.Ptr("hello"),
+			},
+			want:    false,
+			wantErr: false,
+		},
+		{
+			name: "v2 nil",
+			args: args{
+				v:  ccc.Ptr("hello"),
+				v2: nil,
+			},
+			want:    false,
+			wantErr: false,
+		},
+		{
+			name: "both pointing to same value",
+			args: args{
+				v:  ccc.Ptr("hello"),
+				v2: ccc.Ptr("hello"),
+			},
+			want:    true,
+			wantErr: false,
+		},
+		{
+			name: "both pointing to different values",
+			args: args{
+				v:  ccc.Ptr("hello"),
+				v2: ccc.Ptr("world"),
+			},
+			want:    false,
+			wantErr: false,
+		},
+		{
+			name: "v2 is not a pointer",
+			args: args{
+				v:  ccc.Ptr("hello"),
+				v2: "hello",
+			},
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name: "v2 is a pointer to a different type",
+			args: args{
+				v:  ccc.Ptr("hello"),
+				v2: ccc.Ptr(123),
+			},
+			want:    false,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := matchPrimitivePtr(tt.args.v, tt.args.v2)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("matchPrimitivePtr() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("matchPrimitivePtr() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
