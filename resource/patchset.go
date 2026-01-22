@@ -1035,6 +1035,10 @@ func matchPrimitive[T comparable](v T, v2 any) (bool, error) {
 }
 
 func matchPrimitivePtr[T comparable](v *T, v2 any) (bool, error) {
+	if v2 == nil {
+		return v == nil, nil
+	}
+
 	t2, ok := v2.(*T)
 	if !ok {
 		return false, errors.Newf("matchPrimitivePtr(): attempted to diff incomparable types, old: %T, new: %T", v, v2)
