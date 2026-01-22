@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.5](https://github.com/cccteam/ccc/compare/resource/v0.9.4...resource/v0.9.5) (2026-01-22)
+
+
+### Bug Fixes
+
+* Diff only handled a typed nil, not a actual nil value ([#612](https://github.com/cccteam/ccc/issues/612)) ([79372f2](https://github.com/cccteam/ccc/commit/79372f289236bdbc3ba8533963fd188f3bdbbc6d))
+
 ## [0.9.4](https://github.com/cccteam/ccc/compare/resource/v0.9.3...resource/v0.9.4) (2026-01-16)
 
 
