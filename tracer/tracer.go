@@ -39,12 +39,16 @@ func NewGoogleCloudHandler(o ...otelhttp.Option) func(http.Handler) http.Handler
 	}
 }
 
+// Provider is an OpenTelemetry Provider. It provides Tracers to
+// instrumentation so it can trace operational flow through a system.
+type Provider = sdktrace.TracerProvider
+
 // NewGoogleCloudTraceProvider creates and configures a new OpenTelemetry TracerProvider
 // for use with Google Cloud Trace. It sets up an exporter to send traces to the
 // specified Google Cloud project.
 //
 // The created TracerProvider is also set as the global tracer provider for the application.
-func NewGoogleCloudTraceProvider(loggingProjectID, serviceName string, sampler sdktrace.Sampler) (*sdktrace.TracerProvider, error) {
+func NewGoogleCloudTraceProvider(loggingProjectID, serviceName string, sampler sdktrace.Sampler) (*Provider, error) {
 	exporter, err := texporter.New(texporter.WithProjectID(loggingProjectID))
 	if err != nil {
 		return nil, errors.Wrap(err, "texporter.New()")
