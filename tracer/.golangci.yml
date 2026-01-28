@@ -1,0 +1,170 @@
+version: '2'
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bodyclose
+    - copyloopvar
+    - cyclop
+    - depguard
+    - dogsled
+    - durationcheck
+    - errcheck
+    - errorlint
+    - exhaustive
+    - forcetypeassert
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godox
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - govet
+    - importas
+    - ineffassign
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    - nlreturn
+    - noctx
+    - nolintlint
+    - paralleltest
+    - prealloc
+    - predeclared
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - tagliatelle
+    - tparallel
+    - unconvert
+    - unparam
+    - unused
+    - wastedassign
+    - whitespace
+    - wrapcheck
+  settings:
+    cyclop:
+      max-complexity: 25
+    depguard:
+      rules:
+        main:
+          files:
+            - $all
+          allow:
+            - github.com/go-playground/errors/v5
+            - github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace
+            - github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator
+            - go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
+            - go.opentelemetry.io/otel
+            - go.opentelemetry.io/otel/sdk/resource
+            - go.opentelemetry.io/otel/sdk/trace
+            - go.opentelemetry.io/otel/semconv/v1.37.0
+            - go.opentelemetry.io/otel/trace
+            - $gostd
+    dupl:
+      threshold: 100
+    exhaustive:
+      default-signifies-exhaustive: true
+    funlen:
+      lines: 100
+      statements: 50
+    gocognit:
+      min-complexity: 50
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+    gocyclo:
+      min-complexity: 25
+    godox:
+      keywords:
+        - TODO
+        - BUG
+    misspell:
+      locale: US
+    nestif:
+      min-complexity: 10
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+        use-field-name: true
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .Cause(
+        - .RetryableError(
+      ignore-package-globs:
+        - github.com/cccteam/httpio*
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      - linters:
+          - bodyclose
+          - funlen
+          - gochecknoglobals
+          - gochecknoinits
+          - gocognit
+          - goconst
+          - gocyclo
+          - lll
+          - mnd
+          - nlreturn
+          - scopelint
+        path: _test\.go
+      - linters:
+          - gochecknoglobals
+        path: trace/tracing\.go
+        text: traceCache
+      - linters:
+          - paralleltest
+          - tparallel
+        path: trace/tracing_test\.go
+        text: TestStartTrace
+      - linters:
+          - gocritic
+        path: trace/tracing_test\.go
+        text: unlambda
+    paths:
+      - gui/node_modules
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - gui/node_modules
+      - third_party$
+      - builtin$
+      - examples$
