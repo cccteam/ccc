@@ -137,16 +137,16 @@ linters:
         path: _test\.go
       - linters:
           - gochecknoglobals
-        path: trace/tracing\.go
+        path: tracing\.go
         text: traceCache
       - linters:
           - paralleltest
           - tparallel
-        path: trace/tracing_test\.go
+        path: tracing_test\.go
         text: TestStartTrace
       - linters:
           - gocritic
-        path: trace/tracing_test\.go
+        path: tracing_test\.go
         text: unlambda
     paths:
       - gui/node_modules

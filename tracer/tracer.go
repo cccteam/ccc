@@ -1,6 +1,12 @@
-// Package tracer provides convenience functions for setting up OpenTelemetry tracing
-// with Google Cloud Trace. It simplifies the creation of HTTP middleware for tracing
-// requests and configuring the global tracer provider.
+// Package tracer provides convenience functions for OpenTelemetry tracing.
+//
+// It offers two main capabilities:
+//
+// 1. A "Start" function that simplifies trace creation by automatically determining
+// the tracer and span names from the calling function's package and name.
+//
+// 2. Functions for setting up tracing with Google Cloud Trace, including
+// an HTTP middleware and a TracerProvider that exports to Google Cloud.
 package tracer
 
 import (
@@ -68,7 +74,7 @@ func NewGoogleCloudTracerProvider(loggingProjectID, serviceName string, sampler 
 // NewNoopTracerProvider creates a new no-op TracerProvider and sets it as the
 // global tracer provider. A no-op provider discards all spans and is useful
 // for disabling tracing in environments like tests.
-func NewNoopTracerProvider() *Provider {
+func NewNoopTracerProvider() *sdktrace.TracerProvider {
 	tp := sdktrace.NewTracerProvider()
 	otel.SetTracerProvider(tp)
 

@@ -1,14 +1,4 @@
-// Package trace provides a convenient way to start OpenTelemetry traces
-// with automatically determined tracer and span names.
-//
-// The Start function inspects the call stack to find the calling function.
-// It uses the fully qualified package path of the caller as the tracer name
-// and the function name as the span name. This helps to reduce boilerplate
-// tracing code.
-//
-// To improve performance, the package caches the tracer and span names
-// after the first call from a specific location.
-package trace
+package tracer
 
 import (
 	"context"
