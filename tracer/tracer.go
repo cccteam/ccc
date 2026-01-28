@@ -43,12 +43,12 @@ func NewGoogleCloudHandler(o ...otelhttp.Option) func(http.Handler) http.Handler
 // instrumentation so it can trace operational flow through a system.
 type Provider = sdktrace.TracerProvider
 
-// NewGoogleCloudTraceProvider creates and configures a new OpenTelemetry TracerProvider
+// NewGoogleCloudTracerProvider creates and configures a new OpenTelemetry TracerProvider
 // for use with Google Cloud Trace. It sets up an exporter to send traces to the
 // specified Google Cloud project.
 //
 // The created TracerProvider is also set as the global tracer provider for the application.
-func NewGoogleCloudTraceProvider(loggingProjectID, serviceName string, sampler sdktrace.Sampler) (*Provider, error) {
+func NewGoogleCloudTracerProvider(loggingProjectID, serviceName string, sampler sdktrace.Sampler) (*Provider, error) {
 	exporter, err := texporter.New(texporter.WithProjectID(loggingProjectID))
 	if err != nil {
 		return nil, errors.Wrap(err, "texporter.New()")
@@ -67,6 +67,16 @@ func NewGoogleCloudTraceProvider(loggingProjectID, serviceName string, sampler s
 	otel.SetTracerProvider(tp)
 
 	return tp, nil
+}
+
+// NewNoopTracerProvider creates a new no-op TracerProvider and sets it as the
+// global tracer provider. A no-op provider discards all spans and is useful
+// for disabling tracing in environments like tests.
+func NewNoopTracerProvider() *Provider {
+	tp := sdktrace.NewTracerProvider()
+	otel.SetTracerProvider(tp)
+
+	return tp
 }
 
 func traceResource(serviceName string) (*resource.Resource, error) {
