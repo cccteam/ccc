@@ -793,13 +793,6 @@ func (p *PatchSet[Resource]) RegisterDefaultCreateFunc(field accesstypes.Field, 
 	p.defaultCreateFuncs[field] = fn
 }
 
-// RegisterDefaultUpdateFunc registers a function to set a default value for a field during an update operation.
-//
-// Deprecated: Use RegisterOutputOnlyUpdateFunc instead.
-func (p *PatchSet[Resource]) RegisterDefaultUpdateFunc(field accesstypes.Field, fn FieldDefaultFunc) {
-	p.RegisterOutputOnlyUpdateFunc(field, fn)
-}
-
 // RegisterOutputOnlyUpdateFunc registers a function to set a default value for a field during an update operation.
 func (p *PatchSet[Resource]) RegisterOutputOnlyUpdateFunc(field accesstypes.Field, fn FieldDefaultFunc) {
 	p.outputOnlyUpdateFuncs[field] = fn

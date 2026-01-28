@@ -2,32 +2,36 @@
   "folders": [
     {
       "name": "ccc",
-      "path": "."
+      "path": ".",
     },
     {
       "name": "accesstypes",
-      "path": "accesstypes"
+      "path": "accesstypes",
     },
     {
       "name": "cache",
-      "path": "cache"
+      "path": "cache",
     },
     {
       "name": "resource",
-      "path": "resource"
+      "path": "resource",
     },
     {
       "name": "pkg",
-      "path": "pkg"
+      "path": "pkg",
     },
     {
       "name": "sns",
-      "path": "sns"
+      "path": "sns",
     },
     {
       "name": "securehash",
-      "path": "securehash"
-    }
+      "path": "securehash",
+    },
+    {
+      "name": "tracer",
+      "path": "tracer",
+    },
   ],
   "settings": {
     "files.exclude": {
@@ -36,7 +40,8 @@
       "resource": true,
       "pkg": true,
       "sns": true,
-      "securehash": true
-    }
-  }
+      "securehash": true,
+      "tracer": true,
+    },
+  },
 }

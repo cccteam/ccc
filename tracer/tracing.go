@@ -1,4 +1,4 @@
-package ccc
+package tracer
 
 import (
 	"context"
@@ -20,17 +20,21 @@ type traceInfo struct {
 	spanName   string
 }
 
-// StartTrace uses runtime reflection to determine the fully qualified
+// Span is the individual component of a trace. It represents a single named
+// and timed operation of a workflow that is traced. A Tracer is used to
+// create a Span and it is then up to the operation the Span represents to
+// properly end the Span when the operation itself ends.
+type Span = trace.Span
+
+// Start uses runtime reflection to determine the fully qualified
 // package path and the function/method name of the caller.
 //
 // The Tracer name is set to the fully qualified package path
 // (e.g., "github.com/cccteam/ccc").
 // The Span name is set to the short function name (e.g., "Struct.Method()").
 //
-// Deprecated: Use github.com/cccteam/ccc/tracer/trace.Start instead
-//
 //go:noinline
-func StartTrace(ctx context.Context) (context.Context, trace.Span) {
+func Start(ctx context.Context) (newCtx context.Context, span Span) {
 	pc, _, _, ok := runtime.Caller(callerStackDepth)
 	if !ok {
 		return otel.Tracer("unknown").Start(ctx, "unknown-func")
