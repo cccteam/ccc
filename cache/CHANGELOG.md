@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/cccteam/ccc/compare/cache/v0.1.1...cache/v0.1.2) (2026-01-30)
+
+
+### Code Upgrade
+
+* Update go version (to 1.25.6) and deps ([#622](https://github.com/cccteam/ccc/issues/622)) ([b921e92](https://github.com/cccteam/ccc/commit/b921e929a22c03f6cd8beae197d4d6d9ae7f37d6))
+
 ## [0.1.1](https://github.com/cccteam/ccc/compare/cache/v0.1.0...cache/v0.1.1) (2025-12-08)
 
 
