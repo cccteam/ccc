@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.22](https://github.com/cccteam/ccc/compare/v0.2.21...v0.2.22) (2026-01-30)
+
+
+### Features
+
+* New tracer package for OpenTelemetry tracing ([#617](https://github.com/cccteam/ccc/issues/617)) ([8a3f027](https://github.com/cccteam/ccc/commit/8a3f027fcf537d2d9a37d63c86f86aebb00b16cb))
+
+
+### Code Upgrade
+
+* **deps:** Bump the github-actions group with 3 updates ([#603](https://github.com/cccteam/ccc/issues/603)) ([1ea1c89](https://github.com/cccteam/ccc/commit/1ea1c8967495ee5768a91848f7f0c775c9ce8ffe))
+* **deps:** Bump the github-actions group with 3 updates ([#616](https://github.com/cccteam/ccc/issues/616)) ([d41f5e6](https://github.com/cccteam/ccc/commit/d41f5e678f92068b40e988077fa78ea2061023ea))
+* Update go version (to 1.25.6) and deps ([#622](https://github.com/cccteam/ccc/issues/622)) ([b921e92](https://github.com/cccteam/ccc/commit/b921e929a22c03f6cd8beae197d4d6d9ae7f37d6))
+
 ## [0.2.21](https://github.com/cccteam/ccc/compare/v0.2.20...v0.2.21) (2025-12-11)
 
 
