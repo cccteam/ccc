@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.3](https://github.com/cccteam/ccc/compare/tracer/v0.0.2...tracer/v0.0.3) (2026-01-30)
+
+
+### Code Upgrade
+
+* Update go version (to 1.25.6) and deps ([#622](https://github.com/cccteam/ccc/issues/622)) ([b921e92](https://github.com/cccteam/ccc/commit/b921e929a22c03f6cd8beae197d4d6d9ae7f37d6))
+
 ## [0.0.2](https://github.com/cccteam/ccc/compare/tracer/v0.0.1...tracer/v0.0.2) (2026-01-28)
 
 
