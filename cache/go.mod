@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/cache
 
-go 1.25.5
+go 1.25.6
 
 require (
 	github.com/fxamacker/cbor/v2 v2.9.0
@@ -9,6 +9,6 @@ require (
 )
 
 require (
-	github.com/go-playground/pkg/v5 v5.30.0 // indirect
+	github.com/go-playground/pkg/v5 v5.31.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 )

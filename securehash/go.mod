@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/securehash
 
-go 1.25.5
+go 1.25.6
 
 require (
 	github.com/go-playground/errors/v5 v5.4.0
@@ -9,6 +9,6 @@ require (
 )
 
 require (
-	github.com/go-playground/pkg/v5 v5.30.0 // indirect
+	github.com/go-playground/pkg/v5 v5.31.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 )
