@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.5](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.4...accesstypes/v0.5.5) (2026-01-30)
+
+
+### Code Upgrade
+
+* Update go version (to 1.25.6) and deps ([#622](https://github.com/cccteam/ccc/issues/622)) ([b921e92](https://github.com/cccteam/ccc/commit/b921e929a22c03f6cd8beae197d4d6d9ae7f37d6))
+
 ## [0.5.4](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.3...accesstypes/v0.5.4) (2025-12-08)
 
 
