@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.8](https://github.com/cccteam/ccc/compare/securehash/v0.0.7...securehash/v0.0.8) (2026-01-30)
+
+
+### Code Upgrade
+
+* **deps:** Bump golang.org/x/crypto ([#610](https://github.com/cccteam/ccc/issues/610)) ([888766f](https://github.com/cccteam/ccc/commit/888766ff487f92d62ba0f0c6bc0fbe27efd29986))
+* Update go version (to 1.25.6) and deps ([#622](https://github.com/cccteam/ccc/issues/622)) ([b921e92](https://github.com/cccteam/ccc/commit/b921e929a22c03f6cd8beae197d4d6d9ae7f37d6))
+
 ## [0.0.7](https://github.com/cccteam/ccc/compare/securehash/v0.0.6...securehash/v0.0.7) (2025-12-11)
 
 
