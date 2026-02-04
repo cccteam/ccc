@@ -838,6 +838,10 @@ func all[Map ~map[K]V, K comparable, V any](mapSlice ...Map) iter.Seq2[K, V] {
 }
 
 func match(v, v2 any) (matched bool, err error) {
+	if v == nil || v2 == nil {
+		return v == v2, nil
+	}
+
 	switch t := v.(type) {
 	case int:
 		return matchPrimitive(t, v2)
@@ -962,8 +966,6 @@ func match(v, v2 any) (matched bool, err error) {
 		switch t2 := v2.(type) {
 		case *time.Time:
 			return matchTextMarshalerPtr(t, t2)
-		case nil:
-			return matchTextMarshalerPtr(t, nil)
 		default:
 			return false, errors.Newf("match(): attempted to diff incomparable types, old: %T, new: %T", v, v2)
 		}
@@ -978,8 +980,6 @@ func match(v, v2 any) (matched bool, err error) {
 		switch t2 := v2.(type) {
 		case *ccc.UUID:
 			return matchTextMarshalerPtr(t, t2)
-		case nil:
-			return matchTextMarshalerPtr(t, nil)
 		default:
 			return false, errors.Newf("match(): attempted to diff incomparable types, old: %T, new: %T", v, v2)
 		}

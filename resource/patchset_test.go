@@ -655,6 +655,16 @@ func Test_match(t *testing.T) {
 
 		{name: "*ccc.UUID matched", args: args{v: ccc.Ptr(ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423"))), v2: ccc.Ptr(ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423")))}, wantMatched: true},
 		{name: "*ccc.UUID matched", args: args{v: ccc.Ptr(ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423"))), v2: ccc.Ptr(ccc.Must(ccc.UUIDFromString("B517b48d-63a9-4c1f-b45b-8474b164e423")))}, wantMatched: false},
+
+		{name: "first arg nil, primitive mismatch", args: args{v: nil, v2: 1}, wantMatched: false},
+		{name: "second arg nil, primitive mismatch", args: args{v: 1, v2: nil}, wantMatched: false},
+		{name: "first arg nil, primitive ptr mismatch", args: args{v: nil, v2: ccc.Ptr(1)}, wantMatched: false},
+		{name: "second arg nil, primitive ptr mismatch", args: args{v: ccc.Ptr(1), v2: nil}, wantMatched: false},
+		{name: "first arg nil, non-primitive mismatch", args: args{v: nil, v2: time.Time{}}, wantMatched: false},
+		{name: "second arg nil, non-primitive mismatch", args: args{v: time.Time{}, v2: nil}, wantMatched: false},
+		{name: "first arg nil, non-primitive ptr mismatch", args: args{v: nil, v2: ccc.Ptr(time.Time{})}, wantMatched: false},
+		{name: "second arg nil, non-primitive ptr mismatch", args: args{v: ccc.Ptr(time.Time{}), v2: nil}, wantMatched: false},
+		{name: "nil matched", args: args{v: nil, v2: nil}, wantMatched: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
