@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.7](https://github.com/cccteam/ccc/compare/resource/v0.9.6...resource/v0.9.7) (2026-02-04)
+
+
+### Bug Fixes
+
+* Enhance the match function to handle nil inputs ([#629](https://github.com/cccteam/ccc/issues/629)) ([3cee244](https://github.com/cccteam/ccc/commit/3cee2440ba70b7f712ab08f6b7f4b67200e6a297))
+
 ## [0.9.6](https://github.com/cccteam/ccc/compare/resource/v0.9.5...resource/v0.9.6) (2026-01-30)
 
 
