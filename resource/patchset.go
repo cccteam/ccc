@@ -962,6 +962,8 @@ func match(v, v2 any) (matched bool, err error) {
 		switch t2 := v2.(type) {
 		case *time.Time:
 			return matchTextMarshalerPtr(t, t2)
+		case nil:
+			return matchTextMarshalerPtr(t, nil)
 		default:
 			return false, errors.Newf("match(): attempted to diff incomparable types, old: %T, new: %T", v, v2)
 		}
@@ -976,6 +978,8 @@ func match(v, v2 any) (matched bool, err error) {
 		switch t2 := v2.(type) {
 		case *ccc.UUID:
 			return matchTextMarshalerPtr(t, t2)
+		case nil:
+			return matchTextMarshalerPtr(t, nil)
 		default:
 			return false, errors.Newf("match(): attempted to diff incomparable types, old: %T, new: %T", v, v2)
 		}
