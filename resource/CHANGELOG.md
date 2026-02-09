@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.8](https://github.com/cccteam/ccc/compare/resource/v0.9.7...resource/v0.9.8) (2026-02-09)
+
+
+### Code Upgrade
+
+* go 1.25.6 =&gt; go 1.25.7 ([#633](https://github.com/cccteam/ccc/issues/633)) ([27ea695](https://github.com/cccteam/ccc/commit/27ea695642760b8dbccfe4ef47529f4200fefe66))
+
 ## [0.9.7](https://github.com/cccteam/ccc/compare/resource/v0.9.6...resource/v0.9.7) (2026-02-04)
 
 
