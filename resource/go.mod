@@ -7,17 +7,17 @@ replace github.com/golang-migrate/migrate/v4 v4.19.1 => github.com/jtwatson/migr
 require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.87.0
-	github.com/cccteam/ccc v0.2.21
-	github.com/cccteam/ccc/accesstypes v0.5.4
-	github.com/cccteam/ccc/cache v0.1.1
-	github.com/cccteam/ccc/pkg v0.1.1
-	github.com/cccteam/ccc/securehash v0.0.7
-	github.com/cccteam/db-initiator v0.2.17
+	github.com/cccteam/ccc v0.2.22
+	github.com/cccteam/ccc/accesstypes v0.5.5
+	github.com/cccteam/ccc/cache v0.1.2
+	github.com/cccteam/ccc/pkg v0.1.2
+	github.com/cccteam/ccc/securehash v0.0.8
+	github.com/cccteam/db-initiator v0.3.1
 	github.com/cccteam/httpio v0.7.9
 	github.com/cccteam/session v0.7.3
 	github.com/cccteam/spxscan v0.0.7
 	github.com/ettle/strcase v0.2.0
-	github.com/go-chi/chi/v5 v5.2.4
+	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
