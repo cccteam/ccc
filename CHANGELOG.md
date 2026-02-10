@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.23](https://github.com/cccteam/ccc/compare/v0.2.22...v0.2.23) (2026-02-10)
+
+
+### Code Upgrade
+
+* go 1.25.6 =&gt; go 1.25.7 ([#633](https://github.com/cccteam/ccc/issues/633)) ([27ea695](https://github.com/cccteam/ccc/commit/27ea695642760b8dbccfe4ef47529f4200fefe66))
+
 ## [0.2.22](https://github.com/cccteam/ccc/compare/v0.2.21...v0.2.22) (2026-01-30)
 
 
