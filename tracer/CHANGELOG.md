@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/cccteam/ccc/compare/tracer/v0.0.3...tracer/v0.0.4) (2026-02-10)
+
+
+### Code Upgrade
+
+* go 1.25.6 =&gt; go 1.25.7 ([#633](https://github.com/cccteam/ccc/issues/633)) ([27ea695](https://github.com/cccteam/ccc/commit/27ea695642760b8dbccfe4ef47529f4200fefe66))
+
 ## [0.0.3](https://github.com/cccteam/ccc/compare/tracer/v0.0.2...tracer/v0.0.3) (2026-01-30)
 
 
