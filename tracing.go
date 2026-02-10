@@ -27,7 +27,7 @@ type traceInfo struct {
 // (e.g., "github.com/cccteam/ccc").
 // The Span name is set to the short function name (e.g., "Struct.Method()").
 //
-// Deprecated: Use github.com/cccteam/ccc/tracer/trace.Start instead
+// Deprecated: Use github.com/cccteam/ccc/tracer.Start instead
 //
 //go:noinline
 func StartTrace(ctx context.Context) (context.Context, trace.Span) {
