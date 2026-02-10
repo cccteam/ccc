@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.6](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.5...accesstypes/v0.5.6) (2026-02-10)
+
+
+### Code Upgrade
+
+* go 1.25.6 =&gt; go 1.25.7 ([#633](https://github.com/cccteam/ccc/issues/633)) ([27ea695](https://github.com/cccteam/ccc/commit/27ea695642760b8dbccfe4ef47529f4200fefe66))
+
 ## [0.5.5](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.4...accesstypes/v0.5.5) (2026-01-30)
 
 
