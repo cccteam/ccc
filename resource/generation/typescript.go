@@ -63,7 +63,7 @@ func (t *typescriptGenerator) Generate() error {
 
 	begin := time.Now()
 
-	packageMap, err := parser.LoadPackages(t.loadPackages...)
+	_, packageMap, err := parser.LoadPackages(false, t.loadPackages...)
 	if err != nil {
 		return errors.Wrap(err, "parser.LoadPackages()")
 	}

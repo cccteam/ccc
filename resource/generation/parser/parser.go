@@ -20,7 +20,7 @@ import (
 // yield any errors.
 // Useful for static type analysis with the [types] package instead of
 // manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
-func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, error) {
+func LoadPackages(ignoreErrors bool, packagePatterns ...string) (skippedErrors bool, packageMap map[string]*packages.Package, err error) {
 	log.Printf("Loading packages %v...\n", packagePatterns)
 
 	files := []string{}
@@ -34,79 +34,101 @@ func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, erro
 		}
 	}
 
-	packMap := make(map[string]*packages.Package, len(packagePatterns))
+	packageMap = make(map[string]*packages.Package, len(packagePatterns))
 
 	if len(files) > 0 {
-		pkgs, err := loadPackages(files...)
+		sipped, pkgs, err := loadPackages(ignoreErrors, files...)
 		if err != nil {
-			return nil, err
+			return false, nil, err
+		}
+		if sipped {
+			skippedErrors = true
 		}
 
 		for _, pkg := range pkgs {
-			packMap[pkg.Name] = pkg
+			packageMap[pkg.Name] = pkg
 		}
 	}
 
 	if len(directories) > 0 {
-		pkgs, err := loadPackages(directories...)
+		skipped, pkgs, err := loadPackages(ignoreErrors, directories...)
 		if err != nil {
-			return nil, err
+			return false, nil, err
+		}
+		if skipped {
+			skippedErrors = true
 		}
 
 		for _, pkg := range pkgs {
-			packMap[pkg.Name] = pkg
+			packageMap[pkg.Name] = pkg
 		}
 	}
 
-	return packMap, nil
+	return skippedErrors, packageMap, nil
 }
 
-// LoadPackage loads and type checks a single package.
-// Package data contains package name, file names, ast, and types' info. Returns an error if
-// a package pattern does not match any packages, no files are loaded in a matched package,
-// or parsing & typechecking yield any errors.
-// Useful for static type analysis with the [types] package instead of
-// manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
-func LoadPackage(packagePattern string) (*packages.Package, error) {
-	pkgs, err := loadPackages(packagePattern)
-	if err != nil {
-		return nil, err
-	}
-
-	return pkgs[0], nil
-}
-
-func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
+func loadPackages(ignoreErrors bool, packagePatterns ...string) (bool, []*packages.Package, error) {
 	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedCompiledGoFiles | packages.NeedSyntax | packages.NeedTypesInfo}
 	pkgs, err := packages.Load(cfg, packagePatterns...)
 	if err != nil {
-		return nil, errors.Wrap(err, "packages.Load()")
+		return false, nil, errors.Wrap(err, "packages.Load()")
 	}
 
 	if len(pkgs) == 0 {
-		return nil, errors.Newf("no packages loaded for pattern %v", packagePatterns)
+		return false, nil, errors.Newf("no packages loaded for pattern %v", packagePatterns)
 	}
 
+	var skippedErrors bool
 	for _, pkg := range pkgs {
 		if len(pkg.Errors) > 0 || len(pkg.TypeErrors) > 0 {
 			var err error
 			for _, e := range pkg.Errors {
-				err = errors.Join(e)
+				switch e.Kind {
+				case packages.ListError:
+					if ignoreErrors {
+						skippedErrors = true
+
+						continue
+					}
+				case packages.TypeError:
+					if ignoreErrors && packageOfError(e) == pkg.Dir {
+						skippedErrors = true
+
+						continue
+					}
+				default:
+					err = errors.Join(e)
+				}
 			}
 
 			for _, e := range pkg.TypeErrors {
+				if ignoreErrors && packageOfTypeError(e) == pkg.Dir {
+					skippedErrors = true
+
+					continue
+				}
 				err = errors.Join(e)
 			}
 
-			return nil, errors.Wrap(err, "packages.Load() package error(s)")
+			if err != nil {
+				return false, nil, errors.Wrap(err, "packages.Load() package error(s)")
+			}
 		}
 
 		if len(pkg.CompiledGoFiles) == 0 || pkg.CompiledGoFiles[0] == "" {
-			return nil, errors.Newf("no files were loaded for package %q", pkg.Name)
+			return false, nil, errors.Newf("no files were loaded for package %q", pkg.Name)
 		}
 	}
 
-	return pkgs, nil
+	return skippedErrors, pkgs, nil
+}
+
+func packageOfError(err packages.Error) string {
+	return filepath.Dir(err.Pos)
+}
+
+func packageOfTypeError(err types.Error) string {
+	return filepath.Dir(err.Fset.File(err.Pos).Name())
 }
 
 // ParsePackage parses a package's ast and type info and returns data about structs and named types
