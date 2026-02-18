@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.10](https://github.com/cccteam/ccc/compare/securehash/v0.0.9...securehash/v0.0.10) (2026-02-18)
+
+
+### Code Upgrade
+
+* **deps:** Bump golang.org/x/crypto ([#646](https://github.com/cccteam/ccc/issues/646)) ([9302875](https://github.com/cccteam/ccc/commit/9302875f7a93a377598a6a0ccbf3249e3d625757))
+
 ## [0.0.9](https://github.com/cccteam/ccc/compare/securehash/v0.0.8...securehash/v0.0.9) (2026-02-09)
 
 
