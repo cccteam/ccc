@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.5](https://github.com/cccteam/ccc/compare/tracer/v0.0.4...tracer/v0.0.5) (2026-02-18)
+
+
+### Bug Fixes
+
+* Add missing unit test for `traceResource()` ([#631](https://github.com/cccteam/ccc/issues/631)) ([d2d0616](https://github.com/cccteam/ccc/commit/d2d0616e1c467ef61bb7aa9bd3ac99c6e27f8e29))
+* Fix Deprecation comment for `tracer.Start()` ([#631](https://github.com/cccteam/ccc/issues/631)) ([d2d0616](https://github.com/cccteam/ccc/commit/d2d0616e1c467ef61bb7aa9bd3ac99c6e27f8e29))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group with 3 updates ([#631](https://github.com/cccteam/ccc/issues/631)) ([d2d0616](https://github.com/cccteam/ccc/commit/d2d0616e1c467ef61bb7aa9bd3ac99c6e27f8e29))
+
 ## [0.0.4](https://github.com/cccteam/ccc/compare/tracer/v0.0.3...tracer/v0.0.4) (2026-02-10)
 
 
