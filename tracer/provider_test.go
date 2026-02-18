@@ -6,7 +6,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func Test_traceResource(t *testing.T) {
+func Test_testPackageMissmatch(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -20,7 +20,7 @@ func Test_traceResource(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := traceResource("test")
+			err := checkPackageMissmatch()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("traceResource() error = %v, wantErr %v", errors.Cause(err), tt.wantErr)
 				return
