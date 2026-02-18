@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.9](https://github.com/cccteam/ccc/compare/resource/v0.9.8...resource/v0.9.9) (2026-02-18)
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group across 1 directory with 10 updates ([#645](https://github.com/cccteam/ccc/issues/645)) ([a8248db](https://github.com/cccteam/ccc/commit/a8248db26ac79b73cfa74e0217ca2bfdeba90e27))
+
 ## [0.9.8](https://github.com/cccteam/ccc/compare/resource/v0.9.7...resource/v0.9.8) (2026-02-09)
 
 
