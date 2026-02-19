@@ -13,5 +13,5 @@ func NewGoogleCloudTracerProvider(_, _ string, _ sdktrace.Sampler) (*Provider, e
 	tp := sdktrace.NewTracerProvider()
 	otel.SetTracerProvider(tp)
 
-	return tp
+	return tp, nil
 }
