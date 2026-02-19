@@ -34,9 +34,9 @@ type Provider struct {
 // It uses the CloudTraceFormatPropagator and sets the span name to the request URL path.
 // The returned function can be used to wrap an http.Handler to add tracing.
 // Additional otelhttp.Option arguments can be passed to customize the behavior.
-func NewGoogleCloudHandler(o ...otelhttp.Option) func(http.Handler) http.Handler {
-	opts := make([]otelhttp.Option, 0, len(o)+3)
-	opts = append(opts,
+func NewGoogleCloudHandler(opts ...otelhttp.Option) func(http.Handler) http.Handler {
+	options := make([]otelhttp.Option, 0, len(opts)+3)
+	options = append(options,
 		otelhttp.WithPropagators(propagator.CloudTraceFormatPropagator{}),
 		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
 		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
@@ -44,9 +44,9 @@ func NewGoogleCloudHandler(o ...otelhttp.Option) func(http.Handler) http.Handler
 		}),
 	)
 
-	opts = append(opts, o...)
+	options = append(options, opts...)
 
 	return func(next http.Handler) http.Handler {
-		return otelhttp.NewHandler(next, "", opts...)
+		return otelhttp.NewHandler(next, "", options...)
 	}
 }
