@@ -18,7 +18,7 @@ import (
 // specified Google Cloud project.
 //
 // The created TracerProvider is also set as the global tracer provider for the application.
-func NewGoogleCloudTracerProvider(loggingProjectID, serviceName string, sampler sdktrace.Sampler) (*Provider, error) {
+func NewGoogleCloudTracerProvider(loggingProjectID, serviceName string, opts ...sdktrace.TracerProviderOption) (*Provider, error) {
 	exporter, err := texporter.New(texporter.WithProjectID(loggingProjectID))
 	if err != nil {
 		return nil, errors.Wrap(err, "texporter.New()")
@@ -35,11 +35,15 @@ func NewGoogleCloudTracerProvider(loggingProjectID, serviceName string, sampler 
 		return nil, errors.Wrap(err, "resource.Merge()")
 	}
 
-	tp := sdktrace.NewTracerProvider(
+	options := make([]sdktrace.TracerProviderOption, 0, len(opts)+3)
+	options = append(options,
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sampler),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.NeverSample())),
 	)
+	options = append(options, opts...)
+
+	tp := sdktrace.NewTracerProvider(options...)
 	otel.SetTracerProvider(tp)
 
 	return &Provider{tp}, nil

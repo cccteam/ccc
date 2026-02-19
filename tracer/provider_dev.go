@@ -9,9 +9,9 @@ import (
 
 // NewGoogleCloudTracerProvider creates and configures a noop OpenTelemetry TracerProvider
 // for disabling tracing in your dev environment.
-func NewGoogleCloudTracerProvider(_, _ string, _ sdktrace.Sampler) (*Provider, error) {
+func NewGoogleCloudTracerProvider(_, _ string, _ ...sdktrace.TracerProviderOption) (*Provider, error) {
 	tp := sdktrace.NewTracerProvider()
 	otel.SetTracerProvider(tp)
 
-	return tp, nil
+	return &Provider{tp}, nil
 }
