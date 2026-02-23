@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.0](https://github.com/cccteam/ccc/compare/tracer/v0.0.4...tracer/v0.1.0) (2026-02-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* Change return type for NewGoogleCloudTracerProvider() to hide otel package ([#649](https://github.com/cccteam/ccc/issues/649))
+
+### Bug Fixes
+
+* Add missing unit test for `traceResource()` ([#631](https://github.com/cccteam/ccc/issues/631)) ([d2d0616](https://github.com/cccteam/ccc/commit/d2d0616e1c467ef61bb7aa9bd3ac99c6e27f8e29))
+* Fix Deprecation comment for `tracer.Start()` ([#631](https://github.com/cccteam/ccc/issues/631)) ([d2d0616](https://github.com/cccteam/ccc/commit/d2d0616e1c467ef61bb7aa9bd3ac99c6e27f8e29))
+
+
+### Code Refactoring
+
+* Change return type for NewGoogleCloudTracerProvider() to hide otel package ([#649](https://github.com/cccteam/ccc/issues/649)) ([56c6839](https://github.com/cccteam/ccc/commit/56c68397fd4913c15188c84609fbeceed4416d04))
+* Implement build tags to switch exporter between dev and prod ([#649](https://github.com/cccteam/ccc/issues/649)) ([56c6839](https://github.com/cccteam/ccc/commit/56c68397fd4913c15188c84609fbeceed4416d04))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group with 3 updates ([#631](https://github.com/cccteam/ccc/issues/631)) ([d2d0616](https://github.com/cccteam/ccc/commit/d2d0616e1c467ef61bb7aa9bd3ac99c6e27f8e29))
+* Upgrade dependencies ([#649](https://github.com/cccteam/ccc/issues/649)) ([56c6839](https://github.com/cccteam/ccc/commit/56c68397fd4913c15188c84609fbeceed4416d04))
+
 ## [0.0.4](https://github.com/cccteam/ccc/compare/tracer/v0.0.3...tracer/v0.0.4) (2026-02-10)
 
 
