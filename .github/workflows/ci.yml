@@ -11,7 +11,7 @@ jobs:
   golang-ci:
     uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@v5.20.1
     with:
-      build-tags: '["", "collect_resource_permissions"]'
+      build-tags: '["", "collect_resource_permissions,dev"]'
       golangci-lint-version: 'v2.4.0'
   semantic-titles:
     uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@v5.20.1
