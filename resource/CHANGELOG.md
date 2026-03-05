@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.9](https://github.com/cccteam/ccc/compare/resource/v0.9.8...resource/v0.9.9) (2026-03-05)
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group across 1 directory with 10 updates ([#645](https://github.com/cccteam/ccc/issues/645)) ([a8248db](https://github.com/cccteam/ccc/commit/a8248db26ac79b73cfa74e0217ca2bfdeba90e27))
+* Upgrade resource & tracer go deps to address GO-2026-4559 ([#657](https://github.com/cccteam/ccc/issues/657)) ([2a8e00a](https://github.com/cccteam/ccc/commit/2a8e00aeb466f0378d82e7244dbb662a6aad1cd2))
+
 ## [0.9.8](https://github.com/cccteam/ccc/compare/resource/v0.9.7...resource/v0.9.8) (2026-02-09)
 
 
