@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/cccteam/ccc/compare/tracer/v0.1.0...tracer/v0.1.1) (2026-03-05)
+
+
+### Code Upgrade
+
+* Upgrade resource & tracer go deps to address GO-2026-4559 ([#657](https://github.com/cccteam/ccc/issues/657)) ([2a8e00a](https://github.com/cccteam/ccc/commit/2a8e00aeb466f0378d82e7244dbb662a6aad1cd2))
+
 ## [0.1.0](https://github.com/cccteam/ccc/compare/tracer/v0.0.4...tracer/v0.1.0) (2026-02-23)
 
 
