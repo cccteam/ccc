@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/v0.2.24...v0.3.0) (2026-03-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* Change return type for NewGoogleCloudTracerProvider() to hide otel package ([#649](https://github.com/cccteam/ccc/issues/649))
+
+### Code Refactoring
+
+* Change return type for NewGoogleCloudTracerProvider() to hide otel package ([#649](https://github.com/cccteam/ccc/issues/649)) ([56c6839](https://github.com/cccteam/ccc/commit/56c68397fd4913c15188c84609fbeceed4416d04))
+* Implement build tags to switch exporter between dev and prod ([#649](https://github.com/cccteam/ccc/issues/649)) ([56c6839](https://github.com/cccteam/ccc/commit/56c68397fd4913c15188c84609fbeceed4416d04))
+
+
+### Code Upgrade
+
+* **deps:** Bump the github-actions group with 3 updates ([#656](https://github.com/cccteam/ccc/issues/656)) ([f7eb02a](https://github.com/cccteam/ccc/commit/f7eb02a2b09f619e4663111e824b36ea05601911))
+* **deps:** Bump the github-actions group with 3 updates ([#660](https://github.com/cccteam/ccc/issues/660)) ([73750c2](https://github.com/cccteam/ccc/commit/73750c28a423e4901a5c5fefd39cad42b7060299))
+* Upgrade dependencies ([#649](https://github.com/cccteam/ccc/issues/649)) ([56c6839](https://github.com/cccteam/ccc/commit/56c68397fd4913c15188c84609fbeceed4416d04))
+
 ## [0.2.24](https://github.com/cccteam/ccc/compare/v0.2.23...v0.2.24) (2026-02-10)
 
 
