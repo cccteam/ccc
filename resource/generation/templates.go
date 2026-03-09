@@ -560,7 +560,7 @@ import (
 		{{- end }}
 	}
 
-	type response []map[string]interface{}
+	type response []map[string]any
 
 	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}]({{ .ReceiverName }}, accesstypes.List)
 
@@ -581,7 +581,7 @@ import (
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
 			rec := (*{{ GoCamel .Resource.Name }})(row)
-			rmap := make(map[string]interface{})
+			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				{{- range .Resource.Fields }}
@@ -633,7 +633,7 @@ import (
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		rec := (*response)(row)
-		rmap := make(map[string]interface{})
+		rmap := make(map[string]any)
 		for _, field := range querySet.Fields() {
 			switch string(field) {
 			{{- range .Resource.Fields }}

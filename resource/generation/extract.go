@@ -396,7 +396,7 @@ func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 	if len(errRows) > 0 {
 		msg := strings.Builder{}
 		msg.WriteString("| ------------------------------------------------------------------ |\n")
-		msg.WriteString(fmt.Sprintf("| %*s |\n", -66, fmt.Sprintf("%*s", (66+len(pStruct.Name()))/2, pStruct.Name()))) // string centering voodoo black magic
+		fmt.Fprintf(&msg, "| %*s |\n", -66, fmt.Sprintf("%*s", (66+len(pStruct.Name()))/2, pStruct.Name())) // string centering voodoo black magic
 		msg.WriteString("| ------------------------------------------------------------------ |\n")
 		msg.WriteString("|               Name               | Can Nil Field | Can Null Column |\n")
 		msg.WriteString("| -------------------------------- | ------------- | --------------- |\n")

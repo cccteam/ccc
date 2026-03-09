@@ -289,9 +289,9 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*St
 		}
 		switch dbType {
 		case SpannerDBType:
-			builder.WriteString(fmt.Sprintf(" AND `%s` = @_%s", f.ColumnName, strings.ToLower(f.ColumnName)))
+			fmt.Fprintf(&builder, " AND `%s` = @_%s", f.ColumnName, strings.ToLower(f.ColumnName))
 		case PostgresDBType:
-			builder.WriteString(fmt.Sprintf(` AND "%s" = @_%s`, f.ColumnName, strings.ToLower(f.ColumnName)))
+			fmt.Fprintf(&builder, ` AND "%s" = @_%s`, f.ColumnName, strings.ToLower(f.ColumnName))
 		default:
 			return nil, errors.Newf("unsupported dbType: %s", dbType)
 		}

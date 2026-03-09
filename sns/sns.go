@@ -125,7 +125,7 @@ func (p *Payload) signaturePayload() []byte {
 
 	for _, s := range signatureFields {
 		if s.value != "" {
-			signature.WriteString(fmt.Sprintf("%s\n%s\n", s.key, s.value))
+			fmt.Fprintf(&signature, "%s\n%s\n", s.key, s.value)
 		}
 	}
 

@@ -10,15 +10,15 @@ import (
 )
 
 type validateMock struct {
-	validateFunc        func(s interface{}) error
-	validatePartialFunc func(s interface{}, fields ...string) error
+	validateFunc        func(s any) error
+	validatePartialFunc func(s any, fields ...string) error
 }
 
-func (v *validateMock) Struct(s interface{}) error {
+func (v *validateMock) Struct(s any) error {
 	return v.validateFunc(s)
 }
 
-func (v *validateMock) StructPartial(s interface{}, fields ...string) error {
+func (v *validateMock) StructPartial(s any, fields ...string) error {
 	return v.validatePartialFunc(s, fields...)
 }
 
@@ -40,7 +40,7 @@ func TestDecoder_Decode(t *testing.T) {
 			args: args{
 				body: `{"Name":"Zach"}`,
 				validatorFunc: &validateMock{
-					validateFunc: func(_ interface{}) error {
+					validateFunc: func(_ any) error {
 						return nil
 					},
 				},
@@ -58,7 +58,7 @@ func TestDecoder_Decode(t *testing.T) {
 			args: args{
 				body: `{"Name":"Zach"}`,
 				validatorFunc: &validateMock{
-					validateFunc: func(_ interface{}) error {
+					validateFunc: func(_ any) error {
 						return errors.New("Failed to validate the request")
 					},
 				},

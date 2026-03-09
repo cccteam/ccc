@@ -18,8 +18,8 @@ import (
 // ValidatorFunc is a function that validates s
 // It returns an error if the validation fails
 type ValidatorFunc interface {
-	Struct(s interface{}) error
-	StructPartial(s interface{}, fields ...string) error
+	Struct(s any) error
+	StructPartial(s any, fields ...string) error
 }
 
 type (
