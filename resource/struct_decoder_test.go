@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -79,7 +80,8 @@ func TestDecoder_Decode(t *testing.T) {
 				t.Fatalf("NewDecoder() error = %v", err)
 			}
 
-			r := httptest.NewRequest(http.MethodGet, "/test", strings.NewReader(tt.args.body))
+			ctx := context.Background()
+			r := httptest.NewRequestWithContext(ctx, http.MethodGet, "/test", strings.NewReader(tt.args.body))
 			if _, err := decoder.Decode(r); (err != nil) != tt.wantDecodeErr {
 				t.Fatalf("Decoder.DecodeRequest() error = %v, wantErr %v", err, tt.wantDecodeErr)
 			}
@@ -90,7 +92,7 @@ func TestDecoder_Decode(t *testing.T) {
 
 			decoder = decoder.WithValidator(tt.args.validatorFunc)
 
-			r = httptest.NewRequest(http.MethodGet, "/test", strings.NewReader(tt.args.body))
+			r = httptest.NewRequestWithContext(ctx, http.MethodGet, "/test", strings.NewReader(tt.args.body))
 			if _, err := decoder.Decode(r); (err != nil) != tt.wantValidatorErr {
 				t.Errorf("Decoder.DecodeRequest() error = %v, wantErr %v", err, tt.wantValidatorErr)
 			}
