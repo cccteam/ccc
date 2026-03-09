@@ -575,7 +575,7 @@ func TestNullDuration_DecodeSpanner(t *testing.T) {
 		},
 		{
 			name:    "Successful decode *string",
-			args:    args{val: Ptr("10m4s")},
+			args:    args{val: new("10m4s")},
 			want:    NullDuration{Duration: Duration{Duration: Must(time.ParseDuration("10m4s"))}, Valid: true},
 			wantErr: false,
 		},

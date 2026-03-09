@@ -10,8 +10,3 @@ func Must[T any](value T, err error) T {
 
 	return value
 }
-
-// Ptr returns a pointer to the given value t.
-func Ptr[T any](t T) *T {
-	return &t
-}

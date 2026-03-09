@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 )
 
@@ -63,7 +62,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			queryValues: url.Values{"limit": []string{"10"}},
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
-				Limit: ccc.Ptr(uint64(10)),
+				Limit: new(uint64(10)),
 			},
 		},
 		{
@@ -71,8 +70,8 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			queryValues: url.Values{"offset": []string{"10"}},
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
-				Limit:  ccc.Ptr(uint64(50)),
-				Offset: ccc.Ptr(uint64(10)),
+				Limit:  new(uint64(50)),
+				Offset: new(uint64(10)),
 			},
 		},
 		{
@@ -80,7 +79,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			queryValues: url.Values{},
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
-				Limit: ccc.Ptr(uint64(50)),
+				Limit: new(uint64(50)),
 			},
 		},
 		{
@@ -88,8 +87,8 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			queryValues: url.Values{"limit": []string{"20"}, "offset": []string{"10"}},
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
-				Limit:  ccc.Ptr(uint64(20)),
-				Offset: ccc.Ptr(uint64(10)),
+				Limit:  new(uint64(20)),
+				Offset: new(uint64(10)),
 			},
 		},
 		{
@@ -123,7 +122,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				ColumnFields: []accesstypes.Field{"Name", "Age"},
-				Limit:        ccc.Ptr(uint64(50)),
+				Limit:        new(uint64(50)),
 			},
 		},
 		{
@@ -132,7 +131,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				ColumnFields: []accesstypes.Field{"Name"},
-				Limit:        ccc.Ptr(uint64(50)),
+				Limit:        new(uint64(50)),
 			},
 			expectedASTString: "age_sql:gt:30",
 		},
@@ -156,7 +155,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "name_sql:eq:John",
 			expectedResult: &parsedQueryParams{
-				Limit: ccc.Ptr(uint64(50)),
+				Limit: new(uint64(50)),
 			},
 		},
 		{
@@ -174,7 +173,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			expectedASTString: "name_sql:eq:John",
 			expectedResult: &parsedQueryParams{
 				ColumnFields: []accesstypes.Field{"Name", "Age"},
-				Limit:        ccc.Ptr(uint64(10)),
+				Limit:        new(uint64(10)),
 			},
 		},
 
@@ -223,7 +222,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "age_sql:eq:42",
 			expectedResult: &parsedQueryParams{
-				Limit: ccc.Ptr(uint64(50)),
+				Limit: new(uint64(50)),
 			},
 		},
 		{
@@ -232,7 +231,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "active_sql:eq:true",
 			expectedResult: &parsedQueryParams{
-				Limit: ccc.Ptr(uint64(50)),
+				Limit: new(uint64(50)),
 			},
 		},
 		{
@@ -241,7 +240,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "active_sql:eq:false",
 			expectedResult: &parsedQueryParams{
-				Limit: ccc.Ptr(uint64(50)),
+				Limit: new(uint64(50)),
 			},
 		},
 		{
@@ -250,7 +249,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "salary_sql:gte:5000.75",
 			expectedResult: &parsedQueryParams{
-				Limit: ccc.Ptr(uint64(50)),
+				Limit: new(uint64(50)),
 			},
 		},
 		{
@@ -259,7 +258,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "item_ids_sql:in:(1,2,3)",
 			expectedResult: &parsedQueryParams{
-				Limit: ccc.Ptr(uint64(50)),
+				Limit: new(uint64(50)),
 			},
 		},
 		{
@@ -268,7 +267,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "tags_sql:in:(Alice,Bob,Charlie)",
 			expectedResult: &parsedQueryParams{
-				Limit: ccc.Ptr(uint64(50)),
+				Limit: new(uint64(50)),
 			},
 		},
 		{
@@ -277,7 +276,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "email_sql:isnull",
 			expectedResult: &parsedQueryParams{
-				Limit: ccc.Ptr(uint64(50)),
+				Limit: new(uint64(50)),
 			},
 		},
 		{
@@ -286,7 +285,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "email_sql:isnotnull",
 			expectedResult: &parsedQueryParams{
-				Limit: ccc.Ptr(uint64(50)),
+				Limit: new(uint64(50)),
 			},
 		},
 		{
@@ -321,7 +320,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}},
-				Limit:      ccc.Ptr(uint64(50)),
+				Limit:      new(uint64(50)),
 			},
 		},
 		{
@@ -330,7 +329,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}},
-				Limit:      ccc.Ptr(uint64(50)),
+				Limit:      new(uint64(50)),
 			},
 		},
 		{
@@ -339,7 +338,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Age", Direction: SortDescending}},
-				Limit:      ccc.Ptr(uint64(50)),
+				Limit:      new(uint64(50)),
 			},
 		},
 		{
@@ -348,7 +347,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}, {Field: "Age", Direction: SortDescending}},
-				Limit:      ccc.Ptr(uint64(50)),
+				Limit:      new(uint64(50)),
 			},
 		},
 		{
@@ -357,7 +356,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}, {Field: "Age", Direction: SortDescending}},
-				Limit:      ccc.Ptr(uint64(50)),
+				Limit:      new(uint64(50)),
 			},
 		},
 		{
@@ -372,7 +371,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "LegacyIndexedField", Direction: SortAscending}},
-				Limit:      ccc.Ptr(uint64(50)),
+				Limit:      new(uint64(50)),
 			},
 		},
 		{
