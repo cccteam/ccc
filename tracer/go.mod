@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/tracer
 
-go 1.25.7
+go 1.26.1
 
 require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.31.0
