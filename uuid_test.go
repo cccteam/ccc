@@ -387,7 +387,7 @@ func TestNullUUID_DecodeSpanner(t *testing.T) {
 		},
 		{
 			name:    "Successful decode nil *string",
-			args:    args{val: Ptr("4192bff0-e1e0-43ce-a4db-912808c32493")},
+			args:    args{val: new("4192bff0-e1e0-43ce-a4db-912808c32493")},
 			want:    NullUUID{UUID: UUID{UUID: uuid.FromStringOrNil("4192bff0-e1e0-43ce-a4db-912808c32493")}, Valid: true},
 			wantErr: false,
 		},

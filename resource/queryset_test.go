@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/securehash"
 	"github.com/google/go-cmp/cmp"
@@ -42,7 +41,7 @@ func TestQuerySet_Stmt_OrderBy_Limit(t *testing.T) {
 	}{
 		{
 			name:              "with limit",
-			limit:             ccc.Ptr(uint64(10)),
+			limit:             new(uint64(10)),
 			wantQueryContains: "LIMIT 10",
 		},
 		{

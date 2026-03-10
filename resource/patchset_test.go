@@ -601,20 +601,20 @@ func Test_match(t *testing.T) {
 		{name: "primitive matched float64", args: args{v: float64(1), v2: float64(1)}, wantMatched: true},
 		{name: "primitive matched string", args: args{v: "1", v2: "1"}, wantMatched: true},
 		{name: "primitive matched bool", args: args{v: true, v2: true}, wantMatched: true},
-		{name: "primitive matched *int", args: args{v: ccc.Ptr(int(1)), v2: ccc.Ptr(int(1))}, wantMatched: true},
-		{name: "primitive matched *int8", args: args{v: ccc.Ptr(int8(1)), v2: ccc.Ptr(int8(1))}, wantMatched: true},
-		{name: "primitive matched *int16", args: args{v: ccc.Ptr(int16(1)), v2: ccc.Ptr(int16(1))}, wantMatched: true},
-		{name: "primitive matched *int32", args: args{v: ccc.Ptr(int32(1)), v2: ccc.Ptr(int32(1))}, wantMatched: true},
-		{name: "primitive matched *int64", args: args{v: ccc.Ptr(int64(1)), v2: ccc.Ptr(int64(1))}, wantMatched: true},
-		{name: "primitive matched *uint", args: args{v: ccc.Ptr(uint(1)), v2: ccc.Ptr(uint(1))}, wantMatched: true},
-		{name: "primitive matched *uint8", args: args{v: ccc.Ptr(uint8(1)), v2: ccc.Ptr(uint8(1))}, wantMatched: true},
-		{name: "primitive matched *uint16", args: args{v: ccc.Ptr(uint16(1)), v2: ccc.Ptr(uint16(1))}, wantMatched: true},
-		{name: "primitive matched *uint32", args: args{v: ccc.Ptr(uint32(1)), v2: ccc.Ptr(uint32(1))}, wantMatched: true},
-		{name: "primitive matched *uint64", args: args{v: ccc.Ptr(uint64(1)), v2: ccc.Ptr(uint64(1))}, wantMatched: true},
-		{name: "primitive matched *float32", args: args{v: ccc.Ptr(float32(1)), v2: ccc.Ptr(float32(1))}, wantMatched: true},
-		{name: "primitive matched *float64", args: args{v: ccc.Ptr(float64(1)), v2: ccc.Ptr(float64(1))}, wantMatched: true},
-		{name: "primitive matched *string", args: args{v: ccc.Ptr("1"), v2: ccc.Ptr("1")}, wantMatched: true},
-		{name: "primitive matched *bool", args: args{v: ccc.Ptr(true), v2: ccc.Ptr(true)}, wantMatched: true},
+		{name: "primitive matched *int", args: args{v: new(int(1)), v2: new(int(1))}, wantMatched: true},
+		{name: "primitive matched *int8", args: args{v: new(int8(1)), v2: new(int8(1))}, wantMatched: true},
+		{name: "primitive matched *int16", args: args{v: new(int16(1)), v2: new(int16(1))}, wantMatched: true},
+		{name: "primitive matched *int32", args: args{v: new(int32(1)), v2: new(int32(1))}, wantMatched: true},
+		{name: "primitive matched *int64", args: args{v: new(int64(1)), v2: new(int64(1))}, wantMatched: true},
+		{name: "primitive matched *uint", args: args{v: new(uint(1)), v2: new(uint(1))}, wantMatched: true},
+		{name: "primitive matched *uint8", args: args{v: new(uint8(1)), v2: new(uint8(1))}, wantMatched: true},
+		{name: "primitive matched *uint16", args: args{v: new(uint16(1)), v2: new(uint16(1))}, wantMatched: true},
+		{name: "primitive matched *uint32", args: args{v: new(uint32(1)), v2: new(uint32(1))}, wantMatched: true},
+		{name: "primitive matched *uint64", args: args{v: new(uint64(1)), v2: new(uint64(1))}, wantMatched: true},
+		{name: "primitive matched *float32", args: args{v: new(float32(1)), v2: new(float32(1))}, wantMatched: true},
+		{name: "primitive matched *float64", args: args{v: new(float64(1)), v2: new(float64(1))}, wantMatched: true},
+		{name: "primitive matched *string", args: args{v: new("1"), v2: new("1")}, wantMatched: true},
+		{name: "primitive matched *bool", args: args{v: new(true), v2: new(true)}, wantMatched: true},
 		{name: "primitive not matched", args: args{v: 1, v2: 4}, wantMatched: false},
 
 		{name: "named matched", args: args{v: Int(1), v2: Int(1)}, wantMatched: true},
@@ -638,8 +638,8 @@ func Test_match(t *testing.T) {
 		{name: "[]int matched", args: args{v: []int{1, 5}, v2: []int{1, 5}}, wantMatched: true},
 		{name: "[]int not matched", args: args{v: []int{1, 5}, v2: []int{4, 5}}, wantMatched: false},
 
-		{name: "[]*int matched", args: args{v: []*int{ccc.Ptr(1), ccc.Ptr(5)}, v2: []*int{ccc.Ptr(1), ccc.Ptr(5)}}, wantMatched: true},
-		{name: "[]*int not matched", args: args{v: []*int{ccc.Ptr(1), ccc.Ptr(5)}, v2: []*int{ccc.Ptr(4), ccc.Ptr(5)}}, wantMatched: false},
+		{name: "[]*int matched", args: args{v: []*int{new(1), new(5)}, v2: []*int{new(1), new(5)}}, wantMatched: true},
+		{name: "[]*int not matched", args: args{v: []*int{new(1), new(5)}, v2: []*int{new(4), new(5)}}, wantMatched: false},
 
 		{name: "[]int8 matched", args: args{v: []int8{1, 5}, v2: []int8{1, 5}}, wantMatched: true},
 		{name: "[]int8 not matched", args: args{v: []int8{1, 5}, v2: []int8{4, 5}}, wantMatched: false},
@@ -653,17 +653,17 @@ func Test_match(t *testing.T) {
 		{name: "ccc.UUID matched", args: args{v: ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423")), v2: ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423"))}, wantMatched: true},
 		{name: "ccc.UUID not matched", args: args{v: ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423")), v2: ccc.Must(ccc.UUIDFromString("B517b48d-63a9-4c1f-b45b-8474b164e423"))}, wantMatched: false},
 
-		{name: "*ccc.UUID matched", args: args{v: ccc.Ptr(ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423"))), v2: ccc.Ptr(ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423")))}, wantMatched: true},
-		{name: "*ccc.UUID matched", args: args{v: ccc.Ptr(ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423"))), v2: ccc.Ptr(ccc.Must(ccc.UUIDFromString("B517b48d-63a9-4c1f-b45b-8474b164e423")))}, wantMatched: false},
+		{name: "*ccc.UUID matched", args: args{v: new(ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423"))), v2: new(ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423")))}, wantMatched: true},
+		{name: "*ccc.UUID matched", args: args{v: new(ccc.Must(ccc.UUIDFromString("a517b48d-63a9-4c1f-b45b-8474b164e423"))), v2: new(ccc.Must(ccc.UUIDFromString("B517b48d-63a9-4c1f-b45b-8474b164e423")))}, wantMatched: false},
 
 		{name: "first arg nil, primitive mismatch", args: args{v: nil, v2: 1}, wantMatched: false},
 		{name: "second arg nil, primitive mismatch", args: args{v: 1, v2: nil}, wantMatched: false},
-		{name: "first arg nil, primitive ptr mismatch", args: args{v: nil, v2: ccc.Ptr(1)}, wantMatched: false},
-		{name: "second arg nil, primitive ptr mismatch", args: args{v: ccc.Ptr(1), v2: nil}, wantMatched: false},
+		{name: "first arg nil, primitive ptr mismatch", args: args{v: nil, v2: new(1)}, wantMatched: false},
+		{name: "second arg nil, primitive ptr mismatch", args: args{v: new(1), v2: nil}, wantMatched: false},
 		{name: "first arg nil, non-primitive mismatch", args: args{v: nil, v2: time.Time{}}, wantMatched: false},
 		{name: "second arg nil, non-primitive mismatch", args: args{v: time.Time{}, v2: nil}, wantMatched: false},
-		{name: "first arg nil, non-primitive ptr mismatch", args: args{v: nil, v2: ccc.Ptr(time.Time{})}, wantMatched: false},
-		{name: "second arg nil, non-primitive ptr mismatch", args: args{v: ccc.Ptr(time.Time{}), v2: nil}, wantMatched: false},
+		{name: "first arg nil, non-primitive ptr mismatch", args: args{v: nil, v2: new(time.Time{})}, wantMatched: false},
+		{name: "second arg nil, non-primitive ptr mismatch", args: args{v: new(time.Time{}), v2: nil}, wantMatched: false},
 		{name: "nil matched", args: args{v: nil, v2: nil}, wantMatched: true},
 	}
 	for _, tt := range tests {
@@ -721,7 +721,7 @@ func TestPatchSet_ToStruct(t *testing.T) {
 				p.Set("PtrField", &strPtr)
 				p.Set("TimeField", timeVal)
 				p.Set("MyCustomType", myCustomType(123))
-				p.Set("MyCustomType2", ccc.Ptr(myCustomType(123)))
+				p.Set("MyCustomType2", new(myCustomType(123)))
 
 				return p
 			}(),
@@ -731,7 +731,7 @@ func TestPatchSet_ToStruct(t *testing.T) {
 				PtrField:      &strPtr,
 				TimeField:     timeVal,
 				MyCustomType:  123,
-				MyCustomType2: ccc.Ptr(myCustomType(123)),
+				MyCustomType2: new(myCustomType(123)),
 			},
 		},
 		{
@@ -985,12 +985,12 @@ func TestPatchSet_FromStruct(t *testing.T) {
 				PtrField    *string
 			}{
 				StringField: "hello",
-				PtrField:    ccc.Ptr("world"),
+				PtrField:    new("world"),
 			},
 			want: func() *PatchSet[fromStructTestResource] {
 				p := NewPatchSet(NewMetadata[fromStructTestResource]())
 				p.Set("StringField", "hello")
-				p.Set("PtrField", ccc.Ptr("world"))
+				p.Set("PtrField", new("world"))
 				return p
 			}(),
 		},
@@ -1000,8 +1000,8 @@ func TestPatchSet_FromStruct(t *testing.T) {
 				StringField *string
 				IntField    *int
 			}{
-				StringField: ccc.Ptr("hello"),
-				IntField:    ccc.Ptr(42),
+				StringField: new("hello"),
+				IntField:    new(42),
 			},
 			want: func() *PatchSet[fromStructTestResource] {
 				p := NewPatchSet(NewMetadata[fromStructTestResource]())
@@ -1854,7 +1854,7 @@ func Test_matchPrimitivePtr_string(t *testing.T) {
 			name: "v nil",
 			args: args{
 				v:  nil,
-				v2: ccc.Ptr("hello"),
+				v2: new("hello"),
 			},
 			want:    false,
 			wantErr: false,
@@ -1862,7 +1862,7 @@ func Test_matchPrimitivePtr_string(t *testing.T) {
 		{
 			name: "v2 nil",
 			args: args{
-				v:  ccc.Ptr("hello"),
+				v:  new("hello"),
 				v2: nil,
 			},
 			want:    false,
@@ -1871,8 +1871,8 @@ func Test_matchPrimitivePtr_string(t *testing.T) {
 		{
 			name: "both pointing to same value",
 			args: args{
-				v:  ccc.Ptr("hello"),
-				v2: ccc.Ptr("hello"),
+				v:  new("hello"),
+				v2: new("hello"),
 			},
 			want:    true,
 			wantErr: false,
@@ -1880,8 +1880,8 @@ func Test_matchPrimitivePtr_string(t *testing.T) {
 		{
 			name: "both pointing to different values",
 			args: args{
-				v:  ccc.Ptr("hello"),
-				v2: ccc.Ptr("world"),
+				v:  new("hello"),
+				v2: new("world"),
 			},
 			want:    false,
 			wantErr: false,
@@ -1889,7 +1889,7 @@ func Test_matchPrimitivePtr_string(t *testing.T) {
 		{
 			name: "v2 is not a pointer",
 			args: args{
-				v:  ccc.Ptr("hello"),
+				v:  new("hello"),
 				v2: "hello",
 			},
 			want:    false,
@@ -1898,8 +1898,8 @@ func Test_matchPrimitivePtr_string(t *testing.T) {
 		{
 			name: "v2 is a pointer to a different type",
 			args: args{
-				v:  ccc.Ptr("hello"),
-				v2: ccc.Ptr(123),
+				v:  new("hello"),
+				v2: new(123),
 			},
 			want:    false,
 			wantErr: true,

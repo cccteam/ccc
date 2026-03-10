@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,15 +11,15 @@ import (
 )
 
 type validateMock struct {
-	validateFunc        func(s interface{}) error
-	validatePartialFunc func(s interface{}, fields ...string) error
+	validateFunc        func(s any) error
+	validatePartialFunc func(s any, fields ...string) error
 }
 
-func (v *validateMock) Struct(s interface{}) error {
+func (v *validateMock) Struct(s any) error {
 	return v.validateFunc(s)
 }
 
-func (v *validateMock) StructPartial(s interface{}, fields ...string) error {
+func (v *validateMock) StructPartial(s any, fields ...string) error {
 	return v.validatePartialFunc(s, fields...)
 }
 
@@ -40,7 +41,7 @@ func TestDecoder_Decode(t *testing.T) {
 			args: args{
 				body: `{"Name":"Zach"}`,
 				validatorFunc: &validateMock{
-					validateFunc: func(_ interface{}) error {
+					validateFunc: func(_ any) error {
 						return nil
 					},
 				},
@@ -58,7 +59,7 @@ func TestDecoder_Decode(t *testing.T) {
 			args: args{
 				body: `{"Name":"Zach"}`,
 				validatorFunc: &validateMock{
-					validateFunc: func(_ interface{}) error {
+					validateFunc: func(_ any) error {
 						return errors.New("Failed to validate the request")
 					},
 				},
@@ -79,7 +80,8 @@ func TestDecoder_Decode(t *testing.T) {
 				t.Fatalf("NewDecoder() error = %v", err)
 			}
 
-			r := httptest.NewRequest(http.MethodGet, "/test", strings.NewReader(tt.args.body))
+			ctx := context.Background()
+			r := httptest.NewRequestWithContext(ctx, http.MethodGet, "/test", strings.NewReader(tt.args.body))
 			if _, err := decoder.Decode(r); (err != nil) != tt.wantDecodeErr {
 				t.Fatalf("Decoder.DecodeRequest() error = %v, wantErr %v", err, tt.wantDecodeErr)
 			}
@@ -90,7 +92,7 @@ func TestDecoder_Decode(t *testing.T) {
 
 			decoder = decoder.WithValidator(tt.args.validatorFunc)
 
-			r = httptest.NewRequest(http.MethodGet, "/test", strings.NewReader(tt.args.body))
+			r = httptest.NewRequestWithContext(ctx, http.MethodGet, "/test", strings.NewReader(tt.args.body))
 			if _, err := decoder.Decode(r); (err != nil) != tt.wantValidatorErr {
 				t.Errorf("Decoder.DecodeRequest() error = %v, wantErr %v", err, tt.wantValidatorErr)
 			}

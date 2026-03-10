@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
@@ -542,7 +541,7 @@ func (f *resourceField) UnwrappedNullType() *string {
 
 	for i := range fields {
 		if fields[i].Name() != "Valid" {
-			return ccc.Ptr(fields[i].DerefResolvedType())
+			return new(fields[i].DerefResolvedType())
 		}
 	}
 

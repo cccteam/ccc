@@ -45,7 +45,7 @@ func (p KeySet) RowID() string {
 
 	var id strings.Builder
 	for _, v := range p.keyParts {
-		id.WriteString(fmt.Sprintf("|%v", v.Value))
+		fmt.Fprintf(&id, "|%v", v.Value)
 	}
 
 	return id.String()[1:]

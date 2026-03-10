@@ -214,7 +214,7 @@ func (s *Struct) PrintErrors() string {
 	numTypeTabs := maxTypeLength/8 + 1
 
 	msg := strings.Builder{}
-	msg.WriteString(fmt.Sprintf("type %s struct {\n", s.Name()))
+	fmt.Fprintf(&msg, "type %s struct {\n", s.Name())
 	for _, field := range s.fields {
 		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.Name())/8))
 		typeTabs := strings.Repeat("\t", numTypeTabs-(len(field.Type())/8))
@@ -235,7 +235,7 @@ func (s *Struct) PrintErrors() string {
 		msg.WriteString(string(field.tags))
 		msg.WriteString(" << ")
 		if len(field.errs) > 1 {
-			msg.WriteString(fmt.Sprintf("[%d] ", len(field.errs)))
+			fmt.Fprintf(&msg, "[%d] ", len(field.errs))
 		}
 		msg.WriteString("[")
 		for j, fieldError := range field.errs {

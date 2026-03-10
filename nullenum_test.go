@@ -39,7 +39,7 @@ func TestNullEnum_DecodeSpanner_string(t *testing.T) {
 		},
 		{
 			name:    "Valid *string value",
-			input:   Ptr("testValue"),
+			input:   new("testValue"),
 			want:    NullEnum[namedType]{Value: "testValue", Valid: true},
 			wantErr: false,
 		},
@@ -104,7 +104,7 @@ func TestNullEnum_DecodeSpanner_int(t *testing.T) {
 		},
 		{
 			name:    "Valid *int value",
-			input:   Ptr(44),
+			input:   new(44),
 			want:    NullEnum[namedType]{Value: 44, Valid: true},
 			wantErr: false,
 		},
@@ -116,7 +116,7 @@ func TestNullEnum_DecodeSpanner_int(t *testing.T) {
 		},
 		{
 			name:    "Valid *int64",
-			input:   Ptr(int64(44)),
+			input:   new(int64(44)),
 			want:    NullEnum[namedType]{Value: 44, Valid: true},
 			wantErr: false,
 		},
@@ -181,7 +181,7 @@ func TestNullEnum_DecodeSpanner_int64(t *testing.T) {
 		},
 		{
 			name:    "Valid *int64 value",
-			input:   Ptr(int64(44)),
+			input:   new(int64(44)),
 			want:    NullEnum[namedType]{Value: 44, Valid: true},
 			wantErr: false,
 		},
@@ -193,7 +193,7 @@ func TestNullEnum_DecodeSpanner_int64(t *testing.T) {
 		},
 		{
 			name:    "Valid *int value",
-			input:   Ptr(44),
+			input:   new(44),
 			want:    NullEnum[namedType]{Value: 44, Valid: true},
 			wantErr: false,
 		},
@@ -252,7 +252,7 @@ func TestNullEnum_DecodeSpanner_float64(t *testing.T) {
 		},
 		{
 			name:    "Valid *float64 value",
-			input:   Ptr(44.2),
+			input:   new(44.2),
 			want:    NullEnum[namedType]{Value: 44.2, Valid: true},
 			wantErr: false,
 		},
