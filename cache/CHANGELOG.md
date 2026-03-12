@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/cccteam/ccc/compare/cache/v0.1.3...cache/v0.1.4) (2026-03-11)
+
+
+### Code Upgrade
+
+* Upgrade/remove ptr for new ([#663](https://github.com/cccteam/ccc/issues/663)) ([7dfd20c](https://github.com/cccteam/ccc/commit/7dfd20cd5ba0ecd8fe320b005f5f042c014037bc))
+
 ## [0.1.3](https://github.com/cccteam/ccc/compare/cache/v0.1.2...cache/v0.1.3) (2026-02-10)
 
 
