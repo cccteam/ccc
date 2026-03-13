@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/cccteam/ccc/compare/tracer/v0.1.1...tracer/v0.1.2) (2026-03-13)
+
+
+### Code Upgrade
+
+* Upgrade/remove ptr for new ([#663](https://github.com/cccteam/ccc/issues/663)) ([7dfd20c](https://github.com/cccteam/ccc/commit/7dfd20cd5ba0ecd8fe320b005f5f042c014037bc))
+
 ## [0.1.1](https://github.com/cccteam/ccc/compare/tracer/v0.1.0...tracer/v0.1.1) (2026-03-05)
 
 
