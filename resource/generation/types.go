@@ -150,6 +150,7 @@ type informationSchemaResult struct {
 	OrdinalPosition      int64   `spanner:"ORDINAL_POSITION"`
 	KeyOrdinalPosition   int64   `spanner:"KEY_ORDINAL_POSITION"`
 	HasDefault           bool    `spanner:"HAS_DEFAULT"`
+	IsInterleaved        bool    `spanner:"IS_INTERLEAVED"`
 }
 
 type enumData struct {
@@ -158,8 +159,9 @@ type enumData struct {
 }
 
 type tableMetadata struct {
-	Columns map[string]columnMeta
-	PkCount int
+	Columns       map[string]columnMeta
+	PkCount       int
+	IsInterleaved bool
 }
 
 type columnMeta struct {
@@ -354,6 +356,7 @@ type resourceInfo struct {
 	IsVirtual          bool // Determines how CreatePatch is rendered in resource generation.
 	IsConsolidated     bool
 	PkCount            int
+	IsInterleaved      bool
 	DefaultsCreateType string
 	DefaultsUpdateType string
 	ValidateCreateType string
@@ -433,7 +436,7 @@ func (r *resourceInfo) HasCompoundPrimaryKey() bool {
 }
 
 func (r *resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
-	if r.PkCount > 1 {
+	if r.IsInterleaved || r.PkCount > 1 {
 		return false
 	}
 

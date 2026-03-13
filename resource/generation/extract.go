@@ -42,6 +42,7 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			Fields:         make([]*resourceField, 0, len(pStruct.Fields())),
 			IsConsolidated: c.IsConsolidated(pStruct.Name()),
 			PkCount:        table.PkCount,
+			IsInterleaved:  table.IsInterleaved,
 		}
 
 		fields, err := newResourceFields(resource, pStruct, table)
