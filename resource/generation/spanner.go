@@ -74,7 +74,8 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 		table, ok := schemaMetadata[results[i].TableName]
 		if !ok {
 			table = &tableMetadata{
-				Columns: make(map[string]columnMeta),
+				Columns:       make(map[string]columnMeta),
+				IsInterleaved: results[i].IsInterleaved,
 			}
 		}
 
@@ -140,6 +141,7 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 		c.ORDINAL_POSITION,
 		COALESCE(d.KEY_ORDINAL_POSITION, 1) AS KEY_ORDINAL_POSITION,
 		c.COLUMN_DEFAULT IS NOT NULL AS HAS_DEFAULT,
+		t.PARENT_TABLE_NAME IS NOT NULL AS IS_INTERLEAVED,
 	FROM INFORMATION_SCHEMA.COLUMNS c
 		LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
 			AND t.TABLE_TYPE = 'BASE TABLE'
@@ -155,7 +157,7 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 		AND v.TABLE_NAME IS NULL
 	GROUP BY c.TABLE_NAME, c.COLUMN_NAME, IS_NULLABLE, c.SPANNER_TYPE,
 	d.IS_PRIMARY_KEY, d.IS_FOREIGN_KEY, d.REFERENCED_COLUMN, d.REFERENCED_TABLE,
-	IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT
+	IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT, t.PARENT_TABLE_NAME
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
 
 func queryInformationSchema(ctx context.Context, db *spanner.Client) ([]informationSchemaResult, error) {
