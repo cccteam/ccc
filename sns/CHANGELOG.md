@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/cccteam/ccc/compare/sns/v0.2.9...sns/v0.2.10) (2026-03-13)
+
+
+### Code Upgrade
+
+* Upgrade/remove ptr for new ([#663](https://github.com/cccteam/ccc/issues/663)) ([7dfd20c](https://github.com/cccteam/ccc/commit/7dfd20cd5ba0ecd8fe320b005f5f042c014037bc))
+
 ## [0.2.9](https://github.com/cccteam/ccc/compare/sns/v0.2.8...sns/v0.2.9) (2026-02-09)
 
 
