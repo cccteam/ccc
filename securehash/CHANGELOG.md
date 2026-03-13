@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.11](https://github.com/cccteam/ccc/compare/securehash/v0.0.10...securehash/v0.0.11) (2026-03-13)
+
+
+### Code Upgrade
+
+* Upgrade/remove ptr for new ([#663](https://github.com/cccteam/ccc/issues/663)) ([7dfd20c](https://github.com/cccteam/ccc/commit/7dfd20cd5ba0ecd8fe320b005f5f042c014037bc))
+
 ## [0.0.10](https://github.com/cccteam/ccc/compare/securehash/v0.0.9...securehash/v0.0.10) (2026-02-18)
 
 
