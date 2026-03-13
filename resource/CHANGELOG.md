@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.10](https://github.com/cccteam/ccc/compare/resource/v0.9.9...resource/v0.9.10) (2026-03-13)
+
+
+### Features
+
+* Support Interleaved tables ([#671](https://github.com/cccteam/ccc/issues/671)) ([9828ef8](https://github.com/cccteam/ccc/commit/9828ef85899db69d598f66d107fed8eae9928134))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group across 1 directory with 2 updates ([#659](https://github.com/cccteam/ccc/issues/659)) ([57baf1e](https://github.com/cccteam/ccc/commit/57baf1e72239f34eac13d5065334b0baf3dee8dc))
+* Upgrade/remove ptr for new ([#663](https://github.com/cccteam/ccc/issues/663)) ([7dfd20c](https://github.com/cccteam/ccc/commit/7dfd20cd5ba0ecd8fe320b005f5f042c014037bc))
+
 ## [0.9.9](https://github.com/cccteam/ccc/compare/resource/v0.9.8...resource/v0.9.9) (2026-03-05)
 
 
