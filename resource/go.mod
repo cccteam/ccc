@@ -9,7 +9,7 @@ require (
 	cloud.google.com/go/spanner v1.88.0
 	github.com/cccteam/ccc v0.2.24
 	github.com/cccteam/ccc/accesstypes v0.5.6
-	github.com/cccteam/ccc/cache v0.1.3
+	github.com/cccteam/ccc/cache v0.1.4
 	github.com/cccteam/ccc/pkg v0.1.3
 	github.com/cccteam/ccc/securehash v0.0.10
 	github.com/cccteam/db-initiator v0.3.3
@@ -25,7 +25,7 @@ require (
 	github.com/momaek/formattag v0.0.10
 	github.com/shopspring/decimal v1.4.0
 	go.uber.org/mock v0.6.0
-	golang.org/x/tools v0.42.0
+	golang.org/x/tools v0.43.0
 )
 
 require (
@@ -117,13 +117,13 @@ require (
 	go.opentelemetry.io/otel/sdk v1.41.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
-	golang.org/x/crypto v0.48.0 // indirect
-	golang.org/x/mod v0.33.0 // indirect
-	golang.org/x/net v0.51.0 // indirect
+	golang.org/x/crypto v0.49.0 // indirect
+	golang.org/x/mod v0.34.0 // indirect
+	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/api v0.269.0 // indirect
 	google.golang.org/genproto v0.0.0-20260226221140-a57be14db171 // indirect
