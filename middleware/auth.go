@@ -40,8 +40,9 @@ const (
 // If validation fails at any step, the middleware intercepts the request and returns an
 // HTTP 401 Unauthorized response. Otherwise, it delegates to the next handler in the chain.
 //
-// For environments that do not pass through the real host in http.Request.Host, you can override
-// the Host value by setting the environment variable APPLICATION_URL
+// For environments where the application sits behind a load balancer or proxy that does not
+// pass through the original host in http.Request.Host, you can override the Host value used
+// for token audience validation by setting the environment variable APPLICATION_HOST.
 func RequireGoogleServiceAccount(expectedEmail string, audienceOption AudienceOption) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -63,7 +64,7 @@ func RequireGoogleServiceAccount(expectedEmail string, audienceOption AudienceOp
 			}
 
 			host := r.Host
-			if v, found := os.LookupEnv("APPLICATION_URL"); found {
+			if v, found := os.LookupEnv("APPLICATION_HOST"); found {
 				host = v
 			}
 
