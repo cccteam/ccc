@@ -12,12 +12,18 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// AudienceOption is the type for the audience options
 type AudienceOption int
 
 const (
-	AudienceHostOnly AudienceOption = iota // e.g., "example.com"
-	AudienceHostURL                        // e.g., "https://example.com"
-	AudienceFullURL                        // e.g., "https://example.com/path"
+	// AudienceHostOnly will validate only the host name e.g., "example.com"
+	AudienceHostOnly AudienceOption = iota
+
+	// AudienceHostURL will validate the host url e.g., "https://example.com"
+	AudienceHostURL
+
+	// AudienceFullURL will validate the full url e.g., "https://example.com/path"
+	AudienceFullURL
 )
 
 // RequireGoogleServiceAccount is a middleware that verifies incoming HTTP requests
@@ -57,8 +63,6 @@ func RequireGoogleServiceAccount(expectedEmail string, audienceOption AudienceOp
 				audience = scheme + "://" + r.Host + r.URL.Path
 			case AudienceHostURL:
 				audience = scheme + "://" + r.Host
-			case AudienceHostOnly:
-				fallthrough
 			default:
 				audience = r.Host
 			}
