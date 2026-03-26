@@ -4,6 +4,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"os"
 	"strings"
 
 	"cloud.google.com/go/auth/credentials/idtoken"
@@ -38,6 +39,9 @@ const (
 //
 // If validation fails at any step, the middleware intercepts the request and returns an
 // HTTP 401 Unauthorized response. Otherwise, it delegates to the next handler in the chain.
+//
+// For environments that do not pass through the real host in http.Request.Host, you can override
+// the Host value by setting the environment variable APPLICATION_URL
 func RequireGoogleServiceAccount(expectedEmail string, audienceOption AudienceOption) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -58,13 +62,18 @@ func RequireGoogleServiceAccount(expectedEmail string, audienceOption AudienceOp
 				scheme = "http"
 			}
 
+			host := r.Host
+			if v, found := os.LookupEnv("APPLICATION_URL"); found {
+				host = v
+			}
+
 			switch audienceOption {
 			case AudienceFullURL:
-				audience = scheme + "://" + r.Host + r.URL.Path
+				audience = scheme + "://" + host + r.URL.Path
 			case AudienceHostURL:
-				audience = scheme + "://" + r.Host
+				audience = scheme + "://" + host
 			default:
-				audience = r.Host
+				audience = host
 			}
 
 			payload, err := idtoken.Validate(r.Context(), token, audience)
