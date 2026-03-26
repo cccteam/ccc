@@ -26,7 +26,7 @@
     ".": {
       "package-name": "ccc",
       "include-component-in-tag": false,
-      "exclude-paths": ["accesstypes", "cache", "resource", "pkg", "sns", "securehash", "tracer"]
+      "exclude-paths": ["accesstypes", "cache", "resource", "pkg", "sns", "securehash", "tracer", "middleware"]
     },
     "accesstypes": {
       "package-name": "accesstypes"
@@ -48,6 +48,9 @@
     },
     "tracer": {
       "package-name": "tracer"
+    },
+    "middleware": {
+      "package-name": "middleware"
     }
   }
 }
