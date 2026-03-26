@@ -59,6 +59,9 @@ linters:
             - $all
           allow:
             - $gostd
+            - cloud.google.com/go/auth/credentials/idtoken
+            - github.com/cccteam/ccc/tracer
+            - github.com/cccteam/httpio
             - github.com/go-playground/errors/v5
             - github.com/gofrs/uuid
             - github.com/google/go-cmp/cmp
