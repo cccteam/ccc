@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/v0.2.24...v0.3.0) (2026-03-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* Change return type for NewGoogleCloudTracerProvider() to hide otel package ([#649](https://github.com/cccteam/ccc/issues/649))
+
+### Features
+
+* Implement middleware to validate requests coming from Google Services ([#680](https://github.com/cccteam/ccc/issues/680)) ([6b97bb2](https://github.com/cccteam/ccc/commit/6b97bb26dd010310fdbe97a287ec314423c30a9d))
+
+
+### Bug Fixes
+
+* address active Trivy incident ([#676](https://github.com/cccteam/ccc/issues/676)) ([6672ec0](https://github.com/cccteam/ccc/commit/6672ec08c8dcfc4494406a5c26e18ab0dd432aba))
+
+
+### Code Refactoring
+
+* Change return type for NewGoogleCloudTracerProvider() to hide otel package ([#649](https://github.com/cccteam/ccc/issues/649)) ([56c6839](https://github.com/cccteam/ccc/commit/56c68397fd4913c15188c84609fbeceed4416d04))
+* Implement build tags to switch exporter between dev and prod ([#649](https://github.com/cccteam/ccc/issues/649)) ([56c6839](https://github.com/cccteam/ccc/commit/56c68397fd4913c15188c84609fbeceed4416d04))
+
+
+### Code Upgrade
+
+* **deps:** Bump the github-actions group across 1 directory with 4 updates ([#678](https://github.com/cccteam/ccc/issues/678)) ([fe4b773](https://github.com/cccteam/ccc/commit/fe4b7734f65982f77af88355cd64b713a6f311f3))
+* **deps:** Bump the github-actions group with 3 updates ([#656](https://github.com/cccteam/ccc/issues/656)) ([f7eb02a](https://github.com/cccteam/ccc/commit/f7eb02a2b09f619e4663111e824b36ea05601911))
+* **deps:** Bump the github-actions group with 3 updates ([#660](https://github.com/cccteam/ccc/issues/660)) ([73750c2](https://github.com/cccteam/ccc/commit/73750c28a423e4901a5c5fefd39cad42b7060299))
+* **deps:** Bump the go-dependencies group with 3 updates ([#662](https://github.com/cccteam/ccc/issues/662)) ([5aa7be7](https://github.com/cccteam/ccc/commit/5aa7be7fb56cccda558e75fa210df87839b4d496))
+* Upgrade dependencies ([#649](https://github.com/cccteam/ccc/issues/649)) ([56c6839](https://github.com/cccteam/ccc/commit/56c68397fd4913c15188c84609fbeceed4416d04))
+* Upgrade/remove ptr for new ([#663](https://github.com/cccteam/ccc/issues/663)) ([7dfd20c](https://github.com/cccteam/ccc/commit/7dfd20cd5ba0ecd8fe320b005f5f042c014037bc))
+
 ## [0.2.24](https://github.com/cccteam/ccc/compare/v0.2.23...v0.2.24) (2026-02-10)
 
 
