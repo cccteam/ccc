@@ -60,3 +60,11 @@ updates:
       go-dependencies:
         patterns:
           - '*'
+  - package-ecosystem: 'gomod'
+    directory: '/middleware'
+    schedule:
+      interval: 'weekly'
+    groups:
+      go-dependencies:
+        patterns:
+          - '*'
