@@ -76,7 +76,7 @@ func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*R
 	var res Resource
 	dst := new(Resource)
 	if err := spxscan.Get(ctx, c.readTxn(), dst, stmt.SpannerStatement()); err != nil {
-		if errors.Is(err, spxscan.ErrNotFound) {
+		if errors.Is(err, spxapi.ErrNotFound) {
 			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", res.Resource(), stmt.resolvedWhereClause)
 		}
 

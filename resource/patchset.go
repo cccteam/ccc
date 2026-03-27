@@ -15,7 +15,7 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
-	"github.com/cccteam/spxscan"
+	"github.com/cccteam/spxscan/spxapi"
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -549,7 +549,7 @@ func (p *PatchSet[Resource]) bufferInsertWithDataChangeEvent(txn ReadWriteTransa
 func (p *PatchSet[Resource]) bufferInsertOrUpdateWithDataChangeEvent(ctx context.Context, txn ReadWriteTransaction, eventSource string) error {
 	changeSet, err := p.updateChangeSet(ctx, txn)
 	if err != nil {
-		if !errors.Is(err, spxscan.ErrNotFound) {
+		if !errors.Is(err, spxapi.ErrNotFound) {
 			return err
 		}
 		changeSet, err = p.insertChangeSet()
