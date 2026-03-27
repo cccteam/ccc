@@ -4,6 +4,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"os"
 	"strings"
 
 	"cloud.google.com/go/auth/credentials/idtoken"
@@ -38,6 +39,10 @@ const (
 //
 // If validation fails at any step, the middleware intercepts the request and returns an
 // HTTP 401 Unauthorized response. Otherwise, it delegates to the next handler in the chain.
+//
+// For environments where the application sits behind a load balancer or proxy that does not
+// pass through the original host in http.Request.Host, you can override the Host value used
+// for token audience validation by setting the environment variable APPLICATION_HOST.
 func RequireGoogleServiceAccount(expectedEmail string, audienceOption AudienceOption) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -47,7 +52,7 @@ func RequireGoogleServiceAccount(expectedEmail string, audienceOption AudienceOp
 			// Verify the request has an authorization header
 			authHeader := r.Header.Get("Authorization")
 			if !strings.HasPrefix(authHeader, "Bearer ") {
-				return httpio.NewEncoder(w).UnauthorizedMessage(ctx, "invalid Authorization header")
+				return httpio.NewEncoder(w).UnauthorizedWithError(ctx, errors.New("Bearer prefix not found in Authorization header"))
 			}
 
 			token := strings.TrimPrefix(authHeader, "Bearer ")
@@ -58,28 +63,33 @@ func RequireGoogleServiceAccount(expectedEmail string, audienceOption AudienceOp
 				scheme = "http"
 			}
 
+			host := r.Host
+			if v, found := os.LookupEnv("APPLICATION_HOST"); found {
+				host = v
+			}
+
 			switch audienceOption {
 			case AudienceFullURL:
-				audience = scheme + "://" + r.Host + r.URL.Path
+				audience = scheme + "://" + host + r.URL.Path
 			case AudienceHostURL:
-				audience = scheme + "://" + r.Host
+				audience = scheme + "://" + host
 			default:
-				audience = r.Host
+				audience = host
 			}
 
 			payload, err := idtoken.Validate(r.Context(), token, audience)
 			if err != nil {
-				return httpio.NewEncoder(w).UnauthorizedMessageWithError(ctx, err, "invalid token")
+				return httpio.NewEncoder(w).UnauthorizedWithError(ctx, err)
 			}
 
 			// Verify the request is coming from the expected service account email
 			email, err := verifiedEmail(ctx, payload)
 			if err != nil {
-				return httpio.NewEncoder(w).UnauthorizedMessageWithError(ctx, err, "invalid token")
+				return httpio.NewEncoder(w).UnauthorizedWithError(ctx, err)
 			}
 
 			if email != expectedEmail {
-				return httpio.NewEncoder(w).UnauthorizedMessageWithError(ctx, errors.New("unauthorized email"), "invalid token")
+				return httpio.NewEncoder(w).UnauthorizedWithError(ctx, errors.Newf("unauthorized email: expected %s, got %s", expectedEmail, email))
 			}
 
 			next.ServeHTTP(w, r)
