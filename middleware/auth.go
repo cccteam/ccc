@@ -52,7 +52,7 @@ func RequireGoogleServiceAccount(expectedEmail string, audienceOption AudienceOp
 			// Verify the request has an authorization header
 			authHeader := r.Header.Get("Authorization")
 			if !strings.HasPrefix(authHeader, "Bearer ") {
-				return httpio.NewEncoder(w).UnauthorizedMessage(ctx, "invalid Authorization header")
+				return httpio.NewEncoder(w).UnauthorizedWithError(ctx, errors.New("Bearer prefix not found in Authorization header"))
 			}
 
 			token := strings.TrimPrefix(authHeader, "Bearer ")
@@ -79,17 +79,17 @@ func RequireGoogleServiceAccount(expectedEmail string, audienceOption AudienceOp
 
 			payload, err := idtoken.Validate(r.Context(), token, audience)
 			if err != nil {
-				return httpio.NewEncoder(w).UnauthorizedMessageWithError(ctx, err, "invalid token")
+				return httpio.NewEncoder(w).UnauthorizedWithError(ctx, err)
 			}
 
 			// Verify the request is coming from the expected service account email
 			email, err := verifiedEmail(ctx, payload)
 			if err != nil {
-				return httpio.NewEncoder(w).UnauthorizedMessageWithError(ctx, err, "invalid token")
+				return httpio.NewEncoder(w).UnauthorizedWithError(ctx, err)
 			}
 
 			if email != expectedEmail {
-				return httpio.NewEncoder(w).UnauthorizedMessageWithError(ctx, errors.New("unauthorized email"), "invalid token")
+				return httpio.NewEncoder(w).UnauthorizedWithError(ctx, errors.Newf("unauthorized email: expected %s, got %s", expectedEmail, email))
 			}
 
 			next.ServeHTTP(w, r)
