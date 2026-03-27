@@ -3,7 +3,7 @@ package resource
 import (
 	"fmt"
 
-	"github.com/cccteam/spxscan"
+	"github.com/cccteam/spxscan/spxapi"
 )
 
 // newReader creates a new Reader for the given transaction.
@@ -11,7 +11,7 @@ func newReader[Resource Resourcer](txn ReadOnlyTransaction) Reader[Resource] {
 	switch t := txn.(type) {
 	case *SpannerClient, *SpannerReadWriteTransaction, *SpannerReadOnlyTransaction:
 		return &spannerReader[Resource]{
-			readTxn: func() spxscan.Querier { return txn.SpannerReadOnlyTransaction() },
+			readTxn: func() spxapi.Querier { return txn.SpannerReadOnlyTransaction() },
 		}
 	case *PostgresClient, *PostgresReadWriteTransaction, *PostgresReadOnlyTransaction:
 		return &postgresReader[Resource]{
