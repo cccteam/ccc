@@ -64,6 +64,7 @@ linters:
             - github.com/cccteam
             - github.com/cloudspannerecosystem/memefish
             - github.com/cloudspannerecosystem/memefish/ast
+            - github.com/cloudspannerecosystem/memefish/token
             - github.com/ettle/strcase
             - github.com/go-chi/chi/v5
             - github.com/go-playground/errors/v5

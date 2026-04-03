@@ -12,6 +12,8 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
+	"github.com/cloudspannerecosystem/memefish"
+	"github.com/cloudspannerecosystem/memefish/token"
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -48,12 +50,15 @@ func (q *QuerySet[Resource]) Resource() accesstypes.Resource {
 	return r.Resource()
 }
 
-func (q *QuerySet[Resource]) query() (query string, params map[string]any) {
+func (q *QuerySet[Resource]) query() (withClause, query string, params map[string]any) {
 	var r Resource
 
 	switch t := any(r).(type) {
 	case virtualQuerier:
 		query, params = t.Subquery()
+
+		withClause, query = extractWithClause(query)
+
 		// newlines before final parenthesis is necessary to combat any trailing comments
 		query = fmt.Sprintf("(%s\n) AS %s", query, r.Resource())
 
@@ -63,9 +68,9 @@ func (q *QuerySet[Resource]) query() (query string, params map[string]any) {
 			}
 		}
 
-		return query, params
+		return withClause, query, params
 	default:
-		return string(r.Resource()), nil
+		return "", string(r.Resource()), nil
 	}
 }
 
@@ -340,7 +345,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
 	}
 
-	query, subqueryParams := q.query()
+	withClause, query, subqueryParams := q.query()
 	for k := range subqueryParams {
 		if _, ok := where.Params[k]; ok {
 			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
@@ -350,13 +355,14 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	}
 
 	sql := fmt.Sprintf(`
+			%s
 			SELECT
 				%s
 			FROM %s
 			%s
 			%s
 			%s
-			%s`, columns, query, where.SQL, orderByClause, limitClause, offsetClause,
+			%s`, withClause, columns, query, where.SQL, orderByClause, limitClause, offsetClause,
 	)
 
 	resolvedSQL, err := substituteSQLParams(where.SQL, where.Params)
@@ -459,6 +465,56 @@ func (q *QuerySet[Resource]) SetLimit(limit *uint64) {
 // SetOffset sets the starting point for returning results.
 func (q *QuerySet[Resource]) SetOffset(offset *uint64) {
 	q.offset = offset
+}
+
+func extractWithClause(query string) (withClause, remainingQuery string) {
+	lex := &memefish.Lexer{
+		File: &token.File{Buffer: query},
+	}
+
+	depth := 0
+	lastClosingParenEnd := -1
+	startedWith := false
+
+	for {
+		if err := lex.NextToken(); err != nil {
+			break
+		}
+
+		if lex.Token.Kind == token.TokenEOF {
+			break
+		}
+
+		// First meaningful token must be WITH
+		if !startedWith && depth == 0 && lastClosingParenEnd == -1 {
+			if strings.EqualFold(lex.Token.Raw, "WITH") {
+				startedWith = true
+			} else {
+				return "", query
+			}
+		}
+
+		switch lex.Token.Kind {
+		case "(":
+			depth++
+		case ")":
+			depth--
+			if depth == 0 {
+				lastClosingParenEnd = int(lex.Token.End)
+			}
+		default:
+			if depth == 0 {
+				raw := lex.Token.Raw
+				if strings.EqualFold(raw, "SELECT") || strings.EqualFold(raw, "UPDATE") || strings.EqualFold(raw, "DELETE") || strings.EqualFold(raw, "INSERT") {
+					if startedWith && lastClosingParenEnd != -1 {
+						return query[:lastClosingParenEnd], query[lastClosingParenEnd:]
+					}
+				}
+			}
+		}
+	}
+
+	return "", query
 }
 
 // moreThan checks if more than a given count of boolean expressions are true.
