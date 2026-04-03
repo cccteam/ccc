@@ -6,7 +6,7 @@ import (
 	"iter"
 
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/spxscan"
+	"github.com/cccteam/spxscan/spxapi"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -47,7 +47,7 @@ func (c *PostgresClient) ReadOnlyTransaction() ReadOnlyTransactionCloser {
 }
 
 // SpannerReadOnlyTransaction panics because it is not implemented for the PostgresClient.
-func (c *PostgresClient) SpannerReadOnlyTransaction() spxscan.Querier {
+func (c *PostgresClient) SpannerReadOnlyTransaction() spxapi.Querier {
 	panic("PostgresClient.SpannerReadOnlyTransaction() should never be called.")
 }
 
@@ -96,7 +96,7 @@ func (c *PostgresReadOnlyTransaction) PostgresReadOnlyTransaction() any {
 }
 
 // SpannerReadOnlyTransaction panics because it is not implemented for the PostgresReadOnlyTransaction.
-func (c *PostgresReadOnlyTransaction) SpannerReadOnlyTransaction() spxscan.Querier {
+func (c *PostgresReadOnlyTransaction) SpannerReadOnlyTransaction() spxapi.Querier {
 	panic("PostgresReadOnlyTransaction.SpannerReadOnlyTransaction() should never be called.")
 }
 
@@ -154,6 +154,6 @@ func (c *PostgresReadWriteTransaction) BufferStruct(_ PatchSetMetadata) error {
 }
 
 // SpannerReadOnlyTransaction panics because it is not implemented for the PostgresReadWriteTransaction.
-func (c *PostgresReadWriteTransaction) SpannerReadOnlyTransaction() spxscan.Querier {
+func (c *PostgresReadWriteTransaction) SpannerReadOnlyTransaction() spxapi.Querier {
 	panic("PostgresReadWriteTransaction.SpannerReadOnlyTransaction() should never be called.")
 }

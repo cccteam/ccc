@@ -5,7 +5,7 @@ import (
 	"iter"
 
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/spxscan"
+	"github.com/cccteam/spxscan/spxapi"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -48,7 +48,7 @@ func (c *MockClient) ReadOnlyMocks() []any {
 }
 
 // SpannerReadOnlyTransaction returns a read-only transaction for the Mock client.
-func (c *MockClient) SpannerReadOnlyTransaction() spxscan.Querier {
+func (c *MockClient) SpannerReadOnlyTransaction() spxapi.Querier {
 	return nil
 }
 
@@ -104,7 +104,7 @@ func (c *MockReadWriteTransaction) TxnReadMocks() []any {
 }
 
 // SpannerReadOnlyTransaction returns a read-only transaction for the MockReadWriteTransaction.
-func (c *MockReadWriteTransaction) SpannerReadOnlyTransaction() spxscan.Querier {
+func (c *MockReadWriteTransaction) SpannerReadOnlyTransaction() spxapi.Querier {
 	return nil
 }
 

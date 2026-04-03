@@ -9,6 +9,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/spxscan"
+	"github.com/cccteam/spxscan/spxapi"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -27,7 +28,7 @@ func NewSpannerClient(db *spanner.Client) *SpannerClient {
 }
 
 // SpannerReadOnlyTransaction returns a read-only transaction for the Spanner client.
-func (c *SpannerClient) SpannerReadOnlyTransaction() spxscan.Querier {
+func (c *SpannerClient) SpannerReadOnlyTransaction() spxapi.Querier {
 	return c.spanner.Single()
 }
 
@@ -62,7 +63,7 @@ var _ Reader[nilResource] = (*spannerReader[nilResource])(nil)
 
 // spannerReader is a reader for Spanner.
 type spannerReader[Resource Resourcer] struct {
-	readTxn func() spxscan.Querier
+	readTxn func() spxapi.Querier
 }
 
 // DBType returns the database type.
@@ -75,7 +76,7 @@ func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*R
 	var res Resource
 	dst := new(Resource)
 	if err := spxscan.Get(ctx, c.readTxn(), dst, stmt.SpannerStatement()); err != nil {
-		if errors.Is(err, spxscan.ErrNotFound) {
+		if errors.Is(err, spxapi.ErrNotFound) {
 			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", res.Resource(), stmt.resolvedWhereClause)
 		}
 
@@ -123,7 +124,7 @@ func (c *SpannerReadOnlyTransaction) Close() {
 }
 
 // SpannerReadOnlyTransaction returns a read-only transaction for the Spanner client.
-func (c *SpannerReadOnlyTransaction) SpannerReadOnlyTransaction() spxscan.Querier {
+func (c *SpannerReadOnlyTransaction) SpannerReadOnlyTransaction() spxapi.Querier {
 	return c.txn
 }
 
@@ -162,7 +163,7 @@ func (c *SpannerReadWriteTransaction) DataChangeEventIndex(res accesstypes.Resou
 }
 
 // SpannerReadOnlyTransaction returns a read-only transaction for the Spanner client.
-func (c *SpannerReadWriteTransaction) SpannerReadOnlyTransaction() spxscan.Querier {
+func (c *SpannerReadWriteTransaction) SpannerReadOnlyTransaction() spxapi.Querier {
 	return c.txn
 }
 

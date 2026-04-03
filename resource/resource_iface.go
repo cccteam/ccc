@@ -5,7 +5,7 @@ import (
 	"iter"
 
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/spxscan"
+	"github.com/cccteam/spxscan/spxapi"
 )
 
 // UserPermissions is an interface that provides methods to check user permissions and retrieve user information, and is used
@@ -37,7 +37,7 @@ type ReadWriteTransaction interface {
 
 // ReadOnlyTransaction is an interface that represents a database transaction that can be used for reads only.
 type ReadOnlyTransaction interface {
-	SpannerReadOnlyTransaction() spxscan.Querier
+	SpannerReadOnlyTransaction() spxapi.Querier
 	PostgresReadOnlyTransaction() any
 }
 
