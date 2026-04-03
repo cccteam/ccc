@@ -50,20 +50,6 @@ func (q *QuerySet[Resource]) Resource() accesstypes.Resource {
 	return r.Resource()
 }
 
-func extractWithClause(query string) (withClause, remainingQuery string) {
-	if stmt, err := memefish.ParseStatement("", query); err == nil {
-		if sel, ok := stmt.(*ast.QueryStatement); ok {
-			if qAst, ok := sel.Query.(*ast.Query); ok && qAst.With != nil {
-				end := qAst.With.End()
-
-				return query[:end], query[end:]
-			}
-		}
-	}
-
-	return "", query
-}
-
 func (q *QuerySet[Resource]) query() (withClause, query string, params map[string]any) {
 	var r Resource
 
@@ -479,6 +465,20 @@ func (q *QuerySet[Resource]) SetLimit(limit *uint64) {
 // SetOffset sets the starting point for returning results.
 func (q *QuerySet[Resource]) SetOffset(offset *uint64) {
 	q.offset = offset
+}
+
+func extractWithClause(query string) (withClause, remainingQuery string) {
+	if stmt, err := memefish.ParseStatement("", query); err == nil {
+		if sel, ok := stmt.(*ast.QueryStatement); ok {
+			if qAst, ok := sel.Query.(*ast.Query); ok && qAst.With != nil {
+				end := qAst.With.End()
+
+				return query[:end], query[end:]
+			}
+		}
+	}
+
+	return "", query
 }
 
 // moreThan checks if more than a given count of boolean expressions are true.
