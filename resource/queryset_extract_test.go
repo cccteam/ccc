@@ -45,6 +45,52 @@ func TestExtractWithClause(t *testing.T) {
 			wantWith:   "WITH a AS (\n\tSELECT 1\n)",
 			wantRemain: "\nSELECT * FROM a",
 		},
+		{
+			name: "newline formatting",
+			query: `
+-- Comment
+WITH RankedThings AS (
+    SELECT
+        ci.CreatedAt,
+        ci.EndedAt,
+        ci.UpdatedAt,
+        ROW_NUMBER() OVER (
+            PARTITION BY c.Id 
+            ORDER BY ci.CreatedAt DESC
+        ) AS RowNum
+    FROM ThatThings AS ci
+    JOIN ThingActiveInstances AS cai ON cai.ThingInstanceId = ci.ThingInstanceId
+    JOIN Things AS c ON c.Id = cai.ThingId
+)
+SELECT
+    CreatedAt,
+    EndedAt,
+    UpdatedAt
+FROM RankedThings
+WHERE RowNum = 1`,
+			wantWith: `
+-- Comment
+WITH RankedThings AS (
+    SELECT
+        ci.CreatedAt,
+        ci.EndedAt,
+        ci.UpdatedAt,
+        ROW_NUMBER() OVER (
+            PARTITION BY c.Id 
+            ORDER BY ci.CreatedAt DESC
+        ) AS RowNum
+    FROM ThatThings AS ci
+    JOIN ThingActiveInstances AS cai ON cai.ThingInstanceId = ci.ThingInstanceId
+    JOIN Things AS c ON c.Id = cai.ThingId
+)`,
+			wantRemain: `
+SELECT
+    CreatedAt,
+    EndedAt,
+    UpdatedAt
+FROM RankedThings
+WHERE RowNum = 1`,
+		},
 	}
 
 	for _, tt := range tests {

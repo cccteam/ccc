@@ -13,7 +13,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/cloudspannerecosystem/memefish"
-	"github.com/cloudspannerecosystem/memefish/ast"
+	"github.com/cloudspannerecosystem/memefish/token"
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -468,12 +468,48 @@ func (q *QuerySet[Resource]) SetOffset(offset *uint64) {
 }
 
 func extractWithClause(query string) (withClause, remainingQuery string) {
-	if stmt, err := memefish.ParseStatement("", query); err == nil {
-		if sel, ok := stmt.(*ast.QueryStatement); ok {
-			if qAst, ok := sel.Query.(*ast.Query); ok && qAst.With != nil {
-				end := qAst.With.End()
+	lex := &memefish.Lexer{
+		File: &token.File{Buffer: query},
+	}
 
-				return query[:end], query[end:]
+	depth := 0
+	lastClosingParenEnd := -1
+	startedWith := false
+
+	for {
+		if err := lex.NextToken(); err != nil {
+			break
+		}
+
+		if lex.Token.Kind == token.TokenEOF {
+			break
+		}
+
+		// First meaningful token must be WITH
+		if !startedWith && depth == 0 && lastClosingParenEnd == -1 {
+			if strings.EqualFold(lex.Token.Raw, "WITH") {
+				startedWith = true
+			} else {
+				return "", query
+			}
+		}
+
+		switch lex.Token.Kind {
+		case "(":
+			depth++
+		case ")":
+			depth--
+			if depth == 0 {
+				lastClosingParenEnd = int(lex.Token.End)
+			}
+		default:
+			if depth == 0 {
+				raw := lex.Token.Raw
+				if strings.EqualFold(raw, "SELECT") || strings.EqualFold(raw, "UPDATE") || strings.EqualFold(raw, "DELETE") || strings.EqualFold(raw, "INSERT") {
+					if startedWith && lastClosingParenEnd != -1 {
+						return query[:lastClosingParenEnd], query[lastClosingParenEnd:]
+					}
+				}
 			}
 		}
 	}
