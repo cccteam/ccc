@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.11](https://github.com/cccteam/ccc/compare/resource/v0.9.10...resource/v0.9.11) (2026-04-03)
+
+
+### Features
+
+* Add support for WITH clause in Virtual Resources ([#689](https://github.com/cccteam/ccc/issues/689)) ([a9f0f91](https://github.com/cccteam/ccc/commit/a9f0f911635cdc66d648f924fd8e0c86d2074c17))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group across 1 directory with 8 updates ([#684](https://github.com/cccteam/ccc/issues/684)) ([9328d02](https://github.com/cccteam/ccc/commit/9328d02255892b5f540fd07b91892449d53e2491))
+
 ## [0.9.10](https://github.com/cccteam/ccc/compare/resource/v0.9.9...resource/v0.9.10) (2026-03-13)
 
 
