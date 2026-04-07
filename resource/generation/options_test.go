@@ -5,9 +5,7 @@ import (
 	"testing"
 )
 
-func TestApplicationName(t *testing.T) {
-	t.Parallel()
-
+func TestApplicationName(t *testing.T) { //nolint:paralleltest // subtests share a cache directory and cannot run in parallel
 	testCases := []struct {
 		name                    string
 		opt                     ResourceOption
@@ -28,10 +26,8 @@ func TestApplicationName(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
+	for _, tc := range testCases { //nolint:paralleltest // subtests share a cache directory and cannot run in parallel
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			opts := []ResourceOption{
 				WithSpannerEmulatorVersion("1.5.41"),
 			}

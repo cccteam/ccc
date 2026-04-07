@@ -1188,15 +1188,15 @@ const (
 {{- range $resource := .ConstResources }}
 {{- if $resource.HasCompoundPrimaryKey }}
 	{{- range $_, $field := $resource.PrimaryKeys }}
-	{{ $resource.Name }}{{ $field.Name }} httpio.ParamType = "{{ GoCamel $resource.Name }}{{ $field.Name }}"
+	{{ $resource.Name }}{{ $field.Name }} httpio.ParamType = "{{ GoCamelConcat $resource.Name $field.Name }}"
 	{{- end }}
 {{- else }}
-	{{ $resource.Name }}{{ $resource.PrimaryKey.Name }} httpio.ParamType = "{{ GoCamel $resource.Name }}{{ $resource.PrimaryKey.Name }}"
+	{{ $resource.Name }}{{ $resource.PrimaryKey.Name }} httpio.ParamType = "{{ GoCamelConcat $resource.Name $resource.PrimaryKey.Name }}"
 {{- end }}
 {{- end }}
 {{- range $resource := .ConstComputedResources }}
 	{{- range $_, $field := $resource.PrimaryKeys }}
-	{{ $resource.Name }}{{ $field.Name }} httpio.ParamType = "{{ GoCamel $resource.Name }}{{ $field.Name }}"
+	{{ $resource.Name }}{{ $field.Name }} httpio.ParamType = "{{ GoCamelConcat $resource.Name $field.Name }}"
 	{{- end }}
 {{- end }}
 )
