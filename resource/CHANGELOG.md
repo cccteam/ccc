@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.12](https://github.com/cccteam/ccc/compare/resource/v0.9.11...resource/v0.9.12) (2026-04-07)
+
+
+### Bug Fixes
+
+* apply camel-case to route param constants ([#690](https://github.com/cccteam/ccc/issues/690)) ([2d71719](https://github.com/cccteam/ccc/commit/2d717196f242d92ab2c121db92d325eaf82905f8))
+
 ## [0.9.11](https://github.com/cccteam/ccc/compare/resource/v0.9.10...resource/v0.9.11) (2026-04-03)
 
 
