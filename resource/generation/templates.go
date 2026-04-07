@@ -1253,19 +1253,19 @@ func generatedRouteParameters() []string {
 	{{- range $resource := .ConstResources }}
 	{{- if $resource.HasCompoundPrimaryKey }}
 		{{- range $_, $field := $resource.PrimaryKeys }}
-		"{{ GoCamel $resource.Name }}{{ $field.Name }}",
+		"{{ GoCamelConcat $resource.Name $field.Name }}",
 		{{- end }}
 	{{- else }}
-		"{{ GoCamel $resource.Name }}{{ $resource.PrimaryKey.Name }}",
+		"{{ GoCamelConcat $resource.Name $resource.PrimaryKey.Name }}",
 	{{- end }}
 	{{- end }}
 	{{- range $resource := .ConstComputedResources }}
 	{{- if $resource.HasCompoundPrimaryKey }}
 		{{- range $_, $field := $resource.PrimaryKeys }}
-		"{{ GoCamel $resource.Name }}{{ $field.Name }}",
+		"{{ GoCamelConcat $resource.Name $field.Name }}",
 		{{- end }}
 	{{- else if $resource.PrimaryKey }}
-		"{{ GoCamel $resource.Name }}{{ $resource.PrimaryKey.Name }}",
+		"{{ GoCamelConcat $resource.Name $resource.PrimaryKey.Name }}",
 	{{- end }}
 	{{- end }}
 	}
