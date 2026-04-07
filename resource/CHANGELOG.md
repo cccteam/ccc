@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.13](https://github.com/cccteam/ccc/compare/resource/v0.9.12...resource/v0.9.13) (2026-04-07)
+
+
+### Bug Fixes
+
+* apply GoCamelConcat fix to router test gen ([#692](https://github.com/cccteam/ccc/issues/692)) ([774c77d](https://github.com/cccteam/ccc/commit/774c77d8e30298ed782ad17d06127cced3661cae))
+
 ## [0.9.12](https://github.com/cccteam/ccc/compare/resource/v0.9.11...resource/v0.9.12) (2026-04-07)
 
 
