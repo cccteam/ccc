@@ -233,8 +233,8 @@ func (c *client) tableMetadataFor(resourceName string) (*tableMetadata, error) {
 
 func (c *client) templateFuncs() map[string]any {
 	templateFuncs := map[string]any{
-		"Pluralize":                    c.pluralize,
-		"GoCamel":                      strcase.ToGoCamel,
+		"Pluralize": c.pluralize,
+		"GoCamel":   strcase.ToGoCamel,
 		"GoCamelConcat": func(parts ...string) string {
 			return strcase.ToGoCamel(strings.Join(parts, ""))
 		},
