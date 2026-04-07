@@ -65,7 +65,7 @@ func New(path string, opts ...Option) (*Cache, error) {
 	if _, err := os.Stat(c.cacheFolder); err != nil && !os.IsNotExist(err) {
 		return nil, errors.Wrap(err, "os.Stat()")
 	} else if os.IsNotExist(err) {
-		if err := os.Mkdir(c.cacheFolder, fs.FileMode(c.permissionBits)); err != nil && !os.IsExist(err) {
+		if err := os.Mkdir(c.cacheFolder, fs.FileMode(c.permissionBits)); err != nil {
 			return c, errors.Wrap(err, "os.Mkdir()")
 		}
 
