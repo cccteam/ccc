@@ -150,6 +150,10 @@ linters:
           - nestif
         path: _test\.go
       - linters:
+          - paralleltest
+        path: options_test\.go
+        text: TestApplicationName
+      - linters:
           - gomoddirectives
         path: go\.mod
         text: golang-migrate
