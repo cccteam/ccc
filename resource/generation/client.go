@@ -136,7 +136,7 @@ func (c *client) HasNullBoolean() bool {
 func (c *client) HasCustomTypesInResources() bool {
 	for _, resource := range c.resources {
 		for _, field := range resource.Fields {
-			if strings.HasPrefix(field.typescriptType, customTypesPrefix) {
+			if strings.Contains(field.typescriptType, customTypesPrefix) {
 				return true
 			}
 		}
@@ -144,7 +144,7 @@ func (c *client) HasCustomTypesInResources() bool {
 
 	for _, resource := range c.computedResources {
 		for _, field := range resource.Fields {
-			if strings.HasPrefix(field.typescriptType, customTypesPrefix) {
+			if strings.Contains(field.typescriptType, customTypesPrefix) {
 				return true
 			}
 		}
@@ -157,7 +157,7 @@ func (c *client) HasCustomTypesInResources() bool {
 func (c *client) HasCustomTypesInMethods() bool {
 	for _, method := range c.rpcMethods {
 		for _, field := range method.Fields {
-			if strings.HasPrefix(field.typescriptType, customTypesPrefix) {
+			if strings.Contains(field.typescriptType, customTypesPrefix) {
 				return true
 			}
 		}

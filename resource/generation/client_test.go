@@ -96,6 +96,17 @@ func Test_client_HasCustomTypesInResources(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "has CustomTypes nested in resource field type",
+			resources: []*resourceInfo{
+				{
+					Fields: []*resourceField{
+						{typescriptType: "Record<string, CustomTypes.RichText>"},
+					},
+				},
+			},
+			want: true,
+		},
+		{
 			name: "has CustomTypes in computed resource field",
 			computedResources: []*computedResource{
 				{
@@ -175,6 +186,17 @@ func Test_client_HasCustomTypesInMethods(t *testing.T) {
 				{
 					Fields: []*rpcField{
 						{typescriptType: "CustomTypes.SpecialType"},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "has CustomTypes nested in rpc method field type",
+			rpcMethods: []*rpcMethodInfo{
+				{
+					Fields: []*rpcField{
+						{typescriptType: "Record<string, CustomTypes.SpecialType>"},
 					},
 				},
 			},

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -355,15 +356,7 @@ func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) erro
 
 func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceField) []*resourceField {
 	for _, field := range fields {
-		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
-			field.typescriptType = override
-		} else {
-			field.typescriptType = stringGoType
-		}
-
-		if field.IsIterable() {
-			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
-		}
+		field.typescriptType = t.typescriptTypeForGoType(field.Type())
 
 		if field.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
 			field.IsEnumerated = true
@@ -375,15 +368,7 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceFie
 
 func (t *typescriptGenerator) computedFieldsTypescriptType(fields []*computedField) []*computedField {
 	for _, field := range fields {
-		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
-			field.typescriptType = override
-		} else {
-			field.typescriptType = stringGoType
-		}
-
-		if field.IsIterable() {
-			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
-		}
+		field.typescriptType = t.typescriptTypeForGoType(field.Type())
 	}
 
 	return fields
@@ -391,19 +376,77 @@ func (t *typescriptGenerator) computedFieldsTypescriptType(fields []*computedFie
 
 func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []*rpcField) []*rpcField {
 	for _, field := range fields {
-		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
-			if override == booleanStr && field.Type() == "*bool" {
-				panic("Bool pointer (*bool) not currently supported for rpc methods.")
-			}
-			field.typescriptType = override
-		} else {
-			field.typescriptType = stringGoType
+		if field.Type() == "*bool" {
+			panic("Bool pointer (*bool) not currently supported for rpc methods.")
 		}
 
-		if field.IsIterable() {
-			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
-		}
+		field.typescriptType = t.typescriptTypeForGoType(field.Type())
 	}
 
 	return fields
+}
+
+func (t *typescriptGenerator) typescriptTypeForGoType(goType string) string {
+	goType = strings.TrimSpace(goType)
+	for strings.HasPrefix(goType, "*") {
+		goType = strings.TrimPrefix(goType, "*")
+	}
+
+	if strings.HasPrefix(goType, "[]") {
+		return fmt.Sprintf("%s[]", t.typescriptTypeForGoType(strings.TrimPrefix(goType, "[]")))
+	}
+
+	if strings.HasPrefix(goType, "[") {
+		if end := strings.Index(goType, "]"); end >= 0 && end < len(goType)-1 {
+			return fmt.Sprintf("%s[]", t.typescriptTypeForGoType(goType[end+1:]))
+		}
+	}
+
+	mapKey, mapValue, isMap := parseMapType(goType)
+	if isMap {
+		return fmt.Sprintf("Record<%s, %s>", t.typescriptTypeForGoType(mapKey), t.typescriptTypeForGoType(mapValue))
+	}
+
+	if override, ok := t.typescriptOverrides[goType]; ok {
+		return override
+	}
+
+	return stringGoType
+}
+
+func parseMapType(typeName string) (string, string, bool) {
+	if !strings.HasPrefix(typeName, "map[") {
+		return "", "", false
+	}
+
+	var (
+		openBracketCount int
+		closeBracketIdx  int
+	)
+
+scanMapKey:
+	for i := range typeName {
+		switch typeName[i] {
+		case '[':
+			openBracketCount++
+		case ']':
+			openBracketCount--
+			if openBracketCount == 0 {
+				closeBracketIdx = i
+				break scanMapKey
+			}
+		}
+	}
+
+	if closeBracketIdx == 0 || closeBracketIdx >= len(typeName)-1 {
+		return "", "", false
+	}
+
+	key := strings.TrimSpace(typeName[len("map["):closeBracketIdx])
+	value := strings.TrimSpace(typeName[closeBracketIdx+1:])
+	if key == "" || value == "" {
+		return "", "", false
+	}
+
+	return key, value, true
 }
