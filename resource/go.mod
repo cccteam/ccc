@@ -1,18 +1,18 @@
 module github.com/cccteam/ccc/resource
 
-go 1.26.1
+go 1.26.2
 
 replace github.com/golang-migrate/migrate/v4 v4.19.1 => github.com/jtwatson/migrate/v4 v4.19.2-beta.0
 
 require (
 	cloud.google.com/go v0.123.0
-	cloud.google.com/go/spanner v1.89.0
+	cloud.google.com/go/spanner v1.90.0
 	github.com/cccteam/ccc v0.3.0
 	github.com/cccteam/ccc/accesstypes v0.5.6
 	github.com/cccteam/ccc/cache v0.1.4
 	github.com/cccteam/ccc/pkg v0.1.3
 	github.com/cccteam/ccc/securehash v0.0.10
-	github.com/cccteam/db-initiator v0.3.5
+	github.com/cccteam/db-initiator v0.3.6
 	github.com/cccteam/httpio v0.7.10
 	github.com/cccteam/session v0.8.0
 	github.com/cccteam/spxscan v0.0.8
@@ -26,7 +26,7 @@ require (
 	github.com/momaek/formattag v0.0.10
 	github.com/shopspring/decimal v1.4.0
 	go.uber.org/mock v0.6.0
-	golang.org/x/tools v0.43.0
+	golang.org/x/tools v0.44.0
 )
 
 require (
@@ -117,7 +117,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/mod v0.35.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
