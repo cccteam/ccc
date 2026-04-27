@@ -28,7 +28,7 @@ type typescriptGenerator struct {
 }
 
 // NewTypescriptGenerator constructs a new Generator for generating Typescript for a resource-driven Angular app.
-func NewTypescriptGenerator(ctx context.Context, resourceSourcePath, migrationSourceURL, targetDir string, rc *resource.Collection, options ...TSOption) (Generator, error) {
+func NewTypescriptGenerator(ctx context.Context, resourceSourcePath string, migrationSourceURL []string, targetDir string, rc *resource.Collection, options ...TSOption) (Generator, error) {
 	if rc == nil {
 		return nil, errors.New("resource collection cannot be nil")
 	}

@@ -38,7 +38,7 @@ func TestApplicationName(t *testing.T) {
 			r, err := NewResourceGenerator(
 				context.Background(),
 				"testdata/resources.go",
-				"file://generation/testdata/migrations",
+				[]string{"file://generation/testdata/migrations"},
 				[]string{},
 				opts...,
 			)

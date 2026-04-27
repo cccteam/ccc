@@ -35,19 +35,19 @@ const (
 var caser = strcase.NewCaser(false, nil, nil)
 
 type client struct {
-	loadPackages       []string
-	resource           packageDir
-	resources          []*resourceInfo
-	computedResources  []*computedResource
-	rpcMethods         []*rpcMethodInfo
-	localPackages      []string
-	rpc                packageDir
-	computed           packageDir
-	virtual            packageDir
-	migrationSourceURL string
-	tableMap           map[string]*tableMetadata
-	enumValues         map[string][]*enumData
-	pluralOverrides    map[string]string
+	loadPackages        []string
+	resource            packageDir
+	resources           []*resourceInfo
+	computedResources   []*computedResource
+	rpcMethods          []*rpcMethodInfo
+	localPackages       []string
+	rpc                 packageDir
+	computed            packageDir
+	virtual             packageDir
+	migrationSourceURLs []string
+	tableMap            map[string]*tableMetadata
+	enumValues          map[string][]*enumData
+	pluralOverrides     map[string]string
 	consolidateConfig
 	genRPCMethods          bool
 	genComputedResources   bool
@@ -57,7 +57,7 @@ type client struct {
 	genCache *cache.Cache
 }
 
-func newClient(ctx context.Context, genType generatorType, resourcePackageDir, migrationSourceURL string, localPackages []string, opts []option) (*client, error) {
+func newClient(ctx context.Context, genType generatorType, resourcePackageDir string, migrationSourceURL, localPackages []string, opts []option) (*client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -73,8 +73,8 @@ func newClient(ctx context.Context, genType generatorType, resourcePackageDir, m
 	}
 
 	c := &client{
-		migrationSourceURL: migrationSourceURL,
-		genCache:           gCache,
+		migrationSourceURLs: migrationSourceURL,
+		genCache:            gCache,
 	}
 	if err := resolveOptions(c, opts); err != nil {
 		return nil, err
@@ -98,9 +98,19 @@ func newClient(ctx context.Context, genType generatorType, resourcePackageDir, m
 		if genType == typeScriptGeneratorType {
 			return nil, errors.New("schema cache is out of date, please run Resource Generator first")
 		}
-		if err := c.genCache.DeleteSubpath("migrations"); err != nil {
-			return nil, errors.Wrap(err, "cache.Cache.DeleteSubpath()")
+
+		for _, migrationSource := range migrationSourceURL {
+			hashedMigrationSourceURL, err := hashString(migrationSource)
+			if err != nil {
+				return nil, err
+			}
+			migrationCachePath := filepath.Join("migrations", fmt.Sprintf("%x", hashedMigrationSourceURL))
+
+			if err := c.genCache.DeleteSubpath(migrationCachePath); err != nil {
+				return nil, errors.Wrap(err, "cache.Cache.DeleteSubpath()")
+			}
 		}
+
 		if err := c.runSpanner(ctx, c.spannerEmulatorVersion, migrationSourceURL); err != nil {
 			return nil, err
 		}
@@ -109,7 +119,7 @@ func newClient(ctx context.Context, genType generatorType, resourcePackageDir, m
 	c.loadPackages = append(c.loadPackages, resourcePackageDir)
 	c.resource = packageDir(resourcePackageDir)
 	c.localPackages = localPackages
-	c.migrationSourceURL = migrationSourceURL
+	c.migrationSourceURLs = migrationSourceURL
 
 	return c, nil
 }

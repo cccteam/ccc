@@ -11,7 +11,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func createSpannerDB(ctx context.Context, emulatorVersion, migrationSourceURL string) (*initiator.SpannerDB, error) {
+func createSpannerDB(ctx context.Context, emulatorVersion string, migrationSourceURLs []string) (*initiator.SpannerDB, error) {
 	log.Println("Starting Spanner Container...")
 	spannerContainer, err := initiator.NewSpannerContainer(ctx, emulatorVersion)
 	if err != nil {
@@ -24,14 +24,16 @@ func createSpannerDB(ctx context.Context, emulatorVersion, migrationSourceURL st
 	}
 
 	log.Println("Starting Spanner Migration...")
-	if err := db.MigrateUp(migrationSourceURL); err != nil {
-		return nil, errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
+	for _, migrationSource := range migrationSourceURLs {
+		if err := db.MigrateUp(migrationSource); err != nil {
+			return nil, errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
+		}
 	}
 
 	return db, nil
 }
 
-func (c *client) runSpanner(ctx context.Context, emulatorVersion, migrationSourceURL string) error {
+func (c *client) runSpanner(ctx context.Context, emulatorVersion string, migrationSourceURL []string) error {
 	db, err := createSpannerDB(ctx, emulatorVersion, migrationSourceURL)
 	if err != nil {
 		return err
