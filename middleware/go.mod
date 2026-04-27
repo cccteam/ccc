@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/middleware
 
-go 1.26.1
+go 1.26.2
 
 require (
 	cloud.google.com/go/auth v0.19.0
