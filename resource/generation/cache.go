@@ -77,16 +77,33 @@ func hashFilesInDir(path string) (map[string]struct{}, error) {
 	return hashMap, nil
 }
 
-func (c *client) cacheSchemaHashes() error {
-	migrationPath := strings.TrimPrefix(c.migrationSourceURL, "file://")
-	schemaMigrationHashes, err := hashFilesInDir(migrationPath)
-	if err != nil {
-		return err
+func hashString(s string) ([]byte, error) {
+	h := sha256.New()
+	if _, err := h.Write([]byte(s)); err != nil {
+		return nil, errors.Wrap(err, "hash.Hash.Write()")
 	}
 
-	for hash := range schemaMigrationHashes {
-		if err := c.genCache.Store("migrations", fmt.Sprintf("%x", []byte(hash)), ""); err != nil {
-			return errors.Wrap(err, "could not store sha256 hash in gencache: cache.Cache.Store()")
+	return h.Sum(nil), nil
+}
+
+func (c *client) cacheSchemaHashes() error {
+	for _, migrationSource := range c.migrationSourceURLs {
+		migrationPath := strings.TrimPrefix(migrationSource, "file://")
+		schemaMigrationHashes, err := hashFilesInDir(migrationPath)
+		if err != nil {
+			return err
+		}
+
+		hashedMigrationSourceURL, err := hashString(migrationSource)
+		if err != nil {
+			return err
+		}
+		migrationCachePath := filepath.Join("migrations", fmt.Sprintf("%x", hashedMigrationSourceURL))
+
+		for hash := range schemaMigrationHashes {
+			if err := c.genCache.Store(migrationCachePath, fmt.Sprintf("%x", []byte(hash)), ""); err != nil {
+				return errors.Wrap(err, "could not store sha256 hash in gencache: cache.Cache.Store()")
+			}
 		}
 	}
 
@@ -96,44 +113,51 @@ func (c *client) cacheSchemaHashes() error {
 // Loads previous schema migration checksums from gencache, if they exist.
 // Returns false current schema migration checksums do not match cached checksums.
 func (c *client) isSchemaClean() (bool, error) {
-	keys, err := c.genCache.Keys("migrations")
-	if err != nil {
-		return false, errors.Wrap(err, "could not load migration hashes from genCache: cache.Cache.Keys()")
-	}
-
-	cachedHashes := make(map[string]struct{})
-	for key := range keys {
-		cachedHashes[key] = struct{}{}
-	}
-
-	// gather files from schema migration directory
-	migrationPath := strings.TrimPrefix(c.migrationSourceURL, "file://")
-	dir, err := os.Open(migrationPath)
-	if err != nil {
-		return false, errors.Wrap(err, "os.Open()")
-	}
-	defer dir.Close()
-
-	fileNames, err := dir.Readdirnames(0)
-	if err != nil {
-		return false, errors.Wrap(err, "os.File.Readdirnames()")
-	}
-
-	if len(fileNames) != len(cachedHashes) {
-		log.Printf("\x1b[33mNumber of schema files (%d) does not match number of cached files (%d). Invalidating cache.\x1b[39m\n", len(fileNames), len(cachedHashes))
-
-		return false, nil
-	}
-
-	// check cache for hash of each schema migration file
-	for _, fileName := range fileNames {
-		hash, err := hashFile(filepath.Join(migrationPath, fileName))
+	for _, migrationSource := range c.migrationSourceURLs {
+		hashedMigrationSourceURL, err := hashString(migrationSource)
 		if err != nil {
 			return false, err
 		}
 
-		if _, ok := cachedHashes[fmt.Sprintf("%x", hash)]; !ok {
+		keys, err := c.genCache.Keys(filepath.Join("migrations", fmt.Sprintf("%x", hashedMigrationSourceURL)))
+		if err != nil {
+			return false, errors.Wrap(err, "could not load migration hashes from genCache: cache.Cache.Keys()")
+		}
+
+		cachedHashes := make(map[string]struct{})
+		for key := range keys {
+			cachedHashes[key] = struct{}{}
+		}
+
+		// gather files from schema migration directory
+		migrationPath := strings.TrimPrefix(migrationSource, "file://")
+		dir, err := os.Open(migrationPath)
+		if err != nil {
+			return false, errors.Wrap(err, "os.Open()")
+		}
+		defer dir.Close()
+
+		fileNames, err := dir.Readdirnames(0)
+		if err != nil {
+			return false, errors.Wrap(err, "os.File.Readdirnames()")
+		}
+
+		if len(fileNames) != len(cachedHashes) {
+			log.Printf("\x1b[33mNumber of schema files (%d) does not match number of cached files (%d). Invalidating cache.\x1b[39m\n", len(fileNames), len(cachedHashes))
+
 			return false, nil
+		}
+
+		// check cache for hash of each schema migration file
+		for _, fileName := range fileNames {
+			hash, err := hashFile(filepath.Join(migrationPath, fileName))
+			if err != nil {
+				return false, err
+			}
+
+			if _, ok := cachedHashes[fmt.Sprintf("%x", hash)]; !ok {
+				return false, nil
+			}
 		}
 	}
 

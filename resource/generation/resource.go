@@ -25,7 +25,7 @@ type resourceGenerator struct {
 }
 
 // NewResourceGenerator constructs a new Generator for generating a resource-driven API.
-func NewResourceGenerator(ctx context.Context, resourcePackageDir, migrationSourceURL string, localPackages []string, options ...ResourceOption) (Generator, error) {
+func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrationSourceURL, localPackages []string, options ...ResourceOption) (Generator, error) {
 	r := &resourceGenerator{}
 
 	opts := make([]option, 0, len(options))
