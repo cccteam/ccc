@@ -135,7 +135,6 @@ func (c *client) isSchemaClean() (bool, error) {
 		if err != nil {
 			return false, errors.Wrap(err, "os.Open()")
 		}
-		defer dir.Close()
 
 		fileNames, err := dir.Readdirnames(0)
 		if err != nil {
@@ -158,6 +157,10 @@ func (c *client) isSchemaClean() (bool, error) {
 			if _, ok := cachedHashes[fmt.Sprintf("%x", hash)]; !ok {
 				return false, nil
 			}
+		}
+
+		if err := dir.Close(); err != nil {
+			log.Print(errors.Wrap(err, "os.File.Close()"))
 		}
 	}
 
