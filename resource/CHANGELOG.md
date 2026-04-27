@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.14](https://github.com/cccteam/ccc/compare/resource/v0.9.13...resource/v0.9.14) (2026-04-27)
+
+
+### Bug Fixes
+
+* exclude linter in .golangci.yml, not inline ([#694](https://github.com/cccteam/ccc/issues/694)) ([e8b2afd](https://github.com/cccteam/ccc/commit/e8b2afd7c2026b670f58458b2d62bd4c5c1eee57))
+
+
+### Code Upgrade
+
+* Upgrade Go dependencies ([#696](https://github.com/cccteam/ccc/issues/696)) ([d7fff09](https://github.com/cccteam/ccc/commit/d7fff09e5b8369998af2954c923e63e8e968ecc1))
+
 ## [0.9.13](https://github.com/cccteam/ccc/compare/resource/v0.9.12...resource/v0.9.13) (2026-04-07)
 
 
