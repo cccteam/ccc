@@ -125,8 +125,13 @@ func (r *resourceGenerator) Generate() error {
 		}
 	}
 
+	appCachePath, err := r.appCachePath()
+	if err != nil {
+		return err
+	}
+
 	// We always want to cache the consolidatedRoute data for the typescript gen
-	if err := r.genCache.Store("app", consolidatedRouteCache, r.consolidateConfig); err != nil {
+	if err := r.genCache.Store(appCachePath, consolidatedRouteCache, r.consolidateConfig); err != nil {
 		return errors.Wrap(err, "cache.Cache.Store()")
 	}
 

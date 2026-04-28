@@ -80,6 +80,11 @@ func newClient(ctx context.Context, genType generatorType, resourcePackageDir st
 		return nil, err
 	}
 
+	c.loadPackages = append(c.loadPackages, resourcePackageDir)
+	c.resource = packageDir(resourcePackageDir)
+	c.localPackages = localPackages
+	c.migrationSourceURLs = migrationSourceURL
+
 	isSchemaClean, err := c.isSchemaClean()
 	if err != nil {
 		return nil, err
@@ -115,11 +120,6 @@ func newClient(ctx context.Context, genType generatorType, resourcePackageDir st
 			return nil, err
 		}
 	}
-
-	c.loadPackages = append(c.loadPackages, resourcePackageDir)
-	c.resource = packageDir(resourcePackageDir)
-	c.localPackages = localPackages
-	c.migrationSourceURLs = migrationSourceURL
 
 	return c, nil
 }
