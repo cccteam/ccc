@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.7](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.6...accesstypes/v0.5.7) (2026-04-29)
+
+
+### Code Upgrade
+
+* Upgrade/remove ptr for new ([#663](https://github.com/cccteam/ccc/issues/663)) ([7dfd20c](https://github.com/cccteam/ccc/commit/7dfd20cd5ba0ecd8fe320b005f5f042c014037bc))
+
 ## [0.5.6](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.5...accesstypes/v0.5.6) (2026-02-10)
 
 
