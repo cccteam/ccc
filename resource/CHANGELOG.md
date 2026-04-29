@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.10.0](https://github.com/cccteam/ccc/compare/resource/v0.9.14...resource/v0.10.0) (2026-04-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* support multi-schema generation & caching ([#713](https://github.com/cccteam/ccc/issues/713))
+
+### Features
+
+* support multi-schema generation & caching ([#713](https://github.com/cccteam/ccc/issues/713)) ([7339504](https://github.com/cccteam/ccc/commit/733950446a0894f94318a5d05ee165e95316ddcd))
+
+
+### Bug Fixes
+
+* subpath cache collisions in multi-app generation ([#714](https://github.com/cccteam/ccc/issues/714)) ([26eed38](https://github.com/cccteam/ccc/commit/26eed38a41a8cbe01f577f6376920470ddb2d4bc))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group across 1 directory with 5 updates ([#708](https://github.com/cccteam/ccc/issues/708)) ([3661554](https://github.com/cccteam/ccc/commit/36615541b7d860ae6215416d2942f9d370ce0a01))
+
 ## [0.9.14](https://github.com/cccteam/ccc/compare/resource/v0.9.13...resource/v0.9.14) (2026-04-27)
 
 
