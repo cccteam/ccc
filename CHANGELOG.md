@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.1](https://github.com/cccteam/ccc/compare/v0.3.0...v0.3.1) (2026-04-29)
+
+
+### Code Upgrade
+
+* **deps:** Bump googleapis/release-please-action ([#704](https://github.com/cccteam/ccc/issues/704)) ([f6a3c97](https://github.com/cccteam/ccc/commit/f6a3c9782ee4a23c04cafa8382cbb5701080f6e1))
+* **deps:** Bump the github-actions group with 3 updates ([#686](https://github.com/cccteam/ccc/issues/686)) ([338ef60](https://github.com/cccteam/ccc/commit/338ef60c796c0182ab6f64540a62f0dfa3db8c40))
+* **deps:** Bump the go-dependencies group across 1 directory with 3 updates ([#697](https://github.com/cccteam/ccc/issues/697)) ([70bb3e7](https://github.com/cccteam/ccc/commit/70bb3e79ffafa59e8dd2a18ea1113e419dbdf3d6))
+
 ## [0.3.0](https://github.com/cccteam/ccc/compare/v0.2.24...v0.3.0) (2026-03-26)
 
 
