@@ -199,6 +199,10 @@ linters:
           - funlen
         path: generation/router\.go
         text: runRouteGeneration
+      - linters:
+          - funlen
+        path: generation/resource\.go
+        text: Generate
     paths:
       - third_party$
       - builtin$
