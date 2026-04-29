@@ -168,22 +168,32 @@ func (c *client) isSchemaClean() (bool, error) {
 }
 
 func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
+	spannerCachePath, err := c.spannerCachePath()
+	if err != nil {
+		return false, err
+	}
+
 	c.tableMap = make(map[string]*tableMetadata)
-	if ok, err := c.genCache.Load("spanner", tableMapCache, &c.tableMap); err != nil {
+	if ok, err := c.genCache.Load(spannerCachePath, tableMapCache, &c.tableMap); err != nil {
 		return false, errors.Wrapf(err, "cache.Cache.Load() for %q", tableMapCache)
 	} else if !ok {
 		return false, nil
 	}
 
 	c.enumValues = make(map[string][]*enumData)
-	if ok, err := c.genCache.Load("spanner", enumValueCache, &c.enumValues); err != nil {
+	if ok, err := c.genCache.Load(spannerCachePath, enumValueCache, &c.enumValues); err != nil {
 		return false, errors.Wrapf(err, "cache.Cache.Load() for %q", enumValueCache)
 	} else if !ok {
 		return false, nil
 	}
 
 	if genType == typeScriptGeneratorType {
-		if ok, err := c.genCache.Load("app", consolidatedRouteCache, &c.consolidateConfig); err != nil {
+		appCachePath, err := c.appCachePath()
+		if err != nil {
+			return false, err
+		}
+
+		if ok, err := c.genCache.Load(appCachePath, consolidatedRouteCache, &c.consolidateConfig); err != nil {
 			return false, errors.Wrapf(err, "cache.Cache.Load() for %q", consolidatedRouteCache)
 		} else if !ok {
 			return false, nil
@@ -193,8 +203,41 @@ func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
 	return true, nil
 }
 
+func (c *client) spannerCachePath() (string, error) {
+	var concatenatedPaths string
+	for _, migrationSource := range c.migrationSourceURLs {
+		concatenatedPaths += migrationSource
+	}
+
+	hashedPaths, err := hashString(concatenatedPaths)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join("spanner", fmt.Sprintf("%x", hashedPaths)), nil
+}
+
+func (c *client) appCachePath() (string, error) {
+	hashedPath, err := hashString(filepath.Clean(string(c.resource)))
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join("app", fmt.Sprintf("%x", hashedPath)), nil
+}
+
 func (c *client) populateCache() error {
-	if err := c.genCache.Store("spanner", tableMapCache, c.tableMap); err != nil {
+	var concatenatedPaths string
+	for _, migrationSource := range c.migrationSourceURLs {
+		concatenatedPaths += migrationSource
+	}
+
+	spannerCachePath, err := c.spannerCachePath()
+	if err != nil {
+		return err
+	}
+
+	if err := c.genCache.Store(spannerCachePath, tableMapCache, c.tableMap); err != nil {
 		return errors.Wrap(err, "cache.Cache.Store()")
 	}
 
@@ -202,7 +245,7 @@ func (c *client) populateCache() error {
 		return err
 	}
 
-	if err := c.genCache.Store("spanner", enumValueCache, c.enumValues); err != nil {
+	if err := c.genCache.Store(spannerCachePath, enumValueCache, c.enumValues); err != nil {
 		return errors.Wrap(err, "cache.Cache.Store()")
 	}
 
