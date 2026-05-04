@@ -26,7 +26,7 @@
     ".": {
       "package-name": "ccc",
       "include-component-in-tag": false,
-      "exclude-paths": ["accesstypes", "cache", "resource", "pkg", "sns", "securehash", "tracer", "middleware"]
+      "exclude-paths": ["accesstypes", "cache", "resource", "pkg", "sns", "securehash", "securehash/cmd/hasher", "tracer", "middleware"]
     },
     "accesstypes": {
       "package-name": "accesstypes"
@@ -44,7 +44,12 @@
       "package-name": "sns"
     },
     "securehash": {
-      "package-name": "securehash"
+      "package-name": "securehash",
+      "exclude-paths": ["securehash/cmd/hasher"]
+    },
+    "securehash/cmd/hasher": {
+      "package-name": "securehash-cmd-hasher",
+      "component": "securehash-cmd-hasher"
     },
     "tracer": {
       "package-name": "tracer"
