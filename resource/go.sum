@@ -52,10 +52,10 @@ github.com/cccteam/httpio v0.7.11 h1:0kJ6ay/dL5ZPtJH6in4Q9x+E9N61ojhZ+Df+bZTYy/Q
 github.com/cccteam/httpio v0.7.11/go.mod h1:EfiAc47lYlx/M5UBaRT7nqYMLUj0Pf/aeGSIsx5E08Q=
 github.com/cccteam/logger v0.1.20 h1:C79If05Kssm4/2y5i19Q5AChbhUPw56c6sExT1YrXFI=
 github.com/cccteam/logger v0.1.20/go.mod h1:KdxwW0bziAZX6AoXwoJRKyrtvlaJkdxODlNiXuAVnpY=
-github.com/cccteam/session v0.8.0 h1:qEZNioau9o8vbBu2Pffjl6nSFiFmgLJZhtN1RDnBFBM=
-github.com/cccteam/session v0.8.0/go.mod h1:WdsMz+40xPIdN+gQW209Y9CORufHu3sAPi4CLCVbDoA=
-github.com/cccteam/spxscan v0.0.8 h1:qICyBaJ2wYp0lYMoB+mUpBaOAkWs1HPABq5IvQWSHBc=
-github.com/cccteam/spxscan v0.0.8/go.mod h1:NftiCMWyB3Y4kYjMeqrOyxYM90o6xAG/sJ3OEJiREQE=
+github.com/cccteam/session v0.8.1 h1:keStgfSrXSHosl+AuxACmJaet5EE/yXpDtm2TG6dNUg=
+github.com/cccteam/session v0.8.1/go.mod h1:ekSbOgpefIMLMILh4pXdixeUmM9/UpOV/mluO5oGqAM=
+github.com/cccteam/spxscan v0.0.9 h1:lfoxDm0Odjdl/n6jngvjuWFwAp1ys84h6g438XSERLg=
+github.com/cccteam/spxscan v0.0.9/go.mod h1:xnOdPPUHnjjw16bKwfGV6HQDYkSW2ys266A/r6ApB+Y=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=

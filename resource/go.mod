@@ -14,8 +14,8 @@ require (
 	github.com/cccteam/ccc/securehash v0.0.10
 	github.com/cccteam/db-initiator v0.3.6
 	github.com/cccteam/httpio v0.7.11
-	github.com/cccteam/session v0.8.0
-	github.com/cccteam/spxscan v0.0.8
+	github.com/cccteam/session v0.8.1
+	github.com/cccteam/spxscan v0.0.9
 	github.com/cloudspannerecosystem/memefish v0.6.2
 	github.com/ettle/strcase v0.2.0
 	github.com/go-chi/chi/v5 v5.2.5
