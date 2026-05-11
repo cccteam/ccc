@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.2](https://github.com/cccteam/ccc/compare/tracer/v0.1.1...tracer/v0.1.2) (2026-05-11)
+
+
+### Code Upgrade
+
+* **deps:** Bump google.golang.org/grpc in /tracer ([#710](https://github.com/cccteam/ccc/issues/710)) ([b14c69c](https://github.com/cccteam/ccc/commit/b14c69c535f8ae81ee15eaea73b20e9b28b32860))
+* go 1.26.2 =&gt; 1.26.3 ([#718](https://github.com/cccteam/ccc/issues/718)) ([5e4aaca](https://github.com/cccteam/ccc/commit/5e4aacac7fee4b2350f369db22758bf1c3c0e691))
+* Upgrade/remove ptr for new ([#663](https://github.com/cccteam/ccc/issues/663)) ([7dfd20c](https://github.com/cccteam/ccc/commit/7dfd20cd5ba0ecd8fe320b005f5f042c014037bc))
+
 ## [0.1.1](https://github.com/cccteam/ccc/compare/tracer/v0.1.0...tracer/v0.1.1) (2026-03-05)
 
 
