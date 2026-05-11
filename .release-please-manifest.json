@@ -7,5 +7,5 @@
   "cache": "0.1.4",
   "securehash": "0.0.10",
   "tracer": "0.1.1",
-  "middleware": "0.0.3"
+  "middleware": "0.0.4"
 }
