@@ -510,6 +510,152 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 	}
 }
 
+func TestQueryDecoder_parseQuery_Pagination(t *testing.T) {
+	t.Parallel()
+
+	resSet, err := NewSet[TestResource, TestRequest]()
+	if err != nil {
+		t.Fatalf("Failed to create ResourceSet: %v", err)
+	}
+	decoder, err := NewQueryDecoder[TestResource, TestRequest](resSet)
+	if err != nil {
+		t.Fatalf("NewQueryDecoder should not fail: %v", err)
+	}
+
+	tests := []struct {
+		name           string
+		queryValues    url.Values
+		wantErr        bool
+		expectedErrMsg string
+		wantPageSize   *uint64
+		wantPageToken  bool
+		wantLimit      *uint64
+	}{
+		{
+			name:         "pageSize only",
+			queryValues:  url.Values{"pageSize": []string{"10"}},
+			wantPageSize: new(uint64(10)),
+		},
+		{
+			name:          "pageSize with pageToken",
+			queryValues:   url.Values{"pageSize": []string{"10"}, "pageToken": []string{mustEncodeToken(t, &PageToken{Values: []PageTokenValue{{Field: "ID", Value: "abc"}}})}},
+			wantPageSize:  new(uint64(10)),
+			wantPageToken: true,
+		},
+		{
+			name:           "pageToken without pageSize",
+			queryValues:    url.Values{"pageToken": []string{"sometoken"}},
+			wantErr:        true,
+			expectedErrMsg: "pageToken requires pageSize to be specified",
+		},
+		{
+			name:           "invalid pageSize",
+			queryValues:    url.Values{"pageSize": []string{"abc"}},
+			wantErr:        true,
+			expectedErrMsg: "invalid pageSize value: abc",
+		},
+		{
+			name:           "pageSize zero",
+			queryValues:    url.Values{"pageSize": []string{"0"}},
+			wantErr:        true,
+			expectedErrMsg: "pageSize must be greater than 0",
+		},
+		{
+			name:           "pageSize with limit - conflict",
+			queryValues:    url.Values{"pageSize": []string{"10"}, "limit": []string{"20"}},
+			wantErr:        true,
+			expectedErrMsg: "cannot use both 'limit' and 'pageSize' parameters",
+		},
+		{
+			name:           "pageSize with offset - conflict",
+			queryValues:    url.Values{"pageSize": []string{"10"}, "offset": []string{"5"}},
+			wantErr:        true,
+			expectedErrMsg: "cannot use both 'offset' and 'pageSize' parameters",
+		},
+		{
+			name:           "invalid pageToken",
+			queryValues:    url.Values{"pageSize": []string{"10"}, "pageToken": []string{"!!!invalid!!!"}},
+			wantErr:        true,
+			expectedErrMsg: "invalid page token",
+		},
+		{
+			name:         "pageSize suppresses default limit",
+			queryValues:  url.Values{"pageSize": []string{"25"}},
+			wantPageSize: new(uint64(25)),
+			wantLimit:    nil,
+		},
+		{
+			name:        "no pagination params - default limit applied",
+			queryValues: url.Values{},
+			wantLimit:   new(uint64(50)),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := decoder.parseQuery(tt.queryValues)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Expected error, got nil")
+				}
+				if tt.expectedErrMsg != "" && !strings.Contains(err.Error(), tt.expectedErrMsg) {
+					t.Errorf("Error = %q, want substring %q", err.Error(), tt.expectedErrMsg)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			// Check PageSize
+			if tt.wantPageSize != nil {
+				if result.PageSize == nil {
+					t.Errorf("Expected pageSize %d, got nil", *tt.wantPageSize)
+				} else if *result.PageSize != *tt.wantPageSize {
+					t.Errorf("PageSize = %d, want %d", *result.PageSize, *tt.wantPageSize)
+				}
+			} else if result.PageSize != nil {
+				t.Errorf("Expected nil pageSize, got %d", *result.PageSize)
+			}
+
+			// Check PageToken
+			if tt.wantPageToken {
+				if result.PageToken == nil {
+					t.Error("Expected non-nil pageToken, got nil")
+				}
+			} else if result.PageToken != nil {
+				t.Error("Expected nil pageToken, got non-nil")
+			}
+
+			// Check Limit
+			if tt.wantLimit != nil {
+				if result.Limit == nil {
+					t.Errorf("Expected limit %d, got nil", *tt.wantLimit)
+				} else if *result.Limit != *tt.wantLimit {
+					t.Errorf("Limit = %d, want %d", *result.Limit, *tt.wantLimit)
+				}
+			} else if result.Limit != nil {
+				t.Errorf("Expected nil limit, got %d", *result.Limit)
+			}
+		})
+	}
+}
+
+func mustEncodeToken(t *testing.T, token *PageToken) string {
+	t.Helper()
+
+	encoded, err := EncodePageToken(token)
+	if err != nil {
+		t.Fatalf("EncodePageToken() error: %v", err)
+	}
+
+	return encoded
+}
+
 func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 	t.Parallel()
 	resSet, err := NewSet[TestResource, TestRequest]()

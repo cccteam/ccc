@@ -27,6 +27,8 @@ type parsedQueryParams struct {
 	FilterParser func(DBType) (ExpressionNode, error)
 	Limit        *uint64
 	Offset       *uint64
+	PageSize     *uint64
+	PageToken    *PageToken
 }
 
 type filterBody struct {
@@ -102,6 +104,8 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	qSet.SetSortFields(parsedQuery.SortFields)
 	qSet.SetLimit(parsedQuery.Limit)
 	qSet.SetOffset(parsedQuery.Offset)
+	qSet.SetPageSize(parsedQuery.PageSize)
+	qSet.SetPageToken(parsedQuery.PageToken)
 	if len(parsedQuery.ColumnFields) == 0 {
 		qSet.ReturnAccessibleFields(true)
 	} else {
@@ -147,19 +151,51 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		delete(query, "sort")
 	}
 
+	var pageSize *uint64
+	var pageToken *PageToken
+
+	if pageSizeStr := query.Get("pageSize"); pageSizeStr != "" {
+		pageSizeVal, err := strconv.ParseUint(pageSizeStr, 10, 64)
+		if err != nil {
+			return nil, httpio.NewBadRequestMessagef("invalid pageSize value: %s", pageSizeStr)
+		}
+		if pageSizeVal == 0 {
+			return nil, httpio.NewBadRequestMessagef("pageSize must be greater than 0")
+		}
+		pageSize = &pageSizeVal
+		delete(query, "pageSize")
+	}
+
+	if pageTokenStr := query.Get("pageToken"); pageTokenStr != "" {
+		if pageSize == nil {
+			return nil, httpio.NewBadRequestMessagef("pageToken requires pageSize to be specified")
+		}
+		pageToken, err = DecodePageToken(pageTokenStr)
+		if err != nil {
+			return nil, err
+		}
+		delete(query, "pageToken")
+	}
+
 	if limitStr := query.Get("limit"); limitStr != "" {
+		if pageSize != nil {
+			return nil, httpio.NewBadRequestMessagef("cannot use both 'limit' and 'pageSize' parameters")
+		}
 		limitVal, err := strconv.ParseUint(limitStr, 10, 64)
 		if err != nil {
 			return nil, httpio.NewBadRequestMessagef("invalid limit value: %s", limitStr)
 		}
 		limit = &limitVal
 		delete(query, "limit")
-	} else {
+	} else if pageSize == nil {
 		defaultLimit := uint64(50)
 		limit = &defaultLimit
 	}
 
 	if offsetStr := query.Get("offset"); offsetStr != "" {
+		if pageSize != nil {
+			return nil, httpio.NewBadRequestMessagef("cannot use both 'offset' and 'pageSize' parameters")
+		}
 		offsetVal, err := strconv.ParseUint(offsetStr, 10, 64)
 		if err != nil {
 			return nil, httpio.NewBadRequestMessagef("invalid offset value: %s", offsetStr)
@@ -201,6 +237,8 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		FilterParser: filterParser,
 		Limit:        limit,
 		Offset:       offset,
+		PageSize:     pageSize,
+		PageToken:    pageToken,
 	}, nil
 }
 

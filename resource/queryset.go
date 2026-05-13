@@ -26,6 +26,9 @@ type QuerySet[Resource Resourcer] struct {
 	sortFields             []SortField
 	limit                  *uint64
 	offset                 *uint64
+	pageSize               *uint64
+	pageToken              *PageToken
+	primaryKeyFields       []accesstypes.Field
 	returnAccessibleFields bool
 	rMeta                  *Metadata[Resource]
 	resourceSet            *Set[Resource]
@@ -223,6 +226,69 @@ func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
 	return "ORDER BY " + strings.Join(orderByParts, ", "), nil
 }
 
+// buildPKOrderByClause builds an ORDER BY clause for primary key fields
+// that are not already present in the sort fields, used as tiebreakers for keyset pagination.
+func (q *QuerySet[Resource]) buildPKOrderByClause(dbType DBType) (string, error) {
+	sortFieldSet := make(map[string]struct{}, len(q.sortFields))
+	for _, sf := range q.sortFields {
+		sortFieldSet[sf.Field] = struct{}{}
+	}
+
+	var orderByParts []string
+	for _, pkField := range q.primaryKeyFields {
+		if _, exists := sortFieldSet[string(pkField)]; exists {
+			continue
+		}
+
+		dbField, ok := q.rMeta.dbFieldMap(dbType)[pkField]
+		if !ok {
+			return "", errors.Newf("primary key field '%s' not found in resource metadata", pkField)
+		}
+
+		orderByParts = append(orderByParts, fmt.Sprintf("%s ASC", quoteColumnName(dbField.ColumnName, dbType)))
+	}
+
+	if len(orderByParts) == 0 {
+		return "", nil
+	}
+
+	return "ORDER BY " + strings.Join(orderByParts, ", "), nil
+}
+
+// buildCursorWhereClause builds the keyset cursor WHERE clause from the page token.
+func (q *QuerySet[Resource]) buildCursorWhereClause(dbType DBType) (string, map[string]any, error) {
+	cfNames := cursorFieldNames(q.sortFields, q.primaryKeyFields)
+
+	tokenMap := make(map[string]any, len(q.pageToken.Values))
+	for _, tv := range q.pageToken.Values {
+		tokenMap[tv.Field] = tv.Value
+	}
+
+	fields := make([]cursorField, 0, len(cfNames))
+	for i, fieldName := range cfNames {
+		dbField, ok := q.rMeta.dbFieldMap(dbType)[accesstypes.Field(fieldName)]
+		if !ok {
+			return "", nil, errors.Newf("cursor field '%s' not found in resource metadata", fieldName)
+		}
+
+		value, ok := tokenMap[fieldName]
+		if !ok {
+			return "", nil, httpio.NewBadRequestMessagef("page token missing value for cursor field: %s", fieldName)
+		}
+
+		fields = append(fields, cursorField{
+			ColumnName: dbField.ColumnName,
+			ParamName:  fmt.Sprintf("_cursor_%d", i),
+			Value:      value,
+			Direction:  cursorFieldDirection(fieldName, q.sortFields),
+		})
+	}
+
+	whereClause, params := buildKeysetWhereClause(fields, dbType)
+
+	return whereClause, params, nil
+}
+
 // columns returns the database struct tags for the fields in databaseType that the user has access to view.
 func (q *QuerySet[Resource]) columns(dbType DBType) (Columns, error) {
 	dbFields := make([]dbFieldMetadata, 0, q.Len())
@@ -335,8 +401,47 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
 
+	// When pagination is active, ensure PK fields are in ORDER BY for deterministic ordering
+	if q.pageSize != nil && len(q.primaryKeyFields) > 0 {
+		pkOrderBy, err := q.buildPKOrderByClause(dbType)
+		if err != nil {
+			return nil, errors.Wrap(err, "QuerySet.buildPKOrderByClause()")
+		}
+
+		if orderByClause == "" {
+			orderByClause = pkOrderBy
+		} else if pkOrderBy != "" {
+			orderByClause = orderByClause + ", " + strings.TrimPrefix(pkOrderBy, "ORDER BY ")
+		}
+	}
+
+	// Apply keyset cursor conditions when a page token is present
+	if q.pageToken != nil && len(q.pageToken.Values) > 0 {
+		cursorWhere, cursorParams, err := q.buildCursorWhereClause(dbType)
+		if err != nil {
+			return nil, errors.Wrap(err, "QuerySet.buildCursorWhereClause()")
+		}
+
+		for k, v := range cursorParams {
+			if _, exists := where.Params[k]; exists {
+				return nil, errors.Newf("named parameter collision: cursor parameter %q conflicts with existing parameter", k)
+			}
+
+			where.Params[k] = v
+		}
+
+		if where.SQL == "" {
+			where.SQL = "WHERE (" + cursorWhere + ")"
+		} else {
+			where.SQL = where.SQL + " AND (" + cursorWhere + ")"
+		}
+	}
+
 	var limitClause string
-	if q.limit != nil {
+	if q.pageSize != nil {
+		// Fetch one extra row to detect if there's a next page
+		limitClause = fmt.Sprintf("LIMIT %d", *q.pageSize+1)
+	} else if q.limit != nil {
 		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
 	}
 
@@ -423,6 +528,45 @@ func (q *QuerySet[Resource]) BatchList(ctx context.Context, client Client, size 
 	return ccc.BatchIter2(q.List(ctx, client), size)
 }
 
+// ListPage executes the query and returns a page of results with an optional next page token.
+// When pagination is active (pageSize is set), it fetches pageSize+1 rows to detect if
+// there are more pages. If not paginating, it returns all results with an empty token.
+// extractCursorValues extracts cursor field values from a row by Go struct field name.
+func (q *QuerySet[Resource]) ListPage(ctx context.Context, txn ReadOnlyTransaction, extractCursorValues func(*Resource, []string) map[string]any) ([]*Resource, string, error) {
+	var results []*Resource
+	for row, err := range q.List(ctx, txn) {
+		if err != nil {
+			return nil, "", err
+		}
+
+		results = append(results, row)
+	}
+
+	if q.pageSize == nil {
+		return results, "", nil
+	}
+
+	pageSize := *q.pageSize
+	if uint64(len(results)) <= pageSize {
+		return results, "", nil
+	}
+
+	// Trim the extra row used for next-page detection
+	results = results[:pageSize]
+
+	// Build next page token from the last row
+	lastRow := results[len(results)-1]
+	cfNames := cursorFieldNames(q.sortFields, q.primaryKeyFields)
+	token := buildPageToken(extractCursorValues(lastRow, cfNames), cfNames)
+
+	nextPageToken, err := EncodePageToken(token)
+	if err != nil {
+		return nil, "", errors.Wrap(err, "EncodePageToken()")
+	}
+
+	return results, nextPageToken, nil
+}
+
 // SetWhereClause sets the filter condition for the query using a QueryClause.
 func (q *QuerySet[Resource]) SetWhereClause(qc QueryClause) {
 	q.filterAst = qc.tree
@@ -465,6 +609,36 @@ func (q *QuerySet[Resource]) SetLimit(limit *uint64) {
 // SetOffset sets the starting point for returning results.
 func (q *QuerySet[Resource]) SetOffset(offset *uint64) {
 	q.offset = offset
+}
+
+// SetPageSize sets the page size for keyset pagination.
+func (q *QuerySet[Resource]) SetPageSize(pageSize *uint64) {
+	q.pageSize = pageSize
+}
+
+// PageSize returns the page size, or nil if pagination is not active.
+func (q *QuerySet[Resource]) PageSize() *uint64 {
+	return q.pageSize
+}
+
+// SetPageToken sets the page token for keyset pagination.
+func (q *QuerySet[Resource]) SetPageToken(pageToken *PageToken) {
+	q.pageToken = pageToken
+}
+
+// SetPrimaryKeyFields sets the primary key fields used for keyset pagination tiebreaking.
+func (q *QuerySet[Resource]) SetPrimaryKeyFields(fields ...accesstypes.Field) {
+	q.primaryKeyFields = fields
+}
+
+// SortFields returns the sort fields for the query.
+func (q *QuerySet[Resource]) SortFields() []SortField {
+	return q.sortFields
+}
+
+// PrimaryKeyFields returns the primary key fields used for pagination.
+func (q *QuerySet[Resource]) PrimaryKeyFields() []accesstypes.Field {
+	return q.primaryKeyFields
 }
 
 func extractWithClause(query string) (withClause, remainingQuery string) {

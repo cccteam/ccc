@@ -83,6 +83,21 @@ func (q *{{ .Resource.Name }}Query) List(ctx context.Context, txn resource.ReadO
 	return q.qSet.List(ctx, txn)
 }
 
+func (q *{{ .Resource.Name }}Query) ListPage(ctx context.Context, txn resource.ReadOnlyTransaction) ([]*{{ .Resource.Name }}, string, error) {
+	return q.qSet.ListPage(ctx, txn, func(row *{{ .Resource.Name }}, fields []string) map[string]any {
+		m := make(map[string]any, len(fields))
+		for _, f := range fields {
+			switch f {
+			{{- range .Resource.Fields }}
+			case "{{ .Name }}":
+				m["{{ .Name }}"] = row.{{ .Name }}
+			{{- end }}
+			}
+		}
+		return m
+	})
+}
+
 func (q *{{ .Resource.Name }}Query) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*{{ .Resource.Name }}, error]] {
 	return q.qSet.BatchList(ctx, client, size)
 }
@@ -560,8 +575,6 @@ import (
 		{{- end }}
 	}
 
-	type response []map[string]any
-
 	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}]({{ .ReceiverName }}, accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -573,13 +586,17 @@ import (
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
+		querySet.SetPrimaryKeyFields({{- range $i, $field := .Resource.PrimaryKeys }}{{ if $i }}, {{ end }}"{{ $field.Name }}"{{- end }})
+
 		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
-		resp := response{}
-		for row, err := range res.List(ctx, {{ .ReceiverName }}.ResourceClient()) {
-			if err != nil {
-				return httpio.NewEncoder(w).ClientMessage(ctx, err)
-			}
+		rows, nextPageToken, err := res.ListPage(ctx, {{ .ReceiverName }}.ResourceClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		data := make([]map[string]any, 0, len(rows))
+		for _, row := range rows {
 			rec := (*{{ GoCamel .Resource.Name }})(row)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
@@ -590,10 +607,17 @@ import (
 				{{- end }}
 				}
 			}
-			resp = append(resp, rmap)
+			data = append(data, rmap)
 		}
 
-		return httpio.NewEncoder(w).Ok(resp)
+		if querySet.PageSize() != nil {
+			return httpio.NewEncoder(w).Ok(resource.PageResponse[map[string]any]{
+				Data:          data,
+				NextPageToken: nextPageToken,
+			})
+		}
+
+		return httpio.NewEncoder(w).Ok(data)
 	})
 }`
 
@@ -1472,8 +1496,6 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 		{{- end }}
 	}
 
-	type response []map[string]any
-
 	decoder := NewQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}]({{ .ReceiverName }}, accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -1485,11 +1507,31 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		resp := response{}
-		for row, err := range {{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()) {
-			if err != nil {
-				return httpio.NewEncoder(w).ClientMessage(ctx, err)
-			}
+		querySet.SetPrimaryKeyFields({{- range $i, $field := .Resource.PrimaryKeys }}{{ if $i }}, {{ end }}"{{ $field.Name }}"{{- end }})
+
+		rows, nextPageToken, err := resource.CollectPage(
+			{{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()),
+			querySet.PageSize(), querySet.SortFields(), querySet.PrimaryKeyFields(),
+			func(row *{{ .ComputedPackage }}.{{ .Resource.Name }}, fields []string) map[string]any {
+				rec := (*{{ GoCamel .Resource.Name }})(row)
+				m := make(map[string]any, len(fields))
+				for _, f := range fields {
+					switch f {
+					{{- range .Resource.Fields }}
+					case "{{ .Name }}":
+						m["{{ .Name }}"] = rec.{{ .Name }}
+					{{- end }}
+					}
+				}
+				return m
+			},
+		)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		data := make([]map[string]any, 0, len(rows))
+		for _, row := range rows {
 			rec := (*{{ GoCamel .Resource.Name }})(row)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
@@ -1500,10 +1542,17 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 				{{- end }}
 				}
 			}
-			resp = append(resp, rmap)
+			data = append(data, rmap)
 		}
 
-		return httpio.NewEncoder(w).Ok(resp)
+		if querySet.PageSize() != nil {
+			return httpio.NewEncoder(w).Ok(resource.PageResponse[map[string]any]{
+				Data:          data,
+				NextPageToken: nextPageToken,
+			})
+		}
+
+		return httpio.NewEncoder(w).Ok(data)
 	})
 }
 {{- end }}
