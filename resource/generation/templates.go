@@ -76,14 +76,38 @@ func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.ResolvedTy
 {{ end }}
 
 func (q *{{ .Resource.Name }}Query) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*{{ .Resource.Name }}, error) {
+	{{- if .Resource.IsScoped }}
+	if keyMap := q.qSet.KeySet().KeyMap(); len(keyMap) > 0 {
+		if _, ok := keyMap[accesstypes.Field("{{ .TenantID }}")]; !ok {
+			panic("{{ .Resource.Name }}Query KeySet does not include mandatory {{ .TenantID }}. Hint: set with .Set{{ .TenantID }}(...)")
+		}
+	}
+	{{ end -}}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *{{ .Resource.Name }}Query) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*{{ .Resource.Name }}, error] {
+	{{- if .Resource.IsScoped }}
+	if keyMap := q.qSet.KeySet().KeyMap(); len(keyMap) > 0 {
+		if _, ok := keyMap[accesstypes.Field("{{ .TenantID }}")]; !ok {
+			panic("{{ .Resource.Name }}Query KeySet does not include mandatory {{ .TenantID }}. Hint: set with .Set{{ .TenantID }}(...)")
+		}
+	}
+	{{ end -}}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *{{ .Resource.Name }}Query) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*{{ .Resource.Name }}, error]] {
+	{{- if .Resource.IsScoped }}
+	if keyMap := q.qSet.KeySet().KeyMap(); len(keyMap) > 0 {
+		if _, ok := keyMap[accesstypes.Field("{{ .TenantID }}")]; !ok {
+			panic("{{ .Resource.Name }}Query KeySet does not include mandatory {{ .TenantID }}. Hint: set with .Set{{ .TenantID }}(...)")
+		}
+	}
+	{{ end -}}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -100,6 +124,11 @@ func (q *{{ .Resource.Name }}Query) Where(c {{ .Resource.Name }}QueryClause) *{{
 	if err := c.clause.Validate(); err != nil {
 		panic(err)
 	}
+	{{- if .Resource.IsScoped }}
+	if !c.clause.ContainsCondition(&resource.Condition{Field: "{{ .TenantID }}", Operator: "eq"}) {
+		panic("{{ .Resource.Name }}Query QueryClause does not contain mandatory {{ .TenantID }} equals condition. Hint: Add .{{ .TenantID }}.Equals(...)")
+	}
+	{{- end }}
 	q.qSet.SetWhereClause(c.clause)
 
 	return q
