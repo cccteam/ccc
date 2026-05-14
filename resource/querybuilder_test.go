@@ -494,3 +494,41 @@ func TestQueryClause_Validate(t *testing.T) {
 		})
 	}
 }
+
+func Test_containsCondition(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		qc     QueryClause
+		expect []Condition
+	}{
+		{
+			name: "happy path finds expected conditions",
+			qc: newTestQueryFilter().Name().Equal("A").Or().
+				Group(newTestQueryFilter().IndexedID().LessThanEq(1).And().NonIndexedField().NotEqual("foo")).expr,
+			expect: []Condition{
+				{
+					Field:    "Name",
+					Operator: eqStr,
+				},
+				{
+					Field:    "ID",
+					Operator: lteStr,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			for i, expect := range tt.expect {
+				if ok := tt.qc.ContainsCondition(&expect); !ok {
+					t.Errorf("%s: expected query clause to contain condition %d (field=%q, operator=%q)", tt.name, i, expect.Field, expect.Operator)
+				}
+			}
+		})
+	}
+}
