@@ -48,6 +48,7 @@ type client struct {
 	tableMap            map[string]*tableMetadata
 	enumValues          map[string][]*enumData
 	pluralOverrides     map[string]string
+	tenantScope         *multitenantScope
 	consolidateConfig
 	genRPCMethods          bool
 	genComputedResources   bool

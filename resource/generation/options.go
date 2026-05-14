@@ -246,6 +246,25 @@ func WithRPC(rpcPackageDir string) Option {
 	}
 }
 
+// WithTenantScope requires that each Resource references the a tenant Resource via foreign key named `fieldName`.
+func WithTenantScope(resourceName, fieldName string) Option {
+	return func(g any) error {
+		switch t := g.(type) {
+		case *resourceGenerator:
+		case *typescriptGenerator: // no-op
+		case *client:
+			t.tenantScope = &multitenantScope{
+				resourceName: resourceName,
+				fieldName:    fieldName,
+			}
+		default:
+			panic(fmt.Sprintf("unexpected generator type in WithTenantScope(): %T", t))
+		}
+
+		return nil
+	}
+}
+
 // resolveOptions is called twice, once in the client constructor and once in either the resource or typescript generator's constructor.
 // That is why no-op cases are included to prevent falling through to the default panic case.
 func resolveOptions(generator any, options []option) error {
