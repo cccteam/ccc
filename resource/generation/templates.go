@@ -60,7 +60,7 @@ func New{{ .Resource.Name }}QueryFromQuerySet(qSet *resource.QuerySet[{{ .Resour
 }
 
 {{ range $field := .Resource.Fields }}
-{{ if $field.IsUniqueIndex }}
+{{ if or $field.IsUniqueIndex (and $.Resource.IsScoped (eq $.TenantID $field.Name)) }}
 func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ $field.ResolvedType }}) *{{ $field.Parent.Name }}Query {
 	q.qSet.SetKey("{{ $field.Name }}", v)
 
@@ -601,8 +601,15 @@ import (
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		
+		{{ if .Resource.IsScoped }}
+		customSession, err := customsession.DataFromCtx(ctx)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		{{ end }}
 
-		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
+		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet){{ if .Resource.IsScoped }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID){{ end }}
 
 		resp := response{}
 		for row, err := range res.List(ctx, {{ .ReceiverName }}.ResourceClient()) {
