@@ -646,6 +646,13 @@ import (
 		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
+	{{ if .Resource.IsScoped }}
+		customSession, err := customsession.DataFromCtx(ctx)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+	{{ end }}
+
 	{{ if .Resource.HasCompoundPrimaryKey }}
 	{{- range $_, $field := .Resource.PrimaryKeys }}
 		{{ GoCamel $field.Name }} := httpio.Param[{{ $field.Type }}](r, router.{{ $.Resource.Name }}{{ $field.Name }})
@@ -663,6 +670,7 @@ import (
 	{{- else }}
 		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id)
 	{{- end }}
+	{{- if .Resource.IsScoped }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID){{ end }}
 
 		row, err := res.Read(ctx, {{ .ReceiverName }}.ResourceClient())
 		if err != nil {

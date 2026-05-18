@@ -192,6 +192,11 @@ func (r *resourceGenerator) handlerContent(handler HandlerType, res *resourceInf
 		return nil, errors.Wrap(err, "template.New().Parse()")
 	}
 
+	var tenantID *string
+	if res.IsScoped {
+		tenantID = &r.tenantScope.fieldName
+	}
+
 	buf := bytes.NewBuffer([]byte{})
 	if err := tmpl.Execute(buf, map[string]any{
 		"ResourcePackage":         r.resource.Package(),
@@ -199,6 +204,7 @@ func (r *resourceGenerator) handlerContent(handler HandlerType, res *resourceInf
 		"VirtualResourcesPackage": r.virtual.Package(),
 		"ApplicationName":         r.applicationName,
 		"ReceiverName":            r.receiverName,
+		"TenantID":                tenantID,
 	}); err != nil {
 		return nil, errors.Wrap(err, "tmpl.Execute()")
 	}
