@@ -181,7 +181,7 @@ type generatedRoute struct {
 	Method        string
 	Path          string
 	HandlerFunc   string
-	SharedHandler bool
+	SharedHandler bool // whether the handler is shared between Patch and [Read or List] routes
 	HandlerType   HandlerType
 }
 

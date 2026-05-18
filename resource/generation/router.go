@@ -21,12 +21,13 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 
 	var hasConsolidatedHandlers bool
+	// constResources are resources that will get an [httpio.ParamType] constant generated in the router package
 	constResources := make([]*resourceInfo, 0, len(r.resources))
 	resources := make([]*resourceInfo, 0, len(r.resources))
 	generatedRoutesMap := make(map[string][]generatedRoute)
 	for _, res := range r.resources {
 		handlerTypes := resourceEndpoints(res)
-		if hasConsolidatedHandler(res) {
+		if res.IsConsolidated && !slices.Contains(res.SuppressedHandlers, PatchHandler) {
 			hasConsolidatedHandlers = true
 		}
 

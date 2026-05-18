@@ -531,14 +531,6 @@ func resourceEndpoints(res *resourceInfo) []HandlerType {
 	return handlerTypes
 }
 
-func hasConsolidatedHandler(res *resourceInfo) bool {
-	if res.IsConsolidated {
-		return !slices.Contains(res.SuppressedHandlers, PatchHandler)
-	}
-
-	return false
-}
-
 func sanitizeEnumIdentifier(name string) string {
 	var result []byte
 	for _, b := range []byte(name) {

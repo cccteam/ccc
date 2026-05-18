@@ -1232,7 +1232,7 @@ const (
 {{- end }}
 
 type GeneratedHandlers interface {
-	{{- range $Struct, $Routes := .RoutesMap }}
+	{{- range $ResourceName, $Routes := .RoutesMap }}
 	{{- range $Routes }}
 	{{ .HandlerFunc }}() http.HandlerFunc
 	{{- end }}
@@ -1243,7 +1243,7 @@ type GeneratedHandlers interface {
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
-{{- range $Struct, $Routes := .RoutesMap }}
+{{- range $ResourceName, $Routes := .RoutesMap }}
 	{{- range $route := $Routes }}
 	{{- if $route.SharedHandler }}
 	{{ Camel $route.HandlerFunc }}Handler := h.{{ $route.HandlerFunc }}()
@@ -1357,7 +1357,7 @@ func generatedRouterTests() []*generatedRouterTest {
 }
 
 func generatedExpectCalls(e *mock_router.MockHandlersMockRecorder, rec *callRecorder) {
-	{{ range $Struct, $Routes := .RoutesMap }}{{ range $Routes }}e.{{ .HandlerFunc }}().Times(1).Return(rec.RecordHandlerCall("{{ .HandlerFunc }}"))
+	{{ range $ResourceName, $Routes := .RoutesMap }}{{ range $Routes }}e.{{ .HandlerFunc }}().Times(1).Return(rec.RecordHandlerCall("{{ .HandlerFunc }}"))
 	{{ end }}{{- end -}}
 	{{- if eq .HasConsolidatedHandler true }}e.PatchResources().Times(1).Return(rec.RecordHandlerCall("PatchResources")){{ end -}}
 }`
