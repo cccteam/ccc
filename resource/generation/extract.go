@@ -428,7 +428,7 @@ func validateScope(scope multitenantScope, pStruct *parser.Struct, table *tableM
 			return errors.Newf("%s table is missing mandatory foreign key reference to %q on column %q", pStruct.Name(), scope.resourceName, scope.fieldName)
 		}
 	} else {
-		return errors.Newf("%s table is missing mandatory tentant column %q", pStruct.Name(), scope.fieldName)
+		return errors.Newf("%s table is missing mandatory tenant column %q", pStruct.Name(), scope.fieldName)
 	}
 
 	hasScopedField := false

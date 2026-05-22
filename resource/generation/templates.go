@@ -126,7 +126,7 @@ func (q *{{ .Resource.Name }}Query) Where(c {{ .Resource.Name }}QueryClause) *{{
 	}
 	{{- if .Resource.IsScoped }}
 	if !c.clause.ContainsCondition(&resource.Condition{Field: "{{ .TenantID }}", Operator: "eq"}) {
-		panic("{{ .Resource.Name }}Query QueryClause does not contain mandatory {{ .TenantID }} equals condition. Hint: Add .{{ .TenantID }}.Equals(...)")
+		panic("{{ .Resource.Name }}Query QueryClause does not contain mandatory {{ .TenantID }} equals condition. Hint: Add .{{ .TenantID }}().Equals(...)")
 	}
 	{{- end }}
 	q.qSet.SetWhereClause(c.clause)
@@ -311,7 +311,7 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet *resource.PatchSet[
 	if err != nil {
 		return nil, errors.Wrap(err, "ccc.NewUUID()")
 	}
-	
+
 	patchSet.
 		SetKey("{{ .Resource.PrimaryKey.Name }}", id).
 		SetPatchType(resource.CreatePatchType)
@@ -326,7 +326,7 @@ func New{{ .Resource.Name }}CreatePatch() (*{{ .Resource.Name }}CreatePatch, err
 	if err != nil {
 		return nil, errors.Wrap(err, "ccc.NewUUID()")
 	}
-	
+
 	patchSet := resource.NewPatchSet(resource.NewMetadata[{{ .Resource.Name }}]()).
 		SetKey("{{ .Resource.PrimaryKey.Name }}", id).
 		SetPatchType(resource.CreatePatchType)
@@ -349,7 +349,7 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(
 		SetPatchType(resource.CreatePatchType)
 	patch := &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}
 	patch.registerDefaultFuncs()
-	
+
 	return patch
 }
 
@@ -545,9 +545,9 @@ func (p *{{ .Resource.Name }}DeletePatch) Buffer(ctx context.Context, txn resour
 }
 
 {{ range $field := .Resource.Fields }}
-{{ if $field.IsPrimaryKey }} 
+{{ if $field.IsPrimaryKey }}
 func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.ResolvedType }} {
-	v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.ResolvedType }}) 
+	v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.ResolvedType }})
 
 	return v
 }
@@ -601,7 +601,7 @@ import (
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		
+
 		{{ if .Resource.IsScoped }}
 		customSession, err := customsession.DataFromCtx(ctx)
 		if err != nil {
@@ -697,7 +697,7 @@ import (
 		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }}`" + `
 		{{- end }}
 	}
-	
+
 	{{ $PrimaryKeyIsGeneratedUUID := .Resource.PrimaryKeyIsGeneratedUUID }}
 	{{ $PrimaryKeyType := .Resource.PrimaryKeyType }}
 	{{- if $PrimaryKeyIsGeneratedUUID }}
@@ -1107,8 +1107,8 @@ const resourceMap: ResourceMap = {
     {{- end }}
     fields: [
       {{- range $field := $resource.Fields }}
-      { fieldName: '{{ Camel $field.Name }}', 
-       {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
+      { fieldName: '{{ Camel $field.Name }}',
+       {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} },
        {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex -}}
       {{- if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
       {{- end }}
@@ -1124,8 +1124,8 @@ const resourceMap: ResourceMap = {
 	createDisabled: true, updateDisabled: true, deleteDisabled: true,
     fields: [
       {{- range $field := $resource.Fields }}
-      { fieldName: '{{ Camel $field.Name }}', 
-       {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
+      { fieldName: '{{ Camel $field.Name }}',
+       {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} },
        {{- end }} displayType: '{{ Lower $field.TypescriptDataType }}', required: {{ $field.IsPrimaryKey }}, isIndex: false },
       {{- end }}
     ],
@@ -1410,8 +1410,8 @@ import (
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.HandlerFunc {
 	{{- range $field := .RPCMethod.Fields }}
 	{{- if $field.IsLocalType }}
-	type {{ Lower $field.UnqualifiedTypeName }} 
-	
+	type {{ Lower $field.UnqualifiedTypeName }}
+
 	{{- with $field.AsStruct }} struct {
 		{{- range $field := .Fields }}
 		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\"`" + `
@@ -1429,7 +1429,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 
 	decoder := NewRPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
 
-	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error { 
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
@@ -1625,10 +1625,10 @@ func fieldAccessors(patchType patchType) string {
 		{{ end }}
 
 		func (p *{{ $field.Parent.Name }}%[1]sPatch) {{ $field.Name }}() {{ $field.ResolvedType }} {
-		{{ if $field.IsPrimaryKey -}} 
+		{{ if $field.IsPrimaryKey -}}
 			v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.ResolvedType }})
-		{{ else -}} 
-			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ $field.ResolvedType }}) 
+		{{ else -}}
+			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ $field.ResolvedType }})
 		{{ end }}
 
 			return v

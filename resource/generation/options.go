@@ -246,7 +246,7 @@ func WithRPC(rpcPackageDir string) Option {
 	}
 }
 
-// WithTenantScope requires that each Resource references the a tenant Resource via foreign key named `fieldName`.
+// WithTenantScope requires that each Resource references the tenant Resource via foreign key named `fieldName`.
 func WithTenantScope(resourceName, fieldName string) Option {
 	return func(g any) error {
 		switch t := g.(type) {

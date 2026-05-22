@@ -48,9 +48,13 @@ func (qc QueryClause) Validate() error {
 	return nil
 }
 
-// ContainsCondition traverses the [QueryClause] tree and returns true if an [ExpressioNode]
+// ContainsCondition traverses the [QueryClause] tree and returns true if an [ExpressionNode]
 // is a [ConditionNode] whose Field and Operator fields match that passed in [Condition].
 func (qc QueryClause) ContainsCondition(cond *Condition) bool {
+	if qc.tree == nil {
+		return false
+	}
+
 	return containsCondition(qc.tree, cond)
 }
 

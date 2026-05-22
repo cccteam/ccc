@@ -521,12 +521,13 @@ func Test_containsCondition(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		tc := tt // capture range variable
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			for i, expect := range tt.expect {
-				if ok := tt.qc.ContainsCondition(&expect); !ok {
-					t.Errorf("%s: expected query clause to contain condition %d (field=%q, operator=%q)", tt.name, i, expect.Field, expect.Operator)
+			for i, expect := range tc.expect {
+				if ok := tc.qc.ContainsCondition(&expect); !ok {
+					t.Errorf("%s: expected query clause to contain condition %d (field=%q, operator=%q)", tc.name, i, expect.Field, expect.Operator)
 				}
 			}
 		})
