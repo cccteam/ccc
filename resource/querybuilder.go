@@ -2,6 +2,7 @@ package resource
 
 import (
 	"fmt"
+	"strings"
 
 	stderr "errors"
 )
@@ -55,21 +56,21 @@ func (qc QueryClause) ContainsCondition(cond *Condition) bool {
 		return false
 	}
 
-	return containsCondition(qc.tree, cond)
+	return ContainsCondition(qc.tree, cond)
 }
 
-func containsCondition(root ExpressionNode, target *Condition) bool {
+func ContainsCondition(root ExpressionNode, target *Condition) bool {
 	switch t := root.(type) {
 	case *GroupNode:
-		return containsCondition(t.Expression, target)
+		return ContainsCondition(t.Expression, target)
 	case *LogicalOpNode:
-		if containsCondition(t.Left, target) {
+		if ContainsCondition(t.Left, target) {
 			return true
 		}
 
-		return containsCondition(t.Right, target)
+		return ContainsCondition(t.Right, target)
 	case *ConditionNode:
-		return t.Condition.Field == target.Field && t.Condition.Operator == target.Operator
+		return strings.EqualFold(t.Condition.Field, target.Field) && strings.EqualFold(t.Condition.Operator, target.Operator)
 	default:
 		panic(fmt.Sprintf("containsCondition: unexpected ExpressionNode type %T", t))
 	}

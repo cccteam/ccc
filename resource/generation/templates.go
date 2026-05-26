@@ -81,6 +81,14 @@ func (q *{{ .Resource.Name }}Query) Read(ctx context.Context, txn resource.ReadO
 		if _, ok := keyMap[accesstypes.Field("{{ .TenantID }}")]; !ok {
 			panic("{{ .Resource.Name }}Query KeySet does not include mandatory {{ .TenantID }}. Hint: set with .Set{{ .TenantID }}(...)")
 		}
+	} else if filterAst, err := q.qSet.FilterAst(resource.SpannerDBType); err != nil {
+		panic(errors.Wrap(err, "resource.QuerySet[{{ .Resource.Name }}].FilterAst()"))
+	} else if filterAst != nil {
+		if !resource.ContainsCondition(filterAst, &resource.Condition{Field: "{{ Camel $.TenantID }}", Operator: "eq"}) {
+			panic("{{ .Resource.Name }}Query does not include mandatory \"{{ Camel $.TenantID }}:eq\" in URL query params")
+		}
+	} else {
+		panic("{{ .Resource.Name }}Query does not include mandatory {{ .TenantID }} in QuerySet. Hint: Use URL query params, or KeySet, or Where() clause")
 	}
 	{{ end -}}
 
@@ -93,6 +101,14 @@ func (q *{{ .Resource.Name }}Query) List(ctx context.Context, txn resource.ReadO
 		if _, ok := keyMap[accesstypes.Field("{{ .TenantID }}")]; !ok {
 			panic("{{ .Resource.Name }}Query KeySet does not include mandatory {{ .TenantID }}. Hint: set with .Set{{ .TenantID }}(...)")
 		}
+	} else if filterAst, err := q.qSet.FilterAst(resource.SpannerDBType); err != nil {
+		panic(errors.Wrap(err, "resource.QuerySet[{{ .Resource.Name }}].FilterAst()"))
+	} else if filterAst != nil {
+		if !resource.ContainsCondition(filterAst, &resource.Condition{Field: "{{ Camel $.TenantID }}", Operator: "eq"}) {
+			panic("{{ .Resource.Name }}Query does not include mandatory \"{{ Camel $.TenantID }}:eq\" in URL query params")
+		}
+	} else {
+		panic("{{ .Resource.Name }}Query does not include mandatory {{ .TenantID }} in QuerySet. Hint: Use URL query params, or KeySet, or Where() clause")
 	}
 	{{ end -}}
 
@@ -105,6 +121,14 @@ func (q *{{ .Resource.Name }}Query) BatchList(ctx context.Context, client resour
 		if _, ok := keyMap[accesstypes.Field("{{ .TenantID }}")]; !ok {
 			panic("{{ .Resource.Name }}Query KeySet does not include mandatory {{ .TenantID }}. Hint: set with .Set{{ .TenantID }}(...)")
 		}
+	} else if filterAst, err := q.qSet.FilterAst(resource.SpannerDBType); err != nil {
+		panic(errors.Wrap(err, "resource.QuerySet[{{ .Resource.Name }}].FilterAst()"))
+	} else if filterAst != nil {
+		if !resource.ContainsCondition(filterAst, &resource.Condition{Field: "{{ Camel $.TenantID }}", Operator: "eq"}) {
+			panic("{{ .Resource.Name }}Query does not include mandatory \"{{ Camel $.TenantID }}:eq\" in URL query params")
+		}
+	} else {
+		panic("{{ .Resource.Name }}Query does not include mandatory {{ .TenantID }} in QuerySet. Hint: Use URL query params, or KeySet, or Where() clause")
 	}
 	{{ end -}}
 
