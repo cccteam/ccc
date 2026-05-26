@@ -181,7 +181,7 @@ type generatedRoute struct {
 	Method        string
 	Path          string
 	HandlerFunc   string
-	SharedHandler bool // whether the handler is shared between Patch and [Read or List] routes
+	SharedHandler bool // whether the handler is shared between Post and [Read or List] routes (Post is used for safely filtering on PII data)
 	HandlerType   HandlerType
 }
 
