@@ -498,23 +498,61 @@ func TestQueryClause_Validate(t *testing.T) {
 func Test_containsCondition(t *testing.T) {
 	t.Parallel()
 
+	type args struct {
+		cond       Condition
+		isExpected bool
+	}
+
 	tests := []struct {
-		name   string
-		qc     QueryClause
-		expect []Condition
+		name string
+		qc   QueryClause
+		args []args
 	}{
 		{
 			name: "happy path finds expected conditions",
 			qc: newTestQueryFilter().Name().Equal("A").Or().
 				Group(newTestQueryFilter().IndexedID().LessThanEq(1).And().NonIndexedField().NotEqual("foo")).expr,
-			expect: []Condition{
+			args: []args{
 				{
-					Field:    "Name",
-					Operator: eqStr,
+					cond: Condition{
+						Field:    "Name",
+						Operator: eqStr,
+					},
+					isExpected: true,
 				},
 				{
-					Field:    "ID",
-					Operator: lteStr,
+					cond: Condition{
+						Field:    "ID",
+						Operator: lteStr,
+					},
+					isExpected: true,
+				},
+				{
+					cond: Condition{
+						Field:    "ID",
+						Operator: gteStr,
+					},
+					isExpected: false,
+				},
+			},
+		},
+		{
+			name: "does not find conditions that aren't there",
+			qc:   newTestQueryFilter().NonIndexedField().Equal("A").expr,
+			args: []args{
+				{
+					cond: Condition{
+						Field:    "Name",
+						Operator: eqStr,
+					},
+					isExpected: false,
+				},
+				{
+					cond: Condition{
+						Field:    "ID",
+						Operator: lteStr,
+					},
+					isExpected: false,
 				},
 			},
 		},
@@ -525,9 +563,11 @@ func Test_containsCondition(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			for i, expect := range tc.expect {
-				if ok := tc.qc.ContainsCondition(&expect); !ok {
-					t.Errorf("%s: expected query clause to contain condition %d (field=%q, operator=%q)", tc.name, i, expect.Field, expect.Operator)
+			for i, args := range tc.args {
+				if ok := tc.qc.ContainsCondition(&args.cond); !ok && ok != args.isExpected {
+					t.Errorf("%s: expected query clause to contain condition %d (field=%q, operator=%q)", tc.name, i, args.cond.Field, args.cond.Operator)
+				} else if ok && ok != args.isExpected {
+					t.Errorf("%s: expected query clause to not contain condition %d (field=%q, operator=%q) but it totally did", tc.name, i, args.cond.Field, args.cond.Operator)
 				}
 			}
 		})
