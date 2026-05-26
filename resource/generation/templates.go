@@ -597,19 +597,27 @@ import (
 		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
-		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
-		if err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, err)
-		}
-
 		{{ if .Resource.IsScoped }}
 		customSession, err := customsession.DataFromCtx(ctx)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+
+		q := r.URL.Query()
+		tenantFilter := fmt.Sprintf("{{ Camel $.TenantID }}:eq:%s", customSession.{{ $.TenantID }}.UUID)
+		if existingFilter := q.Get("filter"); existingFilter != "" {
+			tenantFilter = fmt.Sprintf("%s,%s", tenantFilter, existingFilter)
+		}
+		q.Set("filter", tenantFilter)
+		r.URL.RawQuery = q.Encode()
 		{{ end }}
 
-		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet){{ if .Resource.IsScoped }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID){{ end }}
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
 		resp := response{}
 		for row, err := range res.List(ctx, {{ .ReceiverName }}.ResourceClient()) {
@@ -736,6 +744,13 @@ import (
 					return errors.Wrap(err, "decoder.DecodeOperation()")
 				}
 
+				{{- if $.Resource.IsScoped }}
+				customSession, err := customsession.DataFromCtx(ctx)
+				if err != nil {
+					return httpio.NewEncoder(w).ClientMessage(ctx, err)
+				}
+				{{- end }}
+
 				switch op.Type {
 				case resource.OperationCreate:
 				{{- if $PrimaryKeyIsGeneratedUUID }}
@@ -765,11 +780,25 @@ import (
 					{{- range $i, $field := .Resource.PrimaryKeys }}
 					id{{ $i }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ $i }}")
 					{{- end }}
+
+					{{- if $.Resource.IsScoped }}
+					if _, err := {{ .ResourcePackage }}.New{{ .Resource.Name }}Query().{{ range $i, $field := .Resource.PrimaryKeys }}Set{{ $field.Name }}(id{{ $i }}){{ end }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+						return httpio.NewEncoder(w).ClientMessage(ctx, err)
+					}
+					{{- end }}
+
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}UpdatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}UpdatePatch.Buffer()")
 					}
 				{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
+
+					{{- if $.Resource.IsScoped }}
+					if _, err := {{ .ResourcePackage }}.New{{ .Resource.Name }}Query().Set{{ $.Resource.PrimaryKey.Name }}(id).Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+						return httpio.NewEncoder(w).ClientMessage(ctx, err)
+					}
+					{{- end }}
+
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}UpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}UpdatePatch.Buffer()")
 					}
@@ -779,11 +808,25 @@ import (
 					{{- range $i, $field := .Resource.PrimaryKeys }}
 						id{{ $i }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ $i }}")
 					{{- end }}
+
+					{{- if $.Resource.IsScoped }}
+					if _, err := {{ .ResourcePackage }}.New{{ .Resource.Name }}Query().{{ range $i, $field := .Resource.PrimaryKeys }}Set{{ $field.Name }}(id{{ $i }}){{ end }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+						return httpio.NewEncoder(w).ClientMessage(ctx, err)
+					}
+					{{- end }}
+
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}DeletePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}DeletePatch.Buffer()")
 					}
 				{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
+
+					{{- if $.Resource.IsScoped }}
+					if _, err := {{ .ResourcePackage }}.New{{ .Resource.Name }}Query().Set{{ $.Resource.PrimaryKey.Name }}(id).Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+						return httpio.NewEncoder(w).ClientMessage(ctx, err)
+					}
+					{{- end }}
+
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}DeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}DeletePatch.Buffer()")
 					}
@@ -899,11 +942,25 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 							{{- range $i, $field := $resource.PrimaryKeys }}
 							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
 							{{- end }}
+
+							{{- if $.Resource.IsScoped }}
+							if _, err := {{ $resourcePackage }}.New{{ .Resource.Name }}Query().{{ range $i, $field := .Resource.PrimaryKeys }}Set{{ $field.Name }}(id{{ $i }}){{ end }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+								return httpio.NewEncoder(w).ClientMessage(ctx, err)
+							}
+							{{- end }}
+
 							if err := {{ $resourcePackage }}.New{{ $resource.Name }}UpdatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}UpdatePatch.Buffer()")
 							}
 							{{- else}}
 							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
+
+							{{- if $.Resource.IsScoped }}
+							if _, err := {{ $resourcePackage }}.New{{ .Resource.Name }}Query().Set{{ $.Resource.PrimaryKey.Name }}(id).Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+								return httpio.NewEncoder(w).ClientMessage(ctx, err)
+							}
+							{{- end }}
+
 							if err := {{ $resourcePackage }}.New{{ $resource.Name }}UpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}UpdatePatch.Buffer()")
 							}
@@ -913,11 +970,25 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 							{{- range $i, $field := $resource.PrimaryKeys }}
 							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
 							{{- end }}
+
+							{{- if $.Resource.IsScoped }}
+							if _, err := {{ $resourcePackage }}.New{{ .Resource.Name }}Query().{{ range $i, $field := .Resource.PrimaryKeys }}Set{{ $field.Name }}(id{{ $i }}){{ end }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+								return httpio.NewEncoder(w).ClientMessage(ctx, err)
+							}
+							{{- end }}
+
 							if err := {{ $resourcePackage }}.New{{ $resource.Name }}DeletePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}DeletePatch.Buffer()")
 							}
 							{{- else }}
 							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
+
+							{{- if $.Resource.IsScoped }}
+							if _, err := {{ $resourcePackage }}.New{{ .Resource.Name }}Query().Set{{ $.Resource.PrimaryKey.Name }}(id).Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+								return httpio.NewEncoder(w).ClientMessage(ctx, err)
+							}
+							{{- end }}
+
 							if err := {{ $resourcePackage }}.New{{ $resource.Name }}DeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}DeletePatch.Buffer()")
 							}

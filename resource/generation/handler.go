@@ -159,6 +159,11 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 		return errors.Wrap(err, "template.New().Parse()")
 	}
 
+	var tenantID string
+	if r.tenantScope != nil {
+		tenantID = r.tenantScope.fieldName
+	}
+
 	buf := bytes.NewBuffer(nil)
 	if err := tmpl.Execute(buf, map[string]any{
 		"Source":              r.resource.Dir(),
@@ -168,6 +173,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 		"ResourcePackage":     r.resource.Package(),
 		"ApplicationName":     r.applicationName,
 		"ReceiverName":        r.receiverName,
+		"TenantID":            tenantID,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
