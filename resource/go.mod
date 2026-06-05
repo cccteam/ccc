@@ -12,17 +12,17 @@ require (
 	github.com/cccteam/ccc/cache v0.1.4
 	github.com/cccteam/ccc/pkg v0.1.3
 	github.com/cccteam/ccc/securehash v0.0.10
-	github.com/cccteam/db-initiator v0.3.8
+	github.com/cccteam/db-initiator v0.3.9
 	github.com/cccteam/httpio v0.7.14
 	github.com/cccteam/session v0.8.2
 	github.com/cccteam/spxscan v0.0.10
-	github.com/cloudspannerecosystem/memefish v0.6.2
+	github.com/cloudspannerecosystem/memefish v0.7.0
 	github.com/ettle/strcase v0.2.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/momaek/formattag v0.0.10
 	github.com/shopspring/decimal v1.4.0
 	go.uber.org/mock v0.6.0
