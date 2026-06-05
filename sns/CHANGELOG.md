@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.11](https://github.com/cccteam/ccc/compare/sns/v0.2.10...sns/v0.2.11) (2026-06-05)
+
+
+### Code Upgrade
+
+* go 1.26.3 =&gt; 1.26.4 ([#734](https://github.com/cccteam/ccc/issues/734)) ([1b89aa7](https://github.com/cccteam/ccc/commit/1b89aa75106f683ecfce649b55bd5966a3e0bce0))
+
 ## [0.2.10](https://github.com/cccteam/ccc/compare/sns/v0.2.9...sns/v0.2.10) (2026-05-11)
 
 
