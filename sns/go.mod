@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/sns
 
-go 1.26.3
+go 1.26.4
 
 require github.com/go-playground/errors/v5 v5.4.0
 
