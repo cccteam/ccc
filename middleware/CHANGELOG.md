@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.5](https://github.com/cccteam/ccc/compare/middleware/v0.0.4...middleware/v0.0.5) (2026-06-05)
+
+
+### Code Upgrade
+
+* dependencies ([#726](https://github.com/cccteam/ccc/issues/726)) ([9342cdd](https://github.com/cccteam/ccc/commit/9342cdde848c6319adb250c2082f4387cd476d69))
+* go 1.26.3 =&gt; 1.26.4 ([#734](https://github.com/cccteam/ccc/issues/734)) ([1b89aa7](https://github.com/cccteam/ccc/commit/1b89aa75106f683ecfce649b55bd5966a3e0bce0))
+
 ## [0.0.4](https://github.com/cccteam/ccc/compare/middleware/v0.0.3...middleware/v0.0.4) (2026-05-11)
 
 
