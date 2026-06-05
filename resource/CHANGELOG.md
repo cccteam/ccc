@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.1](https://github.com/cccteam/ccc/compare/resource/v0.10.0...resource/v0.10.1) (2026-06-05)
+
+
+### Code Upgrade
+
+* dependencies ([#726](https://github.com/cccteam/ccc/issues/726)) ([9342cdd](https://github.com/cccteam/ccc/commit/9342cdde848c6319adb250c2082f4387cd476d69))
+* **deps:** Bump the go-dependencies group across 1 directory with 2 updates ([#730](https://github.com/cccteam/ccc/issues/730)) ([a8f6e82](https://github.com/cccteam/ccc/commit/a8f6e82037eff22a4c2d7b91f1e0017669961825))
+* **deps:** Bump the go-dependencies group across 1 directory with 3 updates ([#733](https://github.com/cccteam/ccc/issues/733)) ([994d7b9](https://github.com/cccteam/ccc/commit/994d7b9717e752201c1ee9639fd7fe76a11895c3))
+* go 1.26.3 =&gt; 1.26.4 ([#734](https://github.com/cccteam/ccc/issues/734)) ([1b89aa7](https://github.com/cccteam/ccc/commit/1b89aa75106f683ecfce649b55bd5966a3e0bce0))
+
 ## [0.10.0](https://github.com/cccteam/ccc/compare/resource/v0.9.14...resource/v0.10.0) (2026-05-11)
 
 
