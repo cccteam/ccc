@@ -60,7 +60,7 @@ func New{{ .Resource.Name }}QueryFromQuerySet(qSet *resource.QuerySet[{{ .Resour
 }
 
 {{ range $field := .Resource.Fields }}
-{{ if $field.IsUniqueIndex }}
+{{ if or $field.IsUniqueIndex (and $.Resource.IsScoped (eq $.TenantID $field.Name)) }}
 func (q *{{ $field.Parent.Name }}Query) Set{{ $field.Name }}(v {{ $field.ResolvedType }}) *{{ $field.Parent.Name }}Query {
 	q.qSet.SetKey("{{ $field.Name }}", v)
 
@@ -76,14 +76,62 @@ func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.ResolvedTy
 {{ end }}
 
 func (q *{{ .Resource.Name }}Query) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*{{ .Resource.Name }}, error) {
+	{{- if .Resource.IsScoped }}
+	if keyMap := q.qSet.KeySet().KeyMap(); len(keyMap) > 0 {
+		if _, ok := keyMap[accesstypes.Field("{{ .TenantID }}")]; !ok {
+			panic("{{ .Resource.Name }}Query KeySet does not include mandatory {{ .TenantID }}. Hint: set with .Set{{ .TenantID }}(...)")
+		}
+	} else if filterAst, err := q.qSet.FilterAst(resource.SpannerDBType); err != nil {
+		panic(errors.Wrap(err, "resource.QuerySet[{{ .Resource.Name }}].FilterAst()"))
+	} else if filterAst != nil {
+		if !resource.ContainsCondition(filterAst, &resource.Condition{Field: "{{ Camel $.TenantID }}", Operator: "eq"}) {
+			panic("{{ .Resource.Name }}Query does not include mandatory \"{{ Camel $.TenantID }}:eq\" in URL query params")
+		}
+	} else {
+		panic("{{ .Resource.Name }}Query does not include mandatory {{ .TenantID }} in QuerySet. Hint: Use URL query params, or KeySet, or Where() clause")
+	}
+	{{ end -}}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *{{ .Resource.Name }}Query) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*{{ .Resource.Name }}, error] {
+	{{- if .Resource.IsScoped }}
+	if keyMap := q.qSet.KeySet().KeyMap(); len(keyMap) > 0 {
+		if _, ok := keyMap[accesstypes.Field("{{ .TenantID }}")]; !ok {
+			panic("{{ .Resource.Name }}Query KeySet does not include mandatory {{ .TenantID }}. Hint: set with .Set{{ .TenantID }}(...)")
+		}
+	} else if filterAst, err := q.qSet.FilterAst(resource.SpannerDBType); err != nil {
+		panic(errors.Wrap(err, "resource.QuerySet[{{ .Resource.Name }}].FilterAst()"))
+	} else if filterAst != nil {
+		if !resource.ContainsCondition(filterAst, &resource.Condition{Field: "{{ Camel $.TenantID }}", Operator: "eq"}) {
+			panic("{{ .Resource.Name }}Query does not include mandatory \"{{ Camel $.TenantID }}:eq\" in URL query params")
+		}
+	} else {
+		panic("{{ .Resource.Name }}Query does not include mandatory {{ .TenantID }} in QuerySet. Hint: Use URL query params, or KeySet, or Where() clause")
+	}
+	{{ end -}}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *{{ .Resource.Name }}Query) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*{{ .Resource.Name }}, error]] {
+	{{- if .Resource.IsScoped }}
+	if keyMap := q.qSet.KeySet().KeyMap(); len(keyMap) > 0 {
+		if _, ok := keyMap[accesstypes.Field("{{ .TenantID }}")]; !ok {
+			panic("{{ .Resource.Name }}Query KeySet does not include mandatory {{ .TenantID }}. Hint: set with .Set{{ .TenantID }}(...)")
+		}
+	} else if filterAst, err := q.qSet.FilterAst(resource.SpannerDBType); err != nil {
+		panic(errors.Wrap(err, "resource.QuerySet[{{ .Resource.Name }}].FilterAst()"))
+	} else if filterAst != nil {
+		if !resource.ContainsCondition(filterAst, &resource.Condition{Field: "{{ Camel $.TenantID }}", Operator: "eq"}) {
+			panic("{{ .Resource.Name }}Query does not include mandatory \"{{ Camel $.TenantID }}:eq\" in URL query params")
+		}
+	} else {
+		panic("{{ .Resource.Name }}Query does not include mandatory {{ .TenantID }} in QuerySet. Hint: Use URL query params, or KeySet, or Where() clause")
+	}
+	{{ end -}}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -100,6 +148,11 @@ func (q *{{ .Resource.Name }}Query) Where(c {{ .Resource.Name }}QueryClause) *{{
 	if err := c.clause.Validate(); err != nil {
 		panic(err)
 	}
+	{{- if .Resource.IsScoped }}
+	if !c.clause.ContainsCondition(&resource.Condition{Field: "{{ .TenantID }}", Operator: "eq"}) {
+		panic("{{ .Resource.Name }}Query QueryClause does not contain mandatory {{ .TenantID }} equals condition. Hint: Add .{{ .TenantID }}().Equals(...)")
+	}
+	{{- end }}
 	q.qSet.SetWhereClause(c.clause)
 
 	return q
@@ -282,7 +335,7 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(patchSet *resource.PatchSet[
 	if err != nil {
 		return nil, errors.Wrap(err, "ccc.NewUUID()")
 	}
-	
+
 	patchSet.
 		SetKey("{{ .Resource.PrimaryKey.Name }}", id).
 		SetPatchType(resource.CreatePatchType)
@@ -297,7 +350,7 @@ func New{{ .Resource.Name }}CreatePatch() (*{{ .Resource.Name }}CreatePatch, err
 	if err != nil {
 		return nil, errors.Wrap(err, "ccc.NewUUID()")
 	}
-	
+
 	patchSet := resource.NewPatchSet(resource.NewMetadata[{{ .Resource.Name }}]()).
 		SetKey("{{ .Resource.PrimaryKey.Name }}", id).
 		SetPatchType(resource.CreatePatchType)
@@ -320,7 +373,7 @@ func New{{ .Resource.Name }}CreatePatchFromPatchSet(
 		SetPatchType(resource.CreatePatchType)
 	patch := &{{ .Resource.Name }}CreatePatch{patchSet: patchSet}
 	patch.registerDefaultFuncs()
-	
+
 	return patch
 }
 
@@ -516,9 +569,9 @@ func (p *{{ .Resource.Name }}DeletePatch) Buffer(ctx context.Context, txn resour
 }
 
 {{ range $field := .Resource.Fields }}
-{{ if $field.IsPrimaryKey }} 
+{{ if $field.IsPrimaryKey }}
 func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.ResolvedType }} {
-	v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.ResolvedType }}) 
+	v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.ResolvedType }})
 
 	return v
 }
@@ -568,6 +621,21 @@ import (
 		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
+		{{ if .Resource.IsScoped }}
+		customSession, err := customsession.DataFromCtx(ctx)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		q := r.URL.Query()
+		tenantFilter := fmt.Sprintf("{{ Camel $.TenantID }}:eq:%s", customSession.{{ $.TenantID }}.UUID)
+		if existingFilter := q.Get("filter"); existingFilter != "" {
+			tenantFilter = fmt.Sprintf("%s,%s", tenantFilter, existingFilter)
+		}
+		q.Set("filter", tenantFilter)
+		r.URL.RawQuery = q.Encode()
+		{{ end }}
+
 		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -610,6 +678,13 @@ import (
 		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
+	{{ if .Resource.IsScoped }}
+		customSession, err := customsession.DataFromCtx(ctx)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+	{{ end }}
+
 	{{ if .Resource.HasCompoundPrimaryKey }}
 	{{- range $_, $field := .Resource.PrimaryKeys }}
 		{{ GoCamel $field.Name }} := httpio.Param[{{ $field.Type }}](r, router.{{ $.Resource.Name }}{{ $field.Name }})
@@ -627,6 +702,7 @@ import (
 	{{- else }}
 		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet).Set{{ .Resource.PrimaryKey.Name }}(id)
 	{{- end }}
+	{{- if .Resource.IsScoped }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID){{ end }}
 
 		row, err := res.Read(ctx, {{ .ReceiverName }}.ResourceClient())
 		if err != nil {
@@ -653,7 +729,7 @@ import (
 		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }}`" + `
 		{{- end }}
 	}
-	
+
 	{{ $PrimaryKeyIsGeneratedUUID := .Resource.PrimaryKeyIsGeneratedUUID }}
 	{{ $PrimaryKeyType := .Resource.PrimaryKeyType }}
 	{{- if $PrimaryKeyIsGeneratedUUID }}
@@ -692,6 +768,13 @@ import (
 					return errors.Wrap(err, "decoder.DecodeOperation()")
 				}
 
+				{{- if $.Resource.IsScoped }}
+				customSession, err := customsession.DataFromCtx(ctx)
+				if err != nil {
+					return httpio.NewEncoder(w).ClientMessage(ctx, err)
+				}
+				{{- end }}
+
 				switch op.Type {
 				case resource.OperationCreate:
 				{{- if $PrimaryKeyIsGeneratedUUID }}
@@ -721,11 +804,25 @@ import (
 					{{- range $i, $field := .Resource.PrimaryKeys }}
 					id{{ $i }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ $i }}")
 					{{- end }}
+
+					{{- if $.Resource.IsScoped }}
+					if _, err := {{ .ResourcePackage }}.New{{ .Resource.Name }}Query().{{ range $i, $field := .Resource.PrimaryKeys }}Set{{ $field.Name }}(id{{ $i }}){{ end }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+						return httpio.NewEncoder(w).ClientMessage(ctx, err)
+					}
+					{{- end }}
+
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}UpdatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}UpdatePatch.Buffer()")
 					}
 				{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
+
+					{{- if $.Resource.IsScoped }}
+					if _, err := {{ .ResourcePackage }}.New{{ .Resource.Name }}Query().Set{{ $.Resource.PrimaryKey.Name }}(id).Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+						return httpio.NewEncoder(w).ClientMessage(ctx, err)
+					}
+					{{- end }}
+
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}UpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}UpdatePatch.Buffer()")
 					}
@@ -735,11 +832,25 @@ import (
 					{{- range $i, $field := .Resource.PrimaryKeys }}
 						id{{ $i }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ $i }}")
 					{{- end }}
+
+					{{- if $.Resource.IsScoped }}
+					if _, err := {{ .ResourcePackage }}.New{{ .Resource.Name }}Query().{{ range $i, $field := .Resource.PrimaryKeys }}Set{{ $field.Name }}(id{{ $i }}){{ end }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+						return httpio.NewEncoder(w).ClientMessage(ctx, err)
+					}
+					{{- end }}
+
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}DeletePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}DeletePatch.Buffer()")
 					}
 				{{- else }}
 					id := httpio.Param[{{ $PrimaryKeyType }}](op.Req, "id")
+
+					{{- if $.Resource.IsScoped }}
+					if _, err := {{ .ResourcePackage }}.New{{ .Resource.Name }}Query().Set{{ $.Resource.PrimaryKey.Name }}(id).Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+						return httpio.NewEncoder(w).ClientMessage(ctx, err)
+					}
+					{{- end }}
+
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}DeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}DeletePatch.Buffer()")
 					}
@@ -855,11 +966,25 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 							{{- range $i, $field := $resource.PrimaryKeys }}
 							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
 							{{- end }}
+
+							{{- if $.Resource.IsScoped }}
+							if _, err := {{ $resourcePackage }}.New{{ .Resource.Name }}Query().{{ range $i, $field := .Resource.PrimaryKeys }}Set{{ $field.Name }}(id{{ $i }}){{ end }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+								return httpio.NewEncoder(w).ClientMessage(ctx, err)
+							}
+							{{- end }}
+
 							if err := {{ $resourcePackage }}.New{{ $resource.Name }}UpdatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}UpdatePatch.Buffer()")
 							}
 							{{- else}}
 							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
+
+							{{- if $.Resource.IsScoped }}
+							if _, err := {{ $resourcePackage }}.New{{ .Resource.Name }}Query().Set{{ $.Resource.PrimaryKey.Name }}(id).Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+								return httpio.NewEncoder(w).ClientMessage(ctx, err)
+							}
+							{{- end }}
+
 							if err := {{ $resourcePackage }}.New{{ $resource.Name }}UpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}UpdatePatch.Buffer()")
 							}
@@ -869,11 +994,25 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 							{{- range $i, $field := $resource.PrimaryKeys }}
 							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
 							{{- end }}
+
+							{{- if $.Resource.IsScoped }}
+							if _, err := {{ $resourcePackage }}.New{{ .Resource.Name }}Query().{{ range $i, $field := .Resource.PrimaryKeys }}Set{{ $field.Name }}(id{{ $i }}){{ end }}.Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+								return httpio.NewEncoder(w).ClientMessage(ctx, err)
+							}
+							{{- end }}
+
 							if err := {{ $resourcePackage }}.New{{ $resource.Name }}DeletePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}DeletePatch.Buffer()")
 							}
 							{{- else }}
 							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
+
+							{{- if $.Resource.IsScoped }}
+							if _, err := {{ $resourcePackage }}.New{{ .Resource.Name }}Query().Set{{ $.Resource.PrimaryKey.Name }}(id).Set{{ $.TenantID }}(customSession.{{ $.TenantID }}.UUID).Read(ctx, txn); err != nil {
+								return httpio.NewEncoder(w).ClientMessage(ctx, err)
+							}
+							{{- end }}
+
 							if err := {{ $resourcePackage }}.New{{ $resource.Name }}DeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}DeletePatch.Buffer()")
 							}
@@ -1063,8 +1202,8 @@ const resourceMap: ResourceMap = {
     {{- end }}
     fields: [
       {{- range $field := $resource.Fields }}
-      { fieldName: '{{ Camel $field.Name }}', 
-       {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
+      { fieldName: '{{ Camel $field.Name }}',
+       {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} },
        {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex -}}
       {{- if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }} },
       {{- end }}
@@ -1080,8 +1219,8 @@ const resourceMap: ResourceMap = {
 	createDisabled: true, updateDisabled: true, deleteDisabled: true,
     fields: [
       {{- range $field := $resource.Fields }}
-      { fieldName: '{{ Camel $field.Name }}', 
-       {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
+      { fieldName: '{{ Camel $field.Name }}',
+       {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} },
        {{- end }} displayType: '{{ Lower $field.TypescriptDataType }}', required: {{ $field.IsPrimaryKey }}, isIndex: false },
       {{- end }}
     ],
@@ -1203,7 +1342,7 @@ const (
 {{- end }}
 
 type GeneratedHandlers interface {
-	{{- range $Struct, $Routes := .RoutesMap }}
+	{{- range $ResourceName, $Routes := .RoutesMap }}
 	{{- range $Routes }}
 	{{ .HandlerFunc }}() http.HandlerFunc
 	{{- end }}
@@ -1214,7 +1353,7 @@ type GeneratedHandlers interface {
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
-{{- range $Struct, $Routes := .RoutesMap }}
+{{- range $ResourceName, $Routes := .RoutesMap }}
 	{{- range $route := $Routes }}
 	{{- if $route.SharedHandler }}
 	{{ Camel $route.HandlerFunc }}Handler := h.{{ $route.HandlerFunc }}()
@@ -1328,7 +1467,7 @@ func generatedRouterTests() []*generatedRouterTest {
 }
 
 func generatedExpectCalls(e *mock_router.MockHandlersMockRecorder, rec *callRecorder) {
-	{{ range $Struct, $Routes := .RoutesMap }}{{ range $Routes }}e.{{ .HandlerFunc }}().Times(1).Return(rec.RecordHandlerCall("{{ .HandlerFunc }}"))
+	{{ range $ResourceName, $Routes := .RoutesMap }}{{ range $Routes }}e.{{ .HandlerFunc }}().Times(1).Return(rec.RecordHandlerCall("{{ .HandlerFunc }}"))
 	{{ end }}{{- end -}}
 	{{- if eq .HasConsolidatedHandler true }}e.PatchResources().Times(1).Return(rec.RecordHandlerCall("PatchResources")){{ end -}}
 }`
@@ -1366,8 +1505,8 @@ import (
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.HandlerFunc {
 	{{- range $field := .RPCMethod.Fields }}
 	{{- if $field.IsLocalType }}
-	type {{ Lower $field.UnqualifiedTypeName }} 
-	
+	type {{ Lower $field.UnqualifiedTypeName }}
+
 	{{- with $field.AsStruct }} struct {
 		{{- range $field := .Fields }}
 		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\"`" + `
@@ -1385,7 +1524,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 
 	decoder := NewRPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
 
-	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error { 
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := ccc.StartTrace(r.Context())
 		defer span.End()
 
@@ -1581,10 +1720,10 @@ func fieldAccessors(patchType patchType) string {
 		{{ end }}
 
 		func (p *{{ $field.Parent.Name }}%[1]sPatch) {{ $field.Name }}() {{ $field.ResolvedType }} {
-		{{ if $field.IsPrimaryKey -}} 
+		{{ if $field.IsPrimaryKey -}}
 			v, _ := p.patchSet.Key("{{ $field.Name }}").({{ $field.ResolvedType }})
-		{{ else -}} 
-			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ $field.ResolvedType }}) 
+		{{ else -}}
+			v, _ := p.patchSet.Get("{{ $field.Name }}").({{ $field.ResolvedType }})
 		{{ end }}
 
 			return v

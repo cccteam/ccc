@@ -181,7 +181,7 @@ type generatedRoute struct {
 	Method        string
 	Path          string
 	HandlerFunc   string
-	SharedHandler bool
+	SharedHandler bool // whether the handler is shared between Post and [Read or List] routes (Post is used for safely filtering on PII data)
 	HandlerType   HandlerType
 }
 
@@ -361,6 +361,7 @@ type resourceInfo struct {
 	DefaultsUpdateType string
 	ValidateCreateType string
 	ValidateUpdateType string
+	IsScoped           bool
 }
 
 func (r *resourceInfo) HasNullBool() bool {
@@ -822,6 +823,7 @@ const (
 	validateCreateTypeKeyword string = "validateCreateType" // Specifies a type to call "Validate()" on for validating a resource on creation
 	validateUpdateTypeKeyword string = "validateUpdateType" // Specifies a type to call "Validate()" on for validating a resource on update
 	primarykeyKeyword         string = "primarykey"         // Designates a field as a primary key in a Computed Resource
+	unscopedKeyword           string = "unscoped"           // Excludes a struct from requiring a foreign key to a tenant table
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -837,5 +839,13 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		validateCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		validateUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		primarykeyKeyword:         {genlang.ScanField: genlang.NoArgs},
+		unscopedKeyword:           {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 	}
+}
+
+// multitenantScope is a cute little tuple struct for declaring a resource as a tenant and
+// the field name that scoped resources should use to reference the tenant.
+type multitenantScope struct {
+	resourceName string
+	fieldName    string
 }
