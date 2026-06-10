@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.4](https://github.com/cccteam/ccc/compare/pkg/v0.1.3...pkg/v0.1.4) (2026-06-09)
+
+
+### Dependencies
+
+* Fix all go vulns ([#738](https://github.com/cccteam/ccc/issues/738)) ([ec6c058](https://github.com/cccteam/ccc/commit/ec6c058631faaa3f3c9f8ed093f6fab7d9be0168))
+
+
+### Code Upgrade
+
+* Upgrade/remove ptr for new ([#663](https://github.com/cccteam/ccc/issues/663)) ([7dfd20c](https://github.com/cccteam/ccc/commit/7dfd20cd5ba0ecd8fe320b005f5f042c014037bc))
+
 ## [0.1.3](https://github.com/cccteam/ccc/compare/pkg/v0.1.2...pkg/v0.1.3) (2026-02-10)
 
 
