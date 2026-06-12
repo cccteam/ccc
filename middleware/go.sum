@@ -30,10 +30,10 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator v0.56.0 h1
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator v0.56.0/go.mod h1:sKE2BdlsRRPL7ONGioxJnjUhEA1NbF484vFq8LX6znI=
 github.com/cccteam/ccc v0.3.0 h1:OWtl5HEB65FqsT/EN8nGoWhB02jBv4EGD8SgBnzpl80=
 github.com/cccteam/ccc v0.3.0/go.mod h1:eXhl0gDKBkkxpd6UmSpmcVRgAAZj7kBeRXfWmf8vbOo=
-github.com/cccteam/ccc/tracer v0.1.2 h1:+S4f3RM8Y+e2500LZUgsoM/3Byw1WlHOQGCNetBJ2rs=
-github.com/cccteam/ccc/tracer v0.1.2/go.mod h1:P30qAmBETf2wzXU0pcyFQ7krjl1sxBqBw/RqbZH1CuM=
-github.com/cccteam/httpio v0.7.14 h1:LTIy3R4tlfgRK+MFKgj9zwDibvNkPn/JResf9vLzjY8=
-github.com/cccteam/httpio v0.7.14/go.mod h1:UNdnsf5/vUvBwIlPb97bHhHuYZfBjJ9bck9tXqBrLbU=
+github.com/cccteam/ccc/tracer v0.1.3 h1:dnl/nVczRUmmrSkltz+P92l4smjgHFmKzLlEJoM1yLU=
+github.com/cccteam/ccc/tracer v0.1.3/go.mod h1:lGR6AsUH1lzwoLf0wbLbitqH7htCPTKYaiRuzjfY6TU=
+github.com/cccteam/httpio v0.7.15 h1:xikSaftMtCHZlvmLW4AvEpoDC+0W8AE/+7tFcZdqe94=
+github.com/cccteam/httpio v0.7.15/go.mod h1:Q2OABx079BlmetPGGibI/oAa7HgwulgATuiAcvLpdtY=
 github.com/cccteam/logger v0.1.21 h1:YFTGLgf4miZbP+W7SJAHFlz/JkwKt8dMf4Sb6JaI7sI=
 github.com/cccteam/logger v0.1.21/go.mod h1:3XkMtPRqIsoCXTSzFV+ChMJ/bMooadawZFGkICvZt3I=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
