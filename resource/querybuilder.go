@@ -2,6 +2,7 @@ package resource
 
 import (
 	"fmt"
+	"strings"
 
 	stderr "errors"
 )
@@ -46,6 +47,33 @@ func (qc QueryClause) Validate() error {
 	}
 
 	return nil
+}
+
+// ContainsCondition traverses the [QueryClause] tree and returns true if an [ExpressionNode]
+// is a [ConditionNode] whose Field and Operator fields match that passed in [Condition].
+func (qc QueryClause) ContainsCondition(cond *Condition) bool {
+	if qc.tree == nil {
+		return false
+	}
+
+	return ContainsCondition(qc.tree, cond)
+}
+
+func ContainsCondition(root ExpressionNode, target *Condition) bool {
+	switch t := root.(type) {
+	case *GroupNode:
+		return ContainsCondition(t.Expression, target)
+	case *LogicalOpNode:
+		if ContainsCondition(t.Left, target) {
+			return true
+		}
+
+		return ContainsCondition(t.Right, target)
+	case *ConditionNode:
+		return strings.EqualFold(t.Condition.Field, target.Field) && strings.EqualFold(t.Condition.Operator, target.Operator)
+	default:
+		panic(fmt.Sprintf("containsCondition: unexpected ExpressionNode type %T", t))
+	}
 }
 
 // And starts a logical AND operation, returning a PartialQueryClause to which the right-hand side can be appended.

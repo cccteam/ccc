@@ -48,6 +48,7 @@ type client struct {
 	tableMap            map[string]*tableMetadata
 	enumValues          map[string][]*enumData
 	pluralOverrides     map[string]string
+	tenantScope         *multitenantScope
 	consolidateConfig
 	genRPCMethods          bool
 	genComputedResources   bool
@@ -528,14 +529,6 @@ func resourceEndpoints(res *resourceInfo) []HandlerType {
 	})
 
 	return handlerTypes
-}
-
-func hasConsolidatedHandler(res *resourceInfo) bool {
-	if res.IsConsolidated {
-		return !slices.Contains(res.SuppressedHandlers, PatchHandler)
-	}
-
-	return false
 }
 
 func sanitizeEnumIdentifier(name string) string {

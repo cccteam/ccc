@@ -211,11 +211,16 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 		packageName = r.virtual.Package()
 		destinationFilePath = filepath.Join(r.virtual.Dir(), fileName)
 	}
+	var tenantID string
+	if r.tenantScope != nil {
+		tenantID = r.tenantScope.fieldName
+	}
 
 	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
 		"Source":   r.resource.Dir(),
 		"Package":  packageName,
 		"Resource": res,
+		"TenantID": tenantID,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

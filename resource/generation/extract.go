@@ -59,6 +59,15 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 
+		if c.tenantScope != nil && !annotations.Struct.Has(unscopedKeyword) {
+			if err := validateScope(*c.tenantScope, pStruct, table, fields); err != nil {
+				resourceErrors = append(resourceErrors, err)
+
+				continue
+			}
+			resource.IsScoped = true
+		}
+
 		if err := resolveResourceAnnotations(resource, annotations); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
@@ -408,6 +417,37 @@ func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 		}
 
 		return errors.Newf("found mismatching nullability between the struct fields and columns:\n%s", msg.String())
+	}
+
+	return nil
+}
+
+func validateScope(scope multitenantScope, pStruct *parser.Struct, table *tableMetadata, fields []*resourceField) error {
+	if col, ok := table.Columns[caser.ToPascal(scope.fieldName)]; ok {
+		if !col.IsForeignKey {
+			return errors.Newf("%s table is missing mandatory foreign key reference to %q on column %q", pStruct.Name(), scope.resourceName, scope.fieldName)
+		}
+	} else {
+		return errors.Newf("%s table is missing mandatory tenant column %q", pStruct.Name(), scope.fieldName)
+	}
+
+	hasScopedField := false
+	for _, field := range fields {
+		if !field.IsForeignKey {
+			continue
+		}
+
+		if tag, _ := field.LookupTag("spanner"); !strings.EqualFold(tag, scope.fieldName) {
+			continue
+		}
+
+		hasScopedField = true
+
+		break
+	}
+
+	if !hasScopedField {
+		return errors.Newf("%s struct is missing mandatory tenant field %q", pStruct.Name(), scope.fieldName)
 	}
 
 	return nil
