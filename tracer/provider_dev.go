@@ -8,6 +8,20 @@ import (
 	"google.golang.org/api/option"
 )
 
+// NewGoogleCloudTracerProvider creates and configures a noop OpenTelemetry TracerProvider
+// for disabling tracing in your dev environment.
+func NewGoogleCloudTracerProvider(_, _ string, _ ...sdktrace.TracerProviderOption) (*Provider, error) {
+	return NewGoogleCloudTracerProviderWithOptions("", "")
+}
+
+// NewGoogleCloudTracerProviderWithOptions creates and configures a noop OpenTelemetry TracerProvider.
+func NewGoogleCloudTracerProviderWithOptions(_, _ string, _ ...ProviderOption) (*Provider, error) {
+	tp := sdktrace.NewTracerProvider()
+	otel.SetTracerProvider(tp)
+
+	return &Provider{tp}, nil
+}
+
 type providerConfig struct {
 	clientOpts []option.ClientOption
 	tracerOpts []sdktrace.TracerProviderOption
@@ -28,18 +42,4 @@ func WithTracerProviderOptions(opts ...sdktrace.TracerProviderOption) ProviderOp
 	return func(c *providerConfig) {
 		c.tracerOpts = append(c.tracerOpts, opts...)
 	}
-}
-
-// NewGoogleCloudTracerProviderWithOptions creates and configures a noop OpenTelemetry TracerProvider.
-func NewGoogleCloudTracerProviderWithOptions(_, _ string, _ ...ProviderOption) (*Provider, error) {
-	tp := sdktrace.NewTracerProvider()
-	otel.SetTracerProvider(tp)
-
-	return &Provider{tp}, nil
-}
-
-// NewGoogleCloudTracerProvider creates and configures a noop OpenTelemetry TracerProvider
-// for disabling tracing in your dev environment.
-func NewGoogleCloudTracerProvider(_, _ string, _ ...sdktrace.TracerProviderOption) (*Provider, error) {
-	return NewGoogleCloudTracerProviderWithOptions("", "")
 }
