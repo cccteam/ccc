@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"google.golang.org/api/option"
 )
 
 // NewGoogleCloudTracerProvider creates and configures a new OpenTelemetry TracerProvider
@@ -19,7 +20,17 @@ import (
 //
 // The created TracerProvider is also set as the global tracer provider for the application.
 func NewGoogleCloudTracerProvider(loggingProjectID, serviceName string, opts ...sdktrace.TracerProviderOption) (*Provider, error) {
-	exporter, err := texporter.New(texporter.WithProjectID(loggingProjectID))
+	return NewGoogleCloudTracerProviderWithOptions(loggingProjectID, serviceName, WithTracerProviderOptions(opts...))
+}
+
+// NewGoogleCloudTracerProviderWithOptions creates and configures a new OpenTelemetry TracerProvider.
+func NewGoogleCloudTracerProviderWithOptions(loggingProjectID, serviceName string, opts ...ProviderOption) (*Provider, error) {
+	cfg := &providerConfig{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	exporter, err := texporter.New(texporter.WithProjectID(loggingProjectID), texporter.WithTraceClientOptions(cfg.clientOpts))
 	if err != nil {
 		return nil, errors.Wrap(err, "texporter.New()")
 	}
@@ -35,18 +46,40 @@ func NewGoogleCloudTracerProvider(loggingProjectID, serviceName string, opts ...
 		return nil, errors.Wrap(err, "resource.Merge()")
 	}
 
-	options := make([]sdktrace.TracerProviderOption, 0, len(opts)+3)
+	options := make([]sdktrace.TracerProviderOption, 0, len(cfg.tracerOpts)+3)
 	options = append(options,
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.NeverSample())),
 	)
-	options = append(options, opts...)
+	options = append(options, cfg.tracerOpts...)
 
 	tp := sdktrace.NewTracerProvider(options...)
 	otel.SetTracerProvider(tp)
 
 	return &Provider{tp}, nil
+}
+
+type providerConfig struct {
+	clientOpts []option.ClientOption
+	tracerOpts []sdktrace.TracerProviderOption
+}
+
+// ProviderOption configures the Provider.
+type ProviderOption func(*providerConfig)
+
+// WithClientOptions adds Google API client options.
+func WithClientOptions(opts ...option.ClientOption) ProviderOption {
+	return func(c *providerConfig) {
+		c.clientOpts = append(c.clientOpts, opts...)
+	}
+}
+
+// WithTracerProviderOptions adds OpenTelemetry SDK tracer provider options.
+func WithTracerProviderOptions(opts ...sdktrace.TracerProviderOption) ProviderOption {
+	return func(c *providerConfig) {
+		c.tracerOpts = append(c.tracerOpts, opts...)
+	}
 }
 
 // checkPackageMissmatch is used in a test to ensure we keep
