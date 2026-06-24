@@ -42,6 +42,16 @@ const (
 	PatchHandler HandlerType = "patchHandler"
 )
 
+// RouteType describes a route or set of routes for a resource-driven API.
+type RouteType string
+
+const (
+	// AllRoutes encompasses every route for a resource.
+	AllRoutes RouteType = "allRoutes"
+
+	// Only supporting AllRoutes for now, but more granular route types could be added in the future as needed.
+)
+
 type packageDir string
 
 func (p packageDir) Dir() string {
@@ -71,6 +81,34 @@ func handlerTypes() []HandlerType {
 		ListHandler,
 		ReadHandler,
 		PatchHandler,
+	}
+}
+
+func routeTypes() []RouteType {
+	return []RouteType{
+		AllRoutes,
+	}
+}
+
+// validSuppressArgs returns the set of valid arguments accepted by the @suppress() directive.
+func validSuppressArgs() []string {
+	args := make([]string, 0, len(handlerTypes())+len(routeTypes()))
+	for _, ht := range handlerTypes() {
+		args = append(args, string(ht))
+	}
+	for _, rt := range routeTypes() {
+		args = append(args, string(rt))
+	}
+
+	return args
+}
+
+func validComputedSuppressArgs() []string {
+	return []string{
+		string(AllHandlers),
+		string(ListHandler),
+		string(ReadHandler),
+		string(AllRoutes),
 	}
 }
 
@@ -272,6 +310,7 @@ type computedResource struct {
 	Fields              []*computedField
 	SuppressReadHandler bool
 	SuppressListHandler bool
+	SuppressedRoutes    []RouteType
 }
 
 func (c *computedResource) HasCompoundPrimaryKey() bool {
@@ -304,6 +343,10 @@ func (c *computedResource) PrimaryKeys() []*computedField {
 	}
 
 	return keys
+}
+
+func (c *computedResource) RoutingDisabled() bool {
+	return slices.Contains(c.SuppressedRoutes, AllRoutes)
 }
 
 type computedField struct {
@@ -353,6 +396,7 @@ type resourceInfo struct {
 	*parser.TypeInfo
 	Fields             []*resourceField
 	SuppressedHandlers []HandlerType
+	SuppressedRoutes   []RouteType
 	IsVirtual          bool // Determines how CreatePatch is rendered in resource generation.
 	IsConsolidated     bool
 	PkCount            int
@@ -371,6 +415,10 @@ func (r *resourceInfo) HasNullBool() bool {
 	}
 
 	return false
+}
+
+func (r *resourceInfo) RoutingDisabled() bool {
+	return slices.Contains(r.SuppressedRoutes, AllRoutes)
 }
 
 func (r *resourceInfo) ListHandlerDisabled() bool {
@@ -816,7 +864,7 @@ const (
 	computedKeyword           string = "computed"           // Designates a struct as a computed resource
 	rpcKeyword                string = "rpc"                // Designates a struct as an RPC method
 	enumerateKeyword          string = "enumerate"          // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
-	suppressKeyword           string = "suppress"           // Suppresses specified handler types from being generated
+	suppressKeyword           string = "suppress"           // Suppresses generation of specified handler types or routes for a resource
 	defaultsCreateTypeKeyword string = "defaultsCreateType" // Specifies a type to call "Defaults()" on for setting defaults on resource creation
 	defaultsUpdateTypeKeyword string = "defaultsUpdateType" // Specifies a type to call "Defaults()" on for setting defaults on resource update
 	validateCreateTypeKeyword string = "validateCreateType" // Specifies a type to call "Validate()" on for validating a resource on creation

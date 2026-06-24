@@ -2,6 +2,7 @@ package generation
 
 import (
 	"fmt"
+	"iter"
 	"slices"
 	"strings"
 	"unicode"
@@ -77,21 +78,8 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 
 func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnnotations) error {
 	if annotations.Struct.Has(suppressKeyword) {
-		for handlerArg := range annotations.Struct.Get(suppressKeyword).Seq() {
-			switch HandlerType(handlerArg) {
-			case AllHandlers:
-				res.SuppressedHandlers = []HandlerType{ListHandler, ReadHandler, PatchHandler}
-				res.IsConsolidated = false
-			case ListHandler:
-				res.SuppressedHandlers = append(res.SuppressedHandlers, ListHandler)
-			case ReadHandler:
-				res.SuppressedHandlers = append(res.SuppressedHandlers, ReadHandler)
-			case PatchHandler:
-				res.SuppressedHandlers = append(res.SuppressedHandlers, PatchHandler)
-				res.IsConsolidated = false
-			default:
-				return errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg, res.Name(), handlerTypes())
-			}
+		if err := applySuppressDirectives(res, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
+			return errors.Wrapf(err, "@suppress on %s", res.Name())
 		}
 	}
 
@@ -106,6 +94,59 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 	}
 	if annotations.Struct.Has(validateUpdateTypeKeyword) {
 		res.ValidateUpdateType = string(annotations.Struct.Get(validateUpdateTypeKeyword))
+	}
+
+	return nil
+}
+
+func applySuppressDirectives(res *resourceInfo, suppressArgs iter.Seq[string]) error {
+	for arg := range suppressArgs {
+		if RouteType(arg) == AllRoutes {
+			res.SuppressedRoutes = append(res.SuppressedRoutes, AllRoutes)
+
+			continue
+		}
+		switch HandlerType(arg) {
+		case AllHandlers:
+			res.SuppressedHandlers = []HandlerType{ListHandler, ReadHandler, PatchHandler}
+			res.IsConsolidated = false
+		case ListHandler:
+			res.SuppressedHandlers = append(res.SuppressedHandlers, ListHandler)
+		case ReadHandler:
+			res.SuppressedHandlers = append(res.SuppressedHandlers, ReadHandler)
+		case PatchHandler:
+			res.SuppressedHandlers = append(res.SuppressedHandlers, PatchHandler)
+			res.IsConsolidated = false
+		default:
+			return errors.Newf("unexpected argument %[1]q in @suppress(%[1]s), must be one of %v", arg, validSuppressArgs())
+		}
+	}
+
+	if hasConsolidatedHandler(res) && res.RoutingDisabled() {
+		return errors.Newf("@suppress(%[1]s) is not supported because the patch handler is part of the consolidated handlers and is served by a shared route that cannot be suppressed per resource; exclude this resource from the consolidated handlers or add @suppress(%[2]s)", AllRoutes, PatchHandler)
+	}
+
+	return nil
+}
+
+func applyComputedSuppressDirectives(res *computedResource, suppressArgs iter.Seq[string]) error {
+	for arg := range suppressArgs {
+		if RouteType(arg) == AllRoutes {
+			res.SuppressedRoutes = append(res.SuppressedRoutes, AllRoutes)
+
+			continue
+		}
+		switch HandlerType(arg) {
+		case AllHandlers:
+			res.SuppressListHandler = true
+			res.SuppressReadHandler = true
+		case ListHandler:
+			res.SuppressListHandler = true
+		case ReadHandler:
+			res.SuppressReadHandler = true
+		default:
+			return errors.Newf("unexpected argument %[1]q in @suppress(%[1]s), must be one of %v", arg, validComputedSuppressArgs())
+		}
 	}
 
 	return nil
@@ -163,17 +204,10 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 		}
 
 		if annotations.Struct.Has(suppressKeyword) {
-			for handlerArg := range annotations.Struct.Get(suppressKeyword).Seq() {
-				switch HandlerType(handlerArg) {
-				case AllHandlers:
-					resource.SuppressedHandlers = []HandlerType{ListHandler, ReadHandler, PatchHandler}
-				case ListHandler, ReadHandler, PatchHandler:
-					resource.SuppressedHandlers = append(resource.SuppressedHandlers, HandlerType(handlerArg))
-				default:
-					errs = append(errs, errors.Newf("unexpected handler type %[1]q in @suppress(%[1]s) on %[2]s, must be one of %v", handlerArg, pStruct.Name(), handlerTypes()))
+			if err := applySuppressDirectives(resource, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
+				errs = append(errs, errors.Wrapf(err, "@suppress on %s", pStruct.Name()))
 
-					continue
-				}
+				continue
 			}
 		}
 
@@ -345,12 +379,10 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 		}
 
 		if annotations.Struct.Has(suppressKeyword) {
-			handlerArg := annotations.Struct.Get(suppressKeyword)
-			if strings.Contains(string(handlerArg), string(ReadHandler)) {
-				res.SuppressReadHandler = true
-			}
-			if strings.Contains(string(handlerArg), string(ListHandler)) {
-				res.SuppressListHandler = true
+			if err := applyComputedSuppressDirectives(res, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
+				resourceErrors = append(resourceErrors, errors.Wrapf(err, "@suppress on %s", s.Name()))
+
+				continue
 			}
 		}
 

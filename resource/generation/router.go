@@ -26,12 +26,17 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	generatedRoutesMap := make(map[string][]generatedRoute)
 	for _, res := range r.resources {
 		handlerTypes := resourceEndpoints(res)
-		if hasConsolidatedHandler(res) {
-			hasConsolidatedHandlers = true
-		}
 
 		if slices.Contains(handlerTypes, ReadHandler) {
 			constResources = append(constResources, res)
+		}
+
+		if res.RoutingDisabled() {
+			continue
+		}
+
+		if hasConsolidatedHandler(res) {
+			hasConsolidatedHandlers = true
 		}
 
 		if len(handlerTypes) > 0 {
@@ -63,17 +68,18 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	constComputedResources := make([]*computedResource, 0, len(r.computedResources))
 	computedResources := make([]*computedResource, 0, len(r.computedResources))
 	for _, res := range r.computedResources {
-		path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
-		if !res.SuppressListHandler {
-			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
-				Method:        ListHandler.method(),
-				Path:          path,
-				HandlerFunc:   r.handlerName(res.Name(), ListHandler),
-				SharedHandler: true,
-				HandlerType:   ListHandler,
-			})
+		if !res.SuppressListHandler || !res.SuppressReadHandler {
+			computedResources = append(computedResources, res)
+			if !res.SuppressReadHandler {
+				constComputedResources = append(constComputedResources, res)
+			}
 		}
 
+		if res.RoutingDisabled() {
+			continue
+		}
+
+		path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
 		if !res.SuppressReadHandler {
 			var pathKeys string
 			for _, field := range res.PrimaryKeys() {
@@ -87,10 +93,16 @@ func (r *resourceGenerator) runRouteGeneration() error {
 				SharedHandler: true,
 				HandlerType:   ReadHandler,
 			})
-			constComputedResources = append(constComputedResources, res)
 		}
-		if !res.SuppressListHandler || !res.SuppressReadHandler {
-			computedResources = append(computedResources, res)
+
+		if !res.SuppressListHandler {
+			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
+				Method:        ListHandler.method(),
+				Path:          path,
+				HandlerFunc:   r.handlerName(res.Name(), ListHandler),
+				SharedHandler: true,
+				HandlerType:   ListHandler,
+			})
 		}
 	}
 
