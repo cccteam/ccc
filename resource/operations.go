@@ -57,7 +57,8 @@ func (o *Operation) ReqWithPattern(pattern string, opts ...Option) (*http.Reques
 	return o.Req.WithContext(ctx), nil
 }
 
-type patchOperation struct {
+// RawPatchOperation represents a single RFC 6902 JSON Patch operation (op/path/value).
+type RawPatchOperation struct {
 	Op    string          `json:"op"`
 	Path  string          `json:"path"`
 	Value json.RawMessage `json:"value"`
@@ -124,7 +125,7 @@ func Operations(r *http.Request, pattern string, opts ...Option) iter.Seq2[*Oper
 		}
 
 		for dec.More() {
-			var op patchOperation
+			var op RawPatchOperation
 			if err := dec.Decode(&op); err != nil {
 				yield(nil, err)
 
