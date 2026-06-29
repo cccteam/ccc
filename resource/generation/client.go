@@ -252,6 +252,7 @@ func (c *client) templateFuncs() map[string]any {
 		"Pascal":                       strcase.ToPascal,
 		"Kebab":                        strcase.ToKebab,
 		"Lower":                        strings.ToLower,
+		"Add":                          func(a, b int) int { return a + b },
 		"FormatResourceInterfaceTypes": c.formatResourceInterfaceTypes,
 		"FormatRPCInterfaceTypes":      formatRPCInterfaceTypes,
 		"DetermineTestURL": func(resource resourceInfo, routePrefix string, route generatedRoute) string {

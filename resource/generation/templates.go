@@ -705,9 +705,9 @@ import (
 					resp.IDs = append(resp.IDs, patch.{{ .Resource.PrimaryKey.Name }}())
 				{{- else if .Resource.HasCompoundPrimaryKey }}
 					{{- range $i, $field := .Resource.PrimaryKeys }}
-					id{{ $i }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ $i }}")
+					id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ Add $i 1 }}")
 					{{- end }}
-					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}CreatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
+					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}CreatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}CreatePatch.Buffer()")
 					}
 				{{- else }}
@@ -719,9 +719,9 @@ import (
 				case resource.OperationUpdate:
 				{{- if .Resource.HasCompoundPrimaryKey }}
 					{{- range $i, $field := .Resource.PrimaryKeys }}
-					id{{ $i }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ $i }}")
+					id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ Add $i 1 }}")
 					{{- end }}
-					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}UpdatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
+					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}UpdatePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}UpdatePatch.Buffer()")
 					}
 				{{- else }}
@@ -733,9 +733,9 @@ import (
 				case resource.OperationDelete:
 				{{- if .Resource.HasCompoundPrimaryKey }}
 					{{- range $i, $field := .Resource.PrimaryKeys }}
-						id{{ $i }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ $i }}")
+						id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](op.Req, "id{{ Add $i 1 }}")
 					{{- end }}
-					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}DeletePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
+					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}DeletePatchFromPatchSet({{- range $i := .Resource.PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}DeletePatch.Buffer()")
 					}
 				{{- else }}
@@ -839,9 +839,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.{{ $resource.PrimaryKey.Name }}())
 						{{- else if $resource.HasCompoundPrimaryKey }}
 							{{- range $i, $field := $resource.PrimaryKeys }}
-							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
+							id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](req, "id{{ Add $i 1 }}")
 							{{- end }}
-							if err := {{ $resourcePackage }}.New{{ $resource.Name }}CreatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
+							if err := {{ $resourcePackage }}.New{{ $resource.Name }}CreatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}CreatePatch.Buffer()")
 							}
 						{{- else }}
@@ -853,9 +853,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 						case resource.OperationUpdate:
 							{{- if $resource.HasCompoundPrimaryKey }}
 							{{- range $i, $field := $resource.PrimaryKeys }}
-							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
+							id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](req, "id{{ Add $i 1 }}")
 							{{- end }}
-							if err := {{ $resourcePackage }}.New{{ $resource.Name }}UpdatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
+							if err := {{ $resourcePackage }}.New{{ $resource.Name }}UpdatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}UpdatePatch.Buffer()")
 							}
 							{{- else}}
@@ -867,9 +867,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 						case resource.OperationDelete:
 							{{- if $resource.HasCompoundPrimaryKey }}
 							{{- range $i, $field := $resource.PrimaryKeys }}
-							id{{ $i }} := httpio.Param[{{ $field.Type }}](req, "id{{ $i }}")
+							id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](req, "id{{ Add $i 1 }}")
 							{{- end }}
-							if err := {{ $resourcePackage }}.New{{ $resource.Name }}DeletePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ $i }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
+							if err := {{ $resourcePackage }}.New{{ $resource.Name }}DeletePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}DeletePatch.Buffer()")
 							}
 							{{- else }}
