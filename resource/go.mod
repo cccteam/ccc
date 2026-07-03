@@ -6,16 +6,16 @@ replace github.com/golang-migrate/migrate/v4 v4.19.1 => github.com/jtwatson/migr
 
 require (
 	cloud.google.com/go v0.123.0
-	cloud.google.com/go/spanner v1.91.0
+	cloud.google.com/go/spanner v1.92.0
 	github.com/cccteam/ccc v0.3.0
 	github.com/cccteam/ccc/accesstypes v0.5.6
 	github.com/cccteam/ccc/cache v0.1.4
-	github.com/cccteam/ccc/pkg v0.1.3
-	github.com/cccteam/ccc/securehash v0.0.10
-	github.com/cccteam/db-initiator v0.3.9
-	github.com/cccteam/httpio v0.7.14
+	github.com/cccteam/ccc/pkg v0.1.4
+	github.com/cccteam/ccc/securehash v0.0.11
+	github.com/cccteam/db-initiator v0.3.11
+	github.com/cccteam/httpio v0.7.15
 	github.com/cccteam/session v0.8.2
-	github.com/cccteam/spxscan v0.0.10
+	github.com/cccteam/spxscan v0.0.11
 	github.com/cloudspannerecosystem/memefish v0.7.0
 	github.com/ettle/strcase v0.2.0
 	github.com/go-chi/chi/v5 v5.3.0
@@ -26,7 +26,7 @@ require (
 	github.com/momaek/formattag v0.0.10
 	github.com/shopspring/decimal v1.4.0
 	go.uber.org/mock v0.6.0
-	golang.org/x/tools v0.45.0
+	golang.org/x/tools v0.47.0
 )
 
 require (
@@ -115,15 +115,15 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
-	golang.org/x/crypto v0.52.0 // indirect
-	golang.org/x/mod v0.36.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	google.golang.org/api v0.282.0 // indirect
+	google.golang.org/api v0.283.0 // indirect
 	google.golang.org/genproto v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
