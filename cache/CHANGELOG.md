@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.5](https://github.com/cccteam/ccc/compare/cache/v0.1.4...cache/v0.1.5) (2026-07-09)
+
+
+### Bug Fixes
+
+* address tracer and cache go vulns ([#754](https://github.com/cccteam/ccc/issues/754)) ([bdcbf1b](https://github.com/cccteam/ccc/commit/bdcbf1b2f37908c97514751c1e04b1ff43abc4ad))
+
+
+### Dependencies
+
+* Fix all go vulns ([#738](https://github.com/cccteam/ccc/issues/738)) ([ec6c058](https://github.com/cccteam/ccc/commit/ec6c058631faaa3f3c9f8ed093f6fab7d9be0168))
+
+
+### Code Upgrade
+
+* dependencies ([#726](https://github.com/cccteam/ccc/issues/726)) ([9342cdd](https://github.com/cccteam/ccc/commit/9342cdde848c6319adb250c2082f4387cd476d69))
+
 ## [0.1.4](https://github.com/cccteam/ccc/compare/cache/v0.1.3...cache/v0.1.4) (2026-03-11)
 
 
