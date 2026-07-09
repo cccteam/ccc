@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.1](https://github.com/cccteam/ccc/compare/v0.3.0...v0.3.1) (2026-07-09)
+
+
+### Dependencies
+
+* Fix all go vulns ([#738](https://github.com/cccteam/ccc/issues/738)) ([ec6c058](https://github.com/cccteam/ccc/commit/ec6c058631faaa3f3c9f8ed093f6fab7d9be0168))
+
+
+### Code Upgrade
+
+* dependencies ([#726](https://github.com/cccteam/ccc/issues/726)) ([9342cdd](https://github.com/cccteam/ccc/commit/9342cdde848c6319adb250c2082f4387cd476d69))
+* **deps:** Bump go.opentelemetry.io/otel/sdk ([#731](https://github.com/cccteam/ccc/issues/731)) ([851f005](https://github.com/cccteam/ccc/commit/851f0058906a18dbf462c88019778a828ca888c3))
+* **deps:** Bump googleapis/release-please-action ([#704](https://github.com/cccteam/ccc/issues/704)) ([f6a3c97](https://github.com/cccteam/ccc/commit/f6a3c9782ee4a23c04cafa8382cbb5701080f6e1))
+* **deps:** Bump the github-actions group across 1 directory with 3 updates ([#749](https://github.com/cccteam/ccc/issues/749)) ([b99b087](https://github.com/cccteam/ccc/commit/b99b0873939dfc0b09d2afa05e3c0082907f9b39))
+* **deps:** Bump the github-actions group across 1 directory with 4 updates ([#720](https://github.com/cccteam/ccc/issues/720)) ([42123e4](https://github.com/cccteam/ccc/commit/42123e4f05f076a23873ae6844b4998e81203d20))
+* **deps:** Bump the github-actions group with 3 updates ([#686](https://github.com/cccteam/ccc/issues/686)) ([338ef60](https://github.com/cccteam/ccc/commit/338ef60c796c0182ab6f64540a62f0dfa3db8c40))
+* **deps:** Bump the go-dependencies group across 1 directory with 3 updates ([#697](https://github.com/cccteam/ccc/issues/697)) ([70bb3e7](https://github.com/cccteam/ccc/commit/70bb3e79ffafa59e8dd2a18ea1113e419dbdf3d6))
+
 ## [0.3.0](https://github.com/cccteam/ccc/compare/v0.2.24...v0.3.0) (2026-03-26)
 
 
