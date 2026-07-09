@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.10.2](https://github.com/cccteam/ccc/compare/resource/v0.10.1...resource/v0.10.2) (2026-07-09)
+
+
+### Features
+
+* Support suppressing (disabling) route generation for resources ([e022376](https://github.com/cccteam/ccc/commit/e0223760c8664430a7384bea27cddb324c37cb26))
+
+
+### Bug Fixes
+
+* Correct patch indexing for resources with compound primary keys ([e022376](https://github.com/cccteam/ccc/commit/e0223760c8664430a7384bea27cddb324c37cb26))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group across 1 directory with 10 updates ([#752](https://github.com/cccteam/ccc/issues/752)) ([de98251](https://github.com/cccteam/ccc/commit/de982517ac5aadf9f5fbdeed66e0d55f9f0be0f0))
+
 ## [0.10.1](https://github.com/cccteam/ccc/compare/resource/v0.10.0...resource/v0.10.1) (2026-06-05)
 
 
