@@ -30,8 +30,8 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator v0.56.0 h1
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator v0.56.0/go.mod h1:sKE2BdlsRRPL7ONGioxJnjUhEA1NbF484vFq8LX6znI=
 github.com/cccteam/ccc v0.3.0 h1:OWtl5HEB65FqsT/EN8nGoWhB02jBv4EGD8SgBnzpl80=
 github.com/cccteam/ccc v0.3.0/go.mod h1:eXhl0gDKBkkxpd6UmSpmcVRgAAZj7kBeRXfWmf8vbOo=
-github.com/cccteam/ccc/tracer v0.1.3 h1:dnl/nVczRUmmrSkltz+P92l4smjgHFmKzLlEJoM1yLU=
-github.com/cccteam/ccc/tracer v0.1.3/go.mod h1:lGR6AsUH1lzwoLf0wbLbitqH7htCPTKYaiRuzjfY6TU=
+github.com/cccteam/ccc/tracer v0.1.4 h1:rd4fC1lv9NSF6LD8/WQrruSF1OE9G/hjdEDrHoDyf60=
+github.com/cccteam/ccc/tracer v0.1.4/go.mod h1:mnh+hhj8/1ADS/89XBAHjT9YqMxNw0nS1GfGS085vKg=
 github.com/cccteam/httpio v0.7.15 h1:xikSaftMtCHZlvmLW4AvEpoDC+0W8AE/+7tFcZdqe94=
 github.com/cccteam/httpio v0.7.15/go.mod h1:Q2OABx079BlmetPGGibI/oAa7HgwulgATuiAcvLpdtY=
 github.com/cccteam/logger v0.1.21 h1:YFTGLgf4miZbP+W7SJAHFlz/JkwKt8dMf4Sb6JaI7sI=
