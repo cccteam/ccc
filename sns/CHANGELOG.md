@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.12](https://github.com/cccteam/ccc/compare/sns/v0.2.11...sns/v0.2.12) (2026-07-10)
+
+
+### Code Upgrade
+
+* **deps:** Upgrade SNS Go runtime to address GO-2026-5856 ([#758](https://github.com/cccteam/ccc/issues/758)) ([6a0de47](https://github.com/cccteam/ccc/commit/6a0de471cb80bb2f5c865b063c46423286cd46ba))
+
 ## [0.2.11](https://github.com/cccteam/ccc/compare/sns/v0.2.10...sns/v0.2.11) (2026-06-05)
 
 
