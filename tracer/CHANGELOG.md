@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.5](https://github.com/cccteam/ccc/compare/tracer/v0.1.4...tracer/v0.1.5) (2026-07-14)
+
+
+### Features
+
+* Add support for Client Options ([#746](https://github.com/cccteam/ccc/issues/746)) ([631c75f](https://github.com/cccteam/ccc/commit/631c75f689d4bf2b497839875676f36920f35f7d))
+
+
+### Bug Fixes
+
+* **deps:** update tracer gRPC dependency ([#761](https://github.com/cccteam/ccc/issues/761)) ([82216d1](https://github.com/cccteam/ccc/commit/82216d16e23d47fd926015932acef8c019739d03))
+
 ## [0.1.4](https://github.com/cccteam/ccc/compare/tracer/v0.1.3...tracer/v0.1.4) (2026-07-09)
 
 

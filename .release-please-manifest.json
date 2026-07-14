@@ -6,6 +6,6 @@
   "resource": "0.10.2",
   "cache": "0.1.5",
   "securehash": "0.0.12",
-  "tracer": "0.1.4",
+  "tracer": "0.1.5",
   "middleware": "0.0.6"
 }
