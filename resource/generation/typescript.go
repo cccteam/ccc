@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -264,11 +265,27 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 func (t *typescriptGenerator) generateResourceMetadata() error {
 	begin := time.Now()
 	log.Println("Starting resource metadata generation...")
+	localTypeMap := make(map[string]struct{})
+	for _, res := range t.computedResources {
+		for _, field := range res.Fields {
+			if field.IsLocalType() {
+				localTypeMap[strings.ToLower(field.TypescriptDataType())] = struct{}{}
+			}
+		}
+	}
+
+	localTypes := make([]string, 0, len(localTypeMap))
+	for localType := range localTypeMap {
+		localTypes = append(localTypes, localType)
+	}
+	slices.Sort(localTypes)
+
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, map[string]any{
 		"File":              t,
 		"Resources":         t.resources,
 		"ComputedResources": t.computedResources,
 		"ConsolidatedRoute": t.ConsolidatedRoute,
+		"LocalTypes":        localTypes,
 		"GenPrefix":         genPrefix,
 	})
 	if err != nil {
@@ -377,6 +394,8 @@ func (t *typescriptGenerator) computedFieldsTypescriptType(fields []*computedFie
 	for _, field := range fields {
 		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
 			field.typescriptType = override
+		} else if field.IsLocalType() {
+			field.typescriptType = t.pluralize(field.UnqualifiedTypeName())
 		} else {
 			field.typescriptType = stringGoType
 		}
