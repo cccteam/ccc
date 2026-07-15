@@ -135,10 +135,10 @@ func WithSpannerEmulatorVersion(version string) Option {
 	}
 }
 
-// WithPluralOverrides sets the pluralization for any resources that are not covered by the default pluralizations.
+// WithPluralOverrides sets the pluralization for any resource names that are not
+// handled correctly by the default pluralization rules.
 func WithPluralOverrides(overrides map[string]string) Option {
-	tempMap := defaultPluralOverrides()
-	maps.Copy(tempMap, overrides)
+	tempMap := maps.Clone(overrides)
 
 	return func(g any) error {
 		switch t := g.(type) {
