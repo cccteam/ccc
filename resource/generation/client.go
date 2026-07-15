@@ -371,10 +371,10 @@ func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map
 
 // pluralize returns the plural form of value: an explicit override if one is
 // configured (see WithPluralOverrides), otherwise standard English suffix rules —
-// consonant+y becomes "ies", a sibilant ending (s, x, z, ch, sh) takes "es", and
-// everything else takes "s". Names these rules get wrong belong in the project's
-// WithPluralOverrides. It is read-only and safe to call from concurrent
-// generation phases.
+// consonant+y becomes "ies", vowel+z doubles the z ("Quizzes"), a sibilant ending
+// (s, x, z, ch, sh) takes "es", and everything else takes "s". Names these rules
+// get wrong belong in the project's WithPluralOverrides. It is read-only and safe
+// to call from concurrent generation phases.
 func (c *client) pluralize(value string) string {
 	if plural, ok := c.pluralOverrides[value]; ok {
 		return plural
@@ -384,6 +384,8 @@ func (c *client) pluralize(value string) string {
 	switch {
 	case strings.HasSuffix(toLower, "y") && len(toLower) > 1 && !isVowel(toLower[len(toLower)-2]):
 		return value[:len(value)-1] + "ies"
+	case strings.HasSuffix(toLower, "z") && len(toLower) > 1 && isVowel(toLower[len(toLower)-2]):
+		return value + "zes"
 	case strings.HasSuffix(toLower, "s"), strings.HasSuffix(toLower, "x"), strings.HasSuffix(toLower, "z"),
 		strings.HasSuffix(toLower, "ch"), strings.HasSuffix(toLower, "sh"):
 		return value + "es"
