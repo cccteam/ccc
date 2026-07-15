@@ -282,9 +282,6 @@ func resolveOptions(generator any, options []option) error {
 
 	switch g := generator.(type) {
 	case *resourceGenerator:
-		if g.pluralOverrides == nil {
-			g.pluralOverrides = defaultPluralOverrides()
-		}
 		if g.spannerEmulatorVersion == "" {
 			g.spannerEmulatorVersion = "latest"
 		}
@@ -294,9 +291,6 @@ func resolveOptions(generator any, options []option) error {
 		g.receiverName = strings.ToLower(string(g.applicationName[0]))
 
 	case *typescriptGenerator:
-		if g.pluralOverrides == nil {
-			g.pluralOverrides = defaultPluralOverrides()
-		}
 		if g.typescriptOverrides == nil {
 			g.typescriptOverrides = defaultTypescriptOverrides()
 		}
@@ -309,12 +303,6 @@ func resolveOptions(generator any, options []option) error {
 	}
 
 	return nil
-}
-
-func defaultPluralOverrides() map[string]string {
-	return map[string]string{
-		"LenderBranch": "LenderBranches",
-	}
 }
 
 const (
