@@ -124,9 +124,9 @@ func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryP
 		}
 
 		return fmt.Sprintf("%s %s (%s)", field, sqlOp, strings.Join(placeholders, ", ")), params, nil
-	case "isnull":
+	case isnullStr:
 		return fmt.Sprintf("%s IS NULL", field), nil, nil
-	case "isnotnull":
+	case isnotnullStr:
 		return fmt.Sprintf("%s IS NOT NULL", field), nil, nil
 	default:
 		return "", nil, errors.Wrapf(ErrUnsupportedOperator, "operator: %s", op)
