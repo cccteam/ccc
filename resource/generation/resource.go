@@ -165,13 +165,13 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 }
 
 func (r *resourceGenerator) generateResourceInterfaces() error {
-	output, err := r.generateTemplateOutput("resourcesInterfaceTemplate", resourcesInterfaceTemplate, map[string]any{
-		"Source":                   r.resource.Dir(),
-		"Package":                  r.handler.Package(),
-		"ResourcesPackage":         r.resource.Package(),
-		"ComputedResourcesPackage": r.computed.Package(),
-		"Types":                    r.resources,
-		"ComputedResourceTypes":    r.computedResources,
+	output, err := r.generateTemplateOutput("resourcesInterfaceTemplate", resourcesInterfaceTemplate, resourceInterfacesData{
+		Source:                   r.resource.Dir(),
+		Package:                  r.handler.Package(),
+		ResourcesPackage:         r.resource.Package(),
+		ComputedResourcesPackage: r.computed.Package(),
+		Types:                    r.resources,
+		ComputedResourceTypes:    r.computedResources,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -212,10 +212,10 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 		destinationFilePath = filepath.Join(r.virtual.Dir(), fileName)
 	}
 
-	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, map[string]any{
-		"Source":   r.resource.Dir(),
-		"Package":  packageName,
-		"Resource": res,
+	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, resourceFileData{
+		Source:   r.resource.Dir(),
+		Package:  packageName,
+		Resource: res,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -247,11 +247,11 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 		return err
 	}
 
-	output, err := r.generateTemplateOutput("resourceEnumsTemplate", resourceEnumsTemplate, map[string]any{
-		"Source":     r.resource.Dir(),
-		"Package":    r.resource.Package(),
-		"NamedTypes": namedTypes,
-		"EnumMap":    enumMap,
+	output, err := r.generateTemplateOutput("resourceEnumsTemplate", resourceEnumsTemplate, resourceEnumsData{
+		Source:     r.resource.Dir(),
+		Package:    r.resource.Package(),
+		NamedTypes: namedTypes,
+		EnumMap:    enumMap,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

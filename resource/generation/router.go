@@ -149,18 +149,18 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 	}
 
 	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, map[string]any{
-		"Source":                 r.resource.Dir(),
-		"Package":                r.router.Package(),
-		"LocalPackageImports":    r.localPackageImports(),
-		"RoutesMap":              generatedRoutes,
-		"ConstResources":         constResources,
-		"Resources":              resources,
-		"ComputedResources":      computedResources,
-		"ConstComputedResources": constComputedResources,
-		"HasConsolidatedHandler": hasConsolidatedHandlers,
-		"RoutePrefix":            r.routePrefix,
-		"ConsolidatedRoute":      r.ConsolidatedRoute,
+	if err := tmpl.Execute(buf, routerFileData{
+		Source:                 r.resource.Dir(),
+		Package:                r.router.Package(),
+		LocalPackageImports:    r.localPackageImports(),
+		RoutesMap:              generatedRoutes,
+		ConstResources:         constResources,
+		Resources:              resources,
+		ComputedResources:      computedResources,
+		ConstComputedResources: constComputedResources,
+		HasConsolidatedHandler: hasConsolidatedHandlers,
+		RoutePrefix:            r.routePrefix,
+		ConsolidatedRoute:      r.ConsolidatedRoute,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}

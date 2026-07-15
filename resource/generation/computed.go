@@ -30,14 +30,14 @@ func (r *resourceGenerator) generateComputedResourceHandler(res *computedResourc
 	}
 
 	buf := bytes.NewBuffer(nil)
-	if err := tmpl.Execute(buf, map[string]any{
-		"Source":              r.computed.Dir(),
-		"LocalPackageImports": r.localPackageImports(),
-		"Resource":            res,
-		"Package":             r.handler.Package(),
-		"ComputedPackage":     r.computed.Package(),
-		"ApplicationName":     r.applicationName,
-		"ReceiverName":        r.receiverName,
+	if err := tmpl.Execute(buf, computedHandlerData{
+		Source:              r.computed.Dir(),
+		LocalPackageImports: r.localPackageImports(),
+		Resource:            res,
+		Package:             r.handler.Package(),
+		ComputedPackage:     r.computed.Package(),
+		ApplicationName:     r.applicationName,
+		ReceiverName:        r.receiverName,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}

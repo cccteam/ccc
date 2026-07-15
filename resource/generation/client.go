@@ -324,7 +324,7 @@ func (c *client) templateFuncs() map[string]any {
 	return templateFuncs
 }
 
-func (c *client) generateTemplateOutput(templateName, fileTemplate string, data map[string]any) ([]byte, error) {
+func (c *client) generateTemplateOutput(templateName, fileTemplate string, data any) ([]byte, error) {
 	tmpl, err := template.New(templateName).Funcs(c.templateFuncs()).Parse(fileTemplate)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.Parse()")

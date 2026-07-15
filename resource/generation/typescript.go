@@ -200,11 +200,11 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 		}
 	}
 
-	templateData := map[string]any{
-		"File":       t,
-		"Data":       routerData,
-		"RPCMethods": t.rpcMethods,
-		"PIIMap":     piiResourceFields,
+	templateData := tsConstantsData{
+		File:       t,
+		Data:       routerData,
+		RPCMethods: t.rpcMethods,
+		PIIMap:     piiResourceFields,
 	}
 
 	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, typescriptConstantsTemplate, templateData)
@@ -264,12 +264,12 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 func (t *typescriptGenerator) generateResourceMetadata() error {
 	begin := time.Now()
 	log.Println("Starting resource metadata generation...")
-	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, map[string]any{
-		"File":              t,
-		"Resources":         t.resources,
-		"ComputedResources": t.computedResources,
-		"ConsolidatedRoute": t.ConsolidatedRoute,
-		"GenPrefix":         genPrefix,
+	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, tsResourcesData{
+		File:              t,
+		Resources:         t.resources,
+		ComputedResources: t.computedResources,
+		ConsolidatedRoute: t.ConsolidatedRoute,
+		GenPrefix:         genPrefix,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -295,10 +295,10 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 	begin := time.Now()
 	log.Println("Starting method metadata generation...")
 
-	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, typescriptMethodsTemplate, map[string]any{
-		"File":       t,
-		"RPCMethods": t.rpcMethods,
-		"GenPrefix":  genPrefix,
+	output, err := t.generateTemplateOutput(typescriptMethodsTemplate, typescriptMethodsTemplate, tsMethodsData{
+		File:       t,
+		RPCMethods: t.rpcMethods,
+		GenPrefix:  genPrefix,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -329,10 +329,10 @@ func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) erro
 		return err
 	}
 
-	output, err := t.generateTemplateOutput("typescriptEnumsTemplate", typescriptEnumsTemplate, map[string]any{
-		"Source":     t.resource.Dir(),
-		"NamedTypes": namedTypes,
-		"EnumMap":    enumMap,
+	output, err := t.generateTemplateOutput("typescriptEnumsTemplate", typescriptEnumsTemplate, tsEnumsData{
+		Source:     t.resource.Dir(),
+		NamedTypes: namedTypes,
+		EnumMap:    enumMap,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
