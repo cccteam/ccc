@@ -1,13 +1,10 @@
 package generation
 
 import (
-	"bytes"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/go-playground/errors/v5"
@@ -18,19 +15,7 @@ func (r *resourceGenerator) generateComputedResourceHandler(res *computedResourc
 	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(res.Name())))
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
-	file, err := os.Create(destinationFilePath)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	tmpl, err := template.New(fmt.Sprintf("computedResourceHandlerTemplate:%q", res.Name())).Funcs(r.templateFuncs()).Parse(computedResourceHandlerTemplate)
-	if err != nil {
-		return errors.Wrap(err, "template.New().Parse()")
-	}
-
-	buf := bytes.NewBuffer(nil)
-	if err := tmpl.Execute(buf, computedHandlerData{
+	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("computedResourceHandlerTemplate:%q", res.Name()), computedResourceHandlerTemplate, computedHandlerData{
 		Source:              r.computed.Dir(),
 		LocalPackageImports: r.localPackageImports(),
 		Resource:            res,
@@ -39,16 +24,7 @@ func (r *resourceGenerator) generateComputedResourceHandler(res *computedResourc
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
 	}); err != nil {
-		return errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
-	if err != nil {
-		return err
-	}
-
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
-		return err
+		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
 	log.Printf("Generated RPC handler file in %s: %s", time.Since(begin), destinationFilePath)

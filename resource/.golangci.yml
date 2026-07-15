@@ -102,6 +102,10 @@ linters:
         - style
     gocyclo:
       min-complexity: 25
+    gosec:
+      config:
+        # Generated source files are written world-readable, matching os.Create defaults
+        G306: '0644'
     godox:
       keywords:
         - TODO

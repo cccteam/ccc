@@ -4,11 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"strings"
-	"sync"
-	"text/template"
 	"time"
 
 	"github.com/go-playground/errors/v5"
@@ -23,62 +20,34 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "c.generateResourceInterfaces()")
 	}
 
-	var (
-		consolidatedResources []*resourceInfo
-		wg                    sync.WaitGroup
-
-		errChan = make(chan error)
-	)
-	for _, res := range r.resources {
-		wg.Add(1)
-		go func() {
-			if err := r.generateHandlers(res); err != nil {
-				errChan <- err
-			}
-			wg.Done()
-		}()
-
-		if res.IsConsolidated {
-			consolidatedResources = append(consolidatedResources, res)
-		}
+	if err := forEachGo(r.resources, r.generateHandlers); err != nil {
+		return err
 	}
 
 	if r.genRPCMethods {
+		rpcMethods := make([]*rpcMethodInfo, 0, len(r.rpcMethods))
 		for _, rpcMethod := range r.rpcMethods {
-			if rpcMethod.SuppressHandler {
-				continue
+			if !rpcMethod.SuppressHandler {
+				rpcMethods = append(rpcMethods, rpcMethod)
 			}
+		}
 
-			wg.Go(func() {
-				if err := r.generateRPCHandler(rpcMethod); err != nil {
-					errChan <- err
-				}
-			})
+		if err := forEachGo(rpcMethods, r.generateRPCHandler); err != nil {
+			return err
 		}
 	}
 
 	if r.genComputedResources {
-		for _, res := range r.computedResources {
-			wg.Go(func() {
-				if err := r.generateComputedResourceHandler(res); err != nil {
-					errChan <- err
-				}
-			})
+		if err := forEachGo(r.computedResources, r.generateComputedResourceHandler); err != nil {
+			return err
 		}
 	}
 
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
-
-	var handlerErrors error
-	for e := range errChan {
-		handlerErrors = errors.Join(handlerErrors, e)
-	}
-
-	if handlerErrors != nil {
-		return errors.Wrap(handlerErrors, "runHandlerGeneration()")
+	var consolidatedResources []*resourceInfo
+	for _, res := range r.resources {
+		if res.IsConsolidated {
+			consolidatedResources = append(consolidatedResources, res)
+		}
 	}
 
 	if len(consolidatedResources) > 0 {
@@ -108,34 +77,13 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 		fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
 		destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
-		file, err := os.Create(destinationFilePath)
-		if err != nil {
-			return errors.Wrap(err, "os.Create()")
-		}
-		defer file.Close()
-
-		tmpl, err := template.New("handlers").Funcs(r.templateFuncs()).Parse(handlerHeaderTemplate)
-		if err != nil {
-			return errors.Wrap(err, "template.New().Parse()")
-		}
-
-		buf := bytes.NewBuffer(nil)
-		if err := tmpl.Execute(buf, handlersFileData{
+		if err := r.writeFormattedGoFile(destinationFilePath, "handlers", handlerHeaderTemplate, handlersFileData{
 			Source:              r.resource.Dir(),
 			LocalPackageImports: r.localPackageImports(),
 			Handlers:            string(bytes.Join(handlerData, []byte("\n\n"))),
 			Package:             r.handler.Package(),
 		}); err != nil {
-			return errors.Wrap(err, "tmpl.Execute()")
-		}
-
-		formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
-		if err != nil {
-			return err
-		}
-
-		if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
-			return err
+			return errors.Wrap(err, "writeFormattedGoFile()")
 		}
 		log.Printf("Generated handler file in %s: %s", time.Since(begin), destinationFilePath)
 	}
@@ -148,19 +96,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 	fileName := generatedGoFileName(consolidatedHandlerOutputName)
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
-	file, err := os.Create(destinationFilePath)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	tmpl, err := template.New("consolidatedPatchHandler").Funcs(r.templateFuncs()).Parse(consolidatedPatchTemplate)
-	if err != nil {
-		return errors.Wrap(err, "template.New().Parse()")
-	}
-
-	buf := bytes.NewBuffer(nil)
-	if err := tmpl.Execute(buf, consolidatedPatchData{
+	if err := r.writeFormattedGoFile(destinationFilePath, "consolidatedPatchHandler", consolidatedPatchTemplate, consolidatedPatchData{
 		Source:              r.resource.Dir(),
 		LocalPackageImports: r.localPackageImports(),
 		Resources:           resources,
@@ -169,16 +105,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
 	}); err != nil {
-		return errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
-	if err != nil {
-		return err
-	}
-
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
-		return err
+		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
 	log.Printf("Generated consolidated handler file in %s: %s", time.Since(begin), destinationFilePath)
@@ -187,23 +114,18 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 }
 
 func (r *resourceGenerator) handlerContent(handler HandlerType, res *resourceInfo) ([]byte, error) {
-	tmpl, err := template.New("handler").Funcs(r.templateFuncs()).Parse(handler.template())
-	if err != nil {
-		return nil, errors.Wrap(err, "template.New().Parse()")
-	}
-
-	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, handlerContentData{
+	output, err := r.generateTemplateOutput("handler", handler.template(), handlerContentData{
 		ResourcePackage:         r.resource.Package(),
 		Resource:                res,
 		VirtualResourcesPackage: r.virtual.Package(),
 		ApplicationName:         r.applicationName,
 		ReceiverName:            r.receiverName,
-	}); err != nil {
-		return nil, errors.Wrap(err, "tmpl.Execute()")
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	return buf.Bytes(), nil
+	return output, nil
 }
 
 func (c *client) handlerName(structName string, handlerType HandlerType) string {

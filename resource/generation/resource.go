@@ -3,7 +3,6 @@ package generation
 import (
 	"context"
 	"log"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -165,33 +164,17 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 }
 
 func (r *resourceGenerator) generateResourceInterfaces() error {
-	output, err := r.generateTemplateOutput("resourcesInterfaceTemplate", resourcesInterfaceTemplate, resourceInterfacesData{
+	destinationFile := filepath.Join(r.handler.Dir(), generatedGoFileName(resourceInterfaceOutputName))
+
+	if err := r.writeFormattedGoFile(destinationFile, "resourcesInterfaceTemplate", resourcesInterfaceTemplate, resourceInterfacesData{
 		Source:                   r.resource.Dir(),
 		Package:                  r.handler.Package(),
 		ResourcesPackage:         r.resource.Package(),
 		ComputedResourcesPackage: r.computed.Package(),
 		Types:                    r.resources,
 		ComputedResourceTypes:    r.computedResources,
-	})
-	if err != nil {
-		return errors.Wrap(err, "generateTemplateOutput()")
-	}
-
-	destinationFile := filepath.Join(r.handler.Dir(), generatedGoFileName(resourceInterfaceOutputName))
-
-	file, err := os.Create(destinationFile)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	output, err = r.GoFormatBytes(file.Name(), output)
-	if err != nil {
-		return err
-	}
-
-	if err := r.WriteBytesToFile(file, output); err != nil {
-		return err
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
 	return nil
@@ -212,28 +195,12 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 		destinationFilePath = filepath.Join(r.virtual.Dir(), fileName)
 	}
 
-	output, err := r.generateTemplateOutput("resourceFileTemplate", resourceFileTemplate, resourceFileData{
+	if err := r.writeFormattedGoFile(destinationFilePath, "resourceFileTemplate", resourceFileTemplate, resourceFileData{
 		Source:   r.resource.Dir(),
 		Package:  packageName,
 		Resource: res,
-	})
-	if err != nil {
-		return errors.Wrap(err, "generateTemplateOutput()")
-	}
-
-	file, err := os.Create(destinationFilePath)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	output, err = r.GoFormatBytes(file.Name(), output)
-	if err != nil {
-		return err
-	}
-
-	if err := r.WriteBytesToFile(file, output); err != nil {
-		return err
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
 	log.Printf("Generated resource file in %s: %v\n", time.Since(begin), destinationFilePath)
@@ -247,29 +214,15 @@ func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error 
 		return err
 	}
 
-	output, err := r.generateTemplateOutput("resourceEnumsTemplate", resourceEnumsTemplate, resourceEnumsData{
+	destinationFile := filepath.Join(r.resource.Dir(), generatedGoFileName(resourceEnumsFileName))
+
+	if err := r.writeFormattedGoFile(destinationFile, "resourceEnumsTemplate", resourceEnumsTemplate, resourceEnumsData{
 		Source:     r.resource.Dir(),
 		Package:    r.resource.Package(),
 		NamedTypes: namedTypes,
 		EnumMap:    enumMap,
-	})
-	if err != nil {
-		return errors.Wrap(err, "generateTemplateOutput()")
-	}
-
-	file, err := os.Create(filepath.Join(r.resource.Dir(), generatedGoFileName(resourceEnumsFileName)))
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	output, err = r.GoFormatBytes(file.Name(), output)
-	if err != nil {
-		return err
-	}
-
-	if err := r.WriteBytesToFile(file, output); err != nil {
-		return err
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
 	return nil
