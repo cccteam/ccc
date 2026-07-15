@@ -412,7 +412,7 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 	}
 
 	switch condition.Operator {
-	case "isnull", "isnotnull":
+	case isnullStr, isnotnullStr:
 		if len(parts) > 2 && strings.TrimSpace(parts[2]) != "" {
 			return nil, httpio.NewBadRequestMessagef("operator '%s' does not take a value, but got '%s' in condition '%s'", condition.Operator, parts[2], p.current.Value)
 		}

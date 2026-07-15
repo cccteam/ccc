@@ -120,11 +120,11 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 		}
 
 		buf := bytes.NewBuffer(nil)
-		if err := tmpl.Execute(buf, map[string]any{
-			"Source":              r.resource.Dir(),
-			"LocalPackageImports": r.localPackageImports(),
-			"Handlers":            string(bytes.Join(handlerData, []byte("\n\n"))),
-			"Package":             r.handler.Package(),
+		if err := tmpl.Execute(buf, handlersFileData{
+			Source:              r.resource.Dir(),
+			LocalPackageImports: r.localPackageImports(),
+			Handlers:            string(bytes.Join(handlerData, []byte("\n\n"))),
+			Package:             r.handler.Package(),
 		}); err != nil {
 			return errors.Wrap(err, "tmpl.Execute()")
 		}
@@ -160,14 +160,14 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 	}
 
 	buf := bytes.NewBuffer(nil)
-	if err := tmpl.Execute(buf, map[string]any{
-		"Source":              r.resource.Dir(),
-		"LocalPackageImports": r.localPackageImports(),
-		"Resources":           resources,
-		"Package":             r.handler.Package(),
-		"ResourcePackage":     r.resource.Package(),
-		"ApplicationName":     r.applicationName,
-		"ReceiverName":        r.receiverName,
+	if err := tmpl.Execute(buf, consolidatedPatchData{
+		Source:              r.resource.Dir(),
+		LocalPackageImports: r.localPackageImports(),
+		Resources:           resources,
+		Package:             r.handler.Package(),
+		ResourcePackage:     r.resource.Package(),
+		ApplicationName:     r.applicationName,
+		ReceiverName:        r.receiverName,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
@@ -193,12 +193,12 @@ func (r *resourceGenerator) handlerContent(handler HandlerType, res *resourceInf
 	}
 
 	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, map[string]any{
-		"ResourcePackage":         r.resource.Package(),
-		"Resource":                res,
-		"VirtualResourcesPackage": r.virtual.Package(),
-		"ApplicationName":         r.applicationName,
-		"ReceiverName":            r.receiverName,
+	if err := tmpl.Execute(buf, handlerContentData{
+		ResourcePackage:         r.resource.Package(),
+		Resource:                res,
+		VirtualResourcesPackage: r.virtual.Package(),
+		ApplicationName:         r.applicationName,
+		ReceiverName:            r.receiverName,
 	}); err != nil {
 		return nil, errors.Wrap(err, "tmpl.Execute()")
 	}

@@ -167,7 +167,7 @@ func (i Ident[T]) IsNull() QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{
 			Field:    i.column,
-			Operator: "isnull",
+			Operator: isnullStr,
 			IsNullOp: true,
 		},
 	}
@@ -191,7 +191,7 @@ func (i Ident[T]) IsNotNull() QueryClause {
 	conditionNode := &ConditionNode{
 		Condition: Condition{
 			Field:    i.column,
-			Operator: "isnotnull",
+			Operator: isnotnullStr,
 			IsNullOp: true,
 		},
 	}

@@ -49,10 +49,10 @@ func (r *resourceGenerator) generateRPCMethod(rpc *rpcMethodInfo) error {
 	}
 
 	buf := bytes.NewBuffer(nil)
-	if err := tmpl.Execute(buf, map[string]any{
-		"Source":    r.rpc.Dir(),
-		"Package":   r.rpc.Package(),
-		"RPCMethod": rpc,
+	if err := tmpl.Execute(buf, rpcFileData{
+		Source:    r.rpc.Dir(),
+		Package:   r.rpc.Package(),
+		RPCMethod: rpc,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
@@ -86,13 +86,13 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 	}
 
 	buf := bytes.NewBuffer(nil)
-	if err := tmpl.Execute(buf, map[string]any{
-		"Source":              r.rpc.Dir(),
-		"LocalPackageImports": r.localPackageImports(),
-		"RPCMethod":           rpcMethod,
-		"Package":             r.handler.Package(),
-		"ApplicationName":     r.applicationName,
-		"ReceiverName":        r.receiverName,
+	if err := tmpl.Execute(buf, rpcHandlerData{
+		Source:              r.rpc.Dir(),
+		LocalPackageImports: r.localPackageImports(),
+		RPCMethod:           rpcMethod,
+		Package:             r.handler.Package(),
+		ApplicationName:     r.applicationName,
+		ReceiverName:        r.receiverName,
 	}); err != nil {
 		return errors.Wrap(err, "tmpl.Execute()")
 	}
@@ -112,10 +112,10 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 }
 
 func (r *resourceGenerator) generateRPCInterfaces() error {
-	output, err := r.generateTemplateOutput("rpcInterfacesTemplate", rpcInterfacesTemplate, map[string]any{
-		"Source":  r.rpc.Dir(),
-		"Package": r.rpc.Package(),
-		"Types":   r.rpcMethods,
+	output, err := r.generateTemplateOutput("rpcInterfacesTemplate", rpcInterfacesTemplate, rpcInterfacesData{
+		Source:  r.rpc.Dir(),
+		Package: r.rpc.Package(),
+		Types:   r.rpcMethods,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

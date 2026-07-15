@@ -215,7 +215,7 @@ func (p *PatchSet[Resource]) FromStruct(input any, skip ...string) error {
 		valToSet := fieldValue.Interface()
 
 		assignable := fieldValue.Type().AssignableTo(resourceField.Type)
-		if !assignable && fieldValue.Type().Kind() == reflect.Ptr {
+		if !assignable && fieldValue.Type().Kind() == reflect.Pointer {
 			if fieldValue.Type().Elem().AssignableTo(resourceField.Type) {
 				assignable = true
 				if !fieldValue.IsNil() {

@@ -272,14 +272,14 @@ func (r rpcField) JSONTag() string {
 
 func (r *rpcField) TypescriptDataType() string {
 	switch r.typescriptType {
-	case "uuid":
+	case uuidTSType:
 		return stringGoType
-	case "uuid[]":
+	case uuidTSType + "[]":
 		return stringGoType + "[]"
-	case "civilDate":
-		return "Date"
-	case "civilDate[]":
-		return "Date[]"
+	case civilDateTSType:
+		return dateTSType
+	case civilDateTSType + "[]":
+		return dateTSType + "[]"
 	default:
 		return r.typescriptType
 	}
@@ -382,11 +382,11 @@ func (c *computedField) PIITag() string {
 }
 
 func (c *computedField) TypescriptDataType() string {
-	if c.typescriptType == "uuid" {
+	if c.typescriptType == uuidTSType {
 		return stringGoType
 	}
-	if c.typescriptType == "civilDate" {
-		return "Date"
+	if c.typescriptType == civilDateTSType {
+		return dateTSType
 	}
 
 	return c.typescriptType
@@ -600,11 +600,11 @@ func (f *resourceField) UnwrappedNullType() *string {
 }
 
 func (f *resourceField) TypescriptDataType() string {
-	if f.typescriptType == "uuid" {
+	if f.typescriptType == uuidTSType {
 		return stringGoType
 	}
-	if f.typescriptType == "civilDate" {
-		return "Date"
+	if f.typescriptType == civilDateTSType {
+		return dateTSType
 	}
 	if f.IsNullable && f.typescriptType == booleanStr {
 		return "NullBoolean"

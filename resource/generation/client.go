@@ -324,7 +324,7 @@ func (c *client) templateFuncs() map[string]any {
 	return templateFuncs
 }
 
-func (c *client) generateTemplateOutput(templateName, fileTemplate string, data map[string]any) ([]byte, error) {
+func (c *client) generateTemplateOutput(templateName, fileTemplate string, data any) ([]byte, error) {
 	tmpl, err := template.New(templateName).Funcs(c.templateFuncs()).Parse(fileTemplate)
 	if err != nil {
 		return nil, errors.Wrap(err, "template.Parse()")
@@ -369,27 +369,38 @@ func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map
 	return enumMap, nil
 }
 
+// pluralize returns the plural form of value: an explicit override if one is
+// configured (see WithPluralOverrides), otherwise standard English suffix rules —
+// consonant+y becomes "ies", vowel+z doubles the z ("Quizzes"), a sibilant ending
+// (s, x, z, ch, sh) takes "es", and everything else takes "s". Names these rules
+// get wrong belong in the project's WithPluralOverrides. It is read-only and safe
+// to call from concurrent generation phases.
 func (c *client) pluralize(value string) string {
 	if plural, ok := c.pluralOverrides[value]; ok {
 		return plural
 	}
 
-	var pluralValue string
 	toLower := strings.ToLower(value)
 	switch {
-	case strings.HasSuffix(toLower, "y"):
-		pluralValue = value[:len(value)-1] + "ies"
-	case strings.HasSuffix(toLower, "s"):
-		pluralValue = value + "es"
+	case strings.HasSuffix(toLower, "y") && len(toLower) > 1 && !isVowel(toLower[len(toLower)-2]):
+		return value[:len(value)-1] + "ies"
+	case strings.HasSuffix(toLower, "z") && len(toLower) > 1 && isVowel(toLower[len(toLower)-2]):
+		return value + "zes"
+	case strings.HasSuffix(toLower, "s"), strings.HasSuffix(toLower, "x"), strings.HasSuffix(toLower, "z"),
+		strings.HasSuffix(toLower, "ch"), strings.HasSuffix(toLower, "sh"):
+		return value + "es"
 	default:
-		pluralValue = value + "s"
+		return value + "s"
 	}
+}
 
-	c.pluralOverrides[value] = pluralValue
-	// This should prevent any accidental double-pluralizations
-	c.pluralOverrides[pluralValue] = pluralValue
-
-	return pluralValue
+func isVowel(b byte) bool {
+	switch b {
+	case 'a', 'e', 'i', 'o', 'u':
+		return true
+	default:
+		return false
+	}
 }
 
 func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) error {

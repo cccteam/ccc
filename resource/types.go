@@ -18,6 +18,9 @@ const (
 	lteStr   = "lte"
 	inStr    = "in"
 	notinStr = "notin"
+
+	isnullStr    = "isnull"
+	isnotnullStr = "isnotnull"
 )
 
 var _ PatchSetMetadata = (*DataChangeEvent)(nil)

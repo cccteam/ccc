@@ -135,10 +135,10 @@ func WithSpannerEmulatorVersion(version string) Option {
 	}
 }
 
-// WithPluralOverrides sets the pluralization for any resources that are not covered by the default pluralizations.
+// WithPluralOverrides sets the pluralization for any resource names that are not
+// handled correctly by the default pluralization rules.
 func WithPluralOverrides(overrides map[string]string) Option {
-	tempMap := defaultPluralOverrides()
-	maps.Copy(tempMap, overrides)
+	tempMap := maps.Clone(overrides)
 
 	return func(g any) error {
 		switch t := g.(type) {
@@ -282,9 +282,6 @@ func resolveOptions(generator any, options []option) error {
 
 	switch g := generator.(type) {
 	case *resourceGenerator:
-		if g.pluralOverrides == nil {
-			g.pluralOverrides = defaultPluralOverrides()
-		}
 		if g.spannerEmulatorVersion == "" {
 			g.spannerEmulatorVersion = "latest"
 		}
@@ -294,9 +291,6 @@ func resolveOptions(generator any, options []option) error {
 		g.receiverName = strings.ToLower(string(g.applicationName[0]))
 
 	case *typescriptGenerator:
-		if g.pluralOverrides == nil {
-			g.pluralOverrides = defaultPluralOverrides()
-		}
 		if g.typescriptOverrides == nil {
 			g.typescriptOverrides = defaultTypescriptOverrides()
 		}
@@ -309,12 +303,6 @@ func resolveOptions(generator any, options []option) error {
 	}
 
 	return nil
-}
-
-func defaultPluralOverrides() map[string]string {
-	return map[string]string{
-		"LenderBranch": "LenderBranches",
-	}
 }
 
 const (
@@ -337,32 +325,42 @@ const (
 	complex128GoType = "complex128"
 )
 
+// TypeScript type names emitted by the generator.
+const (
+	stringTSType    = "string"
+	linkTSType      = "Link"
+	numberTSType    = "number"
+	uuidTSType      = "uuid"
+	dateTSType      = "Date"
+	civilDateTSType = "civilDate"
+)
+
 func defaultTypescriptOverrides() map[string]string {
 	return map[string]string{
-		reflect.TypeOf(ccc.UUID{}).String():            "uuid",
-		reflect.TypeOf(ccc.NullUUID{}).String():        "uuid",
-		reflect.TypeOf(resource.Link{}).String():       "Link",
-		reflect.TypeOf(resource.NullLink{}).String():   "Link",
-		reflect.TypeOf(decimal.Decimal{}).String():     "number",
-		reflect.TypeOf(decimal.NullDecimal{}).String(): "number",
-		reflect.TypeOf(time.Time{}).String():           "Date",
-		reflect.TypeOf(civil.Date{}).String():          "civilDate",
-		boolGoType:                                     "boolean",
-		stringGoType:                                   "string",
-		intGoType:                                      "number",
-		int8GoType:                                     "number",
-		int16GoType:                                    "number",
-		int32GoType:                                    "number",
-		int64GoType:                                    "number",
-		uintGoType:                                     "number",
-		uint8GoType:                                    "number",
-		uint16GoType:                                   "number",
-		uint32GoType:                                   "number",
-		uint64GoType:                                   "number",
-		uintptrGoType:                                  "number",
-		float32GoType:                                  "number",
-		float64GoType:                                  "number",
-		complex64GoType:                                "number",
-		complex128GoType:                               "number",
+		reflect.TypeOf(ccc.UUID{}).String():            uuidTSType,
+		reflect.TypeOf(ccc.NullUUID{}).String():        uuidTSType,
+		reflect.TypeOf(resource.Link{}).String():       linkTSType,
+		reflect.TypeOf(resource.NullLink{}).String():   linkTSType,
+		reflect.TypeOf(decimal.Decimal{}).String():     numberTSType,
+		reflect.TypeOf(decimal.NullDecimal{}).String(): numberTSType,
+		reflect.TypeOf(time.Time{}).String():           dateTSType,
+		reflect.TypeOf(civil.Date{}).String():          civilDateTSType,
+		boolGoType:                                     booleanStr,
+		stringGoType:                                   stringTSType,
+		intGoType:                                      numberTSType,
+		int8GoType:                                     numberTSType,
+		int16GoType:                                    numberTSType,
+		int32GoType:                                    numberTSType,
+		int64GoType:                                    numberTSType,
+		uintGoType:                                     numberTSType,
+		uint8GoType:                                    numberTSType,
+		uint16GoType:                                   numberTSType,
+		uint32GoType:                                   numberTSType,
+		uint64GoType:                                   numberTSType,
+		uintptrGoType:                                  numberTSType,
+		float32GoType:                                  numberTSType,
+		float64GoType:                                  numberTSType,
+		complex64GoType:                                numberTSType,
+		complex128GoType:                               numberTSType,
 	}
 }

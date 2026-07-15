@@ -1,10 +1,72 @@
 package generation
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 )
+
+func Test_client_pluralize(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		value     string
+		overrides map[string]string
+		want      string
+	}{
+		{name: "default rule", value: "Book", want: "Books"},
+		{name: "consonant y suffix", value: "City", want: "Cities"},
+		{name: "vowel y suffix", value: "Day", want: "Days"},
+		{name: "s suffix", value: "Class", want: "Classes"},
+		{name: "x suffix", value: "Box", want: "Boxes"},
+		{name: "vowel z suffix doubles", value: "Quiz", want: "Quizzes"},
+		{name: "consonant z suffix", value: "Waltz", want: "Waltzes"},
+		{name: "zz suffix", value: "Buzz", want: "Buzzes"},
+		{name: "ch suffix", value: "LenderBranch", want: "LenderBranches"},
+		{name: "sh suffix", value: "Flash", want: "Flashes"},
+		{name: "override", value: "Person", overrides: map[string]string{"Person": "People"}, want: "People"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{pluralOverrides: tt.overrides}
+
+			if got := c.pluralize(tt.value); got != tt.want {
+				t.Errorf("pluralize(%q) = %q, want %q", tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
+// pluralize must stay read-only so concurrent generation phases can call it
+// without synchronization. Run with -race; this fails if cache writes are ever
+// reintroduced.
+func Test_client_pluralize_concurrent(t *testing.T) {
+	t.Parallel()
+
+	c := &client{pluralOverrides: map[string]string{"Person": "People"}}
+
+	values := []string{"Book", "City", "Class", "LenderBranch", "Day", "Status", "Person"}
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for _, v := range values {
+				c.pluralize(v)
+			}
+		})
+	}
+	wg.Wait()
+
+	for _, v := range values {
+		if got, want := c.pluralize(v), c.pluralize(v); got != want {
+			t.Errorf("pluralize(%q) unstable: %q vs %q", v, got, want)
+		}
+	}
+}
 
 func Test_formatInterfaceTypes(t *testing.T) {
 	t.Parallel()
