@@ -1273,47 +1273,15 @@ func generatedRouteParameters() []string {
 	return keys
 }
 
-{{ $routePrefix := .RoutePrefix -}}
 func generatedRouterTests() []*generatedRouterTest {
 	routerTests := []*generatedRouterTest {
-		{{- range $resource := .Resources }}
-		{{- range $route := (index $.RoutesMap $resource.Name) }}
+		{{- range $route := .RouterTestRoutes }}
+		{{- range $method := $route.TestMethods }}
 		{
-			url: "{{ DetermineTestURL $resource $routePrefix $route }}", method: {{ MethodToHttpConst $route.Method }},
+			url: "{{ $route.TestURL }}", method: {{ $method }},
 			handlerFunc: "{{ $route.HandlerFunc }}",
-			parameters: {{ DetermineParameters $resource $route }},
+			parameters: map[string]string{ {{- range $param := $route.TestParams }}"{{ $param.Key }}": "{{ $param.Value }}", {{ end -}} },
 		},
-		{{- if $route.SharedHandler }}
-		{
-			url: "{{ DetermineTestURL $resource $routePrefix $route }}", method: http.MethodPost,
-			handlerFunc: "{{ $route.HandlerFunc }}",
-			parameters: {{ DetermineParameters $resource $route }},
-		},
-		{{- end }}
-		{{- end }}
-		{{- end }}
-		{{- range $resource := .ComputedResources }}
-		{{- range $route := (index $.RoutesMap $resource.Name) }}
-		{
-			url: "/{{ $routePrefix }}/{{ Kebab (Pluralize $resource.Name) }}{{ if eq $route.HandlerType "readHandler" }}{{ range $_, $field := $resource.PrimaryKeys }}/test{{ Pascal $resource.Name }}{{ $field.Name }}{{ end }}{{ end }}", method: {{ MethodToHttpConst $route.Method }},
-			handlerFunc: "{{ $route.HandlerFunc }}",
-			parameters: map[string]string{
-			{{- range $_, $field := $resource.PrimaryKeys }}{{ if eq $route.HandlerType "readHandler" -}}
-			"{{ GoCamel $resource.Name }}{{ $field.Name }}": "test{{ Pascal $resource.Name }}{{ $field.Name }}",
-			{{- end }}{{ end -}}
-			},
-		},
-		{{- if $route.SharedHandler }}
-		{
-			url: "/{{ $routePrefix }}/{{ Kebab (Pluralize $resource.Name) }}{{ if eq $route.HandlerType "readHandler" }}{{ range $_, $field := $resource.PrimaryKeys }}/test{{ Pascal $resource.Name }}{{ $field.Name }}{{ end }}{{ end }}", method: http.MethodPost,
-			handlerFunc: "{{ $route.HandlerFunc }}",
-			parameters: map[string]string{
-			{{- range $_, $field := $resource.PrimaryKeys }}{{ if eq $route.HandlerType "readHandler" -}}
-			"{{ GoCamel $resource.Name }}{{ $field.Name }}": "test{{ Pascal $resource.Name }}{{ $field.Name }}",
-			{{- end }}{{ end -}}
-			},
-		},
-		{{- end }}
 		{{- end }}
 		{{- end }}
 		{{- if .HasConsolidatedHandler }}

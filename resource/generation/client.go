@@ -255,61 +255,6 @@ func (c *client) templateFuncs() map[string]any {
 		"Add":                          func(a, b int) int { return a + b },
 		"FormatResourceInterfaceTypes": c.formatResourceInterfaceTypes,
 		"FormatRPCInterfaceTypes":      formatRPCInterfaceTypes,
-		"DetermineTestURL": func(resource resourceInfo, routePrefix string, route generatedRoute) string {
-			if !resource.IsVirtual &&
-				strings.EqualFold(route.Method, "get") &&
-				(strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
-				if resource.HasCompoundPrimaryKey() {
-					url := fmt.Sprintf("/%s/%s", routePrefix, caser.ToKebab(c.pluralize(resource.Name())))
-
-					for _, key := range resource.PrimaryKeys() {
-						url += fmt.Sprintf("/test%s%s", caser.ToPascal(resource.Name()), key.Name())
-					}
-
-					return url
-				}
-
-				return fmt.Sprintf("/%s/%s/%s",
-					routePrefix,
-					caser.ToKebab(c.pluralize(resource.Name())),
-					strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(resource.Name()))),
-				)
-			}
-
-			return route.Path
-		},
-		"DetermineParameters": func(resource resourceInfo, route generatedRoute) string {
-			if !resource.IsVirtual &&
-				strings.EqualFold(route.Method, "get") &&
-				(strings.Contains(route.Path, fmt.Sprintf("{%sID}", strcase.ToGoCamel(resource.Name()))) || strings.Contains(route.Path, resource.PrimaryKey().Name())) {
-				if resource.HasCompoundPrimaryKey() {
-					params := "map[string]string{"
-					for _, key := range resource.PrimaryKeys() {
-						params += fmt.Sprintf(`"%[1]s%[3]s": "test%[2]s%[3]s", `, strcase.ToGoCamel(resource.Name()), caser.ToPascal(resource.Name()), key.Name())
-					}
-
-					params += "}"
-
-					return params
-				}
-
-				return fmt.Sprintf(`map[string]string{%q: %q}`, strcase.ToGoCamel(resource.Name()+"ID"), strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(resource.Name()))))
-			}
-
-			return "map[string]string{}"
-		},
-		"MethodToHttpConst": func(method string) (string, error) {
-			switch method {
-			case "GET":
-				return "http.MethodGet", nil
-			case "POST":
-				return "http.MethodPost", nil
-			case "PATCH":
-				return "http.MethodPatch", nil
-			default:
-				return "", errors.Newf("MethodToHttpConst: unknown method: %s", method)
-			}
-		},
 		"PrivateType": func(s string) string {
 			r, runeWidth := utf8.DecodeRuneInString(s)
 			lowerFirst := strings.ToLower(string(r))

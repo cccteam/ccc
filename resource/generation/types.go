@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"iter"
+	"net/http"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -129,12 +130,18 @@ func (h HandlerType) template() string {
 func (h HandlerType) method() string {
 	switch h {
 	case ReadHandler, ListHandler:
-		return "GET"
+		return http.MethodGet
 	case PatchHandler:
-		return "PATCH"
+		return http.MethodPatch
 	default:
 		panic(fmt.Sprintf("Method(): unknown handler type: %s", h))
 	}
+}
+
+// httpMethodConstant returns the net/http constant name for an http method
+// (e.g. "GET" -> "http.MethodGet").
+func httpMethodConstant(method string) string {
+	return "http.Method" + strcase.ToPascal(method)
 }
 
 type patchType string
@@ -216,11 +223,46 @@ type columnMeta struct {
 }
 
 type generatedRoute struct {
-	Method        string
-	Path          string
-	HandlerFunc   string
-	SharedHandler bool
-	HandlerType   HandlerType
+	Method      string
+	Path        string
+	HandlerFunc string
+	HandlerType HandlerType
+	// TestURL is Path with each {param} placeholder replaced by its routeTestParam value.
+	TestURL    string
+	TestParams []routeTestParam
+}
+
+// SharedHandler reports whether the route's handler is additionally registered
+// for POST requests at the same path (read and list handlers accept POST bodies).
+func (g *generatedRoute) SharedHandler() bool {
+	return g.HandlerType == ReadHandler || g.HandlerType == ListHandler
+}
+
+// appendParamsToPaths appends each test parameter to the route's paths: the
+// {param} placeholder onto Path and the test value onto TestURL.
+func (g *generatedRoute) appendParamsToPaths() {
+	for _, p := range g.TestParams {
+		g.Path += fmt.Sprintf("/{%s}", p.Key)
+		g.TestURL += "/" + p.Value
+	}
+}
+
+// TestMethods returns the net/http method constant names the generated router
+// tests exercise for this route.
+func (g *generatedRoute) TestMethods() []string {
+	methods := []string{httpMethodConstant(g.Method)}
+	if g.SharedHandler() {
+		methods = append(methods, httpMethodConstant(http.MethodPost))
+	}
+
+	return methods
+}
+
+// routeTestParam is a single route parameter and the value the generated router
+// tests pass for it. Key matches the {param} placeholder in the route path.
+type routeTestParam struct {
+	Key   string
+	Value string
 }
 
 type rpcMethodInfo struct {
