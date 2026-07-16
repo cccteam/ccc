@@ -1,13 +1,10 @@
 package generation
 
 import (
-	"bytes"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/go-playground/errors/v5"
@@ -37,33 +34,12 @@ func (r *resourceGenerator) generateRPCMethod(rpc *rpcMethodInfo) error {
 	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(rpc.Name())))
 	destinationFilePath := filepath.Join(r.rpc.Dir(), fileName)
 
-	file, err := os.Create(destinationFilePath)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	tmpl, err := template.New(fmt.Sprintf("rpcFileTemplate:%q", rpc.Name())).Funcs(r.templateFuncs()).Parse(rpcFileTemplate)
-	if err != nil {
-		return errors.Wrap(err, "template.New().Parse()")
-	}
-
-	buf := bytes.NewBuffer(nil)
-	if err := tmpl.Execute(buf, rpcFileData{
+	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rpcFileTemplate:%q", rpc.Name()), rpcFileTemplate, rpcFileData{
 		Source:    r.rpc.Dir(),
 		Package:   r.rpc.Package(),
 		RPCMethod: rpc,
 	}); err != nil {
-		return errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
-	if err != nil {
-		return err
-	}
-
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
-		return err
+		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
 	return nil
@@ -74,19 +50,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(rpcMethod.Name())))
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
-	file, err := os.Create(destinationFilePath)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	tmpl, err := template.New(fmt.Sprintf("rcpHandlerTemplate:%q", rpcMethod.Name())).Funcs(r.templateFuncs()).Parse(rpcHandlerTemplate)
-	if err != nil {
-		return errors.Wrap(err, "template.New().Parse()")
-	}
-
-	buf := bytes.NewBuffer(nil)
-	if err := tmpl.Execute(buf, rpcHandlerData{
+	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rcpHandlerTemplate:%q", rpcMethod.Name()), rpcHandlerTemplate, rpcHandlerData{
 		Source:              r.rpc.Dir(),
 		LocalPackageImports: r.localPackageImports(),
 		RPCMethod:           rpcMethod,
@@ -94,16 +58,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
 	}); err != nil {
-		return errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
-	if err != nil {
-		return err
-	}
-
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
-		return err
+		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
 	log.Printf("Generated RPC handler file in %s: %s", time.Since(begin), destinationFilePath)
@@ -112,30 +67,14 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 }
 
 func (r *resourceGenerator) generateRPCInterfaces() error {
-	output, err := r.generateTemplateOutput("rpcInterfacesTemplate", rpcInterfacesTemplate, rpcInterfacesData{
+	destinationFile := filepath.Join(".", r.rpc.Dir(), generatedGoFileName("rpc_iface"))
+
+	if err := r.writeFormattedGoFile(destinationFile, "rpcInterfacesTemplate", rpcInterfacesTemplate, rpcInterfacesData{
 		Source:  r.rpc.Dir(),
 		Package: r.rpc.Package(),
 		Types:   r.rpcMethods,
-	})
-	if err != nil {
-		return errors.Wrap(err, "generateTemplateOutput()")
-	}
-
-	destinationFile := filepath.Join(".", r.rpc.Dir(), generatedGoFileName("rpc_iface"))
-
-	file, err := os.Create(destinationFile)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	output, err = r.GoFormatBytes(file.Name(), output)
-	if err != nil {
-		return err
-	}
-
-	if err := r.WriteBytesToFile(file, output); err != nil {
-		return err
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
 	return nil

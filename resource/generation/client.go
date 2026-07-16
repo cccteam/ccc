@@ -338,6 +338,27 @@ func (c *client) generateTemplateOutput(templateName, fileTemplate string, data 
 	return buf.Bytes(), nil
 }
 
+// writeFormattedGoFile renders a Go file template and formats the result fully in memory,
+// only writing destinationPath once the content is known good, so a template or format
+// error cannot leave behind an empty or partial generated file.
+func (c *client) writeFormattedGoFile(destinationPath, templateName, fileTemplate string, data any) error {
+	output, err := c.generateTemplateOutput(templateName, fileTemplate, data)
+	if err != nil {
+		return errors.Wrap(err, "generateTemplateOutput()")
+	}
+
+	formattedOutput, err := c.GoFormatBytes(destinationPath, output)
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(destinationPath, formattedOutput, 0o644); err != nil {
+		return errors.Wrapf(err, "os.WriteFile(): file: %s", destinationPath)
+	}
+
+	return nil
+}
+
 func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]*enumData, error) {
 	enumMap := make(map[string][]*enumData)
 	for _, namedType := range namedTypes {

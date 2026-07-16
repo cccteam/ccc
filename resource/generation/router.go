@@ -1,13 +1,10 @@
 package generation
 
 import (
-	"bytes"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"slices"
-	"text/template"
 	"time"
 
 	"github.com/ettle/strcase"
@@ -137,19 +134,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 }
 
 func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, resources, constResources []*resourceInfo, computedResources, constComputedResources []*computedResource, generatedRoutes map[string][]generatedRoute, hasConsolidatedHandlers bool) error {
-	file, err := os.Create(destinationFile)
-	if err != nil {
-		return errors.Wrap(err, "os.Create()")
-	}
-	defer file.Close()
-
-	tmpl, err := template.New(filepath.Base(destinationFile)).Funcs(r.templateFuncs()).Parse(templateContent)
-	if err != nil {
-		return errors.Wrap(err, "template.New().Parse()")
-	}
-
-	buf := bytes.NewBuffer([]byte{})
-	if err := tmpl.Execute(buf, routerFileData{
+	if err := r.writeFormattedGoFile(destinationFile, filepath.Base(destinationFile), templateContent, routerFileData{
 		Source:                 r.resource.Dir(),
 		Package:                r.router.Package(),
 		LocalPackageImports:    r.localPackageImports(),
@@ -162,16 +147,7 @@ func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateCo
 		RoutePrefix:            r.routePrefix,
 		ConsolidatedRoute:      r.ConsolidatedRoute,
 	}); err != nil {
-		return errors.Wrap(err, "tmpl.Execute()")
-	}
-
-	formattedBytes, err := r.GoFormatBytes(file.Name(), buf.Bytes())
-	if err != nil {
-		return err
-	}
-
-	if err := r.WriteBytesToFile(file, formattedBytes); err != nil {
-		return err
+		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
 	return nil
