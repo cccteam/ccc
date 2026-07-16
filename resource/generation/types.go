@@ -553,12 +553,12 @@ func (r *resourceInfo) OperationPathPattern() string {
 		return "/{id}"
 	}
 
-	var pattern string
+	var pattern strings.Builder
 	for i := range r.PkCount {
-		pattern += fmt.Sprintf("/{id%d}", i+1)
+		fmt.Fprintf(&pattern, "/{id%d}", i+1)
 	}
 
-	return pattern
+	return pattern.String()
 }
 
 func (r *resourceInfo) PrimaryKeyType() string {

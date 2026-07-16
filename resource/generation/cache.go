@@ -204,12 +204,12 @@ func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
 }
 
 func (c *client) spannerCachePath() (string, error) {
-	var concatenatedPaths string
+	var concatenatedPaths strings.Builder
 	for _, migrationSource := range c.migrationSourceURLs {
-		concatenatedPaths += migrationSource
+		concatenatedPaths.WriteString(migrationSource)
 	}
 
-	hashedPaths, err := hashString(concatenatedPaths)
+	hashedPaths, err := hashString(concatenatedPaths.String())
 	if err != nil {
 		return "", err
 	}

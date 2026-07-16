@@ -133,8 +133,7 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 		permissionMap[perm] = struct{}{}
 	}
 
-	for i := range t.NumField() {
-		field := t.Field(i)
+	for field := range t.Fields() {
 		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		immutableTag, _, _ := strings.Cut(field.Tag.Get("immutable"), ",")
 		permTag := field.Tag.Get("perm")

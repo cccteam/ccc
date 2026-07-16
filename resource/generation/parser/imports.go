@@ -31,15 +31,15 @@ func collectTypeImports(tt types.Type, seen map[string]Import) {
 		if pkg := t.Obj().Pkg(); pkg != nil {
 			seen[pkg.Path()] = Import{Name: pkg.Name(), Path: pkg.Path()}
 		}
-		for i := range t.TypeArgs().Len() {
-			collectTypeImports(t.TypeArgs().At(i), seen)
+		for typ := range t.TypeArgs().Types() {
+			collectTypeImports(typ, seen)
 		}
 	case *types.Named:
 		if pkg := t.Obj().Pkg(); pkg != nil {
 			seen[pkg.Path()] = Import{Name: pkg.Name(), Path: pkg.Path()}
 		}
-		for i := range t.TypeArgs().Len() {
-			collectTypeImports(t.TypeArgs().At(i), seen)
+		for typ := range t.TypeArgs().Types() {
+			collectTypeImports(typ, seen)
 		}
 	}
 }

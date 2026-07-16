@@ -378,11 +378,7 @@ func similarity(a, b string) float64 {
 			left = i - windowSize
 		}
 
-		if i+windowSize < len(long) {
-			right = i + windowSize
-		} else {
-			right = len(long)
-		}
+		right = min(i+windowSize, len(long))
 
 		for j := left; j < right; j++ {
 			if short[i] == long[j] {
