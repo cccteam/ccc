@@ -2,6 +2,7 @@ package resource
 
 import (
 	"bytes"
+	"maps"
 	"testing"
 	"time"
 
@@ -1283,11 +1284,7 @@ func Test_all(t *testing.T) {
 	map3 := map[string]int{"a": 5} // Duplicate key
 
 	want := map[string]int{"a": 5, "b": 2, "c": 3, "d": 4}
-	got := make(map[string]int)
-
-	for k, v := range all(map1, map2, map3) {
-		got[k] = v
-	}
+	got := maps.Collect(all(map1, map2, map3))
 
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("all() mismatch (-want +got):\n%s", diff)

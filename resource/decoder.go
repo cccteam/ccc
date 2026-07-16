@@ -115,11 +115,9 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMa
 
 	var wg sync.WaitGroup
 	var err error
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		err = json.NewDecoder(pr).Decode(request)
-	}()
+	})
 
 	jsonData := make(map[string]any)
 	if err := json.NewDecoder(tr).Decode(&jsonData); err != nil {

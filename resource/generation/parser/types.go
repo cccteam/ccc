@@ -74,6 +74,26 @@ func (t *TypeInfo) UnqualifiedTypeName() string {
 	return types.TypeString(unwrapType(t.obj.Type()), qualifier)
 }
 
+// Imports returns the packages referenced by this declaration's type, walking
+// through pointers, slices, arrays, maps, channels, and generic type arguments.
+// Universe (builtin) types contribute nothing. The declaration's own package is
+// included when the type is a named type, so callers must filter out the
+// destination package when computing imports for generated code.
+func (t *TypeInfo) Imports() []Import {
+	seen := make(map[string]Import)
+	collectTypeImports(t.obj.Type(), seen)
+
+	imports := make([]Import, 0, len(seen))
+	for _, imp := range seen {
+		imports = append(imports, imp)
+	}
+	slices.SortFunc(imports, func(a, b Import) int {
+		return strings.Compare(a.Path, b.Path)
+	})
+
+	return imports
+}
+
 // IsPointer returns true if the declaration is a pointer
 func (t *TypeInfo) IsPointer() bool {
 	switch t.obj.Type().(type) {
@@ -183,14 +203,14 @@ func (s *Struct) String() string {
 	numNameTabs := maxNameLength/8 + 1
 	numTypeTabs := maxTypeLength/8 + 1
 
-	var fields string
+	var fields strings.Builder
 	for _, field := range s.fields {
 		nameTabs := strings.Repeat("\t", numNameTabs-(len(field.Name())/8))
 		typeTabs := strings.Repeat("\t", numTypeTabs-(len(field.Type())/8))
-		fields += fmt.Sprintf("\t%s%s%s%s%s\n", field.Name(), nameTabs, field.Type(), typeTabs, field.tags)
+		fmt.Fprintf(&fields, "\t%s%s%s%s%s\n", field.Name(), nameTabs, field.Type(), typeTabs, field.tags)
 	}
 
-	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields)
+	return fmt.Sprintf("type %s struct {\n%s}", s.Name(), fields.String())
 }
 
 // PrintErrors pretty-prints the struct annotated with field errors
@@ -221,8 +241,10 @@ func (s *Struct) PrintErrors() string {
 
 		if len(field.errs) == 0 {
 			msg.WriteString("\t")
-			msg.WriteString(field.Name() + nameTabs)
-			msg.WriteString(field.Type() + typeTabs)
+			msg.WriteString(field.Name())
+			msg.WriteString(nameTabs)
+			msg.WriteString(field.Type())
+			msg.WriteString(typeTabs)
 			msg.WriteString(string(field.tags))
 			msg.WriteString("\n")
 
@@ -230,8 +252,10 @@ func (s *Struct) PrintErrors() string {
 		}
 
 		msg.WriteString("\033[91m\t")
-		msg.WriteString(field.Name() + nameTabs)
-		msg.WriteString(field.Type() + typeTabs)
+		msg.WriteString(field.Name())
+		msg.WriteString(nameTabs)
+		msg.WriteString(field.Type())
+		msg.WriteString(typeTabs)
 		msg.WriteString(string(field.tags))
 		msg.WriteString(" << ")
 		if len(field.errs) > 1 {

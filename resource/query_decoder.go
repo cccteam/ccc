@@ -283,8 +283,7 @@ func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
 func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *Metadata[Resource]) (map[jsonFieldName]FilterFieldInfo, error) {
 	fields := make(map[jsonFieldName]FilterFieldInfo)
 
-	for i := range reqType.NumField() {
-		structField := reqType.Field(i)
+	for structField := range reqType.Fields() {
 		if structField.Tag.Get("index") != trueStr && structField.Tag.Get("allow_filter") != trueStr {
 			continue
 		}

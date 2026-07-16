@@ -31,8 +31,9 @@ func (f *FileWriter) WriteBytesToFile(file *os.File, data []byte) error {
 	return nil
 }
 
-// GoFormatBytes runs Go Format on bytes for a go source file. If the Go source data is not syntactically
-// correct, GoFormatBytes will return an error. Safe to use concurrently.
+// GoFormatBytes runs Go Format on bytes for a go source file, resolving missing or unused
+// imports via goimports. If the Go source data is not syntactically correct, GoFormatBytes
+// will return an error. Safe to use concurrently.
 func (f *FileWriter) GoFormatBytes(fileName string, data []byte) ([]byte, error) {
 	formattedData, err := format.Source(data)
 	if err != nil {
@@ -44,15 +45,30 @@ func (f *FileWriter) GoFormatBytes(fileName string, data []byte) ([]byte, error)
 		return nil, errors.Wrapf(err, "imports.Process(): file: %s", fileName)
 	}
 
+	return f.alignBytes(fileName, formattedData)
+}
+
+// formatBytes runs Go Format and struct-tag alignment without import resolution: the
+// file's import block must already be exactly correct. Safe to use concurrently.
+func (f *FileWriter) formatBytes(fileName string, data []byte) ([]byte, error) {
+	formattedData, err := format.Source(data)
+	if err != nil {
+		return nil, errors.Wrapf(err, "format.Source(): file: %s, file content: %q", fileName, data)
+	}
+
+	return f.alignBytes(fileName, formattedData)
+}
+
+func (f *FileWriter) alignBytes(fileName string, data []byte) ([]byte, error) {
 	// we use a mutex because align package is not concurrent safe
 	f.muAlign.Lock()
 	defer f.muAlign.Unlock()
 
-	align.Init(bytes.NewReader(formattedData))
-	formattedData, err = align.Do()
+	align.Init(bytes.NewReader(data))
+	alignedData, err := align.Do()
 	if err != nil {
 		return nil, errors.Wrapf(err, "align.Do(): file: %s", fileName)
 	}
 
-	return formattedData, nil
+	return alignedData, nil
 }

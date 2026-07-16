@@ -15,7 +15,7 @@ func (r *resourceGenerator) generateComputedResourceHandler(res *computedResourc
 	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(res.Name())))
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
-	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("computedResourceHandlerTemplate:%q", res.Name()), computedResourceHandlerTemplate, computedHandlerData{
+	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("computedResourceHandlerTemplate:%q", res.Name()), computedResourceHandlerTemplate, &computedHandlerData{
 		Source:              r.computed.Dir(),
 		LocalPackageImports: r.localPackageImports(),
 		Resource:            res,

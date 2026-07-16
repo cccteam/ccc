@@ -1,14 +1,15 @@
 package generation
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
 
-func Test_fileTemplates_generationHeader(t *testing.T) {
-	t.Parallel()
-
-	fileTemplates := map[string]string{
+// fileTemplates returns every file-level template by name: templates whose
+// output is written as a complete generated file.
+func fileTemplates() map[string]string {
+	return map[string]string{
 		"resourcesInterfaceTemplate":      resourcesInterfaceTemplate,
 		"resourceFileTemplate":            resourceFileTemplate,
 		"handlerHeaderTemplate":           handlerHeaderTemplate,
@@ -25,8 +26,12 @@ func Test_fileTemplates_generationHeader(t *testing.T) {
 		"rpcInterfacesTemplate":           rpcInterfacesTemplate,
 		"computedResourceHandlerTemplate": computedResourceHandlerTemplate,
 	}
+}
 
-	for name, tmpl := range fileTemplates {
+func Test_fileTemplates_generationHeader(t *testing.T) {
+	t.Parallel()
+
+	for name, tmpl := range fileTemplates() {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -38,9 +43,54 @@ func Test_fileTemplates_generationHeader(t *testing.T) {
 }
 
 func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
+	if before, _, ok := strings.Cut(s, "\n"); ok {
+		return before
 	}
 
 	return s
+}
+
+// declaredTemplateImports returns the import paths declared in a template's
+// import block (both the parenthesized and single-import forms).
+func declaredTemplateImports(tmpl string) []string {
+	templateImportPath := regexp.MustCompile(`(?m)^\t(?:[\w.]+ )?"([^"]+)"$|^import (?:[\w.]+ )?"([^"]+)"$`)
+
+	var paths []string
+	for _, match := range templateImportPath.FindAllStringSubmatch(tmpl, -1) {
+		if match[1] != "" {
+			paths = append(paths, match[1])
+		} else {
+			paths = append(paths, match[2])
+		}
+	}
+
+	return paths
+}
+
+// Test_stdlibImports_doesNotShadowTemplateImports pins the importFixer's stdlib
+// seed exclusion rule: a qualifier that any template resolves to a third-party
+// package (errors -> go-playground/errors, cmp -> go-cmp/cmp) must never appear
+// in the seed. Otherwise a template that references the qualifier without
+// declaring the third-party import would silently get the stdlib package
+// instead of falling back to goimports resolution.
+func Test_stdlibImports_doesNotShadowTemplateImports(t *testing.T) {
+	t.Parallel()
+
+	for name, tmpl := range fileTemplates() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			seed := stdlibImports()
+			for _, path := range declaredTemplateImports(tmpl) {
+				if root, _, _ := strings.Cut(path, "/"); !strings.Contains(root, ".") {
+					continue // standard library path: cannot shadow itself
+				}
+
+				qualifier := assumedPackageName(path)
+				if seedPath, ok := seed[qualifier]; ok {
+					t.Errorf("stdlibImports() maps %q to %q, shadowing %q declared by %s: remove the seed entry — the seed must not contain qualifiers that generated code resolves to third-party packages", qualifier, seedPath, path, name)
+				}
+			}
+		})
+	}
 }
