@@ -24,6 +24,12 @@ type resourceGenerator struct {
 }
 
 // NewResourceGenerator constructs a new Generator for generating a resource-driven API.
+//
+// localPackages lists import paths that generated code may reference beyond what the
+// templates declare (project packages and third-party field-type packages goimports
+// cannot resolve on its own). Standard-library paths are ignored: goimports resolves
+// those natively and placing them in the local-package import group would produce
+// output that editor format-on-save reorders.
 func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrationSourceURL, localPackages []string, options ...ResourceOption) (Generator, error) {
 	r := &resourceGenerator{}
 

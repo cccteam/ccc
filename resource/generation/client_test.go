@@ -443,3 +443,41 @@ func Test_client_sanitizeEnumIdentifier(t *testing.T) {
 		})
 	}
 }
+
+func Test_client_localPackageImports(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		localPackages []string
+		want          string
+	}{
+		{name: "empty", localPackages: nil, want: ""},
+		{
+			name:          "external packages render as one quoted group",
+			localPackages: []string{"cloud.google.com/go/civil", "github.com/shopspring/decimal"},
+			want:          "\"cloud.google.com/go/civil\"\n\t\"github.com/shopspring/decimal\"",
+		},
+		{
+			name:          "stdlib packages are skipped",
+			localPackages: []string{"time", "net/http", "github.com/shopspring/decimal"},
+			want:          "\"github.com/shopspring/decimal\"",
+		},
+		{
+			name:          "all stdlib renders empty",
+			localPackages: []string{"time", "encoding/json"},
+			want:          "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{localPackages: tt.localPackages}
+
+			if got := c.localPackageImports(); got != tt.want {
+				t.Errorf("localPackageImports() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
