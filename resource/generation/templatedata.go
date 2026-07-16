@@ -8,6 +8,10 @@ import (
 
 // This file holds the data payloads passed to the generation templates.
 // Field names must match the {{ .Field }} references in templates.go.
+//
+// Payloads whose rendered output references parsed types implement typeImporter,
+// returning the imports for exactly the types they render, so import resolution
+// is scoped to the file being generated.
 
 type resourceInterfacesData struct {
 	Source                   string
@@ -18,10 +22,28 @@ type resourceInterfacesData struct {
 	ComputedResourceTypes    []*computedResource
 }
 
+// typeImports covers the struct types only: the interface file renders
+// qualified type names, never field types.
+func (d *resourceInterfacesData) typeImports() []fixerImport {
+	var imports []fixerImport
+	for _, res := range d.Types {
+		imports = appendTypeImports(imports, res.Imports())
+	}
+	for _, res := range d.ComputedResourceTypes {
+		imports = appendTypeImports(imports, res.Imports())
+	}
+
+	return imports
+}
+
 type resourceFileData struct {
 	Source   string
 	Package  string
 	Resource *resourceInfo
+}
+
+func (d *resourceFileData) typeImports() []fixerImport {
+	return resourceTypeImports(nil, d.Resource)
 }
 
 type resourceEnumsData struct {
@@ -36,6 +58,14 @@ type handlersFileData struct {
 	LocalPackageImports string
 	Handlers            string
 	Package             string
+
+	// resource is the resource the pre-rendered Handlers content was built from;
+	// it scopes import resolution and is not referenced by the template.
+	resource *resourceInfo
+}
+
+func (d *handlersFileData) typeImports() []fixerImport {
+	return resourceTypeImports(nil, d.resource)
 }
 
 type consolidatedPatchData struct {
@@ -46,6 +76,15 @@ type consolidatedPatchData struct {
 	ResourcePackage     string
 	ApplicationName     string
 	ReceiverName        string
+}
+
+func (d *consolidatedPatchData) typeImports() []fixerImport {
+	var imports []fixerImport
+	for _, res := range d.Resources {
+		imports = resourceTypeImports(imports, res)
+	}
+
+	return imports
 }
 
 type handlerContentData struct {
@@ -64,6 +103,15 @@ type computedHandlerData struct {
 	ComputedPackage     string
 	ApplicationName     string
 	ReceiverName        string
+}
+
+func (d *computedHandlerData) typeImports() []fixerImport {
+	imports := appendTypeImports(nil, d.Resource.Imports())
+	for _, field := range d.Resource.Fields {
+		imports = appendTypeImports(imports, field.Imports())
+	}
+
+	return imports
 }
 
 type routerFileData struct {
@@ -85,6 +133,10 @@ type rpcFileData struct {
 	RPCMethod *rpcMethodInfo
 }
 
+func (d *rpcFileData) typeImports() []fixerImport {
+	return rpcTypeImports(nil, d.RPCMethod)
+}
+
 type rpcHandlerData struct {
 	Source              string
 	LocalPackageImports string
@@ -94,10 +146,23 @@ type rpcHandlerData struct {
 	ReceiverName        string
 }
 
+func (d *rpcHandlerData) typeImports() []fixerImport {
+	return rpcTypeImports(nil, d.RPCMethod)
+}
+
 type rpcInterfacesData struct {
 	Source  string
 	Package string
 	Types   []*rpcMethodInfo
+}
+
+func (d *rpcInterfacesData) typeImports() []fixerImport {
+	var imports []fixerImport
+	for _, method := range d.Types {
+		imports = rpcTypeImports(imports, method)
+	}
+
+	return imports
 }
 
 type tsConstantsData struct {
@@ -125,4 +190,35 @@ type tsEnumsData struct {
 	Source     string
 	NamedTypes []*parser.NamedType
 	EnumMap    map[string][]*enumData
+}
+
+// appendTypeImports converts parser imports to fixer entries.
+func appendTypeImports(dst []fixerImport, imps []parser.Import) []fixerImport {
+	for _, imp := range imps {
+		dst = append(dst, fixerImport{name: imp.Name, path: imp.Path})
+	}
+
+	return dst
+}
+
+// resourceTypeImports appends the packages of a resource's type and all of its
+// field types.
+func resourceTypeImports(dst []fixerImport, res *resourceInfo) []fixerImport {
+	dst = appendTypeImports(dst, res.Imports())
+	for _, field := range res.Fields {
+		dst = appendTypeImports(dst, field.Imports())
+	}
+
+	return dst
+}
+
+// rpcTypeImports appends the packages of an RPC method's type and all of its
+// field types.
+func rpcTypeImports(dst []fixerImport, method *rpcMethodInfo) []fixerImport {
+	dst = appendTypeImports(dst, method.Imports())
+	for _, field := range method.Fields {
+		dst = appendTypeImports(dst, field.Imports())
+	}
+
+	return dst
 }

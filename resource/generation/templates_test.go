@@ -50,11 +50,11 @@ func firstLine(s string) string {
 	return s
 }
 
-var templateImportPath = regexp.MustCompile(`(?m)^\t(?:[\w.]+ )?"([^"]+)"$|^import (?:[\w.]+ )?"([^"]+)"$`)
-
 // declaredTemplateImports returns the import paths declared in a template's
 // import block (both the parenthesized and single-import forms).
 func declaredTemplateImports(tmpl string) []string {
+	templateImportPath := regexp.MustCompile(`(?m)^\t(?:[\w.]+ )?"([^"]+)"$|^import (?:[\w.]+ )?"([^"]+)"$`)
+
 	var paths []string
 	for _, match := range templateImportPath.FindAllStringSubmatch(tmpl, -1) {
 		if match[1] != "" {
@@ -76,17 +76,21 @@ func declaredTemplateImports(tmpl string) []string {
 func Test_stdlibImports_doesNotShadowTemplateImports(t *testing.T) {
 	t.Parallel()
 
-	seed := stdlibImports()
 	for name, tmpl := range fileTemplates() {
-		for _, path := range declaredTemplateImports(tmpl) {
-			if root, _, _ := strings.Cut(path, "/"); !strings.Contains(root, ".") {
-				continue // standard library path: cannot shadow itself
-			}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-			qualifier := assumedPackageName(path)
-			if seedPath, ok := seed[qualifier]; ok {
-				t.Errorf("stdlibImports() maps %q to %q, shadowing %q declared by %s: remove the seed entry — the seed must not contain qualifiers that generated code resolves to third-party packages", qualifier, seedPath, path, name)
+			seed := stdlibImports()
+			for _, path := range declaredTemplateImports(tmpl) {
+				if root, _, _ := strings.Cut(path, "/"); !strings.Contains(root, ".") {
+					continue // standard library path: cannot shadow itself
+				}
+
+				qualifier := assumedPackageName(path)
+				if seedPath, ok := seed[qualifier]; ok {
+					t.Errorf("stdlibImports() maps %q to %q, shadowing %q declared by %s: remove the seed entry — the seed must not contain qualifiers that generated code resolves to third-party packages", qualifier, seedPath, path, name)
+				}
 			}
-		}
+		})
 	}
 }

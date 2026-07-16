@@ -304,7 +304,7 @@ func (c *client) writeFormattedGoFile(destinationPath, templateName, fileTemplat
 		return errors.Wrap(err, "generateTemplateOutput()")
 	}
 
-	formattedOutput, err := c.formatGoBytes(destinationPath, templateName, output)
+	formattedOutput, err := c.formatGoBytes(destinationPath, templateName, output, data)
 	if err != nil {
 		return err
 	}
@@ -317,62 +317,32 @@ func (c *client) writeFormattedGoFile(destinationPath, templateName, fileTemplat
 }
 
 // formatGoBytes formats rendered Go source. The fast path resolves the file's import
-// block locally from the parsed type information, skipping goimports' import resolution
-// (which shells out to the go command and can scan the module cache, costing upwards of
-// a second per file). When a referenced qualifier cannot be resolved locally it falls
-// back to goimports so output stays correct, and logs a warning naming the template and
-// qualifiers so the gap can be reproduced in a resource/generation test and closed.
-func (c *client) formatGoBytes(destinationPath, templateName string, output []byte) ([]byte, error) {
-	fixer := newImportFixer(c.knownTypeImports(), c.localPackages)
+// block locally, skipping goimports' import resolution (which shells out to the go
+// command and can scan the module cache, costing upwards of a second per file). Type
+// imports come from the template payload when it implements typeImporter, scoping
+// resolution to exactly the parsed types the file renders — two resources may use
+// same-named packages from different paths without affecting each other's files. When
+// a referenced qualifier cannot be resolved locally it falls back to goimports so
+// output stays correct, and logs a warning naming the template and qualifiers so the
+// gap can be reproduced in a resource/generation test and closed.
+func (c *client) formatGoBytes(destinationPath, templateName string, output []byte, data any) ([]byte, error) {
+	var typeImports []fixerImport
+	if importer, ok := data.(typeImporter); ok {
+		typeImports = importer.typeImports()
+	}
+
+	fixer := newImportFixer(typeImports, c.localPackages)
 	fixed, unknown, err := fixer.fix(destinationPath, output)
 	switch {
 	case err != nil:
 		log.Printf("WARNING: local import resolution failed for %s (template %s): %v; falling back to goimports resolution (slow)", destinationPath, templateName, err)
 	case len(unknown) > 0:
-		log.Printf("WARNING: local import resolution for %s (template %s) could not resolve qualifier(s) %v; falling back to goimports resolution (slow). Add a scenario covering this to the resource/generation tests, then cover the qualifier via the template's import block or the parsed type imports.", destinationPath, templateName, unknown)
+		log.Printf("WARNING: local import resolution for %s (template %s) could not resolve qualifier(s) %v; falling back to goimports resolution (slow). Add a scenario covering this to the resource/generation tests, then cover the qualifier via the template's import block or the payload's typeImports.", destinationPath, templateName, unknown)
 	default:
 		return c.formatBytes(destinationPath, fixed)
 	}
 
 	return c.GoFormatBytes(destinationPath, output)
-}
-
-// knownTypeImports returns the package of every parsed struct and struct field type the
-// generator may render a reference to: resources (including virtual), computed resources,
-// and RPC methods. It is recomputed per file because rpcMethods are parsed after resource
-// generation has already begun; each phase renders only types parsed before it starts.
-// Safe to call from concurrent generation phases: it only reads, and the slices it reads
-// are never mutated while a generation phase runs.
-func (c *client) knownTypeImports() []fixerImport {
-	var imports []fixerImport
-	addAll := func(imps []parser.Import) {
-		for _, imp := range imps {
-			imports = append(imports, fixerImport{name: imp.Name, path: imp.Path})
-		}
-	}
-
-	for _, res := range c.resources {
-		addAll(res.Imports())
-		for _, field := range res.Fields {
-			addAll(field.Imports())
-		}
-	}
-
-	for _, res := range c.computedResources {
-		addAll(res.Imports())
-		for _, field := range res.Fields {
-			addAll(field.Imports())
-		}
-	}
-
-	for _, method := range c.rpcMethods {
-		addAll(method.Imports())
-		for _, field := range method.Fields {
-			addAll(field.Imports())
-		}
-	}
-
-	return imports
 }
 
 func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]*enumData, error) {

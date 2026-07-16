@@ -172,7 +172,7 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 func (r *resourceGenerator) generateResourceInterfaces() error {
 	destinationFile := filepath.Join(r.handler.Dir(), generatedGoFileName(resourceInterfaceOutputName))
 
-	if err := r.writeFormattedGoFile(destinationFile, "resourcesInterfaceTemplate", resourcesInterfaceTemplate, resourceInterfacesData{
+	if err := r.writeFormattedGoFile(destinationFile, "resourcesInterfaceTemplate", resourcesInterfaceTemplate, &resourceInterfacesData{
 		Source:                   r.resource.Dir(),
 		Package:                  r.handler.Package(),
 		ResourcesPackage:         r.resource.Package(),
@@ -201,7 +201,7 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 		destinationFilePath = filepath.Join(r.virtual.Dir(), fileName)
 	}
 
-	if err := r.writeFormattedGoFile(destinationFilePath, "resourceFileTemplate", resourceFileTemplate, resourceFileData{
+	if err := r.writeFormattedGoFile(destinationFilePath, "resourceFileTemplate", resourceFileTemplate, &resourceFileData{
 		Source:   r.resource.Dir(),
 		Package:  packageName,
 		Resource: res,

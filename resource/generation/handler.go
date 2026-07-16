@@ -77,11 +77,12 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 		fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
 		destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
-		if err := r.writeFormattedGoFile(destinationFilePath, "handlers", handlerHeaderTemplate, handlersFileData{
+		if err := r.writeFormattedGoFile(destinationFilePath, "handlers", handlerHeaderTemplate, &handlersFileData{
 			Source:              r.resource.Dir(),
 			LocalPackageImports: r.localPackageImports(),
 			Handlers:            string(bytes.Join(handlerData, []byte("\n\n"))),
 			Package:             r.handler.Package(),
+			resource:            res,
 		}); err != nil {
 			return errors.Wrap(err, "writeFormattedGoFile()")
 		}
@@ -96,7 +97,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 	fileName := generatedGoFileName(consolidatedHandlerOutputName)
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
-	if err := r.writeFormattedGoFile(destinationFilePath, "consolidatedPatchHandler", consolidatedPatchTemplate, consolidatedPatchData{
+	if err := r.writeFormattedGoFile(destinationFilePath, "consolidatedPatchHandler", consolidatedPatchTemplate, &consolidatedPatchData{
 		Source:              r.resource.Dir(),
 		LocalPackageImports: r.localPackageImports(),
 		Resources:           resources,

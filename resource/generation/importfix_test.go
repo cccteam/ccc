@@ -2,7 +2,6 @@ package generation
 
 import (
 	"go/format"
-	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -174,6 +173,17 @@ func f() { mystery.Call() }
 			wantUnknown: []string{"mystery"},
 		},
 		{
+			// The unknown list is the payload of the fallback warning: it must name
+			// every unresolved qualifier so the scenario can be reproduced in a test
+			// and fixed.
+			name: "reports every unresolved qualifier",
+			src: `package app
+
+func f() { first.Call(); second.Call() }
+`,
+			wantUnknown: []string{"first", "second"},
+		},
+		{
 			name: "local objects are not import qualifiers",
 			src: `package resources
 
@@ -306,31 +316,5 @@ func Test_assumedPackageName(t *testing.T) {
 				t.Errorf("assumedPackageName(%q) = %q, want %q", tt.path, got, tt.want)
 			}
 		})
-	}
-}
-
-func Test_importFixer_fallbackWarningCarriesScenario(t *testing.T) {
-	t.Parallel()
-
-	// The unknown list is the payload of the fallback warning: it must name every
-	// unresolved qualifier so the scenario can be reproduced in a test and fixed.
-	fixer := newImportFixer(nil, nil)
-	_, unknown, err := fixer.fix("test.go", []byte(`package app
-
-func f() { first.Call(); second.Call() }
-`))
-	if err != nil {
-		t.Fatalf("importFixer.fix() error = %v", err)
-	}
-
-	want := []string{"first", "second"}
-	if diff := cmp.Diff(want, unknown); diff != "" {
-		t.Errorf("unknown qualifiers mismatch (-want +got):\n%s", diff)
-	}
-
-	for _, q := range unknown {
-		if strings.Contains(q, " ") && !strings.Contains(q, "ambiguous") {
-			t.Errorf("unknown qualifier %q should be a bare qualifier or an ambiguity report", q)
-		}
 	}
 }

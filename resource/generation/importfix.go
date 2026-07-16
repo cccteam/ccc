@@ -154,6 +154,15 @@ type fixerImport struct {
 	path string
 }
 
+// typeImporter is implemented by template payloads whose rendered output can
+// reference parsed types. typeImports returns entries for exactly the types the
+// payload renders, scoping import resolution to the file being generated: two
+// resources may legitimately use same-named packages from different paths, and
+// that must only read as ambiguous in a file that renders both.
+type typeImporter interface {
+	typeImports() []fixerImport
+}
+
 // stdlibImports seeds the qualifiers of standard-library packages that template
 // text may reference without declaring. Qualifiers the generated code resolves
 // to third-party packages (errors -> go-playground/errors, cmp -> go-cmp/cmp)

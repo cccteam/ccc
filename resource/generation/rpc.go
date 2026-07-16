@@ -34,7 +34,7 @@ func (r *resourceGenerator) generateRPCMethod(rpc *rpcMethodInfo) error {
 	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(rpc.Name())))
 	destinationFilePath := filepath.Join(r.rpc.Dir(), fileName)
 
-	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rpcFileTemplate:%q", rpc.Name()), rpcFileTemplate, rpcFileData{
+	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rpcFileTemplate:%q", rpc.Name()), rpcFileTemplate, &rpcFileData{
 		Source:    r.rpc.Dir(),
 		Package:   r.rpc.Package(),
 		RPCMethod: rpc,
@@ -50,7 +50,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(rpcMethod.Name())))
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
-	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rcpHandlerTemplate:%q", rpcMethod.Name()), rpcHandlerTemplate, rpcHandlerData{
+	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rcpHandlerTemplate:%q", rpcMethod.Name()), rpcHandlerTemplate, &rpcHandlerData{
 		Source:              r.rpc.Dir(),
 		LocalPackageImports: r.localPackageImports(),
 		RPCMethod:           rpcMethod,
@@ -69,7 +69,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 func (r *resourceGenerator) generateRPCInterfaces() error {
 	destinationFile := filepath.Join(".", r.rpc.Dir(), generatedGoFileName("rpc_iface"))
 
-	if err := r.writeFormattedGoFile(destinationFile, "rpcInterfacesTemplate", rpcInterfacesTemplate, rpcInterfacesData{
+	if err := r.writeFormattedGoFile(destinationFile, "rpcInterfacesTemplate", rpcInterfacesTemplate, &rpcInterfacesData{
 		Source:  r.rpc.Dir(),
 		Package: r.rpc.Package(),
 		Types:   r.rpcMethods,
