@@ -74,6 +74,26 @@ func (t *TypeInfo) UnqualifiedTypeName() string {
 	return types.TypeString(unwrapType(t.obj.Type()), qualifier)
 }
 
+// Imports returns the packages referenced by this declaration's type, walking
+// through pointers, slices, arrays, maps, channels, and generic type arguments.
+// Universe (builtin) types contribute nothing. The declaration's own package is
+// included when the type is a named type, so callers must filter out the
+// destination package when computing imports for generated code.
+func (t *TypeInfo) Imports() []Import {
+	seen := make(map[string]Import)
+	collectTypeImports(t.obj.Type(), seen)
+
+	imports := make([]Import, 0, len(seen))
+	for _, imp := range seen {
+		imports = append(imports, imp)
+	}
+	slices.SortFunc(imports, func(a, b Import) int {
+		return strings.Compare(a.Path, b.Path)
+	})
+
+	return imports
+}
+
 // IsPointer returns true if the declaration is a pointer
 func (t *TypeInfo) IsPointer() bool {
 	switch t.obj.Type().(type) {
