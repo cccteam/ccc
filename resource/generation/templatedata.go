@@ -70,11 +70,10 @@ type routerFileData struct {
 	Source                 string
 	Package                string
 	LocalPackageImports    string
-	RoutesMap              map[string][]generatedRoute
+	RoutesMap              map[string][]*generatedRoute
 	ConstResources         []*resourceInfo
-	Resources              []*resourceInfo
-	ComputedResources      []*computedResource
 	ConstComputedResources []*computedResource
+	RouterTestRoutes       []*generatedRoute
 	HasConsolidatedHandler bool
 	RoutePrefix            string
 	ConsolidatedRoute      string

@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"path/filepath"
 	"slices"
 	"time"
@@ -19,8 +20,8 @@ func (r *resourceGenerator) runRouteGeneration() error {
 
 	var hasConsolidatedHandlers bool
 	constResources := make([]*resourceInfo, 0, len(r.resources))
-	resources := make([]*resourceInfo, 0, len(r.resources))
-	generatedRoutesMap := make(map[string][]generatedRoute)
+	routerTestRoutes := make([]*generatedRoute, 0, len(r.resources)+len(r.computedResources))
+	generatedRoutesMap := make(map[string][]*generatedRoute)
 	for _, res := range r.resources {
 		handlerTypes := resourceEndpoints(res)
 
@@ -36,70 +37,78 @@ func (r *resourceGenerator) runRouteGeneration() error {
 			hasConsolidatedHandlers = true
 		}
 
-		if len(handlerTypes) > 0 {
-			resources = append(resources, res)
-		}
-
 		for _, ht := range handlerTypes {
-			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
+			basePath := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
+			route := &generatedRoute{
+				Method:      ht.method(),
+				Path:        basePath,
+				HandlerFunc: r.handlerName(res.Name(), ht),
+				HandlerType: ht,
+				TestURL:     basePath,
+			}
 			if ht == ReadHandler {
 				if res.HasCompoundPrimaryKey() {
+					var pkNames []string
 					for _, field := range res.PrimaryKeys() {
-						path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(res.Name()+field.Name()))
+						pkNames = append(pkNames, field.Name())
 					}
+					route.TestParams = readRouteTestParams(res.Name(), pkNames)
 				} else {
-					path += fmt.Sprintf("/{%s}", strcase.ToGoCamel(res.Name()+"ID"))
+					route.TestParams = []routeTestParam{{
+						Key:   strcase.ToGoCamel(res.Name() + "ID"),
+						Value: strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(res.Name()))),
+					}}
 				}
+				route.appendParamsToPaths()
 			}
 
-			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
-				Method:        ht.method(),
-				Path:          path,
-				HandlerFunc:   r.handlerName(res.Name(), ht),
-				SharedHandler: ht == ReadHandler || ht == ListHandler,
-				HandlerType:   ht,
-			})
+			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], route)
+			routerTestRoutes = append(routerTestRoutes, route)
 		}
 	}
 
 	constComputedResources := make([]*computedResource, 0, len(r.computedResources))
-	computedResources := make([]*computedResource, 0, len(r.computedResources))
 	for _, res := range r.computedResources {
-		if !res.SuppressListHandler || !res.SuppressReadHandler {
-			computedResources = append(computedResources, res)
-			if !res.SuppressReadHandler {
-				constComputedResources = append(constComputedResources, res)
-			}
+		if !res.SuppressReadHandler {
+			constComputedResources = append(constComputedResources, res)
 		}
 
 		if res.RoutingDisabled() {
 			continue
 		}
 
-		path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
+		basePath := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
 		if !res.SuppressReadHandler {
-			var pathKeys string
+			var pkNames []string
 			for _, field := range res.PrimaryKeys() {
-				pathKeys += fmt.Sprintf("/{%s}", strcase.ToGoCamel(res.Name()+field.Name()))
+				pkNames = append(pkNames, field.Name())
 			}
 
-			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
-				Method:        ReadHandler.method(),
-				Path:          path + pathKeys,
-				HandlerFunc:   r.handlerName(res.Name(), ReadHandler),
-				SharedHandler: true,
-				HandlerType:   ReadHandler,
-			})
+			route := &generatedRoute{
+				Method:      ReadHandler.method(),
+				Path:        basePath,
+				HandlerFunc: r.handlerName(res.Name(), ReadHandler),
+				HandlerType: ReadHandler,
+				TestURL:     basePath,
+				TestParams:  readRouteTestParams(res.Name(), pkNames),
+			}
+			route.appendParamsToPaths()
+
+			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], route)
+			routerTestRoutes = append(routerTestRoutes, route)
 		}
 
 		if !res.SuppressListHandler {
-			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], generatedRoute{
-				Method:        ListHandler.method(),
-				Path:          path,
-				HandlerFunc:   r.handlerName(res.Name(), ListHandler),
-				SharedHandler: true,
-				HandlerType:   ListHandler,
-			})
+			route := &generatedRoute{
+				Method:      ListHandler.method(),
+				Path:        basePath,
+				HandlerFunc: r.handlerName(res.Name(), ListHandler),
+				HandlerType: ListHandler,
+				TestURL:     basePath,
+			}
+
+			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], route)
+			routerTestRoutes = append(routerTestRoutes, route)
 		}
 	}
 
@@ -109,46 +118,53 @@ func (r *resourceGenerator) runRouteGeneration() error {
 				continue
 			}
 
-			generatedRoutesMap[rpcStruct.Name()] = []generatedRoute{{
-				Method:      "POST",
+			generatedRoutesMap[rpcStruct.Name()] = []*generatedRoute{{
+				Method:      http.MethodPost,
 				Path:        fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(rpcStruct.Name())),
 				HandlerFunc: rpcStruct.Name(),
 			}}
 		}
 	}
 
+	data := routerFileData{
+		Source:                 r.resource.Dir(),
+		Package:                r.router.Package(),
+		LocalPackageImports:    r.localPackageImports(),
+		RoutesMap:              generatedRoutesMap,
+		ConstResources:         constResources,
+		ConstComputedResources: constComputedResources,
+		RouterTestRoutes:       routerTestRoutes,
+		HasConsolidatedHandler: hasConsolidatedHandlers,
+		RoutePrefix:            r.routePrefix,
+		ConsolidatedRoute:      r.ConsolidatedRoute,
+	}
+
 	routesDestination := filepath.Join(r.router.Dir(), generatedGoFileName(routesOutputName))
-	if err := r.writeGeneratedRouterFile(routesDestination, routesTemplate, resources, constResources, computedResources, constComputedResources, generatedRoutesMap, hasConsolidatedHandlers); err != nil {
-		return errors.Wrap(err, "c.writeRoutes()")
+	if err := r.writeFormattedGoFile(routesDestination, "routesTemplate", routesTemplate, data); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 	log.Printf("Generated routes file in %s: %s\n", time.Since(begin), routesDestination)
 
 	routerTestsDestination := filepath.Join(r.router.Dir(), generatedGoFileName(routerTestOutputName))
 	begin = time.Now()
-	if err := r.writeGeneratedRouterFile(routerTestsDestination, routerTestTemplate, resources, constResources, computedResources, constComputedResources, generatedRoutesMap, hasConsolidatedHandlers); err != nil {
-		return errors.Wrap(err, "c.writeRouterTests()")
+	if err := r.writeFormattedGoFile(routerTestsDestination, "routerTestTemplate", routerTestTemplate, data); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 	log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
 
 	return nil
 }
 
-func (r *resourceGenerator) writeGeneratedRouterFile(destinationFile, templateContent string, resources, constResources []*resourceInfo, computedResources, constComputedResources []*computedResource, generatedRoutes map[string][]generatedRoute, hasConsolidatedHandlers bool) error {
-	if err := r.writeFormattedGoFile(destinationFile, filepath.Base(destinationFile), templateContent, routerFileData{
-		Source:                 r.resource.Dir(),
-		Package:                r.router.Package(),
-		LocalPackageImports:    r.localPackageImports(),
-		RoutesMap:              generatedRoutes,
-		ConstResources:         constResources,
-		Resources:              resources,
-		ComputedResources:      computedResources,
-		ConstComputedResources: constComputedResources,
-		HasConsolidatedHandler: hasConsolidatedHandlers,
-		RoutePrefix:            r.routePrefix,
-		ConsolidatedRoute:      r.ConsolidatedRoute,
-	}); err != nil {
-		return errors.Wrap(err, "writeFormattedGoFile()")
+// readRouteTestParams returns one route parameter per primary-key field for
+// addressing a read route in the generated router tests.
+func readRouteTestParams(resourceName string, pkNames []string) []routeTestParam {
+	params := make([]routeTestParam, 0, len(pkNames))
+	for _, pk := range pkNames {
+		params = append(params, routeTestParam{
+			Key:   strcase.ToGoCamel(resourceName + pk),
+			Value: fmt.Sprintf("test%s%s", caser.ToPascal(resourceName), pk),
+		})
 	}
 
-	return nil
+	return params
 }
