@@ -157,14 +157,16 @@ const (
 )
 
 type consolidateConfig struct {
+	// ConsolidatedResourceNames is an allowlist when ConsolidateAll is false
+	// (only the named resources are consolidated) and a denylist when it is
+	// true (every resource except the named ones is consolidated).
 	ConsolidatedResourceNames []string
 	ConsolidateAll            bool
 	ConsolidatedRoute         string
 }
 
 func (c consolidateConfig) IsConsolidated(resourceName string) bool {
-	return !c.ConsolidateAll && slices.Contains(c.ConsolidatedResourceNames, resourceName) ||
-		c.ConsolidateAll && !slices.Contains(c.ConsolidatedResourceNames, resourceName)
+	return c.ConsolidateAll != slices.Contains(c.ConsolidatedResourceNames, resourceName)
 }
 
 type generatedFileDeleteMethod int
