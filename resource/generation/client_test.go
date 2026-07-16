@@ -110,7 +110,7 @@ func Test_formatInterfaceTypes(t *testing.T) {
 					"Resource9",
 				},
 			},
-			want: "\tResource1 | MyResource1 | YourResource1 | Resource2 | Resource3 | Resource4 | Resource5 | Resource6 | \n\tResource7 | Resource8 | Resource9",
+			want: "\tResource1 | MyResource1 | YourResource1 | Resource2 | Resource3 | Resource4 | Resource5 | Resource6 |\n\tResource7 | Resource8 | Resource9",
 		},
 	}
 	for _, tt := range tests {
@@ -118,7 +118,7 @@ func Test_formatInterfaceTypes(t *testing.T) {
 			t.Parallel()
 			got := formatInterfaceTypes(tt.args.types)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("formatResourceInterfaceTypes() mismatch (-want +got):\n%s", diff)
+				t.Errorf("formatInterfaceTypes() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

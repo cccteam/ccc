@@ -475,28 +475,23 @@ func removeGeneratedFileByHeaderComment(directory, file string) error {
 }
 
 func formatInterfaceTypes(types []string) string {
-	var typeNames [][]string
-	var typeNamesLen int
+	var rows []string
+	var rowLen int
 	for i, t := range types {
-		typeNamesLen += len(t)
-		if i == 0 || typeNamesLen > 80 {
-			typeNamesLen = len(t)
-			typeNames = append(typeNames, []string{})
-		}
-
-		typeNames[len(typeNames)-1] = append(typeNames[len(typeNames)-1], t)
-	}
-
-	var sb strings.Builder
-	for _, row := range typeNames {
-		sb.WriteString("\n\t")
-		for _, cell := range row {
-			line := fmt.Sprintf("%s | ", cell)
-			sb.WriteString(line)
+		rowLen += len(t)
+		if i == 0 || rowLen > 80 {
+			rowLen = len(t)
+			rows = append(rows, t)
+		} else {
+			rows[len(rows)-1] += " | " + t
 		}
 	}
 
-	return strings.TrimSuffix(strings.TrimPrefix(sb.String(), "\n"), " | ")
+	if len(rows) == 0 {
+		return ""
+	}
+
+	return "\t" + strings.Join(rows, " |\n\t")
 }
 
 func (c *client) formatResourceInterfaceTypes(resources []*resourceInfo, computedResources []*computedResource) string {

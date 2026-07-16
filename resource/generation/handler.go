@@ -17,7 +17,7 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 	}
 
 	if err := r.generateResourceInterfaces(); err != nil {
-		return errors.Wrap(err, "c.generateResourceInterfaces()")
+		return errors.Wrap(err, "generateResourceInterfaces()")
 	}
 
 	if err := forEachGo(r.resources, r.generateHandlers); err != nil {
@@ -66,7 +66,7 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 	for _, handlerTyp := range handlerTypes {
 		data, err := r.handlerContent(handlerTyp, res)
 		if err != nil {
-			return errors.Wrap(err, "replaceHandlerFileContent()")
+			return errors.Wrap(err, "handlerContent()")
 		}
 
 		handlerData = append(handlerData, data)

@@ -30,7 +30,7 @@ func (l *Link) DecodeSpanner(val any) error {
 	}
 
 	if err := l.UnmarshalJSON([]byte(jsonVal)); err != nil {
-		return errors.Wrap(err, "l.MarshalJSON()")
+		return errors.Wrap(err, "l.UnmarshalJSON()")
 	}
 
 	return nil
