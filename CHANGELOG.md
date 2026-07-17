@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/cccteam/ccc/compare/v0.3.1...v0.3.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* Redesign pluralize to eliminate data race in concurrent generation ([#765](https://github.com/cccteam/ccc/issues/765)) ([85aba56](https://github.com/cccteam/ccc/commit/85aba562cf96a4de55afd6701671fe2819e50b3b))
+
 ## [0.3.1](https://github.com/cccteam/ccc/compare/v0.3.0...v0.3.1) (2026-07-09)
 
 
