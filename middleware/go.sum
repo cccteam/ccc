@@ -1,8 +1,8 @@
 cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
 cloud.google.com/go v0.123.0 h1:2NAUJwPR47q+E35uaJeYoNhuNEM9kM8SjgRgdeOJUSE=
 cloud.google.com/go v0.123.0/go.mod h1:xBoMV08QcqUGuPW65Qfm1o9Y4zKZBpGS+7bImXLTAZU=
-cloud.google.com/go/auth v0.21.0 h1:g/QwYfYb2Ai6HH8oomAOyBaIHLbscZ4+T/F/f5JZHkE=
-cloud.google.com/go/auth v0.21.0/go.mod h1:M9o2Oz+YI2jAfxewJgb1vyI3vceHF+eohmxyzmrl+9s=
+cloud.google.com/go/auth v0.22.0 h1:Xp9wAKkLoeaYb5pYZZoQGz4E9sdPxIbzS3gywZE3ciQ=
+cloud.google.com/go/auth v0.22.0/go.mod h1:M9o2Oz+YI2jAfxewJgb1vyI3vceHF+eohmxyzmrl+9s=
 cloud.google.com/go/auth/oauth2adapt v0.2.8 h1:keo8NaayQZ6wimpNSmW5OPc283g65QNIiLpZnkHRbnc=
 cloud.google.com/go/auth/oauth2adapt v0.2.8/go.mod h1:XQ9y31RkqZCcwJWNSx2Xvric3RrU88hAYYbjDWYDL+c=
 cloud.google.com/go/compute/metadata v0.9.0 h1:pDUj4QMoPejqq20dK0Pg2N4yG9zIkYGdBtwLoEkH9Zs=
@@ -30,10 +30,10 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator v0.56.0 h1
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator v0.56.0/go.mod h1:sKE2BdlsRRPL7ONGioxJnjUhEA1NbF484vFq8LX6znI=
 github.com/cccteam/ccc v0.3.0 h1:OWtl5HEB65FqsT/EN8nGoWhB02jBv4EGD8SgBnzpl80=
 github.com/cccteam/ccc v0.3.0/go.mod h1:eXhl0gDKBkkxpd6UmSpmcVRgAAZj7kBeRXfWmf8vbOo=
-github.com/cccteam/ccc/tracer v0.1.4 h1:rd4fC1lv9NSF6LD8/WQrruSF1OE9G/hjdEDrHoDyf60=
-github.com/cccteam/ccc/tracer v0.1.4/go.mod h1:mnh+hhj8/1ADS/89XBAHjT9YqMxNw0nS1GfGS085vKg=
-github.com/cccteam/httpio v0.7.15 h1:xikSaftMtCHZlvmLW4AvEpoDC+0W8AE/+7tFcZdqe94=
-github.com/cccteam/httpio v0.7.15/go.mod h1:Q2OABx079BlmetPGGibI/oAa7HgwulgATuiAcvLpdtY=
+github.com/cccteam/ccc/tracer v0.1.5 h1:Fye9Kv2xSz4wqrLKaJnQxF7wnwtGITr0xwRIevSyoyQ=
+github.com/cccteam/ccc/tracer v0.1.5/go.mod h1:LGYwO9xq9ng0Y7i9DAqxhAE38bXN6/zITQUYw3zaw1Y=
+github.com/cccteam/httpio v0.7.16 h1:Kqg5ndovFPbkDBUIobjPxc4F7wBnUpluIymJAiUgb4g=
+github.com/cccteam/httpio v0.7.16/go.mod h1:DHad+wBi0RtAmEKNbj71YDT0kOd5moA569ozkWkT/Ew=
 github.com/cccteam/logger v0.1.21 h1:YFTGLgf4miZbP+W7SJAHFlz/JkwKt8dMf4Sb6JaI7sI=
 github.com/cccteam/logger v0.1.21/go.mod h1:3XkMtPRqIsoCXTSzFV+ChMJ/bMooadawZFGkICvZt3I=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
