@@ -11,7 +11,7 @@ jobs:
   security_scan:
     uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@9bb0a148ce67dd13a42d80c7533750567239bf2f # TESTING: feat/sarif-uploads, revert to pinned tag before merge
     with:
-      execute-trivy-scan: false
+      execute-semgrep-scan: true
     secrets:
       SLACK_BOT_TOKEN: ${{ secrets.CCC_SLACK_BOT_TOKEN }}
       SLACK_CHANNEL_ID: '' # TESTING: blanked so a real check failure can't ping the production channel, revert before merge
