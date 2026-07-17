@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.10.3](https://github.com/cccteam/ccc/compare/resource/v0.10.2...resource/v0.10.3) (2026-07-17)
+
+
+### Bug Fixes
+
+* Declare template imports honestly and unify generated-file headers ([#769](https://github.com/cccteam/ccc/issues/769)) ([16f81ce](https://github.com/cccteam/ccc/commit/16f81ce9910fab2a396002f49206ed1a6e203e36))
+* Redesign pluralize to eliminate data race in concurrent generation ([#765](https://github.com/cccteam/ccc/issues/765)) ([85aba56](https://github.com/cccteam/ccc/commit/85aba562cf96a4de55afd6701671fe2819e50b3b))
+* Replace route string sniffing with structured route metadata ([#768](https://github.com/cccteam/ccc/issues/768)) ([8914fb0](https://github.com/cccteam/ccc/commit/8914fb0fe1a2bed7f95138234a03ef320a27973a))
+* Write generated Go files atomically to prevent stranded empty files ([#767](https://github.com/cccteam/ccc/issues/767)) ([42ccb71](https://github.com/cccteam/ccc/commit/42ccb715ff9da42c81d578c3aa9ede5c40b65796))
+
+
+### Performance Improvements
+
+* Resolve generated-file imports locally instead of via goimports resolution ([#770](https://github.com/cccteam/ccc/issues/770)) ([9e55191](https://github.com/cccteam/ccc/commit/9e551912019a357e9d53a1540e7b135ed6d3ccdd))
+
+
+### Code Cleanup
+
+* Fix stale error-wrap labels and small generator warts ([#771](https://github.com/cccteam/ccc/issues/771)) ([a0b1736](https://github.com/cccteam/ccc/commit/a0b173632a72f88899de0eec9462b0eaba86aec3))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group ([#756](https://github.com/cccteam/ccc/issues/756)) ([73f8579](https://github.com/cccteam/ccc/commit/73f8579f8a2cfcb2f2963b58ca8732431d60731c))
+
 ## [0.10.2](https://github.com/cccteam/ccc/compare/resource/v0.10.1...resource/v0.10.2) (2026-07-09)
 
 
