@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '0 14 * * *' # Daily at 8:00 AM CDT
   workflow_dispatch: {} # TESTING: allows manually triggering a test run, revert before merge
+  pull_request: # TESTING: runs on this throwaway branch's PR, revert before merge
+    types: [opened, synchronize, reopened]
 
 jobs:
   security_scan:
