@@ -9,7 +9,7 @@ concurrency:
 
 jobs:
   golang-ci:
-    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@b3af4a0c584cdd8de66195ac61ef3366d1c1a273 # v6.1.2
+    uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@9bb0a148ce67dd13a42d80c7533750567239bf2f # TESTING: feat/sarif-uploads, revert to pinned tag before merge
     with:
       build-tags: '["", "collect_resource_permissions,dev"]'
       golangci-lint-version: 'v2.12.2'

@@ -3,13 +3,14 @@ name: Security Scan
 on:
   schedule:
     - cron: '0 14 * * *' # Daily at 8:00 AM CDT
+  workflow_dispatch: {} # TESTING: allows manually triggering a test run, revert before merge
 
 jobs:
   security_scan:
-    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@b3af4a0c584cdd8de66195ac61ef3366d1c1a273 # v6.1.2
+    uses: cccteam/github-workflows/.github/workflows/golang-security-scan.yml@9bb0a148ce67dd13a42d80c7533750567239bf2f # TESTING: feat/sarif-uploads, revert to pinned tag before merge
     with:
       execute-trivy-scan: false
     secrets:
       SLACK_BOT_TOKEN: ${{ secrets.CCC_SLACK_BOT_TOKEN }}
-      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+      SLACK_CHANNEL_ID: '' # TESTING: blanked so a real check failure can't ping the production channel, revert before merge
       DEPENDABOT_ALERTS_TOKEN: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}
