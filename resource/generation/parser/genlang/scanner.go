@@ -14,6 +14,7 @@ type (
 	Scanner interface {
 		ScanStruct(*parser.Struct) (StructAnnotations, error)
 		ScanNamedType(*parser.NamedType) (NamedTypeAnnotations, error)
+		ScanConstant(*parser.Constant) (ConstantAnnotations, error)
 	}
 	scanner struct {
 		src              []byte
@@ -34,6 +35,11 @@ type (
 	NamedTypeAnnotations struct {
 		Named ArgMap
 	}
+
+	// ConstantAnnotations holds the MultiMap of keywords and arguments for a parser.Constant
+	ConstantAnnotations struct {
+		Const ArgMap
+	}
 )
 
 // Scanning modes configure the scanner for different generation/parser types.
@@ -41,6 +47,7 @@ const (
 	ScanStruct scanMode = iota
 	ScanField
 	ScanNamedType
+	ScanConstant
 )
 
 // NewScanner constructs a Scanner with the given keywords and keyword options.
@@ -95,6 +102,17 @@ func (s *scanner) ScanNamedType(namedType *parser.NamedType) (NamedTypeAnnotatio
 	}
 
 	return NamedTypeAnnotations{ArgMap{s.result()}}, nil
+}
+
+// ScanConstant scans the godoc annotations of a parser.Constant using the keywords & flags provided to the scanner.
+func (s *scanner) ScanConstant(c *parser.Constant) (ConstantAnnotations, error) {
+	s.src = []byte(c.Comments())
+	s.mode = ScanConstant
+	if err := s.scan(); err != nil {
+		return ConstantAnnotations{}, err
+	}
+
+	return ConstantAnnotations{ArgMap{s.result()}}, nil
 }
 
 // moves the position pointer forward and returns the current character
