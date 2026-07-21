@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/go-playground/errors/v5"
@@ -76,11 +77,36 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 	return resources, nil
 }
 
+// parsePermissionScopeAnnotation resolves a @permissionScope argument to one of the two
+// valid scopes.
+func parsePermissionScopeAnnotation(arg genlang.Arg) (accesstypes.PermissionScope, error) {
+	scope := accesstypes.PermissionScope(strings.TrimSpace(string(arg)))
+	if scope != accesstypes.GlobalPermissionScope && scope != accesstypes.DomainPermissionScope {
+		return "", errors.Newf("@%s must be %q or %q, got %q", permissionScopeKeyword, accesstypes.GlobalPermissionScope, accesstypes.DomainPermissionScope, scope)
+	}
+
+	return scope, nil
+}
+
 func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnnotations) error {
 	if annotations.Struct.Has(suppressKeyword) {
 		if err := applySuppressDirectives(res, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
 			return errors.Wrapf(err, "@suppress on %s", res.Name())
 		}
+	}
+
+	if annotations.Struct.Has(manualAddResourceSetKeyword) {
+		if err := applyManualAddResourceSetDirectives(res, annotations.Struct.Get(manualAddResourceSetKeyword).Seq()); err != nil {
+			return errors.Wrapf(err, "@%s on %s", manualAddResourceSetKeyword, res.Name())
+		}
+	}
+
+	if annotations.Struct.Has(permissionScopeKeyword) {
+		scope, err := parsePermissionScopeAnnotation(annotations.Struct.Get(permissionScopeKeyword))
+		if err != nil {
+			return errors.Wrapf(err, "on %s", res.Name())
+		}
+		res.PermissionScope = scope
 	}
 
 	if annotations.Struct.Has(defaultsCreateTypeKeyword) {
@@ -209,6 +235,24 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 
 				continue
 			}
+		}
+
+		if annotations.Struct.Has(manualAddResourceSetKeyword) {
+			if err := applyManualAddResourceSetDirectives(resource, annotations.Struct.Get(manualAddResourceSetKeyword).Seq()); err != nil {
+				errs = append(errs, errors.Wrapf(err, "@%s on %s", manualAddResourceSetKeyword, pStruct.Name()))
+
+				continue
+			}
+		}
+
+		if annotations.Struct.Has(permissionScopeKeyword) {
+			scope, err := parsePermissionScopeAnnotation(annotations.Struct.Get(permissionScopeKeyword))
+			if err != nil {
+				errs = append(errs, errors.Wrapf(err, "on %s", pStruct.Name()))
+
+				continue
+			}
+			resource.PermissionScope = scope
 		}
 
 		resources = append(resources, resource)
@@ -342,6 +386,16 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 
 		rpcMethod.SuppressHandler = annotations.Struct.Has(suppressKeyword)
 
+		if annotations.Struct.Has(permissionScopeKeyword) {
+			scope, err := parsePermissionScopeAnnotation(annotations.Struct.Get(permissionScopeKeyword))
+			if err != nil {
+				errs = append(errs, errors.Wrapf(err, "on %s", s.Name()))
+
+				continue
+			}
+			rpcMethod.PermissionScope = scope
+		}
+
 		rpcMethods = append(rpcMethods, rpcMethod)
 	}
 
@@ -384,6 +438,16 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 
 				continue
 			}
+		}
+
+		if annotations.Struct.Has(permissionScopeKeyword) {
+			scope, err := parsePermissionScopeAnnotation(annotations.Struct.Get(permissionScopeKeyword))
+			if err != nil {
+				resourceErrors = append(resourceErrors, errors.Wrapf(err, "on %s", s.Name()))
+
+				continue
+			}
+			res.PermissionScope = scope
 		}
 
 		var keyCount int

@@ -14,6 +14,7 @@ import (
 	"text/template"
 	"unicode/utf8"
 
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/cache"
 	"github.com/cccteam/ccc/pkg"
 	"github.com/cccteam/ccc/resource"
@@ -276,9 +277,46 @@ func (c *client) templateFuncs() map[string]any {
 		"SanitizeIdentifier":      sanitizeEnumIdentifier,
 		"TypescriptMethodImports": typescriptMethodImports,
 		"TypescriptConstImports":  typescriptConsImports,
+		"PermissionConstant":      permissionConstant,
+		"ScopeConstant":           scopeConstant,
 	}
 
 	return templateFuncs
+}
+
+// permissionConstant renders a permission as its accesstypes constant when one exists,
+// falling back to a typed conversion for permissions outside the standard set.
+func permissionConstant(p accesstypes.Permission) string {
+	switch p {
+	case accesstypes.Create:
+		return "accesstypes.Create"
+	case accesstypes.Read:
+		return "accesstypes.Read"
+	case accesstypes.List:
+		return "accesstypes.List"
+	case accesstypes.Update:
+		return "accesstypes.Update"
+	case accesstypes.Delete:
+		return "accesstypes.Delete"
+	case accesstypes.Execute:
+		return "accesstypes.Execute"
+	case accesstypes.NullPermission:
+		return "accesstypes.NullPermission"
+	default:
+		return fmt.Sprintf("accesstypes.Permission(%q)", string(p))
+	}
+}
+
+// scopeConstant renders a permission scope as its accesstypes constant when one exists.
+func scopeConstant(s accesstypes.PermissionScope) string {
+	switch s {
+	case accesstypes.GlobalPermissionScope:
+		return "accesstypes.GlobalPermissionScope"
+	case accesstypes.DomainPermissionScope:
+		return "accesstypes.DomainPermissionScope"
+	default:
+		return fmt.Sprintf("accesstypes.PermissionScope(%q)", string(s))
+	}
 }
 
 func (c *client) generateTemplateOutput(templateName, fileTemplate string, data any) ([]byte, error) {

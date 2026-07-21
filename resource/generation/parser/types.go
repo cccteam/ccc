@@ -14,6 +14,43 @@ import (
 type Package struct {
 	Structs    []*Struct
 	NamedTypes []*NamedType
+	Constants  []*Constant
+}
+
+// Constant is a package-level typed constant declaration, carrying its doc and line
+// comments so godoc annotations on constants can be scanned.
+type Constant struct {
+	name     string
+	typeName string // fully qualified declared type, e.g. "github.com/cccteam/ccc/accesstypes.Resource"
+	value    string
+	comments string
+	pos      token.Pos
+}
+
+// Name returns the constant's identifier.
+func (c *Constant) Name() string {
+	return c.name
+}
+
+// TypeName returns the constant's fully qualified declared type.
+func (c *Constant) TypeName() string {
+	return c.typeName
+}
+
+// Value returns the constant's value: the string content for string constants, the exact
+// literal otherwise.
+func (c *Constant) Value() string {
+	return c.value
+}
+
+// Comments returns the constant's doc and line comments.
+func (c *Constant) Comments() string {
+	return c.comments
+}
+
+// Pos returns the position of the constant's identifier in its fileset.
+func (c *Constant) Pos() token.Pos {
+	return c.pos
 }
 
 // TypeInfo provides convience methods over a go/types' Object.

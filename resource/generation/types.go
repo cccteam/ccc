@@ -184,6 +184,7 @@ const (
 	routesOutputName              = "routes"
 	routerTestOutputName          = "routes_test"
 	consolidatedHandlerOutputName = "consolidated_handler"
+	collectionOutputName          = "collection"
 )
 
 type informationSchemaResult struct {
@@ -276,6 +277,9 @@ type rpcMethodInfo struct {
 	*parser.Struct
 	Fields          []*rpcField
 	SuppressHandler bool
+	// PermissionScope is the scope the method's registration uses
+	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
+	PermissionScope accesstypes.PermissionScope
 }
 
 func (r *rpcMethodInfo) IsTxnRunner() bool {
@@ -360,6 +364,9 @@ type computedResource struct {
 	SuppressReadHandler bool
 	SuppressListHandler bool
 	SuppressedRoutes    []RouteType
+	// PermissionScope is the scope all of this resource's registrations use
+	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
+	PermissionScope accesstypes.PermissionScope
 }
 
 func (c *computedResource) HasCompoundPrimaryKey() bool {
@@ -446,6 +453,13 @@ type resourceInfo struct {
 	Fields             []*resourceField
 	SuppressedHandlers []HandlerType
 	SuppressedRoutes   []RouteType
+	// ManualAddResourceSets lists the handler types whose permission Sets are
+	// registered by hand-written handlers (@manualAddResourceSet), so the statically
+	// computed collection includes them even though no handler is generated.
+	ManualAddResourceSets []HandlerType
+	// PermissionScope is the scope all of this resource's registrations use
+	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
+	PermissionScope    accesstypes.PermissionScope
 	IsVirtual          bool // Determines how CreatePatch is rendered in resource generation.
 	IsConsolidated     bool
 	PkCount            int
@@ -908,31 +922,37 @@ func generatedFileName(name, suffix string) string {
 }
 
 const (
-	resourceKeyword           string = "resource"           // Designates a struct as a resource
-	virtualKeyword            string = "virtual"            // Designates a struct as a virtual resource
-	computedKeyword           string = "computed"           // Designates a struct as a computed resource
-	rpcKeyword                string = "rpc"                // Designates a struct as an RPC method
-	enumerateKeyword          string = "enumerate"          // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
-	suppressKeyword           string = "suppress"           // Suppresses generation of specified handler types or routes for a resource
-	defaultsCreateTypeKeyword string = "defaultsCreateType" // Specifies a type to call "Defaults()" on for setting defaults on resource creation
-	defaultsUpdateTypeKeyword string = "defaultsUpdateType" // Specifies a type to call "Defaults()" on for setting defaults on resource update
-	validateCreateTypeKeyword string = "validateCreateType" // Specifies a type to call "Validate()" on for validating a resource on creation
-	validateUpdateTypeKeyword string = "validateUpdateType" // Specifies a type to call "Validate()" on for validating a resource on update
-	primarykeyKeyword         string = "primarykey"         // Designates a field as a primary key in a Computed Resource
+	resourceKeyword             string = "resource"             // Designates a struct as a resource
+	virtualKeyword              string = "virtual"              // Designates a struct as a virtual resource
+	computedKeyword             string = "computed"             // Designates a struct as a computed resource
+	rpcKeyword                  string = "rpc"                  // Designates a struct as an RPC method
+	enumerateKeyword            string = "enumerate"            // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
+	suppressKeyword             string = "suppress"             // Suppresses generation of specified handler types or routes for a resource
+	defaultsCreateTypeKeyword   string = "defaultsCreateType"   // Specifies a type to call "Defaults()" on for setting defaults on resource creation
+	defaultsUpdateTypeKeyword   string = "defaultsUpdateType"   // Specifies a type to call "Defaults()" on for setting defaults on resource update
+	validateCreateTypeKeyword   string = "validateCreateType"   // Specifies a type to call "Validate()" on for validating a resource on creation
+	validateUpdateTypeKeyword   string = "validateUpdateType"   // Specifies a type to call "Validate()" on for validating a resource on update
+	primarykeyKeyword           string = "primarykey"           // Designates a field as a primary key in a Computed Resource
+	manualAddResourceKeyword    string = "manualAddResource"    // Declares a manual permission registration on an accesstypes.Resource constant
+	manualAddResourceSetKeyword string = "manualAddResourceSet" // Declares that hand-written handlers register this resource's permission Sets for the given handler types
+	permissionScopeKeyword      string = "permissionScope"      // Declares the permission scope (global or domain) all of a resource's registrations use
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
 	return map[string]genlang.KeywordOpts{
-		resourceKeyword:           {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
-		virtualKeyword:            {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
-		computedKeyword:           {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
-		rpcKeyword:                {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
-		enumerateKeyword:          {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
-		suppressKeyword:           {genlang.ScanStruct: genlang.ArgsRequired},
-		defaultsCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
-		defaultsUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
-		validateCreateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
-		validateUpdateTypeKeyword: {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
-		primarykeyKeyword:         {genlang.ScanField: genlang.NoArgs},
+		resourceKeyword:             {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
+		virtualKeyword:              {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
+		computedKeyword:             {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
+		rpcKeyword:                  {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
+		enumerateKeyword:            {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
+		suppressKeyword:             {genlang.ScanStruct: genlang.ArgsRequired},
+		defaultsCreateTypeKeyword:   {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		defaultsUpdateTypeKeyword:   {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		validateCreateTypeKeyword:   {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		validateUpdateTypeKeyword:   {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		primarykeyKeyword:           {genlang.ScanField: genlang.NoArgs},
+		manualAddResourceKeyword:    {genlang.ScanConstant: genlang.ArgsRequired},
+		manualAddResourceSetKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
+		permissionScopeKeyword:      {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }
