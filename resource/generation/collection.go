@@ -170,10 +170,9 @@ func scopeOrGlobal(scope accesstypes.PermissionScope) accesstypes.PermissionScop
 }
 
 // computeCollectionData derives the permission collection statically from the same
-// parsed state the generator renders handlers from, mirroring what runtime registration
-// collects when the generated router is wired up under the collect_resource_permissions
-// build tag. Without GenerateRoutes no generated wiring performs registrations, so only
-// the manual declarations (@manualAddResource and @manualAddResourceSet) are collected.
+// parsed state the generator renders handlers from. Without GenerateRoutes no generated
+// wiring performs registrations, so only the manual declarations (@manualAddResource and
+// @manualAddResourceSet) are collected.
 func (r *resourceGenerator) computeCollectionData() (resource.CollectionData, error) {
 	b := resource.NewCollectionBuilder()
 

@@ -26,13 +26,6 @@ import (
 
 const customTypesPrefix = "CustomTypes."
 
-type generatorType string
-
-const (
-	resourceGeneratorType   generatorType = "resource"
-	typeScriptGeneratorType generatorType = "typescript"
-)
-
 var caser = strcase.NewCaser(false, nil, nil)
 
 type client struct {
@@ -58,7 +51,7 @@ type client struct {
 	genCache *cache.Cache
 }
 
-func newClient(ctx context.Context, genType generatorType, resourcePackageDir string, migrationSourceURL, localPackages []string, opts []option) (*client, error) {
+func newClient(ctx context.Context, resourcePackageDir string, migrationSourceURL, localPackages []string, opts []option) (*client, error) {
 	pkgInfo, err := pkg.Info()
 	if err != nil {
 		return nil, errors.Wrap(err, "pkg.Info()")
@@ -93,7 +86,7 @@ func newClient(ctx context.Context, genType generatorType, resourcePackageDir st
 
 	switch {
 	case isSchemaClean:
-		if loaded, err := c.loadAllCachedData(genType); err != nil {
+		if loaded, err := c.loadAllCachedData(); err != nil {
 			return nil, err
 		} else if loaded {
 			break
@@ -101,10 +94,6 @@ func newClient(ctx context.Context, genType generatorType, resourcePackageDir st
 
 		fallthrough
 	default:
-		if genType == typeScriptGeneratorType {
-			return nil, errors.New("schema cache is out of date, please run Resource Generator first")
-		}
-
 		for _, migrationSource := range migrationSourceURL {
 			hashedMigrationSourceURL, err := hashString(migrationSource)
 			if err != nil {
