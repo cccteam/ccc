@@ -4,6 +4,8 @@ package parser
 import (
 	"fmt"
 	"go/ast"
+	"go/constant"
+	"go/token"
 	"go/types"
 	"log"
 	"path/filepath"
@@ -194,7 +196,62 @@ func ParsePackage(pkg *packages.Package) *Package {
 
 	slices.SortFunc(parsedStructs, compareFn)
 
-	return &Package{Structs: slices.Clip(parsedStructs), NamedTypes: slices.Clip(namedTypes)}
+	return &Package{Structs: slices.Clip(parsedStructs), NamedTypes: slices.Clip(namedTypes), Constants: packageConstants(pkg)}
+}
+
+// packageConstants returns every package-level constant with its comments, so godoc
+// annotations on constants (e.g. @manualAddResource) can be scanned.
+func packageConstants(pkg *packages.Package) []*Constant {
+	constants := make([]*Constant, 0, 64)
+	for _, file := range pkg.Syntax {
+		for _, decl := range file.Decls {
+			genDecl, ok := decl.(*ast.GenDecl)
+			if !ok || genDecl.Tok != token.CONST {
+				continue
+			}
+
+			for _, spec := range genDecl.Specs {
+				valueSpec, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+
+				var comments string
+				switch {
+				case valueSpec.Doc != nil:
+					comments = valueSpec.Doc.Text()
+				case len(genDecl.Specs) == 1 && genDecl.Doc != nil:
+					// A single-spec const declaration attaches its doc comment to the
+					// GenDecl instead of the ValueSpec.
+					comments = genDecl.Doc.Text()
+				}
+				if valueSpec.Comment != nil {
+					comments += valueSpec.Comment.Text()
+				}
+
+				for _, name := range valueSpec.Names {
+					obj, ok := pkg.TypesInfo.ObjectOf(name).(*types.Const)
+					if !ok {
+						continue
+					}
+
+					value := obj.Val().ExactString()
+					if obj.Val().Kind() == constant.String {
+						value = constant.StringVal(obj.Val())
+					}
+
+					constants = append(constants, &Constant{
+						name:     name.Name,
+						typeName: obj.Type().String(),
+						value:    value,
+						comments: comments,
+					})
+				}
+			}
+		}
+	}
+
+	return slices.Clip(constants)
 }
 
 // packageTypeSpecs returns all type definitions from a package's generic (top-level) declarations

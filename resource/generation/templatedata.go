@@ -114,6 +114,12 @@ func (d *computedHandlerData) typeImports() []fixerImport {
 	return imports
 }
 
+type collectionFileData struct {
+	Source  string
+	Package string
+	Data    resource.CollectionData
+}
+
 type routerFileData struct {
 	Source                 string
 	Package                string

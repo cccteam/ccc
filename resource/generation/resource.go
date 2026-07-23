@@ -8,19 +8,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
 )
 
 type resourceGenerator struct {
 	*client
-	genHandlers     bool
-	genRoutes       bool
-	handler         packageDir
-	router          packageDir
-	routePrefix     string
-	applicationName string
-	receiverName    string
+	genHandlers         bool
+	genRoutes           bool
+	handler             packageDir
+	router              packageDir
+	routePrefix         string
+	applicationName     string
+	receiverName        string
+	typescriptTargets   []typescriptTarget
+	manualRegistrations []ManualRegistration
 }
 
 // NewResourceGenerator constructs a new Generator for generating a resource-driven API.
@@ -38,7 +42,7 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 		opts = append(opts, opt)
 	}
 
-	c, err := newClient(ctx, resourceGeneratorType, resourcePackageDir, migrationSourceURL, localPackages, opts)
+	c, err := newClient(ctx, resourcePackageDir, migrationSourceURL, localPackages, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +77,12 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
+	annotatedRegistrations, err := manualRegistrationsFromConstants(resourcesPkg.Constants)
+	if err != nil {
+		return err
+	}
+	r.manualRegistrations = append(r.manualRegistrations, annotatedRegistrations...)
+
 	if r.genVirtualResources {
 		virtualStructs := parser.ParsePackage(packageMap[r.virtual.Package()]).Structs
 		virtualResources, err := r.structsToVirtualResources(virtualStructs, r.validateStructNameMatchesFile(pkg, true))
@@ -82,6 +92,14 @@ func (r *resourceGenerator) Generate() error {
 
 		r.resources = append(r.resources, virtualResources...)
 		sortResources(r.resources)
+	}
+
+	if err := r.validateManualAddResourceSets(); err != nil {
+		return err
+	}
+
+	if err := r.validateTypescriptTargets(); err != nil {
+		return err
 	}
 
 	// needs to run before resource generation so the data can be sneakily snuck into resource generation
@@ -130,21 +148,137 @@ func (r *resourceGenerator) Generate() error {
 		}
 	}
 
-	appCachePath, err := r.appCachePath()
-	if err != nil {
-		return err
-	}
-
-	// We always want to cache the consolidatedRoute data for the typescript gen
-	if err := r.genCache.Store(appCachePath, consolidatedRouteCache, r.consolidateConfig); err != nil {
-		return errors.Wrap(err, "cache.Cache.Store()")
-	}
-
 	if err := r.populateCache(); err != nil {
 		return err
 	}
 
+	if err := r.runCollectionGeneration(); err != nil {
+		return err
+	}
+
 	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
+
+	return nil
+}
+
+// runCollectionGeneration computes the permission collection and produces its outputs.
+func (r *resourceGenerator) runCollectionGeneration() error {
+	collectionData, err := r.computeCollectionData()
+	if err != nil {
+		return err
+	}
+
+	unifiedGenerators := make([]*typescriptGenerator, 0, len(r.typescriptTargets))
+	if len(r.typescriptTargets) > 0 {
+		// Every target shares one built collection: it's immutable and read-only once
+		// constructed, so building and deriving from it once and reusing the pointer
+		// across targets is safe and avoids redoing the same validation/sort per target.
+		gc, err := resource.NewGeneratedCollection(collectionData)
+		if err != nil {
+			return errors.Wrap(err, "resource.NewGeneratedCollection()")
+		}
+		routerResources := gc.Resources()
+
+		for _, target := range r.typescriptTargets {
+			unifiedTS, err := r.buildUnifiedTypescriptGenerator(gc, routerResources, target)
+			if err != nil {
+				return err
+			}
+			unifiedGenerators = append(unifiedGenerators, unifiedTS)
+		}
+	}
+
+	// The collection file is a standard artifact of route generation: whatever the
+	// generated routes register is emitted next to them for deployment tooling to
+	// consume.
+	if r.genRoutes {
+		if err := r.generateCollectionFile(collectionData); err != nil {
+			return err
+		}
+	}
+
+	for _, unifiedTS := range unifiedGenerators {
+		if err := unifiedTS.Generate(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// generateCollectionFile emits the application's permission collection as a generated
+// file in the router package, exposing Collection() for deployment tooling (role
+// migration, bootstrap) to consume in place of runtime registration.
+func (r *resourceGenerator) generateCollectionFile(data resource.CollectionData) error {
+	begin := time.Now()
+	destinationFilePath := filepath.Join(r.router.Dir(), generatedGoFileName(collectionOutputName))
+
+	if err := r.writeFormattedGoFile(destinationFilePath, "collectionTemplate", collectionTemplate, &collectionFileData{
+		Source:  r.resource.Dir(),
+		Package: r.router.Package(),
+		Data:    data,
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
+	}
+
+	log.Printf("Generated collection file in %s: %s\n", time.Since(begin), destinationFilePath)
+
+	return nil
+}
+
+// buildUnifiedTypescriptGenerator constructs the in-run TypeScript generator for one
+// target directory, fed by the statically computed permission collection instead of a
+// runtime-registered one. gc and routerResources are shared across every target.
+func (r *resourceGenerator) buildUnifiedTypescriptGenerator(gc *resource.GeneratedCollection, routerResources []accesstypes.Resource, target typescriptTarget) (*typescriptGenerator, error) {
+	t, err := target.resolve()
+	if err != nil {
+		return nil, err
+	}
+	t.client = r.client
+	t.rc = gc
+	t.routerResources = routerResources
+
+	return t, nil
+}
+
+// validateTypescriptTargets rejects TypeScript targets whose requested outputs have no
+// permission source: permissions and metadata render from the computed collection, which
+// derives from the generated route wiring plus the manual declarations, so a run with
+// neither would emit them silently empty. Enum output reads only the schema and carries
+// no requirement. It runs after parsing so annotation-declared registrations
+// (@manualAddResource, @manualAddResourceSet) count as a permission source.
+func (r *resourceGenerator) validateTypescriptTargets() error {
+	if r.genRoutes || len(r.typescriptTargets) == 0 {
+		return nil
+	}
+
+	hasManualDeclarations := len(r.manualRegistrations) > 0
+	for _, res := range r.resources {
+		if len(res.ManualAddResourceSets) > 0 {
+			hasManualDeclarations = true
+		}
+	}
+	if hasManualDeclarations {
+		return nil
+	}
+
+	for _, target := range r.typescriptTargets {
+		t, err := target.resolve()
+		if err != nil {
+			return err
+		}
+
+		var requested []string
+		if t.genMetadata {
+			requested = append(requested, "GenerateMetadata()")
+		}
+		if t.genPermission {
+			requested = append(requested, "GeneratePermissions()")
+		}
+		if len(requested) > 0 {
+			return errors.Newf("GenerateTypescript(%q) requests %s without a permission source: the collection they render derives from the generated route wiring, so enable GenerateRoutes(), or declare manual registrations (@manualAddResource, @manualAddResourceSet, or WithManualResources())", target.destination, strings.Join(requested, " and "))
+		}
+	}
 
 	return nil
 }

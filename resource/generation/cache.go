@@ -13,11 +13,10 @@ import (
 )
 
 const (
-	genCacheDir            string = "."
-	genCacheSuffix         string = ".gen"
-	tableMapCache          string = "tablemap" + genCacheSuffix
-	enumValueCache         string = "enumvalues" + genCacheSuffix
-	consolidatedRouteCache string = "consolidatedroutes" + genCacheSuffix
+	genCacheDir    string = "."
+	genCacheSuffix string = ".gen"
+	tableMapCache  string = "tablemap" + genCacheSuffix
+	enumValueCache string = "enumvalues" + genCacheSuffix
 )
 
 // Calculate the sha256 checksum of a file
@@ -167,7 +166,7 @@ func (c *client) isSchemaClean() (bool, error) {
 	return true, nil
 }
 
-func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
+func (c *client) loadAllCachedData() (bool, error) {
 	spannerCachePath, err := c.spannerCachePath()
 	if err != nil {
 		return false, err
@@ -187,19 +186,6 @@ func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
 		return false, nil
 	}
 
-	if genType == typeScriptGeneratorType {
-		appCachePath, err := c.appCachePath()
-		if err != nil {
-			return false, err
-		}
-
-		if ok, err := c.genCache.Load(appCachePath, consolidatedRouteCache, &c.consolidateConfig); err != nil {
-			return false, errors.Wrapf(err, "cache.Cache.Load() for %q", consolidatedRouteCache)
-		} else if !ok {
-			return false, nil
-		}
-	}
-
 	return true, nil
 }
 
@@ -215,15 +201,6 @@ func (c *client) spannerCachePath() (string, error) {
 	}
 
 	return filepath.Join("spanner", fmt.Sprintf("%x", hashedPaths)), nil
-}
-
-func (c *client) appCachePath() (string, error) {
-	hashedPath, err := hashString(filepath.Clean(string(c.resource)))
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Join("app", fmt.Sprintf("%x", hashedPath)), nil
 }
 
 func (c *client) populateCache() error {

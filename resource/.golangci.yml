@@ -76,6 +76,7 @@ linters:
             - github.com/shopspring/decimal
             - go.uber.org/mock/gomock
             - go/ast
+            - go/constant
             - go/format
             - go/parser
             - go/token

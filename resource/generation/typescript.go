@@ -1,7 +1,6 @@
 package generation
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
+	"golang.org/x/tools/go/packages"
 )
 
 type typescriptGenerator struct {
@@ -22,40 +22,39 @@ type typescriptGenerator struct {
 	genEnums               bool
 	typescriptDestination  string
 	typescriptOverrides    map[string]string
-	rc                     *resource.Collection
+	rc                     *resource.GeneratedCollection
 	routerResources        []accesstypes.Resource
 	spannerEmulatorVersion string
 }
 
-// NewTypescriptGenerator constructs a new Generator for generating Typescript for a resource-driven Angular app.
-func NewTypescriptGenerator(ctx context.Context, resourceSourcePath string, migrationSourceURL []string, targetDir string, rc *resource.Collection, options ...TSOption) (Generator, error) {
-	if rc == nil {
-		return nil, errors.New("resource collection cannot be nil")
+// parseResources parses the resource and virtual-resource packages, returning the parsed
+// resources alongside the resources package, whose named types the enum generation
+// consumes.
+func (t *typescriptGenerator) parseResources(packageMap map[string]*packages.Package) ([]*resourceInfo, *parser.Package, error) {
+	pkg := packageMap[t.resource.Package()]
+	if pkg == nil {
+		return nil, nil, errors.Newf("no packages found in %q", t.resource.Dir())
 	}
+	resourcesPkg := parser.ParsePackage(pkg)
 
-	t := &typescriptGenerator{
-		rc:                    rc,
-		routerResources:       rc.Resources(),
-		typescriptDestination: targetDir,
-	}
-
-	opts := make([]option, 0, len(options))
-	for _, opt := range options {
-		opts = append(opts, opt)
-	}
-
-	c, err := newClient(ctx, typeScriptGeneratorType, resourceSourcePath, migrationSourceURL, nil, opts)
+	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	t.client = c
+	if t.genVirtualResources {
+		pkg := packageMap[t.virtual.Package()]
+		virtualStructs := parser.ParsePackage(pkg).Structs
+		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true))
+		if err != nil {
+			return nil, nil, err
+		}
 
-	if err := resolveOptions(t, opts); err != nil {
-		return nil, err
+		resources = append(resources, virtualResources...)
+		sortResources(resources)
 	}
 
-	return t, nil
+	return resources, resourcesPkg, nil
 }
 
 func (t *typescriptGenerator) Generate() error {
@@ -68,27 +67,9 @@ func (t *typescriptGenerator) Generate() error {
 		return errors.Wrap(err, "parser.LoadPackages()")
 	}
 
-	pkg := packageMap[t.resource.Package()]
-	if pkg == nil {
-		return errors.Newf("no packages found in %q", t.resource.Dir())
-	}
-	resourcesPkg := parser.ParsePackage(pkg)
-
-	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true))
+	resources, resourcesPkg, err := t.parseResources(packageMap)
 	if err != nil {
 		return err
-	}
-
-	if t.genVirtualResources {
-		pkg := packageMap[t.virtual.Package()]
-		virtualStructs := parser.ParsePackage(pkg).Structs
-		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true))
-		if err != nil {
-			return err
-		}
-
-		resources = append(resources, virtualResources...)
-		sortResources(resources)
 	}
 
 	if t.genComputedResources {
