@@ -88,6 +88,25 @@ func parsePermissionScopeAnnotation(arg genlang.Arg) (accesstypes.PermissionScop
 	return scope, nil
 }
 
+// resolvePermissionScope applies a @permissionScope annotation to dest if present, leaving
+// it unset (the generator's global default) when absent. It is shared by every resource
+// kind (resources, virtual resources, RPC methods, computed resources) that carries a
+// PermissionScope field, since the annotation means the same thing on each.
+func resolvePermissionScope(annotations genlang.StructAnnotations, dest *accesstypes.PermissionScope) error {
+	if !annotations.Struct.Has(permissionScopeKeyword) {
+		return nil
+	}
+
+	scope, err := parsePermissionScopeAnnotation(annotations.Struct.Get(permissionScopeKeyword))
+	if err != nil {
+		return err
+	}
+
+	*dest = scope
+
+	return nil
+}
+
 func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnnotations) error {
 	if annotations.Struct.Has(suppressKeyword) {
 		if err := applySuppressDirectives(res, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
@@ -101,12 +120,8 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 		}
 	}
 
-	if annotations.Struct.Has(permissionScopeKeyword) {
-		scope, err := parsePermissionScopeAnnotation(annotations.Struct.Get(permissionScopeKeyword))
-		if err != nil {
-			return errors.Wrapf(err, "on %s", res.Name())
-		}
-		res.PermissionScope = scope
+	if err := resolvePermissionScope(annotations, &res.PermissionScope); err != nil {
+		return errors.Wrapf(err, "on %s", res.Name())
 	}
 
 	if annotations.Struct.Has(defaultsCreateTypeKeyword) {
@@ -245,14 +260,10 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			}
 		}
 
-		if annotations.Struct.Has(permissionScopeKeyword) {
-			scope, err := parsePermissionScopeAnnotation(annotations.Struct.Get(permissionScopeKeyword))
-			if err != nil {
-				errs = append(errs, errors.Wrapf(err, "on %s", pStruct.Name()))
+		if err := resolvePermissionScope(annotations, &resource.PermissionScope); err != nil {
+			errs = append(errs, errors.Wrapf(err, "on %s", pStruct.Name()))
 
-				continue
-			}
-			resource.PermissionScope = scope
+			continue
 		}
 
 		resources = append(resources, resource)
@@ -386,14 +397,10 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 
 		rpcMethod.SuppressHandler = annotations.Struct.Has(suppressKeyword)
 
-		if annotations.Struct.Has(permissionScopeKeyword) {
-			scope, err := parsePermissionScopeAnnotation(annotations.Struct.Get(permissionScopeKeyword))
-			if err != nil {
-				errs = append(errs, errors.Wrapf(err, "on %s", s.Name()))
+		if err := resolvePermissionScope(annotations, &rpcMethod.PermissionScope); err != nil {
+			errs = append(errs, errors.Wrapf(err, "on %s", s.Name()))
 
-				continue
-			}
-			rpcMethod.PermissionScope = scope
+			continue
 		}
 
 		rpcMethods = append(rpcMethods, rpcMethod)
@@ -440,14 +447,10 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 			}
 		}
 
-		if annotations.Struct.Has(permissionScopeKeyword) {
-			scope, err := parsePermissionScopeAnnotation(annotations.Struct.Get(permissionScopeKeyword))
-			if err != nil {
-				resourceErrors = append(resourceErrors, errors.Wrapf(err, "on %s", s.Name()))
+		if err := resolvePermissionScope(annotations, &res.PermissionScope); err != nil {
+			resourceErrors = append(resourceErrors, errors.Wrapf(err, "on %s", s.Name()))
 
-				continue
-			}
-			res.PermissionScope = scope
+			continue
 		}
 
 		var keyCount int

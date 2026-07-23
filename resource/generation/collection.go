@@ -73,10 +73,11 @@ func parseManualAddResourceArgs(c *parser.Constant, arg string) (ManualRegistrat
 	// An absent scope stays empty; the global default applies at registration.
 	var scope accesstypes.PermissionScope
 	if len(parts) == 2 {
-		scope = accesstypes.PermissionScope(strings.TrimSpace(parts[1]))
-		if scope != accesstypes.GlobalPermissionScope && scope != accesstypes.DomainPermissionScope {
-			return ManualRegistration{}, errors.Newf("constant %q: @%s scope must be %q or %q, got %q", c.Name(), manualAddResourceKeyword, accesstypes.GlobalPermissionScope, accesstypes.DomainPermissionScope, scope)
+		parsedScope, err := parsePermissionScopeAnnotation(genlang.Arg(parts[1]))
+		if err != nil {
+			return ManualRegistration{}, errors.Wrapf(err, "constant %q: @%s", c.Name(), manualAddResourceKeyword)
 		}
+		scope = parsedScope
 	}
 
 	return ManualRegistration{
@@ -388,18 +389,10 @@ func computedFieldTags(res *computedResource) []resource.FieldTags {
 }
 
 // fieldTagsFromTemplateTags assembles the template-emitted tag fragments into one struct
-// tag and extracts the registration-relevant values with the same parsing the runtime
-// reflection path uses (reflect.StructTag plus first-comma-part cuts).
+// tag and extracts the registration-relevant values through resource.FieldTagsFromStructTag,
+// the same parsing the runtime reflection path uses, so the two can never disagree.
 func fieldTagsFromTemplateTags(fieldName string, tagFragments ...string) resource.FieldTags {
 	structTag := reflect.StructTag(strings.Join(tagFragments, " "))
 
-	jsonTag, _, _ := strings.Cut(structTag.Get("json"), ",")
-	immutableTag, _, _ := strings.Cut(structTag.Get("immutable"), ",")
-
-	return resource.FieldTags{
-		Field:     accesstypes.Field(fieldName),
-		JSON:      jsonTag,
-		Perm:      structTag.Get("perm"),
-		Immutable: immutableTag == "true",
-	}
+	return resource.FieldTagsFromStructTag(accesstypes.Field(fieldName), structTag)
 }

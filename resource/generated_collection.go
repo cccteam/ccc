@@ -1,7 +1,9 @@
 package resource
 
 import (
+	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
@@ -16,6 +18,23 @@ type FieldTags struct {
 	JSON      string // json tag name (first comma-separated part); "" or "-" is unregistered
 	Perm      string // raw perm tag value (comma-separated permissions)
 	Immutable bool   // immutable:"true"
+}
+
+// FieldTagsFromStructTag extracts the registration-relevant values from a struct tag: the
+// runtime path (permissionsFromTags) calls it directly on a reflected field's tag, and the
+// generator's static path (fieldTagsFromTemplateTags) assembles an equivalent
+// reflect.StructTag from the same fragments the templates render, so both share this exact
+// parsing and can never disagree on it.
+func FieldTagsFromStructTag(field accesstypes.Field, tag reflect.StructTag) FieldTags {
+	jsonTag, _, _ := strings.Cut(tag.Get("json"), ",")
+	immutableTag, _, _ := strings.Cut(tag.Get("immutable"), ",")
+
+	return FieldTags{
+		Field:     field,
+		JSON:      jsonTag,
+		Perm:      tag.Get("perm"),
+		Immutable: immutableTag == trueStr,
+	}
 }
 
 // SetData describes what registering a resource.Set built from a request struct adds to
@@ -363,10 +382,11 @@ func (g *GeneratedCollection) addResource(allowDuplicateRegistration bool, scope
 	return nil
 }
 
-// addResourceSet is the registration core shared by CollectionBuilder.AddResourceSet and
-// NewGeneratedCollection, applying identical semantics: duplicate detection,
-// null-permission filtering, and immutable-field replacement (the last registration for a
-// resource wins).
+// addResourceSet is CollectionBuilder.AddResourceSet's registration core: duplicate
+// detection, null-permission filtering, and immutable-field replacement (the last
+// registration for a resource wins). NewGeneratedCollection populates a GeneratedCollection
+// from already-canonicalized CollectionData directly instead: its input is already
+// deduplicated per resource, so it validates rather than merges.
 func (g *GeneratedCollection) addResourceSet(scope accesstypes.PermissionScope, res accesstypes.Resource, perms []accesstypes.Permission, tags accesstypes.TagPermissions, immutableFields map[accesstypes.Tag]struct{}) error {
 	for _, perm := range perms {
 		if err := g.addResource(false, scope, perm, res); err != nil {
@@ -425,31 +445,20 @@ func (g *GeneratedCollection) permissions() []accesstypes.Permission {
 	return slices.Compact(permissions)
 }
 
+// resourcePermissions is permissions() minus Execute (method resources carry Execute
+// alone, so they never contribute a resource-level permission a role can be granted).
 func (g *GeneratedCollection) resourcePermissions() []accesstypes.Permission {
-	permissions := []accesstypes.Permission{}
-	for _, stores := range g.resourceStore {
-		for _, perms := range stores {
-			permissions = append(permissions, perms...)
-		}
-	}
-	for _, stores := range g.tagStore {
-		for _, tags := range stores {
-			for _, perms := range tags {
-				permissions = append(permissions, perms...)
-			}
-		}
-	}
-	slices.Sort(permissions)
+	permissions := g.permissions()
 
-	filteredPermissions := permissions[:0]
+	filtered := permissions[:0]
 	for _, perm := range permissions {
 		if perm != accesstypes.Execute {
-			filteredPermissions = append(filteredPermissions, perm)
+			filtered = append(filtered, perm)
 		}
 	}
-	clear(permissions[len(filteredPermissions):])
+	clear(permissions[len(filtered):])
 
-	return slices.Compact(filteredPermissions)
+	return filtered
 }
 
 func (g *GeneratedCollection) tags() map[accesstypes.Resource][]accesstypes.Tag {
