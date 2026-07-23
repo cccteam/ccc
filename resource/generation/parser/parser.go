@@ -245,7 +245,6 @@ func packageConstants(pkg *packages.Package) []*Constant {
 						typeName: obj.Type().String(),
 						value:    value,
 						comments: comments,
-						pos:      name.Pos(),
 					})
 				}
 			}

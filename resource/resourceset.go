@@ -116,14 +116,7 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 
 	fields := make([]FieldTags, 0, t.NumField())
 	for field := range t.Fields() {
-		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
-		immutableTag, _, _ := strings.Cut(field.Tag.Get("immutable"), ",")
-		fields = append(fields, FieldTags{
-			Field:     accesstypes.Field(field.Name),
-			JSON:      jsonTag,
-			Perm:      field.Tag.Get("perm"),
-			Immutable: immutableTag == trueStr,
-		})
+		fields = append(fields, FieldTagsFromStructTag(accesstypes.Field(field.Name), field.Tag))
 	}
 
 	// Unlike NewSetData (which always registers every field, since generated
