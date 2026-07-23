@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,96 +13,11 @@ import (
 )
 
 const (
-	genCacheDir            string = "."
-	genCacheSuffix         string = ".gen"
-	tableMapCache          string = "tablemap" + genCacheSuffix
-	enumValueCache         string = "enumvalues" + genCacheSuffix
-	consolidatedRouteCache string = "consolidatedroutes" + genCacheSuffix
-	collectionDataCache    string = "collectiondata" + genCacheSuffix
-	typescriptMarkerCache  string = "typescriptmarker" + genCacheSuffix
+	genCacheDir    string = "."
+	genCacheSuffix string = ".gen"
+	tableMapCache  string = "tablemap" + genCacheSuffix
+	enumValueCache string = "enumvalues" + genCacheSuffix
 )
-
-// typescriptMarker records the TypeScript configurations the Resource Generator run
-// emitted, one per GenerateTypescript target directory (empty when the run emitted no
-// TypeScript). It is rewritten on every run so removing a GenerateTypescript call
-// re-activates the deprecated TypeScript generator for that directory instead of
-// silently generating nothing.
-type typescriptMarker struct {
-	Configs []typescriptRunConfig
-}
-
-// configFor returns the recorded configuration whose target directory matches targetDir,
-// or nil when the Resource Generator run did not emit TypeScript there.
-func (m *typescriptMarker) configFor(targetDir string) *typescriptRunConfig {
-	dir := filepath.Clean(targetDir)
-	for i := range m.Configs {
-		if m.Configs[i].TargetDir == dir {
-			return &m.Configs[i]
-		}
-	}
-
-	return nil
-}
-
-// typescriptRunConfig captures every setting that shapes TypeScript output, so the
-// deprecated TypeScript generator can verify the Resource Generator's configuration
-// matches its own.
-type typescriptRunConfig struct {
-	TargetDir           string
-	GenMetadata         bool
-	GenPermission       bool
-	GenEnums            bool
-	TypescriptOverrides map[string]string
-	VirtualDir          string
-	ComputedDir         string
-	RPCDir              string
-	PluralOverrides     map[string]string
-}
-
-// typescriptRunConfigFrom assembles the comparable configuration from a resolved
-// typescriptGenerator and its client.
-func typescriptRunConfigFrom(t *typescriptGenerator, c *client, targetDir string) typescriptRunConfig {
-	return typescriptRunConfig{
-		TargetDir:           filepath.Clean(targetDir),
-		GenMetadata:         t.genMetadata,
-		GenPermission:       t.genPermission,
-		GenEnums:            t.genEnums,
-		TypescriptOverrides: t.typescriptOverrides,
-		VirtualDir:          string(c.virtual),
-		ComputedDir:         string(c.computed),
-		RPCDir:              string(c.rpc),
-		PluralOverrides:     c.pluralOverrides,
-	}
-}
-
-// diff returns one line per setting that differs between the Resource Generator's
-// configuration (m) and the deprecated TypeScript generator's configuration (other).
-func (m *typescriptRunConfig) diff(other *typescriptRunConfig) []string {
-	var diffs []string
-
-	compare := func(setting, resourceGen, deprecatedGen string) {
-		if resourceGen != deprecatedGen {
-			diffs = append(diffs, fmt.Sprintf("%s: Resource Generator has %q, deprecated TypeScript generator has %q", setting, resourceGen, deprecatedGen))
-		}
-	}
-
-	compare("TypeScript target directory", m.TargetDir, other.TargetDir)
-	compare("GenerateMetadata", fmt.Sprint(m.GenMetadata), fmt.Sprint(other.GenMetadata))
-	compare("GeneratePermissions", fmt.Sprint(m.GenPermission), fmt.Sprint(other.GenPermission))
-	compare("GenerateEnums", fmt.Sprint(m.GenEnums), fmt.Sprint(other.GenEnums))
-	compare("WithVirtualResources", m.VirtualDir, other.VirtualDir)
-	compare("WithComputedResources", m.ComputedDir, other.ComputedDir)
-	compare("WithRPC", m.RPCDir, other.RPCDir)
-
-	if !maps.Equal(m.TypescriptOverrides, other.TypescriptOverrides) {
-		diffs = append(diffs, "WithTypescriptOverrides: the effective TypeScript type override maps differ")
-	}
-	if !maps.Equal(m.PluralOverrides, other.PluralOverrides) {
-		diffs = append(diffs, "WithPluralOverrides: the plural override maps differ")
-	}
-
-	return diffs
-}
 
 // Calculate the sha256 checksum of a file
 func hashFile(filePath string) ([]byte, error) {
@@ -252,7 +166,7 @@ func (c *client) isSchemaClean() (bool, error) {
 	return true, nil
 }
 
-func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
+func (c *client) loadAllCachedData() (bool, error) {
 	spannerCachePath, err := c.spannerCachePath()
 	if err != nil {
 		return false, err
@@ -272,19 +186,6 @@ func (c *client) loadAllCachedData(genType generatorType) (bool, error) {
 		return false, nil
 	}
 
-	if genType == typeScriptGeneratorType {
-		appCachePath, err := c.appCachePath()
-		if err != nil {
-			return false, err
-		}
-
-		if ok, err := c.genCache.Load(appCachePath, consolidatedRouteCache, &c.consolidateConfig); err != nil {
-			return false, errors.Wrapf(err, "cache.Cache.Load() for %q", consolidatedRouteCache)
-		} else if !ok {
-			return false, nil
-		}
-	}
-
 	return true, nil
 }
 
@@ -300,15 +201,6 @@ func (c *client) spannerCachePath() (string, error) {
 	}
 
 	return filepath.Join("spanner", fmt.Sprintf("%x", hashedPaths)), nil
-}
-
-func (c *client) appCachePath() (string, error) {
-	hashedPath, err := hashString(filepath.Clean(string(c.resource)))
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Join("app", fmt.Sprintf("%x", hashedPath)), nil
 }
 
 func (c *client) populateCache() error {

@@ -126,7 +126,13 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 		})
 	}
 
-	return permissionsFromFieldTags(fields, perms, registerAllResources)
+	// Unlike NewSetData (which always registers every field, since generated
+	// Collection/TypeScript output needs a complete field list), a request struct field
+	// with no perm tag is left unregistered here: PermissionRequired/Resource only ever
+	// query a field after finding a real permission requirement for it, so an
+	// unregistered field and one registered with only NullPermission are indistinguishable
+	// to every caller in this codebase.
+	return permissionsFromFieldTags(fields, perms, false)
 }
 
 // classifyPermission records a permission into the mutating or non-mutating set and the

@@ -82,10 +82,9 @@ func GenerateRoutes(targetDir, routePrefix string) ResourceOption {
 	})
 }
 
-// GenerateTypescript enables TypeScript generation as part of the resource generator
-// run, replacing the separate TypeScript generator program. The permission data is
-// computed statically from the parsed resources, so the run needs neither the
-// collect_resource_permissions build tag nor a compiled application router.
+// GenerateTypescript enables TypeScript generation as part of the resource generator run.
+// The permission data is computed statically from the parsed resources, so the run needs
+// no compiled application router.
 //
 // The option may be passed multiple times, once per target directory, each call carrying
 // its own TypeScript-specific options — a shared resource package emits its TypeScript
@@ -164,8 +163,8 @@ func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	})
 }
 
-// GeneratePermissions enables generating resource and resource-field level permission mappings,
-// based on the routes registered in the app router. Requires `collect_resource_permissions` build tag.
+// GeneratePermissions enables generating resource and resource-field level permission
+// mappings, computed statically from the permission collection (see GenerateTypescript).
 func GeneratePermissions() TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
 		t.genPermission = true

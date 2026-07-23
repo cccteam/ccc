@@ -333,10 +333,11 @@ func TestGeneratedCollection_roundTrip(t *testing.T) {
 func TestGeneratedCollection_readMethods(t *testing.T) {
 	t.Parallel()
 
-	// Build the equivalent collection through both population paths and require every
-	// read method to agree: GeneratedCollection must be indistinguishable from a
-	// runtime-populated Collection to its consumers (MigrateRoles, TypeScript
-	// generation).
+	// Build the same collection through both CollectionBuilder exit paths -
+	// GeneratedCollection() directly, and Data() round-tripped through
+	// NewGeneratedCollection - and require every read method to agree, so the two paths
+	// production code takes (in-run vs. deserialized-from-generated-code) can never
+	// diverge.
 	listSet, err := NewSetData([]FieldTags{
 		{Field: "ID", JSON: "id", Perm: "List"},
 		{Field: "Name", JSON: "name"},
@@ -352,244 +353,48 @@ func TestGeneratedCollection_readMethods(t *testing.T) {
 		t.Fatalf("NewSetData() error = %v", err)
 	}
 
-	runtime := newPopulatableCollection()
 	b := NewCollectionBuilder()
-	for _, apply := range []func(scope accesstypes.PermissionScope, res accesstypes.Resource, set SetData) error{
-		func(scope accesstypes.PermissionScope, res accesstypes.Resource, set SetData) error {
-			return runtime.addResourceSet(scope, res, set.Permissions, set.TagPermissions, set.ImmutableFields)
-		},
-		b.AddResourceSet,
-	} {
-		if err := apply(accesstypes.GlobalPermissionScope, "Widgets", listSet); err != nil {
-			t.Fatalf("registering list set: %v", err)
-		}
-		if err := apply(accesstypes.GlobalPermissionScope, "Widgets", patchSet); err != nil {
-			t.Fatalf("registering patch set: %v", err)
-		}
+	if err := b.AddResourceSet(accesstypes.GlobalPermissionScope, "Widgets", listSet); err != nil {
+		t.Fatalf("registering list set: %v", err)
 	}
-	if err := runtime.addResource(false, accesstypes.GlobalPermissionScope, accesstypes.Execute, "DoThing"); err != nil {
-		t.Fatalf("addResource() error = %v", err)
+	if err := b.AddResourceSet(accesstypes.GlobalPermissionScope, "Widgets", patchSet); err != nil {
+		t.Fatalf("registering patch set: %v", err)
 	}
 	if err := b.AddMethodResource(accesstypes.GlobalPermissionScope, accesstypes.Execute, "DoThing"); err != nil {
 		t.Fatalf("AddMethodResource() error = %v", err)
 	}
 
-	g, err := NewGeneratedCollection(b.Data())
+	direct := b.GeneratedCollection()
+	fromData, err := NewGeneratedCollection(b.Data())
 	if err != nil {
 		t.Fatalf("NewGeneratedCollection() error = %v", err)
 	}
 
-	if diff := cmp.Diff(runtime.Resources(), g.Resources()); diff != "" {
-		t.Errorf("Resources() mismatch (-runtime +generated):\n%s", diff)
+	if diff := cmp.Diff(direct.Resources(), fromData.Resources()); diff != "" {
+		t.Errorf("Resources() mismatch (-direct +fromData):\n%s", diff)
 	}
 	// List()'s value ordering follows map iteration and is not deterministic; its
 	// consumers are order-insensitive.
-	if diff := cmp.Diff(runtime.List(), g.List(), cmpopts.SortSlices(func(a, b accesstypes.Resource) bool { return a < b })); diff != "" {
-		t.Errorf("List() mismatch (-runtime +generated):\n%s", diff)
+	if diff := cmp.Diff(direct.List(), fromData.List(), cmpopts.SortSlices(func(a, b accesstypes.Resource) bool { return a < b })); diff != "" {
+		t.Errorf("List() mismatch (-direct +fromData):\n%s", diff)
 	}
-	if diff := cmp.Diff(runtime.TypescriptData(), g.TypescriptData()); diff != "" {
-		t.Errorf("TypescriptData() mismatch (-runtime +generated):\n%s", diff)
+	if diff := cmp.Diff(direct.TypescriptData(), fromData.TypescriptData()); diff != "" {
+		t.Errorf("TypescriptData() mismatch (-direct +fromData):\n%s", diff)
 	}
-	if got, want := g.Scope("Widgets"), runtime.Scope("Widgets"); got != want {
+	if got, want := fromData.Scope("Widgets"), direct.Scope("Widgets"); got != want {
 		t.Errorf("Scope() = %v, want %v", got, want)
 	}
-	if !g.ResourceExists("Widgets") {
+	if !direct.ResourceExists("Widgets") {
 		t.Error("ResourceExists(Widgets) = false, want true")
 	}
-	if g.ResourceExists("DoThing") {
+	if direct.ResourceExists("DoThing") {
 		t.Error("ResourceExists(DoThing) = true, want false (Execute-only resources are methods)")
 	}
-	if !g.IsResourceImmutable(accesstypes.GlobalPermissionScope, accesstypes.Resource("Widgets").ResourceWithTag("code")) {
+	if !direct.IsResourceImmutable(accesstypes.GlobalPermissionScope, accesstypes.Resource("Widgets").ResourceWithTag("code")) {
 		t.Error("IsResourceImmutable(Widgets.code) = false, want true")
 	}
-	if g.IsResourceImmutable(accesstypes.GlobalPermissionScope, accesstypes.Resource("Widgets").ResourceWithTag("name")) {
+	if direct.IsResourceImmutable(accesstypes.GlobalPermissionScope, accesstypes.Resource("Widgets").ResourceWithTag("name")) {
 		t.Error("IsResourceImmutable(Widgets.name) = true, want false")
-	}
-
-	if diffs := DiffCollections(runtime, g); len(diffs) != 0 {
-		t.Errorf("DiffCollections() = %v, want empty", diffs)
-	}
-}
-
-// TestDiffCollections pins the drift report between a runtime-populated Collection and
-// a GeneratedCollection: resources absent from one side, per-resource-per-direction
-// grouping, and the manual-registration provenance carried on runtime-only entries.
-func TestDiffCollections(t *testing.T) {
-	t.Parallel()
-
-	scope := accesstypes.GlobalPermissionScope
-
-	tests := []struct {
-		name string
-		// runtime populates the runtime-path collection, failing the test on errors.
-		runtime func(t *testing.T) *Collection
-		data    CollectionData
-		want    []CollectionDiff
-	}{
-		{
-			name: "resources absent from either side are reported with their direction",
-			runtime: func(t *testing.T) *Collection {
-				t.Helper()
-				c := newPopulatableCollection()
-				if err := c.addResource(false, scope, accesstypes.Read, "Widgets"); err != nil {
-					t.Fatalf("addResource() error = %v", err)
-				}
-				if err := c.addResource(false, scope, accesstypes.Execute, "RuntimeOnly"); err != nil {
-					t.Fatalf("addResource() error = %v", err)
-				}
-
-				return c
-			},
-			data: CollectionData{Resources: []CollectionResource{
-				{Name: "Widgets", Scope: scope, Permissions: []accesstypes.Permission{accesstypes.Read}},
-				{Name: "GeneratedOnly", Scope: scope, Permissions: []accesstypes.Permission{accesstypes.List}},
-			}},
-			want: []CollectionDiff{
-				{Resource: "GeneratedOnly", Scope: scope, RuntimeOnly: false, Permissions: []accesstypes.Permission{accesstypes.List}},
-				{Resource: "RuntimeOnly", Scope: scope, RuntimeOnly: true, Permissions: []accesstypes.Permission{accesstypes.Execute}},
-			},
-		},
-		{
-			// A resource absent from one side yields a single group carrying its
-			// permissions and tags together, while a resource present on both sides
-			// with a matching permission reports only its field-level drift.
-			name: "differences group per resource and per direction",
-			runtime: func(t *testing.T) *Collection {
-				t.Helper()
-				c := newPopulatableCollection()
-				if err := c.addResourceSet(scope, "Contacts", []accesstypes.Permission{accesstypes.List, accesstypes.Read}, accesstypes.TagPermissions{
-					"id":    {accesstypes.NullPermission},
-					"email": {accesstypes.Read},
-				}, nil); err != nil {
-					t.Fatalf("addResourceSet() error = %v", err)
-				}
-				if err := c.addResourceSet(scope, "Widgets", []accesstypes.Permission{accesstypes.List}, accesstypes.TagPermissions{
-					"id":     {accesstypes.NullPermission},
-					"secret": {accesstypes.List},
-				}, nil); err != nil {
-					t.Fatalf("addResourceSet() error = %v", err)
-				}
-
-				return c
-			},
-			data: CollectionData{Resources: []CollectionResource{
-				{
-					Name:        "Widgets",
-					Scope:       scope,
-					Permissions: []accesstypes.Permission{accesstypes.List},
-					Tags: []TagData{
-						{Name: "id"},
-						{Name: "secret"},
-					},
-				},
-			}},
-			want: []CollectionDiff{
-				{
-					// Absent from the generated collection entirely: one group carries
-					// the permissions and every tag.
-					Resource:    "Contacts",
-					Scope:       scope,
-					RuntimeOnly: true,
-					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
-					Tags:        []accesstypes.Tag{"email", "id"},
-				},
-				{
-					// Permission and tags match; only the per-tag permission drifts.
-					Resource:       "Widgets",
-					Scope:          scope,
-					RuntimeOnly:    true,
-					TagPermissions: map[accesstypes.Tag][]accesstypes.Permission{"secret": {accesstypes.List}},
-				},
-			},
-		},
-		{
-			// Runtime-only entries recorded through the deprecated AddResource carry
-			// the provenance the migration hints render as exact annotations.
-			name: "manual registrations carry provenance",
-			runtime: func(t *testing.T) *Collection {
-				t.Helper()
-				c := newPopulatableCollection()
-				for _, reg := range []ManualRegistration{
-					{Scope: accesstypes.GlobalPermissionScope, Permission: accesstypes.Execute, Resource: "UploadThings"},
-					{Scope: accesstypes.DomainPermissionScope, Permission: accesstypes.Read, Resource: "ScopedThings"},
-				} {
-					if err := c.addResource(true, reg.Scope, reg.Permission, reg.Resource); err != nil {
-						t.Fatalf("addResource() error = %v", err)
-					}
-					c.recordManualRegistration(reg.Scope, reg.Permission, reg.Resource)
-				}
-
-				return c
-			},
-			want: []CollectionDiff{
-				{
-					Resource:    "ScopedThings",
-					Scope:       accesstypes.DomainPermissionScope,
-					RuntimeOnly: true,
-					Permissions: []accesstypes.Permission{accesstypes.Read},
-					ManualRegistrations: []ManualRegistration{
-						{Scope: accesstypes.DomainPermissionScope, Permission: accesstypes.Read, Resource: "ScopedThings"},
-					},
-				},
-				{
-					Resource:    "UploadThings",
-					Scope:       accesstypes.GlobalPermissionScope,
-					RuntimeOnly: true,
-					Permissions: []accesstypes.Permission{accesstypes.Execute},
-					ManualRegistrations: []ManualRegistration{
-						{Scope: accesstypes.GlobalPermissionScope, Permission: accesstypes.Execute, Resource: "UploadThings"},
-					},
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			g, err := NewGeneratedCollection(tt.data)
-			if err != nil {
-				t.Fatalf("NewGeneratedCollection() error = %v", err)
-			}
-
-			if diff := cmp.Diff(tt.want, DiffCollections(tt.runtime(t), g)); diff != "" {
-				t.Errorf("DiffCollections() mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
-// TestManualRegistration_Annotation pins the exact @manualAddResource annotation text
-// the migration hints tell users to add.
-func TestManualRegistration_Annotation(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		reg  ManualRegistration
-		want string
-	}{
-		{
-			name: "explicit scope is spelled out",
-			reg:  ManualRegistration{Scope: accesstypes.DomainPermissionScope, Permission: accesstypes.Read, Resource: "ScopedThings"},
-			want: "@manualAddResource(Read, domain)",
-		},
-		{
-			name: "global scope is omitted as the default",
-			reg:  ManualRegistration{Scope: accesstypes.GlobalPermissionScope, Permission: accesstypes.Execute, Resource: "UploadThings"},
-			want: "@manualAddResource(Execute)",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			if got := tt.reg.Annotation(); got != tt.want {
-				t.Errorf("Annotation() = %q, want %q", got, tt.want)
-			}
-		})
 	}
 }
 
@@ -624,31 +429,5 @@ func TestGeneratedCollection_HasPermission(t *testing.T) {
 				t.Errorf("HasPermission(%s, %s, %s) = %v, want %v", tt.scope, tt.permission, tt.resource, got, tt.want)
 			}
 		})
-	}
-}
-
-func TestCollection_ManualRegistrations(t *testing.T) {
-	t.Parallel()
-
-	c := newPopulatableCollection()
-	regs := []ManualRegistration{
-		{Scope: accesstypes.GlobalPermissionScope, Permission: accesstypes.Execute, Resource: "UploadThings"},
-		{Scope: accesstypes.DomainPermissionScope, Permission: accesstypes.Read, Resource: "ScopedThings"},
-	}
-	for _, reg := range regs {
-		if err := c.addResource(true, reg.Scope, reg.Permission, reg.Resource); err != nil {
-			t.Fatalf("addResource() error = %v", err)
-		}
-		c.recordManualRegistration(reg.Scope, reg.Permission, reg.Resource)
-	}
-	// Duplicate manual registrations collapse to one record.
-	c.recordManualRegistration(accesstypes.GlobalPermissionScope, accesstypes.Execute, "UploadThings")
-
-	want := []ManualRegistration{
-		{Scope: accesstypes.DomainPermissionScope, Permission: accesstypes.Read, Resource: "ScopedThings"},
-		{Scope: accesstypes.GlobalPermissionScope, Permission: accesstypes.Execute, Resource: "UploadThings"},
-	}
-	if diff := cmp.Diff(want, c.ManualRegistrations()); diff != "" {
-		t.Errorf("ManualRegistrations() mismatch (-want +got):\n%s", diff)
 	}
 }

@@ -41,7 +41,7 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 		opts = append(opts, opt)
 	}
 
-	c, err := newClient(ctx, resourceGeneratorType, resourcePackageDir, migrationSourceURL, localPackages, opts)
+	c, err := newClient(ctx, resourcePackageDir, migrationSourceURL, localPackages, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -147,21 +147,11 @@ func (r *resourceGenerator) Generate() error {
 		}
 	}
 
-	appCachePath, err := r.appCachePath()
-	if err != nil {
-		return err
-	}
-
-	// We always want to cache the consolidatedRoute data for the typescript gen
-	if err := r.genCache.Store(appCachePath, consolidatedRouteCache, r.consolidateConfig); err != nil {
-		return errors.Wrap(err, "cache.Cache.Store()")
-	}
-
 	if err := r.populateCache(); err != nil {
 		return err
 	}
 
-	if err := r.runCollectionGeneration(appCachePath); err != nil {
+	if err := r.runCollectionGeneration(); err != nil {
 		return err
 	}
 
@@ -171,33 +161,19 @@ func (r *resourceGenerator) Generate() error {
 }
 
 // runCollectionGeneration computes the permission collection and produces its outputs.
-// The collection is computed and cached on every run for the deprecated TypeScript
-// generator's parity check.
-func (r *resourceGenerator) runCollectionGeneration(appCachePath string) error {
+func (r *resourceGenerator) runCollectionGeneration() error {
 	collectionData, err := r.computeCollectionData()
 	if err != nil {
 		return err
 	}
 
-	if err := r.genCache.Store(appCachePath, collectionDataCache, collectionData); err != nil {
-		return errors.Wrap(err, "cache.Cache.Store()")
-	}
-
-	// Resolve all targets before storing the marker so it records every fully resolved
-	// TypeScript configuration, one per target directory.
 	unifiedGenerators := make([]*typescriptGenerator, 0, len(r.typescriptTargets))
-	marker := typescriptMarker{}
 	for _, target := range r.typescriptTargets {
 		unifiedTS, err := r.buildUnifiedTypescriptGenerator(collectionData, target)
 		if err != nil {
 			return err
 		}
 		unifiedGenerators = append(unifiedGenerators, unifiedTS)
-		marker.Configs = append(marker.Configs, typescriptRunConfigFrom(unifiedTS, r.client, target.destination))
-	}
-
-	if err := r.genCache.Store(appCachePath, typescriptMarkerCache, marker); err != nil {
-		return errors.Wrap(err, "cache.Cache.Store()")
 	}
 
 	// The collection file is a standard artifact of route generation: whatever the

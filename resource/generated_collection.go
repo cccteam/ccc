@@ -19,8 +19,8 @@ type FieldTags struct {
 }
 
 // SetData describes what registering a resource.Set built from a request struct adds to
-// a Collection: the resource-level permissions, the tag-to-permission mappings (including
-// tags registered without permissions), and the immutable tags.
+// a GeneratedCollection: the resource-level permissions, the tag-to-permission mappings
+// (including tags registered without permissions), and the immutable tags.
 type SetData struct {
 	Permissions     []accesstypes.Permission
 	TagPermissions  accesstypes.TagPermissions
@@ -28,7 +28,8 @@ type SetData struct {
 }
 
 // NewSetData computes the registration data for a request struct described by fields,
-// mirroring NewSet over the equivalent struct in a collect_resource_permissions build.
+// mirroring NewSet over the equivalent struct, always registering every field (even ones
+// without a permission tag) so generated Collection/TypeScript output is complete.
 func NewSetData(fields []FieldTags, permissions ...accesstypes.Permission) (SetData, error) {
 	tagPermissions, _, perms, immutableFields, err := permissionsFromFieldTags(fields, permissions, true)
 	if err != nil {
@@ -44,12 +45,11 @@ func NewSetData(fields []FieldTags, permissions ...accesstypes.Permission) (SetD
 
 // ManualRegistration declares a permission registration that is not derived from
 // generated handlers: a hand-written route that checks a permission on a resource with
-// no generated handler. It is both the generator's declaration input and the record of a
-// runtime Collection.AddResource call (see Collection.ManualRegistrations).
+// no generated handler. Declare them to the Resource Generator with an
+// @manualAddResource annotation or WithManualResources.
 type ManualRegistration struct {
 	// Scope is empty when the declaration leaves the scope to the default
-	// (accesstypes.GlobalPermissionScope); runtime-recorded registrations always
-	// carry the scope they were registered under.
+	// (accesstypes.GlobalPermissionScope).
 	Scope      accesstypes.PermissionScope
 	Permission accesstypes.Permission
 	Resource   accesstypes.Resource
@@ -81,84 +81,85 @@ type TagData struct {
 }
 
 // CollectionBuilder assembles CollectionData by replaying the registration semantics a
-// runtime-populated Collection enforces (duplicate detection, null-permission filtering,
-// immutable-field replacement), without requiring the collect_resource_permissions build
-// tag. It wraps Collection so both paths share one registration implementation; the core
-// moves here when the deprecated Collection API is removed.
+// permission collection enforces: duplicate detection, null-permission filtering, and
+// immutable-field replacement (the last registration for a resource wins).
 type CollectionBuilder struct {
-	c *Collection
+	g *GeneratedCollection
 }
 
 // NewCollectionBuilder creates an empty CollectionBuilder.
 func NewCollectionBuilder() *CollectionBuilder {
-	return &CollectionBuilder{c: newPopulatableCollection()}
+	return &CollectionBuilder{g: newGeneratedCollection()}
 }
 
-// AddResourceSet registers a request struct's SetData under scope, mirroring
-// AddResources.
+// AddResourceSet registers a request struct's SetData under scope.
 func (b *CollectionBuilder) AddResourceSet(scope accesstypes.PermissionScope, res accesstypes.Resource, set SetData) error {
-	if err := b.c.addResourceSet(scope, res, set.Permissions, set.TagPermissions, set.ImmutableFields); err != nil {
-		return err
-	}
-
-	return nil
+	return b.g.addResourceSet(scope, res, set.Permissions, set.TagPermissions, set.ImmutableFields)
 }
 
-// AddResource registers a single resource permission, mirroring Collection.AddResource
-// (duplicate registrations are allowed).
+// AddResource registers a single resource permission, allowing duplicate registrations
+// (the hand-written registration path).
 func (b *CollectionBuilder) AddResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
 	if permission == accesstypes.NullPermission {
 		return errors.New("cannot register null permission")
 	}
 
-	if err := b.c.addResource(true, scope, permission, res); err != nil {
-		return err
-	}
-
-	return nil
+	return b.g.addResource(true, scope, permission, res)
 }
 
-// AddMethodResource registers a method resource permission, mirroring
-// Collection.AddMethodResource (duplicate registrations are rejected).
+// AddMethodResource registers a method resource permission, rejecting duplicate
+// registrations (generated RPC handlers).
 func (b *CollectionBuilder) AddMethodResource(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
 	if permission == accesstypes.NullPermission {
 		return errors.New("cannot register null permission")
 	}
 
-	if err := b.c.addResource(false, scope, permission, res); err != nil {
-		return err
-	}
-
-	return nil
+	return b.g.addResource(false, scope, permission, res)
 }
 
 // Data returns the canonical, deterministically sorted form of everything registered so
 // far.
 func (b *CollectionBuilder) Data() CollectionData {
-	return collectionDataFrom(b.c)
+	return collectionDataFrom(b.g)
 }
 
 // GeneratedCollection returns the built collection directly, for consumers that do not
-// need the serializable form.
+// need the serializable form. The builder must not be used again afterward: the returned
+// collection shares its storage.
 func (b *CollectionBuilder) GeneratedCollection() *GeneratedCollection {
-	return &GeneratedCollection{c: b.c}
+	return b.g
 }
 
+type (
+	tagStore          map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission
+	resourceStore     map[accesstypes.Resource][]accesstypes.Permission
+	permissionMap     map[accesstypes.Resource]map[accesstypes.Permission]bool
+	immutableFieldMap map[accesstypes.Resource]map[accesstypes.Tag]struct{}
+)
+
 // GeneratedCollection is a read-only permission collection constructed from generated
-// CollectionData. It exposes the same read API as a runtime-populated Collection and is
-// immutable after construction. It wraps Collection so the generated and runtime
-// collections share one read implementation (the parity checks depend on that); the
-// stores and read methods fold into this type when the deprecated Collection API is
-// removed.
+// CollectionData. It is immutable after construction: nothing in its API mutates it once
+// built, so concurrent reads require no synchronization.
 type GeneratedCollection struct {
-	c *Collection
+	tagStore        map[accesstypes.PermissionScope]tagStore
+	resourceStore   map[accesstypes.PermissionScope]resourceStore
+	immutableFields map[accesstypes.PermissionScope]immutableFieldMap
+}
+
+// newGeneratedCollection creates an empty, populatable GeneratedCollection.
+func newGeneratedCollection() *GeneratedCollection {
+	return &GeneratedCollection{
+		tagStore:        make(map[accesstypes.PermissionScope]tagStore, 2),
+		resourceStore:   make(map[accesstypes.PermissionScope]resourceStore, 2),
+		immutableFields: make(map[accesstypes.PermissionScope]immutableFieldMap, 2),
+	}
 }
 
 // NewGeneratedCollection validates data and constructs the collection. It rejects
 // duplicate resources, duplicate or null permissions, and duplicate tags, so invalid
 // generated data fails at startup rather than surfacing as wrong permission decisions.
 func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
-	c := newPopulatableCollection()
+	g := newGeneratedCollection()
 
 	type resourceKey struct {
 		scope accesstypes.PermissionScope
@@ -183,19 +184,19 @@ func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 			if perm == accesstypes.NullPermission {
 				return nil, errors.Newf("resource %q registers a null permission", res.Name)
 			}
-			if err := c.addResource(false, res.Scope, perm, res.Name); err != nil {
+			if err := g.addResource(false, res.Scope, perm, res.Name); err != nil {
 				return nil, err
 			}
 		}
 
 		if len(res.Tags) > 0 {
-			if c.tagStore[res.Scope] == nil {
-				c.tagStore[res.Scope] = make(tagStore)
+			if g.tagStore[res.Scope] == nil {
+				g.tagStore[res.Scope] = make(tagStore)
 			}
-			c.tagStore[res.Scope][res.Name] = make(map[accesstypes.Tag][]accesstypes.Permission, len(res.Tags))
+			g.tagStore[res.Scope][res.Name] = make(map[accesstypes.Tag][]accesstypes.Permission, len(res.Tags))
 
 			for _, tag := range res.Tags {
-				if _, ok := c.tagStore[res.Scope][res.Name][tag.Name]; ok {
+				if _, ok := g.tagStore[res.Scope][res.Name][tag.Name]; ok {
 					return nil, errors.Newf("duplicate tag %q under resource %q", tag.Name, res.Name)
 				}
 
@@ -209,23 +210,23 @@ func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 					}
 					permissions = append(permissions, perm)
 				}
-				c.tagStore[res.Scope][res.Name][tag.Name] = permissions
+				g.tagStore[res.Scope][res.Name][tag.Name] = permissions
 			}
 		}
 
 		if len(res.ImmutableTags) > 0 {
-			if _, ok := c.immutableFields[res.Scope]; !ok {
-				c.immutableFields[res.Scope] = make(immutableFieldMap)
+			if _, ok := g.immutableFields[res.Scope]; !ok {
+				g.immutableFields[res.Scope] = make(immutableFieldMap)
 			}
 			immutable := make(map[accesstypes.Tag]struct{}, len(res.ImmutableTags))
 			for _, tag := range res.ImmutableTags {
 				immutable[tag] = struct{}{}
 			}
-			c.immutableFields[res.Scope][res.Name] = immutable
+			g.immutableFields[res.Scope][res.Name] = immutable
 		}
 	}
 
-	return &GeneratedCollection{c: c}, nil
+	return g, nil
 }
 
 // MustNewGeneratedCollection is NewGeneratedCollection panicking on invalid data, for
@@ -241,77 +242,309 @@ func MustNewGeneratedCollection(data CollectionData) *GeneratedCollection {
 
 // List returns a map of permissions to the resources that have them.
 func (g *GeneratedCollection) List() map[accesstypes.Permission][]accesstypes.Resource {
-	return g.c.List()
+	permissionResources := make(map[accesstypes.Permission][]accesstypes.Resource)
+	for _, store := range g.resourceStore {
+		for resource, permissions := range store {
+			for _, permission := range permissions {
+				permissionResources[permission] = append(permissionResources[permission], resource)
+			}
+		}
+	}
+
+	for _, store := range g.tagStore {
+		for resource, tags := range store {
+			for tag, permissions := range tags {
+				for _, permission := range permissions {
+					permissionResources[permission] = append(permissionResources[permission], resource.ResourceWithTag(tag))
+				}
+			}
+		}
+	}
+
+	return permissionResources
 }
 
 // Scope returns the permission scope for a given resource, or an empty scope if the
 // resource is not found.
 func (g *GeneratedCollection) Scope(resource accesstypes.Resource) accesstypes.PermissionScope {
-	return g.c.Scope(resource)
+	for scope, store := range g.resourceStore {
+		if _, ok := store[resource]; ok {
+			return scope
+		}
+	}
+
+	for scope, store := range g.tagStore {
+		r, t := resource.ResourceAndTag()
+		if _, ok := store[r][t]; ok {
+			return scope
+		}
+	}
+
+	return ""
 }
 
 // IsResourceImmutable checks if a resource is marked as immutable within a given scope.
 func (g *GeneratedCollection) IsResourceImmutable(scope accesstypes.PermissionScope, res accesstypes.Resource) bool {
-	return g.c.IsResourceImmutable(scope, res)
+	resource, tag := res.ResourceAndTag()
+	_, ok := g.immutableFields[scope][resource][tag]
+
+	return ok
 }
 
 // Resources returns a sorted list of all unique base resource names in the collection.
 func (g *GeneratedCollection) Resources() []accesstypes.Resource {
-	return g.c.Resources()
+	resources := []accesstypes.Resource{}
+	for _, stores := range g.resourceStore {
+		for resource, permissions := range stores {
+			if slices.Contains(permissions, accesstypes.Execute) {
+				continue
+			}
+
+			resources = append(resources, resource)
+		}
+	}
+
+	slices.Sort(resources)
+
+	return slices.Compact(resources)
 }
 
 // ResourceExists checks if a resource exists in the collection.
 func (g *GeneratedCollection) ResourceExists(r accesstypes.Resource) bool {
-	return g.c.ResourceExists(r)
+	for _, stores := range g.resourceStore {
+		for resource, permissions := range stores {
+			if slices.Contains(permissions, accesstypes.Execute) {
+				continue
+			}
+			if resource == r {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
-// TypescriptData returns the data needed for TypeScript code generation.
+// TypescriptData returns a struct containing all the data needed for TypeScript code generation.
 func (g *GeneratedCollection) TypescriptData() *TypescriptData {
-	return g.c.TypescriptData()
+	return &TypescriptData{
+		Permissions:           g.permissions(),
+		ResourcePermissions:   g.resourcePermissions(),
+		Resources:             g.Resources(),
+		ResourceTags:          g.tags(),
+		ResourcePermissionMap: g.resourcePermissionMap(),
+		Domains:               g.domains(),
+	}
 }
 
 // HasPermission reports whether the collection registers permission on res within scope.
 func (g *GeneratedCollection) HasPermission(scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) bool {
-	return slices.Contains(g.c.resourceStore[scope][res], permission)
+	return slices.Contains(g.resourceStore[scope][res], permission)
 }
 
 // Data returns the canonical, deterministically sorted form of the collection.
 func (g *GeneratedCollection) Data() CollectionData {
-	return collectionDataFrom(g.c)
+	return collectionDataFrom(g)
 }
 
-// newPopulatableCollection creates a Collection whose stores are initialized regardless
-// of the collect_resource_permissions build tag, for population outside the deprecated
-// runtime-registration path.
-func newPopulatableCollection() *Collection {
-	return &Collection{
-		tagStore:        make(map[accesstypes.PermissionScope]tagStore, 2),
-		resourceStore:   make(map[accesstypes.PermissionScope]resourceStore, 2),
-		immutableFields: make(map[accesstypes.PermissionScope]immutableFieldMap, 2),
+func (g *GeneratedCollection) addResource(allowDuplicateRegistration bool, scope accesstypes.PermissionScope, permission accesstypes.Permission, res accesstypes.Resource) error {
+	if !allowDuplicateRegistration {
+		if ok := slices.Contains(g.resourceStore[scope][res], permission); ok {
+			return errors.Newf("found existing entry under resource: %s and permission: %s", res, permission)
+		}
 	}
+
+	if g.resourceStore[scope] == nil {
+		g.resourceStore[scope] = resourceStore{}
+	}
+
+	g.resourceStore[scope][res] = append(g.resourceStore[scope][res], permission)
+
+	return nil
+}
+
+// addResourceSet is the registration core shared by CollectionBuilder.AddResourceSet and
+// NewGeneratedCollection, applying identical semantics: duplicate detection,
+// null-permission filtering, and immutable-field replacement (the last registration for a
+// resource wins).
+func (g *GeneratedCollection) addResourceSet(scope accesstypes.PermissionScope, res accesstypes.Resource, perms []accesstypes.Permission, tags accesstypes.TagPermissions, immutableFields map[accesstypes.Tag]struct{}) error {
+	for _, perm := range perms {
+		if err := g.addResource(false, scope, perm, res); err != nil {
+			return err
+		}
+	}
+
+	if g.tagStore[scope][res] == nil {
+		if g.tagStore[scope] == nil {
+			g.tagStore[scope] = make(tagStore)
+		}
+
+		g.tagStore[scope][res] = make(map[accesstypes.Tag][]accesstypes.Permission, len(tags))
+	}
+
+	for tag, tagPermissions := range tags {
+		for _, permission := range tagPermissions {
+			permissions := g.tagStore[scope][res][tag]
+			if slices.Contains(permissions, permission) {
+				return errors.Newf("found existing mapping between tag (%s) and permission (%s) under resource (%s)", tag, permission, res)
+			}
+
+			if permission != accesstypes.NullPermission {
+				g.tagStore[scope][res][tag] = append(permissions, permission)
+			} else {
+				g.tagStore[scope][res][tag] = permissions
+			}
+		}
+	}
+
+	if _, ok := g.immutableFields[scope]; !ok {
+		g.immutableFields[scope] = make(map[accesstypes.Resource]map[accesstypes.Tag]struct{})
+	}
+
+	g.immutableFields[scope][res] = immutableFields
+
+	return nil
+}
+
+func (g *GeneratedCollection) permissions() []accesstypes.Permission {
+	permissions := []accesstypes.Permission{}
+	for _, stores := range g.resourceStore {
+		for _, perms := range stores {
+			permissions = append(permissions, perms...)
+		}
+	}
+	for _, stores := range g.tagStore {
+		for _, tags := range stores {
+			for _, perms := range tags {
+				permissions = append(permissions, perms...)
+			}
+		}
+	}
+	slices.Sort(permissions)
+
+	return slices.Compact(permissions)
+}
+
+func (g *GeneratedCollection) resourcePermissions() []accesstypes.Permission {
+	permissions := []accesstypes.Permission{}
+	for _, stores := range g.resourceStore {
+		for _, perms := range stores {
+			permissions = append(permissions, perms...)
+		}
+	}
+	for _, stores := range g.tagStore {
+		for _, tags := range stores {
+			for _, perms := range tags {
+				permissions = append(permissions, perms...)
+			}
+		}
+	}
+	slices.Sort(permissions)
+
+	filteredPermissions := permissions[:0]
+	for _, perm := range permissions {
+		if perm != accesstypes.Execute {
+			filteredPermissions = append(filteredPermissions, perm)
+		}
+	}
+	clear(permissions[len(filteredPermissions):])
+
+	return slices.Compact(filteredPermissions)
+}
+
+func (g *GeneratedCollection) tags() map[accesstypes.Resource][]accesstypes.Tag {
+	resourcetags := make(map[accesstypes.Resource][]accesstypes.Tag)
+
+	for _, tagStore := range g.tagStore {
+		for resource, tags := range tagStore {
+			for tag := range tags {
+				resourcetags[resource] = append(resourcetags[resource], tag)
+				slices.Sort(resourcetags[resource])
+			}
+		}
+	}
+
+	return resourcetags
+}
+
+func (g *GeneratedCollection) resourcePermissionMap() permissionMap {
+	permMap := make(map[accesstypes.Resource]map[accesstypes.Permission]bool)
+	permSet := make(map[accesstypes.Permission]struct{})
+	resources := make(map[accesstypes.Resource]struct{})
+
+	setRequiredPerms := func(res accesstypes.Resource, permissions []accesstypes.Permission) {
+		permMap[res] = make(map[accesstypes.Permission]bool)
+		for _, perm := range permissions {
+			permSet[perm] = struct{}{}
+			permMap[res][perm] = true
+		}
+	}
+
+	for _, store := range g.resourceStore {
+		for resource, permissions := range store {
+			if slices.Contains(permissions, accesstypes.Execute) {
+				continue
+			}
+
+			resources[resource] = struct{}{}
+			setRequiredPerms(resource, permissions)
+		}
+	}
+
+	for _, store := range g.tagStore {
+		for resource, tagmap := range store {
+			for tag, permissions := range tagmap {
+				if slices.Contains(permissions, accesstypes.Execute) {
+					continue
+				}
+
+				resources[resource.ResourceWithTag(tag)] = struct{}{}
+				setRequiredPerms(resource.ResourceWithTag(tag), permissions)
+			}
+		}
+	}
+
+	for resource := range resources {
+		for perm := range permSet {
+			if _, ok := permMap[resource][perm]; !ok {
+				permMap[resource][perm] = false
+			}
+		}
+	}
+
+	return permMap
+}
+
+func (g *GeneratedCollection) domains() []accesstypes.PermissionScope {
+	domains := make([]accesstypes.PermissionScope, 0, len(g.resourceStore))
+	for domain := range g.resourceStore {
+		domains = append(domains, domain)
+	}
+
+	return domains
 }
 
 // collectionDataFrom canonicalizes a collection's stores: resources sorted by scope then
 // name, tags and permissions sorted, and resource-level permissions deduplicated (manual
-// runtime registration permits duplicates).
-func collectionDataFrom(c *Collection) CollectionData {
+// registration permits duplicates).
+func collectionDataFrom(g *GeneratedCollection) CollectionData {
 	type resourceKey struct {
 		scope accesstypes.PermissionScope
 		name  accesstypes.Resource
 	}
 
 	keySet := make(map[resourceKey]struct{})
-	for scope, store := range c.resourceStore {
+	for scope, store := range g.resourceStore {
 		for res := range store {
 			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
 		}
 	}
-	for scope, store := range c.tagStore {
+	for scope, store := range g.tagStore {
 		for res := range store {
 			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
 		}
 	}
-	for scope, store := range c.immutableFields {
+	for scope, store := range g.immutableFields {
 		for res := range store {
 			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
 		}
@@ -345,14 +578,14 @@ func collectionDataFrom(c *Collection) CollectionData {
 			Scope: key.scope,
 		}
 
-		perms := slices.Clone(c.resourceStore[key.scope][key.name])
+		perms := slices.Clone(g.resourceStore[key.scope][key.name])
 		slices.Sort(perms)
 		res.Permissions = slices.Compact(perms)
 		if len(res.Permissions) == 0 {
 			res.Permissions = nil
 		}
 
-		tagMap := c.tagStore[key.scope][key.name]
+		tagMap := g.tagStore[key.scope][key.name]
 		if len(tagMap) > 0 {
 			tagNames := make([]accesstypes.Tag, 0, len(tagMap))
 			for tag := range tagMap {
@@ -371,7 +604,7 @@ func collectionDataFrom(c *Collection) CollectionData {
 			}
 		}
 
-		immutable := c.immutableFields[key.scope][key.name]
+		immutable := g.immutableFields[key.scope][key.name]
 		if len(immutable) > 0 {
 			res.ImmutableTags = make([]accesstypes.Tag, 0, len(immutable))
 			for tag := range immutable {
