@@ -19,6 +19,7 @@ func fileTemplates() map[string]string {
 		"typescriptResourcesTemplate":     typescriptResourcesTemplate,
 		"typescriptMethodsTemplate":       typescriptMethodsTemplate,
 		"typescriptEnumsTemplate":         typescriptEnumsTemplate,
+		"collectionTemplate":              collectionTemplate,
 		"routesTemplate":                  routesTemplate,
 		"routerTestTemplate":              routerTestTemplate,
 		"rpcFileTemplate":                 rpcFileTemplate,

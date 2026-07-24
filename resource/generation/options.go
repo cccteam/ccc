@@ -3,12 +3,14 @@ package generation
 import (
 	"fmt"
 	"maps"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
 
 	"cloud.google.com/go/civil"
 	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
@@ -80,6 +82,77 @@ func GenerateRoutes(targetDir, routePrefix string) ResourceOption {
 	})
 }
 
+// GenerateTypescript enables TypeScript generation as part of the resource generator
+// run, replacing the separate TypeScript generator program. The permission data is
+// computed statically from the parsed resources, so the run needs neither the
+// collect_resource_permissions build tag nor a compiled application router.
+//
+// The option may be passed multiple times, once per target directory, each call carrying
+// its own TypeScript-specific options — a shared resource package emits its TypeScript
+// into every consuming application this way. Target directories must be distinct.
+//
+// It accepts only TypeScript-specific options: GenerateMetadata, GeneratePermissions,
+// GenerateEnums, and WithTypescriptOverrides. Everything else — package locations
+// (WithVirtualResources, WithComputedResources, WithRPC), the Spanner emulator version,
+// plural overrides, and consolidated handlers — is a ResourceOption inherited from the
+// enclosing NewResourceGenerator options, so nesting one here fails to compile.
+// GeneratePermissions and GenerateMetadata render from the permission collection, so
+// they additionally require GenerateRoutes or manual declarations (@manualAddResource,
+// @manualAddResourceSet, WithManualResources); enum output reads only the schema and
+// carries no such requirement.
+func GenerateTypescript(targetDir string, options ...TSOption) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		r.typescriptTargets = append(r.typescriptTargets, typescriptTarget{destination: targetDir, options: options})
+
+		return nil
+	})
+}
+
+// typescriptTarget is one recorded GenerateTypescript call: a target directory and the
+// TypeScript-specific options that shape what is emitted there.
+type typescriptTarget struct {
+	destination string
+	options     []TSOption
+}
+
+// resolve applies the target's options onto a fresh typescriptGenerator, yielding its
+// resolved flag set and destination; the caller attaches the shared client and the
+// permission collection.
+func (target typescriptTarget) resolve() (*typescriptGenerator, error) {
+	t := &typescriptGenerator{typescriptDestination: target.destination}
+
+	opts := make([]option, 0, len(target.options))
+	for _, opt := range target.options {
+		opts = append(opts, opt)
+	}
+	if err := resolveOptions(t, opts); err != nil {
+		return nil, err
+	}
+
+	return t, nil
+}
+
+// WithManualResources declares permission registrations the generator cannot derive from
+// generated handlers: resources registered by hand-written routes (e.g. a Require()
+// middleware calling Collection.AddResource). Each declared registration is included in
+// the generated permission collection and the generated TypeScript constants.
+func WithManualResources(registrations ...ManualRegistration) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		for _, reg := range registrations {
+			if reg.Resource == "" {
+				return errors.New("manual registration requires a resource name")
+			}
+			if reg.Permission == accesstypes.NullPermission {
+				return errors.Newf("manual registration for resource %q requires a permission", reg.Resource)
+			}
+		}
+
+		r.manualRegistrations = append(r.manualRegistrations, registrations...)
+
+		return nil
+	})
+}
+
 // WithTypescriptOverrides sets the Typescript type for a given Go type.
 func WithTypescriptOverrides(overrides map[string]string) TSOption {
 	return tsOption(func(t *typescriptGenerator) error {
@@ -121,8 +194,8 @@ func GenerateEnums() TSOption {
 }
 
 // WithSpannerEmulatorVersion sets the version of the Spanner image pulled from gcr.io
-func WithSpannerEmulatorVersion(version string) Option {
-	return func(g any) error {
+func WithSpannerEmulatorVersion(version string) ResourceOption {
+	return Option(func(g any) error {
 		switch t := g.(type) {
 		case *client:
 			t.spannerEmulatorVersion = version
@@ -132,15 +205,15 @@ func WithSpannerEmulatorVersion(version string) Option {
 		}
 
 		return nil
-	}
+	})
 }
 
 // WithPluralOverrides sets the pluralization for any resource names that are not
 // handled correctly by the default pluralization rules.
-func WithPluralOverrides(overrides map[string]string) Option {
+func WithPluralOverrides(overrides map[string]string) ResourceOption {
 	tempMap := maps.Clone(overrides)
 
-	return func(g any) error {
+	return Option(func(g any) error {
 		switch t := g.(type) {
 		case *client:
 			t.pluralOverrides = tempMap
@@ -150,12 +223,12 @@ func WithPluralOverrides(overrides map[string]string) Option {
 		}
 
 		return nil
-	}
+	})
 }
 
 // CaserInitialismOverrides sets the initialism for any resources that are not covered by the default initialisms.
-func CaserInitialismOverrides(overrides map[string]bool) Option {
-	return func(g any) error {
+func CaserInitialismOverrides(overrides map[string]bool) ResourceOption {
+	return Option(func(g any) error {
 		switch t := g.(type) {
 		case *client:
 			caser = strcase.NewCaser(false, overrides, nil)
@@ -165,12 +238,12 @@ func CaserInitialismOverrides(overrides map[string]bool) Option {
 		}
 
 		return nil
-	}
+	})
 }
 
 // WithConsolidatedHandlers enables generating a handler file for all or a list of resources.
-func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...string) Option {
-	return func(g any) error {
+func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...string) ResourceOption {
+	return Option(func(g any) error {
 		if !consolidateAll && len(resources) == 0 {
 			return errors.New("at least one resource is required if not consolidating all handlers")
 		}
@@ -186,13 +259,13 @@ func WithConsolidatedHandlers(route string, consolidateAll bool, resources ...st
 		}
 
 		return nil
-	}
+	})
 }
 
 // WithVirtualResources enables generating resources utilities, routes and handlers for Virtual Resources.
 // The package's name is expected to be the same as its directory name.
-func WithVirtualResources(virtualResourcesPkgDir string) Option {
-	return func(g any) error {
+func WithVirtualResources(virtualResourcesPkgDir string) ResourceOption {
+	return Option(func(g any) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
 		case *typescriptGenerator: // no-op
@@ -205,13 +278,13 @@ func WithVirtualResources(virtualResourcesPkgDir string) Option {
 		}
 
 		return nil
-	}
+	})
 }
 
 // WithComputedResources enables generating routes and handlers for Computed Resources.
 // The package's name is expected to be the same as its directory name.
-func WithComputedResources(compResourcesPkgDir string) Option {
-	return func(g any) error {
+func WithComputedResources(compResourcesPkgDir string) ResourceOption {
+	return Option(func(g any) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
 		case *typescriptGenerator: // no-op
@@ -224,13 +297,13 @@ func WithComputedResources(compResourcesPkgDir string) Option {
 		}
 
 		return nil
-	}
+	})
 }
 
 // WithRPC enables generating RPC method handlers.
 // The package's name is expected to be the same as its directory name.
-func WithRPC(rpcPackageDir string) Option {
-	return func(g any) error {
+func WithRPC(rpcPackageDir string) ResourceOption {
+	return Option(func(g any) error {
 		switch t := g.(type) {
 		case *resourceGenerator:
 		case *typescriptGenerator: // no-op
@@ -243,7 +316,7 @@ func WithRPC(rpcPackageDir string) Option {
 		}
 
 		return nil
-	}
+	})
 }
 
 // resolveOptions is called twice, once in the client constructor and once in either the resource or typescript generator's constructor.
@@ -282,13 +355,9 @@ func resolveOptions(generator any, options []option) error {
 
 	switch g := generator.(type) {
 	case *resourceGenerator:
-		if g.spannerEmulatorVersion == "" {
-			g.spannerEmulatorVersion = "latest"
+		if err := applyResourceGeneratorDefaults(g); err != nil {
+			return err
 		}
-		if g.applicationName == "" {
-			g.applicationName = "App"
-		}
-		g.receiverName = strings.ToLower(string(g.applicationName[0]))
 
 	case *typescriptGenerator:
 		if g.typescriptOverrides == nil {
@@ -300,6 +369,32 @@ func resolveOptions(generator any, options []option) error {
 	case *client: // no-op
 	default:
 		panic(fmt.Sprintf("unexpected generator type: %T", g))
+	}
+
+	return nil
+}
+
+// applyResourceGeneratorDefaults fills option defaults after all options have been
+// applied, so defaults that depend on other options (e.g. the collection directory
+// following the routes directory) see the final configuration.
+func applyResourceGeneratorDefaults(g *resourceGenerator) error {
+	if g.spannerEmulatorVersion == "" {
+		g.spannerEmulatorVersion = "latest"
+	}
+	if g.applicationName == "" {
+		g.applicationName = "App"
+	}
+	g.receiverName = strings.ToLower(string(g.applicationName[0]))
+
+	// Each GenerateTypescript call owns one directory; two calls writing the same files
+	// to the same place is always a configuration mistake.
+	seen := make(map[string]struct{}, len(g.typescriptTargets))
+	for _, target := range g.typescriptTargets {
+		dir := filepath.Clean(target.destination)
+		if _, ok := seen[dir]; ok {
+			return errors.Newf("GenerateTypescript(%q) is declared more than once: each call must name a distinct target directory", target.destination)
+		}
+		seen[dir] = struct{}{}
 	}
 
 	return nil

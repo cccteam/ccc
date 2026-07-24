@@ -76,6 +76,7 @@ linters:
             - github.com/shopspring/decimal
             - go.uber.org/mock/gomock
             - go/ast
+            - go/constant
             - go/format
             - go/parser
             - go/token
@@ -158,6 +159,12 @@ linters:
           - paralleltest
         path: options_test\.go
         text: TestApplicationName
+      # typescript_manual_test.go deliberately exercises the deprecated runtime
+      # registration API to pin the migration hints built on top of it.
+      - linters:
+          - staticcheck
+        path: generation/typescript_manual_test\.go
+        text: SA1019
       - linters:
           - gomoddirectives
         path: go\.mod

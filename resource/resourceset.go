@@ -114,6 +114,41 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 		return nil, nil, nil, nil, errors.Newf("expected a struct, got %s", t.Kind())
 	}
 
+	fields := make([]FieldTags, 0, t.NumField())
+	for field := range t.Fields() {
+		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		immutableTag, _, _ := strings.Cut(field.Tag.Get("immutable"), ",")
+		fields = append(fields, FieldTags{
+			Field:     accesstypes.Field(field.Name),
+			JSON:      jsonTag,
+			Perm:      field.Tag.Get("perm"),
+			Immutable: immutableTag == trueStr,
+		})
+	}
+
+	return permissionsFromFieldTags(fields, perms, registerAllResources)
+}
+
+// classifyPermission records a permission into the mutating or non-mutating set and the
+// overall permission set, skipping NullPermission.
+func classifyPermission(perm accesstypes.Permission, permissionMap, mutating, nonmutating map[accesstypes.Permission]struct{}) {
+	switch perm {
+	case accesstypes.NullPermission:
+		return
+	case accesstypes.Create, accesstypes.Update, accesstypes.Delete:
+		mutating[perm] = struct{}{}
+	default:
+		nonmutating[perm] = struct{}{}
+	}
+
+	permissionMap[perm] = struct{}{}
+}
+
+// permissionsFromFieldTags is the single source of permission-collection semantics: the
+// runtime path (permissionsFromTags, reflecting over generated request structs) and the
+// generator's static path (NewSetData, built from the same tag values the generator
+// writes into those structs) both flow through it, so the two can never diverge.
+func permissionsFromFieldTags(fields []FieldTags, perms []accesstypes.Permission, registerAll bool) (tags accesstypes.TagPermissions, fieldToTag map[accesstypes.Field]accesstypes.Tag, permissions []accesstypes.Permission, immutableFields map[accesstypes.Tag]struct{}, err error) {
 	tags = make(accesstypes.TagPermissions)
 	fieldToTag = make(map[accesstypes.Field]accesstypes.Tag)
 	permissionMap := make(map[accesstypes.Permission]struct{})
@@ -122,24 +157,14 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 	immutableFields = make(map[accesstypes.Tag]struct{})
 
 	for _, perm := range perms {
-		switch perm {
-		case accesstypes.NullPermission:
-			continue
-		case accesstypes.Create, accesstypes.Update, accesstypes.Delete:
-			mutating[perm] = struct{}{}
-		default:
-			nonmutating[perm] = struct{}{}
-		}
-		permissionMap[perm] = struct{}{}
+		classifyPermission(perm, permissionMap, mutating, nonmutating)
 	}
 
-	for field := range t.Fields() {
-		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
-		immutableTag, _, _ := strings.Cut(field.Tag.Get("immutable"), ",")
-		permTag := field.Tag.Get("perm")
-		perms := strings.Split(permTag, ",")
+	for _, field := range fields {
+		jsonTag := field.JSON
+		perms := strings.Split(field.Perm, ",")
 
-		if immutableTag == trueStr {
+		if field.Immutable {
 			immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
 
 			// immutability is implemented by requiring the update permission (here) and then
@@ -164,17 +189,17 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 			}
 
 			if jsonTag == "" || jsonTag == "-" {
-				return nil, nil, nil, nil, errors.Newf("can not set %s permission on the %s field when json tag is empty", permission, field.Name)
+				return nil, nil, nil, nil, errors.Newf("can not set %s permission on the %s field when json tag is empty", permission, field.Field)
 			}
 			tags[accesstypes.Tag(jsonTag)] = append(tags[accesstypes.Tag(jsonTag)], permission)
-			fieldToTag[accesstypes.Field(field.Name)] = accesstypes.Tag(jsonTag)
+			fieldToTag[field.Field] = accesstypes.Tag(jsonTag)
 			permissionMap[permission] = struct{}{}
 			collected = true
 		}
-		if !collected && registerAllResources {
+		if !collected && registerAll {
 			if jsonTag != "" && jsonTag != "-" {
 				tags[accesstypes.Tag(jsonTag)] = append(tags[accesstypes.Tag(jsonTag)], accesstypes.NullPermission)
-				fieldToTag[accesstypes.Field(field.Name)] = accesstypes.Tag(jsonTag)
+				fieldToTag[field.Field] = accesstypes.Tag(jsonTag)
 			}
 		}
 	}
