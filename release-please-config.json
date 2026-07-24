@@ -35,7 +35,8 @@
       "package-name": "cache"
     },
     "resource": {
-      "package-name": "resource"
+      "package-name": "resource",
+      "exclude-paths": ["starport"]
     },
     "pkg": {
       "package-name": "pkg"
