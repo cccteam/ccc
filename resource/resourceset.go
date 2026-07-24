@@ -116,17 +116,16 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 
 	fields := make([]FieldTags, 0, t.NumField())
 	for field := range t.Fields() {
-		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
-		immutableTag, _, _ := strings.Cut(field.Tag.Get("immutable"), ",")
-		fields = append(fields, FieldTags{
-			Field:     accesstypes.Field(field.Name),
-			JSON:      jsonTag,
-			Perm:      field.Tag.Get("perm"),
-			Immutable: immutableTag == trueStr,
-		})
+		fields = append(fields, FieldTagsFromStructTag(accesstypes.Field(field.Name), field.Tag))
 	}
 
-	return permissionsFromFieldTags(fields, perms, registerAllResources)
+	// Unlike NewSetData (which always registers every field, since generated
+	// Collection/TypeScript output needs a complete field list), a request struct field
+	// with no perm tag is left unregistered here: PermissionRequired/Resource only ever
+	// query a field after finding a real permission requirement for it, so an
+	// unregistered field and one registered with only NullPermission are indistinguishable
+	// to every caller in this codebase.
+	return permissionsFromFieldTags(fields, perms, false)
 }
 
 // classifyPermission records a permission into the mutating or non-mutating set and the

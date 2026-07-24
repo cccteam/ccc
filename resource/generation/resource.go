@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
@@ -41,7 +42,7 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 		opts = append(opts, opt)
 	}
 
-	c, err := newClient(ctx, resourceGeneratorType, resourcePackageDir, migrationSourceURL, localPackages, opts)
+	c, err := newClient(ctx, resourcePackageDir, migrationSourceURL, localPackages, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -147,21 +148,11 @@ func (r *resourceGenerator) Generate() error {
 		}
 	}
 
-	appCachePath, err := r.appCachePath()
-	if err != nil {
-		return err
-	}
-
-	// We always want to cache the consolidatedRoute data for the typescript gen
-	if err := r.genCache.Store(appCachePath, consolidatedRouteCache, r.consolidateConfig); err != nil {
-		return errors.Wrap(err, "cache.Cache.Store()")
-	}
-
 	if err := r.populateCache(); err != nil {
 		return err
 	}
 
-	if err := r.runCollectionGeneration(appCachePath); err != nil {
+	if err := r.runCollectionGeneration(); err != nil {
 		return err
 	}
 
@@ -171,33 +162,30 @@ func (r *resourceGenerator) Generate() error {
 }
 
 // runCollectionGeneration computes the permission collection and produces its outputs.
-// The collection is computed and cached on every run for the deprecated TypeScript
-// generator's parity check.
-func (r *resourceGenerator) runCollectionGeneration(appCachePath string) error {
+func (r *resourceGenerator) runCollectionGeneration() error {
 	collectionData, err := r.computeCollectionData()
 	if err != nil {
 		return err
 	}
 
-	if err := r.genCache.Store(appCachePath, collectionDataCache, collectionData); err != nil {
-		return errors.Wrap(err, "cache.Cache.Store()")
-	}
-
-	// Resolve all targets before storing the marker so it records every fully resolved
-	// TypeScript configuration, one per target directory.
 	unifiedGenerators := make([]*typescriptGenerator, 0, len(r.typescriptTargets))
-	marker := typescriptMarker{}
-	for _, target := range r.typescriptTargets {
-		unifiedTS, err := r.buildUnifiedTypescriptGenerator(collectionData, target)
+	if len(r.typescriptTargets) > 0 {
+		// Every target shares one built collection: it's immutable and read-only once
+		// constructed, so building and deriving from it once and reusing the pointer
+		// across targets is safe and avoids redoing the same validation/sort per target.
+		gc, err := resource.NewGeneratedCollection(collectionData)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "resource.NewGeneratedCollection()")
 		}
-		unifiedGenerators = append(unifiedGenerators, unifiedTS)
-		marker.Configs = append(marker.Configs, typescriptRunConfigFrom(unifiedTS, r.client, target.destination))
-	}
+		routerResources := gc.Resources()
 
-	if err := r.genCache.Store(appCachePath, typescriptMarkerCache, marker); err != nil {
-		return errors.Wrap(err, "cache.Cache.Store()")
+		for _, target := range r.typescriptTargets {
+			unifiedTS, err := r.buildUnifiedTypescriptGenerator(gc, routerResources, target)
+			if err != nil {
+				return err
+			}
+			unifiedGenerators = append(unifiedGenerators, unifiedTS)
+		}
 	}
 
 	// The collection file is a standard artifact of route generation: whatever the
@@ -240,20 +228,15 @@ func (r *resourceGenerator) generateCollectionFile(data resource.CollectionData)
 
 // buildUnifiedTypescriptGenerator constructs the in-run TypeScript generator for one
 // target directory, fed by the statically computed permission collection instead of a
-// runtime-registered one.
-func (r *resourceGenerator) buildUnifiedTypescriptGenerator(data resource.CollectionData, target typescriptTarget) (*typescriptGenerator, error) {
-	gc, err := resource.NewGeneratedCollection(data)
-	if err != nil {
-		return nil, errors.Wrap(err, "resource.NewGeneratedCollection()")
-	}
-
+// runtime-registered one. gc and routerResources are shared across every target.
+func (r *resourceGenerator) buildUnifiedTypescriptGenerator(gc *resource.GeneratedCollection, routerResources []accesstypes.Resource, target typescriptTarget) (*typescriptGenerator, error) {
 	t, err := target.resolve()
 	if err != nil {
 		return nil, err
 	}
 	t.client = r.client
 	t.rc = gc
-	t.routerResources = gc.Resources()
+	t.routerResources = routerResources
 
 	return t, nil
 }

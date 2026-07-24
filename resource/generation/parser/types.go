@@ -24,7 +24,6 @@ type Constant struct {
 	typeName string // fully qualified declared type, e.g. "github.com/cccteam/ccc/accesstypes.Resource"
 	value    string
 	comments string
-	pos      token.Pos
 }
 
 // Name returns the constant's identifier.
@@ -46,11 +45,6 @@ func (c *Constant) Value() string {
 // Comments returns the constant's doc and line comments.
 func (c *Constant) Comments() string {
 	return c.comments
-}
-
-// Pos returns the position of the constant's identifier in its fileset.
-func (c *Constant) Pos() token.Pos {
-	return c.pos
 }
 
 // TypeInfo provides convience methods over a go/types' Object.
