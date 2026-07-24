@@ -3,7 +3,7 @@
   "sns": "0.2.12",
   "accesstypes": "0.5.7",
   "pkg": "0.1.4",
-  "resource": "0.10.2",
+  "resource": "0.10.3",
   "cache": "0.1.5",
   "securehash": "0.0.12",
   "tracer": "0.1.5",
