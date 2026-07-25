@@ -1,2 +1,2 @@
-// Package accesstypes provides types for permissions, roles, and domains types for the access package
+// Package accesstypes provides the permission, role, domain, resource, and user types used by the access package
 package accesstypes

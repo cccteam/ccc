@@ -20,7 +20,7 @@ const cachePrefix string = ".ccc-cache"
 // Option is a functional option for configuring the Cache.
 type Option func(*Cache) *Cache
 
-// WithPermission configures the the unix permission bits on each
+// WithPermission configures the unix permission bits on each
 // file and directory within the Cache.
 func WithPermission(perms uint32) Option {
 	return func(c *Cache) *Cache {

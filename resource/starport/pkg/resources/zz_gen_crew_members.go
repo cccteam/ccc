@@ -93,7 +93,7 @@ func (q *CrewMemberQuery) Offset(n uint64) *CrewMemberQuery {
 	return q
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (q *CrewMemberQuery) Diff(got *CrewMemberQuery, opts ...cmp.Option) string {
 	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)
 }
@@ -424,7 +424,7 @@ func (p *CrewMemberCreatePatch) MedicalNotesIsSet() bool {
 	return p.patchSet.IsSet("MedicalNotes")
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *CrewMemberCreatePatch) Diff(got *CrewMemberCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
@@ -564,7 +564,7 @@ func (p *CrewMemberUpdatePatch) MedicalNotesIsSet() bool {
 	return p.patchSet.IsSet("MedicalNotes")
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *CrewMemberUpdatePatch) Diff(got *CrewMemberUpdatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
@@ -603,7 +603,7 @@ func (p *CrewMemberDeletePatch) ID() ccc.UUID {
 	return v
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *CrewMemberDeletePatch) Diff(got *CrewMemberDeletePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }

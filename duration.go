@@ -24,7 +24,7 @@ func NewDuration(d time.Duration) Duration {
 
 // NewDurationFromString parses a Duration from a string representation in
 // the same manner as time.ParseDuration(), but with the added step of
-// removing any whitespace from the string.
+// removing any spaces from the string.
 func NewDurationFromString(s string) (Duration, error) {
 	duration, err := time.ParseDuration(strings.ReplaceAll(s, " ", ""))
 	if err != nil {
@@ -39,7 +39,7 @@ func (d Duration) MarshalText() ([]byte, error) {
 	return []byte(d.String()), nil
 }
 
-// UnmarshalText implements the encoding.Unmarshaler interface
+// UnmarshalText implements the encoding.TextUnmarshaler interface
 func (d *Duration) UnmarshalText(text []byte) error {
 	v, err := time.ParseDuration(strings.ReplaceAll(string(text), " ", ""))
 	if err != nil {
@@ -126,7 +126,7 @@ func NewNullDurationFromString(s string) (NullDuration, error) {
 	return NullDuration{Duration: Duration{Duration: duration}, Valid: true}, nil
 }
 
-// MarshalText implements the encoder.TextMarshaler interface
+// MarshalText implements the encoding.TextMarshaler interface
 func (d NullDuration) MarshalText() ([]byte, error) {
 	if !d.Valid {
 		return nil, nil
@@ -135,7 +135,7 @@ func (d NullDuration) MarshalText() ([]byte, error) {
 	return []byte(d.String()), nil
 }
 
-// UnmarshalText implements the encoder.TextUnmarshaler interface
+// UnmarshalText implements the encoding.TextUnmarshaler interface
 func (d *NullDuration) UnmarshalText(text []byte) error {
 	duration, err := time.ParseDuration(strings.ReplaceAll(string(text), " ", ""))
 	if err != nil {
@@ -148,7 +148,7 @@ func (d *NullDuration) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// MarshalJSON implements json.Marshaler interface for Duration.
+// MarshalJSON implements the json.Marshaler interface for NullDuration.
 func (d NullDuration) MarshalJSON() ([]byte, error) {
 	if !d.Valid {
 		return []byte(jsonNull), nil
@@ -162,7 +162,7 @@ func (d NullDuration) MarshalJSON() ([]byte, error) {
 	return b, nil
 }
 
-// UnmarshalJSON implements json.Unmarshaler.UnmarshalJSON for Duration.
+// UnmarshalJSON implements the json.Unmarshaler interface for NullDuration.
 func (d *NullDuration) UnmarshalJSON(b []byte) error {
 	var s *string
 	if err := json.Unmarshal(b, &s); err != nil {
@@ -184,7 +184,7 @@ func (d *NullDuration) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// DecodeSpanner implements the spanner.Decode interface
+// DecodeSpanner implements the spanner.Decoder interface
 func (d *NullDuration) DecodeSpanner(val any) error {
 	var strVal string
 	switch t := val.(type) {
@@ -212,7 +212,7 @@ func (d *NullDuration) DecodeSpanner(val any) error {
 	return nil
 }
 
-// EncodeSpanner implements the spanner.Encode interface
+// EncodeSpanner implements the spanner.Encoder interface
 func (d NullDuration) EncodeSpanner() (any, error) {
 	if !d.Valid {
 		return nil, nil

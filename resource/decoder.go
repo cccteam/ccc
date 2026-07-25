@@ -15,8 +15,8 @@ import (
 	guid "github.com/google/uuid"
 )
 
-// ValidatorFunc is a function that validates s
-// It returns an error if the validation fails
+// ValidatorFunc is the interface used to validate a struct, in whole or in part.
+// Its methods return an error if the validation fails.
 type ValidatorFunc interface {
 	Struct(s any) error
 	StructPartial(s any, fields ...string) error

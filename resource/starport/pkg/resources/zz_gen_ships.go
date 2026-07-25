@@ -106,7 +106,7 @@ func (q *ShipQuery) Offset(n uint64) *ShipQuery {
 	return q
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (q *ShipQuery) Diff(got *ShipQuery, opts ...cmp.Option) string {
 	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)
 }
@@ -445,7 +445,7 @@ func (p *ShipCreatePatch) UpdatedAtIsSet() bool {
 	return p.patchSet.IsSet("UpdatedAt")
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *ShipCreatePatch) Diff(got *ShipCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
@@ -586,7 +586,7 @@ func (p *ShipUpdatePatch) UpdatedAtIsSet() bool {
 	return p.patchSet.IsSet("UpdatedAt")
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *ShipUpdatePatch) Diff(got *ShipUpdatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
@@ -625,7 +625,7 @@ func (p *ShipDeletePatch) ID() ccc.UUID {
 	return v
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *ShipDeletePatch) Diff(got *ShipDeletePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }

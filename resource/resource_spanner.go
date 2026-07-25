@@ -104,13 +104,13 @@ func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) ite
 
 var _ ReadOnlyTransactionCloser = (*SpannerReadOnlyTransaction)(nil)
 
-// SpannerReadOnlyTransaction represents a database transaction that can be used for both reads and writes.
+// SpannerReadOnlyTransaction represents a database transaction that can only be used for reads.
 type SpannerReadOnlyTransaction struct {
 	txn              *spanner.ReadOnlyTransaction
 	resourceRowIndex map[string]int
 }
 
-// newSpannerReadOnlyTransaction creates a new SpannerReadOnlyTransaction from a spanner.ReadOnlyTransaction
+// newSpannerReadOnlyTransaction creates a new SpannerReadOnlyTransaction from a spanner.Client
 func newSpannerReadOnlyTransaction(client *spanner.Client) ReadOnlyTransactionCloser {
 	return &SpannerReadOnlyTransaction{
 		txn:              client.ReadOnlyTransaction(),

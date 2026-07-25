@@ -104,7 +104,7 @@ func (q *CargoManifestQuery) Offset(n uint64) *CargoManifestQuery {
 	return q
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (q *CargoManifestQuery) Diff(got *CargoManifestQuery, opts ...cmp.Option) string {
 	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)
 }
@@ -386,7 +386,7 @@ func (p *CargoManifestCreatePatch) DeclaredValueIsSet() bool {
 	return p.patchSet.IsSet("DeclaredValue")
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *CargoManifestCreatePatch) Diff(got *CargoManifestCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
@@ -498,7 +498,7 @@ func (p *CargoManifestUpdatePatch) DeclaredValueIsSet() bool {
 	return p.patchSet.IsSet("DeclaredValue")
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *CargoManifestUpdatePatch) Diff(got *CargoManifestUpdatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
@@ -545,7 +545,7 @@ func (p *CargoManifestDeletePatch) LineNumber() int64 {
 	return v
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *CargoManifestDeletePatch) Diff(got *CargoManifestDeletePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }

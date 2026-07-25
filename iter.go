@@ -13,7 +13,7 @@ import (
 // The inner batch iterator must be ranged over with a range loop (or iter.Pull) before
 // the next outer iterator can be accessed. It is acceptable to break early from a range
 // loop, in which case the remaining items will be returned by the next outer iterator.
-// If the inner iterator is not propery ranged over, the outer iterator will panic.
+// If the inner iterator is not properly ranged over, the outer iterator will panic.
 //
 // If the provided size is not a positive integer, the returned iterator will
 // yield a single error.

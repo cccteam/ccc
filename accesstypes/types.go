@@ -1,7 +1,7 @@
 package accesstypes
 
 type (
-	// RoleCollection is a map of domain to roles defind in that domain
+	// RoleCollection is a map of domain to roles defined in that domain
 	RoleCollection map[Domain][]Role
 
 	// RolePermissionCollection is a map of permissions a Role has on resources

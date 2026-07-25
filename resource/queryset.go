@@ -191,7 +191,7 @@ func (q *QuerySet[Resource]) KeySet() KeySet {
 	return q.keys.KeySet()
 }
 
-// Columns returns a comma-separated string of database column names for the selected fields.
+// buildOrderByClause builds an ORDER BY clause from the QuerySet's sort fields.
 func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
 	orderByParts := make([]string, 0, len(q.sortFields))
 	for _, sf := range q.sortFields {
@@ -309,7 +309,7 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*St
 	}, nil
 }
 
-// stmt builds a Spanner SQL statement from the QuerySet.
+// stmt builds a SQL statement for the given database type from the QuerySet.
 func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	filterAst, err := q.FilterAst(dbType)
 	if err != nil {
@@ -538,7 +538,7 @@ type QuerySetComparer interface {
 	KeySet() KeySet
 }
 
-// QuerySetDiff compares two QuerySetComparer objects for equality. It checks patch type, data, fields, and primary keys.
+// QuerySetDiff compares two QuerySetComparer objects for equality. It checks resource, fields, and primary keys.
 func QuerySetDiff(opts ...cmp.Option) func(a, b QuerySetComparer) string {
 	return func(a, b QuerySetComparer) string {
 		if a.Resource() != b.Resource() {
@@ -546,7 +546,7 @@ func QuerySetDiff(opts ...cmp.Option) func(a, b QuerySetComparer) string {
 		}
 
 		if diff := cmp.Diff(a.Fields(), b.Fields(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })); diff != "" {
-			return fmt.Sprintf("Fileds mismatch (-want +got):\n%s", diff)
+			return fmt.Sprintf("Fields mismatch (-want +got):\n%s", diff)
 		}
 
 		aKeyData, bKeyData := a.KeySet().KeyMap(), b.KeySet().KeyMap()

@@ -105,7 +105,7 @@ func (q *DockingBayQuery) Offset(n uint64) *DockingBayQuery {
 	return q
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (q *DockingBayQuery) Diff(got *DockingBayQuery, opts ...cmp.Option) string {
 	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)
 }
@@ -378,7 +378,7 @@ func (p *DockingBayCreatePatch) MaxTonnageIsSet() bool {
 	return p.patchSet.IsSet("MaxTonnage")
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *DockingBayCreatePatch) Diff(got *DockingBayCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
@@ -482,7 +482,7 @@ func (p *DockingBayUpdatePatch) MaxTonnageIsSet() bool {
 	return p.patchSet.IsSet("MaxTonnage")
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *DockingBayUpdatePatch) Diff(got *DockingBayUpdatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
@@ -521,7 +521,7 @@ func (p *DockingBayDeletePatch) ID() ccc.UUID {
 	return v
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *DockingBayDeletePatch) Diff(got *DockingBayDeletePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }

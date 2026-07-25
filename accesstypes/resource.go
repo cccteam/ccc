@@ -37,7 +37,7 @@ func (r Resource) isValid() bool {
 	return !strings.HasPrefix(string(r), resourcePrefix)
 }
 
-// ResourceWithTag returns the fully qualified resource name for the resource feild with tag
+// ResourceWithTag returns the fully qualified resource name for the resource field with tag
 func (r Resource) ResourceWithTag(tag Tag) Resource {
 	if strings.Contains(string(tag), ".") {
 		panic("invalid tag name, must not contain '.'")
