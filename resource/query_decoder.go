@@ -72,7 +72,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
 	queryParams := request.URL.Query()
 
-	if filterStr := queryParams.Get("filter"); filterStr != "" {
+	if filterStr := queryParams.Get(filterParam); filterStr != "" {
 		if err := d.checkForPII(filterStr); err != nil {
 			return nil, err
 		}
@@ -85,10 +85,10 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 		}
 
 		if body.Filter != "" {
-			if queryParams.Get("filter") != "" {
+			if queryParams.Get(filterParam) != "" {
 				return nil, httpio.NewBadRequestMessagef("cannot have 'filter' parameter in both query and body")
 			}
-			queryParams.Add("filter", body.Filter)
+			queryParams.Add(filterParam, body.Filter)
 		}
 	}
 
@@ -138,37 +138,37 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 	var offset *uint64
 	var err error
 
-	if sortParamValue := query.Get("sort"); sortParamValue != "" {
+	if sortParamValue := query.Get(sortParam); sortParamValue != "" {
 		sortFields, err = d.parseSortParam(sortParamValue)
 		if err != nil {
 			return nil, err
 		}
 
-		delete(query, "sort")
+		delete(query, sortParam)
 	}
 
-	if limitStr := query.Get("limit"); limitStr != "" {
+	if limitStr := query.Get(limitParam); limitStr != "" {
 		limitVal, err := strconv.ParseUint(limitStr, 10, 64)
 		if err != nil {
 			return nil, httpio.NewBadRequestMessagef("invalid limit value: %s", limitStr)
 		}
 		limit = &limitVal
-		delete(query, "limit")
+		delete(query, limitParam)
 	} else {
 		defaultLimit := uint64(50)
 		limit = &defaultLimit
 	}
 
-	if offsetStr := query.Get("offset"); offsetStr != "" {
+	if offsetStr := query.Get(offsetParam); offsetStr != "" {
 		offsetVal, err := strconv.ParseUint(offsetStr, 10, 64)
 		if err != nil {
 			return nil, httpio.NewBadRequestMessagef("invalid offset value: %s", offsetStr)
 		}
 		offset = &offsetVal
-		delete(query, "offset")
+		delete(query, offsetParam)
 	}
 
-	if cols := query.Get("columns"); cols != "" {
+	if cols := query.Get(columnsParam); cols != "" {
 		// column names received in the query parameters are a comma separated list of json field names (ie: json tags on the request struct)
 		// we need to convert these to struct field names
 		for column := range strings.SplitSeq(cols, ",") {
@@ -179,16 +179,16 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 			}
 		}
 
-		delete(query, "columns")
+		delete(query, columnsParam)
 	}
 
-	if filterStr := query.Get("filter"); filterStr != "" {
+	if filterStr := query.Get(filterParam); filterStr != "" {
 		filterParser, err = d.filterExpressionParser(filterStr)
 		if err != nil {
 			return nil, err
 		}
 
-		delete(query, "filter")
+		delete(query, filterParam)
 	}
 
 	if len(query) > 0 {
@@ -284,12 +284,12 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 	fields := make(map[jsonFieldName]FilterFieldInfo)
 
 	for structField := range reqType.Fields() {
-		if structField.Tag.Get("index") != trueStr && structField.Tag.Get("allow_filter") != trueStr {
+		if structField.Tag.Get(indexTagKey) != trueStr && structField.Tag.Get(allowFilterTagKey) != trueStr {
 			continue
 		}
 
 		goStructFieldName := structField.Name
-		jsonTag := structField.Tag.Get("json")
+		jsonTag := structField.Tag.Get(jsonTagKey)
 		jsonFieldNameStr, _, _ := strings.Cut(jsonTag, ",")
 		if jsonFieldNameStr == "" || jsonFieldNameStr == "-" {
 			return nil, errors.Newf("indexed field %s must have a json tag", goStructFieldName)
@@ -318,8 +318,8 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 			dbColumnNames: dbColumnNames,
 			Kind:          fieldKind,
 			FieldType:     fieldType,
-			Indexed:       structField.Tag.Get("index") == trueStr,
-			PII:           structField.Tag.Get("pii") == trueStr,
+			Indexed:       structField.Tag.Get(indexTagKey) == trueStr,
+			PII:           structField.Tag.Get(piiTagKey) == trueStr,
 		}
 	}
 

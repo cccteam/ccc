@@ -320,7 +320,7 @@ func (r rpcField) JSONTag() string {
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(r.Name())
 
-	return fmt.Sprintf("json:%q", camelCaseName)
+	return fmt.Sprintf("%s:%q", jsonTagKey, camelCaseName)
 }
 
 func (r *rpcField) TypescriptDataType() string {
@@ -415,23 +415,23 @@ type computedField struct {
 func (c *computedField) JSONTag() string {
 	camelCaseName := caser.ToCamel(c.Name())
 
-	return fmt.Sprintf("json:%q", camelCaseName)
+	return fmt.Sprintf("%s:%q", jsonTagKey, camelCaseName)
 }
 
 func (c *computedField) IsPII() bool {
-	tag, ok := c.LookupTag("conditions")
+	tag, ok := c.LookupTag(conditionsTagKey)
 	if !ok {
 		return false
 	}
 
 	conditions := strings.Split(tag, ",")
 
-	return slices.Contains(conditions, "pii")
+	return slices.Contains(conditions, piiCondition)
 }
 
 func (c *computedField) PIITag() string {
 	if c.IsPII() {
-		return `pii:"true"`
+		return piiOutTagKey + `:"true"`
 	}
 
 	return ""
@@ -690,27 +690,27 @@ func (f *resourceField) TypescriptDisplayType() string {
 
 func (f *resourceField) JSONTag() string {
 	if f.IsInputOnly() {
-		return fmt.Sprintf("json:%q", "-")
+		return fmt.Sprintf("%s:%q", jsonTagKey, "-")
 	}
 
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(f.Name())
 
-	return fmt.Sprintf("json:%q", camelCaseName)
+	return fmt.Sprintf("%s:%q", jsonTagKey, camelCaseName)
 }
 
 func (f *resourceField) JSONTagForPatch() string {
 	if f.IsPrimaryKey || f.IsOutputOnly() {
-		return fmt.Sprintf("json:%q", "-")
+		return fmt.Sprintf("%s:%q", jsonTagKey, "-")
 	}
 
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(f.Name())
 
-	return fmt.Sprintf("json:%q", camelCaseName)
+	return fmt.Sprintf("%s:%q", jsonTagKey, camelCaseName)
 }
 
-const indexTrue string = `index:"true"`
+const indexTrue string = indexTagKey + `:"true"`
 
 func (f *resourceField) IndexTag() string {
 	if f.IsIndex {
@@ -718,7 +718,7 @@ func (f *resourceField) IndexTag() string {
 	}
 
 	if f.Parent.IsVirtual {
-		t, ok := f.LookupTag("index")
+		t, ok := f.LookupTag(indexTagKey)
 		if ok && t == "true" {
 			return indexTrue
 		}
@@ -729,7 +729,7 @@ func (f *resourceField) IndexTag() string {
 
 func (f *resourceField) PIITag() string {
 	if f.IsPII() {
-		return `pii:"true"`
+		return piiOutTagKey + `:"true"`
 	}
 
 	return ""
@@ -744,59 +744,59 @@ func (f *resourceField) UniqueIndexTag() string {
 }
 
 func (f *resourceField) AllowFilterTag() string {
-	if f.HasTag("allow_filter") {
-		return `allow_filter:"true"`
+	if f.HasTag(allowFilterTagKey) {
+		return allowFilterTagKey + `:"true"`
 	}
 
 	return ""
 }
 
 func (f *resourceField) IsPII() bool {
-	tag, ok := f.LookupTag("conditions")
+	tag, ok := f.LookupTag(conditionsTagKey)
 	if !ok {
 		return false
 	}
 
 	conditions := strings.Split(tag, ",")
 
-	return slices.Contains(conditions, "pii")
+	return slices.Contains(conditions, piiCondition)
 }
 
 func (f *resourceField) IsImmutable() bool {
-	tag, ok := f.LookupTag("conditions")
+	tag, ok := f.LookupTag(conditionsTagKey)
 	if !ok {
 		return false
 	}
 
 	conditions := strings.Split(tag, ",")
 
-	return slices.Contains(conditions, "immutable")
+	return slices.Contains(conditions, immutableCondition)
 }
 
 func (f *resourceField) IsOutputOnly() bool {
-	tag, ok := f.LookupTag("conditions")
+	tag, ok := f.LookupTag(conditionsTagKey)
 	if !ok {
 		return f.HasOutputOnlyUpdateFunc()
 	}
 
 	conditions := strings.Split(tag, ",")
 
-	return slices.Contains(conditions, "output_only") || f.HasOutputOnlyUpdateFunc()
+	return slices.Contains(conditions, outputOnlyCondition) || f.HasOutputOnlyUpdateFunc()
 }
 
 func (f *resourceField) IsInputOnly() bool {
-	tag, ok := f.LookupTag("conditions")
+	tag, ok := f.LookupTag(conditionsTagKey)
 	if !ok {
 		return false
 	}
 
 	conditions := strings.Split(tag, ",")
 
-	return slices.Contains(conditions, "input_only")
+	return slices.Contains(conditions, inputOnlyCondition)
 }
 
 func (f *resourceField) DefaultCreateFuncName() string {
-	tag, ok := f.LookupTag("default_create_fn")
+	tag, ok := f.LookupTag(defaultCreateFnTagKey)
 	if !ok {
 		return ""
 	}
@@ -809,7 +809,7 @@ func (f *resourceField) HasDefaultCreateFunc() bool {
 }
 
 func (f *resourceField) OutputOnlyUpdateFuncName() string {
-	tag, ok := f.LookupTag("output_only_update_fn")
+	tag, ok := f.LookupTag(outputOnlyUpdateFnTagKey)
 	if !ok {
 		return ""
 	}
@@ -822,7 +822,7 @@ func (f *resourceField) HasOutputOnlyUpdateFunc() bool {
 }
 
 func (f *resourceField) ReadPermTag() string {
-	tag, ok := f.LookupTag("perm")
+	tag, ok := f.LookupTag(permTagKey)
 	if !ok {
 		return ""
 	}
@@ -830,14 +830,14 @@ func (f *resourceField) ReadPermTag() string {
 	permissions := strings.Split(tag, ",")
 
 	if slices.Contains(permissions, string(accesstypes.Read)) {
-		return fmt.Sprintf("perm:%q", accesstypes.Read)
+		return fmt.Sprintf("%s:%q", permTagKey, accesstypes.Read)
 	}
 
 	return ""
 }
 
 func (f *resourceField) ListPermTag() string {
-	tag, ok := f.LookupTag("perm")
+	tag, ok := f.LookupTag(permTagKey)
 	if !ok {
 		return ""
 	}
@@ -845,14 +845,14 @@ func (f *resourceField) ListPermTag() string {
 	permissions := strings.Split(tag, ",")
 
 	if slices.Contains(permissions, string(accesstypes.List)) {
-		return fmt.Sprintf("perm:%q", accesstypes.List)
+		return fmt.Sprintf("%s:%q", permTagKey, accesstypes.List)
 	}
 
 	return ""
 }
 
 func (f *resourceField) PatchPermTag() string {
-	tag, ok := f.LookupTag("perm")
+	tag, ok := f.LookupTag(permTagKey)
 	if !ok {
 		return ""
 	}
@@ -867,7 +867,7 @@ func (f *resourceField) PatchPermTag() string {
 	}
 
 	if len(patches) != 0 {
-		return fmt.Sprintf("perm:%q", strings.Join(patches, ","))
+		return fmt.Sprintf("%s:%q", permTagKey, strings.Join(patches, ","))
 	}
 
 	return ""
@@ -875,7 +875,7 @@ func (f *resourceField) PatchPermTag() string {
 
 func (f *resourceField) ImmutableTag() string {
 	if f.IsImmutable() {
-		return `immutable:"true"`
+		return immutableOutTagKey + `:"true"`
 	}
 
 	return ""
@@ -906,7 +906,7 @@ func (f *resourceField) IsQueryClauseEligible() bool {
 		return true
 	}
 
-	return f.HasTag("allow_filter")
+	return f.HasTag(allowFilterTagKey)
 }
 
 func generatedGoFileName(name string) string {

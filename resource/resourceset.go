@@ -1,4 +1,8 @@
 // Package resource provides a set of types and functions for working with resources.
+//
+// The complete reference for the comment annotations, struct tags, and reserved query
+// parameters recognized by this module lives in the module's README.md (rendered on
+// pkg.go.dev and GitHub).
 package resource
 
 import (

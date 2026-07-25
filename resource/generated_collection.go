@@ -26,13 +26,13 @@ type FieldTags struct {
 // reflect.StructTag from the same fragments the templates render, so both share this exact
 // parsing and can never disagree on it.
 func FieldTagsFromStructTag(field accesstypes.Field, tag reflect.StructTag) FieldTags {
-	jsonTag, _, _ := strings.Cut(tag.Get("json"), ",")
-	immutableTag, _, _ := strings.Cut(tag.Get("immutable"), ",")
+	jsonTag, _, _ := strings.Cut(tag.Get(jsonTagKey), ",")
+	immutableTag, _, _ := strings.Cut(tag.Get(immutableTagKey), ",")
 
 	return FieldTags{
 		Field:     field,
 		JSON:      jsonTag,
-		Perm:      tag.Get("perm"),
+		Perm:      tag.Get(permTagKey),
 		Immutable: immutableTag == trueStr,
 	}
 }
