@@ -21,7 +21,8 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-// Seeded row identifiers. The values are stable so tests can address rows directly.
+// Seeded row identifiers, matching the fixture data in testdata/seed. The values are
+// stable so tests can address rows directly.
 const (
 	bayAlphaID   = "5f2d1c3b-9a8e-4d7f-8b6a-1c2d3e4f5a6b"
 	shipVantaID  = "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e"
@@ -61,32 +62,6 @@ func newTestApp(db *initiator.SpannerDB, g grants) *app.App {
 		},
 		Validator: validator.New(),
 	})
-}
-
-// seedDatabase inserts the baseline dataset, bypassing the resource layer.
-func seedDatabase(ctx context.Context, t *testing.T, db *initiator.SpannerDB) {
-	t.Helper()
-
-	medicalNotes := "Cleared for extended duty"
-	if _, err := db.Apply(ctx, []*spanner.Mutation{
-		spanner.InsertMap("DockingBays", map[string]any{
-			"Id": bayAlphaID, "Name": "Bay Alpha", "DeckLevel": int64(3), "MaxTonnage": int64(50000),
-		}),
-		spanner.InsertMap("Ships", map[string]any{
-			"Id": shipVantaID, "RegistryCode": "SSV-1001", "Name": "Vanta", "DockingBayId": bayAlphaID, "CargoValue": int64(750000),
-		}),
-		spanner.InsertMap("Ships", map[string]any{
-			"Id": shipComostID, "RegistryCode": "SSV-1002", "Name": "Comost", "CargoValue": int64(125000),
-		}),
-		spanner.InsertMap("CrewMembers", map[string]any{
-			"Id": crewIlyanID, "ShipId": shipVantaID, "Name": "Ilyan Reeve", "Rank": "Navigator", "ClearanceLevel": int64(3), "MedicalNotes": medicalNotes,
-		}),
-		spanner.InsertMap("CargoManifests", map[string]any{
-			"ShipId": shipVantaID, "LineNumber": int64(1), "Details": "Hull plating", "Quantity": int64(120), "DeclaredValue": int64(90000),
-		}),
-	}); err != nil {
-		t.Fatalf("seedDatabase: %v", err)
-	}
 }
 
 // doRequest performs a request against the app and returns the status code and body.

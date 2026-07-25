@@ -9,12 +9,14 @@ package integration
 // with permissions_invariant_test.go, which must survive the migration untouched.
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"testing"
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
+	initiator "github.com/cccteam/db-initiator"
 )
 
 const (
@@ -23,15 +25,14 @@ const (
 )
 
 func TestFailOpenQuery(t *testing.T) {
-	// No t.Parallel(): all integration tests share one Spanner emulator instance, and
-	// concurrent database creation/DDL across tests is unreliable on the emulator.
+	t.Parallel()
+
 	ctx := t.Context()
 
-	db, err := prepareDatabase(ctx, t)
+	db, err := prepareDatabase(ctx, t, "file://../schema/migrations", "file://testdata/seed")
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedDatabase(ctx, t, db)
 
 	tests := []struct {
 		name       string
@@ -114,61 +115,81 @@ func TestFailOpenQuery(t *testing.T) {
 }
 
 func TestFailOpenMutation(t *testing.T) {
-	// No t.Parallel(): all integration tests share one Spanner emulator instance, and
-	// concurrent database creation/DDL across tests is unreliable on the emulator.
-	ctx := t.Context()
+	t.Parallel()
 
-	db, err := prepareDatabase(ctx, t)
-	if err != nil {
-		t.Fatal(err)
+	// Each case prepares its own seeded database, fully isolating the cases from one
+	// another.
+	tests := []struct {
+		name       string
+		grants     grants
+		body       string
+		wantStatus int
+		verify     func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, respBody []byte)
+	}{
+		{
+			name:       "create with resource-only grant may set every untagged field",
+			grants:     grants{accesstypes.Create: {dockingBaysResource}},
+			body:       `[{"op":"add","path":"/docking-bays","value":{"name":"Bay Beta","deckLevel":5,"maxTonnage":90000}}]`,
+			wantStatus: http.StatusOK,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, respBody []byte) {
+				resp := decodeRow(t, respBody)
+				created, ok := resp["dockingBays"].([]any)
+				if !ok || len(created) != 1 {
+					t.Fatalf("expected one created docking bay id, got: %s", respBody)
+				}
+				createdID, ok := created[0].(string)
+				if !ok {
+					t.Fatalf("created docking bay id is not a string: %s", respBody)
+				}
+				name := readColumn[string](ctx, t, db, "DockingBays", spanner.Key{createdID}, "Name")
+				if name != "Bay Beta" {
+					t.Errorf("created docking bay Name = %q, want %q", name, "Bay Beta")
+				}
+			},
+		},
+		{
+			name:       "update untagged field with resource-only grant is allowed",
+			grants:     grants{accesstypes.Update: {cargoManifestsResource}},
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/cargo-manifests/%s/1","value":{"details":"Hull plating (recount)"}}]`, shipVantaID),
+			wantStatus: http.StatusOK,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, _ []byte) {
+				details := readColumn[string](ctx, t, db, "CargoManifests", spanner.Key{shipVantaID, 1}, "Details")
+				if details != "Hull plating (recount)" {
+					t.Errorf("manifest Details = %q, want %q", details, "Hull plating (recount)")
+				}
+			},
+		},
+		{
+			name:       "update tagged field still requires the field grant",
+			grants:     grants{accesstypes.Update: {cargoManifestsResource}},
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/cargo-manifests/%s/1","value":{"declaredValue":95000}}]`, shipVantaID),
+			wantStatus: http.StatusForbidden,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, _ []byte) {
+				declaredValue := readColumn[int64](ctx, t, db, "CargoManifests", spanner.Key{shipVantaID, 1}, "DeclaredValue")
+				if declaredValue != 90000 {
+					t.Errorf("manifest DeclaredValue = %d, want unchanged %d", declaredValue, 90000)
+				}
+			},
+		},
 	}
-	seedDatabase(ctx, t, db)
 
-	// The subtests below share one database and run sequentially: each case targets rows
-	// that earlier cases do not modify.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("create with resource-only grant may set every untagged field", func(t *testing.T) {
-		testApp := newTestApp(db, grants{accesstypes.Create: {dockingBaysResource}})
-		body := `[{"op":"add","path":"/docking-bays","value":{"name":"Bay Beta","deckLevel":5,"maxTonnage":90000}}]`
-		status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", body)
-		assertStatus(t, status, http.StatusOK, respBody)
+			ctx := t.Context()
 
-		resp := decodeRow(t, respBody)
-		created, ok := resp["dockingBays"].([]any)
-		if !ok || len(created) != 1 {
-			t.Fatalf("expected one created docking bay id, got: %s", respBody)
-		}
-		createdID, ok := created[0].(string)
-		if !ok {
-			t.Fatalf("created docking bay id is not a string: %s", respBody)
-		}
-		name := readColumn[string](ctx, t, db, "DockingBays", spanner.Key{createdID}, "Name")
-		if name != "Bay Beta" {
-			t.Errorf("created docking bay Name = %q, want %q", name, "Bay Beta")
-		}
-	})
+			db, err := prepareDatabase(ctx, t, "file://../schema/migrations", "file://testdata/seed")
+			if err != nil {
+				t.Fatal(err)
+			}
+			testApp := newTestApp(db, tt.grants)
 
-	t.Run("update untagged field with resource-only grant is allowed", func(t *testing.T) {
-		testApp := newTestApp(db, grants{accesstypes.Update: {cargoManifestsResource}})
-		body := fmt.Sprintf(`[{"op":"patch","path":"/cargo-manifests/%s/1","value":{"details":"Hull plating (recount)"}}]`, shipVantaID)
-		status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", body)
-		assertStatus(t, status, http.StatusOK, respBody)
-
-		details := readColumn[string](ctx, t, db, "CargoManifests", spanner.Key{shipVantaID, 1}, "Details")
-		if details != "Hull plating (recount)" {
-			t.Errorf("manifest Details = %q, want %q", details, "Hull plating (recount)")
-		}
-	})
-
-	t.Run("update tagged field still requires the field grant", func(t *testing.T) {
-		testApp := newTestApp(db, grants{accesstypes.Update: {cargoManifestsResource}})
-		body := fmt.Sprintf(`[{"op":"patch","path":"/cargo-manifests/%s/1","value":{"declaredValue":95000}}]`, shipVantaID)
-		status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", body)
-		assertStatus(t, status, http.StatusForbidden, respBody)
-
-		declaredValue := readColumn[int64](ctx, t, db, "CargoManifests", spanner.Key{shipVantaID, 1}, "DeclaredValue")
-		if declaredValue != 90000 {
-			t.Errorf("manifest DeclaredValue = %d, want unchanged %d", declaredValue, 90000)
-		}
-	})
+			status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", tt.body)
+			assertStatus(t, status, tt.wantStatus, respBody)
+			if tt.verify != nil {
+				tt.verify(ctx, t, db, respBody)
+			}
+		})
+	}
 }

@@ -10,12 +10,14 @@ package integration
 // failure here after changing the default means enforcement itself broke.
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"testing"
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
+	initiator "github.com/cccteam/db-initiator"
 	"google.golang.org/grpc/codes"
 )
 
@@ -30,15 +32,14 @@ func fieldResource(res accesstypes.Resource, tag string) accesstypes.Resource {
 }
 
 func TestInvariantQuery(t *testing.T) {
-	// No t.Parallel(): all integration tests share one Spanner emulator instance, and
-	// concurrent database creation/DDL across tests is unreliable on the emulator.
+	t.Parallel()
+
 	ctx := t.Context()
 
-	db, err := prepareDatabase(ctx, t)
+	db, err := prepareDatabase(ctx, t, "file://../schema/migrations", "file://testdata/seed")
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedDatabase(ctx, t, db)
 
 	allShipFieldsList := grants{accesstypes.List: {
 		shipsResource,
@@ -169,15 +170,7 @@ func TestInvariantQuery(t *testing.T) {
 }
 
 func TestInvariantMutation(t *testing.T) {
-	// No t.Parallel(): all integration tests share one Spanner emulator instance, and
-	// concurrent database creation/DDL across tests is unreliable on the emulator.
-	ctx := t.Context()
-
-	db, err := prepareDatabase(ctx, t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	seedDatabase(ctx, t, db)
+	t.Parallel()
 
 	createGrants := grants{accesstypes.Create: {
 		shipsResource,
@@ -186,111 +179,236 @@ func TestInvariantMutation(t *testing.T) {
 		fieldResource(shipsResource, "cargoValue"),
 	}}
 
-	// The subtests below share one database and run sequentially: each case targets rows
-	// that earlier cases do not modify.
+	crewCreateGrants := grants{accesstypes.Create: {
+		crewMembersResource,
+		fieldResource(crewMembersResource, "shipId"),
+		fieldResource(crewMembersResource, "name"),
+		fieldResource(crewMembersResource, "rank"),
+		fieldResource(crewMembersResource, "clearanceLevel"),
+	}}
 
-	t.Run("create without resource grant is forbidden", func(t *testing.T) {
-		testApp := newTestApp(db, nil)
-		body := `[{"op":"add","path":"/ships","value":{"registryCode":"SSV-9001","name":"Nomad","cargoValue":10}}]`
-		status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", body)
-		assertStatus(t, status, http.StatusForbidden, respBody)
-	})
+	crewCreateBody := fmt.Sprintf(`[{"op":"add","path":"/","value":{"shipId":%q,"name":"Torvald Hess","rank":"Loadmaster","clearanceLevel":1}}]`, shipVantaID)
 
-	t.Run("create tagged field without field grant is forbidden", func(t *testing.T) {
-		testApp := newTestApp(db, grants{accesstypes.Create: {shipsResource}})
-		body := `[{"op":"add","path":"/ships","value":{"registryCode":"SSV-9002","name":"Nomad","cargoValue":10}}]`
-		status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", body)
-		assertStatus(t, status, http.StatusForbidden, respBody)
-	})
+	// Each case prepares its own seeded database, fully isolating the cases from one
+	// another.
+	//
+	// Ships mutations flow through the consolidated PATCH /api/resources endpoint.
+	// CrewMembers is excluded from handler consolidation, so its mutations flow through
+	// the standalone PATCH /api/crew-members endpoint; those cases assert that the
+	// standalone mutation surface enforces the same permission contract as the
+	// consolidated one.
+	tests := []struct {
+		name       string
+		grants     grants
+		target     string
+		body       string
+		wantStatus int
+		verify     func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, respBody []byte)
+	}{
+		{
+			name:       "create without resource grant is forbidden",
+			grants:     nil,
+			target:     "/api/resources",
+			body:       `[{"op":"add","path":"/ships","value":{"registryCode":"SSV-9001","name":"Nomad","cargoValue":10}}]`,
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "create tagged field without field grant is forbidden",
+			grants:     grants{accesstypes.Create: {shipsResource}},
+			target:     "/api/resources",
+			body:       `[{"op":"add","path":"/ships","value":{"registryCode":"SSV-9002","name":"Nomad","cargoValue":10}}]`,
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "create with field grants is allowed",
+			grants:     createGrants,
+			target:     "/api/resources",
+			body:       `[{"op":"add","path":"/ships","value":{"registryCode":"SSV-2001","name":"Kestrel","cargoValue":420000}}]`,
+			wantStatus: http.StatusOK,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, respBody []byte) {
+				resp := decodeRow(t, respBody)
+				created, ok := resp["ships"].([]any)
+				if !ok || len(created) != 1 {
+					t.Fatalf("expected one created ship id, got: %s", respBody)
+				}
+				createdID, ok := created[0].(string)
+				if !ok {
+					t.Fatalf("created ship id is not a string: %s", respBody)
+				}
+				name := readColumn[string](ctx, t, db, "Ships", spanner.Key{createdID}, "Name")
+				if name != "Kestrel" {
+					t.Errorf("created ship Name = %q, want %q", name, "Kestrel")
+				}
+			},
+		},
+		{
+			name:       "update tagged field without field grant is forbidden",
+			grants:     grants{accesstypes.Update: {shipsResource}},
+			target:     "/api/resources",
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/ships/%s","value":{"name":"Vanta II"}}]`, shipVantaID),
+			wantStatus: http.StatusForbidden,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, _ []byte) {
+				name := readColumn[string](ctx, t, db, "Ships", spanner.Key{shipVantaID}, "Name")
+				if name != "Vanta" {
+					t.Errorf("ship Name = %q, want unchanged %q", name, "Vanta")
+				}
+			},
+		},
+		{
+			name: "update tagged field with field grant is allowed",
+			grants: grants{accesstypes.Update: {
+				shipsResource,
+				fieldResource(shipsResource, "name"),
+			}},
+			target:     "/api/resources",
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/ships/%s","value":{"name":"Vanta II"}}]`, shipVantaID),
+			wantStatus: http.StatusOK,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, _ []byte) {
+				name := readColumn[string](ctx, t, db, "Ships", spanner.Key{shipVantaID}, "Name")
+				if name != "Vanta II" {
+					t.Errorf("ship Name = %q, want %q", name, "Vanta II")
+				}
+			},
+		},
+		{
+			name: "update immutable field is rejected regardless of grants",
+			grants: grants{accesstypes.Update: {
+				shipsResource,
+				fieldResource(shipsResource, "registryCode"),
+			}},
+			target:     "/api/resources",
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/ships/%s","value":{"registryCode":"SSV-0000"}}]`, shipVantaID),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "delete without resource grant is forbidden",
+			grants:     grants{accesstypes.Update: {shipsResource}},
+			target:     "/api/resources",
+			body:       fmt.Sprintf(`[{"op":"remove","path":"/ships/%s"}]`, shipComostID),
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "delete with resource grant is allowed",
+			grants:     grants{accesstypes.Delete: {shipsResource}},
+			target:     "/api/resources",
+			body:       fmt.Sprintf(`[{"op":"remove","path":"/ships/%s"}]`, shipComostID),
+			wantStatus: http.StatusOK,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, _ []byte) {
+				_, err := db.Single().ReadRow(ctx, "Ships", spanner.Key{shipComostID}, []string{"Name"})
+				if spanner.ErrCode(err) != codes.NotFound {
+					t.Errorf("expected ship to be deleted, ReadRow err = %v", err)
+				}
+			},
+		},
+		{
+			name:       "standalone create without resource grant is forbidden",
+			grants:     nil,
+			target:     "/api/crew-members",
+			body:       crewCreateBody,
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "standalone create tagged field without field grant is forbidden",
+			grants:     grants{accesstypes.Create: {crewMembersResource}},
+			target:     "/api/crew-members",
+			body:       crewCreateBody,
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "standalone create with field grants is allowed",
+			grants:     crewCreateGrants,
+			target:     "/api/crew-members",
+			body:       crewCreateBody,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "standalone update tagged field without field grant is forbidden",
+			grants:     grants{accesstypes.Update: {crewMembersResource}},
+			target:     "/api/crew-members",
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/%s","value":{"rank":"Captain"}}]`, crewIlyanID),
+			wantStatus: http.StatusForbidden,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, _ []byte) {
+				rank := readColumn[string](ctx, t, db, "CrewMembers", spanner.Key{crewIlyanID}, "Rank")
+				if rank != "Navigator" {
+					t.Errorf("crew member Rank = %q, want unchanged %q", rank, "Navigator")
+				}
+			},
+		},
+		{
+			name: "standalone update tagged field with field grant is allowed",
+			grants: grants{accesstypes.Update: {
+				crewMembersResource,
+				fieldResource(crewMembersResource, "rank"),
+			}},
+			target:     "/api/crew-members",
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/%s","value":{"rank":"Captain"}}]`, crewIlyanID),
+			wantStatus: http.StatusOK,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, _ []byte) {
+				rank := readColumn[string](ctx, t, db, "CrewMembers", spanner.Key{crewIlyanID}, "Rank")
+				if rank != "Captain" {
+					t.Errorf("crew member Rank = %q, want %q", rank, "Captain")
+				}
+			},
+		},
+		{
+			name:       "standalone delete without resource grant is forbidden",
+			grants:     grants{accesstypes.Update: {crewMembersResource}},
+			target:     "/api/crew-members",
+			body:       fmt.Sprintf(`[{"op":"remove","path":"/%s"}]`, crewIlyanID),
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "standalone delete with resource grant is allowed",
+			grants:     grants{accesstypes.Delete: {crewMembersResource}},
+			target:     "/api/crew-members",
+			body:       fmt.Sprintf(`[{"op":"remove","path":"/%s"}]`, crewIlyanID),
+			wantStatus: http.StatusOK,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, _ []byte) {
+				_, err := db.Single().ReadRow(ctx, "CrewMembers", spanner.Key{crewIlyanID}, []string{"Name"})
+				if spanner.ErrCode(err) != codes.NotFound {
+					t.Errorf("expected crew member to be deleted, ReadRow err = %v", err)
+				}
+			},
+		},
+		{
+			name:       "non-consolidated resource is not reachable through the consolidated route",
+			grants:     crewCreateGrants,
+			target:     "/api/resources",
+			body:       fmt.Sprintf(`[{"op":"add","path":"/crew-members","value":{"shipId":%q,"name":"Torvald Hess","rank":"Loadmaster","clearanceLevel":1}}]`, shipVantaID),
+			wantStatus: http.StatusBadRequest,
+		},
+	}
 
-	t.Run("create with field grants is allowed", func(t *testing.T) {
-		testApp := newTestApp(db, createGrants)
-		body := `[{"op":"add","path":"/ships","value":{"registryCode":"SSV-2001","name":"Kestrel","cargoValue":420000}}]`
-		status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", body)
-		assertStatus(t, status, http.StatusOK, respBody)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		resp := decodeRow(t, respBody)
-		created, ok := resp["ships"].([]any)
-		if !ok || len(created) != 1 {
-			t.Fatalf("expected one created ship id, got: %s", respBody)
-		}
-		createdID, ok := created[0].(string)
-		if !ok {
-			t.Fatalf("created ship id is not a string: %s", respBody)
-		}
-		name := readColumn[string](ctx, t, db, "Ships", spanner.Key{createdID}, "Name")
-		if name != "Kestrel" {
-			t.Errorf("created ship Name = %q, want %q", name, "Kestrel")
-		}
-	})
+			ctx := t.Context()
 
-	t.Run("update tagged field without field grant is forbidden", func(t *testing.T) {
-		testApp := newTestApp(db, grants{accesstypes.Update: {shipsResource}})
-		body := fmt.Sprintf(`[{"op":"patch","path":"/ships/%s","value":{"name":"Vanta II"}}]`, shipVantaID)
-		status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", body)
-		assertStatus(t, status, http.StatusForbidden, respBody)
+			db, err := prepareDatabase(ctx, t, "file://../schema/migrations", "file://testdata/seed")
+			if err != nil {
+				t.Fatal(err)
+			}
+			testApp := newTestApp(db, tt.grants)
 
-		name := readColumn[string](ctx, t, db, "Ships", spanner.Key{shipVantaID}, "Name")
-		if name != "Vanta" {
-			t.Errorf("ship Name = %q, want unchanged %q", name, "Vanta")
-		}
-	})
-
-	t.Run("update tagged field with field grant is allowed", func(t *testing.T) {
-		testApp := newTestApp(db, grants{accesstypes.Update: {
-			shipsResource,
-			fieldResource(shipsResource, "name"),
-		}})
-		body := fmt.Sprintf(`[{"op":"patch","path":"/ships/%s","value":{"name":"Vanta II"}}]`, shipVantaID)
-		status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", body)
-		assertStatus(t, status, http.StatusOK, respBody)
-
-		name := readColumn[string](ctx, t, db, "Ships", spanner.Key{shipVantaID}, "Name")
-		if name != "Vanta II" {
-			t.Errorf("ship Name = %q, want %q", name, "Vanta II")
-		}
-	})
-
-	t.Run("update immutable field is rejected regardless of grants", func(t *testing.T) {
-		testApp := newTestApp(db, grants{accesstypes.Update: {
-			shipsResource,
-			fieldResource(shipsResource, "registryCode"),
-		}})
-		body := fmt.Sprintf(`[{"op":"patch","path":"/ships/%s","value":{"registryCode":"SSV-0000"}}]`, shipVantaID)
-		status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", body)
-		assertStatus(t, status, http.StatusBadRequest, respBody)
-	})
-
-	t.Run("delete without resource grant is forbidden", func(t *testing.T) {
-		testApp := newTestApp(db, grants{accesstypes.Update: {shipsResource}})
-		body := fmt.Sprintf(`[{"op":"remove","path":"/ships/%s"}]`, shipComostID)
-		status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", body)
-		assertStatus(t, status, http.StatusForbidden, respBody)
-	})
-
-	t.Run("delete with resource grant is allowed", func(t *testing.T) {
-		testApp := newTestApp(db, grants{accesstypes.Delete: {shipsResource}})
-		body := fmt.Sprintf(`[{"op":"remove","path":"/ships/%s"}]`, shipComostID)
-		status, respBody := doRequest(t, testApp, http.MethodPatch, "/api/resources", body)
-		assertStatus(t, status, http.StatusOK, respBody)
-
-		_, err := db.Single().ReadRow(ctx, "Ships", spanner.Key{shipComostID}, []string{"Name"})
-		if spanner.ErrCode(err) != codes.NotFound {
-			t.Errorf("expected ship to be deleted, ReadRow err = %v", err)
-		}
-	})
+			status, respBody := doRequest(t, testApp, http.MethodPatch, tt.target, tt.body)
+			assertStatus(t, status, tt.wantStatus, respBody)
+			if tt.verify != nil {
+				tt.verify(ctx, t, db, respBody)
+			}
+		})
+	}
 }
 
 func TestInvariantRPC(t *testing.T) {
-	// No t.Parallel(): all integration tests share one Spanner emulator instance, and
-	// concurrent database creation/DDL across tests is unreliable on the emulator.
+	t.Parallel()
+
 	ctx := t.Context()
 
-	db, err := prepareDatabase(ctx, t)
+	db, err := prepareDatabase(ctx, t, "file://../schema/migrations", "file://testdata/seed")
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedDatabase(ctx, t, db)
 
 	tests := []struct {
 		name       string

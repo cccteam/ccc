@@ -28,8 +28,11 @@ func run(ctx context.Context) error {
 		generation.GenerateHandlers("app"),
 		generation.GenerateRoutes("pkg/router", "api"),
 		generation.WithRPC("pkg/rpc"),
-		generation.WithConsolidatedHandlers("resources", true),
-		generation.WithSpannerEmulatorVersion("1.5.43"),
+		// CrewMember is excluded from consolidation so the app exercises both mutation
+		// surfaces: the consolidated PATCH /api/resources handler and a standalone
+		// per-resource PATCH /api/crew-members handler.
+		generation.WithConsolidatedHandlers("resources", true, "CrewMember"),
+		generation.WithSpannerEmulatorVersion("1.5.55"),
 		generation.GenerateTypescript("frontend/src/service",
 			generation.GenerateMetadata(),
 			generation.GeneratePermissions(),

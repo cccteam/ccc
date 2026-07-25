@@ -16,7 +16,11 @@ A synthetic "starport logistics" application with two roles:
   `TestGeneratedCodeIsCommitted` re-runs the generator and fails if the output drifts
   from what is committed.
 - **Permission enforcement regression**: integration tests drive the generated HTTP
-  handlers against a real Spanner emulator with a scriptable permission table.
+  handlers against a real Spanner emulator with a scriptable permission table. Both
+  generated mutation surfaces are exercised: the consolidated `PATCH /api/resources`
+  handler (Ships, DockingBays, CargoManifests) and a standalone per-resource
+  `PATCH /api/crew-members` handler (CrewMembers is excluded from consolidation for
+  this purpose).
   - `permissions_invariant_test.go` asserts behavior of *fully tagged* resources
     (`Ships`, `CrewMembers`, RPC methods). Every non-primary-key field carries an
     explicit `perm` tag, so the fail-open/fail-closed default is never consulted.

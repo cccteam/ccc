@@ -29,7 +29,7 @@ func TestApplicationName(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			opts := []ResourceOption{
-				WithSpannerEmulatorVersion("1.5.41"),
+				WithSpannerEmulatorVersion("1.5.55"),
 			}
 			if tc.opt != nil {
 				opts = append(opts, tc.opt)

@@ -4,14 +4,17 @@
 package app
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/pkg/resources"
 	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
+	"github.com/go-playground/errors/v5"
 )
 
 func (a *App) CrewMembers() http.HandlerFunc {
@@ -118,5 +121,77 @@ func (a *App) CrewMember() http.HandlerFunc {
 		}
 
 		return httpio.NewEncoder(w).Ok(rmap)
+	})
+}
+
+func (a *App) PatchCrewMembers() http.HandlerFunc {
+	type request struct {
+		ID             ccc.UUID `json:"-"`
+		ShipID         ccc.UUID `json:"shipId"         perm:"Create,Update"`
+		Name           string   `json:"name"           perm:"Create,Update"`
+		Rank           string   `json:"rank"           perm:"Create,Update"`
+		ClearanceLevel int64    `json:"clearanceLevel" perm:"Create,Update"`
+		MedicalNotes   *string  `json:"medicalNotes"   perm:"Create,Update"`
+	}
+
+	type response struct {
+		IDs []ccc.UUID `json:"iDs"`
+	}
+
+	decoder := NewDecoder[resources.CrewMember, request](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+		var resp response
+		eventSource := resource.UserEvent(ctx)
+
+		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
+			resp = response{}
+			r, err := resource.CloneRequest(r)
+			if err != nil {
+				return errors.Wrap(err, "resource.CloneRequest()")
+			}
+
+			for op, err := range resource.Operations(r, "/{id}") {
+				if err != nil {
+					return errors.Wrap(err, "resource.Operations()")
+				}
+
+				patchSet, err := decoder.DecodeOperation(op, a.UserPermissions(r))
+				if err != nil {
+					return errors.Wrap(err, "decoder.DecodeOperation()")
+				}
+
+				switch op.Type {
+				case resource.OperationCreate:
+					patch, err := resources.NewCrewMemberCreatePatchFromPatchSet(patchSet)
+					if err != nil {
+						return errors.Wrap(err, "resources.NewCrewMemberCreatePatchFromPatchSet()")
+					}
+					if err := patch.Buffer(ctx, txn, eventSource); err != nil {
+						return errors.Wrap(err, "resources.CrewMemberCreatePatch.Buffer()")
+					}
+					resp.IDs = append(resp.IDs, patch.ID())
+				case resource.OperationUpdate:
+					id := httpio.Param[ccc.UUID](op.Req, "id")
+					if err := resources.NewCrewMemberUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+						return errors.Wrap(err, "resources.CrewMemberUpdatePatch.Buffer()")
+					}
+				case resource.OperationDelete:
+					id := httpio.Param[ccc.UUID](op.Req, "id")
+					if err := resources.NewCrewMemberDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+						return errors.Wrap(err, "resources.CrewMemberDeletePatch.Buffer()")
+					}
+				}
+			}
+
+			return nil
+		}); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, handleError[resources.CrewMember](err))
+		}
+
+		return httpio.NewEncoder(w).Ok(resp)
 	})
 }

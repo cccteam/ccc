@@ -131,12 +131,11 @@ linters:
           - cyclop
           - nestif
         path: _test\.go
-      # Mutation subtests share one database and run sequentially by design; the
-      # regen test rewrites the working tree and must not run in parallel either.
+      # The regen test rewrites the working tree and must not run in parallel.
       - linters:
           - paralleltest
           - tparallel
-        path: (integration/permissions_.*_test|cmd/generate/generate_test)\.go
+        path: cmd/generate/generate_test\.go
       - linters:
           - gomoddirectives
         path: go\.mod

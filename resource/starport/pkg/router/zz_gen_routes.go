@@ -26,6 +26,7 @@ type GeneratedHandlers interface {
 
 	CrewMembers() http.HandlerFunc
 	CrewMember() http.HandlerFunc
+	PatchCrewMembers() http.HandlerFunc
 
 	DockingBays() http.HandlerFunc
 	DockingBay() http.HandlerFunc
@@ -54,6 +55,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	crewMemberHandler := h.CrewMember()
 	r.Get("/api/crew-members/{crewMemberID}", crewMemberHandler)
 	r.Post("/api/crew-members/{crewMemberID}", crewMemberHandler)
+
+	r.Patch("/api/crew-members", h.PatchCrewMembers())
 
 	dockingBaysHandler := h.DockingBays()
 	r.Get("/api/docking-bays", dockingBaysHandler)

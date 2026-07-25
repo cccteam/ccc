@@ -49,7 +49,6 @@ const resourceMap: ResourceMap = {
   },
   [Resources.CrewMembers]: {
     route: 'crew-members',
-    consolidatedRoute: 'resources',
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
       { fieldName: 'shipId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Ships },

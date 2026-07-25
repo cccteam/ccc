@@ -18,13 +18,7 @@ var container *initiator.SpannerContainer
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
-	// Disable multiplexed sessions for Read/Write transactions when running tests in the emulator
-	// FIXME(jwatson): Reevaluate this periodically. Not sure if this is a bug in the emulator, libruary, or if this makes sense.
-	if err := os.Setenv("GOOGLE_CLOUD_SPANNER_MULTIPLEXED_SESSIONS_FOR_RW", "false"); err != nil {
-		log.Fatal(err)
-	}
-
-	c, err := initiator.NewSpannerContainer(ctx, "1.5.43")
+	c, err := initiator.NewSpannerContainer(ctx, "1.5.55")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -43,7 +37,7 @@ func TestMain(m *testing.M) {
 	os.Exit(exitCode)
 }
 
-func prepareDatabase(ctx context.Context, t *testing.T) (*initiator.SpannerDB, error) {
+func prepareDatabase(ctx context.Context, t *testing.T, sourceURL ...string) (*initiator.SpannerDB, error) {
 	t.Helper()
 
 	db, err := container.CreateDatabase(ctx, t.Name())
@@ -59,7 +53,7 @@ func prepareDatabase(ctx context.Context, t *testing.T) (*initiator.SpannerDB, e
 		}
 	})
 
-	if err := db.MigrateUp("file://../schema/migrations"); err != nil {
+	if err := db.MigrateUp(sourceURL...); err != nil {
 		return nil, errors.Wrapf(err, "initiator.SpannerDB.MigrateUp()")
 	}
 

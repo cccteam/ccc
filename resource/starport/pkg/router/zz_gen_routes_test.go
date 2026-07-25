@@ -71,6 +71,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"crewMemberID": "testCrewMemberID"},
 		},
 		{
+			url: "/api/crew-members", method: http.MethodPatch,
+			handlerFunc: "PatchCrewMembers",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/api/docking-bays", method: http.MethodGet,
 			handlerFunc: "DockingBays",
 			parameters:  map[string]string{},
@@ -125,6 +130,7 @@ func generatedExpectCalls(e *mock_router.MockHandlersMockRecorder, rec *callReco
 	e.CargoManifest().Times(1).Return(rec.RecordHandlerCall("CargoManifest"))
 	e.CrewMembers().Times(1).Return(rec.RecordHandlerCall("CrewMembers"))
 	e.CrewMember().Times(1).Return(rec.RecordHandlerCall("CrewMember"))
+	e.PatchCrewMembers().Times(1).Return(rec.RecordHandlerCall("PatchCrewMembers"))
 	e.DockingBays().Times(1).Return(rec.RecordHandlerCall("DockingBays"))
 	e.DockingBay().Times(1).Return(rec.RecordHandlerCall("DockingBay"))
 	e.Ships().Times(1).Return(rec.RecordHandlerCall("Ships"))

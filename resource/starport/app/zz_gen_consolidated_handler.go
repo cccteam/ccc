@@ -27,16 +27,6 @@ func (a *App) PatchResources() http.HandlerFunc {
 	}
 	cargoManifestDecoder := NewDecoder[resources.CargoManifest, cargoManifestRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
-	type crewMemberRequest struct {
-		ID             ccc.UUID `json:"-"`
-		ShipID         ccc.UUID `json:"shipId"         perm:"Create,Update"`
-		Name           string   `json:"name"           perm:"Create,Update"`
-		Rank           string   `json:"rank"           perm:"Create,Update"`
-		ClearanceLevel int64    `json:"clearanceLevel" perm:"Create,Update"`
-		MedicalNotes   *string  `json:"medicalNotes"   perm:"Create,Update"`
-	}
-	crewMemberDecoder := NewDecoder[resources.CrewMember, crewMemberRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
-
 	type dockingBayRequest struct {
 		ID         ccc.UUID `json:"-"`
 		Name       string   `json:"name"`
@@ -108,38 +98,6 @@ func (a *App) PatchResources() http.HandlerFunc {
 						id2 := httpio.Param[int64](req, "id2")
 						if err := resources.NewCargoManifestDeletePatchFromPatchSet(id1, id2, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 							return errors.Wrap(handleError[resources.CargoManifest](err), "resources.CargoManifestDeletePatch.Buffer()")
-						}
-					}
-				case "crew-members":
-					patchSet, err := crewMemberDecoder.DecodeOperation(op, a.UserPermissions(op.Req))
-					if err != nil {
-						return errors.Wrap(err, "crewMemberDecoder.DecodeOperation()")
-					}
-
-					req, err := op.ReqWithPattern("/{resource}/{id}")
-					if err != nil {
-						return errors.Wrap(err, "op.ReqWithPattern()")
-					}
-
-					switch op.Type {
-					case resource.OperationCreate:
-						patch, err := resources.NewCrewMemberCreatePatchFromPatchSet(patchSet)
-						if err != nil {
-							return errors.Wrap(err, "crewMemberCreatePatchFromPatchSet()")
-						}
-						if err := patch.Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.CrewMember](err), "resources.CrewMemberCreatePatch.Buffer()")
-						}
-						resp["crewMembers"] = append(resp["crewMembers"], patch.ID())
-					case resource.OperationUpdate:
-						id := httpio.Param[ccc.UUID](req, "id")
-						if err := resources.NewCrewMemberUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.CrewMember](err), "resources.CrewMemberUpdatePatch.Buffer()")
-						}
-					case resource.OperationDelete:
-						id := httpio.Param[ccc.UUID](req, "id")
-						if err := resources.NewCrewMemberDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.CrewMember](err), "resources.CrewMemberDeletePatch.Buffer()")
 						}
 					}
 				case "docking-bays":

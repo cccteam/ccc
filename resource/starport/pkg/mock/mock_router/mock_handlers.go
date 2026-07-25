@@ -138,6 +138,20 @@ func (mr *MockHandlersMockRecorder) DockingBays() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DockingBays", reflect.TypeOf((*MockHandlers)(nil).DockingBays))
 }
 
+// PatchCrewMembers mocks base method.
+func (m *MockHandlers) PatchCrewMembers() http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PatchCrewMembers")
+	ret0, _ := ret[0].(http.HandlerFunc)
+	return ret0
+}
+
+// PatchCrewMembers indicates an expected call of PatchCrewMembers.
+func (mr *MockHandlersMockRecorder) PatchCrewMembers() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PatchCrewMembers", reflect.TypeOf((*MockHandlers)(nil).PatchCrewMembers))
+}
+
 // PatchResources mocks base method.
 func (m *MockHandlers) PatchResources() http.HandlerFunc {
 	m.ctrl.T.Helper()
