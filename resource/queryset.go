@@ -27,6 +27,7 @@ type QuerySet[Resource Resourcer] struct {
 	limit                  *uint64
 	offset                 *uint64
 	returnAccessibleFields bool
+	requestableFields      []accesstypes.Field
 	rMeta                  *Metadata[Resource]
 	resourceSet            *Set[Resource]
 	userPermissions        UserPermissions
@@ -130,11 +131,23 @@ func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType
 	return nil
 }
 
+// requestable reports whether a field can be requested by a client. A field outside the
+// requestable set (e.g. excluded from the request type with json:"-") can never be
+// requested explicitly, so it must not be returned by default either. A nil set (the
+// QuerySet was not built by a QueryDecoder) places no restriction.
+func (q *QuerySet[Resource]) requestable(field accesstypes.Field) bool {
+	return q.requestableFields == nil || slices.Contains(q.requestableFields, field)
+}
+
 func (q *QuerySet[Resource]) addAccessibleFields(ctx context.Context, dbType DBType) error {
 	fields := make([]accesstypes.Field, 0, q.rMeta.DBFieldCount(dbType))
 
 	if q.resourceSet != nil {
 		for _, field := range q.rMeta.DBFields(dbType) {
+			if !q.requestable(field) {
+				continue
+			}
+
 			if !q.resourceSet.PermissionRequired(field, q.RequiredPermission()) {
 				fields = append(fields, field)
 			} else {
@@ -146,8 +159,12 @@ func (q *QuerySet[Resource]) addAccessibleFields(ctx context.Context, dbType DBT
 			}
 		}
 	} else {
-		// If we don't have a resourceSet, just return all fields
-		fields = q.rMeta.DBFields(dbType)
+		// If we don't have a resourceSet, return all requestable fields
+		for _, field := range q.rMeta.DBFields(dbType) {
+			if q.requestable(field) {
+				fields = append(fields, field)
+			}
+		}
 	}
 
 	for _, field := range fields {

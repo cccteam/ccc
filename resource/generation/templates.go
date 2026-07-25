@@ -583,8 +583,10 @@ import (
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				{{- range .Resource.Fields }}
+				{{- if not .IsInputOnly }}
 				case "{{ .Name }}":
 					rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+				{{- end }}
 				{{- end }}
 				}
 			}
@@ -635,8 +637,10 @@ import (
 		for _, field := range querySet.Fields() {
 			switch string(field) {
 			{{- range .Resource.Fields }}
+			{{- if not .IsInputOnly }}
 			case "{{ .Name }}":
 				rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+			{{- end }}
 			{{- end }}
 			}
 		}
