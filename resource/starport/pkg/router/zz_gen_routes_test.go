@@ -23,6 +23,7 @@ func generatedRouteParameters() []string {
 		"crewMemberID",
 		"dockingBayID",
 		"shipID",
+		"supplyCrateID",
 	}
 
 	return keys
@@ -116,6 +117,26 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"shipID": "testShipID"},
 		},
 		{
+			url: "/api/supply-crates", method: http.MethodGet,
+			handlerFunc: "SupplyCrates",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/supply-crates", method: http.MethodPost,
+			handlerFunc: "SupplyCrates",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/supply-crates/testSupplyCrateID", method: http.MethodGet,
+			handlerFunc: "SupplyCrate",
+			parameters:  map[string]string{"supplyCrateID": "testSupplyCrateID"},
+		},
+		{
+			url: "/api/supply-crates/testSupplyCrateID", method: http.MethodPost,
+			handlerFunc: "SupplyCrate",
+			parameters:  map[string]string{"supplyCrateID": "testSupplyCrateID"},
+		},
+		{
 			url: "/api/resources", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
 		},
@@ -135,5 +156,7 @@ func generatedExpectCalls(e *mock_router.MockHandlersMockRecorder, rec *callReco
 	e.DockingBay().Times(1).Return(rec.RecordHandlerCall("DockingBay"))
 	e.Ships().Times(1).Return(rec.RecordHandlerCall("Ships"))
 	e.Ship().Times(1).Return(rec.RecordHandlerCall("Ship"))
+	e.SupplyCrates().Times(1).Return(rec.RecordHandlerCall("SupplyCrates"))
+	e.SupplyCrate().Times(1).Return(rec.RecordHandlerCall("SupplyCrate"))
 	e.PatchResources().Times(1).Return(rec.RecordHandlerCall("PatchResources"))
 }

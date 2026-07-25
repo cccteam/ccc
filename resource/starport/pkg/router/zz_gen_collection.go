@@ -69,6 +69,22 @@ func Collection() *resource.GeneratedCollection {
 				},
 				ImmutableTags: []accesstypes.Tag{"registryCode"},
 			},
+			{
+				Name:        "SupplyCrates",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
+				Tags: []resource.TagData{
+					{Name: "assignedShipId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "barcode", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "id"},
+					{Name: "inspectorBadge", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "label", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "notes", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update}},
+					{Name: "priority", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "quantity", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "status", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+				},
+			},
 		},
 	})
 }

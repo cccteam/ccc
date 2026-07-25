@@ -193,3 +193,31 @@ func (mr *MockHandlersMockRecorder) Ships() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ships", reflect.TypeOf((*MockHandlers)(nil).Ships))
 }
+
+// SupplyCrate mocks base method.
+func (m *MockHandlers) SupplyCrate() http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupplyCrate")
+	ret0, _ := ret[0].(http.HandlerFunc)
+	return ret0
+}
+
+// SupplyCrate indicates an expected call of SupplyCrate.
+func (mr *MockHandlersMockRecorder) SupplyCrate() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupplyCrate", reflect.TypeOf((*MockHandlers)(nil).SupplyCrate))
+}
+
+// SupplyCrates mocks base method.
+func (m *MockHandlers) SupplyCrates() http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupplyCrates")
+	ret0, _ := ret[0].(http.HandlerFunc)
+	return ret0
+}
+
+// SupplyCrates indicates an expected call of SupplyCrates.
+func (mr *MockHandlersMockRecorder) SupplyCrates() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupplyCrates", reflect.TypeOf((*MockHandlers)(nil).SupplyCrates))
+}

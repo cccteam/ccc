@@ -24,10 +24,13 @@ import (
 // Seeded row identifiers, matching the fixture data in testdata/seed. The values are
 // stable so tests can address rows directly.
 const (
-	bayAlphaID   = "5f2d1c3b-9a8e-4d7f-8b6a-1c2d3e4f5a6b"
-	shipVantaID  = "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e"
-	shipComostID = "7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d"
-	crewIlyanID  = "3c2b1a09-8d7e-4f6a-9b5c-4d3e2f1a0b9c"
+	bayAlphaID       = "5f2d1c3b-9a8e-4d7f-8b6a-1c2d3e4f5a6b"
+	shipVantaID      = "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e"
+	shipComostID     = "7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d"
+	crewIlyanID      = "3c2b1a09-8d7e-4f6a-9b5c-4d3e2f1a0b9c"
+	crateCoolant40ID = "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a"
+	crateRationsID   = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5e"
+	crateCoolant12ID = "6f5e4d3c-2b1a-4098-8765-4321fedcba98"
 )
 
 // grants is a static permission table: the set of resources granted for each permission.

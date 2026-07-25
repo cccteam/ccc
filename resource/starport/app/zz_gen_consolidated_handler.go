@@ -45,6 +45,19 @@ func (a *App) PatchResources() http.HandlerFunc {
 	}
 	shipDecoder := NewDecoder[resources.Ship, shipRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
+	type supplyCrateRequest struct {
+		ID             ccc.UUID     `json:"-"`
+		Label          string       `json:"label"          perm:"Create,Update"`
+		Quantity       int64        `json:"quantity"       perm:"Create,Update"`
+		Priority       int64        `json:"priority"       perm:"Create,Update"`
+		Status         string       `json:"status"         perm:"Create,Update"`
+		Barcode        string       `json:"-"`
+		Notes          *string      `json:"notes"          perm:"Create,Update"`
+		InspectorBadge *string      `json:"inspectorBadge" perm:"Create,Update"`
+		AssignedShipID ccc.NullUUID `json:"assignedShipId" perm:"Create,Update"`
+	}
+	supplyCrateDecoder := NewDecoder[resources.SupplyCrate, supplyCrateRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+
 	type response map[string][]ccc.UUID
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -162,6 +175,38 @@ func (a *App) PatchResources() http.HandlerFunc {
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewShipDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 							return errors.Wrap(handleError[resources.Ship](err), "resources.ShipDeletePatch.Buffer()")
+						}
+					}
+				case "supply-crates":
+					patchSet, err := supplyCrateDecoder.DecodeOperation(op, a.UserPermissions(op.Req))
+					if err != nil {
+						return errors.Wrap(err, "supplyCrateDecoder.DecodeOperation()")
+					}
+
+					req, err := op.ReqWithPattern("/{resource}/{id}")
+					if err != nil {
+						return errors.Wrap(err, "op.ReqWithPattern()")
+					}
+
+					switch op.Type {
+					case resource.OperationCreate:
+						patch, err := resources.NewSupplyCrateCreatePatchFromPatchSet(patchSet)
+						if err != nil {
+							return errors.Wrap(err, "supplyCrateCreatePatchFromPatchSet()")
+						}
+						if err := patch.Buffer(ctx, txn, eventSource); err != nil {
+							return errors.Wrap(handleError[resources.SupplyCrate](err), "resources.SupplyCrateCreatePatch.Buffer()")
+						}
+						resp["supplyCrates"] = append(resp["supplyCrates"], patch.ID())
+					case resource.OperationUpdate:
+						id := httpio.Param[ccc.UUID](req, "id")
+						if err := resources.NewSupplyCrateUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+							return errors.Wrap(handleError[resources.SupplyCrate](err), "resources.SupplyCrateUpdatePatch.Buffer()")
+						}
+					case resource.OperationDelete:
+						id := httpio.Param[ccc.UUID](req, "id")
+						if err := resources.NewSupplyCrateDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+							return errors.Wrap(handleError[resources.SupplyCrate](err), "resources.SupplyCrateDeletePatch.Buffer()")
 						}
 					}
 				default:

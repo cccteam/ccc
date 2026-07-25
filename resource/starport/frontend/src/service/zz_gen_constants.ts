@@ -19,6 +19,7 @@ export const Resources = {
   CrewMembers: 'CrewMembers' as Resource,
   DockingBays: 'DockingBays' as Resource,
   Ships: 'Ships' as Resource,
+  SupplyCrates: 'SupplyCrates' as Resource,
 };
 
 export const Methods = {
@@ -94,6 +95,33 @@ export namespace Ships {
     name: 'Ships.name' as Resource,
     registryCode: 'Ships.registryCode' as Resource,
     updatedAt: 'Ships.updatedAt' as Resource,
+  };
+}
+
+export namespace SupplyCrates {
+  export const fieldName = {
+    assignedShipId: 'assignedShipId' as FieldName,
+    barcode: 'barcode' as FieldName,
+    id: 'id' as FieldName,
+    label: 'label' as FieldName,
+    notes: 'notes' as FieldName,
+    priority: 'priority' as FieldName,
+    quantity: 'quantity' as FieldName,
+    status: 'status' as FieldName,
+  };
+  export const piiFieldName = {
+    inspectorBadge: 'inspectorBadge' as FieldName,
+  };
+  export const resourceName = {
+    assignedShipId: 'SupplyCrates.assignedShipId' as Resource,
+    barcode: 'SupplyCrates.barcode' as Resource,
+    id: 'SupplyCrates.id' as Resource,
+    inspectorBadge: 'SupplyCrates.inspectorBadge' as Resource,
+    label: 'SupplyCrates.label' as Resource,
+    notes: 'SupplyCrates.notes' as Resource,
+    priority: 'SupplyCrates.priority' as Resource,
+    quantity: 'SupplyCrates.quantity' as Resource,
+    status: 'SupplyCrates.status' as Resource,
   };
 }
 
@@ -282,6 +310,76 @@ const Mappings: PermissionMappings = {
     [Permissions.List]: true,
     [Permissions.Read]: true,
     [Permissions.Update]: false,
+  },
+  [Resources.SupplyCrates]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: true,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [SupplyCrates.resourceName.assignedShipId]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [SupplyCrates.resourceName.barcode]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: false,
+  },
+  [SupplyCrates.resourceName.id]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: false,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [SupplyCrates.resourceName.inspectorBadge]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [SupplyCrates.resourceName.label]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [SupplyCrates.resourceName.notes]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: false,
+    [Permissions.Read]: false,
+    [Permissions.Update]: true,
+  },
+  [SupplyCrates.resourceName.priority]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [SupplyCrates.resourceName.quantity]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [SupplyCrates.resourceName.status]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
   },
 };
 

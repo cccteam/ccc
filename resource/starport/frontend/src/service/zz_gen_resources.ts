@@ -35,6 +35,18 @@ export interface Ships {
   updatedAt: Date;
 }
 
+export interface SupplyCrates {
+  id: string;
+  label: string;
+  quantity: number;
+  priority: number;
+  status: string;
+  barcode: string;
+  notes: string;
+  inspectorBadge: string;
+  assignedShipId: string;
+}
+
 const resourceMap: ResourceMap = {
   [Resources.CargoManifests]: {
     route: 'cargo-manifests',
@@ -78,6 +90,21 @@ const resourceMap: ResourceMap = {
       { fieldName: 'dockingBayId', displayType: 'enumerated', required: false, isIndex: true, enumeratedResource: Resources.DockingBays },
       { fieldName: 'cargoValue', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'updatedAt', displayType: 'date', required: false, isIndex: false },
+    ],
+  },
+  [Resources.SupplyCrates]: {
+    route: 'supply-crates',
+    consolidatedRoute: 'resources',
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'label', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'quantity', displayType: 'number', required: true, isIndex: false },
+      { fieldName: 'priority', displayType: 'number', required: true, isIndex: false },
+      { fieldName: 'status', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'barcode', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'notes', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'inspectorBadge', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'assignedShipId', displayType: 'enumerated', required: false, isIndex: true, enumeratedResource: Resources.Ships },
     ],
   },
 };
