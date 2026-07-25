@@ -45,7 +45,7 @@ func (DataChangeEvent) Resource() accesstypes.Resource {
 	return "DataChangeEvents"
 }
 
-// PrimaryKey returns an empty key sent since this resource is only used for inserts, not deletes.
+// PrimaryKey returns an empty key set since this resource is only used for inserts, not deletes.
 func (d *DataChangeEvent) PrimaryKey() KeySet {
 	return KeySet{}
 }

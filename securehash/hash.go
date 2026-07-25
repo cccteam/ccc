@@ -14,6 +14,11 @@ const (
 	argon2Version = "1"
 )
 
+const (
+	bcryptKeyType = "Bcrypt"
+	argon2KeyType = "Argon2"
+)
+
 var (
 	_ encoding.TextMarshaler   = &Hash{}
 	_ encoding.TextUnmarshaler = &Hash{}
@@ -28,9 +33,9 @@ type Hash struct {
 func (h *Hash) KeyType() string {
 	switch h.underlying.(type) {
 	case *bcryptHash:
-		return "Bcrypt"
+		return bcryptKeyType
 	case *argon2Key:
-		return "Argon2"
+		return argon2KeyType
 	default:
 		panic(fmt.Sprintf("internal error: invalid underlying type %T in Hash", h.underlying))
 	}

@@ -394,7 +394,7 @@ func (f *Field) ResolvedType() string {
 	return f.Type()
 }
 
-// DerefResolvedType returns this Field's unqualified type if it's local, or its qualified type otherwise.
+// DerefResolvedType returns this Field's pointer-dereferenced unqualified type if it's local, or its pointer-dereferenced qualified type otherwise.
 func (f *Field) DerefResolvedType() string {
 	if f.IsLocalType() {
 		return f.DerefUnqualifiedType()

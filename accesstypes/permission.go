@@ -49,7 +49,7 @@ type (
 	// ResolvedTagPermissions is a mapping for each domain and resource of which permissions are required for a Tag
 	ResolvedTagPermissions map[Domain]map[Resource]map[Tag]map[Permission]bool
 
-	// ResolvedResourcePermissions is a mapping for each domain and resource of which permissions are rquired for the resource
+	// ResolvedResourcePermissions is a mapping for each domain and resource of which permissions are required for the resource
 	ResolvedResourcePermissions map[Domain]map[Resource]map[Permission]bool
 )
 

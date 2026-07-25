@@ -60,7 +60,7 @@ func NewPatchSet[Resource Resourcer](rMeta *Metadata[Resource]) *PatchSet[Resour
 	}
 }
 
-// SetPatchType sets the type of the patch (Create, Update, or Delete).
+// SetPatchType sets the type of the patch (Create, CreateOrUpdate, Update, or Delete).
 func (p *PatchSet[Resource]) SetPatchType(t PatchType) *PatchSet[Resource] {
 	p.patchType = t
 
@@ -79,7 +79,7 @@ func (p *PatchSet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource]
 	return p
 }
 
-// Set adds or updates a field's value in the PatchSet.
+// checkPermissions checks the user's permissions for the PatchSet's underlying QuerySet.
 func (p *PatchSet[Resource]) checkPermissions(ctx context.Context, dbType DBType) error {
 	return p.querySet.checkPermissions(ctx, dbType)
 }

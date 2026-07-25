@@ -1,0 +1,160 @@
+version: '2'
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bodyclose
+    - copyloopvar
+    - cyclop
+    - depguard
+    - dogsled
+    - durationcheck
+    - errcheck
+    - errorlint
+    - exhaustive
+    - forcetypeassert
+    - funlen
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godox
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - govet
+    - importas
+    - ineffassign
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    - nlreturn
+    - noctx
+    - nolintlint
+    - paralleltest
+    - prealloc
+    - predeclared
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - tagalign
+    - tagliatelle
+    - tparallel
+    - unconvert
+    - unparam
+    - wastedassign
+    - whitespace
+    - wrapcheck
+  settings:
+    cyclop:
+      max-complexity: 25
+    depguard:
+      rules:
+        main:
+          files:
+            - $all
+          allow:
+            - $gostd
+            - cloud.google.com/go/spanner
+            - github.com/cccteam
+            - github.com/go-chi/chi/v5
+            - github.com/go-playground/errors/v5
+            - github.com/go-playground/validator/v10
+            - go.uber.org/mock/gomock
+            - google.golang.org/grpc/codes
+    exhaustive:
+      default-signifies-exhaustive: true
+    funlen:
+      lines: 100
+      statements: 50
+    gocognit:
+      min-complexity: 50
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+    gocyclo:
+      min-complexity: 25
+    godox:
+      keywords:
+        - TODO
+        - BUG
+    misspell:
+      locale: US
+    nestif:
+      min-complexity: 10
+    tagalign:
+      order:
+        - json
+        - spanner
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+        use-field-name: true
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .Cause(
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      - linters:
+          - funlen
+          - gochecknoglobals
+          - gochecknoinits
+          - goconst
+          - gocyclo
+          - mnd
+          - nlreturn
+          - scopelint
+          - gocognit
+          - cyclop
+          - nestif
+        path: _test\.go
+      # The regen test rewrites the working tree and must not run in parallel.
+      - linters:
+          - paralleltest
+          - tparallel
+        path: cmd/generate/generate_test\.go
+      - linters:
+          - gomoddirectives
+        path: go\.mod
+        text: golang-migrate
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

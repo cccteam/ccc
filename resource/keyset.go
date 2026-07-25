@@ -26,8 +26,8 @@ type KeySet struct {
 }
 
 // Add adds an additional column to the primary key creating a composite primary key
-//   - PrimaryKey is immutable.
-//   - Add returns a new PrimaryKey that should be used for all subsequent operations.
+//   - KeySet is immutable.
+//   - Add returns a new KeySet that should be used for all subsequent operations.
 func (p KeySet) Add(key accesstypes.Field, value any) KeySet {
 	p.keyParts = append(p.keyParts, KeyPart{
 		Key:   key,

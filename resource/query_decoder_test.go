@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -644,6 +645,97 @@ func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 				} else if ast.String() != tc.expectedASTString {
 					t.Errorf("Expected AST string '%s', got '%s'", tc.expectedASTString, ast.String())
 				}
+			}
+		})
+	}
+}
+
+// hiddenFieldResource / hiddenFieldRequest model a resource with a field that is
+// excluded from the request type via json:"-" (what the generator emits for
+// conditions:"input_only" fields in read/list request structs).
+type hiddenFieldResource struct {
+	ID     string `spanner:"id"`
+	Name   string `spanner:"name"`
+	Secret string `spanner:"secret"`
+}
+
+func (hiddenFieldResource) Resource() accesstypes.Resource { return "hiddenFieldResources" }
+
+func (hiddenFieldResource) DefaultConfig() Config { return Config{} }
+
+type hiddenFieldRequest struct {
+	ID     string `json:"id"   index:"true"`
+	Name   string `json:"name" index:"true"`
+	Secret string `json:"-"`
+}
+
+func TestQueryDecoder_UnrequestableFields(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		target         string
+		wantFields     []accesstypes.Field
+		expectedErrMsg string
+		expectErr      bool
+	}{
+		{
+			name:       "default field set excludes fields absent from the request type",
+			target:     "http://test",
+			wantFields: []accesstypes.Field{"ID", "Name"},
+		},
+		{
+			name:           "field absent from the request type cannot be requested as a column",
+			target:         "http://test?columns=secret",
+			expectedErrMsg: "unknown column: secret",
+			expectErr:      true,
+		},
+		{
+			name:           "field absent from the request type cannot be used to sort",
+			target:         "http://test?sort=secret",
+			expectedErrMsg: "unknown sort field: secret",
+			expectErr:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			resSet, err := NewSet[hiddenFieldResource, hiddenFieldRequest](accesstypes.List)
+			if err != nil {
+				t.Fatalf("NewSet: %v", err)
+			}
+			decoder, err := NewQueryDecoder[hiddenFieldResource, hiddenFieldRequest](resSet)
+			if err != nil {
+				t.Fatalf("NewQueryDecoder: %v", err)
+			}
+
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, http.NoBody)
+			if err != nil {
+				t.Fatalf("http.NewRequestWithContext: %v", err)
+			}
+
+			qSet, err := decoder.DecodeWithoutPermissions(req)
+			if tt.expectErr {
+				if err == nil {
+					t.Fatal("expected an error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.expectedErrMsg) {
+					t.Errorf("error = %q, want it to contain %q", err.Error(), tt.expectedErrMsg)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("DecodeWithoutPermissions: %v", err)
+			}
+
+			if err := qSet.addAccessibleFields(t.Context(), SpannerDBType); err != nil {
+				t.Fatalf("addAccessibleFields: %v", err)
+			}
+			if got := qSet.Fields(); !slices.Equal(got, tt.wantFields) {
+				t.Errorf("Fields() = %v, want %v", got, tt.wantFields)
 			}
 		})
 	}

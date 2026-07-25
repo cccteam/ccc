@@ -1,5 +1,9 @@
 // Package generation provides tools for generating resource-driven API boilerplate
 // in Go & TypeScript based on Go structures and a Spanner DB schema.
+//
+// The complete reference for the comment annotations (@resource, @suppress, …) and
+// struct tags the generator recognizes lives in the resource module's README.md
+// (rendered on pkg.go.dev and GitHub).
 package generation
 
 import (

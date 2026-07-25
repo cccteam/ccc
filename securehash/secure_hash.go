@@ -35,9 +35,9 @@ func New(algo HashAlgorithm) *SecureHasher {
 func (s *SecureHasher) KeyType() string {
 	switch {
 	case s.bcrypt != nil:
-		return "Bcrypt"
+		return bcryptKeyType
 	case s.argon2 != nil:
-		return "Argon2"
+		return argon2KeyType
 	default:
 		panic("internal error: invalid SecureHasher configuration")
 	}

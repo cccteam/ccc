@@ -58,7 +58,7 @@ func tagToFieldMap(v any) (map[string]accesstypes.Field, []accesstypes.Field, er
 	tfMap := make(map[string]accesstypes.Field)
 	fields := make([]accesstypes.Field, 0, vType.NumField())
 	for _, field := range reflect.VisibleFields(vType) {
-		tag := field.Tag.Get("json")
+		tag := field.Tag.Get(jsonTagKey)
 		if tag == "" {
 			if _, ok := tfMap[field.Name]; ok {
 				return nil, nil, errors.Newf("field name %s collides with another field tag", field.Name)

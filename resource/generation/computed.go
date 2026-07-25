@@ -27,7 +27,7 @@ func (r *resourceGenerator) generateComputedResourceHandler(res *computedResourc
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 
-	log.Printf("Generated RPC handler file in %s: %s", time.Since(begin), destinationFilePath)
+	log.Printf("Generated computed resource handler file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }

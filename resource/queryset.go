@@ -27,6 +27,7 @@ type QuerySet[Resource Resourcer] struct {
 	limit                  *uint64
 	offset                 *uint64
 	returnAccessibleFields bool
+	requestableFields      []accesstypes.Field
 	rMeta                  *Metadata[Resource]
 	resourceSet            *Set[Resource]
 	userPermissions        UserPermissions
@@ -130,11 +131,23 @@ func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType
 	return nil
 }
 
+// requestable reports whether a field can be requested by a client. A field outside the
+// requestable set (e.g. excluded from the request type with json:"-") can never be
+// requested explicitly, so it must not be returned by default either. A nil set (the
+// QuerySet was not built by a QueryDecoder) places no restriction.
+func (q *QuerySet[Resource]) requestable(field accesstypes.Field) bool {
+	return q.requestableFields == nil || slices.Contains(q.requestableFields, field)
+}
+
 func (q *QuerySet[Resource]) addAccessibleFields(ctx context.Context, dbType DBType) error {
 	fields := make([]accesstypes.Field, 0, q.rMeta.DBFieldCount(dbType))
 
 	if q.resourceSet != nil {
 		for _, field := range q.rMeta.DBFields(dbType) {
+			if !q.requestable(field) {
+				continue
+			}
+
 			if !q.resourceSet.PermissionRequired(field, q.RequiredPermission()) {
 				fields = append(fields, field)
 			} else {
@@ -146,8 +159,12 @@ func (q *QuerySet[Resource]) addAccessibleFields(ctx context.Context, dbType DBT
 			}
 		}
 	} else {
-		// If we don't have a resourceSet, just return all fields
-		fields = q.rMeta.DBFields(dbType)
+		// If we don't have a resourceSet, return all requestable fields
+		for _, field := range q.rMeta.DBFields(dbType) {
+			if q.requestable(field) {
+				fields = append(fields, field)
+			}
+		}
 	}
 
 	for _, field := range fields {
@@ -191,7 +208,7 @@ func (q *QuerySet[Resource]) KeySet() KeySet {
 	return q.keys.KeySet()
 }
 
-// Columns returns a comma-separated string of database column names for the selected fields.
+// buildOrderByClause builds an ORDER BY clause from the QuerySet's sort fields.
 func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
 	orderByParts := make([]string, 0, len(q.sortFields))
 	for _, sf := range q.sortFields {
@@ -309,7 +326,7 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*St
 	}, nil
 }
 
-// stmt builds a Spanner SQL statement from the QuerySet.
+// stmt builds a SQL statement for the given database type from the QuerySet.
 func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	filterAst, err := q.FilterAst(dbType)
 	if err != nil {
@@ -538,7 +555,7 @@ type QuerySetComparer interface {
 	KeySet() KeySet
 }
 
-// QuerySetDiff compares two QuerySetComparer objects for equality. It checks patch type, data, fields, and primary keys.
+// QuerySetDiff compares two QuerySetComparer objects for equality. It checks resource, fields, and primary keys.
 func QuerySetDiff(opts ...cmp.Option) func(a, b QuerySetComparer) string {
 	return func(a, b QuerySetComparer) string {
 		if a.Resource() != b.Resource() {
@@ -546,7 +563,7 @@ func QuerySetDiff(opts ...cmp.Option) func(a, b QuerySetComparer) string {
 		}
 
 		if diff := cmp.Diff(a.Fields(), b.Fields(), cmpopts.SortSlices(func(x, y accesstypes.Field) bool { return x < y })); diff != "" {
-			return fmt.Sprintf("Fileds mismatch (-want +got):\n%s", diff)
+			return fmt.Sprintf("Fields mismatch (-want +got):\n%s", diff)
 		}
 
 		aKeyData, bKeyData := a.KeySet().KeyMap(), b.KeySet().KeyMap()

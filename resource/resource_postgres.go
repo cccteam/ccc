@@ -75,12 +75,12 @@ func (c *postgresReader[Resource]) List(_ context.Context, _ *Statement) iter.Se
 
 var _ ReadOnlyTransactionCloser = (*PostgresReadOnlyTransaction)(nil)
 
-// PostgresReadOnlyTransaction represents a database transaction that can be used for both reads and writes.
+// PostgresReadOnlyTransaction represents a database transaction that can only be used for reads.
 type PostgresReadOnlyTransaction struct {
 	resourceRowIndex map[string]int
 }
 
-// newPostgresReadOnlyTransaction creates a new PostgresReadOnlyTransaction from a spanner.ReadOnlyTransaction
+// newPostgresReadOnlyTransaction creates a new PostgresReadOnlyTransaction
 func newPostgresReadOnlyTransaction() ReadOnlyTransactionCloser {
 	panic("newPostgresReadOnlyTransaction() not implemented for PostgresReader[Resource]")
 }

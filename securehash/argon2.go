@@ -32,7 +32,7 @@ func Argon2() *Argon2Options {
 }
 
 // argon2WithOptions initializes argon2 with user defined settings.
-// This is for specialized use and most users should use the DefaultArgon2 initializer instead.
+// This is for specialized use and most users should use the Argon2 initializer instead.
 // The memory parameter specifies the size of the memory in KiB
 func argon2WithOptions(memory, times uint32, parallelism uint8, saltLen, keyLen uint32) *Argon2Options {
 	return &Argon2Options{

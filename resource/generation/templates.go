@@ -121,7 +121,7 @@ func (q *{{ .Resource.Name }}Query) Offset(n uint64) *{{ .Resource.Name }}Query 
 	return q
 }
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (q *{{ .Resource.Name }}Query) Diff(got *{{ .Resource.Name }}Query, opts ...cmp.Option) string {
 	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)
 }
@@ -377,7 +377,7 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 
 ` + fieldAccessors(createPatch) + `
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *{{ .Resource.Name }}CreatePatch) Diff(got *{{ .Resource.Name }}CreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
@@ -462,7 +462,7 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 
 ` + fieldAccessors(updatePatch) + `
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *{{ .Resource.Name }}UpdatePatch) Diff(got *{{ .Resource.Name }}UpdatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
@@ -523,7 +523,7 @@ func (p *{{ $field.Parent.Name }}DeletePatch) {{ $field.Name }}() {{ $field.Reso
 {{ end }}
 {{ end }}
 
-// Diff is intended for unit testing, and implements github.com/google/go-cmp/cmp.Diff()
+// Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *{{ .Resource.Name }}DeletePatch) Diff(got *{{ .Resource.Name }}DeletePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
@@ -583,8 +583,10 @@ import (
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				{{- range .Resource.Fields }}
+				{{- if not .IsInputOnly }}
 				case "{{ .Name }}":
 					rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+				{{- end }}
 				{{- end }}
 				}
 			}
@@ -635,8 +637,10 @@ import (
 		for _, field := range querySet.Fields() {
 			switch string(field) {
 			{{- range .Resource.Fields }}
+			{{- if not .IsInputOnly }}
 			case "{{ .Name }}":
 				rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+			{{- end }}
 			{{- end }}
 			}
 		}

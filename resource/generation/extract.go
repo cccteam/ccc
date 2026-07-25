@@ -235,7 +235,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 		}
 
 		for _, field := range resource.Fields {
-			spannerTag, _ := field.LookupTag("spanner")
+			spannerTag, _ := field.LookupTag(spannerTagKey)
 			nullability, ok := nullableFields[spannerTag]
 			if !ok {
 				continue
@@ -282,7 +282,7 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 	}
 	fields := make([]*resourceField, 0, len(pStruct.Fields()))
 	for _, field := range pStruct.Fields() {
-		spannerTag, ok := field.LookupTag("spanner")
+		spannerTag, ok := field.LookupTag(spannerTagKey)
 		if !ok {
 			field.AddError("missing spanner tag")
 
@@ -294,7 +294,7 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 
 			continue
 		}
-		if field.HasTag("index") {
+		if field.HasTag(indexTagKey) {
 			field.AddError("cannot use index tag in non-virtual resource")
 
 			continue
@@ -329,7 +329,7 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resource
 	}
 	fields := make([]*resourceField, 0, len(pStruct.Fields()))
 	for _, field := range pStruct.Fields() {
-		_, ok := field.LookupTag("spanner")
+		_, ok := field.LookupTag(spannerTagKey)
 		if !ok {
 			field.AddError("missing spanner tag")
 
@@ -339,8 +339,8 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resource
 		fields = append(fields, &resourceField{
 			Field:         field,
 			Parent:        parent,
-			IsIndex:       field.HasTag("index") || field.HasTag("uniqueindex"),
-			IsUniqueIndex: field.HasTag("uniqueindex"),
+			IsIndex:       field.HasTag(indexTagKey) || field.HasTag(uniqueIndexTagKey),
+			IsUniqueIndex: field.HasTag(uniqueIndexTagKey),
 		})
 	}
 
@@ -377,7 +377,7 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 
 		for _, field := range s.Fields() {
 			field := rpcField{Field: field}
-			if enumeratedResource, hasEnumeratedTag := field.LookupTag("enumerated"); hasEnumeratedTag {
+			if enumeratedResource, hasEnumeratedTag := field.LookupTag(enumeratedTagKey); hasEnumeratedTag {
 				if !c.doesResourceExist(enumeratedResource) {
 					field.AddError(fmt.Sprintf("referenced resource %q in enumerated tag does not exist", enumeratedResource))
 
@@ -486,7 +486,7 @@ func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 
 	var errRows []string
 	for _, field := range pStruct.Fields() {
-		spannerTag, _ := field.LookupTag("spanner")
+		spannerTag, _ := field.LookupTag(spannerTagKey)
 		if nullableFields[spannerTag] != table.Columns[spannerTag].IsNullable {
 			errRow := fmt.Sprintf("| %-32s | %13t | %15t |", spannerTag, nullableFields[spannerTag], table.Columns[spannerTag].IsNullable)
 			errRows = append(errRows, errRow)
@@ -516,7 +516,7 @@ func fieldNullability(pStruct *parser.Struct) (map[string]bool, error) {
 	nullableFields := make(map[string]bool)
 	var missingTags []string
 	for _, field := range pStruct.Fields() {
-		spannerTag, ok := field.LookupTag("spanner")
+		spannerTag, ok := field.LookupTag(spannerTagKey)
 		if !ok {
 			missingTags = append(missingTags, field.Name())
 		}

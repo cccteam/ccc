@@ -10,7 +10,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate mockgen -destination mock_resource_iface.go -package=resource . Reader
+//go:generate mockgen -destination mock_resource_iface_test.go -package=resource . Reader
 
 // SortTestResource is used for testing sorting functionality.
 type SortTestResource struct {

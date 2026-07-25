@@ -25,18 +25,18 @@ type (
 		maxKeywordLength int
 	}
 
-	// StructAnnotations holds the MultiMaps of keywords and arguments for a parser.Struct and each of its fields.
+	// StructAnnotations holds the ArgMaps of keywords and arguments for a parser.Struct and each of its fields.
 	StructAnnotations struct {
 		Struct ArgMap
 		Fields []ArgMap
 	}
 
-	// NamedTypeAnnotations holds the MultiMap of keywords and arguments for a parser.NamedType
+	// NamedTypeAnnotations holds the ArgMap of keywords and arguments for a parser.NamedType
 	NamedTypeAnnotations struct {
 		Named ArgMap
 	}
 
-	// ConstantAnnotations holds the MultiMap of keywords and arguments for a parser.Constant
+	// ConstantAnnotations holds the ArgMap of keywords and arguments for a parser.Constant
 	ConstantAnnotations struct {
 		Const ArgMap
 	}
