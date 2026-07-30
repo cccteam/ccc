@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.2](https://github.com/cccteam/ccc/compare/v0.3.1...v0.3.2) (2026-07-30)
+
+
+### Features
+
+* Add permission-enforcement regression suites and starport demo app (781) ([8e205d8](https://github.com/cccteam/ccc/commit/8e205d82deb174aa5ceaf5bcf7c66dc61cf45238))
+
+
+### Bug Fixes
+
+* Redesign pluralize to eliminate data race in concurrent generation ([#765](https://github.com/cccteam/ccc/issues/765)) ([85aba56](https://github.com/cccteam/ccc/commit/85aba562cf96a4de55afd6701671fe2819e50b3b))
+
+
+### Code Upgrade
+
+* **deps:** Bump the github-actions group across 1 directory with 3 updates ([#772](https://github.com/cccteam/ccc/issues/772)) ([690c9c1](https://github.com/cccteam/ccc/commit/690c9c14014299f0bc7f9bed343b574c70fe4e86))
+
 ## [0.3.1](https://github.com/cccteam/ccc/compare/v0.3.0...v0.3.1) (2026-07-09)
 
 
