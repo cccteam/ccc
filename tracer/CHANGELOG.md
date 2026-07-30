@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/cccteam/ccc/compare/tracer/v0.1.5...tracer/v0.1.6) (2026-07-30)
+
+
+### Code Upgrade
+
+* go deps ([#787](https://github.com/cccteam/ccc/issues/787)) ([6efebd7](https://github.com/cccteam/ccc/commit/6efebd76f617d5c0ccb61543689b4ea2d1ab8cb8))
+
 ## [0.1.5](https://github.com/cccteam/ccc/compare/tracer/v0.1.4...tracer/v0.1.5) (2026-07-14)
 
 
