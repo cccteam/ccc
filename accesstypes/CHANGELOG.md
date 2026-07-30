@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.8](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.7...accesstypes/v0.5.8) (2026-07-30)
+
+
+### Features
+
+* Add permission-enforcement regression suites and starport demo app (781) ([8e205d8](https://github.com/cccteam/ccc/commit/8e205d82deb174aa5ceaf5bcf7c66dc61cf45238))
+
 ## [0.5.7](https://github.com/cccteam/ccc/compare/accesstypes/v0.5.6...accesstypes/v0.5.7) (2026-07-09)
 
 
