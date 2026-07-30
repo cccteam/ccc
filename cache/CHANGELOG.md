@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/cccteam/ccc/compare/cache/v0.1.5...cache/v0.1.6) (2026-07-30)
+
+
+### Features
+
+* Add permission-enforcement regression suites and starport demo app (781) ([8e205d8](https://github.com/cccteam/ccc/commit/8e205d82deb174aa5ceaf5bcf7c66dc61cf45238))
+
 ## [0.1.5](https://github.com/cccteam/ccc/compare/cache/v0.1.4...cache/v0.1.5) (2026-07-09)
 
 
