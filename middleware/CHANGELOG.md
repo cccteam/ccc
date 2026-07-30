@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.7](https://github.com/cccteam/ccc/compare/middleware/v0.0.6...middleware/v0.0.7) (2026-07-30)
+
+
+### Code Upgrade
+
+* **deps:** Bump github.com/cccteam/ccc/tracer ([#757](https://github.com/cccteam/ccc/issues/757)) ([7284824](https://github.com/cccteam/ccc/commit/7284824115450daebb20c02b7bb73c98774e493f))
+* go deps ([#787](https://github.com/cccteam/ccc/issues/787)) ([6efebd7](https://github.com/cccteam/ccc/commit/6efebd76f617d5c0ccb61543689b4ea2d1ab8cb8))
+
 ## [0.0.6](https://github.com/cccteam/ccc/compare/middleware/v0.0.5...middleware/v0.0.6) (2026-07-09)
 
 
