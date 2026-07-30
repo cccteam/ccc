@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.13](https://github.com/cccteam/ccc/compare/securehash/v0.0.12...securehash/v0.0.13) (2026-07-30)
+
+
+### Features
+
+* Add permission-enforcement regression suites and starport demo app (781) ([8e205d8](https://github.com/cccteam/ccc/commit/8e205d82deb174aa5ceaf5bcf7c66dc61cf45238))
+
+
+### Code Upgrade
+
+* **deps:** Bump golang.org/x/crypto ([#755](https://github.com/cccteam/ccc/issues/755)) ([0833d52](https://github.com/cccteam/ccc/commit/0833d528c99597d460dd5c5344f43ef511b3c578))
+
 ## [0.0.12](https://github.com/cccteam/ccc/compare/securehash/v0.0.11...securehash/v0.0.12) (2026-07-09)
 
 
