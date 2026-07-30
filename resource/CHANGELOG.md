@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.10.4](https://github.com/cccteam/ccc/compare/resource/v0.10.3...resource/v0.10.4) (2026-07-30)
+
+
+### Features
+
+* Add permission-enforcement regression suites and starport demo app (781) ([8e205d8](https://github.com/cccteam/ccc/commit/8e205d82deb174aa5ceaf5bcf7c66dc61cf45238))
+
+
+### Code Cleanup
+
+* Cleanup typescript generated code to better match prettier formatting ([#778](https://github.com/cccteam/ccc/issues/778)) ([8811826](https://github.com/cccteam/ccc/commit/8811826ff1044e3d4b851118a77329b4235d6d8c))
+* Migrate depricated ccc.StartTrace to trace.Start ([#779](https://github.com/cccteam/ccc/issues/779)) ([691d9df](https://github.com/cccteam/ccc/commit/691d9dfe316f4c9733aede860ad486fc806e7a30))
+* Remove runtime collection and generation validation code ([#777](https://github.com/cccteam/ccc/issues/777)) ([18f0fd1](https://github.com/cccteam/ccc/commit/18f0fd12cfa607b6d46b7b35e8581b399443a284))
+
+
+### Code Upgrade
+
+* go deps ([#787](https://github.com/cccteam/ccc/issues/787)) ([6efebd7](https://github.com/cccteam/ccc/commit/6efebd76f617d5c0ccb61543689b4ea2d1ab8cb8))
+
 ## [0.10.3](https://github.com/cccteam/ccc/compare/resource/v0.10.2...resource/v0.10.3) (2026-07-24)
 
 
