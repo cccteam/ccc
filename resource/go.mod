@@ -6,16 +6,16 @@ replace github.com/golang-migrate/migrate/v4 v4.19.1 => github.com/jtwatson/migr
 
 require (
 	cloud.google.com/go v0.123.0
-	cloud.google.com/go/spanner v1.93.0
-	github.com/cccteam/ccc v0.3.1
-	github.com/cccteam/ccc/accesstypes v0.5.7
-	github.com/cccteam/ccc/cache v0.1.5
+	cloud.google.com/go/spanner v1.94.0
+	github.com/cccteam/ccc v0.3.2
+	github.com/cccteam/ccc/accesstypes v0.5.8
+	github.com/cccteam/ccc/cache v0.1.6
 	github.com/cccteam/ccc/pkg v0.1.4
-	github.com/cccteam/ccc/securehash v0.0.12
+	github.com/cccteam/ccc/securehash v0.0.13
 	github.com/cccteam/db-initiator v0.3.13
-	github.com/cccteam/httpio v0.7.16
-	github.com/cccteam/session v0.9.0
-	github.com/cccteam/spxscan v0.0.13
+	github.com/cccteam/httpio v0.7.17
+	github.com/cccteam/session v0.9.1
+	github.com/cccteam/spxscan v0.0.14
 	github.com/cloudspannerecosystem/memefish v0.8.1
 	github.com/ettle/strcase v0.2.0
 	github.com/go-chi/chi/v5 v5.3.1
