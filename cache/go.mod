@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/cache
 
-go 1.26.5
+go 1.26.6
 
 require (
 	github.com/fxamacker/cbor/v2 v2.9.2
