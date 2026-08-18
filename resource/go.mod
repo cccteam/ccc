@@ -6,16 +6,16 @@ replace github.com/golang-migrate/migrate/v4 v4.19.1 => github.com/jtwatson/migr
 
 require (
 	cloud.google.com/go v0.123.0
-	cloud.google.com/go/spanner v1.93.0
-	github.com/cccteam/ccc v0.3.1
-	github.com/cccteam/ccc/accesstypes v0.5.7
-	github.com/cccteam/ccc/cache v0.1.5
+	cloud.google.com/go/spanner v1.94.0
+	github.com/cccteam/ccc v0.3.2
+	github.com/cccteam/ccc/accesstypes v0.5.8
+	github.com/cccteam/ccc/cache v0.1.6
 	github.com/cccteam/ccc/pkg v0.1.4
-	github.com/cccteam/ccc/securehash v0.0.12
+	github.com/cccteam/ccc/securehash v0.0.13
 	github.com/cccteam/db-initiator v0.3.13
-	github.com/cccteam/httpio v0.7.16
-	github.com/cccteam/session v0.9.0
-	github.com/cccteam/spxscan v0.0.13
+	github.com/cccteam/httpio v0.7.17
+	github.com/cccteam/session v0.9.1
+	github.com/cccteam/spxscan v0.0.14
 	github.com/cloudspannerecosystem/memefish v0.8.1
 	github.com/ettle/strcase v0.2.0
 	github.com/go-chi/chi/v5 v5.3.1
@@ -26,7 +26,7 @@ require (
 	github.com/momaek/formattag v0.0.10
 	github.com/shopspring/decimal v1.4.0
 	go.uber.org/mock v0.6.0
-	golang.org/x/tools v0.48.0
+	golang.org/x/tools v0.49.0
 )
 
 require (
@@ -115,13 +115,13 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/mod v0.38.0 // indirect
-	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/mod v0.39.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/api v0.290.0 // indirect
 	google.golang.org/genproto v0.0.0-20260720211330-0afa2a65878a // indirect
