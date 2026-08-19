@@ -1,3 +1,3 @@
 module github.com/cccteam/ccc/accesstypes
 
-go 1.26.4
+go 1.26.6
