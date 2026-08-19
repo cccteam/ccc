@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/cccteam/ccc/compare/pkg/v0.1.4...pkg/v0.1.5) (2026-08-19)
+
+
+### Bug Fixes
+
+* **deps:** bump remaining modules to Go 1.26.6 ([#805](https://github.com/cccteam/ccc/issues/805)) ([fea1ceb](https://github.com/cccteam/ccc/commit/fea1ceb389c21acc6df1e6db71956879402ebc25))
+
 ## [0.1.4](https://github.com/cccteam/ccc/compare/pkg/v0.1.3...pkg/v0.1.4) (2026-06-09)
 
 
