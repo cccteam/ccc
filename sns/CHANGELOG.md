@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.13](https://github.com/cccteam/ccc/compare/sns/v0.2.12...sns/v0.2.13) (2026-08-19)
+
+
+### Bug Fixes
+
+* **deps:** bump Go toolchain to 1.26.6 to resolve stdlib CVEs ([#798](https://github.com/cccteam/ccc/issues/798)) ([6846035](https://github.com/cccteam/ccc/commit/684603579e91ff13394e2820ae9d6810519b4f59))
+
 ## [0.2.12](https://github.com/cccteam/ccc/compare/sns/v0.2.11...sns/v0.2.12) (2026-07-10)
 
 

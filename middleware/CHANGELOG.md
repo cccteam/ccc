@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.9](https://github.com/cccteam/ccc/compare/middleware/v0.0.8...middleware/v0.0.9) (2026-08-19)
+
+
+### Bug Fixes
+
+* **deps:** bump Go toolchain to 1.26.6 to resolve stdlib CVEs ([#798](https://github.com/cccteam/ccc/issues/798)) ([6846035](https://github.com/cccteam/ccc/commit/684603579e91ff13394e2820ae9d6810519b4f59))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group across 1 directory with 3 updates ([#795](https://github.com/cccteam/ccc/issues/795)) ([e8c9b2e](https://github.com/cccteam/ccc/commit/e8c9b2ececafc767a4bac2deb5a7580ed8fe3273))
+
 ## [0.0.8](https://github.com/cccteam/ccc/compare/middleware/v0.0.7...middleware/v0.0.8) (2026-07-30)
 
 
