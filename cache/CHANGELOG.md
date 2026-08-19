@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/cccteam/ccc/compare/cache/v0.1.6...cache/v0.1.7) (2026-08-19)
+
+
+### Bug Fixes
+
+* **deps:** bump Go toolchain to 1.26.6 to resolve stdlib CVEs ([#798](https://github.com/cccteam/ccc/issues/798)) ([6846035](https://github.com/cccteam/ccc/commit/684603579e91ff13394e2820ae9d6810519b4f59))
+
 ## [0.1.6](https://github.com/cccteam/ccc/compare/cache/v0.1.5...cache/v0.1.6) (2026-07-30)
 
 
