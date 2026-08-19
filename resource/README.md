@@ -63,7 +63,7 @@ Exactly one of `@resource`, `@virtual`, `@computed`, or `@rpc` may appear on a s
 | Tag | Where | Effect |
 | --- | --- | --- |
 | `spanner:"ColumnName"` | every field of `@resource`/`@virtual` structs | Maps the field to its Spanner column. Required — a missing tag or unknown column is a generation error, and field nullability must match the column's. |
-| `perm:"List,Read,Create,Update,Delete"` | resource fields | Field-level permission requirements. The generator splits the list across request structs: `List`/`Read` guard reads, the rest guard mutations. An untagged field currently has no field-level check (fail-open; the resource-level grant still applies) — this default is migrating to fail-closed. Primary keys take no `perm` tag: their readability follows the resource-level grant. Example: [Ship](starport/pkg/resources/ships.go). |
+| `perm:"List,Read,Create,Update,Delete"` | resource fields | Field-level permission requirements, enforced on the REST path only. The generator splits the list across request structs: `List`/`Read` guard reads, the rest guard mutations. An untagged field currently has no field-level check (fail-open; the resource-level grant still applies). Planned fail-closed migration: every non-primary-key field will implicitly require the endpoint's permission, at which point this tag is removed rather than reinterpreted. Primary keys take no `perm` tag: their readability follows the resource-level grant. Example: [Ship](starport/pkg/resources/ships.go). |
 | `conditions:"…"` | resource fields | Comma-separated list of field conditions, see below. |
 | `default_create_fn:"pkg.Func"` | resource fields | The generated create path calls the referenced function to populate the field when the request doesn't supply it. A field with a default function is not treated as required. |
 | `output_only_update_fn:"pkg.Func"` | resource fields | The generated update path sets the field by calling the referenced function; implies output-only. Example: [Ship.UpdatedAt](starport/pkg/resources/ships.go) using `resource.CommitTimestampPtr`. |
@@ -74,14 +74,43 @@ Exactly one of `@resource`, `@virtual`, `@computed`, or `@rpc` may appear on a s
 
 Values recognized in a `conditions` tag:
 
-- `immutable` — the field may be set on create but is rejected on update (the generator
-  emits `immutable:"true"` into the patch request struct — you write the condition, never
-  the emitted tag).
+- `immutable` — the client sets the field on create, and it can never change afterward:
+  an update touching it is rejected with a 400 (the generator emits `immutable:"true"`
+  into the patch request struct — you write the condition, never the emitted tag).
 - `pii` — marks the field as personally identifiable. Emitted as `pii:"true"`, surfaced
   in the TypeScript metadata, and the field is rejected in URL `filter` expressions
   (filter via the POST body instead, which doesn't land in access logs).
-- `input_only` — accepted in requests but never returned (read structs get `json:"-"`).
-- `output_only` — returned but not accepted in mutations (patch structs get `json:"-"`).
+- `input_only` — write-only: accepted on create and update but never returned (read and
+  list structs get `json:"-"`, and the field is omitted from the TypeScript metadata).
+  Example: [SupplyCrate.Notes](starport/pkg/resources/supply_crates.go).
+- `output_only` — the server owns the value: returned to clients but never accepted from
+  them (patch structs get `json:"-"`, excluding it from both create and update input).
+  The value comes from the database or from `default_create_fn` /
+  `output_only_update_fn` — and a field with an `output_only_update_fn` is output-only
+  even without the condition. Example:
+  [SupplyCrate.Barcode](starport/pkg/resources/supply_crates.go).
+
+`immutable`, `input_only`, and `output_only` each answer the same question — what may a
+REST client do with the field, and when — so they are easy to confuse. In particular,
+`immutable` is not `output_only`: an immutable field is client-supplied exactly once
+(e.g. an identifier chosen at creation), while an output-only field is never
+client-supplied at all (e.g. a commit timestamp).
+
+| `conditions:` | Client reads it | Client sets it on create | Client sets it on update |
+| --- | --- | --- | --- |
+| *(none)* | ✔ | ✔ | ✔ |
+| `input_only` | ✘ | ✔ | ✔ |
+| `output_only` | ✔ | ✘ | ✘ |
+| `immutable` | ✔ | ✔ | ✘ (rejected with a 400) |
+
+These conditions describe the REST contract only: what an untrusted client can read and
+write over the wire. Application code calling the generated CRUD layer is not constrained
+by them — it can write any field; that path is guarded by code review, not by these
+rules. The `default_create_fn` / `output_only_update_fn` functions are not REST-specific,
+however: they run inside the generated patch pipeline and fire for application code
+exactly as for REST requests. They fill a field the caller left unset — explicitly
+setting the field pre-empts them, which a REST client can never do for an output-only
+field but application code can.
 
 ## 3. Struct tags the generator writes (zz_gen request structs)
 
