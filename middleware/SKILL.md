@@ -5,8 +5,8 @@ description: Use the github.com/cccteam/ccc/middleware package when an HTTP endp
 
 # middleware
 
-Authentication middleware for `net/http`. The package currently exports exactly one
-thing: `RequireGoogleServiceAccount`, which verifies that an inbound request carries
+Authentication middleware for `net/http`. Its primary API is
+`RequireGoogleServiceAccount`, which verifies that an inbound request carries
 a valid Google-issued OIDC ID token belonging to **one specific service account**.
 It is authentication of a single caller identity — authorization (roles,
 permissions) lives elsewhere (see `accesstypes` and the `access` package).

@@ -5,11 +5,11 @@ description: Use the root github.com/cccteam/ccc module whenever code needs UUID
 
 # ccc (root module)
 
-Utility types and functions shared across the CCC stack. The dominant theme is
-**wire-format types that round-trip across JSON, text, and Spanner**: each type
-implements `MarshalJSON`/`UnmarshalJSON`, `MarshalText`/`UnmarshalText`, and
-`DecodeSpanner`/`EncodeSpanner` (satisfied structurally — the module never imports
-the Spanner client). Use these types in resource structs instead of raw
+Utility types and functions shared across the CCC stack. `UUID`, `NullUUID`,
+`Duration`, `NullDuration`, and `NullEnum` are **wire-format types that round-trip
+across JSON, text, and Spanner**: they implement `MarshalJSON`/`UnmarshalJSON`,
+`MarshalText`/`UnmarshalText`, and `DecodeSpanner`/`EncodeSpanner` structurally,
+without importing the Spanner client. Use them in resource structs instead of raw
 `uuid.UUID`, `time.Duration`, or hand-rolled nullable wrappers.
 
 The nullable convention is uniform: embed the value type plus `Valid bool`;

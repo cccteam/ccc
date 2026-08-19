@@ -106,5 +106,5 @@ func (s *userPermissions) User() accesstypes.User
   `NullPermission` happily marshals to `"perm:"`.
 - `GlobalDomain`/`GlobalResource` are literally `"global"` — never name a real
   domain or resource `global`.
-- All types are string aliases, so untyped literals assign freely
-  (`var p accesstypes.Permission = "Read"` is fine); prefer the constants.
+- These are defined string types, not aliases. Untyped literals assign freely
+  (`var p accesstypes.Permission = "Read"`), while typed strings require conversion; prefer the constants.

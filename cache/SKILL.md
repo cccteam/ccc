@@ -61,8 +61,8 @@ directory itself.
   only real I/O or decode failures error. `DeleteKey`/`DeleteSubpath` return nil
   when the subpath doesn't exist — but `DeleteKey` *errors* when the subpath
   exists and the key doesn't (despite its doc comment claiming otherwise).
-- Writes are durable and clean: `O_SYNC` + truncate, with the prior file removed
-  first, so overwriting a key is safe.
+- Writes use `O_SYNC` and truncate the destination, but overwrites are not atomic:
+  the old file is removed before encoding, so a failed write can leave the key missing or partial.
 - `Keys` snapshots the directory under a read lock and yields file names lazily;
   directories are skipped.
 - Prefer `DeleteSubpath` over `DeleteAll` when you intend to keep using the

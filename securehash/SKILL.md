@@ -83,8 +83,8 @@ A `Hash` field works directly as a Spanner or `database/sql` column value. Use
 - **Zero-value `Hash` panics** on `KeyType`/`MarshalText`/`Value`, and `Compare`
   panics on a `*Hash` that was never populated. Only use hashes that came from
   `Hash()` or a successful `UnmarshalText`/`Scan` of a non-NULL value.
-- **Never reuse a `Hash` after a failed `UnmarshalText`** — argon2 decoding is
-  partially destructive (fields fill left-to-right until the first error).
+- A failed `UnmarshalText` leaves the receiver's existing hash unchanged because
+the replacement is assigned only after a complete successful decode.
 - Store `*Hash` (or pass `&h`): the codec methods are split across pointer and
   value receivers.
 - Any parameter or algorithm change is only actionable when you *have the
@@ -94,5 +94,5 @@ A `Hash` field works directly as a Spanner or `database/sql` column value. Use
   argon2 has no such limit. Switching algorithms changes behavior for long secrets.
 - Upgrade detection compares the *entire* options struct — changing any single
   parameter flags every stored hash for rehash.
-- Mismatch errors are wrapped (`go-playground/errors`); don't compare sentinels
-  directly, use `errors.Is` if you must distinguish.
+- Treat every non-nil `Compare` error as an authentication failure. Bcrypt errors
+  wrap x/crypto sentinels, but Argon2 mismatch errors expose no sentinel to compare.
