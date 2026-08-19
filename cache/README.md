@@ -1,8 +1,3 @@
----
-name: cache
-description: Use the github.com/cccteam/ccc/cache package for a thread-safe, disk-persisted key-value cache in devtools and code generators — caching expensive-to-compute data (schema table maps, enum values, migration hashes) between runs. Reach for it whenever a CLI or generator needs to persist intermediate results locally, and never for sensitive data or cross-process coordination.
----
-
 # cache
 
 A thread-safe key-value store persisted to disk, intended for **devtools caching
@@ -55,7 +50,7 @@ Storage root is always `filepath.Join(path, ".ccc-cache")`, and **`path` must
 already exist** — `New` stats it first and only creates the `.ccc-cache`
 directory itself.
 
-## Semantics worth knowing
+## Semantics
 
 - **Miss vs error:** `Load` returns `(false, nil)` for a missing subpath or key;
   only real I/O or decode failures error. `DeleteKey`/`DeleteSubpath` return nil
@@ -65,9 +60,8 @@ directory itself.
   the old file is removed before encoding, so a failed write can leave the key missing or partial.
 - `Keys` snapshots the directory under a read lock and yields file names lazily;
   directories are skipped.
-- Prefer `DeleteSubpath` over `DeleteAll` when you intend to keep using the
-  cache: `DeleteAll` replaces the cache directory out from under the held
-  `os.Root`.
+- Prefer `DeleteSubpath` over `DeleteAll` when the cache will keep being used:
+  `DeleteAll` replaces the cache directory out from under the held `os.Root`.
 - A subpath that resolves to an existing *file* errors with
   `path %q is not a directory`.
 - No environment variables, no network — pure local filesystem. Decode allows

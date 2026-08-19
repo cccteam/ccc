@@ -1,19 +1,14 @@
----
-name: securehash
-description: Use the github.com/cccteam/ccc/securehash package for hashing and verifying secrets (passwords, API keys, tokens) anywhere in the CCC stack — including storing hashes in Spanner or database/sql columns and migrating stored hashes to stronger parameters or algorithms over time. Reach for it whenever code needs bcrypt or argon2, password verification, credential storage, or a "needs rehash" upgrade flow, even if the user just says "hash this password".
----
-
 # securehash
 
 Secure secret hashing with **built-in hash upgrading**: a stored `Hash` is
 self-describing (it carries its own algorithm and parameters), so `Compare` can
-verify a secret against the *old* parameters while telling you the hash should be
-re-written with your *current* configuration — including across algorithms
+verify a secret against the *old* parameters while reporting that the hash should
+be re-written with the *current* configuration — including across algorithms
 (bcrypt → argon2 and back). `Hash` also implements Spanner and `database/sql`
 codecs, so it drops straight into a column.
 
-Never hand-roll bcrypt/argon2 calls in this codebase — use this package so hashes
-stay upgradeable.
+Use this package rather than calling bcrypt/argon2 directly so stored hashes stay
+upgradeable as security best practices change.
 
 ## Core workflow
 
@@ -38,11 +33,11 @@ if needsUpgrade {
 }
 ```
 
-**Read `Compare`'s results carefully**: the bool means *needs upgrade*, not
+Read `Compare`'s results carefully: the bool means *needs upgrade*, not
 *matched*. A clean match is `(false, nil)`; a mismatch is `(false, err)`. Always
 gate authentication on `err == nil`.
 
-## API surface
+## API
 
 ```go
 func New(algo HashAlgorithm) *SecureHasher
@@ -61,8 +56,8 @@ constructor: build one via `hasher.Hash(...)` or `UnmarshalText`.
 
 **There are no tuning knobs.** Bcrypt cost and all argon2 parameters are fixed by
 the package (an unexported `argon2WithOptions` exists for internal use only), and
-`HashAlgorithm` is a sealed interface — no third-party algorithms. If a task calls
-for different parameters, that requires changing this package, not the caller.
+`HashAlgorithm` is a sealed interface — no third-party algorithms. Different
+parameters require a change to this package, not to callers.
 
 ## Serialized format
 
@@ -70,15 +65,15 @@ for different parameters, that requires changing this package, not the caller.
 - argon2: `1$<memory KiB>$<times>$<parallelism>$<b64 salt>.<b64 key>`
   (StdEncoding with padding).
 
-Format changes break every stored hash; treat the encoding as frozen.
+Format changes break every stored hash; the encoding is treated as frozen.
 
 ## Storing in a database
 
 A `Hash` field works directly as a Spanner or `database/sql` column value. Use
 `*Hash` for nullable columns: `Scan(nil)` succeeds but leaves the value unusable
-(see gotchas), so nil-check before calling methods.
+(see notes), so nil-check before calling methods.
 
-## Gotchas
+## Notes
 
 - **Zero-value `Hash` panics** on `KeyType`/`MarshalText`/`Value`, and `Compare`
   panics on a `*Hash` that was never populated. Only use hashes that came from
@@ -87,11 +82,12 @@ A `Hash` field works directly as a Spanner or `database/sql` column value. Use
 the replacement is assigned only after a complete successful decode.
 - Store `*Hash` (or pass `&h`): the codec methods are split across pointer and
   value receivers.
-- Any parameter or algorithm change is only actionable when you *have the
-  plaintext* — the upgrade signal fires inside a successful verify flow, so wire
+- Any parameter or algorithm change is only actionable when the *plaintext is
+  available* — the upgrade signal fires inside a successful verify flow, so wire
   re-hashing into login.
 - bcrypt inherits x/crypto's 72-byte password limit (errors on longer input);
-  argon2 has no such limit. Switching algorithms changes behavior for long secrets.
+  argon2 has no such limit. Switching algorithms changes behavior for long
+  secrets.
 - Upgrade detection compares the *entire* options struct — changing any single
   parameter flags every stored hash for rehash.
 - Treat every non-nil `Compare` error as an authentication failure. Bcrypt errors
