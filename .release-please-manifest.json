@@ -1,11 +1,11 @@
 {
-  ".": "0.3.2",
+  ".": "0.3.3",
   "sns": "0.2.12",
   "accesstypes": "0.5.8",
   "pkg": "0.1.4",
   "resource": "0.10.5",
-  "cache": "0.1.6",
+  "cache": "0.1.7",
   "securehash": "0.0.13",
-  "tracer": "0.1.6",
-  "middleware": "0.0.8"
+  "tracer": "0.1.7",
+  "middleware": "0.0.9"
 }
