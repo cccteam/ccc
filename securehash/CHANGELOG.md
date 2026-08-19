@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.14](https://github.com/cccteam/ccc/compare/securehash/v0.0.13...securehash/v0.0.14) (2026-08-19)
+
+
+### Bug Fixes
+
+* **deps:** bump remaining modules to Go 1.26.6 ([#805](https://github.com/cccteam/ccc/issues/805)) ([fea1ceb](https://github.com/cccteam/ccc/commit/fea1ceb389c21acc6df1e6db71956879402ebc25))
+
 ## [0.0.13](https://github.com/cccteam/ccc/compare/securehash/v0.0.12...securehash/v0.0.13) (2026-07-30)
 
 
