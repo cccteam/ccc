@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.5](https://github.com/cccteam/ccc/compare/resource/v0.10.4...resource/v0.10.5) (2026-08-19)
+
+
+### Bug Fixes
+
+* **deps:** bump Go toolchain to 1.26.6 to resolve stdlib CVEs ([#798](https://github.com/cccteam/ccc/issues/798)) ([6846035](https://github.com/cccteam/ccc/commit/684603579e91ff13394e2820ae9d6810519b4f59))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group across 1 directory with 9 updates ([#797](https://github.com/cccteam/ccc/issues/797)) ([3398161](https://github.com/cccteam/ccc/commit/3398161609a4a2f9a2e38693e6db14c321d2033d))
+
 ## [0.10.4](https://github.com/cccteam/ccc/compare/resource/v0.10.3...resource/v0.10.4) (2026-07-30)
 
 
