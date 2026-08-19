@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.3](https://github.com/cccteam/ccc/compare/v0.3.2...v0.3.3) (2026-08-19)
+
+
+### Bug Fixes
+
+* **deps:** bump remaining modules to Go 1.26.6 ([#805](https://github.com/cccteam/ccc/issues/805)) ([fea1ceb](https://github.com/cccteam/ccc/commit/fea1ceb389c21acc6df1e6db71956879402ebc25))
+
+
+### Code Upgrade
+
+* **deps:** Bump the go-dependencies group with 3 updates ([#792](https://github.com/cccteam/ccc/issues/792)) ([fe2671e](https://github.com/cccteam/ccc/commit/fe2671e06f39e3f6130d6a5c97acbed2396905c1))
+
 ## [0.3.2](https://github.com/cccteam/ccc/compare/v0.3.1...v0.3.2) (2026-07-30)
 
 
