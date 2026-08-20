@@ -72,9 +72,14 @@ func (p *PatchSet[Resource]) PatchType() PatchType {
 	return p.patchType
 }
 
-// EnableUserPermissionEnforcement enables the checking of user permissions for the PatchSet.
-func (p *PatchSet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource], userPermissions UserPermissions, requiredPermission accesstypes.Permission) *PatchSet[Resource] {
-	p.querySet.EnableUserPermissionEnforcement(rSet, userPermissions, requiredPermission)
+// EnableUserPermissionEnforcement enables the checking of user permissions for the PatchSet,
+// evaluating requiredPermission for the user in the given domain partition.
+//
+// An enforced PatchSet is single-shot: it binds the user (via userPermissions) and the
+// domain for a single operation's evaluation. Build a new PatchSet per operation; never
+// reuse one across requests or domains.
+func (p *PatchSet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource], userPermissions UserPermissions, domain accesstypes.Domain, requiredPermission accesstypes.Permission) *PatchSet[Resource] {
+	p.querySet.EnableUserPermissionEnforcement(rSet, userPermissions, domain, requiredPermission)
 
 	return p
 }

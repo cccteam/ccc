@@ -43,11 +43,9 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		}
 	}
 
-	var consolidatedResources []*resourceInfo
-	for _, res := range r.resources {
-		if res.IsConsolidated {
-			consolidatedResources = append(consolidatedResources, res)
-		}
+	consolidatedResources, err := consolidatedPatchResources(r.resources)
+	if err != nil {
+		return err
 	}
 
 	if len(consolidatedResources) > 0 {
@@ -57,6 +55,24 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 	}
 
 	return nil
+}
+
+// consolidatedPatchResources returns the resources served by the consolidated patch
+// handler. Temporary guard: the consolidated route spans many resources and has no
+// domain source until per-op domains land (Series D2), which deletes this error.
+func consolidatedPatchResources(resources []*resourceInfo) ([]*resourceInfo, error) {
+	var consolidated []*resourceInfo
+	for _, res := range resources {
+		if !res.IsConsolidated {
+			continue
+		}
+		if res.IsDomainScoped() {
+			return nil, errors.Newf("resource %s: domain-scoped resources are not yet supported in the consolidated patch handler; per-op domains land in Series D2", res.Name())
+		}
+		consolidated = append(consolidated, res)
+	}
+
+	return consolidated, nil
 }
 
 func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {

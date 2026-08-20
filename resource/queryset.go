@@ -31,6 +31,7 @@ type QuerySet[Resource Resourcer] struct {
 	rMeta                  *Metadata[Resource]
 	resourceSet            *Set[Resource]
 	userPermissions        UserPermissions
+	domain                 accesstypes.Domain
 	requiredPermission     accesstypes.Permission
 	filterAst              ExpressionNode
 	filterParser           func(DBType) (ExpressionNode, error)
@@ -88,10 +89,16 @@ func (q *QuerySet[Resource]) ReturnAccessibleFields(b bool) *QuerySet[Resource] 
 	return q
 }
 
-// EnableUserPermissionEnforcement enables the checking of user permissions for the QuerySet.
-func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource], userPermissions UserPermissions, requiredPermission accesstypes.Permission) *QuerySet[Resource] {
+// EnableUserPermissionEnforcement enables the checking of user permissions for the QuerySet,
+// evaluating requiredPermission for the user in the given domain partition.
+//
+// An enforced QuerySet is single-shot: it binds the user (via userPermissions) and the
+// domain for a single operation's evaluation. Build a new QuerySet per operation; never
+// reuse one across requests or domains.
+func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource], userPermissions UserPermissions, domain accesstypes.Domain, requiredPermission accesstypes.Permission) *QuerySet[Resource] {
 	q.resourceSet = rSet
 	q.userPermissions = userPermissions
+	q.domain = domain
 	q.requiredPermission = requiredPermission
 
 	return q
@@ -99,10 +106,10 @@ func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource]
 
 func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType) error {
 	if q.resourceSet != nil {
-		if ok, missing, err := q.userPermissions.Check(ctx, q.requiredPermission, q.resourceSet.BaseResource()); err != nil {
+		if missing, err := q.userPermissions.Check(ctx, q.domain, q.requiredPermission, q.resourceSet.BaseResource()); err != nil {
 			return errors.Wrap(err, "enforcer.RequireResource()")
-		} else if !ok {
-			return httpio.NewForbiddenMessagef("domain (%s), user (%s) does not have (%s) on %s", q.userPermissions.Domain(), q.userPermissions.User(), q.requiredPermission, missing)
+		} else if len(missing) > 0 {
+			return httpio.NewForbiddenMessagef("domain (%s), user (%s) does not have (%s) on %s", q.domain, q.userPermissions.User(), q.requiredPermission, missing)
 		}
 	}
 
@@ -121,10 +128,10 @@ func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType
 			}
 		}
 
-		if ok, missing, err := q.userPermissions.Check(ctx, q.requiredPermission, resources...); err != nil {
+		if missing, err := q.userPermissions.Check(ctx, q.domain, q.requiredPermission, resources...); err != nil {
 			return errors.Wrap(err, "enforcer.RequireResource()")
-		} else if !ok {
-			return httpio.NewForbiddenMessagef("domain (%s), user (%s) does not have (%s) on %s", q.userPermissions.Domain(), q.userPermissions.User(), q.requiredPermission, missing)
+		} else if len(missing) > 0 {
+			return httpio.NewForbiddenMessagef("domain (%s), user (%s) does not have (%s) on %s", q.domain, q.userPermissions.User(), q.requiredPermission, missing)
 		}
 	}
 
@@ -143,19 +150,45 @@ func (q *QuerySet[Resource]) addAccessibleFields(ctx context.Context, dbType DBT
 	fields := make([]accesstypes.Field, 0, q.rMeta.DBFieldCount(dbType))
 
 	if q.resourceSet != nil {
+		// A candidate with a zero resource requires no permission (fail-open, untagged);
+		// tagged candidates are evaluated in a single set-oriented Check call.
+		type candidate struct {
+			field accesstypes.Field
+			res   accesstypes.Resource
+		}
+
+		candidates := make([]candidate, 0, q.rMeta.DBFieldCount(dbType))
+		resources := make([]accesstypes.Resource, 0, q.rMeta.DBFieldCount(dbType))
+
 		for _, field := range q.rMeta.DBFields(dbType) {
 			if !q.requestable(field) {
 				continue
 			}
 
 			if !q.resourceSet.PermissionRequired(field, q.RequiredPermission()) {
-				fields = append(fields, field)
+				candidates = append(candidates, candidate{field: field})
 			} else {
-				if ok, _, err := q.userPermissions.Check(ctx, q.requiredPermission, q.resourceSet.Resource(field)); err != nil {
-					return errors.Wrap(err, "enforcer.RequireResource()")
-				} else if ok {
-					fields = append(fields, field)
-				}
+				res := q.resourceSet.Resource(field)
+				candidates = append(candidates, candidate{field: field, res: res})
+				resources = append(resources, res)
+			}
+		}
+
+		denied := make(map[accesstypes.Resource]struct{})
+		if len(resources) > 0 {
+			missing, err := q.userPermissions.Check(ctx, q.domain, q.requiredPermission, resources...)
+			if err != nil {
+				return errors.Wrap(err, "enforcer.RequireResource()")
+			}
+
+			for _, res := range missing {
+				denied[res] = struct{}{}
+			}
+		}
+
+		for _, c := range candidates {
+			if _, deny := denied[c.res]; c.res == "" || !deny {
+				fields = append(fields, c.field)
 			}
 		}
 	} else {

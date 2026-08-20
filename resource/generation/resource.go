@@ -16,13 +16,18 @@ import (
 
 type resourceGenerator struct {
 	*client
-	genHandlers         bool
-	genRoutes           bool
-	handler             packageDir
-	router              packageDir
-	routePrefix         string
-	applicationName     string
-	receiverName        string
+	genHandlers     bool
+	genRoutes       bool
+	handler         packageDir
+	router          packageDir
+	routePrefix     string
+	applicationName string
+	receiverName    string
+	// domainRouteSegment/domainRouteParam form the route segment pair domain-scoped
+	// resources are served under: /{prefix}/{domainRouteSegment}/{domainRouteParam}/...
+	// Defaults: "domains"/"domain"; customized via WithDomainRoute.
+	domainRouteSegment  string
+	domainRouteParam    string
 	typescriptTargets   []typescriptTarget
 	manualRegistrations []ManualRegistration
 }

@@ -2,6 +2,13 @@
 import { Resource, ResourceMap, ResourceMeta } from '@cccteam/ccc-lib/types';
 import { Resources } from './zz_gen_constants';
 
+export interface Berths {
+  id: string;
+  designation: string;
+  sizeClass: number;
+  occupied: boolean;
+}
+
 export interface CargoManifests {
   shipId: string;
   lineNumber: number;
@@ -48,6 +55,15 @@ export interface SupplyCrates {
 }
 
 const resourceMap: ResourceMap = {
+  [Resources.Berths]: {
+    route: 'berths',
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'designation', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'sizeClass', displayType: 'number', required: true, isIndex: false },
+      { fieldName: 'occupied', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
   [Resources.CargoManifests]: {
     route: 'cargo-manifests',
     consolidatedRoute: 'resources',

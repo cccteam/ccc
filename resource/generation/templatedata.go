@@ -129,8 +129,14 @@ type routerFileData struct {
 	ConstComputedResources []*computedResource
 	RouterTestRoutes       []*generatedRoute
 	HasConsolidatedHandler bool
-	RoutePrefix            string
-	ConsolidatedRoute      string
+	// HasDomainScoped emits the Domain route-parameter const, which generated
+	// handlers of domain-scoped resources and RPC methods reference.
+	HasDomainScoped bool
+	// DomainRouteParam is the Domain const's value: the route parameter name of the
+	// domain segment pair (default "domain", customized via WithDomainRoute).
+	DomainRouteParam  string
+	RoutePrefix       string
+	ConsolidatedRoute string
 }
 
 type rpcFileData struct {

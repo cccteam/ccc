@@ -1,0 +1,77 @@
+{
+  "roles": [
+    {
+      "Name": "HarborMaster",
+      "Permissions": {
+        "List": [
+          "Ships",
+          "Ships.registryCode",
+          "Ships.name",
+          "Ships.dockingBayId",
+          "Ships.cargoValue",
+          "Ships.updatedAt",
+          "DockingBays",
+          "CrewMembers",
+          "CrewMembers.shipId",
+          "CrewMembers.name",
+          "CrewMembers.rank",
+          "CargoManifests",
+          "SupplyCrates"
+        ],
+        "Read": [
+          "Ships",
+          "Ships.registryCode",
+          "Ships.name",
+          "DockingBays"
+        ],
+        "Create": [
+          "Ships",
+          "Ships.registryCode",
+          "Ships.name",
+          "Ships.cargoValue"
+        ],
+        "Update": [
+          "Ships",
+          "Ships.name",
+          "Ships.dockingBayId"
+        ],
+        "Execute": [
+          "AuthorizeLaunch"
+        ]
+      }
+    },
+    {
+      "Name": "DockOperator",
+      "Permissions": {
+        "List": [
+          "Berths",
+          "Berths.designation",
+          "Berths.sizeClass",
+          "Berths.occupied"
+        ],
+        "Read": [
+          "Berths",
+          "Berths.designation",
+          "Berths.sizeClass"
+        ],
+        "Create": [
+          "Berths",
+          "Berths.designation",
+          "Berths.sizeClass",
+          "Berths.occupied"
+        ],
+        "Update": [
+          "Berths",
+          "Berths.occupied"
+        ],
+        "Execute": [
+          "AuthorizeDocking"
+        ]
+      }
+    }
+  ],
+  "users": [
+    { "user": "demo", "domain": "global", "roles": ["HarborMaster"] },
+    { "user": "demo", "domain": "station-alpha", "roles": ["DockOperator"] }
+  ]
+}

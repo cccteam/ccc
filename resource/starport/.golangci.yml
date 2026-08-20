@@ -136,6 +136,11 @@ linters:
           - paralleltest
           - tparallel
         path: cmd/generate/generate_test\.go
+      # The bootstrap test uses t.Setenv and t.Chdir, which forbid parallel tests.
+      - linters:
+          - paralleltest
+          - tparallel
+        path: cmd/bootstrap/main_test\.go
       - linters:
           - gomoddirectives
         path: go\.mod

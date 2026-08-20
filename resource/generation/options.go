@@ -82,6 +82,36 @@ func GenerateRoutes(targetDir, routePrefix string) ResourceOption {
 	})
 }
 
+// Default route segment pair for domain-scoped resources (see WithDomainRoute):
+// /{prefix}/{defaultDomainRouteSegment}/{defaultDomainRouteParam}/... . Generated code
+// references the parameter name as the router package's Domain const value.
+const (
+	defaultDomainRouteSegment = "domains"
+	defaultDomainRouteParam   = "domain"
+)
+
+// WithDomainRoute customizes the route segment pair that domain-scoped resources
+// (@permissionScope(domain)) are served under. segment is the static path segment and
+// paramName the route parameter name: WithDomainRoute("organizations", "organizationID")
+// serves domain-scoped resources and RPC methods at
+// /{prefix}/organizations/{organizationID}/... . The defaults are "domains" and "domain".
+// The generated router const is always named Domain; paramName is its value.
+func WithDomainRoute(segment, paramName string) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		if segment == "" || paramName == "" {
+			return errors.New("WithDomainRoute() requires a non-empty segment and paramName")
+		}
+		if strings.ContainsAny(segment, "/{}") || strings.ContainsAny(paramName, "/{}") {
+			return errors.Newf("WithDomainRoute(%q, %q) must not contain '/', '{', or '}'", segment, paramName)
+		}
+
+		r.domainRouteSegment = segment
+		r.domainRouteParam = paramName
+
+		return nil
+	})
+}
+
 // GenerateTypescript enables TypeScript generation as part of the resource generator run.
 // The permission data is computed statically from the parsed resources, so the run needs
 // no compiled application router.
@@ -384,6 +414,12 @@ func applyResourceGeneratorDefaults(g *resourceGenerator) error {
 		g.applicationName = "App"
 	}
 	g.receiverName = strings.ToLower(string(g.applicationName[0]))
+	if g.domainRouteSegment == "" {
+		g.domainRouteSegment = defaultDomainRouteSegment
+	}
+	if g.domainRouteParam == "" {
+		g.domainRouteParam = defaultDomainRouteParam
+	}
 
 	// Each GenerateTypescript call owns one directory; two calls writing the same files
 	// to the same place is always a configuration mistake.

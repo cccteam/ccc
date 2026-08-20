@@ -58,15 +58,32 @@ type enforcementPatchRequest struct {
 	Frozen string `json:"frozen" immutable:"true"`
 }
 
+// enforcementUntaggedReadRequest has no perm-tagged fields, so enforcement needs no
+// field-level Check at all.
+type enforcementUntaggedReadRequest struct {
+	ID     ccc.UUID `json:"id"`
+	Public string   `json:"public"`
+	Frozen string   `json:"frozen"`
+}
+
 // fakeUserPermissions is a UserPermissions implementation backed by a static grant table.
+// It records every Check invocation so tests can assert call batching and domain routing.
 type fakeUserPermissions struct {
 	granted map[accesstypes.Permission][]accesstypes.Resource
 	err     error
+
+	checkCalls   int
+	gotDomains   []accesstypes.Domain
+	gotResources [][]accesstypes.Resource
 }
 
-func (f *fakeUserPermissions) Check(_ context.Context, perm accesstypes.Permission, resources ...accesstypes.Resource) (ok bool, missing []accesstypes.Resource, err error) {
+func (f *fakeUserPermissions) Check(_ context.Context, domain accesstypes.Domain, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
+	f.checkCalls++
+	f.gotDomains = append(f.gotDomains, domain)
+	f.gotResources = append(f.gotResources, slices.Clone(resources))
+
 	if f.err != nil {
-		return false, nil, f.err
+		return nil, f.err
 	}
 
 	for _, res := range resources {
@@ -75,10 +92,8 @@ func (f *fakeUserPermissions) Check(_ context.Context, perm accesstypes.Permissi
 		}
 	}
 
-	return len(missing) == 0, missing, nil
+	return missing, nil
 }
-
-func (f *fakeUserPermissions) Domain() accesstypes.Domain { return "testDomain" }
 
 func (f *fakeUserPermissions) User() accesstypes.User { return "testUser" }
 
@@ -220,7 +235,7 @@ func TestQuerySet_Read_permissionEnforcement(t *testing.T) {
 			if tt.withoutPermissions {
 				qSet, err = decoder.DecodeWithoutPermissions(req)
 			} else {
-				qSet, err = decoder.Decode(req, &fakeUserPermissions{granted: tt.grants, err: tt.permCheckErr})
+				qSet, err = decoder.Decode(req, &fakeUserPermissions{granted: tt.grants, err: tt.permCheckErr}, "testDomain")
 			}
 			if err != nil {
 				t.Fatalf("QueryDecoder.Decode() error = %v", err)
@@ -259,6 +274,128 @@ func TestQuerySet_Read_permissionEnforcement(t *testing.T) {
 			wantFields := slices.Sorted(slices.Values(tt.wantFields))
 			if !slices.Equal(gotFields, wantFields) {
 				t.Errorf("QuerySet.Fields() = %v, want %v", gotFields, wantFields)
+			}
+		})
+	}
+}
+
+func decodeForBatching[Request any](t *testing.T, target string, userPermissions UserPermissions, permissions ...accesstypes.Permission) (*QuerySet[enforcementResource], error) {
+	t.Helper()
+
+	resSet, err := NewSet[enforcementResource, Request](permissions...)
+	if err != nil {
+		t.Fatalf("NewSet() error = %v", err)
+	}
+	decoder, err := NewQueryDecoder[enforcementResource, Request](resSet)
+	if err != nil {
+		t.Fatalf("NewQueryDecoder() error = %v", err)
+	}
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, http.NoBody)
+
+	return decoder.Decode(req, userPermissions, "testDomain")
+}
+
+func TestQuerySet_Read_checkBatching(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		target           string
+		untaggedRequest  bool
+		grants           map[accesstypes.Permission][]accesstypes.Resource
+		wantCheckCalls   int
+		wantBatched      []accesstypes.Resource // sorted resources of the field-level batch call
+		wantForbidden    bool
+		wantOrderedInErr []string // substrings that must appear in this order in the error
+	}{
+		{
+			name:   "accessible fields issues one batched field check",
+			target: "/",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.Read: {enforcedResource, enforcedResource + ".tagged"},
+			},
+			wantCheckCalls: 2,
+			wantBatched:    []accesstypes.Resource{enforcedResource + ".locked", enforcedResource + ".tagged"},
+		},
+		{
+			name:            "zero tagged fields issues zero field checks",
+			target:          "/",
+			untaggedRequest: true,
+			grants:          map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Read: {enforcedResource}},
+			wantCheckCalls:  1,
+		},
+		{
+			name:             "requested columns forbidden lists missing in request order",
+			target:           "/?columns=id,tagged,locked",
+			grants:           map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Read: {enforcedResource}},
+			wantCheckCalls:   2,
+			wantForbidden:    true,
+			wantOrderedInErr: []string{string(enforcedResource) + ".tagged", string(enforcedResource) + ".locked"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			userPermissions := &fakeUserPermissions{granted: tt.grants}
+
+			var qSet *QuerySet[enforcementResource]
+			var err error
+			if tt.untaggedRequest {
+				qSet, err = decodeForBatching[enforcementUntaggedReadRequest](t, tt.target, userPermissions, accesstypes.Read)
+			} else {
+				qSet, err = decodeForBatching[enforcementReadRequest](t, tt.target, userPermissions)
+			}
+			if err != nil {
+				t.Fatalf("QueryDecoder.Decode() error = %v", err)
+			}
+
+			ctrl := gomock.NewController(t)
+			reader := NewMockReader[enforcementResource](ctrl)
+			reader.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
+			if !tt.wantForbidden {
+				reader.EXPECT().Read(gomock.Any(), gomock.Any()).Return(&enforcementResource{}, nil)
+			}
+			client := NewMockClient(nil, []any{reader}, nil)
+
+			_, err = qSet.Read(t.Context(), client)
+
+			if tt.wantForbidden {
+				if err == nil || !httpio.HasForbidden(err) {
+					t.Fatalf("QuerySet.Read() error = %v, want Forbidden", err)
+				}
+				last := -1
+				for _, sub := range tt.wantOrderedInErr {
+					idx := strings.Index(err.Error(), sub)
+					if idx < 0 || idx < last {
+						t.Errorf("QuerySet.Read() error = %v, want substrings in order %v", err, tt.wantOrderedInErr)
+
+						break
+					}
+					last = idx
+				}
+			} else if err != nil {
+				t.Fatalf("QuerySet.Read() error = %v", err)
+			}
+
+			if userPermissions.checkCalls != tt.wantCheckCalls {
+				t.Errorf("Check calls = %d, want %d", userPermissions.checkCalls, tt.wantCheckCalls)
+			}
+			for i, domain := range userPermissions.gotDomains {
+				if domain != "testDomain" {
+					t.Errorf("Check call %d domain = %q, want %q", i, domain, "testDomain")
+				}
+			}
+			if !slices.Equal(userPermissions.gotResources[0], []accesstypes.Resource{enforcedResource}) {
+				t.Errorf("first Check resources = %v, want %v", userPermissions.gotResources[0], []accesstypes.Resource{enforcedResource})
+			}
+			if tt.wantBatched != nil {
+				gotBatched := slices.Sorted(slices.Values(userPermissions.gotResources[1]))
+				if !slices.Equal(gotBatched, tt.wantBatched) {
+					t.Errorf("batched Check resources = %v, want %v", gotBatched, tt.wantBatched)
+				}
 			}
 		})
 	}
@@ -396,11 +533,11 @@ func TestPatchSet_Buffer_permissionEnforcement(t *testing.T) {
 			var patchSet *PatchSet[enforcementResource]
 			switch {
 			case tt.operation == OperationDelete:
-				patchSet, err = decoder.DecodeOperation(&Operation{Type: OperationDelete, Req: req}, userPermissions)
+				patchSet, err = decoder.DecodeOperation(&Operation{Type: OperationDelete, Req: req}, userPermissions, "testDomain")
 			case tt.withoutPermissions:
 				patchSet, err = decoder.DecodeWithoutPermissions(req)
 			default:
-				patchSet, err = decoder.Decode(req, userPermissions, permissionFromType(tt.operation))
+				patchSet, err = decoder.Decode(req, userPermissions, "testDomain", permissionFromType(tt.operation))
 			}
 			if tt.wantDecodeErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantDecodeErr) {
@@ -515,7 +652,7 @@ func TestRPCDecoder_Decode_permissionEnforcement(t *testing.T) {
 
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(`{"name":"probe-1"}`))
 
-			got, err := decoder.Decode(req)
+			got, err := decoder.Decode(req, "testDomain")
 
 			if tt.wantForbidden || tt.wantErrContains != "" {
 				if err == nil {

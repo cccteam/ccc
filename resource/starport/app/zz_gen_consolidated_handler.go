@@ -83,7 +83,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 				switch httpio.Param[string](op.Req, "resource") {
 				case "cargo-manifests":
-					patchSet, err := cargoManifestDecoder.DecodeOperation(op, a.UserPermissions(op.Req))
+					patchSet, err := cargoManifestDecoder.DecodeOperation(op, a.UserPermissions(op.Req), accesstypes.GlobalDomain)
 					if err != nil {
 						return errors.Wrap(err, "cargoManifestDecoder.DecodeOperation()")
 					}
@@ -114,7 +114,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						}
 					}
 				case "docking-bays":
-					patchSet, err := dockingBayDecoder.DecodeOperation(op, a.UserPermissions(op.Req))
+					patchSet, err := dockingBayDecoder.DecodeOperation(op, a.UserPermissions(op.Req), accesstypes.GlobalDomain)
 					if err != nil {
 						return errors.Wrap(err, "dockingBayDecoder.DecodeOperation()")
 					}
@@ -146,7 +146,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						}
 					}
 				case "ships":
-					patchSet, err := shipDecoder.DecodeOperation(op, a.UserPermissions(op.Req))
+					patchSet, err := shipDecoder.DecodeOperation(op, a.UserPermissions(op.Req), accesstypes.GlobalDomain)
 					if err != nil {
 						return errors.Wrap(err, "shipDecoder.DecodeOperation()")
 					}
@@ -178,7 +178,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						}
 					}
 				case "supply-crates":
-					patchSet, err := supplyCrateDecoder.DecodeOperation(op, a.UserPermissions(op.Req))
+					patchSet, err := supplyCrateDecoder.DecodeOperation(op, a.UserPermissions(op.Req), accesstypes.GlobalDomain)
 					if err != nil {
 						return errors.Wrap(err, "supplyCrateDecoder.DecodeOperation()")
 					}

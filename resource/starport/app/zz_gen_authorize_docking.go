@@ -10,30 +10,32 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	"github.com/cccteam/ccc/resource/starport/pkg/rpc"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 )
 
-func (a *App) AuthorizeLaunch() http.HandlerFunc {
+func (a *App) AuthorizeDocking() http.HandlerFunc {
 	type request struct {
-		ShipID     ccc.UUID `json:"shipId"`
-		LaunchCode string   `json:"launchCode"`
+		BerthID     ccc.UUID `json:"berthId"`
+		DockingCode string   `json:"dockingCode"`
 	}
 
-	decoder := NewRPCDecoder[rpc.AuthorizeLaunch, request](a, accesstypes.Execute)
+	decoder := NewRPCDecoder[rpc.AuthorizeDocking, request](a, accesstypes.Execute)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		params, err := decoder.Decode(r, accesstypes.GlobalDomain)
+		domain := accesstypes.Domain(httpio.Param[string](r, router.Domain))
+		params, err := decoder.Decode(r, domain)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		p := (*rpc.AuthorizeLaunch)(params)
+		p := (*rpc.AuthorizeDocking)(params)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			if err := p.Execute(ctx, txn, a.RPCClient()); err != nil {
 				return errors.Wrap(err, "Transaction.Execute()")

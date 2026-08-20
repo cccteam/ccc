@@ -1,7 +1,6 @@
 package resource
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,13 +11,6 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
-)
-
-type (
-	// DomainFromCtx is a function that extracts a domain from a context.
-	DomainFromCtx func(context.Context) accesstypes.Domain
-	// UserFromCtx is a function that extracts a user from a context.
-	UserFromCtx func(context.Context) accesstypes.User
 )
 
 type parsedQueryParams struct {
@@ -114,8 +106,9 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	return qSet, nil
 }
 
-// Decode decodes an http.Request into a QuerySet and enables user permission enforcement.
-func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions) (*QuerySet[Resource], error) {
+// Decode decodes an http.Request into a QuerySet and enables user permission enforcement
+// in the given domain partition.
+func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, domain accesstypes.Domain) (*QuerySet[Resource], error) {
 	qSet, err := d.DecodeWithoutPermissions(request)
 	if err != nil {
 		return nil, err
@@ -126,7 +119,7 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 		panic(fmt.Sprintf("expected one non-mutating permission, found: %d, (%s)", len(perms), perms))
 	}
 
-	qSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, perms[0])
+	qSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, domain, perms[0])
 
 	return qSet, nil
 }
