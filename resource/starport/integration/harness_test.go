@@ -41,17 +41,15 @@ type staticUserPermissions struct {
 	g grants
 }
 
-func (s *staticUserPermissions) Check(_ context.Context, perm accesstypes.Permission, resources ...accesstypes.Resource) (ok bool, missing []accesstypes.Resource, err error) {
+func (s *staticUserPermissions) Check(_ context.Context, _ accesstypes.Domain, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
 	for _, res := range resources {
 		if !slices.Contains(s.g[perm], res) {
 			missing = append(missing, res)
 		}
 	}
 
-	return len(missing) == 0, missing, nil
+	return missing, nil
 }
-
-func (s *staticUserPermissions) Domain() accesstypes.Domain { return accesstypes.GlobalDomain }
 
 func (s *staticUserPermissions) User() accesstypes.User { return "integration-test-user" }
 

@@ -31,7 +31,7 @@ func (a *App) CargoManifests() http.HandlerFunc {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalDomain)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -84,7 +84,7 @@ func (a *App) CargoManifest() http.HandlerFunc {
 		shipID := httpio.Param[ccc.UUID](r, router.CargoManifestShipID)
 		lineNumber := httpio.Param[int64](r, router.CargoManifestLineNumber)
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalDomain)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}

@@ -255,6 +255,18 @@ func (g *generatedRoute) appendParamsToPaths() {
 	}
 }
 
+// prependDomainTestParam registers the domain route parameter's test value for a
+// domain-scoped route. The domain segment pair sits between the route prefix and the
+// resource segment (already part of Path and TestURL), so it must never go through
+// appendParamsToPaths; call this after appendParamsToPaths.
+func (g *generatedRoute) prependDomainTestParam(domainScoped bool, paramKey string) {
+	if !domainScoped {
+		return
+	}
+
+	g.TestParams = append([]routeTestParam{{Key: paramKey, Value: domainTestValue}}, g.TestParams...)
+}
+
 // TestMethods returns the net/http method constant names the generated router
 // tests exercise for this route.
 func (g *generatedRoute) TestMethods() []string {
@@ -280,6 +292,12 @@ type rpcMethodInfo struct {
 	// PermissionScope is the scope the method's registration uses
 	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
 	PermissionScope accesstypes.PermissionScope
+}
+
+// IsDomainScoped reports whether the method's @permissionScope resolves to the
+// domain scope (an absent annotation defaults to global).
+func (r *rpcMethodInfo) IsDomainScoped() bool {
+	return r.PermissionScope == accesstypes.DomainPermissionScope
 }
 
 func (r *rpcMethodInfo) IsTxnRunner() bool {
@@ -367,6 +385,12 @@ type computedResource struct {
 	// PermissionScope is the scope all of this resource's registrations use
 	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
 	PermissionScope accesstypes.PermissionScope
+}
+
+// IsDomainScoped reports whether the resource's @permissionScope resolves to the
+// domain scope (an absent annotation defaults to global).
+func (c *computedResource) IsDomainScoped() bool {
+	return c.PermissionScope == accesstypes.DomainPermissionScope
 }
 
 func (c *computedResource) HasCompoundPrimaryKey() bool {
@@ -468,6 +492,12 @@ type resourceInfo struct {
 	DefaultsUpdateType string
 	ValidateCreateType string
 	ValidateUpdateType string
+}
+
+// IsDomainScoped reports whether the resource's @permissionScope resolves to the
+// domain scope (an absent annotation defaults to global).
+func (r *resourceInfo) IsDomainScoped() bool {
+	return r.PermissionScope == accesstypes.DomainPermissionScope
 }
 
 func (r *resourceInfo) HasNullBool() bool {

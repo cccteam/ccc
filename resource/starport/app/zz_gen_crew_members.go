@@ -35,7 +35,7 @@ func (a *App) CrewMembers() http.HandlerFunc {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalDomain)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -90,7 +90,7 @@ func (a *App) CrewMember() http.HandlerFunc {
 
 		id := httpio.Param[ccc.UUID](r, router.CrewMemberID)
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalDomain)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -159,7 +159,7 @@ func (a *App) PatchCrewMembers() http.HandlerFunc {
 					return errors.Wrap(err, "resource.Operations()")
 				}
 
-				patchSet, err := decoder.DecodeOperation(op, a.UserPermissions(r))
+				patchSet, err := decoder.DecodeOperation(op, a.UserPermissions(r), accesstypes.GlobalDomain)
 				if err != nil {
 					return errors.Wrap(err, "decoder.DecodeOperation()")
 				}

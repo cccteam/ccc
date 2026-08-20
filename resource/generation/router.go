@@ -12,6 +12,9 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// domainTestValue is the domain route parameter value used in generated router tests.
+const domainTestValue = "testDomain"
+
 func (r *resourceGenerator) runRouteGeneration() error {
 	begin := time.Now()
 	if err := removeGeneratedFiles(r.router.Dir(), prefix); err != nil {
@@ -38,28 +41,9 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		}
 
 		for _, ht := range handlerTypes {
-			basePath := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
-			route := &generatedRoute{
-				Method:      ht.method(),
-				Path:        basePath,
-				HandlerFunc: r.handlerName(res.Name(), ht),
-				HandlerType: ht,
-				TestURL:     basePath,
-			}
-			if ht == ReadHandler {
-				if res.HasCompoundPrimaryKey() {
-					var pkNames []string
-					for _, field := range res.PrimaryKeys() {
-						pkNames = append(pkNames, field.Name())
-					}
-					route.TestParams = readRouteTestParams(res.Name(), pkNames)
-				} else {
-					route.TestParams = []routeTestParam{{
-						Key:   strcase.ToGoCamel(res.Name() + "ID"),
-						Value: strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(res.Name()))),
-					}}
-				}
-				route.appendParamsToPaths()
+			route, err := r.resourceRoute(res, ht)
+			if err != nil {
+				return err
 			}
 
 			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], route)
@@ -77,39 +61,12 @@ func (r *resourceGenerator) runRouteGeneration() error {
 			continue
 		}
 
-		basePath := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(r.pluralize(res.Name())))
-		if !res.SuppressReadHandler {
-			var pkNames []string
-			for _, field := range res.PrimaryKeys() {
-				pkNames = append(pkNames, field.Name())
-			}
-
-			route := &generatedRoute{
-				Method:      ReadHandler.method(),
-				Path:        basePath,
-				HandlerFunc: r.handlerName(res.Name(), ReadHandler),
-				HandlerType: ReadHandler,
-				TestURL:     basePath,
-				TestParams:  readRouteTestParams(res.Name(), pkNames),
-			}
-			route.appendParamsToPaths()
-
-			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], route)
-			routerTestRoutes = append(routerTestRoutes, route)
+		routes, err := r.computedResourceRoutes(res)
+		if err != nil {
+			return err
 		}
-
-		if !res.SuppressListHandler {
-			route := &generatedRoute{
-				Method:      ListHandler.method(),
-				Path:        basePath,
-				HandlerFunc: r.handlerName(res.Name(), ListHandler),
-				HandlerType: ListHandler,
-				TestURL:     basePath,
-			}
-
-			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], route)
-			routerTestRoutes = append(routerTestRoutes, route)
-		}
+		generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], routes...)
+		routerTestRoutes = append(routerTestRoutes, routes...)
 	}
 
 	if r.genRPCMethods {
@@ -118,9 +75,14 @@ func (r *resourceGenerator) runRouteGeneration() error {
 				continue
 			}
 
+			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(rpcStruct.Name()))
+			if rpcStruct.IsDomainScoped() {
+				path = fmt.Sprintf("/%s/%s/{%s}/%s", r.routePrefix, r.domainRouteSegment, r.domainRouteParam, strcase.ToKebab(rpcStruct.Name()))
+			}
+
 			generatedRoutesMap[rpcStruct.Name()] = []*generatedRoute{{
 				Method:      http.MethodPost,
-				Path:        fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(rpcStruct.Name())),
+				Path:        path,
 				HandlerFunc: rpcStruct.Name(),
 			}}
 		}
@@ -135,6 +97,8 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		ConstComputedResources: constComputedResources,
 		RouterTestRoutes:       routerTestRoutes,
 		HasConsolidatedHandler: hasConsolidatedHandlers,
+		HasDomainScoped:        r.hasDomainScoped(),
+		DomainRouteParam:       r.domainRouteParam,
 		RoutePrefix:            r.routePrefix,
 		ConsolidatedRoute:      r.ConsolidatedRoute,
 	}
@@ -153,6 +117,140 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
 
 	return nil
+}
+
+// resourceRoute builds the route for one handler type of a resource, including read-route
+// primary-key params and, for domain-scoped resources, the domain segment pair.
+func (r *resourceGenerator) resourceRoute(res *resourceInfo, ht HandlerType) (*generatedRoute, error) {
+	basePath, testBasePath := r.routeBasePaths(res.Name(), res.IsDomainScoped())
+	route := &generatedRoute{
+		Method:      ht.method(),
+		Path:        basePath,
+		HandlerFunc: r.handlerName(res.Name(), ht),
+		HandlerType: ht,
+		TestURL:     testBasePath,
+	}
+	if ht == ReadHandler {
+		if res.HasCompoundPrimaryKey() {
+			var pkNames []string
+			for _, field := range res.PrimaryKeys() {
+				pkNames = append(pkNames, field.Name())
+			}
+			route.TestParams = readRouteTestParams(res.Name(), pkNames)
+		} else {
+			route.TestParams = []routeTestParam{{
+				Key:   strcase.ToGoCamel(res.Name() + "ID"),
+				Value: strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(res.Name()))),
+			}}
+		}
+		route.appendParamsToPaths()
+	}
+	if res.IsDomainScoped() {
+		if err := r.validateDomainParamCollision(route.TestParams, res.Name()); err != nil {
+			return nil, err
+		}
+	}
+	route.prependDomainTestParam(res.IsDomainScoped(), r.domainRouteParam)
+
+	return route, nil
+}
+
+// computedResourceRoutes builds the read and list routes for a computed resource,
+// honoring its handler suppressions and, for domain-scoped resources, the domain
+// segment pair.
+func (r *resourceGenerator) computedResourceRoutes(res *computedResource) ([]*generatedRoute, error) {
+	basePath, testBasePath := r.routeBasePaths(res.Name(), res.IsDomainScoped())
+
+	var routes []*generatedRoute
+	if !res.SuppressReadHandler {
+		pkNames := make([]string, 0, len(res.PrimaryKeys()))
+		for _, field := range res.PrimaryKeys() {
+			pkNames = append(pkNames, field.Name())
+		}
+
+		route := &generatedRoute{
+			Method:      ReadHandler.method(),
+			Path:        basePath,
+			HandlerFunc: r.handlerName(res.Name(), ReadHandler),
+			HandlerType: ReadHandler,
+			TestURL:     testBasePath,
+			TestParams:  readRouteTestParams(res.Name(), pkNames),
+		}
+		route.appendParamsToPaths()
+		if res.IsDomainScoped() {
+			if err := r.validateDomainParamCollision(route.TestParams, res.Name()); err != nil {
+				return nil, err
+			}
+		}
+		route.prependDomainTestParam(res.IsDomainScoped(), r.domainRouteParam)
+
+		routes = append(routes, route)
+	}
+
+	if !res.SuppressListHandler {
+		route := &generatedRoute{
+			Method:      ListHandler.method(),
+			Path:        basePath,
+			HandlerFunc: r.handlerName(res.Name(), ListHandler),
+			HandlerType: ListHandler,
+			TestURL:     testBasePath,
+		}
+		route.prependDomainTestParam(res.IsDomainScoped(), r.domainRouteParam)
+
+		routes = append(routes, route)
+	}
+
+	return routes, nil
+}
+
+// validateDomainParamCollision rejects a domain-scoped route whose primary-key route
+// parameters collide with the domain route parameter name — chi panics on duplicate
+// param names within one pattern, so fail at generate time with a fix instead.
+func (r *resourceGenerator) validateDomainParamCollision(params []routeTestParam, resourceName string) error {
+	for _, p := range params {
+		if p.Key == r.domainRouteParam {
+			return errors.Newf("resource %s: primary-key route parameter %q collides with the domain route parameter; rename it via WithDomainRoute()", resourceName, r.domainRouteParam)
+		}
+	}
+
+	return nil
+}
+
+// hasDomainScoped reports whether any resource, computed resource, or RPC method is
+// domain-scoped. Scope is checked regardless of routing/handler suppression so the
+// Domain route-parameter const is emitted whenever generated code could reference it.
+func (r *resourceGenerator) hasDomainScoped() bool {
+	for _, res := range r.resources {
+		if res.IsDomainScoped() {
+			return true
+		}
+	}
+	for _, res := range r.computedResources {
+		if res.IsDomainScoped() {
+			return true
+		}
+	}
+	for _, rpcStruct := range r.rpcMethods {
+		if rpcStruct.IsDomainScoped() {
+			return true
+		}
+	}
+
+	return false
+}
+
+// routeBasePaths returns the route path and its router-test URL for a resource,
+// inserting the {domain} segment (and its test value) for domain-scoped resources.
+func (r *resourceGenerator) routeBasePaths(resourceName string, domainScoped bool) (basePath, testBasePath string) {
+	kebab := strcase.ToKebab(r.pluralize(resourceName))
+	if domainScoped {
+		return fmt.Sprintf("/%s/%s/{%s}/%s", r.routePrefix, r.domainRouteSegment, r.domainRouteParam, kebab),
+			fmt.Sprintf("/%s/%s/%s/%s", r.routePrefix, r.domainRouteSegment, domainTestValue, kebab)
+	}
+
+	basePath = fmt.Sprintf("/%s/%s", r.routePrefix, kebab)
+
+	return basePath, basePath
 }
 
 // readRouteTestParams returns one route parameter per primary-key field for

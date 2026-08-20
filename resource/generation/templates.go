@@ -566,7 +566,10 @@ import (
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
+		{{ if .Resource.IsDomainScoped -}}
+		domain := accesstypes.Domain(httpio.Param[string](r, router.Domain))
+		{{ end -}}
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -617,7 +620,10 @@ import (
 	{{ else }}
 		id := httpio.Param[{{ .Resource.PrimaryKeyType }}](r, router.{{ .Resource.Name }}{{ .Resource.PrimaryKey.Name }})
 	{{ end }}
-		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
+		{{ if .Resource.IsDomainScoped -}}
+		domain := accesstypes.Domain(httpio.Param[string](r, router.Domain))
+		{{ end -}}
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -670,6 +676,9 @@ import (
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
+		{{ if .Resource.IsDomainScoped -}}
+		domain := accesstypes.Domain(httpio.Param[string](r, router.Domain))
+		{{ end -}}
 		{{ if $PrimaryKeyIsGeneratedUUID }}
 		var resp response
 		{{- end }}
@@ -689,7 +698,7 @@ import (
 					return errors.Wrap(err, "resource.Operations()")
 				}
 
-				patchSet, err := decoder.DecodeOperation(op, {{ .ReceiverName }}.UserPermissions(r))
+				patchSet, err := decoder.DecodeOperation(op, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
 				if err != nil {
 					return errors.Wrap(err, "decoder.DecodeOperation()")
 				}
@@ -818,7 +827,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 					{{- range $resource := .Resources -}}
 					{{- $primaryKeyType := $resource.PrimaryKeyType }}
 					case "{{ Kebab (Pluralize $resource.Name) }}":
-						patchSet, err := {{ GoCamel $resource.Name}}Decoder.DecodeOperation(op, {{ $.ReceiverName }}.UserPermissions(op.Req))
+						patchSet, err := {{ GoCamel $resource.Name}}Decoder.DecodeOperation(op, {{ $.ReceiverName }}.UserPermissions(op.Req), accesstypes.GlobalDomain)
 						if err != nil {
 							return errors.Wrap(err, "{{ GoCamel $resource.Name}}Decoder.DecodeOperation()")
 						}
@@ -1242,8 +1251,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-{{ if or (gt (len .ConstResources) 0) (gt (len .ConstComputedResources) 0) -}}
+{{ if or (gt (len .ConstResources) 0) (gt (len .ConstComputedResources) 0) .HasDomainScoped -}}
 const (
+{{- if .HasDomainScoped }}
+	// Domain is the route parameter carrying the permission domain for domain-scoped routes.
+	Domain httpio.ParamType = "{{ .DomainRouteParam }}"
+{{- end }}
 {{- range $resource := .ConstResources }}
 {{- if $resource.HasCompoundPrimaryKey }}
 	{{- range $_, $field := $resource.PrimaryKeys }}
@@ -1412,11 +1425,14 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 
 	decoder := NewRPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
 
-	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error { 
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		params, err := decoder.Decode(r)
+		{{ if .RPCMethod.IsDomainScoped -}}
+		domain := accesstypes.Domain(httpio.Param[string](r, router.Domain))
+		{{ end -}}
+		params, err := decoder.Decode(r, {{ if .RPCMethod.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -1504,7 +1520,10 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
+		{{ if .Resource.IsDomainScoped -}}
+		domain := accesstypes.Domain(httpio.Param[string](r, router.Domain))
+		{{ end -}}
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -1554,7 +1573,10 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 		id := httpio.Param[{{ $field.Type }}](r, router.{{ .Resource.Name }}{{ .Resource.PrimaryKey.Name }})
 		{{ end }}
 
-		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r))
+		{{ if .Resource.IsDomainScoped -}}
+		domain := accesstypes.Domain(httpio.Param[string](r, router.Domain))
+		{{ end -}}
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}

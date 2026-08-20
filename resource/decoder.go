@@ -22,13 +22,6 @@ type ValidatorFunc interface {
 	StructPartial(s any, fields ...string) error
 }
 
-type (
-	// DomainFromReq is a function that extracts a domain from an http.Request.
-	DomainFromReq func(*http.Request) accesstypes.Domain
-	// UserFromReq is a function that extracts a user from an http.Request.
-	UserFromReq func(*http.Request) accesstypes.User
-)
-
 // Decoder is a struct that can be used for decoding http requests and validating those requests
 type Decoder[Resource Resourcer, Request any] struct {
 	validate    ValidatorFunc
@@ -68,14 +61,15 @@ func (d *Decoder[Resource, Request]) DecodeWithoutPermissions(request *http.Requ
 	return p, nil
 }
 
-// Decode decodes an http.Request into a PatchSet and enables user permission enforcement.
-func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, requiredPermission accesstypes.Permission) (*PatchSet[Resource], error) {
+// Decode decodes an http.Request into a PatchSet and enables user permission enforcement
+// in the given domain partition.
+func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, domain accesstypes.Domain, requiredPermission accesstypes.Permission) (*PatchSet[Resource], error) {
 	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate, requiredPermission)
 	if err != nil {
 		return nil, err
 	}
 
-	p.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, requiredPermission)
+	p.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, domain, requiredPermission)
 
 	return p, nil
 }
@@ -94,13 +88,14 @@ func (d *Decoder[Resource, Request]) DecodeOperationWithoutPermissions(oper *Ope
 	return patchSet, nil
 }
 
-// DecodeOperation decodes an Operation into a PatchSet and enables user permission enforcement.
-func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermissions UserPermissions) (*PatchSet[Resource], error) {
+// DecodeOperation decodes an Operation into a PatchSet and enables user permission
+// enforcement in the given domain partition.
+func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermissions UserPermissions, domain accesstypes.Domain) (*PatchSet[Resource], error) {
 	if oper.Type == OperationDelete {
-		return NewPatchSet(d.resourceSet.ResourceMetadata()).EnableUserPermissionEnforcement(d.resourceSet, userPermissions, permissionFromType(oper.Type)), nil
+		return NewPatchSet(d.resourceSet.ResourceMetadata()).EnableUserPermissionEnforcement(d.resourceSet, userPermissions, domain, permissionFromType(oper.Type)), nil
 	}
 
-	patchSet, err := d.Decode(oper.Req, userPermissions, permissionFromType(oper.Type))
+	patchSet, err := d.Decode(oper.Req, userPermissions, domain, permissionFromType(oper.Type))
 	if err != nil {
 		return nil, errors.Wrap(err, "httpio.DecoderWithPermissionChecker[Request].Decode()")
 	}
