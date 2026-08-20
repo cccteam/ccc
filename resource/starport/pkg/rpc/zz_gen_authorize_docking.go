@@ -5,7 +5,6 @@ package rpc
 
 import "github.com/cccteam/ccc/accesstypes"
 
-type Method interface {
-	Method() accesstypes.Resource
-	AuthorizeDocking | AuthorizeLaunch
+func (AuthorizeDocking) Method() accesstypes.Resource {
+	return "AuthorizeDocking"
 }

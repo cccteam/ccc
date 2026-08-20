@@ -96,6 +96,43 @@ func Test_resourceGenerator_routeBasePaths(t *testing.T) {
 	}
 }
 
+// Test_routerTestTemplate_domainRouteParam pins that the generated router test's
+// parameter key list includes the domain route parameter whenever domain-scoped routes
+// exist — the test's call recorder only captures parameters named in that list, so
+// omitting it makes every domain-scoped route assertion fail with an empty value.
+func Test_routerTestTemplate_domainRouteParam(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		hasDomainScoped bool
+		wantContains    bool
+	}{
+		{name: "domain-scoped routes emit the domain param key", hasDomainScoped: true, wantContains: true},
+		{name: "without domain-scoped routes the key is absent", hasDomainScoped: false, wantContains: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			out, err := c.generateTemplateOutput("routerTestTemplate", routerTestTemplate, routerFileData{
+				Package:          "router",
+				HasDomainScoped:  tt.hasDomainScoped,
+				DomainRouteParam: "stationID",
+			})
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+
+			if got := strings.Contains(string(out), `"stationID",`); got != tt.wantContains {
+				t.Errorf("generatedRouteParameters contains domain param = %v, want %v:\n%s", got, tt.wantContains, out)
+			}
+		})
+	}
+}
+
 func Test_generatedRoute_prependDomainTestParam(t *testing.T) {
 	t.Parallel()
 

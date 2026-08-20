@@ -18,6 +18,8 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string{
+		"stationID",
+		"berthID",
 		"cargoManifestShipID",
 		"cargoManifestLineNumber",
 		"crewMemberID",
@@ -31,6 +33,31 @@ func generatedRouteParameters() []string {
 
 func generatedRouterTests() []*generatedRouterTest {
 	routerTests := []*generatedRouterTest{
+		{
+			url: "/api/stations/testDomain/berths", method: http.MethodGet,
+			handlerFunc: "Berths",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
+		{
+			url: "/api/stations/testDomain/berths", method: http.MethodPost,
+			handlerFunc: "Berths",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
+		{
+			url: "/api/stations/testDomain/berths/testBerthID", method: http.MethodGet,
+			handlerFunc: "Berth",
+			parameters:  map[string]string{"stationID": "testDomain", "berthID": "testBerthID"},
+		},
+		{
+			url: "/api/stations/testDomain/berths/testBerthID", method: http.MethodPost,
+			handlerFunc: "Berth",
+			parameters:  map[string]string{"stationID": "testDomain", "berthID": "testBerthID"},
+		},
+		{
+			url: "/api/stations/testDomain/berths", method: http.MethodPatch,
+			handlerFunc: "PatchBerths",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
 		{
 			url: "/api/cargo-manifests", method: http.MethodGet,
 			handlerFunc: "CargoManifests",
@@ -146,7 +173,11 @@ func generatedRouterTests() []*generatedRouterTest {
 }
 
 func generatedExpectCalls(e *mock_router.MockHandlersMockRecorder, rec *callRecorder) {
+	e.AuthorizeDocking().Times(1).Return(rec.RecordHandlerCall("AuthorizeDocking"))
 	e.AuthorizeLaunch().Times(1).Return(rec.RecordHandlerCall("AuthorizeLaunch"))
+	e.Berths().Times(1).Return(rec.RecordHandlerCall("Berths"))
+	e.Berth().Times(1).Return(rec.RecordHandlerCall("Berth"))
+	e.PatchBerths().Times(1).Return(rec.RecordHandlerCall("PatchBerths"))
 	e.CargoManifests().Times(1).Return(rec.RecordHandlerCall("CargoManifests"))
 	e.CargoManifest().Times(1).Return(rec.RecordHandlerCall("CargoManifest"))
 	e.CrewMembers().Times(1).Return(rec.RecordHandlerCall("CrewMembers"))

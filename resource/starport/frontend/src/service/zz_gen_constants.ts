@@ -11,10 +11,12 @@ export const Permissions = {
 };
 
 export const Domains = {
+  domain: 'domain' as Domain,
   global: 'global' as Domain,
 };
 
 export const Resources = {
+  Berths: 'Berths' as Resource,
   CargoManifests: 'CargoManifests' as Resource,
   CrewMembers: 'CrewMembers' as Resource,
   DockingBays: 'DockingBays' as Resource,
@@ -23,8 +25,24 @@ export const Resources = {
 };
 
 export const Methods = {
+  AuthorizeDocking: 'AuthorizeDocking' as Method,
   AuthorizeLaunch: 'AuthorizeLaunch' as Method,
 };
+
+export namespace Berths {
+  export const fieldName = {
+    designation: 'designation' as FieldName,
+    id: 'id' as FieldName,
+    occupied: 'occupied' as FieldName,
+    sizeClass: 'sizeClass' as FieldName,
+  };
+  export const resourceName = {
+    designation: 'Berths.designation' as Resource,
+    id: 'Berths.id' as Resource,
+    occupied: 'Berths.occupied' as Resource,
+    sizeClass: 'Berths.sizeClass' as Resource,
+  };
+}
 
 export namespace CargoManifests {
   export const fieldName = {
@@ -125,6 +143,13 @@ export namespace SupplyCrates {
   };
 }
 
+export namespace AuthorizeDocking {
+  export const fieldName = {
+    berthId: 'berthId' as FieldName,
+    dockingCode: 'dockingCode' as FieldName,
+  };
+}
+
 export namespace AuthorizeLaunch {
   export const fieldName = {
     shipId: 'shipId' as FieldName,
@@ -136,6 +161,41 @@ type ResourcePermissions = Record<Permission, boolean>;
 type PermissionMappings = Record<Resource, ResourcePermissions>;
 
 const Mappings: PermissionMappings = {
+  [Resources.Berths]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: true,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [Berths.resourceName.designation]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [Berths.resourceName.id]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: false,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [Berths.resourceName.occupied]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [Berths.resourceName.sizeClass]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
   [Resources.CargoManifests]: {
     [Permissions.Create]: true,
     [Permissions.Delete]: true,
@@ -391,6 +451,9 @@ type MethodPermissions = Record<Permission, boolean>;
 type MethodPermissionMappings = Record<Method, MethodPermissions>;
 
 const MethodMappings: MethodPermissionMappings = {
+  [Methods.AuthorizeDocking]: {
+    [Permissions.Execute]: true,
+  },
   [Methods.AuthorizeLaunch]: {
     [Permissions.Execute]: true,
   },

@@ -11,6 +11,9 @@ import (
 )
 
 const (
+	// Domain is the route parameter carrying the permission domain for domain-scoped routes.
+	Domain                  httpio.ParamType = "stationID"
+	BerthID                 httpio.ParamType = "berthID"
 	CargoManifestShipID     httpio.ParamType = "cargoManifestShipID"
 	CargoManifestLineNumber httpio.ParamType = "cargoManifestLineNumber"
 	CrewMemberID            httpio.ParamType = "crewMemberID"
@@ -20,7 +23,13 @@ const (
 )
 
 type GeneratedHandlers interface {
+	AuthorizeDocking() http.HandlerFunc
+
 	AuthorizeLaunch() http.HandlerFunc
+
+	Berths() http.HandlerFunc
+	Berth() http.HandlerFunc
+	PatchBerths() http.HandlerFunc
 
 	CargoManifests() http.HandlerFunc
 	CargoManifest() http.HandlerFunc
@@ -42,7 +51,19 @@ type GeneratedHandlers interface {
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
+	r.Post("/api/stations/{stationID}/authorize-docking", h.AuthorizeDocking())
+
 	r.Post("/api/authorize-launch", h.AuthorizeLaunch())
+
+	berthsHandler := h.Berths()
+	r.Get("/api/stations/{stationID}/berths", berthsHandler)
+	r.Post("/api/stations/{stationID}/berths", berthsHandler)
+
+	berthHandler := h.Berth()
+	r.Get("/api/stations/{stationID}/berths/{berthID}", berthHandler)
+	r.Post("/api/stations/{stationID}/berths/{berthID}", berthHandler)
+
+	r.Patch("/api/stations/{stationID}/berths", h.PatchBerths())
 
 	cargoManifestsHandler := h.CargoManifests()
 	r.Get("/api/cargo-manifests", cargoManifestsHandler)

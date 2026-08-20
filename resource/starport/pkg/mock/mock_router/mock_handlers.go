@@ -40,6 +40,20 @@ func (m *MockHandlers) EXPECT() *MockHandlersMockRecorder {
 	return m.recorder
 }
 
+// AuthorizeDocking mocks base method.
+func (m *MockHandlers) AuthorizeDocking() http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthorizeDocking")
+	ret0, _ := ret[0].(http.HandlerFunc)
+	return ret0
+}
+
+// AuthorizeDocking indicates an expected call of AuthorizeDocking.
+func (mr *MockHandlersMockRecorder) AuthorizeDocking() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizeDocking", reflect.TypeOf((*MockHandlers)(nil).AuthorizeDocking))
+}
+
 // AuthorizeLaunch mocks base method.
 func (m *MockHandlers) AuthorizeLaunch() http.HandlerFunc {
 	m.ctrl.T.Helper()
@@ -52,6 +66,34 @@ func (m *MockHandlers) AuthorizeLaunch() http.HandlerFunc {
 func (mr *MockHandlersMockRecorder) AuthorizeLaunch() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizeLaunch", reflect.TypeOf((*MockHandlers)(nil).AuthorizeLaunch))
+}
+
+// Berth mocks base method.
+func (m *MockHandlers) Berth() http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Berth")
+	ret0, _ := ret[0].(http.HandlerFunc)
+	return ret0
+}
+
+// Berth indicates an expected call of Berth.
+func (mr *MockHandlersMockRecorder) Berth() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Berth", reflect.TypeOf((*MockHandlers)(nil).Berth))
+}
+
+// Berths mocks base method.
+func (m *MockHandlers) Berths() http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Berths")
+	ret0, _ := ret[0].(http.HandlerFunc)
+	return ret0
+}
+
+// Berths indicates an expected call of Berths.
+func (mr *MockHandlersMockRecorder) Berths() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Berths", reflect.TypeOf((*MockHandlers)(nil).Berths))
 }
 
 // CargoManifest mocks base method.
@@ -136,6 +178,20 @@ func (m *MockHandlers) DockingBays() http.HandlerFunc {
 func (mr *MockHandlersMockRecorder) DockingBays() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DockingBays", reflect.TypeOf((*MockHandlers)(nil).DockingBays))
+}
+
+// PatchBerths mocks base method.
+func (m *MockHandlers) PatchBerths() http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PatchBerths")
+	ret0, _ := ret[0].(http.HandlerFunc)
+	return ret0
+}
+
+// PatchBerths indicates an expected call of PatchBerths.
+func (mr *MockHandlersMockRecorder) PatchBerths() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PatchBerths", reflect.TypeOf((*MockHandlers)(nil).PatchBerths))
 }
 
 // PatchCrewMembers mocks base method.

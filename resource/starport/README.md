@@ -30,6 +30,16 @@ A synthetic "starport logistics" application with two roles:
   - `permissions_failopen_test.go` pins the *current* fail-open behavior of untagged
     fields (`DockingBays`, and the untagged fields of `CargoManifests`). This suite is
     expected to be deliberately rewritten when field permissions become fail closed.
+  - `permissions_domain_test.go` asserts domain partitioning over the domain-scoped
+    surfaces (`Berths`, `AuthorizeDocking`), served under the station segment pair
+    (`WithDomainRoute("stations", "stationID")` →
+    `/api/stations/{stationID}/berths`): a grant authorizes requests only in the
+    station named by the URL, and grants never bleed between stations or between the
+    global domain and any station. Both surfaces are fully tagged, so this suite is as
+    invariant as the invariant suite. The `Berths` table is deliberately domain-blind
+    (no station column): `@permissionScope(domain)` partitions permissions, not data.
+    `Berth` is excluded from handler consolidation because the consolidated payload
+    cannot carry a domain yet.
 
 ## Requirements
 

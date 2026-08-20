@@ -6,6 +6,15 @@ export interface FieldPointer {
   field: FieldName;
 }
 
+export interface AuthorizeDockingConfig {
+  berthId: string | FieldPointer;
+  dockingCode: string | FieldPointer;
+}
+export interface AuthorizeDocking {
+  berthId: string;
+  dockingCode: string;
+}
+
 export interface AuthorizeLaunchConfig {
   shipId: string | FieldPointer;
   launchCode: string | FieldPointer;
@@ -29,6 +38,13 @@ export interface MethodMeta {
 export type MethodMap = Record<Method, MethodMeta>;
 
 const methodMap: MethodMap = {
+  [Methods.AuthorizeDocking]: {
+    route: 'authorize-docking',
+    fields: [
+      { fieldName: 'berthId', displayType: 'uuid' },
+      { fieldName: 'dockingCode', displayType: 'string' },
+    ],
+  },
   [Methods.AuthorizeLaunch]: {
     route: 'authorize-launch',
     fields: [

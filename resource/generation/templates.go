@@ -1322,6 +1322,9 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string {
+	{{- if .HasDomainScoped }}
+		"{{ .DomainRouteParam }}",
+	{{- end }}
 	{{- range $resource := .ConstResources }}
 	{{- if $resource.HasCompoundPrimaryKey }}
 		{{- range $_, $field := $resource.PrimaryKeys }}
