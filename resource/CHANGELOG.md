@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.6](https://github.com/cccteam/ccc/compare/resource/v0.10.5...resource/v0.10.6) (2026-08-19)
+
+
+### Documentation
+
+* clarify field conditions and perm tag semantics in README ([#809](https://github.com/cccteam/ccc/issues/809)) ([6f46afc](https://github.com/cccteam/ccc/commit/6f46afccb2c4883e5463c98030fb4219bb1ab48c))
+
 ## [0.10.5](https://github.com/cccteam/ccc/compare/resource/v0.10.4...resource/v0.10.5) (2026-08-19)
 
 
