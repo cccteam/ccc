@@ -76,10 +76,12 @@ bootstrap again.
 against `router.Collection()`, which validates every grant — unknown resources,
 unregistered permissions, and Update grants on immutable fields fail the bootstrap)
 and the demo users' per-domain role assignments. `pkg/stations` is the demo's tenancy
-source (`access.Domains`): the stations that serve as permission domains for the
-domain-scoped resources. `app.NewAccessUserPermissions` adapts the access engine to
-the resource package's `UserPermissions` seam for a served app; the integration tests
-keep injecting scriptable fakes instead.
+source: the stations that serve as permission domains for the domain-scoped resources,
+passed to `MigrateRoles` as the domain universe. The access engine's policy tables ride
+the schema migrations (`000008_AccessTables`), copied from the store's canonical
+`DDL()`. `app.NewAccessUserPermissions` adapts the access engine to the resource
+package's `UserPermissions` seam for a served app; the integration tests keep
+injecting scriptable fakes instead.
 
 `TestBootstrap` runs the full bootstrap against an emulator and asserts the
 provisioned access state end to end, including that the demo user's station role

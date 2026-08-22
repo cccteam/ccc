@@ -35,12 +35,12 @@ type accessUserPermissions struct {
 	user       accesstypes.User
 }
 
-// Check implements resource.UserPermissions over access.Controller.RequireResources,
-// which returns the exhaustive missing set the contract requires.
+// Check implements resource.UserPermissions over access.Controller.CheckUser, which
+// returns the exhaustive missing set the contract requires.
 func (u *accessUserPermissions) Check(ctx context.Context, domain accesstypes.Domain, perm accesstypes.Permission, resources ...accesstypes.Resource) ([]accesstypes.Resource, error) {
-	_, missing, err := u.controller.RequireResources(ctx, u.user, domain, perm, resources...)
+	missing, err := u.controller.CheckUser(ctx, u.user, domain, perm, resources...)
 	if err != nil {
-		return nil, errors.Wrap(err, "access.Controller.RequireResources()")
+		return nil, errors.Wrap(err, "access.Controller.CheckUser()")
 	}
 
 	return missing, nil

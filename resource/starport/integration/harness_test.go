@@ -82,9 +82,11 @@ func doRequest(t *testing.T, h http.Handler, method, target, body string) (statu
 	if err != nil {
 		t.Fatalf("ccc.NewUUID: %v", err)
 	}
-	ctx := context.WithValue(t.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionInfo{
-		ID:       sessionID,
-		Username: "integration-test-user",
+	ctx := context.WithValue(t.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionData{
+		SessionInfo: &sessioninfo.SessionInfo{
+			ID:       sessionID,
+			Username: "integration-test-user",
+		},
 	})
 
 	req := httptest.NewRequestWithContext(ctx, method, target, reader)

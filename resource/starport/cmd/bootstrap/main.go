@@ -13,7 +13,9 @@ import (
 	"os/signal"
 	"time"
 
+	"cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
+	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	"github.com/cccteam/ccc/resource/starport/pkg/stations"
@@ -36,11 +38,6 @@ const (
 	defaultDatabase   = "starport"
 	defaultAccessPath = "config/demo_access.json"
 	defaultDataPath   = "schema/demoseed"
-
-	// accessPoliciesTable is the table the access engine's Spanner adapter stores its
-	// policies in. The adapter manages the table itself; it is not part of the schema
-	// migrations.
-	accessPoliciesTable = "AccessPolicies"
 )
 
 func main() {
@@ -111,10 +108,11 @@ type userAssignment struct {
 	Roles  []accesstypes.Role `json:"roles"`
 }
 
-// provisionAccess migrates the role configuration into the access engine, validated
-// against the generated permission collection (unknown resources, unregistered
-// permissions, and Update grants on immutable fields fail the bootstrap), then assigns
-// the demo users their roles per domain.
+// provisionAccess migrates the role configuration into the access engine's policy
+// store (created by the schema migrations), validated against the generated permission
+// collection (unknown resources, unregistered permissions, and Update grants on
+// immutable fields fail the bootstrap), then assigns the demo users their roles per
+// domain. The stations supply the domain universe the roles are reconciled across.
 func provisionAccess(ctx context.Context) error {
 	path := envOr(envAccessPath, defaultAccessPath)
 	if path == "" {
@@ -126,12 +124,24 @@ func provisionAccess(ctx context.Context) error {
 		return errors.Wrap(err, "parseAccessConfig()")
 	}
 
-	client, err := access.New(stations.NewDirectory(), access.NewSpannerAdapter(databasePath(), accessPoliciesTable))
+	spannerClient, err := spanner.NewClient(ctx, databasePath())
+	if err != nil {
+		return errors.Wrap(err, "spanner.NewClient()")
+	}
+	defer spannerClient.Close()
+
+	store, err := spannerstore.New(spannerClient)
+	if err != nil {
+		return errors.Wrap(err, "spannerstore.New()")
+	}
+
+	client, err := access.New(store)
 	if err != nil {
 		return errors.Wrap(err, "access.New()")
 	}
+	defer client.Close()
 
-	if err := access.MigrateRoles(ctx, client.UserManager(), router.Collection(), &conf.RoleConfig); err != nil {
+	if err := access.MigrateRoles(ctx, client.UserManager(), router.Collection(), &conf.RoleConfig, stations.Domains()...); err != nil {
 		return errors.Wrap(err, "access.MigrateRoles()")
 	}
 	fmt.Printf("Provisioned roles from %s\n", path)
@@ -177,7 +187,7 @@ func bootstrapData(db *initiator.SpannerDB) error {
 }
 
 // databasePath returns the fully qualified Spanner database path the access engine's
-// adapter connects to.
+// policy store connects to.
 func databasePath() string {
 	return fmt.Sprintf("projects/%s/instances/%s/databases/%s",
 		envOr(envProjectID, defaultProjectID), envOr(envInstanceID, defaultInstanceID), envOr(envDatabase, defaultDatabase))

@@ -1,33 +1,21 @@
 // Package stations provides the starport's tenancy source: the stations that serve as
 // permission domains for domain-scoped resources and RPC methods. The demo uses a
-// fixed directory; a real application backs this interface with its tenant table.
+// fixed list; a real application derives its domains from its tenant table. Domains
+// are opaque labels to the access engine, so the application owning this list is also
+// the one responsible for its validity.
 package stations
 
 import (
-	"context"
 	"slices"
 
-	"github.com/cccteam/access"
+	"github.com/cccteam/ccc/accesstypes"
 )
 
-var _ access.Domains = &Directory{}
+var directory = []accesstypes.Domain{"station-alpha", "station-beta"}
 
-// Directory is the fixed list of demo stations.
-type Directory struct {
-	ids []string
-}
-
-// NewDirectory constructs the demo station directory.
-func NewDirectory() *Directory {
-	return &Directory{ids: []string{"station-alpha", "station-beta"}}
-}
-
-// DomainIDs implements access.Domains.
-func (d *Directory) DomainIDs(_ context.Context) ([]string, error) {
-	return slices.Clone(d.ids), nil
-}
-
-// DomainExists implements access.Domains.
-func (d *Directory) DomainExists(_ context.Context, domain string) (bool, error) {
-	return slices.Contains(d.ids, domain), nil
+// Domains returns the demo stations as permission domains: the domain universe the
+// bootstrap passes to access.MigrateRoles (the global domain is always included
+// implicitly by the engine).
+func Domains() []accesstypes.Domain {
+	return slices.Clone(directory)
 }

@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"testing"
 
+	"cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
+	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/ccc/resource/starport/pkg/stations"
 	initiator "github.com/cccteam/db-initiator"
 )
 
 // TestBootstrap runs the full bootstrap against a Spanner emulator and asserts the
 // provisioned access state end to end: generated collection → MigrateRoles → access
-// engine → RequireResources, including domain partitioning of the demo user's grants.
+// engine → CheckUser, including domain partitioning of the demo user's grants.
 func TestBootstrap(t *testing.T) {
 	if testing.Short() {
 		t.Skip("bootstrap requires the Spanner emulator")
@@ -49,10 +50,26 @@ func TestBootstrap(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 
-	client, err := access.New(stations.NewDirectory(), access.NewSpannerAdapter(databasePath(), accessPoliciesTable))
+	spannerClient, err := spanner.NewClient(ctx, databasePath())
+	if err != nil {
+		t.Fatalf("spanner.NewClient() error = %v", err)
+	}
+	t.Cleanup(spannerClient.Close)
+
+	store, err := spannerstore.New(spannerClient)
+	if err != nil {
+		t.Fatalf("spannerstore.New() error = %v", err)
+	}
+
+	client, err := access.New(store)
 	if err != nil {
 		t.Fatalf("access.New() error = %v", err)
 	}
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Log(err)
+		}
+	})
 
 	const demoUser = accesstypes.User("demo")
 
@@ -116,12 +133,12 @@ func TestBootstrap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ok, missing, err := client.RequireResources(ctx, demoUser, tt.domain, tt.perm, tt.resource)
+			missing, err := client.CheckUser(ctx, demoUser, tt.domain, tt.perm, tt.resource)
 			if err != nil {
-				t.Fatalf("RequireResources() error = %v", err)
+				t.Fatalf("CheckUser() error = %v", err)
 			}
-			if ok != tt.wantOK {
-				t.Errorf("RequireResources(%s, %s, %s, %s) = %v (missing %v), want %v", demoUser, tt.domain, tt.perm, tt.resource, ok, missing, tt.wantOK)
+			if ok := len(missing) == 0; ok != tt.wantOK {
+				t.Errorf("CheckUser(%s, %s, %s, %s) = %v (missing %v), want %v", demoUser, tt.domain, tt.perm, tt.resource, ok, missing, tt.wantOK)
 			}
 		})
 	}
