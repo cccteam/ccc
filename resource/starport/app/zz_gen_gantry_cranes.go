@@ -31,6 +31,9 @@ func (a *App) GantryCranes() http.HandlerFunc {
 		defer span.End()
 
 		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
+		if domain.HasReservedMarker() {
+			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
+		}
 		if ok, err := a.DomainExists(ctx, domain); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		} else if !ok {
@@ -86,6 +89,9 @@ func (a *App) GantryCrane() http.HandlerFunc {
 		id := httpio.Param[ccc.UUID](r, router.GantryCraneID)
 
 		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
+		if domain.HasReservedMarker() {
+			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
+		}
 		if ok, err := a.DomainExists(ctx, domain); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		} else if !ok {

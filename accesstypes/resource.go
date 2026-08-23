@@ -17,6 +17,15 @@ const GlobalResource = Resource("access:global")
 // Resource represents a resource in the authorization system
 type Resource string
 
+// HasReservedMarker reports whether the resource value carries the reserved
+// marker character ':'. Only access-defined sentinels (GlobalResource)
+// legitimately carry it, and a sentinel is code, never data: struct-derived
+// resource names can never contain ':', and generation rejects hand-written
+// names (@manualAddResource constants) that do.
+func (r Resource) HasReservedMarker() bool {
+	return strings.ContainsRune(string(r), reservedMarker)
+}
+
 // ResourceWithTag returns the fully qualified resource name for the resource field with tag
 func (r Resource) ResourceWithTag(tag Tag) Resource {
 	if strings.Contains(string(tag), ".") {

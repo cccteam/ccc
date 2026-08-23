@@ -19,6 +19,12 @@ import (
 func loadCollectionFixture(t *testing.T) *parser.Package {
 	t.Helper()
 
+	return loadFixture(t, "collectionfixture")
+}
+
+func loadFixture(t *testing.T, name string) *parser.Package {
+	t.Helper()
+
 	// Other tests in the package chdir to the module root (client construction does),
 	// so resolve the fixture relative to this source file, not the working directory.
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -29,7 +35,7 @@ func loadCollectionFixture(t *testing.T) *parser.Package {
 	if err != nil {
 		t.Fatalf("os.Getwd() error = %v", err)
 	}
-	fixtureDir, err := filepath.Rel(cwd, filepath.Join(filepath.Dir(thisFile), "testdata", "collectionfixture"))
+	fixtureDir, err := filepath.Rel(cwd, filepath.Join(filepath.Dir(thisFile), "testdata", name))
 	if err != nil {
 		t.Fatalf("filepath.Rel() error = %v", err)
 	}
@@ -38,9 +44,9 @@ func loadCollectionFixture(t *testing.T) *parser.Package {
 	if err != nil {
 		t.Fatalf("parser.LoadPackages() error = %v", err)
 	}
-	pkg := pkgs["collectionfixture"]
+	pkg := pkgs[name]
 	if pkg == nil {
-		t.Fatal("fixture package collectionfixture not loaded")
+		t.Fatalf("fixture package %s not loaded", name)
 	}
 
 	return parser.ParsePackage(pkg)
@@ -391,6 +397,24 @@ func Test_manualRegistrationsFromConstants(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("manualRegistrationsFromConstants() mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// Test_manualRegistrationsFromConstants_reservedMarker pins that a hand-written
+// resource name carrying the reserved marker ':' is a generation error — struct-derived
+// names can never contain it, so @manualAddResource constants are the one ingestion
+// point where a caller-authored name could collide with an access-defined sentinel.
+func Test_manualRegistrationsFromConstants_reservedMarker(t *testing.T) {
+	t.Parallel()
+
+	pkg := loadFixture(t, "reservedmarkerfixture")
+
+	_, err := manualRegistrationsFromConstants(pkg.Constants)
+	if err == nil {
+		t.Fatal("manualRegistrationsFromConstants() error = nil, want reserved-marker rejection")
+	}
+	if !strings.Contains(err.Error(), "':' is reserved for access-defined markers") {
+		t.Errorf("manualRegistrationsFromConstants() error = %v, want reserved-marker message", err)
 	}
 }
 

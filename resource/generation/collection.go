@@ -44,6 +44,14 @@ func manualRegistrationsFromConstants(constants []*parser.Constant) ([]ManualReg
 			continue
 		}
 
+		// Struct-derived resource names can never contain the reserved marker ':'
+		// (Go identifiers), but a hand-written constant can — reject it here so a
+		// caller-authored name can never collide with an access-defined sentinel
+		// like accesstypes.GlobalResource.
+		if accesstypes.Resource(c.Value()).HasReservedMarker() {
+			return nil, errors.Newf("constant %q: resource name %q: ':' is reserved for access-defined markers", c.Name(), c.Value())
+		}
+
 		for arg := range annotations.Const.Get(manualAddResourceKeyword).Seq() {
 			registration, err := parseManualAddResourceArgs(c, arg)
 			if err != nil {

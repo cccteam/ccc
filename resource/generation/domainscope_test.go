@@ -382,6 +382,7 @@ func Test_handlerContent_domainSource(t *testing.T) {
 			handlerType: ListHandler,
 			wantContains: []string{
 				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
+				"if domain.HasReservedMarker() {",
 				"if ok, err := a.DomainExists(ctx, domain); err != nil {",
 				`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
 				"decoder.Decode(r, a.UserPermissions(r), domain)",
@@ -525,6 +526,7 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				`case "stations":`,
 				`op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")`,
 				`domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)`,
+				`if domain.HasReservedMarker() {`,
 				`if ok, err := a.DomainExists(ctx, domain); err != nil {`,
 				`httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)`,
 				`fossilDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)`,

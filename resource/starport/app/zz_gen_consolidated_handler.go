@@ -267,6 +267,9 @@ func (a *App) PatchResources() http.HandlerFunc {
 					}
 
 					domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
+					if domain.HasReservedMarker() {
+						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
+					}
 					if ok, err := a.DomainExists(ctx, domain); err != nil {
 						return errors.Wrap(err, "DomainExists()")
 					} else if !ok {
