@@ -180,6 +180,34 @@ func (mr *MockHandlersMockRecorder) DockingBays() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DockingBays", reflect.TypeOf((*MockHandlers)(nil).DockingBays))
 }
 
+// GantryCrane mocks base method.
+func (m *MockHandlers) GantryCrane() http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GantryCrane")
+	ret0, _ := ret[0].(http.HandlerFunc)
+	return ret0
+}
+
+// GantryCrane indicates an expected call of GantryCrane.
+func (mr *MockHandlersMockRecorder) GantryCrane() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GantryCrane", reflect.TypeOf((*MockHandlers)(nil).GantryCrane))
+}
+
+// GantryCranes mocks base method.
+func (m *MockHandlers) GantryCranes() http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GantryCranes")
+	ret0, _ := ret[0].(http.HandlerFunc)
+	return ret0
+}
+
+// GantryCranes indicates an expected call of GantryCranes.
+func (mr *MockHandlersMockRecorder) GantryCranes() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GantryCranes", reflect.TypeOf((*MockHandlers)(nil).GantryCranes))
+}
+
 // PatchBerths mocks base method.
 func (m *MockHandlers) PatchBerths() http.HandlerFunc {
 	m.ctrl.T.Helper()

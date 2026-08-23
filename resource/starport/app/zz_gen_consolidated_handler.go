@@ -12,6 +12,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/pkg/resources"
+	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
@@ -34,6 +35,14 @@ func (a *App) PatchResources() http.HandlerFunc {
 		MaxTonnage int64    `json:"maxTonnage"`
 	}
 	dockingBayDecoder := NewDecoder[resources.DockingBay, dockingBayRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+
+	type gantryCraneRequest struct {
+		ID          ccc.UUID `json:"-"`
+		Callsign    string   `json:"callsign"`
+		LiftTonnage int64    `json:"liftTonnage"`
+		Operational bool     `json:"operational"`
+	}
+	gantryCraneDecoder := NewDecoder[resources.GantryCrane, gantryCraneRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type shipRequest struct {
 		ID           ccc.UUID     `json:"-"`
@@ -68,6 +77,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 			eventSource = resource.UserEvent(ctx)
 			resp        response
 		)
+		userPermissions := a.UserPermissions(r)
 
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			resp = response{}
@@ -83,7 +93,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 				switch httpio.Param[string](op.Req, "resource") {
 				case "cargo-manifests":
-					patchSet, err := cargoManifestDecoder.DecodeOperation(op, a.UserPermissions(op.Req), accesstypes.GlobalDomain)
+					patchSet, err := cargoManifestDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)
 					if err != nil {
 						return errors.Wrap(err, "cargoManifestDecoder.DecodeOperation()")
 					}
@@ -114,7 +124,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						}
 					}
 				case "docking-bays":
-					patchSet, err := dockingBayDecoder.DecodeOperation(op, a.UserPermissions(op.Req), accesstypes.GlobalDomain)
+					patchSet, err := dockingBayDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)
 					if err != nil {
 						return errors.Wrap(err, "dockingBayDecoder.DecodeOperation()")
 					}
@@ -146,7 +156,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						}
 					}
 				case "ships":
-					patchSet, err := shipDecoder.DecodeOperation(op, a.UserPermissions(op.Req), accesstypes.GlobalDomain)
+					patchSet, err := shipDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)
 					if err != nil {
 						return errors.Wrap(err, "shipDecoder.DecodeOperation()")
 					}
@@ -178,7 +188,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						}
 					}
 				case "supply-crates":
-					patchSet, err := supplyCrateDecoder.DecodeOperation(op, a.UserPermissions(op.Req), accesstypes.GlobalDomain)
+					patchSet, err := supplyCrateDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)
 					if err != nil {
 						return errors.Wrap(err, "supplyCrateDecoder.DecodeOperation()")
 					}
@@ -208,6 +218,55 @@ func (a *App) PatchResources() http.HandlerFunc {
 						if err := resources.NewSupplyCrateDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 							return errors.Wrap(handleError[resources.SupplyCrate](err), "resources.SupplyCrateDeletePatch.Buffer()")
 						}
+					}
+				case "stations":
+					op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")
+					if err != nil {
+						return errors.Wrap(err, "resource.Operation.WithPrefixPattern()")
+					}
+
+					domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
+					if ok, err := a.DomainExists(ctx, domain); err != nil {
+						return errors.Wrap(err, "DomainExists()")
+					} else if !ok {
+						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
+					}
+
+					switch httpio.Param[string](op.Req, "resource") {
+					case "gantry-cranes":
+						patchSet, err := gantryCraneDecoder.DecodeOperation(op, userPermissions, domain)
+						if err != nil {
+							return errors.Wrap(err, "gantryCraneDecoder.DecodeOperation()")
+						}
+
+						req, err := op.ReqWithPattern("/stations/{stationID}/{resource}/{id}")
+						if err != nil {
+							return errors.Wrap(err, "op.ReqWithPattern()")
+						}
+
+						switch op.Type {
+						case resource.OperationCreate:
+							patch, err := resources.NewGantryCraneCreatePatchFromPatchSet(patchSet)
+							if err != nil {
+								return errors.Wrap(err, "gantryCraneCreatePatchFromPatchSet()")
+							}
+							if err := patch.Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[resources.GantryCrane](err), "resources.GantryCraneCreatePatch.Buffer()")
+							}
+							resp["gantryCranes"] = append(resp["gantryCranes"], patch.ID())
+						case resource.OperationUpdate:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewGantryCraneUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[resources.GantryCrane](err), "resources.GantryCraneUpdatePatch.Buffer()")
+							}
+						case resource.OperationDelete:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewGantryCraneDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[resources.GantryCrane](err), "resources.GantryCraneDeletePatch.Buffer()")
+							}
+						}
+					default:
+						return httpio.NewBadRequestMessagef("unknown domain-scoped resource %q in operation path", httpio.Param[string](op.Req, "resource"))
 					}
 				default:
 					return httpio.NewBadRequestMessagef("unknown resource %q", httpio.Param[string](op.Req, "resource"))

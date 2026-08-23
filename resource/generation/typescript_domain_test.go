@@ -20,6 +20,7 @@ func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 	tests := []struct {
 		name            string
 		scope           accesstypes.PermissionScope
+		consolidated    bool
 		hasDomainScoped bool
 		wantContains    []string
 		wantNotContains []string
@@ -35,6 +36,7 @@ func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 				"export const ResourceScopes: Record<Resource, PermissionScope> = {",
 				"import { PermissionScope, PermissionScopes, Resources } from './zz_gen_constants';",
 			},
+			wantNotContains: []string{"WidgetsOperation", "ConsolidatedOperation"},
 		},
 		{
 			name:  "global resource renders a bare route and no domain param export",
@@ -48,6 +50,28 @@ func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 				"stations/{stationID}",
 			},
 		},
+		{
+			name:         "consolidated global resource gets a domainless operation type",
+			scope:        "",
+			consolidated: true,
+			wantContains: []string{
+				"export type OperationType = 'add' | 'patch' | 'remove';",
+				"export interface WidgetsOperation {",
+				"  path: '/widgets' | `/widgets/${string}`;",
+				"  value?: Partial<Widgets>;",
+				"export type ConsolidatedOperation = WidgetsOperation;",
+			},
+		},
+		{
+			name:            "consolidated domain-scoped resource requires the domain segment in its operation paths",
+			scope:           accesstypes.DomainPermissionScope,
+			consolidated:    true,
+			hasDomainScoped: true,
+			wantContains: []string{
+				"  path: `/stations/${string}/widgets` | `/stations/${string}/widgets/${string}`;",
+				"export type ConsolidatedOperation = WidgetsOperation;",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -56,16 +80,19 @@ func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 
 			res := fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
 				res.PermissionScope = tt.scope
+				res.IsConsolidated = tt.consolidated
 			})
 
 			c := &client{}
 			out, err := c.generateTemplateOutput("typescriptResourcesTemplate", typescriptResourcesTemplate, tsResourcesData{
-				File:              &typescriptGenerator{client: c},
-				Resources:         []*resourceInfo{res},
-				GenPrefix:         "zz_gen",
-				DomainRoutePrefix: "stations/{stationID}",
-				DomainRouteParam:  "stationID",
-				HasDomainScoped:   tt.hasDomainScoped,
+				File:                &typescriptGenerator{client: c},
+				Resources:           []*resourceInfo{res},
+				GenPrefix:           "zz_gen",
+				DomainRoutePrefix:   "stations/{stationID}",
+				DomainRoutePrefixTS: "stations/${string}",
+				DomainRouteParam:    "stationID",
+				HasDomainScoped:     tt.hasDomainScoped,
+				HasConsolidated:     tt.consolidated,
 			})
 			if err != nil {
 				t.Fatalf("generateTemplateOutput() error = %v", err)

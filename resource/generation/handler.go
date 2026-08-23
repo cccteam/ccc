@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -43,7 +44,7 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		}
 	}
 
-	consolidatedResources, err := consolidatedPatchResources(r.resources)
+	consolidatedResources, err := r.consolidatedPatchResources()
 	if err != nil {
 		return err
 	}
@@ -58,16 +59,17 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 }
 
 // consolidatedPatchResources returns the resources served by the consolidated patch
-// handler. Temporary guard: the consolidated route spans many resources and has no
-// domain source until per-op domains land (Series D2), which deletes this error.
-func consolidatedPatchResources(resources []*resourceInfo) ([]*resourceInfo, error) {
+// handler. Domain-scoped resources participate with domain-embedded operation paths
+// (/{segment}/{domain}/{resource}/...), so no consolidated resource may be named like
+// the domain route segment — that name is the batch dispatcher's descent case.
+func (r *resourceGenerator) consolidatedPatchResources() ([]*resourceInfo, error) {
 	var consolidated []*resourceInfo
-	for _, res := range resources {
+	for _, res := range r.resources {
 		if !res.IsConsolidated {
 			continue
 		}
-		if res.IsDomainScoped() {
-			return nil, errors.Newf("resource %s: domain-scoped resources are not yet supported in the consolidated patch handler; per-op domains land in Series D2", res.Name())
+		if kebab := strcase.ToKebab(r.pluralize(res.Name())); kebab == r.domainRouteSegment {
+			return nil, errors.Newf("resource %s: its route name %q collides with the domain route segment; rename the resource or choose another segment via WithDomainRoute", res.Name(), kebab)
 		}
 		consolidated = append(consolidated, res)
 	}
@@ -113,10 +115,30 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 	fileName := generatedGoFileName(consolidatedHandlerOutputName)
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
+	domainPatternPrefix := fmt.Sprintf("/%s/{%s}", r.domainRouteSegment, r.domainRouteParam)
+	var globalCases, domainCases []consolidatedCaseData
+	for _, res := range resources {
+		c := consolidatedCaseData{
+			resourceInfo:    res,
+			ResourcePackage: r.resource.Package(),
+			ReceiverName:    r.receiverName,
+		}
+		if res.IsDomainScoped() {
+			c.DomainPatternPrefix = domainPatternPrefix
+			domainCases = append(domainCases, c)
+		} else {
+			globalCases = append(globalCases, c)
+		}
+	}
+
 	if err := r.writeFormattedGoFile(destinationFilePath, "consolidatedPatchHandler", consolidatedPatchTemplate, &consolidatedPatchData{
 		Source:              r.resource.Dir(),
 		LocalPackageImports: r.localPackageImports(),
 		Resources:           resources,
+		GlobalCases:         globalCases,
+		DomainCases:         domainCases,
+		DomainRouteSegment:  r.domainRouteSegment,
+		DomainPatternPrefix: domainPatternPrefix,
 		Package:             r.handler.Package(),
 		ResourcePackage:     r.resource.Package(),
 		ApplicationName:     r.applicationName,

@@ -90,6 +90,10 @@ const (
 	defaultDomainRouteParam   = "domain"
 )
 
+// defaultApplicationName is the generated application struct's name when
+// WithApplicationName is not used.
+const defaultApplicationName = "App"
+
 // WithDomainRoute customizes the route segment pair that domain-scoped resources
 // (@permissionScope(domain)) are served under. segment is the static path segment and
 // paramName the route parameter name: WithDomainRoute("organizations", "organizationID")
@@ -411,7 +415,7 @@ func applyResourceGeneratorDefaults(g *resourceGenerator) error {
 		g.spannerEmulatorVersion = "latest"
 	}
 	if g.applicationName == "" {
-		g.applicationName = "App"
+		g.applicationName = defaultApplicationName
 	}
 	g.receiverName = strings.ToLower(string(g.applicationName[0]))
 	if g.domainRouteSegment == "" {

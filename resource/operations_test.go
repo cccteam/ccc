@@ -477,3 +477,73 @@ func TestOperationsWithPrefix(t *testing.T) {
 		})
 	}
 }
+
+func TestOperation_WithPrefixPattern(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		body           string
+		pattern        string
+		wantParams     map[string]string
+		wantErr        bool
+		reqWithPattern string // when set, ReqWithPattern must succeed on the re-anchored op
+	}{
+		{
+			name:       "patch operation binds the descent params",
+			body:       `[{"op":"patch","path":"/stations/station-alpha/cranes/abc","value":{"a":1}}]`,
+			pattern:    "/stations/{stationID}/{resource}",
+			wantParams: map[string]string{"stationID": "station-alpha", "resource": "cranes"},
+			// The PK re-parse must resolve against the re-anchored, longer prefix.
+			reqWithPattern: "/stations/{stationID}/{resource}/{id}",
+		},
+		{
+			name:       "create without id uses the re-anchored prefix for create-path semantics",
+			body:       `[{"op":"add","path":"/stations/station-alpha/cranes","value":{"a":1}}]`,
+			pattern:    "/stations/{stationID}/{resource}",
+			wantParams: map[string]string{"stationID": "station-alpha", "resource": "cranes"},
+			// Without re-anchoring, the original two-segment prefix would reject this
+			// path as "not allowed for create operation".
+			reqWithPattern: "/stations/{stationID}/{resource}/{id}",
+		},
+		{
+			name:    "path shorter than the pattern does not match",
+			body:    `[{"op":"patch","path":"/stations","value":{"a":1}}]`,
+			pattern: "/stations/{stationID}/{resource}",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := &http.Request{Method: "POST", Body: io.NopCloser(bytes.NewBufferString(tt.body))}
+			for op, err := range Operations(r, "/{resource}", MatchPrefix()) {
+				if err != nil {
+					t.Fatalf("Operations() error = %v", err)
+				}
+
+				got, err := op.WithPrefixPattern(tt.pattern)
+				if (err != nil) != tt.wantErr {
+					t.Fatalf("WithPrefixPattern() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				if tt.wantErr {
+					return
+				}
+
+				for key, want := range tt.wantParams {
+					if v := httpio.Param[string](got.Req, httpio.ParamType(key)); v != want {
+						t.Errorf("param %s = %q, want %q", key, v, want)
+					}
+				}
+
+				if tt.reqWithPattern != "" {
+					if _, err := got.ReqWithPattern(tt.reqWithPattern); err != nil {
+						t.Errorf("ReqWithPattern(%q) error = %v", tt.reqWithPattern, err)
+					}
+				}
+			}
+		})
+	}
+}

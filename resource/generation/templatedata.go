@@ -72,9 +72,25 @@ type consolidatedPatchData struct {
 	Source              string
 	LocalPackageImports string
 	Resources           []*resourceInfo
+	// GlobalCases and DomainCases split Resources by permission scope: global cases
+	// dispatch on the operation path's first segment, domain cases dispatch under the
+	// domain route segment's descent case with the domain bound from the path.
+	GlobalCases         []consolidatedCaseData
+	DomainCases         []consolidatedCaseData
+	DomainRouteSegment  string
+	DomainPatternPrefix string // "/stations/{stationID}" — the chi pattern the descent case prefix-matches
 	Package             string
 	ResourcePackage     string
 	ApplicationName     string
+	ReceiverName        string
+}
+
+// consolidatedCaseData is one resource case of the consolidated dispatch, carrying the
+// file-level values the shared case template needs alongside the resource.
+type consolidatedCaseData struct {
+	*resourceInfo
+	DomainPatternPrefix string // "" for global cases
+	ResourcePackage     string
 	ReceiverName        string
 }
 
@@ -192,10 +208,14 @@ type tsResourcesData struct {
 	GenPrefix         string
 	// DomainRoutePrefix is the route pair domain-scoped routes are served under
 	// ("stations/{stationID}"), rendered ahead of their route value; frontends
-	// interpolate the parameter token.
-	DomainRoutePrefix string
-	DomainRouteParam  string
-	HasDomainScoped   bool
+	// interpolate the parameter token. DomainRoutePrefixTS is the same pair as a
+	// TypeScript template-literal fragment ("stations/${string}") for operation path
+	// types.
+	DomainRoutePrefix   string
+	DomainRoutePrefixTS string
+	DomainRouteParam    string
+	HasDomainScoped     bool
+	HasConsolidated     bool
 }
 
 type tsMethodsData struct {

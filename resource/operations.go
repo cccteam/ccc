@@ -57,6 +57,25 @@ func (o *Operation) ReqWithPattern(pattern string, opts ...Option) (*http.Reques
 	return o.Req.WithContext(ctx), nil
 }
 
+// WithPrefixPattern returns a copy of the operation re-anchored to a longer path
+// prefix: the pattern is prefix-matched against the operation's path, binding its
+// params into the request context, and the copy's create-path semantics use the new,
+// longer prefix. The consolidated handler uses it to descend into the domain route
+// segment (binding the domain param) before dispatching on the resource segment.
+func (o *Operation) WithPrefixPattern(pattern string) (*Operation, error) {
+	method, err := httpMethod(string(o.Type))
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, pathPrefix, err := withParams(o.Req.Context(), method, pattern, o.Req.URL.Path, o.pathPrefix, options{matchPrefix: true})
+	if err != nil {
+		return nil, err
+	}
+
+	return &Operation{Type: o.Type, Req: o.Req.WithContext(ctx), pathPrefix: pathPrefix}, nil
+}
+
 type patchOperation struct {
 	Op    string          `json:"op"`
 	Path  string          `json:"path"`

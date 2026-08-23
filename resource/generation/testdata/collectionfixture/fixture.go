@@ -90,6 +90,13 @@ type (
 	}
 )
 
+// Station exists to pin the domain-route-segment collision guard: its route name
+// ("stations") equals the segment the consolidated dispatcher descends on.
+type Station struct {
+	ID   ccc.UUID `spanner:"Id"`
+	Name string   `spanner:"Name"`
+}
+
 // Antique retains a stale perm tag; the validator tests pin its rejection.
 type Antique struct {
 	ID   ccc.UUID `spanner:"Id"`

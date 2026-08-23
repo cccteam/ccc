@@ -33,9 +33,11 @@ func run(ctx context.Context) error {
 		generation.WithRPC("pkg/rpc"),
 		// CrewMember is excluded from consolidation so the app exercises both mutation
 		// surfaces: the consolidated PATCH /api/resources handler and a standalone
-		// per-resource PATCH /api/crew-members handler. Berth is excluded because it is
-		// domain-scoped: the consolidated handler cannot carry a domain yet, so including
-		// it is a generation error until the consolidated payload gains a per-op domain.
+		// per-resource PATCH /api/crew-members handler. Berth is excluded BY CHOICE so a
+		// domain-scoped resource keeps exercising the standalone domain-scoped surface —
+		// its routes are load-bearing for the frozen domain-partition suite. GantryCrane
+		// is the domain-scoped resource inside the consolidated set: its operations carry
+		// the domain in the path (/stations/{stationID}/gantry-cranes/...).
 		generation.WithConsolidatedHandlers("resources", true, "CrewMember", "Berth"),
 		generation.WithSpannerEmulatorVersion("1.5.55"),
 		generation.GenerateTypescript("gui/src/app/core/service",

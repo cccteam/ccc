@@ -250,9 +250,13 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 	begin := time.Now()
 	log.Println("Starting resource metadata generation...")
 	hasDomainScoped := false
+	hasConsolidated := false
 	for _, res := range t.resources {
 		if res.IsDomainScoped() {
 			hasDomainScoped = true
+		}
+		if res.IsConsolidated {
+			hasConsolidated = true
 		}
 	}
 	for _, res := range t.computedResources {
@@ -262,14 +266,16 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 	}
 
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, tsResourcesData{
-		File:              t,
-		Resources:         t.resources,
-		ComputedResources: t.computedResources,
-		ConsolidatedRoute: t.ConsolidatedRoute,
-		GenPrefix:         genPrefix,
-		DomainRoutePrefix: fmt.Sprintf("%s/{%s}", t.domainRouteSegment, t.domainRouteParam),
-		DomainRouteParam:  t.domainRouteParam,
-		HasDomainScoped:   hasDomainScoped,
+		File:                t,
+		Resources:           t.resources,
+		ComputedResources:   t.computedResources,
+		ConsolidatedRoute:   t.ConsolidatedRoute,
+		GenPrefix:           genPrefix,
+		DomainRoutePrefix:   fmt.Sprintf("%s/{%s}", t.domainRouteSegment, t.domainRouteParam),
+		DomainRoutePrefixTS: t.domainRouteSegment + "/${string}",
+		DomainRouteParam:    t.domainRouteParam,
+		HasDomainScoped:     hasDomainScoped,
+		HasConsolidated:     hasConsolidated,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

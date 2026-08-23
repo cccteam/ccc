@@ -18,6 +18,7 @@ const (
 	CargoManifestLineNumber httpio.ParamType = "cargoManifestLineNumber"
 	CrewMemberID            httpio.ParamType = "crewMemberID"
 	DockingBayID            httpio.ParamType = "dockingBayID"
+	GantryCraneID           httpio.ParamType = "gantryCraneID"
 	ShipID                  httpio.ParamType = "shipID"
 	SupplyCrateID           httpio.ParamType = "supplyCrateID"
 )
@@ -40,6 +41,9 @@ type GeneratedHandlers interface {
 
 	DockingBays() http.HandlerFunc
 	DockingBay() http.HandlerFunc
+
+	GantryCranes() http.HandlerFunc
+	GantryCrane() http.HandlerFunc
 
 	Ships() http.HandlerFunc
 	Ship() http.HandlerFunc
@@ -90,6 +94,14 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	dockingBayHandler := h.DockingBay()
 	r.Get("/api/docking-bays/{dockingBayID}", dockingBayHandler)
 	r.Post("/api/docking-bays/{dockingBayID}", dockingBayHandler)
+
+	gantryCranesHandler := h.GantryCranes()
+	r.Get("/api/stations/{stationID}/gantry-cranes", gantryCranesHandler)
+	r.Post("/api/stations/{stationID}/gantry-cranes", gantryCranesHandler)
+
+	gantryCraneHandler := h.GantryCrane()
+	r.Get("/api/stations/{stationID}/gantry-cranes/{gantryCraneID}", gantryCraneHandler)
+	r.Post("/api/stations/{stationID}/gantry-cranes/{gantryCraneID}", gantryCraneHandler)
 
 	shipsHandler := h.Ships()
 	r.Get("/api/ships", shipsHandler)

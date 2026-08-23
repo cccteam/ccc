@@ -22,6 +22,7 @@ export const Resources = {
   CargoManifests: 'CargoManifests' as Resource,
   CrewMembers: 'CrewMembers' as Resource,
   DockingBays: 'DockingBays' as Resource,
+  GantryCranes: 'GantryCranes' as Resource,
   Ships: 'Ships' as Resource,
   SupplyCrates: 'SupplyCrates' as Resource,
 };
@@ -96,6 +97,21 @@ export namespace DockingBays {
     id: 'DockingBays.id' as Resource,
     maxTonnage: 'DockingBays.maxTonnage' as Resource,
     name: 'DockingBays.name' as Resource,
+  };
+}
+
+export namespace GantryCranes {
+  export const fieldName = {
+    callsign: 'callsign' as FieldName,
+    id: 'id' as FieldName,
+    liftTonnage: 'liftTonnage' as FieldName,
+    operational: 'operational' as FieldName,
+  };
+  export const resourceName = {
+    callsign: 'GantryCranes.callsign' as Resource,
+    id: 'GantryCranes.id' as Resource,
+    liftTonnage: 'GantryCranes.liftTonnage' as Resource,
+    operational: 'GantryCranes.operational' as Resource,
   };
 }
 
@@ -318,6 +334,41 @@ const Mappings: PermissionMappings = {
     [Permissions.Update]: true,
   },
   [DockingBays.resourceName.name]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [Resources.GantryCranes]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: true,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [GantryCranes.resourceName.callsign]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [GantryCranes.resourceName.id]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: false,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [GantryCranes.resourceName.liftTonnage]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [GantryCranes.resourceName.operational]: {
     [Permissions.Create]: true,
     [Permissions.Delete]: false,
     [Permissions.List]: true,

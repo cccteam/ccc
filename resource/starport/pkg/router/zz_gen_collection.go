@@ -32,6 +32,17 @@ func Collection() *resource.GeneratedCollection {
 				ImmutableTags: []accesstypes.Tag{"designation"},
 			},
 			{
+				Name:        "GantryCranes",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
+				Tags: []resource.TagData{
+					{Name: "callsign", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "id"},
+					{Name: "liftTonnage", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "operational", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+				},
+			},
+			{
 				Name:        "AuthorizeLaunch",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},

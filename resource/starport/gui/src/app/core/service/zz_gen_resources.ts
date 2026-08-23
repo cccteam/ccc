@@ -33,6 +33,13 @@ export interface DockingBays {
   maxTonnage: number;
 }
 
+export interface GantryCranes {
+  id: string;
+  callsign: string;
+  liftTonnage: number;
+  operational: boolean;
+}
+
 export interface Ships {
   id: string;
   registryCode: string;
@@ -96,6 +103,16 @@ const resourceMap: ResourceMap = {
       { fieldName: 'maxTonnage', displayType: 'number', required: true, isIndex: false },
     ],
   },
+  [Resources.GantryCranes]: {
+    route: 'stations/{stationID}/gantry-cranes',
+    consolidatedRoute: 'resources',
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'callsign', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'liftTonnage', displayType: 'number', required: true, isIndex: false },
+      { fieldName: 'operational', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
   [Resources.Ships]: {
     route: 'ships',
     consolidatedRoute: 'resources',
@@ -141,6 +158,40 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.CargoManifests]: PermissionScopes.global,
   [Resources.CrewMembers]: PermissionScopes.global,
   [Resources.DockingBays]: PermissionScopes.global,
+  [Resources.GantryCranes]: PermissionScopes.domain,
   [Resources.Ships]: PermissionScopes.global,
   [Resources.SupplyCrates]: PermissionScopes.global,
 };
+
+export type OperationType = 'add' | 'patch' | 'remove';
+
+export interface CargoManifestsOperation {
+  op: OperationType;
+  path: '/cargo-manifests' | `/cargo-manifests/${string}`;
+  value?: Partial<CargoManifests>;
+}
+
+export interface DockingBaysOperation {
+  op: OperationType;
+  path: '/docking-bays' | `/docking-bays/${string}`;
+  value?: Partial<DockingBays>;
+}
+
+export interface GantryCranesOperation {
+  op: OperationType;
+  path: `/stations/${string}/gantry-cranes` | `/stations/${string}/gantry-cranes/${string}`;
+  value?: Partial<GantryCranes>;
+}
+
+export interface ShipsOperation {
+  op: OperationType;
+  path: '/ships' | `/ships/${string}`;
+  value?: Partial<Ships>;
+}
+
+export interface SupplyCratesOperation {
+  op: OperationType;
+  path: '/supply-crates' | `/supply-crates/${string}`;
+  value?: Partial<SupplyCrates>;
+}
+export type ConsolidatedOperation = CargoManifestsOperation | DockingBaysOperation | GantryCranesOperation | ShipsOperation | SupplyCratesOperation;

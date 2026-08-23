@@ -295,14 +295,23 @@ func Test_consolidatedPatchResources(t *testing.T) {
 			wantNames: []string{"Fossil"},
 		},
 		{
-			name: "consolidated domain-scoped resource is a generation error",
+			name: "consolidated domain-scoped resources pass with domain-embedded operation paths",
 			resources: []*resourceInfo{
 				fixtureResource(t, structs, "Vault", func(res *resourceInfo) {
 					res.IsConsolidated = true
 					res.PermissionScope = accesstypes.DomainPermissionScope
 				}),
 			},
-			wantErrContains: "Series D2",
+			wantNames: []string{"Vault"},
+		},
+		{
+			name: "consolidated resource named like the domain route segment is a generation error",
+			resources: []*resourceInfo{
+				fixtureResource(t, structs, "Station", func(res *resourceInfo) {
+					res.IsConsolidated = true
+				}),
+			},
+			wantErrContains: "domain route segment",
 		},
 	}
 
@@ -310,7 +319,13 @@ func Test_consolidatedPatchResources(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := consolidatedPatchResources(tt.resources)
+			r := &resourceGenerator{
+				client:             &client{},
+				domainRouteSegment: "stations",
+				domainRouteParam:   "stationID",
+			}
+			r.resources = tt.resources
+			got, err := r.consolidatedPatchResources()
 			if tt.wantErrContains != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {
 					t.Fatalf("consolidatedPatchResources() error = %v, want error containing %q", err, tt.wantErrContains)
@@ -452,6 +467,104 @@ func Test_domainExistsGuard_spliced(t *testing.T) {
 
 			if !strings.Contains(tt.template, domainExistsGuard) {
 				t.Errorf("template does not splice domainExistsGuard")
+			}
+		})
+	}
+}
+
+// Test_consolidatedTemplate_domainDispatch pins the consolidated handler's two-level
+// dispatch: global resources dispatch on the first path segment, domain-scoped
+// resources dispatch under the domain route segment's descent case with the domain
+// bound from the operation path — and no batch-level domain state exists (cross-domain
+// batches are legal; every operation is checked in its own partition).
+func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+
+	globalCase := consolidatedCaseData{
+		resourceInfo:    fixtureResource(t, structs, "Fossil", func(res *resourceInfo) { res.IsConsolidated = true }),
+		ResourcePackage: "resources",
+		ReceiverName:    "a",
+	}
+	domainCase := consolidatedCaseData{
+		resourceInfo: fixtureResource(t, structs, "Vault", func(res *resourceInfo) {
+			res.IsConsolidated = true
+			res.PermissionScope = accesstypes.DomainPermissionScope
+		}),
+		DomainPatternPrefix: "/stations/{stationID}",
+		ResourcePackage:     "resources",
+		ReceiverName:        "a",
+	}
+
+	tests := []struct {
+		name            string
+		data            consolidatedPatchData
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "global and domain cases dispatch on their own levels",
+			data: consolidatedPatchData{
+				Resources:           []*resourceInfo{globalCase.resourceInfo, domainCase.resourceInfo},
+				GlobalCases:         []consolidatedCaseData{globalCase},
+				DomainCases:         []consolidatedCaseData{domainCase},
+				DomainRouteSegment:  "stations",
+				DomainPatternPrefix: "/stations/{stationID}",
+				Package:             "app",
+				ResourcePackage:     "resources",
+				ApplicationName:     "App",
+				ReceiverName:        "a",
+			},
+			wantContains: []string{
+				`userPermissions := a.UserPermissions(r)`,
+				`case "stations":`,
+				`op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")`,
+				`domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)`,
+				`if ok, err := a.DomainExists(ctx, domain); err != nil {`,
+				`httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)`,
+				`fossilDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)`,
+				`vaultDecoder.DecodeOperation(op, userPermissions, domain)`,
+				`op.ReqWithPattern("/stations/{stationID}/{resource}/{id}"`,
+				`unknown domain-scoped resource %q in operation path`,
+			},
+			wantNotContains: []string{"batchDomain", "UserPermissions(op.Req)"},
+		},
+		{
+			name: "all-global consolidation has no descent case",
+			data: consolidatedPatchData{
+				Resources:           []*resourceInfo{globalCase.resourceInfo},
+				GlobalCases:         []consolidatedCaseData{globalCase},
+				DomainRouteSegment:  "stations",
+				DomainPatternPrefix: "/stations/{stationID}",
+				Package:             "app",
+				ResourcePackage:     "resources",
+				ApplicationName:     "App",
+				ReceiverName:        "a",
+			},
+			wantNotContains: []string{`case "stations":`, "WithPrefixPattern", "DomainExists", "router.Domain"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			out, err := c.generateTemplateOutput("consolidatedPatchTemplate", consolidatedPatchTemplate, tt.data)
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("consolidatedPatchTemplate output missing %q:\n%s", want, out)
+				}
+			}
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(string(out), notWant) {
+					t.Errorf("consolidatedPatchTemplate output must not contain %q:\n%s", notWant, out)
+				}
 			}
 		})
 	}

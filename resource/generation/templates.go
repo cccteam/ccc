@@ -822,6 +822,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 			eventSource = resource.UserEvent(ctx)
 			resp    response
 		)
+		userPermissions := {{ .ReceiverName }}.UserPermissions(r)
 
 		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			resp = response{}
@@ -836,71 +837,29 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 				}
 
 				switch httpio.Param[string](op.Req, "resource") {
-					{{- range $resource := .Resources -}}
-					{{- $primaryKeyType := $resource.PrimaryKeyType }}
-					case "{{ Kebab (Pluralize $resource.Name) }}":
-						patchSet, err := {{ GoCamel $resource.Name}}Decoder.DecodeOperation(op, {{ $.ReceiverName }}.UserPermissions(op.Req), accesstypes.GlobalDomain)
+					{{- range $case := .GlobalCases }}
+					{{- template "consolidatedCase" $case }}
+					{{- end }}
+					{{- if .DomainCases }}
+					case "{{ .DomainRouteSegment }}":
+						op, err := op.WithPrefixPattern("{{ .DomainPatternPrefix }}/{resource}")
 						if err != nil {
-							return errors.Wrap(err, "{{ GoCamel $resource.Name}}Decoder.DecodeOperation()")
+							return errors.Wrap(err, "resource.Operation.WithPrefixPattern()")
 						}
 
-						req, err := op.ReqWithPattern("/{resource}{{ $resource.OperationPathPattern }}"{{ if not $resource.PrimaryKeyIsGeneratedUUID }}, resource.RequireCreatePath(){{ end }})
-						if err != nil {
-							return errors.Wrap(err, "op.ReqWithPattern()")
+						domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
+						if ok, err := {{ .ReceiverName }}.DomainExists(ctx, domain); err != nil {
+							return errors.Wrap(err, "DomainExists()")
+						} else if !ok {
+							return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
 						}
 
-						switch op.Type {
-						case resource.OperationCreate:
-						{{- if $resource.PrimaryKeyIsGeneratedUUID }}
-							patch, err := {{ $resourcePackage }}.New{{ $resource.Name }}CreatePatchFromPatchSet(patchSet)
-							if err != nil {
-								return errors.Wrap(err, "{{ GoCamel $resource.Name}}CreatePatchFromPatchSet()")
-							}
-							if err := patch.Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}CreatePatch.Buffer()")
-							}
-							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.{{ $resource.PrimaryKey.Name }}())
-						{{- else if $resource.HasCompoundPrimaryKey }}
-							{{- range $i, $field := $resource.PrimaryKeys }}
-							id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](req, "id{{ Add $i 1 }}")
+						switch httpio.Param[string](op.Req, "resource") {
+							{{- range $case := .DomainCases }}
+							{{- template "consolidatedCase" $case }}
 							{{- end }}
-							if err := {{ $resourcePackage }}.New{{ $resource.Name }}CreatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}CreatePatch.Buffer()")
-							}
-						{{- else }}
-							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
-							if err := {{ $resourcePackage }}.New{{ $resource.Name }}CreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}CreatePatch.Buffer()")
-							}
-						{{- end }}
-						case resource.OperationUpdate:
-							{{- if $resource.HasCompoundPrimaryKey }}
-							{{- range $i, $field := $resource.PrimaryKeys }}
-							id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](req, "id{{ Add $i 1 }}")
-							{{- end }}
-							if err := {{ $resourcePackage }}.New{{ $resource.Name }}UpdatePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}UpdatePatch.Buffer()")
-							}
-							{{- else}}
-							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
-							if err := {{ $resourcePackage }}.New{{ $resource.Name }}UpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}UpdatePatch.Buffer()")
-							}
-							{{- end }}
-						case resource.OperationDelete:
-							{{- if $resource.HasCompoundPrimaryKey }}
-							{{- range $i, $field := $resource.PrimaryKeys }}
-							id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](req, "id{{ Add $i 1 }}")
-							{{- end }}
-							if err := {{ $resourcePackage }}.New{{ $resource.Name }}DeletePatchFromPatchSet({{- range $i := $resource.PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}DeletePatch.Buffer()")
-							}
-							{{- else }}
-							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
-							if err := {{ $resourcePackage }}.New{{ $resource.Name }}DeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[{{ $resourcePackage }}.{{ $resource.Name }}](err), "{{ $resourcePackage }}.{{ $resource.Name }}DeletePatch.Buffer()")
-							}
-							{{- end }}
+						default:
+							return httpio.NewBadRequestMessagef("unknown domain-scoped resource %q in operation path", httpio.Param[string](op.Req, "resource"))
 						}
 					{{- end }}
 				default:
@@ -915,7 +874,74 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})
-}`
+}
+{{- define "consolidatedCase" }}
+					{{- $primaryKeyType := .PrimaryKeyType }}
+					case "{{ Kebab (Pluralize .Name) }}":
+						patchSet, err := {{ GoCamel .Name}}Decoder.DecodeOperation(op, userPermissions, {{ if .DomainPatternPrefix }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
+						if err != nil {
+							return errors.Wrap(err, "{{ GoCamel .Name}}Decoder.DecodeOperation()")
+						}
+
+						req, err := op.ReqWithPattern("{{ .DomainPatternPrefix }}/{resource}{{ .OperationPathPattern }}"{{ if not .PrimaryKeyIsGeneratedUUID }}, resource.RequireCreatePath(){{ end }})
+						if err != nil {
+							return errors.Wrap(err, "op.ReqWithPattern()")
+						}
+
+						switch op.Type {
+						case resource.OperationCreate:
+						{{- if .PrimaryKeyIsGeneratedUUID }}
+							patch, err := {{ .ResourcePackage }}.New{{ .Name }}CreatePatchFromPatchSet(patchSet)
+							if err != nil {
+								return errors.Wrap(err, "{{ GoCamel .Name}}CreatePatchFromPatchSet()")
+							}
+							if err := patch.Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[{{ .ResourcePackage }}.{{ .Name }}](err), "{{ .ResourcePackage }}.{{ .Name }}CreatePatch.Buffer()")
+							}
+							resp["{{ GoCamel (Pluralize .Name) }}"] = append(resp["{{ GoCamel (Pluralize .Name) }}"], patch.{{ .PrimaryKey.Name }}())
+						{{- else if .HasCompoundPrimaryKey }}
+							{{- range $i, $field := .PrimaryKeys }}
+							id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](req, "id{{ Add $i 1 }}")
+							{{- end }}
+							if err := {{ .ResourcePackage }}.New{{ .Name }}CreatePatchFromPatchSet({{- range $i := .PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[{{ .ResourcePackage }}.{{ .Name }}](err), "{{ .ResourcePackage }}.{{ .Name }}CreatePatch.Buffer()")
+							}
+						{{- else }}
+							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
+							if err := {{ .ResourcePackage }}.New{{ .Name }}CreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[{{ .ResourcePackage }}.{{ .Name }}](err), "{{ .ResourcePackage }}.{{ .Name }}CreatePatch.Buffer()")
+							}
+						{{- end }}
+						case resource.OperationUpdate:
+							{{- if .HasCompoundPrimaryKey }}
+							{{- range $i, $field := .PrimaryKeys }}
+							id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](req, "id{{ Add $i 1 }}")
+							{{- end }}
+							if err := {{ .ResourcePackage }}.New{{ .Name }}UpdatePatchFromPatchSet({{- range $i := .PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[{{ .ResourcePackage }}.{{ .Name }}](err), "{{ .ResourcePackage }}.{{ .Name }}UpdatePatch.Buffer()")
+							}
+							{{- else}}
+							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
+							if err := {{ .ResourcePackage }}.New{{ .Name }}UpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[{{ .ResourcePackage }}.{{ .Name }}](err), "{{ .ResourcePackage }}.{{ .Name }}UpdatePatch.Buffer()")
+							}
+							{{- end }}
+						case resource.OperationDelete:
+							{{- if .HasCompoundPrimaryKey }}
+							{{- range $i, $field := .PrimaryKeys }}
+							id{{ Add $i 1 }} := httpio.Param[{{ $field.Type }}](req, "id{{ Add $i 1 }}")
+							{{- end }}
+							if err := {{ .ResourcePackage }}.New{{ .Name }}DeletePatchFromPatchSet({{- range $i := .PrimaryKeys }}id{{ Add $i 1 }}, {{ end }}patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[{{ .ResourcePackage }}.{{ .Name }}](err), "{{ .ResourcePackage }}.{{ .Name }}DeletePatch.Buffer()")
+							}
+							{{- else }}
+							id := httpio.Param[{{ $primaryKeyType }}](req, "id")
+							if err := {{ .ResourcePackage }}.New{{ .Name }}DeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[{{ .ResourcePackage }}.{{ .Name }}](err), "{{ .ResourcePackage }}.{{ .Name }}DeletePatch.Buffer()")
+							}
+							{{- end }}
+						}
+{{- end }}`
 
 	resourceEnumsTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
 // Source: {{ .Source }}
@@ -1149,6 +1175,17 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.{{ Pluralize $resource.Name }}]: PermissionScopes.{{ if $resource.IsDomainScoped }}domain{{ else }}global{{ end }},
   {{- end }}
 };
+{{ if .HasConsolidated }}
+export type OperationType = 'add' | 'patch' | 'remove';
+{{ range $resource := .Resources }}{{ if $resource.IsConsolidated }}
+export interface {{ Pluralize $resource.Name }}Operation {
+  op: OperationType;
+  path: {{ if $resource.IsDomainScoped }}` + "`" + `/{{ $.DomainRoutePrefixTS }}/{{ Kebab (Pluralize $resource.Name) }}` + "`" + ` | ` + "`" + `/{{ $.DomainRoutePrefixTS }}/{{ Kebab (Pluralize $resource.Name) }}/${string}` + "`" + `{{ else }}'/{{ Kebab (Pluralize $resource.Name) }}' | ` + "`" + `/{{ Kebab (Pluralize $resource.Name) }}/${string}` + "`" + `{{ end }};
+  value?: Partial<{{ Pluralize $resource.Name }}>;
+}
+{{ end }}{{ end -}}
+export type ConsolidatedOperation ={{ $first := true }}{{ range $resource := .Resources }}{{ if $resource.IsConsolidated }}{{ if $first }}{{ $first = false }} {{ else }} | {{ end }}{{ Pluralize $resource.Name }}Operation{{ end }}{{ end }};
+{{ end -}}
 `
 
 	typescriptMethodsTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
