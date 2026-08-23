@@ -242,6 +242,8 @@ func (r *resourceGenerator) buildUnifiedTypescriptGenerator(gc *resource.Generat
 	t.client = r.client
 	t.rc = gc
 	t.routerResources = routerResources
+	t.domainRouteSegment = r.domainRouteSegment
+	t.domainRouteParam = r.domainRouteParam
 
 	return t, nil
 }

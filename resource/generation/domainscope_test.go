@@ -344,25 +344,57 @@ func Test_handlerContent_domainSource(t *testing.T) {
 	tests := []struct {
 		name            string
 		scope           accesstypes.PermissionScope
+		handlerType     HandlerType
 		wantContains    []string
 		wantNotContains []string
 	}{
 		{
-			name:  "global scope passes GlobalDomain",
-			scope: "",
+			name:        "global scope passes GlobalDomain",
+			scope:       "",
+			handlerType: ListHandler,
 			wantContains: []string{
 				"decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalDomain)",
 			},
-			wantNotContains: []string{"router.Domain"},
+			wantNotContains: []string{"router.Domain", "DomainExists"},
 		},
 		{
-			name:  "domain scope reads the route parameter",
-			scope: accesstypes.DomainPermissionScope,
+			name:        "domain scope reads the route parameter and guards unknown domains",
+			scope:       accesstypes.DomainPermissionScope,
+			handlerType: ListHandler,
 			wantContains: []string{
-				"domain := accesstypes.Domain(httpio.Param[string](r, router.Domain))",
+				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
+				"if ok, err := a.DomainExists(ctx, domain); err != nil {",
+				`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
 				"decoder.Decode(r, a.UserPermissions(r), domain)",
 			},
 			wantNotContains: []string{"accesstypes.GlobalDomain"},
+		},
+		{
+			name:        "domain-scoped read handler carries the guard",
+			scope:       accesstypes.DomainPermissionScope,
+			handlerType: ReadHandler,
+			wantContains: []string{
+				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
+				"if ok, err := a.DomainExists(ctx, domain); err != nil {",
+			},
+			wantNotContains: []string{"accesstypes.GlobalDomain"},
+		},
+		{
+			name:        "domain-scoped patch handler guards before the transaction",
+			scope:       accesstypes.DomainPermissionScope,
+			handlerType: PatchHandler,
+			wantContains: []string{
+				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
+				"if ok, err := a.DomainExists(ctx, domain); err != nil {",
+			},
+			wantNotContains: []string{"accesstypes.GlobalDomain"},
+		},
+		{
+			name:            "global-scoped patch handler has no guard",
+			scope:           "",
+			handlerType:     PatchHandler,
+			wantContains:    []string{"accesstypes.GlobalDomain"},
+			wantNotContains: []string{"DomainExists", "router.Domain"},
 		},
 	}
 
@@ -379,7 +411,7 @@ func Test_handlerContent_domainSource(t *testing.T) {
 				applicationName: "TestApp",
 				receiverName:    "a",
 			}
-			out, err := r.handlerContent(ListHandler, res)
+			out, err := r.handlerContent(tt.handlerType, res)
 			if err != nil {
 				t.Fatalf("handlerContent() error = %v", err)
 			}
@@ -393,6 +425,33 @@ func Test_handlerContent_domainSource(t *testing.T) {
 				if strings.Contains(string(out), notWant) {
 					t.Errorf("handlerContent() output must not contain %q:\n%s", notWant, out)
 				}
+			}
+		})
+	}
+}
+
+// Test_domainExistsGuard_spliced pins that every handler template with a domain-scoped
+// branch embeds the shared unknown-domain guard, so no site can silently lose it.
+func Test_domainExistsGuard_spliced(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		template string
+	}{
+		{name: "list template", template: listTemplate},
+		{name: "read template", template: readTemplate},
+		{name: "patch template", template: patchTemplate},
+		{name: "rpc handler template", template: rpcHandlerTemplate},
+		{name: "computed handler template", template: computedResourceHandlerTemplate},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if !strings.Contains(tt.template, domainExistsGuard) {
+				t.Errorf("template does not splice domainExistsGuard")
 			}
 		})
 	}

@@ -365,7 +365,7 @@ func (g *GeneratedCollection) TypescriptData() *TypescriptData {
 		Resources:             g.Resources(),
 		ResourceTags:          g.tags(),
 		ResourcePermissionMap: g.resourcePermissionMap(),
-		Domains:               g.domains(),
+		PermissionScopes:      g.permissionScopes(),
 	}
 }
 
@@ -537,13 +537,17 @@ func (g *GeneratedCollection) resourcePermissionMap() permissionMap {
 	return permMap
 }
 
-func (g *GeneratedCollection) domains() []accesstypes.PermissionScope {
-	domains := make([]accesstypes.PermissionScope, 0, len(g.resourceStore))
-	for domain := range g.resourceStore {
-		domains = append(domains, domain)
+// permissionScopes returns the permission scopes the collection registers resources
+// under, sorted for deterministic generated output. These are scopes (global/domain),
+// not tenant domains — the tenant universe is app-owned.
+func (g *GeneratedCollection) permissionScopes() []accesstypes.PermissionScope {
+	scopes := make([]accesstypes.PermissionScope, 0, len(g.resourceStore))
+	for scope := range g.resourceStore {
+		scopes = append(scopes, scope)
 	}
+	slices.Sort(scopes)
 
-	return domains
+	return scopes
 }
 
 // collectionDataFrom canonicalizes a collection's stores: resources sorted by scope then

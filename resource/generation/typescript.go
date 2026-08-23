@@ -17,13 +17,17 @@ import (
 
 type typescriptGenerator struct {
 	*client
-	genPermission          bool
-	genMetadata            bool
-	genEnums               bool
-	typescriptDestination  string
-	typescriptOverrides    map[string]string
-	rc                     *resource.GeneratedCollection
-	routerResources        []accesstypes.Resource
+	genPermission         bool
+	genMetadata           bool
+	genEnums              bool
+	typescriptDestination string
+	typescriptOverrides   map[string]string
+	rc                    *resource.GeneratedCollection
+	routerResources       []accesstypes.Resource
+	// domainRouteSegment/domainRouteParam mirror the resourceGenerator's route pair so
+	// TypeScript route metadata can render the domain segment of domain-scoped routes.
+	domainRouteSegment     string
+	domainRouteParam       string
 	spannerEmulatorVersion string
 }
 
@@ -245,12 +249,27 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 func (t *typescriptGenerator) generateResourceMetadata() error {
 	begin := time.Now()
 	log.Println("Starting resource metadata generation...")
+	hasDomainScoped := false
+	for _, res := range t.resources {
+		if res.IsDomainScoped() {
+			hasDomainScoped = true
+		}
+	}
+	for _, res := range t.computedResources {
+		if res.IsDomainScoped() {
+			hasDomainScoped = true
+		}
+	}
+
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, tsResourcesData{
 		File:              t,
 		Resources:         t.resources,
 		ComputedResources: t.computedResources,
 		ConsolidatedRoute: t.ConsolidatedRoute,
 		GenPrefix:         genPrefix,
+		DomainRoutePrefix: fmt.Sprintf("%s/{%s}", t.domainRouteSegment, t.domainRouteParam),
+		DomainRouteParam:  t.domainRouteParam,
+		HasDomainScoped:   hasDomainScoped,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

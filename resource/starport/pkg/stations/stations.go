@@ -19,3 +19,9 @@ var directory = []accesstypes.Domain{"station-alpha", "station-beta"}
 func Domains() []accesstypes.Domain {
 	return slices.Clone(directory)
 }
+
+// Exists reports whether the domain is a known station. It backs the app's
+// DomainExists seam: the generated handlers 404 unknown domains before decoding.
+func Exists(domain accesstypes.Domain) bool {
+	return slices.Contains(directory, domain)
+}

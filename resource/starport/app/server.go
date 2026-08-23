@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -65,7 +66,10 @@ func NewServer(cfg ServerConfigurer) *Server {
 			ResourceClient:  cfg.ResourceClient(),
 			RPCClient:       cfg.RPCClient(),
 			UserPermissions: NewAccessUserPermissions(cfg.Access()),
-			Validator:       cfg.Validator(),
+			DomainExists: func(_ context.Context, domain accesstypes.Domain) (bool, error) {
+				return stations.Exists(domain), nil
+			},
+			Validator: cfg.Validator(),
 		}),
 		PasswordAuth: cfg.Session(),
 		access:       cfg.Access(),

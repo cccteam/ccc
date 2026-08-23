@@ -22,6 +22,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/app"
 	"github.com/cccteam/ccc/resource/starport/pkg/rpc"
+	"github.com/cccteam/ccc/resource/starport/pkg/stations"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/go-playground/validator/v10"
 	"google.golang.org/grpc/codes"
@@ -72,6 +73,9 @@ func newDomainTestApp(db *initiator.SpannerDB, g domainGrants) *app.App {
 		RPCClient:      rpc.NewClient(),
 		UserPermissions: func(*http.Request) resource.UserPermissions {
 			return &domainUserPermissions{byDomain: g}
+		},
+		DomainExists: func(_ context.Context, domain accesstypes.Domain) (bool, error) {
+			return stations.Exists(domain), nil
 		},
 		Validator: validator.New(),
 	})

@@ -190,6 +190,12 @@ type tsResourcesData struct {
 	ComputedResources []*computedResource
 	ConsolidatedRoute string
 	GenPrefix         string
+	// DomainRoutePrefix is the route pair domain-scoped routes are served under
+	// ("stations/{stationID}"), rendered ahead of their route value; frontends
+	// interpolate the parameter token.
+	DomainRoutePrefix string
+	DomainRouteParam  string
+	HasDomainScoped   bool
 }
 
 type tsMethodsData struct {
