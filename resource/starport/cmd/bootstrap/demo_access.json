@@ -170,7 +170,7 @@
       "user": "demo",
       "password": "starport",
       "roles": {
-        "global": ["HarborMaster"],
+        "access:global": ["HarborMaster"],
         "station-alpha": ["DockOperator"]
       }
     }

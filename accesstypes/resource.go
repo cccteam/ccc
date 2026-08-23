@@ -7,7 +7,12 @@ import (
 
 // GlobalResource is the resource used when a permission is applied to the entire application, (i.e. Global level)
 // instead of to a specific resource.
-const GlobalResource = Resource("global")
+//
+// The value carries the reserved marker character ':' so it can never collide
+// with a caller-authored resource name: the access policy stores reject any
+// other ':'-bearing resource at their write boundary, and a resource literally
+// named "global" is ordinary data, distinct from this marker.
+const GlobalResource = Resource("access:global")
 
 const resourcePrefix = "resource:"
 
