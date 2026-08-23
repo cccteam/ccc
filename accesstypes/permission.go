@@ -1,12 +1,5 @@
 package accesstypes
 
-import (
-	"fmt"
-	"strings"
-)
-
-const permissionPrefix = "perm:"
-
 // Permission represents a permission in the authorization system
 type Permission string
 
@@ -71,27 +64,4 @@ const (
 type PermissionDetail struct {
 	Description string
 	Scope       PermissionScope
-}
-
-// UnmarshalPermission unmarshals a permission string into a Permission type.
-func UnmarshalPermission(permission string) Permission {
-	p := Permission(strings.TrimPrefix(permission, permissionPrefix))
-	if !p.isValid() {
-		panic(fmt.Sprintf("invalid permission %q", permission))
-	}
-
-	return p
-}
-
-// Marshal marshals a Permission type into a string.
-func (p Permission) Marshal() string {
-	if !p.isValid() {
-		panic(fmt.Sprintf("invalid permission %q, type can not contain prefix", string(p)))
-	}
-
-	return permissionPrefix + string(p)
-}
-
-func (p Permission) isValid() bool {
-	return !strings.HasPrefix(string(p), permissionPrefix)
 }

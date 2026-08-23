@@ -14,33 +14,8 @@ import (
 // named "global" is ordinary data, distinct from this marker.
 const GlobalResource = Resource("access:global")
 
-const resourcePrefix = "resource:"
-
 // Resource represents a resource in the authorization system
 type Resource string
-
-// UnmarshalResource unmarshals a resource string into a Resource type.
-func UnmarshalResource(resource string) Resource {
-	r := Resource(strings.TrimPrefix(resource, resourcePrefix))
-	if !r.isValid() {
-		panic(fmt.Sprintf("invalid resource %q", resource))
-	}
-
-	return r
-}
-
-// Marshal marshals a Resource type into a string.
-func (r Resource) Marshal() string {
-	if !r.isValid() {
-		panic(fmt.Sprintf("invalid resource %q, type can not contain prefix", string(r)))
-	}
-
-	return resourcePrefix + string(r)
-}
-
-func (r Resource) isValid() bool {
-	return !strings.HasPrefix(string(r), resourcePrefix)
-}
 
 // ResourceWithTag returns the fully qualified resource name for the resource field with tag
 func (r Resource) ResourceWithTag(tag Tag) Resource {
