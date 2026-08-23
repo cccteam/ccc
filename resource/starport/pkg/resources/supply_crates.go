@@ -20,14 +20,14 @@ type (
 	// @validateCreateType(SupplyCrateCreateValidator)
 	SupplyCrate struct {
 		ID             ccc.UUID     `spanner:"Id"`
-		Label          string       `spanner:"Label"          perm:"Read,List,Create,Update"`
-		Quantity       int64        `spanner:"Quantity"       allow_filter:"true"               perm:"Read,List,Create,Update"`
-		Priority       int64        `spanner:"Priority"       perm:"Read,List,Create,Update"`
-		Status         string       `spanner:"Status"         default_create_fn:"defaultStatus" perm:"Read,List,Create,Update"`
-		Barcode        string       `spanner:"Barcode"        conditions:"output_only"          default_create_fn:"defaultBarcode" perm:"Read,List"`
-		Notes          *string      `spanner:"Notes"          conditions:"input_only"           perm:"Create,Update"`
-		InspectorBadge *string      `spanner:"InspectorBadge" allow_filter:"true"               conditions:"pii"                   perm:"Read,List,Create,Update"`
-		AssignedShipID ccc.NullUUID `spanner:"AssignedShipId" perm:"Read,List,Create,Update"`
+		Label          string       `spanner:"Label"`
+		Quantity       int64        `spanner:"Quantity"       allow_filter:"true"`
+		Priority       int64        `spanner:"Priority"`
+		Status         string       `spanner:"Status"         default_create_fn:"defaultStatus"`
+		Barcode        string       `spanner:"Barcode"        conditions:"output_only"          default_create_fn:"defaultBarcode"`
+		Notes          *string      `spanner:"Notes"          conditions:"input_only"`
+		InspectorBadge *string      `spanner:"InspectorBadge" allow_filter:"true"               conditions:"pii"`
+		AssignedShipID ccc.NullUUID `spanner:"AssignedShipId"`
 	}
 )
 

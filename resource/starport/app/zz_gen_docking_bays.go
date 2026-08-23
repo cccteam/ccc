@@ -16,7 +16,7 @@ import (
 
 func (a *App) DockingBays() http.HandlerFunc {
 	type dockingBay struct {
-		ID         ccc.UUID `json:"id"         index:"true"`
+		ID         ccc.UUID `json:"id"         index:"true" perm:"-"`
 		Name       string   `json:"name"       index:"true"`
 		DeckLevel  int64    `json:"deckLevel"`
 		MaxTonnage int64    `json:"maxTonnage"`
@@ -65,7 +65,7 @@ func (a *App) DockingBays() http.HandlerFunc {
 
 func (a *App) DockingBay() http.HandlerFunc {
 	type response struct {
-		ID         ccc.UUID `json:"id"         index:"true"`
+		ID         ccc.UUID `json:"id"         index:"true" perm:"-"`
 		Name       string   `json:"name"       index:"true"`
 		DeckLevel  int64    `json:"deckLevel"`
 		MaxTonnage int64    `json:"maxTonnage"`

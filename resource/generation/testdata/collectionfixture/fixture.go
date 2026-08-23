@@ -1,9 +1,9 @@
 // Package collectionfixture provides parsed-struct fixtures for the static permission
-// collection computation tests. The structs cover the registration-relevant tag shapes:
-// perm-tagged fields, untagged fields, immutable fields, and input-only/output-only
-// fields. The constants cover @manualAddResource annotation shapes: doc-comment and
-// line-comment placement, an explicit scope, and an unannotated (dormant) constant that
-// must contribute nothing.
+// collection computation tests. The structs cover the registration-relevant field
+// shapes: plain (structurally enforced) fields, immutable fields, and
+// input-only/output-only fields. The constants cover @manualAddResource annotation
+// shapes: doc-comment and line-comment placement, an explicit scope, and an unannotated
+// (dormant) constant that must contribute nothing.
 package collectionfixture
 
 import (
@@ -27,8 +27,8 @@ const UploadThing accesstypes.Resource = "UploadThings" // @manualAddResource(Ex
 
 type Widget struct {
 	ID         ccc.UUID `spanner:"Id"`
-	Name       string   `spanner:"Name" perm:"Read,Update"`
-	ListedName string   `spanner:"ListedName" perm:"List"`
+	Name       string   `spanner:"Name"`
+	ListedName string   `spanner:"ListedName"`
 	Code       string   `spanner:"Code" conditions:"immutable"`
 	Secret     string   `spanner:"Secret" conditions:"input_only"`
 	Derived    string   `spanner:"Derived" conditions:"output_only"`
@@ -41,7 +41,7 @@ type Gadget struct {
 
 type Sprocket struct {
 	ID   ccc.UUID `spanner:"Id"`
-	Name string   `spanner:"Name" perm:"Update"`
+	Name string   `spanner:"Name"`
 }
 
 type Summary struct {
@@ -61,7 +61,7 @@ type (
 	// @manualAddResourceSet(listHandler, readHandler)
 	Ledger struct {
 		ID    ccc.UUID `spanner:"Id"`
-		Total int64    `spanner:"Total" perm:"Read"`
+		Total int64    `spanner:"Total"`
 	}
 
 	// Vault's registrations all use the domain scope.
@@ -77,6 +77,23 @@ type (
 type Fossil struct {
 	ID   ccc.UUID `spanner:"Id"`
 	Name string   `spanner:"Name"`
+}
+
+type (
+	// Curio is a virtual resource whose read identity is declared with @primarykey.
+	//
+	// @virtual
+	Curio struct {
+		// @primarykey
+		ID   ccc.UUID `spanner:"Id" uniqueindex:"true"`
+		Name string   `spanner:"Name"`
+	}
+)
+
+// Antique retains a stale perm tag; the validator tests pin its rejection.
+type Antique struct {
+	ID   ccc.UUID `spanner:"Id"`
+	Name string   `spanner:"Name" perm:"Read"`
 }
 
 type DoSomething struct {

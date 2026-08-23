@@ -17,12 +17,12 @@ import (
 
 func (a *App) Ships() http.HandlerFunc {
 	type ship struct {
-		ID           ccc.UUID     `json:"id"           index:"true"`
-		RegistryCode string       `json:"registryCode" index:"true" perm:"List"`
-		Name         string       `json:"name"         index:"true" perm:"List"`
-		DockingBayID ccc.NullUUID `json:"dockingBayId" index:"true" perm:"List"`
-		CargoValue   int64        `json:"cargoValue"   perm:"List"`
-		UpdatedAt    *time.Time   `json:"updatedAt"    perm:"List"`
+		ID           ccc.UUID     `json:"id"           index:"true" perm:"-"`
+		RegistryCode string       `json:"registryCode" index:"true"`
+		Name         string       `json:"name"         index:"true"`
+		DockingBayID ccc.NullUUID `json:"dockingBayId" index:"true"`
+		CargoValue   int64        `json:"cargoValue"`
+		UpdatedAt    *time.Time   `json:"updatedAt"`
 	}
 
 	type response []map[string]any
@@ -72,12 +72,12 @@ func (a *App) Ships() http.HandlerFunc {
 
 func (a *App) Ship() http.HandlerFunc {
 	type response struct {
-		ID           ccc.UUID     `json:"id"           index:"true"`
-		RegistryCode string       `json:"registryCode" index:"true" perm:"Read"`
-		Name         string       `json:"name"         perm:"Read"`
-		DockingBayID ccc.NullUUID `json:"dockingBayId" perm:"Read"`
-		CargoValue   int64        `json:"cargoValue"   perm:"Read"`
-		UpdatedAt    *time.Time   `json:"updatedAt"    perm:"Read"`
+		ID           ccc.UUID     `json:"id"           index:"true" perm:"-"`
+		RegistryCode string       `json:"registryCode" index:"true"`
+		Name         string       `json:"name"`
+		DockingBayID ccc.NullUUID `json:"dockingBayId"`
+		CargoValue   int64        `json:"cargoValue"`
+		UpdatedAt    *time.Time   `json:"updatedAt"`
 	}
 
 	decoder := NewQueryDecoder[resources.Ship, response](a, accesstypes.Read)

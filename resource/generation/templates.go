@@ -554,7 +554,7 @@ import (
 	listTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.ListPermTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
@@ -603,7 +603,7 @@ import (
 	readTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.ReadPermTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
@@ -658,7 +658,7 @@ import (
 	patchTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type request struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }}`" + `
 		{{- end }}
 	}
 	
@@ -794,7 +794,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 	{{- range $resource := .Resources }}
 	type {{ GoCamel $resource.Name }}Request struct {
 		{{- range $field := .Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.PatchPermTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }}`" + `
 		{{- end }}
 	}
 	{{ GoCamel $resource.Name}}Decoder := NewDecoder[{{ $resourcePackage }}.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request]({{ $.ReceiverName }}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
@@ -1511,7 +1511,7 @@ import (
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
@@ -1558,7 +1558,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 

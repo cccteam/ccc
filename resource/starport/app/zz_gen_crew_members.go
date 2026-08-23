@@ -19,12 +19,12 @@ import (
 
 func (a *App) CrewMembers() http.HandlerFunc {
 	type crewMember struct {
-		ID             ccc.UUID `json:"id"             index:"true"`
-		ShipID         ccc.UUID `json:"shipId"         index:"true" perm:"List"`
-		Name           string   `json:"name"           perm:"List"`
-		Rank           string   `json:"rank"           perm:"List"`
-		ClearanceLevel int64    `json:"clearanceLevel" perm:"List"`
-		MedicalNotes   *string  `json:"medicalNotes"   perm:"List"  pii:"true"`
+		ID             ccc.UUID `json:"id"             index:"true" perm:"-"`
+		ShipID         ccc.UUID `json:"shipId"         index:"true"`
+		Name           string   `json:"name"`
+		Rank           string   `json:"rank"`
+		ClearanceLevel int64    `json:"clearanceLevel"`
+		MedicalNotes   *string  `json:"medicalNotes"   pii:"true"`
 	}
 
 	type response []map[string]any
@@ -74,12 +74,12 @@ func (a *App) CrewMembers() http.HandlerFunc {
 
 func (a *App) CrewMember() http.HandlerFunc {
 	type response struct {
-		ID             ccc.UUID `json:"id"             index:"true"`
-		ShipID         ccc.UUID `json:"shipId"         perm:"Read"`
-		Name           string   `json:"name"           perm:"Read"`
-		Rank           string   `json:"rank"           perm:"Read"`
-		ClearanceLevel int64    `json:"clearanceLevel" perm:"Read"`
-		MedicalNotes   *string  `json:"medicalNotes"   perm:"Read"  pii:"true"`
+		ID             ccc.UUID `json:"id"             index:"true" perm:"-"`
+		ShipID         ccc.UUID `json:"shipId"`
+		Name           string   `json:"name"`
+		Rank           string   `json:"rank"`
+		ClearanceLevel int64    `json:"clearanceLevel"`
+		MedicalNotes   *string  `json:"medicalNotes"   pii:"true"`
 	}
 
 	decoder := NewQueryDecoder[resources.CrewMember, response](a, accesstypes.Read)
@@ -127,11 +127,11 @@ func (a *App) CrewMember() http.HandlerFunc {
 func (a *App) PatchCrewMembers() http.HandlerFunc {
 	type request struct {
 		ID             ccc.UUID `json:"-"`
-		ShipID         ccc.UUID `json:"shipId"         perm:"Create,Update"`
-		Name           string   `json:"name"           perm:"Create,Update"`
-		Rank           string   `json:"rank"           perm:"Create,Update"`
-		ClearanceLevel int64    `json:"clearanceLevel" perm:"Create,Update"`
-		MedicalNotes   *string  `json:"medicalNotes"   perm:"Create,Update"`
+		ShipID         ccc.UUID `json:"shipId"`
+		Name           string   `json:"name"`
+		Rank           string   `json:"rank"`
+		ClearanceLevel int64    `json:"clearanceLevel"`
+		MedicalNotes   *string  `json:"medicalNotes"`
 	}
 
 	type response struct {

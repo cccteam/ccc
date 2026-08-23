@@ -461,6 +461,16 @@ func (c *computedField) PIITag() string {
 	return ""
 }
 
+// PermTag renders the perm:"-" primary-key exemption marker on @primarykey fields; see
+// resourceField.PermTag.
+func (c *computedField) PermTag() string {
+	if c.IsPrimaryKey {
+		return permTagKey + `:"-"`
+	}
+
+	return ""
+}
+
 func (c *computedField) TypescriptDataType() string {
 	if c.typescriptType == uuidTSType {
 		return stringGoType
@@ -851,53 +861,12 @@ func (f *resourceField) HasOutputOnlyUpdateFunc() bool {
 	return f.OutputOnlyUpdateFuncName() != ""
 }
 
-func (f *resourceField) ReadPermTag() string {
-	tag, ok := f.LookupTag(permTagKey)
-	if !ok {
-		return ""
-	}
-
-	permissions := strings.Split(tag, ",")
-
-	if slices.Contains(permissions, string(accesstypes.Read)) {
-		return fmt.Sprintf("%s:%q", permTagKey, accesstypes.Read)
-	}
-
-	return ""
-}
-
-func (f *resourceField) ListPermTag() string {
-	tag, ok := f.LookupTag(permTagKey)
-	if !ok {
-		return ""
-	}
-
-	permissions := strings.Split(tag, ",")
-
-	if slices.Contains(permissions, string(accesstypes.List)) {
-		return fmt.Sprintf("%s:%q", permTagKey, accesstypes.List)
-	}
-
-	return ""
-}
-
-func (f *resourceField) PatchPermTag() string {
-	tag, ok := f.LookupTag(permTagKey)
-	if !ok {
-		return ""
-	}
-
-	permissions := strings.Split(tag, ",")
-
-	var patches []string
-	for _, perm := range permissions {
-		if perm != string(accesstypes.Read) && perm != string(accesstypes.List) {
-			patches = append(patches, perm)
-		}
-	}
-
-	if len(patches) != 0 {
-		return fmt.Sprintf("%s:%q", permTagKey, strings.Join(patches, ","))
+// PermTag renders the perm:"-" primary-key exemption marker: an exempt field's
+// readability follows the resource-level grant. Every other field carries no perm tag
+// and is enforced structurally with the handler's permissions.
+func (f *resourceField) PermTag() string {
+	if f.IsPrimaryKey {
+		return permTagKey + `:"-"`
 	}
 
 	return ""
@@ -962,7 +931,7 @@ const (
 	defaultsUpdateTypeKeyword   string = "defaultsUpdateType"   // Specifies a type to call "Defaults()" on for setting defaults on resource update
 	validateCreateTypeKeyword   string = "validateCreateType"   // Specifies a type to call "Validate()" on for validating a resource on creation
 	validateUpdateTypeKeyword   string = "validateUpdateType"   // Specifies a type to call "Validate()" on for validating a resource on update
-	primarykeyKeyword           string = "primarykey"           // Designates a field as a primary key in a Computed Resource
+	primarykeyKeyword           string = "primarykey"           // Designates a field as (part of) the primary key in a Computed or Virtual Resource
 	manualAddResourceKeyword    string = "manualAddResource"    // Declares a manual permission registration on an accesstypes.Resource constant
 	manualAddResourceSetKeyword string = "manualAddResourceSet" // Declares that hand-written handlers register this resource's permission Sets for the given handler types
 	permissionScopeKeyword      string = "permissionScope"      // Declares the permission scope (global or domain) all of a resource's registrations use

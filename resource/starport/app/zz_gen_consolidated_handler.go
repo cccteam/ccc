@@ -23,7 +23,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		LineNumber    int64    `json:"-"`
 		Details       string   `json:"details"`
 		Quantity      int64    `json:"quantity"`
-		DeclaredValue int64    `json:"declaredValue" perm:"Create,Update"`
+		DeclaredValue int64    `json:"declaredValue"`
 	}
 	cargoManifestDecoder := NewDecoder[resources.CargoManifest, cargoManifestRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
@@ -37,24 +37,24 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 	type shipRequest struct {
 		ID           ccc.UUID     `json:"-"`
-		RegistryCode string       `json:"registryCode" immutable:"true"     perm:"Create"`
-		Name         string       `json:"name"         perm:"Create,Update"`
-		DockingBayID ccc.NullUUID `json:"dockingBayId" perm:"Create,Update"`
-		CargoValue   int64        `json:"cargoValue"   perm:"Create,Update"`
+		RegistryCode string       `json:"registryCode" immutable:"true"`
+		Name         string       `json:"name"`
+		DockingBayID ccc.NullUUID `json:"dockingBayId"`
+		CargoValue   int64        `json:"cargoValue"`
 		UpdatedAt    *time.Time   `json:"-"`
 	}
 	shipDecoder := NewDecoder[resources.Ship, shipRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type supplyCrateRequest struct {
 		ID             ccc.UUID     `json:"-"`
-		Label          string       `json:"label"          perm:"Create,Update"`
-		Quantity       int64        `json:"quantity"       perm:"Create,Update"`
-		Priority       int64        `json:"priority"       perm:"Create,Update"`
-		Status         string       `json:"status"         perm:"Create,Update"`
+		Label          string       `json:"label"`
+		Quantity       int64        `json:"quantity"`
+		Priority       int64        `json:"priority"`
+		Status         string       `json:"status"`
 		Barcode        string       `json:"-"`
-		Notes          *string      `json:"notes"          perm:"Create,Update"`
-		InspectorBadge *string      `json:"inspectorBadge" perm:"Create,Update"`
-		AssignedShipID ccc.NullUUID `json:"assignedShipId" perm:"Create,Update"`
+		Notes          *string      `json:"notes"`
+		InspectorBadge *string      `json:"inspectorBadge"`
+		AssignedShipID ccc.NullUUID `json:"assignedShipId"`
 	}
 	supplyCrateDecoder := NewDecoder[resources.SupplyCrate, supplyCrateRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 

@@ -4,14 +4,12 @@ package resource
 //
 //   - Resource-level permissions are fail closed: every enforced operation requires the
 //     operation's permission on the base resource.
-//   - Field-level permissions are fail open: a field with no perm tag never requires a
-//     field-level grant. Tagged fields require a grant on "resource.tag".
+//   - Field-level permissions are fail closed and structural: every client-addressable
+//     field requires the operation's permission on "resource.tag", with a single
+//     exemption — the perm:"-" primary-key marker, whose readability follows the
+//     resource-level grant.
 //   - Requesting a specific denied column is Forbidden, while the accessible-fields path
 //     silently filters denied columns out.
-//
-// The fail-open assertions document current behavior that existing applications depend
-// on. They are expected to be deliberately rewritten when field permissions migrate to
-// fail closed.
 
 import (
 	"context"
@@ -45,25 +43,23 @@ func (enforcementResource) Resource() accesstypes.Resource { return enforcedReso
 func (enforcementResource) DefaultConfig() Config { return Config{} }
 
 type enforcementReadRequest struct {
-	ID     ccc.UUID `json:"id"`
+	ID     ccc.UUID `json:"id"     perm:"-"`
 	Public string   `json:"public"`
-	Tagged string   `json:"tagged" perm:"Read"`
-	Locked string   `json:"locked" perm:"Read"`
+	Tagged string   `json:"tagged"`
+	Locked string   `json:"locked"`
 	Frozen string   `json:"frozen"`
 }
 
 type enforcementPatchRequest struct {
 	Public string `json:"public"`
-	Tagged string `json:"tagged" perm:"Create,Update"`
+	Tagged string `json:"tagged"`
 	Frozen string `json:"frozen" immutable:"true"`
 }
 
-// enforcementUntaggedReadRequest has no perm-tagged fields, so enforcement needs no
+// enforcementExemptReadRequest has only the exempt primary key, so enforcement needs no
 // field-level Check at all.
-type enforcementUntaggedReadRequest struct {
-	ID     ccc.UUID `json:"id"`
-	Public string   `json:"public"`
-	Frozen string   `json:"frozen"`
+type enforcementExemptReadRequest struct {
+	ID ccc.UUID `json:"id" perm:"-"`
 }
 
 // fakeUserPermissions is a UserPermissions implementation backed by a static grant table.
@@ -153,20 +149,35 @@ func TestQuerySet_Read_permissionEnforcement(t *testing.T) {
 			wantErrContains: string(enforcedResource),
 		},
 		{
-			name:       "untagged requested columns are fail open with resource-only grant",
-			target:     "/?columns=id,public,frozen",
-			grants:     map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Read: {enforcedResource}},
+			name:            "requested columns without field grants are forbidden",
+			target:          "/?columns=id,public,frozen",
+			grants:          map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Read: {enforcedResource}},
+			wantForbidden:   true,
+			wantErrContains: string(enforcedResource) + ".public",
+		},
+		{
+			name:   "requested columns with field grants are allowed",
+			target: "/?columns=id,public,frozen",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.Read: {enforcedResource, enforcedResource + ".public", enforcedResource + ".frozen"},
+			},
 			wantFields: []accesstypes.Field{"ID", "Public", "Frozen"},
 		},
 		{
-			name:            "tagged requested column without field grant is forbidden",
+			name:       "exempt column alone requires only the resource grant",
+			target:     "/?columns=id",
+			grants:     map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Read: {enforcedResource}},
+			wantFields: []accesstypes.Field{"ID"},
+		},
+		{
+			name:            "requested column without its field grant is forbidden",
 			target:          "/?columns=id,tagged",
 			grants:          map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Read: {enforcedResource}},
 			wantForbidden:   true,
 			wantErrContains: string(enforcedResource) + ".tagged",
 		},
 		{
-			name:   "tagged requested column with field grant is allowed",
+			name:   "requested column with its field grant is allowed",
 			target: "/?columns=id,tagged",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.Read: {enforcedResource, enforcedResource + ".tagged"},
@@ -174,24 +185,27 @@ func TestQuerySet_Read_permissionEnforcement(t *testing.T) {
 			wantFields: []accesstypes.Field{"ID", "Tagged"},
 		},
 		{
-			name:       "accessible fields includes untagged fields and filters denied tagged fields",
+			name:       "accessible fields with resource-only grant returns only the exempt primary key",
 			target:     "/",
 			grants:     map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Read: {enforcedResource}},
-			wantFields: []accesstypes.Field{"ID", "Public", "Frozen"},
+			wantFields: []accesstypes.Field{"ID"},
 		},
 		{
-			name:   "accessible fields includes tagged fields with grants",
+			name:   "accessible fields includes exactly the granted fields",
 			target: "/",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.Read: {enforcedResource, enforcedResource + ".tagged"},
 			},
-			wantFields: []accesstypes.Field{"ID", "Public", "Frozen", "Tagged"},
+			wantFields: []accesstypes.Field{"ID", "Tagged"},
 		},
 		{
 			name:   "accessible fields includes all fields with full grants",
 			target: "/",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
-				accesstypes.Read: {enforcedResource, enforcedResource + ".tagged", enforcedResource + ".locked"},
+				accesstypes.Read: {
+					enforcedResource, enforcedResource + ".public", enforcedResource + ".tagged",
+					enforcedResource + ".locked", enforcedResource + ".frozen",
+				},
 			},
 			wantFields: []accesstypes.Field{"ID", "Public", "Frozen", "Tagged", "Locked"},
 		},
@@ -220,7 +234,7 @@ func TestQuerySet_Read_permissionEnforcement(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			resSet, err := NewSet[enforcementResource, enforcementReadRequest]()
+			resSet, err := NewSet[enforcementResource, enforcementReadRequest](accesstypes.Read)
 			if err != nil {
 				t.Fatalf("NewSet() error = %v", err)
 			}
@@ -302,7 +316,7 @@ func TestQuerySet_Read_checkBatching(t *testing.T) {
 	tests := []struct {
 		name             string
 		target           string
-		untaggedRequest  bool
+		exemptRequest    bool
 		grants           map[accesstypes.Permission][]accesstypes.Resource
 		wantCheckCalls   int
 		wantBatched      []accesstypes.Resource // sorted resources of the field-level batch call
@@ -316,14 +330,17 @@ func TestQuerySet_Read_checkBatching(t *testing.T) {
 				accesstypes.Read: {enforcedResource, enforcedResource + ".tagged"},
 			},
 			wantCheckCalls: 2,
-			wantBatched:    []accesstypes.Resource{enforcedResource + ".locked", enforcedResource + ".tagged"},
+			wantBatched: []accesstypes.Resource{
+				enforcedResource + ".frozen", enforcedResource + ".locked",
+				enforcedResource + ".public", enforcedResource + ".tagged",
+			},
 		},
 		{
-			name:            "zero tagged fields issues zero field checks",
-			target:          "/",
-			untaggedRequest: true,
-			grants:          map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Read: {enforcedResource}},
-			wantCheckCalls:  1,
+			name:           "exempt-only request issues zero field checks",
+			target:         "/",
+			exemptRequest:  true,
+			grants:         map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Read: {enforcedResource}},
+			wantCheckCalls: 1,
 		},
 		{
 			name:             "requested columns forbidden lists missing in request order",
@@ -343,10 +360,10 @@ func TestQuerySet_Read_checkBatching(t *testing.T) {
 
 			var qSet *QuerySet[enforcementResource]
 			var err error
-			if tt.untaggedRequest {
-				qSet, err = decodeForBatching[enforcementUntaggedReadRequest](t, tt.target, userPermissions, accesstypes.Read)
+			if tt.exemptRequest {
+				qSet, err = decodeForBatching[enforcementExemptReadRequest](t, tt.target, userPermissions, accesstypes.Read)
 			} else {
-				qSet, err = decodeForBatching[enforcementReadRequest](t, tt.target, userPermissions)
+				qSet, err = decodeForBatching[enforcementReadRequest](t, tt.target, userPermissions, accesstypes.Read)
 			}
 			if err != nil {
 				t.Fatalf("QueryDecoder.Decode() error = %v", err)
@@ -427,14 +444,24 @@ func TestPatchSet_Buffer_permissionEnforcement(t *testing.T) {
 			wantErrContains: string(enforcedResource),
 		},
 		{
-			name:             "create untagged and immutable fields are fail open with resource-only grant",
-			operation:        OperationCreate,
-			body:             `{"public":"x","frozen":"y"}`,
-			grants:           map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Create: {enforcedResource}},
+			name:            "create without field grants is forbidden",
+			operation:       OperationCreate,
+			body:            `{"public":"x","frozen":"y"}`,
+			grants:          map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Create: {enforcedResource}},
+			wantForbidden:   true,
+			wantErrContains: string(enforcedResource) + ".public",
+		},
+		{
+			name:      "create with field grants sets the fields",
+			operation: OperationCreate,
+			body:      `{"public":"x","frozen":"y"}`,
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.Create: {enforcedResource, enforcedResource + ".public", enforcedResource + ".frozen"},
+			},
 			wantBufferedCols: []string{"Frozen", "Id", "Public"},
 		},
 		{
-			name:            "create tagged field without field grant is forbidden",
+			name:            "create field without its field grant is forbidden",
 			operation:       OperationCreate,
 			body:            `{"tagged":"x"}`,
 			grants:          map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Create: {enforcedResource}},
@@ -442,7 +469,7 @@ func TestPatchSet_Buffer_permissionEnforcement(t *testing.T) {
 			wantErrContains: string(enforcedResource) + ".tagged",
 		},
 		{
-			name:      "create tagged field with field grant is allowed",
+			name:      "create field with its field grant is allowed",
 			operation: OperationCreate,
 			body:      `{"tagged":"x"}`,
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
@@ -451,7 +478,7 @@ func TestPatchSet_Buffer_permissionEnforcement(t *testing.T) {
 			wantBufferedCols: []string{"Id", "Tagged"},
 		},
 		{
-			name:            "update tagged field without field grant is forbidden",
+			name:            "update field without its field grant is forbidden",
 			operation:       OperationUpdate,
 			body:            `{"tagged":"x"}`,
 			grants:          map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Update: {enforcedResource}},
@@ -459,7 +486,7 @@ func TestPatchSet_Buffer_permissionEnforcement(t *testing.T) {
 			wantErrContains: string(enforcedResource) + ".tagged",
 		},
 		{
-			name:      "update tagged field with field grant is allowed",
+			name:      "update field with its field grant is allowed",
 			operation: OperationUpdate,
 			body:      `{"tagged":"x"}`,
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
@@ -513,7 +540,7 @@ func TestPatchSet_Buffer_permissionEnforcement(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			resSet, err := NewSet[enforcementResource, enforcementPatchRequest]()
+			resSet, err := NewSet[enforcementResource, enforcementPatchRequest](accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 			if err != nil {
 				t.Fatalf("NewSet() error = %v", err)
 			}

@@ -19,10 +19,10 @@ import (
 
 func (a *App) Berths() http.HandlerFunc {
 	type berth struct {
-		ID          ccc.UUID `json:"id"          index:"true"`
-		Designation string   `json:"designation" index:"true" perm:"List"`
-		SizeClass   int64    `json:"sizeClass"   perm:"List"`
-		Occupied    bool     `json:"occupied"    perm:"List"`
+		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		Designation string   `json:"designation" index:"true"`
+		SizeClass   int64    `json:"sizeClass"`
+		Occupied    bool     `json:"occupied"`
 	}
 
 	type response []map[string]any
@@ -69,10 +69,10 @@ func (a *App) Berths() http.HandlerFunc {
 
 func (a *App) Berth() http.HandlerFunc {
 	type response struct {
-		ID          ccc.UUID `json:"id"          index:"true"`
-		Designation string   `json:"designation" index:"true" perm:"Read"`
-		SizeClass   int64    `json:"sizeClass"   perm:"Read"`
-		Occupied    bool     `json:"occupied"    perm:"Read"`
+		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		Designation string   `json:"designation" index:"true"`
+		SizeClass   int64    `json:"sizeClass"`
+		Occupied    bool     `json:"occupied"`
 	}
 
 	decoder := NewQueryDecoder[resources.Berth, response](a, accesstypes.Read)
@@ -117,9 +117,9 @@ func (a *App) Berth() http.HandlerFunc {
 func (a *App) PatchBerths() http.HandlerFunc {
 	type request struct {
 		ID          ccc.UUID `json:"-"`
-		Designation string   `json:"designation" immutable:"true"     perm:"Create"`
-		SizeClass   int64    `json:"sizeClass"   perm:"Create,Update"`
-		Occupied    bool     `json:"occupied"    perm:"Create,Update"`
+		Designation string   `json:"designation" immutable:"true"`
+		SizeClass   int64    `json:"sizeClass"`
+		Occupied    bool     `json:"occupied"`
 	}
 
 	type response struct {

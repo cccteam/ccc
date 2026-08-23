@@ -33,9 +33,9 @@ func NewStructDecoder[Request any]() (*StructDecoder[Request], error) {
 		return nil, errors.Wrap(err, "NewFieldMapper()")
 	}
 
-	rSet, err := NewSet[nilResource, Request]()
+	rSet, err := newUnenforcedSet[nilResource, Request]()
 	if err != nil {
-		return nil, errors.Wrap(err, "NewSet()")
+		return nil, errors.Wrap(err, "newUnenforcedSet()")
 	}
 
 	return &StructDecoder[Request]{

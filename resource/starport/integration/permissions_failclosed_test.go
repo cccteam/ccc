@@ -1,12 +1,11 @@
 package integration
 
-// This suite pins the CURRENT fail-open behavior of untagged fields: a field with no
-// perm tag is accessible to any user holding the resource-level grant. Existing
-// applications depend on this behavior today.
-//
-// When field permissions migrate from fail open to fail closed, this suite is expected
-// to be deliberately rewritten — that rewrite documents the behavior change. Contrast
-// with permissions_invariant_test.go, which must survive the migration untouched.
+// This suite pins the fail-closed structural enforcement of field permissions on
+// annotation-free resources: every non-primary-key field requires the endpoint's
+// permission on its field resource, and a resource-only grant exposes nothing beyond
+// the primary key. It deliberately rewrote the pre-migration fail-open suite — the
+// rewrite documents the behavior change. Contrast with permissions_invariant_test.go,
+// which must survive the migration untouched.
 
 import (
 	"context"
@@ -24,7 +23,7 @@ const (
 	cargoManifestsResource = accesstypes.Resource("CargoManifests")
 )
 
-func TestFailOpenQuery(t *testing.T) {
+func TestFailClosedQuery(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -43,37 +42,47 @@ func TestFailOpenQuery(t *testing.T) {
 		wantKeys   []string
 	}{
 		{
-			name:       "untagged resource still requires the resource grant",
+			name:       "the resource grant is still required",
 			grants:     nil,
 			target:     "/api/docking-bays",
 			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:       "resource-only grant returns every untagged field",
+			name:       "resource-only grant returns only the primary key",
 			grants:     grants{accesstypes.List: {dockingBaysResource}},
 			target:     "/api/docking-bays",
 			wantStatus: http.StatusOK,
 			wantRows:   1,
-			wantKeys:   []string{"id", "name", "deckLevel", "maxTonnage"},
+			wantKeys:   []string{"id"},
 		},
 		{
-			name:       "untagged requested columns require no field grants",
+			name:       "requested columns without field grants are forbidden",
 			grants:     grants{accesstypes.List: {dockingBaysResource}},
+			target:     "/api/docking-bays?columns=name,deckLevel",
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name: "requested columns with field grants are returned",
+			grants: grants{accesstypes.List: {
+				dockingBaysResource,
+				fieldResource(dockingBaysResource, "name"),
+				fieldResource(dockingBaysResource, "deckLevel"),
+			}},
 			target:     "/api/docking-bays?columns=name,deckLevel",
 			wantStatus: http.StatusOK,
 			wantRows:   1,
 			wantKeys:   []string{"name", "deckLevel"},
 		},
 		{
-			name:       "mixed resource returns untagged fields and filters denied tagged fields",
+			name:       "resource-only grant on a composite-key resource returns only the key fields",
 			grants:     grants{accesstypes.List: {cargoManifestsResource}},
 			target:     "/api/cargo-manifests",
 			wantStatus: http.StatusOK,
 			wantRows:   1,
-			wantKeys:   []string{"shipId", "lineNumber", "details", "quantity"},
+			wantKeys:   []string{"shipId", "lineNumber"},
 		},
 		{
-			name: "mixed resource includes tagged fields with a field grant",
+			name: "field grants add exactly the granted fields",
 			grants: grants{accesstypes.List: {
 				cargoManifestsResource,
 				fieldResource(cargoManifestsResource, "declaredValue"),
@@ -81,10 +90,28 @@ func TestFailOpenQuery(t *testing.T) {
 			target:     "/api/cargo-manifests",
 			wantStatus: http.StatusOK,
 			wantRows:   1,
-			wantKeys:   []string{"shipId", "lineNumber", "details", "quantity", "declaredValue"},
+			wantKeys:   []string{"shipId", "lineNumber", "declaredValue"},
 		},
 		{
-			name:       "tagged requested column in a mixed resource is still forbidden without a field grant",
+			name: "formerly-untagged fields require grants like any other field",
+			grants: grants{accesstypes.List: {
+				cargoManifestsResource,
+				fieldResource(cargoManifestsResource, "details"),
+				fieldResource(cargoManifestsResource, "quantity"),
+			}},
+			target:     "/api/cargo-manifests",
+			wantStatus: http.StatusOK,
+			wantRows:   1,
+			wantKeys:   []string{"shipId", "lineNumber", "details", "quantity"},
+		},
+		{
+			name:       "requested formerly-untagged column without its grant is forbidden",
+			grants:     grants{accesstypes.List: {cargoManifestsResource}},
+			target:     "/api/cargo-manifests?columns=details",
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "requested declaredValue without its grant is forbidden",
 			grants:     grants{accesstypes.List: {cargoManifestsResource}},
 			target:     "/api/cargo-manifests?columns=declaredValue",
 			wantStatus: http.StatusForbidden,
@@ -114,7 +141,7 @@ func TestFailOpenQuery(t *testing.T) {
 	}
 }
 
-func TestFailOpenMutation(t *testing.T) {
+func TestFailClosedMutation(t *testing.T) {
 	t.Parallel()
 
 	// Each case prepares its own seeded database, fully isolating the cases from one
@@ -127,8 +154,24 @@ func TestFailOpenMutation(t *testing.T) {
 		verify     func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, respBody []byte)
 	}{
 		{
-			name:       "create with resource-only grant may set every untagged field",
+			name:       "create with resource-only grant is forbidden",
 			grants:     grants{accesstypes.Create: {dockingBaysResource}},
+			body:       `[{"op":"add","path":"/docking-bays","value":{"name":"Bay Beta","deckLevel":5,"maxTonnage":90000}}]`,
+			wantStatus: http.StatusForbidden,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, _ []byte) {
+				if count := countRows(ctx, t, db, "DockingBays"); count != 1 {
+					t.Errorf("DockingBays row count = %d, want the seeded 1 (forbidden create must roll back)", count)
+				}
+			},
+		},
+		{
+			name: "create with field grants sets every granted field",
+			grants: grants{accesstypes.Create: {
+				dockingBaysResource,
+				fieldResource(dockingBaysResource, "name"),
+				fieldResource(dockingBaysResource, "deckLevel"),
+				fieldResource(dockingBaysResource, "maxTonnage"),
+			}},
 			body:       `[{"op":"add","path":"/docking-bays","value":{"name":"Bay Beta","deckLevel":5,"maxTonnage":90000}}]`,
 			wantStatus: http.StatusOK,
 			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, respBody []byte) {
@@ -148,8 +191,23 @@ func TestFailOpenMutation(t *testing.T) {
 			},
 		},
 		{
-			name:       "update untagged field with resource-only grant is allowed",
+			name:       "update formerly-untagged field without its grant is forbidden",
 			grants:     grants{accesstypes.Update: {cargoManifestsResource}},
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/cargo-manifests/%s/1","value":{"details":"Hull plating (recount)"}}]`, shipVantaID),
+			wantStatus: http.StatusForbidden,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, _ []byte) {
+				details := readColumn[string](ctx, t, db, "CargoManifests", spanner.Key{shipVantaID, 1}, "Details")
+				if details != "Hull plating" {
+					t.Errorf("manifest Details = %q, want unchanged %q", details, "Hull plating")
+				}
+			},
+		},
+		{
+			name: "update formerly-untagged field with its grant is allowed",
+			grants: grants{accesstypes.Update: {
+				cargoManifestsResource,
+				fieldResource(cargoManifestsResource, "details"),
+			}},
 			body:       fmt.Sprintf(`[{"op":"patch","path":"/cargo-manifests/%s/1","value":{"details":"Hull plating (recount)"}}]`, shipVantaID),
 			wantStatus: http.StatusOK,
 			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB, _ []byte) {
@@ -160,7 +218,7 @@ func TestFailOpenMutation(t *testing.T) {
 			},
 		},
 		{
-			name:       "update tagged field still requires the field grant",
+			name:       "update declaredValue still requires the field grant",
 			grants:     grants{accesstypes.Update: {cargoManifestsResource}},
 			body:       fmt.Sprintf(`[{"op":"patch","path":"/cargo-manifests/%s/1","value":{"declaredValue":95000}}]`, shipVantaID),
 			wantStatus: http.StatusForbidden,
@@ -192,4 +250,24 @@ func TestFailOpenMutation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// countRows counts the rows of a table directly in the database.
+func countRows(ctx context.Context, t *testing.T, db *initiator.SpannerDB, table string) int64 {
+	t.Helper()
+
+	iter := db.Single().Query(ctx, spanner.Statement{SQL: "SELECT COUNT(*) FROM " + table})
+	defer iter.Stop()
+
+	row, err := iter.Next()
+	if err != nil {
+		t.Fatalf("Query(COUNT %s): %v", table, err)
+	}
+
+	var count int64
+	if err := row.Columns(&count); err != nil {
+		t.Fatalf("row.Columns(count): %v", err)
+	}
+
+	return count
 }

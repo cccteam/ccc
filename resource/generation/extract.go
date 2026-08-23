@@ -34,6 +34,12 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 
+		if fieldAnnotationErr := rejectPrimaryKeyAnnotations(pStruct, annotations); fieldAnnotationErr != nil {
+			resourceErrors = append(resourceErrors, fieldAnnotationErr)
+
+			continue
+		}
+
 		table, err := c.tableMetadataFor(pStruct.Name())
 		if err != nil {
 			return nil, err
@@ -219,7 +225,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			IsVirtual: true,
 		}
 
-		fields, err := newVirtualFields(resource, pStruct)
+		fields, err := newVirtualFields(resource, pStruct, annotations)
 		if err != nil {
 			errs = append(errs, err)
 
@@ -276,6 +282,24 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 	return resources, nil
 }
 
+// rejectPrimaryKeyAnnotations errors when a table-backed @resource struct carries
+// @primarykey field annotations: table-backed primary keys come from the schema, and
+// the annotation is only valid on @computed and @virtual structs.
+func rejectPrimaryKeyAnnotations(pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
+	var errs []error
+	for i, field := range pStruct.Fields() {
+		if annotations.Fields[i].Has(primarykeyKeyword) {
+			errs = append(errs, errors.Newf("struct %s field %s: @primarykey is only valid on @computed and @virtual structs; table-backed primary keys come from the schema", pStruct.Name(), field.Name()))
+		}
+	}
+
+	if len(errs) != 0 {
+		return errors.Wrap(errors.Join(errs...), "@primarykey annotation error")
+	}
+
+	return nil
+}
+
 func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tableMetadata) ([]*resourceField, error) {
 	if parent.IsVirtual {
 		panic("newResourceFields cannot be used with virtual resources")
@@ -323,12 +347,13 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 	return fields, nil
 }
 
-func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resourceField, error) {
+func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) ([]*resourceField, error) {
 	if !parent.IsVirtual {
 		panic("newVirtualFields cannot be used with concrete resources")
 	}
 	fields := make([]*resourceField, 0, len(pStruct.Fields()))
-	for _, field := range pStruct.Fields() {
+	var keyCount int64
+	for i, field := range pStruct.Fields() {
 		_, ok := field.LookupTag(spannerTagKey)
 		if !ok {
 			field.AddError("missing spanner tag")
@@ -336,12 +361,20 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resource
 			continue
 		}
 
-		fields = append(fields, &resourceField{
+		rField := &resourceField{
 			Field:         field,
 			Parent:        parent,
 			IsIndex:       field.HasTag(indexTagKey) || field.HasTag(uniqueIndexTagKey),
 			IsUniqueIndex: field.HasTag(uniqueIndexTagKey),
-		})
+		}
+
+		if annotations.Fields[i].Has(primarykeyKeyword) {
+			rField.IsPrimaryKey = true
+			rField.KeyOrdinalPosition = keyCount
+			keyCount++
+		}
+
+		fields = append(fields, rField)
 	}
 
 	if pStruct.HasErrors() {

@@ -16,7 +16,7 @@ import (
 type FieldTags struct {
 	Field     accesstypes.Field
 	JSON      string // json tag name (first comma-separated part); "" or "-" is unregistered
-	Perm      string // raw perm tag value (comma-separated permissions)
+	Perm      string // raw perm tag value; "" (enforced) or "-" (primary-key exemption) are the only legal values
 	Immutable bool   // immutable:"true"
 }
 
@@ -47,12 +47,25 @@ type SetData struct {
 }
 
 // NewSetData computes the registration data for a request struct described by fields,
-// mirroring NewSet over the equivalent struct, always registering every field (even ones
-// without a permission tag) so generated Collection/TypeScript output is complete.
+// mirroring NewSet over the equivalent struct, always registering every field (even
+// exempt ones) so generated Collection/TypeScript output is complete.
+//
+// It diverges from the runtime Set in exactly one documented way: Update is stripped
+// from immutable tags. The grantable matrix is the enforcement matrix minus
+// Update-on-immutable — an immutable field's Update requirement must never be
+// satisfiable, so the Collection (and therefore MigrateRoles) never exposes it as
+// grantable, while the runtime Set keeps requiring it (defense-in-depth behind the
+// decoder's 400-on-update).
 func NewSetData(fields []FieldTags, permissions ...accesstypes.Permission) (SetData, error) {
 	tagPermissions, _, perms, immutableFields, err := permissionsFromFieldTags(fields, permissions, true)
 	if err != nil {
 		return SetData{}, errors.Wrap(err, "permissionsFromFieldTags()")
+	}
+
+	for tag := range immutableFields {
+		tagPermissions[tag] = slices.DeleteFunc(tagPermissions[tag], func(p accesstypes.Permission) bool {
+			return p == accesstypes.Update
+		})
 	}
 
 	return SetData{

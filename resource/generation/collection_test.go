@@ -179,7 +179,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "name"},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
 				},
 				{
@@ -194,7 +194,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "name"},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
 				},
 				{
@@ -204,7 +204,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Scope:       accesstypes.GlobalPermissionScope,
 					Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.Update},
 					Tags: []resource.TagData{
-						{Name: "name"},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update}},
 					},
 				},
 				{
@@ -215,7 +215,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.Read}},
+						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					},
 				},
 				{
@@ -224,7 +224,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Update}},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					},
 				},
 				{
@@ -233,7 +233,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "total"},
+						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					},
 				},
 				{
@@ -246,12 +246,12 @@ func Test_computeCollectionData(t *testing.T) {
 					Scope:       accesstypes.GlobalPermissionScope,
 					Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
 					Tags: []resource.TagData{
-						{Name: "code", Permissions: []accesstypes.Permission{accesstypes.Update}},
-						{Name: "derived"},
+						{Name: "code", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
+						{Name: "derived", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 						{Name: "id"},
-						{Name: "listedName", Permissions: []accesstypes.Permission{accesstypes.List}},
-						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Read, accesstypes.Update}},
-						{Name: "secret"},
+						{Name: "listedName", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+						{Name: "secret", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update}},
 					},
 					ImmutableTags: []accesstypes.Tag{"code"},
 				},
@@ -271,7 +271,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "name"},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
 				},
 				{
@@ -280,7 +280,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.Read}},
+						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					},
 				},
 				{

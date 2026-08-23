@@ -150,8 +150,10 @@ func (q *QuerySet[Resource]) addAccessibleFields(ctx context.Context, dbType DBT
 	fields := make([]accesstypes.Field, 0, q.rMeta.DBFieldCount(dbType))
 
 	if q.resourceSet != nil {
-		// A candidate with a zero resource requires no permission (fail-open, untagged);
-		// tagged candidates are evaluated in a single set-oriented Check call.
+		// A candidate with a zero resource is exempt (the perm:"-" primary-key marker,
+		// whose readability follows the resource-level grant already checked above) or
+		// json-hidden; every other requestable field is registered, and those candidates
+		// are evaluated in a single set-oriented Check call.
 		type candidate struct {
 			field accesstypes.Field
 			res   accesstypes.Resource

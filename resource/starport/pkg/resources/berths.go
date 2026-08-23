@@ -11,15 +11,15 @@ type (
 	// StationId column — pinning that @permissionScope partitions permissions, not
 	// data; structural row tenancy is a separate, later change.
 	//
-	// Berth is fully tagged (see Ship), so the domain-partition integration suite is
-	// invariant across the fail-open to fail-closed migration.
+	// Berth is structurally enforced (see Ship), so the domain-partition integration
+	// suite is invariant across the fail-open to fail-closed migration.
 	//
 	// @resource
 	// @permissionScope(domain)
 	Berth struct {
 		ID          ccc.UUID `spanner:"Id"`
-		Designation string   `spanner:"Designation" conditions:"immutable"         perm:"Read,List,Create"`
-		SizeClass   int64    `spanner:"SizeClass"   perm:"Read,List,Create,Update"`
-		Occupied    bool     `spanner:"Occupied"    perm:"Read,List,Create,Update"`
+		Designation string   `spanner:"Designation" conditions:"immutable"`
+		SizeClass   int64    `spanner:"SizeClass"`
+		Occupied    bool     `spanner:"Occupied"`
 	}
 )

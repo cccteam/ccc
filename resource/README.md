@@ -12,7 +12,7 @@ this document:
 
 1. **Comment annotations** (`@resource`, `@suppress(...)`, …) written in doc comments,
    parsed by the generator.
-2. **Struct tags you write** on your source structs (`spanner`, `perm`, `conditions`, …),
+2. **Struct tags you write** on your source structs (`spanner`, `conditions`, …),
    read by the generator.
 3. **Struct tags the generator writes** into `zz_gen` request structs (`json`, `perm`,
    `immutable:"true"`, …), read back by the `resource` runtime. You never write these
@@ -42,7 +42,7 @@ type Ship struct { ... }
 | Annotation | Attaches to | Arguments | Effect |
 | --- | --- | --- | --- |
 | `@resource` | struct in the resources package | none | Marks the struct as a resource backed by a Spanner table. The generator emits query builders, request structs, handlers, routes, and TypeScript for it. Example: [Ship](starport/pkg/resources/ships.go). |
-| `@virtual` | struct in the resources package | none | A resource backed by a view instead of a base table. Because there is no table metadata, indexed fields must be declared with `index`/`uniqueindex` tags (see §2). |
+| `@virtual` | struct in the resources package | none | A resource backed by a view instead of a base table. Because there is no table metadata, indexed fields must be declared with `index`/`uniqueindex` tags (see §2), and the read identity (if any) with `@primarykey`. |
 | `@computed` | struct in the resources package | none | A read-only resource (List/Read only) whose rows are produced by hand-written query logic rather than a table. Primary-key fields are marked with `@primarykey`. |
 | `@rpc` | struct in the rpc package | none | Declares an RPC method: the struct's fields are the request payload, and the struct must implement the hand-declared `TxnRunner` interface (`Method()` + `Execute()`). Gated by the `Execute` permission. Example: [AuthorizeLaunch](starport/pkg/rpc/authorize_launch.go). |
 | `@enumerate` | named type with underlying type `string` | enum table name | Generates typed constants for the named type from the rows of an enum table. A table is an enum table when it has a `Description` column (the generator runs `SELECT DISTINCT Id, Description` against the migrated schema — avoid that column name on non-enum tables). |
@@ -51,7 +51,7 @@ type Ship struct { ... }
 | `@defaultsUpdateType` | `@resource` struct | type name | As above, for updates. |
 | `@validateCreateType` | `@resource` struct | type name | The generated create path calls `Validate()` on the named type to validate the incoming resource. |
 | `@validateUpdateType` | `@resource` struct | type name | As above, for updates. |
-| `@primarykey` | field of a `@computed` struct | none | Marks the field as (part of) the computed resource's primary key; multiple annotated fields form a compound key in declaration order. |
+| `@primarykey` | field of a `@computed` or `@virtual` struct | none | Marks the field as (part of) the resource's primary key; multiple annotated fields form a compound key in declaration order. Primary-key fields are exempt from field-level permission enforcement (their readability follows the resource-level grant). Rejected on table-backed `@resource` structs, whose keys come from the schema. |
 | `@manualAddResource` | `accesstypes.Resource` constant | `permission[, scope]` | Registers the permission on the resource in the generated Collection for a hand-written route with no generated handler. Repeatable. Scope is `global` or `domain`; omitted means the global default. |
 | `@manualAddResourceSet` | `@resource` struct | comma list of `listHandler`, `readHandler`, `patchHandler`, or `allHandlers` | Declares that hand-written handlers register this resource's permission Sets for the given handler types; validated against the set of generated handlers. |
 | `@permissionScope` | `@resource`, `@virtual`, `@computed`, or `@rpc` struct | `global` or `domain` | Sets the permission scope used by all of the resource's registrations. Default: `global`. It also selects the domain the generated handlers evaluate permissions in: global-scoped handlers pass `accesstypes.GlobalDomain`, while domain-scoped handlers read it from a required `/domains/{domain}/` route segment pair between the route prefix and the resource path (pair-style, so domain values can never collide with resource or method route names). Both names are customizable via the `generation.WithDomainRoute` option, e.g. `WithDomainRoute("organizations", "organizationID")` → `/organizations/{organizationID}/`. A domain-scoped resource cannot participate in the consolidated patch handler (generation error) until per-op domains land. |
@@ -60,10 +60,16 @@ Exactly one of `@resource`, `@virtual`, `@computed`, or `@rpc` may appear on a s
 
 ## 2. Struct tags you write (source structs)
 
+Field-level permissions are structural, not annotated: every non-primary-key field of a
+resource implicitly requires the endpoint's permission on `Resource.field` (`List` and
+`Read` for reads, `Create`/`Update` for mutations; `Delete` stays resource-level).
+Primary keys are exempt — their readability follows the resource-level grant. There is
+no per-field permission tag to write: a `perm:` tag on a source struct is a generation
+error, and a stale one in a generated request struct fails Set construction at startup.
+
 | Tag | Where | Effect |
 | --- | --- | --- |
 | `spanner:"ColumnName"` | every field of `@resource`/`@virtual` structs | Maps the field to its Spanner column. Required — a missing tag or unknown column is a generation error, and field nullability must match the column's. |
-| `perm:"List,Read,Create,Update,Delete"` | resource fields | Field-level permission requirements, enforced on the REST path only. The generator splits the list across request structs: `List`/`Read` guard reads, the rest guard mutations. An untagged field currently has no field-level check (fail-open; the resource-level grant still applies). Planned fail-closed migration: every non-primary-key field will implicitly require the endpoint's permission, at which point this tag is removed rather than reinterpreted. Primary keys take no `perm` tag: their readability follows the resource-level grant. Example: [Ship](starport/pkg/resources/ships.go). |
 | `conditions:"…"` | resource fields | Comma-separated list of field conditions, see below. |
 | `default_create_fn:"pkg.Func"` | resource fields | The generated create path calls the referenced function to populate the field when the request doesn't supply it. A field with a default function is not treated as required. |
 | `output_only_update_fn:"pkg.Func"` | resource fields | The generated update path sets the field by calling the referenced function; implies output-only. Example: [Ship.UpdatedAt](starport/pkg/resources/ships.go) using `resource.CommitTimestampPtr`. |
@@ -76,7 +82,8 @@ Values recognized in a `conditions` tag:
 
 - `immutable` — the client sets the field on create, and it can never change afterward:
   an update touching it is rejected with a 400 (the generator emits `immutable:"true"`
-  into the patch request struct — you write the condition, never the emitted tag).
+  into the patch request struct — you write the condition, never the emitted tag), and
+  the generated Collection never exposes `Update` on the field's tag as grantable.
 - `pii` — marks the field as personally identifiable. Emitted as `pii:"true"`, surfaced
   in the TypeScript metadata, and the field is rejected in URL `filter` expressions
   (filter via the POST body instead, which doesn't land in access logs).
@@ -119,8 +126,8 @@ Read back at runtime by the `resource` package; listed here for reading generate
 | Tag | Meaning |
 | --- | --- |
 | `json:"camelName"` | Wire name of the field and the key under which its permissions are registered. `json:"-"` hides the field (input-only fields in read structs; primary keys and output-only fields in patch structs). |
-| `perm:"…"` | The slice of the source `perm` list relevant to that request struct (`Read` in read structs, `List` in list structs, mutation permissions in patch structs). |
-| `immutable:"true"` | From `conditions:"immutable"`; the patch decoder rejects updates to the field. |
+| `perm:"-"` | The primary-key exemption marker, emitted only on primary-key fields of list/read (and computed) structs: the field requires no field-level grant, and its readability follows the resource-level grant. Every field without the marker is enforced structurally with the endpoint's permission. `-` is the only legal value — any other perm value in a request struct is a startup error (the stale-struct guard). |
+| `immutable:"true"` | From `conditions:"immutable"`; the patch decoder rejects updates to the field. On the grant side, the generated Collection never lists `Update` on an immutable field's tag, so the (unsatisfiable) update grant can never be assigned to a role. |
 | `index:"true"` | From the schema's indexes (or `index`/`uniqueindex` tags on virtual resources); makes the field filterable and sortable. |
 | `allow_filter:"true"` | Copied from the source struct; makes an unindexed field filterable. |
 | `pii:"true"` | From `conditions:"pii"`; the field is rejected in URL filter expressions. |

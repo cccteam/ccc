@@ -16,15 +16,15 @@ import (
 
 func (a *App) SupplyCrates() http.HandlerFunc {
 	type supplyCrate struct {
-		ID             ccc.UUID     `json:"id"             index:"true"`
-		Label          string       `json:"label"          index:"true"        perm:"List"`
-		Quantity       int64        `json:"quantity"       allow_filter:"true" perm:"List"`
-		Priority       int64        `json:"priority"       perm:"List"`
-		Status         string       `json:"status"         perm:"List"`
-		Barcode        string       `json:"barcode"        perm:"List"`
+		ID             ccc.UUID     `json:"id"             index:"true"        perm:"-"`
+		Label          string       `json:"label"          index:"true"`
+		Quantity       int64        `json:"quantity"       allow_filter:"true"`
+		Priority       int64        `json:"priority"`
+		Status         string       `json:"status"`
+		Barcode        string       `json:"barcode"`
 		Notes          *string      `json:"-"`
-		InspectorBadge *string      `json:"inspectorBadge" allow_filter:"true" perm:"List" pii:"true"`
-		AssignedShipID ccc.NullUUID `json:"assignedShipId" index:"true"        perm:"List"`
+		InspectorBadge *string      `json:"inspectorBadge" allow_filter:"true" pii:"true"`
+		AssignedShipID ccc.NullUUID `json:"assignedShipId" index:"true"`
 	}
 
 	type response []map[string]any
@@ -78,15 +78,15 @@ func (a *App) SupplyCrates() http.HandlerFunc {
 
 func (a *App) SupplyCrate() http.HandlerFunc {
 	type response struct {
-		ID             ccc.UUID     `json:"id"             index:"true"`
-		Label          string       `json:"label"          perm:"Read"`
-		Quantity       int64        `json:"quantity"       perm:"Read"`
-		Priority       int64        `json:"priority"       perm:"Read"`
-		Status         string       `json:"status"         perm:"Read"`
-		Barcode        string       `json:"barcode"        perm:"Read"`
+		ID             ccc.UUID     `json:"id"             index:"true" perm:"-"`
+		Label          string       `json:"label"`
+		Quantity       int64        `json:"quantity"`
+		Priority       int64        `json:"priority"`
+		Status         string       `json:"status"`
+		Barcode        string       `json:"barcode"`
 		Notes          *string      `json:"-"`
-		InspectorBadge *string      `json:"inspectorBadge" perm:"Read"  pii:"true"`
-		AssignedShipID ccc.NullUUID `json:"assignedShipId" perm:"Read"`
+		InspectorBadge *string      `json:"inspectorBadge" pii:"true"`
+		AssignedShipID ccc.NullUUID `json:"assignedShipId"`
 	}
 
 	decoder := NewQueryDecoder[resources.SupplyCrate, response](a, accesstypes.Read)

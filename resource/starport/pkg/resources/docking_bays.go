@@ -5,9 +5,10 @@ import (
 )
 
 type (
-	// DockingBay is a fail-open resource: none of its fields carry a perm tag, so
-	// field-level access follows the package default. The fail-open pinning suite
-	// asserts the current behavior of these fields.
+	// DockingBay is the fail-closed demo resource: no field carries any permission
+	// annotation, and every non-primary-key field is enforced structurally with the
+	// endpoint's permission. The fail-closed pinning suite asserts that a resource-only
+	// grant exposes nothing beyond the primary key.
 	//
 	// @resource
 	DockingBay struct {

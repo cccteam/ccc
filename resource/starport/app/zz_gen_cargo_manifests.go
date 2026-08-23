@@ -16,11 +16,11 @@ import (
 
 func (a *App) CargoManifests() http.HandlerFunc {
 	type cargoManifest struct {
-		ShipID        ccc.UUID `json:"shipId"        index:"true"`
-		LineNumber    int64    `json:"lineNumber"    index:"true"`
+		ShipID        ccc.UUID `json:"shipId"        index:"true" perm:"-"`
+		LineNumber    int64    `json:"lineNumber"    index:"true" perm:"-"`
 		Details       string   `json:"details"`
 		Quantity      int64    `json:"quantity"`
-		DeclaredValue int64    `json:"declaredValue" perm:"List"`
+		DeclaredValue int64    `json:"declaredValue"`
 	}
 
 	type response []map[string]any
@@ -68,11 +68,11 @@ func (a *App) CargoManifests() http.HandlerFunc {
 
 func (a *App) CargoManifest() http.HandlerFunc {
 	type response struct {
-		ShipID        ccc.UUID `json:"shipId"        index:"true"`
-		LineNumber    int64    `json:"lineNumber"    index:"true"`
+		ShipID        ccc.UUID `json:"shipId"        index:"true" perm:"-"`
+		LineNumber    int64    `json:"lineNumber"    index:"true" perm:"-"`
 		Details       string   `json:"details"`
 		Quantity      int64    `json:"quantity"`
-		DeclaredValue int64    `json:"declaredValue" perm:"Read"`
+		DeclaredValue int64    `json:"declaredValue"`
 	}
 
 	decoder := NewQueryDecoder[resources.CargoManifest, response](a, accesstypes.Read)
