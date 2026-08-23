@@ -1,0 +1,60 @@
+<h1>Berths</h1>
+<p>
+  Berths are station scoped: the station in the URL is the permission domain. The demo user holds the DockOperator
+  role in station-alpha only, so station-beta answers 403 for every request.
+</p>
+
+<app-station-select (stationChange)="stationChanged($event)"></app-station-select>
+
+@if (station()) {
+  <mat-card appearance="outlined" class="table-card">
+    <table mat-table [dataSource]="berths()">
+      <ng-container matColumnDef="designation">
+        <th mat-header-cell *matHeaderCellDef>Designation</th>
+        <td mat-cell *matCellDef="let berth">{{ berth.designation }}</td>
+      </ng-container>
+      <ng-container matColumnDef="sizeClass">
+        <th mat-header-cell *matHeaderCellDef>Size Class</th>
+        <td mat-cell *matCellDef="let berth">{{ berth.sizeClass }}</td>
+      </ng-container>
+      <ng-container matColumnDef="occupied">
+        <th mat-header-cell *matHeaderCellDef>Occupied</th>
+        <td mat-cell *matCellDef="let berth">
+          <mat-slide-toggle [checked]="berth.occupied" (change)="toggleOccupied(berth)"></mat-slide-toggle>
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef></th>
+        <td mat-cell *matCellDef="let berth">
+          <button mat-icon-button aria-label="Delete berth" (click)="remove(berth)">
+            <mat-icon>delete</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let row; columns: columns"></tr>
+    </table>
+    @if (!berths().length) {
+      <p class="empty">No berths visible in this station.</p>
+    }
+  </mat-card>
+
+  <mat-card appearance="outlined" class="create-card">
+    <mat-card-header>
+      <mat-card-title>New Berth</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <form (ngSubmit)="create()">
+        <mat-form-field appearance="outline">
+          <mat-label>Designation</mat-label>
+          <input matInput name="designation" [(ngModel)]="newDesignation" required />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Size Class</mat-label>
+          <input matInput name="sizeClass" type="number" [(ngModel)]="newSizeClass" required />
+        </mat-form-field>
+        <button mat-flat-button color="primary" type="submit">Create</button>
+      </form>
+    </mat-card-content>
+  </mat-card>
+}

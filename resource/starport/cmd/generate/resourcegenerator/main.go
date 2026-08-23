@@ -38,7 +38,7 @@ func run(ctx context.Context) error {
 		// it is a generation error until the consolidated payload gains a per-op domain.
 		generation.WithConsolidatedHandlers("resources", true, "CrewMember", "Berth"),
 		generation.WithSpannerEmulatorVersion("1.5.55"),
-		generation.GenerateTypescript("frontend/src/service",
+		generation.GenerateTypescript("gui/src/app/core/service",
 			generation.GenerateMetadata(),
 			generation.GeneratePermissions(),
 		),

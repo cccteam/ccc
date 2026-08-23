@@ -1,0 +1,17 @@
+# Development process file for overmind (https://github.com/DarthSim/overmind):
+#
+#     overmind start
+#
+# spanner: a fresh Spanner emulator (--rm, so every start bootstraps from scratch).
+# server:  waits for the emulator port, bootstraps the database (schema, roles, demo
+#          users, demo data), then serves the app. Bootstrap and serve share one
+#          process so the server never races the bootstrap — and because overmind
+#          stops everything when any process exits.
+# ui:      ng serve with /api proxied to the Go server (see gui/proxy.conf.js);
+#          browse http://127.0.0.1:4200 and sign in with demo / starport.
+#
+# SPANNER_EMULATOR_PORT and STARPORT_PORT are overridable (e.g. via an .env file,
+# which overmind loads automatically).
+spanner: podman run --rm -p 127.0.0.1:${SPANNER_EMULATOR_PORT:-9010}:9010 gcr.io/cloud-spanner-emulator/emulator:1.5.55
+server: bash -c 'export SPANNER_EMULATOR_HOST=127.0.0.1:${SPANNER_EMULATOR_PORT:-9010}; for i in {1..300}; do (echo > /dev/tcp/127.0.0.1/${SPANNER_EMULATOR_PORT:-9010}) >/dev/null 2>&1 && break || sleep 0.1; done; go run ./cmd/bootstrap && go run .'
+ui: cd gui && npm start

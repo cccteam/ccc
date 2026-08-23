@@ -64,6 +64,9 @@ linters:
             - github.com/go-chi/chi/v5
             - github.com/go-playground/errors/v5
             - github.com/go-playground/validator/v10
+            - github.com/jtwatson/server
+            - github.com/jtwatson/spaassets
+            - github.com/sethvargo/go-envconfig
             - go.uber.org/mock/gomock
             - google.golang.org/grpc/codes
     exhaustive:

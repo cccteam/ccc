@@ -1,0 +1,158 @@
+{
+  "roles": [
+    {
+      "Name": "HarborMaster",
+      "Permissions": {
+        "List": [
+          "Ships",
+          "Ships.registryCode",
+          "Ships.name",
+          "Ships.dockingBayId",
+          "Ships.cargoValue",
+          "Ships.updatedAt",
+          "DockingBays",
+          "CrewMembers",
+          "CrewMembers.shipId",
+          "CrewMembers.name",
+          "CrewMembers.rank",
+          "CrewMembers.clearanceLevel",
+          "CrewMembers.medicalNotes",
+          "CargoManifests",
+          "CargoManifests.declaredValue",
+          "SupplyCrates",
+          "SupplyCrates.label",
+          "SupplyCrates.quantity",
+          "SupplyCrates.priority",
+          "SupplyCrates.status",
+          "SupplyCrates.barcode",
+          "SupplyCrates.inspectorBadge",
+          "SupplyCrates.assignedShipId"
+        ],
+        "Read": [
+          "Ships",
+          "Ships.registryCode",
+          "Ships.name",
+          "Ships.dockingBayId",
+          "Ships.cargoValue",
+          "Ships.updatedAt",
+          "DockingBays",
+          "CrewMembers",
+          "CrewMembers.shipId",
+          "CrewMembers.name",
+          "CrewMembers.rank",
+          "CrewMembers.clearanceLevel",
+          "CrewMembers.medicalNotes",
+          "CargoManifests",
+          "CargoManifests.declaredValue",
+          "SupplyCrates",
+          "SupplyCrates.label",
+          "SupplyCrates.quantity",
+          "SupplyCrates.priority",
+          "SupplyCrates.status",
+          "SupplyCrates.barcode",
+          "SupplyCrates.inspectorBadge",
+          "SupplyCrates.assignedShipId"
+        ],
+        "Create": [
+          "Ships",
+          "Ships.registryCode",
+          "Ships.name",
+          "Ships.dockingBayId",
+          "Ships.cargoValue",
+          "DockingBays",
+          "CrewMembers",
+          "CrewMembers.shipId",
+          "CrewMembers.name",
+          "CrewMembers.rank",
+          "CrewMembers.clearanceLevel",
+          "CrewMembers.medicalNotes",
+          "CargoManifests",
+          "CargoManifests.declaredValue",
+          "SupplyCrates",
+          "SupplyCrates.label",
+          "SupplyCrates.quantity",
+          "SupplyCrates.priority",
+          "SupplyCrates.status",
+          "SupplyCrates.notes",
+          "SupplyCrates.inspectorBadge",
+          "SupplyCrates.assignedShipId"
+        ],
+        "Update": [
+          "Ships",
+          "Ships.name",
+          "Ships.dockingBayId",
+          "Ships.cargoValue",
+          "DockingBays",
+          "CrewMembers",
+          "CrewMembers.shipId",
+          "CrewMembers.name",
+          "CrewMembers.rank",
+          "CrewMembers.clearanceLevel",
+          "CrewMembers.medicalNotes",
+          "CargoManifests",
+          "CargoManifests.declaredValue",
+          "SupplyCrates",
+          "SupplyCrates.label",
+          "SupplyCrates.quantity",
+          "SupplyCrates.priority",
+          "SupplyCrates.status",
+          "SupplyCrates.notes",
+          "SupplyCrates.inspectorBadge",
+          "SupplyCrates.assignedShipId"
+        ],
+        "Delete": [
+          "Ships",
+          "DockingBays",
+          "CrewMembers",
+          "CargoManifests",
+          "SupplyCrates"
+        ],
+        "Execute": [
+          "AuthorizeLaunch"
+        ]
+      }
+    },
+    {
+      "Name": "DockOperator",
+      "Permissions": {
+        "List": [
+          "Berths",
+          "Berths.designation",
+          "Berths.sizeClass",
+          "Berths.occupied"
+        ],
+        "Read": [
+          "Berths",
+          "Berths.designation",
+          "Berths.sizeClass"
+        ],
+        "Create": [
+          "Berths",
+          "Berths.designation",
+          "Berths.sizeClass",
+          "Berths.occupied"
+        ],
+        "Update": [
+          "Berths",
+          "Berths.occupied"
+        ],
+        "Delete": [
+          "Berths"
+        ],
+        "Execute": [
+          "AuthorizeDocking"
+        ]
+      }
+    }
+  ],
+  "users": [
+    {
+      "user": "demo",
+      "password": "starport",
+      "roles": {
+        "global": ["HarborMaster"],
+        "station-alpha": ["DockOperator"]
+      }
+    }
+  ]
+}

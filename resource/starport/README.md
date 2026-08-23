@@ -4,8 +4,8 @@ A synthetic "starport logistics" application with two roles:
 
 - **Demo app**: a canonical, end-to-end example of building on
   `github.com/cccteam/ccc/resource` — schema migrations, annotated resource structs,
-  code generation, routing, and permission enforcement. An Angular frontend is planned
-  under `frontend/` for a full-stack integration demonstration.
+  code generation, routing, permission enforcement, a served REST application
+  (`main.go`), and an Angular frontend under `gui/`.
 - **Regression baseline**: the permanent test bed for the `resource` package and its
   code generators. Everything here is intentionally fictional; it exercises the full
   generator and runtime surface.
@@ -72,18 +72,68 @@ access-config/data paths are overridable via `STARPORT_*` environment variables 
 `cmd/bootstrap`). The bootstrap expects a fresh emulator; restart the container to
 bootstrap again.
 
-`config/demo_access.json` defines the demo roles (provisioned via `access.MigrateRoles`
-against `router.Collection()`, which validates every grant — unknown resources,
-unregistered permissions, and Update grants on immutable fields fail the bootstrap)
-and the demo users' per-domain role assignments. `pkg/stations` is the demo's tenancy
-source: the stations that serve as permission domains for the domain-scoped resources,
-passed to `MigrateRoles` as the domain universe. The access engine's policy tables ride
-the schema migrations (`000008_AccessTables`), copied from the store's canonical
-`DDL()`. `app.NewAccessUserPermissions` adapts the access engine to the resource
-package's `UserPermissions` seam for a served app; the integration tests keep
-injecting scriptable fakes instead.
+`cmd/bootstrap/demo_access.json` defines the demo roles (provisioned via
+`access.MigrateRoles` against `router.Collection()`, which validates every grant —
+unknown resources, unregistered permissions, and Update grants on immutable fields
+fail the bootstrap) and the demo users: their login credentials (seeded as session
+users through the session library, so passwords are stored as real Argon2 hashes; the
+plaintext in the JSON is deliberate — fictional credentials for an emulator-only demo)
+and their per-domain role assignments. `pkg/stations` is the demo's tenancy source:
+the stations that serve as permission domains for the domain-scoped resources, passed
+to `MigrateRoles` as the domain universe. The access engine's policy tables and the
+session library's tables ride the schema migrations (`000008_AccessTables`,
+`000009_Sessions`, `000010_SessionUsers`), copied from each library's canonical DDL.
+`app.NewAccessUserPermissions` adapts the access engine to the resource package's
+`UserPermissions` seam for a served app; the integration tests keep injecting
+scriptable fakes instead.
 
 `TestBootstrap` runs the full bootstrap against an emulator and asserts the
 provisioned access state end to end, including that the demo user's station role
 authorizes only in the assigned station and that global and station grants never
 bleed into each other.
+
+## Running the application
+
+The starport serves a full web application: the generated resource API behind
+password-auth sessions (`cccteam/session`), plus the Angular frontend. Like the
+bootstrap, it refuses to start without `SPANNER_EMULATOR_HOST` — the demo never
+targets real infrastructure.
+
+The quickest way is the committed `Procfile` with
+[overmind](https://github.com/DarthSim/overmind) (after a one-time
+`cd gui && npm install`):
+
+```
+overmind start
+```
+
+It starts a fresh emulator, waits for it, bootstraps the database, serves the app,
+and runs `ng serve` — browse http://127.0.0.1:4200 (the frontend dev server, `/api`
+proxied to the Go server) and sign in with `demo` / `starport`. Every start
+re-bootstraps from scratch because the emulator container is ephemeral.
+
+The equivalent manual steps, serving the production build from the Go server instead
+of `ng serve`:
+
+```
+podman run -d --rm --name spanner -p 127.0.0.1:9010:9010 gcr.io/cloud-spanner-emulator/emulator:1.5.55
+SPANNER_EMULATOR_HOST=127.0.0.1:9010 go run ./cmd/bootstrap
+(cd gui && npm install && npm run build)
+SPANNER_EMULATOR_HOST=127.0.0.1:9010 go run .
+```
+
+Then open http://localhost:8080 and sign in with the seeded demo credentials
+(`demo` / `starport`). Configuration lives in `pkg/config` and is entirely optional:
+`STARPORT_HOST`/`STARPORT_PORT` for the listen address, `STARPORT_SESSION_TIMEOUT`,
+`STARPORT_COOKIE_KEY` (ephemeral when unset), `STARPORT_GUI_DIST` (defaults to
+`gui/dist`), and the same `STARPORT_SPANNER_*` variables the bootstrap uses.
+
+For frontend development, `cd gui && npm start` serves the Angular app with `/api`
+proxied to the Go server (see `gui/README.md`).
+
+The served router (`router.NewServer`) wraps the generated routes with session
+validation and adds three hand-written endpoints: `POST /api/user/login` (the session
+library's password login), `GET /api/user/session-data` (the session user's permission
+collection from the access engine, consumed by the frontend's permission gating), and
+`GET /api/stations` (the demo tenancy list). The bare `router.New`/`app.New` seam the
+integration tests exercise is unchanged.

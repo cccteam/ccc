@@ -1,0 +1,23 @@
+.table-card {
+  margin: 16px 0;
+
+  table {
+    width: 100%;
+  }
+
+  .empty {
+    padding: 16px;
+    color: rgba(0, 0, 0, 0.5);
+  }
+}
+
+.create-card {
+  max-width: 640px;
+
+  form {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+}
