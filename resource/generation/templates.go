@@ -842,6 +842,13 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 					{{- end }}
 					{{- if .DomainCases }}
 					case "{{ .DomainRouteSegment }}":
+						{{- if .SegmentCase }}
+						if op.PathDepth() <= 2 {
+							{{- template "consolidatedCaseBody" .SegmentCase }}
+
+							continue
+						}
+						{{- end }}
 						op, err := op.WithPrefixPattern("{{ .DomainPatternPrefix }}/{resource}")
 						if err != nil {
 							return errors.Wrap(err, "resource.Operation.WithPrefixPattern()")
@@ -876,8 +883,11 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 	})
 }
 {{- define "consolidatedCase" }}
-					{{- $primaryKeyType := .PrimaryKeyType }}
 					case "{{ Kebab (Pluralize .Name) }}":
+						{{- template "consolidatedCaseBody" . }}
+{{- end }}
+{{- define "consolidatedCaseBody" }}
+					{{- $primaryKeyType := .PrimaryKeyType }}
 						patchSet, err := {{ GoCamel .Name}}Decoder.DecodeOperation(op, userPermissions, {{ if .DomainPatternPrefix }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
 						if err != nil {
 							return errors.Wrap(err, "{{ GoCamel .Name}}Decoder.DecodeOperation()")

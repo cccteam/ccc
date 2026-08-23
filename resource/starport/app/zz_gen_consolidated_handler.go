@@ -54,6 +54,12 @@ func (a *App) PatchResources() http.HandlerFunc {
 	}
 	shipDecoder := NewDecoder[resources.Ship, shipRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
+	type stationRequest struct {
+		ID   ccc.UUID `json:"-"`
+		Name string   `json:"name"`
+	}
+	stationDecoder := NewDecoder[resources.Station, stationRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+
 	type supplyCrateRequest struct {
 		ID             ccc.UUID     `json:"-"`
 		Label          string       `json:"label"`
@@ -220,6 +226,41 @@ func (a *App) PatchResources() http.HandlerFunc {
 						}
 					}
 				case "stations":
+					if op.PathDepth() <= 2 {
+						patchSet, err := stationDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)
+						if err != nil {
+							return errors.Wrap(err, "stationDecoder.DecodeOperation()")
+						}
+
+						req, err := op.ReqWithPattern("/{resource}/{id}")
+						if err != nil {
+							return errors.Wrap(err, "op.ReqWithPattern()")
+						}
+
+						switch op.Type {
+						case resource.OperationCreate:
+							patch, err := resources.NewStationCreatePatchFromPatchSet(patchSet)
+							if err != nil {
+								return errors.Wrap(err, "stationCreatePatchFromPatchSet()")
+							}
+							if err := patch.Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[resources.Station](err), "resources.StationCreatePatch.Buffer()")
+							}
+							resp["stations"] = append(resp["stations"], patch.ID())
+						case resource.OperationUpdate:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewStationUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[resources.Station](err), "resources.StationUpdatePatch.Buffer()")
+							}
+						case resource.OperationDelete:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewStationDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(handleError[resources.Station](err), "resources.StationDeletePatch.Buffer()")
+							}
+						}
+
+						continue
+					}
 					op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")
 					if err != nil {
 						return errors.Wrap(err, "resource.Operation.WithPrefixPattern()")

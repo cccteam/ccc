@@ -547,3 +547,45 @@ func TestOperation_WithPrefixPattern(t *testing.T) {
 		})
 	}
 }
+
+func TestOperation_PathDepth(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+		want int
+	}{
+		{
+			name: "collection path is depth one",
+			body: `[{"op":"add","path":"/organizations","value":{"a":1}}]`,
+			want: 1,
+		},
+		{
+			name: "keyed path is depth two",
+			body: `[{"op":"patch","path":"/organizations/abc","value":{"a":1}}]`,
+			want: 2,
+		},
+		{
+			name: "domain descent is depth three or more",
+			body: `[{"op":"patch","path":"/organizations/abc/widgets/w1","value":{"a":1}}]`,
+			want: 4,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := &http.Request{Method: "POST", Body: io.NopCloser(bytes.NewBufferString(tt.body))}
+			for op, err := range Operations(r, "/{resource}", MatchPrefix()) {
+				if err != nil {
+					t.Fatalf("Operations() error = %v", err)
+				}
+				if got := op.PathDepth(); got != tt.want {
+					t.Errorf("PathDepth() = %d, want %d", got, tt.want)
+				}
+			}
+		})
+	}
+}

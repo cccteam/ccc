@@ -57,6 +57,20 @@ func (o *Operation) ReqWithPattern(pattern string, opts ...Option) (*http.Reques
 	return o.Req.WithContext(ctx), nil
 }
 
+// PathDepth returns the number of segments in the operation's path ("/organizations"
+// → 1, "/organizations/abc" → 2). The consolidated handler uses it to distinguish
+// operations on the resource named like the domain route segment (the tenant record,
+// depth ≤ 2) from domain descents (depth ≥ 3) — disjoint by construction because the
+// segment-named resource is required to have a single primary key.
+func (o *Operation) PathDepth() int {
+	trimmed := strings.Trim(o.Req.URL.Path, "/")
+	if trimmed == "" {
+		return 0
+	}
+
+	return strings.Count(trimmed, "/") + 1
+}
+
 // WithPrefixPattern returns a copy of the operation re-anchored to a longer path
 // prefix: the pattern is prefix-matched against the operation's path, binding its
 // params into the request context, and the copy's create-path semantics use the new,

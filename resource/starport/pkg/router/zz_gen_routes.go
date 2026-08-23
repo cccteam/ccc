@@ -20,6 +20,7 @@ const (
 	DockingBayID            httpio.ParamType = "dockingBayID"
 	GantryCraneID           httpio.ParamType = "gantryCraneID"
 	ShipID                  httpio.ParamType = "shipID"
+	StationID               httpio.ParamType = "stationID"
 	SupplyCrateID           httpio.ParamType = "supplyCrateID"
 )
 
@@ -47,6 +48,9 @@ type GeneratedHandlers interface {
 
 	Ships() http.HandlerFunc
 	Ship() http.HandlerFunc
+
+	Stations() http.HandlerFunc
+	Station() http.HandlerFunc
 
 	SupplyCrates() http.HandlerFunc
 	SupplyCrate() http.HandlerFunc
@@ -110,6 +114,14 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	shipHandler := h.Ship()
 	r.Get("/api/ships/{shipID}", shipHandler)
 	r.Post("/api/ships/{shipID}", shipHandler)
+
+	stationsHandler := h.Stations()
+	r.Get("/api/stations", stationsHandler)
+	r.Post("/api/stations", stationsHandler)
+
+	stationHandler := h.Station()
+	r.Get("/api/stations/{stationID}", stationHandler)
+	r.Post("/api/stations/{stationID}", stationHandler)
 
 	supplyCratesHandler := h.SupplyCrates()
 	r.Get("/api/supply-crates", supplyCratesHandler)

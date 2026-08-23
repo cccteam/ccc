@@ -305,13 +305,17 @@ func Test_consolidatedPatchResources(t *testing.T) {
 			wantNames: []string{"Vault"},
 		},
 		{
-			name: "consolidated resource named like the domain route segment is a generation error",
+			name: "segment-named consolidated resource passes alongside domain-scoped ones (tenant-record pattern)",
 			resources: []*resourceInfo{
 				fixtureResource(t, structs, "Station", func(res *resourceInfo) {
 					res.IsConsolidated = true
 				}),
+				fixtureResource(t, structs, "Vault", func(res *resourceInfo) {
+					res.IsConsolidated = true
+					res.PermissionScope = accesstypes.DomainPermissionScope
+				}),
 			},
-			wantErrContains: "domain route segment",
+			wantNames: []string{"Station", "Vault"},
 		},
 	}
 
@@ -531,6 +535,32 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 			wantNotContains: []string{"batchDomain", "UserPermissions(op.Req)"},
 		},
 		{
+			name: "segment-named resource shares the descent case, branching on path depth",
+			data: consolidatedPatchData{
+				Resources: []*resourceInfo{globalCase.resourceInfo, domainCase.resourceInfo},
+				SegmentCase: &consolidatedCaseData{
+					resourceInfo:    fixtureResource(t, structs, "Station", nil),
+					ResourcePackage: "resources",
+					ReceiverName:    "a",
+				},
+				DomainCases:         []consolidatedCaseData{domainCase},
+				DomainRouteSegment:  "stations",
+				DomainPatternPrefix: "/stations/{stationID}",
+				Package:             "app",
+				ResourcePackage:     "resources",
+				ApplicationName:     "App",
+				ReceiverName:        "a",
+			},
+			wantContains: []string{
+				`case "stations":`,
+				`if op.PathDepth() <= 2 {`,
+				`stationDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)`,
+				`continue`,
+				`op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")`,
+				`vaultDecoder.DecodeOperation(op, userPermissions, domain)`,
+			},
+		},
+		{
 			name: "all-global consolidation has no descent case",
 			data: consolidatedPatchData{
 				Resources:           []*resourceInfo{globalCase.resourceInfo},
@@ -565,6 +595,101 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				if strings.Contains(string(out), notWant) {
 					t.Errorf("consolidatedPatchTemplate output must not contain %q:\n%s", notWant, out)
 				}
+			}
+		})
+	}
+}
+
+// Test_validateDomainSegmentResources pins the tenant-record pattern's structural
+// requirements: a resource named like the domain route segment must have a single
+// primary key and a read-route parameter equal to the domain route parameter; the
+// validation only applies when domain-scoped routes exist at all.
+func Test_validateDomainSegmentResources(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+
+	domainScopedVault := func() *resourceInfo {
+		return fixtureResource(t, structs, "Vault", func(res *resourceInfo) {
+			res.PermissionScope = accesstypes.DomainPermissionScope
+		})
+	}
+
+	tests := []struct {
+		name            string
+		domainParam     string
+		resources       []*resourceInfo
+		wantErrContains string
+	}{
+		{
+			name:        "tenant-record resource with single key and matching param passes",
+			domainParam: "stationID",
+			resources: []*resourceInfo{
+				fixtureResource(t, structs, "Station", nil),
+				domainScopedVault(),
+			},
+		},
+		{
+			name:        "mismatched read-route parameter is a generation error",
+			domainParam: "orgID",
+			resources: []*resourceInfo{
+				fixtureResource(t, structs, "Station", nil),
+				domainScopedVault(),
+			},
+			wantErrContains: "must equal the domain route parameter",
+		},
+		{
+			name:        "compound primary key is a generation error",
+			domainParam: "stationID",
+			resources: []*resourceInfo{
+				fixtureResource(t, structs, "Station", func(res *resourceInfo) {
+					res.PkCount = 2
+					res.Fields[1].IsPrimaryKey = true
+				}),
+				domainScopedVault(),
+			},
+			wantErrContains: "single primary key",
+		},
+		{
+			name:        "a domain-scoped resource named like the segment shares no position with it",
+			domainParam: "stationID",
+			resources: []*resourceInfo{
+				fixtureResource(t, structs, "Station", func(res *resourceInfo) {
+					res.PermissionScope = accesstypes.DomainPermissionScope
+				}),
+				domainScopedVault(),
+			},
+		},
+		{
+			name:        "without domain-scoped routes the validation does not apply",
+			domainParam: "orgID",
+			resources: []*resourceInfo{
+				fixtureResource(t, structs, "Station", nil),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := &resourceGenerator{
+				client:             &client{},
+				domainRouteSegment: "stations",
+				domainRouteParam:   tt.domainParam,
+			}
+			r.resources = tt.resources
+
+			err := r.validateDomainSegmentResources()
+			if tt.wantErrContains == "" {
+				if err != nil {
+					t.Fatalf("validateDomainSegmentResources() error = %v, want nil", err)
+				}
+
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {
+				t.Fatalf("validateDomainSegmentResources() error = %v, want error containing %q", err, tt.wantErrContains)
 			}
 		})
 	}

@@ -98,6 +98,15 @@ func Collection() *resource.GeneratedCollection {
 				ImmutableTags: []accesstypes.Tag{"registryCode"},
 			},
 			{
+				Name:        "Stations",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
+				Tags: []resource.TagData{
+					{Name: "id"},
+					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+				},
+			},
+			{
 				Name:        "SupplyCrates",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},

@@ -11,5 +11,5 @@ import (
 type Resourcer interface {
 	resource.Resourcer
 	resources.Berth | resources.CargoManifest | resources.CrewMember | resources.DockingBay |
-		resources.GantryCrane | resources.Ship | resources.SupplyCrate
+		resources.GantryCrane | resources.Ship | resources.Station | resources.SupplyCrate
 }

@@ -49,6 +49,11 @@ export interface Ships {
   updatedAt: Date;
 }
 
+export interface Stations {
+  id: string;
+  name: string;
+}
+
 export interface SupplyCrates {
   id: string;
   label: string;
@@ -125,6 +130,14 @@ const resourceMap: ResourceMap = {
       { fieldName: 'updatedAt', displayType: 'date', required: false, isIndex: false },
     ],
   },
+  [Resources.Stations]: {
+    route: 'stations',
+    consolidatedRoute: 'resources',
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'name', displayType: 'string', required: true, isIndex: true },
+    ],
+  },
   [Resources.SupplyCrates]: {
     route: 'supply-crates',
     consolidatedRoute: 'resources',
@@ -160,6 +173,7 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.DockingBays]: PermissionScopes.global,
   [Resources.GantryCranes]: PermissionScopes.domain,
   [Resources.Ships]: PermissionScopes.global,
+  [Resources.Stations]: PermissionScopes.global,
   [Resources.SupplyCrates]: PermissionScopes.global,
 };
 
@@ -189,9 +203,15 @@ export interface ShipsOperation {
   value?: Partial<Ships>;
 }
 
+export interface StationsOperation {
+  op: OperationType;
+  path: '/stations' | `/stations/${string}`;
+  value?: Partial<Stations>;
+}
+
 export interface SupplyCratesOperation {
   op: OperationType;
   path: '/supply-crates' | `/supply-crates/${string}`;
   value?: Partial<SupplyCrates>;
 }
-export type ConsolidatedOperation = CargoManifestsOperation | DockingBaysOperation | GantryCranesOperation | ShipsOperation | SupplyCratesOperation;
+export type ConsolidatedOperation = CargoManifestsOperation | DockingBaysOperation | GantryCranesOperation | ShipsOperation | StationsOperation | SupplyCratesOperation;

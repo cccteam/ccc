@@ -75,8 +75,12 @@ type consolidatedPatchData struct {
 	// GlobalCases and DomainCases split Resources by permission scope: global cases
 	// dispatch on the operation path's first segment, domain cases dispatch under the
 	// domain route segment's descent case with the domain bound from the path.
+	// SegmentCase is the tenant-record pattern: a global resource named like the
+	// domain route segment, sharing the descent case and branching on path depth
+	// (set only when DomainCases exist; otherwise it is an ordinary global case).
 	GlobalCases         []consolidatedCaseData
 	DomainCases         []consolidatedCaseData
+	SegmentCase         *consolidatedCaseData
 	DomainRouteSegment  string
 	DomainPatternPrefix string // "/stations/{stationID}" — the chi pattern the descent case prefix-matches
 	Package             string

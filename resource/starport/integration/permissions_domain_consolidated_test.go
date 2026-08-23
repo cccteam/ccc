@@ -20,10 +20,14 @@ import (
 
 const (
 	gantryCranesResource = accesstypes.Resource("GantryCranes")
+	stationsResource     = accesstypes.Resource("Stations")
 
 	// Seeded gantry crane identifiers, matching testdata/seed.
 	craneGC1ID = "4e5f6a7b-8c9d-4e0f-a1b2-c3d4e5f6a7b8" // LiftTonnage 250, Operational true
 	craneGC9ID = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d" // LiftTonnage 400, Operational false
+
+	// Seeded station (tenant-record) identifiers, matching testdata/seed.
+	stationAlphaRecordID = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
 )
 
 func TestDomainPartitionConsolidatedMutation(t *testing.T) {
@@ -138,6 +142,52 @@ func TestDomainPartitionConsolidatedMutation(t *testing.T) {
 					t.Errorf("GantryCranes row count = %d, want 3 after create", count)
 				}
 			},
+		},
+		{
+			// Station is the tenant-record resource: its route name equals the domain
+			// segment, so its operations share the dispatcher's "stations" case and are
+			// told apart from domain descents by path depth.
+			name: "tenant-record operations dispatch at depth two under the shared case",
+			grants: domainGrants{accesstypes.GlobalDomain: {accesstypes.Update: {
+				stationsResource,
+				fieldResource(stationsResource, "name"),
+			}}},
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/stations/%s","value":{"name":"station-alpha-prime"}}]`, stationAlphaRecordID),
+			wantStatus: http.StatusOK,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB) {
+				if name := readColumn[string](ctx, t, db, "Stations", spanner.Key{stationAlphaRecordID}, "Name"); name != "station-alpha-prime" {
+					t.Errorf("station record Name = %q, want updated %q", name, "station-alpha-prime")
+				}
+			},
+		},
+		{
+			name: "one batch mixes tenant-record and domain-scoped operations through the shared case",
+			grants: domainGrants{
+				accesstypes.GlobalDomain: {accesstypes.Update: {
+					stationsResource,
+					fieldResource(stationsResource, "name"),
+				}},
+				stationAlpha: craneUpdateGrants,
+			},
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/stations/%s","value":{"name":"station-alpha-prime"}},{"op":"patch","path":"/stations/station-alpha/gantry-cranes/%s","value":{"operational":false}}]`, stationAlphaRecordID, craneGC1ID),
+			wantStatus: http.StatusOK,
+			verify: func(ctx context.Context, t *testing.T, db *initiator.SpannerDB) {
+				if name := readColumn[string](ctx, t, db, "Stations", spanner.Key{stationAlphaRecordID}, "Name"); name != "station-alpha-prime" {
+					t.Errorf("station record Name = %q, want updated %q", name, "station-alpha-prime")
+				}
+				if operational := readColumn[bool](ctx, t, db, "GantryCranes", spanner.Key{craneGC1ID}, "Operational"); operational {
+					t.Error("crane GC-1 Operational = true, want updated to false")
+				}
+			},
+		},
+		{
+			name: "a tenant-record operation needs the global grant, not a station grant",
+			grants: domainGrants{stationAlpha: {accesstypes.Update: {
+				stationsResource,
+				fieldResource(stationsResource, "name"),
+			}}},
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/stations/%s","value":{"name":"station-alpha-prime"}}]`, stationAlphaRecordID),
+			wantStatus: http.StatusForbidden,
 		},
 		{
 			name:       "a domain-scoped operation without its station segment is a bad request",

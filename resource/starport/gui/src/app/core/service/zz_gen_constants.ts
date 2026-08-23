@@ -24,6 +24,7 @@ export const Resources = {
   DockingBays: 'DockingBays' as Resource,
   GantryCranes: 'GantryCranes' as Resource,
   Ships: 'Ships' as Resource,
+  Stations: 'Stations' as Resource,
   SupplyCrates: 'SupplyCrates' as Resource,
 };
 
@@ -131,6 +132,17 @@ export namespace Ships {
     name: 'Ships.name' as Resource,
     registryCode: 'Ships.registryCode' as Resource,
     updatedAt: 'Ships.updatedAt' as Resource,
+  };
+}
+
+export namespace Stations {
+  export const fieldName = {
+    id: 'id' as FieldName,
+    name: 'name' as FieldName,
+  };
+  export const resourceName = {
+    id: 'Stations.id' as Resource,
+    name: 'Stations.name' as Resource,
   };
 }
 
@@ -423,6 +435,27 @@ const Mappings: PermissionMappings = {
     [Permissions.List]: true,
     [Permissions.Read]: true,
     [Permissions.Update]: false,
+  },
+  [Resources.Stations]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: true,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
+  },
+  [Stations.resourceName.id]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: false,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [Stations.resourceName.name]: {
+    [Permissions.Create]: true,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: true,
   },
   [Resources.SupplyCrates]: {
     [Permissions.Create]: true,

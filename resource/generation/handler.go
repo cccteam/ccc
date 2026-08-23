@@ -60,21 +60,88 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 
 // consolidatedPatchResources returns the resources served by the consolidated patch
 // handler. Domain-scoped resources participate with domain-embedded operation paths
-// (/{segment}/{domain}/{resource}/...), so no consolidated resource may be named like
-// the domain route segment — that name is the batch dispatcher's descent case.
+// (/{segment}/{domain}/{resource}/...); a global resource named like the domain route
+// segment (the tenant-record pattern) shares the dispatcher's descent case, branching
+// on path depth — its structural requirements are enforced by
+// validateDomainSegmentResources.
 func (r *resourceGenerator) consolidatedPatchResources() ([]*resourceInfo, error) {
+	if err := r.validateDomainSegmentResources(); err != nil {
+		return nil, err
+	}
+
 	var consolidated []*resourceInfo
 	for _, res := range r.resources {
 		if !res.IsConsolidated {
 			continue
 		}
-		if kebab := strcase.ToKebab(r.pluralize(res.Name())); kebab == r.domainRouteSegment {
-			return nil, errors.Newf("resource %s: its route name %q collides with the domain route segment; rename the resource or choose another segment via WithDomainRoute", res.Name(), kebab)
-		}
 		consolidated = append(consolidated, res)
 	}
 
 	return consolidated, nil
+}
+
+// validateDomainSegmentResources checks every resource whose route name equals the
+// domain route segment — the tenant-record pattern, where /api/organizations lists the
+// tenants and /api/organizations/{organizationID}/... serves tenant-scoped routes. The
+// pattern is supported, with two structural requirements:
+//
+//   - the resource must have a single primary key, so its operation paths (depth ≤ 2)
+//     can never be ambiguous with domain descents (depth ≥ 3) in the consolidated
+//     handler, and its read route cannot shadow the segment pair's children; and
+//   - its read-route parameter must be named exactly like the domain route parameter,
+//     because chi permits one wildcard name per tree position — a mismatch panics at
+//     route registration instead of failing generation.
+//
+// Only enforced when domain-scoped routes exist; without the segment pair there is
+// nothing to interact with.
+func (r *resourceGenerator) validateDomainSegmentResources() error {
+	if !r.hasDomainScoped() {
+		return nil
+	}
+
+	var errs []error
+	check := func(name string, domainScoped, compoundPK bool, pkName string) {
+		if strcase.ToKebab(r.pluralize(name)) != r.domainRouteSegment {
+			return
+		}
+		if domainScoped {
+			// Served under the segment pair itself; it shares no position with it.
+			return
+		}
+		if compoundPK {
+			errs = append(errs, errors.Newf("resource %s: its route name %q equals the domain route segment, so it must have a single primary key — multi-segment keys are ambiguous with domain-scoped paths", name, r.domainRouteSegment))
+
+			return
+		}
+		if pkName == "" {
+			// No primary key means no read route, so no shared wildcard position.
+			return
+		}
+		if param := strcase.ToGoCamel(name + pkName); param != r.domainRouteParam {
+			errs = append(errs, errors.Newf("resource %s: its route name %q equals the domain route segment, so its read-route parameter %q must equal the domain route parameter %q (chi permits one wildcard name per position); align them via WithDomainRoute", name, r.domainRouteSegment, param, r.domainRouteParam))
+		}
+	}
+
+	for _, res := range r.resources {
+		pkName := ""
+		if pk := res.PrimaryKey(); pk != nil {
+			pkName = pk.Name()
+		}
+		check(res.Name(), res.IsDomainScoped(), res.HasCompoundPrimaryKey(), pkName)
+	}
+	for _, res := range r.computedResources {
+		pkName := ""
+		if pk := res.PrimaryKey(); pk != nil {
+			pkName = pk.Name()
+		}
+		check(res.Name(), res.IsDomainScoped(), res.HasCompoundPrimaryKey(), pkName)
+	}
+
+	if len(errs) != 0 {
+		return errors.Wrap(errors.Join(errs...), "domain route segment resource error")
+	}
+
+	return nil
 }
 
 func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
@@ -117,18 +184,31 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 
 	domainPatternPrefix := fmt.Sprintf("/%s/{%s}", r.domainRouteSegment, r.domainRouteParam)
 	var globalCases, domainCases []consolidatedCaseData
+	var segmentCase *consolidatedCaseData
 	for _, res := range resources {
 		c := consolidatedCaseData{
 			resourceInfo:    res,
 			ResourcePackage: r.resource.Package(),
 			ReceiverName:    r.receiverName,
 		}
-		if res.IsDomainScoped() {
+		switch {
+		case res.IsDomainScoped():
 			c.DomainPatternPrefix = domainPatternPrefix
 			domainCases = append(domainCases, c)
-		} else {
+		case strcase.ToKebab(r.pluralize(res.Name())) == r.domainRouteSegment:
+			// The tenant-record pattern: this global resource shares the descent
+			// case's name, so its case branches on path depth (validated single-PK,
+			// keeping resource operations at depth ≤ 2 and descents at depth ≥ 3).
+			segmentCase = &c
+		default:
 			globalCases = append(globalCases, c)
 		}
+	}
+	if segmentCase != nil && len(domainCases) == 0 {
+		// Without domain-scoped consolidated resources there is no descent case to
+		// share; the segment-named resource dispatches like any other global case.
+		globalCases = append(globalCases, *segmentCase)
+		segmentCase = nil
 	}
 
 	if err := r.writeFormattedGoFile(destinationFilePath, "consolidatedPatchHandler", consolidatedPatchTemplate, &consolidatedPatchData{
@@ -137,6 +217,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 		Resources:           resources,
 		GlobalCases:         globalCases,
 		DomainCases:         domainCases,
+		SegmentCase:         segmentCase,
 		DomainRouteSegment:  r.domainRouteSegment,
 		DomainPatternPrefix: domainPatternPrefix,
 		Package:             r.handler.Package(),

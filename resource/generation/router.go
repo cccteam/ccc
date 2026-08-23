@@ -21,6 +21,10 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		return err
 	}
 
+	if err := r.validateDomainSegmentResources(); err != nil {
+		return err
+	}
+
 	var hasConsolidatedHandlers bool
 	constResources := make([]*resourceInfo, 0, len(r.resources))
 	routerTestRoutes := make([]*generatedRoute, 0, len(r.resources)+len(r.computedResources))
