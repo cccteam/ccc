@@ -40,6 +40,16 @@ A synthetic "starport logistics" application with two roles:
     (no station column): `@permissionScope(domain)` partitions permissions, not data.
     `Berth` is excluded from handler consolidation because the consolidated payload
     cannot carry a domain yet.
+  - `permissions_virtual_test.go` asserts the virtual resources (`pkg/virtualresources`):
+    list-only projections backed by embedded subqueries instead of table metadata.
+    Their primary keys come from `@primarykey` field annotations rather than the
+    schema, so the suite pins that the generated `perm:"-"` key exemption flows from
+    annotations: key fields follow the resource-level grant (`ShipCargoSummaries` has
+    a single annotated key, `ManifestLines` a compound one — both key fields exempt),
+    while every non-key field fails closed without its own field grant. Indexed
+    virtual fields (`index`/`uniqueindex` tags) are exercised through filter and sort
+    parameters, and the `Subquery()` data path is asserted end to end against the
+    seeded base tables.
 
 ## Requirements
 

@@ -84,6 +84,31 @@ func Collection() *resource.GeneratedCollection {
 				},
 			},
 			{
+				Name:        "ManifestLines",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags: []resource.TagData{
+					{Name: "declaredValue", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "details", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "lineNumber"},
+					{Name: "quantity", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "shipId"},
+					{Name: "shipName", Permissions: []accesstypes.Permission{accesstypes.List}},
+				},
+			},
+			{
+				Name:        "ShipCargoSummaries",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags: []resource.TagData{
+					{Name: "dockingBayName", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "manifestLines", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "shipId"},
+					{Name: "shipName", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "totalDeclaredValue", Permissions: []accesstypes.Permission{accesstypes.List}},
+				},
+			},
+			{
 				Name:        "Ships",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},

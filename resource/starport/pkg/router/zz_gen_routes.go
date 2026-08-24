@@ -46,8 +46,12 @@ type GeneratedHandlers interface {
 	GantryCranes() http.HandlerFunc
 	GantryCrane() http.HandlerFunc
 
+	ManifestLines() http.HandlerFunc
+
 	Ships() http.HandlerFunc
 	Ship() http.HandlerFunc
+
+	ShipCargoSummaries() http.HandlerFunc
 
 	Stations() http.HandlerFunc
 	Station() http.HandlerFunc
@@ -107,6 +111,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/api/stations/{stationID}/gantry-cranes/{gantryCraneID}", gantryCraneHandler)
 	r.Post("/api/stations/{stationID}/gantry-cranes/{gantryCraneID}", gantryCraneHandler)
 
+	manifestLinesHandler := h.ManifestLines()
+	r.Get("/api/manifest-lines", manifestLinesHandler)
+	r.Post("/api/manifest-lines", manifestLinesHandler)
+
 	shipsHandler := h.Ships()
 	r.Get("/api/ships", shipsHandler)
 	r.Post("/api/ships", shipsHandler)
@@ -114,6 +122,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	shipHandler := h.Ship()
 	r.Get("/api/ships/{shipID}", shipHandler)
 	r.Post("/api/ships/{shipID}", shipHandler)
+
+	shipCargoSummariesHandler := h.ShipCargoSummaries()
+	r.Get("/api/ship-cargo-summaries", shipCargoSummariesHandler)
+	r.Post("/api/ship-cargo-summaries", shipCargoSummariesHandler)
 
 	stationsHandler := h.Stations()
 	r.Get("/api/stations", stationsHandler)

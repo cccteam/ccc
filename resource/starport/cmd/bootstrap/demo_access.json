@@ -31,7 +31,17 @@
           "SupplyCrates.status",
           "SupplyCrates.barcode",
           "SupplyCrates.inspectorBadge",
-          "SupplyCrates.assignedShipId"
+          "SupplyCrates.assignedShipId",
+          "ManifestLines",
+          "ManifestLines.shipName",
+          "ManifestLines.details",
+          "ManifestLines.quantity",
+          "ManifestLines.declaredValue",
+          "ShipCargoSummaries",
+          "ShipCargoSummaries.shipName",
+          "ShipCargoSummaries.dockingBayName",
+          "ShipCargoSummaries.manifestLines",
+          "ShipCargoSummaries.totalDeclaredValue"
         ],
         "Read": [
           "Ships",

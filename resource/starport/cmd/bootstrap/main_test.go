@@ -102,6 +102,27 @@ func TestBootstrap(t *testing.T) {
 			wantOK:   false,
 		},
 		{
+			name:     "global role grants list on a virtual resource",
+			domain:   accesstypes.GlobalDomain,
+			perm:     accesstypes.List,
+			resource: "ShipCargoSummaries",
+			wantOK:   true,
+		},
+		{
+			name:     "global role grants a virtual field resource",
+			domain:   accesstypes.GlobalDomain,
+			perm:     accesstypes.List,
+			resource: "ShipCargoSummaries.totalDeclaredValue",
+			wantOK:   true,
+		},
+		{
+			name:     "no grant exists on a virtual primary-key field; its visibility follows the resource grant",
+			domain:   accesstypes.GlobalDomain,
+			perm:     accesstypes.List,
+			resource: "ShipCargoSummaries.shipId",
+			wantOK:   false,
+		},
+		{
 			name:     "station role grants execute in the assigned station",
 			domain:   "station-alpha",
 			perm:     accesstypes.Execute,

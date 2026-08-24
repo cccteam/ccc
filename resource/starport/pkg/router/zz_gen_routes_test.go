@@ -146,6 +146,16 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"stationID": "testDomain", "gantryCraneID": "testGantryCraneID"},
 		},
 		{
+			url: "/api/manifest-lines", method: http.MethodGet,
+			handlerFunc: "ManifestLines",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/manifest-lines", method: http.MethodPost,
+			handlerFunc: "ManifestLines",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/api/ships", method: http.MethodGet,
 			handlerFunc: "Ships",
 			parameters:  map[string]string{},
@@ -164,6 +174,16 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/api/ships/testShipID", method: http.MethodPost,
 			handlerFunc: "Ship",
 			parameters:  map[string]string{"shipID": "testShipID"},
+		},
+		{
+			url: "/api/ship-cargo-summaries", method: http.MethodGet,
+			handlerFunc: "ShipCargoSummaries",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/ship-cargo-summaries", method: http.MethodPost,
+			handlerFunc: "ShipCargoSummaries",
+			parameters:  map[string]string{},
 		},
 		{
 			url: "/api/stations", method: http.MethodGet,
@@ -229,8 +249,10 @@ func generatedExpectCalls(e *mock_router.MockHandlersMockRecorder, rec *callReco
 	e.DockingBay().Times(1).Return(rec.RecordHandlerCall("DockingBay"))
 	e.GantryCranes().Times(1).Return(rec.RecordHandlerCall("GantryCranes"))
 	e.GantryCrane().Times(1).Return(rec.RecordHandlerCall("GantryCrane"))
+	e.ManifestLines().Times(1).Return(rec.RecordHandlerCall("ManifestLines"))
 	e.Ships().Times(1).Return(rec.RecordHandlerCall("Ships"))
 	e.Ship().Times(1).Return(rec.RecordHandlerCall("Ship"))
+	e.ShipCargoSummaries().Times(1).Return(rec.RecordHandlerCall("ShipCargoSummaries"))
 	e.Stations().Times(1).Return(rec.RecordHandlerCall("Stations"))
 	e.Station().Times(1).Return(rec.RecordHandlerCall("Station"))
 	e.SupplyCrates().Times(1).Return(rec.RecordHandlerCall("SupplyCrates"))

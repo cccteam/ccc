@@ -208,6 +208,20 @@ func (mr *MockHandlersMockRecorder) GantryCranes() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GantryCranes", reflect.TypeOf((*MockHandlers)(nil).GantryCranes))
 }
 
+// ManifestLines mocks base method.
+func (m *MockHandlers) ManifestLines() http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ManifestLines")
+	ret0, _ := ret[0].(http.HandlerFunc)
+	return ret0
+}
+
+// ManifestLines indicates an expected call of ManifestLines.
+func (mr *MockHandlersMockRecorder) ManifestLines() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ManifestLines", reflect.TypeOf((*MockHandlers)(nil).ManifestLines))
+}
+
 // PatchBerths mocks base method.
 func (m *MockHandlers) PatchBerths() http.HandlerFunc {
 	m.ctrl.T.Helper()
@@ -262,6 +276,20 @@ func (m *MockHandlers) Ship() http.HandlerFunc {
 func (mr *MockHandlersMockRecorder) Ship() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ship", reflect.TypeOf((*MockHandlers)(nil).Ship))
+}
+
+// ShipCargoSummaries mocks base method.
+func (m *MockHandlers) ShipCargoSummaries() http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShipCargoSummaries")
+	ret0, _ := ret[0].(http.HandlerFunc)
+	return ret0
+}
+
+// ShipCargoSummaries indicates an expected call of ShipCargoSummaries.
+func (mr *MockHandlersMockRecorder) ShipCargoSummaries() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShipCargoSummaries", reflect.TypeOf((*MockHandlers)(nil).ShipCargoSummaries))
 }
 
 // Ships mocks base method.

@@ -23,6 +23,8 @@ export const Resources = {
   CrewMembers: 'CrewMembers' as Resource,
   DockingBays: 'DockingBays' as Resource,
   GantryCranes: 'GantryCranes' as Resource,
+  ManifestLines: 'ManifestLines' as Resource,
+  ShipCargoSummaries: 'ShipCargoSummaries' as Resource,
   Ships: 'Ships' as Resource,
   Stations: 'Stations' as Resource,
   SupplyCrates: 'SupplyCrates' as Resource,
@@ -113,6 +115,42 @@ export namespace GantryCranes {
     id: 'GantryCranes.id' as Resource,
     liftTonnage: 'GantryCranes.liftTonnage' as Resource,
     operational: 'GantryCranes.operational' as Resource,
+  };
+}
+
+export namespace ManifestLines {
+  export const fieldName = {
+    declaredValue: 'declaredValue' as FieldName,
+    details: 'details' as FieldName,
+    lineNumber: 'lineNumber' as FieldName,
+    quantity: 'quantity' as FieldName,
+    shipId: 'shipId' as FieldName,
+    shipName: 'shipName' as FieldName,
+  };
+  export const resourceName = {
+    declaredValue: 'ManifestLines.declaredValue' as Resource,
+    details: 'ManifestLines.details' as Resource,
+    lineNumber: 'ManifestLines.lineNumber' as Resource,
+    quantity: 'ManifestLines.quantity' as Resource,
+    shipId: 'ManifestLines.shipId' as Resource,
+    shipName: 'ManifestLines.shipName' as Resource,
+  };
+}
+
+export namespace ShipCargoSummaries {
+  export const fieldName = {
+    dockingBayName: 'dockingBayName' as FieldName,
+    manifestLines: 'manifestLines' as FieldName,
+    shipId: 'shipId' as FieldName,
+    shipName: 'shipName' as FieldName,
+    totalDeclaredValue: 'totalDeclaredValue' as FieldName,
+  };
+  export const resourceName = {
+    dockingBayName: 'ShipCargoSummaries.dockingBayName' as Resource,
+    manifestLines: 'ShipCargoSummaries.manifestLines' as Resource,
+    shipId: 'ShipCargoSummaries.shipId' as Resource,
+    shipName: 'ShipCargoSummaries.shipName' as Resource,
+    totalDeclaredValue: 'ShipCargoSummaries.totalDeclaredValue' as Resource,
   };
 }
 
@@ -386,6 +424,97 @@ const Mappings: PermissionMappings = {
     [Permissions.List]: true,
     [Permissions.Read]: true,
     [Permissions.Update]: true,
+  },
+  [Resources.ManifestLines]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [ManifestLines.resourceName.declaredValue]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [ManifestLines.resourceName.details]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [ManifestLines.resourceName.lineNumber]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: false,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [ManifestLines.resourceName.quantity]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [ManifestLines.resourceName.shipId]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: false,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [ManifestLines.resourceName.shipName]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [Resources.ShipCargoSummaries]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [ShipCargoSummaries.resourceName.dockingBayName]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [ShipCargoSummaries.resourceName.manifestLines]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [ShipCargoSummaries.resourceName.shipId]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: false,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [ShipCargoSummaries.resourceName.shipName]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
+  },
+  [ShipCargoSummaries.resourceName.totalDeclaredValue]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: false,
+    [Permissions.Update]: false,
   },
   [Resources.Ships]: {
     [Permissions.Create]: true,

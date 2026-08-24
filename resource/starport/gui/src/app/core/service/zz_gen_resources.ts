@@ -40,6 +40,15 @@ export interface GantryCranes {
   operational: boolean;
 }
 
+export interface ManifestLines {
+  shipId: string;
+  lineNumber: number;
+  shipName: string;
+  details: string;
+  quantity: number;
+  declaredValue: number;
+}
+
 export interface Ships {
   id: string;
   registryCode: string;
@@ -47,6 +56,14 @@ export interface Ships {
   dockingBayId: string;
   cargoValue: number;
   updatedAt: Date;
+}
+
+export interface ShipCargoSummaries {
+  shipId: string;
+  shipName: string;
+  dockingBayName: string;
+  manifestLines: number;
+  totalDeclaredValue: number;
 }
 
 export interface Stations {
@@ -118,6 +135,17 @@ const resourceMap: ResourceMap = {
       { fieldName: 'operational', displayType: 'boolean', required: true, isIndex: false },
     ],
   },
+  [Resources.ManifestLines]: {
+    route: 'manifest-lines',
+    fields: [
+      { fieldName: 'shipId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'lineNumber', primaryKey: { ordinalPosition: 1 }, displayType: 'number', required: true, isIndex: false },
+      { fieldName: 'shipName', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'details', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'quantity', displayType: 'number', required: true, isIndex: false },
+      { fieldName: 'declaredValue', displayType: 'number', required: true, isIndex: false },
+    ],
+  },
   [Resources.Ships]: {
     route: 'ships',
     consolidatedRoute: 'resources',
@@ -128,6 +156,16 @@ const resourceMap: ResourceMap = {
       { fieldName: 'dockingBayId', displayType: 'enumerated', required: false, isIndex: true, enumeratedResource: Resources.DockingBays },
       { fieldName: 'cargoValue', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'updatedAt', displayType: 'date', required: false, isIndex: false },
+    ],
+  },
+  [Resources.ShipCargoSummaries]: {
+    route: 'ship-cargo-summaries',
+    fields: [
+      { fieldName: 'shipId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'shipName', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'dockingBayName', displayType: 'string', required: false, isIndex: true },
+      { fieldName: 'manifestLines', displayType: 'number', required: true, isIndex: false },
+      { fieldName: 'totalDeclaredValue', displayType: 'number', required: true, isIndex: false },
     ],
   },
   [Resources.Stations]: {
@@ -172,7 +210,9 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.CrewMembers]: PermissionScopes.global,
   [Resources.DockingBays]: PermissionScopes.global,
   [Resources.GantryCranes]: PermissionScopes.domain,
+  [Resources.ManifestLines]: PermissionScopes.global,
   [Resources.Ships]: PermissionScopes.global,
+  [Resources.ShipCargoSummaries]: PermissionScopes.global,
   [Resources.Stations]: PermissionScopes.global,
   [Resources.SupplyCrates]: PermissionScopes.global,
 };

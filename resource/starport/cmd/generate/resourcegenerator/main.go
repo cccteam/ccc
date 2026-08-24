@@ -24,6 +24,7 @@ func run(ctx context.Context) error {
 			"github.com/cccteam/ccc/resource/starport/pkg/resources",
 			"github.com/cccteam/ccc/resource/starport/pkg/router",
 			"github.com/cccteam/ccc/resource/starport/pkg/rpc",
+			"github.com/cccteam/ccc/resource/starport/pkg/virtualresources",
 		},
 		generation.GenerateHandlers("app"),
 		generation.GenerateRoutes("pkg/router", "api"),
@@ -31,6 +32,9 @@ func run(ctx context.Context) error {
 		// pair: /api/stations/{stationID}/... . The station is the permission domain.
 		generation.WithDomainRoute("stations", "stationID"),
 		generation.WithRPC("pkg/rpc"),
+		// Virtual resources are list-only projections backed by embedded subqueries;
+		// their primary keys come from @primarykey annotations instead of the schema.
+		generation.WithVirtualResources("pkg/virtualresources"),
 		// CrewMember is excluded from consolidation so the app exercises both mutation
 		// surfaces: the consolidated PATCH /api/resources handler and a standalone
 		// per-resource PATCH /api/crew-members handler. Berth is excluded BY CHOICE so a
