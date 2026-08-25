@@ -45,41 +45,6 @@ func TestResource_ResourceWithTag(t *testing.T) {
 	}
 }
 
-func TestResource_HasReservedMarker(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		resource Resource
-		want     bool
-	}{
-		{
-			name:     "struct-derived name is marker-free",
-			resource: Resource("Persons"),
-		},
-		{
-			name:     "the sentinel itself carries the marker",
-			resource: GlobalResource,
-			want:     true,
-		},
-		{
-			name:     "hand-written marker-bearing name is rejected material",
-			resource: Resource("access:things"),
-			want:     true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			if got := tt.resource.HasReservedMarker(); got != tt.want {
-				t.Errorf("HasReservedMarker() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestResource_ResourceAndTag(t *testing.T) {
 	t.Parallel()
 

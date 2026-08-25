@@ -5,26 +5,11 @@ import (
 	"strings"
 )
 
-// GlobalResource is the resource used when a permission is applied to the entire application, (i.e. Global level)
-// instead of to a specific resource.
-//
-// The value carries the reserved marker character ':' so it can never collide
-// with a caller-authored resource name: the access policy stores reject any
-// other ':'-bearing resource at their write boundary, and a resource literally
-// named "global" is ordinary data, distinct from this marker.
-const GlobalResource = Resource("access:global")
-
-// Resource represents a resource in the authorization system
+// Resource represents a resource in the authorization system. A Resource is
+// always data — any string is a legal resource name. A permission held with
+// no resource attachment (scope-wide) is expressed structurally by the APIs
+// that grant and check it, never by a distinguished Resource value.
 type Resource string
-
-// HasReservedMarker reports whether the resource value carries the reserved
-// marker character ':'. Only access-defined sentinels (GlobalResource)
-// legitimately carry it, and a sentinel is code, never data: struct-derived
-// resource names can never contain ':', and generation rejects hand-written
-// names (@manualAddResource constants) that do.
-func (r Resource) HasReservedMarker() bool {
-	return strings.ContainsRune(string(r), reservedMarker)
-}
 
 // ResourceWithTag returns the fully qualified resource name for the resource field with tag
 func (r Resource) ResourceWithTag(tag Tag) Resource {

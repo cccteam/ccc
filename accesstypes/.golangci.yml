@@ -125,6 +125,12 @@ linters:
           - nlreturn
           - scopelint
         path: _test\.go
+      # Scope.String's "global" display literal is not a shared constant: it is
+      # documentation-defined display output, unrelated to GlobalPermissionScope's
+      # value coinciding with it.
+      - linters:
+          - goconst
+        path: scope\.go
     paths:
       - third_party$
       - builtin$

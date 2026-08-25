@@ -38,19 +38,7 @@ type (
 
 	// PermissionScope is the type use to define different scopes
 	PermissionScope string
-
-	// ResolvedTagPermissions is a mapping for each domain and resource of which permissions are required for a Tag
-	ResolvedTagPermissions map[Domain]map[Resource]map[Tag]map[Permission]bool
-
-	// ResolvedResourcePermissions is a mapping for each domain and resource of which permissions are required for the resource
-	ResolvedResourcePermissions map[Domain]map[Resource]map[Permission]bool
 )
-
-// ResolvedPermissions is a struct that holds the resolved permissions for resources and tags.
-type ResolvedPermissions struct {
-	Resources ResolvedResourcePermissions
-	Tags      ResolvedTagPermissions
-}
 
 const (
 	// GlobalPermissionScope is the permission scope for global permissions
@@ -59,9 +47,3 @@ const (
 	// DomainPermissionScope is the permission scope for domain permissions
 	DomainPermissionScope PermissionScope = "domain"
 )
-
-// PermissionDetail is a struct that holds the description and scope of a permission
-type PermissionDetail struct {
-	Description string
-	Scope       PermissionScope
-}

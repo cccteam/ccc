@@ -1,12 +1,29 @@
 package accesstypes
 
 type (
-	// RoleCollection is a map of domain to roles defined in that domain
-	RoleCollection map[Domain][]Role
+	// RoleCollection maps each scope to the roles defined in it.
+	RoleCollection map[Scope][]Role
 
-	// RolePermissionCollection is a map of permissions a Role has on resources
-	RolePermissionCollection map[Permission][]Resource
+	// PermissionGrants describes how a role holds one permission within a
+	// scope: scope-wide (attached to no resource), on specific resources, or
+	// both.
+	PermissionGrants struct {
+		ScopeWide bool
+		Resources []Resource
+	}
 
-	// UserPermissionCollection is a mapping of permissions a user has for domain and resource
-	UserPermissionCollection map[Domain]map[Resource][]Permission
+	// RolePermissionCollection maps each permission a role holds within one
+	// scope to how it is granted.
+	RolePermissionCollection map[Permission]PermissionGrants
+
+	// UserScopePermissions describes what a user holds within one scope: the
+	// permissions held scope-wide and the permissions held per resource.
+	UserScopePermissions struct {
+		ScopeWide []Permission
+		Resources map[Resource][]Permission
+	}
+
+	// UserPermissionCollection maps each scope to the permissions a user
+	// holds in it.
+	UserPermissionCollection map[Scope]UserScopePermissions
 )
