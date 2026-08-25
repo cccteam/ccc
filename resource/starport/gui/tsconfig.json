@@ -2,13 +2,13 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
-    "baseUrl": "./src",
+    "rootDir": "./src",
     "paths": {
-      "@app/*": ["app/core/*"],
-      "@env": ["environments/environment"],
-      "@components/*": ["app/components/*"],
-      "@shared/*": ["app/components/shared/*"],
-      "@configs/*": ["app/configs/*"]
+      "@app/*": ["./src/app/core/*"],
+      "@env": ["./src/environments/environment"],
+      "@components/*": ["./src/app/components/*"],
+      "@shared/*": ["./src/app/components/shared/*"],
+      "@configs/*": ["./src/app/configs/*"]
     },
     "allowUnusedLabels": false,
     "allowUnreachableCode": false,
