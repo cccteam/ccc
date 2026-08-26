@@ -27,7 +27,7 @@ func (a *App) Ships() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Ship, ship](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.Ship, ship](accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -80,7 +80,7 @@ func (a *App) Ship() http.HandlerFunc {
 		UpdatedAt    *time.Time   `json:"updatedAt"`
 	}
 
-	decoder := NewQueryDecoder[resources.Ship, response](a, accesstypes.Read)
+	decoder := NewQueryDecoder[resources.Ship, response](accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

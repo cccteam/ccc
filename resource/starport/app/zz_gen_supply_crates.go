@@ -29,7 +29,7 @@ func (a *App) SupplyCrates() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.SupplyCrate, supplyCrate](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.SupplyCrate, supplyCrate](accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -89,7 +89,7 @@ func (a *App) SupplyCrate() http.HandlerFunc {
 		AssignedShipID ccc.NullUUID `json:"assignedShipId"`
 	}
 
-	decoder := NewQueryDecoder[resources.SupplyCrate, response](a, accesstypes.Read)
+	decoder := NewQueryDecoder[resources.SupplyCrate, response](accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

@@ -25,6 +25,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "generateDomainGuard()")
 	}
 
+	if err := r.generateDecoders(); err != nil {
+		return errors.Wrap(err, "generateDecoders()")
+	}
+
 	if err := forEachGo(r.resources, r.generateHandlers); err != nil {
 		return err
 	}
@@ -170,6 +174,69 @@ func (r *resourceGenerator) generateDomainGuard() error {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 	log.Printf("Generated domain guard file in %s: %s", time.Since(begin), destinationFilePath)
+
+	return nil
+}
+
+// generateDecoders emits the decoder constructors generated handlers call: shims over
+// the resource library's Must* constructors, constrained to the generated closed
+// unions (Resourcer, Method). Each constructor is emitted only when a generated
+// handler calls it.
+func (r *resourceGenerator) generateDecoders() error {
+	var hasQuery, hasPatch bool
+	for _, res := range r.resources {
+		for _, ht := range resourceEndpoints(res) {
+			switch ht {
+			case ListHandler, ReadHandler:
+				hasQuery = true
+			case PatchHandler:
+				hasPatch = true
+			default: // resourceEndpoints returns concrete handler types only.
+			}
+		}
+		if hasConsolidatedHandler(res) {
+			hasPatch = true
+		}
+	}
+	if r.genComputedResources {
+		for _, res := range r.computedResources {
+			if !res.SuppressReadHandler || !res.SuppressListHandler {
+				hasQuery = true
+			}
+		}
+	}
+	hasRPC := false
+	rpcPackage := ""
+	if r.genRPCMethods {
+		for _, rpcMethod := range r.rpcMethods {
+			if !rpcMethod.SuppressHandler {
+				hasRPC = true
+				rpcPackage = r.rpc.Package()
+			}
+		}
+	}
+
+	if !hasQuery && !hasPatch && !hasRPC {
+		return nil
+	}
+
+	begin := time.Now()
+	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(decodersOutputName))
+
+	if err := r.writeFormattedGoFile(destinationFilePath, "decodersTemplate", decodersTemplate, &decodersFileData{
+		Source:              r.resource.Dir(),
+		Package:             r.handler.Package(),
+		LocalPackageImports: r.localPackageImports(),
+		ApplicationName:     r.applicationName,
+		ReceiverName:        r.receiverName,
+		RPCPackage:          rpcPackage,
+		HasQueryDecoder:     hasQuery,
+		HasPatchDecoder:     hasPatch,
+		HasRPCDecoder:       hasRPC,
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
+	}
+	log.Printf("Generated decoders file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }

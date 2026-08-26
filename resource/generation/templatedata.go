@@ -172,6 +172,21 @@ type domainGuardData struct {
 	ReceiverName        string
 }
 
+type decodersFileData struct {
+	Source              string
+	Package             string
+	LocalPackageImports string
+	ApplicationName     string
+	ReceiverName        string
+	// RPCPackage qualifies the generated Method union constraining NewRPCDecoder.
+	RPCPackage string
+	// The Has* fields emit each constructor only when a generated handler calls it,
+	// so an application carries no constructor its code does not use.
+	HasQueryDecoder bool
+	HasPatchDecoder bool
+	HasRPCDecoder   bool
+}
+
 type rpcFileData struct {
 	Source    string
 	Package   string

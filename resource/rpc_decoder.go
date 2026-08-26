@@ -32,6 +32,19 @@ func NewRPCDecoder[Request any](userPermissions func(*http.Request) UserPermissi
 	}, nil
 }
 
+// MustNewRPCDecoder builds a decoder for an RPC method request, resolving user
+// permissions and validating request bodies through the accessor. It panics on
+// construction errors: they are programming errors (a malformed request struct),
+// surfaced at application startup where generated handlers construct their decoders.
+func MustNewRPCDecoder[Request any](a DecoderAccessor, methodName accesstypes.Resource, perm accesstypes.Permission) *RPCDecoder[Request] {
+	decoder, err := NewRPCDecoder[Request](a.UserPermissions, methodName, perm)
+	if err != nil {
+		panic(err)
+	}
+
+	return decoder.WithValidator(a.Validator())
+}
+
 // WithValidator sets a validator function on the decoder.
 func (s *RPCDecoder[Request]) WithValidator(v ValidatorFunc) *RPCDecoder[Request] {
 	decoder := *s

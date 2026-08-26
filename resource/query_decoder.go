@@ -60,6 +60,24 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 	}, nil
 }
 
+// MustNewQueryDecoder builds a query decoder for a resource and request pair. It
+// panics on construction errors: they are programming errors (a request struct out of
+// sync with its resource), surfaced at application startup where generated handlers
+// construct their decoders.
+func MustNewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *QueryDecoder[Resource, Request] {
+	rSet, err := NewSet[Resource, Request](permissions...)
+	if err != nil {
+		panic(err)
+	}
+
+	decoder, err := NewQueryDecoder[Resource, Request](rSet)
+	if err != nil {
+		panic(err)
+	}
+
+	return decoder
+}
+
 // DecodeWithoutPermissions decodes an http.Request into a QuerySet without enforcing user permissions.
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
 	queryParams := request.URL.Query()

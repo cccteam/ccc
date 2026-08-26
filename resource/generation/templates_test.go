@@ -26,6 +26,77 @@ func fileTemplates() map[string]string {
 		"rpcHandlerTemplate":              rpcHandlerTemplate,
 		"rpcInterfacesTemplate":           rpcInterfacesTemplate,
 		"computedResourceHandlerTemplate": computedResourceHandlerTemplate,
+		"domainGuardTemplate":             domainGuardTemplate,
+		"decodersTemplate":                decodersTemplate,
+	}
+}
+
+// Test_decodersTemplate_gating pins that each generated decoder constructor is emitted
+// only when a generated handler calls it, and that every emitted constructor delegates
+// to the library's Must* implementation under the generated closed unions.
+func Test_decodersTemplate_gating(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		data            decodersFileData
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "all features emit all constructors",
+			data: decodersFileData{
+				Package:         "app",
+				ApplicationName: "App",
+				ReceiverName:    "a",
+				RPCPackage:      "rpc",
+				HasQueryDecoder: true,
+				HasPatchDecoder: true,
+				HasRPCDecoder:   true,
+			},
+			wantContains: []string{
+				"func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {",
+				"resource.MustNewQueryDecoder[Resource, Request](permissions...)",
+				"func NewDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.Decoder[Resource, Request] {",
+				"resource.MustNewDecoder[Resource, Request](a, permissions...)",
+				"func NewRPCDecoder[Method rpc.Method, Request any](a *App, perm accesstypes.Permission) *resource.RPCDecoder[Request] {",
+				"resource.MustNewRPCDecoder[Request](a, method.Method(), perm)",
+			},
+		},
+		{
+			name: "query-only emits no patch or RPC constructor",
+			data: decodersFileData{
+				Package:         "app",
+				ApplicationName: "App",
+				ReceiverName:    "a",
+				HasQueryDecoder: true,
+			},
+			wantContains:    []string{"func NewQueryDecoder["},
+			wantNotContains: []string{"func NewDecoder[", "func NewRPCDecoder["},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			out, err := c.generateTemplateOutput("decodersTemplate", decodersTemplate, tt.data)
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("decodersTemplate output missing %q:\n%s", want, out)
+				}
+			}
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(string(out), notWant) {
+					t.Errorf("decodersTemplate output must not contain %q:\n%s", notWant, out)
+				}
+			}
+		})
 	}
 }
 

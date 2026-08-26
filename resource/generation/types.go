@@ -182,6 +182,7 @@ const (
 	resourceInterfaceOutputName   = "resources_iface"
 	resourceEnumsFileName         = "enums"
 	domainGuardOutputName         = "domain_guard"
+	decodersOutputName            = "decoders"
 	routesOutputName              = "routes"
 	routerTestOutputName          = "routes_test"
 	consolidatedHandlerOutputName = "consolidated_handler"

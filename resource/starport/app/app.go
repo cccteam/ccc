@@ -63,8 +63,13 @@ func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
 	return a.userPermissions(r)
 }
 
+// Validator returns the request validator the generated decoder constructors draw on.
+func (a *App) Validator() resource.ValidatorFunc {
+	return a.validate
+}
+
 // DomainExists reports whether the application recognizes the domain; the generated
-// domain-scoped handlers 404 unknown domains before decoding.
+// DomainGuard middleware 404s unknown domains before domain-scoped handlers run.
 func (a *App) DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error) {
 	return a.domainExists(ctx, domain)
 }

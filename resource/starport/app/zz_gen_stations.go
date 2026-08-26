@@ -22,7 +22,7 @@ func (a *App) Stations() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Station, station](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.Station, station](accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -63,7 +63,7 @@ func (a *App) Station() http.HandlerFunc {
 		Name string   `json:"name" index:"true"`
 	}
 
-	decoder := NewQueryDecoder[resources.Station, response](a, accesstypes.Read)
+	decoder := NewQueryDecoder[resources.Station, response](accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

@@ -22,6 +22,14 @@ type ValidatorFunc interface {
 	StructPartial(s any, fields ...string) error
 }
 
+// DecoderAccessor is the application seam the Must* decoder constructors draw on:
+// the request validator and the per-request user permissions. Generated application
+// code implements and consumes it via the generated decoder constructors.
+type DecoderAccessor interface {
+	Validator() ValidatorFunc
+	UserPermissions(r *http.Request) UserPermissions
+}
+
 // Decoder is a struct that can be used for decoding http requests and validating those requests
 type Decoder[Resource Resourcer, Request any] struct {
 	validate    ValidatorFunc
@@ -41,6 +49,24 @@ func NewDecoder[Resource Resourcer, Request any](rSet *Set[Resource]) (*Decoder[
 		fieldMapper: m,
 		resourceSet: rSet,
 	}, nil
+}
+
+// MustNewDecoder builds a patch decoder for a resource and request pair, validating
+// requests with the accessor's validator. It panics on construction errors: they are
+// programming errors (a request struct out of sync with its resource), surfaced at
+// application startup where generated handlers construct their decoders.
+func MustNewDecoder[Resource Resourcer, Request any](a DecoderAccessor, permissions ...accesstypes.Permission) *Decoder[Resource, Request] {
+	rSet, err := NewSet[Resource, Request](permissions...)
+	if err != nil {
+		panic(err)
+	}
+
+	decoder, err := NewDecoder[Resource, Request](rSet)
+	if err != nil {
+		panic(err)
+	}
+
+	return decoder.WithValidator(a.Validator())
 }
 
 // WithValidator sets the validator function for the Decoder.

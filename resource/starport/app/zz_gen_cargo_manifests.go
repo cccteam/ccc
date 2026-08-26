@@ -25,7 +25,7 @@ func (a *App) CargoManifests() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.CargoManifest, cargoManifest](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.CargoManifest, cargoManifest](accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -75,7 +75,7 @@ func (a *App) CargoManifest() http.HandlerFunc {
 		DeclaredValue int64    `json:"declaredValue"`
 	}
 
-	decoder := NewQueryDecoder[resources.CargoManifest, response](a, accesstypes.Read)
+	decoder := NewQueryDecoder[resources.CargoManifest, response](accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

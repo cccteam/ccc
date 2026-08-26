@@ -27,7 +27,7 @@ func (a *App) Berths() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Berth, berth](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.Berth, berth](accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -75,7 +75,7 @@ func (a *App) Berth() http.HandlerFunc {
 		Occupied    bool     `json:"occupied"`
 	}
 
-	decoder := NewQueryDecoder[resources.Berth, response](a, accesstypes.Read)
+	decoder := NewQueryDecoder[resources.Berth, response](accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

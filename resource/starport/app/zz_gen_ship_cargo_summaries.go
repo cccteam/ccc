@@ -24,7 +24,7 @@ func (a *App) ShipCargoSummaries() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[virtualresources.ShipCargoSummary, shipCargoSummary](a, accesstypes.List)
+	decoder := NewQueryDecoder[virtualresources.ShipCargoSummary, shipCargoSummary](accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

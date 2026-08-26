@@ -24,7 +24,7 @@ func (a *App) DockingBays() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.DockingBay, dockingBay](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.DockingBay, dockingBay](accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -71,7 +71,7 @@ func (a *App) DockingBay() http.HandlerFunc {
 		MaxTonnage int64    `json:"maxTonnage"`
 	}
 
-	decoder := NewQueryDecoder[resources.DockingBay, response](a, accesstypes.Read)
+	decoder := NewQueryDecoder[resources.DockingBay, response](accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
