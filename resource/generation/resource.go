@@ -61,7 +61,7 @@ func (r *resourceGenerator) Generate() error {
 
 	begin := time.Now()
 
-	packageMap, err := parser.LoadPackages(r.loadPackages...)
+	skippedErrors, packageMap, err := parser.LoadPackages(true, r.loadPackages...)
 	if err != nil {
 		return errors.Wrap(err, "parser.LoadPackages()")
 	}
@@ -154,6 +154,12 @@ func (r *resourceGenerator) Generate() error {
 
 	if err := r.runCollectionGeneration(); err != nil {
 		return err
+	}
+
+	if skippedErrors {
+		if _, _, err := parser.LoadPackages(false, r.loadPackages...); err != nil {
+			return errors.Wrap(err, "parser.LoadPackages()")
+		}
 	}
 
 	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
