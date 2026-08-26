@@ -165,19 +165,15 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 	return permissionsFromFieldTags(fields, perms, false)
 }
 
-// classifyPermission records a permission into the mutating or non-mutating set and the
-// overall permission set, skipping NullPermission.
-func classifyPermission(perm accesstypes.Permission, permissionMap, mutating, nonmutating map[accesstypes.Permission]struct{}) {
+// isMutatingPermission reports whether a permission mutates the resource (Create,
+// Update, Delete) as opposed to reading it.
+func isMutatingPermission(perm accesstypes.Permission) bool {
 	switch perm {
-	case accesstypes.NullPermission:
-		return
 	case accesstypes.Create, accesstypes.Update, accesstypes.Delete:
-		mutating[perm] = struct{}{}
+		return true
 	default:
-		nonmutating[perm] = struct{}{}
+		return false
 	}
-
-	permissionMap[perm] = struct{}{}
 }
 
 // permissionsFromFieldTags is the single source of permission-collection semantics: the
@@ -202,7 +198,15 @@ func permissionsFromFieldTags(fields []FieldTags, perms []accesstypes.Permission
 	immutableFields = make(map[accesstypes.Tag]struct{})
 
 	for _, perm := range perms {
-		classifyPermission(perm, permissionMap, mutating, nonmutating)
+		if perm == accesstypes.NullPermission {
+			continue
+		}
+		permissionMap[perm] = struct{}{}
+		if isMutatingPermission(perm) {
+			mutating[perm] = struct{}{}
+		} else {
+			nonmutating[perm] = struct{}{}
+		}
 	}
 
 	if len(nonmutating) > 1 {
