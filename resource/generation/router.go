@@ -178,6 +178,20 @@ func (r *resourceGenerator) computedResourceRoutes(res *computedResource) ([]*ge
 	basePath, testBasePath := r.routeBasePaths(res.Name(), res.IsDomainScoped())
 
 	var routes []*generatedRoute
+	if !res.SuppressListHandler {
+		route := &generatedRoute{
+			Method:       ListHandler.method(),
+			Path:         basePath,
+			HandlerFunc:  r.handlerName(res.Name(), ListHandler),
+			HandlerType:  ListHandler,
+			DomainScoped: res.IsDomainScoped(),
+			TestURL:      testBasePath,
+		}
+		route.prependDomainTestParam(r.domainRouteParam)
+
+		routes = append(routes, route)
+	}
+
 	if !res.SuppressReadHandler {
 		pkNames := make([]string, 0, len(res.PrimaryKeys()))
 		for _, field := range res.PrimaryKeys() {
@@ -198,20 +212,6 @@ func (r *resourceGenerator) computedResourceRoutes(res *computedResource) ([]*ge
 			if err := r.validateDomainParamCollision(route.TestParams, res.Name()); err != nil {
 				return nil, err
 			}
-		}
-		route.prependDomainTestParam(r.domainRouteParam)
-
-		routes = append(routes, route)
-	}
-
-	if !res.SuppressListHandler {
-		route := &generatedRoute{
-			Method:       ListHandler.method(),
-			Path:         basePath,
-			HandlerFunc:  r.handlerName(res.Name(), ListHandler),
-			HandlerType:  ListHandler,
-			DomainScoped: res.IsDomainScoped(),
-			TestURL:      testBasePath,
 		}
 		route.prependDomainTestParam(r.domainRouteParam)
 
