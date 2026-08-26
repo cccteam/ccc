@@ -202,6 +202,34 @@ type appContractData struct {
 	HasComputed     bool
 }
 
+type handlerTestsMainData struct {
+	Source          string
+	Package         string
+	EmulatorVersion string
+	// MigrationSources are the application's schema migration source URLs, rewritten
+	// relative to the handler-tests directory.
+	MigrationSources []string
+}
+
+// authzCase is one endpoint's entry in the generated authorization matrix: it expands
+// to a denied case (no permission -> 403) and a granted case (exactly Permission ->
+// 200, or 404 on the empty schema).
+type authzCase struct {
+	Name string
+	// Method is the net/http method constant expression, e.g. "http.MethodGet".
+	Method string
+	// URL is the route path with parseable placeholder primary-key values substituted.
+	URL string
+	// Permission is the accesstypes constant name the endpoint's decoder demands.
+	Permission string
+}
+
+type authzTestData struct {
+	Source  string
+	Package string
+	Cases   []authzCase
+}
+
 type rpcFileData struct {
 	Source    string
 	Package   string

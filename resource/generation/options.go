@@ -61,6 +61,28 @@ func GenerateHandlers(targetDir string) ResourceOption {
 	})
 }
 
+// GenerateHandlerTests enables generation of the handler test suite in targetDir: the
+// Spanner-emulator bootstrap (TestMain + prepareDatabase over the application's
+// schema migrations) and the authorization-matrix tests, which drive every generated
+// global list/read route through the generated test router — without the required
+// permission the pipeline must fail closed with 403; with exactly that permission the
+// request must reach data access (200, or 404 on the empty schema). The target
+// package hand-writes exactly one function the generated suite calls:
+//
+//	newTestHandler(t *testing.T, db *initiator.SpannerDB, g grants) http.Handler
+//
+// where the application constructs its App around the test database with the scripted
+// grants and composes it through router.NewTestRouter. Requires GenerateHandlers and
+// GenerateRoutes.
+func GenerateHandlerTests(targetDir string) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		r.genHandlerTests = true
+		r.handlerTests = packageDir(targetDir)
+
+		return nil
+	})
+}
+
 // ApplicationName sets the name of the application struct.
 // The default is "App".
 func ApplicationName(name string) ResourceOption {
@@ -426,6 +448,9 @@ func applyResourceGeneratorDefaults(g *resourceGenerator) error {
 	g.receiverName = strings.ToLower(string(g.applicationName[0]))
 	if g.domainRouteSegment == "" {
 		g.domainRouteSegment = defaultDomainRouteSegment
+	}
+	if g.genHandlerTests && (!g.genHandlers || !g.genRoutes) {
+		return errors.New("GenerateHandlerTests requires GenerateHandlers and GenerateRoutes: the generated suite drives the generated handlers through the generated test router")
 	}
 	if g.domainRouteParam == "" {
 		g.domainRouteParam = defaultDomainRouteParam

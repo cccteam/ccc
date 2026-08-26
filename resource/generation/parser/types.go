@@ -95,6 +95,12 @@ func (t *TypeInfo) TypeName() string {
 	return typeStringer(unwrapType(t.obj.Type()))
 }
 
+// UnderlyingType is the qualified name of the type's underlying type.
+// e.g. a named `type Code string` -> string; an unnamed type is its own underlying.
+func (t *TypeInfo) UnderlyingType() string {
+	return typeStringer(t.obj.Type().Underlying())
+}
+
 // UnqualifiedTypeName is the type name without array/slice/pointer or package prefix.
 // e.g. *ccc.UUID -> UUID, []ccc.UUID -> UUID
 func (t *TypeInfo) UnqualifiedTypeName() string {

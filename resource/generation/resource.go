@@ -18,8 +18,10 @@ type resourceGenerator struct {
 	*client
 	genHandlers     bool
 	genRoutes       bool
+	genHandlerTests bool
 	handler         packageDir
 	router          packageDir
+	handlerTests    packageDir
 	routePrefix     string
 	applicationName string
 	receiverName    string
@@ -153,6 +155,11 @@ func (r *resourceGenerator) Generate() error {
 	}
 	if r.genHandlers {
 		if err := r.runHandlerGeneration(); err != nil {
+			return err
+		}
+	}
+	if r.genHandlerTests {
+		if err := r.runHandlerTestsGeneration(); err != nil {
 			return err
 		}
 	}

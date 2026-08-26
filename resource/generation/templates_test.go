@@ -29,6 +29,8 @@ func fileTemplates() map[string]string {
 		"domainGuardTemplate":             domainGuardTemplate,
 		"decodersTemplate":                decodersTemplate,
 		"appContractTemplate":             appContractTemplate,
+		"handlerTestsMainTemplate":        handlerTestsMainTemplate,
+		"authzTestTemplate":               authzTestTemplate,
 	}
 }
 
@@ -175,6 +177,39 @@ func Test_appContractTemplate_gating(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Test_authzTestTemplate pins the generated authorization matrix: each case renders a
+// denied row expecting 403 and a granted row (exactly the required permission)
+// expecting 200/404, driven through the hand-written newTestHandler hook.
+func Test_authzTestTemplate(t *testing.T) {
+	t.Parallel()
+
+	c := &client{}
+	out, err := c.generateTemplateOutput("authzTestTemplate", authzTestTemplate, authzTestData{
+		Package: "handlertests",
+		Cases: []authzCase{
+			{Name: "Widgets", Method: "http.MethodGet", URL: "/api/widgets", Permission: "List"},
+			{Name: "Widget", Method: "http.MethodGet", URL: "/api/widgets/1", Permission: "Read"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("generateTemplateOutput() error = %v", err)
+	}
+
+	for _, want := range []string{
+		`name:         "Widgets denied",`,
+		`wantStatuses: []int{http.StatusForbidden},`,
+		`grants:       grants{accesstypes.List: true},`,
+		`grants:       grants{accesstypes.Read: true},`,
+		`target:       "/api/widgets/1",`,
+		`wantStatuses: []int{http.StatusOK, http.StatusNotFound},`,
+		"h := newTestHandler(t, db, tt.grants)",
+	} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("authzTestTemplate output missing %q:\n%s", want, out)
+		}
 	}
 }
 
