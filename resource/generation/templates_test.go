@@ -178,6 +178,24 @@ func Test_appContractTemplate_gating(t *testing.T) {
 	}
 }
 
+// Test_routesTemplate_testRouter pins the generated test-composition seam: the routes
+// file must expose NewTestRouter — the bare generated route table plus the
+// route-parameter middleware the handlers require — so test suites compose the API
+// surface through a generated constructor instead of handwritten test-only routers.
+func Test_routesTemplate_testRouter(t *testing.T) {
+	t.Parallel()
+
+	for _, want := range []string{
+		"func NewTestRouter(h GeneratedHandlers) *chi.Mux {",
+		"r.Use(httpio.WithParams)",
+		"generatedRoutes(r, h)",
+	} {
+		if !strings.Contains(routesTemplate, want) {
+			t.Errorf("routesTemplate missing %q", want)
+		}
+	}
+}
+
 func Test_fileTemplates_generationHeader(t *testing.T) {
 	t.Parallel()
 

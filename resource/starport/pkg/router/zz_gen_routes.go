@@ -151,3 +151,15 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 
 	r.Patch("/api/resources", h.PatchResources())
 }
+
+// NewTestRouter serves the generated API routes bare, for test composition only: no
+// session guard, no application middleware beyond the route-parameter capture the
+// handlers require. Production traffic is served through the application's router,
+// which nests these routes inside its authentication group.
+func NewTestRouter(h GeneratedHandlers) *chi.Mux {
+	r := chi.NewRouter()
+	r.Use(httpio.WithParams)
+	generatedRoutes(r, h)
+
+	return r
+}
