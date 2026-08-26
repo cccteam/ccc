@@ -32,28 +32,32 @@ const (
 	berthsResource           = accesstypes.Resource("Berths")
 	authorizeDockingResource = accesstypes.Resource("AuthorizeDocking")
 
-	// Stations are the permission domains. They exist only as URL values and grant
-	// partitions: the Berths table is deliberately domain-blind.
-	stationAlpha = accesstypes.Domain("station-alpha")
-	stationBeta  = accesstypes.Domain("station-beta")
-
 	// Seeded berth identifiers, matching testdata/seed.
 	berthD7ID = "8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f"
 	berthK2ID = "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e"
 )
 
-// domainGrants is a static permission table partitioned by domain. Global grants live
-// under accesstypes.GlobalDomain, exactly as they would in a real policy store.
-type domainGrants map[accesstypes.Domain]grants
+// Stations are the permission scopes. They exist only as URL values and grant
+// partitions: the Berths table is deliberately domain-blind. globalScope is
+// the structural global partition.
+var (
+	stationAlpha = accesstypes.DomainScope("station-alpha")
+	stationBeta  = accesstypes.DomainScope("station-beta")
+	globalScope  = accesstypes.GlobalScope()
+)
+
+// domainGrants is a static permission table partitioned by scope. Global grants live
+// under the structural global scope, exactly as they would in a real policy store.
+type domainGrants map[accesstypes.Scope]grants
 
 // domainUserPermissions implements resource.UserPermissions over a domainGrants table.
-// A check consults only the partition of the domain it is called with.
+// A check consults only the partition of the scope it is called with.
 type domainUserPermissions struct {
 	byDomain domainGrants
 }
 
-func (d *domainUserPermissions) Check(_ context.Context, domain accesstypes.Domain, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
-	g := d.byDomain[domain]
+func (d *domainUserPermissions) Check(_ context.Context, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
+	g := d.byDomain[scope]
 	for _, res := range resources {
 		if !slices.Contains(g[perm], res) {
 			missing = append(missing, res)
@@ -129,7 +133,7 @@ func TestDomainPartitionQuery(t *testing.T) {
 		},
 		{
 			name:       "global grant does not satisfy a station route",
-			grants:     domainGrants{accesstypes.GlobalDomain: {accesstypes.List: {berthsResource}}},
+			grants:     domainGrants{globalScope: {accesstypes.List: {berthsResource}}},
 			target:     "/api/stations/station-alpha/berths",
 			wantStatus: http.StatusForbidden,
 		},
@@ -244,7 +248,7 @@ func TestDomainPartitionMutation(t *testing.T) {
 		},
 		{
 			name:       "create with the same grants in the global domain is forbidden",
-			grants:     domainGrants{accesstypes.GlobalDomain: createGrants},
+			grants:     domainGrants{globalScope: createGrants},
 			target:     "/api/stations/station-alpha/berths",
 			body:       createBody,
 			wantStatus: http.StatusForbidden,
@@ -370,7 +374,7 @@ func TestDomainPartitionRPC(t *testing.T) {
 		},
 		{
 			name:       "global execute grant does not satisfy a station route",
-			grants:     domainGrants{accesstypes.GlobalDomain: executeGrant},
+			grants:     domainGrants{globalScope: executeGrant},
 			target:     "/api/stations/station-alpha/authorize-docking",
 			body:       body,
 			wantStatus: http.StatusForbidden,

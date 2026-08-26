@@ -42,7 +42,7 @@ type staticUserPermissions struct {
 	g grants
 }
 
-func (s *staticUserPermissions) Check(_ context.Context, _ accesstypes.Domain, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
+func (s *staticUserPermissions) Check(_ context.Context, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
 	for _, res := range resources {
 		if !slices.Contains(s.g[perm], res) {
 			missing = append(missing, res)

@@ -108,7 +108,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 
 // Decode decodes an http.Request into a QuerySet and enables user permission enforcement
 // in the given domain partition.
-func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, domain accesstypes.Domain) (*QuerySet[Resource], error) {
+func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, scope accesstypes.Scope) (*QuerySet[Resource], error) {
 	qSet, err := d.DecodeWithoutPermissions(request)
 	if err != nil {
 		return nil, err
@@ -119,7 +119,7 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 		panic(fmt.Sprintf("expected one non-mutating permission, found: %d, (%s)", len(perms), perms))
 	}
 
-	qSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, domain, perms[0])
+	qSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, perms[0])
 
 	return qSet, nil
 }

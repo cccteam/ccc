@@ -27,7 +27,7 @@ func NewAccessUserPermissions(controller access.Controller) func(*http.Request) 
 
 var _ resource.UserPermissions = &accessUserPermissions{}
 
-// accessUserPermissions binds one request's user to the access engine. The domain is
+// accessUserPermissions binds one request's user to the access engine. The scope is
 // bound per check by the caller (the generated handlers), per the UserPermissions
 // contract.
 type accessUserPermissions struct {
@@ -35,12 +35,12 @@ type accessUserPermissions struct {
 	user       accesstypes.User
 }
 
-// Check implements resource.UserPermissions over access.Controller.CheckUser, which
-// returns the exhaustive missing set the contract requires.
-func (u *accessUserPermissions) Check(ctx context.Context, domain accesstypes.Domain, perm accesstypes.Permission, resources ...accesstypes.Resource) ([]accesstypes.Resource, error) {
-	missing, err := u.controller.CheckUser(ctx, u.user, domain, perm, resources...)
+// Check implements resource.UserPermissions over access.Controller.CheckUserResources,
+// which returns the exhaustive missing set the contract requires.
+func (u *accessUserPermissions) Check(ctx context.Context, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) ([]accesstypes.Resource, error) {
+	missing, err := u.controller.CheckUserResources(ctx, u.user, scope, perm, resources...)
 	if err != nil {
-		return nil, errors.Wrap(err, "access.Controller.CheckUser()")
+		return nil, errors.Wrap(err, "access.Controller.CheckUserResources()")
 	}
 
 	return missing, nil

@@ -11,7 +11,7 @@ import (
 // UserPermissions is an interface that provides methods to check user permissions and retrieve user information, and is used
 // in the PatchSet and QuerySet types to enforce user permissions on resources.
 type UserPermissions interface {
-	// Check reports which of resources the user does NOT hold perm on within domain.
+	// Check reports which of resources the user does NOT hold perm on within scope.
 	//
 	// missing must be the complete subset of resources for which perm is not held,
 	// preserving the input order of first occurrence; an empty result means every
@@ -21,7 +21,7 @@ type UserPermissions interface {
 	// consistent authorization snapshot — a concurrent grant or revocation must affect
 	// all of the call's results or none of them. Distinct calls may observe different
 	// snapshots; callers must not assume pinning across calls.
-	Check(ctx context.Context, domain accesstypes.Domain, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error)
+	Check(ctx context.Context, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error)
 	User() accesstypes.User
 }
 

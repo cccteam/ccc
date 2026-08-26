@@ -180,8 +180,10 @@
       "user": "demo",
       "password": "starport",
       "roles": {
-        "access:global": ["HarborMaster"],
-        "station-alpha": ["DockOperator"]
+        "global": ["HarborMaster"],
+        "domains": {
+          "station-alpha": ["DockOperator"]
+        }
       }
     }
   ]

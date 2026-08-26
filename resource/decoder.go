@@ -63,13 +63,13 @@ func (d *Decoder[Resource, Request]) DecodeWithoutPermissions(request *http.Requ
 
 // Decode decodes an http.Request into a PatchSet and enables user permission enforcement
 // in the given domain partition.
-func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, domain accesstypes.Domain, requiredPermission accesstypes.Permission) (*PatchSet[Resource], error) {
+func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, scope accesstypes.Scope, requiredPermission accesstypes.Permission) (*PatchSet[Resource], error) {
 	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate, requiredPermission)
 	if err != nil {
 		return nil, err
 	}
 
-	p.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, domain, requiredPermission)
+	p.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, requiredPermission)
 
 	return p, nil
 }
@@ -90,12 +90,12 @@ func (d *Decoder[Resource, Request]) DecodeOperationWithoutPermissions(oper *Ope
 
 // DecodeOperation decodes an Operation into a PatchSet and enables user permission
 // enforcement in the given domain partition.
-func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermissions UserPermissions, domain accesstypes.Domain) (*PatchSet[Resource], error) {
+func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermissions UserPermissions, scope accesstypes.Scope) (*PatchSet[Resource], error) {
 	if oper.Type == OperationDelete {
-		return NewPatchSet(d.resourceSet.ResourceMetadata()).EnableUserPermissionEnforcement(d.resourceSet, userPermissions, domain, permissionFromType(oper.Type)), nil
+		return NewPatchSet(d.resourceSet.ResourceMetadata()).EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, permissionFromType(oper.Type)), nil
 	}
 
-	patchSet, err := d.Decode(oper.Req, userPermissions, domain, permissionFromType(oper.Type))
+	patchSet, err := d.Decode(oper.Req, userPermissions, scope, permissionFromType(oper.Type))
 	if err != nil {
 		return nil, errors.Wrap(err, "httpio.DecoderWithPermissionChecker[Request].Decode()")
 	}

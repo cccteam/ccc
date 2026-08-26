@@ -31,7 +31,7 @@ type QuerySet[Resource Resourcer] struct {
 	rMeta                  *Metadata[Resource]
 	resourceSet            *Set[Resource]
 	userPermissions        UserPermissions
-	domain                 accesstypes.Domain
+	scope                  accesstypes.Scope
 	requiredPermission     accesstypes.Permission
 	filterAst              ExpressionNode
 	filterParser           func(DBType) (ExpressionNode, error)
@@ -90,15 +90,15 @@ func (q *QuerySet[Resource]) ReturnAccessibleFields(b bool) *QuerySet[Resource] 
 }
 
 // EnableUserPermissionEnforcement enables the checking of user permissions for the QuerySet,
-// evaluating requiredPermission for the user in the given domain partition.
+// evaluating requiredPermission for the user in the given scope partition.
 //
 // An enforced QuerySet is single-shot: it binds the user (via userPermissions) and the
-// domain for a single operation's evaluation. Build a new QuerySet per operation; never
-// reuse one across requests or domains.
-func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource], userPermissions UserPermissions, domain accesstypes.Domain, requiredPermission accesstypes.Permission) *QuerySet[Resource] {
+// scope for a single operation's evaluation. Build a new QuerySet per operation; never
+// reuse one across requests or scopes.
+func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource], userPermissions UserPermissions, scope accesstypes.Scope, requiredPermission accesstypes.Permission) *QuerySet[Resource] {
 	q.resourceSet = rSet
 	q.userPermissions = userPermissions
-	q.domain = domain
+	q.scope = scope
 	q.requiredPermission = requiredPermission
 
 	return q
@@ -106,10 +106,10 @@ func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource]
 
 func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType) error {
 	if q.resourceSet != nil {
-		if missing, err := q.userPermissions.Check(ctx, q.domain, q.requiredPermission, q.resourceSet.BaseResource()); err != nil {
+		if missing, err := q.userPermissions.Check(ctx, q.scope, q.requiredPermission, q.resourceSet.BaseResource()); err != nil {
 			return errors.Wrap(err, "enforcer.RequireResource()")
 		} else if len(missing) > 0 {
-			return httpio.NewForbiddenMessagef("domain (%s), user (%s) does not have (%s) on %s", q.domain, q.userPermissions.User(), q.requiredPermission, missing)
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, missing)
 		}
 	}
 
@@ -128,10 +128,10 @@ func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType
 			}
 		}
 
-		if missing, err := q.userPermissions.Check(ctx, q.domain, q.requiredPermission, resources...); err != nil {
+		if missing, err := q.userPermissions.Check(ctx, q.scope, q.requiredPermission, resources...); err != nil {
 			return errors.Wrap(err, "enforcer.RequireResource()")
 		} else if len(missing) > 0 {
-			return httpio.NewForbiddenMessagef("domain (%s), user (%s) does not have (%s) on %s", q.domain, q.userPermissions.User(), q.requiredPermission, missing)
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, missing)
 		}
 	}
 
@@ -178,7 +178,7 @@ func (q *QuerySet[Resource]) addAccessibleFields(ctx context.Context, dbType DBT
 
 		denied := make(map[accesstypes.Resource]struct{})
 		if len(resources) > 0 {
-			missing, err := q.userPermissions.Check(ctx, q.domain, q.requiredPermission, resources...)
+			missing, err := q.userPermissions.Check(ctx, q.scope, q.requiredPermission, resources...)
 			if err != nil {
 				return errors.Wrap(err, "enforcer.RequireResource()")
 			}

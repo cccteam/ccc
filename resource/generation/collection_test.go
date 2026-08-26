@@ -400,24 +400,6 @@ func Test_manualRegistrationsFromConstants(t *testing.T) {
 	}
 }
 
-// Test_manualRegistrationsFromConstants_reservedMarker pins that a hand-written
-// resource name carrying the reserved marker ':' is a generation error — struct-derived
-// names can never contain it, so @manualAddResource constants are the one ingestion
-// point where a caller-authored name could collide with an access-defined sentinel.
-func Test_manualRegistrationsFromConstants_reservedMarker(t *testing.T) {
-	t.Parallel()
-
-	pkg := loadFixture(t, "reservedmarkerfixture")
-
-	_, err := manualRegistrationsFromConstants(pkg.Constants)
-	if err == nil {
-		t.Fatal("manualRegistrationsFromConstants() error = nil, want reserved-marker rejection")
-	}
-	if !strings.Contains(err.Error(), "':' is reserved for access-defined markers") {
-		t.Errorf("manualRegistrationsFromConstants() error = %v, want reserved-marker message", err)
-	}
-}
-
 func Test_parseManualAddResourceArgs(t *testing.T) {
 	t.Parallel()
 

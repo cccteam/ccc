@@ -75,77 +75,77 @@ func TestBootstrap(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		domain   accesstypes.Domain
+		scope    accesstypes.Scope
 		perm     accesstypes.Permission
 		resource accesstypes.Resource
 		wantOK   bool
 	}{
 		{
 			name:     "global role grants a global resource",
-			domain:   accesstypes.GlobalDomain,
+			scope:    accesstypes.GlobalScope(),
 			perm:     accesstypes.List,
 			resource: "Ships",
 			wantOK:   true,
 		},
 		{
 			name:     "global role grants a field resource",
-			domain:   accesstypes.GlobalDomain,
+			scope:    accesstypes.GlobalScope(),
 			perm:     accesstypes.Read,
 			resource: "Ships.registryCode",
 			wantOK:   true,
 		},
 		{
 			name:     "global role never received an update grant on an immutable field",
-			domain:   accesstypes.GlobalDomain,
+			scope:    accesstypes.GlobalScope(),
 			perm:     accesstypes.Update,
 			resource: "Ships.registryCode",
 			wantOK:   false,
 		},
 		{
 			name:     "global role grants list on a virtual resource",
-			domain:   accesstypes.GlobalDomain,
+			scope:    accesstypes.GlobalScope(),
 			perm:     accesstypes.List,
 			resource: "ShipCargoSummaries",
 			wantOK:   true,
 		},
 		{
 			name:     "global role grants a virtual field resource",
-			domain:   accesstypes.GlobalDomain,
+			scope:    accesstypes.GlobalScope(),
 			perm:     accesstypes.List,
 			resource: "ShipCargoSummaries.totalDeclaredValue",
 			wantOK:   true,
 		},
 		{
 			name:     "no grant exists on a virtual primary-key field; its visibility follows the resource grant",
-			domain:   accesstypes.GlobalDomain,
+			scope:    accesstypes.GlobalScope(),
 			perm:     accesstypes.List,
 			resource: "ShipCargoSummaries.shipId",
 			wantOK:   false,
 		},
 		{
 			name:     "station role grants execute in the assigned station",
-			domain:   "station-alpha",
+			scope:    accesstypes.DomainScope("station-alpha"),
 			perm:     accesstypes.Execute,
 			resource: "AuthorizeDocking",
 			wantOK:   true,
 		},
 		{
 			name:     "station role grants a field resource in the assigned station",
-			domain:   "station-alpha",
+			scope:    accesstypes.DomainScope("station-alpha"),
 			perm:     accesstypes.List,
 			resource: "Berths.occupied",
 			wantOK:   true,
 		},
 		{
 			name:     "the assignment does not exist in the other station",
-			domain:   "station-beta",
+			scope:    accesstypes.DomainScope("station-beta"),
 			perm:     accesstypes.Execute,
 			resource: "AuthorizeDocking",
 			wantOK:   false,
 		},
 		{
 			name:     "the global assignment does not bleed into a station",
-			domain:   "station-alpha",
+			scope:    accesstypes.DomainScope("station-alpha"),
 			perm:     accesstypes.List,
 			resource: "Ships",
 			wantOK:   false,
@@ -154,12 +154,12 @@ func TestBootstrap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			missing, err := client.CheckUser(ctx, demoUser, tt.domain, tt.perm, tt.resource)
+			missing, err := client.CheckUserResources(ctx, demoUser, tt.scope, tt.perm, tt.resource)
 			if err != nil {
-				t.Fatalf("CheckUser() error = %v", err)
+				t.Fatalf("CheckUserResources() error = %v", err)
 			}
 			if ok := len(missing) == 0; ok != tt.wantOK {
-				t.Errorf("CheckUser(%s, %s, %s, %s) = %v (missing %v), want %v", demoUser, tt.domain, tt.perm, tt.resource, ok, missing, tt.wantOK)
+				t.Errorf("CheckUserResources(%s, %s, %s, %s) = %v (missing %v), want %v", demoUser, tt.scope, tt.perm, tt.resource, ok, missing, tt.wantOK)
 			}
 		})
 	}

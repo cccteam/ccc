@@ -99,7 +99,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 				switch httpio.Param[string](op.Req, "resource") {
 				case "cargo-manifests":
-					patchSet, err := cargoManifestDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)
+					patchSet, err := cargoManifestDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())
 					if err != nil {
 						return errors.Wrap(err, "cargoManifestDecoder.DecodeOperation()")
 					}
@@ -130,7 +130,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						}
 					}
 				case "docking-bays":
-					patchSet, err := dockingBayDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)
+					patchSet, err := dockingBayDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())
 					if err != nil {
 						return errors.Wrap(err, "dockingBayDecoder.DecodeOperation()")
 					}
@@ -162,7 +162,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						}
 					}
 				case "ships":
-					patchSet, err := shipDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)
+					patchSet, err := shipDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())
 					if err != nil {
 						return errors.Wrap(err, "shipDecoder.DecodeOperation()")
 					}
@@ -194,7 +194,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						}
 					}
 				case "supply-crates":
-					patchSet, err := supplyCrateDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)
+					patchSet, err := supplyCrateDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())
 					if err != nil {
 						return errors.Wrap(err, "supplyCrateDecoder.DecodeOperation()")
 					}
@@ -227,7 +227,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 					}
 				case "stations":
 					if op.PathDepth() <= 2 {
-						patchSet, err := stationDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)
+						patchSet, err := stationDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())
 						if err != nil {
 							return errors.Wrap(err, "stationDecoder.DecodeOperation()")
 						}
@@ -267,9 +267,6 @@ func (a *App) PatchResources() http.HandlerFunc {
 					}
 
 					domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
-					if domain.HasReservedMarker() {
-						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
-					}
 					if ok, err := a.DomainExists(ctx, domain); err != nil {
 						return errors.Wrap(err, "DomainExists()")
 					} else if !ok {
@@ -278,7 +275,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 					switch httpio.Param[string](op.Req, "resource") {
 					case "gantry-cranes":
-						patchSet, err := gantryCraneDecoder.DecodeOperation(op, userPermissions, domain)
+						patchSet, err := gantryCraneDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))
 						if err != nil {
 							return errors.Wrap(err, "gantryCraneDecoder.DecodeOperation()")
 						}

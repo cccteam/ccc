@@ -1,6 +1,6 @@
 DROP TABLE AccessRoleGrants;
 
-DROP INDEX AccessUserRolesByDomainUser;
+DROP INDEX AccessUserRolesByScopeUser;
 
 DROP TABLE AccessUserRoles;
 

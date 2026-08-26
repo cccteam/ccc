@@ -352,9 +352,9 @@ func Test_consolidatedPatchResources(t *testing.T) {
 	}
 }
 
-// Test_handlerContent_domainSource pins the domain argument generated handlers pass to
-// the decoders: the accesstypes.GlobalDomain literal for global-scoped resources, the
-// {domain} route parameter for domain-scoped ones.
+// Test_handlerContent_domainSource pins the scope argument generated handlers pass to
+// the decoders: accesstypes.GlobalScope() for global-scoped resources, the {domain}
+// route parameter wrapped in accesstypes.DomainScope for domain-scoped ones.
 func Test_handlerContent_domainSource(t *testing.T) {
 	t.Parallel()
 
@@ -368,11 +368,11 @@ func Test_handlerContent_domainSource(t *testing.T) {
 		wantNotContains []string
 	}{
 		{
-			name:        "global scope passes GlobalDomain",
+			name:        "global scope passes GlobalScope",
 			scope:       "",
 			handlerType: ListHandler,
 			wantContains: []string{
-				"decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalDomain)",
+				"decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalScope())",
 			},
 			wantNotContains: []string{"router.Domain", "DomainExists"},
 		},
@@ -382,12 +382,11 @@ func Test_handlerContent_domainSource(t *testing.T) {
 			handlerType: ListHandler,
 			wantContains: []string{
 				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
-				"if domain.HasReservedMarker() {",
 				"if ok, err := a.DomainExists(ctx, domain); err != nil {",
 				`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
-				"decoder.Decode(r, a.UserPermissions(r), domain)",
+				"decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))",
 			},
-			wantNotContains: []string{"accesstypes.GlobalDomain"},
+			wantNotContains: []string{"accesstypes.GlobalScope()", "HasReservedMarker"},
 		},
 		{
 			name:        "domain-scoped read handler carries the guard",
@@ -397,7 +396,7 @@ func Test_handlerContent_domainSource(t *testing.T) {
 				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
 				"if ok, err := a.DomainExists(ctx, domain); err != nil {",
 			},
-			wantNotContains: []string{"accesstypes.GlobalDomain"},
+			wantNotContains: []string{"accesstypes.GlobalScope()"},
 		},
 		{
 			name:        "domain-scoped patch handler guards before the transaction",
@@ -407,13 +406,13 @@ func Test_handlerContent_domainSource(t *testing.T) {
 				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
 				"if ok, err := a.DomainExists(ctx, domain); err != nil {",
 			},
-			wantNotContains: []string{"accesstypes.GlobalDomain"},
+			wantNotContains: []string{"accesstypes.GlobalScope()"},
 		},
 		{
 			name:            "global-scoped patch handler has no guard",
 			scope:           "",
 			handlerType:     PatchHandler,
-			wantContains:    []string{"accesstypes.GlobalDomain"},
+			wantContains:    []string{"accesstypes.GlobalScope()"},
 			wantNotContains: []string{"DomainExists", "router.Domain"},
 		},
 	}
@@ -526,11 +525,10 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				`case "stations":`,
 				`op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")`,
 				`domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)`,
-				`if domain.HasReservedMarker() {`,
 				`if ok, err := a.DomainExists(ctx, domain); err != nil {`,
 				`httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)`,
-				`fossilDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)`,
-				`vaultDecoder.DecodeOperation(op, userPermissions, domain)`,
+				`fossilDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())`,
+				`vaultDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))`,
 				`op.ReqWithPattern("/stations/{stationID}/{resource}/{id}"`,
 				`unknown domain-scoped resource %q in operation path`,
 			},
@@ -556,10 +554,10 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 			wantContains: []string{
 				`case "stations":`,
 				`if op.PathDepth() <= 2 {`,
-				`stationDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalDomain)`,
+				`stationDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())`,
 				`continue`,
 				`op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")`,
-				`vaultDecoder.DecodeOperation(op, userPermissions, domain)`,
+				`vaultDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))`,
 			},
 		},
 		{

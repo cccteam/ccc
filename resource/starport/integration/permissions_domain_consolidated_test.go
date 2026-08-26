@@ -72,7 +72,7 @@ func TestDomainPartitionConsolidatedMutation(t *testing.T) {
 		},
 		{
 			name:       "a global grant does not satisfy a station operation",
-			grants:     domainGrants{accesstypes.GlobalDomain: craneUpdateGrants},
+			grants:     domainGrants{globalScope: craneUpdateGrants},
 			body:       fmt.Sprintf(`[{"op":"patch","path":"/stations/station-alpha/gantry-cranes/%s","value":{"operational":false}}]`, craneGC1ID),
 			wantStatus: http.StatusForbidden,
 		},
@@ -110,7 +110,7 @@ func TestDomainPartitionConsolidatedMutation(t *testing.T) {
 		{
 			name: "a batch mixes global and station operations",
 			grants: domainGrants{
-				accesstypes.GlobalDomain: {accesstypes.Update: {
+				globalScope: {accesstypes.Update: {
 					shipsResource,
 					fieldResource(shipsResource, "cargoValue"),
 				}},
@@ -148,7 +148,7 @@ func TestDomainPartitionConsolidatedMutation(t *testing.T) {
 			// segment, so its operations share the dispatcher's "stations" case and are
 			// told apart from domain descents by path depth.
 			name: "tenant-record operations dispatch at depth two under the shared case",
-			grants: domainGrants{accesstypes.GlobalDomain: {accesstypes.Update: {
+			grants: domainGrants{globalScope: {accesstypes.Update: {
 				stationsResource,
 				fieldResource(stationsResource, "name"),
 			}}},
@@ -163,7 +163,7 @@ func TestDomainPartitionConsolidatedMutation(t *testing.T) {
 		{
 			name: "one batch mixes tenant-record and domain-scoped operations through the shared case",
 			grants: domainGrants{
-				accesstypes.GlobalDomain: {accesstypes.Update: {
+				globalScope: {accesstypes.Update: {
 					stationsResource,
 					fieldResource(stationsResource, "name"),
 				}},
@@ -197,7 +197,7 @@ func TestDomainPartitionConsolidatedMutation(t *testing.T) {
 		},
 		{
 			name:       "a global operation with a station prefix is a bad request",
-			grants:     domainGrants{accesstypes.GlobalDomain: {accesstypes.Update: {shipsResource, fieldResource(shipsResource, "cargoValue")}}},
+			grants:     domainGrants{globalScope: {accesstypes.Update: {shipsResource, fieldResource(shipsResource, "cargoValue")}}},
 			body:       fmt.Sprintf(`[{"op":"patch","path":"/stations/station-alpha/ships/%s","value":{"cargoValue":777}}]`, shipVantaID),
 			wantStatus: http.StatusBadRequest,
 		},

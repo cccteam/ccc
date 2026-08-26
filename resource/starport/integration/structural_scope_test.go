@@ -1,12 +1,14 @@
 package integration
 
-// This suite pins the structural reserved-marker guard: a URL or operation-path domain
-// carrying ':' (e.g. a spoofed "access:global") is rejected BEFORE DomainExists is
-// consulted. The harness makes DomainExists deliberately permissive (recognizes every
-// value — the misconfigured-tenant-list scenario), and keys full grants under
-// accesstypes.GlobalDomain: without the guard, the spoofed segment would compare equal
-// to the GlobalDomain sentinel and the request would be authorized out of the global
-// partition. The rejections below are therefore the guard's alone.
+// This suite pins the structural-scope security property that retired the
+// reserved-marker guard: no URL or operation-path domain value can address the
+// global partition, because the generated handlers wrap the parameter in
+// accesstypes.DomainScope — a tenant scope by construction. The harness makes
+// DomainExists deliberately permissive (recognizes every value — the
+// misconfigured-tenant-list scenario) and keys full grants under the global
+// scope: a spoofed segment like "access:global" lands in an ordinary, empty
+// tenant partition and is forbidden, with nothing to guard against and no
+// rejection rule for callers to know.
 
 import (
 	"context"
@@ -30,8 +32,8 @@ func newPermissiveDomainApp(db *initiator.SpannerDB, g domainGrants) *app.App {
 		UserPermissions: func(*http.Request) resource.UserPermissions {
 			return &domainUserPermissions{byDomain: g}
 		},
-		// A deliberately misconfigured tenant list that recognizes everything: the
-		// reserved-marker guard must reject before this is ever consulted.
+		// A deliberately misconfigured tenant list that recognizes everything: even
+		// then, no URL value can reach the global partition.
 		DomainExists: func(context.Context, accesstypes.Domain) (bool, error) {
 			return true, nil
 		},
@@ -39,7 +41,7 @@ func newPermissiveDomainApp(db *initiator.SpannerDB, g domainGrants) *app.App {
 	})
 }
 
-func TestReservedMarkerDomainRejected(t *testing.T) {
+func TestSpoofedGlobalScopeIsInert(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -66,41 +68,41 @@ func TestReservedMarkerDomainRejected(t *testing.T) {
 		verify     func(t *testing.T)
 	}{
 		{
-			name:       "list under the spoofed global sentinel is not found, not served from the global partition",
-			grants:     domainGrants{accesstypes.GlobalDomain: berthListGrants},
+			name:       "list under a spoofed sentinel URL is an empty tenant partition, never the global one",
+			grants:     domainGrants{globalScope: berthListGrants},
 			method:     http.MethodGet,
 			target:     "/api/stations/access:global/berths",
-			wantStatus: http.StatusNotFound,
+			wantStatus: http.StatusForbidden,
 		},
 		{
-			name: "patch under the spoofed global sentinel is not found before the transaction",
-			grants: domainGrants{accesstypes.GlobalDomain: {accesstypes.Update: {
+			name: "patch under a spoofed sentinel URL is forbidden before the transaction",
+			grants: domainGrants{globalScope: {accesstypes.Update: {
 				berthsResource,
 				fieldResource(berthsResource, "occupied"),
 			}}},
 			method:     http.MethodPatch,
 			target:     "/api/stations/access:global/berths",
-			body:       fmt.Sprintf(`[{"op":"patch","path":"/berths/%s","value":{"occupied":true}}]`, berthD7ID),
-			wantStatus: http.StatusNotFound,
+			body:       fmt.Sprintf(`[{"op":"patch","path":"/%s","value":{"occupied":true}}]`, berthD7ID),
+			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:       "rpc under the spoofed global sentinel is not found despite a global execute grant",
-			grants:     domainGrants{accesstypes.GlobalDomain: {accesstypes.Execute: {authorizeDockingResource}}},
+			name:       "rpc under a spoofed sentinel URL is forbidden despite a global execute grant",
+			grants:     domainGrants{globalScope: {accesstypes.Execute: {authorizeDockingResource}}},
 			method:     http.MethodPost,
 			target:     "/api/stations/access:global/authorize-docking",
 			body:       fmt.Sprintf(`{"berthId":%q,"dockingCode":"dock-42"}`, berthD7ID),
-			wantStatus: http.StatusNotFound,
+			wantStatus: http.StatusForbidden,
 		},
 		{
-			name: "consolidated operation under the spoofed global sentinel is a bad request",
-			grants: domainGrants{accesstypes.GlobalDomain: {accesstypes.Update: {
+			name: "consolidated operation under a spoofed sentinel path stays in its empty tenant partition",
+			grants: domainGrants{globalScope: {accesstypes.Update: {
 				gantryCranesResource,
 				fieldResource(gantryCranesResource, "operational"),
 			}}},
 			method:     http.MethodPatch,
 			target:     "/api/resources",
 			body:       fmt.Sprintf(`[{"op":"patch","path":"/stations/access:global/gantry-cranes/%s","value":{"operational":false}}]`, craneGC1ID),
-			wantStatus: http.StatusBadRequest,
+			wantStatus: http.StatusForbidden,
 			verify: func(t *testing.T) {
 				t.Helper()
 				if operational := readColumn[bool](ctx, t, db, "GantryCranes", spanner.Key{craneGC1ID}, "Operational"); !operational {
@@ -109,7 +111,16 @@ func TestReservedMarkerDomainRejected(t *testing.T) {
 			},
 		},
 		{
-			name:       "a marker-free domain sails through the permissive tenant list",
+			name: "a tenant literally named like the sentinel is ordinary data with its own partition",
+			grants: domainGrants{
+				accesstypes.DomainScope("access:global"): berthListGrants,
+			},
+			method:     http.MethodGet,
+			target:     "/api/stations/access:global/berths",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "an ordinary tenant sails through the permissive tenant list",
 			grants:     domainGrants{stationGamma: berthListGrants},
 			method:     http.MethodGet,
 			target:     "/api/stations/station-gamma/berths",

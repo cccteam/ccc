@@ -14,7 +14,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 )
 
-const stationGamma = accesstypes.Domain("station-gamma")
+var stationGamma = accesstypes.DomainScope("station-gamma")
 
 func TestDomainNotFound(t *testing.T) {
 	t.Parallel()
@@ -93,7 +93,7 @@ func TestDomainNotFound(t *testing.T) {
 		},
 		{
 			name:       "global routes carry no domain guard",
-			grants:     domainGrants{accesstypes.GlobalDomain: {accesstypes.List: {shipsResource}}},
+			grants:     domainGrants{globalScope: {accesstypes.List: {shipsResource}}},
 			method:     http.MethodGet,
 			target:     "/api/ships",
 			wantStatus: http.StatusOK,

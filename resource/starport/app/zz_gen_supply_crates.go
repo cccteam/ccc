@@ -35,7 +35,7 @@ func (a *App) SupplyCrates() http.HandlerFunc {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalDomain)
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalScope())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -97,7 +97,7 @@ func (a *App) SupplyCrate() http.HandlerFunc {
 
 		id := httpio.Param[ccc.UUID](r, router.SupplyCrateID)
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalDomain)
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalScope())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}

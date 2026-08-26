@@ -62,20 +62,23 @@ type enforcementExemptReadRequest struct {
 	ID ccc.UUID `json:"id" perm:"-"`
 }
 
+// testScope is the tenant scope the enforcement fixtures evaluate in.
+var testScope = accesstypes.DomainScope("testDomain")
+
 // fakeUserPermissions is a UserPermissions implementation backed by a static grant table.
-// It records every Check invocation so tests can assert call batching and domain routing.
+// It records every Check invocation so tests can assert call batching and scope routing.
 type fakeUserPermissions struct {
 	granted map[accesstypes.Permission][]accesstypes.Resource
 	err     error
 
 	checkCalls   int
-	gotDomains   []accesstypes.Domain
+	gotScopes    []accesstypes.Scope
 	gotResources [][]accesstypes.Resource
 }
 
-func (f *fakeUserPermissions) Check(_ context.Context, domain accesstypes.Domain, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
+func (f *fakeUserPermissions) Check(_ context.Context, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
 	f.checkCalls++
-	f.gotDomains = append(f.gotDomains, domain)
+	f.gotScopes = append(f.gotScopes, scope)
 	f.gotResources = append(f.gotResources, slices.Clone(resources))
 
 	if f.err != nil {
@@ -249,7 +252,7 @@ func TestQuerySet_Read_permissionEnforcement(t *testing.T) {
 			if tt.withoutPermissions {
 				qSet, err = decoder.DecodeWithoutPermissions(req)
 			} else {
-				qSet, err = decoder.Decode(req, &fakeUserPermissions{granted: tt.grants, err: tt.permCheckErr}, "testDomain")
+				qSet, err = decoder.Decode(req, &fakeUserPermissions{granted: tt.grants, err: tt.permCheckErr}, testScope)
 			}
 			if err != nil {
 				t.Fatalf("QueryDecoder.Decode() error = %v", err)
@@ -307,7 +310,7 @@ func decodeForBatching[Request any](t *testing.T, target string, userPermissions
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, http.NoBody)
 
-	return decoder.Decode(req, userPermissions, "testDomain")
+	return decoder.Decode(req, userPermissions, testScope)
 }
 
 func TestQuerySet_Read_checkBatching(t *testing.T) {
@@ -400,9 +403,9 @@ func TestQuerySet_Read_checkBatching(t *testing.T) {
 			if userPermissions.checkCalls != tt.wantCheckCalls {
 				t.Errorf("Check calls = %d, want %d", userPermissions.checkCalls, tt.wantCheckCalls)
 			}
-			for i, domain := range userPermissions.gotDomains {
-				if domain != "testDomain" {
-					t.Errorf("Check call %d domain = %q, want %q", i, domain, "testDomain")
+			for i, scope := range userPermissions.gotScopes {
+				if scope != testScope {
+					t.Errorf("Check call %d scope = %q, want %q", i, scope, testScope)
 				}
 			}
 			if !slices.Equal(userPermissions.gotResources[0], []accesstypes.Resource{enforcedResource}) {
@@ -560,11 +563,11 @@ func TestPatchSet_Buffer_permissionEnforcement(t *testing.T) {
 			var patchSet *PatchSet[enforcementResource]
 			switch {
 			case tt.operation == OperationDelete:
-				patchSet, err = decoder.DecodeOperation(&Operation{Type: OperationDelete, Req: req}, userPermissions, "testDomain")
+				patchSet, err = decoder.DecodeOperation(&Operation{Type: OperationDelete, Req: req}, userPermissions, testScope)
 			case tt.withoutPermissions:
 				patchSet, err = decoder.DecodeWithoutPermissions(req)
 			default:
-				patchSet, err = decoder.Decode(req, userPermissions, "testDomain", permissionFromType(tt.operation))
+				patchSet, err = decoder.Decode(req, userPermissions, testScope, permissionFromType(tt.operation))
 			}
 			if tt.wantDecodeErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantDecodeErr) {
@@ -679,7 +682,7 @@ func TestRPCDecoder_Decode_permissionEnforcement(t *testing.T) {
 
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(`{"name":"probe-1"}`))
 
-			got, err := decoder.Decode(req, "testDomain")
+			got, err := decoder.Decode(req, testScope)
 
 			if tt.wantForbidden || tt.wantErrContains != "" {
 				if err == nil {

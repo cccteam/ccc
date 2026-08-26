@@ -109,13 +109,20 @@ type accessConfig struct {
 }
 
 // demoUser is a seeded login: a session user (created through the session library, so
-// the password is stored as a real Argon2 hash) plus the user's role assignments per
-// domain. The plaintext password is committed deliberately — these are fictional demo
-// credentials for an emulator-only application.
+// the password is stored as a real Argon2 hash) plus the user's role assignments. The
+// plaintext password is committed deliberately — these are fictional demo credentials
+// for an emulator-only application.
 type demoUser struct {
-	User     accesstypes.User           `json:"user"`
-	Password string                     `json:"password"`
-	Roles    accesstypes.RoleCollection `json:"roles"`
+	User     accesstypes.User `json:"user"`
+	Password string           `json:"password"`
+	Roles    demoUserRoles    `json:"roles"`
+}
+
+// demoUserRoles expresses the global partition structurally — its own JSON key,
+// never a magic domain-map entry — mirroring accesstypes.Scope.
+type demoUserRoles struct {
+	Global  []accesstypes.Role                        `json:"global"`
+	Domains map[accesstypes.Domain][]accesstypes.Role `json:"domains"`
 }
 
 // provisionAccess migrates the role configuration into the access engine's policy
@@ -189,9 +196,15 @@ func seedDemoUsers(ctx context.Context, spannerClient *spanner.Client, manager a
 		}
 		fmt.Printf("Created session user %s\n", user.User)
 
-		for _, domain := range slices.Sorted(maps.Keys(user.Roles)) {
-			roles := user.Roles[domain]
-			if err := manager.AddUserRoles(ctx, domain, user.User, roles...); err != nil {
+		if len(user.Roles.Global) > 0 {
+			if err := manager.AddUserRoles(ctx, accesstypes.GlobalScope(), user.User, user.Roles.Global...); err != nil {
+				return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in the global scope", user.User)
+			}
+			fmt.Printf("Assigned %v to user %s in the global scope\n", user.Roles.Global, user.User)
+		}
+		for _, domain := range slices.Sorted(maps.Keys(user.Roles.Domains)) {
+			roles := user.Roles.Domains[domain]
+			if err := manager.AddUserRoles(ctx, accesstypes.DomainScope(domain), user.User, roles...); err != nil {
 				return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in domain %s", user.User, domain)
 			}
 			fmt.Printf("Assigned %v to user %s in domain %s\n", roles, user.User, domain)

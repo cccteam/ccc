@@ -1,25 +1,28 @@
 CREATE TABLE AccessRoles (
+  IsGlobal BOOL NOT NULL,
   Domain STRING(128) NOT NULL,
   Role STRING(128) NOT NULL,
   UpdatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
-) PRIMARY KEY (Domain, Role);
+) PRIMARY KEY (IsGlobal, Domain, Role);
 
 CREATE TABLE AccessUserRoles (
+  IsGlobal BOOL NOT NULL,
   Domain STRING(128) NOT NULL,
   Role STRING(128) NOT NULL,
   User STRING(320) NOT NULL,
   CreatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
-) PRIMARY KEY (Domain, Role, User),
+) PRIMARY KEY (IsGlobal, Domain, Role, User),
   INTERLEAVE IN PARENT AccessRoles ON DELETE NO ACTION;
 
-CREATE INDEX AccessUserRolesByDomainUser ON AccessUserRoles (Domain, User);
+CREATE INDEX AccessUserRolesByScopeUser ON AccessUserRoles (IsGlobal, Domain, User);
 
 CREATE TABLE AccessRoleGrants (
+  IsGlobal BOOL NOT NULL,
   Domain STRING(128) NOT NULL,
   Role STRING(128) NOT NULL,
   Permission STRING(64) NOT NULL,
   Resource STRING(128) NOT NULL,
   Field STRING(128) NOT NULL,
   UpdatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
-) PRIMARY KEY (Domain, Role, Permission, Resource, Field),
+) PRIMARY KEY (IsGlobal, Domain, Role, Permission, Resource, Field),
   INTERLEAVE IN PARENT AccessRoles ON DELETE CASCADE;

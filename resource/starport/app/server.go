@@ -149,13 +149,34 @@ func (s *Server) Assets() http.HandlerFunc {
 }
 
 // SessionData reports the session user's permission collection across the global
-// domain and every station, in the shape the frontend's permission checks consume:
-// domain -> resource -> set of permissions. Like the session library's Authenticated
-// handler, an unauthenticated session gets an empty collection rather than an error:
-// the frontend probes this endpoint before login.
+// scope and every station. The wire shape is structural, mirroring
+// accesstypes.Scope: the global partition is its own key, never a magic entry in
+// the domain map. Like the session library's Authenticated handler, an
+// unauthenticated session gets an empty collection rather than an error: the
+// frontend probes this endpoint before login.
 func (s *Server) SessionData() http.HandlerFunc {
+	type resourcePermissions map[accesstypes.Resource]map[accesstypes.Permission]bool
+
+	type permissions struct {
+		Global  resourcePermissions                        `json:"global"`
+		Domains map[accesstypes.Domain]resourcePermissions `json:"domains"`
+	}
+
 	type response struct {
-		Permissions map[accesstypes.Domain]map[accesstypes.Resource]map[accesstypes.Permission]bool `json:"permissions"`
+		Permissions permissions `json:"permissions"`
+	}
+
+	permissionSet := func(scopePerms accesstypes.UserScopePermissions) resourcePermissions {
+		set := make(resourcePermissions, len(scopePerms.Resources))
+		for res, perms := range scopePerms.Resources {
+			resSet := make(map[accesstypes.Permission]bool, len(perms))
+			for _, perm := range perms {
+				resSet[perm] = true
+			}
+			set[res] = resSet
+		}
+
+		return set
 	}
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -169,25 +190,27 @@ func (s *Server) SessionData() http.HandlerFunc {
 		}
 		user := accesstypes.User(sessioninfo.FromCtx(ctx).Username)
 
-		domains := append([]accesstypes.Domain{accesstypes.GlobalDomain}, stations.Domains()...)
-		collection, err := s.access.UserManager().UserPermissions(ctx, user, domains...)
+		scopes := []accesstypes.Scope{accesstypes.GlobalScope()}
+		for _, domain := range stations.Domains() {
+			scopes = append(scopes, accesstypes.DomainScope(domain))
+		}
+		collection, err := s.access.UserManager().UserPermissions(ctx, user, scopes...)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "access.UserManager.UserPermissions()"))
 		}
 
-		permissions := make(map[accesstypes.Domain]map[accesstypes.Resource]map[accesstypes.Permission]bool, len(collection))
-		for domain, resources := range collection {
-			permissions[domain] = make(map[accesstypes.Resource]map[accesstypes.Permission]bool, len(resources))
-			for res, perms := range resources {
-				set := make(map[accesstypes.Permission]bool, len(perms))
-				for _, perm := range perms {
-					set[perm] = true
-				}
-				permissions[domain][res] = set
+		perms := permissions{Domains: make(map[accesstypes.Domain]resourcePermissions, len(collection))}
+		for scope, scopePerms := range collection {
+			if scope.IsGlobal() {
+				perms.Global = permissionSet(scopePerms)
+
+				continue
 			}
+			domain, _ := scope.Domain()
+			perms.Domains[domain] = permissionSet(scopePerms)
 		}
 
-		return httpio.NewEncoder(w).Ok(response{Permissions: permissions})
+		return httpio.NewEncoder(w).Ok(response{Permissions: perms})
 	})
 }
 

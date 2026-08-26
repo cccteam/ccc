@@ -535,14 +535,10 @@ const (
 	// resolve the route's domain and 404 before any decode or transaction when the
 	// application does not recognize it. The tenant universe is app-owned (access is
 	// deliberately Domains-free), so the application supplies DomainExists via its
-	// Config — one constant, so the seam can pivot in one place. Reserved-marker
-	// values (':', e.g. a spoofed "access:global") are rejected structurally BEFORE
-	// DomainExists, so a misconfigured tenant list can never route a check into the
-	// global partition.
+	// Config — one constant, so the seam can pivot in one place. No marker check is
+	// needed: a URL domain is pure data, and accesstypes.DomainScope routes it to a
+	// tenant partition by construction — no value can address the global partition.
 	domainExistsGuard = `domain := httpio.Param[accesstypes.Domain](r, router.Domain)
-		if domain.HasReservedMarker() {
-			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
-		}
 		if ok, err := {{ .ReceiverName }}.DomainExists(ctx, domain); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		} else if !ok {
@@ -587,7 +583,7 @@ import (
 		{{ if .Resource.IsDomainScoped -}}
 		` + domainExistsGuard + `
 		{{ end -}}
-		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -641,7 +637,7 @@ import (
 		{{ if .Resource.IsDomainScoped -}}
 		` + domainExistsGuard + `
 		{{ end -}}
-		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -716,7 +712,7 @@ import (
 					return errors.Wrap(err, "resource.Operations()")
 				}
 
-				patchSet, err := decoder.DecodeOperation(op, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
+				patchSet, err := decoder.DecodeOperation(op, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 				if err != nil {
 					return errors.Wrap(err, "decoder.DecodeOperation()")
 				}
@@ -861,9 +857,6 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 						}
 
 						domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
-						if domain.HasReservedMarker() {
-							return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
-						}
 						if ok, err := {{ .ReceiverName }}.DomainExists(ctx, domain); err != nil {
 							return errors.Wrap(err, "DomainExists()")
 						} else if !ok {
@@ -897,7 +890,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PatchResources() http.Handler
 {{- end }}
 {{- define "consolidatedCaseBody" }}
 					{{- $primaryKeyType := .PrimaryKeyType }}
-						patchSet, err := {{ GoCamel .Name}}Decoder.DecodeOperation(op, userPermissions, {{ if .DomainPatternPrefix }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
+						patchSet, err := {{ GoCamel .Name}}Decoder.DecodeOperation(op, userPermissions, {{ if .DomainPatternPrefix }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 						if err != nil {
 							return errors.Wrap(err, "{{ GoCamel .Name}}Decoder.DecodeOperation()")
 						}
@@ -1516,7 +1509,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		{{ if .RPCMethod.IsDomainScoped -}}
 		` + domainExistsGuard + `
 		{{ end -}}
-		params, err := decoder.Decode(r, {{ if .RPCMethod.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
+		params, err := decoder.Decode(r, {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -1607,7 +1600,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 		{{ if .Resource.IsDomainScoped -}}
 		` + domainExistsGuard + `
 		{{ end -}}
-		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -1660,7 +1653,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 		{{ if .Resource.IsDomainScoped -}}
 		` + domainExistsGuard + `
 		{{ end -}}
-		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}domain{{ else }}accesstypes.GlobalDomain{{ end }})
+		querySet, err := decoder.Decode(r, {{ .ReceiverName }}.UserPermissions(r), {{ if .Resource.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
