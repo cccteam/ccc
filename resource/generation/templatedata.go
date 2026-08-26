@@ -187,6 +187,20 @@ type decodersFileData struct {
 	HasRPCDecoder   bool
 }
 
+type appContractData struct {
+	Source              string
+	Package             string
+	LocalPackageImports string
+	ApplicationName     string
+	// The Has* fields emit each contract block only while its feature generates a
+	// caller, so an application is never asserted to carry methods nothing generated
+	// draws on. The resource block (UserPermissions, ResourceClient) is unconditional.
+	HasValidator    bool
+	HasDomainScoped bool
+	HasRPC          bool
+	HasComputed     bool
+}
+
 type rpcFileData struct {
 	Source    string
 	Package   string

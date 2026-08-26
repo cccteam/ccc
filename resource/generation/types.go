@@ -183,6 +183,7 @@ const (
 	resourceEnumsFileName         = "enums"
 	domainGuardOutputName         = "domain_guard"
 	decodersOutputName            = "decoders"
+	appContractOutputName         = "app_contract"
 	routesOutputName              = "routes"
 	routerTestOutputName          = "routes_test"
 	consolidatedHandlerOutputName = "consolidated_handler"

@@ -28,6 +28,7 @@ func fileTemplates() map[string]string {
 		"computedResourceHandlerTemplate": computedResourceHandlerTemplate,
 		"domainGuardTemplate":             domainGuardTemplate,
 		"decodersTemplate":                decodersTemplate,
+		"appContractTemplate":             appContractTemplate,
 	}
 }
 
@@ -94,6 +95,83 @@ func Test_decodersTemplate_gating(t *testing.T) {
 			for _, notWant := range tt.wantNotContains {
 				if strings.Contains(string(out), notWant) {
 					t.Errorf("decodersTemplate output must not contain %q:\n%s", notWant, out)
+				}
+			}
+		})
+	}
+}
+
+// Test_appContractTemplate_gating pins the generated app contract: the resource block
+// is unconditional; every other block is emitted only while its feature generates a
+// caller. Methods with generator-known signatures are asserted through interfaces;
+// RPCClient and ComputedClient (application-owned return types) through method
+// expressions that assert existence only.
+func Test_appContractTemplate_gating(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		data            appContractData
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "all features emit all contract blocks",
+			data: appContractData{
+				Package:         "app",
+				ApplicationName: "App",
+				HasValidator:    true,
+				HasDomainScoped: true,
+				HasRPC:          true,
+				HasComputed:     true,
+			},
+			wantContains: []string{
+				"UserPermissions(r *http.Request) resource.UserPermissions",
+				"ResourceClient() resource.Client",
+				"var _ resourceApp = (*App)(nil)",
+				"Validator() resource.ValidatorFunc",
+				"var _ validatorApp = (*App)(nil)",
+				"DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error)",
+				"DomainGuard() func(http.HandlerFunc) http.HandlerFunc",
+				"var _ domainScopedApp = (*App)(nil)",
+				"var _ = (*App).RPCClient",
+				"var _ = (*App).ComputedClient",
+			},
+		},
+		{
+			name: "query-only app asserts the resource surface alone",
+			data: appContractData{
+				Package:         "app",
+				ApplicationName: "App",
+			},
+			wantContains: []string{"var _ resourceApp = (*App)(nil)"},
+			wantNotContains: []string{
+				"validatorApp",
+				"domainScopedApp",
+				"RPCClient",
+				"ComputedClient",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			out, err := c.generateTemplateOutput("appContractTemplate", appContractTemplate, tt.data)
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("appContractTemplate output missing %q:\n%s", want, out)
+				}
+			}
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(string(out), notWant) {
+					t.Errorf("appContractTemplate output must not contain %q:\n%s", notWant, out)
 				}
 			}
 		})

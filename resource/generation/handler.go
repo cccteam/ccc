@@ -29,6 +29,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "generateDecoders()")
 	}
 
+	if err := r.generateAppContract(); err != nil {
+		return errors.Wrap(err, "generateAppContract()")
+	}
+
 	if err := forEachGo(r.resources, r.generateHandlers); err != nil {
 		return err
 	}
@@ -178,45 +182,61 @@ func (r *resourceGenerator) generateDomainGuard() error {
 	return nil
 }
 
-// generateDecoders emits the decoder constructors generated handlers call: shims over
-// the resource library's Must* constructors, constrained to the generated closed
-// unions (Resourcer, Method). Each constructor is emitted only when a generated
-// handler calls it.
-func (r *resourceGenerator) generateDecoders() error {
-	var hasQuery, hasPatch bool
+// handlerFeatures reports which application methods the generated handlers draw on,
+// scanning the same suppression-aware gates the handler generators emit under. It is
+// the shared basis for the generated decoder constructors and the app contract.
+type handlerFeatures struct {
+	hasQuery    bool
+	hasPatch    bool
+	hasRPC      bool
+	hasComputed bool
+	// rpcPackage qualifies the generated Method union; set iff hasRPC.
+	rpcPackage string
+}
+
+func (r *resourceGenerator) handlerFeatures() handlerFeatures {
+	var f handlerFeatures
 	for _, res := range r.resources {
 		for _, ht := range resourceEndpoints(res) {
 			switch ht {
 			case ListHandler, ReadHandler:
-				hasQuery = true
+				f.hasQuery = true
 			case PatchHandler:
-				hasPatch = true
+				f.hasPatch = true
 			default: // resourceEndpoints returns concrete handler types only.
 			}
 		}
 		if hasConsolidatedHandler(res) {
-			hasPatch = true
+			f.hasPatch = true
 		}
 	}
 	if r.genComputedResources {
 		for _, res := range r.computedResources {
 			if !res.SuppressReadHandler || !res.SuppressListHandler {
-				hasQuery = true
+				f.hasComputed = true
 			}
 		}
 	}
-	hasRPC := false
-	rpcPackage := ""
 	if r.genRPCMethods {
 		for _, rpcMethod := range r.rpcMethods {
 			if !rpcMethod.SuppressHandler {
-				hasRPC = true
-				rpcPackage = r.rpc.Package()
+				f.hasRPC = true
+				f.rpcPackage = r.rpc.Package()
 			}
 		}
 	}
 
-	if !hasQuery && !hasPatch && !hasRPC {
+	return f
+}
+
+// generateDecoders emits the decoder constructors generated handlers call: shims over
+// the resource library's Must* constructors, constrained to the generated closed
+// unions (Resourcer, Method). Each constructor is emitted only when a generated
+// handler calls it.
+func (r *resourceGenerator) generateDecoders() error {
+	f := r.handlerFeatures()
+	hasQuery := f.hasQuery || f.hasComputed
+	if !hasQuery && !f.hasPatch && !f.hasRPC {
 		return nil
 	}
 
@@ -229,14 +249,43 @@ func (r *resourceGenerator) generateDecoders() error {
 		LocalPackageImports: r.localPackageImports(),
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
-		RPCPackage:          rpcPackage,
+		RPCPackage:          f.rpcPackage,
 		HasQueryDecoder:     hasQuery,
-		HasPatchDecoder:     hasPatch,
-		HasRPCDecoder:       hasRPC,
+		HasPatchDecoder:     f.hasPatch,
+		HasRPCDecoder:       f.hasRPC,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 	log.Printf("Generated decoders file in %s: %s", time.Since(begin), destinationFilePath)
+
+	return nil
+}
+
+// generateAppContract emits the compile-time assertions for the methods the generated
+// code draws from the application type: interfaces where the generator knows the
+// signature, method expressions for RPCClient and ComputedClient, whose return types
+// are application-owned. Each feature's block is emitted only while that feature
+// generates a caller, so dropping a feature leaves the methods it drew on visibly
+// unasserted on the next regeneration.
+func (r *resourceGenerator) generateAppContract() error {
+	f := r.handlerFeatures()
+
+	begin := time.Now()
+	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(appContractOutputName))
+
+	if err := r.writeFormattedGoFile(destinationFilePath, "appContractTemplate", appContractTemplate, &appContractData{
+		Source:              r.resource.Dir(),
+		Package:             r.handler.Package(),
+		LocalPackageImports: r.localPackageImports(),
+		ApplicationName:     r.applicationName,
+		HasValidator:        f.hasPatch || f.hasRPC,
+		HasDomainScoped:     r.hasDomainScoped(),
+		HasRPC:              f.hasRPC,
+		HasComputed:         f.hasComputed,
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
+	}
+	log.Printf("Generated app contract file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }
