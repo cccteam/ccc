@@ -152,11 +152,24 @@ type routerFileData struct {
 	// HasDomainScoped emits the Domain route-parameter const, which generated
 	// handlers of domain-scoped resources and RPC methods reference.
 	HasDomainScoped bool
+	// HasDomainScopedRoutes emits the DomainGuard requirement on GeneratedHandlers and
+	// the middleware wrapping in generatedRoutes. Distinct from HasDomainScoped: a
+	// domain-scoped resource with routing disabled needs the const but has no route to
+	// wrap, and an unused guard variable would not compile.
+	HasDomainScopedRoutes bool
 	// DomainRouteParam is the Domain const's value: the route parameter name of the
 	// domain segment pair (default "domain", customized via WithDomainRoute).
 	DomainRouteParam  string
 	RoutePrefix       string
 	ConsolidatedRoute string
+}
+
+type domainGuardData struct {
+	Source              string
+	Package             string
+	LocalPackageImports string
+	ApplicationName     string
+	ReceiverName        string
 }
 
 type rpcFileData struct {

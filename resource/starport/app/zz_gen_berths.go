@@ -34,11 +34,6 @@ func (a *App) Berths() http.HandlerFunc {
 		defer span.End()
 
 		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
-		if ok, err := a.DomainExists(ctx, domain); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, err)
-		} else if !ok {
-			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
-		}
 		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -89,11 +84,6 @@ func (a *App) Berth() http.HandlerFunc {
 		id := httpio.Param[ccc.UUID](r, router.BerthID)
 
 		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
-		if ok, err := a.DomainExists(ctx, domain); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, err)
-		} else if !ok {
-			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
-		}
 		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -143,11 +133,6 @@ func (a *App) PatchBerths() http.HandlerFunc {
 		defer span.End()
 
 		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
-		if ok, err := a.DomainExists(ctx, domain); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, err)
-		} else if !ok {
-			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
-		}
 
 		var resp response
 		eventSource := resource.UserEvent(ctx)

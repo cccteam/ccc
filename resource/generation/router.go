@@ -85,10 +85,20 @@ func (r *resourceGenerator) runRouteGeneration() error {
 			}
 
 			generatedRoutesMap[rpcStruct.Name()] = []*generatedRoute{{
-				Method:      http.MethodPost,
-				Path:        path,
-				HandlerFunc: rpcStruct.Name(),
+				Method:       http.MethodPost,
+				Path:         path,
+				HandlerFunc:  rpcStruct.Name(),
+				DomainScoped: rpcStruct.IsDomainScoped(),
 			}}
+		}
+	}
+
+	hasDomainScopedRoutes := false
+	for _, routes := range generatedRoutesMap {
+		for _, route := range routes {
+			if route.DomainScoped {
+				hasDomainScopedRoutes = true
+			}
 		}
 	}
 
@@ -102,6 +112,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		RouterTestRoutes:       routerTestRoutes,
 		HasConsolidatedHandler: hasConsolidatedHandlers,
 		HasDomainScoped:        r.hasDomainScoped(),
+		HasDomainScopedRoutes:  hasDomainScopedRoutes,
 		DomainRouteParam:       r.domainRouteParam,
 		RoutePrefix:            r.routePrefix,
 		ConsolidatedRoute:      r.ConsolidatedRoute,
@@ -128,11 +139,12 @@ func (r *resourceGenerator) runRouteGeneration() error {
 func (r *resourceGenerator) resourceRoute(res *resourceInfo, ht HandlerType) (*generatedRoute, error) {
 	basePath, testBasePath := r.routeBasePaths(res.Name(), res.IsDomainScoped())
 	route := &generatedRoute{
-		Method:      ht.method(),
-		Path:        basePath,
-		HandlerFunc: r.handlerName(res.Name(), ht),
-		HandlerType: ht,
-		TestURL:     testBasePath,
+		Method:       ht.method(),
+		Path:         basePath,
+		HandlerFunc:  r.handlerName(res.Name(), ht),
+		HandlerType:  ht,
+		DomainScoped: res.IsDomainScoped(),
+		TestURL:      testBasePath,
 	}
 	if ht == ReadHandler {
 		if res.HasCompoundPrimaryKey() {
@@ -154,7 +166,7 @@ func (r *resourceGenerator) resourceRoute(res *resourceInfo, ht HandlerType) (*g
 			return nil, err
 		}
 	}
-	route.prependDomainTestParam(res.IsDomainScoped(), r.domainRouteParam)
+	route.prependDomainTestParam(r.domainRouteParam)
 
 	return route, nil
 }
@@ -173,12 +185,13 @@ func (r *resourceGenerator) computedResourceRoutes(res *computedResource) ([]*ge
 		}
 
 		route := &generatedRoute{
-			Method:      ReadHandler.method(),
-			Path:        basePath,
-			HandlerFunc: r.handlerName(res.Name(), ReadHandler),
-			HandlerType: ReadHandler,
-			TestURL:     testBasePath,
-			TestParams:  readRouteTestParams(res.Name(), pkNames),
+			Method:       ReadHandler.method(),
+			Path:         basePath,
+			HandlerFunc:  r.handlerName(res.Name(), ReadHandler),
+			HandlerType:  ReadHandler,
+			DomainScoped: res.IsDomainScoped(),
+			TestURL:      testBasePath,
+			TestParams:   readRouteTestParams(res.Name(), pkNames),
 		}
 		route.appendParamsToPaths()
 		if res.IsDomainScoped() {
@@ -186,20 +199,21 @@ func (r *resourceGenerator) computedResourceRoutes(res *computedResource) ([]*ge
 				return nil, err
 			}
 		}
-		route.prependDomainTestParam(res.IsDomainScoped(), r.domainRouteParam)
+		route.prependDomainTestParam(r.domainRouteParam)
 
 		routes = append(routes, route)
 	}
 
 	if !res.SuppressListHandler {
 		route := &generatedRoute{
-			Method:      ListHandler.method(),
-			Path:        basePath,
-			HandlerFunc: r.handlerName(res.Name(), ListHandler),
-			HandlerType: ListHandler,
-			TestURL:     testBasePath,
+			Method:       ListHandler.method(),
+			Path:         basePath,
+			HandlerFunc:  r.handlerName(res.Name(), ListHandler),
+			HandlerType:  ListHandler,
+			DomainScoped: res.IsDomainScoped(),
+			TestURL:      testBasePath,
 		}
-		route.prependDomainTestParam(res.IsDomainScoped(), r.domainRouteParam)
+		route.prependDomainTestParam(r.domainRouteParam)
 
 		routes = append(routes, route)
 	}

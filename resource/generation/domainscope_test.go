@@ -171,8 +171,8 @@ func Test_generatedRoute_prependDomainTestParam(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			route := &generatedRoute{TestParams: tt.params}
-			route.prependDomainTestParam(tt.domainScoped, tt.paramKey)
+			route := &generatedRoute{DomainScoped: tt.domainScoped, TestParams: tt.params}
+			route.prependDomainTestParam(tt.paramKey)
 			if diff := cmp.Diff(tt.want, route.TestParams); diff != "" {
 				t.Errorf("TestParams mismatch (-want +got):\n%s", diff)
 			}
@@ -377,36 +377,34 @@ func Test_handlerContent_domainSource(t *testing.T) {
 			wantNotContains: []string{"router.Domain", "DomainExists"},
 		},
 		{
-			name:        "domain scope reads the route parameter and guards unknown domains",
+			name:        "domain scope reads the route parameter for the tenant scope",
 			scope:       accesstypes.DomainPermissionScope,
 			handlerType: ListHandler,
 			wantContains: []string{
 				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
-				"if ok, err := a.DomainExists(ctx, domain); err != nil {",
-				`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
 				"decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))",
 			},
-			wantNotContains: []string{"accesstypes.GlobalScope()", "HasReservedMarker"},
+			wantNotContains: []string{"accesstypes.GlobalScope()", "DomainExists"},
 		},
 		{
-			name:        "domain-scoped read handler carries the guard",
+			name:        "domain-scoped read handler reads the route parameter",
 			scope:       accesstypes.DomainPermissionScope,
 			handlerType: ReadHandler,
 			wantContains: []string{
 				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
-				"if ok, err := a.DomainExists(ctx, domain); err != nil {",
+				"decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))",
 			},
-			wantNotContains: []string{"accesstypes.GlobalScope()"},
+			wantNotContains: []string{"accesstypes.GlobalScope()", "DomainExists"},
 		},
 		{
-			name:        "domain-scoped patch handler guards before the transaction",
+			name:        "domain-scoped patch handler reads the route parameter before the transaction",
 			scope:       accesstypes.DomainPermissionScope,
 			handlerType: PatchHandler,
 			wantContains: []string{
 				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
-				"if ok, err := a.DomainExists(ctx, domain); err != nil {",
+				"accesstypes.DomainScope(domain)",
 			},
-			wantNotContains: []string{"accesstypes.GlobalScope()"},
+			wantNotContains: []string{"accesstypes.GlobalScope()", "DomainExists"},
 		},
 		{
 			name:            "global-scoped patch handler has no guard",
@@ -449,9 +447,12 @@ func Test_handlerContent_domainSource(t *testing.T) {
 	}
 }
 
-// Test_domainExistsGuard_spliced pins that every handler template with a domain-scoped
-// branch embeds the shared unknown-domain guard, so no site can silently lose it.
-func Test_domainExistsGuard_spliced(t *testing.T) {
+// Test_domainParamLine_spliced pins that every handler template with a domain-scoped
+// branch reads the domain route parameter — and none of them checks DomainExists: the
+// unknown-domain guard is route middleware (DomainGuard), never handler code. The
+// consolidated patch handler is deliberately absent: its route is global, so it keeps a
+// per-operation-path check in-handler.
+func Test_domainParamLine_spliced(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -469,10 +470,128 @@ func Test_domainExistsGuard_spliced(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if !strings.Contains(tt.template, domainExistsGuard) {
-				t.Errorf("template does not splice domainExistsGuard")
+			if !strings.Contains(tt.template, domainParamLine) {
+				t.Errorf("template does not splice domainParamLine")
+			}
+			if strings.Contains(tt.template, "DomainExists") {
+				t.Errorf("template checks DomainExists; the unknown-domain guard belongs to the DomainGuard route middleware")
 			}
 		})
+	}
+}
+
+// Test_routesTemplate_domainGuard pins the route-level guard wrapping: GeneratedHandlers
+// requires DomainGuard exactly when domain-scoped routes exist, and generatedRoutes
+// wraps domain-scoped routes — and only those — in it. Wrapping is per-route, never
+// per-subtree: a tenant-record read route (global, sharing the segment pair's position)
+// must register unguarded.
+func Test_routesTemplate_domainGuard(t *testing.T) {
+	t.Parallel()
+
+	guardedRoutes := map[string][]*generatedRoute{
+		"Vault": {
+			{Method: "GET", Path: "/api/stations/{stationID}/vaults", HandlerFunc: "Vaults", HandlerType: ListHandler, DomainScoped: true},
+			{Method: "PATCH", Path: "/api/stations/{stationID}/vaults", HandlerFunc: "PatchVaults", HandlerType: PatchHandler, DomainScoped: true},
+		},
+		"Station": {
+			{Method: "GET", Path: "/api/stations/{stationID}", HandlerFunc: "Station", HandlerType: ReadHandler},
+		},
+		"Reindex": {
+			{Method: "POST", Path: "/api/stations/{stationID}/reindex", HandlerFunc: "Reindex", DomainScoped: true},
+		},
+	}
+
+	tests := []struct {
+		name            string
+		data            routerFileData
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "domain-scoped routes wrap in DomainGuard, global routes register bare",
+			data: routerFileData{
+				Package:               "router",
+				RoutesMap:             guardedRoutes,
+				HasDomainScoped:       true,
+				HasDomainScopedRoutes: true,
+				DomainRouteParam:      "stationID",
+			},
+			wantContains: []string{
+				"DomainGuard() func(http.HandlerFunc) http.HandlerFunc",
+				"domainGuard := h.DomainGuard()",
+				// Shared handlers (GET+POST) wrap once at the variable.
+				`vaultsHandler := domainGuard(h.Vaults())`,
+				`r.Patch("/api/stations/{stationID}/vaults", domainGuard(h.PatchVaults()))`,
+				`r.Post("/api/stations/{stationID}/reindex", domainGuard(h.Reindex()))`,
+				// The tenant-record read route is global: bare registration.
+				`stationHandler := h.Station()`,
+				`r.Get("/api/stations/{stationID}", stationHandler)`,
+			},
+			wantNotContains: []string{"domainGuard(stationHandler)"},
+		},
+		{
+			name: "without domain-scoped routes the guard does not exist",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+				},
+			},
+			wantNotContains: []string{"DomainGuard", "domainGuard"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			out, err := c.generateTemplateOutput("routesTemplate", routesTemplate, tt.data)
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("routesTemplate output missing %q:\n%s", want, out)
+				}
+			}
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(string(out), notWant) {
+					t.Errorf("routesTemplate output must not contain %q:\n%s", notWant, out)
+				}
+			}
+		})
+	}
+}
+
+// Test_domainGuardTemplate pins the generated DomainGuard middleware body: resolve the
+// domain route parameter, 404 unknown domains via the application's DomainExists, and
+// only then run the wrapped handler.
+func Test_domainGuardTemplate(t *testing.T) {
+	t.Parallel()
+
+	c := &client{}
+	out, err := c.generateTemplateOutput("domainGuardTemplate", domainGuardTemplate, &domainGuardData{
+		Source:          "resources",
+		Package:         "app",
+		ApplicationName: "App",
+		ReceiverName:    "a",
+	})
+	if err != nil {
+		t.Fatalf("generateTemplateOutput() error = %v", err)
+	}
+
+	for _, want := range []string{
+		"func (a *App) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {",
+		"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
+		"if ok, err := a.DomainExists(ctx, domain); err != nil {",
+		`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
+		"next.ServeHTTP(w, r)",
+	} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("domainGuardTemplate output missing %q:\n%s", want, out)
+		}
 	}
 }
 

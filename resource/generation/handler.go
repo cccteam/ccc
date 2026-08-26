@@ -21,6 +21,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "generateResourceInterfaces()")
 	}
 
+	if err := r.generateDomainGuard(); err != nil {
+		return errors.Wrap(err, "generateDomainGuard()")
+	}
+
 	if err := forEachGo(r.resources, r.generateHandlers); err != nil {
 		return err
 	}
@@ -140,6 +144,32 @@ func (r *resourceGenerator) validateDomainSegmentResources() error {
 	if len(errs) != 0 {
 		return errors.Wrap(errors.Join(errs...), "domain route segment resource error")
 	}
+
+	return nil
+}
+
+// generateDomainGuard emits the application's DomainGuard middleware whenever anything
+// is domain-scoped — same gate as the router's Domain const. Emission does not depend
+// on routing suppression: an application that registers a domain-scoped handler
+// manually wraps it in DomainGuard itself.
+func (r *resourceGenerator) generateDomainGuard() error {
+	if !r.hasDomainScoped() {
+		return nil
+	}
+
+	begin := time.Now()
+	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(domainGuardOutputName))
+
+	if err := r.writeFormattedGoFile(destinationFilePath, "domainGuardTemplate", domainGuardTemplate, &domainGuardData{
+		Source:              r.resource.Dir(),
+		Package:             r.handler.Package(),
+		LocalPackageImports: r.localPackageImports(),
+		ApplicationName:     r.applicationName,
+		ReceiverName:        r.receiverName,
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
+	}
+	log.Printf("Generated domain guard file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }

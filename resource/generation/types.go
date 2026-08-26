@@ -181,6 +181,7 @@ const (
 const (
 	resourceInterfaceOutputName   = "resources_iface"
 	resourceEnumsFileName         = "enums"
+	domainGuardOutputName         = "domain_guard"
 	routesOutputName              = "routes"
 	routerTestOutputName          = "routes_test"
 	consolidatedHandlerOutputName = "consolidated_handler"
@@ -235,6 +236,11 @@ type generatedRoute struct {
 	Path        string
 	HandlerFunc string
 	HandlerType HandlerType
+	// DomainScoped marks routes served under the domain segment pair; the generated
+	// route registration wraps exactly these in the application's DomainGuard
+	// middleware. It is per-route, never per-subtree: a tenant-record resource's
+	// global read route shares the segment pair's position and must stay unguarded.
+	DomainScoped bool
 	// TestURL is Path with each {param} placeholder replaced by its routeTestParam value.
 	TestURL    string
 	TestParams []routeTestParam
@@ -259,8 +265,8 @@ func (g *generatedRoute) appendParamsToPaths() {
 // domain-scoped route. The domain segment pair sits between the route prefix and the
 // resource segment (already part of Path and TestURL), so it must never go through
 // appendParamsToPaths; call this after appendParamsToPaths.
-func (g *generatedRoute) prependDomainTestParam(domainScoped bool, paramKey string) {
-	if !domainScoped {
+func (g *generatedRoute) prependDomainTestParam(paramKey string) {
+	if !g.DomainScoped {
 		return
 	}
 

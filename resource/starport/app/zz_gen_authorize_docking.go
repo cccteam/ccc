@@ -30,11 +30,6 @@ func (a *App) AuthorizeDocking() http.HandlerFunc {
 		defer span.End()
 
 		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
-		if ok, err := a.DomainExists(ctx, domain); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, err)
-		} else if !ok {
-			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
-		}
 		params, err := decoder.Decode(r, accesstypes.DomainScope(domain))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)

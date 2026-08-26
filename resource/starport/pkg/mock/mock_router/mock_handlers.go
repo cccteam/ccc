@@ -180,6 +180,20 @@ func (mr *MockHandlersMockRecorder) DockingBays() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DockingBays", reflect.TypeOf((*MockHandlers)(nil).DockingBays))
 }
 
+// DomainGuard mocks base method.
+func (m *MockHandlers) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DomainGuard")
+	ret0, _ := ret[0].(func(http.HandlerFunc) http.HandlerFunc)
+	return ret0
+}
+
+// DomainGuard indicates an expected call of DomainGuard.
+func (mr *MockHandlersMockRecorder) DomainGuard() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DomainGuard", reflect.TypeOf((*MockHandlers)(nil).DomainGuard))
+}
+
 // GantryCrane mocks base method.
 func (m *MockHandlers) GantryCrane() http.HandlerFunc {
 	m.ctrl.T.Helper()

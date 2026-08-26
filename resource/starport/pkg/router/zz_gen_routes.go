@@ -25,6 +25,10 @@ const (
 )
 
 type GeneratedHandlers interface {
+	// DomainGuard wraps every domain-scoped route below: it rejects requests for
+	// domains the application does not recognize before the handler runs.
+	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
+
 	AuthorizeDocking() http.HandlerFunc
 
 	AuthorizeLaunch() http.HandlerFunc
@@ -63,19 +67,21 @@ type GeneratedHandlers interface {
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
-	r.Post("/api/stations/{stationID}/authorize-docking", h.AuthorizeDocking())
+	domainGuard := h.DomainGuard()
+
+	r.Post("/api/stations/{stationID}/authorize-docking", domainGuard(h.AuthorizeDocking()))
 
 	r.Post("/api/authorize-launch", h.AuthorizeLaunch())
 
-	berthsHandler := h.Berths()
+	berthsHandler := domainGuard(h.Berths())
 	r.Get("/api/stations/{stationID}/berths", berthsHandler)
 	r.Post("/api/stations/{stationID}/berths", berthsHandler)
 
-	berthHandler := h.Berth()
+	berthHandler := domainGuard(h.Berth())
 	r.Get("/api/stations/{stationID}/berths/{berthID}", berthHandler)
 	r.Post("/api/stations/{stationID}/berths/{berthID}", berthHandler)
 
-	r.Patch("/api/stations/{stationID}/berths", h.PatchBerths())
+	r.Patch("/api/stations/{stationID}/berths", domainGuard(h.PatchBerths()))
 
 	cargoManifestsHandler := h.CargoManifests()
 	r.Get("/api/cargo-manifests", cargoManifestsHandler)
@@ -103,11 +109,11 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/api/docking-bays/{dockingBayID}", dockingBayHandler)
 	r.Post("/api/docking-bays/{dockingBayID}", dockingBayHandler)
 
-	gantryCranesHandler := h.GantryCranes()
+	gantryCranesHandler := domainGuard(h.GantryCranes())
 	r.Get("/api/stations/{stationID}/gantry-cranes", gantryCranesHandler)
 	r.Post("/api/stations/{stationID}/gantry-cranes", gantryCranesHandler)
 
-	gantryCraneHandler := h.GantryCrane()
+	gantryCraneHandler := domainGuard(h.GantryCrane())
 	r.Get("/api/stations/{stationID}/gantry-cranes/{gantryCraneID}", gantryCraneHandler)
 	r.Post("/api/stations/{stationID}/gantry-cranes/{gantryCraneID}", gantryCraneHandler)
 

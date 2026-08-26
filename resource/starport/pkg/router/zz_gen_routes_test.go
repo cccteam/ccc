@@ -235,6 +235,10 @@ func generatedRouterTests() []*generatedRouterTest {
 }
 
 func generatedExpectCalls(e *mock_router.MockHandlersMockRecorder, rec *callRecorder) {
+	// The routing tests exercise dispatch, not the guard: pass requests through
+	// unchecked (guard behavior is covered where DomainExists is real).
+	e.DomainGuard().Times(1).Return(func(next http.HandlerFunc) http.HandlerFunc { return next })
+
 	e.AuthorizeDocking().Times(1).Return(rec.RecordHandlerCall("AuthorizeDocking"))
 	e.AuthorizeLaunch().Times(1).Return(rec.RecordHandlerCall("AuthorizeLaunch"))
 	e.Berths().Times(1).Return(rec.RecordHandlerCall("Berths"))
