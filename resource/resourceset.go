@@ -262,6 +262,7 @@ func permissionsFromFieldTags(fields []FieldTags, perms []accesstypes.Permission
 // Metadata contains cached metadata about a resource, such as its database schema mapping and configuration.
 type Metadata[Resource Resourcer] struct {
 	dbMap               map[DBType]map[accesstypes.Field]dbFieldMetadata
+	dbFields            map[DBType][]accesstypes.Field
 	changeTrackingTable string
 	trackChanges        bool
 }
@@ -274,6 +275,7 @@ func NewMetadata[Resource Resourcer]() *Metadata[Resource] {
 
 	return &Metadata[Resource]{
 		dbMap:               c.dbMap,
+		dbFields:            c.dbFields,
 		changeTrackingTable: c.cfg.ChangeTrackingTable,
 		trackChanges:        c.cfg.TrackChanges,
 	}
@@ -284,9 +286,11 @@ func (r *Metadata[Resource]) dbFieldMap(dbType DBType) map[accesstypes.Field]dbF
 	return r.dbMap[dbType]
 }
 
-// DBFields returns a slice of all field names for a given database type.
+// DBFields returns all field names for a given database type in struct
+// declaration order — deterministic, so default field sets and generated
+// query column order are stable across processes.
 func (r *Metadata[Resource]) DBFields(dbType DBType) []accesstypes.Field {
-	return slices.Collect(maps.Keys(r.dbMap[dbType]))
+	return slices.Clone(r.dbFields[dbType])
 }
 
 // DBFieldCount returns the number of fields for a given database type.
@@ -299,8 +303,9 @@ var resMetadataCache = resourceMetadataCache{
 }
 
 type resourceMetadataCacheEntry struct {
-	dbMap map[DBType]map[accesstypes.Field]dbFieldMetadata
-	cfg   Config
+	dbMap    map[DBType]map[accesstypes.Field]dbFieldMetadata
+	dbFields map[DBType][]accesstypes.Field
+	cfg      Config
 }
 
 type resourceMetadataCache struct {
@@ -343,21 +348,25 @@ func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
 	}
 
 	dbMap := make(map[DBType]map[accesstypes.Field]dbFieldMetadata)
+	dbFields := make(map[DBType][]accesstypes.Field)
 	for _, dbType := range dbTypes() {
-		dbFieldMap := dbStructTags(t, dbType)
+		dbFieldMap, ordered := dbStructTags(t, dbType)
 		dbMap[dbType] = dbFieldMap
+		dbFields[dbType] = ordered
 	}
 
 	c.cache[t] = &resourceMetadataCacheEntry{
-		dbMap: dbMap,
-		cfg:   cfg,
+		dbMap:    dbMap,
+		dbFields: dbFields,
+		cfg:      cfg,
 	}
 
 	return c.cache[t]
 }
 
-func dbStructTags(t reflect.Type, dbType DBType) map[accesstypes.Field]dbFieldMetadata {
+func dbStructTags(t reflect.Type, dbType DBType) (map[accesstypes.Field]dbFieldMetadata, []accesstypes.Field) {
 	tagMap := make(map[accesstypes.Field]dbFieldMetadata)
+	var ordered []accesstypes.Field
 	for i := range t.NumField() {
 		field := t.Field(i)
 		tag := field.Tag.Get(string(dbType))
@@ -368,7 +377,8 @@ func dbStructTags(t reflect.Type, dbType DBType) map[accesstypes.Field]dbFieldMe
 		}
 
 		tagMap[accesstypes.Field(field.Name)] = dbFieldMetadata{index: i, ColumnName: parts[0]}
+		ordered = append(ordered, accesstypes.Field(field.Name))
 	}
 
-	return tagMap
+	return tagMap, ordered
 }
