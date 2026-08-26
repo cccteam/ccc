@@ -30,7 +30,7 @@ func run(ctx context.Context) error {
 		generation.GenerateRoutes("pkg/router", "api"),
 		// Domain-scoped resources and RPC methods are served under the station segment
 		// pair: /api/stations/{stationID}/... . The station is the permission domain.
-		generation.WithDomainRoute("stations", "stationID"),
+		generation.WithDomainRoute("stations"),
 		generation.WithRPC("pkg/rpc"),
 		// Virtual resources are list-only projections backed by embedded subqueries;
 		// their primary keys come from @primarykey annotations instead of the schema.

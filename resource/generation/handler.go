@@ -95,14 +95,11 @@ func (r *resourceGenerator) consolidatedPatchResources() ([]*resourceInfo, error
 // validateDomainSegmentResources checks every resource whose route name equals the
 // domain route segment — the tenant-record pattern, where /api/organizations lists the
 // tenants and /api/organizations/{organizationID}/... serves tenant-scoped routes. The
-// pattern is supported, with two structural requirements:
-//
-//   - the resource must have a single primary key, so its operation paths (depth ≤ 2)
-//     can never be ambiguous with domain descents (depth ≥ 3) in the consolidated
-//     handler, and its read route cannot shadow the segment pair's children; and
-//   - its read-route parameter must be named exactly like the domain route parameter,
-//     because chi permits one wildcard name per tree position — a mismatch panics at
-//     route registration instead of failing generation.
+// pattern is supported, with one structural requirement: the resource must have a
+// single primary key, so its operation paths (depth ≤ 2) can never be ambiguous with
+// domain descents (depth ≥ 3) in the consolidated handler, and its read route cannot
+// shadow the segment pair's children. (The read-route parameter needs no validation:
+// deriveDomainRouteParam makes the domain route parameter equal it by construction.)
 //
 // Only enforced when domain-scoped routes exist; without the segment pair there is
 // nothing to interact with.
@@ -112,7 +109,7 @@ func (r *resourceGenerator) validateDomainSegmentResources() error {
 	}
 
 	var errs []error
-	check := func(name string, domainScoped, compoundPK bool, pkName string) {
+	check := func(name string, domainScoped, compoundPK bool) {
 		if strcase.ToKebab(r.pluralize(name)) != r.domainRouteSegment {
 			return
 		}
@@ -122,31 +119,14 @@ func (r *resourceGenerator) validateDomainSegmentResources() error {
 		}
 		if compoundPK {
 			errs = append(errs, errors.Newf("resource %s: its route name %q equals the domain route segment, so it must have a single primary key — multi-segment keys are ambiguous with domain-scoped paths", name, r.domainRouteSegment))
-
-			return
-		}
-		if pkName == "" {
-			// No primary key means no read route, so no shared wildcard position.
-			return
-		}
-		if param := strcase.ToGoCamel(name + pkName); param != r.domainRouteParam {
-			errs = append(errs, errors.Newf("resource %s: its route name %q equals the domain route segment, so its read-route parameter %q must equal the domain route parameter %q (chi permits one wildcard name per position); align them via WithDomainRoute", name, r.domainRouteSegment, param, r.domainRouteParam))
 		}
 	}
 
 	for _, res := range r.resources {
-		pkName := ""
-		if pk := res.PrimaryKey(); pk != nil {
-			pkName = pk.Name()
-		}
-		check(res.Name(), res.IsDomainScoped(), res.HasCompoundPrimaryKey(), pkName)
+		check(res.Name(), res.IsDomainScoped(), res.HasCompoundPrimaryKey())
 	}
 	for _, res := range r.computedResources {
-		pkName := ""
-		if pk := res.PrimaryKey(); pk != nil {
-			pkName = pk.Name()
-		}
-		check(res.Name(), res.IsDomainScoped(), res.HasCompoundPrimaryKey(), pkName)
+		check(res.Name(), res.IsDomainScoped(), res.HasCompoundPrimaryKey())
 	}
 
 	if len(errs) != 0 {

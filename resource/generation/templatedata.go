@@ -158,7 +158,8 @@ type routerFileData struct {
 	// wrap, and an unused guard variable would not compile.
 	HasDomainScopedRoutes bool
 	// DomainRouteParam is the Domain const's value: the route parameter name of the
-	// domain segment pair (default "domain", customized via WithDomainRoute).
+	// domain segment pair (default "domain", derived from the tenant-record resource
+	// when one matches the segment — see deriveDomainRouteParam).
 	DomainRouteParam  string
 	RoutePrefix       string
 	ConsolidatedRoute string

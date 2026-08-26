@@ -186,22 +186,17 @@ func Test_WithDomainRoute(t *testing.T) {
 	tests := []struct {
 		name        string
 		segment     string
-		paramName   string
 		wantSegment string
-		wantParam   string
 		wantErr     bool
 	}{
 		{
-			name:        "custom segment pair",
-			segment:     "organization",
-			paramName:   "organizationID",
-			wantSegment: "organization",
-			wantParam:   "organizationID",
+			name:        "custom segment",
+			segment:     "organizations",
+			wantSegment: "organizations",
 		},
-		{name: "empty segment errors", segment: "", paramName: "organizationID", wantErr: true},
-		{name: "empty paramName errors", segment: "organization", paramName: "", wantErr: true},
-		{name: "slash in segment errors", segment: "org/unit", paramName: "orgID", wantErr: true},
-		{name: "braces in paramName errors", segment: "organization", paramName: "{orgID}", wantErr: true},
+		{name: "empty segment errors", segment: "", wantErr: true},
+		{name: "slash in segment errors", segment: "org/unit", wantErr: true},
+		{name: "braces in segment errors", segment: "{organizations}", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -209,7 +204,7 @@ func Test_WithDomainRoute(t *testing.T) {
 			t.Parallel()
 
 			r := &resourceGenerator{client: &client{}}
-			err := resolveOptions(r, []option{WithDomainRoute(tt.segment, tt.paramName)})
+			err := resolveOptions(r, []option{WithDomainRoute(tt.segment)})
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("WithDomainRoute() expected an error, got nil")
@@ -223,8 +218,73 @@ func Test_WithDomainRoute(t *testing.T) {
 			if r.domainRouteSegment != tt.wantSegment {
 				t.Errorf("domainRouteSegment = %q, want %q", r.domainRouteSegment, tt.wantSegment)
 			}
-			if r.domainRouteParam != tt.wantParam {
-				t.Errorf("domainRouteParam = %q, want %q", r.domainRouteParam, tt.wantParam)
+			if r.domainRouteParam != defaultDomainRouteParam {
+				t.Errorf("domainRouteParam = %q, want the pre-derivation default %q: the option never configures it", r.domainRouteParam, defaultDomainRouteParam)
+			}
+		})
+	}
+}
+
+// Test_deriveDomainRouteParam pins the domain route parameter's derivation: a global,
+// single-key resource whose route name equals the domain route segment (the
+// tenant-record pattern) forces the parameter to its read-route parameter — chi
+// permits one wildcard name per tree position — and every other configuration keeps
+// the default "domain".
+func Test_deriveDomainRouteParam(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+
+	tests := []struct {
+		name      string
+		resources []*resourceInfo
+		want      string
+	}{
+		{
+			name:      "tenant-record resource derives its read-route parameter",
+			resources: []*resourceInfo{fixtureResource(t, structs, "Station", nil)},
+			want:      "stationID",
+		},
+		{
+			name:      "no resource matches the segment: default",
+			resources: []*resourceInfo{fixtureResource(t, structs, "Vault", nil)},
+			want:      "domain",
+		},
+		{
+			name: "a domain-scoped match lives under the segment pair: default",
+			resources: []*resourceInfo{
+				fixtureResource(t, structs, "Station", func(res *resourceInfo) {
+					res.PermissionScope = accesstypes.DomainPermissionScope
+				}),
+			},
+			want: "domain",
+		},
+		{
+			name: "a compound-key match is rejected elsewhere: default",
+			resources: []*resourceInfo{
+				fixtureResource(t, structs, "Station", func(res *resourceInfo) {
+					res.PkCount = 2
+					res.Fields[1].IsPrimaryKey = true
+				}),
+			},
+			want: "domain",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := &resourceGenerator{
+				client:             &client{},
+				domainRouteSegment: "stations",
+				domainRouteParam:   "domain",
+			}
+			r.resources = tt.resources
+
+			r.deriveDomainRouteParam()
+			if r.domainRouteParam != tt.want {
+				t.Errorf("domainRouteParam = %q, want %q", r.domainRouteParam, tt.want)
 			}
 		})
 	}
@@ -720,9 +780,10 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 }
 
 // Test_validateDomainSegmentResources pins the tenant-record pattern's structural
-// requirements: a resource named like the domain route segment must have a single
-// primary key and a read-route parameter equal to the domain route parameter; the
-// validation only applies when domain-scoped routes exist at all.
+// requirement: a resource named like the domain route segment must have a single
+// primary key; the validation only applies when domain-scoped routes exist at all.
+// (Read-route parameter alignment is unrepresentable: deriveDomainRouteParam derives
+// the domain route parameter from the matching resource.)
 func Test_validateDomainSegmentResources(t *testing.T) {
 	t.Parallel()
 
@@ -747,15 +808,6 @@ func Test_validateDomainSegmentResources(t *testing.T) {
 				fixtureResource(t, structs, "Station", nil),
 				domainScopedVault(),
 			},
-		},
-		{
-			name:        "mismatched read-route parameter is a generation error",
-			domainParam: "orgID",
-			resources: []*resourceInfo{
-				fixtureResource(t, structs, "Station", nil),
-				domainScopedVault(),
-			},
-			wantErrContains: "must equal the domain route parameter",
 		},
 		{
 			name:        "compound primary key is a generation error",

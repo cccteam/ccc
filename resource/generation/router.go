@@ -221,13 +221,44 @@ func (r *resourceGenerator) computedResourceRoutes(res *computedResource) ([]*ge
 	return routes, nil
 }
 
+// deriveDomainRouteParam resolves the domain route parameter after parsing. When a
+// resource's route name equals the domain route segment (the tenant-record pattern),
+// chi permits one wildcard name per tree position, so the parameter must be that
+// resource's read-route parameter — it is derived as ToGoCamel(name+pkName) rather
+// than configured. A domain-scoped match lives under the segment pair itself and
+// shares no position with it, and without any match the name is a cosmetic pattern
+// label; both keep the default "domain". Compound-key matches also keep the default:
+// validateDomainSegmentResources rejects them structurally.
+func (r *resourceGenerator) deriveDomainRouteParam() {
+	derive := func(name string, domainScoped, compoundPK bool, pkName string) {
+		if strcase.ToKebab(r.pluralize(name)) != r.domainRouteSegment {
+			return
+		}
+		if domainScoped || compoundPK || pkName == "" {
+			return
+		}
+		r.domainRouteParam = strcase.ToGoCamel(name + pkName)
+	}
+
+	for _, res := range r.resources {
+		if pk := res.PrimaryKey(); pk != nil {
+			derive(res.Name(), res.IsDomainScoped(), res.HasCompoundPrimaryKey(), pk.Name())
+		}
+	}
+	for _, res := range r.computedResources {
+		if pk := res.PrimaryKey(); pk != nil {
+			derive(res.Name(), res.IsDomainScoped(), res.HasCompoundPrimaryKey(), pk.Name())
+		}
+	}
+}
+
 // validateDomainParamCollision rejects a domain-scoped route whose primary-key route
 // parameters collide with the domain route parameter name — chi panics on duplicate
 // param names within one pattern, so fail at generate time with a fix instead.
 func (r *resourceGenerator) validateDomainParamCollision(params []routeTestParam, resourceName string) error {
 	for _, p := range params {
 		if p.Key == r.domainRouteParam {
-			return errors.Newf("resource %s: primary-key route parameter %q collides with the domain route parameter; rename it via WithDomainRoute()", resourceName, r.domainRouteParam)
+			return errors.Newf("resource %s: primary-key route parameter %q collides with the domain route parameter; rename the primary key or choose a different segment via WithDomainRoute()", resourceName, r.domainRouteParam)
 		}
 	}
 

@@ -118,6 +118,10 @@ func (r *resourceGenerator) Generate() error {
 		r.computedResources = computedResources
 	}
 
+	// The domain route parameter is derived from the parsed resources (tenant-record
+	// pattern), so it must resolve before anything renders a domain route.
+	r.deriveDomainRouteParam()
+
 	if err := r.runResourcesGeneration(); err != nil {
 		return err
 	}

@@ -82,35 +82,41 @@ func GenerateRoutes(targetDir, routePrefix string) ResourceOption {
 	})
 }
 
-// Default route segment pair for domain-scoped resources (see WithDomainRoute):
-// /{prefix}/{defaultDomainRouteSegment}/{defaultDomainRouteParam}/... . Generated code
-// references the parameter name as the router package's Domain const value.
+// Default route segment for domain-scoped resources (see WithDomainRoute):
+// /{prefix}/{defaultDomainRouteSegment}/{param}/... . The parameter defaults to
+// defaultDomainRouteParam and is re-derived after parsing when a resource's route
+// name equals the segment (deriveDomainRouteParam). Generated code references the
+// parameter name as the router package's Domain const value.
 const (
 	defaultDomainRouteSegment = "domains"
 	defaultDomainRouteParam   = "domain"
 )
 
-// defaultApplicationName is the generated application struct's name when
-// WithApplicationName is not used.
+// defaultApplicationName is the generated application struct's name when the
+// ApplicationName option is not used.
 const defaultApplicationName = "App"
 
-// WithDomainRoute customizes the route segment pair that domain-scoped resources
-// (@permissionScope(domain)) are served under. segment is the static path segment and
-// paramName the route parameter name: WithDomainRoute("organizations", "organizationID")
+// WithDomainRoute customizes the static path segment that domain-scoped resources
+// (@permissionScope(domain)) are served under: WithDomainRoute("organizations")
 // serves domain-scoped resources and RPC methods at
-// /{prefix}/organizations/{organizationID}/... . The defaults are "domains" and "domain".
-// The generated router const is always named Domain; paramName is its value.
-func WithDomainRoute(segment, paramName string) ResourceOption {
+// /{prefix}/organizations/{param}/... . The default segment is "domains".
+//
+// The route parameter name is derived, never configured. When a resource's route
+// name equals the segment (the tenant-record pattern) the parameter must be that
+// resource's read-route parameter — chi permits one wildcard name per tree
+// position — so it is ToGoCamel(name+pkName). With no matching resource the name
+// is a cosmetic pattern label: the default "domain". The generated router const
+// is always named Domain; the derived parameter is its value.
+func WithDomainRoute(segment string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
-		if segment == "" || paramName == "" {
-			return errors.New("WithDomainRoute() requires a non-empty segment and paramName")
+		if segment == "" {
+			return errors.New("WithDomainRoute() requires a non-empty segment")
 		}
-		if strings.ContainsAny(segment, "/{}") || strings.ContainsAny(paramName, "/{}") {
-			return errors.Newf("WithDomainRoute(%q, %q) must not contain '/', '{', or '}'", segment, paramName)
+		if strings.ContainsAny(segment, "/{}") {
+			return errors.Newf("WithDomainRoute(%q) must not contain '/', '{', or '}'", segment)
 		}
 
 		r.domainRouteSegment = segment
-		r.domainRouteParam = paramName
 
 		return nil
 	})
