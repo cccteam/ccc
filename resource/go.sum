@@ -36,8 +36,8 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/cccteam/ccc v0.3.2 h1:scPc3gv/AnTsrc21et8Ak3lFZrH6I9G2j2fjGEgP/pQ=
 github.com/cccteam/ccc v0.3.2/go.mod h1:21wWddh6x5UEJ1FrF23gqZhhxRpDUchGjZjNBmrGgmM=
-github.com/cccteam/ccc/accesstypes v0.5.10-0.20260824183906-e6e960311bb3 h1:Jrqc/6h5hSSPfOE+cNnSX3wib5rFYnVw3tGyj8pVeHE=
-github.com/cccteam/ccc/accesstypes v0.5.10-0.20260824183906-e6e960311bb3/go.mod h1:4wFtH4BXGYEbr5KGRXaU9H7G08B+rZKTNX3bVQO4wlU=
+github.com/cccteam/ccc/accesstypes v0.5.10-0.20260826022329-9ed77f374614 h1:G85mXUp9R1o4UIKPdH3CZpggzeKDoB+8xF61dxddC18=
+github.com/cccteam/ccc/accesstypes v0.5.10-0.20260826022329-9ed77f374614/go.mod h1:4wFtH4BXGYEbr5KGRXaU9H7G08B+rZKTNX3bVQO4wlU=
 github.com/cccteam/ccc/cache v0.1.6 h1:lXje8ZfQaclxbMoAAyZE0jk3xKvBd9Z9v7PAopBdzOs=
 github.com/cccteam/ccc/cache v0.1.6/go.mod h1:fGSMqs+HsMam2mAfmAiKJhyR289yuGu0LdWlbYYpkng=
 github.com/cccteam/ccc/pkg v0.1.4 h1:5KI2fUTSFXyUZsBE0+KUqZ9fFpCaI8oneralVyUPVlI=
@@ -50,8 +50,8 @@ github.com/cccteam/httpio v0.7.17 h1:lpfVeNKQlYn+Jkpt7Pt4AjzsJMW+KneXUwe4qavZ5kQ
 github.com/cccteam/httpio v0.7.17/go.mod h1:5roRxY/96pX4jP/0dQcLm/hyXESg5YS3et5tcIYjet8=
 github.com/cccteam/logger v0.1.27 h1:SNYK8jfMLMFOtZ0aoPNBeHrnwZWZ4zWWhEv3cwgDEsc=
 github.com/cccteam/logger v0.1.27/go.mod h1:vOWu/tvXPBzFjIRZr9H1gXXdTYeU/aX2wAsX68rqSic=
-github.com/cccteam/session v0.11.1-0.20260825155916-b56cd55d6467 h1:maVCeNWWvuyDeP7EZApC03e7WRsJIxUwLSS70yguzLQ=
-github.com/cccteam/session v0.11.1-0.20260825155916-b56cd55d6467/go.mod h1:tzsSpOqFXEZXK4wilUbAUxwsBUAlshlDPAOzDLIHde4=
+github.com/cccteam/session v0.11.1-0.20260826003108-0fa6294c2da7 h1:VbckV8hrjdWb4FfyPH1OpayeG1Pl6nH42o1Mz/oQMIY=
+github.com/cccteam/session v0.11.1-0.20260826003108-0fa6294c2da7/go.mod h1:tzsSpOqFXEZXK4wilUbAUxwsBUAlshlDPAOzDLIHde4=
 github.com/cccteam/spxscan v0.0.14 h1:OGkEK6IgmVbfnltyB8vr1bFlil7g7jSQUgqyyeb6KBg=
 github.com/cccteam/spxscan v0.0.14/go.mod h1:T2ud/8K7865FVRL5q6VRaFEno0y31pnQ1OVlCvPRIc0=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
@@ -111,8 +111,8 @@ github.com/felixge/httpsnoop v1.1.0 h1:3YtUj32ZZkqZtt3sZZsClsymw/QDuVfpNhoA31zeO
 github.com/felixge/httpsnoop v1.1.0/go.mod h1:Zqxgdd+1Rkcz8euOqdr7lqgCRJztwr5hp9vDSi5UZCE=
 github.com/fxamacker/cbor/v2 v2.9.2 h1:X4Ksno9+x3cz0TZv69ec1hxP/+tymuR8PXQJyDwfh78=
 github.com/fxamacker/cbor/v2 v2.9.2/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
-github.com/go-chi/chi/v5 v5.3.1 h1:3j4HZLGZQ3JpMCrPJF/Jl3mYJfWLKBfNJ6quurUGCf8=
-github.com/go-chi/chi/v5 v5.3.1/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutVsOCto=
+github.com/go-chi/chi/v5 v5.3.2 h1:5YQkICvTCSZ25hoRsyJazN0scjzKGiu4VAUc7H1o1nY=
+github.com/go-chi/chi/v5 v5.3.2/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutVsOCto=
 github.com/go-jose/go-jose/v4 v4.1.4 h1:moDMcTHmvE6Groj34emNPLs/qtYXRVcd6S7NHbHz3kA=
 github.com/go-jose/go-jose/v4 v4.1.4/go.mod h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
