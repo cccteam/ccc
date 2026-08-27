@@ -69,6 +69,10 @@ func (c *testConfigurer) Validator() *validator.Validate {
 
 func (c *testConfigurer) GuiDist() string { return "" }
 
+// AutomationAPIKey is unused by these suites: the matrix drives the bare test router,
+// which carries no outlet middleware.
+func (c *testConfigurer) AutomationAPIKey() string { return "handlertests-automation-key" }
+
 // DomainExists recognizes the generated matrix's domain value alongside the real
 // stations, per the generated suite's domain contract.
 func (c *testConfigurer) DomainExists(_ context.Context, domain accesstypes.Domain) (bool, error) {

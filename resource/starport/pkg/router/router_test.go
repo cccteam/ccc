@@ -78,13 +78,35 @@ func TestNew(t *testing.T) {
 			wantMiddleware: map[string]int{"Logger": 1, "NoCaching": 1, "CompressionMiddleware": 1, "WithParamsHTTP": 1, "SecurityHeaders": 1, "StartSession": 1, "SetXSRFToken": 1, "ValidateSession": 1, "ValidateXSRFToken": 1},
 		},
 	}
-	for _, r := range generatedRouterTests() {
+	// One representative generated route per outlet proves New mounts each generated
+	// route table in its intended middleware group: the default outlet behind the
+	// browser session stack, the automation outlet behind API-key authentication.
+	// Dispatch and parameters for every generated route are TestGeneratedRoutes' job
+	// (zz_gen_routes_test.go), and each group's stack contract is pinned by
+	// TestNewRouter_securityEnforcement below — mounting is the only property left to
+	// these cases, and it is uniform per table (one registration call per group). The
+	// representatives are drawn from the generated table so the cases survive
+	// resource and outlet-membership changes.
+	for _, outlet := range []struct {
+		prefix         string
+		wantMiddleware map[string]int
+	}{
+		{
+			prefix:         "/api/",
+			wantMiddleware: map[string]int{"Logger": 1, "NoCaching": 1, "CompressionMiddleware": 1, "WithParamsHTTP": 1, "SecurityHeaders": 1, "StartSession": 1, "SetXSRFToken": 1, "ValidateSession": 1, "ValidateXSRFToken": 1},
+		},
+		{
+			prefix:         "/automation/",
+			wantMiddleware: map[string]int{"Logger": 1, "NoCaching": 1, "CompressionMiddleware": 1, "WithParamsHTTP": 1, "SecurityHeaders": 1, "AutomationAuth": 1},
+		},
+	} {
+		r := firstGeneratedRoute(t, outlet.prefix)
 		tests = append(tests, testDef{
 			url:            r.url,
 			method:         r.method,
 			wantHandler:    r.handlerFunc,
 			wantParameters: r.parameters,
-			wantMiddleware: map[string]int{"Logger": 1, "NoCaching": 1, "CompressionMiddleware": 1, "WithParamsHTTP": 1, "SecurityHeaders": 1, "StartSession": 1, "SetXSRFToken": 1, "ValidateSession": 1, "ValidateXSRFToken": 1},
+			wantMiddleware: outlet.wantMiddleware,
 		})
 	}
 	for _, tt := range tests {
@@ -136,44 +158,91 @@ func TestNew(t *testing.T) {
 	}
 }
 
-// TestNewRouter_securityEnforcement pins the security contract of the API slot: any
-// route registered through the composition seam runs behind the full security stack —
-// session start, XSRF issuance, and both validation middlewares — independent of what
-// the generated route table contains. TestNew above covers the production composition
-// (New mounts the generated routes in this slot).
+// TestNewRouter_securityEnforcement pins the security contract of both composition
+// slots: any route registered through the api slot runs behind the full browser
+// security stack — session start, XSRF issuance, and both validation middlewares —
+// and any route registered through the automation slot runs behind the API-key
+// middleware with no session handling at all, independent of what the generated route
+// tables contain. TestNew above covers the production composition (New mounts the
+// generated route tables in these slots).
 func TestNewRouter_securityEnforcement(t *testing.T) {
 	t.Parallel()
 
-	rec := newGeneratedCallRecorder()
-	got := newRouter(newHandlersStub(rec), func(r chi.Router) {
-		r.Get("/api/probe", rec.RecordHandlerCall("Probe"))
-	})
-
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/probe", http.NoBody)
-	rr := httptest.NewRecorder()
-	got.ServeHTTP(rr, req)
-
-	if got := rr.Code; got != http.StatusOK {
-		t.Errorf("response.Code = %v, want %v", got, http.StatusOK)
+	tests := []struct {
+		name           string
+		url            string
+		wantHandler    string
+		wantMiddleware map[string]int
+	}{
+		{
+			name:        "api slot runs the browser security stack",
+			url:         "/api/probe",
+			wantHandler: "Probe",
+			wantMiddleware: map[string]int{
+				"Logger": 1, "NoCaching": 1, "CompressionMiddleware": 1, "WithParamsHTTP": 1,
+				"SecurityHeaders": 1, "StartSession": 1, "SetXSRFToken": 1,
+				"ValidateSession": 1, "ValidateXSRFToken": 1,
+			},
+		},
+		{
+			name:        "automation slot runs the API-key stack without session handling",
+			url:         "/automation/probe",
+			wantHandler: "AutomationProbe",
+			wantMiddleware: map[string]int{
+				"Logger": 1, "NoCaching": 1, "CompressionMiddleware": 1, "WithParamsHTTP": 1,
+				"SecurityHeaders": 1, "AutomationAuth": 1,
+			},
+		},
 	}
 
-	if cnt := rec.handlers["Probe"]; cnt != 1 {
-		t.Fatalf("probe handler, expected 1 call, got: %d", cnt)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	wantMiddleware := map[string]int{
-		"Logger": 1, "NoCaching": 1, "CompressionMiddleware": 1, "WithParamsHTTP": 1,
-		"SecurityHeaders": 1, "StartSession": 1, "SetXSRFToken": 1,
-		"ValidateSession": 1, "ValidateXSRFToken": 1,
+			rec := newGeneratedCallRecorder()
+			got := newRouter(newHandlersStub(rec),
+				func(r chi.Router) { r.Get("/api/probe", rec.RecordHandlerCall("Probe")) },
+				func(r chi.Router) { r.Get("/automation/probe", rec.RecordHandlerCall("AutomationProbe")) },
+			)
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.url, http.NoBody)
+			rr := httptest.NewRecorder()
+			got.ServeHTTP(rr, req)
+
+			if got := rr.Code; got != http.StatusOK {
+				t.Errorf("response.Code = %v, want %v", got, http.StatusOK)
+			}
+
+			if cnt := rec.handlers[tt.wantHandler]; cnt != 1 {
+				t.Fatalf("probe handler, expected 1 call, got: %d", cnt)
+			}
+
+			if cnt := len(tt.wantMiddleware); cnt != rec.MiddlewareCount() {
+				t.Fatalf("expected %d middleware calls, got: %#v", cnt, rec.middlewares)
+			}
+			for m, c := range tt.wantMiddleware {
+				if cnt := rec.MiddlewareCallCount(m); cnt != c {
+					t.Fatalf("middleware %s, expected %d call, got: %d", m, c, cnt)
+				}
+			}
+		})
 	}
-	if cnt := len(wantMiddleware); cnt != rec.MiddlewareCount() {
-		t.Fatalf("expected %d middleware calls, got: %#v", cnt, rec.middlewares)
-	}
-	for m, c := range wantMiddleware {
-		if cnt := rec.MiddlewareCallCount(m); cnt != c {
-			t.Fatalf("middleware %s, expected %d call, got: %d", m, c, cnt)
+}
+
+// firstGeneratedRoute returns the first generated router test under the outlet's
+// route prefix, failing the test when the outlet serves no generated route — a
+// conscious update beats silently losing the outlet's mount-point coverage.
+func firstGeneratedRoute(t *testing.T, prefix string) *generatedRouterTest {
+	t.Helper()
+
+	for _, r := range generatedRouterTests() {
+		if strings.HasPrefix(r.url, prefix) {
+			return r
 		}
 	}
+	t.Fatalf("no generated route found under %s", prefix)
+
+	return nil
 }
 
 // handlersStub satisfies Handlers for the structure test: the generated route surface
@@ -267,6 +336,11 @@ func (s *handlersStub) NoCaching(next http.Handler) http.Handler {
 
 func (s *handlersStub) CompressionMiddleware() func(http.Handler) http.Handler {
 	return s.rec.RecordMiddlewareCall("CompressionMiddleware")
+}
+
+// automation outlet auth
+func (s *handlersStub) AutomationAuth(next http.Handler) http.Handler {
+	return s.rec.RecordMiddlewareCall("AutomationAuth")(next)
 }
 
 // demo endpoints

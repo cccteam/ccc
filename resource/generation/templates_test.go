@@ -298,6 +298,7 @@ func Test_routerTestTemplate_selfContained(t *testing.T) {
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets"}},
 				},
 				HasDomainScopedRoutes:  true,
+				StubDomainGuard:        true,
 				HasConsolidatedHandler: true,
 			},
 			wantContains: []string{
@@ -349,6 +350,184 @@ func Test_routerTestTemplate_selfContained(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Test_routesTemplate_outlets pins the per-outlet rendering: each extra outlet gets
+// its own suffixed interface and registration function, the test router becomes the
+// all-outlet composition over the AllGeneratedHandlers union, and none of it renders
+// without extra outlets.
+func Test_routesTemplate_outlets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		data            routerFileData
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "extra outlet renders suffixed surface and all-outlet test router",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+				},
+				ExtraOutlets: []*outletRouteData{{
+					Name:   "automation",
+					Suffix: "Automation",
+					RoutesMap: map[string][]*generatedRoute{
+						"Widget": {{Method: "GET", Path: "/automation/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+						"Gadget": {{Method: "PATCH", Path: "/automation/stations/{stationID}/gadgets", HandlerFunc: "PatchGadgets", DomainScoped: true}},
+					},
+					HasDomainScopedRoutes:   true,
+					HasConsolidatedHandler:  true,
+					ConsolidatedHandlerFunc: "PatchAutomationResources",
+					ConsolidatedPath:        "/automation/resources",
+				}},
+			},
+			wantContains: []string{
+				"type GeneratedAutomationHandlers interface {",
+				"func generatedAutomationRoutes(r chi.Router, h GeneratedAutomationHandlers) {",
+				`r.Get("/automation/widgets", widgetsHandler)`,
+				`r.Patch("/automation/stations/{stationID}/gadgets", domainGuard(h.PatchGadgets()))`,
+				`r.Patch("/automation/resources", h.PatchAutomationResources())`,
+				"PatchAutomationResources() http.HandlerFunc",
+				"type AllGeneratedHandlers interface {",
+				"GeneratedAutomationHandlers",
+				"func NewTestRouter(h AllGeneratedHandlers) *chi.Mux {",
+				"generatedAutomationRoutes(r, h)",
+			},
+			wantNotContains: []string{"func NewTestRouter(h GeneratedHandlers) *chi.Mux {"},
+		},
+		{
+			name: "no extra outlets renders the single-outlet file",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+				},
+			},
+			wantContains: []string{
+				"func NewTestRouter(h GeneratedHandlers) *chi.Mux {",
+			},
+			wantNotContains: []string{"AllGeneratedHandlers", "generatedAutomationRoutes"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			out, err := c.generateTemplateOutput("routesTemplate", routesTemplate, tt.data)
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("routesTemplate output missing %q:\n%s", want, out)
+				}
+			}
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(string(out), notWant) {
+					t.Errorf("routesTemplate output must not contain %q:\n%s", notWant, out)
+				}
+			}
+		})
+	}
+}
+
+// Test_routerTestTemplate_outletIsolation pins the outlet dimension of the generated
+// router tests: extra-outlet consolidated dispatch cases, stub methods for handlers
+// served only under extra outlets, and the 404 isolation test — none of which render
+// without extra outlets.
+func Test_routerTestTemplate_outletIsolation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		data            routerFileData
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "extra outlets render isolation test, extra stubs, and consolidated dispatch case",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+				},
+				ExtraOutlets: []*outletRouteData{{
+					Name:                    "automation",
+					Suffix:                  "Automation",
+					RoutesMap:               map[string][]*generatedRoute{},
+					HasConsolidatedHandler:  true,
+					ConsolidatedHandlerFunc: "PatchAutomationResources",
+					ConsolidatedPath:        "/automation/resources",
+				}},
+				ExtraStubHandlerFuncs: []string{"PatchAutomationResources"},
+				NegativeRouterTests: []negativeRouterTest{
+					{Method: "http.MethodGet", URL: "/automation/widgets"},
+				},
+			},
+			wantContains: []string{
+				"func TestGeneratedRouteOutletIsolation(t *testing.T) {",
+				`{url: "/automation/widgets", method: http.MethodGet},`,
+				"if got := rr.Code; got != http.StatusNotFound {",
+				"func (s *generatedHandlersStub) PatchAutomationResources() http.HandlerFunc {",
+				`url: "/automation/resources", method: http.MethodPatch,`,
+				`handlerFunc: "PatchAutomationResources",`,
+			},
+		},
+		{
+			name: "no extra outlets renders no isolation test",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+				},
+			},
+			wantNotContains: []string{"TestGeneratedRouteOutletIsolation"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			out, err := c.generateTemplateOutput("routerTestTemplate", routerTestTemplate, tt.data)
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("routerTestTemplate output missing %q:\n%s", want, out)
+				}
+			}
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(string(out), notWant) {
+					t.Errorf("routerTestTemplate output must not contain %q:\n%s", notWant, out)
+				}
+			}
+		})
+	}
+}
+
+// Test_consolidatedPatchTemplate_handlerName pins that the consolidated dispatcher's
+// method name comes from the template data, so each outlet's dispatcher gets its own
+// name instead of a hard-coded PatchResources.
+func Test_consolidatedPatchTemplate_handlerName(t *testing.T) {
+	t.Parallel()
+
+	if !strings.Contains(consolidatedPatchTemplate, "{{ .HandlerName }}() http.HandlerFunc") {
+		t.Error("consolidatedPatchTemplate must take the dispatcher method name from .HandlerName")
+	}
+	if strings.Contains(consolidatedPatchTemplate, ") PatchResources() http.HandlerFunc") {
+		t.Error("consolidatedPatchTemplate must not hard-code the PatchResources method name")
 	}
 }
 

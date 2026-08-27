@@ -15,6 +15,9 @@ A synthetic "starport logistics" application with two roles:
 - **Generator regression**: the `zz_gen_*` files are committed golden output.
   `TestGeneratedCodeIsCommitted` re-runs the generator and fails if the output drifts
   from what is committed.
+- **Router outlets**: a second registration surface (`@outlet`, `WithRouterOutlet`)
+  served as a machine REST API under `/automation` behind API-key authentication —
+  see "The automation outlet" below.
 - **Permission enforcement regression**: integration tests drive the generated HTTP
   handlers against a real Spanner emulator with a scriptable permission table. Both
   generated mutation surfaces are exercised: the consolidated `PATCH /api/resources`
@@ -136,14 +139,37 @@ Then open http://localhost:8080 and sign in with the seeded demo credentials
 (`demo` / `starport`). Configuration lives in `pkg/config` and is entirely optional:
 `STARPORT_HOST`/`STARPORT_PORT` for the listen address, `STARPORT_SESSION_TIMEOUT`,
 `STARPORT_COOKIE_KEY` (ephemeral when unset), `STARPORT_GUI_DIST` (defaults to
-`gui/dist`), and the same `STARPORT_SPANNER_*` variables the bootstrap uses.
+`gui/dist`), `STARPORT_AUTOMATION_API_KEY` (the automation outlet's bearer key;
+ephemeral — and therefore unreachable — when unset), and the same `STARPORT_SPANNER_*`
+variables the bootstrap uses.
 
 For frontend development, `cd gui && npm start` serves the Angular app with `/api`
 proxied to the Go server (see `gui/README.md`).
 
-The served router (`router.NewServer`) wraps the generated routes with session
-validation and adds three hand-written endpoints: `POST /api/user/login` (the session
-library's password login), `GET /api/user/session-data` (the session user's permission
+The served router (`router.New`) wraps the generated routes with session validation
+and adds three hand-written endpoints: `POST /api/user/login` (the session library's
+password login), `GET /api/user/session-data` (the session user's permission
 collection from the access engine, consumed by the frontend's permission gating), and
-`GET /api/stations` (the demo tenancy list). The bare `router.New`/`app.New` seam the
-integration tests exercise is unchanged.
+`GET /api/station-directory` (the demo tenancy list). The bare
+`router.NewTestRouter`/`app.New` seam the integration tests exercise is unchanged.
+
+### The automation outlet
+
+The starport also demonstrates router outlets: resources annotated
+`@outlet(default, automation)` (`Ships`, `GantryCranes`, `ShipCargoSummaries`, and the
+`AuthorizeLaunch` RPC method) are additionally served as a machine REST API under
+`/automation`, declared by `generation.WithRouterOutlet("automation", "automation")`.
+The router composes the generated `generatedAutomationRoutes` behind API-key
+authentication (`Authorization: Bearer $STARPORT_AUTOMATION_API_KEY`) instead of the
+browser's session and XSRF guards; a valid key binds the request to the `automation`
+service account, which `cmd/bootstrap/demo_access.json` seeds with roles but no login,
+so the machine surface runs the same fail-closed permission checks as the browser.
+Consolidated mutations get a per-outlet dispatcher: `PATCH /automation/resources`
+bundles exactly the consolidated resources on the outlet (Ships, GantryCranes). The
+generated router tests cover the outlet's dispatch and prove isolation: a route's path
+under an outlet its resource is not attached to must 404.
+
+```
+STARPORT_AUTOMATION_API_KEY=dev-automation-key SPANNER_EMULATOR_HOST=127.0.0.1:9010 go run .
+curl -H "Authorization: Bearer dev-automation-key" http://localhost:8080/automation/ships
+```

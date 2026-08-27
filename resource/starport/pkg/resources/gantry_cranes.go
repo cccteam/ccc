@@ -15,8 +15,14 @@ type (
 	//
 	// GantryCrane is structurally enforced (see Ship).
 	//
+	// GantryCranes are also served on the automation outlet, putting a domain-scoped
+	// consolidated resource behind the machine REST API: the automation outlet gets
+	// its own DomainGuard-wrapped routes and its consolidated dispatcher gets the
+	// domain descent case.
+	//
 	// @resource
 	// @permissionScope(domain)
+	// @outlet(default, automation)
 	GantryCrane struct {
 		ID          ccc.UUID `spanner:"Id"`
 		Callsign    string   `spanner:"Callsign"`

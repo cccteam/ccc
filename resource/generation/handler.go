@@ -61,8 +61,19 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return err
 	}
 
-	if len(consolidatedResources) > 0 {
-		if err := r.generateConsolidatedPatchHandler(consolidatedResources); err != nil {
+	// One consolidated dispatcher per outlet with members: each outlet's bundle
+	// carries exactly the consolidated resources attached to it.
+	for _, outlet := range r.allOutlets() {
+		var members []*resourceInfo
+		for _, res := range consolidatedResources {
+			if res.OnOutlet(outlet.name) {
+				members = append(members, res)
+			}
+		}
+		if len(members) == 0 {
+			continue
+		}
+		if err := r.generateConsolidatedPatchHandler(outlet, members); err != nil {
 			return errors.Wrap(err, "generateConsolidatedPatchHandler()")
 		}
 	}
@@ -303,9 +314,13 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 	return nil
 }
 
-func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resourceInfo) error {
+func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet routerOutlet, resources []*resourceInfo) error {
 	begin := time.Now()
-	fileName := generatedGoFileName(consolidatedHandlerOutputName)
+	outputName := consolidatedHandlerOutputName
+	if outlet.name != defaultOutletName {
+		outputName += "_" + strcase.ToSnake(outlet.name)
+	}
+	fileName := generatedGoFileName(outputName)
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
 	domainPatternPrefix := fmt.Sprintf("/%s/{%s}", r.domainRouteSegment, r.domainRouteParam)
@@ -350,6 +365,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(resources []*resour
 		ResourcePackage:     r.resource.Package(),
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
+		HandlerName:         fmt.Sprintf("Patch%sResources", outlet.suffix()),
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}

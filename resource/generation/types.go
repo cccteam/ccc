@@ -295,6 +295,7 @@ type routeTestParam struct {
 
 type rpcMethodInfo struct {
 	*parser.Struct
+	outletMembership
 	Fields          []*rpcField
 	SuppressHandler bool
 	// PermissionScope is the scope the method's registration uses
@@ -386,6 +387,7 @@ func (r *rpcField) TypescriptDisplayType() string {
 
 type computedResource struct {
 	*parser.Struct
+	outletMembership
 	Fields              []*computedField
 	SuppressReadHandler bool
 	SuppressListHandler bool
@@ -492,6 +494,7 @@ func (c *computedField) TypescriptDataType() string {
 
 type resourceInfo struct {
 	*parser.TypeInfo
+	outletMembership
 	Fields             []*resourceField
 	SuppressedHandlers []HandlerType
 	SuppressedRoutes   []RouteType
@@ -943,6 +946,7 @@ const (
 	manualAddResourceKeyword    string = "manualAddResource"    // Declares a manual permission registration on an accesstypes.Resource constant
 	manualAddResourceSetKeyword string = "manualAddResourceSet" // Declares that hand-written handlers register this resource's permission Sets for the given handler types
 	permissionScopeKeyword      string = "permissionScope"      // Declares the permission scope (global or domain) all of a resource's registrations use
+	outletKeyword               string = "outlet"               // Declares the router outlets a resource's routes are registered under
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -961,5 +965,22 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		manualAddResourceKeyword:    {genlang.ScanConstant: genlang.ArgsRequired},
 		manualAddResourceSetKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
 		permissionScopeKeyword:      {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		outletKeyword:               {genlang.ScanStruct: genlang.ArgsRequired},
 	}
+}
+
+// outletMembership records the router outlets a struct's @outlet annotation names.
+// An empty list means the default outlet only; naming any outlet replaces that
+// default entirely, so a resource on the default outlet and another lists both.
+type outletMembership struct {
+	OutletNames []string
+}
+
+// OnOutlet reports whether the struct's routes are registered under the named outlet.
+func (o *outletMembership) OnOutlet(name string) bool {
+	if len(o.OutletNames) == 0 {
+		return name == defaultOutletName
+	}
+
+	return slices.Contains(o.OutletNames, name)
 }

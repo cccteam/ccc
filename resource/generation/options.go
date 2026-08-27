@@ -5,6 +5,7 @@ import (
 	"maps"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -103,6 +104,68 @@ func GenerateRoutes(targetDir, routePrefix string) ResourceOption {
 		return nil
 	})
 }
+
+// defaultOutletName is the reserved name of the router outlet GenerateRoutes declares.
+// Every resource is on it unless an @outlet annotation says otherwise; the annotation
+// references it by this name to combine it with additional outlets.
+const defaultOutletName = "default"
+
+// routerOutlet is one declared router outlet: a named registration surface with its
+// own route prefix. The default outlet comes from GenerateRoutes; additional outlets
+// from WithRouterOutlet.
+type routerOutlet struct {
+	name   string
+	prefix string
+}
+
+// suffix returns the outlet's contribution to generated identifiers
+// (Generated<suffix>Handlers, generated<suffix>Routes, Patch<suffix>Resources);
+// empty for the default outlet, whose identifiers carry no outlet name.
+func (o routerOutlet) suffix() string {
+	if o.name == defaultOutletName {
+		return ""
+	}
+
+	return caser.ToPascal(o.name)
+}
+
+// WithRouterOutlet declares an additional router outlet: a second generated
+// registration surface (its own Generated<Name>Handlers interface and
+// generated<Name>Routes function) served under its own route prefix, so the
+// application can compose different authentication and middleware around it.
+// Resources, computed resources, and RPC methods join an outlet via the @outlet
+// annotation; without the annotation they stay on the default outlet declared by
+// GenerateRoutes, which the annotation references by its reserved name "default".
+//
+// The name must be a lowerCamelCase identifier (it is Pascal-cased into generated
+// identifiers), and the route prefix must be a static path segment distinct from —
+// and not nested with — every other outlet's prefix, so the outlets' URL spaces
+// stay disjoint. The option may be passed once per additional outlet and requires
+// GenerateRoutes.
+func WithRouterOutlet(name, routePrefix string) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		if !outletNamePattern.MatchString(name) {
+			return errors.Newf("WithRouterOutlet(%q) requires a lowerCamelCase name matching %s", name, outletNamePattern)
+		}
+		if name == defaultOutletName {
+			return errors.Newf("WithRouterOutlet(%q) redeclares the reserved default outlet; GenerateRoutes declares it", name)
+		}
+		if routePrefix == "" {
+			return errors.Newf("WithRouterOutlet(%q) requires a non-empty route prefix", name)
+		}
+		if strings.ContainsAny(routePrefix, "{}") || strings.Trim(routePrefix, "/") != routePrefix {
+			return errors.Newf("WithRouterOutlet(%q, %q) route prefix must not contain '{', '}', or leading/trailing '/'", name, routePrefix)
+		}
+
+		r.extraOutlets = append(r.extraOutlets, routerOutlet{name: name, prefix: routePrefix})
+
+		return nil
+	})
+}
+
+// outletNamePattern constrains outlet names to lowerCamelCase identifiers so the
+// Pascal-cased generated identifiers are unambiguous.
+var outletNamePattern = regexp.MustCompile(`^[a-z][a-zA-Z0-9]*$`)
 
 // Default route segment for domain-scoped resources (see WithDomainRoute):
 // /{prefix}/{defaultDomainRouteSegment}/{param}/... . The parameter defaults to

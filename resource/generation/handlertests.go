@@ -161,34 +161,48 @@ func queryRouteCase(route *generatedRoute, pkTypes []pkParamType) (c authzCase, 
 	}, true, nil
 }
 
-// resourceAuthzCases covers each resource's own routes: query pairs for list and read,
-// denied-only operation cases for the patch route.
+// authzCaseName qualifies a case name with the serving outlet, so the same handler
+// reached through two outlets stays two distinct matrix cases. Default-outlet names
+// are unqualified.
+func authzCaseName(base string, outlet routerOutlet) string {
+	if outlet.name == defaultOutletName {
+		return base
+	}
+
+	return base + " (" + outlet.name + ")"
+}
+
+// resourceAuthzCases covers each resource's own routes on every outlet serving them:
+// query pairs for list and read, denied-only operation cases for the patch route.
 func (r *resourceGenerator) resourceAuthzCases() (cases []authzCase, err error) {
 	for _, res := range r.resources {
 		if res.RoutingDisabled() {
 			continue
 		}
 		pkTypes := resourcePKTypes(res)
-		for _, ht := range resourceEndpoints(res) {
-			route, err := r.resourceRoute(res, ht)
-			if err != nil {
-				return nil, err
-			}
-			if ht == PatchHandler {
-				opCases, err := patchOpCases(route.HandlerFunc, route.TestURL, "", res, pkTypes)
+		for _, outlet := range r.memberOutlets(&res.outletMembership) {
+			for _, ht := range resourceEndpoints(res) {
+				route, err := r.resourceRoute(res, ht, outlet.prefix)
 				if err != nil {
 					return nil, err
 				}
-				cases = append(cases, opCases...)
+				if ht == PatchHandler {
+					opCases, err := patchOpCases(authzCaseName(route.HandlerFunc, outlet), route.TestURL, "", res, pkTypes)
+					if err != nil {
+						return nil, err
+					}
+					cases = append(cases, opCases...)
 
-				continue
-			}
-			c, ok, err := queryRouteCase(route, pkTypes)
-			if err != nil {
-				return nil, err
-			}
-			if ok {
-				cases = append(cases, c)
+					continue
+				}
+				c, ok, err := queryRouteCase(route, pkTypes)
+				if err != nil {
+					return nil, err
+				}
+				if ok {
+					c.Name = authzCaseName(c.Name, outlet)
+					cases = append(cases, c)
+				}
 			}
 		}
 	}
@@ -206,17 +220,20 @@ func (r *resourceGenerator) computedAuthzCases() (cases []authzCase, err error) 
 		for _, f := range res.PrimaryKeys() {
 			pkTypes = append(pkTypes, pkParamType{declared: f.Type(), underlying: f.UnderlyingType()})
 		}
-		routes, err := r.computedResourceRoutes(res)
-		if err != nil {
-			return nil, err
-		}
-		for _, route := range routes {
-			c, ok, err := queryRouteCase(route, pkTypes)
+		for _, outlet := range r.memberOutlets(&res.outletMembership) {
+			routes, err := r.computedResourceRoutes(res, outlet.prefix)
 			if err != nil {
 				return nil, err
 			}
-			if ok {
-				cases = append(cases, c)
+			for _, route := range routes {
+				c, ok, err := queryRouteCase(route, pkTypes)
+				if err != nil {
+					return nil, err
+				}
+				if ok {
+					c.Name = authzCaseName(c.Name, outlet)
+					cases = append(cases, c)
+				}
 			}
 		}
 	}
@@ -224,32 +241,35 @@ func (r *resourceGenerator) computedAuthzCases() (cases []authzCase, err error) 
 	return cases, nil
 }
 
-// consolidatedAuthzCases covers the consolidated patch route: one endpoint dispatching
-// per-resource, so denied-only operation cases per consolidated resource prove each
-// dispatch arm checks its own permission. The operation path carries the resource
-// segment (and the domain pair for domain-scoped resources) ahead of the record key.
+// consolidatedAuthzCases covers each outlet's consolidated patch route: one endpoint
+// dispatching per-resource, so denied-only operation cases per consolidated resource
+// prove each dispatch arm checks its own permission. The operation path carries the
+// resource segment (and the domain pair for domain-scoped resources) ahead of the
+// record key.
 func (r *resourceGenerator) consolidatedAuthzCases() (cases []authzCase, err error) {
-	for _, res := range r.resources {
-		if res.RoutingDisabled() || !hasConsolidatedHandler(res) {
-			continue
-		}
+	for _, outlet := range r.allOutlets() {
+		for _, res := range r.resources {
+			if res.RoutingDisabled() || !hasConsolidatedHandler(res) || !res.OnOutlet(outlet.name) {
+				continue
+			}
 
-		opPathPrefix := "/" + strcase.ToKebab(r.pluralize(res.Name()))
-		if res.IsDomainScoped() {
-			opPathPrefix = fmt.Sprintf("/%s/%s%s", r.domainRouteSegment, domainTestValue, opPathPrefix)
-		}
+			opPathPrefix := "/" + strcase.ToKebab(r.pluralize(res.Name()))
+			if res.IsDomainScoped() {
+				opPathPrefix = fmt.Sprintf("/%s/%s%s", r.domainRouteSegment, domainTestValue, opPathPrefix)
+			}
 
-		opCases, err := patchOpCases(
-			"PatchResources "+res.Name(),
-			fmt.Sprintf("/%s/%s", r.routePrefix, r.ConsolidatedRoute),
-			opPathPrefix,
-			res,
-			resourcePKTypes(res),
-		)
-		if err != nil {
-			return nil, err
+			opCases, err := patchOpCases(
+				fmt.Sprintf("Patch%sResources %s", outlet.suffix(), res.Name()),
+				fmt.Sprintf("/%s/%s", outlet.prefix, r.ConsolidatedRoute),
+				opPathPrefix,
+				res,
+				resourcePKTypes(res),
+			)
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, opCases...)
 		}
-		cases = append(cases, opCases...)
 	}
 
 	return cases, nil
@@ -269,14 +289,16 @@ func (r *resourceGenerator) rpcAuthzCases() (cases []authzCase) {
 			continue
 		}
 
-		route := r.rpcRoute(rpcStruct)
-		cases = append(cases, authzCase{
-			Name:       route.HandlerFunc,
-			Method:     httpMethodConst(route.Method),
-			URL:        route.TestURL,
-			Body:       "{}",
-			DeniedOnly: true,
-		})
+		for _, outlet := range r.memberOutlets(&rpcStruct.outletMembership) {
+			route := r.rpcRoute(rpcStruct, outlet.prefix)
+			cases = append(cases, authzCase{
+				Name:       authzCaseName(route.HandlerFunc, outlet),
+				Method:     httpMethodConst(route.Method),
+				URL:        route.TestURL,
+				Body:       "{}",
+				DeniedOnly: true,
+			})
+		}
 	}
 
 	return cases

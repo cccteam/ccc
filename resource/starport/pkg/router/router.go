@@ -9,10 +9,11 @@ import (
 )
 
 // Handlers is the full handler surface of the served application: the generated
-// API handlers plus the session, middleware, custom-endpoint, and static-asset
-// handlers a browsable application needs.
+// API handlers for every outlet plus the session, middleware, custom-endpoint, and
+// static-asset handlers a browsable application needs.
 type Handlers interface {
 	GeneratedHandlers
+	GeneratedAutomationHandlers
 	session.PasswordAuthHandlers
 
 	// app middleware
@@ -24,6 +25,10 @@ type Handlers interface {
 	NoCaching(next http.Handler) http.Handler
 	CompressionMiddleware() func(http.Handler) http.Handler
 
+	// automation outlet auth: API-key authentication binding the request to the
+	// automation service identity, replacing the browser's session and XSRF guards.
+	AutomationAuth(next http.Handler) http.Handler
+
 	// demo endpoints
 	SessionData() http.HandlerFunc
 	StationDirectory() http.HandlerFunc
@@ -34,15 +39,20 @@ type Handlers interface {
 }
 
 // New wires the full served application: session handling and the demo login around
-// the generated API routes, and the Angular application for everything else.
+// the generated API routes, the API-key group around the automation outlet's routes,
+// and the Angular application for everything else.
 func New(h Handlers) *chi.Mux {
-	return newRouter(h, func(r chi.Router) { generatedRoutes(r, h) })
+	return newRouter(h,
+		func(r chi.Router) { generatedRoutes(r, h) },
+		func(r chi.Router) { generatedAutomationRoutes(r, h) },
+	)
 }
 
 // newRouter is the composition seam for the router's structure tests: api registers
-// the authenticated API surface inside the security middleware group, so tests can
-// probe the group's enforcement without going through the generated route table.
-func newRouter(h Handlers, api func(chi.Router)) *chi.Mux {
+// the authenticated API surface inside the security middleware group and automationAPI
+// the machine surface inside the API-key group, so tests can probe each group's
+// enforcement without going through the generated route tables.
+func newRouter(h Handlers, api, automationAPI func(chi.Router)) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(h.LoggerMiddleware())
@@ -84,7 +94,23 @@ func newRouter(h Handlers, api func(chi.Router)) *chi.Mux {
 		})
 	})
 
+	r.Group(func(r chi.Router) {
+		// The automation outlet: machine clients authenticate with an API key, so the
+		// group carries no session handling and no XSRF guard.
+		r.Use(h.NoCaching)
+		r.Use(h.CompressionMiddleware())
+		r.Use(h.AutomationAuth)
+
+		automationAPI(r)
+	})
+
 	r.Route("/api/", func(r chi.Router) {
+		r.NotFound(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "Not Found", http.StatusNotFound)
+		}))
+	})
+
+	r.Route("/automation/", func(r chi.Router) {
 		r.NotFound(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			http.Error(w, "Not Found", http.StatusNotFound)
 		}))

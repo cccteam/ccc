@@ -102,10 +102,14 @@ func bootstrapInstanceWithSchema(ctx context.Context) (*initiator.SpannerDB, err
 
 // accessConfig is the committed demo access configuration: the role definitions
 // MigrateRoles provisions, plus the demo users with their login credentials and
-// per-domain role assignments.
+// per-domain role assignments, and the service accounts with role assignments only.
 type accessConfig struct {
 	access.RoleConfig
 	Users []demoUser `json:"users"`
+	// ServiceAccounts are machine identities: they hold roles like any user but get
+	// no session login — the automation outlet's API-key middleware binds requests
+	// to them.
+	ServiceAccounts []serviceAccount `json:"serviceAccounts"`
 }
 
 // demoUser is a seeded login: a session user (created through the session library, so
@@ -123,6 +127,12 @@ type demoUser struct {
 type demoUserRoles struct {
 	Global  []accesstypes.Role                        `json:"global"`
 	Domains map[accesstypes.Domain][]accesstypes.Role `json:"domains"`
+}
+
+// serviceAccount is a seeded machine identity: role assignments without a login.
+type serviceAccount struct {
+	User  accesstypes.User `json:"user"`
+	Roles demoUserRoles    `json:"roles"`
 }
 
 // provisionAccess migrates the role configuration into the access engine's policy
@@ -168,6 +178,10 @@ func provisionAccess(ctx context.Context) error {
 		return errors.Wrap(err, "seedDemoUsers()")
 	}
 
+	if err := seedServiceAccounts(ctx, client.UserManager(), conf.ServiceAccounts); err != nil {
+		return errors.Wrap(err, "seedServiceAccounts()")
+	}
+
 	return nil
 }
 
@@ -196,19 +210,43 @@ func seedDemoUsers(ctx context.Context, spannerClient *spanner.Client, manager a
 		}
 		fmt.Printf("Created session user %s\n", user.User)
 
-		if len(user.Roles.Global) > 0 {
-			if err := manager.AddUserRoles(ctx, accesstypes.GlobalScope(), user.User, user.Roles.Global...); err != nil {
-				return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in the global scope", user.User)
-			}
-			fmt.Printf("Assigned %v to user %s in the global scope\n", user.Roles.Global, user.User)
+		if err := assignRoles(ctx, manager, user.User, user.Roles); err != nil {
+			return err
 		}
-		for _, domain := range slices.Sorted(maps.Keys(user.Roles.Domains)) {
-			roles := user.Roles.Domains[domain]
-			if err := manager.AddUserRoles(ctx, accesstypes.DomainScope(domain), user.User, roles...); err != nil {
-				return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in domain %s", user.User, domain)
-			}
-			fmt.Printf("Assigned %v to user %s in domain %s\n", roles, user.User, domain)
+	}
+
+	return nil
+}
+
+// seedServiceAccounts assigns the machine identities their roles. No session user is
+// created: a service account has no password login, only the role assignments the
+// automation outlet's API-key identity checks against.
+func seedServiceAccounts(ctx context.Context, manager access.UserManager, accounts []serviceAccount) error {
+	for _, account := range accounts {
+		fmt.Printf("Seeding service account %s\n", account.User)
+		if err := assignRoles(ctx, manager, account.User, account.Roles); err != nil {
+			return err
 		}
+	}
+
+	return nil
+}
+
+// assignRoles grants the user their roles per scope: the global partition first, then
+// each domain in sorted order.
+func assignRoles(ctx context.Context, manager access.UserManager, user accesstypes.User, roles demoUserRoles) error {
+	if len(roles.Global) > 0 {
+		if err := manager.AddUserRoles(ctx, accesstypes.GlobalScope(), user, roles.Global...); err != nil {
+			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in the global scope", user)
+		}
+		fmt.Printf("Assigned %v to user %s in the global scope\n", roles.Global, user)
+	}
+	for _, domain := range slices.Sorted(maps.Keys(roles.Domains)) {
+		domainRoles := roles.Domains[domain]
+		if err := manager.AddUserRoles(ctx, accesstypes.DomainScope(domain), user, domainRoles...); err != nil {
+			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): user %s in domain %s", user, domain)
+		}
+		fmt.Printf("Assigned %v to user %s in domain %s\n", domainRoles, user, domain)
 	}
 
 	return nil

@@ -85,7 +85,7 @@ func Test_resourceGenerator_routeBasePaths(t *testing.T) {
 			if tt.domainParam != "" {
 				r.domainRouteParam = tt.domainParam
 			}
-			gotPath, gotTestURL := r.routeBasePaths(tt.resourceName, tt.domainScoped)
+			gotPath, gotTestURL := r.routeBasePaths(tt.resourceName, tt.domainScoped, r.routePrefix)
 			if gotPath != tt.wantPath {
 				t.Errorf("routeBasePaths() path = %q, want %q", gotPath, tt.wantPath)
 			}

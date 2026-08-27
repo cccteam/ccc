@@ -186,5 +186,13 @@
         }
       }
     }
+  ],
+  "serviceAccounts": [
+    {
+      "user": "automation",
+      "roles": {
+        "global": ["HarborMaster"]
+      }
+    }
   ]
 }

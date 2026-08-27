@@ -92,6 +92,10 @@ func (c *testConfigurer) Validator() *validator.Validate {
 
 func (c *testConfigurer) GuiDist() string { return "" }
 
+// AutomationAPIKey is unused by these suites: they drive the bare test router, which
+// carries no outlet middleware.
+func (c *testConfigurer) AutomationAPIKey() string { return "integration-automation-key" }
+
 func (c *testConfigurer) DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error) {
 	return c.domainExists(ctx, domain)
 }

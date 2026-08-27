@@ -25,87 +25,69 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		return err
 	}
 
-	var hasConsolidatedHandlers bool
-	constResources := make([]*resourceInfo, 0, len(r.resources))
-	routerTestRoutes := make([]*generatedRoute, 0, len(r.resources)+len(r.computedResources))
-	generatedRoutesMap := make(map[string][]*generatedRoute)
-	for _, res := range r.resources {
-		handlerTypes := resourceEndpoints(res)
-
-		if slices.Contains(handlerTypes, ReadHandler) {
-			constResources = append(constResources, res)
-		}
-
-		if res.RoutingDisabled() {
-			continue
-		}
-
-		if hasConsolidatedHandler(res) {
-			hasConsolidatedHandlers = true
-		}
-
-		for _, ht := range handlerTypes {
-			route, err := r.resourceRoute(res, ht)
-			if err != nil {
-				return err
-			}
-
-			generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], route)
-			routerTestRoutes = append(routerTestRoutes, route)
+	outlets := r.allOutlets()
+	outletRoutes := make([]*outletRouteData, len(outlets))
+	for i, outlet := range outlets {
+		outletRoutes[i] = &outletRouteData{
+			Name:                    outlet.name,
+			Suffix:                  outlet.suffix(),
+			RoutesMap:               make(map[string][]*generatedRoute),
+			ConsolidatedHandlerFunc: fmt.Sprintf("Patch%sResources", outlet.suffix()),
+			ConsolidatedPath:        fmt.Sprintf("/%s/%s", outlet.prefix, r.ConsolidatedRoute),
 		}
 	}
 
-	constComputedResources := make([]*computedResource, 0, len(r.computedResources))
-	for _, res := range r.computedResources {
-		if !res.SuppressReadHandler {
-			constComputedResources = append(constComputedResources, res)
-		}
-
-		if res.RoutingDisabled() {
-			continue
-		}
-
-		routes, err := r.computedResourceRoutes(res)
-		if err != nil {
-			return err
-		}
-		generatedRoutesMap[res.Name()] = append(generatedRoutesMap[res.Name()], routes...)
-		routerTestRoutes = append(routerTestRoutes, routes...)
+	constResources, routerTestRoutes, err := r.accumulateResourceRoutes(outlets, outletRoutes)
+	if err != nil {
+		return err
 	}
 
-	if r.genRPCMethods {
-		for _, rpcStruct := range r.rpcMethods {
-			if rpcStruct.SuppressHandler {
-				continue
-			}
+	constComputedResources, computedTestRoutes, err := r.accumulateComputedRoutes(outlets, outletRoutes)
+	if err != nil {
+		return err
+	}
+	routerTestRoutes = append(routerTestRoutes, computedTestRoutes...)
 
-			generatedRoutesMap[rpcStruct.Name()] = []*generatedRoute{r.rpcRoute(rpcStruct)}
+	r.accumulateRPCRoutes(outlets, outletRoutes)
+
+	stubDomainGuard := false
+	for _, outlet := range outletRoutes {
+		for _, routes := range outlet.RoutesMap {
+			for _, route := range routes {
+				if route.DomainScoped {
+					outlet.HasDomainScopedRoutes = true
+					stubDomainGuard = true
+				}
+			}
 		}
 	}
 
-	hasDomainScopedRoutes := false
-	for _, routes := range generatedRoutesMap {
-		for _, route := range routes {
-			if route.DomainScoped {
-				hasDomainScopedRoutes = true
-			}
-		}
+	defaultOutlet := outletRoutes[0]
+	extraOutlets := outletRoutes[1:]
+
+	negativeTests, err := r.negativeRouterTests(outlets)
+	if err != nil {
+		return err
 	}
 
 	data := routerFileData{
 		Source:                 r.resource.Dir(),
 		Package:                r.router.Package(),
 		LocalPackageImports:    r.localPackageImports(),
-		RoutesMap:              generatedRoutesMap,
+		RoutesMap:              defaultOutlet.RoutesMap,
 		ConstResources:         constResources,
 		ConstComputedResources: constComputedResources,
 		RouterTestRoutes:       routerTestRoutes,
-		HasConsolidatedHandler: hasConsolidatedHandlers,
+		HasConsolidatedHandler: defaultOutlet.HasConsolidatedHandler,
 		HasDomainScoped:        r.hasDomainScoped(),
-		HasDomainScopedRoutes:  hasDomainScopedRoutes,
+		HasDomainScopedRoutes:  defaultOutlet.HasDomainScopedRoutes,
+		StubDomainGuard:        stubDomainGuard,
 		DomainRouteParam:       r.domainRouteParam,
 		RoutePrefix:            r.routePrefix,
 		ConsolidatedRoute:      r.ConsolidatedRoute,
+		ExtraOutlets:           extraOutlets,
+		ExtraStubHandlerFuncs:  extraStubHandlerFuncs(defaultOutlet, extraOutlets),
+		NegativeRouterTests:    negativeTests,
 	}
 
 	routesDestination := filepath.Join(r.router.Dir(), generatedGoFileName(routesOutputName))
@@ -124,14 +106,110 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	return nil
 }
 
-// rpcRoute builds the route for an RPC method: POST at the kebab-cased method name,
-// under the domain segment pair for domain-scoped methods.
-func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo) *generatedRoute {
-	path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(rpcStruct.Name()))
+// accumulateResourceRoutes builds every routed resource's routes into each member
+// outlet's RoutesMap, returning the read-handler resources (for the param consts) and
+// the dispatch-test routes.
+func (r *resourceGenerator) accumulateResourceRoutes(outlets []routerOutlet, outletRoutes []*outletRouteData) (constResources []*resourceInfo, routerTestRoutes []*generatedRoute, err error) {
+	constResources = make([]*resourceInfo, 0, len(r.resources))
+	routerTestRoutes = make([]*generatedRoute, 0, len(r.resources))
+	for _, res := range r.resources {
+		handlerTypes := resourceEndpoints(res)
+
+		if slices.Contains(handlerTypes, ReadHandler) {
+			constResources = append(constResources, res)
+		}
+
+		if res.RoutingDisabled() {
+			continue
+		}
+
+		for i, outlet := range outlets {
+			if !res.OnOutlet(outlet.name) {
+				continue
+			}
+
+			if hasConsolidatedHandler(res) {
+				outletRoutes[i].HasConsolidatedHandler = true
+			}
+
+			for _, ht := range handlerTypes {
+				route, err := r.resourceRoute(res, ht, outlet.prefix)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				outletRoutes[i].RoutesMap[res.Name()] = append(outletRoutes[i].RoutesMap[res.Name()], route)
+				routerTestRoutes = append(routerTestRoutes, route)
+			}
+		}
+	}
+
+	return constResources, routerTestRoutes, nil
+}
+
+// accumulateComputedRoutes builds every routed computed resource's routes into each
+// member outlet's RoutesMap, returning the read-handler resources (for the param
+// consts) and the dispatch-test routes.
+func (r *resourceGenerator) accumulateComputedRoutes(outlets []routerOutlet, outletRoutes []*outletRouteData) (constComputedResources []*computedResource, routerTestRoutes []*generatedRoute, err error) {
+	constComputedResources = make([]*computedResource, 0, len(r.computedResources))
+	routerTestRoutes = make([]*generatedRoute, 0, len(r.computedResources))
+	for _, res := range r.computedResources {
+		if !res.SuppressReadHandler {
+			constComputedResources = append(constComputedResources, res)
+		}
+
+		if res.RoutingDisabled() {
+			continue
+		}
+
+		for i, outlet := range outlets {
+			if !res.OnOutlet(outlet.name) {
+				continue
+			}
+
+			routes, err := r.computedResourceRoutes(res, outlet.prefix)
+			if err != nil {
+				return nil, nil, err
+			}
+			outletRoutes[i].RoutesMap[res.Name()] = append(outletRoutes[i].RoutesMap[res.Name()], routes...)
+			routerTestRoutes = append(routerTestRoutes, routes...)
+		}
+	}
+
+	return constComputedResources, routerTestRoutes, nil
+}
+
+// accumulateRPCRoutes builds every unsuppressed RPC method's route into each member
+// outlet's RoutesMap. RPC routes carry no dispatch-test entries (the dispatch test
+// covers resource and computed routes).
+func (r *resourceGenerator) accumulateRPCRoutes(outlets []routerOutlet, outletRoutes []*outletRouteData) {
+	if !r.genRPCMethods {
+		return
+	}
+
+	for _, rpcStruct := range r.rpcMethods {
+		if rpcStruct.SuppressHandler {
+			continue
+		}
+
+		for i, outlet := range outlets {
+			if !rpcStruct.OnOutlet(outlet.name) {
+				continue
+			}
+
+			outletRoutes[i].RoutesMap[rpcStruct.Name()] = []*generatedRoute{r.rpcRoute(rpcStruct, outlet.prefix)}
+		}
+	}
+}
+
+// rpcRoute builds the route for an RPC method under the outlet route prefix: POST at
+// the kebab-cased method name, under the domain segment pair for domain-scoped methods.
+func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo, routePrefix string) *generatedRoute {
+	path := fmt.Sprintf("/%s/%s", routePrefix, strcase.ToKebab(rpcStruct.Name()))
 	testPath := path
 	if rpcStruct.IsDomainScoped() {
-		path = fmt.Sprintf("/%s/%s/{%s}/%s", r.routePrefix, r.domainRouteSegment, r.domainRouteParam, strcase.ToKebab(rpcStruct.Name()))
-		testPath = fmt.Sprintf("/%s/%s/%s/%s", r.routePrefix, r.domainRouteSegment, domainTestValue, strcase.ToKebab(rpcStruct.Name()))
+		path = fmt.Sprintf("/%s/%s/{%s}/%s", routePrefix, r.domainRouteSegment, r.domainRouteParam, strcase.ToKebab(rpcStruct.Name()))
+		testPath = fmt.Sprintf("/%s/%s/%s/%s", routePrefix, r.domainRouteSegment, domainTestValue, strcase.ToKebab(rpcStruct.Name()))
 	}
 
 	return &generatedRoute{
@@ -143,10 +221,11 @@ func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo) *generatedRoute {
 	}
 }
 
-// resourceRoute builds the route for one handler type of a resource, including read-route
-// primary-key params and, for domain-scoped resources, the domain segment pair.
-func (r *resourceGenerator) resourceRoute(res *resourceInfo, ht HandlerType) (*generatedRoute, error) {
-	basePath, testBasePath := r.routeBasePaths(res.Name(), res.IsDomainScoped())
+// resourceRoute builds the route for one handler type of a resource under the outlet
+// route prefix, including read-route primary-key params and, for domain-scoped
+// resources, the domain segment pair.
+func (r *resourceGenerator) resourceRoute(res *resourceInfo, ht HandlerType, routePrefix string) (*generatedRoute, error) {
+	basePath, testBasePath := r.routeBasePaths(res.Name(), res.IsDomainScoped(), routePrefix)
 	route := &generatedRoute{
 		Method:       ht.method(),
 		Path:         basePath,
@@ -180,11 +259,11 @@ func (r *resourceGenerator) resourceRoute(res *resourceInfo, ht HandlerType) (*g
 	return route, nil
 }
 
-// computedResourceRoutes builds the read and list routes for a computed resource,
-// honoring its handler suppressions and, for domain-scoped resources, the domain
-// segment pair.
-func (r *resourceGenerator) computedResourceRoutes(res *computedResource) ([]*generatedRoute, error) {
-	basePath, testBasePath := r.routeBasePaths(res.Name(), res.IsDomainScoped())
+// computedResourceRoutes builds the read and list routes for a computed resource under
+// the outlet route prefix, honoring its handler suppressions and, for domain-scoped
+// resources, the domain segment pair.
+func (r *resourceGenerator) computedResourceRoutes(res *computedResource, routePrefix string) ([]*generatedRoute, error) {
+	basePath, testBasePath := r.routeBasePaths(res.Name(), res.IsDomainScoped(), routePrefix)
 
 	var routes []*generatedRoute
 	if !res.SuppressListHandler {
@@ -228,6 +307,126 @@ func (r *resourceGenerator) computedResourceRoutes(res *computedResource) ([]*ge
 	}
 
 	return routes, nil
+}
+
+// extraStubHandlerFuncs returns the handler funcs the generated router-test stub needs
+// beyond the default outlet's: handler methods served only under extra outlets, plus
+// each extra outlet's consolidated dispatcher. Sorted for deterministic output.
+func extraStubHandlerFuncs(defaultOutlet *outletRouteData, extraOutlets []*outletRouteData) []string {
+	seen := make(map[string]bool)
+	for _, routes := range defaultOutlet.RoutesMap {
+		for _, route := range routes {
+			seen[route.HandlerFunc] = true
+		}
+	}
+
+	var funcs []string
+	add := func(handlerFunc string) {
+		if !seen[handlerFunc] {
+			seen[handlerFunc] = true
+			funcs = append(funcs, handlerFunc)
+		}
+	}
+	for _, outlet := range extraOutlets {
+		for _, routes := range outlet.RoutesMap {
+			for _, route := range routes {
+				add(route.HandlerFunc)
+			}
+		}
+		if outlet.HasConsolidatedHandler {
+			add(outlet.ConsolidatedHandlerFunc)
+		}
+	}
+	slices.Sort(funcs)
+
+	return funcs
+}
+
+// negativeRouterTests builds the outlet-isolation cases: for every routed resource,
+// computed resource, RPC method, and consolidated dispatcher, the URL it would occupy
+// under each outlet it is NOT attached to, which the generated test requires to fall
+// through to 404 with no handler dispatched. Empty without extra outlets — one outlet
+// has nothing to be isolated from.
+func (r *resourceGenerator) negativeRouterTests(outlets []routerOutlet) ([]negativeRouterTest, error) {
+	if len(outlets) < 2 {
+		return nil, nil
+	}
+
+	var tests []negativeRouterTest
+	for _, outlet := range outlets {
+		outletTests, err := r.negativeTestsForOutlet(outlet)
+		if err != nil {
+			return nil, err
+		}
+		tests = append(tests, outletTests...)
+	}
+
+	return tests, nil
+}
+
+// negativeTestsForOutlet builds one outlet's isolation cases: the URLs of everything
+// routed that is NOT attached to the outlet, addressed under the outlet's prefix.
+func (r *resourceGenerator) negativeTestsForOutlet(outlet routerOutlet) ([]negativeRouterTest, error) {
+	var tests []negativeRouterTest
+	addRoute := func(route *generatedRoute) {
+		for _, method := range route.TestMethods() {
+			tests = append(tests, negativeRouterTest{Method: method, URL: route.TestURL})
+		}
+	}
+
+	anyConsolidated, outletHasConsolidated := false, false
+	for _, res := range r.resources {
+		if res.RoutingDisabled() {
+			continue
+		}
+		if hasConsolidatedHandler(res) {
+			anyConsolidated = true
+			if res.OnOutlet(outlet.name) {
+				outletHasConsolidated = true
+			}
+		}
+		if res.OnOutlet(outlet.name) {
+			continue
+		}
+		for _, ht := range resourceEndpoints(res) {
+			route, err := r.resourceRoute(res, ht, outlet.prefix)
+			if err != nil {
+				return nil, err
+			}
+			addRoute(route)
+		}
+	}
+
+	for _, res := range r.computedResources {
+		if res.RoutingDisabled() || res.OnOutlet(outlet.name) {
+			continue
+		}
+		routes, err := r.computedResourceRoutes(res, outlet.prefix)
+		if err != nil {
+			return nil, err
+		}
+		for _, route := range routes {
+			addRoute(route)
+		}
+	}
+
+	if r.genRPCMethods {
+		for _, rpcStruct := range r.rpcMethods {
+			if rpcStruct.SuppressHandler || rpcStruct.OnOutlet(outlet.name) {
+				continue
+			}
+			addRoute(r.rpcRoute(rpcStruct, outlet.prefix))
+		}
+	}
+
+	if anyConsolidated && !outletHasConsolidated {
+		tests = append(tests, negativeRouterTest{
+			Method: httpMethodConstant(http.MethodPatch),
+			URL:    fmt.Sprintf("/%s/%s", outlet.prefix, r.ConsolidatedRoute),
+		})
+	}
+
+	return tests, nil
 }
 
 // deriveDomainRouteParam resolves the domain route parameter after parsing. When a
@@ -297,16 +496,17 @@ func (r *resourceGenerator) hasDomainScoped() bool {
 	return false
 }
 
-// routeBasePaths returns the route path and its router-test URL for a resource,
-// inserting the {domain} segment (and its test value) for domain-scoped resources.
-func (r *resourceGenerator) routeBasePaths(resourceName string, domainScoped bool) (basePath, testBasePath string) {
+// routeBasePaths returns the route path and its router-test URL for a resource under
+// the outlet route prefix, inserting the {domain} segment (and its test value) for
+// domain-scoped resources.
+func (r *resourceGenerator) routeBasePaths(resourceName string, domainScoped bool, routePrefix string) (basePath, testBasePath string) {
 	kebab := strcase.ToKebab(r.pluralize(resourceName))
 	if domainScoped {
-		return fmt.Sprintf("/%s/%s/{%s}/%s", r.routePrefix, r.domainRouteSegment, r.domainRouteParam, kebab),
-			fmt.Sprintf("/%s/%s/%s/%s", r.routePrefix, r.domainRouteSegment, domainTestValue, kebab)
+		return fmt.Sprintf("/%s/%s/{%s}/%s", routePrefix, r.domainRouteSegment, r.domainRouteParam, kebab),
+			fmt.Sprintf("/%s/%s/%s/%s", routePrefix, r.domainRouteSegment, domainTestValue, kebab)
 	}
 
-	basePath = fmt.Sprintf("/%s/%s", r.routePrefix, kebab)
+	basePath = fmt.Sprintf("/%s/%s", routePrefix, kebab)
 
 	return basePath, basePath
 }

@@ -16,8 +16,11 @@ type (
 	// bay and aggregated manifest totals. Its single-field key is declared with the
 	// primarykey annotation, so the generated list request struct carries the
 	// perm:"-" exemption on ShipID from an annotation instead of schema metadata.
+	// It is also served on the automation outlet, exercising a read-only projection
+	// behind the machine REST API.
 	//
 	// @virtual
+	// @outlet(default, automation)
 	ShipCargoSummary struct {
 		ShipID             ccc.UUID `spanner:"ShipId"             uniqueindex:"true"` // @primarykey
 		ShipName           string   `spanner:"ShipName"           index:"true"`

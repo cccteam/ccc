@@ -87,6 +87,9 @@ type consolidatedPatchData struct {
 	ResourcePackage     string
 	ApplicationName     string
 	ReceiverName        string
+	// HandlerName is the dispatcher method's name: PatchResources on the default
+	// outlet, Patch<Suffix>Resources on an extra outlet's dispatcher.
+	HandlerName string
 }
 
 // consolidatedCaseData is one resource case of the consolidated dispatch, carrying the
@@ -163,6 +166,44 @@ type routerFileData struct {
 	DomainRouteParam  string
 	RoutePrefix       string
 	ConsolidatedRoute string
+	// ExtraOutlets carries the WithRouterOutlet registration surfaces; the fields
+	// above describe the default outlet, whose generated identifiers are unsuffixed.
+	// With no extra outlets the rendered file is exactly the single-outlet file.
+	ExtraOutlets []*outletRouteData
+	// StubDomainGuard emits the router-test stub's DomainGuard: any outlet has
+	// domain-scoped routes (HasDomainScopedRoutes covers the default outlet only).
+	StubDomainGuard bool
+	// ExtraStubHandlerFuncs are the handler funcs the router-test stub needs beyond
+	// the default outlet's: methods served only under extra outlets, plus each extra
+	// outlet's consolidated dispatcher.
+	ExtraStubHandlerFuncs []string
+	// NegativeRouterTests are the outlet-isolation cases: URLs that must fall through
+	// to 404 because the addressed outlet does not carry the resource.
+	NegativeRouterTests []negativeRouterTest
+}
+
+// outletRouteData is one extra router outlet's registration surface: the routes the
+// routesTemplate renders into the outlet's Generated<Suffix>Handlers interface and
+// generated<Suffix>Routes function.
+type outletRouteData struct {
+	Name   string
+	Suffix string
+	// RoutesMap groups the outlet's routes by source struct name (template map
+	// iteration is name-sorted, keeping output deterministic).
+	RoutesMap             map[string][]*generatedRoute
+	HasDomainScopedRoutes bool
+	// HasConsolidatedHandler emits the outlet's consolidated patch dispatcher
+	// (ConsolidatedHandlerFunc) at ConsolidatedPath.
+	HasConsolidatedHandler  bool
+	ConsolidatedHandlerFunc string
+	ConsolidatedPath        string
+}
+
+// negativeRouterTest is one outlet-isolation case: Method is the net/http constant
+// expression, URL the request path that must 404 with no handler dispatched.
+type negativeRouterTest struct {
+	Method string
+	URL    string
 }
 
 type domainGuardData struct {

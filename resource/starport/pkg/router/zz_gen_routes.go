@@ -152,14 +152,72 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Patch("/api/resources", h.PatchResources())
 }
 
-// NewTestRouter serves the generated API routes bare, for test composition only: no
-// session guard, no application middleware beyond the route-parameter capture the
-// handlers require. Production traffic is served through the application's router,
-// which nests these routes inside its authentication group.
-func NewTestRouter(h GeneratedHandlers) *chi.Mux {
+// GeneratedAutomationHandlers is the automation outlet's generated
+// handler surface: the handlers of the resources attached to the outlet via @outlet.
+type GeneratedAutomationHandlers interface {
+	// DomainGuard wraps every domain-scoped route below: it rejects requests for
+	// domains the application does not recognize before the handler runs.
+	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
+
+	AuthorizeLaunch() http.HandlerFunc
+
+	GantryCranes() http.HandlerFunc
+	GantryCrane() http.HandlerFunc
+
+	Ships() http.HandlerFunc
+	Ship() http.HandlerFunc
+
+	ShipCargoSummaries() http.HandlerFunc
+
+	PatchAutomationResources() http.HandlerFunc
+}
+
+func generatedAutomationRoutes(r chi.Router, h GeneratedAutomationHandlers) {
+	domainGuard := h.DomainGuard()
+
+	r.Post("/automation/authorize-launch", h.AuthorizeLaunch())
+
+	gantryCranesHandler := domainGuard(h.GantryCranes())
+	r.Get("/automation/stations/{stationID}/gantry-cranes", gantryCranesHandler)
+	r.Post("/automation/stations/{stationID}/gantry-cranes", gantryCranesHandler)
+
+	gantryCraneHandler := domainGuard(h.GantryCrane())
+	r.Get("/automation/stations/{stationID}/gantry-cranes/{gantryCraneID}", gantryCraneHandler)
+	r.Post("/automation/stations/{stationID}/gantry-cranes/{gantryCraneID}", gantryCraneHandler)
+
+	shipsHandler := h.Ships()
+	r.Get("/automation/ships", shipsHandler)
+	r.Post("/automation/ships", shipsHandler)
+
+	shipHandler := h.Ship()
+	r.Get("/automation/ships/{shipID}", shipHandler)
+	r.Post("/automation/ships/{shipID}", shipHandler)
+
+	shipCargoSummariesHandler := h.ShipCargoSummaries()
+	r.Get("/automation/ship-cargo-summaries", shipCargoSummariesHandler)
+	r.Post("/automation/ship-cargo-summaries", shipCargoSummariesHandler)
+
+	r.Patch("/automation/resources", h.PatchAutomationResources())
+}
+
+// AllGeneratedHandlers is every outlet's generated handler surface in one interface:
+// what NewTestRouter composes, and what an application embeds when one type serves
+// every outlet.
+type AllGeneratedHandlers interface {
+	GeneratedHandlers
+	GeneratedAutomationHandlers
+}
+
+// NewTestRouter serves every outlet's generated API routes bare, for test composition
+// only: no authentication, no application middleware beyond the route-parameter
+// capture the handlers require. The outlets' route prefixes are disjoint, so their
+// surfaces compose on one mux. Production traffic is served through the application's
+// router, which nests each outlet's routes inside its own middleware group.
+func NewTestRouter(h AllGeneratedHandlers) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(httpio.WithParams)
 	generatedRoutes(r, h)
+	generatedAutomationRoutes(r, h)
 
 	return r
 }

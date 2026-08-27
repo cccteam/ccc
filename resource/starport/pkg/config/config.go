@@ -31,13 +31,14 @@ import (
 
 // Configuration holds the application configuration and the clients built from it.
 type Configuration struct {
-	spannerClient  *cloudspanner.Client
-	resourceClient *resource.SpannerClient
-	access         *access.Client
-	session        *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
-	rpcClient      *rpc.Client
-	validator      *validator.Validate
-	envVars        appConfig
+	spannerClient    *cloudspanner.Client
+	resourceClient   *resource.SpannerClient
+	access           *access.Client
+	session          *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
+	rpcClient        *rpc.Client
+	validator        *validator.Validate
+	automationAPIKey string
+	envVars          appConfig
 }
 
 // New loads the configuration from the environment and constructs the application's
@@ -80,6 +81,16 @@ func New(ctx context.Context) (*Configuration, error) {
 		return nil, err
 	}
 
+	automationAPIKey := envVars.AutomationAPIKey
+	if automationAPIKey == "" {
+		// An ephemeral key keeps the automation outlet fail-closed: nothing knows it,
+		// so nothing authenticates until STARPORT_AUTOMATION_API_KEY is configured.
+		automationAPIKey, err = EphemeralCookieKey()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	passwordAuth, err := session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](
 		sessionstorage.NewSpannerPasswordAuth(spannerClient),
 		cookieKey,
@@ -90,13 +101,14 @@ func New(ctx context.Context) (*Configuration, error) {
 	}
 
 	return &Configuration{
-		spannerClient:  spannerClient,
-		resourceClient: resource.NewSpannerClient(spannerClient),
-		access:         accessClient,
-		session:        passwordAuth,
-		rpcClient:      rpc.NewClient(),
-		validator:      validator.New(),
-		envVars:        envVars,
+		spannerClient:    spannerClient,
+		resourceClient:   resource.NewSpannerClient(spannerClient),
+		access:           accessClient,
+		session:          passwordAuth,
+		rpcClient:        rpc.NewClient(),
+		validator:        validator.New(),
+		automationAPIKey: automationAPIKey,
+		envVars:          envVars,
 	}, nil
 }
 
@@ -165,6 +177,12 @@ func (c *Configuration) GuiDist() string {
 	return c.envVars.GuiDist
 }
 
+// AutomationAPIKey returns the bearer key the automation outlet's API-key middleware
+// validates machine clients against.
+func (c *Configuration) AutomationAPIKey() string {
+	return c.automationAPIKey
+}
+
 // DomainExists reports whether the domain is a known station: the production tenancy
 // source behind the app's unknown-domain 404 guard. Test suites supply their own
 // implementation through the same Configurer seam.
@@ -192,6 +210,11 @@ type appConfig struct {
 
 	// GuiDist is the directory holding the built Angular application.
 	GuiDist string `env:"STARPORT_GUI_DIST,default=gui/dist"`
+
+	// AutomationAPIKey is the bearer key machine clients present on the automation
+	// outlet (/automation/...). When unset an ephemeral key is generated at startup,
+	// which keeps the surface fail-closed but unreachable until a key is configured.
+	AutomationAPIKey string `env:"STARPORT_AUTOMATION_API_KEY"`
 
 	Spanner SpannerConfig
 }

@@ -6,6 +6,7 @@ package app
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
@@ -49,7 +50,13 @@ type Configurer interface {
 	Validator() *validator.Validate
 	GuiDist() string
 	DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error)
+	AutomationAPIKey() string
 }
+
+// automationUser is the service identity automation-outlet requests act as once the
+// API key authenticates: the bootstrap grants it roles like any other user, so the
+// machine surface goes through the same fail-closed permission checks as the browser.
+const automationUser = "automation"
 
 // App implements the http handlers for the starport, most of which are generated. It
 // owns no router: whoever serves it composes one at the edge (main composes
@@ -57,25 +64,27 @@ type Configurer interface {
 type App struct {
 	access access.Controller
 	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
-	resourceClient  resource.Client
-	rpcClient       *rpc.Client
-	userPermissions func(*http.Request) resource.UserPermissions
-	domainExists    func(ctx context.Context, domain accesstypes.Domain) (bool, error)
-	guiDist         string
-	validate        *validator.Validate
+	resourceClient   resource.Client
+	rpcClient        *rpc.Client
+	userPermissions  func(*http.Request) resource.UserPermissions
+	domainExists     func(ctx context.Context, domain accesstypes.Domain) (bool, error)
+	guiDist          string
+	validate         *validator.Validate
+	automationAPIKey string
 }
 
 // New constructs an App from its dependencies.
 func New(cfg Configurer) *App {
 	return &App{
-		access:          cfg.Access(),
-		PasswordAuth:    cfg.Session(),
-		resourceClient:  cfg.ResourceClient(),
-		rpcClient:       cfg.RPCClient(),
-		userPermissions: NewAccessUserPermissions(cfg.Access()),
-		domainExists:    cfg.DomainExists,
-		guiDist:         cfg.GuiDist(),
-		validate:        cfg.Validator(),
+		access:           cfg.Access(),
+		PasswordAuth:     cfg.Session(),
+		resourceClient:   cfg.ResourceClient(),
+		rpcClient:        cfg.RPCClient(),
+		userPermissions:  NewAccessUserPermissions(cfg.Access()),
+		domainExists:     cfg.DomainExists,
+		guiDist:          cfg.GuiDist(),
+		validate:         cfg.Validator(),
+		automationAPIKey: cfg.AutomationAPIKey(),
 	}
 }
 
@@ -218,6 +227,28 @@ func (a *App) StationDirectory() http.HandlerFunc {
 
 	return httpio.Log(func(w http.ResponseWriter, _ *http.Request) error {
 		return httpio.NewEncoder(w).Ok(response{Stations: stations.Domains()})
+	})
+}
+
+// AutomationAuth authenticates the automation outlet's machine clients: the request
+// must carry the configured API key as "Authorization: Bearer <key>". A valid key
+// binds the request to the automation service identity the way the session middleware
+// binds a browser request to its user, so the handlers behind it run the same
+// fail-closed permission checks. An empty configured key disables the surface.
+func (a *App) AutomationAuth(next http.Handler) http.Handler {
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !ok || a.automationAPIKey == "" ||
+			subtle.ConstantTimeCompare([]byte(key), []byte(a.automationAPIKey)) != 1 {
+			return httpio.NewEncoder(w).ClientMessage(r.Context(), httpio.NewUnauthorizedMessage("a valid automation API key is required"))
+		}
+
+		ctx := context.WithValue(r.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionData{
+			SessionInfo: &sessioninfo.SessionInfo{Username: automationUser},
+		})
+		next.ServeHTTP(w, r.WithContext(ctx))
+
+		return nil
 	})
 }
 

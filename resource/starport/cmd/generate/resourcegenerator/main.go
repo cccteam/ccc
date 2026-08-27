@@ -28,6 +28,11 @@ func run(ctx context.Context) error {
 		},
 		generation.GenerateHandlers("app"),
 		generation.GenerateRoutes("pkg/router", "api"),
+		// The automation outlet is the machine REST API: resources annotated
+		// @outlet(default, automation) are additionally served under /automation
+		// through generatedAutomationRoutes, which the application's router composes
+		// behind API-key authentication instead of the browser session.
+		generation.WithRouterOutlet("automation", "automation"),
 		generation.GenerateHandlerTests("handlertests"),
 		// Domain-scoped resources and RPC methods are served under the station segment
 		// pair: /api/stations/{stationID}/... . The station is the permission domain.

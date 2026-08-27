@@ -11,7 +11,11 @@ type (
 	// annotation, and every non-primary-key field requires the endpoint's permission
 	// on its field resource. The invariant integration suite depends on this.
 	//
+	// Ships are also served on the automation outlet: the machine REST API composed
+	// behind API-key authentication instead of the browser session.
+	//
 	// @resource
+	// @outlet(default, automation)
 	Ship struct {
 		ID           ccc.UUID     `spanner:"Id"`
 		RegistryCode string       `spanner:"RegistryCode" conditions:"immutable"`

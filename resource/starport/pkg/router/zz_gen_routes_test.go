@@ -49,6 +49,68 @@ func TestGeneratedRoutes(t *testing.T) {
 	}
 }
 
+// TestGeneratedRouteOutletIsolation proves the outlets stay disjoint: a route is
+// registered only under the outlets its resource is attached to, so its path under
+// any other outlet's prefix must fall through to 404 with no handler dispatched.
+func TestGeneratedRouteOutletIsolation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		url    string
+		method string
+	}{
+		{url: "/automation/stations/testDomain/berths", method: http.MethodGet},
+		{url: "/automation/stations/testDomain/berths", method: http.MethodPost},
+		{url: "/automation/stations/testDomain/berths/testBerthID", method: http.MethodGet},
+		{url: "/automation/stations/testDomain/berths/testBerthID", method: http.MethodPost},
+		{url: "/automation/stations/testDomain/berths", method: http.MethodPatch},
+		{url: "/automation/cargo-manifests", method: http.MethodGet},
+		{url: "/automation/cargo-manifests", method: http.MethodPost},
+		{url: "/automation/cargo-manifests/testCargoManifestShipID/testCargoManifestLineNumber", method: http.MethodGet},
+		{url: "/automation/cargo-manifests/testCargoManifestShipID/testCargoManifestLineNumber", method: http.MethodPost},
+		{url: "/automation/crew-members", method: http.MethodGet},
+		{url: "/automation/crew-members", method: http.MethodPost},
+		{url: "/automation/crew-members/testCrewMemberID", method: http.MethodGet},
+		{url: "/automation/crew-members/testCrewMemberID", method: http.MethodPost},
+		{url: "/automation/crew-members", method: http.MethodPatch},
+		{url: "/automation/docking-bays", method: http.MethodGet},
+		{url: "/automation/docking-bays", method: http.MethodPost},
+		{url: "/automation/docking-bays/testDockingBayID", method: http.MethodGet},
+		{url: "/automation/docking-bays/testDockingBayID", method: http.MethodPost},
+		{url: "/automation/manifest-lines", method: http.MethodGet},
+		{url: "/automation/manifest-lines", method: http.MethodPost},
+		{url: "/automation/stations", method: http.MethodGet},
+		{url: "/automation/stations", method: http.MethodPost},
+		{url: "/automation/stations/testStationID", method: http.MethodGet},
+		{url: "/automation/stations/testStationID", method: http.MethodPost},
+		{url: "/automation/supply-crates", method: http.MethodGet},
+		{url: "/automation/supply-crates", method: http.MethodPost},
+		{url: "/automation/supply-crates/testSupplyCrateID", method: http.MethodGet},
+		{url: "/automation/supply-crates/testSupplyCrateID", method: http.MethodPost},
+		{url: "/automation/stations/testDomain/authorize-docking", method: http.MethodPost},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+"-url"+strings.ReplaceAll(tt.url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newGeneratedCallRecorder()
+			router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall))
+
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, http.NoBody)
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			if got := rr.Code; got != http.StatusNotFound {
+				t.Errorf("response.Code = %v, want %v", got, http.StatusNotFound)
+			}
+			if cnt := len(rec.handlers); cnt != 0 {
+				t.Fatalf("expected no handler called, got: %v", rec.handlers)
+			}
+		})
+	}
+}
+
 // generatedCallRecorder tracks handler dispatch: which handlers ran, how often, and
 // the route parameters chi resolved for each. It also records middleware execution —
 // unused by the generated routing test above, which exercises bare dispatch, but
@@ -250,6 +312,26 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"stationID": "testDomain", "gantryCraneID": "testGantryCraneID"},
 		},
 		{
+			url: "/automation/stations/testDomain/gantry-cranes", method: http.MethodGet,
+			handlerFunc: "GantryCranes",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
+		{
+			url: "/automation/stations/testDomain/gantry-cranes", method: http.MethodPost,
+			handlerFunc: "GantryCranes",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
+		{
+			url: "/automation/stations/testDomain/gantry-cranes/testGantryCraneID", method: http.MethodGet,
+			handlerFunc: "GantryCrane",
+			parameters:  map[string]string{"stationID": "testDomain", "gantryCraneID": "testGantryCraneID"},
+		},
+		{
+			url: "/automation/stations/testDomain/gantry-cranes/testGantryCraneID", method: http.MethodPost,
+			handlerFunc: "GantryCrane",
+			parameters:  map[string]string{"stationID": "testDomain", "gantryCraneID": "testGantryCraneID"},
+		},
+		{
 			url: "/api/manifest-lines", method: http.MethodGet,
 			handlerFunc: "ManifestLines",
 			parameters:  map[string]string{},
@@ -280,12 +362,42 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"shipID": "testShipID"},
 		},
 		{
+			url: "/automation/ships", method: http.MethodGet,
+			handlerFunc: "Ships",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/automation/ships", method: http.MethodPost,
+			handlerFunc: "Ships",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/automation/ships/testShipID", method: http.MethodGet,
+			handlerFunc: "Ship",
+			parameters:  map[string]string{"shipID": "testShipID"},
+		},
+		{
+			url: "/automation/ships/testShipID", method: http.MethodPost,
+			handlerFunc: "Ship",
+			parameters:  map[string]string{"shipID": "testShipID"},
+		},
+		{
 			url: "/api/ship-cargo-summaries", method: http.MethodGet,
 			handlerFunc: "ShipCargoSummaries",
 			parameters:  map[string]string{},
 		},
 		{
 			url: "/api/ship-cargo-summaries", method: http.MethodPost,
+			handlerFunc: "ShipCargoSummaries",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/automation/ship-cargo-summaries", method: http.MethodGet,
+			handlerFunc: "ShipCargoSummaries",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/automation/ship-cargo-summaries", method: http.MethodPost,
 			handlerFunc: "ShipCargoSummaries",
 			parameters:  map[string]string{},
 		},
@@ -332,6 +444,10 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/api/resources", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
+		},
+		{
+			url: "/automation/resources", method: http.MethodPatch,
+			handlerFunc: "PatchAutomationResources",
 		},
 	}
 
@@ -445,4 +561,8 @@ func (s *generatedHandlersStub) SupplyCrate() http.HandlerFunc {
 
 func (s *generatedHandlersStub) PatchResources() http.HandlerFunc {
 	return s.record("PatchResources")
+}
+
+func (s *generatedHandlersStub) PatchAutomationResources() http.HandlerFunc {
+	return s.record("PatchAutomationResources")
 }
