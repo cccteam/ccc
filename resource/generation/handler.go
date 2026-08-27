@@ -215,8 +215,7 @@ func (r *resourceGenerator) handlerFeatures() handlerFeatures {
 // handler calls it.
 func (r *resourceGenerator) generateDecoders() error {
 	f := r.handlerFeatures()
-	hasQuery := f.hasQuery || f.hasComputed
-	if !hasQuery && !f.hasPatch && !f.hasRPC {
+	if !f.hasQuery && !f.hasComputed && !f.hasPatch && !f.hasRPC {
 		return nil
 	}
 
@@ -224,15 +223,16 @@ func (r *resourceGenerator) generateDecoders() error {
 	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(decodersOutputName))
 
 	if err := r.writeFormattedGoFile(destinationFilePath, "decodersTemplate", decodersTemplate, &decodersFileData{
-		Source:              r.resource.Dir(),
-		Package:             r.handler.Package(),
-		LocalPackageImports: r.localPackageImports(),
-		ApplicationName:     r.applicationName,
-		ReceiverName:        r.receiverName,
-		RPCPackage:          f.rpcPackage,
-		HasQueryDecoder:     hasQuery,
-		HasPatchDecoder:     f.hasPatch,
-		HasRPCDecoder:       f.hasRPC,
+		Source:                  r.resource.Dir(),
+		Package:                 r.handler.Package(),
+		LocalPackageImports:     r.localPackageImports(),
+		ApplicationName:         r.applicationName,
+		ReceiverName:            r.receiverName,
+		RPCPackage:              f.rpcPackage,
+		HasQueryDecoder:         f.hasQuery,
+		HasComputedQueryDecoder: f.hasComputed,
+		HasPatchDecoder:         f.hasPatch,
+		HasRPCDecoder:           f.hasRPC,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}

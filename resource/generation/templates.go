@@ -608,6 +608,16 @@ func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes
 	return resource.MustNewQueryDecoder[Resource, Request](permissions...)
 }
 {{ end }}
+{{ if .HasComputedQueryDecoder -}}
+// NewComputedQueryDecoder builds a query decoder for a generated computed resource
+// and request pair. Computed resources execute application code, so the decoder
+// enforces permissions at decode time rather than deferring to query execution. The
+// Resourcer union keeps construction inside the generated universe: a decoder over
+// any other struct is a compile error.
+func NewComputedQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {
+	return resource.MustNewComputedQueryDecoder[Resource, Request](permissions...)
+}
+{{ end }}
 {{ if .HasPatchDecoder -}}
 // NewDecoder builds a patch decoder for a generated resource and request pair.
 // The Resourcer union keeps construction inside the generated universe: a decoder
@@ -2059,7 +2069,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](accesstypes.List)
+	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -2104,7 +2114,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 		{{- end }}
 	}
 
-	decoder := NewQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, response](accesstypes.Read)
+	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, response](accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -2128,11 +2138,14 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 
 		{{ if .Resource.HasCompoundPrimaryKey }}
 		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, {{ range $i, $field := .Resource.PrimaryKeys }}{{ if $i }}, {{ end }}{{ GoCamel $field.Name }}{{ end }}, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient())
-		{{ else if .Resource.PrimaryKey }}
-		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, id, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()))
-		{{ end }}
+		{{- else if .Resource.PrimaryKey }}
+		row, err := {{ .ComputedPackage }}.Read{{ .Resource.Name }}(ctx, id, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient())
+		{{- end }}
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		if row == nil {
+			return httpio.NewEncoder(w).Ok(nil)
 		}
 		rec := (*response)(row)
 		rmap := make(map[string]any)

@@ -49,17 +49,20 @@ func Test_decodersTemplate_gating(t *testing.T) {
 		{
 			name: "all features emit all constructors",
 			data: decodersFileData{
-				Package:         "app",
-				ApplicationName: "App",
-				ReceiverName:    "a",
-				RPCPackage:      "rpc",
-				HasQueryDecoder: true,
-				HasPatchDecoder: true,
-				HasRPCDecoder:   true,
+				Package:                 "app",
+				ApplicationName:         "App",
+				ReceiverName:            "a",
+				RPCPackage:              "rpc",
+				HasQueryDecoder:         true,
+				HasComputedQueryDecoder: true,
+				HasPatchDecoder:         true,
+				HasRPCDecoder:           true,
 			},
 			wantContains: []string{
 				"func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {",
 				"resource.MustNewQueryDecoder[Resource, Request](permissions...)",
+				"func NewComputedQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {",
+				"resource.MustNewComputedQueryDecoder[Resource, Request](permissions...)",
 				"func NewDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.Decoder[Resource, Request] {",
 				"resource.MustNewDecoder[Resource, Request](a, permissions...)",
 				"func NewRPCDecoder[Method rpc.Method, Request any](a *App, perm accesstypes.Permission) *resource.RPCDecoder[Request] {",
@@ -67,7 +70,7 @@ func Test_decodersTemplate_gating(t *testing.T) {
 			},
 		},
 		{
-			name: "query-only emits no patch or RPC constructor",
+			name: "query-only emits no computed, patch, or RPC constructor",
 			data: decodersFileData{
 				Package:         "app",
 				ApplicationName: "App",
@@ -75,7 +78,18 @@ func Test_decodersTemplate_gating(t *testing.T) {
 				HasQueryDecoder: true,
 			},
 			wantContains:    []string{"func NewQueryDecoder["},
-			wantNotContains: []string{"func NewDecoder[", "func NewRPCDecoder["},
+			wantNotContains: []string{"func NewComputedQueryDecoder[", "func NewDecoder[", "func NewRPCDecoder["},
+		},
+		{
+			name: "computed-only emits only the computed constructor",
+			data: decodersFileData{
+				Package:                 "app",
+				ApplicationName:         "App",
+				ReceiverName:            "a",
+				HasComputedQueryDecoder: true,
+			},
+			wantContains:    []string{"func NewComputedQueryDecoder["},
+			wantNotContains: []string{"func NewQueryDecoder[", "func NewDecoder[", "func NewRPCDecoder["},
 		},
 	}
 
@@ -100,6 +114,21 @@ func Test_decodersTemplate_gating(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Test_computedResourceHandlerTemplate_decoder pins the enforcement seam of the
+// generated computed handlers: they must construct the eager-checking
+// ComputedQueryDecoder, never the deferred QueryDecoder — computed resources execute
+// application code, so a deferred check is never discharged.
+func Test_computedResourceHandlerTemplate_decoder(t *testing.T) {
+	t.Parallel()
+
+	if want := "NewComputedQueryDecoder["; !strings.Contains(computedResourceHandlerTemplate, want) {
+		t.Errorf("computedResourceHandlerTemplate missing %q", want)
+	}
+	if notWant := " NewQueryDecoder["; strings.Contains(computedResourceHandlerTemplate, notWant) {
+		t.Errorf("computedResourceHandlerTemplate must not construct the deferred QueryDecoder: found %q", notWant)
 	}
 }
 

@@ -183,9 +183,10 @@ type decodersFileData struct {
 	RPCPackage string
 	// The Has* fields emit each constructor only when a generated handler calls it,
 	// so an application carries no constructor its code does not use.
-	HasQueryDecoder bool
-	HasPatchDecoder bool
-	HasRPCDecoder   bool
+	HasQueryDecoder         bool
+	HasComputedQueryDecoder bool
+	HasPatchDecoder         bool
+	HasRPCDecoder           bool
 }
 
 type appContractData struct {
