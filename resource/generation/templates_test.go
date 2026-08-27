@@ -180,9 +180,10 @@ func Test_appContractTemplate_gating(t *testing.T) {
 	}
 }
 
-// Test_authzTestTemplate pins the generated authorization matrix: each case renders a
+// Test_authzTestTemplate pins the generated authorization matrix: query cases render a
 // denied row expecting 403 and a granted row (exactly the required permission)
-// expecting 200/404, driven through the hand-written newTestHandler hook.
+// expecting 200/404; mutation cases (DeniedOnly) render the denied row alone, carrying
+// their minimal body — all driven through the hand-written newTestHandler hook.
 func Test_authzTestTemplate(t *testing.T) {
 	t.Parallel()
 
@@ -192,6 +193,8 @@ func Test_authzTestTemplate(t *testing.T) {
 		Cases: []authzCase{
 			{Name: "Widgets", Method: "http.MethodGet", URL: "/api/widgets", Permission: "List"},
 			{Name: "Widget", Method: "http.MethodGet", URL: "/api/widgets/1", Permission: "Read"},
+			{Name: "PatchWidgets delete", Method: "http.MethodPatch", URL: "/api/widgets", Body: `[{"op":"remove","path":"/1"}]`, DeniedOnly: true},
+			{Name: "LaunchWidget", Method: "http.MethodPost", URL: "/api/launch-widget", Body: "{}", DeniedOnly: true},
 		},
 	})
 	if err != nil {
@@ -205,10 +208,23 @@ func Test_authzTestTemplate(t *testing.T) {
 		`grants:       grants{accesstypes.Read: true},`,
 		`target:       "/api/widgets/1",`,
 		`wantStatuses: []int{http.StatusOK, http.StatusNotFound},`,
+		`name:         "PatchWidgets delete denied",`,
+		"body:         `[{\"op\":\"remove\",\"path\":\"/1\"}]`,",
+		`name:         "LaunchWidget denied",`,
 		"h := newTestHandler(t, db, tt.grants)",
 	} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("authzTestTemplate output missing %q:\n%s", want, out)
+		}
+	}
+
+	// DeniedOnly cases must not render a granted row.
+	for _, notWant := range []string{
+		`"PatchWidgets delete granted"`,
+		`"LaunchWidget granted"`,
+	} {
+		if strings.Contains(string(out), notWant) {
+			t.Errorf("authzTestTemplate output must not contain %q:\n%s", notWant, out)
 		}
 	}
 }

@@ -211,17 +211,26 @@ type handlerTestsMainData struct {
 	MigrationSources []string
 }
 
-// authzCase is one endpoint's entry in the generated authorization matrix: it expands
-// to a denied case (no permission -> 403) and a granted case (exactly Permission ->
-// 200, or 404 on the empty schema).
+// authzCase is one endpoint's entry in the generated authorization matrix. Query
+// endpoints expand to a denied case (no permission -> 403) and a granted case (exactly
+// Permission -> 200, or 404 on the empty schema). Mutation endpoints (DeniedOnly)
+// expand to the denied case alone: proving the arm fails closed is the security
+// property, while the success path needs generator-synthesized valid request bodies
+// and is deferred to manual testing.
 type authzCase struct {
 	Name string
 	// Method is the net/http method constant expression, e.g. "http.MethodGet".
 	Method string
 	// URL is the route path with parseable placeholder primary-key values substituted.
 	URL string
-	// Permission is the accesstypes constant name the endpoint's decoder demands.
+	// Permission is the accesstypes constant name the granted case carries; unused
+	// when DeniedOnly.
 	Permission string
+	// Body is the request body ("" for query endpoints). Mutation bodies are minimal:
+	// just enough to reach the operation's enforcement gate, never a valid payload.
+	Body string
+	// DeniedOnly suppresses the granted case (mutation endpoints).
+	DeniedOnly bool
 }
 
 type authzTestData struct {

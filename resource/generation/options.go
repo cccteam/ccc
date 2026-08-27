@@ -488,7 +488,12 @@ const (
 	float64GoType    = "float64"
 	complex64GoType  = "complex64"
 	complex128GoType = "complex128"
+	cccUUIDGoType    = "ccc.UUID"
 )
+
+// jsonTrueLiteral is the JSON boolean literal the authorization matrix's synthesized
+// update values use.
+const jsonTrueLiteral = "true"
 
 // TypeScript type names emitted by the generator.
 const (

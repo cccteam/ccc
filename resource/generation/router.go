@@ -79,17 +79,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 				continue
 			}
 
-			path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(rpcStruct.Name()))
-			if rpcStruct.IsDomainScoped() {
-				path = fmt.Sprintf("/%s/%s/{%s}/%s", r.routePrefix, r.domainRouteSegment, r.domainRouteParam, strcase.ToKebab(rpcStruct.Name()))
-			}
-
-			generatedRoutesMap[rpcStruct.Name()] = []*generatedRoute{{
-				Method:       http.MethodPost,
-				Path:         path,
-				HandlerFunc:  rpcStruct.Name(),
-				DomainScoped: rpcStruct.IsDomainScoped(),
-			}}
+			generatedRoutesMap[rpcStruct.Name()] = []*generatedRoute{r.rpcRoute(rpcStruct)}
 		}
 	}
 
@@ -132,6 +122,25 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
 
 	return nil
+}
+
+// rpcRoute builds the route for an RPC method: POST at the kebab-cased method name,
+// under the domain segment pair for domain-scoped methods.
+func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo) *generatedRoute {
+	path := fmt.Sprintf("/%s/%s", r.routePrefix, strcase.ToKebab(rpcStruct.Name()))
+	testPath := path
+	if rpcStruct.IsDomainScoped() {
+		path = fmt.Sprintf("/%s/%s/{%s}/%s", r.routePrefix, r.domainRouteSegment, r.domainRouteParam, strcase.ToKebab(rpcStruct.Name()))
+		testPath = fmt.Sprintf("/%s/%s/%s/%s", r.routePrefix, r.domainRouteSegment, domainTestValue, strcase.ToKebab(rpcStruct.Name()))
+	}
+
+	return &generatedRoute{
+		Method:       http.MethodPost,
+		Path:         path,
+		HandlerFunc:  rpcStruct.Name(),
+		DomainScoped: rpcStruct.IsDomainScoped(),
+		TestURL:      testPath,
+	}
 }
 
 // resourceRoute builds the route for one handler type of a resource, including read-route

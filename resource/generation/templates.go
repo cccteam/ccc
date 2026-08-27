@@ -777,6 +777,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -786,12 +787,21 @@ import (
 // holds on every resource. Permissions not present are denied.
 type grants map[accesstypes.Permission]bool
 
-// TestGeneratedAuthorizationMatrix drives every generated list and read route through
-// the generated test router: without the required permission the pipeline must fail
-// closed with 403 before touching the database; with exactly that permission the
-// request must reach data access — 200, or 404 when the empty schema has no row. The
-// suite runs on the migrated schema alone; no seed data is required, so it grows with
-// the schema on every regeneration.
+// TestGeneratedAuthorizationMatrix drives every generated route through the generated
+// test router and pins that each one fails closed: without the required permission the
+// pipeline must refuse the request with 403.
+//
+// Query routes (list, read) also carry a granted case: with exactly the required
+// permission the request must reach data access — 200, or 404 when the empty schema
+// has no row. Mutation routes (patch create/update/delete operations, consolidated
+// dispatch arms, RPC methods) are denied-only: each body is the minimum that reaches
+// the operation's enforcement gate — buffer time for patch sets, decode time for RPC —
+// which runs before required-field validation, defaults, or row reads. Mutation
+// success paths need valid request bodies the generator does not synthesize yet and
+// are left to manual testing.
+//
+// The suite runs on the migrated schema alone; no seed data is required, so it grows
+// with the schema on every regeneration.
 //
 // The package must define
 //
@@ -808,6 +818,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 		grants       grants
 		method       string
 		target       string
+		body         string
 		wantStatuses []int
 	}{
 		{{- range .Cases }}
@@ -815,8 +826,12 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			name:         "{{ .Name }} denied",
 			method:       {{ .Method }},
 			target:       "{{ .URL }}",
+			{{- with .Body }}
+			body:         ` + "`{{ . }}`" + `,
+			{{- end }}
 			wantStatuses: []int{http.StatusForbidden},
 		},
+		{{- if not .DeniedOnly }}
 		{
 			name:         "{{ .Name }} granted",
 			grants:       grants{accesstypes.{{ .Permission }}: true},
@@ -824,6 +839,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			target:       "{{ .URL }}",
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
+		{{- end }}
 		{{- end }}
 	}
 
@@ -838,7 +854,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 
 			h := newTestHandler(t, db, tt.grants)
 
-			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.target, nil)
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.target, strings.NewReader(tt.body))
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, req)
 
