@@ -14,8 +14,8 @@ import (
 // NewAccessUserPermissions adapts the access engine to the resource package's
 // UserPermissions seam, resolving the user from the request's session (established by
 // session middleware; the request panics without one, like the generated mutation
-// handlers). It is the production counterpart of the scriptable fakes the integration
-// tests inject via Config.UserPermissions.
+// handlers). Test suites script permissions by supplying a fake access.Controller
+// through the Configurer's Access seam.
 func NewAccessUserPermissions(controller access.Controller) func(*http.Request) resource.UserPermissions {
 	return func(r *http.Request) resource.UserPermissions {
 		return &accessUserPermissions{

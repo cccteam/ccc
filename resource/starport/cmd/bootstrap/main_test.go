@@ -22,7 +22,7 @@ func TestBootstrap(t *testing.T) {
 
 	ctx := t.Context()
 
-	container, err := initiator.NewSpannerContainer(ctx, "1.5.55")
+	container, err := initiator.NewSpannerContainer(ctx, "1.5.56")
 	if err != nil {
 		t.Fatal(err)
 	}

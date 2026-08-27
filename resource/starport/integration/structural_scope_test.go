@@ -18,27 +18,21 @@ import (
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/app"
-	"github.com/cccteam/ccc/resource/starport/pkg/rpc"
+	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	initiator "github.com/cccteam/db-initiator"
-	"github.com/go-playground/validator/v10"
 )
 
-func newPermissiveDomainApp(db *initiator.SpannerDB, g domainGrants) *app.App {
-	return app.New(app.Config{
-		ResourceClient: resource.NewSpannerClient(db.Client),
-		RPCClient:      rpc.NewClient(),
-		UserPermissions: func(*http.Request) resource.UserPermissions {
-			return &domainUserPermissions{byDomain: g}
-		},
+func newPermissiveDomainApp(db *initiator.SpannerDB, g domainGrants) http.Handler {
+	return router.NewTestRouter(app.New(&testConfigurer{
+		db:     db,
+		access: &domainAccess{byDomain: g},
 		// A deliberately misconfigured tenant list that recognizes everything: even
 		// then, no URL value can reach the global partition.
-		DomainExists: func(context.Context, accesstypes.Domain) (bool, error) {
+		domainExists: func(context.Context, accesstypes.Domain) (bool, error) {
 			return true, nil
 		},
-		Validator: validator.New(),
-	})
+	}))
 }
 
 func TestSpoofedGlobalScopeIsInert(t *testing.T) {

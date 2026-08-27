@@ -11,6 +11,7 @@ import (
 
 	"github.com/cccteam/ccc/resource/starport/app"
 	"github.com/cccteam/ccc/resource/starport/pkg/config"
+	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	"github.com/go-playground/errors/v5"
 	"github.com/jtwatson/server"
 )
@@ -31,7 +32,7 @@ func Main() error {
 	}
 	defer conf.Close()
 
-	if err := server.New(conf.Addr()).Start(ctx, app.NewServer(conf)); err != nil {
+	if err := server.New(conf.Addr()).Start(ctx, router.New(app.New(conf))); err != nil {
 		return errors.Wrap(err, "server exited unexpectedly")
 	}
 

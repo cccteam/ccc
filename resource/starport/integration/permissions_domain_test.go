@@ -18,13 +18,11 @@ import (
 	"testing"
 
 	"cloud.google.com/go/spanner"
+	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/app"
-	"github.com/cccteam/ccc/resource/starport/pkg/rpc"
-	"github.com/cccteam/ccc/resource/starport/pkg/stations"
+	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	initiator "github.com/cccteam/db-initiator"
-	"github.com/go-playground/validator/v10"
 	"google.golang.org/grpc/codes"
 )
 
@@ -50,13 +48,16 @@ var (
 // under the structural global scope, exactly as they would in a real policy store.
 type domainGrants map[accesstypes.Scope]grants
 
-// domainUserPermissions implements resource.UserPermissions over a domainGrants table.
-// A check consults only the partition of the scope it is called with.
-type domainUserPermissions struct {
+// domainAccess scripts access.Controller's permission checks over a domainGrants
+// table. A check consults only the partition of the scope it is called with. Every
+// Controller method the pipeline does not consume panics through the embedded nil
+// interface, keeping the fake honest about what the pipeline actually draws on.
+type domainAccess struct {
+	access.Controller
 	byDomain domainGrants
 }
 
-func (d *domainUserPermissions) Check(_ context.Context, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
+func (d *domainAccess) CheckUserResources(_ context.Context, _ accesstypes.User, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
 	g := d.byDomain[scope]
 	for _, res := range resources {
 		if !slices.Contains(g[perm], res) {
@@ -67,22 +68,14 @@ func (d *domainUserPermissions) Check(_ context.Context, scope accesstypes.Scope
 	return missing, nil
 }
 
-func (d *domainUserPermissions) User() accesstypes.User { return "integration-test-user" }
-
 // newDomainTestApp builds the application with a domain-partitioned permission table
-// backing every request.
-func newDomainTestApp(db *initiator.SpannerDB, g domainGrants) *app.App {
-	return app.New(app.Config{
-		ResourceClient: resource.NewSpannerClient(db.Client),
-		RPCClient:      rpc.NewClient(),
-		UserPermissions: func(*http.Request) resource.UserPermissions {
-			return &domainUserPermissions{byDomain: g}
-		},
-		DomainExists: func(_ context.Context, domain accesstypes.Domain) (bool, error) {
-			return stations.Exists(domain), nil
-		},
-		Validator: validator.New(),
-	})
+// backing every request, served through the generated test router.
+func newDomainTestApp(db *initiator.SpannerDB, g domainGrants) http.Handler {
+	return router.NewTestRouter(app.New(&testConfigurer{
+		db:           db,
+		access:       &domainAccess{byDomain: g},
+		domainExists: stationsExist,
+	}))
 }
 
 func TestDomainPartitionQuery(t *testing.T) {

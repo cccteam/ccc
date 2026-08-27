@@ -133,6 +133,9 @@ linters:
           - gocognit
           - cyclop
           - nestif
+          # Test tables grow by appending generated cases to a literal of
+          # handwritten ones; preallocation noise adds nothing in tests.
+          - prealloc
         path: _test\.go
       # The regen test rewrites the working tree and must not run in parallel.
       - linters:

@@ -28,6 +28,7 @@ func run(ctx context.Context) error {
 		},
 		generation.GenerateHandlers("app"),
 		generation.GenerateRoutes("pkg/router", "api"),
+		generation.GenerateHandlerTests("handlertests"),
 		// Domain-scoped resources and RPC methods are served under the station segment
 		// pair: /api/stations/{stationID}/... . The station is the permission domain.
 		generation.WithDomainRoute("stations"),
@@ -43,7 +44,7 @@ func run(ctx context.Context) error {
 		// is the domain-scoped resource inside the consolidated set: its operations carry
 		// the domain in the path (/stations/{stationID}/gantry-cranes/...).
 		generation.WithConsolidatedHandlers("resources", true, "CrewMember", "Berth"),
-		generation.WithSpannerEmulatorVersion("1.5.55"),
+		generation.WithSpannerEmulatorVersion("1.5.56"),
 		generation.GenerateTypescript("gui/src/app/core/service",
 			generation.GenerateMetadata(),
 			generation.GeneratePermissions(),

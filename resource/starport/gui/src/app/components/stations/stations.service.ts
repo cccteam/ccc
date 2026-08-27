@@ -16,7 +16,7 @@ export class StationsService {
   private apiUrl = inject(API_URL);
 
   stations(): Observable<{ stations: string[] }> {
-    return this.http.get<{ stations: string[] }>(`${this.apiUrl}/stations`);
+    return this.http.get<{ stations: string[] }>(`${this.apiUrl}/station-directory`);
   }
 
   berths(station: string): Observable<Berths[]> {

@@ -18,8 +18,10 @@ import (
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
 	"github.com/cccteam/access/spannerstore"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/pkg/rpc"
+	"github.com/cccteam/ccc/resource/starport/pkg/stations"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/go-playground/errors/v5"
@@ -161,6 +163,13 @@ func (c *Configuration) Validator() *validator.Validate {
 // GuiDist returns the directory the built Angular application is served from.
 func (c *Configuration) GuiDist() string {
 	return c.envVars.GuiDist
+}
+
+// DomainExists reports whether the domain is a known station: the production tenancy
+// source behind the app's unknown-domain 404 guard. Test suites supply their own
+// implementation through the same Configurer seam.
+func (c *Configuration) DomainExists(_ context.Context, domain accesstypes.Domain) (bool, error) {
+	return stations.Exists(domain), nil
 }
 
 // appConfig holds the environment variables used by the served application. The

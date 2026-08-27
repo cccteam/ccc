@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,6 +21,11 @@ import (
 // generator's own configuration and route table.
 func (r *resourceGenerator) runHandlerTestsGeneration() error {
 	begin := time.Now()
+	// The target package may not exist yet on first adoption; the handwritten
+	// newTestHandler hook joins it after the first generation.
+	if err := os.MkdirAll(r.handlerTests.Dir(), 0o750); err != nil {
+		return errors.Wrap(err, "os.MkdirAll()")
+	}
 	if err := removeGeneratedFiles(r.handlerTests.Dir(), prefix); err != nil {
 		return errors.Wrap(err, "removeGeneratedFiles()")
 	}
