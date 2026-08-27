@@ -58,17 +58,50 @@ type Set[Resource Resourcer] struct {
 	rMeta           *Metadata[Resource]
 }
 
-// NewSet creates a new Set for a given Resource and Request type, parsing permissions from struct tags.
+// NewSet creates a new Set for a given Resource and Request type. Field-level
+// enforcement is structural: every client-addressable field of Request requires the
+// given permissions (Delete stays resource-level and is never required per field),
+// except fields carrying the perm:"-" primary-key exemption, whose readability follows
+// the resource-level grant.
 func NewSet[Resource Resourcer, Request any](permissions ...accesstypes.Permission) (*Set[Resource], error) {
 	requiredTagPerm, fieldToTag, permissions, immutableFields, err := permissionsFromTags(reflect.TypeFor[Request](), permissions)
 	if err != nil {
 		return nil, errors.Wrap(err, "permissionsFromTags()")
 	}
 
+	if len(permissions) == 0 {
+		return nil, errors.New("NewSet requires at least one permission")
+	}
+
 	return &Set[Resource]{
 		permissions:     permissions,
 		requiredTagPerm: requiredTagPerm,
 		fieldToTag:      fieldToTag,
+		immutableFields: immutableFields,
+		rMeta:           NewMetadata[Resource](),
+	}, nil
+}
+
+// newUnenforcedSet builds a Set carrying only decoding metadata (resource metadata and
+// immutable tags) with no permission registrations. It backs StructDecoder, which never
+// enforces field permissions; every enforced path constructs its Set through NewSet.
+func newUnenforcedSet[Resource Resourcer, Request any]() (*Set[Resource], error) {
+	t := reflect.TypeFor[Request]()
+	if t.Kind() != reflect.Struct {
+		return nil, errors.Newf("expected a struct, got %s", t.Kind())
+	}
+
+	immutableFields := make(map[accesstypes.Tag]struct{})
+	for field := range t.Fields() {
+		ft := FieldTagsFromStructTag(accesstypes.Field(field.Name), field.Tag)
+		if ft.Immutable {
+			immutableFields[accesstypes.Tag(ft.JSON)] = struct{}{}
+		}
+	}
+
+	return &Set[Resource]{
+		requiredTagPerm: make(accesstypes.TagPermissions),
+		fieldToTag:      make(map[accesstypes.Field]accesstypes.Tag),
 		immutableFields: immutableFields,
 		rMeta:           NewMetadata[Resource](),
 	}, nil
@@ -125,32 +158,37 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (tags a
 
 	// Unlike NewSetData (which always registers every field, since generated
 	// Collection/TypeScript output needs a complete field list), a request struct field
-	// with no perm tag is left unregistered here: PermissionRequired/Resource only ever
-	// query a field after finding a real permission requirement for it, so an
-	// unregistered field and one registered with only NullPermission are indistinguishable
-	// to every caller in this codebase.
+	// left unregistered here is either exempt (the perm:"-" primary-key marker) or not
+	// client-addressable (json:"-"): PermissionRequired/Resource only ever query a field
+	// after finding a real permission requirement for it, so an unregistered field and
+	// one registered with only NullPermission are indistinguishable to every caller.
 	return permissionsFromFieldTags(fields, perms, false)
 }
 
-// classifyPermission records a permission into the mutating or non-mutating set and the
-// overall permission set, skipping NullPermission.
-func classifyPermission(perm accesstypes.Permission, permissionMap, mutating, nonmutating map[accesstypes.Permission]struct{}) {
+// isMutatingPermission reports whether a permission mutates the resource (Create,
+// Update, Delete) as opposed to reading it.
+func isMutatingPermission(perm accesstypes.Permission) bool {
 	switch perm {
-	case accesstypes.NullPermission:
-		return
 	case accesstypes.Create, accesstypes.Update, accesstypes.Delete:
-		mutating[perm] = struct{}{}
+		return true
 	default:
-		nonmutating[perm] = struct{}{}
+		return false
 	}
-
-	permissionMap[perm] = struct{}{}
 }
 
 // permissionsFromFieldTags is the single source of permission-collection semantics: the
 // runtime path (permissionsFromTags, reflecting over generated request structs) and the
 // generator's static path (NewSetData, built from the same tag values the generator
 // writes into those structs) both flow through it, so the two can never diverge.
+//
+// Field-level enforcement is structural: every client-addressable field (a field with a
+// real json tag) requires the given permissions, minus Delete, which stays
+// resource-level. The perm tag no longer carries permissions; its only legal value is
+// the perm:"-" primary-key exemption, which leaves the field unregistered on the
+// runtime path (readability follows the resource-level grant) and registered without
+// permissions on the registerAll path. Any other perm value is an error, so a stale or
+// hand-written struct carrying pre-flip permission tags fails at construction (boot)
+// instead of silently weakening enforcement.
 func permissionsFromFieldTags(fields []FieldTags, perms []accesstypes.Permission, registerAll bool) (tags accesstypes.TagPermissions, fieldToTag map[accesstypes.Field]accesstypes.Tag, permissions []accesstypes.Permission, immutableFields map[accesstypes.Tag]struct{}, err error) {
 	tags = make(accesstypes.TagPermissions)
 	fieldToTag = make(map[accesstypes.Field]accesstypes.Tag)
@@ -160,50 +198,14 @@ func permissionsFromFieldTags(fields []FieldTags, perms []accesstypes.Permission
 	immutableFields = make(map[accesstypes.Tag]struct{})
 
 	for _, perm := range perms {
-		classifyPermission(perm, permissionMap, mutating, nonmutating)
-	}
-
-	for _, field := range fields {
-		jsonTag := field.JSON
-		perms := strings.Split(field.Perm, ",")
-
-		if field.Immutable {
-			immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
-
-			// immutability is implemented by requiring the update permission (here) and then
-			// disallowing it from being assigned to a role (elsewhere)
-			if !slices.Contains(perms, string(accesstypes.Update)) {
-				perms = append(perms, string(accesstypes.Update))
-			}
+		if perm == accesstypes.NullPermission {
+			continue
 		}
-
-		var collected bool
-		for _, s := range perms {
-			permission := accesstypes.Permission(strings.TrimSpace(s))
-			switch permission {
-			case accesstypes.NullPermission:
-				continue
-			case accesstypes.Delete:
-				return nil, nil, nil, nil, errors.Newf("delete permission is not allowed in struct tag")
-			case accesstypes.Create, accesstypes.Update:
-				mutating[permission] = struct{}{}
-			default:
-				nonmutating[permission] = struct{}{}
-			}
-
-			if jsonTag == "" || jsonTag == "-" {
-				return nil, nil, nil, nil, errors.Newf("can not set %s permission on the %s field when json tag is empty", permission, field.Field)
-			}
-			tags[accesstypes.Tag(jsonTag)] = append(tags[accesstypes.Tag(jsonTag)], permission)
-			fieldToTag[field.Field] = accesstypes.Tag(jsonTag)
-			permissionMap[permission] = struct{}{}
-			collected = true
-		}
-		if !collected && registerAll {
-			if jsonTag != "" && jsonTag != "-" {
-				tags[accesstypes.Tag(jsonTag)] = append(tags[accesstypes.Tag(jsonTag)], accesstypes.NullPermission)
-				fieldToTag[field.Field] = accesstypes.Tag(jsonTag)
-			}
+		permissionMap[perm] = struct{}{}
+		if isMutatingPermission(perm) {
+			mutating[perm] = struct{}{}
+		} else {
+			nonmutating[perm] = struct{}{}
 		}
 	}
 
@@ -215,6 +217,46 @@ func permissionsFromFieldTags(fields []FieldTags, perms []accesstypes.Permission
 		return nil, nil, nil, nil, errors.Newf("can not have both non-mutating and mutating permissions in the same struct: found %s and %s", slices.Collect(maps.Keys(nonmutating)), slices.Collect(maps.Keys(mutating)))
 	}
 
+	fieldPerms := make([]accesstypes.Permission, 0, len(permissionMap))
+	for perm := range permissionMap {
+		if perm == accesstypes.Delete {
+			continue
+		}
+		fieldPerms = append(fieldPerms, perm)
+	}
+	slices.Sort(fieldPerms)
+
+	for _, field := range fields {
+		jsonTag := field.JSON
+
+		if field.Immutable {
+			immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
+		}
+
+		switch field.Perm {
+		case "":
+			switch jsonTag {
+			case "-":
+				// Excluded from the request wire format; nothing to enforce.
+			case "":
+				return nil, nil, nil, nil, errors.Newf("field %s must carry a json tag; use json:\"-\" to exclude it from the request", field.Field)
+			default:
+				if len(fieldPerms) == 0 {
+					return nil, nil, nil, nil, errors.Newf("field %s requires field-level permissions, but none were provided: pass at least one non-Delete permission (Delete is enforced at the resource level)", field.Field)
+				}
+				tags[accesstypes.Tag(jsonTag)] = slices.Clone(fieldPerms)
+				fieldToTag[field.Field] = accesstypes.Tag(jsonTag)
+			}
+		case permTagExempt:
+			if registerAll && jsonTag != "" && jsonTag != "-" {
+				tags[accesstypes.Tag(jsonTag)] = append(tags[accesstypes.Tag(jsonTag)], accesstypes.NullPermission)
+				fieldToTag[field.Field] = accesstypes.Tag(jsonTag)
+			}
+		default:
+			return nil, nil, nil, nil, errors.Newf("perm:%q on field %s is not supported: field permissions are enforced structurally from the endpoint permission; regenerate this struct — only perm:%q (the primary-key exemption) is recognized", field.Perm, field.Field, permTagExempt)
+		}
+	}
+
 	permissions = slices.Collect(maps.Keys(permissionMap))
 	slices.Sort(permissions)
 
@@ -224,6 +266,7 @@ func permissionsFromFieldTags(fields []FieldTags, perms []accesstypes.Permission
 // Metadata contains cached metadata about a resource, such as its database schema mapping and configuration.
 type Metadata[Resource Resourcer] struct {
 	dbMap               map[DBType]map[accesstypes.Field]dbFieldMetadata
+	dbFields            map[DBType][]accesstypes.Field
 	changeTrackingTable string
 	trackChanges        bool
 }
@@ -236,6 +279,7 @@ func NewMetadata[Resource Resourcer]() *Metadata[Resource] {
 
 	return &Metadata[Resource]{
 		dbMap:               c.dbMap,
+		dbFields:            c.dbFields,
 		changeTrackingTable: c.cfg.ChangeTrackingTable,
 		trackChanges:        c.cfg.TrackChanges,
 	}
@@ -246,9 +290,11 @@ func (r *Metadata[Resource]) dbFieldMap(dbType DBType) map[accesstypes.Field]dbF
 	return r.dbMap[dbType]
 }
 
-// DBFields returns a slice of all field names for a given database type.
+// DBFields returns all field names for a given database type in struct
+// declaration order — deterministic, so default field sets and generated
+// query column order are stable across processes.
 func (r *Metadata[Resource]) DBFields(dbType DBType) []accesstypes.Field {
-	return slices.Collect(maps.Keys(r.dbMap[dbType]))
+	return slices.Clone(r.dbFields[dbType])
 }
 
 // DBFieldCount returns the number of fields for a given database type.
@@ -261,8 +307,9 @@ var resMetadataCache = resourceMetadataCache{
 }
 
 type resourceMetadataCacheEntry struct {
-	dbMap map[DBType]map[accesstypes.Field]dbFieldMetadata
-	cfg   Config
+	dbMap    map[DBType]map[accesstypes.Field]dbFieldMetadata
+	dbFields map[DBType][]accesstypes.Field
+	cfg      Config
 }
 
 type resourceMetadataCache struct {
@@ -305,21 +352,25 @@ func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
 	}
 
 	dbMap := make(map[DBType]map[accesstypes.Field]dbFieldMetadata)
+	dbFields := make(map[DBType][]accesstypes.Field)
 	for _, dbType := range dbTypes() {
-		dbFieldMap := dbStructTags(t, dbType)
+		dbFieldMap, ordered := dbStructTags(t, dbType)
 		dbMap[dbType] = dbFieldMap
+		dbFields[dbType] = ordered
 	}
 
 	c.cache[t] = &resourceMetadataCacheEntry{
-		dbMap: dbMap,
-		cfg:   cfg,
+		dbMap:    dbMap,
+		dbFields: dbFields,
+		cfg:      cfg,
 	}
 
 	return c.cache[t]
 }
 
-func dbStructTags(t reflect.Type, dbType DBType) map[accesstypes.Field]dbFieldMetadata {
+func dbStructTags(t reflect.Type, dbType DBType) (map[accesstypes.Field]dbFieldMetadata, []accesstypes.Field) {
 	tagMap := make(map[accesstypes.Field]dbFieldMetadata)
+	var ordered []accesstypes.Field
 	for i := range t.NumField() {
 		field := t.Field(i)
 		tag := field.Tag.Get(string(dbType))
@@ -330,7 +381,8 @@ func dbStructTags(t reflect.Type, dbType DBType) map[accesstypes.Field]dbFieldMe
 		}
 
 		tagMap[accesstypes.Field(field.Name)] = dbFieldMetadata{index: i, ColumnName: parts[0]}
+		ordered = append(ordered, accesstypes.Field(field.Name))
 	}
 
-	return tagMap
+	return tagMap, ordered
 }

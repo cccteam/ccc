@@ -16,7 +16,7 @@ import (
 
 func (a *App) DockingBays() http.HandlerFunc {
 	type dockingBay struct {
-		ID         ccc.UUID `json:"id"         index:"true"`
+		ID         ccc.UUID `json:"id"         index:"true" perm:"-"`
 		Name       string   `json:"name"       index:"true"`
 		DeckLevel  int64    `json:"deckLevel"`
 		MaxTonnage int64    `json:"maxTonnage"`
@@ -24,13 +24,13 @@ func (a *App) DockingBays() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.DockingBay, dockingBay](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.DockingBay, dockingBay](accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalScope())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -65,13 +65,13 @@ func (a *App) DockingBays() http.HandlerFunc {
 
 func (a *App) DockingBay() http.HandlerFunc {
 	type response struct {
-		ID         ccc.UUID `json:"id"         index:"true"`
+		ID         ccc.UUID `json:"id"         index:"true" perm:"-"`
 		Name       string   `json:"name"       index:"true"`
 		DeckLevel  int64    `json:"deckLevel"`
 		MaxTonnage int64    `json:"maxTonnage"`
 	}
 
-	decoder := NewQueryDecoder[resources.DockingBay, response](a, accesstypes.Read)
+	decoder := NewQueryDecoder[resources.DockingBay, response](accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -79,7 +79,7 @@ func (a *App) DockingBay() http.HandlerFunc {
 
 		id := httpio.Param[ccc.UUID](r, router.DockingBayID)
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalScope())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}

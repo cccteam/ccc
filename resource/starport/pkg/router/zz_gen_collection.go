@@ -15,6 +15,34 @@ func Collection() *resource.GeneratedCollection {
 	return resource.MustNewGeneratedCollection(resource.CollectionData{
 		Resources: []resource.CollectionResource{
 			{
+				Name:        "AuthorizeDocking",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+			},
+			{
+				Name:        "Berths",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
+				Tags: []resource.TagData{
+					{Name: "designation", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
+					{Name: "id"},
+					{Name: "occupied", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "sizeClass", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+				},
+				ImmutableTags: []accesstypes.Tag{"designation"},
+			},
+			{
+				Name:        "GantryCranes",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
+				Tags: []resource.TagData{
+					{Name: "callsign", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "id"},
+					{Name: "liftTonnage", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "operational", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+				},
+			},
+			{
 				Name:        "AuthorizeLaunch",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
@@ -25,9 +53,9 @@ func Collection() *resource.GeneratedCollection {
 				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
 				Tags: []resource.TagData{
 					{Name: "declaredValue", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
-					{Name: "details"},
+					{Name: "details", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "lineNumber"},
-					{Name: "quantity"},
+					{Name: "quantity", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "shipId"},
 				},
 			},
@@ -49,10 +77,35 @@ func Collection() *resource.GeneratedCollection {
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
 				Tags: []resource.TagData{
-					{Name: "deckLevel"},
+					{Name: "deckLevel", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "id"},
-					{Name: "maxTonnage"},
-					{Name: "name"},
+					{Name: "maxTonnage", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+				},
+			},
+			{
+				Name:        "ManifestLines",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags: []resource.TagData{
+					{Name: "declaredValue", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "details", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "lineNumber"},
+					{Name: "quantity", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "shipId"},
+					{Name: "shipName", Permissions: []accesstypes.Permission{accesstypes.List}},
+				},
+			},
+			{
+				Name:        "ShipCargoSummaries",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags: []resource.TagData{
+					{Name: "dockingBayName", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "manifestLines", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "shipId"},
+					{Name: "shipName", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "totalDeclaredValue", Permissions: []accesstypes.Permission{accesstypes.List}},
 				},
 			},
 			{
@@ -64,10 +117,19 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "dockingBayId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "id"},
 					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
-					{Name: "registryCode", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "registryCode", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
 					{Name: "updatedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 				},
 				ImmutableTags: []accesstypes.Tag{"registryCode"},
+			},
+			{
+				Name:        "Stations",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
+				Tags: []resource.TagData{
+					{Name: "id"},
+					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+				},
 			},
 			{
 				Name:        "SupplyCrates",

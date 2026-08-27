@@ -12,19 +12,119 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/go-playground/errors/v5"
+	"golang.org/x/tools/go/packages"
 )
 
 type resourceGenerator struct {
 	*client
-	genHandlers         bool
-	genRoutes           bool
-	handler             packageDir
-	router              packageDir
-	routePrefix         string
-	applicationName     string
-	receiverName        string
+	genHandlers     bool
+	genRoutes       bool
+	genHandlerTests bool
+	handler         packageDir
+	router          packageDir
+	handlerTests    packageDir
+	routePrefix     string
+	applicationName string
+	receiverName    string
+	// domainRouteSegment/domainRouteParam form the route segment pair domain-scoped
+	// resources are served under: /{prefix}/{domainRouteSegment}/{domainRouteParam}/...
+	// Defaults: "domains"/"domain"; customized via WithDomainRoute.
+	domainRouteSegment string
+	domainRouteParam   string
+	// extraOutlets are the router outlets declared by WithRouterOutlet, beyond the
+	// default outlet GenerateRoutes declares. Resources join them via @outlet.
+	extraOutlets        []routerOutlet
 	typescriptTargets   []typescriptTarget
 	manualRegistrations []ManualRegistration
+}
+
+// allOutlets returns every declared router outlet: the default outlet first,
+// followed by the WithRouterOutlet declarations in option order.
+func (r *resourceGenerator) allOutlets() []routerOutlet {
+	outlets := make([]routerOutlet, 0, len(r.extraOutlets)+1)
+	outlets = append(outlets, routerOutlet{name: defaultOutletName, prefix: r.routePrefix})
+
+	return append(outlets, r.extraOutlets...)
+}
+
+// memberOutlets returns the declared outlets the membership joins, in declaration order.
+func (r *resourceGenerator) memberOutlets(m *outletMembership) []routerOutlet {
+	var outlets []routerOutlet
+	for _, outlet := range r.allOutlets() {
+		if m.OnOutlet(outlet.name) {
+			outlets = append(outlets, outlet)
+		}
+	}
+
+	return outlets
+}
+
+// validateOutletConfig checks the WithRouterOutlet declarations against each other and
+// the default outlet: unique names, and prefixes that neither collide nor nest, so
+// every outlet's URL space stays disjoint (the generated outlet-isolation tests rely
+// on this).
+func (r *resourceGenerator) validateOutletConfig() error {
+	if len(r.extraOutlets) == 0 {
+		return nil
+	}
+	if !r.genRoutes {
+		return errors.New("WithRouterOutlet requires GenerateRoutes: outlets are registration surfaces of the generated router")
+	}
+
+	outlets := r.allOutlets()
+	for i, outlet := range outlets {
+		for _, prior := range outlets[:i] {
+			if strings.EqualFold(prior.name, outlet.name) {
+				return errors.Newf("WithRouterOutlet(%q) redeclares outlet %q", outlet.name, prior.name)
+			}
+			if prefixesNest(prior.prefix, outlet.prefix) {
+				return errors.Newf("WithRouterOutlet(%q, %q) route prefix collides with outlet %q's prefix %q: outlet prefixes must not equal or nest within each other", outlet.name, outlet.prefix, prior.name, prior.prefix)
+			}
+		}
+	}
+
+	return nil
+}
+
+// prefixesNest reports whether one route prefix equals the other or sits beneath it
+// as a path.
+func prefixesNest(a, b string) bool {
+	return a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
+}
+
+// validateAnnotatedOutlets checks every @outlet annotation against the declared
+// outlets, so a typo or an undeclared outlet fails generation instead of silently
+// dropping routes.
+func (r *resourceGenerator) validateAnnotatedOutlets() error {
+	declared := make([]string, 0, len(r.extraOutlets)+1)
+	for _, outlet := range r.allOutlets() {
+		declared = append(declared, outlet.name)
+	}
+
+	var errs []error
+	check := func(structName string, m *outletMembership) {
+		for _, name := range m.OutletNames {
+			if !slices.Contains(declared, name) {
+				errs = append(errs, errors.Newf("@%s(%s) on %s references an undeclared outlet; declared outlets are %v (see WithRouterOutlet)", outletKeyword, name, structName, declared))
+			}
+		}
+	}
+
+	for _, res := range r.resources {
+		check(res.Name(), &res.outletMembership)
+	}
+	for _, res := range r.computedResources {
+		check(res.Name(), &res.outletMembership)
+	}
+	for _, rpcStruct := range r.rpcMethods {
+		check(rpcStruct.Name(), &rpcStruct.outletMembership)
+	}
+
+	if len(errs) != 0 {
+		return errors.Wrap(errors.Join(errs...), "outlet annotation error")
+	}
+
+	return nil
 }
 
 // NewResourceGenerator constructs a new Generator for generating a resource-driven API.
@@ -53,6 +153,10 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 		return nil, err
 	}
 
+	if err := r.validateOutletConfig(); err != nil {
+		return nil, err
+	}
+
 	return r, nil
 }
 
@@ -72,7 +176,7 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	resourcesPkg := parser.ParsePackage(pkg)
-	r.resources, err = r.structsToResources(resourcesPkg.Structs, r.validateStructNameMatchesFile(pkg, true))
+	r.resources, err = r.structsToResources(resourcesPkg.Structs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
 	if err != nil {
 		return err
 	}
@@ -85,7 +189,7 @@ func (r *resourceGenerator) Generate() error {
 
 	if r.genVirtualResources {
 		virtualStructs := parser.ParsePackage(packageMap[r.virtual.Package()]).Structs
-		virtualResources, err := r.structsToVirtualResources(virtualStructs, r.validateStructNameMatchesFile(pkg, true))
+		virtualResources, err := r.structsToVirtualResources(virtualStructs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
 		if err != nil {
 			return err
 		}
@@ -105,13 +209,17 @@ func (r *resourceGenerator) Generate() error {
 	// needs to run before resource generation so the data can be sneakily snuck into resource generation
 	if r.genComputedResources {
 		compStructs := parser.ParsePackage(packageMap[r.computed.Package()]).Structs
-		computedResources, err := structsToCompResources(compStructs, r.validateStructNameMatchesFile(pkg, true))
+		computedResources, err := structsToCompResources(compStructs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
 		if err != nil {
 			return err
 		}
 
 		r.computedResources = computedResources
 	}
+
+	// The domain route parameter is derived from the parsed resources (tenant-record
+	// pattern), so it must resolve before anything renders a domain route.
+	r.deriveDomainRouteParam()
 
 	if err := r.runResourcesGeneration(); err != nil {
 		return err
@@ -121,20 +229,13 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
-	if r.genRPCMethods {
-		rpcStructs := parser.ParsePackage(packageMap[r.rpc.Package()]).Structs
-		if len(rpcStructs) == 0 {
-			log.Printf("(RPC Generation) No structs in package %q annotated with @rpc", r.rpc.Dir())
-		}
+	if err := r.extractAndGenerateRPC(packageMap, pkg); err != nil {
+		return err
+	}
 
-		r.rpcMethods, err = r.structsToRPCMethods(rpcStructs, r.validateStructNameMatchesFile(pkg, false))
-		if err != nil {
-			return err
-		}
-
-		if err := r.runRPCGeneration(); err != nil {
-			return err
-		}
+	// Runs after every annotated struct kind is extracted (rpc methods last).
+	if err := r.validateAnnotatedOutlets(); err != nil {
+		return err
 	}
 
 	if r.genRoutes {
@@ -144,6 +245,11 @@ func (r *resourceGenerator) Generate() error {
 	}
 	if r.genHandlers {
 		if err := r.runHandlerGeneration(); err != nil {
+			return err
+		}
+	}
+	if r.genHandlerTests {
+		if err := r.runHandlerTestsGeneration(); err != nil {
 			return err
 		}
 	}
@@ -159,6 +265,27 @@ func (r *resourceGenerator) Generate() error {
 	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
 
 	return nil
+}
+
+// extractAndGenerateRPC parses the RPC package into rpcMethods and runs the RPC
+// generation, when enabled.
+func (r *resourceGenerator) extractAndGenerateRPC(packageMap map[string]*packages.Package, pkg *packages.Package) error {
+	if !r.genRPCMethods {
+		return nil
+	}
+
+	rpcStructs := parser.ParsePackage(packageMap[r.rpc.Package()]).Structs
+	if len(rpcStructs) == 0 {
+		log.Printf("(RPC Generation) No structs in package %q annotated with @rpc", r.rpc.Dir())
+	}
+
+	var err error
+	r.rpcMethods, err = r.structsToRPCMethods(rpcStructs, r.validateStructNameMatchesFile(pkg, false), validateNoPermTags)
+	if err != nil {
+		return err
+	}
+
+	return r.runRPCGeneration()
 }
 
 // runCollectionGeneration computes the permission collection and produces its outputs.
@@ -237,6 +364,8 @@ func (r *resourceGenerator) buildUnifiedTypescriptGenerator(gc *resource.Generat
 	t.client = r.client
 	t.rc = gc
 	t.routerResources = routerResources
+	t.domainRouteSegment = r.domainRouteSegment
+	t.domainRouteParam = r.domainRouteParam
 
 	return t, nil
 }

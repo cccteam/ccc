@@ -7,17 +7,21 @@ import (
 )
 
 type (
-	// Ship is a fully tagged resource: every non-primary-key field carries an explicit
-	// perm tag, so the field-permission default (fail open today, fail closed in the
-	// future) is never consulted. The invariant integration suite depends on this.
+	// Ship is a structurally enforced resource: no field carries any permission
+	// annotation, and every non-primary-key field requires the endpoint's permission
+	// on its field resource. The invariant integration suite depends on this.
+	//
+	// Ships are also served on the automation outlet: the machine REST API composed
+	// behind API-key authentication instead of the browser session.
 	//
 	// @resource
+	// @outlet(default, automation)
 	Ship struct {
 		ID           ccc.UUID     `spanner:"Id"`
-		RegistryCode string       `spanner:"RegistryCode" conditions:"immutable"                              perm:"Read,List,Create"`
-		Name         string       `spanner:"Name"         perm:"Read,List,Create,Update"`
-		DockingBayID ccc.NullUUID `spanner:"DockingBayId" perm:"Read,List,Create,Update"`
-		CargoValue   int64        `spanner:"CargoValue"   perm:"Read,List,Create,Update"`
-		UpdatedAt    *time.Time   `spanner:"UpdatedAt"    output_only_update_fn:"resource.CommitTimestampPtr" perm:"Read,List"`
+		RegistryCode string       `spanner:"RegistryCode" conditions:"immutable"`
+		Name         string       `spanner:"Name"`
+		DockingBayID ccc.NullUUID `spanner:"DockingBayId"`
+		CargoValue   int64        `spanner:"CargoValue"`
+		UpdatedAt    *time.Time   `spanner:"UpdatedAt"    output_only_update_fn:"resource.CommitTimestampPtr"`
 	}
 )

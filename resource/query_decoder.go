@@ -1,7 +1,6 @@
 package resource
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,13 +11,6 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
-)
-
-type (
-	// DomainFromCtx is a function that extracts a domain from a context.
-	DomainFromCtx func(context.Context) accesstypes.Domain
-	// UserFromCtx is a function that extracts a user from a context.
-	UserFromCtx func(context.Context) accesstypes.User
 )
 
 type parsedQueryParams struct {
@@ -68,6 +60,24 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 	}, nil
 }
 
+// MustNewQueryDecoder builds a query decoder for a resource and request pair. It
+// panics on construction errors: they are programming errors (a request struct out of
+// sync with its resource), surfaced at application startup where generated handlers
+// construct their decoders.
+func MustNewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *QueryDecoder[Resource, Request] {
+	rSet, err := NewSet[Resource, Request](permissions...)
+	if err != nil {
+		panic(err)
+	}
+
+	decoder, err := NewQueryDecoder[Resource, Request](rSet)
+	if err != nil {
+		panic(err)
+	}
+
+	return decoder
+}
+
 // DecodeWithoutPermissions decodes an http.Request into a QuerySet without enforcing user permissions.
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
 	queryParams := request.URL.Query()
@@ -114,8 +124,9 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	return qSet, nil
 }
 
-// Decode decodes an http.Request into a QuerySet and enables user permission enforcement.
-func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions) (*QuerySet[Resource], error) {
+// Decode decodes an http.Request into a QuerySet and enables user permission enforcement
+// in the given domain partition.
+func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, scope accesstypes.Scope) (*QuerySet[Resource], error) {
 	qSet, err := d.DecodeWithoutPermissions(request)
 	if err != nil {
 		return nil, err
@@ -126,7 +137,7 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 		panic(fmt.Sprintf("expected one non-mutating permission, found: %d, (%s)", len(perms), perms))
 	}
 
-	qSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, perms[0])
+	qSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, perms[0])
 
 	return qSet, nil
 }

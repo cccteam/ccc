@@ -1,0 +1,14 @@
+.form-card {
+  max-width: 640px;
+
+  form {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+
+    mat-form-field {
+      width: 320px;
+    }
+  }
+}

@@ -11,9 +11,11 @@ import (
 type (
 	// AuthorizeLaunch authorizes a ship for departure. The starport only exercises the
 	// generated wiring and the Execute permission gate, so the implementation is
-	// intentionally minimal.
+	// intentionally minimal. It is also served on the automation outlet, exercising an
+	// RPC method behind the machine REST API.
 	//
 	// @rpc
+	// @outlet(default, automation)
 	AuthorizeLaunch struct {
 		ShipID     ccc.UUID
 		LaunchCode string

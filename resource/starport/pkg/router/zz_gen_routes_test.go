@@ -5,9 +5,175 @@ package router
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
 
-	"github.com/cccteam/ccc/resource/starport/pkg/mock/mock_router"
+	"github.com/go-chi/chi/v5"
 )
+
+// TestGeneratedRoutes drives every generated route through NewTestRouter: each request
+// must return 200, dispatch to exactly its own handler, and resolve the expected route
+// parameters.
+func TestGeneratedRoutes(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range generatedRouterTests() {
+		t.Run(tt.method+"-url"+strings.ReplaceAll(tt.url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newGeneratedCallRecorder()
+			router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall))
+
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, http.NoBody)
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			if got := rr.Code; got != http.StatusOK {
+				t.Errorf("response.Code = %v, want %v", got, http.StatusOK)
+			}
+
+			if cnt := len(rec.handlers); cnt != 1 {
+				t.Fatalf("expected 1 handler called, got: %v", rec.handlers)
+			}
+			if cnt := rec.handlers[tt.handlerFunc]; cnt != 1 {
+				t.Fatalf("handler %s, expected 1 call, got: %d", tt.handlerFunc, cnt)
+			}
+
+			for key, value := range tt.parameters {
+				if got := rec.Parameter(tt.handlerFunc, key); got != value {
+					t.Fatalf("%s = %s, expected %s", key, got, value)
+				}
+			}
+		})
+	}
+}
+
+// TestGeneratedRouteOutletIsolation proves the outlets stay disjoint: a route is
+// registered only under the outlets its resource is attached to, so its path under
+// any other outlet's prefix must fall through to 404 with no handler dispatched.
+func TestGeneratedRouteOutletIsolation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		url    string
+		method string
+	}{
+		{url: "/automation/stations/testDomain/berths", method: http.MethodGet},
+		{url: "/automation/stations/testDomain/berths", method: http.MethodPost},
+		{url: "/automation/stations/testDomain/berths/testBerthID", method: http.MethodGet},
+		{url: "/automation/stations/testDomain/berths/testBerthID", method: http.MethodPost},
+		{url: "/automation/stations/testDomain/berths", method: http.MethodPatch},
+		{url: "/automation/cargo-manifests", method: http.MethodGet},
+		{url: "/automation/cargo-manifests", method: http.MethodPost},
+		{url: "/automation/cargo-manifests/testCargoManifestShipID/testCargoManifestLineNumber", method: http.MethodGet},
+		{url: "/automation/cargo-manifests/testCargoManifestShipID/testCargoManifestLineNumber", method: http.MethodPost},
+		{url: "/automation/crew-members", method: http.MethodGet},
+		{url: "/automation/crew-members", method: http.MethodPost},
+		{url: "/automation/crew-members/testCrewMemberID", method: http.MethodGet},
+		{url: "/automation/crew-members/testCrewMemberID", method: http.MethodPost},
+		{url: "/automation/crew-members", method: http.MethodPatch},
+		{url: "/automation/docking-bays", method: http.MethodGet},
+		{url: "/automation/docking-bays", method: http.MethodPost},
+		{url: "/automation/docking-bays/testDockingBayID", method: http.MethodGet},
+		{url: "/automation/docking-bays/testDockingBayID", method: http.MethodPost},
+		{url: "/automation/manifest-lines", method: http.MethodGet},
+		{url: "/automation/manifest-lines", method: http.MethodPost},
+		{url: "/automation/stations", method: http.MethodGet},
+		{url: "/automation/stations", method: http.MethodPost},
+		{url: "/automation/stations/testStationID", method: http.MethodGet},
+		{url: "/automation/stations/testStationID", method: http.MethodPost},
+		{url: "/automation/supply-crates", method: http.MethodGet},
+		{url: "/automation/supply-crates", method: http.MethodPost},
+		{url: "/automation/supply-crates/testSupplyCrateID", method: http.MethodGet},
+		{url: "/automation/supply-crates/testSupplyCrateID", method: http.MethodPost},
+		{url: "/automation/stations/testDomain/authorize-docking", method: http.MethodPost},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+"-url"+strings.ReplaceAll(tt.url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newGeneratedCallRecorder()
+			router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall))
+
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, http.NoBody)
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			if got := rr.Code; got != http.StatusNotFound {
+				t.Errorf("response.Code = %v, want %v", got, http.StatusNotFound)
+			}
+			if cnt := len(rec.handlers); cnt != 0 {
+				t.Fatalf("expected no handler called, got: %v", rec.handlers)
+			}
+		})
+	}
+}
+
+// generatedCallRecorder tracks handler dispatch: which handlers ran, how often, and
+// the route parameters chi resolved for each. It also records middleware execution —
+// unused by the generated routing test above, which exercises bare dispatch, but
+// shared with the application's own router structure tests so they need no private
+// recorder.
+type generatedCallRecorder struct {
+	handlers    map[string]int
+	parameters  map[string]map[string]string
+	middlewares map[string]int
+}
+
+func newGeneratedCallRecorder() *generatedCallRecorder {
+	return &generatedCallRecorder{
+		handlers:    make(map[string]int),
+		parameters:  make(map[string]map[string]string),
+		middlewares: make(map[string]int),
+	}
+}
+
+// RecordHandlerCall returns a handler that counts its own dispatch and captures every
+// generated route parameter present on the request.
+func (rec *generatedCallRecorder) RecordHandlerCall(name string) http.HandlerFunc {
+	return func(_ http.ResponseWriter, r *http.Request) {
+		for _, key := range generatedRouteParameters() {
+			if value := chi.URLParam(r, key); value != "" {
+				if _, found := rec.parameters[name]; !found {
+					rec.parameters[name] = make(map[string]string)
+				}
+				rec.parameters[name][key] = value
+			}
+		}
+
+		rec.handlers[name]++
+	}
+}
+
+func (rec *generatedCallRecorder) Parameter(name, key string) string {
+	if _, ok := rec.parameters[name]; !ok {
+		return ""
+	}
+
+	return rec.parameters[name][key]
+}
+
+// RecordMiddlewareCall returns middleware that counts its own execution per request.
+func (rec *generatedCallRecorder) RecordMiddlewareCall(name string) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rec.middlewares[name]++
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// MiddlewareCount returns how many distinct middlewares ran.
+func (rec *generatedCallRecorder) MiddlewareCount() int {
+	return len(rec.middlewares)
+}
+
+// MiddlewareCallCount returns how many times the named middleware ran.
+func (rec *generatedCallRecorder) MiddlewareCallCount(name string) int {
+	return rec.middlewares[name]
+}
 
 type generatedRouterTest struct {
 	url         string
@@ -18,11 +184,15 @@ type generatedRouterTest struct {
 
 func generatedRouteParameters() []string {
 	keys := []string{
+		"stationID",
+		"berthID",
 		"cargoManifestShipID",
 		"cargoManifestLineNumber",
 		"crewMemberID",
 		"dockingBayID",
+		"gantryCraneID",
 		"shipID",
+		"stationID",
 		"supplyCrateID",
 	}
 
@@ -31,6 +201,31 @@ func generatedRouteParameters() []string {
 
 func generatedRouterTests() []*generatedRouterTest {
 	routerTests := []*generatedRouterTest{
+		{
+			url: "/api/stations/testDomain/berths", method: http.MethodGet,
+			handlerFunc: "Berths",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
+		{
+			url: "/api/stations/testDomain/berths", method: http.MethodPost,
+			handlerFunc: "Berths",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
+		{
+			url: "/api/stations/testDomain/berths/testBerthID", method: http.MethodGet,
+			handlerFunc: "Berth",
+			parameters:  map[string]string{"stationID": "testDomain", "berthID": "testBerthID"},
+		},
+		{
+			url: "/api/stations/testDomain/berths/testBerthID", method: http.MethodPost,
+			handlerFunc: "Berth",
+			parameters:  map[string]string{"stationID": "testDomain", "berthID": "testBerthID"},
+		},
+		{
+			url: "/api/stations/testDomain/berths", method: http.MethodPatch,
+			handlerFunc: "PatchBerths",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
 		{
 			url: "/api/cargo-manifests", method: http.MethodGet,
 			handlerFunc: "CargoManifests",
@@ -97,6 +292,56 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"dockingBayID": "testDockingBayID"},
 		},
 		{
+			url: "/api/stations/testDomain/gantry-cranes", method: http.MethodGet,
+			handlerFunc: "GantryCranes",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
+		{
+			url: "/api/stations/testDomain/gantry-cranes", method: http.MethodPost,
+			handlerFunc: "GantryCranes",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
+		{
+			url: "/api/stations/testDomain/gantry-cranes/testGantryCraneID", method: http.MethodGet,
+			handlerFunc: "GantryCrane",
+			parameters:  map[string]string{"stationID": "testDomain", "gantryCraneID": "testGantryCraneID"},
+		},
+		{
+			url: "/api/stations/testDomain/gantry-cranes/testGantryCraneID", method: http.MethodPost,
+			handlerFunc: "GantryCrane",
+			parameters:  map[string]string{"stationID": "testDomain", "gantryCraneID": "testGantryCraneID"},
+		},
+		{
+			url: "/automation/stations/testDomain/gantry-cranes", method: http.MethodGet,
+			handlerFunc: "GantryCranes",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
+		{
+			url: "/automation/stations/testDomain/gantry-cranes", method: http.MethodPost,
+			handlerFunc: "GantryCranes",
+			parameters:  map[string]string{"stationID": "testDomain"},
+		},
+		{
+			url: "/automation/stations/testDomain/gantry-cranes/testGantryCraneID", method: http.MethodGet,
+			handlerFunc: "GantryCrane",
+			parameters:  map[string]string{"stationID": "testDomain", "gantryCraneID": "testGantryCraneID"},
+		},
+		{
+			url: "/automation/stations/testDomain/gantry-cranes/testGantryCraneID", method: http.MethodPost,
+			handlerFunc: "GantryCrane",
+			parameters:  map[string]string{"stationID": "testDomain", "gantryCraneID": "testGantryCraneID"},
+		},
+		{
+			url: "/api/manifest-lines", method: http.MethodGet,
+			handlerFunc: "ManifestLines",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/manifest-lines", method: http.MethodPost,
+			handlerFunc: "ManifestLines",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/api/ships", method: http.MethodGet,
 			handlerFunc: "Ships",
 			parameters:  map[string]string{},
@@ -115,6 +360,66 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/api/ships/testShipID", method: http.MethodPost,
 			handlerFunc: "Ship",
 			parameters:  map[string]string{"shipID": "testShipID"},
+		},
+		{
+			url: "/automation/ships", method: http.MethodGet,
+			handlerFunc: "Ships",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/automation/ships", method: http.MethodPost,
+			handlerFunc: "Ships",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/automation/ships/testShipID", method: http.MethodGet,
+			handlerFunc: "Ship",
+			parameters:  map[string]string{"shipID": "testShipID"},
+		},
+		{
+			url: "/automation/ships/testShipID", method: http.MethodPost,
+			handlerFunc: "Ship",
+			parameters:  map[string]string{"shipID": "testShipID"},
+		},
+		{
+			url: "/api/ship-cargo-summaries", method: http.MethodGet,
+			handlerFunc: "ShipCargoSummaries",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/ship-cargo-summaries", method: http.MethodPost,
+			handlerFunc: "ShipCargoSummaries",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/automation/ship-cargo-summaries", method: http.MethodGet,
+			handlerFunc: "ShipCargoSummaries",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/automation/ship-cargo-summaries", method: http.MethodPost,
+			handlerFunc: "ShipCargoSummaries",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/stations", method: http.MethodGet,
+			handlerFunc: "Stations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/stations", method: http.MethodPost,
+			handlerFunc: "Stations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/stations/testStationID", method: http.MethodGet,
+			handlerFunc: "Station",
+			parameters:  map[string]string{"stationID": "testStationID"},
+		},
+		{
+			url: "/api/stations/testStationID", method: http.MethodPost,
+			handlerFunc: "Station",
+			parameters:  map[string]string{"stationID": "testStationID"},
 		},
 		{
 			url: "/api/supply-crates", method: http.MethodGet,
@@ -140,23 +445,124 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/api/resources", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
 		},
+		{
+			url: "/automation/resources", method: http.MethodPatch,
+			handlerFunc: "PatchAutomationResources",
+		},
 	}
 
 	return routerTests
 }
 
-func generatedExpectCalls(e *mock_router.MockHandlersMockRecorder, rec *callRecorder) {
-	e.AuthorizeLaunch().Times(1).Return(rec.RecordHandlerCall("AuthorizeLaunch"))
-	e.CargoManifests().Times(1).Return(rec.RecordHandlerCall("CargoManifests"))
-	e.CargoManifest().Times(1).Return(rec.RecordHandlerCall("CargoManifest"))
-	e.CrewMembers().Times(1).Return(rec.RecordHandlerCall("CrewMembers"))
-	e.CrewMember().Times(1).Return(rec.RecordHandlerCall("CrewMember"))
-	e.PatchCrewMembers().Times(1).Return(rec.RecordHandlerCall("PatchCrewMembers"))
-	e.DockingBays().Times(1).Return(rec.RecordHandlerCall("DockingBays"))
-	e.DockingBay().Times(1).Return(rec.RecordHandlerCall("DockingBay"))
-	e.Ships().Times(1).Return(rec.RecordHandlerCall("Ships"))
-	e.Ship().Times(1).Return(rec.RecordHandlerCall("Ship"))
-	e.SupplyCrates().Times(1).Return(rec.RecordHandlerCall("SupplyCrates"))
-	e.SupplyCrate().Times(1).Return(rec.RecordHandlerCall("SupplyCrate"))
-	e.PatchResources().Times(1).Return(rec.RecordHandlerCall("PatchResources"))
+// generatedHandlersStub satisfies GeneratedHandlers for routing tests: every handler
+// method returns the record function's handler for its own name. Handwritten router
+// tests can embed it to cover the generated surface of a wider handlers interface.
+type generatedHandlersStub struct {
+	record func(handlerName string) http.HandlerFunc
+}
+
+func newGeneratedHandlersStub(record func(handlerName string) http.HandlerFunc) *generatedHandlersStub {
+	return &generatedHandlersStub{record: record}
+}
+
+// DomainGuard passes requests through unchecked: the routing tests exercise dispatch,
+// not the guard (guard behavior is covered where DomainExists is real).
+func (s *generatedHandlersStub) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc { return next }
+}
+
+func (s *generatedHandlersStub) AuthorizeDocking() http.HandlerFunc {
+	return s.record("AuthorizeDocking")
+}
+
+func (s *generatedHandlersStub) AuthorizeLaunch() http.HandlerFunc {
+	return s.record("AuthorizeLaunch")
+}
+
+func (s *generatedHandlersStub) Berths() http.HandlerFunc {
+	return s.record("Berths")
+}
+
+func (s *generatedHandlersStub) Berth() http.HandlerFunc {
+	return s.record("Berth")
+}
+
+func (s *generatedHandlersStub) PatchBerths() http.HandlerFunc {
+	return s.record("PatchBerths")
+}
+
+func (s *generatedHandlersStub) CargoManifests() http.HandlerFunc {
+	return s.record("CargoManifests")
+}
+
+func (s *generatedHandlersStub) CargoManifest() http.HandlerFunc {
+	return s.record("CargoManifest")
+}
+
+func (s *generatedHandlersStub) CrewMembers() http.HandlerFunc {
+	return s.record("CrewMembers")
+}
+
+func (s *generatedHandlersStub) CrewMember() http.HandlerFunc {
+	return s.record("CrewMember")
+}
+
+func (s *generatedHandlersStub) PatchCrewMembers() http.HandlerFunc {
+	return s.record("PatchCrewMembers")
+}
+
+func (s *generatedHandlersStub) DockingBays() http.HandlerFunc {
+	return s.record("DockingBays")
+}
+
+func (s *generatedHandlersStub) DockingBay() http.HandlerFunc {
+	return s.record("DockingBay")
+}
+
+func (s *generatedHandlersStub) GantryCranes() http.HandlerFunc {
+	return s.record("GantryCranes")
+}
+
+func (s *generatedHandlersStub) GantryCrane() http.HandlerFunc {
+	return s.record("GantryCrane")
+}
+
+func (s *generatedHandlersStub) ManifestLines() http.HandlerFunc {
+	return s.record("ManifestLines")
+}
+
+func (s *generatedHandlersStub) Ships() http.HandlerFunc {
+	return s.record("Ships")
+}
+
+func (s *generatedHandlersStub) Ship() http.HandlerFunc {
+	return s.record("Ship")
+}
+
+func (s *generatedHandlersStub) ShipCargoSummaries() http.HandlerFunc {
+	return s.record("ShipCargoSummaries")
+}
+
+func (s *generatedHandlersStub) Stations() http.HandlerFunc {
+	return s.record("Stations")
+}
+
+func (s *generatedHandlersStub) Station() http.HandlerFunc {
+	return s.record("Station")
+}
+
+func (s *generatedHandlersStub) SupplyCrates() http.HandlerFunc {
+	return s.record("SupplyCrates")
+}
+
+func (s *generatedHandlersStub) SupplyCrate() http.HandlerFunc {
+	return s.record("SupplyCrate")
+}
+
+func (s *generatedHandlersStub) PatchResources() http.HandlerFunc {
+	return s.record("PatchResources")
+}
+
+func (s *generatedHandlersStub) PatchAutomationResources() http.HandlerFunc {
+	return s.record("PatchAutomationResources")
 }

@@ -22,12 +22,13 @@ type ValidatorFunc interface {
 	StructPartial(s any, fields ...string) error
 }
 
-type (
-	// DomainFromReq is a function that extracts a domain from an http.Request.
-	DomainFromReq func(*http.Request) accesstypes.Domain
-	// UserFromReq is a function that extracts a user from an http.Request.
-	UserFromReq func(*http.Request) accesstypes.User
-)
+// DecoderAccessor is the application seam the Must* decoder constructors draw on:
+// the request validator and the per-request user permissions. Generated application
+// code implements and consumes it via the generated decoder constructors.
+type DecoderAccessor interface {
+	Validator() ValidatorFunc
+	UserPermissions(r *http.Request) UserPermissions
+}
 
 // Decoder is a struct that can be used for decoding http requests and validating those requests
 type Decoder[Resource Resourcer, Request any] struct {
@@ -50,6 +51,24 @@ func NewDecoder[Resource Resourcer, Request any](rSet *Set[Resource]) (*Decoder[
 	}, nil
 }
 
+// MustNewDecoder builds a patch decoder for a resource and request pair, validating
+// requests with the accessor's validator. It panics on construction errors: they are
+// programming errors (a request struct out of sync with its resource), surfaced at
+// application startup where generated handlers construct their decoders.
+func MustNewDecoder[Resource Resourcer, Request any](a DecoderAccessor, permissions ...accesstypes.Permission) *Decoder[Resource, Request] {
+	rSet, err := NewSet[Resource, Request](permissions...)
+	if err != nil {
+		panic(err)
+	}
+
+	decoder, err := NewDecoder[Resource, Request](rSet)
+	if err != nil {
+		panic(err)
+	}
+
+	return decoder.WithValidator(a.Validator())
+}
+
 // WithValidator sets the validator function for the Decoder.
 func (d *Decoder[Resource, Request]) WithValidator(v ValidatorFunc) *Decoder[Resource, Request] {
 	decoder := *d
@@ -68,14 +87,15 @@ func (d *Decoder[Resource, Request]) DecodeWithoutPermissions(request *http.Requ
 	return p, nil
 }
 
-// Decode decodes an http.Request into a PatchSet and enables user permission enforcement.
-func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, requiredPermission accesstypes.Permission) (*PatchSet[Resource], error) {
+// Decode decodes an http.Request into a PatchSet and enables user permission enforcement
+// in the given domain partition.
+func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, scope accesstypes.Scope, requiredPermission accesstypes.Permission) (*PatchSet[Resource], error) {
 	p, _, err := decodeToPatch[Resource, Request](d.resourceSet, d.fieldMapper, request, d.validate, requiredPermission)
 	if err != nil {
 		return nil, err
 	}
 
-	p.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, requiredPermission)
+	p.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, requiredPermission)
 
 	return p, nil
 }
@@ -94,13 +114,14 @@ func (d *Decoder[Resource, Request]) DecodeOperationWithoutPermissions(oper *Ope
 	return patchSet, nil
 }
 
-// DecodeOperation decodes an Operation into a PatchSet and enables user permission enforcement.
-func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermissions UserPermissions) (*PatchSet[Resource], error) {
+// DecodeOperation decodes an Operation into a PatchSet and enables user permission
+// enforcement in the given domain partition.
+func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermissions UserPermissions, scope accesstypes.Scope) (*PatchSet[Resource], error) {
 	if oper.Type == OperationDelete {
-		return NewPatchSet(d.resourceSet.ResourceMetadata()).EnableUserPermissionEnforcement(d.resourceSet, userPermissions, permissionFromType(oper.Type)), nil
+		return NewPatchSet(d.resourceSet.ResourceMetadata()).EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, permissionFromType(oper.Type)), nil
 	}
 
-	patchSet, err := d.Decode(oper.Req, userPermissions, permissionFromType(oper.Type))
+	patchSet, err := d.Decode(oper.Req, userPermissions, scope, permissionFromType(oper.Type))
 	if err != nil {
 		return nil, errors.Wrap(err, "httpio.DecoderWithPermissionChecker[Request].Decode()")
 	}

@@ -181,6 +181,9 @@ const (
 const (
 	resourceInterfaceOutputName   = "resources_iface"
 	resourceEnumsFileName         = "enums"
+	domainGuardOutputName         = "domain_guard"
+	decodersOutputName            = "decoders"
+	appContractOutputName         = "app_contract"
 	routesOutputName              = "routes"
 	routerTestOutputName          = "routes_test"
 	consolidatedHandlerOutputName = "consolidated_handler"
@@ -235,6 +238,11 @@ type generatedRoute struct {
 	Path        string
 	HandlerFunc string
 	HandlerType HandlerType
+	// DomainScoped marks routes served under the domain segment pair; the generated
+	// route registration wraps exactly these in the application's DomainGuard
+	// middleware. It is per-route, never per-subtree: a tenant-record resource's
+	// global read route shares the segment pair's position and must stay unguarded.
+	DomainScoped bool
 	// TestURL is Path with each {param} placeholder replaced by its routeTestParam value.
 	TestURL    string
 	TestParams []routeTestParam
@@ -253,6 +261,18 @@ func (g *generatedRoute) appendParamsToPaths() {
 		g.Path += fmt.Sprintf("/{%s}", p.Key)
 		g.TestURL += "/" + p.Value
 	}
+}
+
+// prependDomainTestParam registers the domain route parameter's test value for a
+// domain-scoped route. The domain segment pair sits between the route prefix and the
+// resource segment (already part of Path and TestURL), so it must never go through
+// appendParamsToPaths; call this after appendParamsToPaths.
+func (g *generatedRoute) prependDomainTestParam(paramKey string) {
+	if !g.DomainScoped {
+		return
+	}
+
+	g.TestParams = append([]routeTestParam{{Key: paramKey, Value: domainTestValue}}, g.TestParams...)
 }
 
 // TestMethods returns the net/http method constant names the generated router
@@ -275,11 +295,18 @@ type routeTestParam struct {
 
 type rpcMethodInfo struct {
 	*parser.Struct
+	outletMembership
 	Fields          []*rpcField
 	SuppressHandler bool
 	// PermissionScope is the scope the method's registration uses
 	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
 	PermissionScope accesstypes.PermissionScope
+}
+
+// IsDomainScoped reports whether the method's @permissionScope resolves to the
+// domain scope (an absent annotation defaults to global).
+func (r *rpcMethodInfo) IsDomainScoped() bool {
+	return r.PermissionScope == accesstypes.DomainPermissionScope
 }
 
 func (r *rpcMethodInfo) IsTxnRunner() bool {
@@ -360,6 +387,7 @@ func (r *rpcField) TypescriptDisplayType() string {
 
 type computedResource struct {
 	*parser.Struct
+	outletMembership
 	Fields              []*computedField
 	SuppressReadHandler bool
 	SuppressListHandler bool
@@ -367,6 +395,12 @@ type computedResource struct {
 	// PermissionScope is the scope all of this resource's registrations use
 	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
 	PermissionScope accesstypes.PermissionScope
+}
+
+// IsDomainScoped reports whether the resource's @permissionScope resolves to the
+// domain scope (an absent annotation defaults to global).
+func (c *computedResource) IsDomainScoped() bool {
+	return c.PermissionScope == accesstypes.DomainPermissionScope
 }
 
 func (c *computedResource) HasCompoundPrimaryKey() bool {
@@ -437,6 +471,16 @@ func (c *computedField) PIITag() string {
 	return ""
 }
 
+// PermTag renders the perm:"-" primary-key exemption marker on @primarykey fields; see
+// resourceField.PermTag.
+func (c *computedField) PermTag() string {
+	if c.IsPrimaryKey {
+		return permTagKey + `:"-"`
+	}
+
+	return ""
+}
+
 func (c *computedField) TypescriptDataType() string {
 	if c.typescriptType == uuidTSType {
 		return stringGoType
@@ -450,6 +494,7 @@ func (c *computedField) TypescriptDataType() string {
 
 type resourceInfo struct {
 	*parser.TypeInfo
+	outletMembership
 	Fields             []*resourceField
 	SuppressedHandlers []HandlerType
 	SuppressedRoutes   []RouteType
@@ -468,6 +513,12 @@ type resourceInfo struct {
 	DefaultsUpdateType string
 	ValidateCreateType string
 	ValidateUpdateType string
+}
+
+// IsDomainScoped reports whether the resource's @permissionScope resolves to the
+// domain scope (an absent annotation defaults to global).
+func (r *resourceInfo) IsDomainScoped() bool {
+	return r.PermissionScope == accesstypes.DomainPermissionScope
 }
 
 func (r *resourceInfo) HasNullBool() bool {
@@ -821,53 +872,12 @@ func (f *resourceField) HasOutputOnlyUpdateFunc() bool {
 	return f.OutputOnlyUpdateFuncName() != ""
 }
 
-func (f *resourceField) ReadPermTag() string {
-	tag, ok := f.LookupTag(permTagKey)
-	if !ok {
-		return ""
-	}
-
-	permissions := strings.Split(tag, ",")
-
-	if slices.Contains(permissions, string(accesstypes.Read)) {
-		return fmt.Sprintf("%s:%q", permTagKey, accesstypes.Read)
-	}
-
-	return ""
-}
-
-func (f *resourceField) ListPermTag() string {
-	tag, ok := f.LookupTag(permTagKey)
-	if !ok {
-		return ""
-	}
-
-	permissions := strings.Split(tag, ",")
-
-	if slices.Contains(permissions, string(accesstypes.List)) {
-		return fmt.Sprintf("%s:%q", permTagKey, accesstypes.List)
-	}
-
-	return ""
-}
-
-func (f *resourceField) PatchPermTag() string {
-	tag, ok := f.LookupTag(permTagKey)
-	if !ok {
-		return ""
-	}
-
-	permissions := strings.Split(tag, ",")
-
-	var patches []string
-	for _, perm := range permissions {
-		if perm != string(accesstypes.Read) && perm != string(accesstypes.List) {
-			patches = append(patches, perm)
-		}
-	}
-
-	if len(patches) != 0 {
-		return fmt.Sprintf("%s:%q", permTagKey, strings.Join(patches, ","))
+// PermTag renders the perm:"-" primary-key exemption marker: an exempt field's
+// readability follows the resource-level grant. Every other field carries no perm tag
+// and is enforced structurally with the handler's permissions.
+func (f *resourceField) PermTag() string {
+	if f.IsPrimaryKey {
+		return permTagKey + `:"-"`
 	}
 
 	return ""
@@ -932,10 +942,11 @@ const (
 	defaultsUpdateTypeKeyword   string = "defaultsUpdateType"   // Specifies a type to call "Defaults()" on for setting defaults on resource update
 	validateCreateTypeKeyword   string = "validateCreateType"   // Specifies a type to call "Validate()" on for validating a resource on creation
 	validateUpdateTypeKeyword   string = "validateUpdateType"   // Specifies a type to call "Validate()" on for validating a resource on update
-	primarykeyKeyword           string = "primarykey"           // Designates a field as a primary key in a Computed Resource
+	primarykeyKeyword           string = "primarykey"           // Designates a field as (part of) the primary key in a Computed or Virtual Resource
 	manualAddResourceKeyword    string = "manualAddResource"    // Declares a manual permission registration on an accesstypes.Resource constant
 	manualAddResourceSetKeyword string = "manualAddResourceSet" // Declares that hand-written handlers register this resource's permission Sets for the given handler types
 	permissionScopeKeyword      string = "permissionScope"      // Declares the permission scope (global or domain) all of a resource's registrations use
+	outletKeyword               string = "outlet"               // Declares the router outlets a resource's routes are registered under
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -954,5 +965,22 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		manualAddResourceKeyword:    {genlang.ScanConstant: genlang.ArgsRequired},
 		manualAddResourceSetKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
 		permissionScopeKeyword:      {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		outletKeyword:               {genlang.ScanStruct: genlang.ArgsRequired},
 	}
+}
+
+// outletMembership records the router outlets a struct's @outlet annotation names.
+// An empty list means the default outlet only; naming any outlet replaces that
+// default entirely, so a resource on the default outlet and another lists both.
+type outletMembership struct {
+	OutletNames []string
+}
+
+// OnOutlet reports whether the struct's routes are registered under the named outlet.
+func (o *outletMembership) OnOutlet(name string) bool {
+	if len(o.OutletNames) == 0 {
+		return name == defaultOutletName
+	}
+
+	return slices.Contains(o.OutletNames, name)
 }

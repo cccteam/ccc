@@ -19,6 +19,12 @@ import (
 func loadCollectionFixture(t *testing.T) *parser.Package {
 	t.Helper()
 
+	return loadFixture(t, "collectionfixture")
+}
+
+func loadFixture(t *testing.T, name string) *parser.Package {
+	t.Helper()
+
 	// Other tests in the package chdir to the module root (client construction does),
 	// so resolve the fixture relative to this source file, not the working directory.
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -29,7 +35,7 @@ func loadCollectionFixture(t *testing.T) *parser.Package {
 	if err != nil {
 		t.Fatalf("os.Getwd() error = %v", err)
 	}
-	fixtureDir, err := filepath.Rel(cwd, filepath.Join(filepath.Dir(thisFile), "testdata", "collectionfixture"))
+	fixtureDir, err := filepath.Rel(cwd, filepath.Join(filepath.Dir(thisFile), "testdata", name))
 	if err != nil {
 		t.Fatalf("filepath.Rel() error = %v", err)
 	}
@@ -38,9 +44,9 @@ func loadCollectionFixture(t *testing.T) *parser.Package {
 	if err != nil {
 		t.Fatalf("parser.LoadPackages() error = %v", err)
 	}
-	pkg := pkgs["collectionfixture"]
+	pkg := pkgs[name]
 	if pkg == nil {
-		t.Fatal("fixture package collectionfixture not loaded")
+		t.Fatalf("fixture package %s not loaded", name)
 	}
 
 	return parser.ParsePackage(pkg)
@@ -179,7 +185,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "name"},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
 				},
 				{
@@ -194,7 +200,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "name"},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
 				},
 				{
@@ -204,7 +210,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Scope:       accesstypes.GlobalPermissionScope,
 					Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.Update},
 					Tags: []resource.TagData{
-						{Name: "name"},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update}},
 					},
 				},
 				{
@@ -215,7 +221,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.Read}},
+						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					},
 				},
 				{
@@ -224,7 +230,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Update}},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					},
 				},
 				{
@@ -233,7 +239,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "total"},
+						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					},
 				},
 				{
@@ -246,12 +252,12 @@ func Test_computeCollectionData(t *testing.T) {
 					Scope:       accesstypes.GlobalPermissionScope,
 					Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
 					Tags: []resource.TagData{
-						{Name: "code", Permissions: []accesstypes.Permission{accesstypes.Update}},
-						{Name: "derived"},
+						{Name: "code", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
+						{Name: "derived", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 						{Name: "id"},
-						{Name: "listedName", Permissions: []accesstypes.Permission{accesstypes.List}},
-						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Read, accesstypes.Update}},
-						{Name: "secret"},
+						{Name: "listedName", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+						{Name: "secret", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update}},
 					},
 					ImmutableTags: []accesstypes.Tag{"code"},
 				},
@@ -271,7 +277,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "name"},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
 				},
 				{
@@ -280,7 +286,7 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.Read}},
+						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					},
 				},
 				{

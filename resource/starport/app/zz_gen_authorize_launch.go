@@ -28,7 +28,7 @@ func (a *App) AuthorizeLaunch() http.HandlerFunc {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		params, err := decoder.Decode(r)
+		params, err := decoder.Decode(r, accesstypes.GlobalScope())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}

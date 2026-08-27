@@ -70,7 +70,7 @@ type TypescriptData struct {
 	Resources             []accesstypes.Resource
 	ResourceTags          map[accesstypes.Resource][]accesstypes.Tag
 	ResourcePermissionMap permissionMap
-	Domains               []accesstypes.PermissionScope
+	PermissionScopes      []accesstypes.PermissionScope
 }
 
 // SortDirection defines the sort direction for a field.

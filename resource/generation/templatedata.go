@@ -72,9 +72,32 @@ type consolidatedPatchData struct {
 	Source              string
 	LocalPackageImports string
 	Resources           []*resourceInfo
+	// GlobalCases and DomainCases split Resources by permission scope: global cases
+	// dispatch on the operation path's first segment, domain cases dispatch under the
+	// domain route segment's descent case with the domain bound from the path.
+	// SegmentCase is the tenant-record pattern: a global resource named like the
+	// domain route segment, sharing the descent case and branching on path depth
+	// (set only when DomainCases exist; otherwise it is an ordinary global case).
+	GlobalCases         []consolidatedCaseData
+	DomainCases         []consolidatedCaseData
+	SegmentCase         *consolidatedCaseData
+	DomainRouteSegment  string
+	DomainPatternPrefix string // "/stations/{stationID}" — the chi pattern the descent case prefix-matches
 	Package             string
 	ResourcePackage     string
 	ApplicationName     string
+	ReceiverName        string
+	// HandlerName is the dispatcher method's name: PatchResources on the default
+	// outlet, Patch<Suffix>Resources on an extra outlet's dispatcher.
+	HandlerName string
+}
+
+// consolidatedCaseData is one resource case of the consolidated dispatch, carrying the
+// file-level values the shared case template needs alongside the resource.
+type consolidatedCaseData struct {
+	*resourceInfo
+	DomainPatternPrefix string // "" for global cases
+	ResourcePackage     string
 	ReceiverName        string
 }
 
@@ -129,8 +152,133 @@ type routerFileData struct {
 	ConstComputedResources []*computedResource
 	RouterTestRoutes       []*generatedRoute
 	HasConsolidatedHandler bool
-	RoutePrefix            string
-	ConsolidatedRoute      string
+	// HasDomainScoped emits the Domain route-parameter const, which generated
+	// handlers of domain-scoped resources and RPC methods reference.
+	HasDomainScoped bool
+	// HasDomainScopedRoutes emits the DomainGuard requirement on GeneratedHandlers and
+	// the middleware wrapping in generatedRoutes. Distinct from HasDomainScoped: a
+	// domain-scoped resource with routing disabled needs the const but has no route to
+	// wrap, and an unused guard variable would not compile.
+	HasDomainScopedRoutes bool
+	// DomainRouteParam is the Domain const's value: the route parameter name of the
+	// domain segment pair (default "domain", derived from the tenant-record resource
+	// when one matches the segment — see deriveDomainRouteParam).
+	DomainRouteParam  string
+	RoutePrefix       string
+	ConsolidatedRoute string
+	// ExtraOutlets carries the WithRouterOutlet registration surfaces; the fields
+	// above describe the default outlet, whose generated identifiers are unsuffixed.
+	// With no extra outlets the rendered file is exactly the single-outlet file.
+	ExtraOutlets []*outletRouteData
+	// StubDomainGuard emits the router-test stub's DomainGuard: any outlet has
+	// domain-scoped routes (HasDomainScopedRoutes covers the default outlet only).
+	StubDomainGuard bool
+	// ExtraStubHandlerFuncs are the handler funcs the router-test stub needs beyond
+	// the default outlet's: methods served only under extra outlets, plus each extra
+	// outlet's consolidated dispatcher.
+	ExtraStubHandlerFuncs []string
+	// NegativeRouterTests are the outlet-isolation cases: URLs that must fall through
+	// to 404 because the addressed outlet does not carry the resource.
+	NegativeRouterTests []negativeRouterTest
+}
+
+// outletRouteData is one extra router outlet's registration surface: the routes the
+// routesTemplate renders into the outlet's Generated<Suffix>Handlers interface and
+// generated<Suffix>Routes function.
+type outletRouteData struct {
+	Name   string
+	Suffix string
+	// RoutesMap groups the outlet's routes by source struct name (template map
+	// iteration is name-sorted, keeping output deterministic).
+	RoutesMap             map[string][]*generatedRoute
+	HasDomainScopedRoutes bool
+	// HasConsolidatedHandler emits the outlet's consolidated patch dispatcher
+	// (ConsolidatedHandlerFunc) at ConsolidatedPath.
+	HasConsolidatedHandler  bool
+	ConsolidatedHandlerFunc string
+	ConsolidatedPath        string
+}
+
+// negativeRouterTest is one outlet-isolation case: Method is the net/http constant
+// expression, URL the request path that must 404 with no handler dispatched.
+type negativeRouterTest struct {
+	Method string
+	URL    string
+}
+
+type domainGuardData struct {
+	Source              string
+	Package             string
+	LocalPackageImports string
+	ApplicationName     string
+	ReceiverName        string
+}
+
+type decodersFileData struct {
+	Source              string
+	Package             string
+	LocalPackageImports string
+	ApplicationName     string
+	ReceiverName        string
+	// RPCPackage qualifies the generated Method union constraining NewRPCDecoder.
+	RPCPackage string
+	// The Has* fields emit each constructor only when a generated handler calls it,
+	// so an application carries no constructor its code does not use.
+	HasQueryDecoder         bool
+	HasComputedQueryDecoder bool
+	HasPatchDecoder         bool
+	HasRPCDecoder           bool
+}
+
+type appContractData struct {
+	Source              string
+	Package             string
+	LocalPackageImports string
+	ApplicationName     string
+	// The Has* fields emit each contract block only while its feature generates a
+	// caller, so an application is never asserted to carry methods nothing generated
+	// draws on. The resource block (UserPermissions, ResourceClient) is unconditional.
+	HasValidator    bool
+	HasDomainScoped bool
+	HasRPC          bool
+	HasComputed     bool
+}
+
+type handlerTestsMainData struct {
+	Source          string
+	Package         string
+	EmulatorVersion string
+	// MigrationSources are the application's schema migration source URLs, rewritten
+	// relative to the handler-tests directory.
+	MigrationSources []string
+}
+
+// authzCase is one endpoint's entry in the generated authorization matrix. Query
+// endpoints expand to a denied case (no permission -> 403) and a granted case (exactly
+// Permission -> 200, or 404 on the empty schema). Mutation endpoints (DeniedOnly)
+// expand to the denied case alone: proving the arm fails closed is the security
+// property, while the success path needs generator-synthesized valid request bodies
+// and is deferred to manual testing.
+type authzCase struct {
+	Name string
+	// Method is the net/http method constant expression, e.g. "http.MethodGet".
+	Method string
+	// URL is the route path with parseable placeholder primary-key values substituted.
+	URL string
+	// Permission is the accesstypes constant name the granted case carries; unused
+	// when DeniedOnly.
+	Permission string
+	// Body is the request body ("" for query endpoints). Mutation bodies are minimal:
+	// just enough to reach the operation's enforcement gate, never a valid payload.
+	Body string
+	// DeniedOnly suppresses the granted case (mutation endpoints).
+	DeniedOnly bool
+}
+
+type authzTestData struct {
+	Source  string
+	Package string
+	Cases   []authzCase
 }
 
 type rpcFileData struct {
@@ -184,6 +332,16 @@ type tsResourcesData struct {
 	ComputedResources []*computedResource
 	ConsolidatedRoute string
 	GenPrefix         string
+	// DomainRoutePrefix is the route pair domain-scoped routes are served under
+	// ("stations/{stationID}"), rendered ahead of their route value; frontends
+	// interpolate the parameter token. DomainRoutePrefixTS is the same pair as a
+	// TypeScript template-literal fragment ("stations/${string}") for operation path
+	// types.
+	DomainRoutePrefix   string
+	DomainRoutePrefixTS string
+	DomainRouteParam    string
+	HasDomainScoped     bool
+	HasConsolidated     bool
 }
 
 type tsMethodsData struct {

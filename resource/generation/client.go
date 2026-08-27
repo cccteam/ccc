@@ -615,9 +615,6 @@ func typescriptMethodImports(t *typescriptGenerator) string {
 
 func typescriptConsImports(t *typescriptGenerator, d *resource.TypescriptData) string {
 	pkgs := make([]string, 0, 2)
-	if len(d.Domains) > 0 {
-		pkgs = append(pkgs, "Domain")
-	}
 	if len(d.ResourceTags) > 0 || len(t.rpcMethods) > 0 {
 		pkgs = append(pkgs, "FieldName")
 	}

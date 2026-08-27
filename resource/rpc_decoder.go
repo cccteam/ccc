@@ -32,6 +32,19 @@ func NewRPCDecoder[Request any](userPermissions func(*http.Request) UserPermissi
 	}, nil
 }
 
+// MustNewRPCDecoder builds a decoder for an RPC method request, resolving user
+// permissions and validating request bodies through the accessor. It panics on
+// construction errors: they are programming errors (a malformed request struct),
+// surfaced at application startup where generated handlers construct their decoders.
+func MustNewRPCDecoder[Request any](a DecoderAccessor, methodName accesstypes.Resource, perm accesstypes.Permission) *RPCDecoder[Request] {
+	decoder, err := NewRPCDecoder[Request](a.UserPermissions, methodName, perm)
+	if err != nil {
+		panic(err)
+	}
+
+	return decoder.WithValidator(a.Validator())
+}
+
 // WithValidator sets a validator function on the decoder.
 func (s *RPCDecoder[Request]) WithValidator(v ValidatorFunc) *RPCDecoder[Request] {
 	decoder := *s
@@ -40,18 +53,19 @@ func (s *RPCDecoder[Request]) WithValidator(v ValidatorFunc) *RPCDecoder[Request
 	return &decoder
 }
 
-// Decode decodes the HTTP request body into the Request struct and checks user permissions.
-func (s *RPCDecoder[Request]) Decode(request *http.Request) (*Request, error) {
+// Decode decodes the HTTP request body into the Request struct and checks user permissions
+// in the given domain partition.
+func (s *RPCDecoder[Request]) Decode(request *http.Request, scope accesstypes.Scope) (*Request, error) {
 	req, err := s.d.Decode(request)
 	if err != nil {
 		return nil, errors.Wrap(err, "resource.StructDecoder.Decode()")
 	}
 
 	userPermissions := s.userPermissions(request)
-	if ok, missing, err := userPermissions.Check(request.Context(), s.requiredPermission, s.res); err != nil {
+	if missing, err := userPermissions.Check(request.Context(), scope, s.requiredPermission, s.res); err != nil {
 		return nil, errors.Wrap(err, "enforcer.RequireResource()")
-	} else if !ok {
-		return nil, httpio.NewForbiddenMessagef("user %s, domain %s, does not have %s on %s", userPermissions.User(), userPermissions.Domain(), s.requiredPermission, missing)
+	} else if len(missing) > 0 {
+		return nil, httpio.NewForbiddenMessagef("user %s, scope %s, does not have %s on %s", userPermissions.User(), scope, s.requiredPermission, missing)
 	}
 
 	return req, nil

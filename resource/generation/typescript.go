@@ -17,13 +17,17 @@ import (
 
 type typescriptGenerator struct {
 	*client
-	genPermission          bool
-	genMetadata            bool
-	genEnums               bool
-	typescriptDestination  string
-	typescriptOverrides    map[string]string
-	rc                     *resource.GeneratedCollection
-	routerResources        []accesstypes.Resource
+	genPermission         bool
+	genMetadata           bool
+	genEnums              bool
+	typescriptDestination string
+	typescriptOverrides   map[string]string
+	rc                    *resource.GeneratedCollection
+	routerResources       []accesstypes.Resource
+	// domainRouteSegment/domainRouteParam mirror the resourceGenerator's route pair so
+	// TypeScript route metadata can render the domain segment of domain-scoped routes.
+	domainRouteSegment     string
+	domainRouteParam       string
 	spannerEmulatorVersion string
 }
 
@@ -37,7 +41,7 @@ func (t *typescriptGenerator) parseResources(packageMap map[string]*packages.Pac
 	}
 	resourcesPkg := parser.ParsePackage(pkg)
 
-	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true))
+	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -45,7 +49,7 @@ func (t *typescriptGenerator) parseResources(packageMap map[string]*packages.Pac
 	if t.genVirtualResources {
 		pkg := packageMap[t.virtual.Package()]
 		virtualStructs := parser.ParsePackage(pkg).Structs
-		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true))
+		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -75,7 +79,7 @@ func (t *typescriptGenerator) Generate() error {
 	if t.genComputedResources {
 		pkg := packageMap[t.computed.Package()]
 		compStructs := parser.ParsePackage(pkg).Structs
-		computedResources, err := structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true))
+		computedResources, err := structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
 		if err != nil {
 			return err
 		}
@@ -98,7 +102,7 @@ func (t *typescriptGenerator) Generate() error {
 	if t.genRPCMethods {
 		pkg := packageMap[t.rpc.Package()]
 		rpcStructs := parser.ParsePackage(pkg).Structs
-		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false))
+		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags)
 		if err != nil {
 			return err
 		}
@@ -245,12 +249,33 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 func (t *typescriptGenerator) generateResourceMetadata() error {
 	begin := time.Now()
 	log.Println("Starting resource metadata generation...")
+	hasDomainScoped := false
+	hasConsolidated := false
+	for _, res := range t.resources {
+		if res.IsDomainScoped() {
+			hasDomainScoped = true
+		}
+		if res.IsConsolidated {
+			hasConsolidated = true
+		}
+	}
+	for _, res := range t.computedResources {
+		if res.IsDomainScoped() {
+			hasDomainScoped = true
+		}
+	}
+
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, tsResourcesData{
-		File:              t,
-		Resources:         t.resources,
-		ComputedResources: t.computedResources,
-		ConsolidatedRoute: t.ConsolidatedRoute,
-		GenPrefix:         genPrefix,
+		File:                t,
+		Resources:           t.resources,
+		ComputedResources:   t.computedResources,
+		ConsolidatedRoute:   t.ConsolidatedRoute,
+		GenPrefix:           genPrefix,
+		DomainRoutePrefix:   fmt.Sprintf("%s/{%s}", t.domainRouteSegment, t.domainRouteParam),
+		DomainRoutePrefixTS: t.domainRouteSegment + "/${string}",
+		DomainRouteParam:    t.domainRouteParam,
+		HasDomainScoped:     hasDomainScoped,
+		HasConsolidated:     hasConsolidated,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

@@ -19,23 +19,23 @@ import (
 
 func (a *App) CrewMembers() http.HandlerFunc {
 	type crewMember struct {
-		ID             ccc.UUID `json:"id"             index:"true"`
-		ShipID         ccc.UUID `json:"shipId"         index:"true" perm:"List"`
-		Name           string   `json:"name"           perm:"List"`
-		Rank           string   `json:"rank"           perm:"List"`
-		ClearanceLevel int64    `json:"clearanceLevel" perm:"List"`
-		MedicalNotes   *string  `json:"medicalNotes"   perm:"List"  pii:"true"`
+		ID             ccc.UUID `json:"id"             index:"true" perm:"-"`
+		ShipID         ccc.UUID `json:"shipId"         index:"true"`
+		Name           string   `json:"name"`
+		Rank           string   `json:"rank"`
+		ClearanceLevel int64    `json:"clearanceLevel"`
+		MedicalNotes   *string  `json:"medicalNotes"   pii:"true"`
 	}
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.CrewMember, crewMember](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.CrewMember, crewMember](accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalScope())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -74,15 +74,15 @@ func (a *App) CrewMembers() http.HandlerFunc {
 
 func (a *App) CrewMember() http.HandlerFunc {
 	type response struct {
-		ID             ccc.UUID `json:"id"             index:"true"`
-		ShipID         ccc.UUID `json:"shipId"         perm:"Read"`
-		Name           string   `json:"name"           perm:"Read"`
-		Rank           string   `json:"rank"           perm:"Read"`
-		ClearanceLevel int64    `json:"clearanceLevel" perm:"Read"`
-		MedicalNotes   *string  `json:"medicalNotes"   perm:"Read"  pii:"true"`
+		ID             ccc.UUID `json:"id"             index:"true" perm:"-"`
+		ShipID         ccc.UUID `json:"shipId"`
+		Name           string   `json:"name"`
+		Rank           string   `json:"rank"`
+		ClearanceLevel int64    `json:"clearanceLevel"`
+		MedicalNotes   *string  `json:"medicalNotes"   pii:"true"`
 	}
 
-	decoder := NewQueryDecoder[resources.CrewMember, response](a, accesstypes.Read)
+	decoder := NewQueryDecoder[resources.CrewMember, response](accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -90,7 +90,7 @@ func (a *App) CrewMember() http.HandlerFunc {
 
 		id := httpio.Param[ccc.UUID](r, router.CrewMemberID)
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalScope())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -127,11 +127,11 @@ func (a *App) CrewMember() http.HandlerFunc {
 func (a *App) PatchCrewMembers() http.HandlerFunc {
 	type request struct {
 		ID             ccc.UUID `json:"-"`
-		ShipID         ccc.UUID `json:"shipId"         perm:"Create,Update"`
-		Name           string   `json:"name"           perm:"Create,Update"`
-		Rank           string   `json:"rank"           perm:"Create,Update"`
-		ClearanceLevel int64    `json:"clearanceLevel" perm:"Create,Update"`
-		MedicalNotes   *string  `json:"medicalNotes"   perm:"Create,Update"`
+		ShipID         ccc.UUID `json:"shipId"`
+		Name           string   `json:"name"`
+		Rank           string   `json:"rank"`
+		ClearanceLevel int64    `json:"clearanceLevel"`
+		MedicalNotes   *string  `json:"medicalNotes"`
 	}
 
 	type response struct {
@@ -159,7 +159,7 @@ func (a *App) PatchCrewMembers() http.HandlerFunc {
 					return errors.Wrap(err, "resource.Operations()")
 				}
 
-				patchSet, err := decoder.DecodeOperation(op, a.UserPermissions(r))
+				patchSet, err := decoder.DecodeOperation(op, a.UserPermissions(r), accesstypes.GlobalScope())
 				if err != nil {
 					return errors.Wrap(err, "decoder.DecodeOperation()")
 				}
@@ -189,7 +189,7 @@ func (a *App) PatchCrewMembers() http.HandlerFunc {
 
 			return nil
 		}); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, handleError[resources.CrewMember](err))
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
 		return httpio.NewEncoder(w).Ok(resp)

@@ -1,0 +1,26 @@
+<h1>Authorize Docking</h1>
+<p>
+  Authorize Docking is a station-scoped RPC method: Execute permission is checked inside the station's permission
+  partition, and the docking code is validated inside the transaction.
+</p>
+
+<mat-card appearance="outlined" class="form-card">
+  <mat-card-content>
+    <form (ngSubmit)="authorize()">
+      <app-station-select (stationChange)="stationChanged($event)"></app-station-select>
+      <mat-form-field appearance="outline">
+        <mat-label>Berth</mat-label>
+        <mat-select name="berth" [(ngModel)]="berthId" required>
+          @for (berth of berths(); track berth.id) {
+            <mat-option [value]="berth.id">{{ berth.designation }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Docking Code</mat-label>
+        <input matInput name="dockingCode" [(ngModel)]="dockingCode" required />
+      </mat-form-field>
+      <button mat-flat-button color="primary" type="submit" [disabled]="!berthId || !dockingCode">Authorize</button>
+    </form>
+  </mat-card-content>
+</mat-card>

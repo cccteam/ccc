@@ -5,37 +5,11 @@ import (
 	"strings"
 )
 
-// GlobalResource is the resource used when a permission is applied to the entire application, (i.e. Global level)
-// instead of to a specific resource.
-const GlobalResource = Resource("global")
-
-const resourcePrefix = "resource:"
-
-// Resource represents a resource in the authorization system
+// Resource represents a resource in the authorization system. A Resource is
+// always data — any string is a legal resource name. A permission held with
+// no resource attachment (scope-wide) is expressed structurally by the APIs
+// that grant and check it, never by a distinguished Resource value.
 type Resource string
-
-// UnmarshalResource unmarshals a resource string into a Resource type.
-func UnmarshalResource(resource string) Resource {
-	r := Resource(strings.TrimPrefix(resource, resourcePrefix))
-	if !r.isValid() {
-		panic(fmt.Sprintf("invalid resource %q", resource))
-	}
-
-	return r
-}
-
-// Marshal marshals a Resource type into a string.
-func (r Resource) Marshal() string {
-	if !r.isValid() {
-		panic(fmt.Sprintf("invalid resource %q, type can not contain prefix", string(r)))
-	}
-
-	return resourcePrefix + string(r)
-}
-
-func (r Resource) isValid() bool {
-	return !strings.HasPrefix(string(r), resourcePrefix)
-}
 
 // ResourceWithTag returns the fully qualified resource name for the resource field with tag
 func (r Resource) ResourceWithTag(tag Tag) Resource {

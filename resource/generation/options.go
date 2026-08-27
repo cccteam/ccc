@@ -5,6 +5,7 @@ import (
 	"maps"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -61,6 +62,28 @@ func GenerateHandlers(targetDir string) ResourceOption {
 	})
 }
 
+// GenerateHandlerTests enables generation of the handler test suite in targetDir: the
+// Spanner-emulator bootstrap (TestMain + prepareDatabase over the application's
+// schema migrations) and the authorization-matrix tests, which drive every generated
+// global list/read route through the generated test router — without the required
+// permission the pipeline must fail closed with 403; with exactly that permission the
+// request must reach data access (200, or 404 on the empty schema). The target
+// package hand-writes exactly one function the generated suite calls:
+//
+//	newTestHandler(t *testing.T, db *initiator.SpannerDB, g grants) http.Handler
+//
+// where the application constructs its App around the test database with the scripted
+// grants and composes it through router.NewTestRouter. Requires GenerateHandlers and
+// GenerateRoutes.
+func GenerateHandlerTests(targetDir string) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		r.genHandlerTests = true
+		r.handlerTests = packageDir(targetDir)
+
+		return nil
+	})
+}
+
 // ApplicationName sets the name of the application struct.
 // The default is "App".
 func ApplicationName(name string) ResourceOption {
@@ -77,6 +100,108 @@ func GenerateRoutes(targetDir, routePrefix string) ResourceOption {
 		r.genRoutes = true
 		r.router = packageDir(targetDir)
 		r.routePrefix = routePrefix
+
+		return nil
+	})
+}
+
+// defaultOutletName is the reserved name of the router outlet GenerateRoutes declares.
+// Every resource is on it unless an @outlet annotation says otherwise; the annotation
+// references it by this name to combine it with additional outlets.
+const defaultOutletName = "default"
+
+// routerOutlet is one declared router outlet: a named registration surface with its
+// own route prefix. The default outlet comes from GenerateRoutes; additional outlets
+// from WithRouterOutlet.
+type routerOutlet struct {
+	name   string
+	prefix string
+}
+
+// suffix returns the outlet's contribution to generated identifiers
+// (Generated<suffix>Handlers, generated<suffix>Routes, Patch<suffix>Resources);
+// empty for the default outlet, whose identifiers carry no outlet name.
+func (o routerOutlet) suffix() string {
+	if o.name == defaultOutletName {
+		return ""
+	}
+
+	return caser.ToPascal(o.name)
+}
+
+// WithRouterOutlet declares an additional router outlet: a second generated
+// registration surface (its own Generated<Name>Handlers interface and
+// generated<Name>Routes function) served under its own route prefix, so the
+// application can compose different authentication and middleware around it.
+// Resources, computed resources, and RPC methods join an outlet via the @outlet
+// annotation; without the annotation they stay on the default outlet declared by
+// GenerateRoutes, which the annotation references by its reserved name "default".
+//
+// The name must be a lowerCamelCase identifier (it is Pascal-cased into generated
+// identifiers), and the route prefix must be a static path segment distinct from —
+// and not nested with — every other outlet's prefix, so the outlets' URL spaces
+// stay disjoint. The option may be passed once per additional outlet and requires
+// GenerateRoutes.
+func WithRouterOutlet(name, routePrefix string) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		if !outletNamePattern.MatchString(name) {
+			return errors.Newf("WithRouterOutlet(%q) requires a lowerCamelCase name matching %s", name, outletNamePattern)
+		}
+		if name == defaultOutletName {
+			return errors.Newf("WithRouterOutlet(%q) redeclares the reserved default outlet; GenerateRoutes declares it", name)
+		}
+		if routePrefix == "" {
+			return errors.Newf("WithRouterOutlet(%q) requires a non-empty route prefix", name)
+		}
+		if strings.ContainsAny(routePrefix, "{}") || strings.Trim(routePrefix, "/") != routePrefix {
+			return errors.Newf("WithRouterOutlet(%q, %q) route prefix must not contain '{', '}', or leading/trailing '/'", name, routePrefix)
+		}
+
+		r.extraOutlets = append(r.extraOutlets, routerOutlet{name: name, prefix: routePrefix})
+
+		return nil
+	})
+}
+
+// outletNamePattern constrains outlet names to lowerCamelCase identifiers so the
+// Pascal-cased generated identifiers are unambiguous.
+var outletNamePattern = regexp.MustCompile(`^[a-z][a-zA-Z0-9]*$`)
+
+// Default route segment for domain-scoped resources (see WithDomainRoute):
+// /{prefix}/{defaultDomainRouteSegment}/{param}/... . The parameter defaults to
+// defaultDomainRouteParam and is re-derived after parsing when a resource's route
+// name equals the segment (deriveDomainRouteParam). Generated code references the
+// parameter name as the router package's Domain const value.
+const (
+	defaultDomainRouteSegment = "domains"
+	defaultDomainRouteParam   = "domain"
+)
+
+// defaultApplicationName is the generated application struct's name when the
+// ApplicationName option is not used.
+const defaultApplicationName = "App"
+
+// WithDomainRoute customizes the static path segment that domain-scoped resources
+// (@permissionScope(domain)) are served under: WithDomainRoute("organizations")
+// serves domain-scoped resources and RPC methods at
+// /{prefix}/organizations/{param}/... . The default segment is "domains".
+//
+// The route parameter name is derived, never configured. When a resource's route
+// name equals the segment (the tenant-record pattern) the parameter must be that
+// resource's read-route parameter — chi permits one wildcard name per tree
+// position — so it is ToGoCamel(name+pkName). With no matching resource the name
+// is a cosmetic pattern label: the default "domain". The generated router const
+// is always named Domain; the derived parameter is its value.
+func WithDomainRoute(segment string) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		if segment == "" {
+			return errors.New("WithDomainRoute() requires a non-empty segment")
+		}
+		if strings.ContainsAny(segment, "/{}") {
+			return errors.Newf("WithDomainRoute(%q) must not contain '/', '{', or '}'", segment)
+		}
+
+		r.domainRouteSegment = segment
 
 		return nil
 	})
@@ -381,9 +506,18 @@ func applyResourceGeneratorDefaults(g *resourceGenerator) error {
 		g.spannerEmulatorVersion = "latest"
 	}
 	if g.applicationName == "" {
-		g.applicationName = "App"
+		g.applicationName = defaultApplicationName
 	}
 	g.receiverName = strings.ToLower(string(g.applicationName[0]))
+	if g.domainRouteSegment == "" {
+		g.domainRouteSegment = defaultDomainRouteSegment
+	}
+	if g.genHandlerTests && (!g.genHandlers || !g.genRoutes) {
+		return errors.New("GenerateHandlerTests requires GenerateHandlers and GenerateRoutes: the generated suite drives the generated handlers through the generated test router")
+	}
+	if g.domainRouteParam == "" {
+		g.domainRouteParam = defaultDomainRouteParam
+	}
 
 	// Each GenerateTypescript call owns one directory; two calls writing the same files
 	// to the same place is always a configuration mistake.
@@ -417,7 +551,12 @@ const (
 	float64GoType    = "float64"
 	complex64GoType  = "complex64"
 	complex128GoType = "complex128"
+	cccUUIDGoType    = "ccc.UUID"
 )
+
+// jsonTrueLiteral is the JSON boolean literal the authorization matrix's synthesized
+// update values use.
+const jsonTrueLiteral = "true"
 
 // TypeScript type names emitted by the generator.
 const (

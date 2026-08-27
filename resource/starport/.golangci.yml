@@ -64,6 +64,9 @@ linters:
             - github.com/go-chi/chi/v5
             - github.com/go-playground/errors/v5
             - github.com/go-playground/validator/v10
+            - github.com/jtwatson/server
+            - github.com/jtwatson/spaassets
+            - github.com/sethvargo/go-envconfig
             - go.uber.org/mock/gomock
             - google.golang.org/grpc/codes
     exhaustive:
@@ -130,16 +133,31 @@ linters:
           - gocognit
           - cyclop
           - nestif
+          # Test tables grow by appending generated cases to a literal of
+          # handwritten ones; preallocation noise adds nothing in tests.
+          - prealloc
         path: _test\.go
       # The regen test rewrites the working tree and must not run in parallel.
       - linters:
           - paralleltest
           - tparallel
         path: cmd/generate/generate_test\.go
+      # The bootstrap test uses t.Setenv and t.Chdir, which forbid parallel tests.
+      - linters:
+          - paralleltest
+          - tparallel
+        path: cmd/bootstrap/main_test\.go
       - linters:
           - gomoddirectives
         path: go\.mod
         text: golang-migrate
+      # starport is committed in the same repo/commits as the resource module it
+      # exercises, so it permanently builds against local source via this replace
+      # (rationale in go.mod); the no-local-replace rule doesn't apply to it.
+      - linters:
+          - gomoddirectives
+        path: go\.mod
+        text: github.com/cccteam/ccc/resource
     paths:
       - third_party$
       - builtin$

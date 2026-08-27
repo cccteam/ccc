@@ -16,22 +16,22 @@ import (
 
 func (a *App) CargoManifests() http.HandlerFunc {
 	type cargoManifest struct {
-		ShipID        ccc.UUID `json:"shipId"        index:"true"`
-		LineNumber    int64    `json:"lineNumber"    index:"true"`
+		ShipID        ccc.UUID `json:"shipId"        index:"true" perm:"-"`
+		LineNumber    int64    `json:"lineNumber"    index:"true" perm:"-"`
 		Details       string   `json:"details"`
 		Quantity      int64    `json:"quantity"`
-		DeclaredValue int64    `json:"declaredValue" perm:"List"`
+		DeclaredValue int64    `json:"declaredValue"`
 	}
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.CargoManifest, cargoManifest](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.CargoManifest, cargoManifest](accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalScope())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -68,14 +68,14 @@ func (a *App) CargoManifests() http.HandlerFunc {
 
 func (a *App) CargoManifest() http.HandlerFunc {
 	type response struct {
-		ShipID        ccc.UUID `json:"shipId"        index:"true"`
-		LineNumber    int64    `json:"lineNumber"    index:"true"`
+		ShipID        ccc.UUID `json:"shipId"        index:"true" perm:"-"`
+		LineNumber    int64    `json:"lineNumber"    index:"true" perm:"-"`
 		Details       string   `json:"details"`
 		Quantity      int64    `json:"quantity"`
-		DeclaredValue int64    `json:"declaredValue" perm:"Read"`
+		DeclaredValue int64    `json:"declaredValue"`
 	}
 
-	decoder := NewQueryDecoder[resources.CargoManifest, response](a, accesstypes.Read)
+	decoder := NewQueryDecoder[resources.CargoManifest, response](accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -84,7 +84,7 @@ func (a *App) CargoManifest() http.HandlerFunc {
 		shipID := httpio.Param[ccc.UUID](r, router.CargoManifestShipID)
 		lineNumber := httpio.Param[int64](r, router.CargoManifestLineNumber)
 
-		querySet, err := decoder.Decode(r, a.UserPermissions(r))
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.GlobalScope())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}

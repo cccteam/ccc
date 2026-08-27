@@ -5,7 +5,11 @@ package generation
 // TestAnnotationsDocCoversGeneratorVocabulary enforces that, so register new keys in
 // sourceStructTagKeys below.
 const (
-	spannerTagKey            = "spanner"
+	spannerTagKey = "spanner"
+	// permTagKey is no longer author vocabulary: field permissions are enforced
+	// structurally from the endpoint permission, and a perm tag on a source struct is a
+	// generation error (validateNoPermTags). The generator still writes this key into
+	// list/read request structs as the perm:"-" primary-key exemption marker.
 	permTagKey               = "perm"
 	conditionsTagKey         = "conditions"
 	defaultCreateFnTagKey    = "default_create_fn"
@@ -20,7 +24,6 @@ const (
 // README.md completeness test. Add every new tag-key constant here.
 var sourceStructTagKeys = []string{
 	spannerTagKey,
-	permTagKey,
 	conditionsTagKey,
 	defaultCreateFnTagKey,
 	outputOnlyUpdateFnTagKey,

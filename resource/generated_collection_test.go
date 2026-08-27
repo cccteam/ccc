@@ -19,9 +19,9 @@ func TestNewSetData(t *testing.T) {
 		wantErr     bool
 	}{
 		{
-			name: "list request struct",
+			name: "list request struct registers every field with the endpoint permission",
 			fields: []FieldTags{
-				{Field: "ID", JSON: "id", Perm: "List"},
+				{Field: "ID", JSON: "id", Perm: "-"},
 				{Field: "Name", JSON: "name"},
 				{Field: "Secret", JSON: "-", Perm: ""},
 			},
@@ -29,16 +29,16 @@ func TestNewSetData(t *testing.T) {
 			want: SetData{
 				Permissions: []accesstypes.Permission{accesstypes.List},
 				TagPermissions: accesstypes.TagPermissions{
-					"id":   {accesstypes.List},
-					"name": {accesstypes.NullPermission},
+					"id":   {accesstypes.NullPermission},
+					"name": {accesstypes.List},
 				},
 				ImmutableFields: map[accesstypes.Tag]struct{}{},
 			},
 		},
 		{
-			name: "patch request struct with immutable field",
+			name: "patch request struct strips Update from the immutable tag",
 			fields: []FieldTags{
-				{Field: "Name", JSON: "name", Perm: "Create,Update"},
+				{Field: "Name", JSON: "name"},
 				{Field: "Code", JSON: "code", Immutable: true},
 			},
 			permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update, accesstypes.Delete},
@@ -46,13 +46,21 @@ func TestNewSetData(t *testing.T) {
 				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.Update},
 				TagPermissions: accesstypes.TagPermissions{
 					"name": {accesstypes.Create, accesstypes.Update},
-					"code": {accesstypes.Update},
+					"code": {accesstypes.Create},
 				},
 				ImmutableFields: map[accesstypes.Tag]struct{}{"code": {}},
 			},
 		},
 		{
-			name: "delete permission in tag is rejected",
+			name: "stale permission tag is rejected",
+			fields: []FieldTags{
+				{Field: "Name", JSON: "name", Perm: "List"},
+			},
+			permissions: []accesstypes.Permission{accesstypes.List},
+			wantErr:     true,
+		},
+		{
+			name: "stale Delete tag is rejected",
 			fields: []FieldTags{
 				{Field: "Name", JSON: "name", Perm: "Delete"},
 			},
@@ -62,15 +70,23 @@ func TestNewSetData(t *testing.T) {
 		{
 			name: "mixed mutating and non-mutating permissions are rejected",
 			fields: []FieldTags{
-				{Field: "Name", JSON: "name", Perm: "Read"},
+				{Field: "Name", JSON: "name"},
 			},
-			permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update, accesstypes.Delete},
+			permissions: []accesstypes.Permission{accesstypes.Read, accesstypes.Update},
 			wantErr:     true,
 		},
 		{
-			name: "permission on field without json tag is rejected",
+			name: "permission tag on json-hidden field is rejected",
 			fields: []FieldTags{
 				{Field: "Name", JSON: "-", Perm: "Read"},
+			},
+			permissions: []accesstypes.Permission{accesstypes.Read},
+			wantErr:     true,
+		},
+		{
+			name: "enforced field without json tag is rejected",
+			fields: []FieldTags{
+				{Field: "Name", JSON: ""},
 			},
 			permissions: []accesstypes.Permission{accesstypes.Read},
 			wantErr:     true,
@@ -101,21 +117,21 @@ func TestCollectionBuilder_Data(t *testing.T) {
 	b := NewCollectionBuilder()
 
 	listSet, err := NewSetData([]FieldTags{
-		{Field: "ID", JSON: "id", Perm: "List"},
+		{Field: "ID", JSON: "id", Perm: "-"},
 		{Field: "Name", JSON: "name"},
 	}, accesstypes.List)
 	if err != nil {
 		t.Fatalf("NewSetData() error = %v", err)
 	}
 	readSet, err := NewSetData([]FieldTags{
-		{Field: "ID", JSON: "id", Perm: "Read"},
+		{Field: "ID", JSON: "id", Perm: "-"},
 		{Field: "Name", JSON: "name"},
 	}, accesstypes.Read)
 	if err != nil {
 		t.Fatalf("NewSetData() error = %v", err)
 	}
 	patchSet, err := NewSetData([]FieldTags{
-		{Field: "Name", JSON: "name", Perm: "Create,Update"},
+		{Field: "Name", JSON: "name"},
 		{Field: "Code", JSON: "code", Immutable: true},
 	}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 	if err != nil {
@@ -156,9 +172,9 @@ func TestCollectionBuilder_Data(t *testing.T) {
 			Scope:       scope,
 			Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
 			Tags: []TagData{
-				{Name: "code", Permissions: []accesstypes.Permission{accesstypes.Update}},
-				{Name: "id", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
-				{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Update}},
+				{Name: "code", Permissions: []accesstypes.Permission{accesstypes.Create}},
+				{Name: "id"},
+				{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 			},
 			ImmutableTags: []accesstypes.Tag{"code"},
 		},
@@ -306,7 +322,7 @@ func TestGeneratedCollection_roundTrip(t *testing.T) {
 
 	b := NewCollectionBuilder()
 	set, err := NewSetData([]FieldTags{
-		{Field: "ID", JSON: "id", Perm: "List"},
+		{Field: "ID", JSON: "id", Perm: "-"},
 		{Field: "Name", JSON: "name"},
 	}, accesstypes.List)
 	if err != nil {
@@ -339,14 +355,14 @@ func TestGeneratedCollection_readMethods(t *testing.T) {
 	// production code takes (in-run vs. deserialized-from-generated-code) can never
 	// diverge.
 	listSet, err := NewSetData([]FieldTags{
-		{Field: "ID", JSON: "id", Perm: "List"},
+		{Field: "ID", JSON: "id", Perm: "-"},
 		{Field: "Name", JSON: "name"},
 	}, accesstypes.List)
 	if err != nil {
 		t.Fatalf("NewSetData() error = %v", err)
 	}
 	patchSet, err := NewSetData([]FieldTags{
-		{Field: "Name", JSON: "name", Perm: "Create,Update"},
+		{Field: "Name", JSON: "name"},
 		{Field: "Code", JSON: "code", Immutable: true},
 	}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 	if err != nil {

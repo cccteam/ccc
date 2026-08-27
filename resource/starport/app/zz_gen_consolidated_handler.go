@@ -12,6 +12,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/pkg/resources"
+	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
@@ -23,7 +24,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		LineNumber    int64    `json:"-"`
 		Details       string   `json:"details"`
 		Quantity      int64    `json:"quantity"`
-		DeclaredValue int64    `json:"declaredValue" perm:"Create,Update"`
+		DeclaredValue int64    `json:"declaredValue"`
 	}
 	cargoManifestDecoder := NewDecoder[resources.CargoManifest, cargoManifestRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
@@ -35,26 +36,40 @@ func (a *App) PatchResources() http.HandlerFunc {
 	}
 	dockingBayDecoder := NewDecoder[resources.DockingBay, dockingBayRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
+	type gantryCraneRequest struct {
+		ID          ccc.UUID `json:"-"`
+		Callsign    string   `json:"callsign"`
+		LiftTonnage int64    `json:"liftTonnage"`
+		Operational bool     `json:"operational"`
+	}
+	gantryCraneDecoder := NewDecoder[resources.GantryCrane, gantryCraneRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+
 	type shipRequest struct {
 		ID           ccc.UUID     `json:"-"`
-		RegistryCode string       `json:"registryCode" immutable:"true"     perm:"Create"`
-		Name         string       `json:"name"         perm:"Create,Update"`
-		DockingBayID ccc.NullUUID `json:"dockingBayId" perm:"Create,Update"`
-		CargoValue   int64        `json:"cargoValue"   perm:"Create,Update"`
+		RegistryCode string       `json:"registryCode" immutable:"true"`
+		Name         string       `json:"name"`
+		DockingBayID ccc.NullUUID `json:"dockingBayId"`
+		CargoValue   int64        `json:"cargoValue"`
 		UpdatedAt    *time.Time   `json:"-"`
 	}
 	shipDecoder := NewDecoder[resources.Ship, shipRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
+	type stationRequest struct {
+		ID   ccc.UUID `json:"-"`
+		Name string   `json:"name"`
+	}
+	stationDecoder := NewDecoder[resources.Station, stationRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+
 	type supplyCrateRequest struct {
 		ID             ccc.UUID     `json:"-"`
-		Label          string       `json:"label"          perm:"Create,Update"`
-		Quantity       int64        `json:"quantity"       perm:"Create,Update"`
-		Priority       int64        `json:"priority"       perm:"Create,Update"`
-		Status         string       `json:"status"         perm:"Create,Update"`
+		Label          string       `json:"label"`
+		Quantity       int64        `json:"quantity"`
+		Priority       int64        `json:"priority"`
+		Status         string       `json:"status"`
 		Barcode        string       `json:"-"`
-		Notes          *string      `json:"notes"          perm:"Create,Update"`
-		InspectorBadge *string      `json:"inspectorBadge" perm:"Create,Update"`
-		AssignedShipID ccc.NullUUID `json:"assignedShipId" perm:"Create,Update"`
+		Notes          *string      `json:"notes"`
+		InspectorBadge *string      `json:"inspectorBadge"`
+		AssignedShipID ccc.NullUUID `json:"assignedShipId"`
 	}
 	supplyCrateDecoder := NewDecoder[resources.SupplyCrate, supplyCrateRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
@@ -68,6 +83,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 			eventSource = resource.UserEvent(ctx)
 			resp        response
 		)
+		userPermissions := a.UserPermissions(r)
 
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			resp = response{}
@@ -83,7 +99,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 				switch httpio.Param[string](op.Req, "resource") {
 				case "cargo-manifests":
-					patchSet, err := cargoManifestDecoder.DecodeOperation(op, a.UserPermissions(op.Req))
+					patchSet, err := cargoManifestDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())
 					if err != nil {
 						return errors.Wrap(err, "cargoManifestDecoder.DecodeOperation()")
 					}
@@ -98,23 +114,23 @@ func (a *App) PatchResources() http.HandlerFunc {
 						id1 := httpio.Param[ccc.UUID](req, "id1")
 						id2 := httpio.Param[int64](req, "id2")
 						if err := resources.NewCargoManifestCreatePatchFromPatchSet(id1, id2, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.CargoManifest](err), "resources.CargoManifestCreatePatch.Buffer()")
+							return errors.Wrap(err, "resources.CargoManifestCreatePatch.Buffer()")
 						}
 					case resource.OperationUpdate:
 						id1 := httpio.Param[ccc.UUID](req, "id1")
 						id2 := httpio.Param[int64](req, "id2")
 						if err := resources.NewCargoManifestUpdatePatchFromPatchSet(id1, id2, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.CargoManifest](err), "resources.CargoManifestUpdatePatch.Buffer()")
+							return errors.Wrap(err, "resources.CargoManifestUpdatePatch.Buffer()")
 						}
 					case resource.OperationDelete:
 						id1 := httpio.Param[ccc.UUID](req, "id1")
 						id2 := httpio.Param[int64](req, "id2")
 						if err := resources.NewCargoManifestDeletePatchFromPatchSet(id1, id2, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.CargoManifest](err), "resources.CargoManifestDeletePatch.Buffer()")
+							return errors.Wrap(err, "resources.CargoManifestDeletePatch.Buffer()")
 						}
 					}
 				case "docking-bays":
-					patchSet, err := dockingBayDecoder.DecodeOperation(op, a.UserPermissions(op.Req))
+					patchSet, err := dockingBayDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())
 					if err != nil {
 						return errors.Wrap(err, "dockingBayDecoder.DecodeOperation()")
 					}
@@ -131,22 +147,22 @@ func (a *App) PatchResources() http.HandlerFunc {
 							return errors.Wrap(err, "dockingBayCreatePatchFromPatchSet()")
 						}
 						if err := patch.Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.DockingBay](err), "resources.DockingBayCreatePatch.Buffer()")
+							return errors.Wrap(err, "resources.DockingBayCreatePatch.Buffer()")
 						}
 						resp["dockingBays"] = append(resp["dockingBays"], patch.ID())
 					case resource.OperationUpdate:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewDockingBayUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.DockingBay](err), "resources.DockingBayUpdatePatch.Buffer()")
+							return errors.Wrap(err, "resources.DockingBayUpdatePatch.Buffer()")
 						}
 					case resource.OperationDelete:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewDockingBayDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.DockingBay](err), "resources.DockingBayDeletePatch.Buffer()")
+							return errors.Wrap(err, "resources.DockingBayDeletePatch.Buffer()")
 						}
 					}
 				case "ships":
-					patchSet, err := shipDecoder.DecodeOperation(op, a.UserPermissions(op.Req))
+					patchSet, err := shipDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())
 					if err != nil {
 						return errors.Wrap(err, "shipDecoder.DecodeOperation()")
 					}
@@ -163,22 +179,22 @@ func (a *App) PatchResources() http.HandlerFunc {
 							return errors.Wrap(err, "shipCreatePatchFromPatchSet()")
 						}
 						if err := patch.Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.Ship](err), "resources.ShipCreatePatch.Buffer()")
+							return errors.Wrap(err, "resources.ShipCreatePatch.Buffer()")
 						}
 						resp["ships"] = append(resp["ships"], patch.ID())
 					case resource.OperationUpdate:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewShipUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.Ship](err), "resources.ShipUpdatePatch.Buffer()")
+							return errors.Wrap(err, "resources.ShipUpdatePatch.Buffer()")
 						}
 					case resource.OperationDelete:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewShipDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.Ship](err), "resources.ShipDeletePatch.Buffer()")
+							return errors.Wrap(err, "resources.ShipDeletePatch.Buffer()")
 						}
 					}
 				case "supply-crates":
-					patchSet, err := supplyCrateDecoder.DecodeOperation(op, a.UserPermissions(op.Req))
+					patchSet, err := supplyCrateDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())
 					if err != nil {
 						return errors.Wrap(err, "supplyCrateDecoder.DecodeOperation()")
 					}
@@ -195,19 +211,103 @@ func (a *App) PatchResources() http.HandlerFunc {
 							return errors.Wrap(err, "supplyCrateCreatePatchFromPatchSet()")
 						}
 						if err := patch.Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.SupplyCrate](err), "resources.SupplyCrateCreatePatch.Buffer()")
+							return errors.Wrap(err, "resources.SupplyCrateCreatePatch.Buffer()")
 						}
 						resp["supplyCrates"] = append(resp["supplyCrates"], patch.ID())
 					case resource.OperationUpdate:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewSupplyCrateUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.SupplyCrate](err), "resources.SupplyCrateUpdatePatch.Buffer()")
+							return errors.Wrap(err, "resources.SupplyCrateUpdatePatch.Buffer()")
 						}
 					case resource.OperationDelete:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewSupplyCrateDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.SupplyCrate](err), "resources.SupplyCrateDeletePatch.Buffer()")
+							return errors.Wrap(err, "resources.SupplyCrateDeletePatch.Buffer()")
 						}
+					}
+				case "stations":
+					if op.PathDepth() <= 2 {
+						patchSet, err := stationDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())
+						if err != nil {
+							return errors.Wrap(err, "stationDecoder.DecodeOperation()")
+						}
+
+						req, err := op.ReqWithPattern("/{resource}/{id}")
+						if err != nil {
+							return errors.Wrap(err, "op.ReqWithPattern()")
+						}
+
+						switch op.Type {
+						case resource.OperationCreate:
+							patch, err := resources.NewStationCreatePatchFromPatchSet(patchSet)
+							if err != nil {
+								return errors.Wrap(err, "stationCreatePatchFromPatchSet()")
+							}
+							if err := patch.Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.StationCreatePatch.Buffer()")
+							}
+							resp["stations"] = append(resp["stations"], patch.ID())
+						case resource.OperationUpdate:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewStationUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.StationUpdatePatch.Buffer()")
+							}
+						case resource.OperationDelete:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewStationDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.StationDeletePatch.Buffer()")
+							}
+						}
+
+						continue
+					}
+					op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")
+					if err != nil {
+						return errors.Wrap(err, "resource.Operation.WithPrefixPattern()")
+					}
+
+					domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
+					if ok, err := a.DomainExists(ctx, domain); err != nil {
+						return errors.Wrap(err, "DomainExists()")
+					} else if !ok {
+						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
+					}
+
+					switch httpio.Param[string](op.Req, "resource") {
+					case "gantry-cranes":
+						patchSet, err := gantryCraneDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))
+						if err != nil {
+							return errors.Wrap(err, "gantryCraneDecoder.DecodeOperation()")
+						}
+
+						req, err := op.ReqWithPattern("/stations/{stationID}/{resource}/{id}")
+						if err != nil {
+							return errors.Wrap(err, "op.ReqWithPattern()")
+						}
+
+						switch op.Type {
+						case resource.OperationCreate:
+							patch, err := resources.NewGantryCraneCreatePatchFromPatchSet(patchSet)
+							if err != nil {
+								return errors.Wrap(err, "gantryCraneCreatePatchFromPatchSet()")
+							}
+							if err := patch.Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.GantryCraneCreatePatch.Buffer()")
+							}
+							resp["gantryCranes"] = append(resp["gantryCranes"], patch.ID())
+						case resource.OperationUpdate:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewGantryCraneUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.GantryCraneUpdatePatch.Buffer()")
+							}
+						case resource.OperationDelete:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewGantryCraneDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.GantryCraneDeletePatch.Buffer()")
+							}
+						}
+					default:
+						return httpio.NewBadRequestMessagef("unknown domain-scoped resource %q in operation path", httpio.Param[string](op.Req, "resource"))
 					}
 				default:
 					return httpio.NewBadRequestMessagef("unknown resource %q", httpio.Param[string](op.Req, "resource"))

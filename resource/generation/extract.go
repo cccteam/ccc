@@ -34,6 +34,12 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 
+		if fieldAnnotationErr := rejectPrimaryKeyAnnotations(pStruct, annotations); fieldAnnotationErr != nil {
+			resourceErrors = append(resourceErrors, fieldAnnotationErr)
+
+			continue
+		}
+
 		table, err := c.tableMetadataFor(pStruct.Name())
 		if err != nil {
 			return nil, err
@@ -124,6 +130,10 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 		return errors.Wrapf(err, "on %s", res.Name())
 	}
 
+	if err := resolveOutlets(annotations, &res.outletMembership); err != nil {
+		return errors.Wrapf(err, "on %s", res.Name())
+	}
+
 	if annotations.Struct.Has(defaultsCreateTypeKeyword) {
 		res.DefaultsCreateType = string(annotations.Struct.Get(defaultsCreateTypeKeyword))
 	}
@@ -135,6 +145,31 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 	}
 	if annotations.Struct.Has(validateUpdateTypeKeyword) {
 		res.ValidateUpdateType = string(annotations.Struct.Get(validateUpdateTypeKeyword))
+	}
+
+	return nil
+}
+
+// resolveOutlets applies an @outlet annotation to dest if present; both comma lists
+// and repeated annotations are accepted. Names are validated against the declared
+// outlets after every struct kind is extracted (validateAnnotatedOutlets); here only
+// empty and duplicate names are rejected.
+func resolveOutlets(annotations genlang.StructAnnotations, dest *outletMembership) error {
+	if !annotations.Struct.Has(outletKeyword) {
+		return nil
+	}
+
+	for arg := range annotations.Struct.Get(outletKeyword).Seq() {
+		for part := range strings.SplitSeq(arg, ",") {
+			name := strings.TrimSpace(part)
+			if name == "" {
+				return errors.Newf("@%s(%s) contains an empty outlet name", outletKeyword, arg)
+			}
+			if slices.Contains(dest.OutletNames, name) {
+				return errors.Newf("@%s names outlet %q twice", outletKeyword, name)
+			}
+			dest.OutletNames = append(dest.OutletNames, name)
+		}
 	}
 
 	return nil
@@ -219,7 +254,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			IsVirtual: true,
 		}
 
-		fields, err := newVirtualFields(resource, pStruct)
+		fields, err := newVirtualFields(resource, pStruct, annotations)
 		if err != nil {
 			errs = append(errs, err)
 
@@ -266,6 +301,12 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 
+		if err := resolveOutlets(annotations, &resource.outletMembership); err != nil {
+			errs = append(errs, errors.Wrapf(err, "on %s", pStruct.Name()))
+
+			continue
+		}
+
 		resources = append(resources, resource)
 	}
 
@@ -274,6 +315,24 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 	}
 
 	return resources, nil
+}
+
+// rejectPrimaryKeyAnnotations errors when a table-backed @resource struct carries
+// @primarykey field annotations: table-backed primary keys come from the schema, and
+// the annotation is only valid on @computed and @virtual structs.
+func rejectPrimaryKeyAnnotations(pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
+	var errs []error
+	for i, field := range pStruct.Fields() {
+		if annotations.Fields[i].Has(primarykeyKeyword) {
+			errs = append(errs, errors.Newf("struct %s field %s: @primarykey is only valid on @computed and @virtual structs; table-backed primary keys come from the schema", pStruct.Name(), field.Name()))
+		}
+	}
+
+	if len(errs) != 0 {
+		return errors.Wrap(errors.Join(errs...), "@primarykey annotation error")
+	}
+
+	return nil
 }
 
 func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tableMetadata) ([]*resourceField, error) {
@@ -323,12 +382,13 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 	return fields, nil
 }
 
-func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resourceField, error) {
+func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) ([]*resourceField, error) {
 	if !parent.IsVirtual {
 		panic("newVirtualFields cannot be used with concrete resources")
 	}
 	fields := make([]*resourceField, 0, len(pStruct.Fields()))
-	for _, field := range pStruct.Fields() {
+	var keyCount int64
+	for i, field := range pStruct.Fields() {
 		_, ok := field.LookupTag(spannerTagKey)
 		if !ok {
 			field.AddError("missing spanner tag")
@@ -336,12 +396,20 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct) ([]*resource
 			continue
 		}
 
-		fields = append(fields, &resourceField{
+		rField := &resourceField{
 			Field:         field,
 			Parent:        parent,
 			IsIndex:       field.HasTag(indexTagKey) || field.HasTag(uniqueIndexTagKey),
 			IsUniqueIndex: field.HasTag(uniqueIndexTagKey),
-		})
+		}
+
+		if annotations.Fields[i].Has(primarykeyKeyword) {
+			rField.IsPrimaryKey = true
+			rField.KeyOrdinalPosition = keyCount
+			keyCount++
+		}
+
+		fields = append(fields, rField)
 	}
 
 	if pStruct.HasErrors() {
@@ -403,6 +471,12 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
+		if err := resolveOutlets(annotations, &rpcMethod.outletMembership); err != nil {
+			errs = append(errs, errors.Wrapf(err, "on %s", s.Name()))
+
+			continue
+		}
+
 		rpcMethods = append(rpcMethods, rpcMethod)
 	}
 
@@ -448,6 +522,12 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 		}
 
 		if err := resolvePermissionScope(annotations, &res.PermissionScope); err != nil {
+			resourceErrors = append(resourceErrors, errors.Wrapf(err, "on %s", s.Name()))
+
+			continue
+		}
+
+		if err := resolveOutlets(annotations, &res.outletMembership); err != nil {
 			resourceErrors = append(resourceErrors, errors.Wrapf(err, "on %s", s.Name()))
 
 			continue

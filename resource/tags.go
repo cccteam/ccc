@@ -6,13 +6,20 @@ package resource
 // TestAnnotationsDocCoversRuntimeVocabulary enforces that, so register new keys in
 // runtimeTagKeys below.
 const (
-	jsonTagKey        = "json"
+	jsonTagKey = "json"
+	// permTagKey's only legal value is permTagExempt: field permissions are enforced
+	// structurally from the endpoint permission, and the tag survives solely as the
+	// primary-key exemption marker. Any other value is rejected at Set construction.
 	permTagKey        = "perm"
 	immutableTagKey   = "immutable"
 	indexTagKey       = "index"
 	allowFilterTagKey = "allow_filter"
 	piiTagKey         = "pii"
 )
+
+// permTagExempt marks a primary-key field as exempt from field-level enforcement; its
+// readability follows the resource-level grant.
+const permTagExempt = "-"
 
 // runtimeTagKeys registers every runtime-read struct-tag key for the README.md
 // completeness test. Add every new tag-key constant here.

@@ -18,7 +18,7 @@ var container *initiator.SpannerContainer
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
-	c, err := initiator.NewSpannerContainer(ctx, "1.5.55")
+	c, err := initiator.NewSpannerContainer(ctx, "1.5.56")
 	if err != nil {
 		log.Fatal(err)
 	}

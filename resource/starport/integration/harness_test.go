@@ -11,12 +11,16 @@ import (
 	"testing"
 
 	"cloud.google.com/go/spanner"
+	"github.com/cccteam/access"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/app"
+	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	"github.com/cccteam/ccc/resource/starport/pkg/rpc"
+	"github.com/cccteam/ccc/resource/starport/pkg/stations"
 	initiator "github.com/cccteam/db-initiator"
+	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-playground/validator/v10"
 )
@@ -36,35 +40,79 @@ const (
 // grants is a static permission table: the set of resources granted for each permission.
 type grants map[accesstypes.Permission][]accesstypes.Resource
 
-// staticUserPermissions implements resource.UserPermissions over a grants table.
-type staticUserPermissions struct {
+// staticAccess scripts access.Controller's permission checks over a grants table.
+// Every Controller method the pipeline does not consume panics through the embedded
+// nil interface, keeping the fake honest about what the pipeline actually draws on.
+type staticAccess struct {
+	access.Controller
 	g grants
 }
 
-func (s *staticUserPermissions) Check(_ context.Context, perm accesstypes.Permission, resources ...accesstypes.Resource) (ok bool, missing []accesstypes.Resource, err error) {
+func (s *staticAccess) CheckUserResources(_ context.Context, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
 	for _, res := range resources {
 		if !slices.Contains(s.g[perm], res) {
 			missing = append(missing, res)
 		}
 	}
 
-	return len(missing) == 0, missing, nil
+	return missing, nil
 }
 
-func (s *staticUserPermissions) Domain() accesstypes.Domain { return accesstypes.GlobalDomain }
+// testConfigurer implements app.Configurer over the test dependencies, so the App is
+// assembled through the same seam main assembles it through. The permission engine
+// and tenancy source are injectable: each suite scripts them through the same two
+// Configurer methods production wires to the real engine and station list. Session is
+// nil: the App owns no router, these suites compose the API surface through
+// router.NewTestRouter, and nothing on that path touches the session.
+type testConfigurer struct {
+	db           *initiator.SpannerDB
+	access       access.Controller
+	domainExists func(ctx context.Context, domain accesstypes.Domain) (bool, error)
+}
 
-func (s *staticUserPermissions) User() accesstypes.User { return "integration-test-user" }
+func (c *testConfigurer) ResourceClient() resource.Client {
+	return resource.NewSpannerClient(c.db.Client)
+}
 
-// newTestApp builds the application with the given permission table backing every request.
-func newTestApp(db *initiator.SpannerDB, g grants) *app.App {
-	return app.New(app.Config{
-		ResourceClient: resource.NewSpannerClient(db.Client),
-		RPCClient:      rpc.NewClient(),
-		UserPermissions: func(*http.Request) resource.UserPermissions {
-			return &staticUserPermissions{g: g}
-		},
-		Validator: validator.New(),
-	})
+func (c *testConfigurer) RPCClient() *rpc.Client {
+	return rpc.NewClient()
+}
+
+func (c *testConfigurer) Access() access.Controller {
+	return c.access
+}
+
+func (c *testConfigurer) Session() *session.PasswordAuth[session.NoCustomData, session.NoCustomData] {
+	return nil
+}
+
+func (c *testConfigurer) Validator() *validator.Validate {
+	return validator.New()
+}
+
+func (c *testConfigurer) GuiDist() string { return "" }
+
+// AutomationAPIKey is unused by these suites: they drive the bare test router, which
+// carries no outlet middleware.
+func (c *testConfigurer) AutomationAPIKey() string { return "integration-automation-key" }
+
+func (c *testConfigurer) DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error) {
+	return c.domainExists(ctx, domain)
+}
+
+// stationsExist is the production tenancy rule: only the demo stations are domains.
+func stationsExist(_ context.Context, domain accesstypes.Domain) (bool, error) {
+	return stations.Exists(domain), nil
+}
+
+// newTestApp builds the application with the given permission table backing every
+// request, served through the generated test router.
+func newTestApp(db *initiator.SpannerDB, g grants) http.Handler {
+	return router.NewTestRouter(app.New(&testConfigurer{
+		db:           db,
+		access:       &staticAccess{g: g},
+		domainExists: stationsExist,
+	}))
 }
 
 // doRequest performs a request against the app and returns the status code and body.
@@ -84,9 +132,11 @@ func doRequest(t *testing.T, h http.Handler, method, target, body string) (statu
 	if err != nil {
 		t.Fatalf("ccc.NewUUID: %v", err)
 	}
-	ctx := context.WithValue(t.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionInfo{
-		ID:       sessionID,
-		Username: "integration-test-user",
+	ctx := context.WithValue(t.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionData{
+		SessionInfo: &sessioninfo.SessionInfo{
+			ID:       sessionID,
+			Username: "integration-test-user",
+		},
 	})
 
 	req := httptest.NewRequestWithContext(ctx, method, target, reader)

@@ -5,10 +5,10 @@ import (
 )
 
 type (
-	// CargoManifest is a mixed resource with a composite primary key: DeclaredValue is
-	// explicitly tagged while Details and Quantity follow the field-permission
-	// default. The fail-open pinning suite asserts the current behavior of the
-	// untagged fields.
+	// CargoManifest is a structurally enforced resource with a composite primary key:
+	// both key fields are exempt (their readability follows the resource-level grant)
+	// and every other field requires its own field grant. The fail-closed pinning
+	// suite asserts both halves.
 	//
 	// @resource
 	CargoManifest struct {
@@ -16,6 +16,6 @@ type (
 		LineNumber    int64    `spanner:"LineNumber"`
 		Details       string   `spanner:"Details"`
 		Quantity      int64    `spanner:"Quantity"`
-		DeclaredValue int64    `spanner:"DeclaredValue" perm:"Read,List,Create,Update"`
+		DeclaredValue int64    `spanner:"DeclaredValue"`
 	}
 )

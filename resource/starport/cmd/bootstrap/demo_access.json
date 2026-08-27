@@ -1,0 +1,198 @@
+{
+  "roles": [
+    {
+      "Name": "HarborMaster",
+      "Permissions": {
+        "List": [
+          "Ships",
+          "Ships.registryCode",
+          "Ships.name",
+          "Ships.dockingBayId",
+          "Ships.cargoValue",
+          "Ships.updatedAt",
+          "DockingBays",
+          "DockingBays.name",
+          "DockingBays.deckLevel",
+          "DockingBays.maxTonnage",
+          "CrewMembers",
+          "CrewMembers.shipId",
+          "CrewMembers.name",
+          "CrewMembers.rank",
+          "CrewMembers.clearanceLevel",
+          "CrewMembers.medicalNotes",
+          "CargoManifests",
+          "CargoManifests.declaredValue",
+          "CargoManifests.details",
+          "CargoManifests.quantity",
+          "SupplyCrates",
+          "SupplyCrates.label",
+          "SupplyCrates.quantity",
+          "SupplyCrates.priority",
+          "SupplyCrates.status",
+          "SupplyCrates.barcode",
+          "SupplyCrates.inspectorBadge",
+          "SupplyCrates.assignedShipId",
+          "ManifestLines",
+          "ManifestLines.shipName",
+          "ManifestLines.details",
+          "ManifestLines.quantity",
+          "ManifestLines.declaredValue",
+          "ShipCargoSummaries",
+          "ShipCargoSummaries.shipName",
+          "ShipCargoSummaries.dockingBayName",
+          "ShipCargoSummaries.manifestLines",
+          "ShipCargoSummaries.totalDeclaredValue"
+        ],
+        "Read": [
+          "Ships",
+          "Ships.registryCode",
+          "Ships.name",
+          "Ships.dockingBayId",
+          "Ships.cargoValue",
+          "Ships.updatedAt",
+          "DockingBays",
+          "DockingBays.name",
+          "DockingBays.deckLevel",
+          "DockingBays.maxTonnage",
+          "CrewMembers",
+          "CrewMembers.shipId",
+          "CrewMembers.name",
+          "CrewMembers.rank",
+          "CrewMembers.clearanceLevel",
+          "CrewMembers.medicalNotes",
+          "CargoManifests",
+          "CargoManifests.declaredValue",
+          "CargoManifests.details",
+          "CargoManifests.quantity",
+          "SupplyCrates",
+          "SupplyCrates.label",
+          "SupplyCrates.quantity",
+          "SupplyCrates.priority",
+          "SupplyCrates.status",
+          "SupplyCrates.barcode",
+          "SupplyCrates.inspectorBadge",
+          "SupplyCrates.assignedShipId"
+        ],
+        "Create": [
+          "Ships",
+          "Ships.registryCode",
+          "Ships.name",
+          "Ships.dockingBayId",
+          "Ships.cargoValue",
+          "DockingBays",
+          "DockingBays.name",
+          "DockingBays.deckLevel",
+          "DockingBays.maxTonnage",
+          "CrewMembers",
+          "CrewMembers.shipId",
+          "CrewMembers.name",
+          "CrewMembers.rank",
+          "CrewMembers.clearanceLevel",
+          "CrewMembers.medicalNotes",
+          "CargoManifests",
+          "CargoManifests.declaredValue",
+          "CargoManifests.details",
+          "CargoManifests.quantity",
+          "SupplyCrates",
+          "SupplyCrates.label",
+          "SupplyCrates.quantity",
+          "SupplyCrates.priority",
+          "SupplyCrates.status",
+          "SupplyCrates.notes",
+          "SupplyCrates.inspectorBadge",
+          "SupplyCrates.assignedShipId"
+        ],
+        "Update": [
+          "Ships",
+          "Ships.name",
+          "Ships.dockingBayId",
+          "Ships.cargoValue",
+          "DockingBays",
+          "DockingBays.name",
+          "DockingBays.deckLevel",
+          "DockingBays.maxTonnage",
+          "CrewMembers",
+          "CrewMembers.shipId",
+          "CrewMembers.name",
+          "CrewMembers.rank",
+          "CrewMembers.clearanceLevel",
+          "CrewMembers.medicalNotes",
+          "CargoManifests",
+          "CargoManifests.declaredValue",
+          "CargoManifests.details",
+          "CargoManifests.quantity",
+          "SupplyCrates",
+          "SupplyCrates.label",
+          "SupplyCrates.quantity",
+          "SupplyCrates.priority",
+          "SupplyCrates.status",
+          "SupplyCrates.notes",
+          "SupplyCrates.inspectorBadge",
+          "SupplyCrates.assignedShipId"
+        ],
+        "Delete": [
+          "Ships",
+          "DockingBays",
+          "CrewMembers",
+          "CargoManifests",
+          "SupplyCrates"
+        ],
+        "Execute": [
+          "AuthorizeLaunch"
+        ]
+      }
+    },
+    {
+      "Name": "DockOperator",
+      "Permissions": {
+        "List": [
+          "Berths",
+          "Berths.designation",
+          "Berths.sizeClass",
+          "Berths.occupied"
+        ],
+        "Read": [
+          "Berths",
+          "Berths.designation",
+          "Berths.sizeClass"
+        ],
+        "Create": [
+          "Berths",
+          "Berths.designation",
+          "Berths.sizeClass",
+          "Berths.occupied"
+        ],
+        "Update": [
+          "Berths",
+          "Berths.occupied"
+        ],
+        "Delete": [
+          "Berths"
+        ],
+        "Execute": [
+          "AuthorizeDocking"
+        ]
+      }
+    }
+  ],
+  "users": [
+    {
+      "user": "demo",
+      "password": "starport",
+      "roles": {
+        "global": ["HarborMaster"],
+        "domains": {
+          "station-alpha": ["DockOperator"]
+        }
+      }
+    }
+  ],
+  "serviceAccounts": [
+    {
+      "user": "automation",
+      "roles": {
+        "global": ["HarborMaster"]
+      }
+    }
+  ]
+}

@@ -28,6 +28,24 @@ func validate(s *parser.Struct, validators ...structValidator) error {
 	return nil
 }
 
+// validateNoPermTags rejects perm struct tags on source structs: field permissions are
+// enforced structurally from the endpoint permission, so the tag is dead annotation
+// (the generator emits the perm:"-" primary-key marker into request structs itself).
+func validateNoPermTags(s *parser.Struct) error {
+	var errs []error
+	for _, field := range s.Fields() {
+		if field.HasTag(permTagKey) {
+			errs = append(errs, errors.Newf("field %s.%s carries a perm tag: field permissions are derived structurally from the endpoint permission; remove the tag", s.Name(), field.Name()))
+		}
+	}
+
+	if len(errs) != 0 {
+		return errors.Wrap(errors.Join(errs...), "perm tag error")
+	}
+
+	return nil
+}
+
 func (c *client) validateStructNameMatchesFile(pkg *packages.Package, plural bool) structValidator {
 	return func(s *parser.Struct) error {
 		fileName := filepath.Base(pkg.Fset.Position(s.Pos()).Filename)

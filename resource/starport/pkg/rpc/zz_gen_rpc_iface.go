@@ -7,5 +7,5 @@ import "github.com/cccteam/ccc/accesstypes"
 
 type Method interface {
 	Method() accesstypes.Resource
-	AuthorizeLaunch
+	AuthorizeDocking | AuthorizeLaunch
 }

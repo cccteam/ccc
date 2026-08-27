@@ -6,10 +6,12 @@ package app
 import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/pkg/resources"
+	"github.com/cccteam/ccc/resource/starport/pkg/virtualresources"
 )
 
 type Resourcer interface {
 	resource.Resourcer
-	resources.CargoManifest | resources.CrewMember | resources.DockingBay | resources.Ship |
-		resources.SupplyCrate
+	resources.Berth | resources.CargoManifest | resources.CrewMember | resources.DockingBay |
+		resources.GantryCrane | virtualresources.ManifestLine | resources.Ship |
+		virtualresources.ShipCargoSummary | resources.Station | resources.SupplyCrate
 }

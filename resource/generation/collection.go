@@ -349,19 +349,19 @@ func handlerSetData(res *resourceInfo, handlerType HandlerType) (resource.SetDat
 		permissions = []accesstypes.Permission{accesstypes.List}
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTag(), field.IndexTag(), field.AllowFilterTag(), field.ListPermTag(), field.PIITag()))
+				field.JSONTag(), field.IndexTag(), field.AllowFilterTag(), field.PermTag(), field.PIITag()))
 		}
 	case ReadHandler:
 		permissions = []accesstypes.Permission{accesstypes.Read}
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTag(), field.UniqueIndexTag(), field.ReadPermTag(), field.PIITag()))
+				field.JSONTag(), field.UniqueIndexTag(), field.PermTag(), field.PIITag()))
 		}
 	case PatchHandler:
 		permissions = []accesstypes.Permission{accesstypes.Create, accesstypes.Update, accesstypes.Delete}
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTagForPatch(), field.ImmutableTag(), field.PatchPermTag()))
+				field.JSONTagForPatch(), field.ImmutableTag()))
 		}
 	case AllHandlers:
 		return resource.SetData{}, errors.Newf("handlerSetData(): unsupported handler type: %s", handlerType)
@@ -378,11 +378,12 @@ func handlerSetData(res *resourceInfo, handlerType HandlerType) (resource.SetDat
 }
 
 // computedFieldTags renders a computed resource's field tags as the computed handler
-// template emits them (json and pii only; no perm or immutable tags).
+// template emits them (json, the perm:"-" exemption marker on @primarykey fields, and
+// pii; no immutable tags).
 func computedFieldTags(res *computedResource) []resource.FieldTags {
 	fields := make([]resource.FieldTags, 0, len(res.Fields))
 	for _, field := range res.Fields {
-		fields = append(fields, fieldTagsFromTemplateTags(field.Name(), field.JSONTag(), field.PIITag()))
+		fields = append(fields, fieldTagsFromTemplateTags(field.Name(), field.JSONTag(), field.PermTag(), field.PIITag()))
 	}
 
 	return fields
