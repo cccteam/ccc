@@ -231,6 +231,82 @@ func Test_routesTemplate_testRouter(t *testing.T) {
 	}
 }
 
+// Test_routerTestTemplate_selfContained pins that the generated router test carries no
+// dependency on app-maintained artifacts: the handlers stub, call recorder, and
+// TestGeneratedRoutes are all emitted by the template itself, the stub's DomainGuard
+// pass-through appears exactly when domain-scoped routes exist, and nothing references
+// a mockgen package or an app-named interface.
+func Test_routerTestTemplate_selfContained(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		data            routerFileData
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "domain-scoped consolidated app emits guard pass-through and dispatch test",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets"}},
+				},
+				HasDomainScopedRoutes:  true,
+				HasConsolidatedHandler: true,
+			},
+			wantContains: []string{
+				"func (rec *generatedCallRecorder) RecordMiddlewareCall(name string) func(next http.Handler) http.Handler {",
+				"func (rec *generatedCallRecorder) MiddlewareCount() int {",
+				"func (rec *generatedCallRecorder) MiddlewareCallCount(name string) int {",
+				"func newGeneratedHandlersStub(record func(handlerName string) http.HandlerFunc) *generatedHandlersStub {",
+				"func (s *generatedHandlersStub) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {",
+				"return func(next http.HandlerFunc) http.HandlerFunc { return next }",
+				"func (s *generatedHandlersStub) Widgets() http.HandlerFunc {",
+				`return s.record("Widgets")`,
+				"func (s *generatedHandlersStub) PatchResources() http.HandlerFunc {",
+				"func TestGeneratedRoutes(t *testing.T) {",
+				"router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall))",
+			},
+			wantNotContains: []string{"mock_router", "MockHandlers"},
+		},
+		{
+			name: "without domain-scoped routes or a consolidated handler the stub stays minimal",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets"}},
+				},
+			},
+			wantContains:    []string{"func (s *generatedHandlersStub) Widgets() http.HandlerFunc {"},
+			wantNotContains: []string{"DomainGuard", "PatchResources", "mock_router"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			out, err := c.generateTemplateOutput("routerTestTemplate", routerTestTemplate, tt.data)
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("routerTestTemplate output missing %q:\n%s", want, out)
+				}
+			}
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(string(out), notWant) {
+					t.Errorf("routerTestTemplate output must not contain %q:\n%s", notWant, out)
+				}
+			}
+		})
+	}
+}
+
 func Test_fileTemplates_generationHeader(t *testing.T) {
 	t.Parallel()
 

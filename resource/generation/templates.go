@@ -1707,9 +1707,113 @@ package {{ .Package }}
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
 
-	{{ .LocalPackageImports }}
+	"github.com/go-chi/chi/v5"
 )
+
+// TestGeneratedRoutes drives every generated route through NewTestRouter: each request
+// must return 200, dispatch to exactly its own handler, and resolve the expected route
+// parameters.
+func TestGeneratedRoutes(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range generatedRouterTests() {
+		t.Run(tt.method+"-url"+strings.ReplaceAll(tt.url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newGeneratedCallRecorder()
+			router := NewTestRouter(newGeneratedHandlersStub(rec.RecordHandlerCall))
+
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, http.NoBody)
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			if got := rr.Code; got != http.StatusOK {
+				t.Errorf("response.Code = %v, want %v", got, http.StatusOK)
+			}
+
+			if cnt := len(rec.handlers); cnt != 1 {
+				t.Fatalf("expected 1 handler called, got: %v", rec.handlers)
+			}
+			if cnt := rec.handlers[tt.handlerFunc]; cnt != 1 {
+				t.Fatalf("handler %s, expected 1 call, got: %d", tt.handlerFunc, cnt)
+			}
+
+			for key, value := range tt.parameters {
+				if got := rec.Parameter(tt.handlerFunc, key); got != value {
+					t.Fatalf("%s = %s, expected %s", key, got, value)
+				}
+			}
+		})
+	}
+}
+
+// generatedCallRecorder tracks handler dispatch: which handlers ran, how often, and
+// the route parameters chi resolved for each. It also records middleware execution —
+// unused by the generated routing test above, which exercises bare dispatch, but
+// shared with the application's own router structure tests so they need no private
+// recorder.
+type generatedCallRecorder struct {
+	handlers    map[string]int
+	parameters  map[string]map[string]string
+	middlewares map[string]int
+}
+
+func newGeneratedCallRecorder() *generatedCallRecorder {
+	return &generatedCallRecorder{
+		handlers:    make(map[string]int),
+		parameters:  make(map[string]map[string]string),
+		middlewares: make(map[string]int),
+	}
+}
+
+// RecordHandlerCall returns a handler that counts its own dispatch and captures every
+// generated route parameter present on the request.
+func (rec *generatedCallRecorder) RecordHandlerCall(name string) http.HandlerFunc {
+	return func(_ http.ResponseWriter, r *http.Request) {
+		for _, key := range generatedRouteParameters() {
+			if value := chi.URLParam(r, key); value != "" {
+				if _, found := rec.parameters[name]; !found {
+					rec.parameters[name] = make(map[string]string)
+				}
+				rec.parameters[name][key] = value
+			}
+		}
+
+		rec.handlers[name]++
+	}
+}
+
+func (rec *generatedCallRecorder) Parameter(name, key string) string {
+	if _, ok := rec.parameters[name]; !ok {
+		return ""
+	}
+
+	return rec.parameters[name][key]
+}
+
+// RecordMiddlewareCall returns middleware that counts its own execution per request.
+func (rec *generatedCallRecorder) RecordMiddlewareCall(name string) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rec.middlewares[name]++
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// MiddlewareCount returns how many distinct middlewares ran.
+func (rec *generatedCallRecorder) MiddlewareCount() int {
+	return len(rec.middlewares)
+}
+
+// MiddlewareCallCount returns how many times the named middleware ran.
+func (rec *generatedCallRecorder) MiddlewareCallCount(name string) int {
+	return rec.middlewares[name]
+}
 
 type generatedRouterTest struct {
 	url string
@@ -1768,16 +1872,35 @@ func generatedRouterTests() []*generatedRouterTest {
 	return routerTests
 }
 
-func generatedExpectCalls(e *mock_router.MockHandlersMockRecorder, rec *callRecorder) {
-	{{- if .HasDomainScopedRoutes }}
-	// The routing tests exercise dispatch, not the guard: pass requests through
-	// unchecked (guard behavior is covered where DomainExists is real).
-	e.DomainGuard().Times(1).Return(func(next http.HandlerFunc) http.HandlerFunc { return next })
-	{{ end }}
-	{{ range $Struct, $Routes := .RoutesMap }}{{ range $Routes }}e.{{ .HandlerFunc }}().Times(1).Return(rec.RecordHandlerCall("{{ .HandlerFunc }}"))
-	{{ end }}{{- end -}}
-	{{- if .HasConsolidatedHandler }}e.PatchResources().Times(1).Return(rec.RecordHandlerCall("PatchResources")){{ end -}}
-}`
+// generatedHandlersStub satisfies GeneratedHandlers for routing tests: every handler
+// method returns the record function's handler for its own name. Handwritten router
+// tests can embed it to cover the generated surface of a wider handlers interface.
+type generatedHandlersStub struct {
+	record func(handlerName string) http.HandlerFunc
+}
+
+func newGeneratedHandlersStub(record func(handlerName string) http.HandlerFunc) *generatedHandlersStub {
+	return &generatedHandlersStub{record: record}
+}
+{{ if .HasDomainScopedRoutes }}
+// DomainGuard passes requests through unchecked: the routing tests exercise dispatch,
+// not the guard (guard behavior is covered where DomainExists is real).
+func (s *generatedHandlersStub) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc { return next }
+}
+{{ end }}
+{{- range $Struct, $Routes := .RoutesMap }}
+{{- range $Routes }}
+func (s *generatedHandlersStub) {{ .HandlerFunc }}() http.HandlerFunc {
+	return s.record("{{ .HandlerFunc }}")
+}
+{{ end -}}
+{{ end }}
+{{- if .HasConsolidatedHandler }}
+func (s *generatedHandlersStub) PatchResources() http.HandlerFunc {
+	return s.record("PatchResources")
+}
+{{ end -}}`
 
 	rpcFileTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.
 // Source: {{ .Source }}
