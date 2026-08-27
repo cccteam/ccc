@@ -179,7 +179,7 @@ func (a *App) PatchBerths() http.HandlerFunc {
 
 			return nil
 		}); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, handleError[resources.Berth](err))
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
 		return httpio.NewEncoder(w).Ok(resp)

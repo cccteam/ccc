@@ -189,7 +189,7 @@ func (a *App) PatchCrewMembers() http.HandlerFunc {
 
 			return nil
 		}); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, handleError[resources.CrewMember](err))
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
 		return httpio.NewEncoder(w).Ok(resp)

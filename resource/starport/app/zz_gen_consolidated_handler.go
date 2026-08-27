@@ -114,19 +114,19 @@ func (a *App) PatchResources() http.HandlerFunc {
 						id1 := httpio.Param[ccc.UUID](req, "id1")
 						id2 := httpio.Param[int64](req, "id2")
 						if err := resources.NewCargoManifestCreatePatchFromPatchSet(id1, id2, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.CargoManifest](err), "resources.CargoManifestCreatePatch.Buffer()")
+							return errors.Wrap(err, "resources.CargoManifestCreatePatch.Buffer()")
 						}
 					case resource.OperationUpdate:
 						id1 := httpio.Param[ccc.UUID](req, "id1")
 						id2 := httpio.Param[int64](req, "id2")
 						if err := resources.NewCargoManifestUpdatePatchFromPatchSet(id1, id2, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.CargoManifest](err), "resources.CargoManifestUpdatePatch.Buffer()")
+							return errors.Wrap(err, "resources.CargoManifestUpdatePatch.Buffer()")
 						}
 					case resource.OperationDelete:
 						id1 := httpio.Param[ccc.UUID](req, "id1")
 						id2 := httpio.Param[int64](req, "id2")
 						if err := resources.NewCargoManifestDeletePatchFromPatchSet(id1, id2, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.CargoManifest](err), "resources.CargoManifestDeletePatch.Buffer()")
+							return errors.Wrap(err, "resources.CargoManifestDeletePatch.Buffer()")
 						}
 					}
 				case "docking-bays":
@@ -147,18 +147,18 @@ func (a *App) PatchResources() http.HandlerFunc {
 							return errors.Wrap(err, "dockingBayCreatePatchFromPatchSet()")
 						}
 						if err := patch.Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.DockingBay](err), "resources.DockingBayCreatePatch.Buffer()")
+							return errors.Wrap(err, "resources.DockingBayCreatePatch.Buffer()")
 						}
 						resp["dockingBays"] = append(resp["dockingBays"], patch.ID())
 					case resource.OperationUpdate:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewDockingBayUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.DockingBay](err), "resources.DockingBayUpdatePatch.Buffer()")
+							return errors.Wrap(err, "resources.DockingBayUpdatePatch.Buffer()")
 						}
 					case resource.OperationDelete:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewDockingBayDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.DockingBay](err), "resources.DockingBayDeletePatch.Buffer()")
+							return errors.Wrap(err, "resources.DockingBayDeletePatch.Buffer()")
 						}
 					}
 				case "ships":
@@ -179,18 +179,18 @@ func (a *App) PatchResources() http.HandlerFunc {
 							return errors.Wrap(err, "shipCreatePatchFromPatchSet()")
 						}
 						if err := patch.Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.Ship](err), "resources.ShipCreatePatch.Buffer()")
+							return errors.Wrap(err, "resources.ShipCreatePatch.Buffer()")
 						}
 						resp["ships"] = append(resp["ships"], patch.ID())
 					case resource.OperationUpdate:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewShipUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.Ship](err), "resources.ShipUpdatePatch.Buffer()")
+							return errors.Wrap(err, "resources.ShipUpdatePatch.Buffer()")
 						}
 					case resource.OperationDelete:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewShipDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.Ship](err), "resources.ShipDeletePatch.Buffer()")
+							return errors.Wrap(err, "resources.ShipDeletePatch.Buffer()")
 						}
 					}
 				case "supply-crates":
@@ -211,18 +211,18 @@ func (a *App) PatchResources() http.HandlerFunc {
 							return errors.Wrap(err, "supplyCrateCreatePatchFromPatchSet()")
 						}
 						if err := patch.Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.SupplyCrate](err), "resources.SupplyCrateCreatePatch.Buffer()")
+							return errors.Wrap(err, "resources.SupplyCrateCreatePatch.Buffer()")
 						}
 						resp["supplyCrates"] = append(resp["supplyCrates"], patch.ID())
 					case resource.OperationUpdate:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewSupplyCrateUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.SupplyCrate](err), "resources.SupplyCrateUpdatePatch.Buffer()")
+							return errors.Wrap(err, "resources.SupplyCrateUpdatePatch.Buffer()")
 						}
 					case resource.OperationDelete:
 						id := httpio.Param[ccc.UUID](req, "id")
 						if err := resources.NewSupplyCrateDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-							return errors.Wrap(handleError[resources.SupplyCrate](err), "resources.SupplyCrateDeletePatch.Buffer()")
+							return errors.Wrap(err, "resources.SupplyCrateDeletePatch.Buffer()")
 						}
 					}
 				case "stations":
@@ -244,18 +244,18 @@ func (a *App) PatchResources() http.HandlerFunc {
 								return errors.Wrap(err, "stationCreatePatchFromPatchSet()")
 							}
 							if err := patch.Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[resources.Station](err), "resources.StationCreatePatch.Buffer()")
+								return errors.Wrap(err, "resources.StationCreatePatch.Buffer()")
 							}
 							resp["stations"] = append(resp["stations"], patch.ID())
 						case resource.OperationUpdate:
 							id := httpio.Param[ccc.UUID](req, "id")
 							if err := resources.NewStationUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[resources.Station](err), "resources.StationUpdatePatch.Buffer()")
+								return errors.Wrap(err, "resources.StationUpdatePatch.Buffer()")
 							}
 						case resource.OperationDelete:
 							id := httpio.Param[ccc.UUID](req, "id")
 							if err := resources.NewStationDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[resources.Station](err), "resources.StationDeletePatch.Buffer()")
+								return errors.Wrap(err, "resources.StationDeletePatch.Buffer()")
 							}
 						}
 
@@ -292,18 +292,18 @@ func (a *App) PatchResources() http.HandlerFunc {
 								return errors.Wrap(err, "gantryCraneCreatePatchFromPatchSet()")
 							}
 							if err := patch.Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[resources.GantryCrane](err), "resources.GantryCraneCreatePatch.Buffer()")
+								return errors.Wrap(err, "resources.GantryCraneCreatePatch.Buffer()")
 							}
 							resp["gantryCranes"] = append(resp["gantryCranes"], patch.ID())
 						case resource.OperationUpdate:
 							id := httpio.Param[ccc.UUID](req, "id")
 							if err := resources.NewGantryCraneUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[resources.GantryCrane](err), "resources.GantryCraneUpdatePatch.Buffer()")
+								return errors.Wrap(err, "resources.GantryCraneUpdatePatch.Buffer()")
 							}
 						case resource.OperationDelete:
 							id := httpio.Param[ccc.UUID](req, "id")
 							if err := resources.NewGantryCraneDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
-								return errors.Wrap(handleError[resources.GantryCrane](err), "resources.GantryCraneDeletePatch.Buffer()")
+								return errors.Wrap(err, "resources.GantryCraneDeletePatch.Buffer()")
 							}
 						}
 					default:

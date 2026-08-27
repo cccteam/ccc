@@ -246,9 +246,3 @@ func (a *App) ResourceClient() resource.Client {
 func (a *App) RPCClient() *rpc.Client {
 	return a.rpcClient
 }
-
-// handleError allows the application to translate resource errors per resource type
-// before they are encoded to the client. The starport performs no translation.
-func handleError[T any](err error) error {
-	return err
-}
