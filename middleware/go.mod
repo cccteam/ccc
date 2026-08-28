@@ -3,8 +3,8 @@ module github.com/cccteam/ccc/middleware
 go 1.26.6
 
 require (
-	cloud.google.com/go/auth v0.23.1
-	github.com/cccteam/ccc/tracer v0.1.6
+	cloud.google.com/go/auth v0.23.2
+	github.com/cccteam/ccc/tracer v0.1.7
 	github.com/cccteam/httpio v0.7.17
 	github.com/go-playground/errors/v5 v5.4.0
 )
