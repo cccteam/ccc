@@ -425,8 +425,8 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	return &Statement{resolvedWhereClause: resolvedSQL, SQL: sql, Params: where.Params}, nil
 }
 
-// Read executes the query and returns a single result.
-func (q *QuerySet[Resource]) Read(ctx context.Context, txn ReadOnlyTransaction) (*Resource, error) {
+// Read executes the query and returns a single result wrapped in the Row envelope.
+func (q *QuerySet[Resource]) Read(ctx context.Context, txn ReadOnlyTransaction) (*Row[Resource], error) {
 	r := newReader[Resource](txn)
 	if err := q.checkPermissions(ctx, r.DBType()); err != nil {
 		return nil, err
@@ -445,9 +445,9 @@ func (q *QuerySet[Resource]) Read(ctx context.Context, txn ReadOnlyTransaction) 
 	return dst, nil
 }
 
-// List executes the query and returns an iterator for the results.
-func (q *QuerySet[Resource]) List(ctx context.Context, txn ReadOnlyTransaction) iter.Seq2[*Resource, error] {
-	return func(yield func(*Resource, error) bool) {
+// List executes the query and returns an iterator for the results, each wrapped in the Row envelope.
+func (q *QuerySet[Resource]) List(ctx context.Context, txn ReadOnlyTransaction) iter.Seq2[*Row[Resource], error] {
+	return func(yield func(*Row[Resource], error) bool) {
 		r := newReader[Resource](txn)
 		if err := q.checkPermissions(ctx, r.DBType()); err != nil {
 			yield(nil, err)
@@ -470,8 +470,8 @@ func (q *QuerySet[Resource]) List(ctx context.Context, txn ReadOnlyTransaction) 
 	}
 }
 
-// BatchList executes the query and returns an iterator for the results in batches.
-func (q *QuerySet[Resource]) BatchList(ctx context.Context, client Client, size int) iter.Seq[iter.Seq2[*Resource, error]] {
+// BatchList executes the query and returns an iterator for the results in batches, each result wrapped in the Row envelope.
+func (q *QuerySet[Resource]) BatchList(ctx context.Context, client Client, size int) iter.Seq[iter.Seq2[*Row[Resource], error]] {
 	return ccc.BatchIter2(q.List(ctx, client), size)
 }
 

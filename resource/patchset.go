@@ -656,7 +656,7 @@ func (p *PatchSet[Resource]) updateChangeSet(ctx context.Context, txn ReadWriteT
 		return nil, errors.Wrap(err, "Reader[Resource].Read()")
 	}
 
-	changeSet, err := p.Diff(oldValues)
+	changeSet, err := p.Diff(&oldValues.Data)
 	if err != nil {
 		return nil, errors.Wrap(err, "Diff()")
 	}
@@ -679,7 +679,7 @@ func (p *PatchSet[Resource]) jsonDeleteSet(ctx context.Context, txn ReadWriteTra
 		return nil, errors.Wrap(err, "Reader.Read()")
 	}
 
-	changeSet, err := p.deleteChangeSet(oldValues)
+	changeSet, err := p.deleteChangeSet(&oldValues.Data)
 	if err != nil {
 		return nil, errors.Wrap(err, "Diff()")
 	}

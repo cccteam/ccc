@@ -63,10 +63,12 @@ type Executor interface {
 }
 
 // Reader is an interface that wraps methods for reading resources from a database.
+// Read and List return each row wrapped in the Row envelope, which carries the row
+// data alongside per-row metadata.
 type Reader[Resource Resourcer] interface {
 	DBType() DBType
-	Read(ctx context.Context, stmt *Statement) (*Resource, error)
-	List(ctx context.Context, stmt *Statement) iter.Seq2[*Resource, error]
+	Read(ctx context.Context, stmt *Statement) (*Row[Resource], error)
+	List(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error]
 }
 
 // PatchSetMetadata is an interface that all PatchSet types must implement to allow their mutations to be buffered

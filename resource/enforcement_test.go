@@ -264,7 +264,7 @@ func TestQuerySet_Read_permissionEnforcement(t *testing.T) {
 			reader := NewMockReader[enforcementResource](ctrl)
 			reader.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
 			if !wantErr {
-				reader.EXPECT().Read(gomock.Any(), gomock.Any()).Return(&enforcementResource{}, nil)
+				reader.EXPECT().Read(gomock.Any(), gomock.Any()).Return(&Row[enforcementResource]{}, nil)
 			}
 			client := NewMockClient(nil, []any{reader}, nil)
 
@@ -376,7 +376,7 @@ func TestQuerySet_Read_checkBatching(t *testing.T) {
 			reader := NewMockReader[enforcementResource](ctrl)
 			reader.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
 			if !tt.wantForbidden {
-				reader.EXPECT().Read(gomock.Any(), gomock.Any()).Return(&enforcementResource{}, nil)
+				reader.EXPECT().Read(gomock.Any(), gomock.Any()).Return(&Row[enforcementResource]{}, nil)
 			}
 			client := NewMockClient(nil, []any{reader}, nil)
 

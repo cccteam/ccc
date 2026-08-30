@@ -72,10 +72,10 @@ func (c *spannerReader[Resource]) DBType() DBType {
 }
 
 // Read reads a single resource from the database.
-func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Resource, error) {
+func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
 	var res Resource
-	dst := new(Resource)
-	if err := spxscan.Get(ctx, c.readTxn(), dst, stmt.SpannerStatement()); err != nil {
+	row := new(Row[Resource])
+	if err := spxscan.Get(ctx, c.readTxn(), &row.Data, stmt.SpannerStatement()); err != nil {
 		if errors.Is(err, spxapi.ErrNotFound) {
 			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", res.Resource(), stmt.resolvedWhereClause)
 		}
@@ -83,19 +83,19 @@ func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*R
 		return nil, errors.Wrap(err, "spxscan.Get()")
 	}
 
-	return dst, nil
+	return row, nil
 }
 
 // List reads a list of resources from the database.
-func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Resource, error] {
-	return func(yield func(*Resource, error) bool) {
+func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
+	return func(yield func(*Row[Resource], error) bool) {
 		for r, err := range spxscan.SelectSeq[Resource](ctx, c.readTxn(), stmt.SpannerStatement()) {
 			if err != nil {
 				yield(nil, errors.Wrap(err, "spxscan.SelectSeq()"))
 
 				return
 			}
-			if !yield(r, nil) {
+			if !yield(&Row[Resource]{Data: *r}, nil) {
 				return
 			}
 		}

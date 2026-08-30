@@ -32,12 +32,12 @@ func ExampleQuerySet_BatchList() {
 
 	// It's acceptable to break out of an iterator early and move onto the next batch iterator.
 	for batch := range qSet.BatchList(ctx, &client, 10) {
-		for res, err := range batch {
+		for row, err := range batch {
 			if err != nil {
 				return
 			}
 
-			if res.Resource() == "" {
+			if row.Data.Resource() == "" {
 				break
 			}
 		}
@@ -49,13 +49,13 @@ func ExampleQuerySet_BatchList() {
 	}
 }
 
-func processExampleBatch(batch iter.Seq2[*ExampleResource, error]) error {
-	for res, err := range batch {
+func processExampleBatch(batch iter.Seq2[*Row[ExampleResource], error]) error {
+	for row, err := range batch {
 		if err != nil {
 			return err
 		}
 
-		_ = res
+		_ = row
 	}
 
 	return nil
