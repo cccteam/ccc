@@ -154,12 +154,13 @@ func TestBootstrap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			missing, err := client.CheckUserResources(ctx, demoUser, tt.scope, tt.perm, tt.resource)
+			decisions, err := client.CheckUserResources(ctx, accesstypes.NewEnvironment(), demoUser, tt.scope, tt.perm, tt.resource)
 			if err != nil {
 				t.Fatalf("CheckUserResources() error = %v", err)
 			}
-			if ok := len(missing) == 0; ok != tt.wantOK {
-				t.Errorf("CheckUserResources(%s, %s, %s, %s) = %v (missing %v), want %v", demoUser, tt.scope, tt.perm, tt.resource, ok, missing, tt.wantOK)
+			denied := decisions.DeniedResources()
+			if ok := len(denied) == 0; ok != tt.wantOK {
+				t.Errorf("CheckUserResources(%s, %s, %s, %s) = %v (denied %v), want %v", demoUser, tt.scope, tt.perm, tt.resource, ok, denied, tt.wantOK)
 			}
 		})
 	}

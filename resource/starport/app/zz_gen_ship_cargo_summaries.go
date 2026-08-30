@@ -42,7 +42,7 @@ func (a *App) ShipCargoSummaries() http.HandlerFunc {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			rec := (*shipCargoSummary)(row)
+			rec := (*shipCargoSummary)(&row.Data)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {

@@ -30,12 +30,17 @@ type fakeAccess struct {
 	g grants
 }
 
-func (f *fakeAccess) CheckUserResources(_ context.Context, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) ([]accesstypes.Resource, error) {
-	if f.g[perm] {
-		return nil, nil
+func (f *fakeAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
+	decisions := make(accesstypes.Decisions, len(resources))
+	for _, res := range resources {
+		if f.g[perm] {
+			decisions[res] = accesstypes.Granted()
+		} else {
+			decisions[res] = accesstypes.Denied()
+		}
 	}
 
-	return resources, nil
+	return decisions, nil
 }
 
 // testConfigurer implements app.Configurer over the test dependencies, so the App is

@@ -43,7 +43,7 @@ func (a *App) ManifestLines() http.HandlerFunc {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			rec := (*manifestLine)(row)
+			rec := (*manifestLine)(&row.Data)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {

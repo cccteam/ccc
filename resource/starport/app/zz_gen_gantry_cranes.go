@@ -43,7 +43,7 @@ func (a *App) GantryCranes() http.HandlerFunc {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			rec := (*gantryCrane)(row)
+			rec := (*gantryCrane)(&row.Data)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {
@@ -92,7 +92,7 @@ func (a *App) GantryCrane() http.HandlerFunc {
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		rec := (*response)(row)
+		rec := (*response)(&row.Data)
 		rmap := make(map[string]any)
 		for _, field := range querySet.Fields() {
 			switch string(field) {

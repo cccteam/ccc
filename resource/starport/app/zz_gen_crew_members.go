@@ -47,7 +47,7 @@ func (a *App) CrewMembers() http.HandlerFunc {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			rec := (*crewMember)(row)
+			rec := (*crewMember)(&row.Data)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {
@@ -101,7 +101,7 @@ func (a *App) CrewMember() http.HandlerFunc {
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		rec := (*response)(row)
+		rec := (*response)(&row.Data)
 		rmap := make(map[string]any)
 		for _, field := range querySet.Fields() {
 			switch string(field) {

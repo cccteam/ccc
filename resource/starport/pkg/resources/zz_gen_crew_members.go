@@ -46,15 +46,15 @@ func (q *CrewMemberQuery) ID() ccc.UUID {
 	return v
 }
 
-func (q *CrewMemberQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*CrewMember, error) {
+func (q *CrewMemberQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[CrewMember], error) {
 	return q.qSet.Read(ctx, txn)
 }
 
-func (q *CrewMemberQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*CrewMember, error] {
+func (q *CrewMemberQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[CrewMember], error] {
 	return q.qSet.List(ctx, txn)
 }
 
-func (q *CrewMemberQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*CrewMember, error]] {
+func (q *CrewMemberQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[CrewMember], error]] {
 	return q.qSet.BatchList(ctx, client, size)
 }
 

@@ -57,15 +57,18 @@ type domainAccess struct {
 	byDomain domainGrants
 }
 
-func (d *domainAccess) CheckUserResources(_ context.Context, _ accesstypes.User, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
+func (d *domainAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
 	g := d.byDomain[scope]
+	decisions := make(accesstypes.Decisions, len(resources))
 	for _, res := range resources {
-		if !slices.Contains(g[perm], res) {
-			missing = append(missing, res)
+		if slices.Contains(g[perm], res) {
+			decisions[res] = accesstypes.Granted()
+		} else {
+			decisions[res] = accesstypes.Denied()
 		}
 	}
 
-	return missing, nil
+	return decisions, nil
 }
 
 // newDomainTestApp builds the application with a domain-partitioned permission table

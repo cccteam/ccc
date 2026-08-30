@@ -47,7 +47,7 @@ func (a *App) SupplyCrates() http.HandlerFunc {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			rec := (*supplyCrate)(row)
+			rec := (*supplyCrate)(&row.Data)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {
@@ -108,7 +108,7 @@ func (a *App) SupplyCrate() http.HandlerFunc {
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		rec := (*response)(row)
+		rec := (*response)(&row.Data)
 		rmap := make(map[string]any)
 		for _, field := range querySet.Fields() {
 			switch string(field) {

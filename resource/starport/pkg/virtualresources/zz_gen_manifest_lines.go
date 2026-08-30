@@ -33,15 +33,15 @@ func NewManifestLineQueryFromQuerySet(qSet *resource.QuerySet[ManifestLine]) *Ma
 	return &ManifestLineQuery{qSet: qSet}
 }
 
-func (q *ManifestLineQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*ManifestLine, error) {
+func (q *ManifestLineQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[ManifestLine], error) {
 	return q.qSet.Read(ctx, txn)
 }
 
-func (q *ManifestLineQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*ManifestLine, error] {
+func (q *ManifestLineQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[ManifestLine], error] {
 	return q.qSet.List(ctx, txn)
 }
 
-func (q *ManifestLineQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*ManifestLine, error]] {
+func (q *ManifestLineQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[ManifestLine], error]] {
 	return q.qSet.BatchList(ctx, client, size)
 }
 

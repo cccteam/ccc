@@ -58,15 +58,15 @@ func (q *GantryCraneQuery) Callsign() string {
 	return v
 }
 
-func (q *GantryCraneQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*GantryCrane, error) {
+func (q *GantryCraneQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[GantryCrane], error) {
 	return q.qSet.Read(ctx, txn)
 }
 
-func (q *GantryCraneQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*GantryCrane, error] {
+func (q *GantryCraneQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[GantryCrane], error] {
 	return q.qSet.List(ctx, txn)
 }
 
-func (q *GantryCraneQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*GantryCrane, error]] {
+func (q *GantryCraneQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[GantryCrane], error]] {
 	return q.qSet.BatchList(ctx, client, size)
 }
 

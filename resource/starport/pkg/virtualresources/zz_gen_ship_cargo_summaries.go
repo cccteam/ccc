@@ -45,15 +45,15 @@ func (q *ShipCargoSummaryQuery) ShipID() ccc.UUID {
 	return v
 }
 
-func (q *ShipCargoSummaryQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*ShipCargoSummary, error) {
+func (q *ShipCargoSummaryQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[ShipCargoSummary], error) {
 	return q.qSet.Read(ctx, txn)
 }
 
-func (q *ShipCargoSummaryQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*ShipCargoSummary, error] {
+func (q *ShipCargoSummaryQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[ShipCargoSummary], error] {
 	return q.qSet.List(ctx, txn)
 }
 
-func (q *ShipCargoSummaryQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*ShipCargoSummary, error]] {
+func (q *ShipCargoSummaryQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[ShipCargoSummary], error]] {
 	return q.qSet.BatchList(ctx, client, size)
 }
 

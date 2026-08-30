@@ -40,7 +40,7 @@ func (a *App) Stations() http.HandlerFunc {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			rec := (*station)(row)
+			rec := (*station)(&row.Data)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {
@@ -82,7 +82,7 @@ func (a *App) Station() http.HandlerFunc {
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		rec := (*response)(row)
+		rec := (*response)(&row.Data)
 		rmap := make(map[string]any)
 		for _, field := range querySet.Fields() {
 			switch string(field) {

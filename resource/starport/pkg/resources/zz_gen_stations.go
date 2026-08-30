@@ -58,15 +58,15 @@ func (q *StationQuery) Name() string {
 	return v
 }
 
-func (q *StationQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*Station, error) {
+func (q *StationQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Station], error) {
 	return q.qSet.Read(ctx, txn)
 }
 
-func (q *StationQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*Station, error] {
+func (q *StationQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Station], error] {
 	return q.qSet.List(ctx, txn)
 }
 
-func (q *StationQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*Station, error]] {
+func (q *StationQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Station], error]] {
 	return q.qSet.BatchList(ctx, client, size)
 }
 

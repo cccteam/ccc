@@ -57,15 +57,15 @@ func (q *CargoManifestQuery) LineNumber() int64 {
 	return v
 }
 
-func (q *CargoManifestQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*CargoManifest, error) {
+func (q *CargoManifestQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[CargoManifest], error) {
 	return q.qSet.Read(ctx, txn)
 }
 
-func (q *CargoManifestQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*CargoManifest, error] {
+func (q *CargoManifestQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[CargoManifest], error] {
 	return q.qSet.List(ctx, txn)
 }
 
-func (q *CargoManifestQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*CargoManifest, error]] {
+func (q *CargoManifestQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[CargoManifest], error]] {
 	return q.qSet.BatchList(ctx, client, size)
 }
 

@@ -59,15 +59,15 @@ func (q *ShipQuery) RegistryCode() string {
 	return v
 }
 
-func (q *ShipQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*Ship, error) {
+func (q *ShipQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Ship], error) {
 	return q.qSet.Read(ctx, txn)
 }
 
-func (q *ShipQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*Ship, error] {
+func (q *ShipQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Ship], error] {
 	return q.qSet.List(ctx, txn)
 }
 
-func (q *ShipQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*Ship, error]] {
+func (q *ShipQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Ship], error]] {
 	return q.qSet.BatchList(ctx, client, size)
 }
 

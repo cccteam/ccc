@@ -58,15 +58,15 @@ func (q *BerthQuery) Designation() string {
 	return v
 }
 
-func (q *BerthQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*Berth, error) {
+func (q *BerthQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Berth], error) {
 	return q.qSet.Read(ctx, txn)
 }
 
-func (q *BerthQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*Berth, error] {
+func (q *BerthQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Berth], error] {
 	return q.qSet.List(ctx, txn)
 }
 
-func (q *BerthQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*Berth, error]] {
+func (q *BerthQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Berth], error]] {
 	return q.qSet.BatchList(ctx, client, size)
 }
 

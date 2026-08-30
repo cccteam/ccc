@@ -42,7 +42,7 @@ func (a *App) DockingBays() http.HandlerFunc {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			rec := (*dockingBay)(row)
+			rec := (*dockingBay)(&row.Data)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {
@@ -90,7 +90,7 @@ func (a *App) DockingBay() http.HandlerFunc {
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		rec := (*response)(row)
+		rec := (*response)(&row.Data)
 		rmap := make(map[string]any)
 		for _, field := range querySet.Fields() {
 			switch string(field) {

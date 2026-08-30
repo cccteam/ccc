@@ -35,15 +35,17 @@ type accessUserPermissions struct {
 	user       accesstypes.User
 }
 
-// Check implements resource.UserPermissions over access.Controller.CheckUserResources,
-// which returns the exhaustive missing set the contract requires.
+// Check implements resource.UserPermissions over access.Controller.CheckUserResources.
+// The Environment is empty until request-decode sampling lands; with no conditions in
+// the engine every Decision is Granted or Denied, so the denied set is exactly the
+// missing set the UserPermissions contract requires.
 func (u *accessUserPermissions) Check(ctx context.Context, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) ([]accesstypes.Resource, error) {
-	missing, err := u.controller.CheckUserResources(ctx, u.user, scope, perm, resources...)
+	decisions, err := u.controller.CheckUserResources(ctx, accesstypes.NewEnvironment(), u.user, scope, perm, resources...)
 	if err != nil {
 		return nil, errors.Wrap(err, "access.Controller.CheckUserResources()")
 	}
 
-	return missing, nil
+	return decisions.DeniedResources(), nil
 }
 
 // User implements resource.UserPermissions.

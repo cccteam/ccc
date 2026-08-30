@@ -58,15 +58,15 @@ func (q *DockingBayQuery) Name() string {
 	return v
 }
 
-func (q *DockingBayQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*DockingBay, error) {
+func (q *DockingBayQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[DockingBay], error) {
 	return q.qSet.Read(ctx, txn)
 }
 
-func (q *DockingBayQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*DockingBay, error] {
+func (q *DockingBayQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[DockingBay], error] {
 	return q.qSet.List(ctx, txn)
 }
 
-func (q *DockingBayQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*DockingBay, error]] {
+func (q *DockingBayQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[DockingBay], error]] {
 	return q.qSet.BatchList(ctx, client, size)
 }
 
