@@ -131,6 +131,12 @@ linters:
       - linters:
           - goconst
         path: scope\.go
+      # Decision.String's outcome literals are display output; the occurrences
+      # goconst counts are the test expectations, which deliberately stay
+      # literal rather than tautologically comparing a constant to itself.
+      - linters:
+          - goconst
+        path: decision\.go
     paths:
       - third_party$
       - builtin$
