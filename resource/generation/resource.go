@@ -165,9 +165,12 @@ func (r *resourceGenerator) Generate() error {
 
 	begin := time.Now()
 
-	packageMap, err := parser.LoadPackages(r.loadPackages...)
+	// Resilient load: stale generated output from a previous run must not stop the
+	// run that would overwrite it. Anything tolerated here is re-checked strictly
+	// after generation below.
+	packageMap, toleratedStaleOutput, err := parser.LoadPackagesResilient(r.loadPackages...)
 	if err != nil {
-		return errors.Wrap(err, "parser.LoadPackages()")
+		return errors.Wrap(err, "parser.LoadPackagesResilient()")
 	}
 
 	pkg := packageMap[r.resource.Package()]
@@ -260,6 +263,15 @@ func (r *resourceGenerator) Generate() error {
 
 	if err := r.runCollectionGeneration(); err != nil {
 		return err
+	}
+
+	if toleratedStaleOutput {
+		// Everything has been regenerated; whatever still fails to type-check is real
+		// breakage the generator does not own (hand-written call sites, bad struct
+		// definitions) and must fail the run.
+		if _, err := parser.LoadPackages(r.loadPackages...); err != nil {
+			return errors.Wrap(err, "post-generation type check: generated files were written, remaining errors are outside generator-owned output")
+		}
 	}
 
 	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
