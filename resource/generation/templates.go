@@ -1636,6 +1636,30 @@ func Collection() *resource.GeneratedCollection {
 				{{- with .ImmutableTags }}
 				ImmutableTags: []accesstypes.Tag{ {{- range $i, $t := . }}{{ if $i }}, {{ end }}"{{ $t }}"{{ end -}} },
 				{{- end }}
+				{{- with .Attributes }}
+				Attributes: []resource.AttributeData{
+					{{- range . }}
+					{Name: "{{ .Name }}", Column: "{{ .Column }}"{{ BindingHops .Path }}},
+					{{- end }}
+				},
+				{{- end }}
+				{{- with .Domain }}
+				Domain: &resource.DomainBindingData{Column: "{{ .Column }}"{{ BindingHops .Path }}},
+				{{- end }}
+				{{- with .SubjectSets }}
+				SubjectSets: []resource.SubjectBindingData{
+					{{- range . }}
+					{Name: "{{ .Name }}", UserColumn: "{{ .UserColumn }}", Column: "{{ .Column }}"{{ BindingHops .Path }}},
+					{{- end }}
+				},
+				{{- end }}
+				{{- with .SubjectValues }}
+				SubjectValues: []resource.SubjectBindingData{
+					{{- range . }}
+					{Name: "{{ .Name }}", UserColumn: "{{ .UserColumn }}", Column: "{{ .Column }}"{{ BindingHops .Path }}},
+					{{- end }}
+				},
+				{{- end }}
 			},
 			{{- end }}
 		},

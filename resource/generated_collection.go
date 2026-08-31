@@ -103,6 +103,14 @@ type CollectionResource struct {
 	Permissions   []accesstypes.Permission
 	Tags          []TagData
 	ImmutableTags []accesstypes.Tag
+
+	// The resource's binding vocabulary (ABAC design plan §04), compiled from
+	// the field-level binding annotations: attributes conditions reference,
+	// the structural tenancy binding, and the subject-side vocabulary.
+	Attributes    []AttributeData
+	Domain        *DomainBindingData
+	SubjectSets   []SubjectBindingData
+	SubjectValues []SubjectBindingData
 }
 
 // TagData describes one field-level tag registration. An empty Permissions slice records
@@ -176,6 +184,7 @@ type GeneratedCollection struct {
 	tagStore        map[accesstypes.PermissionScope]tagStore
 	resourceStore   map[accesstypes.PermissionScope]resourceStore
 	immutableFields map[accesstypes.PermissionScope]immutableFieldMap
+	bindings        map[accesstypes.PermissionScope]map[accesstypes.Resource]Bindings
 }
 
 // newGeneratedCollection creates an empty, populatable GeneratedCollection.
@@ -184,6 +193,7 @@ func newGeneratedCollection() *GeneratedCollection {
 		tagStore:        make(map[accesstypes.PermissionScope]tagStore, 2),
 		resourceStore:   make(map[accesstypes.PermissionScope]resourceStore, 2),
 		immutableFields: make(map[accesstypes.PermissionScope]immutableFieldMap, 2),
+		bindings:        make(map[accesstypes.PermissionScope]map[accesstypes.Resource]Bindings, 2),
 	}
 }
 
@@ -193,13 +203,18 @@ func newGeneratedCollection() *GeneratedCollection {
 func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 	g := newGeneratedCollection()
 
+	if err := validateCollectionBindings(data.Resources); err != nil {
+		return nil, err
+	}
+
 	type resourceKey struct {
 		scope accesstypes.PermissionScope
 		name  accesstypes.Resource
 	}
 	seen := make(map[resourceKey]struct{}, len(data.Resources))
 
-	for _, res := range data.Resources {
+	for i := range data.Resources {
+		res := &data.Resources[i]
 		if res.Name == "" {
 			return nil, errors.New("resource with empty name")
 		}
@@ -256,6 +271,13 @@ func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 			}
 			g.immutableFields[res.Scope][res.Name] = immutable
 		}
+
+		g.setResourceBindings(res.Scope, res.Name, &Bindings{
+			Attributes:    res.Attributes,
+			Domain:        res.Domain,
+			SubjectSets:   res.SubjectSets,
+			SubjectValues: res.SubjectValues,
+		})
 	}
 
 	return g, nil
@@ -575,6 +597,11 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
 		}
 	}
+	for scope, store := range g.bindings {
+		for res := range store {
+			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
+		}
+	}
 
 	keys := make([]resourceKey, 0, len(keySet))
 	for key := range keySet {
@@ -639,8 +666,22 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 			slices.Sort(res.ImmutableTags)
 		}
 
+		if bindings, ok := g.bindings[key.scope][key.name]; ok {
+			applyBindingData(&res, &bindings)
+		}
+
 		data.Resources = append(data.Resources, res)
 	}
 
 	return data
+}
+
+// applyBindingData copies a resource's stored binding vocabulary onto its
+// serializable form, in canonical (name-sorted) order.
+func applyBindingData(res *CollectionResource, bindings *Bindings) {
+	sorted := bindings.sorted()
+	res.Attributes = sorted.Attributes
+	res.Domain = sorted.Domain
+	res.SubjectSets = sorted.SubjectSets
+	res.SubjectValues = sorted.SubjectValues
 }

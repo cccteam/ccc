@@ -272,9 +272,31 @@ func (c *client) templateFuncs() map[string]any {
 		"TypescriptConstImports":  typescriptConsImports,
 		"PermissionConstant":      permissionConstant,
 		"ScopeConstant":           scopeConstant,
+		"BindingHops":             bindingHopsLiteral,
 	}
 
 	return templateFuncs
+}
+
+// bindingHopsLiteral renders a binding path as its Path field literal, or
+// nothing for a column binding — shared by every binding kind the collection
+// template emits.
+func bindingHopsLiteral(path []resource.BindingHop) string {
+	if len(path) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(", Path: []resource.BindingHop{")
+	for i, hop := range path {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "{Table: %q, JoinColumn: %q, Column: %q}", hop.Table, hop.JoinColumn, hop.Column)
+	}
+	b.WriteString("}")
+
+	return b.String()
 }
 
 // permissionConstant renders a permission as its accesstypes constant when one exists,

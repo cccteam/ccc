@@ -200,7 +200,20 @@ func (r *resourceGenerator) computeCollectionData() (resource.CollectionData, er
 		return resource.CollectionData{}, err
 	}
 
+	r.collectBindingRegistrations(b)
+
 	return b.Data(), nil
+}
+
+// collectBindingRegistrations registers every resource's compiled binding
+// vocabulary (§04 annotations). Bindings are registered independently of
+// routing and suppression: the vocabulary describes the data model, not the
+// generated handlers, and conditions may reference a resource's attributes
+// regardless of which endpoints exist.
+func (r *resourceGenerator) collectBindingRegistrations(b *resource.CollectionBuilder) {
+	for _, res := range r.resources {
+		b.SetResourceBindings(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), collectionBindings(res))
+	}
 }
 
 // collectResourceRegistrations registers every routed resource's endpoints, plus the

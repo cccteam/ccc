@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/go-playground/errors/v5"
@@ -357,4 +358,63 @@ func rejectBindingAnnotations(pStruct *parser.Struct, annotations genlang.Struct
 // splitPathSegments splits a dotted path into its Go-field-name segments.
 func splitPathSegments(path string) []string {
 	return strings.Split(path, ".")
+}
+
+// collectionBindings converts a resource's compiled bindings into the
+// serializable Collection form: anchors become their table columns, hops
+// carry over verbatim. The Collection is where the vocabulary reads in one
+// place — deployment tooling and the SQL lowering consume it from there.
+func collectionBindings(res *resourceInfo) *resource.Bindings {
+	bindings := &resource.Bindings{}
+
+	for _, attr := range res.Attributes {
+		bindings.Attributes = append(bindings.Attributes, resource.AttributeData{
+			Name:   attr.Name,
+			Column: fieldColumn(attr.Anchor),
+			Path:   collectionHops(attr.Path),
+		})
+	}
+	if res.DomainBinding != nil {
+		bindings.Domain = &resource.DomainBindingData{
+			Column: fieldColumn(res.DomainBinding.Anchor),
+			Path:   collectionHops(res.DomainBinding.Path),
+		}
+	}
+	for _, subject := range res.SubjectSets {
+		bindings.SubjectSets = append(bindings.SubjectSets, collectionSubjectBinding(subject))
+	}
+	for _, subject := range res.SubjectValues {
+		bindings.SubjectValues = append(bindings.SubjectValues, collectionSubjectBinding(subject))
+	}
+
+	return bindings
+}
+
+func collectionSubjectBinding(subject *subjectBinding) resource.SubjectBindingData {
+	return resource.SubjectBindingData{
+		Name:       subject.Name,
+		UserColumn: fieldColumn(subject.Anchor),
+		Column:     fieldColumn(subject.ValueField),
+		Path:       collectionHops(subject.Path),
+	}
+}
+
+func collectionHops(path []bindingHop) []resource.BindingHop {
+	if len(path) == 0 {
+		return nil
+	}
+	hops := make([]resource.BindingHop, 0, len(path))
+	for _, hop := range path {
+		hops = append(hops, resource.BindingHop(hop))
+	}
+
+	return hops
+}
+
+// fieldColumn returns the table column a schema-backed field maps to; the
+// spanner tag is validated present when the field is built.
+func fieldColumn(f *resourceField) string {
+	column, _ := f.LookupTag(spannerTagKey)
+
+	return column
 }

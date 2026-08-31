@@ -135,9 +135,28 @@ func collectionFixtureGenerator(t *testing.T) *resourceGenerator {
 			res.SuppressedHandlers = []HandlerType{ListHandler, ReadHandler, PatchHandler}
 			res.ManualAddResourceSets = []HandlerType{ListHandler}
 			res.PermissionScope = accesstypes.DomainPermissionScope
+			fields := map[string]*resourceField{}
+			for _, f := range res.Fields {
+				fields[f.Name()] = f
+			}
+			res.DomainBinding = &domainBinding{Anchor: fields["ID"]}
+			res.SubjectValues = []*subjectBinding{
+				{Name: "vaultLimit", Anchor: fields["ID"], ValueField: fields["Name"], Scalar: true},
+			}
 		}),
 		fixtureResource(t, structs, "Sprocket", func(res *resourceInfo) {
 			res.IsConsolidated = true
+			fields := map[string]*resourceField{}
+			for _, f := range res.Fields {
+				fields[f.Name()] = f
+			}
+			res.Attributes = []*attributeBinding{
+				{Name: "sprocketName", Anchor: fields["Name"]},
+				{Name: "linkedGadget", Anchor: fields["ID"], Path: []bindingHop{{Table: "Gadgets", JoinColumn: "Id", Column: "Name"}}},
+			}
+			res.SubjectSets = []*subjectBinding{
+				{Name: "ownedSprockets", Anchor: fields["ID"], ValueField: fields["Name"]},
+			}
 		}),
 		fixtureResource(t, structs, "Widget", nil),
 	}
@@ -202,6 +221,8 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "id"},
 						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
+					Domain:        &resource.DomainBindingData{Column: "Id"},
+					SubjectValues: []resource.SubjectBindingData{{Name: "vaultLimit", UserColumn: "Id", Column: "Name"}},
 				},
 				{
 					// Consolidated and routing-disabled: no list/read routes, but the shared
@@ -232,6 +253,11 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "id"},
 						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					},
+					Attributes: []resource.AttributeData{
+						{Name: "linkedGadget", Column: "Id", Path: []resource.BindingHop{{Table: "Gadgets", JoinColumn: "Id", Column: "Name"}}},
+						{Name: "sprocketName", Column: "Name"},
+					},
+					SubjectSets: []resource.SubjectBindingData{{Name: "ownedSprockets", UserColumn: "Id", Column: "Name"}},
 				},
 				{
 					Name:        "Summaries",
@@ -279,6 +305,8 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "id"},
 						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
+					Domain:        &resource.DomainBindingData{Column: "Id"},
+					SubjectValues: []resource.SubjectBindingData{{Name: "vaultLimit", UserColumn: "Id", Column: "Name"}},
 				},
 				{
 					Name:        "Ledgers",
@@ -288,6 +316,17 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "id"},
 						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					},
+				},
+				{
+					// Bindings register independently of routing: the vocabulary
+					// describes the data model, not the generated handlers.
+					Name:  "Sprockets",
+					Scope: accesstypes.GlobalPermissionScope,
+					Attributes: []resource.AttributeData{
+						{Name: "linkedGadget", Column: "Id", Path: []resource.BindingHop{{Table: "Gadgets", JoinColumn: "Id", Column: "Name"}}},
+						{Name: "sprocketName", Column: "Name"},
+					},
+					SubjectSets: []resource.SubjectBindingData{{Name: "ownedSprockets", UserColumn: "Id", Column: "Name"}},
 				},
 				{
 					Name:        "UploadThings",
@@ -332,6 +371,13 @@ func Test_collectionTemplate(t *testing.T) {
 				{Name: "name"},
 			},
 			ImmutableTags: []accesstypes.Tag{"code"},
+			Attributes: []resource.AttributeData{
+				{Name: "owner", Column: "OwnerId"},
+				{Name: "shipClass", Column: "ShipId", Path: []resource.BindingHop{{Table: "Ships", JoinColumn: "Id", Column: "Class"}}},
+			},
+			Domain:        &resource.DomainBindingData{Column: "StationId"},
+			SubjectSets:   []resource.SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "CrewId"}},
+			SubjectValues: []resource.SubjectBindingData{{Name: "approvalLimit", UserColumn: "UserId", Column: "Limit"}},
 		},
 		{
 			Name:        "DoSomething",
@@ -369,6 +415,11 @@ func Test_collectionTemplate(t *testing.T) {
 		`ImmutableTags: []accesstypes.Tag{"code"},`,
 		"Scope: accesstypes.DomainPermissionScope,",
 		"Permissions: []accesstypes.Permission{accesstypes.Execute},",
+		`{Name: "owner", Column: "OwnerId"},`,
+		`{Name: "shipClass", Column: "ShipId", Path: []resource.BindingHop{{Table: "Ships", JoinColumn: "Id", Column: "Class"}}},`,
+		`Domain: &resource.DomainBindingData{Column: "StationId"},`,
+		`SubjectSets: []resource.SubjectBindingData{ {Name: "crews", UserColumn: "UserId", Column: "CrewId"}, },`,
+		`SubjectValues: []resource.SubjectBindingData{ {Name: "approvalLimit", UserColumn: "UserId", Column: "Limit"}, },`,
 	} {
 		if !strings.Contains(normalized, want) {
 			t.Errorf("rendered collection file missing %q:\n%s", want, formatted)
