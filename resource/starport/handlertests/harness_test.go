@@ -30,6 +30,10 @@ type fakeAccess struct {
 	g grants
 }
 
+func (f *fakeAccess) ForUser(user accesstypes.User) *access.UserChecker {
+	return access.NewUserChecker(f, user)
+}
+
 func (f *fakeAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
 	decisions := make(accesstypes.Decisions, len(resources))
 	for _, res := range resources {

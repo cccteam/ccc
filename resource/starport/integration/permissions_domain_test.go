@@ -57,6 +57,10 @@ type domainAccess struct {
 	byDomain domainGrants
 }
 
+func (d *domainAccess) ForUser(user accesstypes.User) *access.UserChecker {
+	return access.NewUserChecker(d, user)
+}
+
 func (d *domainAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
 	g := d.byDomain[scope]
 	decisions := make(accesstypes.Decisions, len(resources))

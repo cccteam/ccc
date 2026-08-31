@@ -66,7 +66,6 @@ type App struct {
 	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
 	resourceClient   resource.Client
 	rpcClient        *rpc.Client
-	userPermissions  func(*http.Request) resource.UserPermissions
 	domainExists     func(ctx context.Context, domain accesstypes.Domain) (bool, error)
 	guiDist          string
 	validate         *validator.Validate
@@ -80,7 +79,6 @@ func New(cfg Configurer) *App {
 		PasswordAuth:     cfg.Session(),
 		resourceClient:   cfg.ResourceClient(),
 		rpcClient:        cfg.RPCClient(),
-		userPermissions:  NewAccessUserPermissions(cfg.Access()),
 		domainExists:     cfg.DomainExists,
 		guiDist:          cfg.GuiDist(),
 		validate:         cfg.Validator(),
@@ -252,9 +250,12 @@ func (a *App) AutomationAuth(next http.Handler) http.Handler {
 	})
 }
 
-// UserPermissions returns the permission checker for a request.
+// UserPermissions returns the permission checker for a request: the access engine
+// bound to the session's user (established by session middleware; the request panics
+// without one, like the generated mutation handlers). Test suites script permissions
+// by supplying a fake access.Controller through the Configurer's Access seam.
 func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
-	return a.userPermissions(r)
+	return a.access.ForUser(accesstypes.User(sessioninfo.FromRequest(r).Username))
 }
 
 // Validator returns the request validator the generated decoder constructors draw on.

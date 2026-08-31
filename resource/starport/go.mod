@@ -11,9 +11,9 @@ replace github.com/cccteam/ccc/resource => ../
 
 require (
 	cloud.google.com/go/spanner v1.94.0
-	github.com/cccteam/access v0.9.12-0.20260826023005-edb6e85792d6
+	github.com/cccteam/access v0.9.12-0.20260831224924-42de8b27ec2a
 	github.com/cccteam/ccc v0.3.2
-	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260826022329-9ed77f374614
+	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260831224901-ba02a7ef798c
 	github.com/cccteam/ccc/resource v0.10.6
 	github.com/cccteam/ccc/tracer v0.1.7
 	github.com/cccteam/db-initiator v0.3.13
@@ -27,7 +27,6 @@ require (
 	github.com/jtwatson/server v0.2.2
 	github.com/jtwatson/spaassets v0.0.0-20160917192555-583a733b0a63
 	github.com/sethvargo/go-envconfig v1.4.3
-	go.uber.org/mock v0.6.0
 	google.golang.org/grpc v1.83.0
 )
 
@@ -138,6 +137,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
+	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/mod v0.39.0 // indirect
 	golang.org/x/net v0.58.0 // indirect

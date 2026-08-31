@@ -23,6 +23,7 @@ CREATE TABLE AccessRoleGrants (
   Permission STRING(64) NOT NULL,
   Resource STRING(128) NOT NULL,
   Field STRING(128) NOT NULL,
+  Condition STRING(MAX),
   UpdatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
 ) PRIMARY KEY (IsGlobal, Domain, Role, Permission, Resource, Field),
   INTERLEAVE IN PARENT AccessRoles ON DELETE CASCADE;

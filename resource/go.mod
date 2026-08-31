@@ -8,7 +8,7 @@ require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.94.0
 	github.com/cccteam/ccc v0.3.2
-	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260826022329-9ed77f374614
+	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260831224901-ba02a7ef798c
 	github.com/cccteam/ccc/cache v0.1.6
 	github.com/cccteam/ccc/pkg v0.1.4
 	github.com/cccteam/ccc/securehash v0.0.13

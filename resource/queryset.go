@@ -35,6 +35,20 @@ type QuerySet[Resource Resourcer] struct {
 	requiredPermission     accesstypes.Permission
 	filterAst              ExpressionNode
 	filterParser           func(DBType) (ExpressionNode, error)
+
+	// env is the request's decision context, stamped by the decoder that built
+	// the QuerySet (a QuerySet built by hand carries the empty Environment).
+	// The permission checks fold conditions against it, and condition rendering
+	// binds the same value as SQL parameters.
+	env accesstypes.Environment
+
+	// conditionalDecisions carries the Conditional decisions the permission
+	// checks returned, keyed by checked resource — a conditional grant is a
+	// grant, so its resources pass the gate and the conditions travel here for
+	// the E-phase lowering (read WHERE/CASE mask rendering, the delete
+	// check-SELECT). While the engine holds no conditions the map stays empty
+	// and behavior is byte-identical RBAC.
+	conditionalDecisions accesstypes.Decisions
 }
 
 // NewQuerySet creates a new, empty QuerySet for a given resource metadata.
@@ -106,11 +120,14 @@ func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource]
 
 func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType) error {
 	if q.resourceSet != nil {
-		if missing, err := q.userPermissions.Check(ctx, q.scope, q.requiredPermission, q.resourceSet.BaseResource()); err != nil {
-			return errors.Wrap(err, "enforcer.RequireResource()")
-		} else if len(missing) > 0 {
-			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, missing)
+		decisions, err := q.userPermissions.Check(ctx, q.env, q.scope, q.requiredPermission, q.resourceSet.BaseResource())
+		if err != nil {
+			return errors.Wrap(err, "resource.UserPermissions.Check()")
 		}
+		if denied := decisions.DeniedResources(); len(denied) > 0 {
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, denied)
+		}
+		q.carryConditionalDecisions(decisions)
 	}
 
 	fields := q.Fields()
@@ -128,14 +145,34 @@ func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType
 			}
 		}
 
-		if missing, err := q.userPermissions.Check(ctx, q.scope, q.requiredPermission, resources...); err != nil {
-			return errors.Wrap(err, "enforcer.RequireResource()")
-		} else if len(missing) > 0 {
-			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, missing)
+		// A conditional grant is a grant: explicitly requested fields it covers
+		// pass this gate, and their conditions ride the set. Only a field no
+		// grant covers at all is Forbidden.
+		decisions, err := q.userPermissions.Check(ctx, q.env, q.scope, q.requiredPermission, resources...)
+		if err != nil {
+			return errors.Wrap(err, "resource.UserPermissions.Check()")
 		}
+		if denied := decisions.DeniedResources(); len(denied) > 0 {
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, denied)
+		}
+		q.carryConditionalDecisions(decisions)
 	}
 
 	return nil
+}
+
+// carryConditionalDecisions records the Conditional decisions from one Check
+// call on the QuerySet for the E-phase condition lowering.
+func (q *QuerySet[Resource]) carryConditionalDecisions(decisions accesstypes.Decisions) {
+	for res, decision := range decisions {
+		if !decision.IsConditional() {
+			continue
+		}
+		if q.conditionalDecisions == nil {
+			q.conditionalDecisions = accesstypes.Decisions{}
+		}
+		q.conditionalDecisions[res] = decision
+	}
 }
 
 // requestable reports whether a field can be requested by a client. A field outside the
@@ -176,20 +213,21 @@ func (q *QuerySet[Resource]) addAccessibleFields(ctx context.Context, dbType DBT
 			}
 		}
 
-		denied := make(map[accesstypes.Resource]struct{})
+		// The default projection is every field some grant mentions: Granted and
+		// Conditional candidates are included (a blocked cell is the rendering's
+		// job, not the projection's), Denied candidates are filtered out.
+		var decisions accesstypes.Decisions
 		if len(resources) > 0 {
-			missing, err := q.userPermissions.Check(ctx, q.scope, q.requiredPermission, resources...)
+			var err error
+			decisions, err = q.userPermissions.Check(ctx, q.env, q.scope, q.requiredPermission, resources...)
 			if err != nil {
-				return errors.Wrap(err, "enforcer.RequireResource()")
+				return errors.Wrap(err, "resource.UserPermissions.Check()")
 			}
-
-			for _, res := range missing {
-				denied[res] = struct{}{}
-			}
+			q.carryConditionalDecisions(decisions)
 		}
 
 		for _, c := range candidates {
-			if _, deny := denied[c.res]; c.res == "" || !deny {
+			if c.res == "" || !decisions[c.res].IsDenied() {
 				fields = append(fields, c.field)
 			}
 		}

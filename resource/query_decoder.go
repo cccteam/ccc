@@ -108,6 +108,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
+	qSet.env = newRequestEnvironment()
 	qSet.requestableFields = d.requestFieldMapper.Fields()
 	qSet.SetFilterParser(parsedQuery.FilterParser)
 	qSet.SetSortFields(parsedQuery.SortFields)
