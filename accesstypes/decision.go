@@ -129,3 +129,18 @@ func (d Decisions) DeniedResources() []Resource {
 
 	return denied
 }
+
+// ConditionalResources returns the checked resources whose decision is
+// Conditional, sorted lexically for deterministic error messages. An empty
+// result means no resource's answer depends on a condition.
+func (d Decisions) ConditionalResources() []Resource {
+	var conditional []Resource
+	for resource, decision := range d {
+		if decision.IsConditional() {
+			conditional = append(conditional, resource)
+		}
+	}
+	slices.Sort(conditional)
+
+	return conditional
+}

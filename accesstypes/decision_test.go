@@ -152,3 +152,43 @@ func TestDecisions_DeniedResources(t *testing.T) {
 		})
 	}
 }
+
+func TestDecisions_ConditionalResources(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		decisions Decisions
+		want      []Resource
+	}{
+		{
+			name: "nil decisions condition nothing",
+		},
+		{
+			name: "granted and denied are not conditional",
+			decisions: Decisions{
+				"employees":      Granted(),
+				"employees.name": Denied(),
+			},
+		},
+		{
+			name: "conditional resources are sorted",
+			decisions: Decisions{
+				"employees.title": Conditional(ConditionGroup{Resources: []Resource{"employees.title"}}),
+				"employees.name":  Conditional(ConditionGroup{Resources: []Resource{"employees.name"}}),
+				"employees.id":    Granted(),
+			},
+			want: []Resource{"employees.name", "employees.title"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.decisions.ConditionalResources(); !slices.Equal(tt.want, got) {
+				t.Errorf("ConditionalResources() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
