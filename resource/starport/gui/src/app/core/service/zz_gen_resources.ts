@@ -4,83 +4,83 @@ import { PermissionScope, PermissionScopes, Resources } from './zz_gen_constants
 
 export interface Berths {
   id: string;
-  designation: string;
-  sizeClass: number;
-  occupied: boolean;
+  designation?: string;
+  sizeClass?: number;
+  occupied?: boolean;
 }
 
 export interface CargoManifests {
   shipId: string;
   lineNumber: number;
-  details: string;
-  quantity: number;
-  declaredValue: number;
+  details?: string;
+  quantity?: number;
+  declaredValue?: number;
 }
 
 export interface CrewMembers {
   id: string;
-  shipId: string;
-  name: string;
-  rank: string;
-  clearanceLevel: number;
-  medicalNotes: string;
+  shipId?: string;
+  name?: string;
+  rank?: string;
+  clearanceLevel?: number;
+  medicalNotes?: string;
 }
 
 export interface DockingBays {
   id: string;
-  name: string;
-  deckLevel: number;
-  maxTonnage: number;
+  name?: string;
+  deckLevel?: number;
+  maxTonnage?: number;
 }
 
 export interface GantryCranes {
   id: string;
-  callsign: string;
-  liftTonnage: number;
-  operational: boolean;
+  callsign?: string;
+  liftTonnage?: number;
+  operational?: boolean;
 }
 
 export interface ManifestLines {
   shipId: string;
   lineNumber: number;
-  shipName: string;
-  details: string;
-  quantity: number;
-  declaredValue: number;
+  shipName?: string;
+  details?: string;
+  quantity?: number;
+  declaredValue?: number;
 }
 
 export interface Ships {
   id: string;
-  registryCode: string;
-  name: string;
-  dockingBayId: string;
-  cargoValue: number;
-  updatedAt: Date;
+  registryCode?: string;
+  name?: string;
+  dockingBayId?: string;
+  cargoValue?: number;
+  updatedAt?: Date;
 }
 
 export interface ShipCargoSummaries {
   shipId: string;
-  shipName: string;
-  dockingBayName: string;
-  manifestLines: number;
-  totalDeclaredValue: number;
+  shipName?: string;
+  dockingBayName?: string;
+  manifestLines?: number;
+  totalDeclaredValue?: number;
 }
 
 export interface Stations {
   id: string;
-  name: string;
+  name?: string;
 }
 
 export interface SupplyCrates {
   id: string;
-  label: string;
-  quantity: number;
-  priority: number;
-  status: string;
-  barcode: string;
-  notes: string;
-  inspectorBadge: string;
-  assignedShipId: string;
+  label?: string;
+  quantity?: number;
+  priority?: number;
+  status?: string;
+  barcode?: string;
+  notes?: string;
+  inspectorBadge?: string;
+  assignedShipId?: string;
 }
 
 const resourceMap: ResourceMap = {
