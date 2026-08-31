@@ -1429,14 +1429,14 @@ import { PermissionScope, PermissionScopes, Resources } from './{{ .GenPrefix }}
 {{ range $resource := .Resources }}
 export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
-  {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
+  {{ Camel $field.Name }}{{ if not $field.IsPrimaryKey }}?{{ end }}: {{ $field.TypescriptDataType }};
 {{- end }}
 }
 {{ end }}
 {{- range $resource := .ComputedResources }}
 export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
-  {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
+  {{ Camel $field.Name }}{{ if not $field.IsPrimaryKey }}?{{ end }}: {{ $field.TypescriptDataType }};
 {{- end }}
 }
 {{ end }}
