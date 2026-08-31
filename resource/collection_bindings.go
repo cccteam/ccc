@@ -163,3 +163,41 @@ func validateCollectionBindings(resources []CollectionResource) error {
 
 	return nil
 }
+
+// SubjectAnchor is a subject-vocabulary entry with everything its rendering
+// needs: the anchor table (the resource declaring it), the entry itself, and
+// the anchor table's own tenancy binding — the rendered subquery filters to
+// the request's partition exactly when both the request and the anchor table
+// are partitioned, derived here, never authored.
+type SubjectAnchor struct {
+	Resource accesstypes.Resource
+	Scope    accesstypes.PermissionScope
+	Binding  SubjectBindingData
+	Domain   *DomainBindingData
+}
+
+// SubjectSet resolves a @subjectSet name across the collection —
+// subject.<name> is one application-wide namespace, validated unique at
+// construction.
+func (g *GeneratedCollection) SubjectSet(name string) (SubjectAnchor, bool) {
+	return g.subjectAnchor(name, func(b Bindings) []SubjectBindingData { return b.SubjectSets })
+}
+
+// SubjectValue resolves a @subjectValue name across the collection.
+func (g *GeneratedCollection) SubjectValue(name string) (SubjectAnchor, bool) {
+	return g.subjectAnchor(name, func(b Bindings) []SubjectBindingData { return b.SubjectValues })
+}
+
+func (g *GeneratedCollection) subjectAnchor(name string, entries func(Bindings) []SubjectBindingData) (SubjectAnchor, bool) {
+	for scope, store := range g.bindings {
+		for res, bindings := range store {
+			for _, entry := range entries(bindings) {
+				if entry.Name == name {
+					return SubjectAnchor{Resource: res, Scope: scope, Binding: entry, Domain: bindings.Domain}, true
+				}
+			}
+		}
+	}
+
+	return SubjectAnchor{}, false
+}

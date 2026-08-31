@@ -34,6 +34,11 @@ var ErrUnsupportedOperator = errors.New("unsupported operator for SQL generation
 type sqlGenerator struct {
 	dialect    SQLDialect
 	paramCount int
+
+	// registry is the statement-scoped namespace lowered condition nodes
+	// allocate from; nil outside generateLowered, where such nodes are
+	// unreachable (the filter parser never produces them).
+	registry *paramRegistry
 }
 
 // newSQLGenerator creates a new SQL generator for the specified dialect.
@@ -60,11 +65,51 @@ func (s *sqlGenerator) generateSQLRecursive(node ExpressionNode) (string, []Quer
 		return s.generateLogicalOpSQL(n)
 	case *GroupNode:
 		return s.generateGroupSQL(n)
+	case *loweredComparisonNode, *loweredInNode, *loweredNullTestNode, *notNode, *existsNode, *truthNode:
+		return s.generateLoweredNodeSQL(node)
 	case nil:
 		return "", nil, nil
 	default:
 		return "", nil, errors.Wrapf(ErrUnsupportedNodeType, "type: %T", n)
 	}
+}
+
+// generateLoweredNodeSQL dispatches the condition-lowering node types, which
+// render only under a statement registry.
+func (s *sqlGenerator) generateLoweredNodeSQL(node ExpressionNode) (string, []QueryParam, error) {
+	if s.registry == nil {
+		return "", nil, errors.Wrapf(ErrUnsupportedNodeType, "lowered node %T outside a statement registry", node)
+	}
+
+	var (
+		sql string
+		err error
+	)
+	switch n := node.(type) {
+	case *loweredComparisonNode:
+		sql, err = s.generateLoweredComparisonSQL(n)
+	case *loweredInNode:
+		sql = s.generateLoweredInSQL(n)
+	case *loweredNullTestNode:
+		sql = s.generateLoweredNullTestSQL(n)
+	case *notNode:
+		sql, err = s.generateNotSQL(n)
+	case *existsNode:
+		sql, err = s.generateExistsSQL(n)
+	case *truthNode:
+		if n.value {
+			sql = "TRUE"
+		} else {
+			sql = "FALSE"
+		}
+	default:
+		return "", nil, errors.Wrapf(ErrUnsupportedNodeType, "type: %T", n)
+	}
+	if err != nil {
+		return "", nil, err
+	}
+
+	return sql, nil, nil
 }
 
 func (s *sqlGenerator) quoteIdentifier(identifier string) string {
