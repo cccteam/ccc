@@ -14,6 +14,13 @@ import (
 )
 
 func (c *client) structsToResources(structs []*parser.Struct, validators ...structValidator) ([]*resourceInfo, error) {
+	// structsByTable resolves a binding path's remote hops: each hop names Go
+	// fields on the struct backing the table the hop lands on.
+	structsByTable := make(map[string]*parser.Struct, len(structs))
+	for _, s := range structs {
+		structsByTable[c.pluralize(s.Name())] = s
+	}
+
 	resources := make([]*resourceInfo, 0, len(structs))
 	var resourceErrors []error
 	for _, pStruct := range structs {
@@ -68,6 +75,12 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 		}
 
 		if err := resolveResourceAnnotations(resource, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
+		if err := c.resolveBindingAnnotations(resource, pStruct, annotations, structsByTable); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
@@ -240,6 +253,12 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 		}
 
 		if !annotations.Struct.Has(virtualKeyword) {
+			continue
+		}
+
+		if err := rejectBindingAnnotations(pStruct, annotations, "virtual resource"); err != nil {
+			errs = append(errs, err)
+
 			continue
 		}
 
@@ -432,6 +451,12 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
+		if err := rejectBindingAnnotations(s, annotations, "RPC method"); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
 		if err := validate(s, validators...); err != nil {
 			errs = append(errs, err)
 
@@ -499,6 +524,12 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 		}
 
 		if !annotations.Struct.Has(computedKeyword) {
+			continue
+		}
+
+		if err := rejectBindingAnnotations(s, annotations, "computed resource"); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
 			continue
 		}
 
