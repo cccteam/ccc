@@ -40,9 +40,10 @@ import (
 )
 
 // conditionRoles is the suite's RoleConfig: each role is one grant object, the
-// pairing invariant putting one condition on the grant's whole field set.
+// pairing invariant putting one condition on the grant's whole field set. The
+// crate resource is global-scoped, so the roles declare as global roles.
 func conditionRoles() *access.RoleConfig {
-	return &access.RoleConfig{Roles: []*access.Role{
+	return &access.RoleConfig{Roles: access.ScopedRoles{Global: []*access.Role{
 		{
 			// SealedAuditor reads crate contents, but only of sealed crates:
 			// the same condition on every column, so every CASE prunes and
@@ -70,7 +71,7 @@ func conditionRoles() *access.RoleConfig {
 				accesstypes.Delete: {{Resource: supplyCratesResource, Condition: "priority > 2"}},
 			},
 		},
-	}}
+	}}}
 }
 
 // newConditionsApp assembles the application over the real permission engine:
