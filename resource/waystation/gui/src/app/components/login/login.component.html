@@ -22,11 +22,23 @@
         </mat-form-field>
         <button mat-flat-button color="primary" type="submit" class="full-width" [disabled]="busy()">Sign in</button>
       </form>
+      <button mat-stroked-button class="full-width persona-button" [matMenuTriggerFor]="personaMenu" type="button">
+        <mat-icon>group</mat-icon>
+        Demo personas
+      </button>
+      <mat-menu #personaMenu="matMenu" class="persona-menu">
+        @for (persona of personas; track persona.username) {
+          <button mat-menu-item (click)="fillPersona(persona.username)">
+            <span class="persona-name">{{ persona.username }}</span>
+            <span class="persona-story">{{ persona.story }}</span>
+          </button>
+        }
+      </mat-menu>
     </mat-card-content>
     <mat-card-footer>
       <p class="hint">
-        Demo personas share the password <code>waystation</code> — try <code>commander</code>,
-        <code>foreman-okafor</code>, or <code>auditor-voss</code> (seeded by cmd/bootstrap)
+        Demo personas share the password <code>waystation</code> (seeded by cmd/bootstrap) — pick one above to fill the
+        form
       </p>
     </mat-card-footer>
   </mat-card>
