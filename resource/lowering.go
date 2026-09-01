@@ -443,11 +443,11 @@ func sqlCompareOp(op condition.CompareOp) (string, error) {
 	case condition.Less:
 		return "<", nil
 	case condition.LessEq:
-		return "<=", nil
+		return sqlLessEq, nil
 	case condition.Greater:
 		return ">", nil
 	case condition.GreaterEq:
-		return ">=", nil
+		return sqlGreaterEq, nil
 	default:
 		return "", errors.Newf("condition lowering: unsupported operator %q", op)
 	}

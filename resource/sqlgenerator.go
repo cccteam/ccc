@@ -149,9 +149,9 @@ func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryP
 		case ltStr:
 			sqlOp = "<"
 		case gteStr:
-			sqlOp = ">="
+			sqlOp = sqlGreaterEq
 		case lteStr:
-			sqlOp = "<="
+			sqlOp = sqlLessEq
 		}
 
 		return fmt.Sprintf("%s %s %s", field, sqlOp, placeholder), params, nil

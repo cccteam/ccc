@@ -17,6 +17,13 @@ import (
 // by the lowering alone, so filter-reachable paths can never produce them,
 // and they render only under a registry.
 
+// SQL relational operator spellings shared by the filter path and the
+// condition lowering.
+const (
+	sqlLessEq    = "<="
+	sqlGreaterEq = ">="
+)
+
 // Reserved named parameters the lowered SQL binds. The statement builder
 // supplies their values: the checked user's identity, the request's decision
 // instant (the same value the check folded with), and the request partition.

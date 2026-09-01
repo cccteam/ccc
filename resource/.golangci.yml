@@ -156,6 +156,12 @@ linters:
           - cyclop
           - nestif
         path: _test\.go
+      # Property tests use a seeded math/rand generator on purpose: failures
+      # must reproduce; nothing here is security-sensitive randomness.
+      - linters:
+          - gosec
+        path: _test\.go
+        text: G404
       - linters:
           - paralleltest
         path: options_test\.go
