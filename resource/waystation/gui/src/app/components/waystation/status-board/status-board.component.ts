@@ -1,9 +1,9 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { StationStatusBoards } from '@app/service/zz_gen_resources';
-import { reloadOnStationChange, WaystationService } from '../waystation.service';
+import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
 /**
@@ -21,17 +21,6 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
 export class StatusBoardComponent {
   private ws = inject(WaystationService);
 
-  rows = signal<StationStatusBoards[]>([]);
+  rows = this.ws.stationList<StationStatusBoards>('station-status-boards');
   columns = ['facilityName', 'metric', 'latestReading', 'recordedAt'];
-
-  constructor() {
-    reloadOnStationChange(this.ws, () => this.load());
-  }
-
-  load(): void {
-    this.ws.statusBoard().subscribe({
-      next: (rows) => this.rows.set(rows ?? []),
-      error: () => this.rows.set([]),
-    });
-  }
 }

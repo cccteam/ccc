@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -6,7 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatTableModule } from '@angular/material/table';
 import { IncidentReports } from '@app/service/zz_gen_resources';
-import { reloadOnStationChange, WaystationService } from '../waystation.service';
+import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
 /**
@@ -32,24 +32,13 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
 export class IncidentsComponent {
   private ws = inject(WaystationService);
 
-  incidents = signal<IncidentReports[]>([]);
+  incidents = this.ws.stationList<IncidentReports>('incident-reports');
   columns = ['caseNumber', 'summary', 'severity', 'reporterContact'];
 
   newSummary = '';
   newSeverity: number | null = null;
   newReporterContact = '';
   newRawStatement = '';
-
-  constructor() {
-    reloadOnStationChange(this.ws, () => this.load());
-  }
-
-  load(): void {
-    this.ws.incidents().subscribe({
-      next: (incidents) => this.incidents.set(incidents ?? []),
-      error: () => this.incidents.set([]),
-    });
-  }
 
   // contactLabel renders the PII column: an absent key means this persona's grant
   // excludes the field — render it withheld, never blank-as-if-empty.
@@ -73,7 +62,7 @@ export class IncidentsComponent {
         this.newSeverity = null;
         this.newReporterContact = '';
         this.newRawStatement = '';
-        this.load();
+        this.incidents.reload();
       });
   }
 }

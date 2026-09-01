@@ -141,6 +141,16 @@ The same tour in the browser, persona by persona:
 
 ## Authoring notes (learned building this)
 
+- **GUI data loading is declarative — never fetch from an effect.** Each station
+  page's lists are `httpResource`s derived from the current-waystation signal
+  (`WaystationService.stationList`/`globalList`): switching stations refetches them,
+  mutations call `.reload()` on the affected lists, and the selected row is a
+  `computed` over the live list. The original `effect(() => load())` shape looped
+  forever at network speed: ccc-lib's `ApiInterceptor` reads the global loading
+  signal on every request (`UiCoreService.beginActivity`), so a fetching effect
+  adopts that signal as a dependency and every response's `endActivity` write
+  re-runs it. `httpResource` loaders run untracked by design, which rules the loop
+  out structurally.
 - **Derived tenancy needs the anchor bound.** A `@subjectSet` over a domain-scoped
   anchor (TeamMembership) only partitions per-domain if the anchor resource carries its
   own `@domain` binding; without it the subject set is partition-blind.

@@ -1,11 +1,11 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTableModule } from '@angular/material/table';
 import { CatalogItems, InventoryLots, Shipments } from '@app/service/zz_gen_resources';
-import { reloadOnStationChange, WaystationService } from '../waystation.service';
+import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
 /**
@@ -23,40 +23,23 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
 export class LogisticsComponent {
   private ws = inject(WaystationService);
 
-  shipments = signal<Shipments[]>([]);
-  lots = signal<InventoryLots[]>([]);
-  catalogItems = signal<CatalogItems[]>([]);
+  shipments = this.ws.stationList<Shipments>('shipments');
+  // Sorted server-side through the reserved sort parameter: soonest expiry first
+  // (Spanner sorts NULL expiries — never expiring — to the top).
+  lots = this.ws.stationList<InventoryLots>('inventory-lots?sort=expiresOn');
+  catalogItems = this.ws.globalList<CatalogItems>('catalog-items');
   shipmentColumns = ['manifestCode', 'arrivedAt', 'shipmentActions'];
   lotColumns = ['item', 'quantity', 'expiresOn', 'binLocation', 'lotActions'];
 
-  constructor() {
-    reloadOnStationChange(this.ws, () => this.load());
-  }
-
-  load(): void {
-    this.ws.shipments().subscribe({
-      next: (shipments) => this.shipments.set(shipments ?? []),
-      error: () => this.shipments.set([]),
-    });
-    this.ws.inventoryLots().subscribe({
-      next: (lots) => this.lots.set(lots ?? []),
-      error: () => this.lots.set([]),
-    });
-    this.ws.catalogItems().subscribe({
-      next: (items) => this.catalogItems.set(items ?? []),
-      error: () => this.catalogItems.set([]),
-    });
-  }
-
   itemName(catalogItemId: string | undefined): string {
-    return this.catalogItems().find((item) => item.id === catalogItemId)?.name ?? catalogItemId ?? '';
+    return this.catalogItems.value().find((item) => item.id === catalogItemId)?.name ?? catalogItemId ?? '';
   }
 
   receive(shipment: Shipments): void {
-    this.ws.receiveShipment(shipment.id).subscribe(() => this.load());
+    this.ws.receiveShipment(shipment.id).subscribe(() => this.shipments.reload());
   }
 
   removeLot(lot: InventoryLots): void {
-    this.ws.deleteInventoryLot(lot.id).subscribe(() => this.load());
+    this.ws.deleteInventoryLot(lot.id).subscribe(() => this.lots.reload());
   }
 }

@@ -1,15 +1,9 @@
-import { HttpClient } from '@angular/common/http';
-import { effect, inject, Injectable, signal, untracked } from '@angular/core';
+import { HttpClient, httpResource, HttpResourceRef } from '@angular/common/http';
+import { inject, Injectable, signal } from '@angular/core';
 import {
-  Assets,
-  CatalogItems,
   IncidentReports,
-  InventoryLots,
   Requisitions,
   RequisitionLines,
-  Shipments,
-  StationStatusBoards,
-  Teams,
   WorkOrders,
   WorkOrderTasks,
 } from '@app/service/zz_gen_resources';
@@ -47,28 +41,16 @@ export interface AuditTrailEntry {
  *
  * The selected waystation is shared state: it is the permission domain for every
  * request these pages make, so switching it re-scopes what each persona can see.
- */
-
-/**
- * reloadOnStationChange re-runs load whenever the selected waystation changes — and
- * only then. The load runs untracked because it issues HTTP requests, and ccc-lib's
- * ApiInterceptor reads the global loading signal synchronously on every request
- * (UiCoreService.beginActivity checks loading() before updating it). Called from a
- * tracked effect context, that signal joins the effect's dependencies, and every
- * response's endActivity write then re-triggers the effect: an infinite request
- * loop, as fast as the server can answer. Station pages must never issue HTTP from
- * a tracked effect context — always through this helper.
  *
- * Must be called from an injection context (a component constructor).
+ * Data loading is DECLARATIVE: each page's lists are httpResources derived from the
+ * current-waystation signal (stationList/globalList below), never HTTP issued from
+ * an effect. An effect that fetches adopts hidden dependencies — ccc-lib's
+ * ApiInterceptor reads the global loading signal synchronously on every request
+ * (UiCoreService.beginActivity), so a fetching effect re-runs on every response's
+ * endActivity write: an infinite request loop, as fast as the server can answer.
+ * httpResource loaders run untracked by design, which rules that loop out
+ * structurally.
  */
-export function reloadOnStationChange(ws: WaystationService, load: () => void): void {
-  effect(() => {
-    if (ws.current()) {
-      untracked(load);
-    }
-  });
-}
-
 @Injectable({ providedIn: 'root' })
 export class WaystationService {
   private http = inject(HttpClient);
@@ -91,61 +73,24 @@ export class WaystationService {
     this.current.set(waystation);
   }
 
-  private list<T>(resourceRoute: string): Observable<T[]> {
-    return this.http.get<T[]>(`${this.apiUrl}/waystations/${this.current()}/${resourceRoute}`);
+  /**
+   * stationList derives a page's list from the selected waystation: the request URL
+   * is a function of current(), so the resource refetches when the station changes
+   * and sits idle (on the default empty list) while none is selected. After a
+   * mutation, call .reload() on the affected lists. Create resources in an
+   * injection context (a component field initializer), so each one lives and dies
+   * with its page.
+   */
+  stationList<T>(resourceRoute: string): HttpResourceRef<T[]> {
+    return httpResource<T[]>(
+      () => (this.current() ? `${this.apiUrl}/waystations/${this.current()}/${resourceRoute}` : undefined),
+      { defaultValue: [] },
+    );
   }
 
-  // Sorted by last activity server-side: updatedAt is the mechanical enforcement
-  // stamp, bumped by every update — including a Nudge, which changes nothing else.
-  // Untouched rows (updatedAt unset) sort last.
-  workOrders(): Observable<WorkOrders[]> {
-    return this.list<WorkOrders>('work-orders?sort=updatedAt:desc');
-  }
-
-  workOrderTasks(): Observable<WorkOrderTasks[]> {
-    return this.list<WorkOrderTasks>('work-order-tasks');
-  }
-
-  teams(): Observable<Teams[]> {
-    return this.list<Teams>('teams');
-  }
-
-  assets(): Observable<Assets[]> {
-    return this.list<Assets>('assets');
-  }
-
-  requisitions(): Observable<Requisitions[]> {
-    return this.list<Requisitions>('requisitions');
-  }
-
-  requisitionLines(): Observable<RequisitionLines[]> {
-    return this.list<RequisitionLines>('requisition-lines');
-  }
-
-  shipments(): Observable<Shipments[]> {
-    return this.list<Shipments>('shipments');
-  }
-
-  inventoryLots(): Observable<InventoryLots[]> {
-    // Sorting is done server-side through the reserved sort parameter: soonest
-    // expiry first (Spanner sorts NULL expiries — never expiring — to the top).
-    return this.list<InventoryLots>('inventory-lots?sort=expiresOn');
-  }
-
-  incidents(): Observable<IncidentReports[]> {
-    return this.list<IncidentReports>('incident-reports');
-  }
-
-  statusBoard(): Observable<StationStatusBoards[]> {
-    return this.list<StationStatusBoards>('station-status-boards');
-  }
-
-  catalogItems(): Observable<CatalogItems[]> {
-    return this.http.get<CatalogItems[]>(`${this.apiUrl}/catalog-items`);
-  }
-
-  auditTrail(): Observable<AuditTrailEntry[]> {
-    return this.http.get<AuditTrailEntry[]>(`${this.apiUrl}/audit-trail-entries`);
+  /** globalList is stationList's global-resource sibling: one fixed URL, no domain segment. */
+  globalList<T>(resourceRoute: string): HttpResourceRef<T[]> {
+    return httpResource<T[]>(() => `${this.apiUrl}/${resourceRoute}`, { defaultValue: [] });
   }
 
   // ops sends consolidated mutations; paths are rooted at the API, e.g.

@@ -1,5 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { AuditTrailEntry, WaystationService } from '../waystation.service';
@@ -21,22 +22,12 @@ import { AuditTrailEntry, WaystationService } from '../waystation.service';
 export class AuditTrailComponent {
   private ws = inject(WaystationService);
 
-  entries = signal<AuditTrailEntry[]>([]);
-  forbidden = signal(false);
+  entries = this.ws.globalList<AuditTrailEntry>('audit-trail-entries');
+  forbidden = computed(() => {
+    const err = this.entries.error();
+    return err instanceof HttpErrorResponse && err.status === 403;
+  });
   columns = ['eventTime', 'tableName', 'rowId', 'eventSource', 'changeSet'];
-
-  constructor() {
-    this.ws.auditTrail().subscribe({
-      next: (entries) => {
-        this.entries.set(entries ?? []);
-        this.forbidden.set(false);
-      },
-      error: (err: { status?: number }) => {
-        this.entries.set([]);
-        this.forbidden.set(err.status === 403);
-      },
-    });
-  }
 
   changeSetLabel(entry: AuditTrailEntry): string {
     return entry.changeSet ? JSON.stringify(entry.changeSet) : '—';

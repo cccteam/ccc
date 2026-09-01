@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -10,7 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { DeclineReason, RequisitionStatus } from '@app/service/zz_gen_enums';
 import { CatalogItems, RequisitionLines, Requisitions } from '@app/service/zz_gen_resources';
-import { reloadOnStationChange, WaystationService } from '../waystation.service';
+import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
 /**
@@ -43,13 +43,29 @@ export class RequisitionsComponent {
   readonly status = RequisitionStatus;
   readonly declineReasons = Object.values(DeclineReason);
 
-  requisitions = signal<Requisitions[]>([]);
-  linesByRequisition = signal<Map<string, RequisitionLines[]>>(new Map());
-  catalogItems = signal<CatalogItems[]>([]);
+  requisitions = this.ws.stationList<Requisitions>('requisitions');
+  lineRows = this.ws.stationList<RequisitionLines>('requisition-lines');
+  catalogItems = this.ws.globalList<CatalogItems>('catalog-items');
   columns = ['justification', 'status', 'requestedBy', 'totalCost', 'neededBy', 'actions'];
   lineColumns = ['item', 'quantity', 'unitCostSnapshot', 'lineActions'];
 
-  selected = signal<Requisitions | undefined>(undefined);
+  linesByRequisition = computed(() => {
+    const grouped = new Map<string, RequisitionLines[]>();
+    for (const line of this.lineRows.value()) {
+      const list = grouped.get(line.requisitionId) ?? [];
+      list.push(line);
+      grouped.set(line.requisitionId, list);
+    }
+    for (const list of grouped.values()) {
+      list.sort((a, b) => a.lineNumber - b.lineNumber);
+    }
+    return grouped;
+  });
+
+  // The selection resolves against the live list: a station switch or reload that
+  // drops the row clears it naturally.
+  selectedID = signal<string | undefined>(undefined);
+  selected = computed(() => this.requisitions.value().find((requisition) => requisition.id === this.selectedID()));
 
   declineReason = '';
 
@@ -61,47 +77,8 @@ export class RequisitionsComponent {
   newLineItemId = '';
   newLineQuantity: number | null = null;
 
-  constructor() {
-    reloadOnStationChange(this.ws, () => {
-      this.selected.set(undefined);
-      this.load();
-    });
-  }
-
-  load(): void {
-    this.ws.requisitions().subscribe({
-      next: (requisitions) => {
-        this.requisitions.set(requisitions ?? []);
-        const current = this.selected();
-        if (current) {
-          this.selected.set(this.requisitions().find((requisition) => requisition.id === current.id));
-        }
-      },
-      error: () => this.requisitions.set([]),
-    });
-    this.ws.requisitionLines().subscribe({
-      next: (lines) => {
-        const grouped = new Map<string, RequisitionLines[]>();
-        for (const line of lines ?? []) {
-          const list = grouped.get(line.requisitionId) ?? [];
-          list.push(line);
-          grouped.set(line.requisitionId, list);
-        }
-        for (const list of grouped.values()) {
-          list.sort((a, b) => a.lineNumber - b.lineNumber);
-        }
-        this.linesByRequisition.set(grouped);
-      },
-      error: () => this.linesByRequisition.set(new Map()),
-    });
-    this.ws.catalogItems().subscribe({
-      next: (items) => this.catalogItems.set(items ?? []),
-      error: () => this.catalogItems.set([]),
-    });
-  }
-
   select(requisition: Requisitions): void {
-    this.selected.set(this.selected()?.id === requisition.id ? undefined : requisition);
+    this.selectedID.set(this.selectedID() === requisition.id ? undefined : requisition.id);
     this.declineReason = '';
     this.newLineItemId = '';
     this.newLineQuantity = null;
@@ -112,7 +89,7 @@ export class RequisitionsComponent {
   }
 
   itemName(catalogItemId: string | undefined): string {
-    return this.catalogItems().find((item) => item.id === catalogItemId)?.name ?? catalogItemId ?? '';
+    return this.catalogItems.value().find((item) => item.id === catalogItemId)?.name ?? catalogItemId ?? '';
   }
 
   // costLabel renders the per-cell masked column: an absent key means the engine
@@ -134,12 +111,12 @@ export class RequisitionsComponent {
       .subscribe(() => {
         this.newJustification = '';
         this.newNeededBy = '';
-        this.load();
+        this.requisitions.reload();
       });
   }
 
   addLine(requisition: Requisitions): void {
-    const item = this.catalogItems().find((candidate) => candidate.id === this.newLineItemId);
+    const item = this.catalogItems.value().find((candidate) => candidate.id === this.newLineItemId);
     if (!item || this.newLineQuantity === null) {
       return;
     }
@@ -155,20 +132,28 @@ export class RequisitionsComponent {
       .subscribe(() => {
         this.newLineItemId = '';
         this.newLineQuantity = null;
-        this.load();
+        this.lineRows.reload();
       });
   }
 
   removeLine(line: RequisitionLines): void {
-    this.ws.removeRequisitionLine(line.requisitionId, line.lineNumber).subscribe(() => this.load());
+    this.ws.removeRequisitionLine(line.requisitionId, line.lineNumber).subscribe(() => this.lineRows.reload());
   }
 
+  // Submit recomputes the frozen total and moves the status, and the lines' cost
+  // visibility can change with it — reload both lists.
   submit(requisition: Requisitions): void {
-    this.ws.submitRequisition(requisition.id).subscribe(() => this.load());
+    this.ws.submitRequisition(requisition.id).subscribe(() => {
+      this.requisitions.reload();
+      this.lineRows.reload();
+    });
   }
 
   approve(requisition: Requisitions): void {
-    this.ws.approveRequisition(requisition.id).subscribe(() => this.load());
+    this.ws.approveRequisition(requisition.id).subscribe(() => {
+      this.requisitions.reload();
+      this.lineRows.reload();
+    });
   }
 
   decline(requisition: Requisitions): void {
@@ -177,7 +162,7 @@ export class RequisitionsComponent {
     }
     this.ws.declineRequisition(requisition.id, this.declineReason).subscribe(() => {
       this.declineReason = '';
-      this.load();
+      this.requisitions.reload();
     });
   }
 }

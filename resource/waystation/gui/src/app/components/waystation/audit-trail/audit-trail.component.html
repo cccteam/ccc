@@ -14,7 +14,7 @@
   </mat-card>
 } @else {
   <mat-card appearance="outlined" class="table-card">
-    <table mat-table [dataSource]="entries()">
+    <table mat-table [dataSource]="entries.value()">
       <ng-container matColumnDef="eventTime">
         <th mat-header-cell *matHeaderCellDef>When</th>
         <td mat-cell *matCellDef="let entry">{{ entry.eventTime | date: 'medium' }}</td>
@@ -38,7 +38,7 @@
       <tr mat-header-row *matHeaderRowDef="columns"></tr>
       <tr mat-row *matRowDef="let row; columns: columns"></tr>
     </table>
-    @if (!entries().length) {
+    @if (!entries.value().length) {
       <p class="empty">No change events yet — create or move a work order or requisition and come back.</p>
     }
   </mat-card>

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -12,7 +12,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTableModule } from '@angular/material/table';
 import { WorkOrderStatus } from '@app/service/zz_gen_enums';
 import { Assets, Teams, WorkOrders, WorkOrderTasks } from '@app/service/zz_gen_resources';
-import { reloadOnStationChange, WaystationService } from '../waystation.service';
+import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
 /**
@@ -46,13 +46,32 @@ export class WorkOrdersComponent {
 
   readonly status = WorkOrderStatus;
 
-  orders = signal<WorkOrders[]>([]);
-  tasksByOrder = signal<Map<string, WorkOrderTasks[]>>(new Map());
-  teams = signal<Teams[]>([]);
-  assets = signal<Assets[]>([]);
+  // Sorted by last activity server-side: updatedAt is the mechanical enforcement
+  // stamp, bumped by every update — including a Nudge, which changes nothing else.
+  // Untouched rows (updatedAt unset) sort last.
+  orders = this.ws.stationList<WorkOrders>('work-orders?sort=updatedAt:desc');
+  taskRows = this.ws.stationList<WorkOrderTasks>('work-order-tasks');
+  teams = this.ws.stationList<Teams>('teams');
+  assets = this.ws.stationList<Assets>('assets');
   columns = ['title', 'status', 'priority', 'team', 'dueAt', 'lastActivity', 'actions'];
 
-  selected = signal<WorkOrders | undefined>(undefined);
+  tasksByOrder = computed(() => {
+    const grouped = new Map<string, WorkOrderTasks[]>();
+    for (const task of this.taskRows.value()) {
+      const list = grouped.get(task.workOrderId) ?? [];
+      list.push(task);
+      grouped.set(task.workOrderId, list);
+    }
+    for (const list of grouped.values()) {
+      list.sort((a, b) => a.taskNumber - b.taskNumber);
+    }
+    return grouped;
+  });
+
+  // The selection resolves against the live list: a station switch or reload that
+  // drops the row clears it naturally.
+  selectedID = signal<string | undefined>(undefined);
+  selected = computed(() => this.orders.value().find((order) => order.id === this.selectedID()));
 
   // Schedule form state, shown when scheduling the selected draft.
   scheduleTeamId = '';
@@ -67,58 +86,15 @@ export class WorkOrdersComponent {
   // New task form state for the selected work order.
   newTaskInstructions = '';
 
-  constructor() {
-    reloadOnStationChange(this.ws, () => {
-      this.selected.set(undefined);
-      this.load();
-    });
-  }
-
-  load(): void {
-    this.ws.workOrders().subscribe({
-      next: (orders) => {
-        this.orders.set(orders ?? []);
-        const current = this.selected();
-        if (current) {
-          this.selected.set(this.orders().find((order) => order.id === current.id));
-        }
-      },
-      error: () => this.orders.set([]),
-    });
-    this.ws.workOrderTasks().subscribe({
-      next: (tasks) => {
-        const grouped = new Map<string, WorkOrderTasks[]>();
-        for (const task of tasks ?? []) {
-          const list = grouped.get(task.workOrderId) ?? [];
-          list.push(task);
-          grouped.set(task.workOrderId, list);
-        }
-        for (const list of grouped.values()) {
-          list.sort((a, b) => a.taskNumber - b.taskNumber);
-        }
-        this.tasksByOrder.set(grouped);
-      },
-      error: () => this.tasksByOrder.set(new Map()),
-    });
-    this.ws.teams().subscribe({
-      next: (teams) => this.teams.set(teams ?? []),
-      error: () => this.teams.set([]),
-    });
-    this.ws.assets().subscribe({
-      next: (assets) => this.assets.set(assets ?? []),
-      error: () => this.assets.set([]),
-    });
-  }
-
   select(order: WorkOrders): void {
-    this.selected.set(this.selected()?.id === order.id ? undefined : order);
+    this.selectedID.set(this.selectedID() === order.id ? undefined : order.id);
     this.scheduleTeamId = '';
     this.scheduleDueAt = '';
     this.newTaskInstructions = '';
   }
 
   teamName(teamId: string | undefined): string {
-    return this.teams().find((team) => team.id === teamId)?.name ?? '';
+    return this.teams.value().find((team) => team.id === teamId)?.name ?? '';
   }
 
   tasks(order: WorkOrders): WorkOrderTasks[] {
@@ -141,7 +117,7 @@ export class WorkOrdersComponent {
         this.newSummary = '';
         this.newPriority = null;
         this.newAssetId = '';
-        this.load();
+        this.orders.reload();
       });
   }
 
@@ -151,22 +127,22 @@ export class WorkOrdersComponent {
     }
     this.ws
       .scheduleWorkOrder(order.id, this.scheduleTeamId, new Date(this.scheduleDueAt).toISOString())
-      .subscribe(() => this.load());
+      .subscribe(() => this.orders.reload());
   }
 
   start(order: WorkOrders): void {
-    this.ws.startWorkOrder(order.id).subscribe(() => this.load());
+    this.ws.startWorkOrder(order.id).subscribe(() => this.orders.reload());
   }
 
   complete(order: WorkOrders): void {
-    this.ws.completeWorkOrder(order.id).subscribe(() => this.load());
+    this.ws.completeWorkOrder(order.id).subscribe(() => this.orders.reload());
   }
 
   // Nudge flags a stalled order for attention without changing it: the touch bumps
   // updatedAt (so the order jumps to the top of the last-activity sort) and the
   // audit trail records who nudged. Chiefs and foremen hold the grant.
   nudge(order: WorkOrders): void {
-    this.ws.nudgeWorkOrder(order.id).subscribe(() => this.load());
+    this.ws.nudgeWorkOrder(order.id).subscribe(() => this.orders.reload());
   }
 
   terminal(order: WorkOrders): boolean {
@@ -175,8 +151,8 @@ export class WorkOrdersComponent {
 
   remove(order: WorkOrders): void {
     this.ws.deleteWorkOrder(order.id).subscribe(() => {
-      this.selected.set(undefined);
-      this.load();
+      this.selectedID.set(undefined);
+      this.orders.reload();
     });
   }
 
@@ -189,11 +165,11 @@ export class WorkOrdersComponent {
       .createWorkOrderTask(order.id, nextNumber, { instructions: this.newTaskInstructions, done: false })
       .subscribe(() => {
         this.newTaskInstructions = '';
-        this.load();
+        this.taskRows.reload();
       });
   }
 
   toggleTask(task: WorkOrderTasks): void {
-    this.ws.setTaskDone(task.workOrderId, task.taskNumber, !task.done).subscribe(() => this.load());
+    this.ws.setTaskDone(task.workOrderId, task.taskNumber, !task.done).subscribe(() => this.taskRows.reload());
   }
 }

@@ -9,7 +9,7 @@
 <app-waystation-select></app-waystation-select>
 
 <mat-card appearance="outlined" class="table-card">
-  <table mat-table [dataSource]="requisitions()">
+  <table mat-table [dataSource]="requisitions.value()">
     <ng-container matColumnDef="justification">
       <th mat-header-cell *matHeaderCellDef>Justification</th>
       <td mat-cell *matCellDef="let requisition">{{ requisition.justification }}</td>
@@ -51,7 +51,7 @@
       [class.selected]="selected()?.id === row.id"
       (click)="select(row)"></tr>
   </table>
-  @if (!requisitions().length) {
+  @if (!requisitions.value().length) {
     <p class="empty">No requisitions visible in this waystation for your roles.</p>
   }
 </mat-card>
@@ -100,7 +100,7 @@
           <mat-form-field appearance="outline" class="grow">
             <mat-label>Catalog Item</mat-label>
             <mat-select name="catalogItemId" [(ngModel)]="newLineItemId">
-              @for (item of catalogItems(); track item.id) {
+              @for (item of catalogItems.value(); track item.id) {
                 <mat-option [value]="item.id">{{ item.name }} ({{ item.sku }})</mat-option>
               }
             </mat-select>
