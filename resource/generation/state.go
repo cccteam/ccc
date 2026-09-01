@@ -145,7 +145,13 @@ func (r *resourceGenerator) validateStateEnumTables(data resource.CollectionData
 
 // stateBindingName is the synthesized attribute every stateful resource and
 // workflow member carries.
-const stateBindingName = "state"
+const (
+	stateBindingName = "state"
+
+	// stateBindingType is the synthesized binding's comparison type: state
+	// values are the enum table's string descriptions.
+	stateBindingType = string(resource.AttributeTypeString)
+)
 
 // resolveWorkflowMembership captures a field's @stateRoot declaration; chain
 // resolution and synthesis happen in resolveWorkflows once every resource is
@@ -181,7 +187,7 @@ func (c *client) resolveWorkflows(resources []*resourceInfo) error {
 	// own conditions reference it.
 	for _, res := range resources {
 		if state := stateField(res); state != nil {
-			if err := synthesizeStateBinding(res, &attributeBinding{Name: stateBindingName, Anchor: state}); err != nil {
+			if err := synthesizeStateBinding(res, &attributeBinding{Name: stateBindingName, Anchor: state, Type: stateBindingType}); err != nil {
 				return err
 			}
 		}
@@ -222,7 +228,7 @@ func (c *client) resolveWorkflows(resources []*resourceInfo) error {
 	resolved := make(map[string]*attributeBinding) // struct name -> its state binding
 	for _, res := range resources {
 		if state := stateField(res); state != nil {
-			resolved[res.Name()] = &attributeBinding{Name: stateBindingName, Anchor: state}
+			resolved[res.Name()] = &attributeBinding{Name: stateBindingName, Anchor: state, Type: stateBindingType}
 		}
 	}
 
@@ -262,6 +268,7 @@ func resolveWorkflowChains(pending []workflowMembership, resolved map[string]*at
 			binding := &attributeBinding{
 				Name:   stateBindingName,
 				Anchor: m.field,
+				Type:   stateBindingType,
 				Path: append([]bindingHop{{
 					Table:      m.field.ReferencedResource,
 					JoinColumn: m.field.ReferencedField,

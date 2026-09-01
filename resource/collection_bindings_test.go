@@ -21,8 +21,8 @@ func TestGeneratedCollection_bindings(t *testing.T) {
 			Scope:       accesstypes.DomainPermissionScope,
 			Permissions: []accesstypes.Permission{accesstypes.Read},
 			Attributes: []AttributeData{
-				{Name: "crew", Column: "CrewId"},
-				{Name: "sector", Column: "BerthId", Path: []BindingHop{
+				{Name: "crew", Column: "CrewId", Type: AttributeTypeString},
+				{Name: "sector", Column: "BerthId", Type: AttributeTypeString, Path: []BindingHop{
 					{Table: "Berths", JoinColumn: "Id", Column: "StationId"},
 					{Table: "Stations", JoinColumn: "Id", Column: "Sector"},
 				}},
@@ -91,8 +91,8 @@ func TestNewGeneratedCollection_bindingValidation(t *testing.T) {
 				Name:  "Widgets",
 				Scope: accesstypes.GlobalPermissionScope,
 				Attributes: []AttributeData{
-					{Name: "crew", Column: "CrewId"},
-					{Name: "crew", Column: "TeamId"},
+					{Name: "crew", Column: "CrewId", Type: AttributeTypeString},
+					{Name: "crew", Column: "TeamId", Type: AttributeTypeString},
 				},
 			}}},
 			wantContain: `binding name "crew" twice`,
@@ -102,7 +102,7 @@ func TestNewGeneratedCollection_bindingValidation(t *testing.T) {
 			data: CollectionData{Resources: []CollectionResource{{
 				Name:        "Widgets",
 				Scope:       accesstypes.GlobalPermissionScope,
-				Attributes:  []AttributeData{{Name: "crew", Column: "CrewId"}},
+				Attributes:  []AttributeData{{Name: "crew", Column: "CrewId", Type: AttributeTypeString}},
 				SubjectSets: []SubjectBindingData{{Name: "crew", UserColumn: "UserId", Column: "CrewId"}},
 			}}},
 			wantContain: `binding name "crew" twice`,

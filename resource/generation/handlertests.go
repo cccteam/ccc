@@ -432,7 +432,7 @@ func authzJSONValue(t pkParamType) (string, bool) {
 		return "1", true
 	case declared == boolGoType || underlying == boolGoType:
 		return jsonTrueLiteral, true
-	case declared == "civil.Date":
+	case declared == civilDateGoType:
 		return `"2000-01-01"`, true
 	case declared == "time.Time":
 		return `"2000-01-01T00:00:00Z"`, true
@@ -463,7 +463,7 @@ func authzParamValue(t pkParamType) (string, bool) {
 		return "1", true
 	case t.declared == boolGoType || t.underlying == boolGoType:
 		return "true", true
-	case t.declared == "civil.Date":
+	case t.declared == civilDateGoType:
 		return "2000-01-01", true
 	default:
 		return "", false

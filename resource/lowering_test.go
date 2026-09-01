@@ -22,15 +22,15 @@ func loweringFixtureCollection(t *testing.T) *GeneratedCollection {
 			Name:  "MaintenanceTasks",
 			Scope: accesstypes.DomainPermissionScope,
 			Attributes: []AttributeData{
-				{Name: "crew", Column: "CrewId"},
-				{Name: "state", Column: "State"},
-				{Name: "estimatedCost", Column: "EstimatedCost"},
-				{Name: "shipClass", Column: "ShipId", Path: []BindingHop{{Table: "Ships", JoinColumn: "Id", Column: "Class"}}},
-				{Name: "sector", Column: "BerthId", Path: []BindingHop{
+				{Name: "crew", Column: "CrewId", Type: AttributeTypeString},
+				{Name: "state", Column: "State", Type: AttributeTypeString},
+				{Name: "estimatedCost", Column: "EstimatedCost", Type: AttributeTypeNumber},
+				{Name: "shipClass", Column: "ShipId", Type: AttributeTypeString, Path: []BindingHop{{Table: "Ships", JoinColumn: "Id", Column: "Class"}}},
+				{Name: "sector", Column: "BerthId", Type: AttributeTypeString, Path: []BindingHop{
 					{Table: "Berths", JoinColumn: "Id", Column: "StationId"},
 					{Table: "Stations", JoinColumn: "Id", Column: "Sector"},
 				}},
-				{Name: "assignee", Column: "Assignee"},
+				{Name: "assignee", Column: "Assignee", Type: AttributeTypeString},
 			},
 			Domain: &DomainBindingData{Column: "StationId"},
 		},

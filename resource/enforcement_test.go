@@ -88,7 +88,7 @@ func enforcementCollection(t *testing.T) *GeneratedCollection {
 		Name:        enforcedResource,
 		Scope:       accesstypes.DomainPermissionScope,
 		Permissions: []accesstypes.Permission{accesstypes.Read},
-		Attributes:  []AttributeData{{Name: "owner", Column: "Owner"}},
+		Attributes:  []AttributeData{{Name: "owner", Column: "Owner", Type: AttributeTypeString}},
 	}}})
 	if err != nil {
 		t.Fatalf("NewGeneratedCollection() error = %v", err)

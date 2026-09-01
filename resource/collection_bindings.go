@@ -24,13 +24,46 @@ type BindingHop struct {
 	Column     string
 }
 
+// AttributeType is the closed comparison-type vocabulary of attribute
+// bindings. MigrateRoles validates a condition's literals against the
+// attribute's type at deploy time — the renderer never compares values
+// itself, so the vocabulary stays coarse: what a literal must look like, not
+// how the database stores it.
+type AttributeType string
+
+const (
+	// AttributeTypeString compares against string literals (UUIDs included —
+	// binary, case-sensitive string equality per the expression language).
+	AttributeTypeString AttributeType = "string"
+	// AttributeTypeNumber compares against numeric literals.
+	AttributeTypeNumber AttributeType = "number"
+	// AttributeTypeBool compares against TRUE and FALSE.
+	AttributeTypeBool AttributeType = "bool"
+	// AttributeTypeTimestamp compares against RFC 3339 timestamp strings and now.
+	AttributeTypeTimestamp AttributeType = "timestamp"
+	// AttributeTypeDate compares against date strings.
+	AttributeTypeDate AttributeType = "date"
+)
+
+// validAttributeType reports whether t is in the vocabulary.
+func validAttributeType(t AttributeType) bool {
+	switch t {
+	case AttributeTypeString, AttributeTypeNumber, AttributeTypeBool, AttributeTypeTimestamp, AttributeTypeDate:
+		return true
+	default:
+		return false
+	}
+}
+
 // AttributeData is one attribute binding: the vocabulary name grant
 // conditions reference, resolved to data. Column is the anchor column on the
 // resource's own table — the attribute itself when Path is empty, or the
-// foreign key the join path leaves through.
+// foreign key the join path leaves through. Type is the attribute's
+// comparison type, derived by generation from the bound column's Go type.
 type AttributeData struct {
 	Name   string
 	Column string
+	Type   AttributeType
 	Path   []BindingHop
 }
 
@@ -148,6 +181,9 @@ func validateCollectionBindings(resources []CollectionResource) error {
 		for _, attr := range res.Attributes {
 			if err := claimLocal(attr.Name); err != nil {
 				return err
+			}
+			if !validAttributeType(attr.Type) {
+				return errors.Newf("resource %q attribute %q carries comparison type %q, which is not in the vocabulary — regenerate the collection", res.Name, attr.Name, attr.Type)
 			}
 		}
 		for _, subject := range slices.Concat(res.SubjectSets, res.SubjectValues) {

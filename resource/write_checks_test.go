@@ -24,8 +24,8 @@ func writeCheckCollection(t *testing.T) *GeneratedCollection {
 		Scope:       accesstypes.DomainPermissionScope,
 		Permissions: []accesstypes.Permission{accesstypes.Read},
 		Attributes: []AttributeData{
-			{Name: "owner", Column: "Owner"},
-			{Name: "pub", Column: "Public"},
+			{Name: "owner", Column: "Owner", Type: AttributeTypeString},
+			{Name: "pub", Column: "Public", Type: AttributeTypeString},
 		},
 	}}})
 	if err != nil {

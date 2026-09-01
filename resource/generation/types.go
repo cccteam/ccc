@@ -622,7 +622,7 @@ func (r *resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
 				return false
 			}
 
-			return f.Type() == "ccc.UUID"
+			return f.Type() == cccUUIDGoType
 		}
 	}
 

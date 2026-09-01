@@ -48,9 +48,9 @@ func renderCollection(t *testing.T) *GeneratedCollection {
 		Scope:       accesstypes.DomainPermissionScope,
 		Permissions: []accesstypes.Permission{accesstypes.Read},
 		Attributes: []AttributeData{
-			{Name: "owner", Column: "Owner"},
-			{Name: "priority", Column: "Priority"},
-			{Name: "expires", Column: "Expires"},
+			{Name: "owner", Column: "Owner", Type: AttributeTypeString},
+			{Name: "priority", Column: "Priority", Type: AttributeTypeNumber},
+			{Name: "expires", Column: "Expires", Type: AttributeTypeTimestamp},
 		},
 	}}})
 	if err != nil {

@@ -120,23 +120,24 @@ func TestResolveBindingAnnotations(t *testing.T) {
 		type wantAttribute struct {
 			Name   string
 			Anchor string
+			Type   string
 			Path   []bindingHop
 		}
 		wantAttributes := []wantAttribute{
-			{Name: "crew", Anchor: "CrewID"},
-			{Name: "shipClass", Anchor: "ShipID", Path: []bindingHop{
+			{Name: "crew", Anchor: "CrewID", Type: "string"},
+			{Name: "shipClass", Anchor: "ShipID", Type: "string", Path: []bindingHop{
 				{Table: "Ships", JoinColumn: "Id", Column: "Class"},
 			}},
-			{Name: "sector", Anchor: "BerthID", Path: []bindingHop{
+			{Name: "sector", Anchor: "BerthID", Type: "string", Path: []bindingHop{
 				{Table: "Berths", JoinColumn: "Id", Column: "StationId"},
 				{Table: "Stations", JoinColumn: "Id", Column: "Sector"},
 			}},
-			{Name: "estimatedCost", Anchor: "EstimatedCost"},
+			{Name: "estimatedCost", Anchor: "EstimatedCost", Type: "number"},
 		}
 
 		gotAttributes := make([]wantAttribute, 0, len(res.Attributes))
 		for _, a := range res.Attributes {
-			gotAttributes = append(gotAttributes, wantAttribute{Name: a.Name, Anchor: a.Anchor.Name(), Path: a.Path})
+			gotAttributes = append(gotAttributes, wantAttribute{Name: a.Name, Anchor: a.Anchor.Name(), Type: a.Type, Path: a.Path})
 		}
 		if diff := cmp.Diff(wantAttributes, gotAttributes, opts); diff != "" {
 			t.Errorf("Attributes mismatch (-want +got):\n%s", diff)

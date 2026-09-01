@@ -552,6 +552,7 @@ const (
 	complex64GoType  = "complex64"
 	complex128GoType = "complex128"
 	cccUUIDGoType    = "ccc.UUID"
+	civilDateGoType  = "civil.Date"
 )
 
 // jsonTrueLiteral is the JSON boolean literal the authorization matrix's synthesized

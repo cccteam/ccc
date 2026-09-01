@@ -1650,7 +1650,7 @@ func Collection() *resource.GeneratedCollection {
 				{{- with .Attributes }}
 				Attributes: []resource.AttributeData{
 					{{- range . }}
-					{Name: "{{ .Name }}", Column: "{{ .Column }}"{{ BindingHops .Path }}},
+					{Name: "{{ .Name }}", Column: "{{ .Column }}", Type: "{{ .Type }}"{{ BindingHops .Path }}},
 					{{- end }}
 				},
 				{{- end }}

@@ -53,6 +53,11 @@ type attributeBinding struct {
 	Name   string
 	Anchor *resourceField
 
+	// Type is the attribute's comparison type — the closed vocabulary
+	// MigrateRoles validates condition literals against — derived from the
+	// bound column's Go type (the terminal of a join path).
+	Type string
+
 	// Path is the resolved remote chain for a join-path binding; empty for a
 	// column binding.
 	Path []bindingHop
@@ -173,11 +178,16 @@ func (c *client) resolveAttribute(anchor *resourceField, arg genlang.Arg, struct
 	invocation := invocations[0]
 
 	binding := &attributeBinding{Name: invocation.Positional[0], Anchor: anchor}
+	terminal := &anchor.TypeInfo
 	if via, ok := invocation.Named("via"); ok {
-		binding.Path, err = c.resolveRemotePath(anchor, splitPathSegments(via), structsByTable)
+		binding.Path, terminal, err = c.resolveRemotePath(anchor, splitPathSegments(via), structsByTable)
 		if err != nil {
 			return nil, errors.Wrapf(err, "@%s(%s)", attributeKeyword, binding.Name)
 		}
+	}
+	binding.Type, err = attributeTypeFor(terminal)
+	if err != nil {
+		return nil, errors.Wrapf(err, "@%s(%s)", attributeKeyword, binding.Name)
 	}
 
 	return binding, nil
@@ -199,7 +209,7 @@ func (c *client) resolveDomain(anchor *resourceField, arg genlang.Arg, structsBy
 	if !ok {
 		return nil, errors.Newf("@%s takes no arguments, or via: alone", domainKeyword)
 	}
-	binding.Path, err = c.resolveRemotePath(anchor, splitPathSegments(via), structsByTable)
+	binding.Path, _, err = c.resolveRemotePath(anchor, splitPathSegments(via), structsByTable)
 	if err != nil {
 		return nil, errors.Wrapf(err, "@%s", domainKeyword)
 	}
@@ -244,7 +254,7 @@ func (c *client) resolveSubjectBindings(res *resourceInfo, anchor *resourceField
 			Scalar:     scalar,
 		}
 		if len(segments) > 1 {
-			binding.Path, err = c.resolveRemotePath(local, segments[1:], structsByTable)
+			binding.Path, _, err = c.resolveRemotePath(local, segments[1:], structsByTable)
 			if err != nil {
 				return nil, errors.Wrapf(err, "@%s(%s)", keyword, binding.Name)
 			}
@@ -260,69 +270,108 @@ func (c *client) resolveSubjectBindings(res *resourceInfo, anchor *resourceField
 // Every non-terminal segment must itself be a foreign key — each hop follows
 // a real FK relationship, so the walk is many-to-one — and the terminal
 // segment is the column the binding reads.
-func (c *client) resolveRemotePath(anchor *resourceField, segments []string, structsByTable map[string]*parser.Struct) ([]bindingHop, error) {
+func (c *client) resolveRemotePath(anchor *resourceField, segments []string, structsByTable map[string]*parser.Struct) ([]bindingHop, *parser.TypeInfo, error) {
 	if !anchor.IsForeignKey || anchor.ReferencedResource == "" {
-		return nil, errors.Newf("a join path must leave through a foreign key, and %s is not one", anchor.Name())
+		return nil, nil, errors.Newf("a join path must leave through a foreign key, and %s is not one", anchor.Name())
 	}
 
+	var terminal *parser.TypeInfo
 	hops := make([]bindingHop, 0, len(segments))
 	table := anchor.ReferencedResource
 	joinColumn := anchor.ReferencedField
 
 	for i, segment := range segments {
 		if segment == "" {
-			return nil, errors.Newf("path %q contains an empty segment", strings.Join(segments, "."))
+			return nil, nil, errors.Newf("path %q contains an empty segment", strings.Join(segments, "."))
 		}
 
 		remoteStruct, ok := structsByTable[table]
 		if !ok {
-			return nil, errors.Newf("no struct found for table %q to resolve Go field %q", table, segment)
+			return nil, nil, errors.Newf("no struct found for table %q to resolve Go field %q", table, segment)
 		}
 		remoteTable, ok := c.tableMap[table]
 		if !ok {
-			return nil, errors.Newf("table %q not found in database", table)
+			return nil, nil, errors.Newf("table %q not found in database", table)
 		}
 
-		column, meta, err := columnForGoField(remoteStruct, remoteTable, segment)
+		column, meta, fieldType, err := columnForGoField(remoteStruct, remoteTable, segment)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		hops = append(hops, bindingHop{Table: table, JoinColumn: joinColumn, Column: column})
+		terminal = fieldType
 
 		if i == len(segments)-1 {
 			break
 		}
 		if !meta.IsForeignKey || meta.ReferencedTable == "" {
-			return nil, errors.Newf("path segment %q on %s must be a foreign key to continue the path", segment, table)
+			return nil, nil, errors.Newf("path segment %q on %s must be a foreign key to continue the path", segment, table)
 		}
 		table = meta.ReferencedTable
 		joinColumn = meta.ReferencedColumn
 	}
 
-	return hops, nil
+	return hops, terminal, nil
 }
 
 // columnForGoField maps a Go field name on a remote struct to its table
 // column and metadata through the struct's spanner tag.
-func columnForGoField(pStruct *parser.Struct, table *tableMetadata, goField string) (string, columnMeta, error) {
+func columnForGoField(pStruct *parser.Struct, table *tableMetadata, goField string) (string, columnMeta, *parser.TypeInfo, error) {
 	for _, field := range pStruct.Fields() {
 		if field.Name() != goField {
 			continue
 		}
 		column, ok := field.LookupTag(spannerTagKey)
 		if !ok {
-			return "", columnMeta{}, errors.Newf("field %q on %s has no spanner tag", goField, pStruct.Name())
+			return "", columnMeta{}, nil, errors.Newf("field %q on %s has no spanner tag", goField, pStruct.Name())
 		}
 		meta, ok := table.Columns[column]
 		if !ok {
-			return "", columnMeta{}, errors.Newf("field %q on %s maps to column %q, which is not in the table", goField, pStruct.Name(), column)
+			return "", columnMeta{}, nil, errors.Newf("field %q on %s maps to column %q, which is not in the table", goField, pStruct.Name(), column)
 		}
 
-		return column, meta, nil
+		return column, meta, &field.TypeInfo, nil
 	}
 
-	return "", columnMeta{}, errors.Newf("field %q not found on %s", goField, pStruct.Name())
+	return "", columnMeta{}, nil, errors.Newf("field %q not found on %s", goField, pStruct.Name())
+}
+
+// attributeTypeFor maps a bound column's Go type onto the attribute
+// comparison-type vocabulary (resource.AttributeType). Named types fall back
+// to their underlying type, so an enum-style `type Code string` compares as a
+// string. A type outside the vocabulary cannot be an attribute: conditions
+// could never compare against it.
+func attributeTypeFor(t *parser.TypeInfo) (string, error) {
+	if mapped, ok := goTypeToAttributeType(t.DerefType()); ok {
+		return mapped, nil
+	}
+	if mapped, ok := goTypeToAttributeType(strings.TrimPrefix(t.UnderlyingType(), "*")); ok {
+		return mapped, nil
+	}
+
+	return "", errors.Newf("type %s is not a supported attribute comparison type (string, number, bool, timestamp, or date)", t.Type())
+}
+
+func goTypeToAttributeType(goType string) (string, bool) {
+	switch goType {
+	case stringGoType, cccUUIDGoType, "ccc.NullUUID", "spanner.NullString":
+		return string(resource.AttributeTypeString), true
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64",
+		"decimal.Decimal", "decimal.NullDecimal",
+		"spanner.NullInt64", "spanner.NullFloat64", "spanner.NullNumeric":
+		return string(resource.AttributeTypeNumber), true
+	case "bool", "spanner.NullBool":
+		return string(resource.AttributeTypeBool), true
+	case "time.Time", "spanner.NullTime":
+		return string(resource.AttributeTypeTimestamp), true
+	case civilDateGoType, "spanner.NullDate":
+		return string(resource.AttributeTypeDate), true
+	default:
+		return "", false
+	}
 }
 
 func validateBindingName(name, keyword string) error {
@@ -371,6 +420,7 @@ func collectionBindings(res *resourceInfo) *resource.Bindings {
 		bindings.Attributes = append(bindings.Attributes, resource.AttributeData{
 			Name:   attr.Name,
 			Column: fieldColumn(attr.Anchor),
+			Type:   resource.AttributeType(attr.Type),
 			Path:   collectionHops(attr.Path),
 		})
 	}
