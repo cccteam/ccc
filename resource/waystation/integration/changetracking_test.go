@@ -65,21 +65,40 @@ func TestChangeTracking(t *testing.T) {
 		},
 	})
 
-	// A tracked resource's create writes its change event in the same transaction.
-	status, body := doRequestAs(t, h, "tracked-user", http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"Tracked create","priority":1}}]`, assetRecyclerID))
-	assertStatus(t, status, http.StatusOK, body)
-	if got := countChangeEvents(ctx, t, db, "WorkOrders"); got != 1 {
-		t.Errorf("WorkOrders change events = %d, want 1", got)
+	tests := []struct {
+		name       string
+		target     string
+		ops        string
+		table      string // the DataChangeEvents table probed after the mutation
+		wantEvents int64
+	}{
+		{
+			name:       "a tracked resource's create writes its change event in the same transaction",
+			target:     "/api/resources",
+			ops:        fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"Tracked create","priority":1}}]`, assetRecyclerID),
+			table:      "WorkOrders",
+			wantEvents: 1,
+		},
+		{
+			// Module is excluded from consolidation, so its standalone PATCH surface
+			// carries the mutation — covering that route shape in the same breath.
+			name:       "an untracked resource writes none",
+			target:     "/api/waystations/ws-alpha/modules",
+			ops:        `[{"op":"add","path":"/","value":{"waystationId":"ws-alpha","name":"Annex","zone":"cargo","pressureRated":false}}]`,
+			table:      "Modules",
+			wantEvents: 0,
+		},
 	}
 
-	// An untracked resource writes none. Module is excluded from consolidation, so
-	// its standalone PATCH surface carries the mutation — covering that route shape
-	// in the same breath.
-	status, body = doRequest(t, h, http.MethodPatch, "/api/waystations/ws-alpha/modules",
-		`[{"op":"add","path":"/","value":{"waystationId":"ws-alpha","name":"Annex","zone":"cargo","pressureRated":false}}]`)
-	assertStatus(t, status, http.StatusOK, body)
-	if got := countChangeEvents(ctx, t, db, "Modules"); got != 0 {
-		t.Errorf("Modules change events = %d, want 0 (tracking off)", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, body := doRequestAs(t, h, "tracked-user", http.MethodPatch, tt.target, tt.ops)
+			assertStatus(t, status, http.StatusOK, body)
+			if got := countChangeEvents(ctx, t, db, tt.table); got != tt.wantEvents {
+				t.Errorf("%s change events = %d, want %d", tt.table, got, tt.wantEvents)
+			}
+		})
 	}
 }

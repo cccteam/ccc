@@ -60,43 +60,58 @@ func TestManualResourceAuditTrail(t *testing.T) {
 		},
 	}
 
-	h := newAuditApp(db, auditGrants)
-
 	// A tracked mutation through the generated surface produces the event the
 	// hand-written surface serves.
-	status, body := doRequestAs(t, h, "audit-actor", http.MethodPatch, "/api/resources",
+	status, body := doRequestAs(t, newAuditApp(db, auditGrants), "audit-actor", http.MethodPatch, "/api/resources",
 		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"Audited create","priority":1}}]`, assetRecyclerID))
 	assertStatus(t, status, http.StatusOK, body)
 
-	t.Run("granted List serves the change events newest first", func(t *testing.T) {
-		t.Parallel()
+	tests := []struct {
+		name       string
+		g          grants
+		wantStatus int
+		check      func(t *testing.T, respBody []byte)
+	}{
+		{
+			name:       "granted List serves the change events newest first",
+			g:          auditGrants,
+			wantStatus: http.StatusOK,
+			check: func(t *testing.T, respBody []byte) {
+				t.Helper()
+				rows := decodeRows(t, respBody)
+				if len(rows) == 0 {
+					t.Fatalf("audit trail = 0 rows, want at least the tracked create: %s", respBody)
+				}
+				first := rows[0]
+				if got := first["tableName"]; got != "WorkOrders" {
+					t.Errorf("newest event tableName = %v, want WorkOrders", got)
+				}
+				if src, _ := first["eventSource"].(string); src == "" {
+					t.Errorf("newest event eventSource is empty, want the session-derived source")
+				}
+				if _, ok := first["changeSet"]; !ok {
+					t.Errorf("newest event has no changeSet key: %v", first)
+				}
+			},
+		},
+		{
+			name:       "without the grant the surface is forbidden",
+			g:          grants{},
+			wantStatus: http.StatusForbidden,
+		},
+	}
 
-		status, body := doRequest(t, h, http.MethodGet, "/api/audit-trail-entries", "")
-		assertStatus(t, status, http.StatusOK, body)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		rows := decodeRows(t, body)
-		if len(rows) == 0 {
-			t.Fatalf("audit trail = 0 rows, want at least the tracked create: %s", body)
-		}
-		first := rows[0]
-		if got := first["tableName"]; got != "WorkOrders" {
-			t.Errorf("newest event tableName = %v, want WorkOrders", got)
-		}
-		if src, _ := first["eventSource"].(string); src == "" {
-			t.Errorf("newest event eventSource is empty, want the session-derived source")
-		}
-		if _, ok := first["changeSet"]; !ok {
-			t.Errorf("newest event has no changeSet key: %v", first)
-		}
-	})
-
-	t.Run("without the grant the surface is forbidden", func(t *testing.T) {
-		t.Parallel()
-
-		denied := newAuditApp(db, grants{})
-		status, body := doRequest(t, denied, http.MethodGet, "/api/audit-trail-entries", "")
-		assertStatus(t, status, http.StatusForbidden, body)
-	})
+			status, body := doRequest(t, newAuditApp(db, tt.g), http.MethodGet, "/api/audit-trail-entries", "")
+			assertStatus(t, status, tt.wantStatus, body)
+			if tt.check != nil {
+				tt.check(t, body)
+			}
+		})
+	}
 }
 
 // TestManualResourceBootstrapParity runs the audit surface against the REAL engine
@@ -123,9 +138,29 @@ func TestManualResourceBootstrapParity(t *testing.T) {
 	r.Use(httpio.WithParams)
 	r.Get("/api/audit-trail-entries", a.AuditTrailEntries())
 
-	status, body := doRequestAs(t, r, "auditor-voss", http.MethodGet, "/api/audit-trail-entries", "")
-	assertStatus(t, status, http.StatusOK, body)
+	tests := []struct {
+		name       string
+		user       accesstypes.User
+		wantStatus int
+	}{
+		{
+			name:       "auditor holds the global RecordsAuditor role",
+			user:       "auditor-voss",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "foreman holds no audit grant",
+			user:       "foreman-okafor",
+			wantStatus: http.StatusForbidden,
+		},
+	}
 
-	status, body = doRequestAs(t, r, "foreman-okafor", http.MethodGet, "/api/audit-trail-entries", "")
-	assertStatus(t, status, http.StatusForbidden, body)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, body := doRequestAs(t, r, tt.user, http.MethodGet, "/api/audit-trail-entries", "")
+			assertStatus(t, status, tt.wantStatus, body)
+		})
+	}
 }

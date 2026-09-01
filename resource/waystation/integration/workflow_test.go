@@ -56,8 +56,9 @@ func TestWorkOrderWorkflow(t *testing.T) {
 	}
 	h := newTestApp(db, workflowGrants())
 
-	// The walk mutates one work order through its lifecycle, so the sections run in
-	// order rather than as parallel subtests.
+	// Deliberately not a table: the walk mutates one work order through its
+	// lifecycle, so each section depends on the state the previous one left behind
+	// and they run in order rather than as parallel subtests.
 
 	// The wire cannot express a state write: the patch decode is closed over statusId.
 	status, body := doRequest(t, h, http.MethodPatch, "/api/resources",

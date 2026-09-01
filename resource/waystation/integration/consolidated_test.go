@@ -60,50 +60,58 @@ func TestConsolidatedBatchSemantics(t *testing.T) {
 		fieldResource(workOrdersResource, "priority"),
 	}}
 
-	t.Run("the operation vocabulary is closed: upsert is not expressible", func(t *testing.T) {
-		t.Parallel()
-
-		h := newTestApp(db, createGrants)
-		status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
-			fmt.Sprintf(`[{"op":"upsert","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"upsert probe","priority":1}}]`, assetRecyclerID))
-		assertStatus(t, status, http.StatusBadRequest, body)
-		if got := countWorkOrdersTitled(ctx, t, db, "upsert probe"); got != 0 {
-			t.Errorf("work orders titled 'upsert probe' = %d, want 0", got)
-		}
-	})
-
-	t.Run("one batch spans waystations atomically", func(t *testing.T) {
-		t.Parallel()
-
-		// The scripted grants apply in every scope, so this user may create work
-		// orders at both stations — the batch's two domains commit together.
-		h := newTestApp(db, createGrants)
-		status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
-			fmt.Sprintf(`[
+	tests := []struct {
+		name       string
+		ops        string
+		wantStatus int
+		title      string // the WorkOrders title the batch tried to create
+		wantCount  int64  // rows carrying that title after the batch
+	}{
+		{
+			name: "the operation vocabulary is closed: upsert is not expressible",
+			ops: fmt.Sprintf(`[{"op":"upsert","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"upsert probe","priority":1}}]`,
+				assetRecyclerID),
+			wantStatus: http.StatusBadRequest,
+			title:      "upsert probe",
+			wantCount:  0,
+		},
+		{
+			// The scripted grants apply in every scope, so this user may create work
+			// orders at both stations — the batch's two domains commit together.
+			name: "one batch spans waystations atomically",
+			ops: fmt.Sprintf(`[
 				{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"cross-domain batch","priority":1}},
 				{"op":"add","path":"/waystations/ws-beta/work-orders","value":{"waystationId":"ws-beta","assetId":%q,"title":"cross-domain batch","priority":1}}
-			]`, assetRecyclerID, assetBetaAirID))
-		assertStatus(t, status, http.StatusOK, body)
-		if got := countWorkOrdersTitled(ctx, t, db, "cross-domain batch"); got != 2 {
-			t.Errorf("work orders titled 'cross-domain batch' = %d, want 2", got)
-		}
-	})
-
-	t.Run("a refused operation rolls back the whole batch", func(t *testing.T) {
-		t.Parallel()
-
-		// The second operation targets a resource the user holds no grant on, so
-		// the batch fails — and the first operation's already-decoded create must
-		// not survive it.
-		h := newTestApp(db, createGrants)
-		status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
-			fmt.Sprintf(`[
+			]`, assetRecyclerID, assetBetaAirID),
+			wantStatus: http.StatusOK,
+			title:      "cross-domain batch",
+			wantCount:  2,
+		},
+		{
+			// The second operation targets a resource the user holds no grant on, so
+			// the batch fails — and the first operation's already-decoded create must
+			// not survive it.
+			name: "a refused operation rolls back the whole batch",
+			ops: fmt.Sprintf(`[
 				{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"atomic probe","priority":1}},
 				{"op":"add","path":"/waystations/ws-beta/teams","value":{"waystationId":"ws-beta","name":"Rollback Crew","specialty":"none"}}
-			]`, assetRecyclerID))
-		assertStatus(t, status, http.StatusForbidden, body)
-		if got := countWorkOrdersTitled(ctx, t, db, "atomic probe"); got != 0 {
-			t.Errorf("work orders titled 'atomic probe' = %d, want 0 (batch must roll back)", got)
-		}
-	})
+			]`, assetRecyclerID),
+			wantStatus: http.StatusForbidden,
+			title:      "atomic probe",
+			wantCount:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newTestApp(db, createGrants)
+			status, body := doRequest(t, h, http.MethodPatch, "/api/resources", tt.ops)
+			assertStatus(t, status, tt.wantStatus, body)
+			if got := countWorkOrdersTitled(ctx, t, db, tt.title); got != tt.wantCount {
+				t.Errorf("work orders titled %q = %d, want %d", tt.title, got, tt.wantCount)
+			}
+		})
+	}
 }

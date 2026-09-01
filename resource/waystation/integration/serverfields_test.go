@@ -40,6 +40,9 @@ func incidentGrants() grants {
 	}
 }
 
+// TestIncidentServerFields walks one incident from forged create attempt through
+// clamped and rejected updates. Deliberately not a table: the created row's id flows
+// through every later step.
 func TestIncidentServerFields(t *testing.T) {
 	t.Parallel()
 
@@ -116,15 +119,32 @@ func TestImmutableField(t *testing.T) {
 		fieldResource(assets, "name"),
 	}})
 
-	// SerialNumber is immutable: settable on create only, update is a 400 regardless
-	// of grants.
-	status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"patch","path":"/waystations/ws-alpha/assets/%s","value":{"serialNumber":"AR-9-XXXX"}}]`, assetRecyclerID))
-	if status != http.StatusBadRequest {
-		t.Fatalf("immutable update: status = %d, want 400: %s", status, body)
+	tests := []struct {
+		name       string
+		value      string
+		wantStatus int
+	}{
+		{
+			// SerialNumber is immutable: settable on create only, update is a 400
+			// regardless of grants.
+			name:       "the immutable serial number refuses updates",
+			value:      `{"serialNumber":"AR-9-XXXX"}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "an ordinary granted field updates",
+			value:      `{"name":"Atmos Recycler AR-9b"}`,
+			wantStatus: http.StatusOK,
+		},
 	}
 
-	status, body = doRequest(t, h, http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"patch","path":"/waystations/ws-alpha/assets/%s","value":{"name":"Atmos Recycler AR-9b"}}]`, assetRecyclerID))
-	assertStatus(t, status, http.StatusOK, body)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
+				fmt.Sprintf(`[{"op":"patch","path":"/waystations/ws-alpha/assets/%s","value":%s}]`, assetRecyclerID, tt.value))
+			assertStatus(t, status, tt.wantStatus, body)
+		})
+	}
 }

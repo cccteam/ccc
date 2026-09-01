@@ -42,36 +42,64 @@ func TestComputedResources(t *testing.T) {
 		},
 	})
 
-	// FleetSummary aggregates the seeded world: ws-alpha has three open work orders
-	// (in_progress, scheduled, draft; the completed one does not count) and two
-	// requisitions awaiting approval.
-	status, body := doRequest(t, h, http.MethodGet, "/api/fleet-summaries", "")
-	assertStatus(t, status, http.StatusOK, body)
-	summaries := rowsByID(t, decodeRows(t, body), "waystationId")
-	alpha := summaries[wsAlpha]
-	if alpha == nil {
-		t.Fatalf("no ws-alpha summary: %s", body)
-	}
-	if got := alpha["openWorkOrders"]; got != float64(3) {
-		t.Errorf("ws-alpha openWorkOrders = %v, want 3", got)
-	}
-	if got := alpha["pendingRequisitions"]; got != float64(2) {
-		t.Errorf("ws-alpha pendingRequisitions = %v, want 2", got)
+	tests := []struct {
+		name     string
+		target   string
+		wantRows int // list-row count, asserted when > 0
+		check    func(t *testing.T, respBody []byte)
+	}{
+		{
+			// FleetSummary aggregates the seeded world: ws-alpha has three open work
+			// orders (in_progress, scheduled, draft; the completed one does not count)
+			// and two requisitions awaiting approval.
+			name:   "the fleet summary aggregates the seeded world",
+			target: "/api/fleet-summaries",
+			check: func(t *testing.T, respBody []byte) {
+				t.Helper()
+				alpha := rowsByID(t, decodeRows(t, respBody), "waystationId")[wsAlpha]
+				if alpha == nil {
+					t.Fatalf("no ws-alpha summary: %s", respBody)
+				}
+				if got := alpha["openWorkOrders"]; got != float64(3) {
+					t.Errorf("ws-alpha openWorkOrders = %v, want 3", got)
+				}
+				if got := alpha["pendingRequisitions"]; got != float64(2) {
+					t.Errorf("ws-alpha pendingRequisitions = %v, want 2", got)
+				}
+			},
+		},
+		{
+			name:     "the status board folds readings to the latest per facility and metric",
+			target:   "/api/waystations/ws-alpha/station-status-boards",
+			wantRows: 3, // two alpha pairs + one beta
+		},
+		{
+			name:   "the compound-key read route addresses one facility and metric pair",
+			target: "/api/waystations/ws-alpha/station-status-boards/" + facilityReactorCtlID + "/coolant_temp",
+			check: func(t *testing.T, respBody []byte) {
+				t.Helper()
+				if got := decodeRow(t, respBody)["latestReading"]; got != float64(91.2) {
+					t.Errorf("latest coolant_temp = %v, want the newest reading 91.2", got)
+				}
+			},
+		},
 	}
 
-	// StationStatusBoard folds sensor readings to the latest per facility+metric.
-	status, body = doRequest(t, h, http.MethodGet, "/api/waystations/ws-alpha/station-status-boards", "")
-	assertStatus(t, status, http.StatusOK, body)
-	if rows := decodeRows(t, body); len(rows) != 3 {
-		t.Errorf("status board rows = %d, want 3 (two alpha pairs + one beta)", len(rows))
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	// The compound-key read route addresses one facility+metric pair.
-	status, body = doRequest(t, h, http.MethodGet, "/api/waystations/ws-alpha/station-status-boards/"+facilityReactorCtlID+"/coolant_temp", "")
-	assertStatus(t, status, http.StatusOK, body)
-	row := decodeRow(t, body)
-	if got := row["latestReading"]; got != float64(91.2) {
-		t.Errorf("latest coolant_temp = %v, want the newest reading 91.2", got)
+			status, body := doRequest(t, h, http.MethodGet, tt.target, "")
+			assertStatus(t, status, http.StatusOK, body)
+			if tt.wantRows > 0 {
+				if rows := decodeRows(t, body); len(rows) != tt.wantRows {
+					t.Errorf("rows = %d, want %d: %s", len(rows), tt.wantRows, body)
+				}
+			}
+			if tt.check != nil {
+				tt.check(t, body)
+			}
+		})
 	}
 }
 
@@ -98,26 +126,53 @@ func TestVirtualResources(t *testing.T) {
 		fieldResource(open, "openOrders"),
 	}})
 
-	// SpendByCategory runs the WITH-clause subquery with its named parameter: only
-	// the approved requisition's line (one plasma torch) qualifies in the seed.
-	status, body := doRequest(t, h, http.MethodGet, "/api/spend-by-categories", "")
-	assertStatus(t, status, http.StatusOK, body)
-	rows := decodeRows(t, body)
-	if len(rows) != 1 {
-		t.Fatalf("spend rows = %d, want 1 (only the approved requisition qualifies): %s", len(rows), body)
-	}
-	if got := rows[0]["category"]; got != "tool" {
-		t.Errorf("category = %v, want tool", got)
-	}
-	if got := rows[0]["totalSpend"]; got != "445.25" {
-		t.Errorf("totalSpend = %v, want 445.25", got)
+	tests := []struct {
+		name     string
+		target   string
+		wantRows int // list-row count, asserted when > 0
+		check    func(t *testing.T, respBody []byte)
+	}{
+		{
+			// SpendByCategory runs the WITH-clause subquery with its named parameter:
+			// only the approved requisition's line (one plasma torch) qualifies in the
+			// seed.
+			name:     "the WITH-clause subquery folds approved spend by category",
+			target:   "/api/spend-by-categories",
+			wantRows: 1,
+			check: func(t *testing.T, respBody []byte) {
+				t.Helper()
+				rows := decodeRows(t, respBody)
+				if got := rows[0]["category"]; got != "tool" {
+					t.Errorf("category = %v, want tool", got)
+				}
+				if got := rows[0]["totalSpend"]; got != "445.25" {
+					t.Errorf("totalSpend = %v, want 445.25", got)
+				}
+			},
+		},
+		{
+			// The domain-scoped virtual serves under the waystation segment and is
+			// checked in that partition.
+			name:     "the domain-scoped virtual serves under the waystation segment",
+			target:   "/api/waystations/ws-alpha/open-work-orders-by-teams",
+			wantRows: 3, // teams with open orders
+		},
 	}
 
-	// The domain-scoped virtual serves under the waystation segment and is checked in
-	// that partition.
-	status, body = doRequest(t, h, http.MethodGet, "/api/waystations/ws-alpha/open-work-orders-by-teams", "")
-	assertStatus(t, status, http.StatusOK, body)
-	if rows := decodeRows(t, body); len(rows) != 3 {
-		t.Errorf("open-by-team rows = %d, want 3 teams with open orders", len(rows))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, body := doRequest(t, h, http.MethodGet, tt.target, "")
+			assertStatus(t, status, http.StatusOK, body)
+			if tt.wantRows > 0 {
+				if rows := decodeRows(t, body); len(rows) != tt.wantRows {
+					t.Errorf("rows = %d, want %d: %s", len(rows), tt.wantRows, body)
+				}
+			}
+			if tt.check != nil {
+				tt.check(t, body)
+			}
+		})
 	}
 }

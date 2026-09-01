@@ -148,167 +148,181 @@ func TestDemoPersonaViews(t *testing.T) {
 	}
 	h := newDemoApp(ctx, t, db)
 
-	t.Run("commander sees every work order unconditionally", func(t *testing.T) {
-		t.Parallel()
+	tests := []struct {
+		name       string
+		user       accesstypes.User
+		method     string // GET when empty
+		target     string
+		body       string
+		wantStatus int
+		wantRows   int                                 // list-row count, asserted when > 0
+		wantIDs    []string                            // ids that must be present in the list
+		banIDs     []string                            // ids that must be suppressed from the list
+		check      func(t *testing.T, respBody []byte) // bespoke shape assertions
+	}{
+		{
+			// Five rows including ws-beta's: domain scope partitions permissions, not
+			// data — the row-tenancy gap E2 closes, pinned here deliberately.
+			name:       "commander sees every work order unconditionally",
+			user:       "commander",
+			target:     "/api/waystations/ws-alpha/work-orders",
+			wantStatus: http.StatusOK,
+			wantRows:   5,
+		},
+		{
+			// tech-rivera is on Alpha Mechanical (ws-alpha) and Beta Maintenance
+			// (ws-beta). In the ws-alpha partition subject.teams is tenancy-filtered to
+			// the alpha membership, so the beta team's work order never qualifies.
+			name:       "technician sees own teams' work orders with derived tenancy",
+			user:       "tech-rivera",
+			target:     "/api/waystations/ws-alpha/work-orders",
+			wantStatus: http.StatusOK,
+			wantRows:   2,
+			wantIDs:    []string{woScrubberID, woCraneID},
+		},
+		{
+			name:       "technician assets exclude the reactor zone through the join path",
+			user:       "tech-rivera",
+			target:     "/api/waystations/ws-alpha/assets",
+			wantStatus: http.StatusOK,
+			wantRows:   5, // 5 of 7
+			banIDs:     []string{assetManifoldID},
+		},
+		{
+			name:       "foreman sees only requisitions they requested",
+			user:       "foreman-okafor",
+			target:     "/api/waystations/ws-alpha/requisitions",
+			wantStatus: http.StatusOK,
+			wantRows:   3,
+			wantIDs:    []string{reqScrubberID, reqPumpID, reqTorchID},
+		},
+		{
+			// The over-limit overhaul (7120 > 5000) and the non-submitted rows are
+			// suppressed. The ws-beta submitted row still appears — permissions
+			// partition, data does not (the E2 gap, pinned).
+			name:       "approver queue is submitted work within their limit",
+			user:       "procurement-chen",
+			target:     "/api/waystations/ws-alpha/requisitions",
+			wantStatus: http.StatusOK,
+			wantRows:   2,
+			banIDs:     []string{reqOverhaulID},
+		},
+		{
+			name:       "auditor sees cost cells only on approved requisitions",
+			user:       "auditor-voss",
+			target:     "/api/waystations/ws-alpha/requisition-lines",
+			wantStatus: http.StatusOK,
+			wantRows:   5,
+			check: func(t *testing.T, respBody []byte) {
+				t.Helper()
+				for _, row := range decodeRows(t, respBody) {
+					_, hasCost := row["unitCostSnapshot"]
+					isApproved := row["requisitionId"] == reqTorchID
+					if hasCost != isApproved {
+						t.Errorf("line %v/%v: cost visible = %v, want %v", row["requisitionId"], row["lineNumber"], hasCost, isApproved)
+					}
+				}
+			},
+		},
+		{
+			name:       "auditor sees only terminal work orders",
+			user:       "auditor-voss",
+			target:     "/api/waystations/ws-alpha/work-orders",
+			wantStatus: http.StatusOK,
+			wantRows:   1,
+			wantIDs:    []string{woCraneID},
+		},
+		{
+			// The uniform state binding reads identically on the interleaved member: the
+			// same condition text admits only the completed work order's tasks (2 of 5).
+			name:       "auditor tasks follow the member's uniform state binding",
+			user:       "auditor-voss",
+			target:     "/api/waystations/ws-alpha/work-order-tasks",
+			wantStatus: http.StatusOK,
+			wantRows:   2,
+		},
+		{
+			name:       "auditor incident view carries no reporter PII field",
+			user:       "auditor-voss",
+			target:     "/api/waystations/ws-alpha/incident-reports/" + incidentCoolantID,
+			wantStatus: http.StatusOK,
+			check: func(t *testing.T, respBody []byte) {
+				t.Helper()
+				if _, ok := decodeRow(t, respBody)["reporterContact"]; ok {
+					t.Errorf("reporterContact visible to auditor: %s", respBody)
+				}
+			},
+		},
+		{
+			name:       "requester supplier list hides inactive vendors",
+			user:       "foreman-okafor",
+			target:     "/api/suppliers",
+			wantStatus: http.StatusOK,
+			wantRows:   2, // the 2 active
+			banIDs:     []string{supplierRedlineID},
+		},
+		{
+			name:       "no role in a domain means no authority there",
+			user:       "foreman-okafor",
+			target:     "/api/waystations/ws-beta/requisitions",
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			// chief-alpha holds SafetyOfficer, whose Execute grant carries a row-free
+			// now-condition still in the future.
+			name:       "safety drill authorization folds its expiry at decode",
+			user:       "chief-alpha",
+			method:     http.MethodPost,
+			target:     "/api/run-safety-drill",
+			body:       `{"announcement":"Drill: seal ring three"}`,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "safety drill without the authorization is refused",
+			user:       "tech-rivera",
+			method:     http.MethodPost,
+			target:     "/api/run-safety-drill",
+			body:       `{"announcement":"Unauthorized drill"}`,
+			wantStatus: http.StatusForbidden,
+		},
+	}
 
-		status, body := doRequestAs(t, h, "commander", http.MethodGet, "/api/waystations/ws-alpha/work-orders", "")
-		assertStatus(t, status, http.StatusOK, body)
-		// Five rows including ws-beta's: domain scope partitions permissions, not
-		// data — the row-tenancy gap E2 closes, pinned here deliberately.
-		if rows := decodeRows(t, body); len(rows) != 5 {
-			t.Errorf("commander work orders = %d, want 5: %s", len(rows), body)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("technician sees own teams' work orders with derived tenancy", func(t *testing.T) {
-		t.Parallel()
-
-		status, body := doRequestAs(t, h, "tech-rivera", http.MethodGet, "/api/waystations/ws-alpha/work-orders", "")
-		assertStatus(t, status, http.StatusOK, body)
-		rows := rowsByID(t, decodeRows(t, body), "id")
-		// tech-rivera is on Alpha Mechanical (ws-alpha) and Beta Maintenance
-		// (ws-beta). In the ws-alpha partition subject.teams is tenancy-filtered to
-		// the alpha membership, so the beta team's work order never qualifies.
-		if len(rows) != 2 {
-			t.Fatalf("technician work orders = %d, want 2: %s", len(rows), body)
-		}
-		for _, id := range []string{woScrubberID, woCraneID} {
-			if _, ok := rows[id]; !ok {
-				t.Errorf("technician missing work order %s", id)
+			method := tt.method
+			if method == "" {
+				method = http.MethodGet
 			}
-		}
-	})
-
-	t.Run("technician assets exclude the reactor zone through the join path", func(t *testing.T) {
-		t.Parallel()
-
-		status, body := doRequestAs(t, h, "tech-rivera", http.MethodGet, "/api/waystations/ws-alpha/assets", "")
-		assertStatus(t, status, http.StatusOK, body)
-		rows := rowsByID(t, decodeRows(t, body), "id")
-		if len(rows) != 5 {
-			t.Fatalf("technician assets = %d, want 5 of 7: %s", len(rows), body)
-		}
-		if _, ok := rows[assetManifoldID]; ok {
-			t.Error("reactor-zone asset visible to technician")
-		}
-	})
-
-	t.Run("foreman sees only requisitions they requested", func(t *testing.T) {
-		t.Parallel()
-
-		status, body := doRequestAs(t, h, "foreman-okafor", http.MethodGet, "/api/waystations/ws-alpha/requisitions", "")
-		assertStatus(t, status, http.StatusOK, body)
-		rows := rowsByID(t, decodeRows(t, body), "id")
-		if len(rows) != 3 {
-			t.Fatalf("foreman requisitions = %d, want their own 3: %s", len(rows), body)
-		}
-		for _, id := range []string{reqScrubberID, reqPumpID, reqTorchID} {
-			if _, ok := rows[id]; !ok {
-				t.Errorf("foreman missing own requisition %s", id)
+			status, body := doRequestAs(t, h, tt.user, method, tt.target, tt.body)
+			if status != tt.wantStatus {
+				t.Fatalf("status = %d, want %d: %s", status, tt.wantStatus, body)
 			}
-		}
-	})
 
-	t.Run("approver queue is submitted work within their limit", func(t *testing.T) {
-		t.Parallel()
-
-		status, body := doRequestAs(t, h, "procurement-chen", http.MethodGet, "/api/waystations/ws-alpha/requisitions", "")
-		assertStatus(t, status, http.StatusOK, body)
-		rows := rowsByID(t, decodeRows(t, body), "id")
-		// The over-limit overhaul (7120 > 5000) and the non-submitted rows are
-		// suppressed. The ws-beta submitted row still appears — permissions
-		// partition, data does not (the E2 gap, pinned).
-		if len(rows) != 2 {
-			t.Fatalf("approver queue = %d, want 2: %s", len(rows), body)
-		}
-		if _, ok := rows[reqOverhaulID]; ok {
-			t.Error("over-limit requisition visible in the approval queue")
-		}
-	})
-
-	t.Run("auditor sees cost cells only on approved requisitions", func(t *testing.T) {
-		t.Parallel()
-
-		status, body := doRequestAs(t, h, "auditor-voss", http.MethodGet, "/api/waystations/ws-alpha/requisition-lines", "")
-		assertStatus(t, status, http.StatusOK, body)
-		rows := decodeRows(t, body)
-		if len(rows) != 5 {
-			t.Fatalf("auditor lines = %d, want all 5: %s", len(rows), body)
-		}
-		for _, row := range rows {
-			_, hasCost := row["unitCostSnapshot"]
-			isApproved := row["requisitionId"] == reqTorchID
-			if hasCost != isApproved {
-				t.Errorf("line %v/%v: cost visible = %v, want %v", row["requisitionId"], row["lineNumber"], hasCost, isApproved)
+			if tt.wantRows > 0 || len(tt.wantIDs) > 0 || len(tt.banIDs) > 0 {
+				rows := decodeRows(t, body)
+				if tt.wantRows > 0 && len(rows) != tt.wantRows {
+					t.Fatalf("rows = %d, want %d: %s", len(rows), tt.wantRows, body)
+				}
+				indexed := rowsByID(t, rows, "id")
+				for _, id := range tt.wantIDs {
+					if _, ok := indexed[id]; !ok {
+						t.Errorf("missing row %s", id)
+					}
+				}
+				for _, id := range tt.banIDs {
+					if _, ok := indexed[id]; ok {
+						t.Errorf("row %s visible, want suppressed", id)
+					}
+				}
 			}
-		}
-	})
 
-	t.Run("auditor sees only terminal work orders, tasks through the member binding", func(t *testing.T) {
-		t.Parallel()
-
-		status, body := doRequestAs(t, h, "auditor-voss", http.MethodGet, "/api/waystations/ws-alpha/work-orders", "")
-		assertStatus(t, status, http.StatusOK, body)
-		rows := rowsByID(t, decodeRows(t, body), "id")
-		if len(rows) != 1 {
-			t.Fatalf("auditor work orders = %d, want the completed one only: %s", len(rows), body)
-		}
-		if _, ok := rows[woCraneID]; !ok {
-			t.Error("auditor missing the completed work order")
-		}
-
-		// The uniform state binding reads identically on the interleaved member: the
-		// same condition text admits only the completed work order's tasks.
-		status, body = doRequestAs(t, h, "auditor-voss", http.MethodGet, "/api/waystations/ws-alpha/work-order-tasks", "")
-		assertStatus(t, status, http.StatusOK, body)
-		if rows := decodeRows(t, body); len(rows) != 2 {
-			t.Errorf("auditor tasks = %d, want the completed work order's 2 of 5: %s", len(rows), body)
-		}
-	})
-
-	t.Run("auditor incident view carries no reporter PII field", func(t *testing.T) {
-		t.Parallel()
-
-		status, body := doRequestAs(t, h, "auditor-voss", http.MethodGet, "/api/waystations/ws-alpha/incident-reports/"+incidentCoolantID, "")
-		assertStatus(t, status, http.StatusOK, body)
-		row := decodeRow(t, body)
-		if _, ok := row["reporterContact"]; ok {
-			t.Errorf("reporterContact visible to auditor: %s", body)
-		}
-	})
-
-	t.Run("requester supplier list hides inactive vendors", func(t *testing.T) {
-		t.Parallel()
-
-		status, body := doRequestAs(t, h, "foreman-okafor", http.MethodGet, "/api/suppliers", "")
-		assertStatus(t, status, http.StatusOK, body)
-		rows := rowsByID(t, decodeRows(t, body), "id")
-		if len(rows) != 2 {
-			t.Fatalf("foreman suppliers = %d, want the 2 active: %s", len(rows), body)
-		}
-		if _, ok := rows[supplierRedlineID]; ok {
-			t.Error("inactive supplier visible under the active-only grant")
-		}
-	})
-
-	t.Run("no role in a domain means no authority there", func(t *testing.T) {
-		t.Parallel()
-
-		status, body := doRequestAs(t, h, "foreman-okafor", http.MethodGet, "/api/waystations/ws-beta/requisitions", "")
-		assertStatus(t, status, http.StatusForbidden, body)
-	})
-
-	t.Run("safety drill authorization folds its expiry at decode", func(t *testing.T) {
-		t.Parallel()
-
-		// chief-alpha holds SafetyOfficer, whose Execute grant carries a row-free
-		// now-condition still in the future.
-		status, body := doRequestAs(t, h, "chief-alpha", http.MethodPost, "/api/run-safety-drill", `{"announcement":"Drill: seal ring three"}`)
-		assertStatus(t, status, http.StatusOK, body)
-
-		status, body = doRequestAs(t, h, "tech-rivera", http.MethodPost, "/api/run-safety-drill", `{"announcement":"Unauthorized drill"}`)
-		assertStatus(t, status, http.StatusForbidden, body)
-	})
+			if tt.check != nil {
+				tt.check(t, body)
+			}
+		})
+	}
 }
 
 func TestDemoWorkflowEnforcement(t *testing.T) {
@@ -322,8 +336,9 @@ func TestDemoWorkflowEnforcement(t *testing.T) {
 	}
 	h := newDemoApp(ctx, t, db)
 
-	// The sections mutate shared workflow state, so they run in order rather than as
-	// parallel subtests.
+	// Deliberately not a table: the sections mutate shared workflow state and each
+	// step depends on what the previous one left behind, so they run in order rather
+	// than as parallel subtests.
 
 	// Draft lines are editable by their requester...
 	status, body := doRequestAs(t, h, "foreman-okafor", http.MethodPatch, "/api/resources",
