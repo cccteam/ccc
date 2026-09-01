@@ -285,6 +285,11 @@ func Collection() *resource.GeneratedCollection {
 				Domain: &resource.DomainBindingData{Column: "WaystationId"},
 			},
 			{
+				Name:        "AuditTrailEntries",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+			},
+			{
 				Name:        "CatalogItems",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},

@@ -2,7 +2,8 @@
 <p>
   Two of the quartermaster's grants live here. Receive Shipment is permitted only while a shipment has not arrived (an
   IS NULL condition — receiving twice is refused), and deleting an inventory lot is permitted only for lots that expired
-  before the cutover date: fresh lots and lots with no expiry at all refuse the delete.
+  before the cutover date: fresh lots and lots with no expiry at all refuse the delete. The lots arrive sorted
+  server-side (the reserved sort parameter, soonest expiry first).
 </p>
 
 <app-waystation-select></app-waystation-select>

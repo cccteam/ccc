@@ -19,6 +19,7 @@ export const PermissionScopes = {
 
 export const Resources = {
   Assets: 'Assets' as Resource,
+  AuditTrailEntries: 'AuditTrailEntries' as Resource,
   CatalogItems: 'CatalogItems' as Resource,
   Facilities: 'Facilities' as Resource,
   FleetSummaries: 'FleetSummaries' as Resource,
@@ -535,6 +536,13 @@ const Mappings: PermissionMappings = {
     [Permissions.Delete]: false,
     [Permissions.List]: true,
     [Permissions.Read]: true,
+    [Permissions.Update]: false,
+  },
+  [Resources.AuditTrailEntries]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: false,
     [Permissions.Update]: false,
   },
   [Resources.CatalogItems]: {

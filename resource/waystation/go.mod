@@ -21,6 +21,7 @@ require (
 	github.com/cccteam/httpio v0.7.17
 	github.com/cccteam/logger v0.1.27
 	github.com/cccteam/session v0.11.1-0.20260826003108-0fa6294c2da7
+	github.com/cccteam/spxscan v0.0.14
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/go-playground/validator/v10 v10.30.3
@@ -55,7 +56,6 @@ require (
 	github.com/cccteam/ccc/cache v0.1.6 // indirect
 	github.com/cccteam/ccc/pkg v0.1.4 // indirect
 	github.com/cccteam/ccc/securehash v0.0.13 // indirect
-	github.com/cccteam/spxscan v0.0.14 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudspannerecosystem/memefish v0.8.1 // indirect

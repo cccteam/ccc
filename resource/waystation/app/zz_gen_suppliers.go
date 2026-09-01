@@ -19,10 +19,10 @@ import (
 
 func (a *App) Suppliers() http.HandlerFunc {
 	type supplier struct {
-		ID           ccc.UUID `json:"id"           index:"true" perm:"-"`
+		ID           ccc.UUID `json:"id"           index:"true"        perm:"-"`
 		Name         string   `json:"name"         index:"true"`
 		ContactName  string   `json:"contactName"  pii:"true"`
-		ContactEmail string   `json:"contactEmail" pii:"true"`
+		ContactEmail string   `json:"contactEmail" allow_filter:"true" pii:"true"`
 		Active       bool     `json:"active"`
 	}
 

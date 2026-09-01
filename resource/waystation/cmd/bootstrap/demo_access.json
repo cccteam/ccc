@@ -80,6 +80,9 @@
               "totalQuantity",
               "totalSpend"
             ]
+          },
+          {
+            "resource": "AuditTrailEntries"
           }
         ],
         "Read": [
@@ -1136,6 +1139,16 @@
       }
     },
     {
+      "name": "RecordsAuditor",
+      "permissions": {
+        "List": [
+          {
+            "resource": "AuditTrailEntries"
+          }
+        ]
+      }
+    },
+    {
       "name": "Quartermaster",
       "permissions": {
         "List": [
@@ -1474,7 +1487,8 @@
       "password": "waystation",
       "roles": {
         "global": [
-          "CrewCommon"
+          "CrewCommon",
+          "RecordsAuditor"
         ],
         "domains": {
           "ws-alpha": [

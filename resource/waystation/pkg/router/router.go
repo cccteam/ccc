@@ -33,6 +33,11 @@ type Handlers interface {
 	SessionData() http.HandlerFunc
 	WaystationDirectory() http.HandlerFunc
 
+	// AuditTrailEntries is the hand-written list surface over the change-tracking
+	// table; its permission is registered through @manualAddResource and checked
+	// inside the handler (see app.AuditTrailEntries).
+	AuditTrailEntries() http.HandlerFunc
+
 	// Angular app assets
 	DeepLink(next http.Handler) http.Handler
 	StaticAssets() http.HandlerFunc
@@ -89,6 +94,7 @@ func newRouter(h Handlers, api, automationAPI func(chi.Router)) *chi.Mux {
 			r.Use(h.ValidateXSRFToken)
 
 			r.Get("/api/waystation-directory", h.WaystationDirectory())
+			r.Get("/api/audit-trail-entries", h.AuditTrailEntries())
 
 			api(r)
 		})

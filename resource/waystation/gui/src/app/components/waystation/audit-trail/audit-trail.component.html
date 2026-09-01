@@ -1,0 +1,45 @@
+<h1>Audit Trail</h1>
+<p>
+  Every mutation of a change-tracked resource (work orders and requisitions) writes an event in the same transaction —
+  the rows here are those events, ring-wide and newest first. This page is served by a hand-written route: the audit
+  table is library infrastructure with no generated handler, so its List permission is registered manually and only the
+  records auditor and the commander hold it.
+</p>
+
+@if (forbidden()) {
+  <mat-card appearance="outlined" class="table-card">
+    <p class="empty">
+      Your roles do not grant the audit trail — sign in as auditor-voss or commander to see the change events.
+    </p>
+  </mat-card>
+} @else {
+  <mat-card appearance="outlined" class="table-card">
+    <table mat-table [dataSource]="entries()">
+      <ng-container matColumnDef="eventTime">
+        <th mat-header-cell *matHeaderCellDef>When</th>
+        <td mat-cell *matCellDef="let entry">{{ entry.eventTime | date: 'medium' }}</td>
+      </ng-container>
+      <ng-container matColumnDef="tableName">
+        <th mat-header-cell *matHeaderCellDef>Resource</th>
+        <td mat-cell *matCellDef="let entry">{{ entry.tableName }}</td>
+      </ng-container>
+      <ng-container matColumnDef="rowId">
+        <th mat-header-cell *matHeaderCellDef>Row</th>
+        <td mat-cell *matCellDef="let entry" class="row-id">{{ entry.rowId }}</td>
+      </ng-container>
+      <ng-container matColumnDef="eventSource">
+        <th mat-header-cell *matHeaderCellDef>Source</th>
+        <td mat-cell *matCellDef="let entry" class="row-id">{{ entry.eventSource }}</td>
+      </ng-container>
+      <ng-container matColumnDef="changeSet">
+        <th mat-header-cell *matHeaderCellDef>Change Set</th>
+        <td mat-cell *matCellDef="let entry" class="change-set">{{ changeSetLabel(entry) }}</td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let row; columns: columns"></tr>
+    </table>
+    @if (!entries().length) {
+      <p class="empty">No change events yet — create or move a work order or requisition and come back.</p>
+    }
+  </mat-card>
+}

@@ -2,6 +2,7 @@ import { Type } from '@angular/core';
 import { Route } from '@angular/router';
 import { generatedNavItems } from '@cccteam/ccc-lib/resource-nav';
 import { MenuItem } from '@shared/topbar/topbar.component';
+import { AuditTrailComponent } from './audit-trail/audit-trail.component';
 import { IncidentsComponent } from './incidents/incidents.component';
 import { LogisticsComponent } from './logistics/logistics.component';
 import { RequisitionsComponent } from './requisitions/requisitions.component';
@@ -28,6 +29,9 @@ export const waystationRoute = (): Route => {
     { label: 'Status Board', route: ['station/status-board'] },
     { label: 'Incidents', route: ['station/incidents'] },
     { label: 'Logistics', route: ['station/logistics'] },
+    // The audit trail is ring-wide (not station-scoped), but it lives with the
+    // hand-written pages: its API surface is the manual-resource route.
+    { label: 'Audit Trail', route: ['station/audit-trail'] },
   ];
 
   cachedWaystationRoute = {
@@ -57,6 +61,11 @@ export const waystationRoute = (): Route => {
         path: 'logistics',
         loadComponent: (): Promise<Type<LogisticsComponent>> =>
           import('./logistics/logistics.component').then((comp) => comp.LogisticsComponent),
+      },
+      {
+        path: 'audit-trail',
+        loadComponent: (): Promise<Type<AuditTrailComponent>> =>
+          import('./audit-trail/audit-trail.component').then((comp) => comp.AuditTrailComponent),
       },
     ],
   } satisfies Route;

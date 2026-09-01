@@ -23,6 +23,21 @@ interface Operation {
 }
 
 /**
+ * AuditTrailEntry is one change-tracking event from the hand-written
+ * /api/audit-trail-entries surface. The resource is registered manually
+ * (@manualAddResource) so no generated row type exists; the shape mirrors
+ * app.auditTrailEntries's wire struct.
+ */
+export interface AuditTrailEntry {
+  tableName: string;
+  rowId: string;
+  sequence: number;
+  eventTime: Date;
+  eventSource: string;
+  changeSet: Record<string, unknown> | null;
+}
+
+/**
  * WaystationService talks to the waystation-scoped API surface by hand: the
  * config-driven resource components cannot fill the {waystationID} segment of a
  * domain route, so these pages address /api/waystations/{waystationID}/... directly.
@@ -88,7 +103,9 @@ export class WaystationService {
   }
 
   inventoryLots(): Observable<InventoryLots[]> {
-    return this.list<InventoryLots>('inventory-lots');
+    // Sorting is done server-side through the reserved sort parameter: soonest
+    // expiry first (Spanner sorts NULL expiries — never expiring — to the top).
+    return this.list<InventoryLots>('inventory-lots?sort=expiresOn');
   }
 
   incidents(): Observable<IncidentReports[]> {
@@ -101,6 +118,10 @@ export class WaystationService {
 
   catalogItems(): Observable<CatalogItems[]> {
     return this.http.get<CatalogItems[]>(`${this.apiUrl}/catalog-items`);
+  }
+
+  auditTrail(): Observable<AuditTrailEntry[]> {
+    return this.http.get<AuditTrailEntry[]>(`${this.apiUrl}/audit-trail-entries`);
   }
 
   // ops sends consolidated mutations; paths are rooted at the API, e.g.

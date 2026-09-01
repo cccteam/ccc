@@ -69,6 +69,16 @@ func loadDemoAccess(t *testing.T) *demoAccessConfig {
 func newDemoApp(ctx context.Context, t *testing.T, db *initiator.SpannerDB) http.Handler {
 	t.Helper()
 
+	return newTestAppWithAccess(db, newDemoAccessClient(ctx, t, db))
+}
+
+// newDemoAccessClient provisions the shipped demo role config and personas through
+// the production deploy path and returns the live engine. The manual-resource
+// parity check draws on it directly (the audit route is not part of the generated
+// test router newDemoApp composes).
+func newDemoAccessClient(ctx context.Context, t *testing.T, db *initiator.SpannerDB) *access.Client {
+	t.Helper()
+
 	conf := loadDemoAccess(t)
 
 	store, err := spannerstore.New(db.Client)
@@ -103,7 +113,7 @@ func newDemoApp(ctx context.Context, t *testing.T, db *initiator.SpannerDB) http
 
 	waitForDemoPolicy(ctx, t, client)
 
-	return newTestAppWithAccess(db, client)
+	return client
 }
 
 // waitForDemoPolicy blocks until the engine's snapshot reflects the migrated policy:

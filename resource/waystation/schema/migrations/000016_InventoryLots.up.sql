@@ -10,3 +10,8 @@ CREATE TABLE InventoryLots (
   CONSTRAINT FK_InventoryLots_WaystationId FOREIGN KEY (WaystationId) REFERENCES Waystations(Id),
   CONSTRAINT FK_InventoryLots_CatalogItemId FOREIGN KEY (CatalogItemId) REFERENCES CatalogItems(Id),
 ) PRIMARY KEY (Id);
+
+-- BinLocation is indexed to make it filterable: URL filters require at least one
+-- indexed field per condition group (allow_filter fields like Quantity may only
+-- narrow an indexed filter). The query-parameter suite exercises this contract.
+CREATE INDEX InventoryLotsByBinLocation ON InventoryLots(BinLocation);

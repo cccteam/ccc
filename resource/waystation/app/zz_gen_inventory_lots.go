@@ -22,7 +22,7 @@ func (a *App) InventoryLots() http.HandlerFunc {
 		CatalogItemID ccc.UUID    `json:"catalogItemId" index:"true"`
 		Quantity      int64       `json:"quantity"      allow_filter:"true"`
 		ExpiresOn     *civil.Date `json:"expiresOn"`
-		BinLocation   string      `json:"binLocation"`
+		BinLocation   string      `json:"binLocation"   index:"true"`
 	}
 
 	type response []map[string]any

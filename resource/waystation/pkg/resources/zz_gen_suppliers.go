@@ -180,6 +180,10 @@ func (p SupplierQueryPartialClause) Name() SupplierQueryIdent[string] {
 	return SupplierQueryIdent[string]{Ident: resource.NewIdent[string]("Name", p.partialClause, true)}
 }
 
+func (p SupplierQueryPartialClause) ContactEmail() SupplierQueryIdent[string] {
+	return SupplierQueryIdent[string]{Ident: resource.NewIdent[string]("ContactEmail", p.partialClause, false)}
+}
+
 type SupplierQueryClause struct {
 	clause resource.QueryClause
 }

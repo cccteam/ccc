@@ -184,6 +184,10 @@ func (p InventoryLotQueryPartialClause) Quantity() InventoryLotQueryIdent[int64]
 	return InventoryLotQueryIdent[int64]{Ident: resource.NewIdent[int64]("Quantity", p.partialClause, false)}
 }
 
+func (p InventoryLotQueryPartialClause) BinLocation() InventoryLotQueryIdent[string] {
+	return InventoryLotQueryIdent[string]{Ident: resource.NewIdent[string]("BinLocation", p.partialClause, true)}
+}
+
 type InventoryLotQueryClause struct {
 	clause resource.QueryClause
 }

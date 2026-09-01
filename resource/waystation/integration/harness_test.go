@@ -51,6 +51,7 @@ const (
 
 	assetRecyclerID = "60000000-0000-4000-8000-000000000001" // habitat zone
 	assetManifoldID = "60000000-0000-4000-8000-000000000005" // reactor zone
+	assetBetaAirID  = "60000000-0000-4000-8000-000000000006" // ws-beta
 
 	teamAlphaMechID = "70000000-0000-4000-8000-000000000001"
 	teamAlphaLifeID = "70000000-0000-4000-8000-000000000002"

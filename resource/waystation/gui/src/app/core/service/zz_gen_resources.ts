@@ -232,7 +232,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'catalogItemId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.CatalogItems },
       { fieldName: 'quantity', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'expiresOn', displayType: 'civildate', required: false, isIndex: false },
-      { fieldName: 'binLocation', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'binLocation', displayType: 'string', required: true, isIndex: true },
     ],
   },
   [Resources.Modules]: {
