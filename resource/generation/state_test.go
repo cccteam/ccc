@@ -1,6 +1,9 @@
 package generation
 
 import (
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -222,5 +225,180 @@ func TestValidateStateEnumTables(t *testing.T) {
 				t.Errorf("validateStateEnumTables() error = %q, want containing %q", err, tt.wantContain)
 			}
 		})
+	}
+}
+
+// buildWorkflowFixture assembles one struct's resourceInfo the way
+// structsToResources does, through state-annotation resolution.
+func buildWorkflowFixture(t *testing.T, c *client, structs map[string]*parser.Struct, name string) *resourceInfo {
+	t.Helper()
+
+	s := structs[name]
+	if s == nil {
+		t.Fatalf("struct %q not found in fixture package", name)
+	}
+	annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
+	if err != nil {
+		t.Fatalf("ScanStruct(%s) error = %v", name, err)
+	}
+	table, err := c.tableMetadataFor(name)
+	if err != nil {
+		t.Fatalf("tableMetadataFor(%s) error = %v", name, err)
+	}
+	res := &resourceInfo{TypeInfo: s.TypeInfo, PkCount: table.PkCount}
+	res.Fields, err = newResourceFields(res, s, table)
+	if err != nil {
+		t.Fatalf("newResourceFields(%s) error = %v", name, err)
+	}
+	if err := resolveResourceAnnotations(res, annotations); err != nil {
+		t.Fatalf("resolveResourceAnnotations(%s) error = %v", name, err)
+	}
+	if err := c.resolveStateAnnotations(res, s, annotations); err != nil {
+		t.Fatalf("resolveStateAnnotations(%s) error = %v", name, err)
+	}
+
+	return res
+}
+
+// TestResolveWorkflows pins the §09 membership machinery: the root and every
+// member gain the uniform synthesized state binding — a column binding on the
+// root, a join path composed through each member's immediate hop — and the
+// chain, root, and scope validations reject what the design rejects.
+func TestResolveWorkflows(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "bindingfixture"))
+
+	t.Run("chains compose and the uniform binding synthesizes", func(t *testing.T) {
+		t.Parallel()
+
+		c := stateFixtureClient()
+		root := buildWorkflowFixture(t, c, structs, "StatefulTask")
+		part := buildWorkflowFixture(t, c, structs, "TaskPart")
+		order := buildWorkflowFixture(t, c, structs, "PartOrder")
+
+		// Members listed before parents: resolution iterates until chains reach the root.
+		if err := c.resolveWorkflows([]*resourceInfo{order, part, root}); err != nil {
+			t.Fatalf("resolveWorkflows() error = %v", err)
+		}
+
+		stateBinding := func(res *resourceInfo) *attributeBinding {
+			for _, attr := range res.Attributes {
+				if attr.Name == "state" {
+					return attr
+				}
+			}
+			t.Fatalf("%s carries no synthesized state binding", res.Name())
+
+			return nil
+		}
+
+		rootState := stateBinding(root)
+		if rootState.Anchor.Name() != "State" || len(rootState.Path) != 0 {
+			t.Errorf("root state binding = {Anchor:%s Path:%v}, want the column binding on State", rootState.Anchor.Name(), rootState.Path)
+		}
+
+		partState := stateBinding(part)
+		wantPartPath := []bindingHop{{Table: "StatefulTasks", JoinColumn: "Id", Column: "State"}}
+		if partState.Anchor.Name() != "TaskID" || !slices.Equal(partState.Path, wantPartPath) {
+			t.Errorf("member state binding = {Anchor:%s Path:%v}, want anchored on TaskID with path %v", partState.Anchor.Name(), partState.Path, wantPartPath)
+		}
+
+		orderState := stateBinding(order)
+		wantOrderPath := []bindingHop{
+			{Table: "TaskParts", JoinColumn: "Id", Column: "TaskId"},
+			{Table: "StatefulTasks", JoinColumn: "Id", Column: "State"},
+		}
+		if orderState.Anchor.Name() != "PartID" || !slices.Equal(orderState.Path, wantOrderPath) {
+			t.Errorf("two-hop state binding = {Anchor:%s Path:%v}, want anchored on PartID with path %v", orderState.Anchor.Name(), orderState.Path, wantOrderPath)
+		}
+	})
+
+	rejections := []struct {
+		name        string
+		members     []string
+		wantContain string
+	}{
+		{
+			name:        "unknown root",
+			members:     []string{"StatefulTask", "UnknownRootMember"},
+			wantContain: "unknown resource struct",
+		},
+		{
+			name:        "hop onto a non-member never reaches the root",
+			members:     []string{"StatefulTask", "Ship", "ChainBreakMember"},
+			wantContain: "never reach their roots",
+		},
+		{
+			name:        "hop onto a table no resource backs",
+			members:     []string{"StatefulTask", "ChainBreakMember"},
+			wantContain: "no resource struct backs",
+		},
+		{
+			name:        "scope mismatch",
+			members:     []string{"StatefulTask", "ScopedMember"},
+			wantContain: "permission scopes differ",
+		},
+	}
+	for _, tt := range rejections {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := stateFixtureClient()
+			resources := make([]*resourceInfo, 0, len(tt.members))
+			for _, name := range tt.members {
+				resources = append(resources, buildWorkflowFixture(t, c, structs, name))
+			}
+			err := c.resolveWorkflows(resources)
+			if err == nil {
+				t.Fatalf("resolveWorkflows() expected an error containing %q, got nil", tt.wantContain)
+			}
+			if !strings.Contains(err.Error(), tt.wantContain) {
+				t.Errorf("resolveWorkflows() error = %q, want containing %q", err, tt.wantContain)
+			}
+		})
+	}
+}
+
+// TestGenerateWorkflowGraphs pins the DOT review surface: one file per
+// workflow, membership edges only, the root labeled with its closed value
+// set — never transition edges.
+func TestGenerateWorkflowGraphs(t *testing.T) {
+	t.Parallel()
+
+	c := stateFixtureClient()
+	structs := fixtureStructs(loadFixture(t, "bindingfixture"))
+	root := buildWorkflowFixture(t, c, structs, "StatefulTask")
+	part := buildWorkflowFixture(t, c, structs, "TaskPart")
+	order := buildWorkflowFixture(t, c, structs, "PartOrder")
+	if err := c.resolveWorkflows([]*resourceInfo{root, part, order}); err != nil {
+		t.Fatalf("resolveWorkflows() error = %v", err)
+	}
+
+	dir := t.TempDir()
+	r := &resourceGenerator{client: c}
+	r.resources = []*resourceInfo{root, part, order}
+	r.resource = packageDir(dir)
+
+	if err := r.generateWorkflowGraphs(); err != nil {
+		t.Fatalf("generateWorkflowGraphs() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(dir, "zz_gen_workflow_stateful_task.dot"))
+	if err != nil {
+		t.Fatalf("reading workflow graph: %v", err)
+	}
+	for _, want := range []string{
+		"digraph StatefulTaskWorkflow {",
+		`"StatefulTask" [shape=doubleoctagon, label="StatefulTask\nstates: open | approved | closed"]`,
+		`"TaskPart" -> "StatefulTask";`,
+		`"PartOrder" -> "TaskPart";`,
+	} {
+		if !strings.Contains(string(content), want) {
+			t.Errorf("workflow graph missing %q:\n%s", want, content)
+		}
+	}
+	if strings.Contains(string(content), "open ->") {
+		t.Error("workflow graph must never draw transition edges")
 	}
 }

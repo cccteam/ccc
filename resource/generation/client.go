@@ -481,7 +481,7 @@ func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) er
 	}
 
 	for _, f := range files {
-		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") {
+		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") && !strings.HasSuffix(f, ".dot") {
 			continue
 		}
 

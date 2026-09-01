@@ -99,6 +99,12 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 		return nil, errors.Wrapf(errors.Join(resourceErrors...), "encountered %d errors converting structs to resources", len(resourceErrors))
 	}
 
+	// Workflow chains cross resources, so they resolve — and the uniform
+	// state bindings synthesize — only once every resource is extracted.
+	if err := c.resolveWorkflows(resources); err != nil {
+		return nil, err
+	}
+
 	return resources, nil
 }
 

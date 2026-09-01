@@ -441,6 +441,10 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 		}
 	}
 
+	if err := r.generateWorkflowGraphs(); err != nil {
+		return errors.Wrap(err, "resourceGenerator.generateWorkflowGraphs()")
+	}
+
 	return nil
 }
 

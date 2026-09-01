@@ -690,6 +690,11 @@ type resourceField struct {
 	// state, applied on the insert path.
 	IsState      bool
 	StateDefault string
+
+	// WorkflowRoot is the @stateRoot argument: the workflow root's struct
+	// name, declared on the member's anchoring FK field (the field IS the
+	// hop). Empty for fields outside any workflow.
+	WorkflowRoot string
 }
 
 // When generating QueryClauses for Null-style wrapper types we want to use the underlying type
@@ -974,6 +979,7 @@ const (
 	subjectSetKeyword           string = "subjectSet"           // Declares subject-side set vocabulary (subject.<name>, used with IN) anchored on a user-id column
 	subjectValueKeyword         string = "subjectValue"         // Declares subject-side scalar vocabulary (threshold comparisons) anchored on a unique user-id column
 	stateKeyword                string = "state"                // Marks a resource's state column (FK to its state enum table) and declares the initial state
+	stateRootKeyword            string = "stateRoot"            // Declares workflow membership on the member's anchoring FK field, naming the workflow root struct
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -998,6 +1004,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		subjectSetKeyword:           {genlang.ScanField: genlang.ArgsRequired},
 		subjectValueKeyword:         {genlang.ScanField: genlang.ArgsRequired},
 		stateKeyword:                {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		stateRootKeyword:            {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }
 

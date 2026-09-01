@@ -342,7 +342,7 @@ func validateBindingName(name, keyword string) error {
 func rejectBindingAnnotations(pStruct *parser.Struct, annotations genlang.StructAnnotations, kind string) error {
 	var errs []error
 	for i, field := range pStruct.Fields() {
-		for _, keyword := range []string{attributeKeyword, domainKeyword, subjectSetKeyword, subjectValueKeyword, stateKeyword} {
+		for _, keyword := range []string{attributeKeyword, domainKeyword, subjectSetKeyword, subjectValueKeyword, stateKeyword, stateRootKeyword} {
 			if annotations.Fields[i].Has(keyword) {
 				errs = append(errs, errors.Newf("struct %s field %s: @%s is only valid on @resource structs; a %s has no schema to resolve it against", pStruct.Name(), field.Name(), keyword, kind))
 			}

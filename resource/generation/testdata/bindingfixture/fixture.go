@@ -181,3 +181,42 @@ type StateStatedTwice struct {
 	// @state(default: open)
 	State TaskState `spanner:"State" conditions:"output_only"`
 }
+
+// TaskPart is a direct workflow member; PartOrder chains through it.
+type TaskPart struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @stateRoot(StatefulTask)
+	TaskID ccc.UUID `spanner:"TaskId"`
+}
+
+type PartOrder struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @stateRoot(StatefulTask)
+	PartID ccc.UUID `spanner:"PartId"`
+}
+
+type UnknownRootMember struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @stateRoot(Mystery)
+	TaskID ccc.UUID `spanner:"TaskId"`
+}
+
+type ChainBreakMember struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @stateRoot(StatefulTask) — the FK lands outside the workflow
+	ShipID ccc.UUID `spanner:"ShipId"`
+}
+
+type (
+	// @permissionScope(domain)
+	ScopedMember struct {
+		ID ccc.UUID `spanner:"Id"`
+
+		// @stateRoot(StatefulTask)
+		TaskID ccc.UUID `spanner:"TaskId"`
+	}
+)

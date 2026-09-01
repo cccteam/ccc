@@ -50,6 +50,11 @@ func bindingFixtureTables() map[string]*tableMetadata {
 		"StateOnNonFKs":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Label": plain}},
 		"StateBadDefaults":   {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "State": fk("TaskStates")}},
 		"StateStatedTwices":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "State": fk("TaskStates")}},
+		"TaskParts":          {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "TaskId": fk("StatefulTasks")}},
+		"PartOrders":         {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "PartId": fk("TaskParts")}},
+		"UnknownRootMembers": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "TaskId": fk("StatefulTasks")}},
+		"ChainBreakMembers":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "ShipId": fk("Ships")}},
+		"ScopedMembers":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "TaskId": fk("StatefulTasks")}},
 		"DoubleTenants":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "StationId": plain, "RegionId": plain}},
 	}
 }
