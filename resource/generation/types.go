@@ -684,6 +684,12 @@ type resourceField struct {
 	ReferencedResource string
 	ReferencedField    string
 	HasDefault         bool
+
+	// The @state marker (design plan §09): IsState derives output-only decode
+	// and the ungrantable Create/Update; StateDefault is the declared initial
+	// state, applied on the insert path.
+	IsState      bool
+	StateDefault string
 }
 
 // When generating QueryClauses for Null-style wrapper types we want to use the underlying type
@@ -835,6 +841,12 @@ func (f *resourceField) IsImmutable() bool {
 }
 
 func (f *resourceField) IsOutputOnly() bool {
+	// A state field decodes output-only by derivation: the wire must not be
+	// able to express a state write (transitions live in RPC bodies).
+	if f.IsState {
+		return true
+	}
+
 	tag, ok := f.LookupTag(conditionsTagKey)
 	if !ok {
 		return f.HasOutputOnlyUpdateFunc()
@@ -961,6 +973,7 @@ const (
 	domainKeyword               string = "domain"               // Declares the structural tenancy binding on its anchor field (bare, or via: a FK path to the tenant key)
 	subjectSetKeyword           string = "subjectSet"           // Declares subject-side set vocabulary (subject.<name>, used with IN) anchored on a user-id column
 	subjectValueKeyword         string = "subjectValue"         // Declares subject-side scalar vocabulary (threshold comparisons) anchored on a unique user-id column
+	stateKeyword                string = "state"                // Marks a resource's state column (FK to its state enum table) and declares the initial state
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -984,6 +997,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		domainKeyword:               {genlang.ScanField: genlang.Exclusive},
 		subjectSetKeyword:           {genlang.ScanField: genlang.ArgsRequired},
 		subjectValueKeyword:         {genlang.ScanField: genlang.ArgsRequired},
+		stateKeyword:                {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }
 

@@ -86,6 +86,12 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 
+		if err := c.resolveStateAnnotations(resource, pStruct, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
 		resources = append(resources, resource)
 	}
 

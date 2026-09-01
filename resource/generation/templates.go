@@ -362,6 +362,11 @@ func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 {{- if $field.HasDefaultCreateFunc }}
 	p.patchSet.RegisterDefaultCreateFunc("{{ $field.Name }}", {{ $field.DefaultCreateFuncName }})
 {{- end }}
+{{- if $field.IsState }}
+	p.patchSet.RegisterDefaultCreateFunc("{{ $field.Name }}", func(context.Context, resource.ReadWriteTransaction) (any, error) {
+		return {{ $field.ResolvedType }}("{{ $field.StateDefault }}"), nil
+	})
+{{- end }}
 {{- end }}
 {{- if .Resource.HasDefaultsCreateType }}
 	p.patchSet.RegisterDefaultsCreateFunc(func(ctx context.Context, txn resource.ReadWriteTransaction) error {

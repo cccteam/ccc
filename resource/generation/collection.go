@@ -202,7 +202,12 @@ func (r *resourceGenerator) computeCollectionData() (resource.CollectionData, er
 
 	r.collectBindingRegistrations(b)
 
-	return b.Data(), nil
+	data := b.Data()
+	if err := r.validateStateEnumTables(data); err != nil {
+		return resource.CollectionData{}, err
+	}
+
+	return data, nil
 }
 
 // collectBindingRegistrations registers every resource's compiled binding

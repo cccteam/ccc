@@ -147,3 +147,37 @@ type VirtualWithBinding struct {
 	// @attribute(crew)
 	CrewID ccc.UUID `spanner:"CrewId"`
 }
+
+// StatefulTask carries the @state marker; TaskState is the state column's
+// enum-backed type.
+type TaskState string
+
+type StatefulTask struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @state(default: open)
+	State TaskState `spanner:"State"`
+
+	Notes string `spanner:"Notes"`
+}
+
+type StateOnNonFK struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @state(default: open)
+	Label string `spanner:"Label"`
+}
+
+type StateBadDefault struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @state(default: bogus)
+	State TaskState `spanner:"State"`
+}
+
+type StateStatedTwice struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @state(default: open)
+	State TaskState `spanner:"State" conditions:"output_only"`
+}

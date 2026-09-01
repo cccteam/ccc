@@ -46,6 +46,10 @@ func bindingFixtureTables() map[string]*tableMetadata {
 			"Id": pk, "UserId": plain, "ApprovalLimit": plain,
 		}},
 		"UnknownValueFields": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "UserId": plain}},
+		"StatefulTasks":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "State": fk("TaskStates"), "Notes": plain}},
+		"StateOnNonFKs":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Label": plain}},
+		"StateBadDefaults":   {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "State": fk("TaskStates")}},
+		"StateStatedTwices":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "State": fk("TaskStates")}},
 		"DoubleTenants":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "StationId": plain, "RegionId": plain}},
 	}
 }
