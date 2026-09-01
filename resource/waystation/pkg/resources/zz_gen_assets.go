@@ -490,7 +490,6 @@ func (p *AssetUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTra
 }
 
 func (p *AssetUpdatePatch) registerDefaultFuncs() {
-	p.patchSet.RegisterOutputOnlyUpdateFunc("LastServicedAt", resource.CommitTimestampPtr)
 }
 
 func (p *AssetUpdatePatch) ID() ccc.UUID {

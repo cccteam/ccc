@@ -14,6 +14,9 @@ type (
 	// condition like `zone != 'reactor'` evaluates an attribute two tables away —
 	// evaluation through a foreign key, not disclosure of it.
 	//
+	// LastServicedAt is domain data owned by the CompleteWorkOrder transition, which
+	// stamps it with the commit timestamp; output_only keeps clients from writing it.
+	//
 	// @resource
 	// @permissionScope(domain)
 	Asset struct {
@@ -24,6 +27,6 @@ type (
 		SerialNumber   string     `spanner:"SerialNumber"   conditions:"immutable"`
 		Name           string     `spanner:"Name"`
 		CommissionedOn civil.Date `spanner:"CommissionedOn"`
-		LastServicedAt *time.Time `spanner:"LastServicedAt" output_only_update_fn:"resource.CommitTimestampPtr"`
+		LastServicedAt *time.Time `spanner:"LastServicedAt" conditions:"output_only"`
 	}
 )

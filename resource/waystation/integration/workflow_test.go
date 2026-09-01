@@ -114,8 +114,8 @@ func TestWorkOrderWorkflow(t *testing.T) {
 		t.Errorf("StatusId after the walk = %q, want completed", got)
 	}
 
-	// Completing stamps the asset's LastServicedAt through its output_only_update_fn
-	// in the same transaction.
+	// Completing stamps the asset's LastServicedAt in the same transaction — the
+	// completion edge is the field's only writer.
 	if got := readColumn[spanner.NullTime](ctx, t, db, "Assets", spanner.Key{assetRecyclerID}, "LastServicedAt"); !got.Valid {
 		t.Error("Assets.LastServicedAt not stamped by CompleteWorkOrder")
 	}

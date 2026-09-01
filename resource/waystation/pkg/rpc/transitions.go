@@ -137,15 +137,14 @@ func scheduleWorkOrder(ctx context.Context, txn resource.ReadWriteTransaction, i
 }
 
 // completeWorkOrder runs the in_progress -> completed edge and stamps the asset's
-// LastServicedAt through its output_only_update_fn in the same transaction.
+// LastServicedAt in the same transaction. The completion edge owns that stamp:
+// LastServicedAt is output_only domain data, written here and nowhere else.
 func completeWorkOrder(ctx context.Context, txn resource.ReadWriteTransaction, id ccc.UUID) error {
 	order, err := transitionWorkOrder(ctx, txn, id, resources.InProgressWorkOrderStatus, resources.CompletedWorkOrderStatus)
 	if err != nil {
 		return err
 	}
 
-	// A field-empty update patch is a no-op (its output_only_update_fn never runs),
-	// so the touch sets the commit-timestamp sentinel explicitly.
 	if err := resources.NewAssetUpdatePatch(order.AssetID).SetLastServicedAt(&cloudspanner.CommitTimestamp).Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
 		return errors.Wrap(err, "resources.AssetUpdatePatch.Buffer()")
 	}

@@ -9,8 +9,9 @@ import (
 
 type (
 	// CompleteWorkOrder moves a work order in_progress -> completed, stamping the
-	// equipment's LastServicedAt through its output_only_update_fn in the same
-	// transaction — a transition with a visible side effect.
+	// equipment's LastServicedAt with the commit timestamp in the same transaction —
+	// a transition with a visible side effect. Completion is the only writer of
+	// that field; output_only keeps clients from setting it directly.
 	//
 	// @rpc
 	// @permissionScope(domain)

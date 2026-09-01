@@ -137,9 +137,12 @@ The same tour in the browser, persona by persona:
 - **Derived tenancy needs the anchor bound.** A `@subjectSet` over a domain-scoped
   anchor (TeamMembership) only partitions per-domain if the anchor resource carries its
   own `@domain` binding; without it the subject set is partition-blind.
-- **A field-empty UPDATE silently no-ops** before `output_only_update_fn` runs —
-  "touch" semantics require explicitly setting a field (the generated Asset setter
-  writes `&spanner.CommitTimestamp`).
+- **A field-empty UPDATE silently no-ops** before `output_only_update_fn` runs, so the
+  annotation cannot express a pure "touch". That surfaced a modeling smell here:
+  Asset.LastServicedAt is not an every-update stamp but domain data owned by one
+  transition, so it is `conditions:"output_only"` and CompleteWorkOrder writes
+  `&spanner.CommitTimestamp` explicitly. (Starport's Ships.UpdatedAt still exercises
+  `output_only_update_fn`, where every-update semantics are the honest fit.)
 - **Tenancy lookups must be cached.** The consolidated handler calls `DomainExists`
   inside the mutation transaction, and the emulator forbids queries inside it — a
   data-driven tenancy seam reads the tenant table at startup, not per check.
