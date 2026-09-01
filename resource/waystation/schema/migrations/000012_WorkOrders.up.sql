@@ -9,6 +9,7 @@ CREATE TABLE WorkOrders (
   CreatedBy STRING(320) NOT NULL,
   AssignedTeamId STRING(36),
   DueAt TIMESTAMP,
+  UpdatedAt TIMESTAMP OPTIONS (allow_commit_timestamp = true),
 
   CONSTRAINT CK_WorkOrders_Id CHECK (REGEXP_CONTAINS(Id, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
   CONSTRAINT FK_WorkOrders_WaystationId FOREIGN KEY (WaystationId) REFERENCES Waystations(Id),

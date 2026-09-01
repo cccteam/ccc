@@ -42,6 +42,13 @@ export interface IngestSensorBatch {
   recordedAt: Date;
 }
 
+export interface NudgeWorkOrderConfig {
+  workOrderId: string | FieldPointer;
+}
+export interface NudgeWorkOrder {
+  workOrderId: string;
+}
+
 export interface ReceiveShipmentConfig {
   shipmentId: string | FieldPointer;
 }
@@ -121,6 +128,12 @@ const methodMap: MethodMap = {
       { fieldName: 'metric', displayType: 'string' },
       { fieldName: 'reading', displayType: 'number' },
       { fieldName: 'recordedAt', displayType: 'date' },
+    ],
+  },
+  [Methods.NudgeWorkOrder]: {
+    route: 'nudge-work-order',
+    fields: [
+      { fieldName: 'workOrderId', displayType: 'uuid' },
     ],
   },
   [Methods.ReceiveShipment]: {

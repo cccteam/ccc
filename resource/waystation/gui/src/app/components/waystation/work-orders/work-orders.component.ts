@@ -50,7 +50,7 @@ export class WorkOrdersComponent {
   tasksByOrder = signal<Map<string, WorkOrderTasks[]>>(new Map());
   teams = signal<Teams[]>([]);
   assets = signal<Assets[]>([]);
-  columns = ['title', 'status', 'priority', 'team', 'dueAt', 'actions'];
+  columns = ['title', 'status', 'priority', 'team', 'dueAt', 'lastActivity', 'actions'];
 
   selected = signal<WorkOrders | undefined>(undefined);
 
@@ -162,6 +162,17 @@ export class WorkOrdersComponent {
 
   complete(order: WorkOrders): void {
     this.ws.completeWorkOrder(order.id).subscribe(() => this.load());
+  }
+
+  // Nudge flags a stalled order for attention without changing it: the touch bumps
+  // updatedAt (so the order jumps to the top of the last-activity sort) and the
+  // audit trail records who nudged. Chiefs and foremen hold the grant.
+  nudge(order: WorkOrders): void {
+    this.ws.nudgeWorkOrder(order.id).subscribe(() => this.load());
+  }
+
+  terminal(order: WorkOrders): boolean {
+    return order.statusId === this.status.Completed || order.statusId === this.status.Cancelled;
   }
 
   remove(order: WorkOrders): void {

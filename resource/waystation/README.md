@@ -78,6 +78,12 @@ All login passwords are `waystation`.
   (input_only/output_only/defaults/validators), interleaved client-key creates —
   `integration/computed_virtual_test.go`, `changetracking_test.go`,
   `serverfields_test.go`, `workflow_test.go`.
+- **Mechanical stamps and first-class Touch** — WorkOrder.UpdatedAt is the
+  `output_only_update_fn` enforcement stamp, and NudgeWorkOrder fires the generated
+  `NewWorkOrderTouch`: the full update pipeline with no caller-set fields, so a nudge
+  bumps the stamp and lands in the audit trail while no field of the order changes —
+  `integration/touch_test.go` (contrast Asset.LastServicedAt, domain data written
+  explicitly by the one transition that owns the business event).
 - **Generated authorization matrix** — `handlertests/`, unconditional allow/deny per
   endpoint.
 
@@ -109,7 +115,8 @@ The same tour in the browser, persona by persona:
    (the unit cost snapshots from the catalog item), submit it, and watch the total
    recompute server-side. Try to add a line after submitting: refused, the draft-only
    grant is gone. File a work order at priority 3 (accepted) and priority 5 (refused —
-   the insert-image condition).
+   the insert-image condition). Nudge the stalled oven order: it jumps to the top of
+   the last-activity sort with every field unchanged — the first-class Touch.
 2. **procurement-chen** — the requisitions page shows only submitted requisitions
    within their limit. Approve the foreman's; the 7120.00 overhaul requisition is not
    approvable (over their 5000 limit, refused by the RPC body even when addressed
@@ -137,12 +144,15 @@ The same tour in the browser, persona by persona:
 - **Derived tenancy needs the anchor bound.** A `@subjectSet` over a domain-scoped
   anchor (TeamMembership) only partitions per-domain if the anchor resource carries its
   own `@domain` binding; without it the subject set is partition-blind.
-- **A field-empty UPDATE silently no-ops** before `output_only_update_fn` runs, so the
-  annotation cannot express a pure "touch". That surfaced a modeling smell here:
+- **A field-empty UPDATE silently no-ops** before `output_only_update_fn` runs, so a
+  bare update patch cannot express a pure "touch". That finding landed as framework
+  behavior: declaring an update function now also generates `New<Resource>Touch`,
+  which runs the full update pipeline with the update functions supplying the write —
+  NudgeWorkOrder fires WorkOrder's. It also surfaced a modeling smell here:
   Asset.LastServicedAt is not an every-update stamp but domain data owned by one
   transition, so it is `conditions:"output_only"` and CompleteWorkOrder writes
-  `&spanner.CommitTimestamp` explicitly. (Starport's Ships.UpdatedAt still exercises
-  `output_only_update_fn`, where every-update semantics are the honest fit.)
+  `&spanner.CommitTimestamp` explicitly, while WorkOrder.UpdatedAt is the honest
+  every-update `output_only_update_fn` fit.
 - **Tenancy lookups must be cached.** The consolidated handler calls `DomainExists`
   inside the mutation transaction, and the emulator forbids queries inside it — a
   data-driven tenancy seam reads the tenant table at startup, not per check.

@@ -971,6 +971,13 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
+			name:         "NudgeWorkOrder denied",
+			method:       http.MethodPost,
+			target:       "/api/waystations/testDomain/nudge-work-order",
+			body:         `{}`,
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
 			name:         "ReceiveShipment denied",
 			method:       http.MethodPost,
 			target:       "/api/waystations/testDomain/receive-shipment",

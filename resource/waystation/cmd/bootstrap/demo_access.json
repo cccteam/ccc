@@ -386,7 +386,8 @@
                 "statusId",
                 "createdBy",
                 "assignedTeamId",
-                "dueAt"
+                "dueAt",
+                "updatedAt"
               ]
             },
             {
@@ -510,7 +511,8 @@
                 "statusId",
                 "createdBy",
                 "assignedTeamId",
-                "dueAt"
+                "dueAt",
+                "updatedAt"
               ]
             },
             {
@@ -735,6 +737,9 @@
             },
             {
               "resource": "ReceiveShipment"
+            },
+            {
+              "resource": "NudgeWorkOrder"
             }
           ]
         }
@@ -754,7 +759,8 @@
                 "statusId",
                 "createdBy",
                 "assignedTeamId",
-                "dueAt"
+                "dueAt",
+                "updatedAt"
               ],
               "condition": "assignedTeam IN subject.teams OR author = subject"
             },
@@ -815,7 +821,8 @@
                 "statusId",
                 "createdBy",
                 "assignedTeamId",
-                "dueAt"
+                "dueAt",
+                "updatedAt"
               ],
               "condition": "assignedTeam IN subject.teams OR author = subject"
             },
@@ -872,7 +879,8 @@
                 "statusId",
                 "createdBy",
                 "assignedTeamId",
-                "dueAt"
+                "dueAt",
+                "updatedAt"
               ]
             },
             {
@@ -933,7 +941,8 @@
                 "statusId",
                 "createdBy",
                 "assignedTeamId",
-                "dueAt"
+                "dueAt",
+                "updatedAt"
               ]
             },
             {
@@ -1032,6 +1041,9 @@
           "Execute": [
             {
               "resource": "SubmitRequisition"
+            },
+            {
+              "resource": "NudgeWorkOrder"
             }
           ]
         }
@@ -1108,7 +1120,8 @@
                 "statusId",
                 "createdBy",
                 "assignedTeamId",
-                "dueAt"
+                "dueAt",
+                "updatedAt"
               ],
               "condition": "state IN ('completed', 'cancelled')"
             },
@@ -1179,7 +1192,8 @@
                 "statusId",
                 "createdBy",
                 "assignedTeamId",
-                "dueAt"
+                "dueAt",
+                "updatedAt"
               ],
               "condition": "state IN ('completed', 'cancelled')"
             },

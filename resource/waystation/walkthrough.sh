@@ -160,6 +160,37 @@ draft="80000000-0000-4000-8000-000000000003"
 r=$(req chief-alpha PATCH "$B/resources" "[{\"op\":\"remove\",\"path\":\"/waystations/ws-alpha/work-orders/$draft\"}]")
 check "chief deletes the seeded draft" 200 "$r"
 
+# ---- nudge (first-class Touch: update pipeline with no caller-set fields) ----
+oven="80000000-0000-4000-8000-000000000002"
+r=$(req foreman-okafor POST "$B/waystations/ws-alpha/nudge-work-order" "{\"workOrderId\":\"$oven\"}")
+check "foreman nudges a stalled scheduled order" 200 "$r"
+r=$(req foreman-okafor GET "$B/waystations/ws-alpha/work-orders?sort=updatedAt:desc")
+top=$(body "$r" | python3 -c "
+import json,sys
+rows=json.load(sys.stdin)
+print('ok' if rows and rows[0]['id'] == '$oven' and rows[0].get('updatedAt') else 'bad')")
+if [ "$top" = "ok" ]; then
+  echo "PASS  nudged order tops the last-activity sort (updatedAt stamped by the touch)"
+else
+  echo "FAIL  nudged order not first in updatedAt:desc"; fails=$((fails+1))
+fi
+r=$(req foreman-okafor POST "$B/waystations/ws-alpha/nudge-work-order" "{\"workOrderId\":\"$woid\"}")
+check "nudging the completed arc order refused (only open orders)" 400 "$r"
+r=$(req quartermaster-idris POST "$B/waystations/ws-alpha/nudge-work-order" "{\"workOrderId\":\"$oven\"}")
+check "quartermaster nudge refused (no Execute grant)" 403 "$r"
+r=$(req auditor-voss GET "$B/audit-trail-entries")
+touchset=$(body "$r" | python3 -c "
+import json,sys
+rows=json.load(sys.stdin)
+ev=[r for r in rows if r['tableName'] == 'WorkOrders' and r['rowId'] == '$oven']
+cs=ev[0].get('changeSet') if ev else None
+print('ok' if cs and list(cs.keys()) == ['UpdatedAt'] and ev[0]['eventSource'].startswith('foreman-okafor') else 'bad')")
+if [ "$touchset" = "ok" ]; then
+  echo "PASS  touch change event carries exactly the mechanical stamp, attributed to the nudger"
+else
+  echo "FAIL  touch change event shape wrong"; fails=$((fails+1))
+fi
+
 # ---- quartermaster-idris: logistics page ----
 pending="b0000000-0000-4000-8000-000000000001"
 arrived="b0000000-0000-4000-8000-000000000002"

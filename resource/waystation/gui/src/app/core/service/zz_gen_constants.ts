@@ -47,6 +47,7 @@ export const Methods = {
   CompleteWorkOrder: 'CompleteWorkOrder' as Method,
   DeclineRequisition: 'DeclineRequisition' as Method,
   IngestSensorBatch: 'IngestSensorBatch' as Method,
+  NudgeWorkOrder: 'NudgeWorkOrder' as Method,
   ReceiveShipment: 'ReceiveShipment' as Method,
   RunSafetyDrill: 'RunSafetyDrill' as Method,
   ScheduleWorkOrder: 'ScheduleWorkOrder' as Method,
@@ -409,6 +410,7 @@ export namespace WorkOrders {
     statusId: 'statusId' as FieldName,
     summary: 'summary' as FieldName,
     title: 'title' as FieldName,
+    updatedAt: 'updatedAt' as FieldName,
     waystationId: 'waystationId' as FieldName,
   };
   export const resourceName = {
@@ -421,6 +423,7 @@ export namespace WorkOrders {
     statusId: 'WorkOrders.statusId' as Resource,
     summary: 'WorkOrders.summary' as Resource,
     title: 'WorkOrders.title' as Resource,
+    updatedAt: 'WorkOrders.updatedAt' as Resource,
     waystationId: 'WorkOrders.waystationId' as Resource,
   };
 }
@@ -450,6 +453,12 @@ export namespace IngestSensorBatch {
     metric: 'metric' as FieldName,
     reading: 'reading' as FieldName,
     recordedAt: 'recordedAt' as FieldName,
+  };
+}
+
+export namespace NudgeWorkOrder {
+  export const fieldName = {
+    workOrderId: 'workOrderId' as FieldName,
   };
 }
 
@@ -1406,6 +1415,13 @@ const Mappings: PermissionMappings = {
     [Permissions.Read]: true,
     [Permissions.Update]: true,
   },
+  [WorkOrders.resourceName.updatedAt]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: false,
+  },
   [WorkOrders.resourceName.waystationId]: {
     [Permissions.Create]: true,
     [Permissions.Delete]: false,
@@ -1433,6 +1449,9 @@ const MethodMappings: MethodPermissionMappings = {
     [Permissions.Execute]: true,
   },
   [Methods.IngestSensorBatch]: {
+    [Permissions.Execute]: true,
+  },
+  [Methods.NudgeWorkOrder]: {
     [Permissions.Execute]: true,
   },
   [Methods.ReceiveShipment]: {

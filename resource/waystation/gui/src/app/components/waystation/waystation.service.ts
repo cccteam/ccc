@@ -74,8 +74,11 @@ export class WaystationService {
     return this.http.get<T[]>(`${this.apiUrl}/waystations/${this.current()}/${resourceRoute}`);
   }
 
+  // Sorted by last activity server-side: updatedAt is the mechanical enforcement
+  // stamp, bumped by every update — including a Nudge, which changes nothing else.
+  // Untouched rows (updatedAt unset) sort last.
   workOrders(): Observable<WorkOrders[]> {
-    return this.list<WorkOrders>('work-orders');
+    return this.list<WorkOrders>('work-orders?sort=updatedAt:desc');
   }
 
   workOrderTasks(): Observable<WorkOrderTasks[]> {
@@ -196,6 +199,13 @@ export class WaystationService {
 
   completeWorkOrder(workOrderId: string): Observable<unknown> {
     return this.rpc('complete-work-order', { workOrderId });
+  }
+
+  // Nudge is the first-class Touch: the update pipeline runs with no caller-set
+  // fields, so the order's updatedAt bumps and the audit trail records who nudged
+  // while nothing about the order changes.
+  nudgeWorkOrder(workOrderId: string): Observable<unknown> {
+    return this.rpc('nudge-work-order', { workOrderId });
   }
 
   submitRequisition(requisitionId: string): Observable<unknown> {

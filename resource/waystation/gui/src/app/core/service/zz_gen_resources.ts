@@ -150,6 +150,7 @@ export interface WorkOrders {
   createdBy?: string;
   assignedTeamId?: string;
   dueAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface WorkOrderTasks {
@@ -375,6 +376,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'createdBy', displayType: 'string', required: false, isIndex: false },
       { fieldName: 'assignedTeamId', displayType: 'enumerated', required: false, isIndex: true, enumeratedResource: Resources.Teams },
       { fieldName: 'dueAt', displayType: 'date', required: false, isIndex: false },
+      { fieldName: 'updatedAt', displayType: 'date', required: false, isIndex: false },
     ],
   },
   [Resources.WorkOrderTasks]: {

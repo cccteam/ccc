@@ -19,6 +19,13 @@ type (
 	// forge. Change tracking is on: WorkOrder mutations write DataChangeEvents rows
 	// in the same transaction, which the audit trail page renders.
 	//
+	// UpdatedAt is the mechanical enforcement stamp — its meaning is "this row was
+	// updated", nothing more — so it is an output_only_update_fn, stamped on every
+	// update. Declaring it also gives the resource the generated NewWorkOrderTouch:
+	// an update carried entirely by the update functions, which NudgeWorkOrder fires
+	// (contrast Asset.LastServicedAt, a timestamp with domain meaning written as an
+	// explicit update by the one transition that owns the business event).
+	//
 	// @resource
 	// @permissionScope(domain)
 	WorkOrder struct {
@@ -37,7 +44,8 @@ type (
 		// @attribute(assignedTeam)
 		AssignedTeamID ccc.NullUUID `spanner:"AssignedTeamId"`
 		// @attribute(dueAt)
-		DueAt *time.Time `spanner:"DueAt"`
+		DueAt     *time.Time `spanner:"DueAt"`
+		UpdatedAt *time.Time `spanner:"UpdatedAt" output_only_update_fn:"resource.CommitTimestampPtr"`
 	}
 )
 

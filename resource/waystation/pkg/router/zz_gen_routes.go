@@ -68,6 +68,8 @@ type GeneratedHandlers interface {
 	Module() http.HandlerFunc
 	PatchModules() http.HandlerFunc
 
+	NudgeWorkOrder() http.HandlerFunc
+
 	OpenWorkOrdersByTeams() http.HandlerFunc
 
 	ReceiveShipment() http.HandlerFunc
@@ -181,6 +183,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Post("/api/waystations/{waystationID}/modules/{moduleID}", moduleHandler)
 
 	r.Patch("/api/waystations/{waystationID}/modules", domainGuard(h.PatchModules()))
+
+	r.Post("/api/waystations/{waystationID}/nudge-work-order", domainGuard(h.NudgeWorkOrder()))
 
 	openWorkOrdersByTeamsHandler := domainGuard(h.OpenWorkOrdersByTeams())
 	r.Get("/api/waystations/{waystationID}/open-work-orders-by-teams", openWorkOrdersByTeamsHandler)

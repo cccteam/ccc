@@ -141,6 +141,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		CreatedBy      string       `json:"-"`
 		AssignedTeamID ccc.NullUUID `json:"assignedTeamId"`
 		DueAt          *time.Time   `json:"dueAt"`
+		UpdatedAt      *time.Time   `json:"-"`
 	}
 	workOrderDecoder := NewDecoder[resources.WorkOrder, workOrderRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 

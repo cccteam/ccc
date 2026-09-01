@@ -3,7 +3,8 @@
   Work orders are stateful: the status is server-owned and moves only through the Schedule, Start, and Complete
   transitions below. What you see here depends on who you are — a technician sees orders assigned to their teams or
   authored by them, an auditor sees completed and cancelled orders only, and a station chief can delete drafts but
-  nothing past draft.
+  nothing past draft. Orders sort by last activity, and Nudge flags a stalled order for attention without changing it:
+  the touch bumps it to the top and lands in the audit trail, while every field stays exactly as it was.
 </p>
 
 <app-waystation-select></app-waystation-select>
@@ -32,6 +33,10 @@
       <th mat-header-cell *matHeaderCellDef>Due</th>
       <td mat-cell *matCellDef="let order">{{ (order.dueAt | date: 'medium') || '—' }}</td>
     </ng-container>
+    <ng-container matColumnDef="lastActivity">
+      <th mat-header-cell *matHeaderCellDef>Last Activity</th>
+      <td mat-cell *matCellDef="let order">{{ (order.updatedAt | date: 'medium') || '—' }}</td>
+    </ng-container>
     <ng-container matColumnDef="actions">
       <th mat-header-cell *matHeaderCellDef></th>
       <td mat-cell *matCellDef="let order">
@@ -40,6 +45,9 @@
         }
         @if (order.statusId === status.InProgress) {
           <button mat-stroked-button (click)="complete(order); $event.stopPropagation()">Complete</button>
+        }
+        @if (!terminal(order)) {
+          <button mat-stroked-button (click)="nudge(order); $event.stopPropagation()">Nudge</button>
         }
         @if (order.statusId === status.Draft) {
           <button mat-icon-button aria-label="Delete draft" (click)="remove(order); $event.stopPropagation()">

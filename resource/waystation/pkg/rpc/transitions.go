@@ -152,6 +152,31 @@ func completeWorkOrder(ctx context.Context, txn resource.ReadWriteTransaction, i
 	return nil
 }
 
+// nudgeWorkOrder touches an open work order: the generated WorkOrderTouch runs the
+// full update pipeline with no caller-set fields, so the update functions supply the
+// entire write — UpdatedAt takes the commit timestamp and the change event records
+// who nudged. Nudging a finished work order is refused: there is no one left to get
+// its attention.
+func nudgeWorkOrder(ctx context.Context, txn resource.ReadWriteTransaction, id ccc.UUID) error {
+	row, err := resources.NewWorkOrderQuery().AddColumns(resources.NewWorkOrderColumns().All()).SetID(id).Read(ctx, txn)
+	if err != nil {
+		return errors.Wrap(err, "resources.WorkOrderQuery.Read()")
+	}
+	if row == nil {
+		return httpio.NewNotFoundMessagef("work order %s does not exist", id)
+	}
+
+	if status := resources.WorkOrderStatus(row.Data.StatusID); status == resources.CompletedWorkOrderStatus || status == resources.CancelledWorkOrderStatus {
+		return httpio.NewBadRequestMessagef("work order %s is %s; only an open work order can be nudged", id, row.Data.StatusID)
+	}
+
+	if err := resources.NewWorkOrderTouch(id).Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
+		return errors.Wrap(err, "resources.WorkOrderTouch.Buffer()")
+	}
+
+	return nil
+}
+
 // receiveShipment stamps a shipment's arrival; a shipment only arrives once.
 func receiveShipment(ctx context.Context, txn resource.ReadWriteTransaction, id ccc.UUID) error {
 	row, err := resources.NewShipmentQuery().AddColumns(resources.NewShipmentColumns().All()).SetID(id).Read(ctx, txn)

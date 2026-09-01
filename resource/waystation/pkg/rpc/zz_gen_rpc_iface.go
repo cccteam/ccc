@@ -8,5 +8,6 @@ import "github.com/cccteam/ccc/accesstypes"
 type Method interface {
 	Method() accesstypes.Resource
 	ApproveRequisition | CompleteWorkOrder | DeclineRequisition | IngestSensorBatch |
-		ReceiveShipment | RunSafetyDrill | ScheduleWorkOrder | StartWorkOrder | SubmitRequisition
+		NudgeWorkOrder | ReceiveShipment | RunSafetyDrill | ScheduleWorkOrder | StartWorkOrder |
+		SubmitRequisition
 }

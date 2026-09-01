@@ -137,6 +137,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/automation/waystations/testDomain/approve-requisition", method: http.MethodPost},
 		{url: "/automation/waystations/testDomain/complete-work-order", method: http.MethodPost},
 		{url: "/automation/waystations/testDomain/decline-requisition", method: http.MethodPost},
+		{url: "/automation/waystations/testDomain/nudge-work-order", method: http.MethodPost},
 		{url: "/automation/run-safety-drill", method: http.MethodPost},
 		{url: "/automation/waystations/testDomain/schedule-work-order", method: http.MethodPost},
 		{url: "/automation/waystations/testDomain/start-work-order", method: http.MethodPost},
@@ -772,6 +773,10 @@ func (s *generatedHandlersStub) Module() http.HandlerFunc {
 
 func (s *generatedHandlersStub) PatchModules() http.HandlerFunc {
 	return s.record("PatchModules")
+}
+
+func (s *generatedHandlersStub) NudgeWorkOrder() http.HandlerFunc {
+	return s.record("NudgeWorkOrder")
 }
 
 func (s *generatedHandlersStub) OpenWorkOrdersByTeams() http.HandlerFunc {

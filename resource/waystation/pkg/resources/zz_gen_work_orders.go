@@ -119,6 +119,7 @@ func (c *WorkOrderColumns) All() *WorkOrderColumns {
 		"CreatedBy",
 		"AssignedTeamID",
 		"DueAt",
+		"UpdatedAt",
 	}
 
 	return c
@@ -180,6 +181,12 @@ func (c *WorkOrderColumns) AssignedTeamID() *WorkOrderColumns {
 
 func (c *WorkOrderColumns) DueAt() *WorkOrderColumns {
 	c.fields = append(c.fields, "DueAt")
+
+	return c
+}
+
+func (c *WorkOrderColumns) UpdatedAt() *WorkOrderColumns {
+	c.fields = append(c.fields, "UpdatedAt")
 
 	return c
 }
@@ -320,6 +327,10 @@ func (c *workOrderSort) AssignedTeamID() *WorkOrderSort {
 
 func (c *workOrderSort) DueAt() *WorkOrderSort {
 	return c.addField("DueAt")
+}
+
+func (c *workOrderSort) UpdatedAt() *WorkOrderSort {
+	return c.addField("UpdatedAt")
 }
 
 type WorkOrderSort struct {
@@ -553,6 +564,26 @@ func (p *WorkOrderCreatePatch) DueAtIsSet() bool {
 	return p.patchSet.IsSet("DueAt")
 }
 
+func (p *WorkOrderCreatePatch) SetUpdatedAt(v *time.Time) *WorkOrderCreatePatch {
+	if v != nil {
+		p.patchSet.Set("UpdatedAt", v)
+	} else {
+		p.patchSet.Set("UpdatedAt", nil)
+	}
+
+	return p
+}
+
+func (p *WorkOrderCreatePatch) UpdatedAt() *time.Time {
+	v, _ := p.patchSet.Get("UpdatedAt").(*time.Time)
+
+	return v
+}
+
+func (p *WorkOrderCreatePatch) UpdatedAtIsSet() bool {
+	return p.patchSet.IsSet("UpdatedAt")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *WorkOrderCreatePatch) Diff(got *WorkOrderCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -601,6 +632,7 @@ func (p *WorkOrderUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWrit
 }
 
 func (p *WorkOrderUpdatePatch) registerDefaultFuncs() {
+	p.patchSet.RegisterOutputOnlyUpdateFunc("UpdatedAt", resource.CommitTimestampPtr)
 }
 
 func (p *WorkOrderUpdatePatch) ID() ccc.UUID {
@@ -761,9 +793,56 @@ func (p *WorkOrderUpdatePatch) DueAtIsSet() bool {
 	return p.patchSet.IsSet("DueAt")
 }
 
+func (p *WorkOrderUpdatePatch) SetUpdatedAt(v *time.Time) *WorkOrderUpdatePatch {
+	if v != nil {
+		p.patchSet.Set("UpdatedAt", v)
+	} else {
+		p.patchSet.Set("UpdatedAt", nil)
+	}
+
+	return p
+}
+
+func (p *WorkOrderUpdatePatch) UpdatedAt() *time.Time {
+	v, _ := p.patchSet.Get("UpdatedAt").(*time.Time)
+
+	return v
+}
+
+func (p *WorkOrderUpdatePatch) UpdatedAtIsSet() bool {
+	return p.patchSet.IsSet("UpdatedAt")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *WorkOrderUpdatePatch) Diff(got *WorkOrderUpdatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
+}
+
+// WorkOrderTouch is an update carried entirely by the resource's
+// update functions: it runs the full update pipeline — permission check,
+// update functions, write conditions, change events — with no caller-set
+// fields. It stamps:
+//   - UpdatedAt via resource.CommitTimestampPtr
+type WorkOrderTouch struct {
+	patchSet *resource.PatchSet[WorkOrder]
+}
+
+func NewWorkOrderTouch(id ccc.UUID) *WorkOrderTouch {
+	patchSet := resource.NewPatchSet(resource.NewMetadata[WorkOrder]()).
+		SetKey("ID", id).
+		SetPatchType(resource.UpdatePatchType).
+		AsTouch()
+	patchSet.RegisterOutputOnlyUpdateFunc("UpdatedAt", resource.CommitTimestampPtr)
+
+	return &WorkOrderTouch{patchSet: patchSet}
+}
+
+func (p *WorkOrderTouch) Apply(ctx context.Context, client resource.Client, eventSource ...string) error {
+	return p.patchSet.Apply(ctx, client, eventSource...)
+}
+
+func (p *WorkOrderTouch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
+	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
 type WorkOrderDeletePatch struct {

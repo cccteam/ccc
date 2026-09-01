@@ -110,6 +110,11 @@ func Collection() *resource.GeneratedCollection {
 				Domain: &resource.DomainBindingData{Column: "WaystationId"},
 			},
 			{
+				Name:        "NudgeWorkOrder",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+			},
+			{
 				Name:        "OpenWorkOrdersByTeams",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.List},
@@ -273,6 +278,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "statusId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "summary", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "title", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "updatedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 				},
 				Attributes: []resource.AttributeData{

@@ -27,6 +27,7 @@ func (a *App) WorkOrders() http.HandlerFunc {
 		CreatedBy      string       `json:"createdBy"`
 		AssignedTeamID ccc.NullUUID `json:"assignedTeamId" index:"true"`
 		DueAt          *time.Time   `json:"dueAt"`
+		UpdatedAt      *time.Time   `json:"updatedAt"`
 	}
 
 	type response []map[string]any
@@ -94,6 +95,10 @@ func (a *App) WorkOrders() http.HandlerFunc {
 					if !row.Masked("dueAt") {
 						rmap["dueAt"] = rec.DueAt
 					}
+				case "UpdatedAt":
+					if !row.Masked("updatedAt") {
+						rmap["updatedAt"] = rec.UpdatedAt
+					}
 				}
 			}
 			resp = append(resp, rmap)
@@ -115,6 +120,7 @@ func (a *App) WorkOrder() http.HandlerFunc {
 		CreatedBy      string       `json:"createdBy"`
 		AssignedTeamID ccc.NullUUID `json:"assignedTeamId"`
 		DueAt          *time.Time   `json:"dueAt"`
+		UpdatedAt      *time.Time   `json:"updatedAt"`
 	}
 
 	decoder := NewQueryDecoder[resources.WorkOrder, response](accesstypes.Read)
@@ -180,6 +186,10 @@ func (a *App) WorkOrder() http.HandlerFunc {
 			case "DueAt":
 				if !row.Masked("dueAt") {
 					rmap["dueAt"] = rec.DueAt
+				}
+			case "UpdatedAt":
+				if !row.Masked("updatedAt") {
+					rmap["updatedAt"] = rec.UpdatedAt
 				}
 			}
 		}
