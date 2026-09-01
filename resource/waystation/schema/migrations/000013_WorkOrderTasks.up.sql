@@ -1,0 +1,9 @@
+CREATE TABLE WorkOrderTasks (
+  Id STRING(36) NOT NULL,
+  TaskNumber INT64 NOT NULL,
+  Instructions STRING(MAX) NOT NULL,
+  Done BOOL NOT NULL,
+
+  CONSTRAINT FK_WorkOrderTasks_Id FOREIGN KEY (Id) REFERENCES WorkOrders(Id),
+) PRIMARY KEY (Id, TaskNumber),
+  INTERLEAVE IN PARENT WorkOrders ON DELETE CASCADE;
