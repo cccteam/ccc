@@ -1,176 +1,296 @@
 {
   "roles": [
     {
-      "Name": "HarborMaster",
-      "Permissions": {
+      "name": "HarborMaster",
+      "permissions": {
         "List": [
-          "Ships",
-          "Ships.registryCode",
-          "Ships.name",
-          "Ships.dockingBayId",
-          "Ships.cargoValue",
-          "Ships.updatedAt",
-          "DockingBays",
-          "DockingBays.name",
-          "DockingBays.deckLevel",
-          "DockingBays.maxTonnage",
-          "CrewMembers",
-          "CrewMembers.shipId",
-          "CrewMembers.name",
-          "CrewMembers.rank",
-          "CrewMembers.clearanceLevel",
-          "CrewMembers.medicalNotes",
-          "CargoManifests",
-          "CargoManifests.declaredValue",
-          "CargoManifests.details",
-          "CargoManifests.quantity",
-          "SupplyCrates",
-          "SupplyCrates.label",
-          "SupplyCrates.quantity",
-          "SupplyCrates.priority",
-          "SupplyCrates.status",
-          "SupplyCrates.barcode",
-          "SupplyCrates.inspectorBadge",
-          "SupplyCrates.assignedShipId",
-          "ManifestLines",
-          "ManifestLines.shipName",
-          "ManifestLines.details",
-          "ManifestLines.quantity",
-          "ManifestLines.declaredValue",
-          "ShipCargoSummaries",
-          "ShipCargoSummaries.shipName",
-          "ShipCargoSummaries.dockingBayName",
-          "ShipCargoSummaries.manifestLines",
-          "ShipCargoSummaries.totalDeclaredValue"
+          {
+            "resource": "Ships",
+            "fields": [
+              "registryCode",
+              "name",
+              "dockingBayId",
+              "cargoValue",
+              "updatedAt"
+            ]
+          },
+          {
+            "resource": "DockingBays",
+            "fields": [
+              "name",
+              "deckLevel",
+              "maxTonnage"
+            ]
+          },
+          {
+            "resource": "CrewMembers",
+            "fields": [
+              "shipId",
+              "name",
+              "rank",
+              "clearanceLevel",
+              "medicalNotes"
+            ]
+          },
+          {
+            "resource": "CargoManifests",
+            "fields": [
+              "declaredValue",
+              "details",
+              "quantity"
+            ]
+          },
+          {
+            "resource": "SupplyCrates",
+            "fields": [
+              "label",
+              "quantity",
+              "priority",
+              "status",
+              "barcode",
+              "inspectorBadge",
+              "assignedShipId"
+            ]
+          },
+          {
+            "resource": "ManifestLines",
+            "fields": [
+              "shipName",
+              "details",
+              "quantity",
+              "declaredValue"
+            ]
+          },
+          {
+            "resource": "ShipCargoSummaries",
+            "fields": [
+              "shipName",
+              "dockingBayName",
+              "manifestLines",
+              "totalDeclaredValue"
+            ]
+          }
         ],
         "Read": [
-          "Ships",
-          "Ships.registryCode",
-          "Ships.name",
-          "Ships.dockingBayId",
-          "Ships.cargoValue",
-          "Ships.updatedAt",
-          "DockingBays",
-          "DockingBays.name",
-          "DockingBays.deckLevel",
-          "DockingBays.maxTonnage",
-          "CrewMembers",
-          "CrewMembers.shipId",
-          "CrewMembers.name",
-          "CrewMembers.rank",
-          "CrewMembers.clearanceLevel",
-          "CrewMembers.medicalNotes",
-          "CargoManifests",
-          "CargoManifests.declaredValue",
-          "CargoManifests.details",
-          "CargoManifests.quantity",
-          "SupplyCrates",
-          "SupplyCrates.label",
-          "SupplyCrates.quantity",
-          "SupplyCrates.priority",
-          "SupplyCrates.status",
-          "SupplyCrates.barcode",
-          "SupplyCrates.inspectorBadge",
-          "SupplyCrates.assignedShipId"
+          {
+            "resource": "Ships",
+            "fields": [
+              "registryCode",
+              "name",
+              "dockingBayId",
+              "cargoValue",
+              "updatedAt"
+            ]
+          },
+          {
+            "resource": "DockingBays",
+            "fields": [
+              "name",
+              "deckLevel",
+              "maxTonnage"
+            ]
+          },
+          {
+            "resource": "CrewMembers",
+            "fields": [
+              "shipId",
+              "name",
+              "rank",
+              "clearanceLevel",
+              "medicalNotes"
+            ]
+          },
+          {
+            "resource": "CargoManifests",
+            "fields": [
+              "declaredValue",
+              "details",
+              "quantity"
+            ]
+          },
+          {
+            "resource": "SupplyCrates",
+            "fields": [
+              "label",
+              "quantity",
+              "priority",
+              "status",
+              "barcode",
+              "inspectorBadge",
+              "assignedShipId"
+            ]
+          }
         ],
         "Create": [
-          "Ships",
-          "Ships.registryCode",
-          "Ships.name",
-          "Ships.dockingBayId",
-          "Ships.cargoValue",
-          "DockingBays",
-          "DockingBays.name",
-          "DockingBays.deckLevel",
-          "DockingBays.maxTonnage",
-          "CrewMembers",
-          "CrewMembers.shipId",
-          "CrewMembers.name",
-          "CrewMembers.rank",
-          "CrewMembers.clearanceLevel",
-          "CrewMembers.medicalNotes",
-          "CargoManifests",
-          "CargoManifests.declaredValue",
-          "CargoManifests.details",
-          "CargoManifests.quantity",
-          "SupplyCrates",
-          "SupplyCrates.label",
-          "SupplyCrates.quantity",
-          "SupplyCrates.priority",
-          "SupplyCrates.status",
-          "SupplyCrates.notes",
-          "SupplyCrates.inspectorBadge",
-          "SupplyCrates.assignedShipId"
+          {
+            "resource": "Ships",
+            "fields": [
+              "registryCode",
+              "name",
+              "dockingBayId",
+              "cargoValue"
+            ]
+          },
+          {
+            "resource": "DockingBays",
+            "fields": [
+              "name",
+              "deckLevel",
+              "maxTonnage"
+            ]
+          },
+          {
+            "resource": "CrewMembers",
+            "fields": [
+              "shipId",
+              "name",
+              "rank",
+              "clearanceLevel",
+              "medicalNotes"
+            ]
+          },
+          {
+            "resource": "CargoManifests",
+            "fields": [
+              "declaredValue",
+              "details",
+              "quantity"
+            ]
+          },
+          {
+            "resource": "SupplyCrates",
+            "fields": [
+              "label",
+              "quantity",
+              "priority",
+              "status",
+              "notes",
+              "inspectorBadge",
+              "assignedShipId"
+            ]
+          }
         ],
         "Update": [
-          "Ships",
-          "Ships.name",
-          "Ships.dockingBayId",
-          "Ships.cargoValue",
-          "DockingBays",
-          "DockingBays.name",
-          "DockingBays.deckLevel",
-          "DockingBays.maxTonnage",
-          "CrewMembers",
-          "CrewMembers.shipId",
-          "CrewMembers.name",
-          "CrewMembers.rank",
-          "CrewMembers.clearanceLevel",
-          "CrewMembers.medicalNotes",
-          "CargoManifests",
-          "CargoManifests.declaredValue",
-          "CargoManifests.details",
-          "CargoManifests.quantity",
-          "SupplyCrates",
-          "SupplyCrates.label",
-          "SupplyCrates.quantity",
-          "SupplyCrates.priority",
-          "SupplyCrates.status",
-          "SupplyCrates.notes",
-          "SupplyCrates.inspectorBadge",
-          "SupplyCrates.assignedShipId"
+          {
+            "resource": "Ships",
+            "fields": [
+              "name",
+              "dockingBayId",
+              "cargoValue"
+            ]
+          },
+          {
+            "resource": "DockingBays",
+            "fields": [
+              "name",
+              "deckLevel",
+              "maxTonnage"
+            ]
+          },
+          {
+            "resource": "CrewMembers",
+            "fields": [
+              "shipId",
+              "name",
+              "rank",
+              "clearanceLevel",
+              "medicalNotes"
+            ]
+          },
+          {
+            "resource": "CargoManifests",
+            "fields": [
+              "declaredValue",
+              "details",
+              "quantity"
+            ]
+          },
+          {
+            "resource": "SupplyCrates",
+            "fields": [
+              "label",
+              "quantity",
+              "priority",
+              "status",
+              "notes",
+              "inspectorBadge",
+              "assignedShipId"
+            ]
+          }
         ],
         "Delete": [
-          "Ships",
-          "DockingBays",
-          "CrewMembers",
-          "CargoManifests",
-          "SupplyCrates"
+          {
+            "resource": "Ships"
+          },
+          {
+            "resource": "DockingBays"
+          },
+          {
+            "resource": "CrewMembers"
+          },
+          {
+            "resource": "CargoManifests"
+          },
+          {
+            "resource": "SupplyCrates"
+          }
         ],
         "Execute": [
-          "AuthorizeLaunch"
+          {
+            "resource": "AuthorizeLaunch"
+          }
         ]
       }
     },
     {
-      "Name": "DockOperator",
-      "Permissions": {
+      "name": "DockOperator",
+      "permissions": {
         "List": [
-          "Berths",
-          "Berths.designation",
-          "Berths.sizeClass",
-          "Berths.occupied"
+          {
+            "resource": "Berths",
+            "fields": [
+              "designation",
+              "sizeClass",
+              "occupied"
+            ]
+          }
         ],
         "Read": [
-          "Berths",
-          "Berths.designation",
-          "Berths.sizeClass"
+          {
+            "resource": "Berths",
+            "fields": [
+              "designation",
+              "sizeClass"
+            ]
+          }
         ],
         "Create": [
-          "Berths",
-          "Berths.designation",
-          "Berths.sizeClass",
-          "Berths.occupied"
+          {
+            "resource": "Berths",
+            "fields": [
+              "designation",
+              "sizeClass",
+              "occupied"
+            ]
+          }
         ],
         "Update": [
-          "Berths",
-          "Berths.occupied"
+          {
+            "resource": "Berths",
+            "fields": [
+              "occupied"
+            ]
+          }
         ],
         "Delete": [
-          "Berths"
+          {
+            "resource": "Berths"
+          }
         ],
         "Execute": [
-          "AuthorizeDocking"
+          {
+            "resource": "AuthorizeDocking"
+          }
         ]
       }
     }
@@ -180,9 +300,13 @@
       "user": "demo",
       "password": "starport",
       "roles": {
-        "global": ["HarborMaster"],
+        "global": [
+          "HarborMaster"
+        ],
         "domains": {
-          "station-alpha": ["DockOperator"]
+          "station-alpha": [
+            "DockOperator"
+          ]
         }
       }
     }
@@ -191,7 +315,9 @@
     {
       "user": "automation",
       "roles": {
-        "global": ["HarborMaster"]
+        "global": [
+          "HarborMaster"
+        ]
       }
     }
   ]
