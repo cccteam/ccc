@@ -11,7 +11,7 @@ replace github.com/cccteam/ccc/resource => ../
 
 require (
 	cloud.google.com/go/spanner v1.94.0
-	github.com/cccteam/access v0.9.12-0.20260901035009-5c58d0df4e24
+	github.com/cccteam/access v0.9.12-0.20260901184320-2cf49b2a0fbb
 	github.com/cccteam/ccc v0.3.2
 	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260901033722-81ab17f8f363
 	github.com/cccteam/ccc/resource v0.10.6
