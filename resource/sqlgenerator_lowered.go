@@ -2,10 +2,13 @@ package resource
 
 import (
 	"fmt"
+	"math/big"
 	"slices"
 	"strings"
 
+	"cloud.google.com/go/spanner"
 	"github.com/go-playground/errors/v5"
+	"github.com/shopspring/decimal"
 )
 
 // This file extends the module's single SQL emitter with the node shapes the
@@ -53,9 +56,38 @@ func newParamRegistry() *paramRegistry {
 func (r *paramRegistry) bind(value any) string {
 	r.paramCount++
 	name := fmt.Sprintf("_c%d", r.paramCount)
-	r.params = append(r.params, QueryParam{Name: name, Value: value})
+	r.params = append(r.params, QueryParam{Name: name, Value: paramValue(value)})
 
 	return "@" + name
+}
+
+// paramValue normalizes a value for query-parameter typing. Spanner types a query
+// parameter from its Go value, and Encoder-backed types encode only a wire value:
+// decimal.Decimal encodes as a STRING, which types the parameter STRING wherever it
+// meets a NUMERIC column — a masked-cell filler's CASE and a post-image comparison
+// both fail with a type mismatch. big.Rat and NullNumeric carry the NUMERIC typing
+// the column context requires. (Mutations are unaffected: the server types mutation
+// values from the target column.) The mapping is Spanner-shaped; revisit alongside
+// the Postgres runtime.
+func paramValue(value any) any {
+	switch v := value.(type) {
+	case decimal.Decimal:
+		return v.Rat()
+	case *decimal.Decimal:
+		if v == nil {
+			return (*big.Rat)(nil)
+		}
+
+		return v.Rat()
+	case decimal.NullDecimal:
+		if !v.Valid {
+			return spanner.NullNumeric{}
+		}
+
+		return spanner.NullNumeric{Numeric: *v.Decimal.Rat(), Valid: true}
+	default:
+		return value
+	}
 }
 
 // reference records the statement's use of a fixed named parameter and
