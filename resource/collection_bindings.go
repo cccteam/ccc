@@ -24,36 +24,20 @@ type BindingHop struct {
 	Column     string
 }
 
-// AttributeType is the closed comparison-type vocabulary of attribute
-// bindings. MigrateRoles validates a condition's literals against the
-// attribute's type at deploy time — the renderer never compares values
-// itself, so the vocabulary stays coarse: what a literal must look like, not
-// how the database stores it.
-type AttributeType string
+// AttributeType is the attribute comparison-type vocabulary, canonically
+// defined in accesstypes so deployment tooling (MigrateRoles) shares one
+// definition with generation.
+type AttributeType = accesstypes.AttributeType
 
+// The vocabulary's values, re-exported for generated code and callers already
+// importing resource.
 const (
-	// AttributeTypeString compares against string literals (UUIDs included —
-	// binary, case-sensitive string equality per the expression language).
-	AttributeTypeString AttributeType = "string"
-	// AttributeTypeNumber compares against numeric literals.
-	AttributeTypeNumber AttributeType = "number"
-	// AttributeTypeBool compares against TRUE and FALSE.
-	AttributeTypeBool AttributeType = "bool"
-	// AttributeTypeTimestamp compares against RFC 3339 timestamp strings and now.
-	AttributeTypeTimestamp AttributeType = "timestamp"
-	// AttributeTypeDate compares against date strings.
-	AttributeTypeDate AttributeType = "date"
+	AttributeTypeString    = accesstypes.AttributeTypeString
+	AttributeTypeNumber    = accesstypes.AttributeTypeNumber
+	AttributeTypeBool      = accesstypes.AttributeTypeBool
+	AttributeTypeTimestamp = accesstypes.AttributeTypeTimestamp
+	AttributeTypeDate      = accesstypes.AttributeTypeDate
 )
-
-// validAttributeType reports whether t is in the vocabulary.
-func validAttributeType(t AttributeType) bool {
-	switch t {
-	case AttributeTypeString, AttributeTypeNumber, AttributeTypeBool, AttributeTypeTimestamp, AttributeTypeDate:
-		return true
-	default:
-		return false
-	}
-}
 
 // AttributeData is one attribute binding: the vocabulary name grant
 // conditions reference, resolved to data. Column is the anchor column on the
@@ -151,6 +135,59 @@ func (g *GeneratedCollection) Bindings(scope accesstypes.PermissionScope, res ac
 	return bindings, ok
 }
 
+// The flat vocabulary accessors below answer with basic types only, so
+// deployment tooling (access.MigrateRoles) can consume the Collection through
+// a structural interface without importing this package.
+
+// AttributeComparisonType resolves an attribute's comparison type on one
+// resource; ok is false when the resource declares no such attribute.
+func (g *GeneratedCollection) AttributeComparisonType(scope accesstypes.PermissionScope, res accesstypes.Resource, name string) (accesstypes.AttributeType, bool) {
+	attr, ok := g.attributeData(scope, res, name)
+	if !ok {
+		return "", false
+	}
+
+	return attr.Type, true
+}
+
+// AttributeIsColumn reports whether an attribute is a column binding on the
+// resource's own row — the shape a post-image (new.attr) reference requires.
+func (g *GeneratedCollection) AttributeIsColumn(scope accesstypes.PermissionScope, res accesstypes.Resource, name string) bool {
+	attr, ok := g.attributeData(scope, res, name)
+
+	return ok && len(attr.Path) == 0
+}
+
+// DeclaresSubjectSet reports whether the application declares subject.<name>
+// as a set.
+func (g *GeneratedCollection) DeclaresSubjectSet(name string) bool {
+	_, ok := g.SubjectSet(name)
+
+	return ok
+}
+
+// DeclaresSubjectValue reports whether the application declares
+// subject.<name> as a scalar value.
+func (g *GeneratedCollection) DeclaresSubjectValue(name string) bool {
+	_, ok := g.SubjectValue(name)
+
+	return ok
+}
+
+func (g *GeneratedCollection) attributeData(scope accesstypes.PermissionScope, res accesstypes.Resource, name string) (AttributeData, bool) {
+	bindings, ok := g.Bindings(scope, res)
+	if !ok {
+		return AttributeData{}, false
+	}
+	for _, attr := range bindings.Attributes {
+		if attr.Name == name {
+			return attr, true
+		}
+	}
+
+	return AttributeData{}, false
+}
+
 // validateCollectionBindings enforces the vocabulary rules the runtime can
 // check without a schema: names unique within one resource's vocabulary, and
 // subject names unique across the whole collection — subject.<name> is one
@@ -182,7 +219,7 @@ func validateCollectionBindings(resources []CollectionResource) error {
 			if err := claimLocal(attr.Name); err != nil {
 				return err
 			}
-			if !validAttributeType(attr.Type) {
+			if !accesstypes.ValidAttributeType(attr.Type) {
 				return errors.Newf("resource %q attribute %q carries comparison type %q, which is not in the vocabulary — regenerate the collection", res.Name, attr.Name, attr.Type)
 			}
 		}

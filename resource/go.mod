@@ -8,7 +8,7 @@ require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.94.0
 	github.com/cccteam/ccc v0.3.2
-	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260831230942-7853099efaa4
+	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260901033722-81ab17f8f363
 	github.com/cccteam/ccc/cache v0.1.6
 	github.com/cccteam/ccc/pkg v0.1.4
 	github.com/cccteam/ccc/securehash v0.0.13
@@ -27,6 +27,7 @@ require (
 	github.com/shopspring/decimal v1.4.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/tools v0.49.0
+	google.golang.org/api v0.293.0
 )
 
 require (
@@ -119,7 +120,6 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	google.golang.org/api v0.293.0 // indirect
 	google.golang.org/genproto v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260818201246-1b0934165a6f // indirect
