@@ -95,7 +95,11 @@ hand-written under `src/app/components/waystation/`, because ccc-lib 0.0.44 uses
 `meta.route` verbatim and cannot fill the `{waystationID}` segment of a generated
 domain-route template. `WaystationService` holds the selected waystation as shared
 state — it is the permission domain of every request, so switching stations re-scopes
-what each persona sees. Masked cells arrive as ABSENT JSON keys and render as em-dashes,
+what each persona sees. The station picker has no bespoke endpoint: by default its
+options are the domains carrying grants in the session-data permission map, and the
+"Show all waystations" toggle widens it to the roster served by the generated,
+permission-checked Waystations resource — a demo affordance no real application would
+carry, kept as the clickable path to fail-closed refusals. Masked cells arrive as ABSENT JSON keys and render as em-dashes,
 never as zero or empty values.
 
 `gui/.prettierignore` excludes `zz_gen_*.ts`: prettier reflows generator output and
@@ -128,7 +132,9 @@ The same tour in the browser, persona by persona:
 4. **chief-alpha** — run the full work-order arc: create a draft, add a task, schedule
    it with a team and due date, start it, toggle the task done (state-gated), complete
    it. Deleting the completed order is refused (deletes are draft-only); deleting a
-   draft succeeds. Switch the station picker to ws-beta: everything empties.
+   draft succeeds. The station picker offers only ws-alpha — the directory is
+   permission-derived; flip "Show all waystations" and select ws-beta to watch every
+   list load refuse fail-closed.
 5. **quartermaster-idris** — receive the in-transit shipment (a second receive is
    refused: `arrivedAt IS NULL`), delete the expired lot, and watch fresh and
    no-expiry lots refuse deletion. Lots arrive sorted by expiry server-side.

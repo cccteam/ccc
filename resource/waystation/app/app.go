@@ -157,9 +157,12 @@ func (a *App) StaticAssets() http.HandlerFunc {
 // SessionData reports the session user's permission collection across the global
 // scope and every waystation. The wire shape is structural, mirroring
 // accesstypes.Scope: the global partition is its own key, never a magic entry in
-// the domain map. Like the session library's Authenticated handler, an
-// unauthenticated session gets an empty collection rather than an error: the
-// frontend probes this endpoint before login.
+// the domain map — and the domain map carries only domains where the user holds at
+// least one permission (the engine returns an entry for every scope asked about,
+// empty or not), so the frontend's station picker is its key set, no filtering.
+// Like the session library's Authenticated handler, an unauthenticated session gets
+// an empty collection rather than an error: the frontend probes this endpoint
+// before login.
 func (a *App) SessionData() http.HandlerFunc {
 	type resourcePermissions map[accesstypes.Resource]map[accesstypes.Permission]bool
 
@@ -217,30 +220,14 @@ func (a *App) SessionData() http.HandlerFunc {
 
 				continue
 			}
+			if len(scopePerms.Resources) == 0 {
+				continue
+			}
 			domain, _ := scope.Domain()
 			perms.Domains[domain] = permissionSet(scopePerms)
 		}
 
 		return httpio.NewEncoder(w).Ok(response{Permissions: perms})
-	})
-}
-
-// WaystationDirectory lists the known waystations: the permission domains the
-// domain-scoped resources and RPC methods are served under, read from the tenant
-// table. It is the frontend's station picker source; the generated Waystations
-// resource handler (permission-checked rows) owns /api/waystations itself.
-func (a *App) WaystationDirectory() http.HandlerFunc {
-	type response struct {
-		Waystations []accesstypes.Domain `json:"waystations"`
-	}
-
-	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		domains, err := a.domains(r.Context())
-		if err != nil {
-			return httpio.NewEncoder(w).ClientMessage(r.Context(), errors.Wrap(err, "domains()"))
-		}
-
-		return httpio.NewEncoder(w).Ok(response{Waystations: domains})
 	})
 }
 

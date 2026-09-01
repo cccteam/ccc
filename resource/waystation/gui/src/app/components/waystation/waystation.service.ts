@@ -1,12 +1,14 @@
 import { HttpClient, httpResource, HttpResourceRef } from '@angular/common/http';
-import { inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, linkedSignal, signal } from '@angular/core';
 import {
   IncidentReports,
   Requisitions,
   RequisitionLines,
+  Waystations,
   WorkOrders,
   WorkOrderTasks,
 } from '@app/service/zz_gen_resources';
+import { AuthService } from '@cccteam/ccc-lib/auth-service';
 import { API_URL } from '@cccteam/ccc-lib/types';
 import { Observable } from 'rxjs';
 
@@ -14,6 +16,15 @@ interface Operation {
   op: 'add' | 'patch' | 'remove';
   path: string;
   value?: unknown;
+}
+
+// SessionPermissions mirrors app.SessionData's wire shape: the session user's
+// permission collection, the global partition its own key and one entry per domain.
+interface SessionPermissions {
+  permissions?: {
+    global?: Record<string, Record<string, boolean>>;
+    domains?: Record<string, Record<string, Record<string, boolean>>>;
+  };
 }
 
 /**
@@ -56,17 +67,53 @@ export class WaystationService {
   private http = inject(HttpClient);
   private apiUrl = inject(API_URL);
 
-  readonly waystations = signal<string[]>([]);
-  readonly current = signal('');
+  private auth = inject(AuthService);
 
-  loadDirectory(): void {
-    this.http.get<{ waystations: string[] }>(`${this.apiUrl}/waystation-directory`).subscribe((res) => {
-      this.waystations.set(res.waystations ?? []);
-      const first = this.waystations()[0];
-      if (!this.current() && first) {
-        this.current.set(first);
-      }
-    });
+  // showAll widens the picker from the permission-derived list to the full tenant
+  // roster. A real application would not offer it; the demo keeps it as the
+  // clickable path to fail-closed refusals — select a station you hold no roles at
+  // and every list load on the page refuses.
+  readonly showAll = signal(false);
+
+  // The picker has no bespoke endpoint: its two questions are answered by surfaces
+  // the application already serves. "Where do I hold domain-scoped grants" is the
+  // session-data permission map (fetched here directly — ccc-lib skips its
+  // additional-session-data fetch while on the login route, so its copy is not
+  // reliably populated after a form login). "What does the fleet roster look like"
+  // is the generated, permission-checked Waystations resource, fetched only while
+  // showAll is on. Both idle until the session authenticates and reset at logout.
+  private sessionData = httpResource<SessionPermissions>(() =>
+    this.auth.authenticated() ? `${this.apiUrl}/user/session-data` : undefined,
+  );
+  private roster = httpResource<Waystations[]>(
+    () => (this.auth.authenticated() && this.showAll() ? `${this.apiUrl}/waystations` : undefined),
+    { defaultValue: [] },
+  );
+
+  readonly waystations = computed<string[]>(() => {
+    if (this.showAll()) {
+      return this.roster
+        .value()
+        .map((row) => row.id)
+        .sort();
+    }
+
+    // SessionData's wire contract: the domains map carries only domains where the
+    // user holds at least one permission, so the key set IS the accessible list.
+    return Object.keys(this.sessionData.value()?.permissions?.domains ?? {}).sort();
+  });
+
+  // current keeps the user's choice while the picker still offers it and snaps to
+  // the first offered station when the list changes underneath it — a persona
+  // switch, or turning showAll off while an inaccessible station is selected.
+  readonly current = linkedSignal<string[], string>({
+    source: this.waystations,
+    computation: (stations, previous) =>
+      previous !== undefined && stations.includes(previous.value) ? previous.value : (stations[0] ?? ''),
+  });
+
+  setShowAll(all: boolean): void {
+    this.showAll.set(all);
   }
 
   select(waystation: string): void {

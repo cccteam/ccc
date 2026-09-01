@@ -31,7 +31,6 @@ type Handlers interface {
 
 	// demo endpoints
 	SessionData() http.HandlerFunc
-	WaystationDirectory() http.HandlerFunc
 
 	// AuditTrailEntries is the hand-written list surface over the change-tracking
 	// table; its permission is registered through @manualAddResource and checked
@@ -93,7 +92,6 @@ func newRouter(h Handlers, api, automationAPI func(chi.Router)) *chi.Mux {
 			// check xsrf token for all api calls
 			r.Use(h.ValidateXSRFToken)
 
-			r.Get("/api/waystation-directory", h.WaystationDirectory())
 			r.Get("/api/audit-trail-entries", h.AuditTrailEntries())
 
 			api(r)

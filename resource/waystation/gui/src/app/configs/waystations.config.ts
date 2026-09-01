@@ -2,7 +2,8 @@ import { Methods, Resources, RunSafetyDrill, Waystations } from '@app/service/zz
 import { field, listViewConfig, rootConfig, rpcConfig, section } from '@cccteam/ccc-lib/types';
 
 // Waystations is the tenant table itself: rows here ARE the permission domains,
-// read at bootstrap by MigrateRoles and served live via /api/waystation-directory.
+// read at bootstrap by MigrateRoles; the station picker's "show all" roster comes
+// from this resource's own generated (permission-checked) List.
 // The Run Safety Drill RPC is global Execute, gated for the SafetyOfficer role by
 // a row-free time condition (`now < ...`).
 export const waystationsConfig = rootConfig({
