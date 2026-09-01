@@ -5,8 +5,8 @@ package integration
 // update pipeline runs with no caller-set fields — UpdatedAt takes the commit
 // timestamp and the change event records who nudged — while a plain update patch with
 // no fields set stays a silent no-op (pinned in the resource module). The structural
-// half scripts its grants; the bootstrap-parity half runs the demo personas over the
-// real permission engine.
+// halves script their grants; the bootstrap-parity half runs the demo personas over
+// the real permission engine.
 
 import (
 	"encoding/json"
@@ -21,6 +21,13 @@ import (
 	initiator "github.com/cccteam/db-initiator"
 	"google.golang.org/api/iterator"
 )
+
+// nudgeGrants scripts exactly the Execute grant the nudge decode checks.
+func nudgeGrants() grants {
+	return grants{
+		accesstypes.Execute: {accesstypes.Resource("NudgeWorkOrder")},
+	}
+}
 
 // latestChangeEvent reads the newest DataChangeEvents row for one tracked row,
 // returning its event source and change-set keys.
@@ -61,6 +68,10 @@ func latestChangeEvent(t *testing.T, db *initiator.SpannerDB, tableName, rowID s
 	return eventSource, changeSetKeys
 }
 
+// TestNudgeWorkOrderTouch walks one work order's stamp through its lifecycle:
+// unset in the seed, stamped by the first touch, advanced by the second, with the
+// change event carrying exactly the mechanical stamp. Deliberately not a table —
+// each step depends on the state the previous one left behind.
 func TestNudgeWorkOrderTouch(t *testing.T) {
 	t.Parallel()
 
@@ -70,12 +81,7 @@ func TestNudgeWorkOrderTouch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := newTestApp(db, grants{
-		accesstypes.Execute: {accesstypes.Resource("NudgeWorkOrder")},
-	})
-
-	// The suite mutates one work order's stamp step by step, so the sections run in
-	// order rather than as parallel subtests.
+	h := newTestApp(db, nudgeGrants())
 
 	// Seed rows never carry the stamp: UpdatedAt is an output_only_update_fn, written
 	// only by the update pipeline.
@@ -110,25 +116,11 @@ func TestNudgeWorkOrderTouch(t *testing.T) {
 	if !second.Valid || !second.Time.After(first.Time) {
 		t.Errorf("second touch UpdatedAt = %v, want after the first %v", second, first)
 	}
-
-	// A finished work order has no one left to get its attention.
-	status, body = doRequest(t, h, http.MethodPost, "/api/waystations/ws-alpha/nudge-work-order",
-		fmt.Sprintf(`{"workOrderId":%q}`, woCraneID))
-	if status != http.StatusBadRequest {
-		t.Errorf("nudge a completed order: status = %d, want 400: %s", status, body)
-	}
-
-	// A missing row is a 404, not a silent success.
-	status, body = doRequest(t, h, http.MethodPost, "/api/waystations/ws-alpha/nudge-work-order",
-		`{"workOrderId":"80000000-0000-4000-8000-00000000dead"}`)
-	if status != http.StatusNotFound {
-		t.Errorf("nudge a missing order: status = %d, want 404: %s", status, body)
-	}
 }
 
-// TestNudgeWorkOrderTouchUngranted pins the decode-time Execute check: without the
-// grant the touch never runs, and the row keeps its unset stamp.
-func TestNudgeWorkOrderTouchUngranted(t *testing.T) {
+// TestNudgeWorkOrderRefusals pins every way a nudge is refused — and that a refused
+// nudge never runs the pipeline: the target row's stamp stays unset.
+func TestNudgeWorkOrderRefusals(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -137,22 +129,59 @@ func TestNudgeWorkOrderTouchUngranted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := newTestApp(db, grants{})
 
-	status, body := doRequest(t, h, http.MethodPost, "/api/waystations/ws-alpha/nudge-work-order",
-		fmt.Sprintf(`{"workOrderId":%q}`, woScrubberID))
-	if status != http.StatusForbidden {
-		t.Fatalf("ungranted nudge: status = %d, want 403: %s", status, body)
+	tests := []struct {
+		name        string
+		grants      grants
+		workOrderID string
+		rowExists   bool
+		wantStatus  int
+	}{
+		{
+			name:        "a finished work order has no one left to get its attention",
+			grants:      nudgeGrants(),
+			workOrderID: woCraneID, // completed
+			rowExists:   true,
+			wantStatus:  http.StatusBadRequest,
+		},
+		{
+			name:        "a missing row is a 404, not a silent success",
+			grants:      nudgeGrants(),
+			workOrderID: "80000000-0000-4000-8000-00000000dead",
+			wantStatus:  http.StatusNotFound,
+		},
+		{
+			name:        "without the Execute grant the decode refuses",
+			grants:      grants{},
+			workOrderID: woScrubberID, // in_progress, nudgeable if the grant were held
+			rowExists:   true,
+			wantStatus:  http.StatusForbidden,
+		},
 	}
-	if got := readColumn[spanner.NullTime](ctx, t, db, "WorkOrders", spanner.Key{woScrubberID}, "UpdatedAt"); got.Valid {
-		t.Errorf("UpdatedAt = %v after a refused nudge, want unset", got)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newTestApp(db, tt.grants)
+
+			status, body := doRequest(t, h, http.MethodPost, "/api/waystations/ws-alpha/nudge-work-order",
+				fmt.Sprintf(`{"workOrderId":%q}`, tt.workOrderID))
+			if status != tt.wantStatus {
+				t.Fatalf("status = %d, want %d: %s", status, tt.wantStatus, body)
+			}
+
+			if tt.rowExists {
+				if got := readColumn[spanner.NullTime](ctx, t, db, "WorkOrders", spanner.Key{tt.workOrderID}, "UpdatedAt"); got.Valid {
+					t.Errorf("UpdatedAt = %v after a refused nudge, want unset", got)
+				}
+			}
+		})
 	}
 }
 
 // TestNudgeWorkOrderBootstrapParity runs the nudge over the real permission engine
-// with the committed demo roles: the foreman chases work on their own station, the
-// quartermaster holds no nudge grant at all, and a role scoped to ws-alpha buys
-// nothing on the ws-beta route.
+// with the committed demo roles.
 func TestNudgeWorkOrderBootstrapParity(t *testing.T) {
 	t.Parallel()
 
@@ -164,31 +193,46 @@ func TestNudgeWorkOrderBootstrapParity(t *testing.T) {
 	}
 	h := newDemoApp(ctx, t, db)
 
-	t.Run("foreman nudges an open order on their station", func(t *testing.T) {
-		t.Parallel()
+	tests := []struct {
+		name        string
+		user        accesstypes.User
+		domain      string
+		workOrderID string
+		wantStatus  int
+	}{
+		{
+			name:        "foreman nudges an open order on their station",
+			user:        "foreman-okafor",
+			domain:      wsAlpha,
+			workOrderID: woOvenID,
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:        "quartermaster holds no nudge grant",
+			user:        "quartermaster-idris",
+			domain:      wsAlpha,
+			workOrderID: woScrubberID,
+			wantStatus:  http.StatusForbidden,
+		},
+		{
+			name:        "foreman's role is scoped to ws-alpha, so ws-beta refuses",
+			user:        "foreman-okafor",
+			domain:      wsBeta,
+			workOrderID: woBetaAirID,
+			wantStatus:  http.StatusForbidden,
+		},
+	}
 
-		status, body := doRequestAs(t, h, "foreman-okafor", http.MethodPost, "/api/waystations/ws-alpha/nudge-work-order",
-			fmt.Sprintf(`{"workOrderId":%q}`, woOvenID))
-		assertStatus(t, status, http.StatusOK, body)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("quartermaster holds no nudge grant", func(t *testing.T) {
-		t.Parallel()
-
-		status, body := doRequestAs(t, h, "quartermaster-idris", http.MethodPost, "/api/waystations/ws-alpha/nudge-work-order",
-			fmt.Sprintf(`{"workOrderId":%q}`, woScrubberID))
-		if status != http.StatusForbidden {
-			t.Errorf("quartermaster nudge: status = %d, want 403: %s", status, body)
-		}
-	})
-
-	t.Run("foreman's role is scoped to ws-alpha", func(t *testing.T) {
-		t.Parallel()
-
-		status, body := doRequestAs(t, h, "foreman-okafor", http.MethodPost, "/api/waystations/ws-beta/nudge-work-order",
-			fmt.Sprintf(`{"workOrderId":%q}`, woBetaAirID))
-		if status != http.StatusForbidden {
-			t.Errorf("foreman on ws-beta: status = %d, want 403: %s", status, body)
-		}
-	})
+			status, body := doRequestAs(t, h, tt.user, http.MethodPost,
+				fmt.Sprintf("/api/waystations/%s/nudge-work-order", tt.domain),
+				fmt.Sprintf(`{"workOrderId":%q}`, tt.workOrderID))
+			if status != tt.wantStatus {
+				t.Errorf("status = %d, want %d: %s", status, tt.wantStatus, body)
+			}
+		})
+	}
 }
