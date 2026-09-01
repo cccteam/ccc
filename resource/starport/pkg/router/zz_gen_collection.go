@@ -28,8 +28,10 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "id"},
 					{Name: "occupied", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "sizeClass", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "stationId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 				},
 				ImmutableTags: []accesstypes.Tag{"designation"},
+				Domain:        &resource.DomainBindingData{Column: "StationId"},
 			},
 			{
 				Name:        "GantryCranes",
@@ -40,7 +42,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "id"},
 					{Name: "liftTonnage", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "operational", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "stationId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 				},
+				Domain: &resource.DomainBindingData{Column: "StationId"},
 			},
 			{
 				Name:        "AuthorizeLaunch",

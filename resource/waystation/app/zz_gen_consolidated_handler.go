@@ -51,7 +51,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 	type incidentReportRequest struct {
 		ID              ccc.UUID `json:"-"`
-		WaystationID    string   `json:"waystationId"`
+		WaystationID    string   `json:"-"`
 		Summary         string   `json:"summary"`
 		Severity        int64    `json:"severity"`
 		ReporterContact string   `json:"reporterContact"`
@@ -62,7 +62,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 	type inventoryLotRequest struct {
 		ID            ccc.UUID    `json:"-"`
-		WaystationID  string      `json:"waystationId"`
+		WaystationID  string      `json:"-"`
 		CatalogItemID ccc.UUID    `json:"catalogItemId"`
 		Quantity      int64       `json:"quantity"`
 		ExpiresOn     *civil.Date `json:"expiresOn"`
@@ -72,7 +72,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 	type requisitionRequest struct {
 		ID            ccc.UUID        `json:"-"`
-		WaystationID  string          `json:"waystationId"`
+		WaystationID  string          `json:"-"`
 		RequestedBy   string          `json:"-"`
 		Justification *string         `json:"justification"`
 		NeededBy      civil.Date      `json:"neededBy"`
@@ -92,7 +92,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 	type shipmentRequest struct {
 		ID           ccc.UUID   `json:"-"`
-		WaystationID string     `json:"waystationId"`
+		WaystationID string     `json:"-"`
 		SupplierID   ccc.UUID   `json:"supplierId"`
 		ManifestCode string     `json:"manifestCode" immutable:"true"`
 		ArrivedAt    *time.Time `json:"arrivedAt"`
@@ -110,7 +110,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 	type teamRequest struct {
 		ID           ccc.UUID `json:"-"`
-		WaystationID string   `json:"waystationId"`
+		WaystationID string   `json:"-"`
 		Name         string   `json:"name"`
 		Specialty    string   `json:"specialty"`
 	}
@@ -132,7 +132,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 	type workOrderRequest struct {
 		ID             ccc.UUID     `json:"-"`
-		WaystationID   string       `json:"waystationId"`
+		WaystationID   string       `json:"-"`
 		AssetID        ccc.UUID     `json:"assetId"`
 		Title          string       `json:"title"`
 		Summary        *string      `json:"summary"`

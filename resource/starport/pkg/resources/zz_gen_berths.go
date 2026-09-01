@@ -121,6 +121,7 @@ func NewBerthColumns() *BerthColumns {
 func (c *BerthColumns) All() *BerthColumns {
 	c.fields = []accesstypes.Field{
 		"ID",
+		"StationID",
 		"Designation",
 		"SizeClass",
 		"Occupied",
@@ -131,6 +132,12 @@ func (c *BerthColumns) All() *BerthColumns {
 
 func (c *BerthColumns) ID() *BerthColumns {
 	c.fields = append(c.fields, "ID")
+
+	return c
+}
+
+func (c *BerthColumns) StationID() *BerthColumns {
+	c.fields = append(c.fields, "StationID")
 
 	return c
 }
@@ -243,6 +250,10 @@ func (c *berthSort) ID() *BerthSort {
 	return c.addField("ID")
 }
 
+func (c *berthSort) StationID() *BerthSort {
+	return c.addField("StationID")
+}
+
 func (c *berthSort) Designation() *BerthSort {
 	return c.addField("Designation")
 }
@@ -328,6 +339,22 @@ func (p *BerthCreatePatch) ID() ccc.UUID {
 	v, _ := p.patchSet.Key("ID").(ccc.UUID)
 
 	return v
+}
+
+func (p *BerthCreatePatch) SetStationID(v string) *BerthCreatePatch {
+	p.patchSet.Set("StationID", v)
+
+	return p
+}
+
+func (p *BerthCreatePatch) StationID() string {
+	v, _ := p.patchSet.Get("StationID").(string)
+
+	return v
+}
+
+func (p *BerthCreatePatch) StationIDIsSet() bool {
+	return p.patchSet.IsSet("StationID")
 }
 
 func (p *BerthCreatePatch) SetDesignation(v string) *BerthCreatePatch {
@@ -432,6 +459,22 @@ func (p *BerthUpdatePatch) ID() ccc.UUID {
 	v, _ := p.patchSet.Key("ID").(ccc.UUID)
 
 	return v
+}
+
+func (p *BerthUpdatePatch) SetStationID(v string) *BerthUpdatePatch {
+	p.patchSet.Set("StationID", v)
+
+	return p
+}
+
+func (p *BerthUpdatePatch) StationID() string {
+	v, _ := p.patchSet.Get("StationID").(string)
+
+	return v
+}
+
+func (p *BerthUpdatePatch) StationIDIsSet() bool {
+	return p.patchSet.IsSet("StationID")
 }
 
 func (p *BerthUpdatePatch) SetDesignation(v string) *BerthUpdatePatch {

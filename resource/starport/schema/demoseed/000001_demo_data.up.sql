@@ -40,11 +40,11 @@ VALUES ('a1b2c3d4-aaaa-4aaa-8aaa-a1b2c3d4aaaa', 'Coolant cells', 40, 1, 'provisi
 INSERT INTO SupplyCrates (Id, Label, Quantity, Priority, Status, Barcode, Notes, InspectorBadge, AssignedShipId)
 VALUES ('b2c3d4e5-bbbb-4bbb-8bbb-b2c3d4e5bbbb', 'Emergency rations', 300, 2, 'inspected', 'BC-4402', 'Rotate stock quarterly', 'INS-7', NULL);
 
-INSERT INTO Berths (Id, Designation, SizeClass, Occupied)
-VALUES ('c3d4e5f6-cccc-4ccc-8ccc-c3d4e5f6cccc', 'Berth A-1', 2, FALSE);
+INSERT INTO Berths (Id, StationId, Designation, SizeClass, Occupied)
+VALUES ('c3d4e5f6-cccc-4ccc-8ccc-c3d4e5f6cccc', 'station-alpha', 'Berth A-1', 2, FALSE);
 
-INSERT INTO Berths (Id, Designation, SizeClass, Occupied)
-VALUES ('d4e5f6a7-dddd-4ddd-8ddd-d4e5f6a7dddd', 'Berth A-2', 3, TRUE);
+INSERT INTO Berths (Id, StationId, Designation, SizeClass, Occupied)
+VALUES ('d4e5f6a7-dddd-4ddd-8ddd-d4e5f6a7dddd', 'station-alpha', 'Berth A-2', 3, TRUE);
 
-INSERT INTO Berths (Id, Designation, SizeClass, Occupied)
-VALUES ('e5f6a7b8-eeee-4eee-8eee-e5f6a7b8eeee', 'Berth C-9', 5, FALSE);
+INSERT INTO Berths (Id, StationId, Designation, SizeClass, Occupied)
+VALUES ('e5f6a7b8-eeee-4eee-8eee-e5f6a7b8eeee', 'station-beta', 'Berth C-9', 5, FALSE);

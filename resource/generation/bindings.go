@@ -134,14 +134,9 @@ func (c *client) resolveBindingAnnotations(res *resourceInfo, pStruct *parser.St
 		}
 
 		if fieldAnnotations.Has(domainKeyword) {
-			binding, err := c.resolveDomain(anchor, fieldAnnotations.Get(domainKeyword), structsByTable)
-			if err != nil {
+			if err := c.resolveDomainBinding(res, anchor, fieldAnnotations.Get(domainKeyword), structsByTable); err != nil {
 				return errors.Wrapf(err, "struct %s field %s", pStruct.Name(), pField.Name())
 			}
-			if res.DomainBinding != nil {
-				return errors.Newf("struct %s field %s: @%s already declared on field %s — a resource resolves to exactly one tenant", pStruct.Name(), pField.Name(), domainKeyword, res.DomainBinding.Anchor.Name())
-			}
-			res.DomainBinding = binding
 		}
 
 		for _, keyword := range []string{subjectSetKeyword, subjectValueKeyword} {
@@ -165,25 +160,29 @@ func (c *client) resolveBindingAnnotations(res *resourceInfo, pStruct *parser.St
 		}
 	}
 
-	return validateSubjectAnchorTenancy(res, pStruct)
+	return validateDomainBinding(res, pStruct.Name())
 }
 
-// validateSubjectAnchorTenancy rejects a domain-scoped resource that anchors
-// subject vocabulary without a @domain binding. A domain-scoped resource's rows
-// belong to tenants by definition, so a subject anchor must resolve its rows to
-// a tenant — without @domain the rendered subject.<name> subquery is
-// partition-blind and matches the user's rows from every tenant. A
-// global-scoped anchor is the deliberately shared pattern and stays unfiltered.
-func validateSubjectAnchorTenancy(res *resourceInfo, pStruct *parser.Struct) error {
-	if !res.IsDomainScoped() || res.DomainBinding != nil {
-		return nil
+// validateDomainBinding enforces the structural-tenancy pairing (design plan
+// §06): a domain-scoped resource MUST declare how its rows resolve to the
+// tenant key — the binding is what querybuilder and patchset inject the
+// tenant predicate from, so its absence would leave the partition unfiltered
+// (this also subsumes the earlier subject-anchor rule: a partition-blind
+// subject.<name> subquery would match the user's rows from every tenant).
+// Global scope is the explicit opt-out: a resource with no tenant declares
+// @permissionScope(global), never an omitted binding — and conversely a
+// global resource has no partition for a @domain binding to resolve to.
+func validateDomainBinding(res *resourceInfo, structName string) error {
+	if res.IsDomainScoped() && res.DomainBinding == nil {
+		return errors.Newf("struct %s: a domain-scoped resource requires a @%s binding resolving its rows to the tenant key — declare @%s on the tenant column, or @%s(via: ...) on the foreign key the path leaves through; a resource with no tenant opts out explicitly with @%s(%s)",
+			structName, domainKeyword, domainKeyword, domainKeyword, permissionScopeKeyword, accesstypes.GlobalPermissionScope)
 	}
-	if len(res.SubjectSets) == 0 && len(res.SubjectValues) == 0 {
-		return nil
+	if !res.IsDomainScoped() && res.DomainBinding != nil {
+		return errors.Newf("struct %s: @%s is only valid on a domain-scoped resource — a global resource has no tenant partition to resolve to; declare @%s(%s) or remove the binding",
+			structName, domainKeyword, permissionScopeKeyword, accesstypes.DomainPermissionScope)
 	}
 
-	return errors.Newf("struct %s: a domain-scoped resource anchoring @%s/@%s requires a @%s binding — without it subject.<name> matches the user's rows from every tenant; declare @%s (or @%s(%s) if the anchor is deliberately shared across tenants)",
-		pStruct.Name(), subjectSetKeyword, subjectValueKeyword, domainKeyword, domainKeyword, permissionScopeKeyword, accesstypes.GlobalPermissionScope)
+	return nil
 }
 
 // resolveAttribute compiles one @attribute(name[, via: Remote.Segments]):
@@ -210,6 +209,33 @@ func (c *client) resolveAttribute(anchor *resourceField, arg genlang.Arg, struct
 	}
 
 	return binding, nil
+}
+
+// resolveDomainBinding compiles and attaches a resource's @domain annotation.
+// A bare @domain additionally derives the anchor column's runtime behavior —
+// the tenant key decodes output-only and is stamped from the request's domain
+// partition — so restating that behavior through tags is rejected: behavior
+// is never stated twice.
+func (c *client) resolveDomainBinding(res *resourceInfo, anchor *resourceField, arg genlang.Arg, structsByTable map[string]*parser.Struct) error {
+	binding, err := c.resolveDomain(anchor, arg, structsByTable)
+	if err != nil {
+		return err
+	}
+	if res.DomainBinding != nil {
+		return errors.Newf("@%s already declared on field %s — a resource resolves to exactly one tenant", domainKeyword, res.DomainBinding.Anchor.Name())
+	}
+	if len(binding.Path) == 0 {
+		if anchor.HasTag(conditionsTagKey) {
+			return errors.Newf("@%s derives the tenant column's decode behavior; remove the conditions tag — behavior is never stated twice", domainKeyword)
+		}
+		if anchor.HasDefaultCreateFunc() {
+			return errors.Newf("@%s stamps the tenant column from the request's domain; remove the %s tag — behavior is never stated twice", domainKeyword, defaultCreateFnTagKey)
+		}
+		anchor.IsTenantKey = true
+	}
+	res.DomainBinding = binding
+
+	return nil
 }
 
 // resolveDomain compiles a @domain annotation: bare marks the anchor as the
@@ -406,11 +432,16 @@ func validateBindingName(name, keyword string) error {
 
 // rejectBindingAnnotations fails extraction when a binding annotation appears
 // on a struct kind that has no schema to resolve it against: bindings are
-// table-backed resources' vocabulary.
-func rejectBindingAnnotations(pStruct *parser.Struct, annotations genlang.StructAnnotations, kind string) error {
+// table-backed resources' vocabulary. Keywords in allowed are exempt — a
+// virtual resource may carry a bare @domain naming a column of its own
+// projection (design plan §06), which needs no schema to resolve.
+func rejectBindingAnnotations(pStruct *parser.Struct, annotations genlang.StructAnnotations, kind string, allowed ...string) error {
 	var errs []error
 	for i, field := range pStruct.Fields() {
 		for _, keyword := range []string{attributeKeyword, domainKeyword, subjectSetKeyword, subjectValueKeyword, stateKeyword, stateRootKeyword} {
+			if slices.Contains(allowed, keyword) {
+				continue
+			}
 			if annotations.Fields[i].Has(keyword) {
 				errs = append(errs, errors.Newf("struct %s field %s: @%s is only valid on @resource structs; a %s has no schema to resolve it against", pStruct.Name(), field.Name(), keyword, kind))
 			}
@@ -421,6 +452,37 @@ func rejectBindingAnnotations(pStruct *parser.Struct, annotations genlang.Struct
 	}
 
 	return nil
+}
+
+// resolveVirtualDomain compiles a virtual resource's @domain binding. A
+// virtual resource executes through the library path over its embedded
+// subquery, so tenancy injection reaches it — but there is no schema to
+// resolve a join path against: only the bare form is valid, naming a column
+// the view's projection must carry.
+func resolveVirtualDomain(res *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
+	fieldByName := make(map[string]*resourceField, len(res.Fields))
+	for _, f := range res.Fields {
+		fieldByName[f.Name()] = f
+	}
+
+	for i, pField := range pStruct.Fields() {
+		if !annotations.Fields[i].Has(domainKeyword) {
+			continue
+		}
+		if annotations.Fields[i].Get(domainKeyword).Count() != 0 {
+			return errors.Newf("struct %s field %s: @%s on a virtual resource takes no arguments — a virtual has no schema to resolve a join path against; the binding names a column of the view's projection", pStruct.Name(), pField.Name(), domainKeyword)
+		}
+		anchor, ok := fieldByName[pField.Name()]
+		if !ok {
+			return errors.Newf("struct %s field %s: @%s requires a projection-backed field", pStruct.Name(), pField.Name(), domainKeyword)
+		}
+		if res.DomainBinding != nil {
+			return errors.Newf("struct %s field %s: @%s already declared on field %s — a resource resolves to exactly one tenant", pStruct.Name(), pField.Name(), domainKeyword, res.DomainBinding.Anchor.Name())
+		}
+		res.DomainBinding = &domainBinding{Anchor: anchor}
+	}
+
+	return validateDomainBinding(res, pStruct.Name())
 }
 
 // splitPathSegments splits a dotted path into its Go-field-name segments.

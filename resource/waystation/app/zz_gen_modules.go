@@ -143,7 +143,7 @@ func (a *App) Module() http.HandlerFunc {
 func (a *App) PatchModules() http.HandlerFunc {
 	type request struct {
 		ID            ccc.UUID `json:"-"`
-		WaystationID  string   `json:"waystationId"`
+		WaystationID  string   `json:"-"`
 		Name          string   `json:"name"`
 		Zone          string   `json:"zone"`
 		PressureRated bool     `json:"pressureRated"`

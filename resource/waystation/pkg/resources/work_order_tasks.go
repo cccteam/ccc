@@ -17,9 +17,11 @@ type (
 	WorkOrderTask struct {
 		// The parent-key column is named Id because Spanner interleaving requires the
 		// child's leading key column to carry the parent's key column name; the Go
-		// field keeps the readable name.
+		// field keeps the readable name. The task's tenant is its work order's
+		// station, declared as a join-path @domain through the same anchoring key.
 		//
 		// @stateRoot(WorkOrder)
+		// @domain(via: WaystationID)
 		WorkOrderID  ccc.UUID `spanner:"Id"`
 		TaskNumber   int64    `spanner:"TaskNumber"`
 		Instructions string   `spanner:"Instructions"`

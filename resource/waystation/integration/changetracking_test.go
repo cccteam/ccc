@@ -53,12 +53,10 @@ func TestChangeTracking(t *testing.T) {
 	h := newTestApp(db, grants{
 		accesstypes.Create: {
 			workOrdersResource,
-			fieldResource(workOrdersResource, "waystationId"),
 			fieldResource(workOrdersResource, "assetId"),
 			fieldResource(workOrdersResource, "title"),
 			fieldResource(workOrdersResource, "priority"),
 			modules,
-			fieldResource(modules, "waystationId"),
 			fieldResource(modules, "name"),
 			fieldResource(modules, "zone"),
 			fieldResource(modules, "pressureRated"),
@@ -75,7 +73,7 @@ func TestChangeTracking(t *testing.T) {
 		{
 			name:       "a tracked resource's create writes its change event in the same transaction",
 			target:     "/api/resources",
-			ops:        fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"Tracked create","priority":1}}]`, assetRecyclerID),
+			ops:        fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"assetId":%q,"title":"Tracked create","priority":1}}]`, assetRecyclerID),
 			table:      "WorkOrders",
 			wantEvents: 1,
 		},
@@ -84,7 +82,7 @@ func TestChangeTracking(t *testing.T) {
 			// carries the mutation — covering that route shape in the same breath.
 			name:       "an untracked resource writes none",
 			target:     "/api/waystations/ws-alpha/modules",
-			ops:        `[{"op":"add","path":"/","value":{"waystationId":"ws-alpha","name":"Annex","zone":"cargo","pressureRated":false}}]`,
+			ops:        `[{"op":"add","path":"/","value":{"name":"Annex","zone":"cargo","pressureRated":false}}]`,
 			table:      "Modules",
 			wantEvents: 0,
 		},

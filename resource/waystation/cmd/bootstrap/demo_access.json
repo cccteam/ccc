@@ -584,7 +584,6 @@
             {
               "resource": "Modules",
               "fields": [
-                "waystationId",
                 "name",
                 "zone",
                 "pressureRated"
@@ -610,7 +609,6 @@
             {
               "resource": "Teams",
               "fields": [
-                "waystationId",
                 "name",
                 "specialty"
               ]
@@ -621,7 +619,6 @@
             {
               "resource": "WorkOrders",
               "fields": [
-                "waystationId",
                 "assetId",
                 "title",
                 "summary",
@@ -640,7 +637,6 @@
             {
               "resource": "IncidentReports",
               "fields": [
-                "waystationId",
                 "summary",
                 "severity",
                 "reporterContact",
@@ -977,7 +973,6 @@
             {
               "resource": "WorkOrders",
               "fields": [
-                "waystationId",
                 "assetId",
                 "title",
                 "summary",
@@ -997,7 +992,6 @@
             {
               "resource": "Requisitions",
               "fields": [
-                "waystationId",
                 "justification",
                 "neededBy"
               ]
@@ -1316,7 +1310,6 @@
             {
               "resource": "InventoryLots",
               "fields": [
-                "waystationId",
                 "catalogItemId",
                 "quantity",
                 "expiresOn",
@@ -1393,7 +1386,6 @@
             {
               "resource": "SensorReadings",
               "fields": [
-                "waystationId",
                 "facilityId",
                 "metric",
                 "reading",

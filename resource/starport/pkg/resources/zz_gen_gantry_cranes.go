@@ -121,6 +121,7 @@ func NewGantryCraneColumns() *GantryCraneColumns {
 func (c *GantryCraneColumns) All() *GantryCraneColumns {
 	c.fields = []accesstypes.Field{
 		"ID",
+		"StationID",
 		"Callsign",
 		"LiftTonnage",
 		"Operational",
@@ -131,6 +132,12 @@ func (c *GantryCraneColumns) All() *GantryCraneColumns {
 
 func (c *GantryCraneColumns) ID() *GantryCraneColumns {
 	c.fields = append(c.fields, "ID")
+
+	return c
+}
+
+func (c *GantryCraneColumns) StationID() *GantryCraneColumns {
+	c.fields = append(c.fields, "StationID")
 
 	return c
 }
@@ -243,6 +250,10 @@ func (c *gantryCraneSort) ID() *GantryCraneSort {
 	return c.addField("ID")
 }
 
+func (c *gantryCraneSort) StationID() *GantryCraneSort {
+	return c.addField("StationID")
+}
+
 func (c *gantryCraneSort) Callsign() *GantryCraneSort {
 	return c.addField("Callsign")
 }
@@ -328,6 +339,22 @@ func (p *GantryCraneCreatePatch) ID() ccc.UUID {
 	v, _ := p.patchSet.Key("ID").(ccc.UUID)
 
 	return v
+}
+
+func (p *GantryCraneCreatePatch) SetStationID(v string) *GantryCraneCreatePatch {
+	p.patchSet.Set("StationID", v)
+
+	return p
+}
+
+func (p *GantryCraneCreatePatch) StationID() string {
+	v, _ := p.patchSet.Get("StationID").(string)
+
+	return v
+}
+
+func (p *GantryCraneCreatePatch) StationIDIsSet() bool {
+	return p.patchSet.IsSet("StationID")
 }
 
 func (p *GantryCraneCreatePatch) SetCallsign(v string) *GantryCraneCreatePatch {
@@ -432,6 +459,22 @@ func (p *GantryCraneUpdatePatch) ID() ccc.UUID {
 	v, _ := p.patchSet.Key("ID").(ccc.UUID)
 
 	return v
+}
+
+func (p *GantryCraneUpdatePatch) SetStationID(v string) *GantryCraneUpdatePatch {
+	p.patchSet.Set("StationID", v)
+
+	return p
+}
+
+func (p *GantryCraneUpdatePatch) StationID() string {
+	v, _ := p.patchSet.Get("StationID").(string)
+
+	return v
+}
+
+func (p *GantryCraneUpdatePatch) StationIDIsSet() bool {
+	return p.patchSet.IsSet("StationID")
 }
 
 func (p *GantryCraneUpdatePatch) SetCallsign(v string) *GantryCraneUpdatePatch {

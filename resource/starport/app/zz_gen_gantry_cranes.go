@@ -17,6 +17,7 @@ import (
 func (a *App) GantryCranes() http.HandlerFunc {
 	type gantryCrane struct {
 		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		StationID   string   `json:"stationId"`
 		Callsign    string   `json:"callsign"    index:"true"`
 		LiftTonnage int64    `json:"liftTonnage"`
 		Operational bool     `json:"operational"`
@@ -51,6 +52,10 @@ func (a *App) GantryCranes() http.HandlerFunc {
 					if !row.Masked("id") {
 						rmap["id"] = rec.ID
 					}
+				case "StationID":
+					if !row.Masked("stationId") {
+						rmap["stationId"] = rec.StationID
+					}
 				case "Callsign":
 					if !row.Masked("callsign") {
 						rmap["callsign"] = rec.Callsign
@@ -75,6 +80,7 @@ func (a *App) GantryCranes() http.HandlerFunc {
 func (a *App) GantryCrane() http.HandlerFunc {
 	type response struct {
 		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		StationID   string   `json:"stationId"`
 		Callsign    string   `json:"callsign"    index:"true"`
 		LiftTonnage int64    `json:"liftTonnage"`
 		Operational bool     `json:"operational"`
@@ -107,6 +113,10 @@ func (a *App) GantryCrane() http.HandlerFunc {
 			case "ID":
 				if !row.Masked("id") {
 					rmap["id"] = rec.ID
+				}
+			case "StationID":
+				if !row.Masked("stationId") {
+					rmap["stationId"] = rec.StationID
 				}
 			case "Callsign":
 				if !row.Masked("callsign") {

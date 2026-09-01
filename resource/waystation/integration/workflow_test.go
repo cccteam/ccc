@@ -23,7 +23,6 @@ func workflowGrants() grants {
 	return grants{
 		accesstypes.Create: {
 			workOrdersResource,
-			fieldResource(workOrdersResource, "waystationId"),
 			fieldResource(workOrdersResource, "assetId"),
 			fieldResource(workOrdersResource, "title"),
 			fieldResource(workOrdersResource, "priority"),
@@ -62,7 +61,7 @@ func TestWorkOrderWorkflow(t *testing.T) {
 
 	// The wire cannot express a state write: the patch decode is closed over statusId.
 	status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"Smuggled state","priority":1,"statusId":"completed"}}]`, assetRecyclerID))
+		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"assetId":%q,"title":"Smuggled state","priority":1,"statusId":"completed"}}]`, assetRecyclerID))
 	if status != http.StatusBadRequest {
 		t.Fatalf("statusId on the wire: status = %d, want 400: %s", status, body)
 	}
@@ -70,7 +69,7 @@ func TestWorkOrderWorkflow(t *testing.T) {
 	// Create a draft as a specific user: CreatedBy is server-stamped from the session
 	// and the initial state comes from the @state default, never the client.
 	status, body = doRequestAs(t, h, "workflow-author", http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"Recycler tune-up","priority":2}}]`, assetRecyclerID))
+		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"assetId":%q,"title":"Recycler tune-up","priority":2}}]`, assetRecyclerID))
 	assertStatus(t, status, http.StatusOK, body)
 	created := decodeRow(t, body)
 	ids, _ := created["workOrders"].([]any)

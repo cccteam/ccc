@@ -53,7 +53,6 @@ func TestManualResourceAuditTrail(t *testing.T) {
 		accesstypes.List: {resources.AuditTrailEntries},
 		accesstypes.Create: {
 			workOrdersResource,
-			fieldResource(workOrdersResource, "waystationId"),
 			fieldResource(workOrdersResource, "assetId"),
 			fieldResource(workOrdersResource, "title"),
 			fieldResource(workOrdersResource, "priority"),
@@ -63,7 +62,7 @@ func TestManualResourceAuditTrail(t *testing.T) {
 	// A tracked mutation through the generated surface produces the event the
 	// hand-written surface serves.
 	status, body := doRequestAs(t, newAuditApp(db, auditGrants), "audit-actor", http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"Audited create","priority":1}}]`, assetRecyclerID))
+		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"assetId":%q,"title":"Audited create","priority":1}}]`, assetRecyclerID))
 	assertStatus(t, status, http.StatusOK, body)
 
 	tests := []struct {

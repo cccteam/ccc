@@ -20,7 +20,6 @@ func incidentGrants() grants {
 	return grants{
 		accesstypes.Create: {
 			incidentsResource,
-			fieldResource(incidentsResource, "waystationId"),
 			fieldResource(incidentsResource, "summary"),
 			fieldResource(incidentsResource, "severity"),
 			fieldResource(incidentsResource, "reporterContact"),
@@ -56,7 +55,7 @@ func TestIncidentServerFields(t *testing.T) {
 
 	// Supplying the output_only case number is rejected, not ignored.
 	status, body := doRequest(t, h, http.MethodPatch, "/api/resources",
-		`[{"op":"add","path":"/waystations/ws-alpha/incident-reports","value":{"waystationId":"ws-alpha","summary":"Vent rattle","severity":2,"reporterContact":"crew@ws-alpha.demo","caseNumber":"IR-FORGED"}}]`)
+		`[{"op":"add","path":"/waystations/ws-alpha/incident-reports","value":{"summary":"Vent rattle","severity":2,"reporterContact":"crew@ws-alpha.demo","caseNumber":"IR-FORGED"}}]`)
 	if status != http.StatusBadRequest {
 		t.Fatalf("client-supplied caseNumber: status = %d, want 400: %s", status, body)
 	}
@@ -64,7 +63,7 @@ func TestIncidentServerFields(t *testing.T) {
 	// A clean create gets a server-issued case number; the input_only raw statement
 	// lands in the row but never serializes back out.
 	status, body = doRequest(t, h, http.MethodPatch, "/api/resources",
-		`[{"op":"add","path":"/waystations/ws-alpha/incident-reports","value":{"waystationId":"ws-alpha","summary":"Vent rattle","severity":2,"reporterContact":"crew@ws-alpha.demo","rawStatement":"It rattles on spin-up."}}]`)
+		`[{"op":"add","path":"/waystations/ws-alpha/incident-reports","value":{"summary":"Vent rattle","severity":2,"reporterContact":"crew@ws-alpha.demo","rawStatement":"It rattles on spin-up."}}]`)
 	assertStatus(t, status, http.StatusOK, body)
 	ids, _ := decodeRow(t, body)["incidentReports"].([]any)
 	if len(ids) != 1 {

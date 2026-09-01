@@ -4,6 +4,7 @@ import { PermissionScope, PermissionScopes, Resources } from './zz_gen_constants
 
 export interface Berths {
   id: string;
+  stationId?: string;
   designation?: string;
   sizeClass?: number;
   occupied?: boolean;
@@ -35,6 +36,7 @@ export interface DockingBays {
 
 export interface GantryCranes {
   id: string;
+  stationId?: string;
   callsign?: string;
   liftTonnage?: number;
   operational?: boolean;
@@ -88,6 +90,7 @@ const resourceMap: ResourceMap = {
     route: 'stations/{stationID}/berths',
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'stationId', displayType: 'string', required: false, isIndex: false },
       { fieldName: 'designation', displayType: 'string', required: true, isIndex: true },
       { fieldName: 'sizeClass', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'occupied', displayType: 'boolean', required: true, isIndex: false },
@@ -130,6 +133,7 @@ const resourceMap: ResourceMap = {
     consolidatedRoute: 'resources',
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'stationId', displayType: 'string', required: false, isIndex: false },
       { fieldName: 'callsign', displayType: 'string', required: true, isIndex: true },
       { fieldName: 'liftTonnage', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'operational', displayType: 'boolean', required: true, isIndex: false },

@@ -41,12 +41,14 @@ export namespace Berths {
     id: 'id' as FieldName,
     occupied: 'occupied' as FieldName,
     sizeClass: 'sizeClass' as FieldName,
+    stationId: 'stationId' as FieldName,
   };
   export const resourceName = {
     designation: 'Berths.designation' as Resource,
     id: 'Berths.id' as Resource,
     occupied: 'Berths.occupied' as Resource,
     sizeClass: 'Berths.sizeClass' as Resource,
+    stationId: 'Berths.stationId' as Resource,
   };
 }
 
@@ -109,12 +111,14 @@ export namespace GantryCranes {
     id: 'id' as FieldName,
     liftTonnage: 'liftTonnage' as FieldName,
     operational: 'operational' as FieldName,
+    stationId: 'stationId' as FieldName,
   };
   export const resourceName = {
     callsign: 'GantryCranes.callsign' as Resource,
     id: 'GantryCranes.id' as Resource,
     liftTonnage: 'GantryCranes.liftTonnage' as Resource,
     operational: 'GantryCranes.operational' as Resource,
+    stationId: 'GantryCranes.stationId' as Resource,
   };
 }
 
@@ -263,6 +267,13 @@ const Mappings: PermissionMappings = {
     [Permissions.List]: true,
     [Permissions.Read]: true,
     [Permissions.Update]: true,
+  },
+  [Berths.resourceName.stationId]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: false,
   },
   [Resources.CargoManifests]: {
     [Permissions.Create]: true,
@@ -424,6 +435,13 @@ const Mappings: PermissionMappings = {
     [Permissions.List]: true,
     [Permissions.Read]: true,
     [Permissions.Update]: true,
+  },
+  [GantryCranes.resourceName.stationId]: {
+    [Permissions.Create]: false,
+    [Permissions.Delete]: false,
+    [Permissions.List]: true,
+    [Permissions.Read]: true,
+    [Permissions.Update]: false,
   },
   [Resources.ManifestLines]: {
     [Permissions.Create]: false,

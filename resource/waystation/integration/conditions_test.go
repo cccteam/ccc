@@ -372,10 +372,10 @@ func TestDemoWorkflowEnforcement(t *testing.T) {
 
 	// Creating work orders is condition-gated on the proposed row itself.
 	status, body = doRequestAs(t, h, "foreman-okafor", http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"Illegally critical","priority":5}}]`, assetRecyclerID))
+		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"assetId":%q,"title":"Illegally critical","priority":5}}]`, assetRecyclerID))
 	assertStatus(t, status, http.StatusForbidden, body)
 	status, body = doRequestAs(t, h, "foreman-okafor", http.MethodPatch, "/api/resources",
-		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"Routine filter check","priority":2}}]`, assetRecyclerID))
+		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"assetId":%q,"title":"Routine filter check","priority":2}}]`, assetRecyclerID))
 	assertStatus(t, status, http.StatusOK, body)
 
 	// Task checklists open only while work is running: the uniform state binding on

@@ -20,9 +20,11 @@ type (
 	RequisitionLine struct {
 		// The parent-key column is named Id because Spanner interleaving requires the
 		// child's leading key column to carry the parent's key column name; the Go
-		// field keeps the readable name.
+		// field keeps the readable name. The line's tenant is its requisition's
+		// station, declared as a join-path @domain through the same anchoring key.
 		//
 		// @stateRoot(Requisition)
+		// @domain(via: WaystationID)
 		RequisitionID    ccc.UUID        `spanner:"Id"`
 		LineNumber       int64           `spanner:"LineNumber"`
 		CatalogItemID    ccc.UUID        `spanner:"CatalogItemId"`

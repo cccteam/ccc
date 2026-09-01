@@ -717,6 +717,13 @@ type resourceField struct {
 	IsState      bool
 	StateDefault string
 
+	// IsTenantKey marks the anchor of a bare-column @domain binding (design
+	// plan §06): the tenant column decodes output-only — the wire cannot
+	// express a tenant write, on create or update — and the framework stamps
+	// the value from the request's domain partition at decode, so the checked
+	// domain and the written domain are the same value by construction.
+	IsTenantKey bool
+
 	// WorkflowRoot is the @stateRoot argument: the workflow root's struct
 	// name, declared on the member's anchoring FK field (the field IS the
 	// hop). Empty for fields outside any workflow.
@@ -873,8 +880,10 @@ func (f *resourceField) IsImmutable() bool {
 
 func (f *resourceField) IsOutputOnly() bool {
 	// A state field decodes output-only by derivation: the wire must not be
-	// able to express a state write (transitions live in RPC bodies).
-	if f.IsState {
+	// able to express a state write (transitions live in RPC bodies). A
+	// tenant-key column is the same shape: the framework stamps it from the
+	// request's domain partition, so the wire cannot write it.
+	if f.IsState || f.IsTenantKey {
 		return true
 	}
 

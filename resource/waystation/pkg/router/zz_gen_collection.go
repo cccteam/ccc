@@ -70,7 +70,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "reporterContact", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "severity", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "summary", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
-					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 				},
 				Domain: &resource.DomainBindingData{Column: "WaystationId"},
 			},
@@ -89,7 +89,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "expiresOn", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "id"},
 					{Name: "quantity", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
-					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 				},
 				Attributes: []resource.AttributeData{
 					{Name: "expiresOn", Column: "ExpiresOn", Type: "date"},
@@ -104,7 +104,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "id"},
 					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "pressureRated", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
-					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "zone", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 				},
 				Domain: &resource.DomainBindingData{Column: "WaystationId"},
@@ -125,6 +125,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "teamName", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.List}},
 				},
+				Domain: &resource.DomainBindingData{Column: "WaystationId"},
 			},
 			{
 				Name:        "ReceiveShipment",
@@ -145,6 +146,7 @@ func Collection() *resource.GeneratedCollection {
 				Attributes: []resource.AttributeData{
 					{Name: "state", Column: "Id", Type: "string", Path: []resource.BindingHop{{Table: "Requisitions", JoinColumn: "Id", Column: "StatusId"}}},
 				},
+				Domain: &resource.DomainBindingData{Column: "Id", Path: []resource.BindingHop{{Table: "Requisitions", JoinColumn: "Id", Column: "WaystationId"}}},
 			},
 			{
 				Name:        "Requisitions",
@@ -157,7 +159,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "requestedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "statusId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "totalCost", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
-					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 				},
 				Attributes: []resource.AttributeData{
 					{Name: "neededBy", Column: "NeededBy", Type: "date"},
@@ -182,7 +184,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "metric", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Update}},
 					{Name: "reading", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Update}},
 					{Name: "recordedAt", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Update}},
-					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Update}},
+					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.List}},
 				},
 				Domain: &resource.DomainBindingData{Column: "WaystationId"},
 			},
@@ -195,7 +197,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "id"},
 					{Name: "manifestCode", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
 					{Name: "supplierId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
-					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 				},
 				ImmutableTags: []accesstypes.Tag{"manifestCode"},
 				Attributes: []resource.AttributeData{
@@ -247,8 +249,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "id"},
 					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "specialty", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
-					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 				},
+				Domain: &resource.DomainBindingData{Column: "WaystationId"},
 			},
 			{
 				Name:        "WorkOrderTasks",
@@ -263,6 +266,7 @@ func Collection() *resource.GeneratedCollection {
 				Attributes: []resource.AttributeData{
 					{Name: "state", Column: "Id", Type: "string", Path: []resource.BindingHop{{Table: "WorkOrders", JoinColumn: "Id", Column: "StatusId"}}},
 				},
+				Domain: &resource.DomainBindingData{Column: "Id", Path: []resource.BindingHop{{Table: "WorkOrders", JoinColumn: "Id", Column: "WaystationId"}}},
 			},
 			{
 				Name:        "WorkOrders",
@@ -279,7 +283,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "summary", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "title", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "updatedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
-					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "waystationId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 				},
 				Attributes: []resource.AttributeData{
 					{Name: "assignedTeam", Column: "AssignedTeamId", Type: "string"},

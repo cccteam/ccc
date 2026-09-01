@@ -107,6 +107,14 @@ func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissio
 
 	p.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, requiredPermission)
 
+	// Structural tenancy: a create's tenant key is stamped from the request's
+	// domain partition — the wire cannot express it (design plan §06).
+	if requiredPermission == accesstypes.Create {
+		if err := p.stampTenantKey(); err != nil {
+			return nil, err
+		}
+	}
+
 	return p, nil
 }
 

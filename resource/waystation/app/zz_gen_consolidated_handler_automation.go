@@ -21,7 +21,7 @@ import (
 func (a *App) PatchAutomationResources() http.HandlerFunc {
 	type sensorReadingRequest struct {
 		ID           ccc.UUID  `json:"-"`
-		WaystationID string    `json:"waystationId"`
+		WaystationID string    `json:"-"`
 		FacilityID   ccc.UUID  `json:"facilityId"`
 		Metric       string    `json:"metric"`
 		Reading      float64   `json:"reading"`
@@ -31,7 +31,7 @@ func (a *App) PatchAutomationResources() http.HandlerFunc {
 
 	type shipmentRequest struct {
 		ID           ccc.UUID   `json:"-"`
-		WaystationID string     `json:"waystationId"`
+		WaystationID string     `json:"-"`
 		SupplierID   ccc.UUID   `json:"supplierId"`
 		ManifestCode string     `json:"manifestCode" immutable:"true"`
 		ArrivedAt    *time.Time `json:"arrivedAt"`

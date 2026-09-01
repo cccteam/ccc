@@ -8,25 +8,33 @@ import (
 	"github.com/cccteam/ccc"
 )
 
-// MaintenanceTask carries the well-formed binding shapes.
-type MaintenanceTask struct {
-	ID ccc.UUID `spanner:"Id"`
+// Struct-level annotations only parse from a TypeSpec doc comment, so scoped
+// structs sit in grouped type blocks like real project sources do.
+type (
+	// MaintenanceTask carries the well-formed binding shapes. It is
+	// domain-scoped because @domain pairs with domain scope (both directions
+	// of the tenancy pairing are rejection shapes below).
+	//
+	// @permissionScope(domain)
+	MaintenanceTask struct {
+		ID ccc.UUID `spanner:"Id"`
 
-	// @domain
-	StationID ccc.UUID `spanner:"StationId"`
+		// @domain
+		StationID ccc.UUID `spanner:"StationId"`
 
-	// @attribute(crew)
-	CrewID ccc.UUID `spanner:"CrewId"`
+		// @attribute(crew)
+		CrewID ccc.UUID `spanner:"CrewId"`
 
-	// @attribute(shipClass, via: Class)
-	ShipID ccc.UUID `spanner:"ShipId"`
+		// @attribute(shipClass, via: Class)
+		ShipID ccc.UUID `spanner:"ShipId"`
 
-	// @attribute(sector, via: StationID.Sector)
-	BerthID ccc.UUID `spanner:"BerthId"`
+		// @attribute(sector, via: StationID.Sector)
+		BerthID ccc.UUID `spanner:"BerthId"`
 
-	// @attribute(estimatedCost)
-	EstimatedCost int64 `spanner:"EstimatedCost"`
-}
+		// @attribute(estimatedCost)
+		EstimatedCost int64 `spanner:"EstimatedCost"`
+	}
+)
 
 // Ship is the one-hop target: ShipID resolves shipClass to Ships.Class.
 type Ship struct {
@@ -45,18 +53,22 @@ type Station struct {
 	Sector string   `spanner:"Sector"`
 }
 
-// CrewMember anchors the subject-side set vocabulary.
-type CrewMember struct {
-	ID ccc.UUID `spanner:"Id"`
+type (
+	// CrewMember anchors the subject-side set vocabulary.
+	//
+	// @permissionScope(domain)
+	CrewMember struct {
+		ID ccc.UUID `spanner:"Id"`
 
-	// @subjectSet(crews, value: CrewID)
-	UserID ccc.UUID `spanner:"UserId"`
+		// @subjectSet(crews, value: CrewID)
+		UserID ccc.UUID `spanner:"UserId"`
 
-	CrewID ccc.UUID `spanner:"CrewId"`
+		CrewID ccc.UUID `spanner:"CrewId"`
 
-	// @domain
-	StationID ccc.UUID `spanner:"StationId"`
-}
+		// @domain
+		StationID ccc.UUID `spanner:"StationId"`
+	}
+)
 
 // UserProfile anchors the scalar vocabulary; UserID is the primary key.
 type UserProfile struct {
@@ -156,6 +168,38 @@ type DoubleTenant struct {
 	// @domain
 	RegionID ccc.UUID `spanner:"RegionId"`
 }
+
+// GlobalTenant is the reverse tenancy-pairing rejection: a @domain binding on
+// a resource that is not domain-scoped has no tenant partition to resolve to.
+type GlobalTenant struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @domain
+	StationID ccc.UUID `spanner:"StationId"`
+}
+
+// TenantStatedTwice restates the bare tenant key's derived decode behavior
+// through a conditions tag.
+type (
+	// @permissionScope(domain)
+	TenantStatedTwice struct {
+		ID ccc.UUID `spanner:"Id"`
+
+		// @domain
+		StationID ccc.UUID `spanner:"StationId" conditions:"immutable"`
+	}
+)
+
+type (
+	// UnboundTenant is the mandatory-binding rejection: domain-scoped with no
+	// @domain declared anywhere.
+	//
+	// @permissionScope(domain)
+	UnboundTenant struct {
+		ID   ccc.UUID `spanner:"Id"`
+		Name string   `spanner:"Name"`
+	}
+)
 
 // VirtualWithBinding stands in for every schemaless struct kind in the
 // rejection test.

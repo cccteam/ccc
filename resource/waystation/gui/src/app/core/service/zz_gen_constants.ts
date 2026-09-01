@@ -723,11 +723,11 @@ const Mappings: PermissionMappings = {
     [Permissions.Update]: true,
   },
   [IncidentReports.resourceName.waystationId]: {
-    [Permissions.Create]: true,
+    [Permissions.Create]: false,
     [Permissions.Delete]: false,
     [Permissions.List]: true,
     [Permissions.Read]: true,
-    [Permissions.Update]: true,
+    [Permissions.Update]: false,
   },
   [Resources.InventoryLots]: {
     [Permissions.Create]: true,
@@ -772,11 +772,11 @@ const Mappings: PermissionMappings = {
     [Permissions.Update]: true,
   },
   [InventoryLots.resourceName.waystationId]: {
-    [Permissions.Create]: true,
+    [Permissions.Create]: false,
     [Permissions.Delete]: false,
     [Permissions.List]: true,
     [Permissions.Read]: true,
-    [Permissions.Update]: true,
+    [Permissions.Update]: false,
   },
   [Resources.Modules]: {
     [Permissions.Create]: true,
@@ -807,11 +807,11 @@ const Mappings: PermissionMappings = {
     [Permissions.Update]: true,
   },
   [Modules.resourceName.waystationId]: {
-    [Permissions.Create]: true,
+    [Permissions.Create]: false,
     [Permissions.Delete]: false,
     [Permissions.List]: true,
     [Permissions.Read]: true,
-    [Permissions.Update]: true,
+    [Permissions.Update]: false,
   },
   [Modules.resourceName.zone]: {
     [Permissions.Create]: true,
@@ -954,11 +954,11 @@ const Mappings: PermissionMappings = {
     [Permissions.Update]: false,
   },
   [Requisitions.resourceName.waystationId]: {
-    [Permissions.Create]: true,
+    [Permissions.Create]: false,
     [Permissions.Delete]: false,
     [Permissions.List]: true,
     [Permissions.Read]: true,
-    [Permissions.Update]: true,
+    [Permissions.Update]: false,
   },
   [Resources.SensorReadings]: {
     [Permissions.Create]: true,
@@ -1003,11 +1003,11 @@ const Mappings: PermissionMappings = {
     [Permissions.Update]: true,
   },
   [SensorReadings.resourceName.waystationId]: {
-    [Permissions.Create]: true,
+    [Permissions.Create]: false,
     [Permissions.Delete]: false,
     [Permissions.List]: true,
     [Permissions.Read]: false,
-    [Permissions.Update]: true,
+    [Permissions.Update]: false,
   },
   [Resources.Shipments]: {
     [Permissions.Create]: true,
@@ -1045,11 +1045,11 @@ const Mappings: PermissionMappings = {
     [Permissions.Update]: true,
   },
   [Shipments.resourceName.waystationId]: {
-    [Permissions.Create]: true,
+    [Permissions.Create]: false,
     [Permissions.Delete]: false,
     [Permissions.List]: true,
     [Permissions.Read]: true,
-    [Permissions.Update]: true,
+    [Permissions.Update]: false,
   },
   [Resources.SpendByCategories]: {
     [Permissions.Create]: false,
@@ -1269,11 +1269,11 @@ const Mappings: PermissionMappings = {
     [Permissions.Update]: true,
   },
   [Teams.resourceName.waystationId]: {
-    [Permissions.Create]: true,
+    [Permissions.Create]: false,
     [Permissions.Delete]: false,
     [Permissions.List]: true,
     [Permissions.Read]: true,
-    [Permissions.Update]: true,
+    [Permissions.Update]: false,
   },
   [Resources.Waystations]: {
     [Permissions.Create]: true,
@@ -1423,11 +1423,11 @@ const Mappings: PermissionMappings = {
     [Permissions.Update]: false,
   },
   [WorkOrders.resourceName.waystationId]: {
-    [Permissions.Create]: true,
+    [Permissions.Create]: false,
     [Permissions.Delete]: false,
     [Permissions.List]: true,
     [Permissions.Read]: true,
-    [Permissions.Update]: true,
+    [Permissions.Update]: false,
   },
 };
 

@@ -218,7 +218,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			name:         "PatchModules update denied",
 			method:       http.MethodPatch,
 			target:       "/api/waystations/testDomain/modules",
-			body:         `[{"op":"patch","path":"/00000000-0000-0000-0000-000000000001","value":{"waystationId":"authz-test-value"}}]`,
+			body:         `[{"op":"patch","path":"/00000000-0000-0000-0000-000000000001","value":{"name":"authz-test-value"}}]`,
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
@@ -687,7 +687,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			name:         "PatchResources IncidentReport update denied",
 			method:       http.MethodPatch,
 			target:       "/api/resources",
-			body:         `[{"op":"patch","path":"/waystations/testDomain/incident-reports/00000000-0000-0000-0000-000000000001","value":{"waystationId":"authz-test-value"}}]`,
+			body:         `[{"op":"patch","path":"/waystations/testDomain/incident-reports/00000000-0000-0000-0000-000000000001","value":{"summary":"authz-test-value"}}]`,
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
@@ -708,7 +708,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			name:         "PatchResources InventoryLot update denied",
 			method:       http.MethodPatch,
 			target:       "/api/resources",
-			body:         `[{"op":"patch","path":"/waystations/testDomain/inventory-lots/00000000-0000-0000-0000-000000000001","value":{"waystationId":"authz-test-value"}}]`,
+			body:         `[{"op":"patch","path":"/waystations/testDomain/inventory-lots/00000000-0000-0000-0000-000000000001","value":{"catalogItemId":"00000000-0000-0000-0000-000000000001"}}]`,
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
@@ -729,7 +729,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			name:         "PatchResources Requisition update denied",
 			method:       http.MethodPatch,
 			target:       "/api/resources",
-			body:         `[{"op":"patch","path":"/waystations/testDomain/requisitions/00000000-0000-0000-0000-000000000001","value":{"waystationId":"authz-test-value"}}]`,
+			body:         `[{"op":"patch","path":"/waystations/testDomain/requisitions/00000000-0000-0000-0000-000000000001","value":{"justification":"authz-test-value"}}]`,
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
@@ -771,7 +771,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			name:         "PatchResources Shipment update denied",
 			method:       http.MethodPatch,
 			target:       "/api/resources",
-			body:         `[{"op":"patch","path":"/waystations/testDomain/shipments/00000000-0000-0000-0000-000000000001","value":{"waystationId":"authz-test-value"}}]`,
+			body:         `[{"op":"patch","path":"/waystations/testDomain/shipments/00000000-0000-0000-0000-000000000001","value":{"supplierId":"00000000-0000-0000-0000-000000000001"}}]`,
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
@@ -813,7 +813,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			name:         "PatchResources Team update denied",
 			method:       http.MethodPatch,
 			target:       "/api/resources",
-			body:         `[{"op":"patch","path":"/waystations/testDomain/teams/00000000-0000-0000-0000-000000000001","value":{"waystationId":"authz-test-value"}}]`,
+			body:         `[{"op":"patch","path":"/waystations/testDomain/teams/00000000-0000-0000-0000-000000000001","value":{"name":"authz-test-value"}}]`,
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
@@ -869,7 +869,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			name:         "PatchResources WorkOrder update denied",
 			method:       http.MethodPatch,
 			target:       "/api/resources",
-			body:         `[{"op":"patch","path":"/waystations/testDomain/work-orders/00000000-0000-0000-0000-000000000001","value":{"waystationId":"authz-test-value"}}]`,
+			body:         `[{"op":"patch","path":"/waystations/testDomain/work-orders/00000000-0000-0000-0000-000000000001","value":{"assetId":"00000000-0000-0000-0000-000000000001"}}]`,
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
@@ -911,7 +911,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			name:         "PatchAutomationResources SensorReading update denied",
 			method:       http.MethodPatch,
 			target:       "/automation/resources",
-			body:         `[{"op":"patch","path":"/waystations/testDomain/sensor-readings/00000000-0000-0000-0000-000000000001","value":{"waystationId":"authz-test-value"}}]`,
+			body:         `[{"op":"patch","path":"/waystations/testDomain/sensor-readings/00000000-0000-0000-0000-000000000001","value":{"facilityId":"00000000-0000-0000-0000-000000000001"}}]`,
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
@@ -932,7 +932,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			name:         "PatchAutomationResources Shipment update denied",
 			method:       http.MethodPatch,
 			target:       "/automation/resources",
-			body:         `[{"op":"patch","path":"/waystations/testDomain/shipments/00000000-0000-0000-0000-000000000001","value":{"waystationId":"authz-test-value"}}]`,
+			body:         `[{"op":"patch","path":"/waystations/testDomain/shipments/00000000-0000-0000-0000-000000000001","value":{"supplierId":"00000000-0000-0000-0000-000000000001"}}]`,
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{

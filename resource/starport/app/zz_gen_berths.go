@@ -20,6 +20,7 @@ import (
 func (a *App) Berths() http.HandlerFunc {
 	type berth struct {
 		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		StationID   string   `json:"stationId"`
 		Designation string   `json:"designation" index:"true"`
 		SizeClass   int64    `json:"sizeClass"`
 		Occupied    bool     `json:"occupied"`
@@ -54,6 +55,10 @@ func (a *App) Berths() http.HandlerFunc {
 					if !row.Masked("id") {
 						rmap["id"] = rec.ID
 					}
+				case "StationID":
+					if !row.Masked("stationId") {
+						rmap["stationId"] = rec.StationID
+					}
 				case "Designation":
 					if !row.Masked("designation") {
 						rmap["designation"] = rec.Designation
@@ -78,6 +83,7 @@ func (a *App) Berths() http.HandlerFunc {
 func (a *App) Berth() http.HandlerFunc {
 	type response struct {
 		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		StationID   string   `json:"stationId"`
 		Designation string   `json:"designation" index:"true"`
 		SizeClass   int64    `json:"sizeClass"`
 		Occupied    bool     `json:"occupied"`
@@ -111,6 +117,10 @@ func (a *App) Berth() http.HandlerFunc {
 				if !row.Masked("id") {
 					rmap["id"] = rec.ID
 				}
+			case "StationID":
+				if !row.Masked("stationId") {
+					rmap["stationId"] = rec.StationID
+				}
 			case "Designation":
 				if !row.Masked("designation") {
 					rmap["designation"] = rec.Designation
@@ -133,6 +143,7 @@ func (a *App) Berth() http.HandlerFunc {
 func (a *App) PatchBerths() http.HandlerFunc {
 	type request struct {
 		ID          ccc.UUID `json:"-"`
+		StationID   string   `json:"-"`
 		Designation string   `json:"designation" immutable:"true"`
 		SizeClass   int64    `json:"sizeClass"`
 		Occupied    bool     `json:"occupied"`

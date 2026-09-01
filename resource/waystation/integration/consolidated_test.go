@@ -54,7 +54,6 @@ func TestConsolidatedBatchSemantics(t *testing.T) {
 
 	createGrants := grants{accesstypes.Create: {
 		workOrdersResource,
-		fieldResource(workOrdersResource, "waystationId"),
 		fieldResource(workOrdersResource, "assetId"),
 		fieldResource(workOrdersResource, "title"),
 		fieldResource(workOrdersResource, "priority"),
@@ -69,7 +68,7 @@ func TestConsolidatedBatchSemantics(t *testing.T) {
 	}{
 		{
 			name: "the operation vocabulary is closed: upsert is not expressible",
-			ops: fmt.Sprintf(`[{"op":"upsert","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"upsert probe","priority":1}}]`,
+			ops: fmt.Sprintf(`[{"op":"upsert","path":"/waystations/ws-alpha/work-orders","value":{"assetId":%q,"title":"upsert probe","priority":1}}]`,
 				assetRecyclerID),
 			wantStatus: http.StatusBadRequest,
 			title:      "upsert probe",
@@ -80,8 +79,8 @@ func TestConsolidatedBatchSemantics(t *testing.T) {
 			// orders at both stations — the batch's two domains commit together.
 			name: "one batch spans waystations atomically",
 			ops: fmt.Sprintf(`[
-				{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"cross-domain batch","priority":1}},
-				{"op":"add","path":"/waystations/ws-beta/work-orders","value":{"waystationId":"ws-beta","assetId":%q,"title":"cross-domain batch","priority":1}}
+				{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"assetId":%q,"title":"cross-domain batch","priority":1}},
+				{"op":"add","path":"/waystations/ws-beta/work-orders","value":{"assetId":%q,"title":"cross-domain batch","priority":1}}
 			]`, assetRecyclerID, assetBetaAirID),
 			wantStatus: http.StatusOK,
 			title:      "cross-domain batch",
@@ -93,8 +92,8 @@ func TestConsolidatedBatchSemantics(t *testing.T) {
 			// not survive it.
 			name: "a refused operation rolls back the whole batch",
 			ops: fmt.Sprintf(`[
-				{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"waystationId":"ws-alpha","assetId":%q,"title":"atomic probe","priority":1}},
-				{"op":"add","path":"/waystations/ws-beta/teams","value":{"waystationId":"ws-beta","name":"Rollback Crew","specialty":"none"}}
+				{"op":"add","path":"/waystations/ws-alpha/work-orders","value":{"assetId":%q,"title":"atomic probe","priority":1}},
+				{"op":"add","path":"/waystations/ws-beta/teams","value":{"name":"Rollback Crew","specialty":"none"}}
 			]`, assetRecyclerID),
 			wantStatus: http.StatusForbidden,
 			title:      "atomic probe",

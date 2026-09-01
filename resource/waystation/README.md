@@ -60,7 +60,7 @@ All login passwords are `waystation`.
   there is no imperative permission code anywhere in the app.
 - **Structural enforcement** (fail-closed field permissions, outlet exclusivity,
   suppressed routes, domain guard) — `integration/structural_test.go`; Team is the
-  deliberately annotation-free resource.
+  deliberately minimal resource (no vocabulary beyond the mandatory `@domain`).
 - **Reserved query parameters** (filter with indexed/allow_filter gating, PII filter
   placement, sort/limit/offset) — `integration/queryparams_test.go`. Foreign-key
   columns are filterable automatically: Spanner FKs create backing indexes and the
@@ -177,9 +177,15 @@ The same tour in the browser, persona by persona:
   pseudo-version directly. The requirement is invisible until runtime-with-data.
 - **Computed resources hand-write `Resource()`** (virtuals get it generated), and
   hand-built query paths need explicit `.AddColumns(...All())`.
-- **Domain scope partitions permissions, not rows.** An unconditional grant sees every
-  station's rows on any station's route — pinned deliberately in the conditions and
-  query-parameter suites as the gap the planned tenancy injection (E2) closes.
+- **Tenant keys are stamped, never sent.** A bare `@domain` column decodes
+  output-only (create and update closed on the wire); the framework stamps it from
+  the URL's — or the consolidated op path's — domain on create, so the checked
+  domain and the written domain are the same value by construction. Create payloads
+  and RoleConfig write grants naming the tenant field are rejected.
+- **Domain scope partitions permissions, not rows (yet).** An unconditional grant
+  still sees every station's rows on any station's route — pinned deliberately in
+  the conditions and query-parameter suites as the gap E2's read/write predicate
+  injection closes next.
 
 ## Regen discipline
 

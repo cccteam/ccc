@@ -4,8 +4,8 @@ package integration
 // permissions are fail-closed (a resource-only grant exposes nothing beyond the
 // primary key), explicitly granted fields shape the response exactly, and the
 // domain guard 404s unknown tenants before permissions are consulted. Team is the
-// deliberately bare resource — no field annotations, no bindings — so nothing here
-// depends on authoring vocabulary.
+// deliberately minimal resource — no vocabulary beyond the mandatory @domain
+// binding — so nothing here depends on authored attributes.
 
 import (
 	"fmt"

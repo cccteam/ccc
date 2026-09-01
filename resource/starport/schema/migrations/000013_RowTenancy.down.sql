@@ -1,0 +1,3 @@
+ALTER TABLE Berths DROP COLUMN StationId;
+
+ALTER TABLE GantryCranes DROP COLUMN StationId;

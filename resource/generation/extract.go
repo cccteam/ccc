@@ -108,6 +108,35 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 	return resources, nil
 }
 
+// resolveVirtualAnnotations applies a virtual resource's struct- and
+// field-level annotations: suppression, manual Sets, permission scope,
+// outlets, and — with the scope resolved — the @domain tenancy binding.
+func resolveVirtualAnnotations(resource *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
+	if annotations.Struct.Has(suppressKeyword) {
+		if err := applySuppressDirectives(resource, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
+			return errors.Wrapf(err, "@suppress on %s", pStruct.Name())
+		}
+	}
+
+	if annotations.Struct.Has(manualAddResourceSetKeyword) {
+		if err := applyManualAddResourceSetDirectives(resource, annotations.Struct.Get(manualAddResourceSetKeyword).Seq()); err != nil {
+			return errors.Wrapf(err, "@%s on %s", manualAddResourceSetKeyword, pStruct.Name())
+		}
+	}
+
+	if err := resolvePermissionScope(annotations, &resource.PermissionScope); err != nil {
+		return errors.Wrapf(err, "on %s", pStruct.Name())
+	}
+
+	if err := resolveOutlets(annotations, &resource.outletMembership); err != nil {
+		return errors.Wrapf(err, "on %s", pStruct.Name())
+	}
+
+	// Scope resolves above; the tenancy pairing (domain-scoped ⇔ @domain)
+	// validates against it.
+	return resolveVirtualDomain(resource, pStruct, annotations)
+}
+
 // parsePermissionScopeAnnotation resolves a @permissionScope argument to one of the two
 // valid scopes.
 func parsePermissionScopeAnnotation(arg genlang.Arg) (accesstypes.PermissionScope, error) {
@@ -268,7 +297,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 
-		if err := rejectBindingAnnotations(pStruct, annotations, "virtual resource"); err != nil {
+		if err := rejectBindingAnnotations(pStruct, annotations, "virtual resource", domainKeyword); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -310,30 +339,8 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			field.IsNullable = nullability
 		}
 
-		if annotations.Struct.Has(suppressKeyword) {
-			if err := applySuppressDirectives(resource, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
-				errs = append(errs, errors.Wrapf(err, "@suppress on %s", pStruct.Name()))
-
-				continue
-			}
-		}
-
-		if annotations.Struct.Has(manualAddResourceSetKeyword) {
-			if err := applyManualAddResourceSetDirectives(resource, annotations.Struct.Get(manualAddResourceSetKeyword).Seq()); err != nil {
-				errs = append(errs, errors.Wrapf(err, "@%s on %s", manualAddResourceSetKeyword, pStruct.Name()))
-
-				continue
-			}
-		}
-
-		if err := resolvePermissionScope(annotations, &resource.PermissionScope); err != nil {
-			errs = append(errs, errors.Wrapf(err, "on %s", pStruct.Name()))
-
-			continue
-		}
-
-		if err := resolveOutlets(annotations, &resource.outletMembership); err != nil {
-			errs = append(errs, errors.Wrapf(err, "on %s", pStruct.Name()))
+		if err := resolveVirtualAnnotations(resource, pStruct, annotations); err != nil {
+			errs = append(errs, err)
 
 			continue
 		}

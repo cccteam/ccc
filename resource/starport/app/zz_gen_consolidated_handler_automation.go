@@ -21,6 +21,7 @@ import (
 func (a *App) PatchAutomationResources() http.HandlerFunc {
 	type gantryCraneRequest struct {
 		ID          ccc.UUID `json:"-"`
+		StationID   string   `json:"-"`
 		Callsign    string   `json:"callsign"`
 		LiftTonnage int64    `json:"liftTonnage"`
 		Operational bool     `json:"operational"`

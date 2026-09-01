@@ -59,6 +59,9 @@ func bindingFixtureTables() map[string]*tableMetadata {
 		"ChainBreakMembers":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "ShipId": fk("Ships")}},
 		"ScopedMembers":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "TaskId": fk("StatefulTasks")}},
 		"DoubleTenants":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "StationId": plain, "RegionId": plain}},
+		"GlobalTenants":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "StationId": plain}},
+		"TenantStatedTwices": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "StationId": plain}},
+		"UnboundTenants":     {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Name": plain}},
 	}
 }
 
@@ -254,6 +257,21 @@ func TestResolveBindingAnnotations_rejections(t *testing.T) {
 			name:        "domain-scoped subject anchor without a domain binding",
 			structName:  "PartitionBlindAnchor",
 			wantContain: "requires a @domain binding",
+		},
+		{
+			name:        "domain-scoped resource without a domain binding",
+			structName:  "UnboundTenant",
+			wantContain: "requires a @domain binding",
+		},
+		{
+			name:        "domain binding on a resource that is not domain-scoped",
+			structName:  "GlobalTenant",
+			wantContain: "only valid on a domain-scoped resource",
+		},
+		{
+			name:        "tenant key restating derived behavior through a conditions tag",
+			structName:  "TenantStatedTwice",
+			wantContain: "behavior is never stated twice",
 		},
 	}
 
