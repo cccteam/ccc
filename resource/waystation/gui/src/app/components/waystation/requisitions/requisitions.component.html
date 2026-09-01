@@ -1,0 +1,153 @@
+<h1>Requisitions</h1>
+<p>
+  Requisitions carry the approval workflow: draft lines are editable, Submit locks them and recomputes the total on the
+  server, and Approve is double-gated — the procurement officer's grant only covers submitted requisitions within their
+  personal approval limit. Line unit costs are masked per cell: without the cost grant the key is simply absent and
+  renders as an em-dash.
+</p>
+
+<app-waystation-select></app-waystation-select>
+
+<mat-card appearance="outlined" class="table-card">
+  <table mat-table [dataSource]="requisitions()">
+    <ng-container matColumnDef="justification">
+      <th mat-header-cell *matHeaderCellDef>Justification</th>
+      <td mat-cell *matCellDef="let requisition">{{ requisition.justification }}</td>
+    </ng-container>
+    <ng-container matColumnDef="status">
+      <th mat-header-cell *matHeaderCellDef>Status</th>
+      <td mat-cell *matCellDef="let requisition">
+        <span class="state-chip" [class]="'state-' + requisition.statusId">{{ requisition.statusId }}</span>
+      </td>
+    </ng-container>
+    <ng-container matColumnDef="requestedBy">
+      <th mat-header-cell *matHeaderCellDef>Requested By</th>
+      <td mat-cell *matCellDef="let requisition">{{ requisition.requestedBy }}</td>
+    </ng-container>
+    <ng-container matColumnDef="totalCost">
+      <th mat-header-cell *matHeaderCellDef>Total</th>
+      <td mat-cell *matCellDef="let requisition">{{ requisition.totalCost }}</td>
+    </ng-container>
+    <ng-container matColumnDef="neededBy">
+      <th mat-header-cell *matHeaderCellDef>Needed By</th>
+      <td mat-cell *matCellDef="let requisition">{{ (requisition.neededBy | date: 'mediumDate') || '—' }}</td>
+    </ng-container>
+    <ng-container matColumnDef="actions">
+      <th mat-header-cell *matHeaderCellDef></th>
+      <td mat-cell *matCellDef="let requisition">
+        @if (requisition.statusId === status.Draft) {
+          <button mat-stroked-button (click)="submit(requisition); $event.stopPropagation()">Submit</button>
+        }
+        @if (requisition.statusId === status.Submitted) {
+          <button mat-stroked-button (click)="approve(requisition); $event.stopPropagation()">Approve</button>
+        }
+      </td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="columns"></tr>
+    <tr
+      mat-row
+      *matRowDef="let row; columns: columns"
+      class="selectable"
+      [class.selected]="selected()?.id === row.id"
+      (click)="select(row)"></tr>
+  </table>
+  @if (!requisitions().length) {
+    <p class="empty">No requisitions visible in this waystation for your roles.</p>
+  }
+</mat-card>
+
+@if (selected(); as requisition) {
+  <mat-card appearance="outlined" class="detail-card">
+    <mat-card-header>
+      <mat-card-title>Lines — {{ requisition.justification }}</mat-card-title>
+      <mat-card-subtitle>
+        Server-owned total: {{ requisition.totalCost }} (recomputed from the lines at submit)
+      </mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <table mat-table [dataSource]="lines(requisition)">
+        <ng-container matColumnDef="item">
+          <th mat-header-cell *matHeaderCellDef>Catalog Item</th>
+          <td mat-cell *matCellDef="let line">{{ itemName(line.catalogItemId) }}</td>
+        </ng-container>
+        <ng-container matColumnDef="quantity">
+          <th mat-header-cell *matHeaderCellDef>Quantity</th>
+          <td mat-cell *matCellDef="let line">{{ line.quantity }}</td>
+        </ng-container>
+        <ng-container matColumnDef="unitCostSnapshot">
+          <th mat-header-cell *matHeaderCellDef>Unit Cost</th>
+          <td mat-cell *matCellDef="let line">{{ costLabel(line) }}</td>
+        </ng-container>
+        <ng-container matColumnDef="lineActions">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let line">
+            @if (requisition.statusId === status.Draft) {
+              <button mat-icon-button aria-label="Remove line" (click)="removeLine(line)">
+                <mat-icon>delete</mat-icon>
+              </button>
+            }
+          </td>
+        </ng-container>
+        <tr mat-header-row *matHeaderRowDef="lineColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: lineColumns"></tr>
+      </table>
+      @if (!lines(requisition).length) {
+        <p class="empty">No lines visible on this requisition.</p>
+      }
+
+      @if (requisition.statusId === status.Draft) {
+        <form class="inline-form" (ngSubmit)="addLine(requisition)">
+          <mat-form-field appearance="outline" class="grow">
+            <mat-label>Catalog Item</mat-label>
+            <mat-select name="catalogItemId" [(ngModel)]="newLineItemId">
+              @for (item of catalogItems(); track item.id) {
+                <mat-option [value]="item.id">{{ item.name }} ({{ item.sku }})</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Quantity</mat-label>
+            <input matInput name="quantity" type="number" min="1" [(ngModel)]="newLineQuantity" />
+          </mat-form-field>
+          <button mat-stroked-button type="submit">Add Line</button>
+        </form>
+      }
+
+      @if (requisition.statusId === status.Submitted) {
+        <form class="inline-form" (ngSubmit)="decline(requisition)">
+          <mat-form-field appearance="outline">
+            <mat-label>Decline Reason</mat-label>
+            <mat-select name="reason" [(ngModel)]="declineReason">
+              @for (reason of declineReasons; track reason) {
+                <mat-option [value]="reason">{{ reason }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <button mat-stroked-button type="submit">Decline</button>
+        </form>
+      }
+    </mat-card-content>
+  </mat-card>
+}
+
+<mat-card appearance="outlined" class="create-card">
+  <mat-card-header>
+    <mat-card-title>New Requisition</mat-card-title>
+    <mat-card-subtitle>
+      Created as a draft owned by you: a foreman only ever sees their own requisitions (requestedBy = subject).
+    </mat-card-subtitle>
+  </mat-card-header>
+  <mat-card-content>
+    <form (ngSubmit)="create()">
+      <mat-form-field appearance="outline" class="grow">
+        <mat-label>Justification</mat-label>
+        <input matInput name="justification" [(ngModel)]="newJustification" required />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Needed By</mat-label>
+        <input matInput name="neededBy" type="date" [(ngModel)]="newNeededBy" required />
+      </mat-form-field>
+      <button mat-flat-button type="submit">Create Draft</button>
+    </form>
+  </mat-card-content>
+</mat-card>

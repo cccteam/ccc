@@ -1,0 +1,62 @@
+<h1>Incident Reports</h1>
+<p>
+  The case number is assigned by the server (an output-only field — sending one is a 400), the raw statement is
+  write-only from this form (input-only: stored, never served back), and the reporter contact is PII: the auditor role
+  reads incidents without that field, so it renders below as withheld rather than empty.
+</p>
+
+<app-waystation-select></app-waystation-select>
+
+<mat-card appearance="outlined" class="table-card">
+  <table mat-table [dataSource]="incidents()">
+    <ng-container matColumnDef="caseNumber">
+      <th mat-header-cell *matHeaderCellDef>Case</th>
+      <td mat-cell *matCellDef="let incident">{{ incident.caseNumber }}</td>
+    </ng-container>
+    <ng-container matColumnDef="summary">
+      <th mat-header-cell *matHeaderCellDef>Summary</th>
+      <td mat-cell *matCellDef="let incident">{{ incident.summary }}</td>
+    </ng-container>
+    <ng-container matColumnDef="severity">
+      <th mat-header-cell *matHeaderCellDef>Severity</th>
+      <td mat-cell *matCellDef="let incident">{{ incident.severity }}</td>
+    </ng-container>
+    <ng-container matColumnDef="reporterContact">
+      <th mat-header-cell *matHeaderCellDef>Reporter Contact (PII)</th>
+      <td mat-cell *matCellDef="let incident">{{ contactLabel(incident) }}</td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="columns"></tr>
+    <tr mat-row *matRowDef="let row; columns: columns"></tr>
+  </table>
+  @if (!incidents().length) {
+    <p class="empty">No incident reports visible in this waystation for your roles.</p>
+  }
+</mat-card>
+
+<mat-card appearance="outlined" class="create-card">
+  <mat-card-header>
+    <mat-card-title>Report an Incident</mat-card-title>
+    <mat-card-subtitle>The case number comes back from the server — you cannot choose it.</mat-card-subtitle>
+  </mat-card-header>
+  <mat-card-content>
+    <form (ngSubmit)="report()">
+      <mat-form-field appearance="outline" class="grow">
+        <mat-label>Summary</mat-label>
+        <input matInput name="summary" [(ngModel)]="newSummary" required />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Severity (1–5)</mat-label>
+        <input matInput name="severity" type="number" min="1" max="5" [(ngModel)]="newSeverity" required />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Reporter Contact</mat-label>
+        <input matInput name="reporterContact" [(ngModel)]="newReporterContact" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="grow">
+        <mat-label>Raw Statement (write-only)</mat-label>
+        <input matInput name="rawStatement" [(ngModel)]="newRawStatement" />
+      </mat-form-field>
+      <button mat-flat-button type="submit">File Report</button>
+    </form>
+  </mat-card-content>
+</mat-card>

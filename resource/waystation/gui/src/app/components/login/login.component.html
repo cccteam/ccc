@@ -1,0 +1,33 @@
+<div class="login-page">
+  <mat-card class="login-card" appearance="outlined">
+    <mat-card-header>
+      <mat-card-title>🛰️ Waystation</mat-card-title>
+      <mat-card-subtitle>Logistics demo application</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <form (ngSubmit)="login()">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Username</mat-label>
+          <input matInput name="username" [(ngModel)]="username" autocomplete="username" required />
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Password</mat-label>
+          <input
+            matInput
+            name="password"
+            type="password"
+            [(ngModel)]="password"
+            autocomplete="current-password"
+            required />
+        </mat-form-field>
+        <button mat-flat-button color="primary" type="submit" class="full-width" [disabled]="busy()">Sign in</button>
+      </form>
+    </mat-card-content>
+    <mat-card-footer>
+      <p class="hint">
+        Demo personas share the password <code>waystation</code> — try <code>commander</code>,
+        <code>foreman-okafor</code>, or <code>auditor-voss</code> (seeded by cmd/bootstrap)
+      </p>
+    </mat-card-footer>
+  </mat-card>
+</div>

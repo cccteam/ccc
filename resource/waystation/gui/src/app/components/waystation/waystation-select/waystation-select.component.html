@@ -1,0 +1,8 @@
+<mat-form-field appearance="outline">
+  <mat-label>Waystation</mat-label>
+  <mat-select [value]="ws.current()" (selectionChange)="ws.select($event.value)">
+    @for (waystation of ws.waystations(); track waystation) {
+      <mat-option [value]="waystation">{{ waystation }}</mat-option>
+    }
+  </mat-select>
+</mat-form-field>

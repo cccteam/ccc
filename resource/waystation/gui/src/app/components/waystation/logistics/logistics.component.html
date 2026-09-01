@@ -1,0 +1,70 @@
+<h1>Logistics</h1>
+<p>
+  Two of the quartermaster's grants live here. Receive Shipment is permitted only while a shipment has not arrived (an
+  IS NULL condition — receiving twice is refused), and deleting an inventory lot is permitted only for lots that expired
+  before the cutover date: fresh lots and lots with no expiry at all refuse the delete.
+</p>
+
+<app-waystation-select></app-waystation-select>
+
+<h2>Shipments</h2>
+<mat-card appearance="outlined" class="table-card">
+  <table mat-table [dataSource]="shipments()">
+    <ng-container matColumnDef="manifestCode">
+      <th mat-header-cell *matHeaderCellDef>Manifest</th>
+      <td mat-cell *matCellDef="let shipment">{{ shipment.manifestCode }}</td>
+    </ng-container>
+    <ng-container matColumnDef="arrivedAt">
+      <th mat-header-cell *matHeaderCellDef>Arrived</th>
+      <td mat-cell *matCellDef="let shipment">{{ (shipment.arrivedAt | date: 'medium') || 'in transit' }}</td>
+    </ng-container>
+    <ng-container matColumnDef="shipmentActions">
+      <th mat-header-cell *matHeaderCellDef></th>
+      <td mat-cell *matCellDef="let shipment">
+        @if (!shipment.arrivedAt) {
+          <button mat-stroked-button (click)="receive(shipment)">Receive</button>
+        }
+      </td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="shipmentColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: shipmentColumns"></tr>
+  </table>
+  @if (!shipments().length) {
+    <p class="empty">No shipments visible in this waystation for your roles.</p>
+  }
+</mat-card>
+
+<h2>Inventory Lots</h2>
+<mat-card appearance="outlined" class="table-card">
+  <table mat-table [dataSource]="lots()">
+    <ng-container matColumnDef="item">
+      <th mat-header-cell *matHeaderCellDef>Catalog Item</th>
+      <td mat-cell *matCellDef="let lot">{{ itemName(lot.catalogItemId) }}</td>
+    </ng-container>
+    <ng-container matColumnDef="quantity">
+      <th mat-header-cell *matHeaderCellDef>Quantity</th>
+      <td mat-cell *matCellDef="let lot">{{ lot.quantity }}</td>
+    </ng-container>
+    <ng-container matColumnDef="expiresOn">
+      <th mat-header-cell *matHeaderCellDef>Expires</th>
+      <td mat-cell *matCellDef="let lot">{{ (lot.expiresOn | date: 'mediumDate') || 'no expiry' }}</td>
+    </ng-container>
+    <ng-container matColumnDef="binLocation">
+      <th mat-header-cell *matHeaderCellDef>Bin</th>
+      <td mat-cell *matCellDef="let lot">{{ lot.binLocation }}</td>
+    </ng-container>
+    <ng-container matColumnDef="lotActions">
+      <th mat-header-cell *matHeaderCellDef></th>
+      <td mat-cell *matCellDef="let lot">
+        <button mat-icon-button aria-label="Delete lot" (click)="removeLot(lot)">
+          <mat-icon>delete</mat-icon>
+        </button>
+      </td>
+    </ng-container>
+    <tr mat-header-row *matHeaderRowDef="lotColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: lotColumns"></tr>
+  </table>
+  @if (!lots().length) {
+    <p class="empty">No inventory lots visible in this waystation for your roles.</p>
+  }
+</mat-card>

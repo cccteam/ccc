@@ -1,0 +1,8 @@
+<div class="header">
+  <a class="brand" [routerLink]="['']">🛰️ Waystation</a>
+  <app-topbar></app-topbar>
+  <div class="session">
+    <span class="username">{{ auth.sessionInfo().username }}</span>
+    <button mat-stroked-button (click)="logout()">Logout</button>
+  </div>
+</div>
