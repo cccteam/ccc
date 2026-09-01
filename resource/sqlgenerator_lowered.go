@@ -139,25 +139,25 @@ func (n *loweredComparisonNode) String() string {
 	return fmt.Sprintf("lowered(%v %s %v)", n.left, n.op, n.right)
 }
 
-// loweredInNode tests a column against a literal list.
+// loweredInNode tests an attribute value against a literal list.
 type loweredInNode struct {
-	column  columnRef
+	left    comparand
 	negated bool
 	values  []any
 }
 
 func (n *loweredInNode) String() string {
-	return fmt.Sprintf("lowered(%v in %v)", n.column, n.values)
+	return fmt.Sprintf("lowered(%v in %v)", n.left, n.values)
 }
 
-// loweredNullTestNode is IS [NOT] NULL on a column.
+// loweredNullTestNode is IS [NOT] NULL on an attribute value.
 type loweredNullTestNode struct {
-	column  columnRef
+	left    comparand
 	negated bool
 }
 
 func (n *loweredNullTestNode) String() string {
-	return fmt.Sprintf("lowered(%v is null, negated=%v)", n.column, n.negated)
+	return fmt.Sprintf("lowered(%v is null, negated=%v)", n.left, n.negated)
 }
 
 // notNode negates its expression.
@@ -268,7 +268,11 @@ func (s *sqlGenerator) renderColumnRef(ref columnRef) string {
 	return s.quoteIdentifier(ref.qualifier) + "." + s.quoteIdentifier(ref.column)
 }
 
-func (s *sqlGenerator) generateLoweredInSQL(n *loweredInNode) string {
+func (s *sqlGenerator) generateLoweredInSQL(n *loweredInNode) (string, error) {
+	left, err := s.renderComparand(&n.left)
+	if err != nil {
+		return "", err
+	}
 	placeholders := make([]string, 0, len(n.values))
 	for _, v := range n.values {
 		placeholders = append(placeholders, s.registry.bind(v))
@@ -278,15 +282,19 @@ func (s *sqlGenerator) generateLoweredInSQL(n *loweredInNode) string {
 		op = "NOT IN"
 	}
 
-	return fmt.Sprintf("%s %s (%s)", s.renderColumnRef(n.column), op, strings.Join(placeholders, ", "))
+	return fmt.Sprintf("%s %s (%s)", left, op, strings.Join(placeholders, ", ")), nil
 }
 
-func (s *sqlGenerator) generateLoweredNullTestSQL(n *loweredNullTestNode) string {
+func (s *sqlGenerator) generateLoweredNullTestSQL(n *loweredNullTestNode) (string, error) {
+	left, err := s.renderComparand(&n.left)
+	if err != nil {
+		return "", err
+	}
 	if n.negated {
-		return s.renderColumnRef(n.column) + " IS NOT NULL"
+		return left + " IS NOT NULL", nil
 	}
 
-	return s.renderColumnRef(n.column) + " IS NULL"
+	return left + " IS NULL", nil
 }
 
 func (s *sqlGenerator) generateNotSQL(n *notNode) (string, error) {

@@ -65,7 +65,7 @@ func Test_decodersTemplate_gating(t *testing.T) {
 				"func NewComputedQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {",
 				"resource.MustNewComputedQueryDecoder[Resource, Request](permissions...)",
 				"func NewDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.Decoder[Resource, Request] {",
-				"resource.MustNewDecoder[Resource, Request](a, permissions...)",
+				"resource.MustNewDecoder[Resource, Request](a, router.Collection(), permissions...)",
 				"func NewRPCDecoder[Method rpc.Method, Request any](a *App, perm accesstypes.Permission) *resource.RPCDecoder[Request] {",
 				"resource.MustNewRPCDecoder[Request](a, method.Method(), perm)",
 			},

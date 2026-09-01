@@ -73,7 +73,7 @@ func TestLowerCondition_rendering(t *testing.T) {
 		name           string
 		source         string
 		partitioned    bool
-		newValueParams map[string]string
+		proposed       map[string]any
 		wantSQL        string
 		wantParams     []QueryParam
 		wantNamed      []string
@@ -107,25 +107,27 @@ func TestLowerCondition_rendering(t *testing.T) {
 			wantParams: []QueryParam{{Name: "_c1", Value: "Kepler"}},
 		},
 		{
-			name:           "threshold: proposed value against a subject value",
-			source:         "new.estimatedCost <= subject.approvalLimit",
-			newValueParams: map[string]string{"EstimatedCost": "new_EstimatedCost"},
-			wantSQL:        "@new_EstimatedCost <= (SELECT `ca1`.`ApprovalLimit` FROM `UserProfiles` `ca1` WHERE `ca1`.`UserId` = @subject)",
-			wantNamed:      []string{"new_EstimatedCost", "subject"},
+			name:       "threshold: proposed value against a subject value",
+			source:     "new.estimatedCost <= subject.approvalLimit",
+			proposed:   map[string]any{"EstimatedCost": 1200.0},
+			wantSQL:    "@_c1 <= (SELECT `ca1`.`ApprovalLimit` FROM `UserProfiles` `ca1` WHERE `ca1`.`UserId` = @subject)",
+			wantParams: []QueryParam{{Name: "_c1", Value: 1200.0}},
+			wantNamed:  []string{"_c1", "subject"},
 		},
 		{
-			name:           "untouched post-write column reads the existing value",
-			source:         "new.estimatedCost <= subject.approvalLimit",
-			newValueParams: map[string]string{},
-			wantSQL:        "`t`.`EstimatedCost` <= (SELECT `ca1`.`ApprovalLimit` FROM `UserProfiles` `ca1` WHERE `ca1`.`UserId` = @subject)",
-			wantNamed:      []string{"subject"},
+			name:      "untouched post-write column reads the existing value",
+			source:    "new.estimatedCost <= subject.approvalLimit",
+			proposed:  map[string]any{},
+			wantSQL:   "`t`.`EstimatedCost` <= (SELECT `ca1`.`ApprovalLimit` FROM `UserProfiles` `ca1` WHERE `ca1`.`UserId` = @subject)",
+			wantNamed: []string{"subject"},
 		},
 		{
-			name:           "capture guard: null test and subject fact",
-			source:         "assignee IS NULL AND new.assignee = subject",
-			newValueParams: map[string]string{"Assignee": "new_Assignee"},
-			wantSQL:        "(`t`.`Assignee` IS NULL AND @new_Assignee = @subject)",
-			wantNamed:      []string{"new_Assignee", "subject"},
+			name:       "capture guard: null test and subject fact",
+			source:     "assignee IS NULL AND new.assignee = subject",
+			proposed:   map[string]any{"Assignee": "u1"},
+			wantSQL:    "(`t`.`Assignee` IS NULL AND @_c1 = @subject)",
+			wantParams: []QueryParam{{Name: "_c1", Value: "u1"}},
+			wantNamed:  []string{"_c1", "subject"},
 		},
 		{
 			name:       "literal list membership binds typed values",
@@ -173,11 +175,13 @@ func TestLowerCondition_rendering(t *testing.T) {
 			}
 
 			ctx := &loweringContext{
-				outer:          "t",
-				bindings:       bindings,
-				collection:     collection,
-				partitioned:    tt.partitioned,
-				newValueParams: tt.newValueParams,
+				outer:       "t",
+				bindings:    bindings,
+				collection:  collection,
+				partitioned: tt.partitioned,
+			}
+			if tt.proposed != nil {
+				ctx.proposed = newProposedOverlay(tt.proposed)
 			}
 			registry := newParamRegistry()
 

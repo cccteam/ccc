@@ -35,6 +35,11 @@ type Decoder[Resource Resourcer, Request any] struct {
 	validate    ValidatorFunc
 	fieldMapper *RequestFieldMapper
 	resourceSet *Set[Resource]
+
+	// collection resolves condition rendering for the mutations' live
+	// check-SELECT; nil leaves conditions unrenderable (an error if one ever
+	// arrives).
+	collection *GeneratedCollection
 }
 
 // NewDecoder creates a new Decoder for a given Resource and Request type.
@@ -52,10 +57,12 @@ func NewDecoder[Resource Resourcer, Request any](rSet *Set[Resource]) (*Decoder[
 }
 
 // MustNewDecoder builds a patch decoder for a resource and request pair, validating
-// requests with the accessor's validator. It panics on construction errors: they are
-// programming errors (a request struct out of sync with its resource), surfaced at
-// application startup where generated handlers construct their decoders.
-func MustNewDecoder[Resource Resourcer, Request any](a DecoderAccessor, permissions ...accesstypes.Permission) *Decoder[Resource, Request] {
+// requests with the accessor's validator and wired to the application's generated
+// collection so conditional grants can render into the mutations' live check. It
+// panics on construction errors: they are programming errors (a request struct out of
+// sync with its resource), surfaced at application startup where generated handlers
+// construct their decoders.
+func MustNewDecoder[Resource Resourcer, Request any](a DecoderAccessor, collection *GeneratedCollection, permissions ...accesstypes.Permission) *Decoder[Resource, Request] {
 	rSet, err := NewSet[Resource, Request](permissions...)
 	if err != nil {
 		panic(err)
@@ -65,6 +72,7 @@ func MustNewDecoder[Resource Resourcer, Request any](a DecoderAccessor, permissi
 	if err != nil {
 		panic(err)
 	}
+	decoder.collection = collection
 
 	return decoder.WithValidator(a.Validator())
 }
@@ -83,6 +91,7 @@ func (d *Decoder[Resource, Request]) DecodeWithoutPermissions(request *http.Requ
 	if err != nil {
 		return nil, err
 	}
+	p.querySet.collection = d.collection
 
 	return p, nil
 }
@@ -94,6 +103,7 @@ func (d *Decoder[Resource, Request]) Decode(request *http.Request, userPermissio
 	if err != nil {
 		return nil, err
 	}
+	p.querySet.collection = d.collection
 
 	p.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, requiredPermission)
 
@@ -120,6 +130,7 @@ func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermis
 	if oper.Type == OperationDelete {
 		patchSet := NewPatchSet(d.resourceSet.ResourceMetadata())
 		patchSet.querySet.env = newRequestEnvironment()
+		patchSet.querySet.collection = d.collection
 
 		return patchSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, permissionFromType(oper.Type)), nil
 	}

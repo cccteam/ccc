@@ -39,12 +39,19 @@ type loweringContext struct {
 	// authored); a global request has no partition to filter by.
 	partitioned bool
 
-	// newValueParams maps a touched column to the named parameter carrying
-	// its proposed value — the post-write overlay: new.attr reads the
-	// parameter where the mutation touches the column and the existing column
-	// where it doesn't. Nil marks a read context, where new. cannot appear
-	// (rejected upstream; an error here).
-	newValueParams map[string]string
+	// proposed carries the touched columns' proposed values — the post-write
+	// overlay: new.attr reads the proposed value where the mutation touches
+	// the column and the existing column where it doesn't. Values bind as
+	// parameters lazily, on first reference. Nil marks a read context, where
+	// new. cannot appear (rejected upstream; an error here).
+	proposed *proposedOverlay
+
+	// insertImage marks an insert's check context: there is one image,
+	// written unqualified, and no existing row — every local column resolves
+	// to its proposed parameter, and referencing a column the insert does not
+	// set is an error (rule validation rejects those conditions at deploy;
+	// this is the runtime backstop).
+	insertImage bool
 }
 
 // lowerCondition translates a compiled condition onto the ExpressionNode
@@ -121,12 +128,12 @@ func lowerIn(in condition.In, ctx *loweringContext, registry *paramRegistry) (Ex
 	if err != nil {
 		return nil, err
 	}
-	if target.kind != comparandColumn {
-		return nil, errors.Newf("condition lowering: IN requires a column attribute, not the post-write overlay of an untouched context")
+	if target.kind != comparandColumn && target.kind != comparandNamed {
+		return nil, errors.Newf("condition lowering: IN requires an attribute value")
 	}
 
 	if in.SubjectSet != "" {
-		exists, err := ctx.subjectSetExists(in.SubjectSet, target.column, registry)
+		exists, err := ctx.subjectSetExists(in.SubjectSet, &target, registry)
 		if err != nil {
 			return nil, err
 		}
@@ -142,7 +149,7 @@ func lowerIn(in condition.In, ctx *loweringContext, registry *paramRegistry) (Ex
 		values = append(values, literalValue(literal))
 	}
 
-	return wrap(&loweredInNode{column: target.column, negated: in.Negated, values: values}), nil
+	return wrap(&loweredInNode{left: target, negated: in.Negated, values: values}), nil
 }
 
 func lowerNullTest(test condition.NullTest, ctx *loweringContext, registry *paramRegistry) (ExpressionNode, error) {
@@ -150,11 +157,11 @@ func lowerNullTest(test condition.NullTest, ctx *loweringContext, registry *para
 	if err != nil {
 		return nil, err
 	}
-	if target.kind != comparandColumn {
-		return nil, errors.Newf("condition lowering: IS NULL requires a column attribute")
+	if target.kind != comparandColumn && target.kind != comparandNamed {
+		return nil, errors.Newf("condition lowering: IS NULL requires an attribute value")
 	}
 
-	return wrap(&loweredNullTestNode{column: target.column, negated: test.Negated}), nil
+	return wrap(&loweredNullTestNode{left: target, negated: test.Negated}), nil
 }
 
 func lowerOperand(operand condition.Operand, ctx *loweringContext, registry *paramRegistry) (comparand, error) {
@@ -185,7 +192,10 @@ func lowerOperand(operand condition.Operand, ctx *loweringContext, registry *par
 // that encloses the leaf predicate in the reference's join-path EXISTS
 // chain (identity for column bindings). A post-write reference resolves to
 // the proposed value's parameter where the mutation touches the column, and
-// to the existing column where it doesn't — the overlay semantics.
+// to the existing column where it doesn't — the overlay semantics. In an
+// insert's check context there is one image, written unqualified: every
+// local column is its proposed parameter, and a join path leaves through the
+// proposed foreign-key value.
 func (ctx *loweringContext) resolveRef(ref condition.Ref, registry *paramRegistry) (comparand, func(ExpressionNode) ExpressionNode, error) {
 	identity := func(node ExpressionNode) ExpressionNode { return node }
 
@@ -194,14 +204,26 @@ func (ctx *loweringContext) resolveRef(ref condition.Ref, registry *paramRegistr
 		return comparand{}, nil, errors.Newf("condition lowering: %q is not an attribute of the checked resource", ref.Name)
 	}
 
+	if ctx.insertImage {
+		start, err := ctx.proposedValue(ref.Name, binding.Column, registry)
+		if err != nil {
+			return comparand{}, nil, err
+		}
+		if len(binding.Path) == 0 {
+			return start, identity, nil
+		}
+
+		return ctx.pathTarget(&start, binding.Path, registry)
+	}
+
 	if ref.PostImage {
-		if ctx.newValueParams == nil {
+		if ctx.proposed == nil {
 			return comparand{}, nil, errors.Newf("condition lowering: new.%s outside a write context", ref.Name)
 		}
 		if len(binding.Path) > 0 {
 			return comparand{}, nil, errors.Newf("condition lowering: new.%s reads a join-path attribute, which has no proposed value", ref.Name)
 		}
-		if param, touched := ctx.newValueParams[binding.Column]; touched {
+		if param, touched := ctx.proposed.param(binding.Column, registry); touched {
 			return namedComparand(param), identity, nil
 		}
 
@@ -212,14 +234,55 @@ func (ctx *loweringContext) resolveRef(ref condition.Ref, registry *paramRegistr
 		return columnComparand(ctx.outer, binding.Column), identity, nil
 	}
 
-	return ctx.pathTarget(ctx.outer, binding.Column, binding.Path, registry)
+	outerColumn := columnComparand(ctx.outer, binding.Column)
+
+	return ctx.pathTarget(&outerColumn, binding.Path, registry)
 }
 
-// pathTarget builds the EXISTS chain for a join path leaving through
-// startColumn on the qualifier's row: the returned comparand is the terminal
-// column inside the innermost EXISTS, and wrap encloses a leaf predicate in
-// the chain.
-func (ctx *loweringContext) pathTarget(qualifier, startColumn string, path []BindingHop, registry *paramRegistry) (comparand, func(ExpressionNode) ExpressionNode, error) {
+// proposedValue resolves a column to its proposed parameter in an insert's
+// check context; a column the insert does not set has no value to evaluate.
+func (ctx *loweringContext) proposedValue(name, column string, registry *paramRegistry) (comparand, error) {
+	param, touched := ctx.proposed.param(column, registry)
+	if !touched {
+		return comparand{}, errors.Newf("condition lowering: %s references column %s, which the insert does not set", name, column)
+	}
+
+	return namedComparand(param), nil
+}
+
+// proposedOverlay lazily binds a mutation's proposed values: a column binds
+// once, on its first reference, so untouched conditions add no parameters.
+type proposedOverlay struct {
+	values map[string]any
+	params map[string]string
+}
+
+func newProposedOverlay(values map[string]any) *proposedOverlay {
+	return &proposedOverlay{values: values, params: make(map[string]string, len(values))}
+}
+
+// param returns the column's proposed-value parameter, binding it on first
+// use; false means the mutation does not touch the column.
+func (o *proposedOverlay) param(column string, registry *paramRegistry) (string, bool) {
+	if param, ok := o.params[column]; ok {
+		return param, true
+	}
+	value, ok := o.values[column]
+	if !ok {
+		return "", false
+	}
+	param := strings.TrimPrefix(registry.bind(value), "@")
+	o.params[column] = param
+
+	return param, true
+}
+
+// pathTarget builds the EXISTS chain for a join path leaving through start —
+// the departure column on the checked row, or its proposed value in an
+// insert's check context. The returned comparand is the terminal column
+// inside the innermost EXISTS, and wrap encloses a leaf predicate in the
+// chain.
+func (ctx *loweringContext) pathTarget(start *comparand, path []BindingHop, registry *paramRegistry) (comparand, func(ExpressionNode) ExpressionNode, error) {
 	type frame struct {
 		hop   BindingHop
 		alias string
@@ -236,14 +299,14 @@ func (ctx *loweringContext) pathTarget(qualifier, startColumn string, path []Bin
 		node := leaf
 		for i := len(frames) - 1; i >= 0; i-- {
 			f := frames[i]
-			prevQualifier, prevColumn := qualifier, startColumn
+			prev := *start
 			if i > 0 {
-				prevQualifier, prevColumn = frames[i-1].alias, frames[i-1].hop.Column
+				prev = columnComparand(frames[i-1].alias, frames[i-1].hop.Column)
 			}
 			join := &loweredComparisonNode{
 				left:  columnComparand(f.alias, f.hop.JoinColumn),
 				op:    "=",
-				right: columnComparand(prevQualifier, prevColumn),
+				right: prev,
 			}
 			node = &existsNode{
 				table: f.hop.Table,
@@ -263,7 +326,7 @@ func (ctx *loweringContext) pathTarget(qualifier, startColumn string, path []Bin
 // the attribute — with the anchor's own tenancy filter when both the request
 // and the anchor table are partitioned. An empty set matches nothing:
 // fail-closed for free.
-func (ctx *loweringContext) subjectSetExists(name string, attr columnRef, registry *paramRegistry) (ExpressionNode, error) {
+func (ctx *loweringContext) subjectSetExists(name string, attr *comparand, registry *paramRegistry) (ExpressionNode, error) {
 	anchor, ok := ctx.collection.SubjectSet(name)
 	if !ok {
 		return nil, errors.Newf("condition lowering: subject.%s is not a declared subject set", name)
@@ -282,7 +345,7 @@ func (ctx *loweringContext) subjectSetExists(name string, attr columnRef, regist
 		&loweredComparisonNode{
 			left:  columnComparand(alias, anchor.Binding.Column),
 			op:    "=",
-			right: comparand{kind: comparandColumn, column: attr},
+			right: *attr,
 		},
 	)
 	where, err := ctx.withAnchorTenancy(where, &anchor, alias, registry)
@@ -338,7 +401,8 @@ func (ctx *loweringContext) withAnchorTenancy(where ExpressionNode, anchor *Subj
 			right: namedComparand(domainParamName),
 		}
 	} else {
-		target, wrap, err := ctx.pathTarget(alias, anchor.Domain.Column, anchor.Domain.Path, registry)
+		anchorColumn := columnComparand(alias, anchor.Domain.Column)
+		target, wrap, err := ctx.pathTarget(&anchorColumn, anchor.Domain.Path, registry)
 		if err != nil {
 			return nil, err
 		}

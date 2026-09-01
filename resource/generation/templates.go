@@ -625,11 +625,12 @@ func NewComputedQueryDecoder[Resource Resourcer, Request any](permissions ...acc
 }
 {{ end }}
 {{ if .HasPatchDecoder -}}
-// NewDecoder builds a patch decoder for a generated resource and request pair.
-// The Resourcer union keeps construction inside the generated universe: a decoder
-// over any other struct is a compile error.
+// NewDecoder builds a patch decoder for a generated resource and request pair,
+// wired to the generated collection so conditional grants render into the
+// mutations' live check. The Resourcer union keeps construction inside the
+// generated universe: a decoder over any other struct is a compile error.
 func NewDecoder[Resource Resourcer, Request any]({{ .ReceiverName }} *{{ .ApplicationName }}, permissions ...accesstypes.Permission) *resource.Decoder[Resource, Request] {
-	return resource.MustNewDecoder[Resource, Request]({{ .ReceiverName }}, permissions...)
+	return resource.MustNewDecoder[Resource, Request]({{ .ReceiverName }}, {{ .RouterPackage }}.Collection(), permissions...)
 }
 {{ end }}
 {{ if .HasRPCDecoder -}}

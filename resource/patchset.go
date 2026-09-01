@@ -413,6 +413,10 @@ func (p *PatchSet[Resource]) bufferInsert(ctx context.Context, txn ReadWriteTran
 		return errors.Wrap(err, "Resolve()")
 	}
 
+	if err := p.enforceWriteConditions(ctx, txn); err != nil {
+		return err
+	}
+
 	if err := txn.BufferMap(p, patch); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
@@ -463,6 +467,10 @@ func (p *PatchSet[Resource]) bufferUpdate(ctx context.Context, txn ReadWriteTran
 		return errors.Wrap(err, "Resolve()")
 	}
 
+	if err := p.enforceWriteConditions(ctx, txn); err != nil {
+		return err
+	}
+
 	if err := txn.BufferMap(p, patch); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
@@ -492,6 +500,10 @@ func (p *PatchSet[Resource]) bufferInsertOrUpdate(ctx context.Context, txn ReadW
 		return errors.Wrap(err, "Resolve()")
 	}
 
+	if err := p.enforceWriteConditions(ctx, txn); err != nil {
+		return err
+	}
+
 	if err := txn.BufferMap(p, patch); err != nil {
 		return errors.Wrap(err, "ReadWriteTransaction.Buffer()")
 	}
@@ -512,6 +524,10 @@ func (p *PatchSet[Resource]) bufferDelete(ctx context.Context, txn ReadWriteTran
 
 	event, err := p.validateEventSource(eventSource)
 	if err != nil {
+		return err
+	}
+
+	if err := p.enforceWriteConditions(ctx, txn); err != nil {
 		return err
 	}
 

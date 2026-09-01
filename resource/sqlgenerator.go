@@ -89,9 +89,9 @@ func (s *sqlGenerator) generateLoweredNodeSQL(node ExpressionNode) (string, []Qu
 	case *loweredComparisonNode:
 		sql, err = s.generateLoweredComparisonSQL(n)
 	case *loweredInNode:
-		sql = s.generateLoweredInSQL(n)
+		sql, err = s.generateLoweredInSQL(n)
 	case *loweredNullTestNode:
-		sql = s.generateLoweredNullTestSQL(n)
+		sql, err = s.generateLoweredNullTestSQL(n)
 	case *notNode:
 		sql, err = s.generateNotSQL(n)
 	case *existsNode:
