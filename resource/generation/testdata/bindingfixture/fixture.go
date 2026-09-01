@@ -129,6 +129,24 @@ type UnknownValueField struct {
 	UserID ccc.UUID `spanner:"UserId"`
 }
 
+// Struct-level annotations only parse from a TypeSpec doc comment, so this
+// rejection shape sits in a grouped type block like real project sources do.
+type (
+	// PartitionBlindAnchor is the missing-tenancy rejection: a domain-scoped
+	// resource anchoring subject vocabulary with no @domain binding, so
+	// subject.<name> would match the user's rows from every tenant.
+	//
+	// @permissionScope(domain)
+	PartitionBlindAnchor struct {
+		ID ccc.UUID `spanner:"Id"`
+
+		// @subjectSet(crews, value: CrewID)
+		UserID ccc.UUID `spanner:"UserId"`
+
+		CrewID ccc.UUID `spanner:"CrewId"`
+	}
+)
+
 type DoubleTenant struct {
 	ID ccc.UUID `spanner:"Id"`
 

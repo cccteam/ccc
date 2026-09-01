@@ -46,6 +46,9 @@ func bindingFixtureTables() map[string]*tableMetadata {
 			"Id": pk, "UserId": plain, "ApprovalLimit": plain,
 		}},
 		"UnknownValueFields": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "UserId": plain}},
+		"PartitionBlindAnchors": {PkCount: 1, Columns: map[string]columnMeta{
+			"Id": pk, "UserId": plain, "CrewId": plain,
+		}},
 		"StatefulTasks":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "State": fk("TaskStates"), "Notes": plain}},
 		"StateOnNonFKs":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Label": plain}},
 		"StateBadDefaults":   {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "State": fk("TaskStates")}},
@@ -80,6 +83,9 @@ func resolveFixtureBindings(t *testing.T, c *client, structs map[string]*parser.
 	}
 
 	res := &resourceInfo{TypeInfo: s.TypeInfo, PkCount: table.PkCount}
+	if err := resolvePermissionScope(annotations, &res.PermissionScope); err != nil {
+		t.Fatalf("resolvePermissionScope(%s) error = %v", name, err)
+	}
 	res.Fields, err = newResourceFields(res, s, table)
 	if err != nil {
 		t.Fatalf("newResourceFields(%s) error = %v", name, err)
@@ -243,6 +249,11 @@ func TestResolveBindingAnnotations_rejections(t *testing.T) {
 			name:        "second domain binding",
 			structName:  "DoubleTenant",
 			wantContain: "exactly one tenant",
+		},
+		{
+			name:        "domain-scoped subject anchor without a domain binding",
+			structName:  "PartitionBlindAnchor",
+			wantContain: "requires a @domain binding",
 		},
 	}
 

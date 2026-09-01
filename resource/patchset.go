@@ -42,6 +42,7 @@ type PatchSet[Resource Resourcer] struct {
 	querySet              *QuerySet[Resource]
 	data                  *fieldSet
 	patchType             PatchType
+	touch                 bool
 	defaultCreateFuncs    map[accesstypes.Field]FieldDefaultFunc
 	outputOnlyUpdateFuncs map[accesstypes.Field]FieldDefaultFunc
 	defaultsCreateFunc    DefaultsFunc
@@ -70,6 +71,20 @@ func (p *PatchSet[Resource]) SetPatchType(t PatchType) *PatchSet[Resource] {
 // PatchType returns the type of the patch.
 func (p *PatchSet[Resource]) PatchType() PatchType {
 	return p.patchType
+}
+
+// AsTouch marks an update patch as a touch: an update whose entire content is
+// supplied by the registered output-only update functions. A touch runs the
+// full update pipeline — permission check, output-only update functions, write
+// conditions, change events — even though the caller sets no fields, whereas a
+// plain update patch with no fields set is a silent no-op (see Apply and
+// Buffer). Only UpdatePatchType patches can be touches, and a touch requires
+// at least one registered output-only update function; Apply and Buffer reject
+// anything else.
+func (p *PatchSet[Resource]) AsTouch() *PatchSet[Resource] {
+	p.touch = true
+
+	return p
 }
 
 // EnableUserPermissionEnforcement enables the checking of user permissions for the PatchSet,
@@ -272,12 +287,22 @@ func (p *PatchSet[Resource]) Resource() accesstypes.Resource {
 }
 
 // Apply applies the patch within a new read-write transaction.
+//
+// An update or insert-or-update patch with no fields set is a silent no-op:
+// nothing runs — no permission check, no output-only update functions, no
+// mutation, no change event. To run the update pipeline with the content
+// supplied entirely by the registered output-only update functions, mark the
+// patch with AsTouch.
 func (p *PatchSet[Resource]) Apply(ctx context.Context, client Client, eventSource ...string) error {
+	if err := p.validateTouch(); err != nil {
+		return err
+	}
+
 	switch p.patchType {
 	case CreatePatchType:
 		return p.applyInsert(ctx, client, eventSource...)
 	case UpdatePatchType:
-		if p.Len() == 0 {
+		if p.Len() == 0 && !p.touch {
 			return nil
 		}
 
@@ -296,12 +321,22 @@ func (p *PatchSet[Resource]) Apply(ctx context.Context, client Client, eventSour
 }
 
 // Buffer buffers the patch's mutations into an existing transaction buffer.
+//
+// An update or insert-or-update patch with no fields set is a silent no-op:
+// nothing runs — no permission check, no output-only update functions, no
+// mutation, no change event. To run the update pipeline with the content
+// supplied entirely by the registered output-only update functions, mark the
+// patch with AsTouch.
 func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn ReadWriteTransaction, eventSource ...string) error {
+	if err := p.validateTouch(); err != nil {
+		return err
+	}
+
 	switch p.patchType {
 	case CreatePatchType:
 		return p.bufferInsert(ctx, txn, eventSource...)
 	case UpdatePatchType:
-		if p.Len() == 0 {
+		if p.Len() == 0 && !p.touch {
 			return nil
 		}
 
@@ -317,6 +352,23 @@ func (p *PatchSet[Resource]) Buffer(ctx context.Context, txn ReadWriteTransactio
 	default:
 		return errors.Newf("PatchType %s not supported", p.patchType)
 	}
+}
+
+// validateTouch rejects a touch that could never stamp anything: a touch is an
+// update whose content comes from its output-only update functions, so it is
+// only meaningful on an UpdatePatchType patch with at least one registered.
+func (p *PatchSet[Resource]) validateTouch() error {
+	if !p.touch {
+		return nil
+	}
+	if p.patchType != UpdatePatchType {
+		return errors.Newf("a touch is an update: PatchType %s cannot be marked AsTouch", p.patchType)
+	}
+	if len(p.outputOnlyUpdateFuncs) == 0 {
+		return errors.New("a touch has nothing to stamp: no output-only update functions are registered")
+	}
+
+	return nil
 }
 
 func (p *PatchSet[Resource]) applyInsert(ctx context.Context, c Client, eventSource ...string) error {
@@ -814,7 +866,12 @@ func (p *PatchSet[Resource]) RegisterDefaultCreateFunc(field accesstypes.Field, 
 	p.defaultCreateFuncs[field] = fn
 }
 
-// RegisterOutputOnlyUpdateFunc registers a function to set a default value for a field during an update operation.
+// RegisterOutputOnlyUpdateFunc registers a function that supplies a field's value
+// during an update operation. It fills the field only when the caller left it
+// unset — explicitly setting the field pre-empts it — and it never reaches an
+// update patch with no fields set at all, because such a patch is a silent no-op
+// (see Apply and Buffer). An update carried entirely by these functions is a
+// touch: mark the patch with AsTouch.
 func (p *PatchSet[Resource]) RegisterOutputOnlyUpdateFunc(field accesstypes.Field, fn FieldDefaultFunc) {
 	p.outputOnlyUpdateFuncs[field] = fn
 }

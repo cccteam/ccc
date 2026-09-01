@@ -471,7 +471,46 @@ func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
 func (p *{{ .Resource.Name }}UpdatePatch) Diff(got *{{ .Resource.Name }}UpdatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
+{{ if .Resource.HasTouch }}
+// {{ .Resource.Name }}Touch is an update carried entirely by the resource's
+// update functions: it runs the full update pipeline — permission check,
+// update functions, write conditions, change events — with no caller-set
+// fields. It stamps:
+{{- range $field := .Resource.TouchFields }}
+//   - {{ $field.Name }} via {{ $field.OutputOnlyUpdateFuncName }}
+{{- end }}
+type {{ .Resource.Name }}Touch struct {
+	patchSet *resource.PatchSet[{{ .Resource.Name }}]
+}
 
+func New{{ .Resource.Name }}Touch(
+{{- range $i, $field := .Resource.PrimaryKeys -}}
+	{{- if gt $i 0 }}, {{ end -}}
+	{{- GoCamel $field.Name }} {{ $field.ResolvedType -}}
+{{- end -}}) *{{ .Resource.Name }}Touch {
+	patchSet := resource.NewPatchSet(resource.NewMetadata[{{ .Resource.Name }}]()).
+{{- range $field := .Resource.Fields }}
+	{{- if $field.IsPrimaryKey }}
+		SetKey("{{ $field.Name }}", {{ GoCamel $field.Name }}).
+	{{- end }}
+{{- end }}
+		SetPatchType(resource.UpdatePatchType).
+		AsTouch()
+{{- range $field := .Resource.TouchFields }}
+	patchSet.RegisterOutputOnlyUpdateFunc("{{ $field.Name }}", {{ $field.OutputOnlyUpdateFuncName }})
+{{- end }}
+
+	return &{{ .Resource.Name }}Touch{patchSet: patchSet}
+}
+
+func (p *{{ .Resource.Name }}Touch) Apply(ctx context.Context, client resource.Client, eventSource ...string) error {
+	return p.patchSet.Apply(ctx, client, eventSource...)
+}
+
+func (p *{{ .Resource.Name }}Touch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
+	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+{{ end }}
 type {{ .Resource.Name }}DeletePatch struct {
 	patchSet *resource.PatchSet[{{ .Resource.Name }}]
 }

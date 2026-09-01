@@ -15,7 +15,11 @@ type (
 	// evaluation through a foreign key, not disclosure of it.
 	//
 	// LastServicedAt is domain data owned by the CompleteWorkOrder transition, which
-	// stamps it with the commit timestamp; output_only keeps clients from writing it.
+	// stamps it with the commit timestamp as an explicit update; output_only keeps
+	// clients from writing it. It is deliberately NOT an output_only_update_fn:
+	// update functions enforce mechanical stamps like UpdatedAt on every update,
+	// while a timestamp with domain meaning is written explicitly by the code that
+	// owns the business event.
 	//
 	// @resource
 	// @permissionScope(domain)

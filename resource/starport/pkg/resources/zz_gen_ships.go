@@ -591,6 +591,33 @@ func (p *ShipUpdatePatch) Diff(got *ShipUpdatePatch, opts ...cmp.Option) string 
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
 }
 
+// ShipTouch is an update carried entirely by the resource's
+// update functions: it runs the full update pipeline — permission check,
+// update functions, write conditions, change events — with no caller-set
+// fields. It stamps:
+//   - UpdatedAt via resource.CommitTimestampPtr
+type ShipTouch struct {
+	patchSet *resource.PatchSet[Ship]
+}
+
+func NewShipTouch(id ccc.UUID) *ShipTouch {
+	patchSet := resource.NewPatchSet(resource.NewMetadata[Ship]()).
+		SetKey("ID", id).
+		SetPatchType(resource.UpdatePatchType).
+		AsTouch()
+	patchSet.RegisterOutputOnlyUpdateFunc("UpdatedAt", resource.CommitTimestampPtr)
+
+	return &ShipTouch{patchSet: patchSet}
+}
+
+func (p *ShipTouch) Apply(ctx context.Context, client resource.Client, eventSource ...string) error {
+	return p.patchSet.Apply(ctx, client, eventSource...)
+}
+
+func (p *ShipTouch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
+	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
 type ShipDeletePatch struct {
 	patchSet *resource.PatchSet[Ship]
 }

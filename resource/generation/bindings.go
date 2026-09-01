@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
@@ -164,7 +165,25 @@ func (c *client) resolveBindingAnnotations(res *resourceInfo, pStruct *parser.St
 		}
 	}
 
-	return nil
+	return validateSubjectAnchorTenancy(res, pStruct)
+}
+
+// validateSubjectAnchorTenancy rejects a domain-scoped resource that anchors
+// subject vocabulary without a @domain binding. A domain-scoped resource's rows
+// belong to tenants by definition, so a subject anchor must resolve its rows to
+// a tenant — without @domain the rendered subject.<name> subquery is
+// partition-blind and matches the user's rows from every tenant. A
+// global-scoped anchor is the deliberately shared pattern and stays unfiltered.
+func validateSubjectAnchorTenancy(res *resourceInfo, pStruct *parser.Struct) error {
+	if !res.IsDomainScoped() || res.DomainBinding != nil {
+		return nil
+	}
+	if len(res.SubjectSets) == 0 && len(res.SubjectValues) == 0 {
+		return nil
+	}
+
+	return errors.Newf("struct %s: a domain-scoped resource anchoring @%s/@%s requires a @%s binding — without it subject.<name> matches the user's rows from every tenant; declare @%s (or @%s(%s) if the anchor is deliberately shared across tenants)",
+		pStruct.Name(), subjectSetKeyword, subjectValueKeyword, domainKeyword, domainKeyword, permissionScopeKeyword, accesstypes.GlobalPermissionScope)
 }
 
 // resolveAttribute compiles one @attribute(name[, via: Remote.Segments]):

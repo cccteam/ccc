@@ -535,6 +535,28 @@ func (r *resourceInfo) IsDomainScoped() bool {
 	return r.PermissionScope == accesstypes.DomainPermissionScope
 }
 
+// TouchFields returns the fields a generated touch stamps: every field carrying
+// an output_only_update_fn, the mechanical enforcement stamp that fires on
+// every update — a touch included. Timestamps with domain meaning are never
+// update functions; they are explicit updates in application code.
+func (r *resourceInfo) TouchFields() []*resourceField {
+	fields := make([]*resourceField, 0, len(r.Fields))
+	for _, f := range r.Fields {
+		if f.HasOutputOnlyUpdateFunc() {
+			fields = append(fields, f)
+		}
+	}
+
+	return fields
+}
+
+// HasTouch reports whether the resource gets a generated Touch: it does exactly
+// when at least one field declares an update function, so touching a resource
+// with nothing to stamp does not compile.
+func (r *resourceInfo) HasTouch() bool {
+	return len(r.TouchFields()) > 0
+}
+
 func (r *resourceInfo) HasNullBool() bool {
 	for _, field := range r.Fields {
 		if field.IsNullable && field.typescriptType == booleanStr {
