@@ -48,17 +48,29 @@ func (a *App) ManifestLines() http.HandlerFunc {
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				case "ShipID":
-					rmap["shipId"] = rec.ShipID
+					if !row.Masked("shipId") {
+						rmap["shipId"] = rec.ShipID
+					}
 				case "LineNumber":
-					rmap["lineNumber"] = rec.LineNumber
+					if !row.Masked("lineNumber") {
+						rmap["lineNumber"] = rec.LineNumber
+					}
 				case "ShipName":
-					rmap["shipName"] = rec.ShipName
+					if !row.Masked("shipName") {
+						rmap["shipName"] = rec.ShipName
+					}
 				case "Details":
-					rmap["details"] = rec.Details
+					if !row.Masked("details") {
+						rmap["details"] = rec.Details
+					}
 				case "Quantity":
-					rmap["quantity"] = rec.Quantity
+					if !row.Masked("quantity") {
+						rmap["quantity"] = rec.Quantity
+					}
 				case "DeclaredValue":
-					rmap["declaredValue"] = rec.DeclaredValue
+					if !row.Masked("declaredValue") {
+						rmap["declaredValue"] = rec.DeclaredValue
+					}
 				}
 			}
 			resp = append(resp, rmap)

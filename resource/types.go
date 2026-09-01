@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"cloud.google.com/go/spanner"
@@ -61,6 +62,10 @@ type jsonFieldName string
 type dbFieldMetadata struct {
 	index      int
 	ColumnName string
+
+	// fieldType is the Go field's type, cached by the metadata reflect walk;
+	// cell masking binds its zero value as the CASE filler parameter.
+	fieldType reflect.Type
 }
 
 // TypescriptData holds all the collected resource and permission information needed for TypeScript code generation.

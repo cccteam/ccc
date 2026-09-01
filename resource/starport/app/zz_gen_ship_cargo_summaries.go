@@ -47,15 +47,25 @@ func (a *App) ShipCargoSummaries() http.HandlerFunc {
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				case "ShipID":
-					rmap["shipId"] = rec.ShipID
+					if !row.Masked("shipId") {
+						rmap["shipId"] = rec.ShipID
+					}
 				case "ShipName":
-					rmap["shipName"] = rec.ShipName
+					if !row.Masked("shipName") {
+						rmap["shipName"] = rec.ShipName
+					}
 				case "DockingBayName":
-					rmap["dockingBayName"] = rec.DockingBayName
+					if !row.Masked("dockingBayName") {
+						rmap["dockingBayName"] = rec.DockingBayName
+					}
 				case "ManifestLines":
-					rmap["manifestLines"] = rec.ManifestLines
+					if !row.Masked("manifestLines") {
+						rmap["manifestLines"] = rec.ManifestLines
+					}
 				case "TotalDeclaredValue":
-					rmap["totalDeclaredValue"] = rec.TotalDeclaredValue
+					if !row.Masked("totalDeclaredValue") {
+						rmap["totalDeclaredValue"] = rec.TotalDeclaredValue
+					}
 				}
 			}
 			resp = append(resp, rmap)

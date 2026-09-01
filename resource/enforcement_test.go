@@ -65,6 +65,38 @@ type enforcementExemptReadRequest struct {
 // testScope is the tenant scope the enforcement fixtures evaluate in.
 var testScope = accesstypes.DomainScope("testDomain")
 
+// testCondition is the payload every fixture Conditional decision carries: a
+// row-referencing condition over the fixture collection's one attribute.
+var testCondition = mustCondition("owner = subject")
+
+func mustCondition(source string) accesstypes.Condition {
+	c, err := accesstypes.NewCondition(source)
+	if err != nil {
+		panic(err)
+	}
+
+	return c
+}
+
+// enforcementCollection is the generated-collection stand-in read rendering
+// resolves against: the fixture resource with the owner attribute bound to its
+// Owner column.
+func enforcementCollection(t *testing.T) *GeneratedCollection {
+	t.Helper()
+
+	g, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{{
+		Name:        enforcedResource,
+		Scope:       accesstypes.DomainPermissionScope,
+		Permissions: []accesstypes.Permission{accesstypes.Read},
+		Attributes:  []AttributeData{{Name: "owner", Column: "Owner"}},
+	}}})
+	if err != nil {
+		t.Fatalf("NewGeneratedCollection() error = %v", err)
+	}
+
+	return g
+}
+
 // fakeUserPermissions is a UserPermissions implementation backed by a static grant
 // table: resources under conditional answer Conditional, resources under granted
 // answer Granted, everything else fails closed to Denied. It records every Check
@@ -95,7 +127,7 @@ func (f *fakeUserPermissions) Check(_ context.Context, env accesstypes.Environme
 	for _, res := range resources {
 		switch {
 		case slices.Contains(f.conditional[perm], res):
-			decisions[res] = accesstypes.Conditional(accesstypes.ConditionGroup{Resources: []accesstypes.Resource{res}})
+			decisions[res] = accesstypes.Conditional(accesstypes.ConditionGroup{Resources: []accesstypes.Resource{res}, Condition: testCondition})
 		case slices.Contains(f.granted[perm], res):
 			decisions[res] = accesstypes.Granted()
 		default:
@@ -319,6 +351,7 @@ func decodeForBatching[Request any](t *testing.T, target string, userPermissions
 	if err != nil {
 		t.Fatalf("NewQueryDecoder() error = %v", err)
 	}
+	decoder.collection = enforcementCollection(t)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, http.NoBody)
 

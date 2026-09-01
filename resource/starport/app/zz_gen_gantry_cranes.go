@@ -48,13 +48,21 @@ func (a *App) GantryCranes() http.HandlerFunc {
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				case "ID":
-					rmap["id"] = rec.ID
+					if !row.Masked("id") {
+						rmap["id"] = rec.ID
+					}
 				case "Callsign":
-					rmap["callsign"] = rec.Callsign
+					if !row.Masked("callsign") {
+						rmap["callsign"] = rec.Callsign
+					}
 				case "LiftTonnage":
-					rmap["liftTonnage"] = rec.LiftTonnage
+					if !row.Masked("liftTonnage") {
+						rmap["liftTonnage"] = rec.LiftTonnage
+					}
 				case "Operational":
-					rmap["operational"] = rec.Operational
+					if !row.Masked("operational") {
+						rmap["operational"] = rec.Operational
+					}
 				}
 			}
 			resp = append(resp, rmap)
@@ -97,13 +105,21 @@ func (a *App) GantryCrane() http.HandlerFunc {
 		for _, field := range querySet.Fields() {
 			switch string(field) {
 			case "ID":
-				rmap["id"] = rec.ID
+				if !row.Masked("id") {
+					rmap["id"] = rec.ID
+				}
 			case "Callsign":
-				rmap["callsign"] = rec.Callsign
+				if !row.Masked("callsign") {
+					rmap["callsign"] = rec.Callsign
+				}
 			case "LiftTonnage":
-				rmap["liftTonnage"] = rec.LiftTonnage
+				if !row.Masked("liftTonnage") {
+					rmap["liftTonnage"] = rec.LiftTonnage
+				}
 			case "Operational":
-				rmap["operational"] = rec.Operational
+				if !row.Masked("operational") {
+					rmap["operational"] = rec.Operational
+				}
 			}
 		}
 

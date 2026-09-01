@@ -47,13 +47,21 @@ func (a *App) DockingBays() http.HandlerFunc {
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				case "ID":
-					rmap["id"] = rec.ID
+					if !row.Masked("id") {
+						rmap["id"] = rec.ID
+					}
 				case "Name":
-					rmap["name"] = rec.Name
+					if !row.Masked("name") {
+						rmap["name"] = rec.Name
+					}
 				case "DeckLevel":
-					rmap["deckLevel"] = rec.DeckLevel
+					if !row.Masked("deckLevel") {
+						rmap["deckLevel"] = rec.DeckLevel
+					}
 				case "MaxTonnage":
-					rmap["maxTonnage"] = rec.MaxTonnage
+					if !row.Masked("maxTonnage") {
+						rmap["maxTonnage"] = rec.MaxTonnage
+					}
 				}
 			}
 			resp = append(resp, rmap)
@@ -95,13 +103,21 @@ func (a *App) DockingBay() http.HandlerFunc {
 		for _, field := range querySet.Fields() {
 			switch string(field) {
 			case "ID":
-				rmap["id"] = rec.ID
+				if !row.Masked("id") {
+					rmap["id"] = rec.ID
+				}
 			case "Name":
-				rmap["name"] = rec.Name
+				if !row.Masked("name") {
+					rmap["name"] = rec.Name
+				}
 			case "DeckLevel":
-				rmap["deckLevel"] = rec.DeckLevel
+				if !row.Masked("deckLevel") {
+					rmap["deckLevel"] = rec.DeckLevel
+				}
 			case "MaxTonnage":
-				rmap["maxTonnage"] = rec.MaxTonnage
+				if !row.Masked("maxTonnage") {
+					rmap["maxTonnage"] = rec.MaxTonnage
+				}
 			}
 		}
 

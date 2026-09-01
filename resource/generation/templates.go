@@ -606,11 +606,12 @@ import (
 )
 
 {{ if .HasQueryDecoder -}}
-// NewQueryDecoder builds a query decoder for a generated resource and request pair.
+// NewQueryDecoder builds a query decoder for a generated resource and request pair,
+// wired to the generated collection so conditional grants render into the query.
 // The Resourcer union keeps construction inside the generated universe: a decoder
 // over any other struct is a compile error.
 func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {
-	return resource.MustNewQueryDecoder[Resource, Request](permissions...)
+	return resource.MustNewQueryDecoder[Resource, Request]({{ .RouterPackage }}.Collection(), permissions...)
 }
 {{ end }}
 {{ if .HasComputedQueryDecoder -}}
@@ -937,7 +938,9 @@ import (
 				{{- range .Resource.Fields }}
 				{{- if not .IsInputOnly }}
 				case "{{ .Name }}":
-					rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+					if !row.Masked("{{ Camel .Name }}") {
+						rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+					}
 				{{- end }}
 				{{- end }}
 				}
@@ -994,7 +997,9 @@ import (
 			{{- range .Resource.Fields }}
 			{{- if not .IsInputOnly }}
 			case "{{ .Name }}":
-				rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+				if !row.Masked("{{ Camel .Name }}") {
+					rmap["{{ Camel .Name }}"] = rec.{{ .Name }}
+				}
 			{{- end }}
 			{{- end }}
 			}

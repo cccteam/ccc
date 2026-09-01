@@ -45,9 +45,13 @@ func (a *App) Stations() http.HandlerFunc {
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				case "ID":
-					rmap["id"] = rec.ID
+					if !row.Masked("id") {
+						rmap["id"] = rec.ID
+					}
 				case "Name":
-					rmap["name"] = rec.Name
+					if !row.Masked("name") {
+						rmap["name"] = rec.Name
+					}
 				}
 			}
 			resp = append(resp, rmap)
@@ -87,9 +91,13 @@ func (a *App) Station() http.HandlerFunc {
 		for _, field := range querySet.Fields() {
 			switch string(field) {
 			case "ID":
-				rmap["id"] = rec.ID
+				if !row.Masked("id") {
+					rmap["id"] = rec.ID
+				}
 			case "Name":
-				rmap["name"] = rec.Name
+				if !row.Masked("name") {
+					rmap["name"] = rec.Name
+				}
 			}
 		}
 

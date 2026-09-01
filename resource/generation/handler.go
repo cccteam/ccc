@@ -240,6 +240,7 @@ func (r *resourceGenerator) generateDecoders() error {
 		ApplicationName:         r.applicationName,
 		ReceiverName:            r.receiverName,
 		RPCPackage:              f.rpcPackage,
+		RouterPackage:           r.router.Package(),
 		HasQueryDecoder:         f.hasQuery,
 		HasComputedQueryDecoder: f.hasComputed,
 		HasPatchDecoder:         f.hasPatch,

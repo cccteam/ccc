@@ -53,6 +53,7 @@ func Test_decodersTemplate_gating(t *testing.T) {
 				ApplicationName:         "App",
 				ReceiverName:            "a",
 				RPCPackage:              "rpc",
+				RouterPackage:           "router",
 				HasQueryDecoder:         true,
 				HasComputedQueryDecoder: true,
 				HasPatchDecoder:         true,
@@ -60,7 +61,7 @@ func Test_decodersTemplate_gating(t *testing.T) {
 			},
 			wantContains: []string{
 				"func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {",
-				"resource.MustNewQueryDecoder[Resource, Request](permissions...)",
+				"resource.MustNewQueryDecoder[Resource, Request](router.Collection(), permissions...)",
 				"func NewComputedQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {",
 				"resource.MustNewComputedQueryDecoder[Resource, Request](permissions...)",
 				"func NewDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.Decoder[Resource, Request] {",

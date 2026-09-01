@@ -378,6 +378,13 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 
 			continue
 		}
+		if strings.EqualFold(spannerTag, reservedMaskedNamesColumn) || strings.EqualFold(field.Name(), reservedMaskedNamesColumn) {
+			// The read statements' one reserved output column: a colliding
+			// resource column would be indistinguishable from the mask list.
+			field.AddError(fmt.Sprintf("column name %q is reserved for cell masking", reservedMaskedNamesColumn))
+
+			continue
+		}
 		tableColumn, ok := table.Columns[spannerTag]
 		if !ok {
 			field.AddError("spanner tag does not match any table columns")

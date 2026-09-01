@@ -52,21 +52,37 @@ func (a *App) SupplyCrates() http.HandlerFunc {
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				case "ID":
-					rmap["id"] = rec.ID
+					if !row.Masked("id") {
+						rmap["id"] = rec.ID
+					}
 				case "Label":
-					rmap["label"] = rec.Label
+					if !row.Masked("label") {
+						rmap["label"] = rec.Label
+					}
 				case "Quantity":
-					rmap["quantity"] = rec.Quantity
+					if !row.Masked("quantity") {
+						rmap["quantity"] = rec.Quantity
+					}
 				case "Priority":
-					rmap["priority"] = rec.Priority
+					if !row.Masked("priority") {
+						rmap["priority"] = rec.Priority
+					}
 				case "Status":
-					rmap["status"] = rec.Status
+					if !row.Masked("status") {
+						rmap["status"] = rec.Status
+					}
 				case "Barcode":
-					rmap["barcode"] = rec.Barcode
+					if !row.Masked("barcode") {
+						rmap["barcode"] = rec.Barcode
+					}
 				case "InspectorBadge":
-					rmap["inspectorBadge"] = rec.InspectorBadge
+					if !row.Masked("inspectorBadge") {
+						rmap["inspectorBadge"] = rec.InspectorBadge
+					}
 				case "AssignedShipID":
-					rmap["assignedShipId"] = rec.AssignedShipID
+					if !row.Masked("assignedShipId") {
+						rmap["assignedShipId"] = rec.AssignedShipID
+					}
 				}
 			}
 			resp = append(resp, rmap)
@@ -113,21 +129,37 @@ func (a *App) SupplyCrate() http.HandlerFunc {
 		for _, field := range querySet.Fields() {
 			switch string(field) {
 			case "ID":
-				rmap["id"] = rec.ID
+				if !row.Masked("id") {
+					rmap["id"] = rec.ID
+				}
 			case "Label":
-				rmap["label"] = rec.Label
+				if !row.Masked("label") {
+					rmap["label"] = rec.Label
+				}
 			case "Quantity":
-				rmap["quantity"] = rec.Quantity
+				if !row.Masked("quantity") {
+					rmap["quantity"] = rec.Quantity
+				}
 			case "Priority":
-				rmap["priority"] = rec.Priority
+				if !row.Masked("priority") {
+					rmap["priority"] = rec.Priority
+				}
 			case "Status":
-				rmap["status"] = rec.Status
+				if !row.Masked("status") {
+					rmap["status"] = rec.Status
+				}
 			case "Barcode":
-				rmap["barcode"] = rec.Barcode
+				if !row.Masked("barcode") {
+					rmap["barcode"] = rec.Barcode
+				}
 			case "InspectorBadge":
-				rmap["inspectorBadge"] = rec.InspectorBadge
+				if !row.Masked("inspectorBadge") {
+					rmap["inspectorBadge"] = rec.InspectorBadge
+				}
 			case "AssignedShipID":
-				rmap["assignedShipId"] = rec.AssignedShipID
+				if !row.Masked("assignedShipId") {
+					rmap["assignedShipId"] = rec.AssignedShipID
+				}
 			}
 		}
 

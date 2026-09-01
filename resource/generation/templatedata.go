@@ -222,6 +222,9 @@ type decodersFileData struct {
 	ReceiverName        string
 	// RPCPackage qualifies the generated Method union constraining NewRPCDecoder.
 	RPCPackage string
+	// RouterPackage qualifies the generated collection the query decoders render
+	// conditional grants against.
+	RouterPackage string
 	// The Has* fields emit each constructor only when a generated handler calls it,
 	// so an application carries no constructor its code does not use.
 	HasQueryDecoder         bool

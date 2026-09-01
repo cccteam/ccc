@@ -12,18 +12,20 @@ import (
 // and their corresponding Go struct field names.
 type RequestFieldMapper struct {
 	jsonTagToFields map[string]accesstypes.Field
+	fieldToJSONName map[accesstypes.Field]string
 	fields          []accesstypes.Field
 }
 
 // NewRequestFieldMapper creates a new RequestFieldMapper by inspecting the struct tags of the provided value.
 func NewRequestFieldMapper(v any) (*RequestFieldMapper, error) {
-	jsonTagToFields, fields, err := tagToFieldMap(v)
+	jsonTagToFields, fieldToJSONName, fields, err := tagToFieldMap(v)
 	if err != nil {
 		return nil, err
 	}
 
 	return &RequestFieldMapper{
 		jsonTagToFields: jsonTagToFields,
+		fieldToJSONName: fieldToJSONName,
 		fields:          fields,
 	}, nil
 }
@@ -45,29 +47,37 @@ func (f *RequestFieldMapper) Fields() []accesstypes.Field {
 	return f.fields
 }
 
-func tagToFieldMap(v any) (map[string]accesstypes.Field, []accesstypes.Field, error) {
+// JSONNames returns the mapping from Go struct field names to their primary
+// JSON names — a field without a json tag maps to its own name.
+func (f *RequestFieldMapper) JSONNames() map[accesstypes.Field]string {
+	return f.fieldToJSONName
+}
+
+func tagToFieldMap(v any) (tagToField map[string]accesstypes.Field, fieldToJSONName map[accesstypes.Field]string, orderedFields []accesstypes.Field, err error) {
 	vType := reflect.TypeOf(v)
 
 	if vType.Kind() == reflect.Pointer {
 		vType = vType.Elem()
 	}
 	if vType.Kind() != reflect.Struct {
-		return nil, nil, errors.Newf("argument v must be a struct, received %v", vType.Kind())
+		return nil, nil, nil, errors.Newf("argument v must be a struct, received %v", vType.Kind())
 	}
 
 	tfMap := make(map[string]accesstypes.Field)
+	jsonNames := make(map[accesstypes.Field]string)
 	fields := make([]accesstypes.Field, 0, vType.NumField())
 	for _, field := range reflect.VisibleFields(vType) {
 		tag := field.Tag.Get(jsonTagKey)
 		if tag == "" {
 			if _, ok := tfMap[field.Name]; ok {
-				return nil, nil, errors.Newf("field name %s collides with another field tag", field.Name)
+				return nil, nil, nil, errors.Newf("field name %s collides with another field tag", field.Name)
 			}
 			tfMap[field.Name] = accesstypes.Field(field.Name)
+			jsonNames[accesstypes.Field(field.Name)] = field.Name
 			fields = append(fields, accesstypes.Field(field.Name))
 			if lowerFieldName := strings.ToLower(field.Name); lowerFieldName != field.Name {
 				if _, ok := tfMap[lowerFieldName]; ok {
-					return nil, nil, errors.Newf("field name %s has multiple matches", field.Name)
+					return nil, nil, nil, errors.Newf("field name %s has multiple matches", field.Name)
 				}
 				tfMap[lowerFieldName] = accesstypes.Field(field.Name)
 			}
@@ -84,11 +94,12 @@ func tagToFieldMap(v any) (map[string]accesstypes.Field, []accesstypes.Field, er
 		}
 
 		if _, ok := tfMap[tag]; ok {
-			return nil, nil, errors.Newf("tag %s has multiple matches", tag)
+			return nil, nil, nil, errors.Newf("tag %s has multiple matches", tag)
 		}
 		tfMap[tag] = accesstypes.Field(field.Name)
+		jsonNames[accesstypes.Field(field.Name)] = tag
 		fields = append(fields, accesstypes.Field(field.Name))
 	}
 
-	return tfMap, fields, nil
+	return tfMap, jsonNames, fields, nil
 }

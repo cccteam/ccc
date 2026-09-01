@@ -51,13 +51,21 @@ func (a *App) Berths() http.HandlerFunc {
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				case "ID":
-					rmap["id"] = rec.ID
+					if !row.Masked("id") {
+						rmap["id"] = rec.ID
+					}
 				case "Designation":
-					rmap["designation"] = rec.Designation
+					if !row.Masked("designation") {
+						rmap["designation"] = rec.Designation
+					}
 				case "SizeClass":
-					rmap["sizeClass"] = rec.SizeClass
+					if !row.Masked("sizeClass") {
+						rmap["sizeClass"] = rec.SizeClass
+					}
 				case "Occupied":
-					rmap["occupied"] = rec.Occupied
+					if !row.Masked("occupied") {
+						rmap["occupied"] = rec.Occupied
+					}
 				}
 			}
 			resp = append(resp, rmap)
@@ -100,13 +108,21 @@ func (a *App) Berth() http.HandlerFunc {
 		for _, field := range querySet.Fields() {
 			switch string(field) {
 			case "ID":
-				rmap["id"] = rec.ID
+				if !row.Masked("id") {
+					rmap["id"] = rec.ID
+				}
 			case "Designation":
-				rmap["designation"] = rec.Designation
+				if !row.Masked("designation") {
+					rmap["designation"] = rec.Designation
+				}
 			case "SizeClass":
-				rmap["sizeClass"] = rec.SizeClass
+				if !row.Masked("sizeClass") {
+					rmap["sizeClass"] = rec.SizeClass
+				}
 			case "Occupied":
-				rmap["occupied"] = rec.Occupied
+				if !row.Masked("occupied") {
+					rmap["occupied"] = rec.Occupied
+				}
 			}
 		}
 

@@ -380,7 +380,7 @@ func dbStructTags(t reflect.Type, dbType DBType) (map[accesstypes.Field]dbFieldM
 			continue
 		}
 
-		tagMap[accesstypes.Field(field.Name)] = dbFieldMetadata{index: i, ColumnName: parts[0]}
+		tagMap[accesstypes.Field(field.Name)] = dbFieldMetadata{index: i, ColumnName: parts[0], fieldType: field.Type}
 		ordered = append(ordered, accesstypes.Field(field.Name))
 	}
 

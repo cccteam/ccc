@@ -50,17 +50,29 @@ func (a *App) Ships() http.HandlerFunc {
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				case "ID":
-					rmap["id"] = rec.ID
+					if !row.Masked("id") {
+						rmap["id"] = rec.ID
+					}
 				case "RegistryCode":
-					rmap["registryCode"] = rec.RegistryCode
+					if !row.Masked("registryCode") {
+						rmap["registryCode"] = rec.RegistryCode
+					}
 				case "Name":
-					rmap["name"] = rec.Name
+					if !row.Masked("name") {
+						rmap["name"] = rec.Name
+					}
 				case "DockingBayID":
-					rmap["dockingBayId"] = rec.DockingBayID
+					if !row.Masked("dockingBayId") {
+						rmap["dockingBayId"] = rec.DockingBayID
+					}
 				case "CargoValue":
-					rmap["cargoValue"] = rec.CargoValue
+					if !row.Masked("cargoValue") {
+						rmap["cargoValue"] = rec.CargoValue
+					}
 				case "UpdatedAt":
-					rmap["updatedAt"] = rec.UpdatedAt
+					if !row.Masked("updatedAt") {
+						rmap["updatedAt"] = rec.UpdatedAt
+					}
 				}
 			}
 			resp = append(resp, rmap)
@@ -104,17 +116,29 @@ func (a *App) Ship() http.HandlerFunc {
 		for _, field := range querySet.Fields() {
 			switch string(field) {
 			case "ID":
-				rmap["id"] = rec.ID
+				if !row.Masked("id") {
+					rmap["id"] = rec.ID
+				}
 			case "RegistryCode":
-				rmap["registryCode"] = rec.RegistryCode
+				if !row.Masked("registryCode") {
+					rmap["registryCode"] = rec.RegistryCode
+				}
 			case "Name":
-				rmap["name"] = rec.Name
+				if !row.Masked("name") {
+					rmap["name"] = rec.Name
+				}
 			case "DockingBayID":
-				rmap["dockingBayId"] = rec.DockingBayID
+				if !row.Masked("dockingBayId") {
+					rmap["dockingBayId"] = rec.DockingBayID
+				}
 			case "CargoValue":
-				rmap["cargoValue"] = rec.CargoValue
+				if !row.Masked("cargoValue") {
+					rmap["cargoValue"] = rec.CargoValue
+				}
 			case "UpdatedAt":
-				rmap["updatedAt"] = rec.UpdatedAt
+				if !row.Masked("updatedAt") {
+					rmap["updatedAt"] = rec.UpdatedAt
+				}
 			}
 		}
 

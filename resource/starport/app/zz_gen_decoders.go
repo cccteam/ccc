@@ -6,14 +6,16 @@ package app
 import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	"github.com/cccteam/ccc/resource/starport/pkg/rpc"
 )
 
-// NewQueryDecoder builds a query decoder for a generated resource and request pair.
+// NewQueryDecoder builds a query decoder for a generated resource and request pair,
+// wired to the generated collection so conditional grants render into the query.
 // The Resourcer union keeps construction inside the generated universe: a decoder
 // over any other struct is a compile error.
 func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {
-	return resource.MustNewQueryDecoder[Resource, Request](permissions...)
+	return resource.MustNewQueryDecoder[Resource, Request](router.Collection(), permissions...)
 }
 
 // NewDecoder builds a patch decoder for a generated resource and request pair.

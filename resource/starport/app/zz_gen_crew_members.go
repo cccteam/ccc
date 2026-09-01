@@ -52,17 +52,29 @@ func (a *App) CrewMembers() http.HandlerFunc {
 			for _, field := range querySet.Fields() {
 				switch string(field) {
 				case "ID":
-					rmap["id"] = rec.ID
+					if !row.Masked("id") {
+						rmap["id"] = rec.ID
+					}
 				case "ShipID":
-					rmap["shipId"] = rec.ShipID
+					if !row.Masked("shipId") {
+						rmap["shipId"] = rec.ShipID
+					}
 				case "Name":
-					rmap["name"] = rec.Name
+					if !row.Masked("name") {
+						rmap["name"] = rec.Name
+					}
 				case "Rank":
-					rmap["rank"] = rec.Rank
+					if !row.Masked("rank") {
+						rmap["rank"] = rec.Rank
+					}
 				case "ClearanceLevel":
-					rmap["clearanceLevel"] = rec.ClearanceLevel
+					if !row.Masked("clearanceLevel") {
+						rmap["clearanceLevel"] = rec.ClearanceLevel
+					}
 				case "MedicalNotes":
-					rmap["medicalNotes"] = rec.MedicalNotes
+					if !row.Masked("medicalNotes") {
+						rmap["medicalNotes"] = rec.MedicalNotes
+					}
 				}
 			}
 			resp = append(resp, rmap)
@@ -106,17 +118,29 @@ func (a *App) CrewMember() http.HandlerFunc {
 		for _, field := range querySet.Fields() {
 			switch string(field) {
 			case "ID":
-				rmap["id"] = rec.ID
+				if !row.Masked("id") {
+					rmap["id"] = rec.ID
+				}
 			case "ShipID":
-				rmap["shipId"] = rec.ShipID
+				if !row.Masked("shipId") {
+					rmap["shipId"] = rec.ShipID
+				}
 			case "Name":
-				rmap["name"] = rec.Name
+				if !row.Masked("name") {
+					rmap["name"] = rec.Name
+				}
 			case "Rank":
-				rmap["rank"] = rec.Rank
+				if !row.Masked("rank") {
+					rmap["rank"] = rec.Rank
+				}
 			case "ClearanceLevel":
-				rmap["clearanceLevel"] = rec.ClearanceLevel
+				if !row.Masked("clearanceLevel") {
+					rmap["clearanceLevel"] = rec.ClearanceLevel
+				}
 			case "MedicalNotes":
-				rmap["medicalNotes"] = rec.MedicalNotes
+				if !row.Masked("medicalNotes") {
+					rmap["medicalNotes"] = rec.MedicalNotes
+				}
 			}
 		}
 

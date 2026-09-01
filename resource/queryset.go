@@ -49,6 +49,16 @@ type QuerySet[Resource Resourcer] struct {
 	// check-SELECT). While the engine holds no conditions the map stays empty
 	// and behavior is byte-identical RBAC.
 	conditionalDecisions accesstypes.Decisions
+
+	// collection resolves condition rendering: the checked resource's bindings
+	// and the app's subject anchors. Stamped by the decoder; nil on a
+	// hand-built QuerySet, which errors if conditions ever need rendering.
+	collection *GeneratedCollection
+
+	// jsonNames maps resource fields to their request-type JSON names for the
+	// masked-names column. Stamped by the decoder; a missing entry falls back
+	// to the Go field name.
+	jsonNames map[accesstypes.Field]string
 }
 
 // NewQuerySet creates a new, empty QuerySet for a given resource metadata.
@@ -313,34 +323,64 @@ func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
 	return "ORDER BY " + strings.Join(orderByParts, ", "), nil
 }
 
-// columns returns the database struct tags for the fields in databaseType that the user has access to view.
-func (q *QuerySet[Resource]) columns(dbType DBType) (Columns, error) {
-	dbFields := make([]dbFieldMetadata, 0, q.Len())
+// fieldColumnMetadata pairs a projected field with its database metadata.
+type fieldColumnMetadata struct {
+	field accesstypes.Field
+	meta  dbFieldMetadata
+}
+
+// orderedDBFields returns the projected fields with their database metadata,
+// in struct declaration order — the projection order of every select list.
+func (q *QuerySet[Resource]) orderedDBFields(dbType DBType) ([]fieldColumnMetadata, error) {
+	fieldColumns := make([]fieldColumnMetadata, 0, q.Len())
 	for _, field := range q.Fields() {
 		dbField, ok := q.rMeta.dbFieldMap(dbType)[field]
 		if !ok {
-			return "", errors.Newf("field %s not found in db struct", field)
+			return nil, errors.Newf("field %s not found in db struct", field)
 		}
 
-		dbFields = append(dbFields, dbField)
+		fieldColumns = append(fieldColumns, fieldColumnMetadata{field: field, meta: dbField})
 	}
-	sort.Slice(dbFields, func(i, j int) bool {
-		return dbFields[i].index < dbFields[j].index
+	sort.Slice(fieldColumns, func(i, j int) bool {
+		return fieldColumns[i].meta.index < fieldColumns[j].meta.index
 	})
 
-	columns := make([]string, 0, len(dbFields))
-	for _, dbField := range dbFields {
-		columns = append(columns, dbField.ColumnName)
+	return fieldColumns, nil
+}
+
+// columns returns the select list for the fields the user has access to view.
+// With no rendered conditions it is the plain column list; conditionally
+// granted columns render as their CASE, and the reserved masked-names column
+// is appended when any CASE survives pruning.
+func (q *QuerySet[Resource]) columns(dbType DBType, rendered *renderedReadConditions) (Columns, error) {
+	fieldColumns, err := q.orderedDBFields(dbType)
+	if err != nil {
+		return "", err
 	}
 
-	switch dbType {
-	case SpannerDBType:
-		return Columns(strings.Join(columns, ", ")), nil
-	case PostgresDBType:
-		return Columns(fmt.Sprintf(`"%s"`, strings.Join(columns, `", "`))), nil
-	default:
-		return "", errors.Newf("unsupported dbType: %s", dbType)
+	columns := make([]string, 0, len(fieldColumns)+1)
+	for _, fieldColumn := range fieldColumns {
+		if rendered != nil {
+			if override, ok := rendered.overrides[fieldColumn.field]; ok {
+				columns = append(columns, override)
+
+				continue
+			}
+		}
+		switch dbType {
+		case SpannerDBType:
+			columns = append(columns, fieldColumn.meta.ColumnName)
+		case PostgresDBType:
+			columns = append(columns, fmt.Sprintf(`"%s"`, fieldColumn.meta.ColumnName))
+		default:
+			return "", errors.Newf("unsupported dbType: %s", dbType)
+		}
 	}
+	if rendered != nil && rendered.maskColumn != "" {
+		columns = append(columns, rendered.maskColumn)
+	}
+
+	return Columns(strings.Join(columns, ", ")), nil
 }
 
 func (q *QuerySet[Resource]) astWhereClause(dbType DBType, filterAst ExpressionNode) (*Statement, error) {
@@ -410,7 +450,20 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, httpio.NewBadRequestMessage("cannot use multiple sources for WHERE clause together (e.g. QueryClause and KeySet)")
 	}
 
-	columns, err := q.columns(dbType)
+	plan, err := q.readConditionPlan()
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.readConditionPlan()")
+	}
+
+	var rendered *renderedReadConditions
+	if plan != nil {
+		rendered, err = q.renderReadConditions(dbType, plan)
+		if err != nil {
+			return nil, errors.Wrap(err, "QuerySet.renderReadConditions()")
+		}
+	}
+
+	columns, err := q.columns(dbType, rendered)
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
@@ -418,6 +471,14 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	where, err := q.where(dbType, filterAst)
 	if err != nil {
 		return nil, errors.Wrap(err, "patcher.Where()")
+	}
+
+	if rendered != nil && rendered.rowPredicate != "" {
+		if where.SQL == "" {
+			where.SQL = "WHERE " + rendered.rowPredicate
+		} else {
+			where.SQL += " AND " + rendered.rowPredicate
+		}
 	}
 
 	orderByClause, err := q.buildOrderByClause(dbType)
@@ -444,6 +505,12 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		where.Params[k] = subqueryParams[k]
 	}
 
+	if rendered != nil {
+		if err := q.mergeRenderedParams(rendered, where.Params); err != nil {
+			return nil, err
+		}
+	}
+
 	sql := fmt.Sprintf(`
 			%s
 			SELECT
@@ -460,7 +527,12 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause")
 	}
 
-	return &Statement{resolvedWhereClause: resolvedSQL, SQL: sql, Params: where.Params}, nil
+	stmt := &Statement{resolvedWhereClause: resolvedSQL, SQL: sql, Params: where.Params}
+	if rendered != nil && rendered.maskColumn != "" {
+		stmt.maskedNamesColumn = maskedNamesColumnName
+	}
+
+	return stmt, nil
 }
 
 // Read executes the query and returns a single result wrapped in the Row envelope.

@@ -9,14 +9,15 @@ import (
 
 // Row is the generic per-row envelope yielded by List and returned by Read. It carries
 // the row data together with per-row metadata; cell masking is the envelope's first
-// metadata tenant. No machinery populates the masking metadata yet, so Masked reports
-// false for every cell until mask rendering lands.
+// metadata tenant, populated from the read statement's reserved masked-names column
+// when conditional grants render into the query.
 type Row[Resource Resourcer] struct {
-	// Data is the row itself, exactly as scanned from the database.
+	// Data is the row itself, exactly as scanned from the database. A masked cell
+	// holds its type's zero value; Masked is what distinguishes it from a genuine
+	// zero.
 	Data Resource
 
-	// masked holds the JSON names of this row's masked cells. It stays empty until
-	// mask rendering lands.
+	// masked holds the JSON names of this row's masked cells.
 	masked []string
 }
 

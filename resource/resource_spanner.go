@@ -11,6 +11,7 @@ import (
 	"github.com/cccteam/spxscan"
 	"github.com/cccteam/spxscan/spxapi"
 	"github.com/go-playground/errors/v5"
+	"google.golang.org/api/iterator"
 )
 
 var _ Client = (*SpannerClient)(nil)
@@ -74,6 +75,18 @@ func (c *spannerReader[Resource]) DBType() DBType {
 // Read reads a single resource from the database.
 func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
 	var res Resource
+	if stmt.maskedNamesColumn != "" {
+		row, err := c.readMasked(ctx, stmt)
+		if err != nil {
+			return nil, err
+		}
+		if row == nil {
+			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", res.Resource(), stmt.resolvedWhereClause)
+		}
+
+		return row, nil
+	}
+
 	row := new(Row[Resource])
 	if err := spxscan.Get(ctx, c.readTxn(), &row.Data, stmt.SpannerStatement()); err != nil {
 		if errors.Is(err, spxapi.ErrNotFound) {
@@ -86,8 +99,30 @@ func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*R
 	return row, nil
 }
 
+// readMasked reads the first row of a masking statement; a nil row with no
+// error means no row matched.
+func (c *spannerReader[Resource]) readMasked(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
+	it := c.readTxn().Query(ctx, stmt.SpannerStatement())
+	defer it.Stop()
+
+	spannerRow, err := it.Next()
+	if err != nil {
+		if errors.Is(err, iterator.Done) {
+			return nil, nil
+		}
+
+		return nil, errors.Wrap(err, "spanner.RowIterator.Next()")
+	}
+
+	return scanMaskedRow[Resource](spannerRow, stmt.maskedNamesColumn)
+}
+
 // List reads a list of resources from the database.
 func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
+	if stmt.maskedNamesColumn != "" {
+		return c.listMasked(ctx, stmt)
+	}
+
 	return func(yield func(*Row[Resource], error) bool) {
 		for r, err := range spxscan.SelectSeq[Resource](ctx, c.readTxn(), stmt.SpannerStatement()) {
 			if err != nil {
@@ -100,6 +135,51 @@ func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) ite
 			}
 		}
 	}
+}
+
+// listMasked iterates a masking statement, scanning each row's data and its
+// reserved masked-names column into the Row envelope.
+func (c *spannerReader[Resource]) listMasked(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
+	return func(yield func(*Row[Resource], error) bool) {
+		it := c.readTxn().Query(ctx, stmt.SpannerStatement())
+		defer it.Stop()
+
+		for {
+			spannerRow, err := it.Next()
+			if err != nil {
+				if !errors.Is(err, iterator.Done) {
+					yield(nil, errors.Wrap(err, "spanner.RowIterator.Next()"))
+				}
+
+				return
+			}
+
+			row, err := scanMaskedRow[Resource](spannerRow, stmt.maskedNamesColumn)
+			if err != nil {
+				yield(nil, err)
+
+				return
+			}
+			if !yield(row, nil) {
+				return
+			}
+		}
+	}
+}
+
+// scanMaskedRow scans one masking-statement row: the resource columns into the
+// envelope's data (leniently, so the reserved column is skipped) and the
+// reserved column into the envelope's mask list.
+func scanMaskedRow[Resource Resourcer](spannerRow *spanner.Row, maskedNamesColumn string) (*Row[Resource], error) {
+	row := new(Row[Resource])
+	if err := spannerRow.ToStructLenient(&row.Data); err != nil {
+		return nil, errors.Wrap(err, "spanner.Row.ToStructLenient()")
+	}
+	if err := spannerRow.ColumnByName(maskedNamesColumn, &row.masked); err != nil {
+		return nil, errors.Wrap(err, "spanner.Row.ColumnByName()")
+	}
+
+	return row, nil
 }
 
 var _ ReadOnlyTransactionCloser = (*SpannerReadOnlyTransaction)(nil)

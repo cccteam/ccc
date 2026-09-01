@@ -17,6 +17,10 @@ import (
 
 const (
 	booleanStr = "boolean"
+
+	// reservedMaskedNamesColumn is the read statements' reserved output column
+	// (the masked cells' JSON names); resource columns must not collide with it.
+	reservedMaskedNamesColumn = "zzMaskedFields"
 )
 
 // Generator provides methods for generating Go or Typescript for a resource-driven web application.

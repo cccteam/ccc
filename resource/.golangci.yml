@@ -83,6 +83,7 @@ linters:
             - go/types
             - golang.org/x/tools/go/packages
             - golang.org/x/tools/imports
+            - google.golang.org/api/iterator
     dupl:
       threshold: 100
     exhaustive:
