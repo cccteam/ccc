@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -6,7 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatTableModule } from '@angular/material/table';
 import { IncidentReports } from '@app/service/zz_gen_resources';
-import { WaystationService } from '../waystation.service';
+import { reloadOnStationChange, WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
 /**
@@ -41,11 +41,7 @@ export class IncidentsComponent {
   newRawStatement = '';
 
   constructor() {
-    effect(() => {
-      if (this.ws.current()) {
-        this.load();
-      }
-    });
+    reloadOnStationChange(this.ws, () => this.load());
   }
 
   load(): void {

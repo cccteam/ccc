@@ -1,11 +1,11 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTableModule } from '@angular/material/table';
 import { CatalogItems, InventoryLots, Shipments } from '@app/service/zz_gen_resources';
-import { WaystationService } from '../waystation.service';
+import { reloadOnStationChange, WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
 /**
@@ -30,11 +30,7 @@ export class LogisticsComponent {
   lotColumns = ['item', 'quantity', 'expiresOn', 'binLocation', 'lotActions'];
 
   constructor() {
-    effect(() => {
-      if (this.ws.current()) {
-        this.load();
-      }
-    });
+    reloadOnStationChange(this.ws, () => this.load());
   }
 
   load(): void {

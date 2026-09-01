@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -10,7 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { DeclineReason, RequisitionStatus } from '@app/service/zz_gen_enums';
 import { CatalogItems, RequisitionLines, Requisitions } from '@app/service/zz_gen_resources';
-import { WaystationService } from '../waystation.service';
+import { reloadOnStationChange, WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
 /**
@@ -62,11 +62,9 @@ export class RequisitionsComponent {
   newLineQuantity: number | null = null;
 
   constructor() {
-    effect(() => {
-      if (this.ws.current()) {
-        this.selected.set(undefined);
-        this.load();
-      }
+    reloadOnStationChange(this.ws, () => {
+      this.selected.set(undefined);
+      this.load();
     });
   }
 

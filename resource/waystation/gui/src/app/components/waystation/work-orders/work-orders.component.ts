@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -12,7 +12,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTableModule } from '@angular/material/table';
 import { WorkOrderStatus } from '@app/service/zz_gen_enums';
 import { Assets, Teams, WorkOrders, WorkOrderTasks } from '@app/service/zz_gen_resources';
-import { WaystationService } from '../waystation.service';
+import { reloadOnStationChange, WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
 /**
@@ -68,11 +68,9 @@ export class WorkOrdersComponent {
   newTaskInstructions = '';
 
   constructor() {
-    effect(() => {
-      if (this.ws.current()) {
-        this.selected.set(undefined);
-        this.load();
-      }
+    reloadOnStationChange(this.ws, () => {
+      this.selected.set(undefined);
+      this.load();
     });
   }
 

@@ -1,9 +1,9 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { StationStatusBoards } from '@app/service/zz_gen_resources';
-import { WaystationService } from '../waystation.service';
+import { reloadOnStationChange, WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
 /**
@@ -25,11 +25,7 @@ export class StatusBoardComponent {
   columns = ['facilityName', 'metric', 'latestReading', 'recordedAt'];
 
   constructor() {
-    effect(() => {
-      if (this.ws.current()) {
-        this.load();
-      }
-    });
+    reloadOnStationChange(this.ws, () => this.load());
   }
 
   load(): void {

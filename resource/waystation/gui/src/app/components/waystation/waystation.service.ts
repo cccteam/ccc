@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { inject, Injectable, signal } from '@angular/core';
+import { effect, inject, Injectable, signal, untracked } from '@angular/core';
 import {
   Assets,
   CatalogItems,
@@ -48,6 +48,27 @@ export interface AuditTrailEntry {
  * The selected waystation is shared state: it is the permission domain for every
  * request these pages make, so switching it re-scopes what each persona can see.
  */
+
+/**
+ * reloadOnStationChange re-runs load whenever the selected waystation changes — and
+ * only then. The load runs untracked because it issues HTTP requests, and ccc-lib's
+ * ApiInterceptor reads the global loading signal synchronously on every request
+ * (UiCoreService.beginActivity checks loading() before updating it). Called from a
+ * tracked effect context, that signal joins the effect's dependencies, and every
+ * response's endActivity write then re-triggers the effect: an infinite request
+ * loop, as fast as the server can answer. Station pages must never issue HTTP from
+ * a tracked effect context — always through this helper.
+ *
+ * Must be called from an injection context (a component constructor).
+ */
+export function reloadOnStationChange(ws: WaystationService, load: () => void): void {
+  effect(() => {
+    if (ws.current()) {
+      untracked(load);
+    }
+  });
+}
+
 @Injectable({ providedIn: 'root' })
 export class WaystationService {
   private http = inject(HttpClient);
