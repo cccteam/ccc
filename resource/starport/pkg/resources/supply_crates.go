@@ -16,17 +16,25 @@ type (
 	// returned, Barcode is returned but never accepted, and InspectorBadge is PII.
 	// It is also the only resource with change tracking enabled (see Config below).
 	//
+	// SupplyCrate also carries the demo attribute vocabulary for conditional
+	// grants (the ABAC conditions suite): status and priority as typed column
+	// attributes, and inspectorBadge as the subject-comparable attribute the
+	// "own crates" conditions reference.
+	//
 	// @resource
 	// @validateCreateType(SupplyCrateCreateValidator)
 	SupplyCrate struct {
-		ID             ccc.UUID     `spanner:"Id"`
-		Label          string       `spanner:"Label"`
-		Quantity       int64        `spanner:"Quantity"       allow_filter:"true"`
-		Priority       int64        `spanner:"Priority"`
-		Status         string       `spanner:"Status"         default_create_fn:"defaultStatus"`
-		Barcode        string       `spanner:"Barcode"        conditions:"output_only"          default_create_fn:"defaultBarcode"`
-		Notes          *string      `spanner:"Notes"          conditions:"input_only"`
-		InspectorBadge *string      `spanner:"InspectorBadge" allow_filter:"true"               conditions:"pii"`
+		ID       ccc.UUID `spanner:"Id"`
+		Label    string   `spanner:"Label"`
+		Quantity int64    `spanner:"Quantity" allow_filter:"true"`
+		// @attribute(priority)
+		Priority int64 `spanner:"Priority"`
+		// @attribute(status)
+		Status  string  `spanner:"Status"  default_create_fn:"defaultStatus"`
+		Barcode string  `spanner:"Barcode" conditions:"output_only"          default_create_fn:"defaultBarcode"`
+		Notes   *string `spanner:"Notes"   conditions:"input_only"`
+		// @attribute(inspectorBadge)
+		InspectorBadge *string      `spanner:"InspectorBadge" allow_filter:"true" conditions:"pii"`
 		AssignedShipID ccc.NullUUID `spanner:"AssignedShipId"`
 	}
 )

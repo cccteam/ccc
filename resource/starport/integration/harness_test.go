@@ -122,8 +122,19 @@ func newTestApp(db *initiator.SpannerDB, g grants) http.Handler {
 	}))
 }
 
-// doRequest performs a request against the app and returns the status code and body.
+// doRequest performs a request against the app as the suite's default user and
+// returns the status code and body.
 func doRequest(t *testing.T, h http.Handler, method, target, body string) (statusCode int, respBody []byte) {
+	t.Helper()
+
+	return doRequestAs(t, h, "integration-test-user", method, target, body)
+}
+
+// doRequestAs performs a request against the app as the given user. The
+// conditions suite runs against the real permission engine, where the acting
+// user decides outcomes; every other suite scripts its checks and uses the
+// default user.
+func doRequestAs(t *testing.T, h http.Handler, user accesstypes.User, method, target, body string) (statusCode int, respBody []byte) {
 	t.Helper()
 
 	var reader *strings.Reader
@@ -142,7 +153,7 @@ func doRequest(t *testing.T, h http.Handler, method, target, body string) (statu
 	ctx := context.WithValue(t.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionData{
 		SessionInfo: &sessioninfo.SessionInfo{
 			ID:       sessionID,
-			Username: "integration-test-user",
+			Username: string(user),
 		},
 	})
 

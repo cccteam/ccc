@@ -146,6 +146,11 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "quantity", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "status", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 				},
+				Attributes: []resource.AttributeData{
+					{Name: "inspectorBadge", Column: "InspectorBadge", Type: "string"},
+					{Name: "priority", Column: "Priority", Type: "number"},
+					{Name: "status", Column: "Status", Type: "string"},
+				},
 			},
 		},
 	})
