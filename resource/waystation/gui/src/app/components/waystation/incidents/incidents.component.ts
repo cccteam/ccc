@@ -12,9 +12,10 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
 
 /**
  * Incident reports demonstrate the server-owned field shapes in one form: the case
- * number is output-only (defaulted server-side, unwritable from the wire), the
- * reporter contact is PII the auditor role reads around (the column is simply absent
- * from their rows), and severity is clamped by an update-defaults hook.
+ * number is output-only (defaulted server-side, unwritable from the wire — and absent
+ * from IncidentReportsCreate), the reporter contact is PII the auditor role reads
+ * around (the column is simply absent from their rows), and severity is clamped by
+ * an update-defaults hook.
  */
 @Component({
   selector: 'app-incidents',
@@ -33,7 +34,7 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
 export class IncidentsComponent {
   private ws = inject(WaystationService);
 
-  incidents = this.ws.stationList<IncidentReports>('incident-reports', Resources.IncidentReports);
+  incidents = this.ws.stationList((station) => station.incidentReports);
   columns = ['caseNumber', 'summary', 'severity', 'reporterContact'];
 
   // Affordances from the selected station's digest.
@@ -52,23 +53,20 @@ export class IncidentsComponent {
     return 'reporterContact' in incident ? (incident.reporterContact ?? '') : '— withheld —';
   }
 
-  report(): void {
+  async report(): Promise<void> {
     if (!this.newSummary || this.newSeverity === null) {
       return;
     }
-    this.ws
-      .createIncident({
-        summary: this.newSummary,
-        severity: this.newSeverity,
-        reporterContact: this.newReporterContact,
-        rawStatement: this.newRawStatement,
-      })
-      .subscribe(() => {
-        this.newSummary = '';
-        this.newSeverity = null;
-        this.newReporterContact = '';
-        this.newRawStatement = '';
-        this.incidents.reload();
-      });
+    await this.ws.stationApi().incidentReports.create({
+      summary: this.newSummary,
+      severity: this.newSeverity,
+      reporterContact: this.newReporterContact,
+      rawStatement: this.newRawStatement,
+    });
+    this.newSummary = '';
+    this.newSeverity = null;
+    this.newReporterContact = '';
+    this.newRawStatement = '';
+    this.incidents.reload();
   }
 }

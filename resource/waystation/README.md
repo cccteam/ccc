@@ -102,26 +102,46 @@ All login passwords are `waystation`.
 
 ## The GUI
 
-`gui/` is Angular + `@cccteam/ccc-lib`. Global resources (catalog, suppliers, staff,
-waystations) are config-driven ccc-lib resource pages; every station-scoped surface is
-hand-written under `src/app/components/waystation/`, because ccc-lib 0.0.44 uses
-`meta.route` verbatim and cannot fill the `{waystationID}` segment of a generated
-domain-route template. `WaystationService` holds the selected waystation as shared
-state — it is the permission domain of every request, so switching stations re-scopes
-what each persona sees. The station picker has no bespoke endpoint: by default its
-options are the library's answer to "where do I hold grants" — the generated
-`user-domains` endpoint, cached on ccc-lib's `AuthService.domains()` — and the
-"Show all waystations" toggle widens it to the roster served by the generated,
+`gui/` is Angular + `@cccteam/ccc-lib`, over the generated API client. The generator
+emits `zz_gen_api.ts` beside the other `zz_gen_*.ts` files: the API's descriptor
+(routes, scopes, keys, operations) plus the shapes only the generator can derive —
+per-resource `Create`/`Patch` interfaces with server-owned and immutable fields
+absent, key tuples in route order, and the `Api` type. The framework-neutral runtime
+`@cccteam/resource` (in the ccc-lib repo) interprets it: `createApi` puts global
+handles on the client root and station-scoped handles under `api.domain(station)`, so
+a station resource cannot be addressed without a station — at compile time. The app
+registers the client once (`provideResourceClient` in `app.config.ts`), riding
+`HttpClient` so ccc-lib's interceptor keeps applying, and the client's permission
+cache is the one ccc-lib's `AuthService`, guard, and directive answer from.
+
+Global resources (catalog, suppliers, staff, waystations) are config-driven ccc-lib
+resource pages. Every station-scoped surface is hand-written under
+`src/app/components/waystation/` on the client's typed handles: lists are
+`stationList((station) => station.workOrders, { sort: ... })`, mutations are
+`station.workOrders.create({...})` / `.patch(key, {...})` / `.remove(keyOf(row))`,
+transitions are `station.scheduleWorkOrder.execute({...})`, and the audit trail's
+manually registered resource comes from the client's `define` escape hatch.
+`WaystationService` holds the selected waystation as shared state — it is the
+permission domain of every request, so switching stations re-scopes what each persona
+sees — and exposes `station()`, the client bound to it. The station picker has no
+bespoke endpoint: by default its options are the library's answer to "where do I hold
+grants" — the generated `user-domains` endpoint, cached on `AuthService.domains()` —
+and the "Show all waystations" toggle widens it to the roster served by the generated,
 permission-checked Waystations resource — a demo affordance no real application would
 carry, kept as the clickable path to fail-closed refusals. Selecting a station loads
-its permission digest, and every hand-written page asks it before asking the server:
-`WaystationService.can(permission, resource)` gates each list request, create form,
-RPC button, and delete affordance (a global resource asks the global digest, a
-station-scoped one the selected station's), the topbar hides menus the persona cannot
-open, and a page whose List grant is absent explains so instead of provoking a 403.
-Conditional grants render — the server narrows per row — so a technician still sees
-the task toggles that the in-progress condition will refuse on a scheduled order. Masked cells arrive as ABSENT JSON keys and render as em-dashes,
-never as zero or empty values.
+its permission digest into the client, and every hand-written page asks it before
+asking the server: `WaystationService.can(permission, resource)` gates each list
+request, create form, RPC button, and delete affordance (the client resolves the
+scope: a global resource asks the global digest, a station-scoped one the selected
+station's), the topbar hides menus the persona cannot open, and a page whose List
+grant is absent explains so instead of provoking a 403. Conditional grants render —
+the server narrows per row — so a technician still sees the task toggles that the
+in-progress condition will refuse on a scheduled order. Masked cells arrive as ABSENT
+JSON keys and render as em-dashes, never as zero or empty values.
+
+The same generated client runs outside the browser: `bun run` a script that imports
+`createApi` from `zz_gen_api.ts` with `fetchTransport` and a cookie-carrying fetch, and
+the whole persona walkthrough drives through typed handles — no Angular anywhere.
 
 `gui/.prettierignore` excludes `zz_gen_*.ts`: prettier reflows generator output and
 breaks `go generate` idempotence.
@@ -169,15 +189,17 @@ The same tour in the browser, persona by persona:
 ## Authoring notes (learned building this)
 
 - **GUI data loading is declarative — never fetch from an effect.** Each station
-  page's lists are `httpResource`s derived from the current-waystation signal
+  page's lists are `resource()`s whose loaders call the client's typed handles,
+  derived from the current-waystation signal and the List grant
   (`WaystationService.stationList`/`globalList`): switching stations refetches them,
   mutations call `.reload()` on the affected lists, and the selected row is a
   `computed` over the live list. The original `effect(() => load())` shape looped
   forever at network speed: ccc-lib's `ApiInterceptor` reads the global loading
   signal on every request (`UiCoreService.beginActivity`), so a fetching effect
   adopts that signal as a dependency and every response's `endActivity` write
-  re-runs it. `httpResource` loaders run untracked by design, which rules the loop
-  out structurally.
+  re-runs it. Resource loaders run untracked by design, which rules the loop out
+  structurally. The client's permission cache is a plain store; `can()` reads its
+  signal mirror (`storeSignal`) first so computeds track digest loads.
 - **Derived tenancy needs the anchor bound.** A `@subjectSet` over a domain-scoped
   anchor (TeamMembership) only partitions per-domain if the anchor resource carries its
   own `@domain` binding; without it the subject set is partition-blind.

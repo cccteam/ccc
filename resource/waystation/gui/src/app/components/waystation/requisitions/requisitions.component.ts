@@ -10,7 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { DeclineReason, RequisitionStatus } from '@app/service/zz_gen_enums';
-import { CatalogItems, RequisitionLines, Requisitions } from '@app/service/zz_gen_resources';
+import { RequisitionLines, Requisitions } from '@app/service/zz_gen_resources';
 import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
@@ -44,9 +44,9 @@ export class RequisitionsComponent {
   readonly status = RequisitionStatus;
   readonly declineReasons = Object.values(DeclineReason);
 
-  requisitions = this.ws.stationList<Requisitions>('requisitions', Resources.Requisitions);
-  lineRows = this.ws.stationList<RequisitionLines>('requisition-lines', Resources.RequisitionLines);
-  catalogItems = this.ws.globalList<CatalogItems>('catalog-items', Resources.CatalogItems);
+  requisitions = this.ws.stationList((station) => station.requisitions);
+  lineRows = this.ws.stationList((station) => station.requisitionLines);
+  catalogItems = this.ws.globalList((api) => api.catalogItems);
   columns = ['justification', 'status', 'requestedBy', 'totalCost', 'neededBy', 'actions'];
   lineColumns = ['item', 'quantity', 'unitCostSnapshot', 'lineActions'];
 
@@ -110,71 +110,70 @@ export class RequisitionsComponent {
     return 'unitCostSnapshot' in line ? String(line.unitCostSnapshot) : '—';
   }
 
-  create(): void {
+  async create(): Promise<void> {
     if (!this.newJustification || !this.newNeededBy) {
       return;
     }
-    this.ws
-      .createRequisition({
-        // NeededBy is a DATE column; the date input's YYYY-MM-DD value is its wire format.
-        justification: this.newJustification,
-        neededBy: this.newNeededBy as unknown as Date,
-      })
-      .subscribe(() => {
-        this.newJustification = '';
-        this.newNeededBy = '';
-        this.requisitions.reload();
-      });
+    await this.ws.stationApi().requisitions.create({
+      justification: this.newJustification,
+      // NeededBy is a DATE column; the date input's YYYY-MM-DD value is its wire format.
+      neededBy: this.newNeededBy as unknown as Date,
+    });
+    this.newJustification = '';
+    this.newNeededBy = '';
+    this.requisitions.reload();
   }
 
-  addLine(requisition: Requisitions): void {
+  // Lines carry a compound, client-assigned key: RequisitionLinesCreate requires both
+  // parts, and the client lifts them out of the value into the operation path.
+  async addLine(requisition: Requisitions): Promise<void> {
     const item = this.catalogItems.value().find((candidate) => candidate.id === this.newLineItemId);
-    if (!item || this.newLineQuantity === null) {
+    if (!item || this.newLineQuantity === null || item.unitCost === undefined) {
       return;
     }
     const nextNumber = Math.max(0, ...this.lines(requisition).map((line) => line.lineNumber)) + 1;
-    this.ws
-      .createRequisitionLine(requisition.id, nextNumber, {
-        // The unit cost is snapshotted at add time: the line keeps the price the
-        // requester saw even if the catalog moves later.
-        catalogItemId: this.newLineItemId,
-        quantity: this.newLineQuantity,
-        unitCostSnapshot: item.unitCost,
-      })
-      .subscribe(() => {
-        this.newLineItemId = '';
-        this.newLineQuantity = null;
-        this.lineRows.reload();
-      });
+    await this.ws.stationApi().requisitionLines.create({
+      requisitionId: requisition.id,
+      lineNumber: nextNumber,
+      // The unit cost is snapshotted at add time: the line keeps the price the
+      // requester saw even if the catalog moves later.
+      catalogItemId: this.newLineItemId,
+      quantity: this.newLineQuantity,
+      unitCostSnapshot: item.unitCost,
+    });
+    this.newLineItemId = '';
+    this.newLineQuantity = null;
+    this.lineRows.reload();
   }
 
-  removeLine(line: RequisitionLines): void {
-    this.ws.removeRequisitionLine(line.requisitionId, line.lineNumber).subscribe(() => this.lineRows.reload());
+  async removeLine(line: RequisitionLines): Promise<void> {
+    const lines = this.ws.stationApi().requisitionLines;
+    await lines.remove(lines.keyOf(line));
+    this.lineRows.reload();
   }
 
   // Submit recomputes the frozen total and moves the status, and the lines' cost
   // visibility can change with it — reload both lists.
-  submit(requisition: Requisitions): void {
-    this.ws.submitRequisition(requisition.id).subscribe(() => {
-      this.requisitions.reload();
-      this.lineRows.reload();
-    });
+  async submit(requisition: Requisitions): Promise<void> {
+    await this.ws.stationApi().submitRequisition.execute({ requisitionId: requisition.id });
+    this.requisitions.reload();
+    this.lineRows.reload();
   }
 
-  approve(requisition: Requisitions): void {
-    this.ws.approveRequisition(requisition.id).subscribe(() => {
-      this.requisitions.reload();
-      this.lineRows.reload();
-    });
+  async approve(requisition: Requisitions): Promise<void> {
+    await this.ws.stationApi().approveRequisition.execute({ requisitionId: requisition.id });
+    this.requisitions.reload();
+    this.lineRows.reload();
   }
 
-  decline(requisition: Requisitions): void {
+  async decline(requisition: Requisitions): Promise<void> {
     if (!this.declineReason) {
       return;
     }
-    this.ws.declineRequisition(requisition.id, this.declineReason).subscribe(() => {
-      this.declineReason = '';
-      this.requisitions.reload();
-    });
+    await this.ws
+      .stationApi()
+      .declineRequisition.execute({ requisitionId: requisition.id, reason: this.declineReason });
+    this.declineReason = '';
+    this.requisitions.reload();
   }
 }

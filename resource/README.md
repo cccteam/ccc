@@ -3,7 +3,10 @@
 The `resource` module provides permission-enforced CRUD over Spanner-backed resources:
 the `resource` package is the runtime (query decoding, permission enforcement, patch
 sets), and `resource/generation` is the Resource Generator that turns annotated source
-structs and schema migrations into handlers, routes, request structs, and TypeScript.
+structs and schema migrations into handlers, routes, request structs, and TypeScript —
+including `zz_gen_api.ts`, the typed client surface the framework-neutral
+[`@cccteam/resource`](https://github.com/cccteam/ccc-lib/tree/master/projects/resource)
+runtime interprets (see the [waystation demo](waystation/README.md#the-gui)).
 
 ## Annotation and Struct-Tag Reference
 

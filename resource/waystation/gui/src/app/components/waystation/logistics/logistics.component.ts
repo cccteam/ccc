@@ -5,7 +5,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTableModule } from '@angular/material/table';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
-import { CatalogItems, InventoryLots, Shipments } from '@app/service/zz_gen_resources';
+import { InventoryLots, Shipments } from '@app/service/zz_gen_resources';
 import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
@@ -24,11 +24,11 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
 export class LogisticsComponent {
   private ws = inject(WaystationService);
 
-  shipments = this.ws.stationList<Shipments>('shipments', Resources.Shipments);
+  shipments = this.ws.stationList((station) => station.shipments);
   // Sorted server-side through the reserved sort parameter: soonest expiry first
   // (Spanner sorts NULL expiries — never expiring — to the top).
-  lots = this.ws.stationList<InventoryLots>('inventory-lots?sort=expiresOn', Resources.InventoryLots);
-  catalogItems = this.ws.globalList<CatalogItems>('catalog-items', Resources.CatalogItems);
+  lots = this.ws.stationList((station) => station.inventoryLots, { sort: { field: 'expiresOn' } });
+  catalogItems = this.ws.globalList((api) => api.catalogItems);
   shipmentColumns = ['manifestCode', 'arrivedAt', 'shipmentActions'];
   lotColumns = ['item', 'quantity', 'expiresOn', 'binLocation', 'lotActions'];
 
@@ -44,11 +44,14 @@ export class LogisticsComponent {
     return this.catalogItems.value().find((item) => item.id === catalogItemId)?.name ?? catalogItemId ?? '';
   }
 
-  receive(shipment: Shipments): void {
-    this.ws.receiveShipment(shipment.id).subscribe(() => this.shipments.reload());
+  async receive(shipment: Shipments): Promise<void> {
+    await this.ws.stationApi().receiveShipment.execute({ shipmentId: shipment.id });
+    this.shipments.reload();
   }
 
-  removeLot(lot: InventoryLots): void {
-    this.ws.deleteInventoryLot(lot.id).subscribe(() => this.lots.reload());
+  async removeLot(lot: InventoryLots): Promise<void> {
+    const lots = this.ws.stationApi().inventoryLots;
+    await lots.remove(lots.keyOf(lot));
+    this.lots.reload();
   }
 }

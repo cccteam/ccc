@@ -11,6 +11,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
+	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/tools/go/packages"
 )
@@ -241,6 +242,10 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 		return errors.Wrap(err, "generateMethodMetadata()")
 	}
 
+	if err := t.generateAPIClient(); err != nil {
+		return errors.Wrap(err, "generateAPIClient()")
+	}
+
 	log.Printf("Generated typescript metadata in %s\n", time.Since(begin))
 
 	return nil
@@ -412,4 +417,173 @@ func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []*rpcField) []*rpc
 	}
 
 	return fields
+}
+
+// generateAPIClient emits zz_gen_api.ts: the typed client surface over the generated
+// API for the @cccteam/resource runtime — the descriptor (routes, scopes, keys,
+// operations), per-resource create/patch shapes and key tuples, and the Api type
+// that places global handles on the client root and domain-scoped handles under
+// domain(...).
+func (t *typescriptGenerator) generateAPIClient() error {
+	begin := time.Now()
+	log.Println("Starting API client generation...")
+
+	output, err := t.generateTemplateOutput("typescriptAPITemplate", typescriptAPITemplate, t.apiClientData())
+	if err != nil {
+		return errors.Wrap(err, "generateTemplateOutput()")
+	}
+
+	destinationFilePath := filepath.Join(t.typescriptDestination, generatedTypescriptFileName("api"))
+	file, err := os.Create(destinationFilePath)
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	if err := t.WriteBytesToFile(file, output); err != nil {
+		return err
+	}
+
+	log.Printf("Generated API client in %s: %s\n", time.Since(begin), file.Name())
+
+	return nil
+}
+
+// apiClientData assembles the client template's payload from the parsed resources,
+// computed resources, and RPC methods on the default outlet.
+func (t *typescriptGenerator) apiClientData() *tsAPIData {
+	data := &tsAPIData{
+		File:               t,
+		GenPrefix:          genPrefix,
+		DomainRouteSegment: t.domainRouteSegment,
+		DomainRouteParam:   t.domainRouteParam,
+	}
+
+	for _, res := range t.resources {
+		if !res.OnOutlet(defaultOutletName) || res.RoutingDisabled() {
+			continue
+		}
+		data.Resources = append(data.Resources, t.apiResource(res))
+	}
+	for _, res := range t.computedResources {
+		if !res.OnOutlet(defaultOutletName) || res.RoutingDisabled() {
+			continue
+		}
+		data.Resources = append(data.Resources, t.apiComputedResource(res))
+	}
+	for _, method := range t.rpcMethods {
+		if !method.OnOutlet(defaultOutletName) || method.SuppressHandler {
+			continue
+		}
+		data.Methods = append(data.Methods, &tsAPIMethod{
+			Name:     method.Name(),
+			Property: strcase.ToCamel(method.Name()),
+			Route:    strcase.ToKebab(method.Name()),
+			Scope:    method.PermissionScope,
+		})
+	}
+
+	for _, res := range data.Resources {
+		if res.Consolidated {
+			data.ConsolidatedRoute = t.ConsolidatedRoute
+		}
+		data.noteScope(res.Scope)
+	}
+	for _, method := range data.Methods {
+		data.noteScope(method.Scope)
+	}
+
+	return data
+}
+
+func (d *tsAPIData) noteScope(scope accesstypes.PermissionScope) {
+	if scope == accesstypes.DomainPermissionScope {
+		d.HasDomainScoped = true
+		d.HasDomain = true
+	} else {
+		d.HasGlobal = true
+	}
+}
+
+func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
+	plural := t.pluralize(res.Name())
+	out := &tsAPIResource{
+		Name:         plural,
+		Property:     strcase.ToCamel(plural),
+		Route:        strcase.ToKebab(plural),
+		Scope:        res.PermissionScope,
+		Consolidated: res.IsConsolidated,
+	}
+
+	for _, field := range res.PrimaryKeys() {
+		out.Keys = append(out.Keys, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})
+	}
+
+	if !res.ListHandlerDisabled() {
+		out.Operations = append(out.Operations, "list")
+	}
+	if !res.ReadHandlerDisabled() {
+		out.Operations = append(out.Operations, "read")
+	}
+	// A virtual resource is a read-only view: the router registers no PATCH for it.
+	if res.IsVirtual {
+		return out
+	}
+
+	if !res.CreateHandlerDisabled() {
+		out.Operations = append(out.Operations, "create")
+		out.HasCreate = true
+		for _, field := range res.Fields {
+			switch {
+			case field.IsPrimaryKey:
+				// A server-generated key is never supplied; any other key is.
+				if !res.PrimaryKeyIsGeneratedUUID() {
+					out.CreateFields = append(out.CreateFields, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType(), Required: true})
+				}
+			case field.IsOutputOnly():
+				// Server-owned: the wire cannot write it.
+			default:
+				out.CreateFields = append(out.CreateFields, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType(), Required: field.IsRequired()})
+			}
+		}
+	}
+	if !res.UpdateHandlerDisabled() {
+		out.Operations = append(out.Operations, "patch")
+		out.HasPatch = true
+		for _, field := range res.Fields {
+			if field.IsPrimaryKey || field.IsOutputOnly() || field.IsImmutable() {
+				continue
+			}
+			out.PatchFields = append(out.PatchFields, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})
+		}
+	}
+	if !res.DeleteHandlerDisabled() {
+		out.Operations = append(out.Operations, "remove")
+	}
+	if res.IsConsolidated && (out.HasCreate || out.HasPatch || !res.DeleteHandlerDisabled()) {
+		out.Operations = append(out.Operations, "batch")
+	}
+
+	return out
+}
+
+func (t *typescriptGenerator) apiComputedResource(res *computedResource) *tsAPIResource {
+	plural := t.pluralize(res.Name())
+	out := &tsAPIResource{
+		Name:     plural,
+		Property: strcase.ToCamel(plural),
+		Route:    strcase.ToKebab(plural),
+		Scope:    res.PermissionScope,
+	}
+	for _, field := range res.PrimaryKeys() {
+		out.Keys = append(out.Keys, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})
+	}
+	if !res.SuppressListHandler {
+		out.Operations = append(out.Operations, "list")
+	}
+	if !res.SuppressReadHandler {
+		out.Operations = append(out.Operations, "read")
+	}
+
+	return out
 }

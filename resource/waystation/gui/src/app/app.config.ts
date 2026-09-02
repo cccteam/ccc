@@ -3,8 +3,10 @@ import { ApplicationConfig, importProvidersFrom } from '@angular/core';
 import { MatNativeDateModule } from '@angular/material/core';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
+import { createApi } from '@app/service/zz_gen_api';
 import { methodMeta } from '@app/service/zz_gen_methods';
 import { resourceMeta } from '@app/service/zz_gen_resources';
+import { provideResourceClient } from '@cccteam/ccc-lib/resource-client';
 import {
   API_URL,
   BASE_URL,
@@ -48,6 +50,10 @@ export const appConfig: ApplicationConfig = {
       provide: API_URL,
       useValue: environment.apiUrl,
     },
+    // The generated API client: one typed surface over every route, one permission
+    // cache for the app's pages and the library's guard, directive, and forms. The
+    // transport rides HttpClient so the interceptor keeps applying.
+    provideResourceClient((transport) => createApi({ baseUrl: environment.apiUrl, transport })),
     provideRouter(
       routes,
       withComponentInputBinding(),

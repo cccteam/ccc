@@ -3,7 +3,6 @@ import { DatePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { Permissions, Resources } from '@app/service/zz_gen_constants';
-import { StationStatusBoards } from '@app/service/zz_gen_resources';
 import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
@@ -11,7 +10,8 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
  * The status board is a computed resource: its rows are folded server-side from the
  * latest sensor reading per facility and metric. The readings themselves arrive only
  * through the automation outlet (an API-keyed service account) and have no
- * human-readable route at all — this board is the only window onto them.
+ * human-readable route at all — this board is the only window onto them. The
+ * generated handle knows the board is read-only: it has list and read, nothing else.
  */
 @Component({
   selector: 'app-status-board',
@@ -22,7 +22,7 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
 export class StatusBoardComponent {
   private ws = inject(WaystationService);
 
-  rows = this.ws.stationList<StationStatusBoards>('station-status-boards', Resources.StationStatusBoards);
+  rows = this.ws.stationList((station) => station.stationStatusBoards);
   columns = ['facilityName', 'metric', 'latestReading', 'recordedAt'];
 
   station = this.ws.current;

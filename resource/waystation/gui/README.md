@@ -7,12 +7,18 @@ config-driven over the generated metadata in `src/app/core/service/` (`zz_gen_*.
 produced by `go generate ./...` in the module root — never edit by hand).
 
 The waystation-scoped surfaces (Work Orders, Requisitions, Status Board, Incidents,
-Logistics) are hand-written components under `src/app/components/waystation/`: the
-config-driven resource components cannot fill the `{waystationID}` segment of a
-domain route, so those pages address `/api/waystations/{waystationID}/...` directly —
-and double as the demo of per-station permission partitioning, stateful workflow
+Logistics) are hand-written components under `src/app/components/waystation/` on the
+generated API client: `zz_gen_api.ts` (also generated) plus the framework-neutral
+runtime `@cccteam/resource`. `WaystationService.station()` is the client bound to the
+selected waystation — its typed handles fill the `{waystationID}` segment, address the
+consolidated mutation endpoint, and post to the Execute-gated RPC routes — and the
+pages double as the demo of per-station permission partitioning, stateful workflow
 transitions, and per-cell masking (a masked cell arrives with its JSON key absent and
 renders as an em-dash, never a zero).
+
+The generated files import `@cccteam/resource`; while developing against the local
+ccc-lib checkout, `npm run ccclib:local` builds both packages there and attaches them
+through yalc (`ccclib:push` rebuilds, `ccclib:restore` returns to the registry pins).
 
 ## Development
 

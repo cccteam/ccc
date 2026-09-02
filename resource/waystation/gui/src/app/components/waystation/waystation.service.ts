@@ -1,24 +1,26 @@
-import { HttpClient, httpResource, HttpResourceRef } from '@angular/common/http';
-import { computed, effect, inject, Injectable, linkedSignal, signal, untracked } from '@angular/core';
-import { Methods, Permissions, PermissionScopes, Resources } from '@app/service/zz_gen_constants';
 import {
-  IncidentReports,
-  Requisitions,
-  RequisitionLines,
-  ResourceScopes,
-  Waystations,
-  WorkOrders,
-  WorkOrderTasks,
-} from '@app/service/zz_gen_resources';
+  computed,
+  effect,
+  inject,
+  Injectable,
+  linkedSignal,
+  resource,
+  ResourceRef,
+  signal,
+  untracked,
+} from '@angular/core';
+import { injectApi } from '@app/api/api';
+import { Permissions, Resources } from '@app/service/zz_gen_constants';
+import { Api, DomainApi } from '@app/service/zz_gen_api';
 import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { API_URL, Domain, Method, Permission, Resource } from '@cccteam/ccc-lib/types';
-import { Observable } from 'rxjs';
+import { storeSignal } from '@cccteam/ccc-lib/resource-client';
+import { Domain, DomainClient, Listable, ListQuery, Method, Permission, Resource } from '@cccteam/resource';
 
-interface Operation {
-  op: 'add' | 'patch' | 'remove';
-  path: string;
-  value?: unknown;
-}
+/** The generated client bound to one waystation: its resources and RPC methods. */
+export type StationApi = DomainClient<DomainApi>;
+
+/** A handle a page can list from and ask about: what stationList/globalList need. */
+type ListHandle<Row> = Listable<Row> & { can(permission: Permission): boolean };
 
 /**
  * AuditTrailEntry is one change-tracking event from the hand-written
@@ -36,31 +38,51 @@ export interface AuditTrailEntry {
 }
 
 /**
- * WaystationService talks to the waystation-scoped API surface by hand: the
- * config-driven resource components cannot fill the {waystationID} segment of a
- * domain route, so these pages address /api/waystations/{waystationID}/... directly.
- * Mutations go through the consolidated /api/resources endpoint — the same
- * JSON-Patch-style surface the integration suites pin — and workflow transitions go
- * through the Execute-gated RPC routes.
+ * WaystationService holds the one piece of state the station-scoped pages share — the
+ * selected waystation — and binds the generated API client to it. The waystation is
+ * the permission domain for every request those pages make: `station()` is the
+ * client bound to it (its handles fill the {waystationID} segment, address the
+ * consolidated mutation endpoint, and post to the Execute-gated RPC routes), so
+ * switching stations re-scopes what each persona can see and do.
  *
- * The selected waystation is shared state: it is the permission domain for every
- * request these pages make, so switching it re-scopes what each persona can see.
+ * Permissions: the client owns the digest cache — ccc-lib's AuthService, guard, and
+ * directive answer from the same cache. Selecting a station loads that station's
+ * digest; `can` answers from it reactively. Absent grant = hide the surface, never
+ * provoke a 403; conditional grant = render, the server narrows per row.
  *
- * Data loading is DECLARATIVE: each page's lists are httpResources derived from the
- * current-waystation signal (stationList/globalList below), never HTTP issued from
- * an effect. An effect that fetches adopts hidden dependencies — ccc-lib's
- * ApiInterceptor reads the global loading signal synchronously on every request
- * (UiCoreService.beginActivity), so a fetching effect re-runs on every response's
- * endActivity write: an infinite request loop, as fast as the server can answer.
- * httpResource loaders run untracked by design, which rules that loop out
- * structurally.
+ * Data loading is DECLARATIVE: each page's lists are resources derived from the
+ * selected station and the List grant, never HTTP issued from an effect. An effect
+ * that fetches adopts hidden dependencies — ccc-lib's ApiInterceptor reads the global
+ * loading signal synchronously on every request (UiCoreService.beginActivity), so a
+ * fetching effect re-runs on every response's endActivity write: an infinite request
+ * loop, as fast as the server can answer. Resource loaders run untracked by design,
+ * which rules that loop out structurally.
  */
 @Injectable({ providedIn: 'root' })
 export class WaystationService {
-  private http = inject(HttpClient);
-  private apiUrl = inject(API_URL);
+  /** The generated client: global handles on the root, station handles under domain(). */
+  readonly api: Api = injectApi();
 
   private auth = inject(AuthService);
+
+  // The digest cache mirrored into a signal: can() reads it so computeds re-evaluate
+  // when a digest loads, then asks the client for the answer.
+  private permissions = storeSignal(this.api.permissions.snapshot);
+
+  /**
+   * The audit trail is a manually registered resource (no struct, no generated
+   * handle): the client's escape hatch describes it once, and it gets the same
+   * typed list-and-can surface as the generated resources.
+   */
+  readonly auditTrail = this.api.define<AuditTrailEntry, [], 'list'>({
+    resource: Resources.AuditTrailEntries,
+    property: 'auditTrailEntries',
+    route: 'audit-trail-entries',
+    scope: 'global',
+    consolidated: false,
+    keys: [],
+    operations: ['list'],
+  });
 
   // showAll widens the picker from the permission-derived list to the full tenant
   // roster. A real application would not offer it; the demo keeps it as the
@@ -70,15 +92,15 @@ export class WaystationService {
 
   // The picker has no bespoke endpoint: its two questions are answered by surfaces
   // the library and the application already serve. "Where do I hold domain-scoped
-  // grants" is the generated user-domains endpoint, loaded once per session and
-  // cached on AuthService as domains(). "What does the fleet roster look like" is the
-  // generated, permission-checked Waystations resource, fetched only while showAll is
-  // on; it idles until the session authenticates and resets at logout.
-  private roster = httpResource<Waystations[]>(
-    () =>
-      this.showAll() && this.can(Permissions.List, Resources.Waystations) ? `${this.apiUrl}/waystations` : undefined,
-    { defaultValue: [] },
-  );
+  // grants" is the generated user-domains endpoint, loaded once per session by the
+  // client and exposed on AuthService as domains(). "What does the fleet roster look
+  // like" is the generated, permission-checked Waystations resource, fetched only
+  // while showAll is on and the List grant is held.
+  private roster = resource({
+    params: () => ({ wanted: this.showAll() && this.can(Permissions.List, Resources.Waystations) }),
+    loader: ({ params }) => (params.wanted ? this.api.waystations.list() : Promise.resolve([])),
+    defaultValue: [],
+  });
 
   readonly waystations = computed<string[]>(() => {
     if (this.showAll()) {
@@ -102,45 +124,46 @@ export class WaystationService {
       previous !== undefined && stations.includes(previous.value) ? previous.value : (stations[0] ?? ''),
   });
 
+  /** The client bound to the selected station; undefined while none is selected. */
+  readonly station = computed<StationApi | undefined>(() => {
+    const current = this.current();
+    return current ? this.api.domain(current) : undefined;
+  });
+
   constructor() {
     // Selecting a station re-scopes every permission question, so load that
-    // station's digest: ccc-lib's hasPermission then answers for its resources. The
-    // fetch runs untracked — issued inside the effect's reactive context it would
-    // adopt the interceptor's loading-signal reads as dependencies and loop (see the
-    // class comment).
+    // station's digest into the client's cache. The load runs untracked — issued
+    // inside the effect's reactive context it would adopt the interceptor's
+    // loading-signal reads as dependencies and loop (see the class comment). A failed
+    // load caches an empty digest: every question about the station answers false.
     effect(() => {
       const station = this.current();
       if (!station) return;
-      untracked(() => this.auth.loadDigest(station as Domain).subscribe());
+      untracked(() => void this.api.permissions.loadDigest(station as Domain).catch(() => undefined));
     });
+  }
+
+  /** The selected station's client, for handlers that run only while one is selected. */
+  stationApi(): StationApi {
+    const station = this.station();
+    if (!station) {
+      throw new Error('no waystation selected');
+    }
+    return station;
   }
 
   /**
    * can answers one permission question from the digest — the app's single gate for
-   * requests and affordances, so nothing is asked of the server that the user's grants
-   * cannot allow. A global-scope resource asks the global digest; a domain-scoped
-   * resource, or an RPC method (every page method is station-scoped), asks the selected
-   * station's digest, and answers false while no station is selected. Conditional
-   * grants answer true — render, and let the server narrow per row. Signal-backed, so
-   * lists and buttons re-evaluate when a digest loads or the station changes.
+   * requests and affordances. The client resolves the scope: a global resource asks
+   * the global digest, a station-scoped resource or RPC method asks the selected
+   * station's, and a station-scoped question answers false while no station is
+   * selected. Conditional grants answer true — render, and let the server narrow
+   * per row. Signal-backed, so lists and buttons re-evaluate when a digest loads or
+   * the station changes.
    */
-  can(permission: Permission, resource: Resource | Method): boolean {
-    const domain = this.scopeDomain(resource);
-    if (domain === null) {
-      return false;
-    }
-    return this.auth.hasPermission({ resource, permission, domain });
-  }
-
-  // scopeDomain resolves the partition a question is asked in: undefined for the
-  // global scope, the selected station for domain-scoped resources and methods, null
-  // when a station is needed but none is selected.
-  private scopeDomain(resource: Resource | Method): Domain | undefined | null {
-    const isMethod = Object.values(Methods).includes(resource as Method);
-    if (!isMethod && ResourceScopes[resource as Resource] !== PermissionScopes.domain) {
-      return undefined;
-    }
-    return this.current() ? (this.current() as Domain) : null;
+  can(permission: Permission, target: Resource | Method): boolean {
+    this.permissions();
+    return this.api.can(permission, target, (this.current() || undefined) as Domain | undefined);
   }
 
   setShowAll(all: boolean): void {
@@ -152,126 +175,36 @@ export class WaystationService {
   }
 
   /**
-   * stationList derives a page's list from the selected waystation: the request URL
-   * is a function of current() and of the user's List grant on the resource at that
-   * station, so the resource refetches when the station changes, sits idle (on the
-   * default empty list) while none is selected, and never asks for a list the digest
-   * says the user cannot read. After a mutation, call .reload() on the affected lists.
-   * Create resources in an injection context (a component field initializer), so each
-   * one lives and dies with its page.
+   * stationList derives a page's list from the selected station: `select` picks the
+   * handle off the station-bound client, and the loader re-runs when the station
+   * changes, sits idle (on the default empty list) while none is selected, and never
+   * asks for a list the digest says the user cannot read. After a mutation, call
+   * .reload() on the affected lists. Create resources in an injection context (a
+   * component field initializer), so each one lives and dies with its page.
    */
-  stationList<T>(resourceRoute: string, resource: Resource): HttpResourceRef<T[]> {
-    return httpResource<T[]>(
-      () =>
-        this.current() && this.can(Permissions.List, resource)
-          ? `${this.apiUrl}/waystations/${this.current()}/${resourceRoute}`
-          : undefined,
-      { defaultValue: [] },
-    );
+  stationList<Row>(select: (station: StationApi) => ListHandle<Row>, query?: ListQuery<Row>): ResourceRef<Row[]> {
+    return resource({
+      params: () => {
+        this.permissions();
+        const station = this.station();
+        const handle = station ? select(station) : undefined;
+        return { handle: handle?.can(Permissions.List) ? handle : undefined };
+      },
+      loader: ({ params }) => (params.handle ? params.handle.list(query) : Promise.resolve([])),
+      defaultValue: [],
+    });
   }
 
-  /** globalList is stationList's global-resource sibling: one fixed URL, no domain segment, same List gate. */
-  globalList<T>(resourceRoute: string, resource: Resource): HttpResourceRef<T[]> {
-    return httpResource<T[]>(
-      () => (this.can(Permissions.List, resource) ? `${this.apiUrl}/${resourceRoute}` : undefined),
-      { defaultValue: [] },
-    );
-  }
-
-  // ops sends consolidated mutations; paths are rooted at the API, e.g.
-  // /waystations/ws-alpha/work-orders/{id}.
-  private ops(operations: Operation[]): Observable<Record<string, string[]>> {
-    return this.http.patch<Record<string, string[]>>(`${this.apiUrl}/resources`, operations);
-  }
-
-  private domainPath(resourceRoute: string, keys: (string | number)[] = []): string {
-    return ['', 'waystations', this.current(), resourceRoute, ...keys.map(String)].join('/');
-  }
-
-  createWorkOrder(value: Partial<WorkOrders>): Observable<Record<string, string[]>> {
-    return this.ops([
-      { op: 'add', path: this.domainPath('work-orders'), value: { ...value, waystationId: this.current() } },
-    ]);
-  }
-
-  createWorkOrderTask(workOrderId: string, taskNumber: number, value: Partial<WorkOrderTasks>): Observable<unknown> {
-    return this.ops([{ op: 'add', path: this.domainPath('work-order-tasks', [workOrderId, taskNumber]), value }]);
-  }
-
-  setTaskDone(workOrderId: string, taskNumber: number, done: boolean): Observable<unknown> {
-    return this.ops([
-      { op: 'patch', path: this.domainPath('work-order-tasks', [workOrderId, taskNumber]), value: { done } },
-    ]);
-  }
-
-  deleteWorkOrder(id: string): Observable<unknown> {
-    return this.ops([{ op: 'remove', path: this.domainPath('work-orders', [id]) }]);
-  }
-
-  createRequisition(value: Partial<Requisitions>): Observable<Record<string, string[]>> {
-    return this.ops([
-      { op: 'add', path: this.domainPath('requisitions'), value: { ...value, waystationId: this.current() } },
-    ]);
-  }
-
-  createRequisitionLine(
-    requisitionId: string,
-    lineNumber: number,
-    value: Partial<RequisitionLines>,
-  ): Observable<unknown> {
-    return this.ops([{ op: 'add', path: this.domainPath('requisition-lines', [requisitionId, lineNumber]), value }]);
-  }
-
-  removeRequisitionLine(requisitionId: string, lineNumber: number): Observable<unknown> {
-    return this.ops([{ op: 'remove', path: this.domainPath('requisition-lines', [requisitionId, lineNumber]) }]);
-  }
-
-  createIncident(value: Partial<IncidentReports>): Observable<unknown> {
-    return this.ops([
-      { op: 'add', path: this.domainPath('incident-reports'), value: { ...value, waystationId: this.current() } },
-    ]);
-  }
-
-  deleteInventoryLot(id: string): Observable<unknown> {
-    return this.ops([{ op: 'remove', path: this.domainPath('inventory-lots', [id]) }]);
-  }
-
-  private rpc(methodRoute: string, body: unknown): Observable<unknown> {
-    return this.http.post(`${this.apiUrl}/waystations/${this.current()}/${methodRoute}`, body);
-  }
-
-  scheduleWorkOrder(workOrderId: string, assignedTeamId: string, dueAt: string): Observable<unknown> {
-    return this.rpc('schedule-work-order', { workOrderId, assignedTeamId, dueAt });
-  }
-
-  startWorkOrder(workOrderId: string): Observable<unknown> {
-    return this.rpc('start-work-order', { workOrderId });
-  }
-
-  completeWorkOrder(workOrderId: string): Observable<unknown> {
-    return this.rpc('complete-work-order', { workOrderId });
-  }
-
-  // Nudge is the first-class Touch: the update pipeline runs with no caller-set
-  // fields, so the order's updatedAt bumps and the audit trail records who nudged
-  // while nothing about the order changes.
-  nudgeWorkOrder(workOrderId: string): Observable<unknown> {
-    return this.rpc('nudge-work-order', { workOrderId });
-  }
-
-  submitRequisition(requisitionId: string): Observable<unknown> {
-    return this.rpc('submit-requisition', { requisitionId });
-  }
-
-  approveRequisition(requisitionId: string): Observable<unknown> {
-    return this.rpc('approve-requisition', { requisitionId });
-  }
-
-  declineRequisition(requisitionId: string, reason: string): Observable<unknown> {
-    return this.rpc('decline-requisition', { requisitionId, reason });
-  }
-
-  receiveShipment(shipmentId: string): Observable<unknown> {
-    return this.rpc('receive-shipment', { shipmentId });
+  /** globalList is stationList's global-resource sibling: no station involved, same List gate. */
+  globalList<Row>(select: (api: Api) => ListHandle<Row>, query?: ListQuery<Row>): ResourceRef<Row[]> {
+    return resource({
+      params: () => {
+        this.permissions();
+        const handle = select(this.api);
+        return { handle: handle.can(Permissions.List) ? handle : undefined };
+      },
+      loader: ({ params }) => (params.handle ? params.handle.list(query) : Promise.resolve([])),
+      defaultValue: [],
+    });
   }
 }

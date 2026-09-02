@@ -1,6 +1,8 @@
 package generation
 
 import (
+	"strings"
+
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
@@ -415,4 +417,115 @@ func rpcTypeImports(dst []fixerImport, method *rpcMethodInfo) []fixerImport {
 	}
 
 	return dst
+}
+
+// tsAPIData feeds the typed API client template (zz_gen_api.ts): the descriptor the
+// @cccteam/resource runtime interprets plus the per-resource write shapes and key
+// tuples only the generator can derive. Only default-outlet resources and methods
+// appear — the browser client addresses the default outlet.
+type tsAPIData struct {
+	File               *typescriptGenerator
+	GenPrefix          string
+	Resources          []*tsAPIResource
+	Methods            []*tsAPIMethod
+	DomainRouteSegment string
+	DomainRouteParam   string
+	ConsolidatedRoute  string
+	HasDomainScoped    bool
+	HasGlobal          bool
+	HasDomain          bool
+}
+
+// ResourceImports lists the row types the client file imports from the resources file.
+func (d *tsAPIData) ResourceImports() string {
+	names := make([]string, 0, len(d.Resources))
+	for _, res := range d.Resources {
+		names = append(names, res.Name)
+	}
+
+	return strings.Join(names, ", ")
+}
+
+// MethodImports lists the body types the client file imports from the methods file.
+func (d *tsAPIData) MethodImports() string {
+	names := make([]string, 0, len(d.Methods))
+	for _, method := range d.Methods {
+		names = append(names, method.Name)
+	}
+
+	return strings.Join(names, ", ")
+}
+
+type tsAPIResource struct {
+	// Name is the plural PascalCase resource name — the Resources constant and the row type.
+	Name string
+	// Property is the camelCase name the handle hangs off the client under.
+	Property     string
+	Route        string
+	Scope        accesstypes.PermissionScope
+	Consolidated bool
+	Keys         []*tsAPIField
+	Operations   []string
+	HasCreate    bool
+	CreateFields []*tsAPIField
+	HasPatch     bool
+	PatchFields  []*tsAPIField
+}
+
+// HandleType renders the ResourceHandle instantiation for the resource: the row type,
+// the key tuple, the operations the server generated, and the write shapes when the
+// resource accepts writes.
+func (r *tsAPIResource) HandleType() string {
+	ops := make([]string, 0, len(r.Operations))
+	for _, op := range r.Operations {
+		ops = append(ops, "'"+op+"'")
+	}
+	args := []string{r.Name, r.Name + "Key", strings.Join(ops, " | ")}
+	switch {
+	case r.HasPatch:
+		args = append(args, r.createTypeName(), r.Name+"Patch")
+	case r.HasCreate:
+		args = append(args, r.createTypeName())
+	}
+
+	return "ResourceHandle<" + strings.Join(args, ", ") + ">"
+}
+
+func (r *tsAPIResource) createTypeName() string {
+	if r.HasCreate {
+		return r.Name + "Create"
+	}
+
+	return "never"
+}
+
+type tsAPIField struct {
+	Name     string
+	Type     string
+	Required bool
+}
+
+type tsAPIMethod struct {
+	Name     string
+	Property string
+	Route    string
+	Scope    accesstypes.PermissionScope
+}
+
+// ScopeKind renders the resource's permission scope as the client descriptor spells it.
+func (r *tsAPIResource) ScopeKind() string {
+	return scopeKind(r.Scope)
+}
+
+// ScopeKind renders the method's permission scope as the client descriptor spells it.
+func (m *tsAPIMethod) ScopeKind() string {
+	return scopeKind(m.Scope)
+}
+
+func scopeKind(scope accesstypes.PermissionScope) string {
+	if scope == accesstypes.DomainPermissionScope {
+		return string(accesstypes.DomainPermissionScope)
+	}
+
+	return string(accesstypes.GlobalPermissionScope)
 }

@@ -12,7 +12,8 @@ import { AuditTrailEntry, WaystationService } from '../waystation.service';
  * span the whole ring (they are not domain-scoped), so this page carries no
  * waystation selector. Only auditor-voss (RecordsAuditor) and the commander hold
  * the grant — for everyone else the digest says so up front, and the page explains
- * instead of asking the server for a refusal.
+ * instead of asking the server for a refusal. The handle comes from the client's
+ * escape hatch (WaystationService.auditTrail), described once, typed like the rest.
  */
 @Component({
   selector: 'app-audit-trail',
@@ -23,7 +24,7 @@ import { AuditTrailEntry, WaystationService } from '../waystation.service';
 export class AuditTrailComponent {
   private ws = inject(WaystationService);
 
-  entries = this.ws.globalList<AuditTrailEntry>('audit-trail-entries', Resources.AuditTrailEntries);
+  entries = this.ws.globalList(() => this.ws.auditTrail);
   forbidden = computed(() => !this.ws.can(Permissions.List, Resources.AuditTrailEntries));
   columns = ['eventTime', 'tableName', 'rowId', 'eventSource', 'changeSet'];
 

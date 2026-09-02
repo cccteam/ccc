@@ -12,16 +12,16 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTableModule } from '@angular/material/table';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { WorkOrderStatus } from '@app/service/zz_gen_enums';
-import { Assets, Teams, WorkOrders, WorkOrderTasks } from '@app/service/zz_gen_resources';
+import { WorkOrders, WorkOrderTasks } from '@app/service/zz_gen_resources';
 import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
 
 /**
  * The work-order board is the stateful-resource showcase: the status column is
- * structurally unwritable from the wire, every transition runs through an
- * Execute-gated RPC, and per-state conditional grants decide who sees and does what
- * (technicians see their teams' orders, auditors see terminal ones, a station chief
- * may delete drafts only).
+ * structurally unwritable from the wire (it is absent from WorkOrdersCreate and
+ * WorkOrdersPatch), every transition runs through an Execute-gated RPC handle, and
+ * per-state conditional grants decide who sees and does what (technicians see their
+ * teams' orders, auditors see terminal ones, a station chief may delete drafts only).
  */
 @Component({
   selector: 'app-work-orders',
@@ -49,11 +49,12 @@ export class WorkOrdersComponent {
 
   // Sorted by last activity server-side: updatedAt is the mechanical enforcement
   // stamp, bumped by every update — including a Nudge, which changes nothing else.
-  // Untouched rows (updatedAt unset) sort last.
-  orders = this.ws.stationList<WorkOrders>('work-orders?sort=updatedAt:desc', Resources.WorkOrders);
-  taskRows = this.ws.stationList<WorkOrderTasks>('work-order-tasks', Resources.WorkOrderTasks);
-  teams = this.ws.stationList<Teams>('teams', Resources.Teams);
-  assets = this.ws.stationList<Assets>('assets', Resources.Assets);
+  // Untouched rows (updatedAt unset) sort last. The sort field is typed against the
+  // row, so a misspelling does not compile.
+  orders = this.ws.stationList((station) => station.workOrders, { sort: { field: 'updatedAt', direction: 'desc' } });
+  taskRows = this.ws.stationList((station) => station.workOrderTasks);
+  teams = this.ws.stationList((station) => station.teams);
+  assets = this.ws.stationList((station) => station.assets);
   columns = ['title', 'status', 'priority', 'team', 'dueAt', 'lastActivity', 'actions'];
 
   // Affordances from the selected station's digest: an absent grant hides the
@@ -115,75 +116,86 @@ export class WorkOrdersComponent {
     return this.tasksByOrder().get(order.id) ?? [];
   }
 
-  create(): void {
+  // WorkOrdersCreate is the wire's create shape: the tenant key and the status are
+  // server-owned and absent, so neither can be sent by mistake.
+  async create(): Promise<void> {
     if (!this.newTitle || this.newPriority === null || !this.newAssetId) {
       return;
     }
-    this.ws
-      .createWorkOrder({
-        title: this.newTitle,
-        summary: this.newSummary,
-        priority: this.newPriority,
-        assetId: this.newAssetId,
-      })
-      .subscribe(() => {
-        this.newTitle = '';
-        this.newSummary = '';
-        this.newPriority = null;
-        this.newAssetId = '';
-        this.orders.reload();
-      });
+    await this.ws.stationApi().workOrders.create({
+      title: this.newTitle,
+      summary: this.newSummary,
+      priority: this.newPriority,
+      assetId: this.newAssetId,
+    });
+    this.newTitle = '';
+    this.newSummary = '';
+    this.newPriority = null;
+    this.newAssetId = '';
+    this.orders.reload();
   }
 
-  schedule(order: WorkOrders): void {
+  async schedule(order: WorkOrders): Promise<void> {
     if (!this.scheduleTeamId || !this.scheduleDueAt) {
       return;
     }
-    this.ws
-      .scheduleWorkOrder(order.id, this.scheduleTeamId, new Date(this.scheduleDueAt).toISOString())
-      .subscribe(() => this.orders.reload());
+    await this.ws.stationApi().scheduleWorkOrder.execute({
+      workOrderId: order.id,
+      assignedTeamId: this.scheduleTeamId,
+      dueAt: new Date(this.scheduleDueAt),
+    });
+    this.orders.reload();
   }
 
-  start(order: WorkOrders): void {
-    this.ws.startWorkOrder(order.id).subscribe(() => this.orders.reload());
+  async start(order: WorkOrders): Promise<void> {
+    await this.ws.stationApi().startWorkOrder.execute({ workOrderId: order.id });
+    this.orders.reload();
   }
 
-  complete(order: WorkOrders): void {
-    this.ws.completeWorkOrder(order.id).subscribe(() => this.orders.reload());
+  async complete(order: WorkOrders): Promise<void> {
+    await this.ws.stationApi().completeWorkOrder.execute({ workOrderId: order.id });
+    this.orders.reload();
   }
 
   // Nudge flags a stalled order for attention without changing it: the touch bumps
   // updatedAt (so the order jumps to the top of the last-activity sort) and the
   // audit trail records who nudged. Chiefs and foremen hold the grant.
-  nudge(order: WorkOrders): void {
-    this.ws.nudgeWorkOrder(order.id).subscribe(() => this.orders.reload());
+  async nudge(order: WorkOrders): Promise<void> {
+    await this.ws.stationApi().nudgeWorkOrder.execute({ workOrderId: order.id });
+    this.orders.reload();
   }
 
   terminal(order: WorkOrders): boolean {
     return order.statusId === this.status.Completed || order.statusId === this.status.Cancelled;
   }
 
-  remove(order: WorkOrders): void {
-    this.ws.deleteWorkOrder(order.id).subscribe(() => {
-      this.selectedID.set(undefined);
-      this.orders.reload();
-    });
+  async remove(order: WorkOrders): Promise<void> {
+    const workOrders = this.ws.stationApi().workOrders;
+    await workOrders.remove(workOrders.keyOf(order));
+    this.selectedID.set(undefined);
+    this.orders.reload();
   }
 
-  addTask(order: WorkOrders): void {
+  // Tasks carry a compound, client-assigned key: WorkOrderTasksCreate requires both
+  // parts, and the client lifts them out of the value into the operation path.
+  async addTask(order: WorkOrders): Promise<void> {
     if (!this.newTaskInstructions) {
       return;
     }
     const nextNumber = Math.max(0, ...this.tasks(order).map((task) => task.taskNumber)) + 1;
-    this.ws
-      .createWorkOrderTask(order.id, nextNumber, { instructions: this.newTaskInstructions, done: false })
-      .subscribe(() => {
-        this.newTaskInstructions = '';
-        this.taskRows.reload();
-      });
+    await this.ws.stationApi().workOrderTasks.create({
+      workOrderId: order.id,
+      taskNumber: nextNumber,
+      instructions: this.newTaskInstructions,
+      done: false,
+    });
+    this.newTaskInstructions = '';
+    this.taskRows.reload();
   }
 
-  toggleTask(task: WorkOrderTasks): void {
-    this.ws.setTaskDone(task.workOrderId, task.taskNumber, !task.done).subscribe(() => this.taskRows.reload());
+  async toggleTask(task: WorkOrderTasks): Promise<void> {
+    const tasks = this.ws.stationApi().workOrderTasks;
+    await tasks.patch(tasks.keyOf(task), { done: !task.done });
+    this.taskRows.reload();
   }
 }
