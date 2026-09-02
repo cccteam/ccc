@@ -207,6 +207,23 @@ func WithDomainRoute(segment string) ResourceOption {
 	})
 }
 
+// WithConcealedDomains makes "unauthorized" indistinguishable from "nonexistent" on
+// every surface that names a domain (ABAC design plan §06, the existence oracle): the
+// generated DomainGuard and the consolidated dispatcher consult the application's
+// DomainVisible(ctx, user, domain) — the domain exists AND the caller holds at least
+// one grant in it — instead of DomainExists, answering the same not-found either way.
+// A caller with any foothold in the domain still receives ordinary 403s for the
+// specific permissions they lack. Off by default: most applications' tenant lists are
+// not secret, and the distinct errors are better DX; opt in when tenant existence is
+// itself sensitive (e.g. a client list).
+func WithConcealedDomains() ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		r.concealedDomains = true
+
+		return nil
+	})
+}
+
 // GenerateTypescript enables TypeScript generation as part of the resource generator run.
 // The permission data is computed statically from the parsed resources, so the run needs
 // no compiled application router.

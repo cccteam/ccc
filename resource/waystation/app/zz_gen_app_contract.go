@@ -27,13 +27,15 @@ type validatorApp interface {
 
 var _ validatorApp = (*App)(nil)
 
-// domainScopedApp is the application surface domain-scoped routes draw on.
-// DomainExists answers from the application's tenancy roster — whether the domain is
-// a known tenant, never whether any particular row exists. DomainGuard is generated
+// domainScopedApp is the application surface domain-scoped routes draw on. Domains
+// are concealed (generation.WithConcealedDomains): DomainVisible answers whether the
+// domain exists in the application's tenancy roster AND the user holds at least one
+// grant in it — never whether any particular row exists — so "unauthorized" is
+// indistinguishable from "nonexistent". DomainGuard is generated
 // (zz_gen_domain_guard.go) and asserted here to complete the middleware surface the
 // generated route registration wires.
 type domainScopedApp interface {
-	DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error)
+	DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
 }
 

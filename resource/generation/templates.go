@@ -606,6 +606,33 @@ import (
 	"github.com/cccteam/httpio"
 )
 
+{{ if .ConcealedDomains -}}
+// DomainGuard is the middleware generated route registration wraps around every
+// domain-scoped route. Domains are concealed (generation.WithConcealedDomains): a
+// domain the caller holds no grant in answers exactly like a domain that does not
+// exist, so tenant existence cannot be probed from the rejection shape. A caller
+// with any foothold in the domain passes the guard and receives ordinary 403s for
+// the permissions they lack.
+func ({{ .ReceiverName }} *{{ .ApplicationName }}) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+			ctx, span := tracer.Start(r.Context())
+			defer span.End()
+
+			domain := httpio.Param[accesstypes.Domain](r, router.Domain)
+			if ok, err := {{ .ReceiverName }}.DomainVisible(ctx, {{ .ReceiverName }}.UserPermissions(r).User(), domain); err != nil {
+				return httpio.NewEncoder(w).ClientMessage(ctx, err)
+			} else if !ok {
+				return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewNotFoundMessagef("unknown domain %q", domain))
+			}
+
+			next.ServeHTTP(w, r)
+
+			return nil
+		})
+	}
+}
+{{- else -}}
 // DomainGuard is the middleware generated route registration wraps around every
 // domain-scoped route: it resolves the route's domain and responds 404 before the
 // handler runs when the application does not recognize it.
@@ -627,7 +654,8 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) DomainGuard() func(http.Handl
 			return nil
 		})
 	}
-}`
+}
+{{- end }}`
 
 	// decodersTemplate re-exposes the library's Must* decoder constructors under the
 	// application's generated closed unions (Resourcer, Method), so a decoder over a
@@ -722,6 +750,19 @@ type validatorApp interface {
 var _ validatorApp = (*{{ .ApplicationName }})(nil)
 {{ end }}
 {{ if .HasDomainScoped -}}
+{{ if .ConcealedDomains -}}
+// domainScopedApp is the application surface domain-scoped routes draw on. Domains
+// are concealed (generation.WithConcealedDomains): DomainVisible answers whether the
+// domain exists in the application's tenancy roster AND the user holds at least one
+// grant in it — never whether any particular row exists — so "unauthorized" is
+// indistinguishable from "nonexistent". DomainGuard is generated
+// (zz_gen_domain_guard.go) and asserted here to complete the middleware surface the
+// generated route registration wires.
+type domainScopedApp interface {
+	DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
+	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
+}
+{{- else -}}
 // domainScopedApp is the application surface domain-scoped routes draw on.
 // DomainExists answers from the application's tenancy roster — whether the domain is
 // a known tenant, never whether any particular row exists. DomainGuard is generated
@@ -731,6 +772,7 @@ type domainScopedApp interface {
 	DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error)
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
 }
+{{- end }}
 
 var _ domainScopedApp = (*{{ .ApplicationName }})(nil)
 {{ end }}
@@ -865,7 +907,10 @@ type grants map[accesstypes.Permission]bool
 //
 // constructing the application around the test database with the scripted grants and
 // composing it through the generated router.NewTestRouter. For domain-scoped routes,
-// the application's DomainExists must recognize the suite's domain value "testDomain".
+// the application's tenancy seam must recognize the suite's domain value "testDomain"
+// (DomainExists; with concealed domains, DomainVisible — which must also honor the
+// scripted grants, so a case with no grants is answered as if the domain did not
+// exist).
 func TestGeneratedAuthorizationMatrix(t *testing.T) {
 	t.Parallel()
 
@@ -885,7 +930,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			{{- with .Body }}
 			body:         ` + "`{{ . }}`" + `,
 			{{- end }}
-			wantStatuses: []int{http.StatusForbidden},
+			wantStatuses: []int{ {{- with .DeniedStatus }}{{ . }}{{ else }}http.StatusForbidden{{ end -}} },
 		},
 		{{- if not .DeniedOnly }}
 		{
@@ -1237,11 +1282,19 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 						}
 
 						domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
+						{{- if .ConcealedDomains }}
+						if ok, err := {{ .ReceiverName }}.DomainVisible(ctx, userPermissions.User(), domain); err != nil {
+							return errors.Wrap(err, "DomainVisible()")
+						} else if !ok {
+							return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
+						}
+						{{- else }}
 						if ok, err := {{ .ReceiverName }}.DomainExists(ctx, domain); err != nil {
 							return errors.Wrap(err, "DomainExists()")
 						} else if !ok {
 							return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
 						}
+						{{- end }}
 
 						switch httpio.Param[string](op.Req, "resource") {
 							{{- range $case := .DomainCases }}

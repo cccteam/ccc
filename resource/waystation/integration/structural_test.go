@@ -43,10 +43,10 @@ func TestStructuralFailClosed(t *testing.T) {
 		wantKeys   []string
 	}{
 		{
-			name:       "list without resource grant is forbidden",
+			name:       "list with no grants at all conceals the domain",
 			grants:     nil,
 			target:     "/api/waystations/ws-alpha/teams",
-			wantStatus: http.StatusForbidden,
+			wantStatus: http.StatusNotFound, // zero grants in the domain: concealment makes it indistinguishable from unknown
 		},
 		{
 			name:       "list with resource-only grant returns exactly the primary key",
@@ -137,16 +137,16 @@ func TestDomainGuard(t *testing.T) {
 		wantStatus int
 	}{
 		{
-			name:       "unknown waystation is 404 before permissions are consulted",
-			grants:     nil, // nothing granted: a permission check would say 403
+			name:       "unknown waystation is 404",
+			grants:     nil,
 			target:     "/api/waystations/ws-nowhere/teams",
 			wantStatus: http.StatusNotFound,
 		},
 		{
-			name:       "known waystation without a grant is 403",
+			name:       "known waystation without a foothold is indistinguishable from unknown",
 			grants:     nil,
 			target:     "/api/waystations/ws-ceres/teams",
-			wantStatus: http.StatusForbidden,
+			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "known waystation with a grant serves",

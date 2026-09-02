@@ -26,9 +26,9 @@ type (
 	GantryCrane struct {
 		ID ccc.UUID `spanner:"Id"`
 		// @domain
-		StationID   string   `spanner:"StationId"`
-		Callsign    string   `spanner:"Callsign"`
-		LiftTonnage int64    `spanner:"LiftTonnage"`
-		Operational bool     `spanner:"Operational"`
+		StationID   string `spanner:"StationId"`
+		Callsign    string `spanner:"Callsign"`
+		LiftTonnage int64  `spanner:"LiftTonnage"`
+		Operational bool   `spanner:"Operational"`
 	}
 )

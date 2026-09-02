@@ -81,11 +81,13 @@ func (c *testConfigurer) GuiDist() string { return "" }
 // which carries no outlet middleware.
 func (c *testConfigurer) AutomationAPIKey() string { return "handlertests-automation-key" }
 
-// DomainExists recognizes the generated matrix's domain value, per the generated
-// suite's domain contract. The empty test schema holds no waystation rows, so the
-// tenancy roster is scripted rather than read from the table.
-func (c *testConfigurer) DomainExists(_ context.Context, domain accesstypes.Domain) (bool, error) {
-	return domain == "testDomain", nil
+// DomainVisible recognizes the generated matrix's domain value and honors the
+// scripted grants, per the generated suite's concealed-domain contract: a case
+// carrying no grants has no foothold and is answered as if the domain did not
+// exist. The empty test schema holds no waystation rows, so the tenancy roster is
+// scripted rather than read from the table.
+func (c *testConfigurer) DomainVisible(_ context.Context, _ accesstypes.User, domain accesstypes.Domain) (bool, error) {
+	return domain == "testDomain" && len(c.g) > 0, nil
 }
 
 // Domains returns the scripted tenancy roster; nothing in the matrix consumes it.

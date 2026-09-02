@@ -25,10 +25,11 @@ import (
 // newAuditApp builds the application with the given grants and mounts both the
 // generated routes and the hand-written audit route on one handler.
 func newAuditApp(db *initiator.SpannerDB, g grants) http.Handler {
+	controller := &staticAccess{g: g}
 	a := app.New(&testConfigurer{
-		db:           db,
-		access:       &staticAccess{g: g},
-		domainExists: demoDomainsExist,
+		db:            db,
+		access:        controller,
+		domainVisible: domainVisibleVia(controller),
 	})
 
 	r := chi.NewRouter()
@@ -128,10 +129,11 @@ func TestManualResourceBootstrapParity(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	controller := newDemoAccessClient(ctx, t, db)
 	a := app.New(&testConfigurer{
-		db:           db,
-		access:       newDemoAccessClient(ctx, t, db),
-		domainExists: demoDomainsExist,
+		db:            db,
+		access:        controller,
+		domainVisible: domainVisibleVia(controller),
 	})
 	r := chi.NewRouter()
 	r.Use(httpio.WithParams)

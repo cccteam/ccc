@@ -262,10 +262,10 @@ func TestDemoPersonaViews(t *testing.T) {
 			banIDs:     []string{supplierRedlineID},
 		},
 		{
-			name:       "no role in a domain means no authority there",
+			name:       "no role in a domain means the domain is concealed",
 			user:       "foreman-okafor",
 			target:     "/api/waystations/ws-beta/requisitions",
-			wantStatus: http.StatusForbidden,
+			wantStatus: http.StatusNotFound,
 		},
 		{
 			// chief-alpha holds SafetyOfficer, whose Execute grant carries a row-free

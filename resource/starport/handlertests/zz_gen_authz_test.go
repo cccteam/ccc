@@ -39,7 +39,10 @@ type grants map[accesstypes.Permission]bool
 //
 // constructing the application around the test database with the scripted grants and
 // composing it through the generated router.NewTestRouter. For domain-scoped routes,
-// the application's DomainExists must recognize the suite's domain value "testDomain".
+// the application's tenancy seam must recognize the suite's domain value "testDomain"
+// (DomainExists; with concealed domains, DomainVisible — which must also honor the
+// scripted grants, so a case with no grants is answered as if the domain did not
+// exist).
 func TestGeneratedAuthorizationMatrix(t *testing.T) {
 	t.Parallel()
 

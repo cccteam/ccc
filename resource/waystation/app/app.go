@@ -39,9 +39,12 @@ const (
 )
 
 // Configurer carries the dependencies for an App. Access is the permission engine the
-// handlers check against; DomainExists and Domains are the application's tenancy
+// handlers check against; DomainVisible and Domains are the application's tenancy
 // source — the waystation derives both from its tenant table, and test suites script
-// them per request through this seam.
+// them per request through this seam. Waystation existence is concealed
+// (generation.WithConcealedDomains): DomainVisible answers whether the station exists
+// AND the caller holds at least one grant in it, so a prober cannot confirm a station
+// exists from the rejection shape.
 type Configurer interface {
 	ResourceClient() resource.Client
 	RPCClient() *rpc.Client
@@ -49,7 +52,7 @@ type Configurer interface {
 	Session() *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
 	Validator() *validator.Validate
 	GuiDist() string
-	DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error)
+	DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
 	Domains(ctx context.Context) ([]accesstypes.Domain, error)
 	AutomationAPIKey() string
 }
@@ -68,7 +71,7 @@ type App struct {
 	resourceClient   resource.Client
 	rpcClient        *rpc.Client
 	computedClient   *computedresources.Client
-	domainExists     func(ctx context.Context, domain accesstypes.Domain) (bool, error)
+	domainVisible    func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
 	domains          func(ctx context.Context) ([]accesstypes.Domain, error)
 	guiDist          string
 	validate         *validator.Validate
@@ -83,7 +86,7 @@ func New(cfg Configurer) *App {
 		resourceClient:   cfg.ResourceClient(),
 		rpcClient:        cfg.RPCClient(),
 		computedClient:   computedresources.NewClient(),
-		domainExists:     cfg.DomainExists,
+		domainVisible:    cfg.DomainVisible,
 		domains:          cfg.Domains,
 		guiDist:          cfg.GuiDist(),
 		validate:         cfg.Validator(),
@@ -266,10 +269,12 @@ func (a *App) Validator() resource.ValidatorFunc {
 	return a.validate
 }
 
-// DomainExists reports whether the application recognizes the domain; the generated
-// DomainGuard middleware 404s unknown domains before domain-scoped handlers run.
-func (a *App) DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error) {
-	return a.domainExists(ctx, domain)
+// DomainVisible reports whether the domain exists and the user holds at least one
+// grant in it; the generated DomainGuard middleware and the consolidated dispatcher
+// answer "no" with the same not-found an unknown domain gets, concealing station
+// existence from callers with no foothold.
+func (a *App) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
+	return a.domainVisible(ctx, user, domain)
 }
 
 // ResourceClient returns the database client used by the resource layer.

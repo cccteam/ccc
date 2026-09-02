@@ -39,6 +39,10 @@ func run(ctx context.Context) error {
 		// segment pair: /api/waystations/{waystationID}/... . The waystation is the
 		// permission domain, and Waystation is the tenant-record resource.
 		generation.WithDomainRoute("waystations"),
+		// Waystation existence is concealed: a station the caller holds no grant
+		// in answers exactly like a station that does not exist (starport keeps
+		// the default distinct errors, so both postures stay demonstrated).
+		generation.WithConcealedDomains(),
 		generation.WithRPC("pkg/rpc"),
 		generation.WithVirtualResources("pkg/virtualresources"),
 		generation.WithComputedResources("pkg/computedresources"),

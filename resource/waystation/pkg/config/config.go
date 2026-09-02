@@ -194,7 +194,7 @@ func (c *Configuration) AutomationAPIKey() string {
 // loadDomains reads the tenancy roster from the Waystations tenant table once at
 // startup. Unlike starport's fixed in-code list, the waystation derives tenancy from
 // its own data — but it caches the roster rather than querying per check: the
-// generated consolidated handler consults DomainExists inside the mutation
+// generated consolidated handler consults DomainVisible inside the mutation
 // transaction, where opening another Spanner read is illegal on the emulator. A demo
 // restart picks up new tenants; a production application would refresh the cache.
 func (c *Configuration) loadDomains(ctx context.Context) error {
@@ -223,11 +223,18 @@ func (c *Configuration) loadDomains(ctx context.Context) error {
 	}
 }
 
-// DomainExists reports whether the domain is a known waystation, answered from the
-// startup tenancy cache. Test suites supply their own implementation through the same
-// Configurer seam.
-func (c *Configuration) DomainExists(_ context.Context, domain accesstypes.Domain) (bool, error) {
-	return c.domainSet[domain], nil
+// DomainVisible reports whether the domain is a known waystation AND the user holds
+// at least one grant in it — existence from the startup tenancy cache, foothold from
+// the access engine's in-memory policy snapshot (no store read, safe inside the
+// consolidated handler's mutation transaction). Waystation existence is concealed:
+// a caller with no foothold is answered exactly like the station does not exist.
+// Test suites supply their own implementation through the same Configurer seam.
+func (c *Configuration) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
+	if !c.domainSet[domain] {
+		return false, nil
+	}
+
+	return c.access.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
 }
 
 // Domains lists the known waystations as permission domains, from the startup

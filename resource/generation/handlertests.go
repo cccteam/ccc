@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -116,8 +117,29 @@ func (r *resourceGenerator) authzMatrixCases() ([]authzCase, error) {
 		return nil, err
 	}
 	cases = append(cases, consolidated...)
+	cases = append(cases, r.rpcAuthzCases()...)
 
-	return append(cases, r.rpcAuthzCases()...), nil
+	if r.concealedDomains {
+		// Concealed domains answer a caller with no grants as if the domain
+		// did not exist. The URL decides which surface answers — exactly how
+		// the request routes: a route with segments BELOW the domain value is
+		// wrapped by the DomainGuard (404), and a consolidated operation whose
+		// path descends below a domain value meets the dispatcher's descent
+		// check (400). The tenant-record resource's own routes terminate AT
+		// the domain segment's value and are global — unguarded either way.
+		guardedRoute := regexp.MustCompile("/" + regexp.QuoteMeta(r.domainRouteSegment) + "/[^/]+/")
+		guardedOp := regexp.MustCompile(`"path":"/` + regexp.QuoteMeta(r.domainRouteSegment) + `/[^/"]+/`)
+		for i := range cases {
+			switch {
+			case guardedRoute.MatchString(cases[i].URL):
+				cases[i].DeniedStatus = "http.StatusNotFound"
+			case guardedOp.MatchString(cases[i].Body):
+				cases[i].DeniedStatus = "http.StatusBadRequest"
+			}
+		}
+	}
+
+	return cases, nil
 }
 
 // queryRouteCase builds the denied/granted case for a list or read route; ok is false

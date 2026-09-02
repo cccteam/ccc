@@ -90,6 +90,9 @@ type consolidatedPatchData struct {
 	// HandlerName is the dispatcher method's name: PatchResources on the default
 	// outlet, Patch<Suffix>Resources on an extra outlet's dispatcher.
 	HandlerName string
+	// ConcealedDomains swaps the descent's question from DomainExists to
+	// DomainVisible (WithConcealedDomains).
+	ConcealedDomains bool
 }
 
 // consolidatedCaseData is one resource case of the consolidated dispatch, carrying the
@@ -212,6 +215,10 @@ type domainGuardData struct {
 	LocalPackageImports string
 	ApplicationName     string
 	ReceiverName        string
+	// ConcealedDomains swaps the guard's question from DomainExists to
+	// DomainVisible, collapsing "unauthorized" into "nonexistent"
+	// (WithConcealedDomains).
+	ConcealedDomains bool
 }
 
 type decodersFileData struct {
@@ -245,6 +252,9 @@ type appContractData struct {
 	HasDomainScoped bool
 	HasRPC          bool
 	HasComputed     bool
+	// ConcealedDomains swaps the domain-scoped contract method from
+	// DomainExists to DomainVisible (WithConcealedDomains).
+	ConcealedDomains bool
 }
 
 type handlerTestsMainData struct {
@@ -276,6 +286,11 @@ type authzCase struct {
 	Body string
 	// DeniedOnly suppresses the granted case (mutation endpoints).
 	DeniedOnly bool
+	// DeniedStatus overrides the denied case's expected status (default 403).
+	// Concealed domains (WithConcealedDomains) answer a caller with no grants
+	// as if the domain did not exist: 404 from the route guard, 400 from the
+	// consolidated dispatcher's operation-path descent.
+	DeniedStatus string
 }
 
 type authzTestData struct {

@@ -94,6 +94,14 @@ func (s *staticAccess) ForUser(user accesstypes.User) *access.UserChecker {
 	return access.NewUserChecker(s, user)
 }
 
+// UserHasGrants answers the concealed-tenancy foothold question over the static
+// grant table. The table is domain-blind, so any grant at all is a foothold in
+// every known station — the domain-guard suite passes empty grants to probe the
+// no-foothold collapse.
+func (s *staticAccess) UserHasGrants(_ context.Context, _ accesstypes.User, _ accesstypes.Scope) (bool, error) {
+	return len(s.g) > 0, nil
+}
+
 func (s *staticAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
 	decisions := make(accesstypes.Decisions, len(resources))
 	for _, res := range resources {
@@ -114,9 +122,9 @@ func (s *staticAccess) CheckUserResources(_ context.Context, _ accesstypes.Envir
 // Session is nil: the App owns no router, these suites compose the API surface
 // through router.NewTestRouter, and nothing on that path touches the session.
 type testConfigurer struct {
-	db           *initiator.SpannerDB
-	access       access.Controller
-	domainExists func(ctx context.Context, domain accesstypes.Domain) (bool, error)
+	db            *initiator.SpannerDB
+	access        access.Controller
+	domainVisible func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
 }
 
 func (c *testConfigurer) ResourceClient() resource.Client {
@@ -145,8 +153,8 @@ func (c *testConfigurer) GuiDist() string { return "" }
 // carries no outlet middleware.
 func (c *testConfigurer) AutomationAPIKey() string { return "integration-automation-key" }
 
-func (c *testConfigurer) DomainExists(ctx context.Context, domain accesstypes.Domain) (bool, error) {
-	return c.domainExists(ctx, domain)
+func (c *testConfigurer) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
+	return c.domainVisible(ctx, user, domain)
 }
 
 // Domains mirrors the production tenancy roster; only SessionData consumes it, which
@@ -155,10 +163,24 @@ func (c *testConfigurer) Domains(_ context.Context) ([]accesstypes.Domain, error
 	return []accesstypes.Domain{wsAlpha, wsBeta, wsCeres}, nil
 }
 
-// demoDomainsExist is the production tenancy rule over the demo world: the three
+// demoDomainsExist is the production tenancy roster over the demo world: the three
 // seeded waystations are the domains.
 func demoDomainsExist(_ context.Context, domain accesstypes.Domain) (bool, error) {
 	return domain == wsAlpha || domain == wsBeta || domain == wsCeres, nil
+}
+
+// domainVisibleVia composes the demo roster with the engine's foothold answer —
+// the same composition production's Configuration.DomainVisible performs.
+// Waystation existence is concealed: a caller with no grants in a station is
+// answered as if the station did not exist.
+func domainVisibleVia(controller access.Controller) func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
+	return func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
+		if ok, err := demoDomainsExist(ctx, domain); err != nil || !ok {
+			return false, err
+		}
+
+		return controller.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
+	}
 }
 
 // newTestApp builds the application with the given permission table backing every
@@ -173,7 +195,7 @@ func newTestAppWithAccess(db *initiator.SpannerDB, controller access.Controller)
 	return router.NewTestRouter(app.New(&testConfigurer{
 		db:           db,
 		access:       controller,
-		domainExists: demoDomainsExist,
+		domainVisible: domainVisibleVia(controller),
 	}))
 }
 

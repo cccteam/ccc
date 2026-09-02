@@ -280,8 +280,8 @@ func (a *App) PatchResources() http.HandlerFunc {
 					}
 
 					domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
-					if ok, err := a.DomainExists(ctx, domain); err != nil {
-						return errors.Wrap(err, "DomainExists()")
+					if ok, err := a.DomainVisible(ctx, userPermissions.User(), domain); err != nil {
+						return errors.Wrap(err, "DomainVisible()")
 					} else if !ok {
 						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
 					}

@@ -171,6 +171,21 @@ func Test_appContractTemplate_gating(t *testing.T) {
 			},
 		},
 		{
+			name: "concealed domains swap the contract method to DomainVisible",
+			data: appContractData{
+				Package:          "app",
+				ApplicationName:  "App",
+				HasDomainScoped:  true,
+				ConcealedDomains: true,
+			},
+			wantContains: []string{
+				"DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)",
+				"DomainGuard() func(http.HandlerFunc) http.HandlerFunc",
+				"var _ domainScopedApp = (*App)(nil)",
+			},
+			wantNotContains: []string{"DomainExists"},
+		},
+		{
 			name: "query-only app asserts the resource surface alone",
 			data: appContractData{
 				Package:         "app",

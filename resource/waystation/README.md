@@ -169,9 +169,11 @@ The same tour in the browser, persona by persona:
   transition, so it is `conditions:"output_only"` and CompleteWorkOrder writes
   `&spanner.CommitTimestamp` explicitly, while WorkOrder.UpdatedAt is the honest
   every-update `output_only_update_fn` fit.
-- **Tenancy lookups must be cached.** The consolidated handler calls `DomainExists`
+- **Tenancy lookups must be cached.** The consolidated handler calls `DomainVisible`
   inside the mutation transaction, and the emulator forbids queries inside it — a
   data-driven tenancy seam reads the tenant table at startup, not per check.
+  (`access.Client.UserHasGrants`, the other half of visibility, answers from the
+  in-memory policy snapshot, so it is transaction-safe by construction.)
 - **decimal over NUMERIC needs shopspring master.** The Spanner Encoder/Decoder support
   is merged upstream but in no tagged release; this module requires the master
   pseudo-version directly. The requirement is invisible until runtime-with-data.
@@ -192,6 +194,15 @@ The same tour in the browser, persona by persona:
   parent must land in the route's partition — `integration/tenancy_test.go`.
   The cost model changed knowingly: a partitioned pure-RBAC mutation now pays
   one in-transaction point read.
+- **Domains are concealed (E2, opt-in).** The generator runs with
+  `generation.WithConcealedDomains()`, so the route guard and the consolidated
+  descent ask the app's `DomainVisible(ctx, user, domain)` instead of a bare
+  existence check: a real domain where the user holds zero grants answers with
+  the same 404 (route) / 400 (op path) as a domain that does not exist — the
+  refusal never confirms a tenant. Any foothold at all (even write-only) makes
+  the domain visible and restores ordinary 403s. Starport deliberately stays on
+  the default `DomainExists` posture (its frozen suites pin the distinct
+  errors), so the two demos cover both postures.
 
 ## Regen discipline
 

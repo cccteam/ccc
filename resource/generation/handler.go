@@ -165,6 +165,7 @@ func (r *resourceGenerator) generateDomainGuard() error {
 		LocalPackageImports: r.localPackageImports(),
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
+		ConcealedDomains:    r.concealedDomains,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
@@ -274,6 +275,7 @@ func (r *resourceGenerator) generateAppContract() error {
 		HasDomainScoped:     r.hasDomainScoped(),
 		HasRPC:              f.hasRPC,
 		HasComputed:         f.hasComputed,
+		ConcealedDomains:    r.concealedDomains,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
@@ -367,6 +369,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet routerOutlet
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
 		HandlerName:         fmt.Sprintf("Patch%sResources", outlet.suffix()),
+		ConcealedDomains:    r.concealedDomains,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}

@@ -31,6 +31,12 @@ type resourceGenerator struct {
 	// Defaults: "domains"/"domain"; customized via WithDomainRoute.
 	domainRouteSegment string
 	domainRouteParam   string
+	// concealedDomains collapses "unauthorized" into "nonexistent" on every
+	// domain-naming surface (WithConcealedDomains): the DomainGuard and the
+	// consolidated dispatcher ask DomainVisible — does the domain exist AND
+	// does the caller hold any grant in it — instead of DomainExists, so a
+	// prober cannot confirm a tenant exists from the rejection shape.
+	concealedDomains bool
 	// extraOutlets are the router outlets declared by WithRouterOutlet, beyond the
 	// default outlet GenerateRoutes declares. Resources join them via @outlet.
 	extraOutlets        []routerOutlet

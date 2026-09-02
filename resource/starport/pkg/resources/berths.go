@@ -20,9 +20,9 @@ type (
 	Berth struct {
 		ID ccc.UUID `spanner:"Id"`
 		// @domain
-		StationID   string   `spanner:"StationId"`
-		Designation string   `spanner:"Designation" conditions:"immutable"`
-		SizeClass   int64    `spanner:"SizeClass"`
-		Occupied    bool     `spanner:"Occupied"`
+		StationID   string `spanner:"StationId"`
+		Designation string `spanner:"Designation" conditions:"immutable"`
+		SizeClass   int64  `spanner:"SizeClass"`
+		Occupied    bool   `spanner:"Occupied"`
 	}
 )

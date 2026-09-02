@@ -151,11 +151,11 @@ func TestNudgeWorkOrderRefusals(t *testing.T) {
 			wantStatus:  http.StatusNotFound,
 		},
 		{
-			name:        "without the Execute grant the decode refuses",
+			name:        "with no grants at all the domain is concealed",
 			grants:      grants{},
-			workOrderID: woScrubberID, // in_progress, nudgeable if the grant were held
+			workOrderID: woScrubberID, // in_progress, nudgeable if any grant were held
 			rowExists:   true,
-			wantStatus:  http.StatusForbidden,
+			wantStatus:  http.StatusNotFound,
 		},
 	}
 
@@ -215,11 +215,11 @@ func TestNudgeWorkOrderBootstrapParity(t *testing.T) {
 			wantStatus:  http.StatusForbidden,
 		},
 		{
-			name:        "foreman's role is scoped to ws-alpha, so ws-beta refuses",
+			name:        "foreman's role is scoped to ws-alpha, so ws-beta is concealed from them",
 			user:        "foreman-okafor",
 			domain:      wsBeta,
 			workOrderID: woBetaAirID,
-			wantStatus:  http.StatusForbidden,
+			wantStatus:  http.StatusNotFound,
 		},
 	}
 
