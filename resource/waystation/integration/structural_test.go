@@ -53,7 +53,7 @@ func TestStructuralFailClosed(t *testing.T) {
 			grants:     grants{accesstypes.List: {teamsResource}},
 			target:     "/api/waystations/ws-alpha/teams",
 			wantStatus: http.StatusOK,
-			wantRows:   3,
+			wantRows:   2, // ws-alpha's teams only: row tenancy partitions the list
 			wantKeys:   []string{"id"},
 		},
 		{
@@ -65,7 +65,7 @@ func TestStructuralFailClosed(t *testing.T) {
 			}},
 			target:     "/api/waystations/ws-alpha/teams",
 			wantStatus: http.StatusOK,
-			wantRows:   3,
+			wantRows:   2,
 			wantKeys:   []string{"id", "name", "specialty"},
 		},
 		{

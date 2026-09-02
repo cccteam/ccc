@@ -161,13 +161,13 @@ func TestDemoPersonaViews(t *testing.T) {
 		check      func(t *testing.T, respBody []byte) // bespoke shape assertions
 	}{
 		{
-			// Five rows including ws-beta's: domain scope partitions permissions, not
-			// data — the row-tenancy gap E2 closes, pinned here deliberately.
-			name:       "commander sees every work order unconditionally",
+			// Four rows: the commander's grant is unconditional, but structural row
+			// tenancy (E2) keeps ws-beta's work order out of the alpha partition.
+			name:       "commander sees every station work order in the partition",
 			user:       "commander",
 			target:     "/api/waystations/ws-alpha/work-orders",
 			wantStatus: http.StatusOK,
-			wantRows:   5,
+			wantRows:   4,
 		},
 		{
 			// tech-rivera is on Alpha Mechanical (ws-alpha) and Beta Maintenance
@@ -185,7 +185,7 @@ func TestDemoPersonaViews(t *testing.T) {
 			user:       "tech-rivera",
 			target:     "/api/waystations/ws-alpha/assets",
 			wantStatus: http.StatusOK,
-			wantRows:   5, // 5 of 7
+			wantRows:   4, // 4 of 7: the reactor-zone condition and row tenancy (E2) each drop rows
 			banIDs:     []string{assetManifoldID},
 		},
 		{
@@ -198,13 +198,13 @@ func TestDemoPersonaViews(t *testing.T) {
 		},
 		{
 			// The over-limit overhaul (7120 > 5000) and the non-submitted rows are
-			// suppressed. The ws-beta submitted row still appears — permissions
-			// partition, data does not (the E2 gap, pinned).
+			// suppressed by conditions, and ws-beta's submitted row by structural
+			// row tenancy (E2) — one alpha row survives both.
 			name:       "approver queue is submitted work within their limit",
 			user:       "procurement-chen",
 			target:     "/api/waystations/ws-alpha/requisitions",
 			wantStatus: http.StatusOK,
-			wantRows:   2,
+			wantRows:   1,
 			banIDs:     []string{reqOverhaulID},
 		},
 		{
@@ -212,7 +212,7 @@ func TestDemoPersonaViews(t *testing.T) {
 			user:       "auditor-voss",
 			target:     "/api/waystations/ws-alpha/requisition-lines",
 			wantStatus: http.StatusOK,
-			wantRows:   5,
+			wantRows:   4, // ws-beta's line is out: row tenancy resolves through the interleaved parent
 			check: func(t *testing.T, respBody []byte) {
 				t.Helper()
 				for _, row := range decodeRows(t, respBody) {

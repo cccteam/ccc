@@ -7,10 +7,12 @@ package resource
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/google/go-cmp/cmp"
 )
 
 const tenancyTestResource = accesstypes.Resource("tenancyResources")
@@ -118,6 +120,88 @@ func TestPatchSet_stampTenantKey(t *testing.T) {
 				if got := p.Get("StationID"); got != tt.wantValue {
 					t.Errorf("Get(StationID) = %v (%T), want %v", got, got, tt.wantValue)
 				}
+			}
+		})
+	}
+}
+
+// TestQuerySet_stmt_tenancyPredicate pins the read-path resource rule: a
+// partitioned request's statement carries the tenant predicate whether or not
+// conditional grants exist — bare column as a direct comparison, join path as
+// nested correlated EXISTS — and a global request carries none.
+func TestQuerySet_stmt_tenancyPredicate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		domain     *DomainBindingData
+		scope      accesstypes.Scope
+		wantSQL    string
+		wantParams map[string]any
+		wantErr    string
+	}{
+		{
+			name:       "bare-column binding filters on the tenant column",
+			domain:     &DomainBindingData{Column: "StationId"},
+			scope:      accesstypes.DomainScope("station-alpha"),
+			wantSQL:    "SELECT Id, StationId, Name FROM tenancyResources WHERE (`tenancyResources`.`StationId` = @domain)",
+			wantParams: map[string]any{"domain": "station-alpha"},
+		},
+		{
+			name:   "join-path binding filters through correlated EXISTS",
+			domain: &DomainBindingData{Column: "ParentId", Path: []BindingHop{{Table: "Parents", JoinColumn: "Id", Column: "StationId"}}},
+			scope:  accesstypes.DomainScope("station-alpha"),
+			wantSQL: "SELECT Id, StationId, Name FROM tenancyResources " +
+				"WHERE (EXISTS (SELECT 1 FROM `Parents` `ca1` WHERE `ca1`.`Id` = `tenancyResources`.`ParentId` AND `ca1`.`StationId` = @domain))",
+			wantParams: map[string]any{"domain": "station-alpha"},
+		},
+		{
+			name:       "global request renders no tenant predicate",
+			domain:     &DomainBindingData{Column: "StationId"},
+			scope:      accesstypes.GlobalScope(),
+			wantSQL:    "SELECT Id, StationId, Name FROM tenancyResources",
+			wantParams: map[string]any{},
+		},
+		{
+			name:    "partitioned request over a binding-less resource fails loud",
+			domain:  nil,
+			scope:   accesstypes.DomainScope("station-alpha"),
+			wantErr: "no domain binding",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rSet, err := NewSet[tenancyResource, tenancyCreateRequest](accesstypes.Create)
+			if err != nil {
+				t.Fatalf("NewSet() error = %v", err)
+			}
+
+			q := NewQuerySet(NewMetadata[tenancyResource]())
+			q.collection = tenancyCollection(t, tt.domain)
+			q.EnableUserPermissionEnforcement(rSet, renderStubPermissions{}, tt.scope, accesstypes.Read)
+			for _, field := range []accesstypes.Field{"ID", "StationID", "Name"} {
+				q.AddField(field)
+			}
+
+			stmt, err := q.stmt(SpannerDBType)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("QuerySet.stmt() error = %v, want containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("QuerySet.stmt() error = %v", err)
+			}
+			if got := normalizeSQL(stmt.SQL); got != tt.wantSQL {
+				t.Errorf("QuerySet.stmt() SQL =\n%s\nwant\n%s", got, tt.wantSQL)
+			}
+			if diff := cmp.Diff(tt.wantParams, stmt.Params); diff != "" {
+				t.Errorf("QuerySet.stmt() params mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

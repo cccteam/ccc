@@ -439,6 +439,34 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*St
 	}, nil
 }
 
+// whereWithPredicates builds the WHERE clause and appends the lowered
+// predicate fragments: the tenancy AND sits in the WHERE before the read
+// rules' row predicate (design plan §06) — checked domain == filtered domain
+// by construction.
+func (q *QuerySet[Resource]) whereWithPredicates(dbType DBType, filterAst ExpressionNode, tenancy string, rendered *renderedReadConditions) (*Statement, error) {
+	where, err := q.where(dbType, filterAst)
+	if err != nil {
+		return nil, errors.Wrap(err, "patcher.Where()")
+	}
+
+	predicates := []string{tenancy}
+	if rendered != nil && rendered.rowPredicate != "" {
+		predicates = append(predicates, rendered.rowPredicate)
+	}
+	for _, predicate := range predicates {
+		if predicate == "" {
+			continue
+		}
+		if where.SQL == "" {
+			where.SQL = "WHERE " + predicate
+		} else {
+			where.SQL += " AND " + predicate
+		}
+	}
+
+	return where, nil
+}
+
 // stmt builds a SQL statement for the given database type from the QuerySet.
 func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	filterAst, err := q.FilterAst(dbType)
@@ -455,12 +483,21 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.readConditionPlan()")
 	}
 
+	// The registry is statement-scoped: the read-condition fragments and the
+	// tenancy predicate share it, so aliases and placeholders stay unique.
+	registry := newParamRegistry()
+
 	var rendered *renderedReadConditions
 	if plan != nil {
-		rendered, err = q.renderReadConditions(dbType, plan)
+		rendered, err = q.renderReadConditions(dbType, plan, registry)
 		if err != nil {
 			return nil, errors.Wrap(err, "QuerySet.renderReadConditions()")
 		}
+	}
+
+	tenancy, err := q.tenancyPredicate(dbType, registry)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.tenancyPredicate()")
 	}
 
 	columns, err := q.columns(dbType, rendered)
@@ -468,17 +505,9 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	where, err := q.where(dbType, filterAst)
+	where, err := q.whereWithPredicates(dbType, filterAst, tenancy, rendered)
 	if err != nil {
-		return nil, errors.Wrap(err, "patcher.Where()")
-	}
-
-	if rendered != nil && rendered.rowPredicate != "" {
-		if where.SQL == "" {
-			where.SQL = "WHERE " + rendered.rowPredicate
-		} else {
-			where.SQL += " AND " + rendered.rowPredicate
-		}
+		return nil, err
 	}
 
 	orderByClause, err := q.buildOrderByClause(dbType)
@@ -505,10 +534,8 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		where.Params[k] = subqueryParams[k]
 	}
 
-	if rendered != nil {
-		if err := q.mergeRenderedParams(rendered, where.Params); err != nil {
-			return nil, err
-		}
+	if err := q.mergeRegistryParams(registry, where.Params); err != nil {
+		return nil, err
 	}
 
 	sql := fmt.Sprintf(`

@@ -9,13 +9,64 @@ import (
 )
 
 // Structural row tenancy (ABAC design plan §06): a domain-scoped resource's
-// rows resolve to their tenant through the Collection's domain binding. This
-// file holds the create-path half — stamping the bare-column tenant key from
-// the request's domain partition, so the checked domain and the written
-// domain are the same value by construction. The generated patch structs
-// close the column on the wire (json:"-"), so stamping is the only way the
-// value can be written; a join-path binding has no local column to stamp and
-// is enforced by the write check instead.
+// rows resolve to their tenant through the Collection's domain binding, and
+// enforcement consumes it as data — a predicate fragment in every partitioned
+// statement's WHERE, and a stamped tenant key on the create path — so the
+// checked domain and the filtered/written domain are the same value by
+// construction. The generated patch structs close the tenant column on the
+// wire (json:"-"), so stamping is the only way the value can be written; a
+// join-path binding has no local column to stamp and is enforced by the
+// write check instead.
+
+// tenancyPredicate renders the resource rule in its compiled form: the tenant
+// predicate every partitioned statement carries, unconditionally — present
+// with or without conditional grants, never skippable. A global request has
+// no partition and renders nothing. A hand-built QuerySet without the
+// generated collection owns its own tenancy (every generated path wires the
+// collection); a wired collection whose resource lacks the domain binding is
+// stale generated code and fails loud.
+func (q *QuerySet[Resource]) tenancyPredicate(dbType DBType, registry *paramRegistry) (string, error) {
+	if _, ok := q.scope.Domain(); !ok {
+		return "", nil
+	}
+	if q.collection == nil {
+		return "", nil
+	}
+	bindings, _ := q.collection.Bindings(q.collection.Scope(q.Resource()), q.Resource())
+	if bindings.Domain == nil {
+		return "", errors.Newf("resource %s: partitioned request over a resource with no domain binding — @domain is mandatory on domain-scoped resources; regenerate", q.Resource())
+	}
+
+	gen, err := loweredSQLGenerator(dbType)
+	if err != nil {
+		return "", err
+	}
+
+	outer := string(q.Resource())
+	var node ExpressionNode
+	if len(bindings.Domain.Path) == 0 {
+		node = &loweredComparisonNode{
+			left:  columnComparand(outer, bindings.Domain.Column),
+			op:    "=",
+			right: namedComparand(domainParamName),
+		}
+	} else {
+		lctx := &loweringContext{outer: outer, bindings: bindings, collection: q.collection, partitioned: true}
+		anchorColumn := columnComparand(outer, bindings.Domain.Column)
+		target, wrap, err := lctx.pathTarget(&anchorColumn, bindings.Domain.Path, registry)
+		if err != nil {
+			return "", err
+		}
+		node = wrap(&loweredComparisonNode{left: target, op: "=", right: namedComparand(domainParamName)})
+	}
+
+	sql, err := gen.generateLowered(node, registry)
+	if err != nil {
+		return "", err
+	}
+
+	return "(" + sql + ")", nil
+}
 
 // stampTenantKey writes the request's domain partition into the resource's
 // bare-column tenant key. It is a no-op for global requests, resources

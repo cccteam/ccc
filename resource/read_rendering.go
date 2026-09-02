@@ -208,30 +208,22 @@ type renderedReadConditions struct {
 
 	// rowPredicate is rule 3's predicate, parenthesized, "" when TRUE.
 	rowPredicate string
-
-	// registry carries the fragments' bound values and referenced named
-	// parameters for the statement assembly to merge.
-	registry *paramRegistry
 }
 
 // renderReadConditions lowers the plan's conditions and renders the CASE
-// expressions, mask terms, and row predicate for one statement.
-func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readConditionPlan) (*renderedReadConditions, error) {
+// expressions, mask terms, and row predicate for one statement. The registry
+// is statement-scoped and shared with every other lowered fragment (the
+// tenancy predicate), so aliases and placeholders stay unique across them.
+func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readConditionPlan, registry *paramRegistry) (*renderedReadConditions, error) {
 	if q.collection == nil {
 		return nil, errors.Newf("resource %s carries conditional decisions but no generated collection is wired to render them", q.Resource())
 	}
 
-	var gen *sqlGenerator
-	switch dbType {
-	case SpannerDBType:
-		gen = newSQLGenerator(Spanner)
-	case PostgresDBType:
-		gen = newSQLGenerator(PostgreSQL)
-	default:
-		return nil, errors.Newf("unsupported dbType: %s", dbType)
+	gen, err := loweredSQLGenerator(dbType)
+	if err != nil {
+		return nil, err
 	}
 
-	registry := newParamRegistry()
 	bindings, _ := q.collection.Bindings(q.collection.Scope(q.Resource()), q.Resource())
 	_, partitioned := q.scope.Domain()
 	lctx := &loweringContext{
@@ -243,7 +235,6 @@ func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readCondi
 
 	rendered := &renderedReadConditions{
 		overrides: make(map[accesstypes.Field]string),
-		registry:  registry,
 	}
 
 	if len(plan.rowPredicate) > 0 {
@@ -329,19 +320,31 @@ func maskColumn(dbType DBType, terms []string) string {
 	return fmt.Sprintf("ARRAY_CONCAT(%s) AS %s", strings.Join(terms, ", "), maskedNamesColumnName)
 }
 
-// mergeRenderedParams folds the lowered fragments' bound values and referenced
-// reserved parameters into the statement's parameter map. The lowered @_c…
-// names are disjoint from the filter (@_p…) and keyset (@_<column>)
-// namespaces by construction, so a collision can only come from a virtual
-// resource's subquery params.
-func (q *QuerySet[Resource]) mergeRenderedParams(rendered *renderedReadConditions, params map[string]any) error {
-	for _, param := range rendered.registry.boundParams() {
+// loweredSQLGenerator returns the lowered-fragment SQL emitter for dbType.
+func loweredSQLGenerator(dbType DBType) (*sqlGenerator, error) {
+	switch dbType {
+	case SpannerDBType:
+		return newSQLGenerator(Spanner), nil
+	case PostgresDBType:
+		return newSQLGenerator(PostgreSQL), nil
+	default:
+		return nil, errors.Newf("unsupported dbType: %s", dbType)
+	}
+}
+
+// mergeRegistryParams folds the statement registry's bound values and
+// referenced reserved parameters into the statement's parameter map. The
+// lowered @_c… names are disjoint from the filter (@_p…) and keyset
+// (@_<column>) namespaces by construction, so a collision can only come from
+// a virtual resource's subquery params.
+func (q *QuerySet[Resource]) mergeRegistryParams(registry *paramRegistry, params map[string]any) error {
+	for _, param := range registry.boundParams() {
 		if _, ok := params[param.Name]; ok {
 			return errors.Newf("named parameter collision: %s statement already contains named parameter %q", q.Resource(), param.Name)
 		}
 		params[param.Name] = param.Value
 	}
-	for _, name := range rendered.registry.referencedNames() {
+	for _, name := range registry.referencedNames() {
 		if _, ok := params[name]; ok {
 			return errors.Newf("named parameter collision: %s statement already contains reserved named parameter %q", q.Resource(), name)
 		}

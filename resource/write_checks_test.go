@@ -27,6 +27,7 @@ func writeCheckCollection(t *testing.T) *GeneratedCollection {
 			{Name: "owner", Column: "Owner", Type: AttributeTypeString},
 			{Name: "pub", Column: "Public", Type: AttributeTypeString},
 		},
+		Domain: &DomainBindingData{Column: "Station"},
 	}}})
 	if err != nil {
 		t.Fatalf("NewGeneratedCollection() error = %v", err)

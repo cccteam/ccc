@@ -151,11 +151,13 @@ func TestVirtualResources(t *testing.T) {
 			},
 		},
 		{
-			// The domain-scoped virtual serves under the waystation segment and is
-			// checked in that partition.
+			// The domain-scoped virtual serves under the waystation segment, is
+			// checked in that partition, and its own bare @domain binding
+			// partitions the projection's rows (E2): the beta team's row never
+			// appears on the alpha route.
 			name:     "the domain-scoped virtual serves under the waystation segment",
 			target:   "/api/waystations/ws-alpha/open-work-orders-by-teams",
-			wantRows: 3, // teams with open orders
+			wantRows: 2, // ws-alpha teams with open orders
 		},
 	}
 

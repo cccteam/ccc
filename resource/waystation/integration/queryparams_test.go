@@ -90,30 +90,30 @@ func TestQueryParameters(t *testing.T) {
 			wantRows:   2,
 		},
 		{
-			// Domain scope partitions PERMISSIONS, not data: the ws-beta route
-			// serves ws-alpha's lot when the grant is unconditional. This pins the
-			// row-tenancy gap E2 closes, the same way the conditions suite pins it
-			// for the commander's work orders.
-			name:       "filter does not partition rows by the route's domain (the E2 gap, pinned)",
+			// Structural row tenancy (E2): the ws-beta route cannot reach
+			// ws-alpha's lot even with an unconditional grant and a filter that
+			// matches it — the injected tenant predicate partitions the rows, and
+			// a narrowed list is empty, never a 403.
+			name:       "filter cannot reach another station's rows (row tenancy)",
 			target:     "/api/waystations/ws-beta/inventory-lots?filter=binLocation:eq:A-01",
 			wantStatus: http.StatusOK,
-			wantRows:   1,
+			wantRows:   0,
 		},
 		{
-			// Four rows, not three: the unconditional grant sees ws-beta's BA-1 lot
-			// too (permissions partition, rows do not — see the E2 pin above).
+			// Three rows: ws-beta's BA-1 lot never appears on the ws-alpha route —
+			// the tenant predicate is in the WHERE before sorting.
 			name:          "sort ascending on untagged field",
 			target:        "/api/waystations/ws-alpha/inventory-lots?sort=quantity",
 			wantStatus:    http.StatusOK,
-			wantRows:      4,
-			wantLocations: []string{"B-02", "H-03", "BA-1", "A-01"},
+			wantRows:      3,
+			wantLocations: []string{"B-02", "H-03", "A-01"},
 		},
 		{
 			name:          "sort descending",
 			target:        "/api/waystations/ws-alpha/inventory-lots?sort=quantity:desc",
 			wantStatus:    http.StatusOK,
-			wantRows:      4,
-			wantLocations: []string{"A-01", "BA-1", "H-03", "B-02"},
+			wantRows:      3,
+			wantLocations: []string{"A-01", "H-03", "B-02"},
 		},
 		{
 			name:       "sort with unknown field is rejected",

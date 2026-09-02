@@ -182,10 +182,12 @@ The same tour in the browser, persona by persona:
   the URL's — or the consolidated op path's — domain on create, so the checked
   domain and the written domain are the same value by construction. Create payloads
   and RoleConfig write grants naming the tenant field are rejected.
-- **Domain scope partitions permissions, not rows (yet).** An unconditional grant
-  still sees every station's rows on any station's route — pinned deliberately in
-  the conditions and query-parameter suites as the gap E2's read/write predicate
-  injection closes next.
+- **Reads partition rows structurally; writes are next.** Every partitioned query
+  carries the tenant predicate in its WHERE (bare column or nested EXISTS through
+  the join path) before the read rules run — a cross-station row never renders,
+  and a filter that matches one returns an empty list, never a 403. Mutations
+  still locate rows by primary key alone: the unconditional write check-SELECT
+  that makes a cross-tenant key NotFound is E2's remaining change.
 
 ## Regen discipline
 

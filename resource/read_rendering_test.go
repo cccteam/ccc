@@ -52,6 +52,7 @@ func renderCollection(t *testing.T) *GeneratedCollection {
 			{Name: "priority", Column: "Priority", Type: AttributeTypeNumber},
 			{Name: "expires", Column: "Expires", Type: AttributeTypeTimestamp},
 		},
+		Domain: &DomainBindingData{Column: "Station"},
 	}}})
 	if err != nil {
 		t.Fatalf("NewGeneratedCollection() error = %v", err)
@@ -95,8 +96,8 @@ func TestQuerySet_stmt_readRendering(t *testing.T) {
 				enforcedResource + ".public": conditionalOn(enforcedResource+".public", "owner = subject"),
 				enforcedResource + ".tagged": conditionalOn(enforcedResource+".tagged", "owner = subject"),
 			},
-			wantSQL:    "SELECT Id, Public, Tagged FROM enforcementResources WHERE (`enforcementResources`.`Owner` = @subject)",
-			wantParams: map[string]any{"subject": "u1"},
+			wantSQL:    "SELECT Id, Public, Tagged FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain) AND (`enforcementResources`.`Owner` = @subject)",
+			wantParams: map[string]any{"subject": "u1", "domain": "testDomain"},
 		},
 		{
 			name:   "partial pruning keeps the narrower column's CASE and mask term",
@@ -109,8 +110,8 @@ func TestQuerySet_stmt_readRendering(t *testing.T) {
 				"CASE WHEN `enforcementResources`.`Owner` = @subject THEN Tagged ELSE @_c2 END AS Tagged, " +
 				"IF(`enforcementResources`.`Owner` = @subject, ARRAY<STRING>[], ['tagged']) AS zzMaskedFields " +
 				"FROM enforcementResources " +
-				"WHERE (`enforcementResources`.`Owner` = @subject OR `enforcementResources`.`Priority` = @_c1)",
-			wantParams:    map[string]any{"subject": "u1", "_c1": int64(3), "_c2": ""},
+				"WHERE (`enforcementResources`.`Station` = @domain) AND (`enforcementResources`.`Owner` = @subject OR `enforcementResources`.`Priority` = @_c1)",
+			wantParams:    map[string]any{"subject": "u1", "_c1": int64(3), "_c2": "", "domain": "testDomain"},
 			wantMaskedCol: true,
 		},
 		{
@@ -122,8 +123,9 @@ func TestQuerySet_stmt_readRendering(t *testing.T) {
 			wantSQL: "SELECT Id, Public, " +
 				"CASE WHEN `enforcementResources`.`Owner` = @subject THEN Tagged ELSE @_c1 END AS Tagged, " +
 				"IF(`enforcementResources`.`Owner` = @subject, ARRAY<STRING>[], ['tagged']) AS zzMaskedFields " +
-				"FROM enforcementResources",
-			wantParams:    map[string]any{"subject": "u1", "_c1": ""},
+				"FROM enforcementResources " +
+				"WHERE (`enforcementResources`.`Station` = @domain)",
+			wantParams:    map[string]any{"subject": "u1", "_c1": "", "domain": "testDomain"},
 			wantMaskedCol: true,
 		},
 		{
@@ -132,8 +134,8 @@ func TestQuerySet_stmt_readRendering(t *testing.T) {
 			decisions: accesstypes.Decisions{
 				enforcedResource + ".tagged": conditionalOn(enforcedResource+".tagged", "expires > now"),
 			},
-			wantSQL:    "SELECT Id, Tagged FROM enforcementResources WHERE (`enforcementResources`.`Expires` > @now)",
-			wantParams: map[string]any{"now": now},
+			wantSQL:    "SELECT Id, Tagged FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain) AND (`enforcementResources`.`Expires` > @now)",
+			wantParams: map[string]any{"now": now, "domain": "testDomain"},
 		},
 		{
 			name:   "conditional decisions without a wired collection fail loud",
