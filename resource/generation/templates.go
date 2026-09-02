@@ -1469,26 +1469,6 @@ export const PermissionScopes = {
 {{- end}}
 };
 
-// The per-scope permission digest served at GET <prefix>/permission-digest
-// (?domain= names one tenant partition, absent means global): the session user's
-// structural grant enumeration, advisory only. Keys are resource names, dotted
-// field names included; a missing key or permission means denied — fail closed.
-export type PermissionDigestState = 'granted' | 'conditional';
-
-export interface PermissionDigest {
-  [resource: string]: { [permission: string]: PermissionDigestState | undefined } | undefined;
-}
-
-// One row's capability envelope, attached under the reserved zzCapabilities
-// property when the read opted in (?capabilities=Update,Delete): Update is the
-// positive list of editable JSON field names (absence means not editable),
-// Delete whether the row may be deleted. Advisory hints only — enforcement
-// stays server-side.
-export interface RowCapabilities {
-  Update?: string[];
-  Delete?: boolean;
-}
-
 export const Resources = {
 {{- range $resource := $resources }}
   {{ $resource }}: '{{ $resource }}' as Resource,

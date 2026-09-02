@@ -186,8 +186,8 @@ inputs to render); enforcement stays with the endpoint gate, the read rules, and
 write stages. Nothing folds — no `now`, no row data — so a payload is stable for the
 life of a policy snapshot and caches cleanly per scope. An unknown or grant-free
 domain digests to `{}`, so the endpoint never confirms tenant existence under
-`WithConcealedDomains`. The generated TypeScript constants file carries the matching
-`PermissionDigest` / `PermissionDigestState` types.
+`WithConcealedDomains`. `@cccteam/ccc-lib/types` carries the matching `PermissionDigest` /
+`PermissionDigestState` types (and `RowCapabilities` for the capability envelope).
 
 **User domains.** The payload is the sorted list of domains where the user holds at
 least one grant — the tenant picker's membership question, answered by the library so
