@@ -1,15 +1,17 @@
 import { HttpClient, httpResource, HttpResourceRef } from '@angular/common/http';
 import { computed, effect, inject, Injectable, linkedSignal, signal, untracked } from '@angular/core';
+import { Methods, Permissions, PermissionScopes, Resources } from '@app/service/zz_gen_constants';
 import {
   IncidentReports,
   Requisitions,
   RequisitionLines,
+  ResourceScopes,
   Waystations,
   WorkOrders,
   WorkOrderTasks,
 } from '@app/service/zz_gen_resources';
 import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { API_URL, Domain } from '@cccteam/ccc-lib/types';
+import { API_URL, Domain, Method, Permission, Resource } from '@cccteam/ccc-lib/types';
 import { Observable } from 'rxjs';
 
 interface Operation {
@@ -73,7 +75,8 @@ export class WaystationService {
   // generated, permission-checked Waystations resource, fetched only while showAll is
   // on; it idles until the session authenticates and resets at logout.
   private roster = httpResource<Waystations[]>(
-    () => (this.auth.authenticated() && this.showAll() ? `${this.apiUrl}/waystations` : undefined),
+    () =>
+      this.showAll() && this.can(Permissions.List, Resources.Waystations) ? `${this.apiUrl}/waystations` : undefined,
     { defaultValue: [] },
   );
 
@@ -112,6 +115,34 @@ export class WaystationService {
     });
   }
 
+  /**
+   * can answers one permission question from the digest — the app's single gate for
+   * requests and affordances, so nothing is asked of the server that the user's grants
+   * cannot allow. A global-scope resource asks the global digest; a domain-scoped
+   * resource, or an RPC method (every page method is station-scoped), asks the selected
+   * station's digest, and answers false while no station is selected. Conditional
+   * grants answer true — render, and let the server narrow per row. Signal-backed, so
+   * lists and buttons re-evaluate when a digest loads or the station changes.
+   */
+  can(permission: Permission, resource: Resource | Method): boolean {
+    const domain = this.scopeDomain(resource);
+    if (domain === null) {
+      return false;
+    }
+    return this.auth.hasPermission({ resource, permission, domain });
+  }
+
+  // scopeDomain resolves the partition a question is asked in: undefined for the
+  // global scope, the selected station for domain-scoped resources and methods, null
+  // when a station is needed but none is selected.
+  private scopeDomain(resource: Resource | Method): Domain | undefined | null {
+    const isMethod = Object.values(Methods).includes(resource as Method);
+    if (!isMethod && ResourceScopes[resource as Resource] !== PermissionScopes.domain) {
+      return undefined;
+    }
+    return this.current() ? (this.current() as Domain) : null;
+  }
+
   setShowAll(all: boolean): void {
     this.showAll.set(all);
   }
@@ -122,22 +153,29 @@ export class WaystationService {
 
   /**
    * stationList derives a page's list from the selected waystation: the request URL
-   * is a function of current(), so the resource refetches when the station changes
-   * and sits idle (on the default empty list) while none is selected. After a
-   * mutation, call .reload() on the affected lists. Create resources in an
-   * injection context (a component field initializer), so each one lives and dies
-   * with its page.
+   * is a function of current() and of the user's List grant on the resource at that
+   * station, so the resource refetches when the station changes, sits idle (on the
+   * default empty list) while none is selected, and never asks for a list the digest
+   * says the user cannot read. After a mutation, call .reload() on the affected lists.
+   * Create resources in an injection context (a component field initializer), so each
+   * one lives and dies with its page.
    */
-  stationList<T>(resourceRoute: string): HttpResourceRef<T[]> {
+  stationList<T>(resourceRoute: string, resource: Resource): HttpResourceRef<T[]> {
     return httpResource<T[]>(
-      () => (this.current() ? `${this.apiUrl}/waystations/${this.current()}/${resourceRoute}` : undefined),
+      () =>
+        this.current() && this.can(Permissions.List, resource)
+          ? `${this.apiUrl}/waystations/${this.current()}/${resourceRoute}`
+          : undefined,
       { defaultValue: [] },
     );
   }
 
-  /** globalList is stationList's global-resource sibling: one fixed URL, no domain segment. */
-  globalList<T>(resourceRoute: string): HttpResourceRef<T[]> {
-    return httpResource<T[]>(() => `${this.apiUrl}/${resourceRoute}`, { defaultValue: [] });
+  /** globalList is stationList's global-resource sibling: one fixed URL, no domain segment, same List gate. */
+  globalList<T>(resourceRoute: string, resource: Resource): HttpResourceRef<T[]> {
+    return httpResource<T[]>(
+      () => (this.can(Permissions.List, resource) ? `${this.apiUrl}/${resourceRoute}` : undefined),
+      { defaultValue: [] },
+    );
   }
 
   // ops sends consolidated mutations; paths are rooted at the API, e.g.

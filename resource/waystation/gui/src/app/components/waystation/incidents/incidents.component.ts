@@ -1,10 +1,11 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatTableModule } from '@angular/material/table';
+import { Permissions, Resources } from '@app/service/zz_gen_constants';
 import { IncidentReports } from '@app/service/zz_gen_resources';
 import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
@@ -32,8 +33,13 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
 export class IncidentsComponent {
   private ws = inject(WaystationService);
 
-  incidents = this.ws.stationList<IncidentReports>('incident-reports');
+  incidents = this.ws.stationList<IncidentReports>('incident-reports', Resources.IncidentReports);
   columns = ['caseNumber', 'summary', 'severity', 'reporterContact'];
+
+  // Affordances from the selected station's digest.
+  station = this.ws.current;
+  canList = computed(() => this.ws.can(Permissions.List, Resources.IncidentReports));
+  canReport = computed(() => this.ws.can(Permissions.Create, Resources.IncidentReports));
 
   newSummary = '';
   newSeverity: number | null = null;

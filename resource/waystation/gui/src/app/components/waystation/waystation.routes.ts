@@ -1,5 +1,6 @@
 import { Type } from '@angular/core';
 import { Route } from '@angular/router';
+import { Permissions, Resources } from '@app/service/zz_gen_constants';
 import { generatedNavItems } from '@cccteam/ccc-lib/resource-nav';
 import { MenuItem } from '@shared/topbar/topbar.component';
 import { AuditTrailComponent } from './audit-trail/audit-trail.component';
@@ -23,15 +24,42 @@ export const waystationRoute = (): Route => {
 
   const groupItem: MenuItem = { label: 'Station Ops', children: [] };
   generatedNavItems.push(groupItem);
+  // Each item names the List grant its page needs; the topbar asks the digest for
+  // the selected station (the resource's scope decides which partition).
+  const list = Permissions.List;
   groupItem.children = [
-    { label: 'Work Orders', route: ['station/work-orders'] },
-    { label: 'Requisitions', route: ['station/requisitions'] },
-    { label: 'Status Board', route: ['station/status-board'] },
-    { label: 'Incidents', route: ['station/incidents'] },
-    { label: 'Logistics', route: ['station/logistics'] },
+    {
+      label: 'Work Orders',
+      route: ['station/work-orders'],
+      permission: { resource: Resources.WorkOrders, permission: list },
+    },
+    {
+      label: 'Requisitions',
+      route: ['station/requisitions'],
+      permission: { resource: Resources.Requisitions, permission: list },
+    },
+    {
+      label: 'Status Board',
+      route: ['station/status-board'],
+      permission: { resource: Resources.StationStatusBoards, permission: list },
+    },
+    {
+      label: 'Incidents',
+      route: ['station/incidents'],
+      permission: { resource: Resources.IncidentReports, permission: list },
+    },
+    {
+      label: 'Logistics',
+      route: ['station/logistics'],
+      permission: { resource: Resources.Shipments, permission: list },
+    },
     // The audit trail is ring-wide (not station-scoped), but it lives with the
     // hand-written pages: its API surface is the manual-resource route.
-    { label: 'Audit Trail', route: ['station/audit-trail'] },
+    {
+      label: 'Audit Trail',
+      route: ['station/audit-trail'],
+      permission: { resource: Resources.AuditTrailEntries, permission: list },
+    },
   ];
 
   cachedWaystationRoute = {

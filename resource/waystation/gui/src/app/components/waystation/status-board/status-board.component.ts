@@ -1,7 +1,8 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
+import { Permissions, Resources } from '@app/service/zz_gen_constants';
 import { StationStatusBoards } from '@app/service/zz_gen_resources';
 import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
@@ -21,6 +22,9 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
 export class StatusBoardComponent {
   private ws = inject(WaystationService);
 
-  rows = this.ws.stationList<StationStatusBoards>('station-status-boards');
+  rows = this.ws.stationList<StationStatusBoards>('station-status-boards', Resources.StationStatusBoards);
   columns = ['facilityName', 'metric', 'latestReading', 'recordedAt'];
+
+  station = this.ws.current;
+  canList = computed(() => this.ws.can(Permissions.List, Resources.StationStatusBoards));
 }

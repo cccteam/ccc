@@ -5,14 +5,14 @@
   outlet — all through generated handlers, routes, and metadata.
 </p>
 
-@if (fleet().length) {
+@if (fleet.value().length) {
   <mat-card appearance="outlined" class="fleet-card">
     <mat-card-header>
       <mat-card-title>Fleet Summary</mat-card-title>
       <mat-card-subtitle>A computed resource, aggregated across the waystations you can see.</mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>
-      <table mat-table [dataSource]="fleet()">
+      <table mat-table [dataSource]="fleet.value()">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Waystation</th>
           <td mat-cell *matCellDef="let row">{{ row.name }}</td>

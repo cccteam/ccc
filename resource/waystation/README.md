@@ -114,8 +114,13 @@ options are the library's answer to "where do I hold grants" — the generated
 "Show all waystations" toggle widens it to the roster served by the generated,
 permission-checked Waystations resource — a demo affordance no real application would
 carry, kept as the clickable path to fail-closed refusals. Selecting a station loads
-its permission digest, so ccc-lib's `hasPermission` answers for that station's
-resources. Masked cells arrive as ABSENT JSON keys and render as em-dashes,
+its permission digest, and every hand-written page asks it before asking the server:
+`WaystationService.can(permission, resource)` gates each list request, create form,
+RPC button, and delete affordance (a global resource asks the global digest, a
+station-scoped one the selected station's), the topbar hides menus the persona cannot
+open, and a page whose List grant is absent explains so instead of provoking a 403.
+Conditional grants render — the server narrows per row — so a technician still sees
+the task toggles that the in-progress condition will refuse on a scheduled order. Masked cells arrive as ABSENT JSON keys and render as em-dashes,
 never as zero or empty values.
 
 `gui/.prettierignore` excludes `zz_gen_*.ts`: prettier reflows generator output and

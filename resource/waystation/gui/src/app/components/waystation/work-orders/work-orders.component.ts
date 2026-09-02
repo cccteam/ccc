@@ -10,6 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTableModule } from '@angular/material/table';
+import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { WorkOrderStatus } from '@app/service/zz_gen_enums';
 import { Assets, Teams, WorkOrders, WorkOrderTasks } from '@app/service/zz_gen_resources';
 import { WaystationService } from '../waystation.service';
@@ -49,11 +50,24 @@ export class WorkOrdersComponent {
   // Sorted by last activity server-side: updatedAt is the mechanical enforcement
   // stamp, bumped by every update — including a Nudge, which changes nothing else.
   // Untouched rows (updatedAt unset) sort last.
-  orders = this.ws.stationList<WorkOrders>('work-orders?sort=updatedAt:desc');
-  taskRows = this.ws.stationList<WorkOrderTasks>('work-order-tasks');
-  teams = this.ws.stationList<Teams>('teams');
-  assets = this.ws.stationList<Assets>('assets');
+  orders = this.ws.stationList<WorkOrders>('work-orders?sort=updatedAt:desc', Resources.WorkOrders);
+  taskRows = this.ws.stationList<WorkOrderTasks>('work-order-tasks', Resources.WorkOrderTasks);
+  teams = this.ws.stationList<Teams>('teams', Resources.Teams);
+  assets = this.ws.stationList<Assets>('assets', Resources.Assets);
   columns = ['title', 'status', 'priority', 'team', 'dueAt', 'lastActivity', 'actions'];
+
+  // Affordances from the selected station's digest: an absent grant hides the
+  // surface, a conditional one renders it and lets the server narrow per row.
+  station = this.ws.current;
+  canList = computed(() => this.ws.can(Permissions.List, Resources.WorkOrders));
+  canCreate = computed(() => this.ws.can(Permissions.Create, Resources.WorkOrders));
+  canDelete = computed(() => this.ws.can(Permissions.Delete, Resources.WorkOrders));
+  canSchedule = computed(() => this.ws.can(Permissions.Execute, Methods.ScheduleWorkOrder));
+  canStart = computed(() => this.ws.can(Permissions.Execute, Methods.StartWorkOrder));
+  canComplete = computed(() => this.ws.can(Permissions.Execute, Methods.CompleteWorkOrder));
+  canNudge = computed(() => this.ws.can(Permissions.Execute, Methods.NudgeWorkOrder));
+  canAddTask = computed(() => this.ws.can(Permissions.Create, Resources.WorkOrderTasks));
+  canToggleTask = computed(() => this.ws.can(Permissions.Update, Resources.WorkOrderTasks));
 
   tasksByOrder = computed(() => {
     const grouped = new Map<string, WorkOrderTasks[]>();

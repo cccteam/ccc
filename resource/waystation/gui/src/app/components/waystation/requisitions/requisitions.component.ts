@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
+import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { DeclineReason, RequisitionStatus } from '@app/service/zz_gen_enums';
 import { CatalogItems, RequisitionLines, Requisitions } from '@app/service/zz_gen_resources';
 import { WaystationService } from '../waystation.service';
@@ -43,11 +44,22 @@ export class RequisitionsComponent {
   readonly status = RequisitionStatus;
   readonly declineReasons = Object.values(DeclineReason);
 
-  requisitions = this.ws.stationList<Requisitions>('requisitions');
-  lineRows = this.ws.stationList<RequisitionLines>('requisition-lines');
-  catalogItems = this.ws.globalList<CatalogItems>('catalog-items');
+  requisitions = this.ws.stationList<Requisitions>('requisitions', Resources.Requisitions);
+  lineRows = this.ws.stationList<RequisitionLines>('requisition-lines', Resources.RequisitionLines);
+  catalogItems = this.ws.globalList<CatalogItems>('catalog-items', Resources.CatalogItems);
   columns = ['justification', 'status', 'requestedBy', 'totalCost', 'neededBy', 'actions'];
   lineColumns = ['item', 'quantity', 'unitCostSnapshot', 'lineActions'];
+
+  // Affordances from the selected station's digest: an absent grant hides the
+  // surface, a conditional one renders it and lets the server narrow per row.
+  station = this.ws.current;
+  canList = computed(() => this.ws.can(Permissions.List, Resources.Requisitions));
+  canCreate = computed(() => this.ws.can(Permissions.Create, Resources.Requisitions));
+  canAddLine = computed(() => this.ws.can(Permissions.Create, Resources.RequisitionLines));
+  canRemoveLine = computed(() => this.ws.can(Permissions.Delete, Resources.RequisitionLines));
+  canSubmit = computed(() => this.ws.can(Permissions.Execute, Methods.SubmitRequisition));
+  canApprove = computed(() => this.ws.can(Permissions.Execute, Methods.ApproveRequisition));
+  canDecline = computed(() => this.ws.can(Permissions.Execute, Methods.DeclineRequisition));
 
   linesByRequisition = computed(() => {
     const grouped = new Map<string, RequisitionLines[]>();

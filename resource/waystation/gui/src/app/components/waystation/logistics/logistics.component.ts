@@ -1,9 +1,10 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTableModule } from '@angular/material/table';
+import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { CatalogItems, InventoryLots, Shipments } from '@app/service/zz_gen_resources';
 import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
@@ -23,13 +24,21 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
 export class LogisticsComponent {
   private ws = inject(WaystationService);
 
-  shipments = this.ws.stationList<Shipments>('shipments');
+  shipments = this.ws.stationList<Shipments>('shipments', Resources.Shipments);
   // Sorted server-side through the reserved sort parameter: soonest expiry first
   // (Spanner sorts NULL expiries — never expiring — to the top).
-  lots = this.ws.stationList<InventoryLots>('inventory-lots?sort=expiresOn');
-  catalogItems = this.ws.globalList<CatalogItems>('catalog-items');
+  lots = this.ws.stationList<InventoryLots>('inventory-lots?sort=expiresOn', Resources.InventoryLots);
+  catalogItems = this.ws.globalList<CatalogItems>('catalog-items', Resources.CatalogItems);
   shipmentColumns = ['manifestCode', 'arrivedAt', 'shipmentActions'];
   lotColumns = ['item', 'quantity', 'expiresOn', 'binLocation', 'lotActions'];
+
+  // Affordances from the selected station's digest: an absent grant hides the
+  // surface, a conditional one renders it and lets the server narrow per row.
+  station = this.ws.current;
+  canListShipments = computed(() => this.ws.can(Permissions.List, Resources.Shipments));
+  canListLots = computed(() => this.ws.can(Permissions.List, Resources.InventoryLots));
+  canReceive = computed(() => this.ws.can(Permissions.Execute, Methods.ReceiveShipment));
+  canDeleteLot = computed(() => this.ws.can(Permissions.Delete, Resources.InventoryLots));
 
   itemName(catalogItemId: string | undefined): string {
     return this.catalogItems.value().find((item) => item.id === catalogItemId)?.name ?? catalogItemId ?? '';

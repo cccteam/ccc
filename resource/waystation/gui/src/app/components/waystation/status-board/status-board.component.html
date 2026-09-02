@@ -7,28 +7,34 @@
 
 <app-waystation-select></app-waystation-select>
 
-<mat-card appearance="outlined" class="table-card">
-  <table mat-table [dataSource]="rows.value()">
-    <ng-container matColumnDef="facilityName">
-      <th mat-header-cell *matHeaderCellDef>Facility</th>
-      <td mat-cell *matCellDef="let row">{{ row.facilityName }}</td>
-    </ng-container>
-    <ng-container matColumnDef="metric">
-      <th mat-header-cell *matHeaderCellDef>Metric</th>
-      <td mat-cell *matCellDef="let row">{{ row.metric }}</td>
-    </ng-container>
-    <ng-container matColumnDef="latestReading">
-      <th mat-header-cell *matHeaderCellDef>Latest Reading</th>
-      <td mat-cell *matCellDef="let row">{{ row.latestReading }}</td>
-    </ng-container>
-    <ng-container matColumnDef="recordedAt">
-      <th mat-header-cell *matHeaderCellDef>Recorded</th>
-      <td mat-cell *matCellDef="let row">{{ row.recordedAt | date: 'medium' }}</td>
-    </ng-container>
-    <tr mat-header-row *matHeaderRowDef="columns"></tr>
-    <tr mat-row *matRowDef="let row; columns: columns"></tr>
-  </table>
-  @if (!rows.value().length) {
-    <p class="empty">No telemetry visible in this waystation for your roles.</p>
-  }
-</mat-card>
+@if (!canList()) {
+  <mat-card appearance="outlined" class="table-card">
+    <p class="empty">Your roles at {{ station() || 'this waystation' }} do not include the status board.</p>
+  </mat-card>
+} @else {
+  <mat-card appearance="outlined" class="table-card">
+    <table mat-table [dataSource]="rows.value()">
+      <ng-container matColumnDef="facilityName">
+        <th mat-header-cell *matHeaderCellDef>Facility</th>
+        <td mat-cell *matCellDef="let row">{{ row.facilityName }}</td>
+      </ng-container>
+      <ng-container matColumnDef="metric">
+        <th mat-header-cell *matHeaderCellDef>Metric</th>
+        <td mat-cell *matCellDef="let row">{{ row.metric }}</td>
+      </ng-container>
+      <ng-container matColumnDef="latestReading">
+        <th mat-header-cell *matHeaderCellDef>Latest Reading</th>
+        <td mat-cell *matCellDef="let row">{{ row.latestReading }}</td>
+      </ng-container>
+      <ng-container matColumnDef="recordedAt">
+        <th mat-header-cell *matHeaderCellDef>Recorded</th>
+        <td mat-cell *matCellDef="let row">{{ row.recordedAt | date: 'medium' }}</td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let row; columns: columns"></tr>
+    </table>
+    @if (!rows.value().length) {
+      <p class="empty">No telemetry visible in this waystation for your roles.</p>
+    }
+  </mat-card>
+}
