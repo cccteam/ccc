@@ -334,6 +334,10 @@ func TestGeneratedCollection_roundTrip(t *testing.T) {
 	if err := b.AddMethodResource(accesstypes.GlobalPermissionScope, accesstypes.Execute, "DoThing"); err != nil {
 		t.Fatalf("AddMethodResource() error = %v", err)
 	}
+	if err := b.AddResourceSet(accesstypes.GlobalPermissionScope, "Summaries", set); err != nil {
+		t.Fatalf("AddResourceSet() error = %v", err)
+	}
+	b.SetResourceComputed(accesstypes.GlobalPermissionScope, "Summaries")
 
 	data := b.Data()
 	g, err := NewGeneratedCollection(data)
@@ -343,6 +347,25 @@ func TestGeneratedCollection_roundTrip(t *testing.T) {
 
 	if diff := cmp.Diff(data, g.Data()); diff != "" {
 		t.Errorf("GeneratedCollection.Data() round trip mismatch (-want +got):\n%s", diff)
+	}
+
+	tests := []struct {
+		name string
+		res  accesstypes.Resource
+		want bool
+	}{
+		{name: "computed resource answers true", res: "Summaries", want: true},
+		{name: "computed field resource answers as its base", res: "Summaries.total", want: true},
+		{name: "table-backed resource answers false", res: "Widgets", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := g.IsComputedResource(accesstypes.GlobalPermissionScope, tt.res); got != tt.want {
+				t.Errorf("IsComputedResource(%s) = %t, want %t", tt.res, got, tt.want)
+			}
+		})
 	}
 }
 

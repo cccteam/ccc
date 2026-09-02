@@ -98,8 +98,15 @@ type CollectionData struct {
 // CollectionResource describes one resource's registrations within a permission collection.
 // RPC methods and manually registered resources carry only Permissions.
 type CollectionResource struct {
-	Name          accesstypes.Resource
-	Scope         accesstypes.PermissionScope
+	Name  accesstypes.Resource
+	Scope accesstypes.PermissionScope
+
+	// Computed marks a computed resource: a hand-written query surface whose
+	// permission checks run at decode time, where no row exists. Deploy-time
+	// grant validation (access.MigrateRoles) uses it to reject conditions that
+	// could never settle there.
+	Computed bool
+
 	Permissions   []accesstypes.Permission
 	Tags          []TagData
 	ImmutableTags []accesstypes.Tag
@@ -157,6 +164,12 @@ func (b *CollectionBuilder) AddMethodResource(scope accesstypes.PermissionScope,
 	return b.g.addResource(false, scope, permission, res)
 }
 
+// SetResourceComputed marks res as a computed resource within scope: a hand-written
+// query surface whose permission checks run at decode time, where no row exists.
+func (b *CollectionBuilder) SetResourceComputed(scope accesstypes.PermissionScope, res accesstypes.Resource) {
+	b.g.setResourceComputed(scope, res)
+}
+
 // Data returns the canonical, deterministically sorted form of everything registered so
 // far.
 func (b *CollectionBuilder) Data() CollectionData {
@@ -185,6 +198,7 @@ type GeneratedCollection struct {
 	resourceStore   map[accesstypes.PermissionScope]resourceStore
 	immutableFields map[accesstypes.PermissionScope]immutableFieldMap
 	bindings        map[accesstypes.PermissionScope]map[accesstypes.Resource]Bindings
+	computed        map[accesstypes.PermissionScope]map[accesstypes.Resource]struct{}
 }
 
 // newGeneratedCollection creates an empty, populatable GeneratedCollection.
@@ -194,6 +208,7 @@ func newGeneratedCollection() *GeneratedCollection {
 		resourceStore:   make(map[accesstypes.PermissionScope]resourceStore, 2),
 		immutableFields: make(map[accesstypes.PermissionScope]immutableFieldMap, 2),
 		bindings:        make(map[accesstypes.PermissionScope]map[accesstypes.Resource]Bindings, 2),
+		computed:        make(map[accesstypes.PermissionScope]map[accesstypes.Resource]struct{}, 2),
 	}
 }
 
@@ -236,29 +251,8 @@ func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 			}
 		}
 
-		if len(res.Tags) > 0 {
-			if g.tagStore[res.Scope] == nil {
-				g.tagStore[res.Scope] = make(tagStore)
-			}
-			g.tagStore[res.Scope][res.Name] = make(map[accesstypes.Tag][]accesstypes.Permission, len(res.Tags))
-
-			for _, tag := range res.Tags {
-				if _, ok := g.tagStore[res.Scope][res.Name][tag.Name]; ok {
-					return nil, errors.Newf("duplicate tag %q under resource %q", tag.Name, res.Name)
-				}
-
-				var permissions []accesstypes.Permission
-				for _, perm := range tag.Permissions {
-					if perm == accesstypes.NullPermission {
-						return nil, errors.Newf("tag %q under resource %q registers a null permission", tag.Name, res.Name)
-					}
-					if slices.Contains(permissions, perm) {
-						return nil, errors.Newf("found existing mapping between tag (%s) and permission (%s) under resource (%s)", tag.Name, perm, res.Name)
-					}
-					permissions = append(permissions, perm)
-				}
-				g.tagStore[res.Scope][res.Name][tag.Name] = permissions
-			}
+		if err := g.addResourceTags(res); err != nil {
+			return nil, err
 		}
 
 		if len(res.ImmutableTags) > 0 {
@@ -278,9 +272,46 @@ func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 			SubjectSets:   res.SubjectSets,
 			SubjectValues: res.SubjectValues,
 		})
+
+		if res.Computed {
+			g.setResourceComputed(res.Scope, res.Name)
+		}
 	}
 
 	return g, nil
+}
+
+// addResourceTags validates and stores one CollectionResource's tag registrations:
+// duplicate tags, duplicate tag permissions, and null tag permissions are invalid.
+func (g *GeneratedCollection) addResourceTags(res *CollectionResource) error {
+	if len(res.Tags) == 0 {
+		return nil
+	}
+
+	if g.tagStore[res.Scope] == nil {
+		g.tagStore[res.Scope] = make(tagStore)
+	}
+	g.tagStore[res.Scope][res.Name] = make(map[accesstypes.Tag][]accesstypes.Permission, len(res.Tags))
+
+	for _, tag := range res.Tags {
+		if _, ok := g.tagStore[res.Scope][res.Name][tag.Name]; ok {
+			return errors.Newf("duplicate tag %q under resource %q", tag.Name, res.Name)
+		}
+
+		var permissions []accesstypes.Permission
+		for _, perm := range tag.Permissions {
+			if perm == accesstypes.NullPermission {
+				return errors.Newf("tag %q under resource %q registers a null permission", tag.Name, res.Name)
+			}
+			if slices.Contains(permissions, perm) {
+				return errors.Newf("found existing mapping between tag (%s) and permission (%s) under resource (%s)", tag.Name, perm, res.Name)
+			}
+			permissions = append(permissions, perm)
+		}
+		g.tagStore[res.Scope][res.Name][tag.Name] = permissions
+	}
+
+	return nil
 }
 
 // MustNewGeneratedCollection is NewGeneratedCollection panicking on invalid data, for
@@ -343,6 +374,24 @@ func (g *GeneratedCollection) IsResourceImmutable(scope accesstypes.PermissionSc
 	_, ok := g.immutableFields[scope][resource][tag]
 
 	return ok
+}
+
+// IsComputedResource reports whether res is a computed resource within scope: a
+// hand-written query surface whose permission checks run at decode time, where
+// no row exists. A field resource answers as its base resource.
+func (g *GeneratedCollection) IsComputedResource(scope accesstypes.PermissionScope, res accesstypes.Resource) bool {
+	base, _ := res.ResourceAndTag()
+	_, ok := g.computed[scope][base]
+
+	return ok
+}
+
+// setResourceComputed records res as a computed resource within scope.
+func (g *GeneratedCollection) setResourceComputed(scope accesstypes.PermissionScope, res accesstypes.Resource) {
+	if g.computed[scope] == nil {
+		g.computed[scope] = make(map[accesstypes.Resource]struct{})
+	}
+	g.computed[scope][res] = struct{}{}
 }
 
 // Resources returns a sorted list of all unique base resource names in the collection.
@@ -572,15 +621,15 @@ func (g *GeneratedCollection) permissionScopes() []accesstypes.PermissionScope {
 	return scopes
 }
 
-// collectionDataFrom canonicalizes a collection's stores: resources sorted by scope then
-// name, tags and permissions sorted, and resource-level permissions deduplicated (manual
-// registration permits duplicates).
-func collectionDataFrom(g *GeneratedCollection) CollectionData {
-	type resourceKey struct {
-		scope accesstypes.PermissionScope
-		name  accesstypes.Resource
-	}
+// resourceKey identifies one resource registration: its scope and name.
+type resourceKey struct {
+	scope accesstypes.PermissionScope
+	name  accesstypes.Resource
+}
 
+// collectionResourceKeys enumerates every (scope, resource) pair any of the
+// collection's stores mention, sorted by scope then name.
+func collectionResourceKeys(g *GeneratedCollection) []resourceKey {
 	keySet := make(map[resourceKey]struct{})
 	for scope, store := range g.resourceStore {
 		for res := range store {
@@ -598,6 +647,11 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 		}
 	}
 	for scope, store := range g.bindings {
+		for res := range store {
+			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
+		}
+	}
+	for scope, store := range g.computed {
 		for res := range store {
 			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
 		}
@@ -624,11 +678,24 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 		return 0
 	})
 
+	return keys
+}
+
+// collectionDataFrom canonicalizes a collection's stores: resources sorted by scope then
+// name, tags and permissions sorted, and resource-level permissions deduplicated (manual
+// registration permits duplicates).
+func collectionDataFrom(g *GeneratedCollection) CollectionData {
+	keys := collectionResourceKeys(g)
+
 	data := CollectionData{Resources: make([]CollectionResource, 0, len(keys))}
 	for _, key := range keys {
 		res := CollectionResource{
 			Name:  key.name,
 			Scope: key.scope,
+		}
+
+		if _, ok := g.computed[key.scope][key.name]; ok {
+			res.Computed = true
 		}
 
 		perms := slices.Clone(g.resourceStore[key.scope][key.name])

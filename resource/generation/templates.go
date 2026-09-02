@@ -1726,6 +1726,9 @@ func Collection() *resource.GeneratedCollection {
 			{
 				Name:  "{{ .Name }}",
 				Scope: {{ ScopeConstant .Scope }},
+				{{- if .Computed }}
+				Computed: true,
+				{{- end }}
 				{{- with .Permissions }}
 				Permissions: []accesstypes.Permission{ {{- range $i, $p := . }}{{ if $i }}, {{ end }}{{ PermissionConstant $p }}{{ end -}} },
 				{{- end }}

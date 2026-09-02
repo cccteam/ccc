@@ -302,6 +302,7 @@ func (r *resourceGenerator) collectComputedRegistrations(b *resource.CollectionB
 			{suppressed: res.SuppressListHandler, permission: accesstypes.List},
 			{suppressed: res.SuppressReadHandler, permission: accesstypes.Read},
 		}
+		registered := false
 		for _, handler := range handlers {
 			if handler.suppressed {
 				continue
@@ -314,6 +315,13 @@ func (r *resourceGenerator) collectComputedRegistrations(b *resource.CollectionB
 			if err := b.AddResourceSet(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), set); err != nil {
 				return errors.Wrapf(err, "registering computed resource %q %s handler", res.Name(), handler.permission)
 			}
+			registered = true
+		}
+
+		// The kind marker rides only registered resources: a computed resource with
+		// every handler suppressed grants nothing, so there is nothing to validate.
+		if registered {
+			b.SetResourceComputed(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())))
 		}
 	}
 

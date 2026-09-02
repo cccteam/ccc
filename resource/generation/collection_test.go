@@ -262,6 +262,7 @@ func Test_computeCollectionData(t *testing.T) {
 				{
 					Name:        "Summaries",
 					Scope:       accesstypes.GlobalPermissionScope,
+					Computed:    true,
 					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 					Tags: []resource.TagData{
 						{Name: "id"},

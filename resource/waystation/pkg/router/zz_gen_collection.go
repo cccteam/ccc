@@ -213,6 +213,7 @@ func Collection() *resource.GeneratedCollection {
 			{
 				Name:        "StationStatusBoards",
 				Scope:       accesstypes.DomainPermissionScope,
+				Computed:    true,
 				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 				Tags: []resource.TagData{
 					{Name: "facilityId"},
@@ -321,6 +322,7 @@ func Collection() *resource.GeneratedCollection {
 			{
 				Name:        "FleetSummaries",
 				Scope:       accesstypes.GlobalPermissionScope,
+				Computed:    true,
 				Permissions: []accesstypes.Permission{accesstypes.List},
 				Tags: []resource.TagData{
 					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
