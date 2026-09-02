@@ -28,6 +28,11 @@ type Statement struct {
 	// and is not used in the query.
 	resolvedWhereClause string
 
+	// capabilityPlan carries the statement's capability evaluation (§13): how
+	// each row's reserved capability property assembles from the scanned
+	// group booleans. Nil unless the request opted in.
+	capabilityPlan *capabilityPlan
+
 	// maskedNamesColumn names the reserved masked-cell-names output column when
 	// the statement renders cell masking; empty otherwise. The readers scan it
 	// into the Row envelope instead of the destination struct.

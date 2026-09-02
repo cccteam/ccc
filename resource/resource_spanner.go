@@ -72,11 +72,18 @@ func (c *spannerReader[Resource]) DBType() DBType {
 	return SpannerDBType
 }
 
+// envelopeScan reports whether the statement carries reserved metadata
+// columns (masked names, capability checks) or an assembly plan, requiring
+// the lenient per-row scan instead of the plain spxscan path.
+func envelopeScan(stmt *Statement) bool {
+	return stmt.maskedNamesColumn != "" || stmt.capabilityPlan != nil
+}
+
 // Read reads a single resource from the database.
 func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
 	var res Resource
-	if stmt.maskedNamesColumn != "" {
-		row, err := c.readMasked(ctx, stmt)
+	if envelopeScan(stmt) {
+		row, err := c.readEnvelope(ctx, stmt)
 		if err != nil {
 			return nil, err
 		}
@@ -99,9 +106,9 @@ func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*R
 	return row, nil
 }
 
-// readMasked reads the first row of a masking statement; a nil row with no
-// error means no row matched.
-func (c *spannerReader[Resource]) readMasked(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
+// readEnvelope reads the first row of an envelope statement; a nil row with
+// no error means no row matched.
+func (c *spannerReader[Resource]) readEnvelope(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
 	it := c.readTxn().Query(ctx, stmt.SpannerStatement())
 	defer it.Stop()
 
@@ -114,13 +121,13 @@ func (c *spannerReader[Resource]) readMasked(ctx context.Context, stmt *Statemen
 		return nil, errors.Wrap(err, "spanner.RowIterator.Next()")
 	}
 
-	return scanMaskedRow[Resource](spannerRow, stmt.maskedNamesColumn)
+	return scanEnvelopeRow[Resource](spannerRow, stmt)
 }
 
 // List reads a list of resources from the database.
 func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
-	if stmt.maskedNamesColumn != "" {
-		return c.listMasked(ctx, stmt)
+	if envelopeScan(stmt) {
+		return c.listEnvelope(ctx, stmt)
 	}
 
 	return func(yield func(*Row[Resource], error) bool) {
@@ -137,9 +144,9 @@ func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) ite
 	}
 }
 
-// listMasked iterates a masking statement, scanning each row's data and its
-// reserved masked-names column into the Row envelope.
-func (c *spannerReader[Resource]) listMasked(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
+// listEnvelope iterates an envelope statement, scanning each row's data and
+// its reserved metadata columns into the Row envelope.
+func (c *spannerReader[Resource]) listEnvelope(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
 	return func(yield func(*Row[Resource], error) bool) {
 		it := c.readTxn().Query(ctx, stmt.SpannerStatement())
 		defer it.Stop()
@@ -154,7 +161,7 @@ func (c *spannerReader[Resource]) listMasked(ctx context.Context, stmt *Statemen
 				return
 			}
 
-			row, err := scanMaskedRow[Resource](spannerRow, stmt.maskedNamesColumn)
+			row, err := scanEnvelopeRow[Resource](spannerRow, stmt)
 			if err != nil {
 				yield(nil, err)
 
@@ -167,16 +174,37 @@ func (c *spannerReader[Resource]) listMasked(ctx context.Context, stmt *Statemen
 	}
 }
 
-// scanMaskedRow scans one masking-statement row: the resource columns into the
-// envelope's data (leniently, so the reserved column is skipped) and the
-// reserved column into the envelope's mask list.
-func scanMaskedRow[Resource Resourcer](spannerRow *spanner.Row, maskedNamesColumn string) (*Row[Resource], error) {
+// scanEnvelopeRow scans one envelope-statement row: the resource columns into
+// the envelope's data (leniently, so the reserved columns are skipped), the
+// reserved masked-names column into the mask list, and the reserved
+// capability-checks column through the plan into the capability answers. A
+// NULL check boolean reads as false — a condition permits only on TRUE.
+func scanEnvelopeRow[Resource Resourcer](spannerRow *spanner.Row, stmt *Statement) (*Row[Resource], error) {
 	row := new(Row[Resource])
 	if err := spannerRow.ToStructLenient(&row.Data); err != nil {
 		return nil, errors.Wrap(err, "spanner.Row.ToStructLenient()")
 	}
-	if err := spannerRow.ColumnByName(maskedNamesColumn, &row.masked); err != nil {
-		return nil, errors.Wrap(err, "spanner.Row.ColumnByName()")
+	if stmt.maskedNamesColumn != "" {
+		if err := spannerRow.ColumnByName(stmt.maskedNamesColumn, &row.masked); err != nil {
+			return nil, errors.Wrap(err, "spanner.Row.ColumnByName()")
+		}
+	}
+	if plan := stmt.capabilityPlan; plan != nil {
+		var checks []bool
+		if plan.checksColumn != "" {
+			var scanned []spanner.NullBool
+			if err := spannerRow.ColumnByName(plan.checksColumn, &scanned); err != nil {
+				return nil, errors.Wrap(err, "spanner.Row.ColumnByName()")
+			}
+			if len(scanned) != plan.groups {
+				return nil, errors.Newf("capability checks column carries %d booleans, plan expects %d", len(scanned), plan.groups)
+			}
+			checks = make([]bool, len(scanned))
+			for i, b := range scanned {
+				checks[i] = b.Valid && b.Bool
+			}
+		}
+		row.capabilities = plan.assemble(checks)
 	}
 
 	return row, nil

@@ -385,10 +385,11 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 
 			continue
 		}
-		if strings.EqualFold(spannerTag, reservedMaskedNamesColumn) || strings.EqualFold(field.Name(), reservedMaskedNamesColumn) {
-			// The read statements' one reserved output column: a colliding
-			// resource column would be indistinguishable from the mask list.
-			field.AddError(fmt.Sprintf("column name %q is reserved for cell masking", reservedMaskedNamesColumn))
+		if reserved, collides := reservedRowName(spannerTag, field.Name()); collides {
+			// The read statements' reserved output columns and the reserved
+			// per-row wire property: a colliding resource column would be
+			// indistinguishable from the envelope metadata.
+			field.AddError(fmt.Sprintf("column name %q is reserved for the row envelope", reserved))
 
 			continue
 		}
@@ -613,6 +614,18 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 	}
 
 	return compResources, nil
+}
+
+// reservedRowName reports whether a column or field name collides with one of
+// the row envelope's reserved names, returning the name it collides with.
+func reservedRowName(spannerTag, fieldName string) (string, bool) {
+	for _, reserved := range []string{reservedMaskedNamesColumn, reservedCapabilitiesProperty, reservedCapabilityChecksColumn} {
+		if strings.EqualFold(spannerTag, reserved) || strings.EqualFold(fieldName, reserved) {
+			return reserved, true
+		}
+	}
+
+	return "", false
 }
 
 func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {

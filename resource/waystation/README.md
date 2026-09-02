@@ -93,6 +93,12 @@ All login passwords are `waystation`.
   `integration/permission_digest_test.go` pins the shipped personas' digests through
   the real engine, including the empty answer for a station without a foothold —
   consistent with the concealed posture.
+- **Capability envelope (§13)** — `?capabilities=Update,Delete` on any list or read
+  makes each row carry the reserved `zzCapabilities` property: the positive list of
+  editable field names and whether delete is live, evaluated against the same row
+  image the response shows. `integration/capabilities_test.go` pins the chief's
+  unconditional list (pure RBAC, no extra SQL) against the foreman's
+  state-conditioned one, row by row.
 
 ## The GUI
 

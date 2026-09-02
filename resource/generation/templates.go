@@ -1054,6 +1054,9 @@ import (
 				{{- end }}
 				}
 			}
+			if capabilities := row.Capabilities(); capabilities != nil {
+				rmap[resource.CapabilitiesProperty] = capabilities
+			}
 			resp = append(resp, rmap)
 		}
 
@@ -1112,6 +1115,9 @@ import (
 			{{- end }}
 			{{- end }}
 			}
+		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
 		}
 
 		return httpio.NewEncoder(w).Ok(rmap)
@@ -1461,6 +1467,16 @@ export type PermissionDigestState = 'granted' | 'conditional';
 
 export interface PermissionDigest {
   [resource: string]: { [permission: string]: PermissionDigestState | undefined } | undefined;
+}
+
+// One row's capability envelope, attached under the reserved zzCapabilities
+// property when the read opted in (?capabilities=Update,Delete): Update is the
+// positive list of editable JSON field names (absence means not editable),
+// Delete whether the row may be deleted. Advisory hints only — enforcement
+// stays server-side.
+export interface RowCapabilities {
+  Update?: string[];
+  Delete?: boolean;
 }
 
 export const Resources = {

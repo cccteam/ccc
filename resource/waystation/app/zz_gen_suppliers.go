@@ -72,6 +72,9 @@ func (a *App) Suppliers() http.HandlerFunc {
 					}
 				}
 			}
+			if capabilities := row.Capabilities(); capabilities != nil {
+				rmap[resource.CapabilitiesProperty] = capabilities
+			}
 			resp = append(resp, rmap)
 		}
 
@@ -132,6 +135,9 @@ func (a *App) Supplier() http.HandlerFunc {
 					rmap["active"] = rec.Active
 				}
 			}
+		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
 		}
 
 		return httpio.NewEncoder(w).Ok(rmap)

@@ -21,6 +21,13 @@ const (
 	// reservedMaskedNamesColumn is the read statements' reserved output column
 	// (the masked cells' JSON names); resource columns must not collide with it.
 	reservedMaskedNamesColumn = "zzMaskedFields"
+
+	// reservedCapabilitiesProperty is the reserved per-row JSON property the
+	// capability envelope rides (resource.CapabilitiesProperty), and
+	// reservedCapabilityChecksColumn its statement's reserved boolean-array
+	// output column; resource columns must not collide with either.
+	reservedCapabilitiesProperty   = "zzCapabilities"
+	reservedCapabilityChecksColumn = "zzCapabilityChecks"
 )
 
 // Generator provides methods for generating Go or Typescript for a resource-driven web application.

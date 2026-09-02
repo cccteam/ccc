@@ -8,6 +8,7 @@ import (
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/pkg/virtualresources"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
@@ -72,6 +73,9 @@ func (a *App) ManifestLines() http.HandlerFunc {
 						rmap["declaredValue"] = rec.DeclaredValue
 					}
 				}
+			}
+			if capabilities := row.Capabilities(); capabilities != nil {
+				rmap[resource.CapabilitiesProperty] = capabilities
 			}
 			resp = append(resp, rmap)
 		}

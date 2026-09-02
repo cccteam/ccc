@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/waystation/pkg/virtualresources"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
@@ -62,6 +63,9 @@ func (a *App) SpendByCategories() http.HandlerFunc {
 						rmap["totalSpend"] = rec.TotalSpend
 					}
 				}
+			}
+			if capabilities := row.Capabilities(); capabilities != nil {
+				rmap[resource.CapabilitiesProperty] = capabilities
 			}
 			resp = append(resp, rmap)
 		}

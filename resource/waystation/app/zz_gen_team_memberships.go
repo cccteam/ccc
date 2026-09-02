@@ -8,6 +8,7 @@ import (
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/waystation/pkg/resources"
 	"github.com/cccteam/ccc/resource/waystation/pkg/router"
 	"github.com/cccteam/ccc/tracer"
@@ -54,6 +55,9 @@ func (a *App) TeamMemberships() http.HandlerFunc {
 						rmap["userId"] = rec.UserID
 					}
 				}
+			}
+			if capabilities := row.Capabilities(); capabilities != nil {
+				rmap[resource.CapabilitiesProperty] = capabilities
 			}
 			resp = append(resp, rmap)
 		}
@@ -102,6 +106,9 @@ func (a *App) TeamMembership() http.HandlerFunc {
 					rmap["userId"] = rec.UserID
 				}
 			}
+		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
 		}
 
 		return httpio.NewEncoder(w).Ok(rmap)

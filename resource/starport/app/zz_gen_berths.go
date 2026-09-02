@@ -73,6 +73,9 @@ func (a *App) Berths() http.HandlerFunc {
 					}
 				}
 			}
+			if capabilities := row.Capabilities(); capabilities != nil {
+				rmap[resource.CapabilitiesProperty] = capabilities
+			}
 			resp = append(resp, rmap)
 		}
 
@@ -134,6 +137,9 @@ func (a *App) Berth() http.HandlerFunc {
 					rmap["occupied"] = rec.Occupied
 				}
 			}
+		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
 		}
 
 		return httpio.NewEncoder(w).Ok(rmap)

@@ -8,6 +8,7 @@ import (
 
 	"cloud.google.com/go/civil"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/waystation/pkg/resources"
 	"github.com/cccteam/ccc/resource/waystation/pkg/router"
 	"github.com/cccteam/ccc/tracer"
@@ -64,6 +65,9 @@ func (a *App) Waystations() http.HandlerFunc {
 					}
 				}
 			}
+			if capabilities := row.Capabilities(); capabilities != nil {
+				rmap[resource.CapabilitiesProperty] = capabilities
+			}
 			resp = append(resp, rmap)
 		}
 
@@ -119,6 +123,9 @@ func (a *App) Waystation() http.HandlerFunc {
 					rmap["commissioned"] = rec.Commissioned
 				}
 			}
+		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
 		}
 
 		return httpio.NewEncoder(w).Ok(rmap)

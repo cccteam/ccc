@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,7 @@ type parsedQueryParams struct {
 	FilterParser func(DBType) (ExpressionNode, error)
 	Limit        *uint64
 	Offset       *uint64
+	Capabilities []accesstypes.Permission
 }
 
 type filterBody struct {
@@ -123,6 +125,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	qSet.SetSortFields(parsedQuery.SortFields)
 	qSet.SetLimit(parsedQuery.Limit)
 	qSet.SetOffset(parsedQuery.Offset)
+	qSet.RequestCapabilities(parsedQuery.Capabilities...)
 	if len(parsedQuery.ColumnFields) == 0 {
 		qSet.ReturnAccessibleFields(true)
 	} else {
@@ -213,6 +216,23 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		delete(query, filterParam)
 	}
 
+	var capabilities []accesstypes.Permission
+	if capStr := query.Get(capabilitiesParam); capStr != "" {
+		// The capability envelope (README §5): a comma-separated list of the
+		// write permissions to evaluate per row.
+		for name := range strings.SplitSeq(capStr, ",") {
+			perm, err := capabilityPermission(strings.TrimSpace(name))
+			if err != nil {
+				return nil, err
+			}
+			if !slices.Contains(capabilities, perm) {
+				capabilities = append(capabilities, perm)
+			}
+		}
+
+		delete(query, capabilitiesParam)
+	}
+
 	if len(query) > 0 {
 		return nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
 	}
@@ -223,6 +243,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		FilterParser: filterParser,
 		Limit:        limit,
 		Offset:       offset,
+		Capabilities: capabilities,
 	}, nil
 }
 

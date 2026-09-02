@@ -9,6 +9,7 @@ import (
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/pkg/resources"
 	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	"github.com/cccteam/ccc/tracer"
@@ -75,6 +76,9 @@ func (a *App) Ships() http.HandlerFunc {
 					}
 				}
 			}
+			if capabilities := row.Capabilities(); capabilities != nil {
+				rmap[resource.CapabilitiesProperty] = capabilities
+			}
 			resp = append(resp, rmap)
 		}
 
@@ -140,6 +144,9 @@ func (a *App) Ship() http.HandlerFunc {
 					rmap["updatedAt"] = rec.UpdatedAt
 				}
 			}
+		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
 		}
 
 		return httpio.NewEncoder(w).Ok(rmap)

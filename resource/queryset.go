@@ -59,6 +59,14 @@ type QuerySet[Resource Resourcer] struct {
 	// masked-names column. Stamped by the decoder; a missing entry falls back
 	// to the Go field name.
 	jsonNames map[accesstypes.Field]string
+
+	// capabilities are the write permissions the request asked to evaluate
+	// per row (the §13 capability envelope), in request order;
+	// capabilityDecisions carries each one's full engine answer for the
+	// statement's capability plan. Both stay empty unless the request opted
+	// in, keeping capability-free statements byte-identical.
+	capabilities        []accesstypes.Permission
+	capabilityDecisions map[accesstypes.Permission]accesstypes.Decisions
 }
 
 // NewQuerySet creates a new, empty QuerySet for a given resource metadata.
@@ -128,7 +136,18 @@ func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource]
 	return q
 }
 
+// checkPermissions runs the read's own permission gates and, when the request
+// opted into the capability envelope, the advisory capability checks — all
+// against the same environment.
 func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType) error {
+	if err := q.checkReadPermissions(ctx, dbType); err != nil {
+		return err
+	}
+
+	return q.checkCapabilityPermissions(ctx)
+}
+
+func (q *QuerySet[Resource]) checkReadPermissions(ctx context.Context, dbType DBType) error {
 	if q.resourceSet != nil {
 		decisions, err := q.userPermissions.Check(ctx, q.env, q.scope, q.requiredPermission, q.resourceSet.BaseResource())
 		if err != nil {
@@ -169,6 +188,15 @@ func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType
 	}
 
 	return nil
+}
+
+// RequestCapabilities asks the read to evaluate per-row write affordances for
+// perms and attach them under the reserved capability property (§13). The
+// supported permissions are Update (a positive list of editable JSON field
+// names) and Delete (a boolean). The answers are advisory hints for the UI;
+// enforcement stays with the write stages.
+func (q *QuerySet[Resource]) RequestCapabilities(perms ...accesstypes.Permission) {
+	q.capabilities = perms
 }
 
 // carryConditionalDecisions records the Conditional decisions from one Check
@@ -352,7 +380,7 @@ func (q *QuerySet[Resource]) orderedDBFields(dbType DBType) ([]fieldColumnMetada
 // With no rendered conditions it is the plain column list; conditionally
 // granted columns render as their CASE, and the reserved masked-names column
 // is appended when any CASE survives pruning.
-func (q *QuerySet[Resource]) columns(dbType DBType, rendered *renderedReadConditions) (Columns, error) {
+func (q *QuerySet[Resource]) columns(dbType DBType, rendered *renderedReadConditions, capChecksItem string) (Columns, error) {
 	fieldColumns, err := q.orderedDBFields(dbType)
 	if err != nil {
 		return "", err
@@ -378,6 +406,9 @@ func (q *QuerySet[Resource]) columns(dbType DBType, rendered *renderedReadCondit
 	}
 	if rendered != nil && rendered.maskColumn != "" {
 		columns = append(columns, rendered.maskColumn)
+	}
+	if capChecksItem != "" {
+		columns = append(columns, capChecksItem)
 	}
 
 	return Columns(strings.Join(columns, ", ")), nil
@@ -500,7 +531,12 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.tenancyPredicate()")
 	}
 
-	columns, err := q.columns(dbType, rendered)
+	capPlan, capChecksItem, err := q.renderCapabilities(dbType, registry)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.renderCapabilities()")
+	}
+
+	columns, err := q.columns(dbType, rendered, capChecksItem)
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
@@ -515,15 +551,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
 
-	var limitClause string
-	if q.limit != nil {
-		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
-	}
-
-	var offsetClause string
-	if q.offset != nil {
-		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
-	}
+	limitClause, offsetClause := q.pageClauses()
 
 	withClause, query, subqueryParams := q.query()
 	for k := range subqueryParams {
@@ -558,8 +586,21 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	if rendered != nil && rendered.maskColumn != "" {
 		stmt.maskedNamesColumn = maskedNamesColumnName
 	}
+	stmt.capabilityPlan = capPlan
 
 	return stmt, nil
+}
+
+// pageClauses renders the statement's LIMIT and OFFSET clauses.
+func (q *QuerySet[Resource]) pageClauses() (limitClause, offsetClause string) {
+	if q.limit != nil {
+		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
+	}
+	if q.offset != nil {
+		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
+	}
+
+	return limitClause, offsetClause
 }
 
 // Read executes the query and returns a single result wrapped in the Row envelope.

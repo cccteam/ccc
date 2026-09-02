@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"slices"
 
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -19,11 +20,24 @@ type Row[Resource Resourcer] struct {
 
 	// masked holds the JSON names of this row's masked cells.
 	masked []string
+
+	// capabilities holds this row's assembled capability answers when the
+	// request opted into the capability envelope, nil otherwise.
+	capabilities map[accesstypes.Permission]any
 }
 
 // Masked reports whether the cell with the given JSON name is masked on this row.
 func (r Row[Resource]) Masked(jsonName string) bool {
 	return slices.Contains(r.masked, jsonName)
+}
+
+// Capabilities returns this row's capability answers (§13): per requested
+// permission, Update's positive list of editable JSON field names or Delete's
+// boolean. Nil when the request did not opt in — handlers attach the reserved
+// capability property only when this is non-nil. The answers are advisory
+// hints for the UI; enforcement stays with the write stages.
+func (r Row[Resource]) Capabilities() map[accesstypes.Permission]any {
+	return r.capabilities
 }
 
 // MarshalJSON delegates to the row data: marshaling a Row produces exactly the bytes

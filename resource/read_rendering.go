@@ -224,14 +224,7 @@ func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readCondi
 		return nil, err
 	}
 
-	bindings, _ := q.collection.Bindings(q.collection.Scope(q.Resource()), q.Resource())
-	_, partitioned := q.scope.Domain()
-	lctx := &loweringContext{
-		outer:       string(q.Resource()),
-		bindings:    bindings,
-		collection:  q.collection,
-		partitioned: partitioned,
-	}
+	lctx := q.loweringCtx()
 
 	rendered := &renderedReadConditions{
 		overrides: make(map[accesstypes.Field]string),
@@ -279,6 +272,21 @@ func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readCondi
 	}
 
 	return rendered, nil
+}
+
+// loweringCtx builds the read-shaped lowering context: unqualified attributes
+// resolve to the outer row's pre-image columns. Shared by the read-condition
+// and capability renderers; requires a wired collection.
+func (q *QuerySet[Resource]) loweringCtx() *loweringContext {
+	bindings, _ := q.collection.Bindings(q.collection.Scope(q.Resource()), q.Resource())
+	_, partitioned := q.scope.Domain()
+
+	return &loweringContext{
+		outer:       string(q.Resource()),
+		bindings:    bindings,
+		collection:  q.collection,
+		partitioned: partitioned,
+	}
 }
 
 // lowerToSQL runs one condition through the lowering and the statement's SQL

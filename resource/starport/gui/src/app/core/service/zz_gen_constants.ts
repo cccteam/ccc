@@ -27,6 +27,16 @@ export interface PermissionDigest {
   [resource: string]: { [permission: string]: PermissionDigestState | undefined } | undefined;
 }
 
+// One row's capability envelope, attached under the reserved zzCapabilities
+// property when the read opted in (?capabilities=Update,Delete): Update is the
+// positive list of editable JSON field names (absence means not editable),
+// Delete whether the row may be deleted. Advisory hints only — enforcement
+// stays server-side.
+export interface RowCapabilities {
+  Update?: string[];
+  Delete?: boolean;
+}
+
 export const Resources = {
   Berths: 'Berths' as Resource,
   CargoManifests: 'CargoManifests' as Resource,

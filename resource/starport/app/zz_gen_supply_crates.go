@@ -8,6 +8,7 @@ import (
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/starport/pkg/resources"
 	"github.com/cccteam/ccc/resource/starport/pkg/router"
 	"github.com/cccteam/ccc/tracer"
@@ -85,6 +86,9 @@ func (a *App) SupplyCrates() http.HandlerFunc {
 					}
 				}
 			}
+			if capabilities := row.Capabilities(); capabilities != nil {
+				rmap[resource.CapabilitiesProperty] = capabilities
+			}
 			resp = append(resp, rmap)
 		}
 
@@ -161,6 +165,9 @@ func (a *App) SupplyCrate() http.HandlerFunc {
 					rmap["assignedShipId"] = rec.AssignedShipID
 				}
 			}
+		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
 		}
 
 		return httpio.NewEncoder(w).Ok(rmap)

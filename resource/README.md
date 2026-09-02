@@ -165,6 +165,7 @@ none of them can be used as field names in filters:
 | `sort` | Comma-separated `field[:direction]` entries, e.g. `name:asc,rank:desc`; direction is `asc` (default) or `desc`. |
 | `limit` | Maximum rows returned; defaults to 50. |
 | `offset` | Rows to skip before returning results. |
+| `capabilities` | Comma-separated write permissions (`Update`, `Delete`) to evaluate per row — the §13 capability envelope. Each returned row gains the reserved `zzCapabilities` property: `Update` carries the positive list of editable JSON field names, `Delete` a boolean. Advisory hints computed from the same row image and decision instant as the read (conditions render as booleans in the same statement; pure RBAC adds no SQL; a `new.`-referencing condition counts potentially-true). Enforcement is unchanged. |
 
 ## 5. The permission digest endpoint
 
