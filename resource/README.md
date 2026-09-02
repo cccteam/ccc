@@ -167,17 +167,18 @@ none of them can be used as field names in filters:
 | `offset` | Rows to skip before returning results. |
 | `capabilities` | Comma-separated write permissions (`Update`, `Delete`) to evaluate per row — the §13 capability envelope. Each returned row gains the reserved `zzCapabilities` property: `Update` carries the positive list of editable JSON field names, `Delete` a boolean. Advisory hints computed from the same row image and decision instant as the read (conditions render as booleans in the same statement; pure RBAC adds no SQL; a `new.`-referencing condition counts potentially-true). Enforcement is unchanged. |
 
-## 5. The permission digest endpoint
+## 5. The permission endpoints
 
-Every generated router registers one library-owned endpoint on the default outlet
+Every generated router registers two library-owned endpoints on the default outlet
 (applications wire nothing):
 
 ```
 GET /<prefix>/permission-digest              → the session user's global digest
 GET /<prefix>/permission-digest?domain={id}  → one tenant partition's digest
+GET /<prefix>/user-domains                   → the domains the session user can see
 ```
 
-The payload is the user's structural grant enumeration for the requested scope:
+**The digest.** The payload is the user's structural grant enumeration for the requested scope:
 resource → permission → `granted` | `conditional`, with field targets under their
 dotted names (`"WorkOrders.title"`) and **absence meaning denied** — consumers fail
 closed by construction. It is advisory UI material (which menus, routes, and form
@@ -187,3 +188,13 @@ life of a policy snapshot and caches cleanly per scope. An unknown or grant-free
 domain digests to `{}`, so the endpoint never confirms tenant existence under
 `WithConcealedDomains`. The generated TypeScript constants file carries the matching
 `PermissionDigest` / `PermissionDigestState` types.
+
+**User domains.** The payload is the sorted list of domains where the user holds at
+least one grant — the tenant picker's membership question, answered by the library so
+no application hand-writes it. The predicate is concealed tenancy's own foothold test
+(`access.Client.UserHasGrants`), so a domain listed here is exactly a domain whose
+routes answer the user with ordinary 403s rather than a concealing 404: the picker and
+the domain guard can never disagree. The global scope is never a domain. The answer
+reports grants, not tenants — a domain the application has since removed still lists
+while grants in it remain; existence stays the application's `DomainExists` seam. An
+empty membership is `[]`, never `null`.

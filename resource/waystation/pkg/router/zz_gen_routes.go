@@ -46,6 +46,10 @@ type GeneratedHandlers interface {
 	// conditional, denied targets absent), with the scope taken from the request
 	// (?domain= names a tenant partition, absent means global).
 	PermissionDigest() http.HandlerFunc
+	// UserDomains serves the session user's domain membership: the sorted domains
+	// where they hold at least one grant — the tenant picker's source, on the same
+	// foothold predicate as concealed tenancy.
+	UserDomains() http.HandlerFunc
 
 	ApproveRequisition() http.HandlerFunc
 
@@ -131,6 +135,7 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	domainGuard := h.DomainGuard()
 
 	r.Get("/api/permission-digest", h.PermissionDigest())
+	r.Get("/api/user-domains", h.UserDomains())
 
 	r.Post("/api/waystations/{waystationID}/approve-requisition", domainGuard(h.ApproveRequisition()))
 

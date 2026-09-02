@@ -193,7 +193,7 @@ const (
 	resourceInterfaceOutputName   = "resources_iface"
 	resourceEnumsFileName         = "enums"
 	domainGuardOutputName         = "domain_guard"
-	permissionDigestOutputName    = "permission_digest"
+	permissionsOutputName         = "permissions"
 	decodersOutputName            = "decoders"
 	appContractOutputName         = "app_contract"
 	routesOutputName              = "routes"

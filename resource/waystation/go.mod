@@ -12,7 +12,7 @@ replace github.com/cccteam/ccc/resource => ../
 require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.94.0
-	github.com/cccteam/access v0.9.12-0.20260902021203-2548111776d6
+	github.com/cccteam/access v0.9.12-0.20260902165715-97fe235f9e5b
 	github.com/cccteam/ccc v0.3.2
 	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260902020911-66ed421e1b52
 	github.com/cccteam/ccc/resource v0.10.6

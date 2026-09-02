@@ -40,6 +40,13 @@ type UserPermissions interface {
 	// stable for the life of a policy snapshot.
 	PermissionDigest(ctx context.Context, scope accesstypes.Scope) (accesstypes.PermissionDigest, error)
 
+	// Domains lists the domains where the user holds at least one grant,
+	// sorted — the payload the generated user-domains endpoint serves and
+	// the tenant picker's membership question. Same foothold predicate as
+	// concealed tenancy's visibility check, so the two never disagree; the
+	// global scope is never a domain.
+	Domains(ctx context.Context) ([]accesstypes.Domain, error)
+
 	User() accesstypes.User
 }
 

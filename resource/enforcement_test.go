@@ -148,6 +148,10 @@ func (f *fakeUserPermissions) PermissionDigest(context.Context, accesstypes.Scop
 	return accesstypes.PermissionDigest{}, nil
 }
 
+func (f *fakeUserPermissions) Domains(context.Context) ([]accesstypes.Domain, error) {
+	return []accesstypes.Domain{}, nil
+}
+
 func (f *fakeUserPermissions) User() accesstypes.User { return "testUser" }
 
 var _ ReadWriteTransaction = (*recordingTxn)(nil)

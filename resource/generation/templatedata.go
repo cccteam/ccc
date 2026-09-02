@@ -209,13 +209,15 @@ type negativeRouterTest struct {
 	URL    string
 }
 
-type permissionDigestData struct {
+// permissionsData feeds the permissions template: the application's
+// library-delegating PermissionDigest and UserDomains handlers.
+type permissionsData struct {
 	Source          string
 	Package         string
 	ApplicationName string
 	ReceiverName    string
 	// RoutePrefix names the default outlet's route prefix in the emitted doc
-	// comment; the route itself is registered by the routes template.
+	// comments; the routes themselves are registered by the routes template.
 	RoutePrefix string
 }
 

@@ -33,8 +33,8 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "generateAppContract()")
 	}
 
-	if err := r.generatePermissionDigest(); err != nil {
-		return errors.Wrap(err, "generatePermissionDigest()")
+	if err := r.generatePermissions(); err != nil {
+		return errors.Wrap(err, "generatePermissions()")
 	}
 
 	if err := forEachGo(r.resources, r.generateHandlers); err != nil {
@@ -288,14 +288,15 @@ func (r *resourceGenerator) generateAppContract() error {
 	return nil
 }
 
-// generatePermissionDigest emits the application's PermissionDigest handler — a
-// delegation to the library-owned handler — unconditionally: every generated
-// application serves the digest endpoint on its default outlet, wiring nothing.
-func (r *resourceGenerator) generatePermissionDigest() error {
+// generatePermissions emits the application's PermissionDigest and UserDomains
+// handlers — delegations to the library-owned handlers — unconditionally: every
+// generated application serves both permission endpoints on its default outlet,
+// wiring nothing.
+func (r *resourceGenerator) generatePermissions() error {
 	begin := time.Now()
-	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(permissionDigestOutputName))
+	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(permissionsOutputName))
 
-	if err := r.writeFormattedGoFile(destinationFilePath, "permissionDigestTemplate", permissionDigestTemplate, &permissionDigestData{
+	if err := r.writeFormattedGoFile(destinationFilePath, "permissionsTemplate", permissionsTemplate, &permissionsData{
 		Source:          r.resource.Dir(),
 		Package:         r.handler.Package(),
 		ApplicationName: r.applicationName,
@@ -304,7 +305,7 @@ func (r *resourceGenerator) generatePermissionDigest() error {
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
-	log.Printf("Generated permission digest file in %s: %s", time.Since(begin), destinationFilePath)
+	log.Printf("Generated permissions file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }

@@ -41,6 +41,10 @@ func (renderStubPermissions) PermissionDigest(context.Context, accesstypes.Scope
 	return accesstypes.PermissionDigest{}, nil
 }
 
+func (renderStubPermissions) Domains(context.Context) ([]accesstypes.Domain, error) {
+	return []accesstypes.Domain{}, nil
+}
+
 func (renderStubPermissions) User() accesstypes.User { return "u1" }
 
 // renderCollection declares the fixture vocabulary the conditions reference.
