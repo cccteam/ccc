@@ -120,22 +120,30 @@ func (p *PatchSet[Resource]) writeConditionGroups() ([]writeCheckGroup, error) {
 }
 
 // enforceWriteConditions runs stage 3 for one mutation inside its
-// transaction: renders the check-SELECT, evaluates it against the
-// transaction's consistent snapshot, and aborts with Forbidden on any group
-// that does not hold. No carried conditions — no query.
+// transaction — the check-SELECT evaluated against the transaction's
+// consistent snapshot — plus the mutation's structural-tenancy obligation
+// (design plan §06): a partitioned update or delete locates its row within
+// the tenant predicate (a cross-tenant key is NotFound), and a partitioned
+// insert proves its image belongs to the partition. Any failing conditional
+// group aborts the mutation as Forbidden; nothing commits. No carried
+// conditions and no partition — no query.
 func (p *PatchSet[Resource]) enforceWriteConditions(ctx context.Context, txn ReadWriteTransaction) error {
 	groups, err := p.writeConditionGroups()
 	if err != nil {
 		return err
 	}
-	if len(groups) == 0 {
+	tenancy, err := p.mutationTenancy()
+	if err != nil {
+		return err
+	}
+	if len(groups) == 0 && !tenancy.needsQuery() {
 		return nil
 	}
 	if txn.DBType() != SpannerDBType {
-		return errors.Newf("conditional grant enforcement is not implemented for %s", txn.DBType())
+		return errors.Newf("conditional grant and tenancy enforcement is not implemented for %s", txn.DBType())
 	}
 
-	stmt, err := p.writeCheckStatement(txn.DBType(), groups)
+	stmt, err := p.writeCheckStatement(txn.DBType(), groups, tenancy)
 	if err != nil {
 		return err
 	}
@@ -166,14 +174,30 @@ func (p *PatchSet[Resource]) enforceWriteConditions(ctx context.Context, txn Rea
 		}
 	}
 
+	if tenancy.insertPathTerm() {
+		var inPartition spanner.NullBool
+		if err := row.Column(len(groups), &inPartition); err != nil {
+			return errors.Wrap(err, "spanner.Row.Column()")
+		}
+		if !inPartition.Valid || !inPartition.Bool {
+			// The proposed foreign key does not land in the request's
+			// partition: the referenced row does not exist in this
+			// partition's world.
+			return httpio.NewNotFoundMessagef("%s: referenced %s row not found", p.Resource(), tenancy.hopTable())
+		}
+	}
+
 	return nil
 }
 
 // writeCheckStatement renders one mutation's check-SELECT: one boolean term
 // per group, the proposed values bound as parameters (the post-write overlay
 // for updates, the whole image for inserts), and — for update and delete —
-// the target row located by primary key. Insert has no target-row FROM.
-func (p *PatchSet[Resource]) writeCheckStatement(dbType DBType, groups []writeCheckGroup) (*Statement, error) {
+// the target row located by primary key WITHIN the tenant predicate when the
+// request is partitioned (design plan §06): a cross-tenant key finds no row.
+// Insert has no target-row FROM; a partitioned insert over a join-path
+// binding appends the proposed image's tenancy EXISTS as the last term.
+func (p *PatchSet[Resource]) writeCheckStatement(dbType DBType, groups []writeCheckGroup, tenancy *mutationTenancy) (*Statement, error) {
 	q := p.querySet
 	if q.collection == nil {
 		return nil, errors.Newf("resource %s carries conditional decisions but no generated collection is wired to render them", q.Resource())
@@ -203,13 +227,21 @@ func (p *PatchSet[Resource]) writeCheckStatement(dbType DBType, groups []writeCh
 		insertImage: insert,
 	}
 
-	terms := make([]string, 0, len(groups))
+	terms := make([]string, 0, len(groups)+1)
 	for i, group := range groups {
 		sql, err := lowerToSQL(group.expr, lctx, gen, registry)
 		if err != nil {
 			return nil, err
 		}
 		terms = append(terms, fmt.Sprintf("(%s) AS g%d", sql, i+1))
+	}
+
+	if tenancy.insertPathTerm() {
+		sql, err := insertTenancyTerm(tenancy, lctx, gen, registry)
+		if err != nil {
+			return nil, errors.Wrapf(err, "resource %s", q.Resource())
+		}
+		terms = append(terms, fmt.Sprintf("(%s) AS zzTenancy", sql))
 	}
 
 	where := &Statement{Params: map[string]any{}}
@@ -221,6 +253,22 @@ func (p *PatchSet[Resource]) writeCheckStatement(dbType DBType, groups []writeCh
 		where, err = q.where(dbType, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "QuerySet.where()")
+		}
+
+		if tenancy.locatesRow() {
+			tenancySQL, err := q.tenancyPredicate(dbType, registry)
+			if err != nil {
+				return nil, err
+			}
+			if tenancySQL != "" {
+				where.SQL += " AND " + tenancySQL
+			}
+		}
+
+		if len(terms) == 0 {
+			// Pure-RBAC partitioned mutation: the query only locates the row
+			// within the tenant predicate.
+			terms = append(terms, "TRUE AS g0")
 		}
 
 		sql = fmt.Sprintf("SELECT %s FROM %s %s", strings.Join(terms, ", "), q.Resource(), where.SQL)

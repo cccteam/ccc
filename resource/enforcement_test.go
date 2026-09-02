@@ -36,6 +36,9 @@ type enforcementResource struct {
 	Tagged string   `spanner:"Tagged"`
 	Locked string   `spanner:"Locked"`
 	Frozen string   `spanner:"Frozen"`
+	// Station is the bare-column tenant key (the fixture collections declare
+	// it as the domain binding); wire-closed like generated output.
+	Station string `spanner:"Station"`
 }
 
 func (enforcementResource) Resource() accesstypes.Resource { return enforcedResource }
@@ -43,17 +46,19 @@ func (enforcementResource) Resource() accesstypes.Resource { return enforcedReso
 func (enforcementResource) DefaultConfig() Config { return Config{} }
 
 type enforcementReadRequest struct {
-	ID     ccc.UUID `json:"id"     perm:"-"`
-	Public string   `json:"public"`
-	Tagged string   `json:"tagged"`
-	Locked string   `json:"locked"`
-	Frozen string   `json:"frozen"`
+	ID      ccc.UUID `json:"id"     perm:"-"`
+	Public  string   `json:"public"`
+	Tagged  string   `json:"tagged"`
+	Locked  string   `json:"locked"`
+	Frozen  string   `json:"frozen"`
+	Station string   `json:"-"`
 }
 
 type enforcementPatchRequest struct {
-	Public string `json:"public"`
-	Tagged string `json:"tagged"`
-	Frozen string `json:"frozen" immutable:"true"`
+	Public  string `json:"public"`
+	Tagged  string `json:"tagged"`
+	Frozen  string `json:"frozen" immutable:"true"`
+	Station string `json:"-"`
 }
 
 // enforcementExemptReadRequest has only the exempt primary key, so enforcement needs no

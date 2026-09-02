@@ -63,8 +63,8 @@ func TestPatchSet_writeCheckStatement(t *testing.T) {
 			},
 			wantGroups: 1,
 			wantSQL: "SELECT ((`enforcementResources`.`Owner` = @subject AND @_c1 <> @_c2)) AS g1 " +
-				"FROM enforcementResources WHERE `Id` = @_id",
-			wantParams: map[string]any{"subject": "u1", "_c1": "proposed", "_c2": "locked", "_id": id},
+				"FROM enforcementResources WHERE `Id` = @_id AND (`enforcementResources`.`Station` = @domain)",
+			wantParams: map[string]any{"subject": "u1", "_c1": "proposed", "_c2": "locked", "_id": id, "domain": "testDomain"},
 		},
 		{
 			name:       "one covering set shares one boolean across touched columns",
@@ -77,8 +77,8 @@ func TestPatchSet_writeCheckStatement(t *testing.T) {
 			},
 			wantGroups: 1,
 			wantSQL: "SELECT (`enforcementResources`.`Owner` = @subject) AS g1 " +
-				"FROM enforcementResources WHERE `Id` = @_id",
-			wantParams: map[string]any{"subject": "u1", "_id": id},
+				"FROM enforcementResources WHERE `Id` = @_id AND (`enforcementResources`.`Station` = @domain)",
+			wantParams: map[string]any{"subject": "u1", "_id": id, "domain": "testDomain"},
 		},
 		{
 			name:       "distinct covering sets AND as separate booleans",
@@ -91,8 +91,8 @@ func TestPatchSet_writeCheckStatement(t *testing.T) {
 			},
 			wantGroups: 2,
 			wantSQL: "SELECT (`enforcementResources`.`Owner` = @subject) AS g1, (`enforcementResources`.`Public` = @_c1) AS g2 " +
-				"FROM enforcementResources WHERE `Id` = @_id",
-			wantParams: map[string]any{"subject": "u1", "_c1": "open", "_id": id},
+				"FROM enforcementResources WHERE `Id` = @_id AND (`enforcementResources`.`Station` = @domain)",
+			wantParams: map[string]any{"subject": "u1", "_c1": "open", "_id": id, "domain": "testDomain"},
 		},
 		{
 			name:       "insert binds one proposed image with no target-row FROM",
@@ -125,8 +125,8 @@ func TestPatchSet_writeCheckStatement(t *testing.T) {
 			},
 			wantGroups: 1,
 			wantSQL: "SELECT (`enforcementResources`.`Owner` = @subject) AS g1 " +
-				"FROM enforcementResources WHERE `Id` = @_id",
-			wantParams: map[string]any{"subject": "u1", "_id": id},
+				"FROM enforcementResources WHERE `Id` = @_id AND (`enforcementResources`.`Station` = @domain)",
+			wantParams: map[string]any{"subject": "u1", "_id": id, "domain": "testDomain"},
 		},
 		{
 			name:       "upsert with conditional grants fails closed",
@@ -159,11 +159,21 @@ func TestPatchSet_writeCheckStatement(t *testing.T) {
 			for field, value := range tt.set {
 				p.Set(field, value)
 			}
+			if tt.patchType == CreatePatchType {
+				// The decoder stamps the bare-column tenant key on create;
+				// hand-built fixtures mirror it.
+				p.Set("Station", "testDomain")
+			}
 
 			groups, err := p.writeConditionGroups()
 			if err == nil && len(groups) > 0 {
+				var tenancy *mutationTenancy
+				tenancy, err = p.mutationTenancy()
+				if err != nil {
+					t.Fatalf("mutationTenancy() error = %v", err)
+				}
 				var stmt *Statement
-				stmt, err = p.writeCheckStatement(SpannerDBType, groups)
+				stmt, err = p.writeCheckStatement(SpannerDBType, groups, tenancy)
 				if err == nil {
 					if got := normalizeSQL(stmt.SQL); got != tt.wantSQL {
 						t.Errorf("writeCheckStatement() SQL =\n%s\nwant\n%s", got, tt.wantSQL)

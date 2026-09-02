@@ -182,12 +182,16 @@ The same tour in the browser, persona by persona:
   the URL's — or the consolidated op path's — domain on create, so the checked
   domain and the written domain are the same value by construction. Create payloads
   and RoleConfig write grants naming the tenant field are rejected.
-- **Reads partition rows structurally; writes are next.** Every partitioned query
+- **Rows partition structurally, reads and writes (E2).** Every partitioned query
   carries the tenant predicate in its WHERE (bare column or nested EXISTS through
   the join path) before the read rules run — a cross-station row never renders,
-  and a filter that matches one returns an empty list, never a 403. Mutations
-  still locate rows by primary key alone: the unconditional write check-SELECT
-  that makes a cross-tenant key NotFound is E2's remaining change.
+  and a filter that matches one returns an empty list, never a 403. Every
+  partitioned mutation locates its row within the same predicate through the
+  in-transaction check-SELECT, so a cross-station key is NotFound (never a
+  silent commit, never a 403 that confirms existence), and a create's proposed
+  parent must land in the route's partition — `integration/tenancy_test.go`.
+  The cost model changed knowingly: a partitioned pure-RBAC mutation now pays
+  one in-transaction point read.
 
 ## Regen discipline
 
