@@ -3,7 +3,6 @@ import { ApplicationConfig, importProvidersFrom } from '@angular/core';
 import { MatNativeDateModule } from '@angular/material/core';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
-import { requiresPermission } from '@app/service/zz_gen_constants';
 import { methodMeta } from '@app/service/zz_gen_methods';
 import { resourceMeta } from '@app/service/zz_gen_resources';
 import {
@@ -11,7 +10,6 @@ import {
   BASE_URL,
   FRONTEND_LOGIN_PATH,
   METHOD_META,
-  PERMISSION_REQUIRED,
   RESOURCE_META,
   SESSION_PATH,
 } from '@cccteam/ccc-lib/types';
@@ -49,10 +47,6 @@ export const appConfig: ApplicationConfig = {
     {
       provide: API_URL,
       useValue: environment.apiUrl,
-    },
-    {
-      provide: PERMISSION_REQUIRED,
-      useValue: requiresPermission,
     },
     provideRouter(
       routes,

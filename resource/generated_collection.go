@@ -186,7 +186,6 @@ func (b *CollectionBuilder) GeneratedCollection() *GeneratedCollection {
 type (
 	tagStore          map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission
 	resourceStore     map[accesstypes.Resource][]accesstypes.Permission
-	permissionMap     map[accesstypes.Resource]map[accesstypes.Permission]bool
 	immutableFieldMap map[accesstypes.Resource]map[accesstypes.Tag]struct{}
 )
 
@@ -431,12 +430,10 @@ func (g *GeneratedCollection) ResourceExists(r accesstypes.Resource) bool {
 // TypescriptData returns a struct containing all the data needed for TypeScript code generation.
 func (g *GeneratedCollection) TypescriptData() *TypescriptData {
 	return &TypescriptData{
-		Permissions:           g.permissions(),
-		ResourcePermissions:   g.resourcePermissions(),
-		Resources:             g.Resources(),
-		ResourceTags:          g.tags(),
-		ResourcePermissionMap: g.resourcePermissionMap(),
-		PermissionScopes:      g.permissionScopes(),
+		Permissions:      g.permissions(),
+		Resources:        g.Resources(),
+		ResourceTags:     g.tags(),
+		PermissionScopes: g.permissionScopes(),
 	}
 }
 
@@ -529,22 +526,6 @@ func (g *GeneratedCollection) permissions() []accesstypes.Permission {
 	return slices.Compact(permissions)
 }
 
-// resourcePermissions is permissions() minus Execute (method resources carry Execute
-// alone, so they never contribute a resource-level permission a role can be granted).
-func (g *GeneratedCollection) resourcePermissions() []accesstypes.Permission {
-	permissions := g.permissions()
-
-	filtered := permissions[:0]
-	for _, perm := range permissions {
-		if perm != accesstypes.Execute {
-			filtered = append(filtered, perm)
-		}
-	}
-	clear(permissions[len(filtered):])
-
-	return filtered
-}
-
 func (g *GeneratedCollection) tags() map[accesstypes.Resource][]accesstypes.Tag {
 	resourcetags := make(map[accesstypes.Resource][]accesstypes.Tag)
 
@@ -558,54 +539,6 @@ func (g *GeneratedCollection) tags() map[accesstypes.Resource][]accesstypes.Tag 
 	}
 
 	return resourcetags
-}
-
-func (g *GeneratedCollection) resourcePermissionMap() permissionMap {
-	permMap := make(map[accesstypes.Resource]map[accesstypes.Permission]bool)
-	permSet := make(map[accesstypes.Permission]struct{})
-	resources := make(map[accesstypes.Resource]struct{})
-
-	setRequiredPerms := func(res accesstypes.Resource, permissions []accesstypes.Permission) {
-		permMap[res] = make(map[accesstypes.Permission]bool)
-		for _, perm := range permissions {
-			permSet[perm] = struct{}{}
-			permMap[res][perm] = true
-		}
-	}
-
-	for _, store := range g.resourceStore {
-		for resource, permissions := range store {
-			if slices.Contains(permissions, accesstypes.Execute) {
-				continue
-			}
-
-			resources[resource] = struct{}{}
-			setRequiredPerms(resource, permissions)
-		}
-	}
-
-	for _, store := range g.tagStore {
-		for resource, tagmap := range store {
-			for tag, permissions := range tagmap {
-				if slices.Contains(permissions, accesstypes.Execute) {
-					continue
-				}
-
-				resources[resource.ResourceWithTag(tag)] = struct{}{}
-				setRequiredPerms(resource.ResourceWithTag(tag), permissions)
-			}
-		}
-	}
-
-	for resource := range resources {
-		for perm := range permSet {
-			if _, ok := permMap[resource][perm]; !ok {
-				permMap[resource][perm] = false
-			}
-		}
-	}
-
-	return permMap
 }
 
 // permissionScopes returns the permission scopes the collection registers resources
