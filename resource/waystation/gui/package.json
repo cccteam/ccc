@@ -6,7 +6,10 @@
     "start": "ng serve --no-hmr",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "lint": "ng lint"
+    "lint": "ng lint",
+    "ccclib:local": "./ccclib.sh local",
+    "ccclib:push": "./ccclib.sh push",
+    "ccclib:restore": "./ccclib.sh restore"
   },
   "private": true,
   "dependencies": {
