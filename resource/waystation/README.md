@@ -3,10 +3,10 @@
 The full-capability demo application for `github.com/cccteam/ccc/resource`: a fictional
 transit authority running a ring of orbital waystations, built so that every annotation,
 every handler shape, and the entire ABAC runtime is something a human can log into and
-watch working. Where starport is the minimal regression baseline, waystation is the
-product-shaped tour: the access-control machinery reads as ordinary business rules —
-you see the work orders assigned to your teams, you can approve requisitions up to your
-limit, costs are hidden until a requisition is approved.
+watch working. It is the generator's committed regression baseline and the product-shaped
+tour in one: the access-control machinery reads as ordinary business rules — you see the
+work orders assigned to your teams, you can approve requisitions up to your limit, costs
+are hidden until a requisition is approved.
 
 Everything here is synthetic. The demo personas' plaintext passwords are committed
 deliberately; the application only ever runs against a local Spanner emulator.
@@ -213,9 +213,7 @@ The same tour in the browser, persona by persona:
   existence check: a real domain where the user holds zero grants answers with
   the same 404 (route) / 400 (op path) as a domain that does not exist — the
   refusal never confirms a tenant. Any foothold at all (even write-only) makes
-  the domain visible and restores ordinary 403s. Starport deliberately stays on
-  the default `DomainExists` posture (its frozen suites pin the distinct
-  errors), so the two demos cover both postures.
+  the domain visible and restores ordinary 403s.
 
 ## Regen discipline
 

@@ -7,8 +7,8 @@ import (
 type (
 	// Waystation is the tenant record: its route name equals the domain route segment,
 	// so /api/waystations lists the tenants while /api/waystations/{waystationID}/...
-	// serves the tenant-scoped routes. Unlike starport's fixed in-code station list,
-	// the waystation app derives its domain universe from this table — the bootstrap
+	// serves the tenant-scoped routes. The waystation app derives its domain universe
+	// from this table rather than a fixed in-code station list — the bootstrap
 	// reads it for MigrateRoles and the DomainExists seam queries it — so the tenant
 	// list is data, the shape a real application uses.
 	//

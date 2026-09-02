@@ -13,8 +13,8 @@ import (
 
 type (
 	// SpendByCategory rolls approved-and-fulfilled requisition spend up by catalog
-	// category. Its subquery exercises the two virtual-resource variants starport
-	// never did: a WITH clause (extractWithClause) and a named subquery parameter
+	// category. Its subquery exercises two virtual-resource variants: a WITH clause
+	// (extractWithClause) and a named subquery parameter
 	// (@minLineCost, bound by Subquery's params map).
 	//
 	// @virtual

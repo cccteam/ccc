@@ -161,7 +161,7 @@ linters:
           - gomoddirectives
         path: go\.mod
         text: golang-migrate
-      # starport is committed in the same repo/commits as the resource module it
+      # waystation is committed in the same repo/commits as the resource module it
       # exercises, so it permanently builds against local source via this replace
       # (rationale in go.mod); the no-local-replace rule doesn't apply to it.
       - linters:

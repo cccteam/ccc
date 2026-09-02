@@ -12,7 +12,7 @@ type (
 	// OpenWorkOrdersByTeam is the domain-scoped virtual resource: per-team counts of
 	// open work orders. Its permission registrations use the domain scope, so it is
 	// served under /api/waystations/{waystationID}/... and checked in that station's
-	// permission partition — the variant the starport coverage backlog called out.
+	// permission partition.
 	//
 	// @virtual
 	// @permissionScope(domain)

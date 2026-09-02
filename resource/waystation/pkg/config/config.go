@@ -192,8 +192,8 @@ func (c *Configuration) AutomationAPIKey() string {
 }
 
 // loadDomains reads the tenancy roster from the Waystations tenant table once at
-// startup. Unlike starport's fixed in-code list, the waystation derives tenancy from
-// its own data — but it caches the roster rather than querying per check: the
+// startup. The waystation derives tenancy from its own data rather than a fixed
+// in-code list — but it caches the roster rather than querying per check: the
 // generated consolidated handler consults DomainVisible inside the mutation
 // transaction, where opening another Spanner read is illegal on the emulator. A demo
 // restart picks up new tenants; a production application would refresh the cache.
