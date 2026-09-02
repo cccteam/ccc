@@ -165,8 +165,8 @@ func (c *testConfigurer) Domains(_ context.Context) ([]accesstypes.Domain, error
 
 // demoDomainsExist is the production tenancy roster over the demo world: the three
 // seeded waystations are the domains.
-func demoDomainsExist(_ context.Context, domain accesstypes.Domain) (bool, error) {
-	return domain == wsAlpha || domain == wsBeta || domain == wsCeres, nil
+func demoDomainsExist(domain accesstypes.Domain) bool {
+	return domain == wsAlpha || domain == wsBeta || domain == wsCeres
 }
 
 // domainVisibleVia composes the demo roster with the engine's foothold answer —
@@ -175,8 +175,8 @@ func demoDomainsExist(_ context.Context, domain accesstypes.Domain) (bool, error
 // answered as if the station did not exist.
 func domainVisibleVia(controller access.Controller) func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
 	return func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
-		if ok, err := demoDomainsExist(ctx, domain); err != nil || !ok {
-			return false, err
+		if !demoDomainsExist(domain) {
+			return false, nil
 		}
 
 		return controller.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
@@ -193,8 +193,8 @@ func newTestApp(db *initiator.SpannerDB, g grants) http.Handler {
 // the conditions suite passes the real one.
 func newTestAppWithAccess(db *initiator.SpannerDB, controller access.Controller) http.Handler {
 	return router.NewTestRouter(app.New(&testConfigurer{
-		db:           db,
-		access:       controller,
+		db:            db,
+		access:        controller,
 		domainVisible: domainVisibleVia(controller),
 	}))
 }

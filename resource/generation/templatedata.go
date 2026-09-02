@@ -209,6 +209,16 @@ type negativeRouterTest struct {
 	URL    string
 }
 
+type permissionDigestData struct {
+	Source          string
+	Package         string
+	ApplicationName string
+	ReceiverName    string
+	// RoutePrefix names the default outlet's route prefix in the emitted doc
+	// comment; the route itself is registered by the routes template.
+	RoutePrefix string
+}
+
 type domainGuardData struct {
 	Source              string
 	Package             string

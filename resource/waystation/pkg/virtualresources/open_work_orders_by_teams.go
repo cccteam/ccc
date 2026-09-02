@@ -17,8 +17,8 @@ type (
 	// @virtual
 	// @permissionScope(domain)
 	OpenWorkOrdersByTeam struct {
-		TeamID   ccc.UUID `spanner:"TeamId"       uniqueindex:"true"` // @primarykey
-		TeamName string   `spanner:"TeamName"     index:"true"`
+		TeamID   ccc.UUID `spanner:"TeamId"   uniqueindex:"true"` // @primarykey
+		TeamName string   `spanner:"TeamName" index:"true"`
 		// @domain
 		WaystationID string     `spanner:"WaystationId" index:"true"`
 		OpenOrders   int64      `spanner:"OpenOrders"`

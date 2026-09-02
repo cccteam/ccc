@@ -8,10 +8,11 @@ require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.94.0
 	github.com/cccteam/ccc v0.3.2
-	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260901033722-81ab17f8f363
+	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260902020911-66ed421e1b52
 	github.com/cccteam/ccc/cache v0.1.6
 	github.com/cccteam/ccc/pkg v0.1.4
 	github.com/cccteam/ccc/securehash v0.0.13
+	github.com/cccteam/ccc/tracer v0.1.6
 	github.com/cccteam/db-initiator v0.3.13
 	github.com/cccteam/httpio v0.7.17
 	github.com/cccteam/session v0.11.1-0.20260826003108-0fa6294c2da7
@@ -39,10 +40,14 @@ require (
 	cloud.google.com/go/logging v1.19.1 // indirect
 	cloud.google.com/go/longrunning v1.2.0 // indirect
 	cloud.google.com/go/monitoring v1.30.0 // indirect
+	cloud.google.com/go/trace v1.16.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/GoogleCloudPlatform/grpc-gcp-go/grpcgcp v1.6.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.35.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.35.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.59.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator v0.59.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/cccteam/logger v0.1.27 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect

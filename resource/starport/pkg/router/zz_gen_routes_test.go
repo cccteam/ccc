@@ -202,6 +202,10 @@ func generatedRouteParameters() []string {
 func generatedRouterTests() []*generatedRouterTest {
 	routerTests := []*generatedRouterTest{
 		{
+			url: "/api/permission-digest", method: http.MethodGet,
+			handlerFunc: "PermissionDigest",
+		},
+		{
 			url: "/api/stations/testDomain/berths", method: http.MethodGet,
 			handlerFunc: "Berths",
 			parameters:  map[string]string{"stationID": "testDomain"},
@@ -463,6 +467,10 @@ type generatedHandlersStub struct {
 
 func newGeneratedHandlersStub(record func(handlerName string) http.HandlerFunc) *generatedHandlersStub {
 	return &generatedHandlersStub{record: record}
+}
+
+func (s *generatedHandlersStub) PermissionDigest() http.HandlerFunc {
+	return s.record("PermissionDigest")
 }
 
 // DomainGuard passes requests through unchecked: the routing tests exercise dispatch,

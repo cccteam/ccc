@@ -144,6 +144,10 @@ func (f *fakeUserPermissions) Check(_ context.Context, env accesstypes.Environme
 	return decisions, nil
 }
 
+func (f *fakeUserPermissions) PermissionDigest(context.Context, accesstypes.Scope) (accesstypes.PermissionDigest, error) {
+	return accesstypes.PermissionDigest{}, nil
+}
+
 func (f *fakeUserPermissions) User() accesstypes.User { return "testUser" }
 
 var _ ReadWriteTransaction = (*recordingTxn)(nil)

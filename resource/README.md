@@ -165,3 +165,24 @@ none of them can be used as field names in filters:
 | `sort` | Comma-separated `field[:direction]` entries, e.g. `name:asc,rank:desc`; direction is `asc` (default) or `desc`. |
 | `limit` | Maximum rows returned; defaults to 50. |
 | `offset` | Rows to skip before returning results. |
+
+## 5. The permission digest endpoint
+
+Every generated router registers one library-owned endpoint on the default outlet
+(applications wire nothing):
+
+```
+GET /<prefix>/permission-digest              → the session user's global digest
+GET /<prefix>/permission-digest?domain={id}  → one tenant partition's digest
+```
+
+The payload is the user's structural grant enumeration for the requested scope:
+resource → permission → `granted` | `conditional`, with field targets under their
+dotted names (`"WorkOrders.title"`) and **absence meaning denied** — consumers fail
+closed by construction. It is advisory UI material (which menus, routes, and form
+inputs to render); enforcement stays with the endpoint gate, the read rules, and the
+write stages. Nothing folds — no `now`, no row data — so a payload is stable for the
+life of a policy snapshot and caches cleanly per scope. An unknown or grant-free
+domain digests to `{}`, so the endpoint never confirms tenant existence under
+`WithConcealedDomains`. The generated TypeScript constants file carries the matching
+`PermissionDigest` / `PermissionDigestState` types.

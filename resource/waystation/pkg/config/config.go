@@ -234,7 +234,12 @@ func (c *Configuration) DomainVisible(ctx context.Context, user accesstypes.User
 		return false, nil
 	}
 
-	return c.access.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
+	visible, err := c.access.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
+	if err != nil {
+		return false, errors.Wrap(err, "access.Client.UserHasGrants()")
+	}
+
+	return visible, nil
 }
 
 // Domains lists the known waystations as permission domains, from the startup

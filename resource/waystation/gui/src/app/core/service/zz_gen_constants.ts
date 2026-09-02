@@ -17,6 +17,16 @@ export const PermissionScopes = {
   global: 'global' as PermissionScope,
 };
 
+// The per-scope permission digest served at GET <prefix>/permission-digest
+// (?domain= names one tenant partition, absent means global): the session user's
+// structural grant enumeration, advisory only. Keys are resource names, dotted
+// field names included; a missing key or permission means denied — fail closed.
+export type PermissionDigestState = 'granted' | 'conditional';
+
+export interface PermissionDigest {
+  [resource: string]: { [permission: string]: PermissionDigestState | undefined } | undefined;
+}
+
 export const Resources = {
   Assets: 'Assets' as Resource,
   AuditTrailEntries: 'AuditTrailEntries' as Resource,

@@ -145,6 +145,13 @@ linters:
           - paralleltest
           - tparallel
         path: cmd/generate/generate_test\.go
+      # The tenancy write cases share seeded rows deliberately — a later case
+      # mutates the row an earlier case proved unreachable — so the subtests
+      # are ordered and must not run in parallel.
+      - linters:
+          - paralleltest
+          - tparallel
+        path: integration/tenancy_test\.go
       # The bootstrap test uses t.Setenv and t.Chdir, which forbid parallel tests.
       - linters:
           - paralleltest

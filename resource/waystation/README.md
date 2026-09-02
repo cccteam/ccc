@@ -86,6 +86,13 @@ All login passwords are `waystation`.
   explicitly by the one transition that owns the business event).
 - **Generated authorization matrix** — `handlertests/`, unconditional allow/deny per
   endpoint.
+- **Permission digest (§13)** — `GET /api/permission-digest[?domain=]`, the
+  library-owned endpoint every generated router registers: the session user's
+  structural grant enumeration (resource → permission → granted|conditional, absence
+  = denied) the frontend renders navigation and forms from.
+  `integration/permission_digest_test.go` pins the shipped personas' digests through
+  the real engine, including the empty answer for a station without a foothold —
+  consistent with the concealed posture.
 
 ## The GUI
 

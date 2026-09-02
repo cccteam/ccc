@@ -29,6 +29,12 @@ type GeneratedHandlers interface {
 	// domains the application does not recognize before the handler runs.
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
 
+	// PermissionDigest serves the session user's per-scope permission digest:
+	// advisory grant structure for the UI (resource → permission → granted or
+	// conditional, denied targets absent), with the scope taken from the request
+	// (?domain= names a tenant partition, absent means global).
+	PermissionDigest() http.HandlerFunc
+
 	AuthorizeDocking() http.HandlerFunc
 
 	AuthorizeLaunch() http.HandlerFunc
@@ -68,6 +74,8 @@ type GeneratedHandlers interface {
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	domainGuard := h.DomainGuard()
+
+	r.Get("/api/permission-digest", h.PermissionDigest())
 
 	r.Post("/api/stations/{stationID}/authorize-docking", domainGuard(h.AuthorizeDocking()))
 

@@ -32,6 +32,14 @@ type UserPermissions interface {
 	// all of the call's results or none of them. Distinct calls may observe different
 	// snapshots; callers must not assume pinning across calls.
 	Check(ctx context.Context, env accesstypes.Environment, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error)
+
+	// PermissionDigest returns the user's structural grant enumeration within
+	// scope — the payload the generated permission-digest endpoint serves.
+	// Advisory UI material only, never consulted for enforcement: denied
+	// targets are absent (fail closed) and nothing folds, so a payload is
+	// stable for the life of a policy snapshot.
+	PermissionDigest(ctx context.Context, scope accesstypes.Scope) (accesstypes.PermissionDigest, error)
+
 	User() accesstypes.User
 }
 

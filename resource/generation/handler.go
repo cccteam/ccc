@@ -33,6 +33,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "generateAppContract()")
 	}
 
+	if err := r.generatePermissionDigest(); err != nil {
+		return errors.Wrap(err, "generatePermissionDigest()")
+	}
+
 	if err := forEachGo(r.resources, r.generateHandlers); err != nil {
 		return err
 	}
@@ -280,6 +284,27 @@ func (r *resourceGenerator) generateAppContract() error {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 	log.Printf("Generated app contract file in %s: %s", time.Since(begin), destinationFilePath)
+
+	return nil
+}
+
+// generatePermissionDigest emits the application's PermissionDigest handler — a
+// delegation to the library-owned handler — unconditionally: every generated
+// application serves the digest endpoint on its default outlet, wiring nothing.
+func (r *resourceGenerator) generatePermissionDigest() error {
+	begin := time.Now()
+	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(permissionDigestOutputName))
+
+	if err := r.writeFormattedGoFile(destinationFilePath, "permissionDigestTemplate", permissionDigestTemplate, &permissionDigestData{
+		Source:          r.resource.Dir(),
+		Package:         r.handler.Package(),
+		ApplicationName: r.applicationName,
+		ReceiverName:    r.receiverName,
+		RoutePrefix:     r.routePrefix,
+	}); err != nil {
+		return errors.Wrap(err, "writeFormattedGoFile()")
+	}
+	log.Printf("Generated permission digest file in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }
