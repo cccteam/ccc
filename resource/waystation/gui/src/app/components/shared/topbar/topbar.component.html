@@ -1,14 +1,19 @@
+<!--
+  Items carry the permission their destination requires (resource routes fill it with
+  the resource's List permission); cccHasPermission answers from the permission digest,
+  so a persona sees only the menus it can open. Items without a permission always show.
+-->
 <nav class="menu">
   @for (item of menuData; track item.label) {
     @if (item.children && item.children.length) {
       <button mat-button [matMenuTriggerFor]="groupMenu">{{ item.label }} ▾</button>
       <mat-menu #groupMenu="matMenu">
         @for (child of item.children; track child.label) {
-          <a mat-menu-item [routerLink]="child.route">{{ child.label }}</a>
+          <a mat-menu-item *cccHasPermission="child.permission" [routerLink]="child.route">{{ child.label }}</a>
         }
       </mat-menu>
     } @else {
-      <a mat-button [routerLink]="item.route">{{ item.label }}</a>
+      <a mat-button *cccHasPermission="item.permission" [routerLink]="item.route">{{ item.label }}</a>
     }
   }
 </nav>

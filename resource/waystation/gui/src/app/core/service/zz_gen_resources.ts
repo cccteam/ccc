@@ -186,7 +186,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'serialNumber', displayType: 'string', required: true, isIndex: true },
       { fieldName: 'name', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'commissionedOn', displayType: 'civildate', required: true, isIndex: false },
-      { fieldName: 'lastServicedAt', displayType: 'date', required: false, isIndex: false },
+      { fieldName: 'lastServicedAt', displayType: 'date', required: false, isIndex: false, readOnly: true },
     ],
   },
   [Resources.CatalogItems]: {
@@ -216,12 +216,12 @@ const resourceMap: ResourceMap = {
     consolidatedRoute: 'resources',
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
-      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations },
+      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations, readOnly: true },
       { fieldName: 'summary', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'severity', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'reporterContact', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'rawStatement', displayType: 'string', required: false, isIndex: false },
-      { fieldName: 'caseNumber', displayType: 'string', required: false, isIndex: true },
+      { fieldName: 'caseNumber', displayType: 'string', required: false, isIndex: true, readOnly: true },
     ],
   },
   [Resources.InventoryLots]: {
@@ -229,7 +229,7 @@ const resourceMap: ResourceMap = {
     consolidatedRoute: 'resources',
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
-      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations },
+      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations, readOnly: true },
       { fieldName: 'catalogItemId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.CatalogItems },
       { fieldName: 'quantity', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'expiresOn', displayType: 'civildate', required: false, isIndex: false },
@@ -240,7 +240,7 @@ const resourceMap: ResourceMap = {
     route: 'waystations/{waystationID}/modules',
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
-      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations },
+      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations, readOnly: true },
       { fieldName: 'name', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'zone', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'pressureRated', displayType: 'boolean', required: true, isIndex: false },
@@ -261,12 +261,12 @@ const resourceMap: ResourceMap = {
     consolidatedRoute: 'resources',
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
-      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations },
-      { fieldName: 'requestedBy', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations, readOnly: true },
+      { fieldName: 'requestedBy', displayType: 'string', required: false, isIndex: false, readOnly: true },
       { fieldName: 'justification', displayType: 'string', required: false, isIndex: false },
       { fieldName: 'neededBy', displayType: 'civildate', required: true, isIndex: false },
-      { fieldName: 'totalCost', displayType: 'number', required: false, isIndex: false },
-      { fieldName: 'statusId', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'totalCost', displayType: 'number', required: false, isIndex: false, readOnly: true },
+      { fieldName: 'statusId', displayType: 'string', required: true, isIndex: true, readOnly: true },
     ],
   },
   [Resources.RequisitionLines]: {
@@ -286,7 +286,7 @@ const resourceMap: ResourceMap = {
     readDisabled: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
-      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations },
+      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations, readOnly: true },
       { fieldName: 'facilityId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Facilities },
       { fieldName: 'metric', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'reading', displayType: 'number', required: true, isIndex: false },
@@ -298,7 +298,7 @@ const resourceMap: ResourceMap = {
     consolidatedRoute: 'resources',
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
-      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations },
+      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations, readOnly: true },
       { fieldName: 'supplierId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Suppliers },
       { fieldName: 'manifestCode', displayType: 'string', required: true, isIndex: true },
       { fieldName: 'arrivedAt', displayType: 'date', required: false, isIndex: false },
@@ -339,7 +339,7 @@ const resourceMap: ResourceMap = {
     consolidatedRoute: 'resources',
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
-      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations },
+      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations, readOnly: true },
       { fieldName: 'name', displayType: 'string', required: true, isIndex: true },
       { fieldName: 'specialty', displayType: 'string', required: true, isIndex: false },
     ],
@@ -367,16 +367,16 @@ const resourceMap: ResourceMap = {
     consolidatedRoute: 'resources',
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
-      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations },
+      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations, readOnly: true },
       { fieldName: 'assetId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Assets },
       { fieldName: 'title', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'summary', displayType: 'string', required: false, isIndex: false },
       { fieldName: 'priority', displayType: 'number', required: true, isIndex: false },
-      { fieldName: 'statusId', displayType: 'string', required: true, isIndex: true },
-      { fieldName: 'createdBy', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'statusId', displayType: 'string', required: true, isIndex: true, readOnly: true },
+      { fieldName: 'createdBy', displayType: 'string', required: false, isIndex: false, readOnly: true },
       { fieldName: 'assignedTeamId', displayType: 'enumerated', required: false, isIndex: true, enumeratedResource: Resources.Teams },
       { fieldName: 'dueAt', displayType: 'date', required: false, isIndex: false },
-      { fieldName: 'updatedAt', displayType: 'date', required: false, isIndex: false },
+      { fieldName: 'updatedAt', displayType: 'date', required: false, isIndex: false, readOnly: true },
     ],
   },
   [Resources.WorkOrderTasks]: {
