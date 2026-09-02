@@ -29,9 +29,6 @@ type Handlers interface {
 	// automation service identity, replacing the browser's session and XSRF guards.
 	AutomationAuth(next http.Handler) http.Handler
 
-	// demo endpoints
-	SessionData() http.HandlerFunc
-
 	// AuditTrailEntries is the hand-written list surface over the change-tracking
 	// table; its permission is registered through @manualAddResource and checked
 	// inside the handler (see app.AuditTrailEntries).
@@ -80,10 +77,6 @@ func newRouter(h Handlers, api, automationAPI func(chi.Router)) *chi.Mux {
 		r.Post("/api/user/login", h.Login())
 
 		r.Get("/api/user/session", h.Authenticated())
-		// Like the session endpoint, session-data answers gracefully (with an empty
-		// permission collection) when the session is not authenticated: the frontend
-		// probes it before login.
-		r.Get("/api/user/session-data", h.SessionData())
 		r.Delete("/api/user/session", h.Logout())
 
 		r.Group(func(r chi.Router) {

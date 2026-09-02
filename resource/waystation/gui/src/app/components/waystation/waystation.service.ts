@@ -1,5 +1,5 @@
 import { HttpClient, httpResource, HttpResourceRef } from '@angular/common/http';
-import { computed, inject, Injectable, linkedSignal, signal } from '@angular/core';
+import { computed, effect, inject, Injectable, linkedSignal, signal, untracked } from '@angular/core';
 import {
   IncidentReports,
   Requisitions,
@@ -9,22 +9,13 @@ import {
   WorkOrderTasks,
 } from '@app/service/zz_gen_resources';
 import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { API_URL } from '@cccteam/ccc-lib/types';
+import { API_URL, Domain } from '@cccteam/ccc-lib/types';
 import { Observable } from 'rxjs';
 
 interface Operation {
   op: 'add' | 'patch' | 'remove';
   path: string;
   value?: unknown;
-}
-
-// SessionPermissions mirrors app.SessionData's wire shape: the session user's
-// permission collection, the global partition its own key and one entry per domain.
-interface SessionPermissions {
-  permissions?: {
-    global?: Record<string, Record<string, boolean>>;
-    domains?: Record<string, Record<string, Record<string, boolean>>>;
-  };
 }
 
 /**
@@ -76,15 +67,11 @@ export class WaystationService {
   readonly showAll = signal(false);
 
   // The picker has no bespoke endpoint: its two questions are answered by surfaces
-  // the application already serves. "Where do I hold domain-scoped grants" is the
-  // session-data permission map (fetched here directly — ccc-lib skips its
-  // additional-session-data fetch while on the login route, so its copy is not
-  // reliably populated after a form login). "What does the fleet roster look like"
-  // is the generated, permission-checked Waystations resource, fetched only while
-  // showAll is on. Both idle until the session authenticates and reset at logout.
-  private sessionData = httpResource<SessionPermissions>(() =>
-    this.auth.authenticated() ? `${this.apiUrl}/user/session-data` : undefined,
-  );
+  // the library and the application already serve. "Where do I hold domain-scoped
+  // grants" is the generated user-domains endpoint, loaded once per session and
+  // cached on AuthService as domains(). "What does the fleet roster look like" is the
+  // generated, permission-checked Waystations resource, fetched only while showAll is
+  // on; it idles until the session authenticates and resets at logout.
   private roster = httpResource<Waystations[]>(
     () => (this.auth.authenticated() && this.showAll() ? `${this.apiUrl}/waystations` : undefined),
     { defaultValue: [] },
@@ -98,9 +85,9 @@ export class WaystationService {
         .sort();
     }
 
-    // SessionData's wire contract: the domains map carries only domains where the
-    // user holds at least one permission, so the key set IS the accessible list.
-    return Object.keys(this.sessionData.value()?.permissions?.domains ?? {}).sort();
+    // user-domains' wire contract: the sorted domains where the user holds at least
+    // one grant — the accessible list itself, no filtering.
+    return [...this.auth.domains()];
   });
 
   // current keeps the user's choice while the picker still offers it and snaps to
@@ -111,6 +98,19 @@ export class WaystationService {
     computation: (stations, previous) =>
       previous !== undefined && stations.includes(previous.value) ? previous.value : (stations[0] ?? ''),
   });
+
+  constructor() {
+    // Selecting a station re-scopes every permission question, so load that
+    // station's digest: ccc-lib's hasPermission then answers for its resources. The
+    // fetch runs untracked — issued inside the effect's reactive context it would
+    // adopt the interceptor's loading-signal reads as dependencies and loop (see the
+    // class comment).
+    effect(() => {
+      const station = this.current();
+      if (!station) return;
+      untracked(() => this.auth.loadDigest(station as Domain).subscribe());
+    });
+  }
 
   setShowAll(all: boolean): void {
     this.showAll.set(all);

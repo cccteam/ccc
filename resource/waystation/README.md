@@ -109,10 +109,13 @@ hand-written under `src/app/components/waystation/`, because ccc-lib 0.0.44 uses
 domain-route template. `WaystationService` holds the selected waystation as shared
 state — it is the permission domain of every request, so switching stations re-scopes
 what each persona sees. The station picker has no bespoke endpoint: by default its
-options are the domains carrying grants in the session-data permission map, and the
+options are the library's answer to "where do I hold grants" — the generated
+`user-domains` endpoint, cached on ccc-lib's `AuthService.domains()` — and the
 "Show all waystations" toggle widens it to the roster served by the generated,
 permission-checked Waystations resource — a demo affordance no real application would
-carry, kept as the clickable path to fail-closed refusals. Masked cells arrive as ABSENT JSON keys and render as em-dashes,
+carry, kept as the clickable path to fail-closed refusals. Selecting a station loads
+its permission digest, so ccc-lib's `hasPermission` answers for that station's
+resources. Masked cells arrive as ABSENT JSON keys and render as em-dashes,
 never as zero or empty values.
 
 `gui/.prettierignore` excludes `zz_gen_*.ts`: prettier reflows generator output and

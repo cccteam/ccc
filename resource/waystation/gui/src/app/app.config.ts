@@ -7,7 +7,6 @@ import { requiresPermission } from '@app/service/zz_gen_constants';
 import { methodMeta } from '@app/service/zz_gen_methods';
 import { resourceMeta } from '@app/service/zz_gen_resources';
 import {
-  ADDITIONAL_SESSION_DATA_PATH,
   API_URL,
   BASE_URL,
   FRONTEND_LOGIN_PATH,
@@ -29,12 +28,6 @@ export const appConfig: ApplicationConfig = {
     {
       provide: SESSION_PATH,
       useValue: 'user/session',
-    },
-    {
-      // The session endpoint reports authentication only; the permission collection is
-      // served separately by the app's session-data endpoint.
-      provide: ADDITIONAL_SESSION_DATA_PATH,
-      useValue: 'user/session-data',
     },
     {
       provide: RESOURCE_META,

@@ -20,7 +20,6 @@ import (
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/jtwatson/spaassets"
 )
@@ -155,83 +154,6 @@ func (a *App) StaticAssets() http.HandlerFunc {
 
 		assets.ServeHTTP(w, r)
 	}
-}
-
-// SessionData reports the session user's permission collection across the global
-// scope and every waystation. The wire shape is structural, mirroring
-// accesstypes.Scope: the global partition is its own key, never a magic entry in
-// the domain map — and the domain map carries only domains where the user holds at
-// least one permission (the engine returns an entry for every scope asked about,
-// empty or not), so the frontend's station picker is its key set, no filtering.
-// Like the session library's Authenticated handler, an unauthenticated session gets
-// an empty collection rather than an error: the frontend probes this endpoint
-// before login.
-func (a *App) SessionData() http.HandlerFunc {
-	type resourcePermissions map[accesstypes.Resource]map[accesstypes.Permission]bool
-
-	type permissions struct {
-		Global  resourcePermissions                        `json:"global"`
-		Domains map[accesstypes.Domain]resourcePermissions `json:"domains"`
-	}
-
-	type response struct {
-		Permissions permissions `json:"permissions"`
-	}
-
-	permissionSet := func(scopePerms accesstypes.UserScopePermissions) resourcePermissions {
-		set := make(resourcePermissions, len(scopePerms.Resources))
-		for res, perms := range scopePerms.Resources {
-			resSet := make(map[accesstypes.Permission]bool, len(perms))
-			for _, perm := range perms {
-				resSet[perm] = true
-			}
-			set[res] = resSet
-		}
-
-		return set
-	}
-
-	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		ctx, err := a.PasswordAuth.API().ValidateSession(r.Context())
-		if err != nil {
-			if httpio.HasUnauthorized(err) {
-				return httpio.NewEncoder(w).Ok(response{})
-			}
-
-			return httpio.NewEncoder(w).ClientMessage(r.Context(), err)
-		}
-		user := accesstypes.User(sessioninfo.FromCtx(ctx).Username)
-
-		domains, err := a.domains(ctx)
-		if err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "domains()"))
-		}
-
-		scopes := []accesstypes.Scope{accesstypes.GlobalScope()}
-		for _, domain := range domains {
-			scopes = append(scopes, accesstypes.DomainScope(domain))
-		}
-		collection, err := a.access.UserManager().UserPermissions(ctx, user, scopes...)
-		if err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "access.UserManager.UserPermissions()"))
-		}
-
-		perms := permissions{Domains: make(map[accesstypes.Domain]resourcePermissions, len(collection))}
-		for scope, scopePerms := range collection {
-			if scope.IsGlobal() {
-				perms.Global = permissionSet(scopePerms)
-
-				continue
-			}
-			if len(scopePerms.Resources) == 0 {
-				continue
-			}
-			domain, _ := scope.Domain()
-			perms.Domains[domain] = permissionSet(scopePerms)
-		}
-
-		return httpio.NewEncoder(w).Ok(response{Permissions: perms})
-	})
 }
 
 // AutomationAuth authenticates the automation outlet's machine clients: the request
