@@ -14,8 +14,14 @@
 //	            | attr [NOT] IN subject.identifier      -- a @subjectSet name
 //	            | attr IS [NOT] NULL
 //	attr       := [ new. ] identifier | now
-//	operand    := literal | subject | now | subject.identifier
+//	operand    := literal | subject | now | subject.identifier | identifier
 //	literal    := 'string' | number | true | false
+//
+// A bare identifier on a comparison's right side is an attribute reference —
+// an old-vs-new comparison such as new.priority <= priority (§05, decided
+// 2026-09-03) — and is admitted only against a new.-qualified left side; it
+// never takes its own new. qualifier (two post-image sides would compare the
+// proposed row with itself).
 //
 // Keywords are case-insensitive; identifiers are case-sensitive, charset
 // [A-Za-z_][A-Za-z0-9_]*. The reserved words subject, now, and new match

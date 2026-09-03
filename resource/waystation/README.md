@@ -38,7 +38,7 @@ All login passwords are `waystation`.
 | `commander` | Headquarters | Unconditional global + every-station roles: full fleet dashboard, all costs, all PII, the audit trail. Pins that pruned RBAC output is untouched by the ABAC machinery. |
 | `chief-alpha` | Station chief, Alpha | Full domain roles at ws-alpha only; the same pages are empty/refused at ws-beta. Runs the whole work-order lifecycle. |
 | `tech-rivera` | Maintenance technician | `assignedTeam IN subject.teams OR author = subject` — the board shows their teams' orders; teams derive per-station (derived tenancy through the TeamMembership anchor). `zone != 'reactor'` keeps reactor assets out of their asset picker. Files incident reports through a two-input form: their partial-width Create grant (`summary`, `severity`) narrows the rendered inputs. |
-| `foreman-okafor` | Requester | `requestedBy = subject` ownership; lines editable only while `state = 'draft'`; `new.priority <= 3` refuses emergency work orders at create time (an insert-image condition). |
+| `foreman-okafor` | Requester | `requestedBy = subject` ownership; lines editable only while `state = 'draft'`; `new.priority <= 3` refuses emergency work orders at create time (an insert-image condition); `new.priority <= priority` on WorkOrders Update lets them re-prioritize only downward — raising priority is the chief's call (an old-vs-new comparison). |
 | `procurement-chen` | Approver | Queue is literally the condition: `state = 'submitted' AND totalCost <= subject.approvalLimit`. The same limit rides the Execute(ApproveRequisition) grant, evaluated against the located row inside the transition frame (§12) — a directly addressed over-limit approval refuses with no code in the RPC body. |
 | `auditor-voss` | Compliance | Terminal-state work orders only; `unitCostSnapshot` masked per cell until a requisition is approved (the key is absent, the UI renders an em-dash); incident reporter PII withheld; the audit trail (RecordsAuditor). |
 | `quartermaster-idris` | Inventory | Receive gated on `arrivedAt IS NULL` (second receive refused); lot deletes gated on expiry (`expiresOn < '2026-09-01'` — fresh and no-expiry lots refuse). |
@@ -64,6 +64,12 @@ All login passwords are `waystation`.
   `zz_gen_workflow_*.dot` graphs (membership plus the labeled transition edges) and the
   grant matrix are the whole specification; there is no imperative permission or edge
   code anywhere in the app.
+- **Old-vs-new comparisons (§05)** — an Update grant may compare the proposed value
+  against the row's pre-image: the foreman's `new.priority <= priority` conjunct means
+  they may lower a work order's priority but never raise it, judged inside the
+  mutation's own check-SELECT; an update that leaves the field untouched degenerates to
+  a tautology, so the term only ever blocks what the mutation actually changes —
+  `integration/old_vs_new_test.go`.
 - **Structural enforcement** (fail-closed field permissions, outlet exclusivity,
   suppressed routes, domain guard) — `integration/structural_test.go`; Team is the
   deliberately minimal resource (no vocabulary beyond the mandatory `@domain`).

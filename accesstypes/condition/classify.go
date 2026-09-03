@@ -32,8 +32,9 @@ func RowFree(e Expr) bool {
 
 // Bindings returns the distinct binding names the expression references in
 // attribute positions — now excluded, pre- and post-image collapsed to the
-// name — sorted lexically. MigrateRoles validates these against the
-// Collection's bindings.
+// name, a comparison's right-side attribute (the old-vs-new form) included —
+// sorted lexically. MigrateRoles validates these against the Collection's
+// bindings.
 func Bindings(e Expr) []string {
 	set := map[string]struct{}{}
 	walk(e, func(node Expr) {
@@ -41,6 +42,9 @@ func Bindings(e Expr) []string {
 		switch n := node.(type) {
 		case Comparison:
 			ref = n.Left
+			if right, ok := n.Right.(Ref); ok {
+				set[right.Name] = struct{}{}
+			}
 		case In:
 			ref = n.Left
 		case NullTest:
@@ -54,6 +58,23 @@ func Bindings(e Expr) []string {
 	})
 
 	return sortedKeys(set)
+}
+
+// ComparesAttributes reports whether any comparison's right side is an
+// attribute reference — the old-vs-new form, `new.attr <op> attr`, which
+// relates the post-image to the pre-image of the same row. Only an update has
+// both images, so MigrateRoles rejects the form on every other permission.
+func ComparesAttributes(e Expr) bool {
+	found := false
+	walk(e, func(node Expr) {
+		if n, ok := node.(Comparison); ok {
+			if _, ok := n.Right.(Ref); ok {
+				found = true
+			}
+		}
+	})
+
+	return found
 }
 
 // SubjectSets returns the distinct @subjectSet names the expression

@@ -168,9 +168,14 @@ func (t Truth) String() string {
 // nowName is the reserved environment fact usable on a comparison's left side.
 const nowName = "now"
 
-// Ref is a comparison's left side: a binding (row attribute) name, optionally
+// Ref is an attribute reference: a binding (row attribute) name, optionally
 // read from the post-write image (`new.`), or the reserved environment fact
-// now — distinguished with IsNow, never by matching Name yourself.
+// now — distinguished with IsNow, never by matching Name yourself. Every
+// comparison's left side is a Ref; a Ref may also stand as the right operand
+// in the old-vs-new form — `new.attr <op> attr` — where the left side is
+// post-image and the right reads the same row's pre-image (the parser is the
+// gate: an attribute operand is only legal against a `new.`-qualified left
+// side, and never itself `new.`-qualified).
 type Ref struct {
 	Name string
 
@@ -178,6 +183,8 @@ type Ref struct {
 	// mutation touches the column, the existing value where it doesn't.
 	PostImage bool
 }
+
+func (Ref) isOperand() {}
 
 // IsNow reports whether the Ref is the reserved environment fact now rather
 // than a binding name.
@@ -194,7 +201,8 @@ func (r Ref) String() string {
 }
 
 // Operand is a comparison's right side: a literal, the reserved facts subject
-// and now, or a @subjectValue attribute.
+// and now, a @subjectValue attribute, or — against a `new.`-qualified left
+// side only — a pre-image attribute Ref (the old-vs-new form).
 type Operand interface {
 	String() string
 

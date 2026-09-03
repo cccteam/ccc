@@ -29,10 +29,12 @@ import (
 // write check's grouping. Pure RBAC therefore folds to zero extra SQL, and a
 // capability-free request renders a byte-identical statement.
 //
-// A new.-referencing condition is structurally unevaluable before the user
-// types, so it counts as potentially-true: the field renders editable and
-// apply-time enforcement judges what they actually typed. Deliberately
-// fail-open — for the hint only.
+// A new.-referencing term is structurally unevaluable before the user types,
+// so it counts as potentially-true — per TERM (condition.WithoutPostImage):
+// the fail-open bound assumes every post-image atom passes while the
+// evaluable residue still renders, so a state guard beside an old-vs-new
+// conjunct keeps narrowing per row. Deliberately fail-open — for the hint
+// only; apply-time enforcement judges what they actually typed.
 
 const (
 	// CapabilitiesProperty is the reserved per-row JSON property the generated
@@ -201,14 +203,20 @@ type capabilityGroups struct {
 }
 
 // intern resolves one Conditional decision's payload to its group index,
-// returning -1 for a potentially-true new.-referencing payload (fail-open,
-// hint only — the field is structurally unevaluable before the user types).
+// returning -1 for a payload whose fail-open bound is a constant. Post-image
+// terms count potentially-true per TERM (WithoutPostImage): a term depending
+// on a value the user has not yet typed assumes TRUE, while the evaluable
+// residue still narrows the hint — so a state guard beside an old-vs-new
+// conjunct keeps gating per row (§13's fail-open posture, applied per term).
 func (g *capabilityGroups) intern(res accesstypes.Resource, decision accesstypes.Decision) (int, error) {
 	expr, err := conditionalExpr(res, decision)
 	if err != nil {
 		return 0, err
 	}
-	if condition.UsesPostImage(expr) {
+	expr = condition.WithoutPostImage(expr)
+	if _, ok := expr.(condition.Truth); ok {
+		// A fully potentially-true payload (an unknown atom is unknown in
+		// both polarities, so the bound never simplifies to FALSE).
 		return -1, nil
 	}
 	source := expr.String()
@@ -326,10 +334,11 @@ func (q *QuerySet[Resource]) plannedExecute(decisions accesstypes.Decisions, gro
 			if err != nil {
 				return plannedCapability{}, err
 			}
-			// Deploy validation rejects new. on Execute grants; kept for
-			// posture parity with intern — a post-image payload would be
-			// potentially-true, never a rendered term.
-			if !condition.UsesPostImage(expr) {
+			// Deploy validation rejects new. on Execute grants; the bound is
+			// posture parity with intern — a post-image term would count
+			// potentially-true, never render.
+			expr = condition.WithoutPostImage(expr)
+			if _, ok := expr.(condition.Truth); !ok {
 				exprs = append(exprs, expr)
 			}
 		default:

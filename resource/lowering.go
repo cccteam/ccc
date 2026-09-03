@@ -183,6 +183,24 @@ func lowerOperand(operand condition.Operand, ctx *loweringContext, registry *par
 		}
 
 		return subqueryComparand(subquery), nil
+	case condition.Ref:
+		// The old-vs-new form's right side: the same row's pre-image
+		// attribute (always unqualified — the parser is the gate). Deploy
+		// validation restricts it to column attributes; a join path renders
+		// as EXISTS, which has no scalar to compare against.
+		binding, ok := ctx.attribute(o.Name)
+		if !ok {
+			return comparand{}, errors.Newf("condition lowering: %q is not an attribute of the checked resource", o.Name)
+		}
+		if len(binding.Path) > 0 {
+			return comparand{}, errors.Newf("condition lowering: %s is a join-path attribute and cannot stand on the right side of an old-vs-new comparison", o.Name)
+		}
+		target, _, err := ctx.resolveRef(o, registry)
+		if err != nil {
+			return comparand{}, err
+		}
+
+		return target, nil
 	default:
 		return comparand{}, errors.Newf("condition lowering: unsupported operand %T", operand)
 	}

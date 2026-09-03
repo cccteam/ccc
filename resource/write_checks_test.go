@@ -95,6 +95,38 @@ func TestPatchSet_writeCheckStatement(t *testing.T) {
 			wantParams: map[string]any{"subject": "u1", "_c1": "open", "_id": id, "domain": "testDomain"},
 		},
 		{
+			// The old-vs-new form (§05, decided 2026-09-03): the post-image
+			// side binds the proposed value, the right side reads the same
+			// row's pre-image column — "may lower, never raise" in one term.
+			name:       "old-vs-new compares the proposed value against the pre-image",
+			patchType:  UpdatePatchType,
+			permission: accesstypes.Update,
+			set:        map[accesstypes.Field]any{"Public": "proposed"},
+			decisions: accesstypes.Decisions{
+				enforcedResource + ".public": conditionalOn(enforcedResource+".public", "new.pub <= pub"),
+			},
+			wantGroups: 1,
+			wantSQL: "SELECT (@_c1 <= `enforcementResources`.`Public`) AS g1 " +
+				"FROM enforcementResources WHERE `Id` = @_id AND (`enforcementResources`.`Station` = @domain)",
+			wantParams: map[string]any{"_c1": "proposed", "_id": id, "domain": "testDomain"},
+		},
+		{
+			// An untouched new. column reads the existing value (overlay
+			// semantics), so the old-vs-new term degenerates to the tautology
+			// and the mutation is judged only by what it changes.
+			name:       "old-vs-new over an untouched column is the tautology",
+			patchType:  UpdatePatchType,
+			permission: accesstypes.Update,
+			set:        map[accesstypes.Field]any{"Tagged": "b"},
+			decisions: accesstypes.Decisions{
+				enforcedResource + ".tagged": conditionalOn(enforcedResource+".tagged", "new.pub <= pub"),
+			},
+			wantGroups: 1,
+			wantSQL: "SELECT (`enforcementResources`.`Public` <= `enforcementResources`.`Public`) AS g1 " +
+				"FROM enforcementResources WHERE `Id` = @_id AND (`enforcementResources`.`Station` = @domain)",
+			wantParams: map[string]any{"_id": id, "domain": "testDomain"},
+		},
+		{
 			name:       "insert binds one proposed image with no target-row FROM",
 			patchType:  CreatePatchType,
 			permission: accesstypes.Create,

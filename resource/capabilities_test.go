@@ -123,6 +123,24 @@ func TestQuerySet_stmt_capabilities(t *testing.T) {
 			want:     map[accesstypes.Permission]any{accesstypes.Update: []string{"public", "tagged"}},
 			wantPlan: true,
 		},
+		{
+			// The fail-open bound is per TERM (§13, WithoutPostImage): the
+			// old-vs-new conjunct assumes TRUE while the guard beside it
+			// still renders and narrows per row — the grant does not collapse
+			// to always-editable.
+			name:    "a post-image conjunct keeps its evaluable residue",
+			request: []accesstypes.Permission{accesstypes.Update},
+			byPerm: map[accesstypes.Permission]accesstypes.Decisions{
+				accesstypes.Update: {
+					enforcedResource + ".tagged": conditionalOn(enforcedResource+".tagged", "owner = subject AND new.priority <= priority"),
+				},
+			},
+			wantSQL: "SELECT Id, Public, Tagged, ARRAY<BOOL>[(`enforcementResources`.`Owner` = @subject)] AS zzCapabilityChecks " +
+				"FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain)",
+			checks:   []bool{false},
+			want:     map[accesstypes.Permission]any{accesstypes.Update: []string{}},
+			wantPlan: true,
+		},
 	}
 
 	for _, tt := range tests {

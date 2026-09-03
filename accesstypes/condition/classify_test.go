@@ -20,6 +20,7 @@ func TestClassification(t *testing.T) {
 		wantSubjectValues []string
 		wantUsesNow       bool
 		wantUsesPostImage bool
+		wantComparesAttrs bool
 	}{
 		{
 			name:        "environment window is row-free",
@@ -57,6 +58,13 @@ func TestClassification(t *testing.T) {
 			wantUsesPostImage: true,
 		},
 		{
+			name:              "old-vs-new references both sides' bindings",
+			source:            "new.priority <= priority AND state = 'draft'",
+			wantBindings:      []string{"priority", "state"},
+			wantUsesPostImage: true,
+			wantComparesAttrs: true,
+		},
+		{
 			name:         "bindings dedupe and sort",
 			source:       "b = 1 AND a = 2 AND new.b = 3 AND contractEnd > now",
 			wantBindings: []string{"a", "b", "contractEnd"},
@@ -86,6 +94,9 @@ func TestClassification(t *testing.T) {
 			}
 			if got := SubjectValues(expr); !slices.Equal(got, tt.wantSubjectValues) {
 				t.Errorf("SubjectValues() = %v, want %v", got, tt.wantSubjectValues)
+			}
+			if got := ComparesAttributes(expr); got != tt.wantComparesAttrs {
+				t.Errorf("ComparesAttributes() = %v, want %v", got, tt.wantComparesAttrs)
 			}
 			if got := UsesNow(expr); got != tt.wantUsesNow {
 				t.Errorf("UsesNow() = %v, want %v", got, tt.wantUsesNow)

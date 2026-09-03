@@ -180,7 +180,7 @@ func (p *parser) parseComparison() (Expr, error) {
 		if err := p.advance(); err != nil {
 			return nil, err
 		}
-		right, err := p.parseOperand()
+		right, err := p.parseOperand(left)
 		if err != nil {
 			return nil, err
 		}
@@ -282,7 +282,11 @@ func (p *parser) parseRef() (Ref, error) {
 	}
 }
 
-func (p *parser) parseOperand() (Operand, error) {
+// parseOperand parses a comparison's right side. left is the comparison's
+// left Ref: an attribute is a legal operand only against a `new.`-qualified
+// left side — the old-vs-new form, `new.attr <op> attr` (decided 2026-09-03) —
+// and is itself always pre-image.
+func (p *parser) parseOperand(left Ref) (Operand, error) {
 	switch p.tok.kind {
 	case tokenString:
 		value := p.tok.text
@@ -337,8 +341,25 @@ func (p *parser) parseOperand() (Operand, error) {
 
 			return SubjectValue{Name: name}, nil
 
+		case p.tok.text == reservedNew:
+			return nil, fmt.Errorf("condition: new. may only qualify a comparison's left side at position %d", p.tok.pos)
+
 		default:
-			return nil, fmt.Errorf("condition: %q is not a valid operand at position %d — attribute-to-attribute comparison is not in the language", p.tok.text, p.tok.pos)
+			if isKeywordText(p.tok.text) {
+				return nil, fmt.Errorf("condition: keyword %q where an operand is expected at position %d", p.tok.text, p.tok.pos)
+			}
+			if !left.PostImage {
+				return nil, fmt.Errorf("condition: %q is not a valid operand at position %d — an attribute may stand on the right only against a new.-qualified left side (old-vs-new)", p.tok.text, p.tok.pos)
+			}
+			name := p.tok.text
+			if err := p.advance(); err != nil {
+				return nil, err
+			}
+			if p.tok.kind == tokenDot {
+				return nil, fmt.Errorf("condition: unexpected %q after %q at position %d", ".", name, p.tok.pos)
+			}
+
+			return Ref{Name: name}, nil
 		}
 
 	default:

@@ -1025,7 +1025,7 @@
                 "dueAt",
                 "priority"
               ],
-              "condition": "state IN ('draft', 'scheduled')"
+              "condition": "state IN ('draft', 'scheduled') AND new.priority <= priority"
             },
             {
               "resource": "RequisitionLines",

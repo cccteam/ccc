@@ -30,12 +30,16 @@ func genExpr(rng *rand.Rand, depth int) Expr {
 
 func genLeaf(rng *rand.Rand) Expr {
 	ops := []CompareOp{Eq, NotEq, Less, LessEq, Greater, GreaterEq}
-	switch rng.IntN(5) {
+	switch rng.IntN(6) {
 	case 0:
 		return Comparison{Left: genRef(rng), Op: ops[rng.IntN(len(ops))], Right: genOperand(rng)}
 	case 1:
 		// now is relational-only against its operand forms.
 		return Comparison{Left: Ref{Name: "now"}, Op: ops[rng.IntN(len(ops))], Right: StringLiteral{Value: "2026-01-02T15:04:05Z"}}
+	case 5:
+		// The old-vs-new form: a pre-image attribute operand is legal only
+		// against a new.-qualified left side.
+		return Comparison{Left: Ref{Name: genName(rng), PostImage: true}, Op: ops[rng.IntN(len(ops))], Right: Ref{Name: genName(rng)}}
 	case 2:
 		return In{Left: genRef(rng), Negated: rng.IntN(2) == 0, Literals: genLiterals(rng)}
 	case 3:

@@ -37,6 +37,16 @@ func TestParse_canonical(t *testing.T) {
 			want:   "assignee IS NULL AND new.assignee = subject",
 		},
 		{
+			name:   "old-vs-new comparison: may lower, never raise",
+			source: "new.priority <= priority",
+			want:   "new.priority <= priority",
+		},
+		{
+			name:   "old-vs-new alongside a state guard",
+			source: "state IN ('draft', 'scheduled') AND new.priority <= priority",
+			want:   "state IN ('draft', 'scheduled') AND new.priority <= priority",
+		},
+		{
 			name:   "AND binds tighter than OR",
 			source: "a = 1 OR b = 2 AND c = 3",
 			want:   "a = 1 OR b = 2 AND c = 3",
@@ -177,9 +187,24 @@ func TestParse_errors(t *testing.T) {
 			wantContain: "only relational comparison",
 		},
 		{
-			name:        "attribute-to-attribute comparison is out",
+			name:        "attribute-to-attribute needs a new.-qualified left side",
 			source:      "a = b",
-			wantContain: "attribute-to-attribute",
+			wantContain: "only against a new.-qualified left side (old-vs-new)",
+		},
+		{
+			name:        "new. never qualifies the right side",
+			source:      "new.a = new.b",
+			wantContain: "may only qualify a comparison's left side",
+		},
+		{
+			name:        "a right-side attribute takes no dotted path",
+			source:      "new.a = b.c",
+			wantContain: "unexpected \".\"",
+		},
+		{
+			name:        "keyword on the right is not an attribute",
+			source:      "new.a = AND",
+			wantContain: "keyword",
 		},
 		{
 			name:        "unterminated string",

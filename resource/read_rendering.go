@@ -102,6 +102,20 @@ func (q *QuerySet[Resource]) readConditionPlan() (*readConditionPlan, error) {
 			return nil, err
 		}
 
+		// Read grants never carry new. (deploy rejects the post-image outside
+		// create and update), so the bound is the identity for genuine read
+		// rules. What does reach here with new. is a mutation's carried
+		// decisions on the change-tracking pre-image read, where a post-image
+		// term has no meaning: the fail-open bound renders the evaluable
+		// residue, and the write check has already judged the full condition
+		// in the same transaction.
+		expr = condition.WithoutPostImage(expr)
+		if t, ok := expr.(condition.Truth); ok && t.Value {
+			anyUnconditional = true
+
+			continue
+		}
+
 		fc := &fieldConditions{
 			disjuncts: flattenOr(expr),
 			keys:      make(map[string]struct{}),
