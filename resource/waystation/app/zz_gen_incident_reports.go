@@ -21,7 +21,7 @@ func (a *App) IncidentReports() http.HandlerFunc {
 		WaystationID    string   `json:"waystationId"    index:"true"`
 		Summary         string   `json:"summary"`
 		Severity        int64    `json:"severity"`
-		ReporterContact string   `json:"reporterContact" pii:"true"`
+		ReporterContact *string  `json:"reporterContact" pii:"true"`
 		RawStatement    *string  `json:"-"`
 		CaseNumber      string   `json:"caseNumber"      index:"true"`
 	}
@@ -93,7 +93,7 @@ func (a *App) IncidentReport() http.HandlerFunc {
 		WaystationID    string   `json:"waystationId"`
 		Summary         string   `json:"summary"`
 		Severity        int64    `json:"severity"`
-		ReporterContact string   `json:"reporterContact" pii:"true"`
+		ReporterContact *string  `json:"reporterContact" pii:"true"`
 		RawStatement    *string  `json:"-"`
 		CaseNumber      string   `json:"caseNumber"      index:"true"`
 	}

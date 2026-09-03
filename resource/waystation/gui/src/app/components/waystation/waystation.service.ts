@@ -166,6 +166,18 @@ export class WaystationService {
     return this.api.can(permission, target, (this.current() || undefined) as Domain | undefined);
   }
 
+  /**
+   * grantedFields is the digest's field-level enumeration for a resource — for Create,
+   * the inputs a form is worth rendering (a denied field is absent; conditional
+   * renders and the server judges the write). Undefined means the digest carries no
+   * field-level entries for the permission — no field information — so narrow only on
+   * a defined answer. Signal-backed like can().
+   */
+  grantedFields(permission: Permission, resource: Resource): readonly string[] | undefined {
+    this.permissions();
+    return this.api.grantedFields(permission, resource, (this.current() || undefined) as Domain | undefined);
+  }
+
   setShowAll(all: boolean): void {
     this.showAll.set(all);
   }

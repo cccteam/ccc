@@ -6,7 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatTableModule } from '@angular/material/table';
 import { changes } from '@cccteam/resource';
-import { Permissions, Resources } from '@app/service/zz_gen_constants';
+import { IncidentReports as IncidentReportsFields, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { IncidentReports } from '@app/service/zz_gen_resources';
 import { WaystationService } from '../waystation.service';
 import { WaystationSelectComponent } from '../waystation-select/waystation-select.component';
@@ -16,7 +16,9 @@ import { WaystationSelectComponent } from '../waystation-select/waystation-selec
  * number is output-only (defaulted server-side, unwritable from the wire — and absent
  * from IncidentReportsCreate), the reporter contact is PII the auditor role reads
  * around (the column is simply absent from their rows), and severity is clamped by
- * an update-defaults hook.
+ * an update-defaults hook. The report form also narrows per persona: the digest's
+ * field-level Create entries decide which inputs render, so the technician (whose
+ * grant covers summary and severity only) files reports through a two-input form.
  */
 @Component({
   selector: 'app-incidents',
@@ -44,6 +46,19 @@ export class IncidentsComponent {
   station = this.ws.current;
   canList = computed(() => this.ws.can(Permissions.List, Resources.IncidentReports));
   canReport = computed(() => this.ws.can(Permissions.Create, Resources.IncidentReports));
+
+  readonly fields = { ...IncidentReportsFields.fieldName, ...IncidentReportsFields.piiFieldName };
+
+  // The digest's field-level Create entries narrow the report form: an input renders
+  // only for a field the persona may supply — the technician's grant covers summary
+  // and severity, so the PII contact and raw statement neither render nor travel.
+  // An undefined answer means the digest carries no field information: nothing narrows.
+  creatableFields = computed(() => this.ws.grantedFields(Permissions.Create, Resources.IncidentReports));
+
+  canWrite(field: string): boolean {
+    const creatable = this.creatableFields();
+    return creatable === undefined || creatable.includes(field);
+  }
 
   newSummary = '';
   newSeverity: number | null = null;
@@ -100,8 +115,8 @@ export class IncidentsComponent {
     await this.ws.stationApi().incidentReports.create({
       summary: this.newSummary,
       severity: this.newSeverity,
-      reporterContact: this.newReporterContact,
-      rawStatement: this.newRawStatement,
+      ...(this.canWrite(this.fields.reporterContact) ? { reporterContact: this.newReporterContact } : {}),
+      ...(this.canWrite(this.fields.rawStatement) ? { rawStatement: this.newRawStatement } : {}),
     });
     this.newSummary = '';
     this.newSeverity = null;

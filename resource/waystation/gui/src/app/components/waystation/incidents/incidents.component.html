@@ -2,7 +2,9 @@
 <p>
   The case number is assigned by the server (an output-only field — sending one is a 400), the raw statement is
   write-only from this form (input-only: stored, never served back), and the reporter contact is PII: the auditor role
-  reads incidents without that field, so it renders below as withheld rather than empty.
+  reads incidents without that field, so it renders below as withheld rather than empty. The report form narrows per
+  persona — inputs render only for fields the Create grant covers, so a technician files through a two-input form and
+  never sees the PII fields.
 </p>
 
 <app-waystation-select></app-waystation-select>
@@ -80,23 +82,34 @@
       <mat-card-subtitle>The case number comes back from the server — you cannot choose it.</mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>
+      <!-- Each input renders only when the digest's field-level Create entries cover
+           its field: the technician's grant stops at summary and severity, so the PII
+           contact and raw statement inputs are absent for them — not disabled, absent. -->
       <form (ngSubmit)="report()">
-        <mat-form-field appearance="outline" class="grow">
-          <mat-label>Summary</mat-label>
-          <input matInput name="summary" [(ngModel)]="newSummary" required />
-        </mat-form-field>
-        <mat-form-field appearance="outline">
-          <mat-label>Severity (1–5)</mat-label>
-          <input matInput name="severity" type="number" min="1" max="5" [(ngModel)]="newSeverity" required />
-        </mat-form-field>
-        <mat-form-field appearance="outline">
-          <mat-label>Reporter Contact</mat-label>
-          <input matInput name="reporterContact" [(ngModel)]="newReporterContact" />
-        </mat-form-field>
-        <mat-form-field appearance="outline" class="grow">
-          <mat-label>Raw Statement (write-only)</mat-label>
-          <input matInput name="rawStatement" [(ngModel)]="newRawStatement" />
-        </mat-form-field>
+        @if (canWrite(fields.summary)) {
+          <mat-form-field appearance="outline" class="grow">
+            <mat-label>Summary</mat-label>
+            <input matInput name="summary" [(ngModel)]="newSummary" required />
+          </mat-form-field>
+        }
+        @if (canWrite(fields.severity)) {
+          <mat-form-field appearance="outline">
+            <mat-label>Severity (1–5)</mat-label>
+            <input matInput name="severity" type="number" min="1" max="5" [(ngModel)]="newSeverity" required />
+          </mat-form-field>
+        }
+        @if (canWrite(fields.reporterContact)) {
+          <mat-form-field appearance="outline">
+            <mat-label>Reporter Contact</mat-label>
+            <input matInput name="reporterContact" [(ngModel)]="newReporterContact" />
+          </mat-form-field>
+        }
+        @if (canWrite(fields.rawStatement)) {
+          <mat-form-field appearance="outline" class="grow">
+            <mat-label>Raw Statement (write-only)</mat-label>
+            <input matInput name="rawStatement" [(ngModel)]="newRawStatement" />
+          </mat-form-field>
+        }
         <button mat-flat-button type="submit">File Report</button>
       </form>
     </mat-card-content>

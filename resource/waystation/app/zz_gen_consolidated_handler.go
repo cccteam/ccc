@@ -54,7 +54,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		WaystationID    string   `json:"-"`
 		Summary         string   `json:"summary"`
 		Severity        int64    `json:"severity"`
-		ReporterContact string   `json:"reporterContact"`
+		ReporterContact *string  `json:"reporterContact"`
 		RawStatement    *string  `json:"rawStatement"`
 		CaseNumber      string   `json:"-"`
 	}

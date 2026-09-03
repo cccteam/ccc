@@ -210,7 +210,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations, readOnly: true },
       { fieldName: 'summary', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'severity', displayType: 'number', required: true, isIndex: false },
-      { fieldName: 'reporterContact', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'reporterContact', displayType: 'string', required: false, isIndex: false },
       { fieldName: 'rawStatement', displayType: 'string', required: false, isIndex: false },
       { fieldName: 'caseNumber', displayType: 'string', required: false, isIndex: true, readOnly: true },
     ],

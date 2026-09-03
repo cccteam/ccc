@@ -841,6 +841,15 @@
               "condition": "zone != 'reactor'"
             }
           ],
+          "Create": [
+            {
+              "resource": "IncidentReports",
+              "fields": [
+                "summary",
+                "severity"
+              ]
+            }
+          ],
           "Update": [
             {
               "resource": "WorkOrderTasks",

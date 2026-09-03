@@ -416,14 +416,18 @@ func (p *IncidentReportCreatePatch) SeverityIsSet() bool {
 	return p.patchSet.IsSet("Severity")
 }
 
-func (p *IncidentReportCreatePatch) SetReporterContact(v string) *IncidentReportCreatePatch {
-	p.patchSet.Set("ReporterContact", v)
+func (p *IncidentReportCreatePatch) SetReporterContact(v *string) *IncidentReportCreatePatch {
+	if v != nil {
+		p.patchSet.Set("ReporterContact", v)
+	} else {
+		p.patchSet.Set("ReporterContact", nil)
+	}
 
 	return p
 }
 
-func (p *IncidentReportCreatePatch) ReporterContact() string {
-	v, _ := p.patchSet.Get("ReporterContact").(string)
+func (p *IncidentReportCreatePatch) ReporterContact() *string {
+	v, _ := p.patchSet.Get("ReporterContact").(*string)
 
 	return v
 }
@@ -578,14 +582,18 @@ func (p *IncidentReportUpdatePatch) SeverityIsSet() bool {
 	return p.patchSet.IsSet("Severity")
 }
 
-func (p *IncidentReportUpdatePatch) SetReporterContact(v string) *IncidentReportUpdatePatch {
-	p.patchSet.Set("ReporterContact", v)
+func (p *IncidentReportUpdatePatch) SetReporterContact(v *string) *IncidentReportUpdatePatch {
+	if v != nil {
+		p.patchSet.Set("ReporterContact", v)
+	} else {
+		p.patchSet.Set("ReporterContact", nil)
+	}
 
 	return p
 }
 
-func (p *IncidentReportUpdatePatch) ReporterContact() string {
-	v, _ := p.patchSet.Get("ReporterContact").(string)
+func (p *IncidentReportUpdatePatch) ReporterContact() *string {
+	v, _ := p.patchSet.Get("ReporterContact").(*string)
 
 	return v
 }

@@ -37,7 +37,7 @@ All login passwords are `waystation`.
 | --- | --- | --- |
 | `commander` | Headquarters | Unconditional global + every-station roles: full fleet dashboard, all costs, all PII, the audit trail. Pins that pruned RBAC output is untouched by the ABAC machinery. |
 | `chief-alpha` | Station chief, Alpha | Full domain roles at ws-alpha only; the same pages are empty/refused at ws-beta. Runs the whole work-order lifecycle. |
-| `tech-rivera` | Maintenance technician | `assignedTeam IN subject.teams OR author = subject` — the board shows their teams' orders; teams derive per-station (derived tenancy through the TeamMembership anchor). `zone != 'reactor'` keeps reactor assets out of their asset picker. |
+| `tech-rivera` | Maintenance technician | `assignedTeam IN subject.teams OR author = subject` — the board shows their teams' orders; teams derive per-station (derived tenancy through the TeamMembership anchor). `zone != 'reactor'` keeps reactor assets out of their asset picker. Files incident reports through a two-input form: their partial-width Create grant (`summary`, `severity`) narrows the rendered inputs. |
 | `foreman-okafor` | Requester | `requestedBy = subject` ownership; lines editable only while `state = 'draft'`; `new.priority <= 3` refuses emergency work orders at create time (an insert-image condition). |
 | `procurement-chen` | Approver | Queue is literally the condition: `state = 'submitted' AND totalCost <= subject.approvalLimit`. The RPC body re-verifies the limit for direct over-limit calls. |
 | `auditor-voss` | Compliance | Terminal-state work orders only; `unitCostSnapshot` masked per cell until a requisition is approved (the key is absent, the UI renders an em-dash); incident reporter PII withheld; the audit trail (RecordsAuditor). |
@@ -101,6 +101,14 @@ All login passwords are `waystation`.
   image the response shows. `integration/capabilities_test.go` pins the chief's
   unconditional list (pure RBAC, no extra SQL) against the foreman's
   state-conditioned one, row by row.
+- **Create-form narrowing (§13)** — the digest's field-level Create entries are the
+  enumeration a create form renders its inputs from: the technician's
+  `IncidentReports` Create grant covers `summary` and `severity` only, so their
+  report form is two inputs — the PII contact and raw statement neither render nor
+  travel (ReporterContact is nullable so the narrowed create commits).
+  `integration/permission_digest_test.go` pins the partial-width enumeration; the
+  incidents page and ccc-lib's create component both consume it through
+  `grantedFields`.
 
 ## The GUI
 

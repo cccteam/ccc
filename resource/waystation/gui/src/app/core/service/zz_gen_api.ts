@@ -69,7 +69,7 @@ export type FacilitiesKey = [id: string];
 export interface IncidentReportsCreate {
   summary: string;
   severity: number;
-  reporterContact: string;
+  reporterContact?: string;
   rawStatement?: string;
 }
 /** The fields a client may change on IncidentReports. Keys, server-owned, and immutable fields are absent. */

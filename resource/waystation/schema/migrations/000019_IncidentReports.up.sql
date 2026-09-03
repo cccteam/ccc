@@ -3,7 +3,7 @@ CREATE TABLE IncidentReports (
   WaystationId STRING(64) NOT NULL,
   Summary STRING(MAX) NOT NULL,
   Severity INT64 NOT NULL,
-  ReporterContact STRING(MAX) NOT NULL,
+  ReporterContact STRING(MAX),
   RawStatement STRING(MAX),
   CaseNumber STRING(MAX) NOT NULL,
 

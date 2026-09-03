@@ -98,6 +98,25 @@ func TestPermissionDigest(t *testing.T) {
 			absentKeys: []accesstypes.Resource{"WorkOrders", "Requisitions"},
 		},
 		{
+			// A partial-width Create grant enumerates exactly its fields: the
+			// technician may file incident reports but only supply summary and
+			// severity, so those two field entries appear beside the base entry
+			// and the PII fields are absent — the enumeration a create form
+			// narrows its inputs from, no per-field question asked.
+			name:   "technician's partial-width create grant narrows field entries",
+			user:   "tech-rivera",
+			target: "/api/permission-digest?domain=ws-alpha",
+			wantEntries: accesstypes.PermissionDigest{
+				"IncidentReports":          {"Create": accesstypes.DigestGranted},
+				"IncidentReports.summary":  {"Create": accesstypes.DigestGranted},
+				"IncidentReports.severity": {"Create": accesstypes.DigestGranted},
+			},
+			absentKeys: []accesstypes.Resource{
+				"IncidentReports.reporterContact",
+				"IncidentReports.rawStatement",
+			},
+		},
+		{
 			// No roles at ws-beta: the digest is empty — consistent with the
 			// concealed posture, this endpoint never confirms tenant existence.
 			name:      "a station without a foothold digests to nothing",

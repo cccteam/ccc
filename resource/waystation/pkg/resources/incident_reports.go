@@ -10,9 +10,11 @@ import (
 
 type (
 	// IncidentReport is the field-direction showcase: ReporterContact is PII
-	// (rejected in URL filters, flagged in TS metadata), RawStatement is input_only
-	// (accepted on mutations, never serialized back), and CaseNumber is output_only
-	// with a server-issued default — supplying it is a 400, reading it always works.
+	// (rejected in URL filters, flagged in TS metadata) and nullable — a persona
+	// whose Create grant excludes it (the technician) files reports without it,
+	// RawStatement is input_only (accepted on mutations, never serialized back),
+	// and CaseNumber is output_only with a server-issued default — supplying it
+	// is a 400, reading it always works.
 	// The update path runs both a defaults type and a validator type, the update-side
 	// twins of Requisition's create-side pair.
 	//
@@ -26,7 +28,7 @@ type (
 		WaystationID    string  `spanner:"WaystationId"`
 		Summary         string  `spanner:"Summary"`
 		Severity        int64   `spanner:"Severity"`
-		ReporterContact string  `spanner:"ReporterContact" conditions:"pii"`
+		ReporterContact *string `spanner:"ReporterContact" conditions:"pii"`
 		RawStatement    *string `spanner:"RawStatement"    conditions:"input_only"`
 		CaseNumber      string  `spanner:"CaseNumber"      conditions:"output_only" default_create_fn:"defaultCaseNumber"`
 	}
