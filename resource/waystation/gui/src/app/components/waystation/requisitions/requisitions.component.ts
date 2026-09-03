@@ -50,7 +50,9 @@ export class RequisitionsComponent {
   // The capability envelope rides every requisition row: Execute answers which
   // declared transitions apply to its state — the same answer the server enforces.
   requisitions = this.ws.stationList((station) => station.requisitions, { capabilities: ['Execute'] });
-  lineRows = this.ws.stationList((station) => station.requisitionLines);
+  // Lines opt into the Delete envelope: the draft-only rule lives in the Foreman's
+  // conditional grant, so each row answers whether it may be removed.
+  lineRows = this.ws.stationList((station) => station.requisitionLines, { capabilities: ['Delete'] });
   catalogItems = this.ws.globalList((api) => api.catalogItems);
   columns = ['justification', 'status', 'requestedBy', 'totalCost', 'neededBy', 'actions'];
   lineColumns = ['item', 'quantity', 'unitCostSnapshot', 'lineActions'];
@@ -61,12 +63,15 @@ export class RequisitionsComponent {
   canList = computed(() => this.ws.can(Permissions.List, Resources.Requisitions));
   canCreate = computed(() => this.ws.can(Permissions.Create, Resources.Requisitions));
   canAddLine = computed(() => this.ws.can(Permissions.Create, Resources.RequisitionLines));
-  canRemoveLine = computed(() => this.ws.can(Permissions.Delete, Resources.RequisitionLines));
 
   // Per-row affordances from the capability envelope: no statusId comparisons here —
   // whether a transition button renders is the row's own answer.
   canRun(requisition: Requisitions, method: Method): boolean {
     return this.ws.stationApi().requisitions.rowCan(requisition, 'Execute', method);
+  }
+
+  canRemove(line: RequisitionLines): boolean {
+    return this.ws.stationApi().requisitionLines.rowCan(line, 'Delete');
   }
 
   linesByRequisition = computed(() => {
