@@ -12,6 +12,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
+	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -139,9 +140,10 @@ func (r *resourceGenerator) validateStateEnumTables(data resource.CollectionData
 // is many-to-one through a real foreign key, and the generator synthesizes
 // the uniform `state` binding on the root and every member, so one condition
 // text (state = 'open') reads identically across the workflow. The assembled
-// graph is emitted as a committed, drift-tested DOT file per workflow —
-// membership only, never transition edges: the framework knows the values,
-// the transitions are RPC-body business rules.
+// graph is emitted as a committed, drift-tested DOT file per workflow: the
+// whole tree — members hop by hop, context references, the state set, and
+// the declared transitions (@transition). Undeclared state changes stay
+// RPC-body business rules the framework cannot see.
 
 // stateBindingName is the synthesized attribute every stateful resource and
 // workflow member carries.
@@ -340,80 +342,209 @@ func parentWorkflowRoot(res *resourceInfo) string {
 	return ""
 }
 
-// generateWorkflowGraphs emits one DOT file per workflow into the resources
-// package: the committed, drift-tested review surface for what the workflow
-// governs. The graph draws membership and the declared transitions
-// (@transition) — one labeled edge per method and from state; undeclared
-// state changes stay RPC-body business rules the framework cannot see.
-func (r *resourceGenerator) generateWorkflowGraphs() error {
-	type member struct {
-		name   string
-		parent string
+// workflowGraph is one assembled workflow: the stateful root, its members in
+// name order with their anchoring hops, the context resources workflow rows
+// reference, the closed state set with its default, and the declared
+// transitions. Both emitters render from it — the DOT writer draws the whole
+// tree, and the TypeScript resource metadata carries the same facts (minus
+// context) so a frontend can render the graph itself.
+type workflowGraph struct {
+	Root       *resourceInfo
+	StateField *resourceField
+	States     []*enumData
+	Default    string
+	Members    []*workflowGraphMember
+	// Contexts are the FK references leaving the tree — one edge per field of
+	// the root or a member whose target is neither the root, a member, nor the
+	// state enum table (the tenant record's FK included).
+	Contexts    []*workflowContextEdge
+	Transitions []*rpcMethodInfo
+}
+
+// workflowGraphMember is one member's hop: the member resource, the struct
+// name the hop lands on (the root, or another member of the chain), and the
+// anchoring FK field.
+type workflowGraphMember struct {
+	Res    *resourceInfo
+	Parent string
+	Field  *resourceField
+}
+
+// workflowContextEdge is one FK reference leaving the workflow tree.
+type workflowContextEdge struct {
+	Source string
+	Target string
+	Field  *resourceField
+}
+
+// assembleWorkflows builds one graph per stateful resource from the parsed
+// sets the caller holds — the resource generator's full sets, or a TypeScript
+// target's outlet-filtered ones — sorted throughout so rendered output is
+// byte-stable across runs.
+func (c *client) assembleWorkflows() []*workflowGraph {
+	byTable := make(map[string]*resourceInfo, len(c.resources))
+	for _, res := range c.resources {
+		byTable[c.pluralize(res.Name())] = res
 	}
-	workflows := make(map[string][]member) // root struct name -> members
-	for _, res := range r.resources {
-		for _, field := range res.Fields {
-			if field.WorkflowRoot == "" {
+	// structName resolves a referenced table to the struct that backs it,
+	// falling back to the table name for tables outside the parsed set.
+	structName := func(table string) string {
+		if res, ok := byTable[table]; ok {
+			return res.Name()
+		}
+
+		return table
+	}
+
+	var graphs []*workflowGraph
+	for _, root := range c.resources {
+		state := stateField(root)
+		if state == nil {
+			continue
+		}
+
+		wf := &workflowGraph{
+			Root:       root,
+			StateField: state,
+			States:     c.enumValues[state.ReferencedResource],
+			Default:    state.StateDefault,
+		}
+
+		treeNames := map[string]bool{root.Name(): true}
+		for _, res := range c.resources {
+			if parentWorkflowRoot(res) != root.Name() {
 				continue
 			}
-			parent := field.ReferencedResource
-			for _, other := range r.resources {
-				if r.pluralize(other.Name()) == field.ReferencedResource {
-					parent = other.Name()
-				}
-			}
-			workflows[field.WorkflowRoot] = append(workflows[field.WorkflowRoot], member{name: res.Name(), parent: parent})
-		}
-	}
-
-	transitions := make(map[string][]*rpcMethodInfo) // root struct name -> transition methods
-	for _, method := range r.rpcMethods {
-		if method.Transition != nil {
-			transitions[method.Transition.RootStruct] = append(transitions[method.Transition.RootStruct], method)
-		}
-	}
-
-	for root, members := range workflows {
-		slices.SortFunc(members, func(a, b member) int { return strings.Compare(a.name, b.name) })
-
-		var rootRes *resourceInfo
-		for _, res := range r.resources {
-			if res.Name() == root {
-				rootRes = res
-			}
-		}
-		state := stateField(rootRes)
-		values := make([]string, 0, len(r.enumValues[state.ReferencedResource]))
-		for _, v := range r.enumValues[state.ReferencedResource] {
-			values = append(values, v.ID)
-		}
-
-		var b strings.Builder
-		fmt.Fprintf(&b, "// Code generated by resourcegeneration. DO NOT EDIT.\n")
-		fmt.Fprintf(&b, "// Workflow %s: membership and declared transitions (@transition).\n", root)
-		fmt.Fprintf(&b, "digraph %sWorkflow {\n", root)
-		fmt.Fprintf(&b, "\trankdir=RL;\n")
-		fmt.Fprintf(&b, "\t%q [shape=doubleoctagon, label=\"%s\\nstates: %s\"];\n", root, root, strings.Join(values, " | "))
-		for _, m := range members {
-			fmt.Fprintf(&b, "\t%q -> %q;\n", m.name, m.parent)
-		}
-		if methods := transitions[root]; len(methods) > 0 {
-			slices.SortFunc(methods, func(a, b *rpcMethodInfo) int { return strings.Compare(a.Name(), b.Name()) })
-			fmt.Fprintf(&b, "\tnode [shape=ellipse];\n")
-			for _, v := range values {
-				fmt.Fprintf(&b, "\t%q [label=%q];\n", "state:"+v, v)
-			}
-			for _, m := range methods {
-				for _, from := range m.Transition.From {
-					fmt.Fprintf(&b, "\t%q -> %q [label=%q];\n", "state:"+from, "state:"+m.Transition.To, m.Name())
+			for _, field := range res.Fields {
+				if field.WorkflowRoot != "" {
+					wf.Members = append(wf.Members, &workflowGraphMember{Res: res, Parent: structName(field.ReferencedResource), Field: field})
+					treeNames[res.Name()] = true
 				}
 			}
 		}
-		fmt.Fprintf(&b, "}\n")
+		slices.SortFunc(wf.Members, func(a, b *workflowGraphMember) int { return strings.Compare(a.Res.Name(), b.Res.Name()) })
 
-		fileName := fmt.Sprintf("%s_workflow_%s.dot", genPrefix, caser.ToSnake(root))
+		sources := append([]*resourceInfo{root}, membersOf(wf)...)
+		for _, src := range sources {
+			for _, field := range src.Fields {
+				if !field.IsForeignKey || field.ReferencedResource == "" || field.IsState || field.WorkflowRoot != "" {
+					continue
+				}
+				target := structName(field.ReferencedResource)
+				if treeNames[target] {
+					continue
+				}
+				wf.Contexts = append(wf.Contexts, &workflowContextEdge{Source: src.Name(), Target: target, Field: field})
+			}
+		}
+		slices.SortFunc(wf.Contexts, func(a, b *workflowContextEdge) int {
+			if cmp := strings.Compare(a.Source, b.Source); cmp != 0 {
+				return cmp
+			}
+
+			return strings.Compare(a.Field.Name(), b.Field.Name())
+		})
+
+		for _, method := range c.rpcMethods {
+			if method.Transition != nil && method.Transition.RootStruct == root.Name() {
+				wf.Transitions = append(wf.Transitions, method)
+			}
+		}
+		slices.SortFunc(wf.Transitions, func(a, b *rpcMethodInfo) int { return strings.Compare(a.Name(), b.Name()) })
+
+		graphs = append(graphs, wf)
+	}
+	slices.SortFunc(graphs, func(a, b *workflowGraph) int { return strings.Compare(a.Root.Name(), b.Root.Name()) })
+
+	return graphs
+}
+
+// membersOf returns the member resources in the graph's sorted order.
+func membersOf(wf *workflowGraph) []*resourceInfo {
+	members := make([]*resourceInfo, 0, len(wf.Members))
+	for _, m := range wf.Members {
+		members = append(members, m.Res)
+	}
+
+	return members
+}
+
+// renderWorkflowDOT draws one workflow's full tree: solid boxes for the root
+// (doubleoctagon) and its members with one labeled edge per hop, dashed boxes
+// and edges for context references, the state cluster with the default marked
+// and one labeled edge per declared transition, and a legend. Facts and labels
+// only — layout stays Graphviz's, and every list is pre-sorted, so the
+// committed file is byte-stable across runs.
+func renderWorkflowDOT(wf *workflowGraph) string {
+	root := wf.Root.Name()
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "// Code generated by resourcegeneration. DO NOT EDIT.\n")
+	fmt.Fprintf(&b, "// Workflow %s: the full tree. Solid boxes are the root and its members, one\n", root)
+	fmt.Fprintf(&b, "// edge per hop labeled with the anchoring foreign-key field; dashed boxes are\n")
+	fmt.Fprintf(&b, "// the context resources workflow rows reference, the tenant record included;\n")
+	fmt.Fprintf(&b, "// the state cluster holds every state value (default marked) and one labeled\n")
+	fmt.Fprintf(&b, "// edge per declared @transition. Facts only: who may run a method or hold a\n")
+	fmt.Fprintf(&b, "// grant is policy (RoleConfig), never drawn here.\n")
+	fmt.Fprintf(&b, "digraph %sWorkflow {\n", root)
+	fmt.Fprintf(&b, "\trankdir=RL;\n")
+	fmt.Fprintf(&b, "\tcompound=true;\n")
+	fmt.Fprintf(&b, "\tnode [shape=box];\n")
+	fmt.Fprintf(&b, "\t%q [shape=doubleoctagon];\n", root)
+	for _, m := range wf.Members {
+		fmt.Fprintf(&b, "\t%q;\n", m.Res.Name())
+	}
+	contextTargets := make([]string, 0, len(wf.Contexts))
+	for _, ctx := range wf.Contexts {
+		contextTargets = append(contextTargets, ctx.Target)
+	}
+	slices.Sort(contextTargets)
+	for _, target := range slices.Compact(contextTargets) {
+		fmt.Fprintf(&b, "\t%q [style=dashed];\n", target)
+	}
+	for _, m := range wf.Members {
+		fmt.Fprintf(&b, "\t%q -> %q [label=%q];\n", m.Res.Name(), m.Parent, strcase.ToCamel(m.Field.Name()))
+	}
+	for _, ctx := range wf.Contexts {
+		fmt.Fprintf(&b, "\t%q -> %q [style=dashed, label=%q];\n", ctx.Source, ctx.Target, strcase.ToCamel(ctx.Field.Name()))
+	}
+	fmt.Fprintf(&b, "\tsubgraph cluster_states {\n")
+	fmt.Fprintf(&b, "\t\tlabel=\"states (default: %s)\";\n", wf.Default)
+	fmt.Fprintf(&b, "\t\tnode [shape=ellipse];\n")
+	for _, v := range wf.States {
+		if v.ID == wf.Default {
+			fmt.Fprintf(&b, "\t\t%q [label=%q, peripheries=2];\n", "state:"+v.ID, v.ID)
+		} else {
+			fmt.Fprintf(&b, "\t\t%q [label=%q];\n", "state:"+v.ID, v.ID)
+		}
+	}
+	for _, m := range wf.Transitions {
+		for _, from := range m.Transition.From {
+			fmt.Fprintf(&b, "\t\t%q -> %q [label=%q];\n", "state:"+from, "state:"+m.Transition.To, m.Name())
+		}
+	}
+	fmt.Fprintf(&b, "\t}\n")
+	fmt.Fprintf(&b, "\t%q -> %q [lhead=\"cluster_states\", style=dotted, label=%q];\n", root, "state:"+wf.Default, strcase.ToCamel(wf.StateField.Name()))
+	fmt.Fprintf(&b, "\tsubgraph cluster_legend {\n")
+	fmt.Fprintf(&b, "\t\tlabel=\"legend\";\n")
+	fmt.Fprintf(&b, "\t\t\"root\" [shape=doubleoctagon];\n")
+	fmt.Fprintf(&b, "\t\t\"member\" [shape=box];\n")
+	fmt.Fprintf(&b, "\t\t\"context\" [shape=box, style=dashed];\n")
+	fmt.Fprintf(&b, "\t\t\"state\" [shape=ellipse];\n")
+	fmt.Fprintf(&b, "\t}\n")
+	fmt.Fprintf(&b, "}\n")
+
+	return b.String()
+}
+
+// generateWorkflowGraphs emits one DOT file per stateful resource into the
+// resources package: the committed, drift-tested review surface for what each
+// workflow governs — the whole tree, its states, and its declared transitions.
+func (r *resourceGenerator) generateWorkflowGraphs() error {
+	for _, wf := range r.assembleWorkflows() {
+		fileName := fmt.Sprintf("%s_workflow_%s.dot", genPrefix, caser.ToSnake(wf.Root.Name()))
 		destination := filepath.Join(r.resource.Dir(), fileName)
-		if err := os.WriteFile(destination, []byte(b.String()), 0o644); err != nil {
+		if err := os.WriteFile(destination, []byte(renderWorkflowDOT(wf)), 0o644); err != nil {
 			return errors.Wrapf(err, "os.WriteFile(): file: %s", destination)
 		}
 		log.Printf("Generated workflow graph: %v\n", destination)

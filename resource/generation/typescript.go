@@ -375,6 +375,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 		DomainRouteParam:    t.domainRouteParam,
 		HasDomainScoped:     hasDomainScoped,
 		HasConsolidated:     hasConsolidated,
+		Workflows:           t.assembleWorkflows(),
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")

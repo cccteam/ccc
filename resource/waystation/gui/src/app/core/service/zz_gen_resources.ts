@@ -516,3 +516,55 @@ export interface WorkOrderTasksOperation {
   value?: Partial<WorkOrderTasks>;
 }
 export type ConsolidatedOperation = AssetsOperation | CatalogItemsOperation | FacilitiesOperation | IncidentReportsOperation | InventoryLotsOperation | RequisitionsOperation | RequisitionLinesOperation | ShipmentsOperation | StaffMembersOperation | TeamsOperation | TeamMembershipsOperation | WaystationsOperation | WorkOrdersOperation | WorkOrderTasksOperation;
+
+/** One workflow member: the resource, the member or root its hop lands on, and the anchoring foreign-key field. */
+export interface WorkflowMember {
+  resource: Resource;
+  parent: Resource;
+  field: string;
+}
+
+/** One declared transition (@transition): the RPC method name and the state edge it moves. */
+export interface WorkflowTransition {
+  method: string;
+  from: string[];
+  to: string;
+}
+
+/** One workflow: the stateful root, its members hop by hop, the closed state set with its default, and the declared transitions — the same facts the generated DOT file draws. */
+export interface Workflow {
+  root: Resource;
+  states: string[];
+  defaultState: string;
+  members: WorkflowMember[];
+  transitions: WorkflowTransition[];
+}
+
+export const Workflows: Workflow[] = [
+  {
+    root: Resources.Requisitions,
+    states: ['approved', 'declined', 'draft', 'fulfilled', 'submitted'],
+    defaultState: 'draft',
+    members: [
+      { resource: Resources.RequisitionLines, parent: Resources.Requisitions, field: 'requisitionId' },
+    ],
+    transitions: [
+      { method: 'ApproveRequisition', from: ['submitted'], to: 'approved' },
+      { method: 'DeclineRequisition', from: ['submitted'], to: 'declined' },
+      { method: 'SubmitRequisition', from: ['draft'], to: 'submitted' },
+    ],
+  },
+  {
+    root: Resources.WorkOrders,
+    states: ['cancelled', 'completed', 'draft', 'in_progress', 'on_hold', 'scheduled'],
+    defaultState: 'draft',
+    members: [
+      { resource: Resources.WorkOrderTasks, parent: Resources.WorkOrders, field: 'workOrderId' },
+    ],
+    transitions: [
+      { method: 'CompleteWorkOrder', from: ['in_progress'], to: 'completed' },
+      { method: 'ScheduleWorkOrder', from: ['draft'], to: 'scheduled' },
+      { method: 'StartWorkOrder', from: ['scheduled'], to: 'in_progress' },
+    ],
+  },
+];

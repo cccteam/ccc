@@ -360,9 +360,43 @@ func TestResolveWorkflows(t *testing.T) {
 	}
 }
 
-// TestGenerateWorkflowGraphs pins the DOT review surface: one file per
-// workflow, membership edges, the root labeled with its closed value set, and
-// one labeled edge per declared transition and from state — nothing else.
+// workflowGraphFixture assembles the fixture workflow the way Generate does:
+// the two-hop chain (StatefulTask ← TaskPart ← PartOrder), the Ship resource
+// backing the context FKs, and optionally the two declared transitions.
+func workflowGraphFixture(t *testing.T, structs map[string]*parser.Struct, withTransitions bool) (r *resourceGenerator, dir string) {
+	t.Helper()
+
+	c := stateFixtureClient()
+	root := buildWorkflowFixture(t, c, structs, "StatefulTask")
+	part := buildWorkflowFixture(t, c, structs, "TaskPart")
+	order := buildWorkflowFixture(t, c, structs, "PartOrder")
+	ship := buildWorkflowFixture(t, c, structs, "Ship")
+	if err := c.resolveWorkflows([]*resourceInfo{root, part, order}); err != nil {
+		t.Fatalf("resolveWorkflows() error = %v", err)
+	}
+
+	dir = t.TempDir()
+	r = &resourceGenerator{client: c}
+	r.resources = []*resourceInfo{root, part, order, ship}
+	r.resource = packageDir(dir)
+
+	if withTransitions {
+		for _, name := range []string{"CloseTask", "ApproveTask"} {
+			rpcMethod, err := resolveFixtureTransition(t, c, structs, name)
+			if err != nil {
+				t.Fatalf("resolveFixtureTransition(%s) error = %v", name, err)
+			}
+			r.rpcMethods = append(r.rpcMethods, rpcMethod)
+		}
+	}
+
+	return r, dir
+}
+
+// TestGenerateWorkflowGraphs pins the DOT review surface: the full tree — root
+// and members as solid nodes with hop-labeled edges, context references dashed
+// and deduplicated, the state cluster with the default marked and one labeled
+// edge per declared transition, the legend — and byte-stable output.
 func TestGenerateWorkflowGraphs(t *testing.T) {
 	t.Parallel()
 
@@ -371,30 +405,7 @@ func TestGenerateWorkflowGraphs(t *testing.T) {
 	generate := func(t *testing.T, withTransitions bool) string {
 		t.Helper()
 
-		c := stateFixtureClient()
-		root := buildWorkflowFixture(t, c, structs, "StatefulTask")
-		part := buildWorkflowFixture(t, c, structs, "TaskPart")
-		order := buildWorkflowFixture(t, c, structs, "PartOrder")
-		if err := c.resolveWorkflows([]*resourceInfo{root, part, order}); err != nil {
-			t.Fatalf("resolveWorkflows() error = %v", err)
-		}
-
-		dir := t.TempDir()
-		r := &resourceGenerator{client: c}
-		r.resources = []*resourceInfo{root, part, order}
-		r.resource = packageDir(dir)
-
-		if withTransitions {
-			c.resources = r.resources
-			for _, name := range []string{"CloseTask", "ApproveTask"} {
-				rpcMethod, err := resolveFixtureTransition(t, c, structs, name)
-				if err != nil {
-					t.Fatalf("resolveFixtureTransition(%s) error = %v", name, err)
-				}
-				r.rpcMethods = append(r.rpcMethods, rpcMethod)
-			}
-		}
-
+		r, dir := workflowGraphFixture(t, structs, withTransitions)
 		if err := r.generateWorkflowGraphs(); err != nil {
 			t.Fatalf("generateWorkflowGraphs() error = %v", err)
 		}
@@ -407,33 +418,48 @@ func TestGenerateWorkflowGraphs(t *testing.T) {
 		return string(content)
 	}
 
-	t.Run("membership and states", func(t *testing.T) {
+	t.Run("the full tree: members hop by hop, context dashed, states and legend", func(t *testing.T) {
 		t.Parallel()
 
 		content := generate(t, false)
 		for _, want := range []string{
 			"digraph StatefulTaskWorkflow {",
-			`"StatefulTask" [shape=doubleoctagon, label="StatefulTask\nstates: open | approved | closed"]`,
-			`"TaskPart" -> "StatefulTask";`,
-			`"PartOrder" -> "TaskPart";`,
+			`"StatefulTask" [shape=doubleoctagon];`,
+			// Multi-hop chains draw hop by hop, labeled with the anchoring FK field.
+			`"TaskPart" -> "StatefulTask" [label="taskId"];`,
+			`"PartOrder" -> "TaskPart" [label="partId"];`,
+			// Context references are dashed and labeled with the referencing field.
+			`"Ship" [style=dashed];`,
+			`"StatefulTask" -> "Ship" [style=dashed, label="shipId"];`,
+			`"TaskPart" -> "Ship" [style=dashed, label="shipId"];`,
+			// The state cluster holds every value with the default marked, and the
+			// root attaches through its state field.
+			`label="states (default: open)";`,
+			`"state:open" [label="open", peripheries=2];`,
+			`"state:approved" [label="approved"];`,
+			`"state:closed" [label="closed"];`,
+			`"StatefulTask" -> "state:open" [lhead="cluster_states", style=dotted, label="state"];`,
+			`subgraph cluster_legend {`,
 		} {
 			if !strings.Contains(content, want) {
 				t.Errorf("workflow graph missing %q:\n%s", want, content)
 			}
 		}
-		if strings.Contains(content, "state:") {
-			t.Errorf("a workflow without declared transitions must not draw state nodes:\n%s", content)
+		// Two member FKs to one target share one dashed node.
+		if got := strings.Count(content, `"Ship" [style=dashed];`); got != 1 {
+			t.Errorf("context node declared %d times, want exactly once:\n%s", got, content)
+		}
+		// The state enum table FK is the cluster attachment, never a context edge.
+		if strings.Contains(content, "TaskStates") {
+			t.Errorf("the state enum table must not appear as a context resource:\n%s", content)
 		}
 	})
 
-	t.Run("declared transitions draw labeled edges", func(t *testing.T) {
+	t.Run("declared transitions draw labeled edges inside the state cluster", func(t *testing.T) {
 		t.Parallel()
 
 		content := generate(t, true)
 		for _, want := range []string{
-			`"state:open" [label="open"];`,
-			`"state:approved" [label="approved"];`,
-			`"state:closed" [label="closed"];`,
 			`"state:open" -> "state:approved" [label="ApproveTask"];`,
 			`"state:open" -> "state:closed" [label="CloseTask"];`,
 			`"state:approved" -> "state:closed" [label="CloseTask"];`,
@@ -443,4 +469,58 @@ func TestGenerateWorkflowGraphs(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("output is byte-stable across runs", func(t *testing.T) {
+		t.Parallel()
+
+		if first, second := generate(t, true), generate(t, true); first != second {
+			t.Errorf("two runs rendered different output:\n--- first\n%s\n--- second\n%s", first, second)
+		}
+	})
+}
+
+// TestTypescriptResourcesTemplate_workflows pins the TypeScript half of the
+// workflow facts: the Workflows constant carries root, members with hops,
+// states with the default, and declared transitions — and renders nothing at
+// all for applications without workflows.
+func TestTypescriptResourcesTemplate_workflows(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "bindingfixture"))
+	r, _ := workflowGraphFixture(t, structs, true)
+
+	out, err := r.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, tsResourcesData{
+		File:      &typescriptGenerator{client: r.client},
+		GenPrefix: genPrefix,
+		Workflows: r.assembleWorkflows(),
+	})
+	if err != nil {
+		t.Fatalf("generateTemplateOutput() error = %v", err)
+	}
+
+	for _, want := range []string{
+		"export const Workflows: Workflow[] = [",
+		"root: Resources.StatefulTasks,",
+		"states: ['open', 'approved', 'closed'],",
+		"defaultState: 'open',",
+		"{ resource: Resources.PartOrders, parent: Resources.TaskParts, field: 'partId' },",
+		"{ resource: Resources.TaskParts, parent: Resources.StatefulTasks, field: 'taskId' },",
+		"{ method: 'ApproveTask', from: ['open'], to: 'approved' },",
+		"{ method: 'CloseTask', from: ['open', 'approved'], to: 'closed' },",
+	} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("typescriptResourcesTemplate output missing %q:\n%s", want, out)
+		}
+	}
+
+	empty, err := r.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, tsResourcesData{
+		File:      &typescriptGenerator{client: r.client},
+		GenPrefix: genPrefix,
+	})
+	if err != nil {
+		t.Fatalf("generateTemplateOutput() error = %v", err)
+	}
+	if strings.Contains(string(empty), "Workflow") {
+		t.Errorf("an application without workflows must emit no workflow block:\n%s", empty)
+	}
 }

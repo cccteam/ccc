@@ -388,6 +388,11 @@ type tsResourcesData struct {
 	DomainRouteParam    string
 	HasDomainScoped     bool
 	HasConsolidated     bool
+	// Workflows carries each stateful root's assembled graph — the same facts
+	// the DOT files draw (minus context references) — so a frontend can render
+	// the workflow itself. Empty for applications without workflows, which then
+	// emit nothing (byte-identical output).
+	Workflows []*workflowGraph
 }
 
 type tsMethodsData struct {

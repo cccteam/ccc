@@ -220,6 +220,10 @@ type StatefulTask struct {
 	// @state(default: open)
 	State TaskState `spanner:"State"`
 
+	// ShipID is a context reference: an FK leaving the workflow tree, drawn
+	// dashed in the workflow graph.
+	ShipID ccc.UUID `spanner:"ShipId"`
+
 	Notes string `spanner:"Notes"`
 }
 
@@ -250,6 +254,10 @@ type TaskPart struct {
 
 	// @stateRoot(StatefulTask)
 	TaskID ccc.UUID `spanner:"TaskId"`
+
+	// ShipID pins that a member's FK off the tree is a context edge too, and
+	// that two edges to one target share one context node.
+	ShipID ccc.UUID `spanner:"ShipId"`
 }
 
 type PartOrder struct {
