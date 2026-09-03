@@ -18,6 +18,7 @@ func Collection() *resource.GeneratedCollection {
 				Name:        "ApproveRequisition",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Transition:  &resource.TransitionData{Target: "Requisitions", From: []string{"submitted"}, To: "approved"},
 			},
 			{
 				Name:        "Assets",
@@ -41,11 +42,13 @@ func Collection() *resource.GeneratedCollection {
 				Name:        "CompleteWorkOrder",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Transition:  &resource.TransitionData{Target: "WorkOrders", From: []string{"in_progress"}, To: "completed"},
 			},
 			{
 				Name:        "DeclineRequisition",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Transition:  &resource.TransitionData{Target: "Requisitions", From: []string{"submitted"}, To: "declined"},
 			},
 			{
 				Name:        "Facilities",
@@ -173,6 +176,7 @@ func Collection() *resource.GeneratedCollection {
 				Name:        "ScheduleWorkOrder",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Transition:  &resource.TransitionData{Target: "WorkOrders", From: []string{"draft"}, To: "scheduled"},
 			},
 			{
 				Name:        "SensorReadings",
@@ -209,6 +213,7 @@ func Collection() *resource.GeneratedCollection {
 				Name:        "StartWorkOrder",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Transition:  &resource.TransitionData{Target: "WorkOrders", From: []string{"scheduled"}, To: "in_progress"},
 			},
 			{
 				Name:        "StationStatusBoards",
@@ -228,6 +233,7 @@ func Collection() *resource.GeneratedCollection {
 				Name:        "SubmitRequisition",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Transition:  &resource.TransitionData{Target: "Requisitions", From: []string{"draft"}, To: "submitted"},
 			},
 			{
 				Name:        "TeamMemberships",

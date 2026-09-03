@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -48,13 +49,14 @@ const (
 
 // capabilityPermissions returns the permissions capability evaluation
 // supports: Update carries a positive list of editable field names, Delete a
-// boolean — its footprint is the row. Create has no row to ride (the
-// permission digest answers it), and read-shaped permissions are answered by
-// the response itself.
+// boolean — its footprint is the row — and Execute a positive list of the RPC
+// methods whose declared transitions apply to the row (§09). Create has no
+// row to ride (the permission digest answers it), and read-shaped permissions
+// are answered by the response itself.
 func capabilityPermission(name string) (accesstypes.Permission, error) {
 	perm := accesstypes.Permission(name)
-	if perm != accesstypes.Update && perm != accesstypes.Delete {
-		return "", httpio.NewBadRequestMessagef("capability evaluation supports %s and %s, not %q", accesstypes.Update, accesstypes.Delete, name)
+	if perm != accesstypes.Update && perm != accesstypes.Delete && perm != accesstypes.Execute {
+		return "", httpio.NewBadRequestMessagef("capability evaluation supports %s, %s and %s, not %q", accesstypes.Update, accesstypes.Delete, accesstypes.Execute, name)
 	}
 
 	return perm, nil
@@ -145,7 +147,23 @@ func (q *QuerySet[Resource]) checkCapabilityPermissions(ctx context.Context) err
 
 	for _, perm := range q.capabilities {
 		resources := []accesstypes.Resource{q.resourceSet.BaseResource()}
-		if perm != accesstypes.Delete {
+		switch perm {
+		case accesstypes.Delete:
+			// Delete's footprint is the row: the base resource carries it.
+		case accesstypes.Execute:
+			// The affordance question is per declared transition: the RPC
+			// method resources whose transitions target this resource (§09).
+			if q.collection == nil {
+				continue
+			}
+			resources = resources[:0]
+			for _, tm := range q.collection.TransitionsOnto(q.resourceSet.BaseResource()) {
+				resources = append(resources, tm.Method)
+			}
+			if len(resources) == 0 {
+				continue
+			}
+		default:
 			// The affordance question is per displayed field: the projected
 			// grant-bearing fields, the same set the read rules govern
 			// (permission-exempt primary keys are never editable).
@@ -203,6 +221,29 @@ func (g *capabilityGroups) intern(res accesstypes.Resource, decision accesstypes
 	return idx, nil
 }
 
+// internStateMembership resolves a transition's from set to its group index:
+// a `state IN (…)` boolean over the pre-image's uniform state binding, shared
+// by every transition with the same set (sorted for a canonical key).
+func (g *capabilityGroups) internStateMembership(from []string) int {
+	values := slices.Clone(from)
+	slices.Sort(values)
+	literals := make([]condition.Literal, 0, len(values))
+	for _, v := range values {
+		literals = append(literals, condition.StringLiteral{Value: v})
+	}
+	expr := condition.In{Left: condition.Ref{Name: StateAttribute}, Literals: literals}
+
+	source := expr.String()
+	idx, ok := g.bySource[source]
+	if !ok {
+		idx = len(g.exprs)
+		g.bySource[source] = idx
+		g.exprs = append(g.exprs, expr)
+	}
+
+	return idx
+}
+
 // plannedDelete builds Delete's recipe from the base decision — the delete's
 // footprint is the row, so the base decision is the condition's sole carrier
 // (§05).
@@ -254,6 +295,34 @@ func (q *QuerySet[Resource]) plannedUpdate(perm accesstypes.Permission, decision
 	return planned, nil
 }
 
+// plannedExecute builds the Execute affordance's recipe: the RPC methods
+// whose declared transitions target this resource (§09), gated by the user's
+// Execute grants — settled without data, Execute conditions are row-free and
+// fold at check time — and by the row's pre-image state membership in each
+// transition's from set, one boolean per distinct set in the same statement.
+func (q *QuerySet[Resource]) plannedExecute(decisions accesstypes.Decisions, groups *capabilityGroups) (plannedCapability, error) {
+	planned := plannedCapability{perm: accesstypes.Execute, group: -1}
+	if q.collection == nil {
+		return planned, nil
+	}
+	for _, tm := range q.collection.TransitionsOnto(q.resourceSet.BaseResource()) {
+		decision := decisions[tm.Method]
+		switch {
+		case decision.IsGranted():
+		case decision.IsConditional():
+			return plannedCapability{}, errors.Newf("method %s: an Execute grant reached capability planning as Conditional — Execute conditions are row-free and settle at check time", tm.Method)
+		default:
+			continue
+		}
+		planned.fields = append(planned.fields, capabilityField{
+			jsonName: string(tm.Method),
+			group:    groups.internStateMembership(tm.Transition.From),
+		})
+	}
+
+	return planned, nil
+}
+
 // renderCapabilities builds the statement's capability plan and, when any
 // condition group needs data, the reserved boolean-array select item. Both
 // are empty when the request asked for no capabilities.
@@ -268,9 +337,12 @@ func (q *QuerySet[Resource]) renderCapabilities(dbType DBType, registry *paramRe
 	for _, perm := range q.capabilities {
 		var planned plannedCapability
 		var err error
-		if perm == accesstypes.Delete {
+		switch perm {
+		case accesstypes.Delete:
 			planned, err = q.plannedDelete(q.capabilityDecisions[perm], groups)
-		} else {
+		case accesstypes.Execute:
+			planned, err = q.plannedExecute(q.capabilityDecisions[perm], groups)
+		default:
 			planned, err = q.plannedUpdate(perm, q.capabilityDecisions[perm], groups)
 		}
 		if err != nil {

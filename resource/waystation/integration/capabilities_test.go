@@ -132,4 +132,68 @@ func TestCapabilityEnvelope(t *testing.T) {
 			t.Fatalf("GET status = %d, want %d (body %s)", status, http.StatusBadRequest, body)
 		}
 	})
+
+	// The Execute affordance (§09/§13): each row lists the declared transitions
+	// whose from set contains its pre-image state, gated by the user's Execute
+	// grants — the chief holds every WorkOrder edge, the technician only
+	// Start and Complete, and a finished row offers nothing to anyone.
+	executeTests := []struct {
+		name string
+		user accesstypes.User
+		want map[string][]any
+	}{
+		{
+			name: "chief's execute list follows each row's state across every edge",
+			user: "chief-alpha",
+			want: map[string][]any{
+				woManifoldID: {"ScheduleWorkOrder"}, // draft
+				woOvenID:     {"StartWorkOrder"},    // scheduled
+				woScrubberID: {"CompleteWorkOrder"}, // in_progress
+				woCraneID:    {},                    // completed
+			},
+		},
+		{
+			// The technician's List condition (assignedTeam IN subject.teams OR
+			// author = subject) already hides the unassigned rows, so only the
+			// visible ones pin here: the in_progress row offers Complete (Start
+			// is granted but its from set excludes the state), the completed
+			// row offers nothing.
+			name: "technician's execute list carries only the granted edges",
+			user: "tech-rivera",
+			want: map[string][]any{
+				woScrubberID: {"CompleteWorkOrder"}, // in_progress
+				woCraneID:    {},                    // completed
+			},
+		},
+	}
+	for _, tt := range executeTests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, body := doRequestAs(t, h, tt.user, http.MethodGet, "/api/waystations/ws-alpha/work-orders?capabilities=Execute", "")
+			if status != http.StatusOK {
+				t.Fatalf("GET status = %d, want %d (body %s)", status, http.StatusOK, body)
+			}
+
+			seen := make(map[string]bool, len(tt.want))
+			for _, row := range decodeRows(t, body) {
+				id, _ := row["id"].(string)
+				want, pinned := tt.want[id]
+				if !pinned {
+					continue
+				}
+				seen[id] = true
+
+				caps, _ := row["zzCapabilities"].(map[string]any)
+				if got := caps["Execute"]; !reflect.DeepEqual(got, want) {
+					t.Errorf("row %s Execute = %v, want %v", id, got, want)
+				}
+			}
+			for id := range tt.want {
+				if !seen[id] {
+					t.Errorf("row %s missing from the response", id)
+				}
+			}
+		})
+	}
 }

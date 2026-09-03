@@ -40,10 +40,10 @@
       <ng-container matColumnDef="actions">
         <th mat-header-cell *matHeaderCellDef></th>
         <td mat-cell *matCellDef="let requisition">
-          @if (requisition.statusId === status.Draft && canSubmit()) {
+          @if (canRun(requisition, methods.SubmitRequisition)) {
             <button mat-stroked-button (click)="submit(requisition); $event.stopPropagation()">Submit</button>
           }
-          @if (requisition.statusId === status.Submitted && canApprove()) {
+          @if (canRun(requisition, methods.ApproveRequisition)) {
             <button mat-stroked-button (click)="approve(requisition); $event.stopPropagation()">Approve</button>
           }
         </td>
@@ -119,7 +119,7 @@
         </form>
       }
 
-      @if (requisition.statusId === status.Submitted && canDecline()) {
+      @if (canRun(requisition, methods.DeclineRequisition)) {
         <form class="inline-form" (ngSubmit)="decline(requisition)">
           <mat-form-field appearance="outline">
             <mat-label>Decline Reason</mat-label>

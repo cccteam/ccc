@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
+import { Method } from '@cccteam/resource';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { DeclineReason, RequisitionStatus } from '@app/service/zz_gen_enums';
 import { RequisitionLines, Requisitions } from '@app/service/zz_gen_resources';
@@ -44,7 +45,11 @@ export class RequisitionsComponent {
   readonly status = RequisitionStatus;
   readonly declineReasons = Object.values(DeclineReason);
 
-  requisitions = this.ws.stationList((station) => station.requisitions);
+  readonly methods = Methods;
+
+  // The capability envelope rides every requisition row: Execute answers which
+  // declared transitions apply to its state — the same answer the server enforces.
+  requisitions = this.ws.stationList((station) => station.requisitions, { capabilities: ['Execute'] });
   lineRows = this.ws.stationList((station) => station.requisitionLines);
   catalogItems = this.ws.globalList((api) => api.catalogItems);
   columns = ['justification', 'status', 'requestedBy', 'totalCost', 'neededBy', 'actions'];
@@ -57,9 +62,12 @@ export class RequisitionsComponent {
   canCreate = computed(() => this.ws.can(Permissions.Create, Resources.Requisitions));
   canAddLine = computed(() => this.ws.can(Permissions.Create, Resources.RequisitionLines));
   canRemoveLine = computed(() => this.ws.can(Permissions.Delete, Resources.RequisitionLines));
-  canSubmit = computed(() => this.ws.can(Permissions.Execute, Methods.SubmitRequisition));
-  canApprove = computed(() => this.ws.can(Permissions.Execute, Methods.ApproveRequisition));
-  canDecline = computed(() => this.ws.can(Permissions.Execute, Methods.DeclineRequisition));
+
+  // Per-row affordances from the capability envelope: no statusId comparisons here —
+  // whether a transition button renders is the row's own answer.
+  canRun(requisition: Requisitions, method: Method): boolean {
+    return this.ws.stationApi().requisitions.rowCan(requisition, 'Execute', method);
+  }
 
   linesByRequisition = computed(() => {
     const grouped = new Map<string, RequisitionLines[]>();

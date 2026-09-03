@@ -236,6 +236,20 @@ func (p *PatchSet[Resource]) stampTenantKey() error {
 	return errors.Newf("tenant key column %q is not a field of resource %s", bindings.Domain.Column, q.resourceSet.BaseResource())
 }
 
+// TenantKeyEquals reports whether a row's tenant-key value equals the request
+// partition. It is the generated transition handlers' row-location test: a
+// mismatch renders the target NotFound, indistinguishable from a row that
+// does not exist. The domain converts into the value's own type exactly the
+// way the decode-seam stamp converts it.
+func TenantKeyEquals(value any, domain accesstypes.Domain) (bool, error) {
+	want, err := tenantKeyValue(reflect.TypeOf(value), domain)
+	if err != nil {
+		return false, errors.Wrap(err, "tenantKeyValue()")
+	}
+
+	return reflect.DeepEqual(value, want), nil
+}
+
 // tenantKeyValue converts the request's domain into the tenant column's Go
 // type: string-kinded types convert directly, everything else must implement
 // encoding.TextUnmarshaler (e.g. ccc.UUID).

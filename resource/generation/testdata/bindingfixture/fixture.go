@@ -282,3 +282,123 @@ type (
 		TaskID ccc.UUID `spanner:"TaskId"`
 	}
 )
+
+// TxnRunner mirrors the generated RPC interface's name so transition fixtures
+// can implement it — the extractor matches interfaces by name.
+type TxnRunner interface {
+	RunsInTxn()
+}
+
+// The transition fixtures: one well-formed shape and one struct per rejection
+// the resolver enforces.
+type (
+	// ApproveTask is the well-formed declared transition.
+	//
+	// @rpc
+	// @transition(StatefulTask, from: open, to: approved)
+	ApproveTask struct {
+		// @target
+		TaskID ccc.UUID
+		Note   string
+	}
+
+	// CloseTask exercises the multi-valued from set.
+	//
+	// @rpc
+	// @transition(StatefulTask, from: open, approved, to: closed)
+	CloseTask struct {
+		// @target
+		TaskID ccc.UUID
+	}
+
+	// @rpc
+	// @transition(Mystery, from: open, to: approved)
+	TransitionUnknownRoot struct {
+		// @target
+		TaskID ccc.UUID
+	}
+
+	// @rpc
+	// @transition(Ship, from: open, to: approved)
+	TransitionStatelessRoot struct {
+		// @target
+		TaskID ccc.UUID
+	}
+
+	// @rpc
+	// @transition(StatefulTask, from: bogus, to: approved)
+	TransitionBadFrom struct {
+		// @target
+		TaskID ccc.UUID
+	}
+
+	// @rpc
+	// @transition(StatefulTask, from: open, open, to: approved)
+	TransitionDuplicateFrom struct {
+		// @target
+		TaskID ccc.UUID
+	}
+
+	// @rpc
+	// @transition(StatefulTask, from: open, to: bogus)
+	TransitionBadTo struct {
+		// @target
+		TaskID ccc.UUID
+	}
+
+	// @rpc
+	// @transition(StatefulTask, from: open, to: approved)
+	TransitionNoTarget struct {
+		TaskID ccc.UUID
+	}
+
+	// @rpc
+	// @transition(StatefulTask, from: open, to: approved)
+	TransitionTwoTargets struct {
+		// @target
+		TaskID ccc.UUID
+		// @target
+		OtherID ccc.UUID
+	}
+
+	// @rpc
+	// @transition(StatefulTask, from: open, to: approved)
+	TransitionTargetTypeMismatch struct {
+		// @target
+		TaskID string
+	}
+
+	// @rpc
+	// @transition(StatefulTask, from: open, to: approved)
+	TransitionNotTxnRunner struct {
+		// @target
+		TaskID ccc.UUID
+	}
+
+	// @rpc
+	// @permissionScope(domain)
+	// @transition(StatefulTask, from: open, to: approved)
+	TransitionScopeMismatch struct {
+		// @target
+		TaskID ccc.UUID
+	}
+
+	// @rpc
+	TargetWithoutTransition struct {
+		// @target
+		TaskID ccc.UUID
+	}
+)
+
+func (ApproveTask) RunsInTxn()                  {}
+func (CloseTask) RunsInTxn()                    {}
+func (TransitionUnknownRoot) RunsInTxn()        {}
+func (TransitionStatelessRoot) RunsInTxn()      {}
+func (TransitionBadFrom) RunsInTxn()            {}
+func (TransitionDuplicateFrom) RunsInTxn()      {}
+func (TransitionBadTo) RunsInTxn()              {}
+func (TransitionNoTarget) RunsInTxn()           {}
+func (TransitionTwoTargets) RunsInTxn()         {}
+func (TransitionTargetTypeMismatch) RunsInTxn() {}
+func (TransitionScopeMismatch) RunsInTxn()      {}
+func (TargetWithoutTransition) RunsInTxn()      {}

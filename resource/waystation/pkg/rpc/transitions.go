@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/waystation/pkg/resources"
@@ -14,48 +13,10 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// The helpers below are the only writers of workflow state. Each enforces edge
-// legality only — what a role may do in each state is conditional grants, never code
-// here. State values are the generated enum constants, so a typo'd state fails to
-// compile instead of failing closed at runtime.
-
-// transitionRequisition moves a requisition along one edge, optionally recomputing and
-// freezing TotalCost from its lines (the submit edge).
-func transitionRequisition(ctx context.Context, txn resource.ReadWriteTransaction, id ccc.UUID, from, to resources.RequisitionStatus, recomputeTotal bool) error {
-	row, err := resources.NewRequisitionQuery().AddColumns(resources.NewRequisitionColumns().All()).SetID(id).Read(ctx, txn)
-	if err != nil {
-		return errors.Wrap(err, "resources.RequisitionQuery.Read()")
-	}
-	if row == nil {
-		return httpio.NewNotFoundMessagef("requisition %s does not exist", id)
-	}
-
-	if resources.RequisitionStatus(row.Data.StatusID) != from {
-		return httpio.NewBadRequestMessagef("requisition %s is %s; only a %s requisition can move to %s", id, row.Data.StatusID, from, to)
-	}
-
-	patch := resources.NewRequisitionUpdatePatch(id).SetStatusID(string(to))
-
-	if recomputeTotal {
-		total := decimal.Zero
-		lines := resources.NewRequisitionLineQuery().
-			AddColumns(resources.NewRequisitionLineColumns().All()).
-			SetRequisitionID(id)
-		for line, err := range lines.List(ctx, txn) {
-			if err != nil {
-				return errors.Wrap(err, "resources.RequisitionLineQuery.List()")
-			}
-			total = total.Add(line.Data.UnitCostSnapshot.Mul(decimal.NewFromInt(line.Data.Quantity)))
-		}
-		patch.SetTotalCost(total)
-	}
-
-	if err := patch.Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
-		return errors.Wrap(err, "resources.RequisitionUpdatePatch.Buffer()")
-	}
-
-	return nil
-}
+// The state-moving RPCs declare their edges (@transition), so the generated
+// handlers own edge legality and the status stamps. The helpers below carry
+// the business effects that ride alongside — and the two write paths that are
+// not state transitions at all (Nudge touches, Receive stamps an arrival).
 
 // verifyApprovalLimit rejects an approval whose total exceeds the approver's limit on
 // their StaffMember row. No row means no approval authority at all.
@@ -85,68 +46,6 @@ func verifyApprovalLimit(ctx context.Context, txn resource.ReadWriteTransaction,
 
 	if row.Data.TotalCost.GreaterThan(*limit) {
 		return httpio.NewForbiddenMessagef("requisition total %s exceeds your approval limit of %s", row.Data.TotalCost, *limit)
-	}
-
-	return nil
-}
-
-// transitionWorkOrder moves a work order along one edge.
-func transitionWorkOrder(ctx context.Context, txn resource.ReadWriteTransaction, id ccc.UUID, from, to resources.WorkOrderStatus) (*resources.WorkOrder, error) {
-	row, err := resources.NewWorkOrderQuery().AddColumns(resources.NewWorkOrderColumns().All()).SetID(id).Read(ctx, txn)
-	if err != nil {
-		return nil, errors.Wrap(err, "resources.WorkOrderQuery.Read()")
-	}
-	if row == nil {
-		return nil, httpio.NewNotFoundMessagef("work order %s does not exist", id)
-	}
-
-	if resources.WorkOrderStatus(row.Data.StatusID) != from {
-		return nil, httpio.NewBadRequestMessagef("work order %s is %s; only a %s work order can move to %s", id, row.Data.StatusID, from, to)
-	}
-
-	if err := resources.NewWorkOrderUpdatePatch(id).SetStatusID(string(to)).Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
-		return nil, errors.Wrap(err, "resources.WorkOrderUpdatePatch.Buffer()")
-	}
-
-	return &row.Data, nil
-}
-
-// scheduleWorkOrder assigns the team and due date on the draft -> scheduled edge.
-func scheduleWorkOrder(ctx context.Context, txn resource.ReadWriteTransaction, id, teamID ccc.UUID, dueAt time.Time) error {
-	row, err := resources.NewWorkOrderQuery().AddColumns(resources.NewWorkOrderColumns().All()).SetID(id).Read(ctx, txn)
-	if err != nil {
-		return errors.Wrap(err, "resources.WorkOrderQuery.Read()")
-	}
-	if row == nil {
-		return httpio.NewNotFoundMessagef("work order %s does not exist", id)
-	}
-
-	if resources.WorkOrderStatus(row.Data.StatusID) != resources.DraftWorkOrderStatus {
-		return httpio.NewBadRequestMessagef("work order %s is %s; only a draft work order can be scheduled", id, row.Data.StatusID)
-	}
-
-	patch := resources.NewWorkOrderUpdatePatch(id).
-		SetStatusID(string(resources.ScheduledWorkOrderStatus)).
-		SetAssignedTeamID(ccc.NullUUID{UUID: teamID, Valid: true}).
-		SetDueAt(&dueAt)
-	if err := patch.Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
-		return errors.Wrap(err, "resources.WorkOrderUpdatePatch.Buffer()")
-	}
-
-	return nil
-}
-
-// completeWorkOrder runs the in_progress -> completed edge and stamps the asset's
-// LastServicedAt in the same transaction. The completion edge owns that stamp:
-// LastServicedAt is output_only domain data, written here and nowhere else.
-func completeWorkOrder(ctx context.Context, txn resource.ReadWriteTransaction, id ccc.UUID) error {
-	order, err := transitionWorkOrder(ctx, txn, id, resources.InProgressWorkOrderStatus, resources.CompletedWorkOrderStatus)
-	if err != nil {
-		return err
-	}
-
-	if err := resources.NewAssetUpdatePatch(order.AssetID).SetLastServicedAt(&cloudspanner.CommitTimestamp).Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
-		return errors.Wrap(err, "resources.AssetUpdatePatch.Buffer()")
 	}
 
 	return nil

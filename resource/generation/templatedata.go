@@ -330,6 +330,9 @@ type rpcHandlerData struct {
 	Package             string
 	ApplicationName     string
 	ReceiverName        string
+	// ResourcesPackage names the resources package, whose generated query and
+	// patch builders the declared-transition frame works through.
+	ResourcesPackage string
 }
 
 func (d *rpcHandlerData) typeImports() []fixerImport {

@@ -184,3 +184,134 @@ func TestQuerySet_stmt_capabilities(t *testing.T) {
 		})
 	}
 }
+
+// executeCollection is renderCollection plus the transition vocabulary: two
+// RPC method resources whose declared transitions target the enforcement
+// resource, and the uniform state attribute their membership booleans lower
+// against.
+func executeCollection(t *testing.T) *GeneratedCollection {
+	t.Helper()
+
+	g, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{
+		{
+			Name:        enforcedResource,
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Read},
+			Attributes: []AttributeData{
+				{Name: "owner", Column: "Owner", Type: AttributeTypeString},
+				{Name: StateAttribute, Column: "State", Type: AttributeTypeString},
+			},
+			Domain: &DomainBindingData{Column: "Station"},
+		},
+		{
+			Name:        "CancelTask",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Execute},
+			Transition:  &TransitionData{Target: enforcedResource, From: []string{"draft", "scheduled"}, To: "canceled"},
+		},
+		{
+			Name:        "StartTask",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Execute},
+			Transition:  &TransitionData{Target: enforcedResource, From: []string{"scheduled"}, To: "in_progress"},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewGeneratedCollection() error = %v", err)
+	}
+
+	return g
+}
+
+// TestQuerySet_stmt_executeCapability pins the Execute affordance (§09/§13):
+// granted transition methods gate on the row's pre-image state membership —
+// one shared boolean per distinct from set in the reserved array column —
+// an ungranted method never appears, and a resource nothing transitions onto
+// answers an empty list on the byte-identical statement.
+func TestQuerySet_stmt_executeCapability(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	baseSQL := "SELECT Id, Public, Tagged FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain)"
+
+	tests := []struct {
+		name       string
+		collection func(*testing.T) *GeneratedCollection
+		byPerm     map[accesstypes.Permission]accesstypes.Decisions
+		wantSQL    string
+		checks     []bool
+		want       map[accesstypes.Permission]any
+	}{
+		{
+			name:       "granted methods gate on membership booleans, one per distinct from set",
+			collection: executeCollection,
+			byPerm: map[accesstypes.Permission]accesstypes.Decisions{
+				accesstypes.Execute: {"CancelTask": accesstypes.Granted(), "StartTask": accesstypes.Granted()},
+			},
+			wantSQL: "SELECT Id, Public, Tagged, ARRAY<BOOL>[(`enforcementResources`.`State` IN (@_c1, @_c2)), (`enforcementResources`.`State` IN (@_c3))] AS zzCapabilityChecks " +
+				"FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain)",
+			checks: []bool{false, true},
+			want:   map[accesstypes.Permission]any{accesstypes.Execute: []string{"StartTask"}},
+		},
+		{
+			name:       "an ungranted method never appears",
+			collection: executeCollection,
+			byPerm: map[accesstypes.Permission]accesstypes.Decisions{
+				accesstypes.Execute: {"StartTask": accesstypes.Granted()},
+			},
+			wantSQL: "SELECT Id, Public, Tagged, ARRAY<BOOL>[(`enforcementResources`.`State` IN (@_c1))] AS zzCapabilityChecks " +
+				"FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain)",
+			checks: []bool{true},
+			want:   map[accesstypes.Permission]any{accesstypes.Execute: []string{"StartTask"}},
+		},
+		{
+			name:       "no declared transitions answers empty on the byte-identical statement",
+			collection: renderCollection,
+			byPerm:     map[accesstypes.Permission]accesstypes.Decisions{},
+			wantSQL:    baseSQL,
+			want:       map[accesstypes.Permission]any{accesstypes.Execute: []string{}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rSet, err := NewSet[enforcementResource, enforcementReadRequest](accesstypes.Read)
+			if err != nil {
+				t.Fatalf("NewSet() error = %v", err)
+			}
+
+			q := NewQuerySet(NewMetadata[enforcementResource]())
+			q.env = accesstypes.EnvironmentAt(now)
+			q.jsonNames = map[accesstypes.Field]string{"ID": "id", "Public": "public", "Tagged": "tagged"}
+			q.collection = tt.collection(t)
+			q.EnableUserPermissionEnforcement(rSet, capStubPermissions{byPerm: tt.byPerm}, testScope, accesstypes.Read)
+			for _, field := range []accesstypes.Field{"ID", "Public", "Tagged"} {
+				q.AddField(field)
+			}
+			q.RequestCapabilities(accesstypes.Execute)
+
+			if err := q.checkPermissions(t.Context(), SpannerDBType); err != nil {
+				t.Fatalf("QuerySet.checkPermissions() error = %v", err)
+			}
+
+			stmt, err := q.stmt(SpannerDBType)
+			if err != nil {
+				t.Fatalf("QuerySet.stmt() error = %v", err)
+			}
+
+			if got := normalizeSQL(stmt.SQL); got != tt.wantSQL {
+				t.Errorf("QuerySet.stmt() SQL =\n%s\nwant\n%s", got, tt.wantSQL)
+			}
+			if stmt.capabilityPlan == nil {
+				t.Fatal("QuerySet.stmt() capabilityPlan = nil, want a plan")
+			}
+
+			got := stmt.capabilityPlan.assemble(tt.checks)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("capabilityPlan.assemble() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

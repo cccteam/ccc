@@ -10,6 +10,7 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/waystation/pkg/resources"
 	"github.com/cccteam/ccc/resource/waystation/pkg/router"
 	"github.com/cccteam/ccc/resource/waystation/pkg/rpc"
 	"github.com/cccteam/ccc/tracer"
@@ -36,8 +37,35 @@ func (a *App) StartWorkOrder() http.HandlerFunc {
 
 		p := (*rpc.StartWorkOrder)(params)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
+			// Declared transition: locate the target row within the tenancy
+			// predicate and verify the pre-image state before the body runs.
+			row, err := resources.NewWorkOrderQuery().
+				AddColumns(resources.NewWorkOrderColumns().StatusID().WaystationID()).
+				SetID(p.WorkOrderID).
+				Read(ctx, txn)
+			if err != nil {
+				return errors.Wrap(err, "resources.WorkOrderQuery.Read()")
+			}
+			if row == nil {
+				return httpio.NewNotFoundMessagef("WorkOrder %s does not exist", p.WorkOrderID)
+			}
+			if ok, err := resource.TenantKeyEquals(row.Data.WaystationID, domain); err != nil {
+				return errors.Wrap(err, "resource.TenantKeyEquals()")
+			} else if !ok {
+				return httpio.NewNotFoundMessagef("WorkOrder %s does not exist", p.WorkOrderID)
+			}
+			switch row.Data.StatusID {
+			case "scheduled":
+			default:
+				return httpio.NewForbiddenMessagef("StartWorkOrder runs from a scheduled WorkOrder; %s is %q", p.WorkOrderID, row.Data.StatusID)
+			}
 			if err := p.Execute(ctx, txn, a.RPCClient()); err != nil {
 				return errors.Wrap(err, "Transaction.Execute()")
+			}
+
+			// The framework stamps the declared target state as the last mutation.
+			if err := resources.NewWorkOrderUpdatePatch(p.WorkOrderID).SetStatusID("in_progress").Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
+				return errors.Wrap(err, "resources.WorkOrderUpdatePatch.Buffer()")
 			}
 
 			return nil

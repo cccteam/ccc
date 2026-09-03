@@ -57,6 +57,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 		Package:             r.handler.Package(),
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
+		ResourcesPackage:    r.resource.Package(),
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}

@@ -184,6 +184,16 @@ func (c *client) hasRPCMethods() bool {
 	return len(c.rpcMethods) > 0
 }
 
+func (c *client) hasRPCMethodWithTransition() bool {
+	for _, rpcMethod := range c.rpcMethods {
+		if rpcMethod.Transition != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (c *client) localPackageImports() string {
 	// Standard-library packages are skipped: goimports resolves them natively into the
 	// stdlib import group, whereas rendering them here puts them in the local-package
@@ -628,7 +638,7 @@ func typescriptMethodImports(t *typescriptGenerator) string {
 	if t.hasRPCMethods() {
 		pkgs = append(pkgs, "Methods")
 	}
-	if t.hasRPCMethodWithEnumeratedResource() {
+	if t.hasRPCMethodWithEnumeratedResource() || t.hasRPCMethodWithTransition() {
 		pkgs = append(pkgs, "Resources")
 	}
 

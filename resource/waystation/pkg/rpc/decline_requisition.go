@@ -12,18 +12,21 @@ import (
 type (
 	// DeclineRequisition moves a requisition submitted -> declined with a reason
 	// validated against the generated DeclineReason enum constants — the gui offers
-	// the same values from the generated TypeScript enums.
+	// the same values from the generated TypeScript enums. The declared transition
+	// owns the edge check and the status stamp; the body owns the reason.
 	//
 	// @rpc
 	// @permissionScope(domain)
+	// @transition(Requisition, from: submitted, to: declined)
 	DeclineRequisition struct {
+		// @target
 		RequisitionID ccc.UUID
 		Reason        string
 	}
 )
 
 // Execute implements TxnRunner.
-func (m *DeclineRequisition) Execute(ctx context.Context, txn resource.ReadWriteTransaction, _ *Client) error {
+func (m *DeclineRequisition) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
 	switch resources.DeclineReason(m.Reason) {
 	case resources.OverBudgetDeclineReason, resources.DuplicateRequestDeclineReason,
 		resources.NotNeededDeclineReason, resources.SupplierIssueDeclineReason:
@@ -31,5 +34,5 @@ func (m *DeclineRequisition) Execute(ctx context.Context, txn resource.ReadWrite
 		return httpio.NewBadRequestMessagef("%q is not a decline reason", m.Reason)
 	}
 
-	return transitionRequisition(ctx, txn, m.RequisitionID, resources.SubmittedRequisitionStatus, resources.DeclinedRequisitionStatus, false)
+	return nil
 }

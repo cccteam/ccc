@@ -21,20 +21,34 @@ type ArgSpec struct {
 
 	// Required is the subset of Keys that must appear.
 	Required []string
+
+	// Multi is the subset of Keys that accept a value list: bare values
+	// following the key attach to it (`from: a, b` reads as from = [a, b])
+	// until the next named argument.
+	Multi []string
 }
 
 // NamedArgs is one keyword invocation's parsed argument list: the leading
 // positional values in order, then the named arguments.
 type NamedArgs struct {
 	Positional []string
-	named      map[string]string
+	named      map[string][]string
 }
 
-// Named returns the value of a named argument and whether it appeared.
+// Named returns the value of a named argument and whether it appeared. For a
+// multi-valued key it returns the first value; use List for all of them.
 func (n NamedArgs) Named(key string) (string, bool) {
-	value, ok := n.named[key]
+	values, ok := n.named[key]
+	if !ok || len(values) == 0 {
+		return "", false
+	}
 
-	return value, ok
+	return values[0], true
+}
+
+// List returns every value of a named argument, in declaration order.
+func (n NamedArgs) List(key string) []string {
+	return n.named[key]
 }
 
 // ParseInvocations parses every invocation of a keyword against spec — one
@@ -42,7 +56,7 @@ func (n NamedArgs) Named(key string) (string, bool) {
 // come first, named arguments (key: value) after; an empty value, an unknown
 // or duplicate key, a missing required key, or a wrong positional count is an
 // error.
-func (a Arg) ParseInvocations(spec ArgSpec) ([]NamedArgs, error) {
+func (a Arg) ParseInvocations(spec *ArgSpec) ([]NamedArgs, error) {
 	invocations := make([]NamedArgs, 0, a.Count())
 	for invocation := range a.Seq() {
 		parsed, err := parseInvocation(invocation, spec)
@@ -55,9 +69,10 @@ func (a Arg) ParseInvocations(spec ArgSpec) ([]NamedArgs, error) {
 	return invocations, nil
 }
 
-func parseInvocation(invocation string, spec ArgSpec) (NamedArgs, error) {
-	args := NamedArgs{named: make(map[string]string)}
+func parseInvocation(invocation string, spec *ArgSpec) (NamedArgs, error) {
+	args := NamedArgs{named: make(map[string][]string)}
 
+	var lastKey string
 	for part := range strings.SplitSeq(invocation, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -67,6 +82,14 @@ func parseInvocation(invocation string, spec ArgSpec) (NamedArgs, error) {
 		key, value, isNamed := strings.Cut(part, ":")
 		if !isNamed {
 			if len(args.named) > 0 {
+				// A bare value after a named argument continues the preceding
+				// key's list when that key is multi-valued.
+				if lastKey != "" && slices.Contains(spec.Multi, lastKey) {
+					args.named[lastKey] = append(args.named[lastKey], part)
+
+					continue
+				}
+
 				return NamedArgs{}, errors.Newf("positional argument %q after a named argument in %q", part, invocation)
 			}
 			args.Positional = append(args.Positional, part)
@@ -87,7 +110,8 @@ func parseInvocation(invocation string, spec ArgSpec) (NamedArgs, error) {
 		if _, dup := args.named[key]; dup {
 			return NamedArgs{}, errors.Newf("argument %q given twice in %q", key, invocation)
 		}
-		args.named[key] = value
+		args.named[key] = []string{value}
+		lastKey = key
 	}
 
 	if len(args.Positional) != spec.Positional {

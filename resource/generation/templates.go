@@ -1658,8 +1658,16 @@ export interface RPCFieldMeta {
   enumeratedResource?: Resource;
 }
 
+/** A declared workflow transition: the resource the method moves, the states it runs from, and the state it stamps. */
+export interface MethodTransition {
+  target: Resource;
+  from: string[];
+  to: string;
+}
+
 export interface MethodMeta {
   route: string;
+  transition?: MethodTransition;
   fields: RPCFieldMeta[];
 }
 
@@ -1669,6 +1677,9 @@ const methodMap: MethodMap = {
   {{- range $rpcMethod := .RPCMethods }}
   [Methods.{{ $rpcMethod.Name }}]: {
     route: '{{ Kebab ($rpcMethod.Name) }}',
+    {{- with $t := $rpcMethod.Transition }}
+    transition: { target: Resources.{{ $t.RootResource }}, from: [{{ range $i, $v := $t.From }}{{ if $i }}, {{ end }}'{{ $v }}'{{ end }}], to: '{{ $t.To }}' },
+    {{- end }}
     {{- if $rpcMethod.Fields }}
     fields: [
     {{- range $field := $rpcMethod.Fields }}
@@ -1863,6 +1874,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "{{ .Name }}", UserColumn: "{{ .UserColumn }}", Column: "{{ .Column }}"{{ BindingHops .Path }}},
 					{{- end }}
 				},
+				{{- end }}
+				{{- with .Transition }}
+				Transition: &resource.TransitionData{Target: "{{ .Target }}", From: []string{ {{- range $i, $v := .From }}{{ if $i }}, {{ end }}"{{ $v }}"{{ end -}} }, To: "{{ .To }}"},
 				{{- end }}
 			},
 			{{- end }}
@@ -2381,9 +2395,42 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		{{- end }}
 		{{- if .RPCMethod.IsTxnRunner }}
 			if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
+				{{- with $t := .RPCMethod.Transition }}
+				// Declared transition: locate the target row within the tenancy
+				// predicate and verify the pre-image state before the body runs.
+				row, err := {{ $.ResourcesPackage }}.New{{ $t.RootStruct }}Query().
+					AddColumns({{ $.ResourcesPackage }}.New{{ $t.RootStruct }}Columns().{{ $t.StateField }}(){{ if $t.TenantField }}.{{ $t.TenantField }}(){{ end }}).
+					Set{{ $t.RootPKField }}(p.{{ $t.TargetField }}).
+					Read(ctx, txn)
+				if err != nil {
+					return errors.Wrap(err, "{{ $.ResourcesPackage }}.{{ $t.RootStruct }}Query.Read()")
+				}
+				if row == nil {
+					return httpio.NewNotFoundMessagef("{{ $t.RootStruct }} %s does not exist", p.{{ $t.TargetField }})
+				}
+				{{- if $t.TenantField }}
+				if ok, err := resource.TenantKeyEquals(row.Data.{{ $t.TenantField }}, domain); err != nil {
+					return errors.Wrap(err, "resource.TenantKeyEquals()")
+				} else if !ok {
+					return httpio.NewNotFoundMessagef("{{ $t.RootStruct }} %s does not exist", p.{{ $t.TargetField }})
+				}
+				{{- end }}
+				switch row.Data.{{ $t.StateField }} {
+				case {{ $t.FromCases }}:
+				default:
+					return httpio.NewForbiddenMessagef("{{ $.RPCMethod.Name }} runs from a {{ $t.FromWords }} {{ $t.RootStruct }}; %s is %q", p.{{ $t.TargetField }}, row.Data.{{ $t.StateField }})
+				}
+				{{ end -}}
 				if err := p.Execute(ctx, txn, {{ $.ReceiverName }}.RPCClient()); err != nil {
 					return errors.Wrap(err, "Transaction.Execute()")
 				}
+				{{- with $t := .RPCMethod.Transition }}
+
+				// The framework stamps the declared target state as the last mutation.
+				if err := {{ $.ResourcesPackage }}.New{{ $t.RootStruct }}UpdatePatch(p.{{ $t.TargetField }}).Set{{ $t.StateField }}("{{ $t.To }}").Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
+					return errors.Wrap(err, "{{ $.ResourcesPackage }}.{{ $t.RootStruct }}UpdatePatch.Buffer()")
+				}
+				{{- end }}
 
 				return nil
 			}); err != nil {

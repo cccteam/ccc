@@ -338,6 +338,10 @@ func TestGeneratedCollection_roundTrip(t *testing.T) {
 		t.Fatalf("AddResourceSet() error = %v", err)
 	}
 	b.SetResourceComputed(accesstypes.GlobalPermissionScope, "Summaries")
+	if err := b.AddMethodResource(accesstypes.GlobalPermissionScope, accesstypes.Execute, "ShipWidget"); err != nil {
+		t.Fatalf("AddMethodResource() error = %v", err)
+	}
+	b.SetMethodTransition(accesstypes.GlobalPermissionScope, "ShipWidget", TransitionData{Target: "Widgets", From: []string{"packed", "labeled"}, To: "shipped"})
 
 	data := b.Data()
 	g, err := NewGeneratedCollection(data)
@@ -347,6 +351,14 @@ func TestGeneratedCollection_roundTrip(t *testing.T) {
 
 	if diff := cmp.Diff(data, g.Data()); diff != "" {
 		t.Errorf("GeneratedCollection.Data() round trip mismatch (-want +got):\n%s", diff)
+	}
+
+	wantTransitions := []TransitionMethod{{Method: "ShipWidget", Transition: TransitionData{Target: "Widgets", From: []string{"packed", "labeled"}, To: "shipped"}}}
+	if diff := cmp.Diff(wantTransitions, g.TransitionsOnto("Widgets")); diff != "" {
+		t.Errorf("TransitionsOnto(Widgets) mismatch (-want +got):\n%s", diff)
+	}
+	if got := g.TransitionsOnto("Summaries"); got != nil {
+		t.Errorf("TransitionsOnto(Summaries) = %v, want none", got)
 	}
 
 	tests := []struct {

@@ -94,8 +94,16 @@ export interface RPCFieldMeta {
   enumeratedResource?: Resource;
 }
 
+/** A declared workflow transition: the resource the method moves, the states it runs from, and the state it stamps. */
+export interface MethodTransition {
+  target: Resource;
+  from: string[];
+  to: string;
+}
+
 export interface MethodMeta {
   route: string;
+  transition?: MethodTransition;
   fields: RPCFieldMeta[];
 }
 
@@ -104,18 +112,21 @@ export type MethodMap = Record<Method, MethodMeta>;
 const methodMap: MethodMap = {
   [Methods.ApproveRequisition]: {
     route: 'approve-requisition',
+    transition: { target: Resources.Requisitions, from: ['submitted'], to: 'approved' },
     fields: [
       { fieldName: 'requisitionId', displayType: 'uuid' },
     ],
   },
   [Methods.CompleteWorkOrder]: {
     route: 'complete-work-order',
+    transition: { target: Resources.WorkOrders, from: ['in_progress'], to: 'completed' },
     fields: [
       { fieldName: 'workOrderId', displayType: 'uuid' },
     ],
   },
   [Methods.DeclineRequisition]: {
     route: 'decline-requisition',
+    transition: { target: Resources.Requisitions, from: ['submitted'], to: 'declined' },
     fields: [
       { fieldName: 'requisitionId', displayType: 'uuid' },
       { fieldName: 'reason', displayType: 'string' },
@@ -150,6 +161,7 @@ const methodMap: MethodMap = {
   },
   [Methods.ScheduleWorkOrder]: {
     route: 'schedule-work-order',
+    transition: { target: Resources.WorkOrders, from: ['draft'], to: 'scheduled' },
     fields: [
       { fieldName: 'workOrderId', displayType: 'uuid' },
       { fieldName: 'assignedTeamId', displayType: 'enumerated', enumeratedResource: Resources.Teams },
@@ -158,12 +170,14 @@ const methodMap: MethodMap = {
   },
   [Methods.StartWorkOrder]: {
     route: 'start-work-order',
+    transition: { target: Resources.WorkOrders, from: ['scheduled'], to: 'in_progress' },
     fields: [
       { fieldName: 'workOrderId', displayType: 'uuid' },
     ],
   },
   [Methods.SubmitRequisition]: {
     route: 'submit-requisition',
+    transition: { target: Resources.Requisitions, from: ['draft'], to: 'submitted' },
     fields: [
       { fieldName: 'requisitionId', displayType: 'uuid' },
     ],

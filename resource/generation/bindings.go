@@ -189,7 +189,7 @@ func validateDomainBinding(res *resourceInfo, structName string) error {
 // bare is a column binding on the anchor itself; via: resolves a join path
 // leaving through the anchor.
 func (c *client) resolveAttribute(anchor *resourceField, arg genlang.Arg, structsByTable map[string]*parser.Struct) (*attributeBinding, error) {
-	invocations, err := arg.ParseInvocations(genlang.ArgSpec{Positional: 1, Keys: []string{"via"}})
+	invocations, err := arg.ParseInvocations(&genlang.ArgSpec{Positional: 1, Keys: []string{"via"}})
 	if err != nil {
 		return nil, errors.Wrapf(err, "@%s", attributeKeyword)
 	}
@@ -246,7 +246,7 @@ func (c *client) resolveDomain(anchor *resourceField, arg genlang.Arg, structsBy
 		return binding, nil
 	}
 
-	invocations, err := arg.ParseInvocations(genlang.ArgSpec{Keys: []string{"via"}})
+	invocations, err := arg.ParseInvocations(&genlang.ArgSpec{Keys: []string{"via"}})
 	if err != nil {
 		return nil, errors.Wrapf(err, "@%s", domainKeyword)
 	}
@@ -272,7 +272,7 @@ func (c *client) resolveSubjectBindings(res *resourceInfo, anchor *resourceField
 		return nil, errors.Newf("@%s requires its anchor column to be the primary key or unique-indexed, so the database enforces exactly one row per user", subjectValueKeyword)
 	}
 
-	invocations, err := arg.ParseInvocations(genlang.ArgSpec{Positional: 1, Keys: []string{"value"}, Required: []string{"value"}})
+	invocations, err := arg.ParseInvocations(&genlang.ArgSpec{Positional: 1, Keys: []string{"value"}, Required: []string{"value"}})
 	if err != nil {
 		return nil, errors.Wrapf(err, "@%s", keyword)
 	}

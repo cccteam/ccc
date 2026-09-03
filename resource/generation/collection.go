@@ -342,6 +342,14 @@ func (r *resourceGenerator) collectRPCRegistrations(b *resource.CollectionBuilde
 		if err := b.AddMethodResource(scopeOrGlobal(method.PermissionScope), accesstypes.Execute, accesstypes.Resource(method.Name())); err != nil {
 			return errors.Wrapf(err, "registering RPC method %q", method.Name())
 		}
+
+		if t := method.Transition; t != nil {
+			b.SetMethodTransition(scopeOrGlobal(method.PermissionScope), accesstypes.Resource(method.Name()), resource.TransitionData{
+				Target: accesstypes.Resource(t.RootResource),
+				From:   t.From,
+				To:     t.To,
+			})
+		}
 	}
 
 	return nil

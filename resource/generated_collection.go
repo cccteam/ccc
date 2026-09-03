@@ -118,6 +118,19 @@ type CollectionResource struct {
 	Domain        *DomainBindingData
 	SubjectSets   []SubjectBindingData
 	SubjectValues []SubjectBindingData
+
+	// Transition is an RPC method resource's declared state transition
+	// (@transition, design plan §09); nil for everything else.
+	Transition *TransitionData
+}
+
+// TransitionData records a declared state transition on an RPC method
+// resource: the workflow root it moves, the pre-image states it may run from,
+// and the state the generated handler stamps after the body.
+type TransitionData struct {
+	Target accesstypes.Resource
+	From   []string
+	To     string
 }
 
 // TagData describes one field-level tag registration. An empty Permissions slice records
@@ -170,6 +183,12 @@ func (b *CollectionBuilder) SetResourceComputed(scope accesstypes.PermissionScop
 	b.g.setResourceComputed(scope, res)
 }
 
+// SetMethodTransition records an RPC method resource's declared state transition
+// (@transition) within scope.
+func (b *CollectionBuilder) SetMethodTransition(scope accesstypes.PermissionScope, method accesstypes.Resource, transition TransitionData) {
+	b.g.setMethodTransition(scope, method, transition)
+}
+
 // Data returns the canonical, deterministically sorted form of everything registered so
 // far.
 func (b *CollectionBuilder) Data() CollectionData {
@@ -198,6 +217,7 @@ type GeneratedCollection struct {
 	immutableFields map[accesstypes.PermissionScope]immutableFieldMap
 	bindings        map[accesstypes.PermissionScope]map[accesstypes.Resource]Bindings
 	computed        map[accesstypes.PermissionScope]map[accesstypes.Resource]struct{}
+	transitions     map[accesstypes.PermissionScope]map[accesstypes.Resource]TransitionData
 }
 
 // newGeneratedCollection creates an empty, populatable GeneratedCollection.
@@ -208,6 +228,7 @@ func newGeneratedCollection() *GeneratedCollection {
 		immutableFields: make(map[accesstypes.PermissionScope]immutableFieldMap, 2),
 		bindings:        make(map[accesstypes.PermissionScope]map[accesstypes.Resource]Bindings, 2),
 		computed:        make(map[accesstypes.PermissionScope]map[accesstypes.Resource]struct{}, 2),
+		transitions:     make(map[accesstypes.PermissionScope]map[accesstypes.Resource]TransitionData, 2),
 	}
 }
 
@@ -274,6 +295,13 @@ func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 
 		if res.Computed {
 			g.setResourceComputed(res.Scope, res.Name)
+		}
+
+		if res.Transition != nil {
+			if res.Transition.Target == "" || len(res.Transition.From) == 0 || res.Transition.To == "" {
+				return nil, errors.Newf("method resource %q declares an incomplete transition", res.Name)
+			}
+			g.setMethodTransition(res.Scope, res.Name, *res.Transition)
 		}
 	}
 
@@ -391,6 +419,41 @@ func (g *GeneratedCollection) setResourceComputed(scope accesstypes.PermissionSc
 		g.computed[scope] = make(map[accesstypes.Resource]struct{})
 	}
 	g.computed[scope][res] = struct{}{}
+}
+
+// setMethodTransition records an RPC method resource's declared transition
+// within scope.
+func (g *GeneratedCollection) setMethodTransition(scope accesstypes.PermissionScope, method accesstypes.Resource, transition TransitionData) {
+	if g.transitions[scope] == nil {
+		g.transitions[scope] = make(map[accesstypes.Resource]TransitionData)
+	}
+	g.transitions[scope][method] = transition
+}
+
+// TransitionMethod pairs an RPC method resource with its declared transition.
+type TransitionMethod struct {
+	Method     accesstypes.Resource
+	Transition TransitionData
+}
+
+// TransitionsOnto lists the RPC method resources whose declared transitions
+// target res, sorted by method name — the capability envelope's Execute
+// candidates. Every scope is searched: a transition's method and root share
+// their scope kind by construction.
+func (g *GeneratedCollection) TransitionsOnto(target accesstypes.Resource) []TransitionMethod {
+	var methods []TransitionMethod
+	for _, store := range g.transitions {
+		for method, transition := range store {
+			if transition.Target == target {
+				methods = append(methods, TransitionMethod{Method: method, Transition: transition})
+			}
+		}
+	}
+	slices.SortFunc(methods, func(a, b TransitionMethod) int {
+		return strings.Compare(string(a.Method), string(b.Method))
+	})
+
+	return methods
 }
 
 // Resources returns a sorted list of all unique base resource names in the collection.
@@ -589,6 +652,11 @@ func collectionResourceKeys(g *GeneratedCollection) []resourceKey {
 			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
 		}
 	}
+	for scope, store := range g.transitions {
+		for res := range store {
+			keySet[resourceKey{scope: scope, name: res}] = struct{}{}
+		}
+	}
 
 	keys := make([]resourceKey, 0, len(keySet))
 	for key := range keySet {
@@ -668,6 +736,11 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 
 		if bindings, ok := g.bindings[key.scope][key.name]; ok {
 			applyBindingData(&res, &bindings)
+		}
+
+		if transition, ok := g.transitions[key.scope][key.name]; ok {
+			transition.From = slices.Clone(transition.From)
+			res.Transition = &transition
 		}
 
 		data.Resources = append(data.Resources, res)

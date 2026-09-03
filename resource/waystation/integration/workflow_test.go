@@ -10,6 +10,7 @@ package integration
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,11 +91,15 @@ func TestWorkOrderWorkflow(t *testing.T) {
 		fmt.Sprintf(`[{"op":"add","path":"/waystations/ws-alpha/work-order-tasks/%s/1","value":{"instructions":"Swap filters","done":false}}]`, woID))
 	assertStatus(t, status, http.StatusOK, body)
 
-	// Illegal edge: a draft cannot start.
+	// Illegal edge: a draft cannot start. The declared transition (@transition)
+	// answers Forbidden, naming the edge.
 	status, body = doRequest(t, h, http.MethodPost, "/api/waystations/ws-alpha/start-work-order",
 		fmt.Sprintf(`{"workOrderId":%q}`, woID))
-	if status != http.StatusBadRequest {
-		t.Fatalf("start a draft: status = %d, want 400: %s", status, body)
+	if status != http.StatusForbidden {
+		t.Fatalf("start a draft: status = %d, want 403: %s", status, body)
+	}
+	if !strings.Contains(string(body), "StartWorkOrder runs from a scheduled WorkOrder") {
+		t.Fatalf("start a draft: refusal must name the transition and its from set: %s", body)
 	}
 
 	// Legal walk: schedule -> start -> complete.

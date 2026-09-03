@@ -52,12 +52,14 @@ All login passwords are `waystation`.
   SHIPPED config through the REAL engine and pins every persona view. The demo product
   and the regression suite cannot drift apart.
 - **Workflows** (work orders, requisitions) are enforced entirely through the stateful
-  pattern: `@state` makes the status column structurally unwritable, transitions happen
-  only through Execute-gated RPCs whose bodies check edge legality only, and what each
-  role may do in each state is a conditional grant on the uniform `state` binding
-  (readable on the root and every `@stateRoot` member). The committed
-  `zz_gen_workflow_*.dot` graphs plus the grant matrix are the whole specification;
-  there is no imperative permission code anywhere in the app.
+  pattern: `@state` makes the status column structurally unwritable, every state move is
+  a declared `@transition` on an Execute-gated RPC — the generated handler locates the
+  row within the station, verifies the pre-image state, and stamps the target state, so
+  the bodies carry only business effects — and what each role may do in each state is a
+  conditional grant on the uniform `state` binding (readable on the root and every
+  `@stateRoot` member). The committed `zz_gen_workflow_*.dot` graphs (membership plus
+  the labeled transition edges) and the grant matrix are the whole specification; there
+  is no imperative permission or edge code anywhere in the app.
 - **Structural enforcement** (fail-closed field permissions, outlet exclusivity,
   suppressed routes, domain guard) — `integration/structural_test.go`; Team is the
   deliberately minimal resource (no vocabulary beyond the mandatory `@domain`).

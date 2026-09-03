@@ -313,6 +313,9 @@ type rpcMethodInfo struct {
 	// PermissionScope is the scope the method's registration uses
 	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
 	PermissionScope accesstypes.PermissionScope
+	// Transition is the method's validated @transition declaration; nil for a
+	// plain RPC method, whose generated handler is unchanged.
+	Transition *rpcTransition
 }
 
 // IsDomainScoped reports whether the method's @permissionScope resolves to the
@@ -1023,6 +1026,8 @@ const (
 	subjectValueKeyword         string = "subjectValue"         // Declares subject-side scalar vocabulary (threshold comparisons) anchored on a unique user-id column
 	stateKeyword                string = "state"                // Marks a resource's state column (FK to its state enum table) and declares the initial state
 	stateRootKeyword            string = "stateRoot"            // Declares workflow membership on the member's anchoring FK field, naming the workflow root struct
+	transitionKeyword           string = "transition"           // Declares an RPC method as a workflow state transition: @transition(Root, from: a, b, to: c)
+	targetKeyword               string = "target"               // Marks the RPC field carrying the transition's target row key
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -1048,6 +1053,8 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		subjectValueKeyword:         {genlang.ScanField: genlang.ArgsRequired},
 		stateKeyword:                {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		stateRootKeyword:            {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		transitionKeyword:           {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		targetKeyword:               {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
 	}
 }
 

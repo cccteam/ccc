@@ -47,6 +47,12 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 
+		if err := rejectTransitionAnnotations(pStruct, annotations, "resource"); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
 		table, err := c.tableMetadataFor(pStruct.Name())
 		if err != nil {
 			return nil, err
@@ -303,6 +309,12 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 
+		if err := rejectTransitionAnnotations(pStruct, annotations, "virtual resource"); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
 		if err := validate(pStruct, validators...); err != nil {
 			errs = append(errs, err)
 
@@ -529,6 +541,12 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
+		if err := c.resolveTransition(rpcMethod, s, annotations); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
 		rpcMethods = append(rpcMethods, rpcMethod)
 	}
 
@@ -555,6 +573,12 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 		}
 
 		if err := rejectBindingAnnotations(s, annotations, "computed resource"); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
+		if err := rejectTransitionAnnotations(s, annotations, "computed resource"); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue

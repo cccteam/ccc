@@ -45,16 +45,16 @@
       <ng-container matColumnDef="actions">
         <th mat-header-cell *matHeaderCellDef></th>
         <td mat-cell *matCellDef="let order">
-          @if (order.statusId === status.Scheduled && canStart()) {
+          @if (canRun(order, methods.StartWorkOrder)) {
             <button mat-stroked-button (click)="start(order); $event.stopPropagation()">Start</button>
           }
-          @if (order.statusId === status.InProgress && canComplete()) {
+          @if (canRun(order, methods.CompleteWorkOrder)) {
             <button mat-stroked-button (click)="complete(order); $event.stopPropagation()">Complete</button>
           }
           @if (!terminal(order) && canNudge()) {
             <button mat-stroked-button (click)="nudge(order); $event.stopPropagation()">Nudge</button>
           }
-          @if (order.statusId === status.Draft && canDelete()) {
+          @if (canRemove(order)) {
             <button mat-icon-button aria-label="Delete draft" (click)="remove(order); $event.stopPropagation()">
               <mat-icon>delete</mat-icon>
             </button>
@@ -82,7 +82,7 @@
       <mat-card-subtitle>Created by {{ order.createdBy }} — {{ order.summary || 'no summary' }}</mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>
-      @if (order.statusId === status.Draft && canSchedule()) {
+      @if (canRun(order, methods.ScheduleWorkOrder)) {
         <form class="inline-form" (ngSubmit)="schedule(order)">
           <mat-form-field appearance="outline">
             <mat-label>Assign Team</mat-label>

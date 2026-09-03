@@ -193,8 +193,9 @@ func (q *QuerySet[Resource]) checkReadPermissions(ctx context.Context, dbType DB
 // RequestCapabilities asks the read to evaluate per-row write affordances for
 // perms and attach them under the reserved capability property (§13). The
 // supported permissions are Update (a positive list of editable JSON field
-// names) and Delete (a boolean). The answers are advisory hints for the UI;
-// enforcement stays with the write stages.
+// names), Delete (a boolean), and Execute (a positive list of the RPC methods
+// whose declared transitions apply to the row). The answers are advisory
+// hints for the UI; enforcement stays with the write stages.
 func (q *QuerySet[Resource]) RequestCapabilities(perms ...accesstypes.Permission) {
 	q.capabilities = perms
 }

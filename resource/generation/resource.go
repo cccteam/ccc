@@ -242,25 +242,19 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
+	// Workflow DOT files draw declared transitions, so they render only after
+	// RPC extraction resolves them.
+	if err := r.generateWorkflowGraphs(); err != nil {
+		return errors.Wrap(err, "resourceGenerator.generateWorkflowGraphs()")
+	}
+
 	// Runs after every annotated struct kind is extracted (rpc methods last).
 	if err := r.validateAnnotatedOutlets(); err != nil {
 		return err
 	}
 
-	if r.genRoutes {
-		if err := r.runRouteGeneration(); err != nil {
-			return err
-		}
-	}
-	if r.genHandlers {
-		if err := r.runHandlerGeneration(); err != nil {
-			return err
-		}
-	}
-	if r.genHandlerTests {
-		if err := r.runHandlerTestsGeneration(); err != nil {
-			return err
-		}
+	if err := r.runWiringGeneration(); err != nil {
+		return err
 	}
 
 	if err := r.populateCache(); err != nil {
@@ -281,6 +275,28 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
+
+	return nil
+}
+
+// runWiringGeneration renders the enabled wiring outputs: routes, handlers,
+// and handler tests.
+func (r *resourceGenerator) runWiringGeneration() error {
+	if r.genRoutes {
+		if err := r.runRouteGeneration(); err != nil {
+			return err
+		}
+	}
+	if r.genHandlers {
+		if err := r.runHandlerGeneration(); err != nil {
+			return err
+		}
+	}
+	if r.genHandlerTests {
+		if err := r.runHandlerTestsGeneration(); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -445,10 +461,6 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 		if err := r.generateResources(res); err != nil {
 			return errors.Wrap(err, "c.generateResources()")
 		}
-	}
-
-	if err := r.generateWorkflowGraphs(); err != nil {
-		return errors.Wrap(err, "resourceGenerator.generateWorkflowGraphs()")
 	}
 
 	return nil

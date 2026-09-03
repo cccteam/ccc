@@ -361,44 +361,86 @@ func TestResolveWorkflows(t *testing.T) {
 }
 
 // TestGenerateWorkflowGraphs pins the DOT review surface: one file per
-// workflow, membership edges only, the root labeled with its closed value
-// set — never transition edges.
+// workflow, membership edges, the root labeled with its closed value set, and
+// one labeled edge per declared transition and from state — nothing else.
 func TestGenerateWorkflowGraphs(t *testing.T) {
 	t.Parallel()
 
-	c := stateFixtureClient()
 	structs := fixtureStructs(loadFixture(t, "bindingfixture"))
-	root := buildWorkflowFixture(t, c, structs, "StatefulTask")
-	part := buildWorkflowFixture(t, c, structs, "TaskPart")
-	order := buildWorkflowFixture(t, c, structs, "PartOrder")
-	if err := c.resolveWorkflows([]*resourceInfo{root, part, order}); err != nil {
-		t.Fatalf("resolveWorkflows() error = %v", err)
-	}
 
-	dir := t.TempDir()
-	r := &resourceGenerator{client: c}
-	r.resources = []*resourceInfo{root, part, order}
-	r.resource = packageDir(dir)
+	generate := func(t *testing.T, withTransitions bool) string {
+		t.Helper()
 
-	if err := r.generateWorkflowGraphs(); err != nil {
-		t.Fatalf("generateWorkflowGraphs() error = %v", err)
-	}
-
-	content, err := os.ReadFile(filepath.Join(dir, "zz_gen_workflow_stateful_task.dot"))
-	if err != nil {
-		t.Fatalf("reading workflow graph: %v", err)
-	}
-	for _, want := range []string{
-		"digraph StatefulTaskWorkflow {",
-		`"StatefulTask" [shape=doubleoctagon, label="StatefulTask\nstates: open | approved | closed"]`,
-		`"TaskPart" -> "StatefulTask";`,
-		`"PartOrder" -> "TaskPart";`,
-	} {
-		if !strings.Contains(string(content), want) {
-			t.Errorf("workflow graph missing %q:\n%s", want, content)
+		c := stateFixtureClient()
+		root := buildWorkflowFixture(t, c, structs, "StatefulTask")
+		part := buildWorkflowFixture(t, c, structs, "TaskPart")
+		order := buildWorkflowFixture(t, c, structs, "PartOrder")
+		if err := c.resolveWorkflows([]*resourceInfo{root, part, order}); err != nil {
+			t.Fatalf("resolveWorkflows() error = %v", err)
 		}
+
+		dir := t.TempDir()
+		r := &resourceGenerator{client: c}
+		r.resources = []*resourceInfo{root, part, order}
+		r.resource = packageDir(dir)
+
+		if withTransitions {
+			c.resources = r.resources
+			for _, name := range []string{"CloseTask", "ApproveTask"} {
+				rpcMethod, err := resolveFixtureTransition(t, c, structs, name)
+				if err != nil {
+					t.Fatalf("resolveFixtureTransition(%s) error = %v", name, err)
+				}
+				r.rpcMethods = append(r.rpcMethods, rpcMethod)
+			}
+		}
+
+		if err := r.generateWorkflowGraphs(); err != nil {
+			t.Fatalf("generateWorkflowGraphs() error = %v", err)
+		}
+
+		content, err := os.ReadFile(filepath.Join(dir, "zz_gen_workflow_stateful_task.dot"))
+		if err != nil {
+			t.Fatalf("reading workflow graph: %v", err)
+		}
+
+		return string(content)
 	}
-	if strings.Contains(string(content), "open ->") {
-		t.Error("workflow graph must never draw transition edges")
-	}
+
+	t.Run("membership and states", func(t *testing.T) {
+		t.Parallel()
+
+		content := generate(t, false)
+		for _, want := range []string{
+			"digraph StatefulTaskWorkflow {",
+			`"StatefulTask" [shape=doubleoctagon, label="StatefulTask\nstates: open | approved | closed"]`,
+			`"TaskPart" -> "StatefulTask";`,
+			`"PartOrder" -> "TaskPart";`,
+		} {
+			if !strings.Contains(content, want) {
+				t.Errorf("workflow graph missing %q:\n%s", want, content)
+			}
+		}
+		if strings.Contains(content, "state:") {
+			t.Errorf("a workflow without declared transitions must not draw state nodes:\n%s", content)
+		}
+	})
+
+	t.Run("declared transitions draw labeled edges", func(t *testing.T) {
+		t.Parallel()
+
+		content := generate(t, true)
+		for _, want := range []string{
+			`"state:open" [label="open"];`,
+			`"state:approved" [label="approved"];`,
+			`"state:closed" [label="closed"];`,
+			`"state:open" -> "state:approved" [label="ApproveTask"];`,
+			`"state:open" -> "state:closed" [label="CloseTask"];`,
+			`"state:approved" -> "state:closed" [label="CloseTask"];`,
+		} {
+			if !strings.Contains(content, want) {
+				t.Errorf("workflow graph missing %q:\n%s", want, content)
+			}
+		}
+	})
 }

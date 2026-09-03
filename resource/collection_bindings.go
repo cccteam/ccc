@@ -7,6 +7,12 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// StateAttribute is the uniform attribute name the generator synthesizes on
+// every stateful resource and workflow member (@state / @stateRoot): one
+// condition text — and the capability envelope's transition-membership
+// boolean — reads identically across a workflow through this name.
+const StateAttribute = "state"
+
 // The binding vocabulary a permission collection carries (ABAC design plan
 // §04). Bindings travel in generated code — the Collection is the
 // authoritative attribute listing — never as store rows: the generator

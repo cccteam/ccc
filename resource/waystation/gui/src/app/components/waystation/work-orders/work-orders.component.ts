@@ -10,6 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTableModule } from '@angular/material/table';
+import { Method } from '@cccteam/resource';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { WorkOrderStatus } from '@app/service/zz_gen_enums';
 import { WorkOrders, WorkOrderTasks } from '@app/service/zz_gen_resources';
@@ -47,11 +48,18 @@ export class WorkOrdersComponent {
 
   readonly status = WorkOrderStatus;
 
+  readonly methods = Methods;
+
   // Sorted by last activity server-side: updatedAt is the mechanical enforcement
   // stamp, bumped by every update — including a Nudge, which changes nothing else.
   // Untouched rows (updatedAt unset) sort last. The sort field is typed against the
-  // row, so a misspelling does not compile.
-  orders = this.ws.stationList((station) => station.workOrders, { sort: { field: 'updatedAt', direction: 'desc' } });
+  // row, so a misspelling does not compile. The capability envelope rides every row:
+  // Execute answers which declared transitions apply to its state, Delete whether
+  // the delete is live — the same answers the server enforces.
+  orders = this.ws.stationList((station) => station.workOrders, {
+    sort: { field: 'updatedAt', direction: 'desc' },
+    capabilities: ['Execute', 'Delete'],
+  });
   taskRows = this.ws.stationList((station) => station.workOrderTasks);
   teams = this.ws.stationList((station) => station.teams);
   assets = this.ws.stationList((station) => station.assets);
@@ -62,13 +70,19 @@ export class WorkOrdersComponent {
   station = this.ws.current;
   canList = computed(() => this.ws.can(Permissions.List, Resources.WorkOrders));
   canCreate = computed(() => this.ws.can(Permissions.Create, Resources.WorkOrders));
-  canDelete = computed(() => this.ws.can(Permissions.Delete, Resources.WorkOrders));
-  canSchedule = computed(() => this.ws.can(Permissions.Execute, Methods.ScheduleWorkOrder));
-  canStart = computed(() => this.ws.can(Permissions.Execute, Methods.StartWorkOrder));
-  canComplete = computed(() => this.ws.can(Permissions.Execute, Methods.CompleteWorkOrder));
   canNudge = computed(() => this.ws.can(Permissions.Execute, Methods.NudgeWorkOrder));
   canAddTask = computed(() => this.ws.can(Permissions.Create, Resources.WorkOrderTasks));
   canToggleTask = computed(() => this.ws.can(Permissions.Update, Resources.WorkOrderTasks));
+
+  // Per-row affordances from the capability envelope: no statusId comparisons here —
+  // whether a transition button or the delete renders is the row's own answer.
+  canRun(order: WorkOrders, method: Method): boolean {
+    return this.ws.stationApi().workOrders.rowCan(order, 'Execute', method);
+  }
+
+  canRemove(order: WorkOrders): boolean {
+    return this.ws.stationApi().workOrders.rowCan(order, 'Delete');
+  }
 
   tasksByOrder = computed(() => {
     const grouped = new Map<string, WorkOrderTasks[]>();
