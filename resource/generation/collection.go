@@ -350,6 +350,9 @@ func (r *resourceGenerator) collectRPCRegistrations(b *resource.CollectionBuilde
 				To:     t.To,
 			})
 		}
+		if t := method.Target; t != nil {
+			b.SetMethodTarget(scopeOrGlobal(method.PermissionScope), accesstypes.Resource(method.Name()), accesstypes.Resource(t.RootResource))
+		}
 	}
 
 	return nil

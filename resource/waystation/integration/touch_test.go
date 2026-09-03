@@ -136,15 +136,23 @@ func TestNudgeWorkOrderRefusals(t *testing.T) {
 		workOrderID string
 		rowExists   bool
 		wantStatus  int
+		wantStamped bool
 	}{
 		{
-			name:        "a finished work order has no one left to get its attention",
+			// The terminal rule is policy, not code (§12): the demo grants
+			// carry `state NOT IN ('completed', 'cancelled')`, but this
+			// scripted grant is unconditional — so the nudge lands even on a
+			// finished order. The demo-role refusal pins in the
+			// bootstrap-parity test below.
+			name:        "an unconditional grant nudges even a finished order",
 			grants:      nudgeGrants(),
 			workOrderID: woCraneID, // completed
 			rowExists:   true,
-			wantStatus:  http.StatusBadRequest,
+			wantStatus:  http.StatusOK,
+			wantStamped: true,
 		},
 		{
+			// The generated frame locates the @target row before the body runs.
 			name:        "a missing row is a 404, not a silent success",
 			grants:      nudgeGrants(),
 			workOrderID: "80000000-0000-4000-8000-00000000dead",
@@ -172,8 +180,9 @@ func TestNudgeWorkOrderRefusals(t *testing.T) {
 			}
 
 			if tt.rowExists {
-				if got := readColumn[spanner.NullTime](ctx, t, db, "WorkOrders", spanner.Key{tt.workOrderID}, "UpdatedAt"); got.Valid {
-					t.Errorf("UpdatedAt = %v after a refused nudge, want unset", got)
+				got := readColumn[spanner.NullTime](ctx, t, db, "WorkOrders", spanner.Key{tt.workOrderID}, "UpdatedAt")
+				if got.Valid != tt.wantStamped {
+					t.Errorf("UpdatedAt = %v, want stamped = %v", got, tt.wantStamped)
 				}
 			}
 		})
@@ -220,6 +229,17 @@ func TestNudgeWorkOrderBootstrapParity(t *testing.T) {
 			domain:      wsBeta,
 			workOrderID: woBetaAirID,
 			wantStatus:  http.StatusNotFound,
+		},
+		{
+			// The demo grant's condition — state NOT IN ('completed',
+			// 'cancelled') — evaluates against the located row inside the
+			// frame's transaction (§12): a finished order refuses the nudge
+			// with the frame's uniform Forbidden.
+			name:        "the grant's condition refuses a finished order",
+			user:        "foreman-okafor",
+			domain:      wsAlpha,
+			workOrderID: woCraneID, // completed
+			wantStatus:  http.StatusForbidden,
 		},
 	}
 

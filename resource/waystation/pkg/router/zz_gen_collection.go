@@ -19,6 +19,7 @@ func Collection() *resource.GeneratedCollection {
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
 				Transition:  &resource.TransitionData{Target: "Requisitions", From: []string{"submitted"}, To: "approved"},
+				Target:      "Requisitions",
 			},
 			{
 				Name:        "Assets",
@@ -43,12 +44,14 @@ func Collection() *resource.GeneratedCollection {
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
 				Transition:  &resource.TransitionData{Target: "WorkOrders", From: []string{"in_progress"}, To: "completed"},
+				Target:      "WorkOrders",
 			},
 			{
 				Name:        "DeclineRequisition",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
 				Transition:  &resource.TransitionData{Target: "Requisitions", From: []string{"submitted"}, To: "declined"},
+				Target:      "Requisitions",
 			},
 			{
 				Name:        "Facilities",
@@ -116,6 +119,7 @@ func Collection() *resource.GeneratedCollection {
 				Name:        "NudgeWorkOrder",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "WorkOrders",
 			},
 			{
 				Name:        "OpenWorkOrdersByTeams",
@@ -177,6 +181,7 @@ func Collection() *resource.GeneratedCollection {
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
 				Transition:  &resource.TransitionData{Target: "WorkOrders", From: []string{"draft"}, To: "scheduled"},
+				Target:      "WorkOrders",
 			},
 			{
 				Name:        "SensorReadings",
@@ -214,6 +219,7 @@ func Collection() *resource.GeneratedCollection {
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
 				Transition:  &resource.TransitionData{Target: "WorkOrders", From: []string{"scheduled"}, To: "in_progress"},
+				Target:      "WorkOrders",
 			},
 			{
 				Name:        "StationStatusBoards",
@@ -234,6 +240,7 @@ func Collection() *resource.GeneratedCollection {
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
 				Transition:  &resource.TransitionData{Target: "Requisitions", From: []string{"draft"}, To: "submitted"},
+				Target:      "Requisitions",
 			},
 			{
 				Name:        "TeamMemberships",

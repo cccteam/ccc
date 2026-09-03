@@ -70,7 +70,6 @@ export class WorkOrdersComponent {
   station = this.ws.current;
   canList = computed(() => this.ws.can(Permissions.List, Resources.WorkOrders));
   canCreate = computed(() => this.ws.can(Permissions.Create, Resources.WorkOrders));
-  canNudge = computed(() => this.ws.can(Permissions.Execute, Methods.NudgeWorkOrder));
   canAddTask = computed(() => this.ws.can(Permissions.Create, Resources.WorkOrderTasks));
   canToggleTask = computed(() => this.ws.can(Permissions.Update, Resources.WorkOrderTasks));
 
@@ -173,14 +172,12 @@ export class WorkOrdersComponent {
 
   // Nudge flags a stalled order for attention without changing it: the touch bumps
   // updatedAt (so the order jumps to the top of the last-activity sort) and the
-  // audit trail records who nudged. Chiefs and foremen hold the grant.
+  // audit trail records who nudged. Whether the button renders is the row's own
+  // Execute answer — the "no nudging finished work" rule is the grant's condition,
+  // evaluated per row by the server, never hard-coded here.
   async nudge(order: WorkOrders): Promise<void> {
     await this.ws.stationApi().nudgeWorkOrder.execute({ workOrderId: order.id });
     this.orders.reload();
-  }
-
-  terminal(order: WorkOrders): boolean {
-    return order.statusId === this.status.Completed || order.statusId === this.status.Cancelled;
   }
 
   async remove(order: WorkOrders): Promise<void> {

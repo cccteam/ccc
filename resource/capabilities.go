@@ -151,13 +151,14 @@ func (q *QuerySet[Resource]) checkCapabilityPermissions(ctx context.Context) err
 		case accesstypes.Delete:
 			// Delete's footprint is the row: the base resource carries it.
 		case accesstypes.Execute:
-			// The affordance question is per declared transition: the RPC
-			// method resources whose transitions target this resource (§09).
+			// The affordance question is per targeted method: the RPC method
+			// resources whose @target row is this resource — a declared
+			// transition or the plain located-row form (§09, §12).
 			if q.collection == nil {
 				continue
 			}
 			resources = resources[:0]
-			for _, tm := range q.collection.TransitionsOnto(q.resourceSet.BaseResource()) {
+			for _, tm := range q.collection.MethodsTargeting(q.resourceSet.BaseResource()) {
 				resources = append(resources, tm.Method)
 			}
 			if len(resources) == 0 {
@@ -221,18 +222,9 @@ func (g *capabilityGroups) intern(res accesstypes.Resource, decision accesstypes
 	return idx, nil
 }
 
-// internStateMembership resolves a transition's from set to its group index:
-// a `state IN (…)` boolean over the pre-image's uniform state binding, shared
-// by every transition with the same set (sorted for a canonical key).
-func (g *capabilityGroups) internStateMembership(from []string) int {
-	values := slices.Clone(from)
-	slices.Sort(values)
-	literals := make([]condition.Literal, 0, len(values))
-	for _, v := range values {
-		literals = append(literals, condition.StringLiteral{Value: v})
-	}
-	expr := condition.In{Left: condition.Ref{Name: StateAttribute}, Literals: literals}
-
+// internExpr resolves an already-built expression to its group index, deduped
+// by canonical source like intern.
+func (g *capabilityGroups) internExpr(expr condition.Expr) int {
 	source := expr.String()
 	idx, ok := g.bySource[source]
 	if !ok {
@@ -242,6 +234,20 @@ func (g *capabilityGroups) internStateMembership(from []string) int {
 	}
 
 	return idx
+}
+
+// stateMembershipExpr builds a transition's from set as a `state IN (…)`
+// expression over the pre-image's uniform state binding, sorted for a
+// canonical key so every transition with the same set shares one boolean.
+func stateMembershipExpr(from []string) condition.Expr {
+	values := slices.Clone(from)
+	slices.Sort(values)
+	literals := make([]condition.Literal, 0, len(values))
+	for _, v := range values {
+		literals = append(literals, condition.StringLiteral{Value: v})
+	}
+
+	return condition.In{Left: condition.Ref{Name: StateAttribute}, Literals: literals}
 }
 
 // plannedDelete builds Delete's recipe from the base decision — the delete's
@@ -296,28 +302,48 @@ func (q *QuerySet[Resource]) plannedUpdate(perm accesstypes.Permission, decision
 }
 
 // plannedExecute builds the Execute affordance's recipe: the RPC methods
-// whose declared transitions target this resource (§09), gated by the user's
-// Execute grants — settled without data, Execute conditions are row-free and
-// fold at check time — and by the row's pre-image state membership in each
-// transition's from set, one boolean per distinct set in the same statement.
+// whose @target row is this resource (§09, §12), gated by the user's Execute
+// grants. A transition method's boolean is the row's pre-image state
+// membership in its from set; a conditional grant ANDs its condition into the
+// same boolean (a plain method's is the condition alone); a plain method with
+// an unconditional grant is structural — no boolean, no SQL. Distinct
+// expressions share one boolean per statement.
 func (q *QuerySet[Resource]) plannedExecute(decisions accesstypes.Decisions, groups *capabilityGroups) (plannedCapability, error) {
 	planned := plannedCapability{perm: accesstypes.Execute, group: -1}
 	if q.collection == nil {
 		return planned, nil
 	}
-	for _, tm := range q.collection.TransitionsOnto(q.resourceSet.BaseResource()) {
+	for _, tm := range q.collection.MethodsTargeting(q.resourceSet.BaseResource()) {
 		decision := decisions[tm.Method]
+		var exprs []condition.Expr
+		if tm.Transition != nil {
+			exprs = append(exprs, stateMembershipExpr(tm.Transition.From))
+		}
 		switch {
 		case decision.IsGranted():
 		case decision.IsConditional():
-			return plannedCapability{}, errors.Newf("method %s: an Execute grant reached capability planning as Conditional — Execute conditions are row-free and settle at check time", tm.Method)
+			expr, err := conditionalExpr(tm.Method, decision)
+			if err != nil {
+				return plannedCapability{}, err
+			}
+			// Deploy validation rejects new. on Execute grants; kept for
+			// posture parity with intern — a post-image payload would be
+			// potentially-true, never a rendered term.
+			if !condition.UsesPostImage(expr) {
+				exprs = append(exprs, expr)
+			}
 		default:
 			continue
 		}
-		planned.fields = append(planned.fields, capabilityField{
-			jsonName: string(tm.Method),
-			group:    groups.internStateMembership(tm.Transition.From),
-		})
+
+		group := -1
+		switch len(exprs) {
+		case 1:
+			group = groups.internExpr(exprs[0])
+		case 2:
+			group = groups.internExpr(condition.And{Operands: exprs})
+		}
+		planned.fields = append(planned.fields, capabilityField{jsonName: string(tm.Method), group: group})
 	}
 
 	return planned, nil

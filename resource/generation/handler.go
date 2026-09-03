@@ -187,6 +187,10 @@ type handlerFeatures struct {
 	hasPatch    bool
 	hasRPC      bool
 	hasComputed bool
+	// hasTargetedRPC reports a non-suppressed @target-bearing method: its
+	// handler decodes through the targeted constructor, which carries a
+	// conditional Execute decision to the frame instead of refusing it.
+	hasTargetedRPC bool
 	// rpcPackage qualifies the generated Method union; set iff hasRPC.
 	rpcPackage string
 }
@@ -219,6 +223,9 @@ func (r *resourceGenerator) handlerFeatures() handlerFeatures {
 			if !rpcMethod.SuppressHandler {
 				f.hasRPC = true
 				f.rpcPackage = r.rpc.Package()
+				if rpcMethod.Target != nil {
+					f.hasTargetedRPC = true
+				}
 			}
 		}
 	}
@@ -251,6 +258,7 @@ func (r *resourceGenerator) generateDecoders() error {
 		HasComputedQueryDecoder: f.hasComputed,
 		HasPatchDecoder:         f.hasPatch,
 		HasRPCDecoder:           f.hasRPC,
+		HasTargetedRPCDecoder:   f.hasTargetedRPC,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}

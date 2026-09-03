@@ -316,6 +316,10 @@ type rpcMethodInfo struct {
 	// Transition is the method's validated @transition declaration; nil for a
 	// plain RPC method, whose generated handler is unchanged.
 	Transition *rpcTransition
+	// Target is the method's validated @target declaration — set for every
+	// targeted method (a transition's Target aliases its embedded rpcTarget);
+	// nil for a method with no target row.
+	Target *rpcTarget
 }
 
 // IsDomainScoped reports whether the method's @permissionScope resolves to the
@@ -1027,7 +1031,7 @@ const (
 	stateKeyword                string = "state"                // Marks a resource's state column (FK to its state enum table) and declares the initial state
 	stateRootKeyword            string = "stateRoot"            // Declares workflow membership on the member's anchoring FK field, naming the workflow root struct
 	transitionKeyword           string = "transition"           // Declares an RPC method as a workflow state transition: @transition(Root, from: a, b, to: c)
-	targetKeyword               string = "target"               // Marks the RPC field carrying the transition's target row key
+	targetKeyword               string = "target"               // Marks the RPC field carrying the target row key; @target(Root) names the resource when no @transition does
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -1054,7 +1058,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		stateKeyword:                {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		stateRootKeyword:            {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		transitionKeyword:           {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
-		targetKeyword:               {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
+		targetKeyword:               {genlang.ScanField: genlang.Exclusive},
 	}
 }
 

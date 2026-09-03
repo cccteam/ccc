@@ -23,22 +23,22 @@ func (a *App) ApproveRequisition() http.HandlerFunc {
 		RequisitionID ccc.UUID `json:"requisitionId"`
 	}
 
-	decoder := NewRPCDecoder[rpc.ApproveRequisition, request](a, accesstypes.Execute)
+	decoder := NewTargetedRPCDecoder[rpc.ApproveRequisition, request](a, accesstypes.Execute)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
 		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
-		params, err := decoder.Decode(r, accesstypes.DomainScope(domain))
+		params, gate, err := decoder.Decode(r, accesstypes.DomainScope(domain))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
 		p := (*rpc.ApproveRequisition)(params)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
-			// Declared transition: locate the target row within the tenancy
-			// predicate and verify the pre-image state before the body runs.
+			// Declared target: locate the row within the tenancy predicate
+			// before the body runs.
 			row, err := resources.NewRequisitionQuery().
 				AddColumns(resources.NewRequisitionColumns().StatusID().WaystationID()).
 				SetID(p.RequisitionID).
@@ -57,7 +57,15 @@ func (a *App) ApproveRequisition() http.HandlerFunc {
 			switch row.Data.StatusID {
 			case "submitted":
 			default:
-				return httpio.NewForbiddenMessagef("ApproveRequisition runs from a submitted Requisition; %s is %q", p.RequisitionID, row.Data.StatusID)
+				// One refusal for the state check and the grant condition
+				// alike: the wire never says which said no (§12).
+				return httpio.NewForbiddenMessagef("ApproveRequisition may not run against Requisition %s", p.RequisitionID)
+			}
+
+			// A row-referencing condition on the caller's Execute grant
+			// evaluates against the located row, in this transaction.
+			if err := gate.Enforce(ctx, txn, resource.ExecuteTarget{Resource: "Requisitions", Label: "Requisition", PKColumn: "Id"}, p.RequisitionID); err != nil {
+				return err
 			}
 			if err := p.Execute(ctx, txn, a.RPCClient()); err != nil {
 				return errors.Wrap(err, "Transaction.Execute()")

@@ -263,6 +263,7 @@ type decodersFileData struct {
 	HasComputedQueryDecoder bool
 	HasPatchDecoder         bool
 	HasRPCDecoder           bool
+	HasTargetedRPCDecoder   bool
 }
 
 type appContractData struct {

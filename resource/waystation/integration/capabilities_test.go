@@ -133,9 +133,12 @@ func TestCapabilityEnvelope(t *testing.T) {
 		}
 	})
 
-	// The Execute affordance (§09/§13): each row lists the declared transitions
-	// whose from set contains its pre-image state, gated by the user's Execute
-	// grants — the chief holds every WorkOrder edge, the technician only
+	// The Execute affordance (§09/§13): each row lists the targeted methods
+	// that apply to it — declared transitions whose from set contains the
+	// pre-image state, and plain @target methods whose grant condition holds
+	// (§12: Nudge's `state NOT IN ('completed', 'cancelled')` rides the grant,
+	// so it appears on every unfinished row and vanishes on finished ones).
+	// The chief holds every WorkOrder edge plus Nudge, the technician only
 	// Start and Complete, and a finished row offers nothing to anyone.
 	executeTests := []struct {
 		name string
@@ -146,10 +149,10 @@ func TestCapabilityEnvelope(t *testing.T) {
 			name: "chief's execute list follows each row's state across every edge",
 			user: "chief-alpha",
 			want: map[string][]any{
-				woManifoldID: {"ScheduleWorkOrder"}, // draft
-				woOvenID:     {"StartWorkOrder"},    // scheduled
-				woScrubberID: {"CompleteWorkOrder"}, // in_progress
-				woCraneID:    {},                    // completed
+				woManifoldID: {"NudgeWorkOrder", "ScheduleWorkOrder"}, // draft
+				woOvenID:     {"NudgeWorkOrder", "StartWorkOrder"},    // scheduled
+				woScrubberID: {"CompleteWorkOrder", "NudgeWorkOrder"}, // in_progress
+				woCraneID:    {},                                      // completed: no edge, and Nudge's condition excludes it
 			},
 		},
 		{
@@ -196,4 +199,45 @@ func TestCapabilityEnvelope(t *testing.T) {
 			}
 		})
 	}
+
+	// Row conditions on Execute (§12): the chief's Approve grant carries
+	// `totalCost <= subject.approvalLimit` (their limit is 2500), so the same
+	// statement answers Approve row by row — present on the small submitted
+	// requisition, absent on the 7120 overhaul — while the unconditional
+	// Decline follows the edge alone. The Approve button simply never renders
+	// where the RPC would refuse.
+	t.Run("chief's approve affordance follows their approval limit per row", func(t *testing.T) {
+		t.Parallel()
+
+		status, body := doRequestAs(t, h, "chief-alpha", http.MethodGet, "/api/waystations/ws-alpha/requisitions?capabilities=Execute", "")
+		if status != http.StatusOK {
+			t.Fatalf("GET status = %d, want %d (body %s)", status, http.StatusOK, body)
+		}
+
+		want := map[string][]any{
+			reqScrubberID: {"ApproveRequisition", "DeclineRequisition"}, // submitted, 361.50 <= 2500
+			reqOverhaulID: {"DeclineRequisition"},                       // submitted, 7120.00 over the limit
+			reqPumpID:     {"SubmitRequisition"},                        // draft
+			reqTorchID:    {},                                           // approved: terminal for these edges
+		}
+		seen := make(map[string]bool, len(want))
+		for _, row := range decodeRows(t, body) {
+			id, _ := row["id"].(string)
+			wantList, pinned := want[id]
+			if !pinned {
+				continue
+			}
+			seen[id] = true
+
+			caps, _ := row["zzCapabilities"].(map[string]any)
+			if got := caps["Execute"]; !reflect.DeepEqual(got, wantList) {
+				t.Errorf("row %s Execute = %v, want %v", id, got, wantList)
+			}
+		}
+		for id := range want {
+			if !seen[id] {
+				t.Errorf("row %s missing from the response", id)
+			}
+		}
+	})
 }

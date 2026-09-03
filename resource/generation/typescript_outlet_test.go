@@ -68,11 +68,11 @@ func Test_typescriptGenerator_validateOutletMemberReferences(t *testing.T) {
 	}{
 		{
 			name:   "a member method with no excluded references passes",
-			method: &rpcMethodInfo{Struct: structs["DoSomething"], Transition: &rpcTransition{RootResource: "Widgets"}},
+			method: &rpcMethodInfo{Struct: structs["DoSomething"], Transition: &rpcTransition{rpcTarget: rpcTarget{RootResource: "Widgets"}}},
 		},
 		{
 			name:         "a transition root on another outlet fails",
-			method:       &rpcMethodInfo{Struct: structs["DoSomething"], Transition: &rpcTransition{RootResource: "Gadgets"}},
+			method:       &rpcMethodInfo{Struct: structs["DoSomething"], Transition: &rpcTransition{rpcTarget: rpcTarget{RootResource: "Gadgets"}}},
 			excluded:     []accesstypes.Resource{"Gadgets"},
 			wantContains: "declares a transition on Gadgets, which is not on the outlet",
 		},

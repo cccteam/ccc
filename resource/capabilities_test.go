@@ -215,6 +215,13 @@ func executeCollection(t *testing.T) *GeneratedCollection {
 			Permissions: []accesstypes.Permission{accesstypes.Execute},
 			Transition:  &TransitionData{Target: enforcedResource, From: []string{"scheduled"}, To: "in_progress"},
 		},
+		{
+			// The plain located-row form (§12): a @target with no transition.
+			Name:        "NudgeTask",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Execute},
+			Target:      enforcedResource,
+		},
 	}})
 	if err != nil {
 		t.Fatalf("NewGeneratedCollection() error = %v", err)
@@ -263,6 +270,43 @@ func TestQuerySet_stmt_executeCapability(t *testing.T) {
 				"FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain)",
 			checks: []bool{true},
 			want:   map[accesstypes.Permission]any{accesstypes.Execute: []string{"StartTask"}},
+		},
+		{
+			// §12: a conditional Execute grant on a transition method ANDs its
+			// condition into the same boolean as the state membership.
+			name:       "a conditional transition grant ANDs its condition with the membership",
+			collection: executeCollection,
+			byPerm: map[accesstypes.Permission]accesstypes.Decisions{
+				accesstypes.Execute: {"StartTask": conditionalOn("StartTask", "owner = subject")},
+			},
+			wantSQL: "SELECT Id, Public, Tagged, ARRAY<BOOL>[((`enforcementResources`.`State` IN (@_c1) AND `enforcementResources`.`Owner` = @subject))] AS zzCapabilityChecks " +
+				"FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain)",
+			checks: []bool{true},
+			want:   map[accesstypes.Permission]any{accesstypes.Execute: []string{"StartTask"}},
+		},
+		{
+			// A plain @target method with an unconditional grant is structural:
+			// it appears on every row and adds no boolean — no extra SQL.
+			name:       "a plain granted method is structural",
+			collection: executeCollection,
+			byPerm: map[accesstypes.Permission]accesstypes.Decisions{
+				accesstypes.Execute: {"NudgeTask": accesstypes.Granted()},
+			},
+			wantSQL: baseSQL,
+			want:    map[accesstypes.Permission]any{accesstypes.Execute: []string{"NudgeTask"}},
+		},
+		{
+			// A conditional grant on a plain method gates on the condition
+			// alone — there is no from set to intersect.
+			name:       "a plain conditional method gates on its condition alone",
+			collection: executeCollection,
+			byPerm: map[accesstypes.Permission]accesstypes.Decisions{
+				accesstypes.Execute: {"NudgeTask": conditionalOn("NudgeTask", "owner = subject")},
+			},
+			wantSQL: "SELECT Id, Public, Tagged, ARRAY<BOOL>[(`enforcementResources`.`Owner` = @subject)] AS zzCapabilityChecks " +
+				"FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain)",
+			checks: []bool{false},
+			want:   map[accesstypes.Permission]any{accesstypes.Execute: []string{}},
 		},
 		{
 			name:       "no declared transitions answers empty on the byte-identical statement",

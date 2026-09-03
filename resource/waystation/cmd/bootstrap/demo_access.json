@@ -726,7 +726,8 @@
               "resource": "SubmitRequisition"
             },
             {
-              "resource": "ApproveRequisition"
+              "resource": "ApproveRequisition",
+              "condition": "totalCost <= subject.approvalLimit"
             },
             {
               "resource": "DeclineRequisition"
@@ -735,7 +736,8 @@
               "resource": "ReceiveShipment"
             },
             {
-              "resource": "NudgeWorkOrder"
+              "resource": "NudgeWorkOrder",
+              "condition": "state NOT IN ('completed', 'cancelled')"
             }
           ]
         }
@@ -1046,7 +1048,8 @@
               "resource": "SubmitRequisition"
             },
             {
-              "resource": "NudgeWorkOrder"
+              "resource": "NudgeWorkOrder",
+              "condition": "state NOT IN ('completed', 'cancelled')"
             }
           ]
         }
@@ -1100,7 +1103,8 @@
           ],
           "Execute": [
             {
-              "resource": "ApproveRequisition"
+              "resource": "ApproveRequisition",
+              "condition": "totalCost <= subject.approvalLimit"
             },
             {
               "resource": "DeclineRequisition"

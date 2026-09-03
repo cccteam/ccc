@@ -396,6 +396,20 @@ type (
 		// @target
 		TaskID ccc.UUID
 	}
+
+	// @rpc
+	PlainTargetTask struct {
+		// @target(StatefulTask)
+		TaskID ccc.UUID
+		Note   string
+	}
+
+	// @rpc
+	// @transition(StatefulTask, from: open, to: approved)
+	TransitionTargetWithArg struct {
+		// @target(StatefulTask)
+		TaskID ccc.UUID
+	}
 )
 
 func (ApproveTask) RunsInTxn()                  {}
@@ -410,3 +424,5 @@ func (TransitionTwoTargets) RunsInTxn()         {}
 func (TransitionTargetTypeMismatch) RunsInTxn() {}
 func (TransitionScopeMismatch) RunsInTxn()      {}
 func (TargetWithoutTransition) RunsInTxn()      {}
+func (PlainTargetTask) RunsInTxn()              {}
+func (TransitionTargetWithArg) RunsInTxn()      {}

@@ -39,7 +39,7 @@ All login passwords are `waystation`.
 | `chief-alpha` | Station chief, Alpha | Full domain roles at ws-alpha only; the same pages are empty/refused at ws-beta. Runs the whole work-order lifecycle. |
 | `tech-rivera` | Maintenance technician | `assignedTeam IN subject.teams OR author = subject` — the board shows their teams' orders; teams derive per-station (derived tenancy through the TeamMembership anchor). `zone != 'reactor'` keeps reactor assets out of their asset picker. Files incident reports through a two-input form: their partial-width Create grant (`summary`, `severity`) narrows the rendered inputs. |
 | `foreman-okafor` | Requester | `requestedBy = subject` ownership; lines editable only while `state = 'draft'`; `new.priority <= 3` refuses emergency work orders at create time (an insert-image condition). |
-| `procurement-chen` | Approver | Queue is literally the condition: `state = 'submitted' AND totalCost <= subject.approvalLimit`. The RPC body re-verifies the limit for direct over-limit calls. |
+| `procurement-chen` | Approver | Queue is literally the condition: `state = 'submitted' AND totalCost <= subject.approvalLimit`. The same limit rides the Execute(ApproveRequisition) grant, evaluated against the located row inside the transition frame (§12) — a directly addressed over-limit approval refuses with no code in the RPC body. |
 | `auditor-voss` | Compliance | Terminal-state work orders only; `unitCostSnapshot` masked per cell until a requisition is approved (the key is absent, the UI renders an em-dash); incident reporter PII withheld; the audit trail (RecordsAuditor). |
 | `quartermaster-idris` | Inventory | Receive gated on `arrivedAt IS NULL` (second receive refused); lot deletes gated on expiry (`expiresOn < '2026-09-01'` — fresh and no-expiry lots refuse). |
 | `automation` | Service account, no login | The `/automation` outlet under an API key: posts sensor batches, receives shipments. Sensor readings have no human route at all — the computed status board is the only window onto them. |
@@ -54,12 +54,16 @@ All login passwords are `waystation`.
 - **Workflows** (work orders, requisitions) are enforced entirely through the stateful
   pattern: `@state` makes the status column structurally unwritable, every state move is
   a declared `@transition` on an Execute-gated RPC — the generated handler locates the
-  row within the station, verifies the pre-image state, and stamps the target state, so
-  the bodies carry only business effects — and what each role may do in each state is a
-  conditional grant on the uniform `state` binding (readable on the root and every
-  `@stateRoot` member). The committed `zz_gen_workflow_*.dot` graphs (membership plus
-  the labeled transition edges) and the grant matrix are the whole specification; there
-  is no imperative permission or edge code anywhere in the app.
+  row within the station, verifies the pre-image state, evaluates any row condition the
+  caller's Execute grant carries against the same row (§12: the approver's limit, the
+  no-nudging-finished-work rule), and stamps the target state, so the bodies carry only
+  business effects — and what each role may do in each state is a conditional grant on
+  the uniform `state` binding (readable on the root and every `@stateRoot` member). A
+  method that moves no state can still declare its row (`@target(WorkOrder)` on Nudge)
+  and gets the same located-row frame minus the stamp. The committed
+  `zz_gen_workflow_*.dot` graphs (membership plus the labeled transition edges) and the
+  grant matrix are the whole specification; there is no imperative permission or edge
+  code anywhere in the app.
 - **Structural enforcement** (fail-closed field permissions, outlet exclusivity,
   suppressed routes, domain guard) — `integration/structural_test.go`; Team is the
   deliberately minimal resource (no vocabulary beyond the mandatory `@domain`).
@@ -174,8 +178,8 @@ The same tour in the browser, persona by persona:
    the last-activity sort with every field unchanged — the first-class Touch.
 2. **procurement-chen** — the requisitions page shows only submitted requisitions
    within their limit. Approve the foreman's; the 7120.00 overhaul requisition is not
-   approvable (over their 5000 limit, refused by the RPC body even when addressed
-   directly).
+   approvable (over their 5000 limit — the grant's condition refuses it even when
+   addressed directly, with no check code in the RPC body).
 3. **auditor-voss** — requisition lines show unit costs only on approved requisitions
    (masked cells render as em-dashes); incidents arrive without reporter contact; the
    work-order board shows completed/cancelled only. The audit trail lists the change

@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -554,5 +555,100 @@ func TestGeneratedCollection_HasPermission(t *testing.T) {
 				t.Errorf("HasPermission(%s, %s, %s) = %v, want %v", tt.scope, tt.permission, tt.resource, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestGeneratedCollection_methodTargets pins the @target carriage (§12): a
+// transition registers its target implicitly, a plain target registers
+// directly, MethodTarget answers per scope, and MethodsTargeting merges both
+// forms sorted by method — the capability envelope's Execute candidates.
+func TestGeneratedCollection_methodTargets(t *testing.T) {
+	t.Parallel()
+
+	g, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{
+		{
+			Name:        "Tasks",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Read},
+		},
+		{
+			Name:        "CloseTask",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Execute},
+			Transition:  &TransitionData{Target: "Tasks", From: []string{"open"}, To: "closed"},
+		},
+		{
+			Name:        "NudgeTask",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Execute},
+			Target:      "Tasks",
+		},
+		{
+			Name:        "RunReport",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Execute},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewGeneratedCollection() error = %v", err)
+	}
+
+	if target, ok := g.MethodTarget(accesstypes.DomainPermissionScope, "CloseTask"); !ok || target != "Tasks" {
+		t.Errorf("MethodTarget(CloseTask) = %q, %v; want Tasks, true (a transition registers its target)", target, ok)
+	}
+	if target, ok := g.MethodTarget(accesstypes.DomainPermissionScope, "NudgeTask"); !ok || target != "Tasks" {
+		t.Errorf("MethodTarget(NudgeTask) = %q, %v; want Tasks, true", target, ok)
+	}
+	if _, ok := g.MethodTarget(accesstypes.DomainPermissionScope, "RunReport"); ok {
+		t.Error("MethodTarget(RunReport) = true, want false (no @target row)")
+	}
+	if _, ok := g.MethodTarget(accesstypes.GlobalPermissionScope, "CloseTask"); ok {
+		t.Error("MethodTarget answered across scopes, want per-scope")
+	}
+
+	methods := g.MethodsTargeting("Tasks")
+	if len(methods) != 2 || methods[0].Method != "CloseTask" || methods[1].Method != "NudgeTask" {
+		t.Fatalf("MethodsTargeting(Tasks) = %+v, want [CloseTask NudgeTask]", methods)
+	}
+	if methods[0].Transition == nil || methods[0].Transition.To != "closed" {
+		t.Errorf("MethodsTargeting(Tasks)[0].Transition = %+v, want the declared edge", methods[0].Transition)
+	}
+	if methods[1].Transition != nil {
+		t.Errorf("MethodsTargeting(Tasks)[1].Transition = %+v, want nil for the plain form", methods[1].Transition)
+	}
+
+	// The serializable round trip carries both forms.
+	data := collectionDataFrom(g)
+	var closeTask, nudge *CollectionResource
+	for i := range data.Resources {
+		switch data.Resources[i].Name {
+		case "CloseTask":
+			closeTask = &data.Resources[i]
+		case "NudgeTask":
+			nudge = &data.Resources[i]
+		}
+	}
+	if closeTask == nil || closeTask.Target != "Tasks" || closeTask.Transition == nil {
+		t.Errorf("round-tripped CloseTask = %+v, want Target and Transition", closeTask)
+	}
+	if nudge == nil || nudge.Target != "Tasks" || nudge.Transition != nil {
+		t.Errorf("round-tripped NudgeTask = %+v, want Target only", nudge)
+	}
+}
+
+// TestNewGeneratedCollection_targetMismatch pins the consistency check: a
+// method whose Target disagrees with its transition's target is invalid data.
+func TestNewGeneratedCollection_targetMismatch(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{{
+		Name:        "CloseTask",
+		Scope:       accesstypes.DomainPermissionScope,
+		Permissions: []accesstypes.Permission{accesstypes.Execute},
+		Transition:  &TransitionData{Target: "Tasks", From: []string{"open"}, To: "closed"},
+		Target:      "Widgets",
+	}}})
+	if err == nil || !strings.Contains(err.Error(), "its transition targets") {
+		t.Errorf("NewGeneratedCollection() error = %v, want the target-mismatch rejection", err)
 	}
 }

@@ -43,3 +43,14 @@ func NewRPCDecoder[Method rpc.Method, Request any](a *App, perm accesstypes.Perm
 
 	return resource.MustNewRPCDecoder[Request](a, method.Method(), perm)
 }
+
+// NewTargetedRPCDecoder builds a decoder for a @target-bearing RPC method
+// request, wired to the generated collection so a conditional Execute grant
+// rides to the handler's located-row check instead of being refused at decode.
+// The Method union keeps construction inside the generated universe: a decoder
+// for any other type is a compile error.
+func NewTargetedRPCDecoder[Method rpc.Method, Request any](a *App, perm accesstypes.Permission) *resource.TargetedRPCDecoder[Request] {
+	var method Method
+
+	return resource.MustNewTargetedRPCDecoder[Request](a, router.Collection(), method.Method(), perm)
+}

@@ -51,7 +51,7 @@
           @if (canRun(order, methods.CompleteWorkOrder)) {
             <button mat-stroked-button (click)="complete(order); $event.stopPropagation()">Complete</button>
           }
-          @if (!terminal(order) && canNudge()) {
+          @if (canRun(order, methods.NudgeWorkOrder)) {
             <button mat-stroked-button (click)="nudge(order); $event.stopPropagation()">Nudge</button>
           }
           @if (canRemove(order)) {

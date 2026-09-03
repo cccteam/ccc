@@ -745,6 +745,18 @@ func NewRPCDecoder[Method {{ .RPCPackage }}.Method, Request any]({{ .ReceiverNam
 
 	return resource.MustNewRPCDecoder[Request]({{ .ReceiverName }}, method.Method(), perm)
 }
+{{ end }}
+{{- if .HasTargetedRPCDecoder }}
+// NewTargetedRPCDecoder builds a decoder for a @target-bearing RPC method
+// request, wired to the generated collection so a conditional Execute grant
+// rides to the handler's located-row check instead of being refused at decode.
+// The Method union keeps construction inside the generated universe: a decoder
+// for any other type is a compile error.
+func NewTargetedRPCDecoder[Method {{ .RPCPackage }}.Method, Request any]({{ .ReceiverName }} *{{ .ApplicationName }}, perm accesstypes.Permission) *resource.TargetedRPCDecoder[Request] {
+	var method Method
+
+	return resource.MustNewTargetedRPCDecoder[Request]({{ .ReceiverName }}, {{ .RouterPackage }}.Collection(), method.Method(), perm)
+}
 {{ end }}`
 
 	// appContractTemplate emits the compile-time contract between the generated code
@@ -1927,6 +1939,9 @@ func Collection() *resource.GeneratedCollection {
 				{{- with .Transition }}
 				Transition: &resource.TransitionData{Target: "{{ .Target }}", From: []string{ {{- range $i, $v := .From }}{{ if $i }}, {{ end }}"{{ $v }}"{{ end -}} }, To: "{{ .To }}"},
 				{{- end }}
+				{{- with .Target }}
+				Target: "{{ . }}",
+				{{- end }}
 			},
 			{{- end }}
 		},
@@ -2434,7 +2449,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		{{- end }}
 	}
 
-	decoder := NewRPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
+	decoder := New{{ if .RPCMethod.Target }}Targeted{{ end }}RPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -2443,7 +2458,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		{{ if .RPCMethod.IsDomainScoped -}}
 		` + domainParamLine + `
 		{{ end -}}
-		params, err := decoder.Decode(r, {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
+		params, {{ if .RPCMethod.Target }}gate, {{ end }}err := decoder.Decode(r, {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -2469,11 +2484,11 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		{{- end }}
 		{{- if .RPCMethod.IsTxnRunner }}
 			if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
-				{{- with $t := .RPCMethod.Transition }}
-				// Declared transition: locate the target row within the tenancy
-				// predicate and verify the pre-image state before the body runs.
+				{{- with $t := .RPCMethod.Target }}
+				// Declared target: locate the row within the tenancy predicate
+				// before the body runs.
 				row, err := {{ $.ResourcesPackage }}.New{{ $t.RootStruct }}Query().
-					AddColumns({{ $.ResourcesPackage }}.New{{ $t.RootStruct }}Columns().{{ $t.StateField }}(){{ if $t.TenantField }}.{{ $t.TenantField }}(){{ end }}).
+					AddColumns({{ $.ResourcesPackage }}.New{{ $t.RootStruct }}Columns(){{ $t.LocateColumnCalls }}).
 					Set{{ $t.RootPKField }}(p.{{ $t.TargetField }}).
 					Read(ctx, txn)
 				if err != nil {
@@ -2489,10 +2504,22 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 					return httpio.NewNotFoundMessagef("{{ $t.RootStruct }} %s does not exist", p.{{ $t.TargetField }})
 				}
 				{{- end }}
+				{{- end }}
+				{{- with $t := .RPCMethod.Transition }}
 				switch row.Data.{{ $t.StateField }} {
 				case {{ $t.FromCases }}:
 				default:
-					return httpio.NewForbiddenMessagef("{{ $.RPCMethod.Name }} runs from a {{ $t.FromWords }} {{ $t.RootStruct }}; %s is %q", p.{{ $t.TargetField }}, row.Data.{{ $t.StateField }})
+					// One refusal for the state check and the grant condition
+					// alike: the wire never says which said no (§12).
+					return httpio.NewForbiddenMessagef("{{ $.RPCMethod.Name }} may not run against {{ $t.RootStruct }} %s", p.{{ $t.TargetField }})
+				}
+				{{- end }}
+				{{- with $t := .RPCMethod.Target }}
+
+				// A row-referencing condition on the caller's Execute grant
+				// evaluates against the located row, in this transaction.
+				if err := gate.Enforce(ctx, txn, resource.ExecuteTarget{Resource: "{{ $t.RootResource }}", Label: "{{ $t.RootStruct }}", PKColumn: "{{ $t.RootPKColumn }}"}, p.{{ $t.TargetField }}); err != nil {
+					return err
 				}
 				{{ end -}}
 				if err := p.Execute(ctx, txn, {{ $.ReceiverName }}.RPCClient()); err != nil {

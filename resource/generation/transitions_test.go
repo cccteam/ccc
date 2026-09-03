@@ -62,15 +62,18 @@ func TestResolveTransition(t *testing.T) {
 			t.Fatalf("resolveTransition() error = %v", err)
 		}
 		want := &rpcTransition{
-			RootStruct:   "StatefulTask",
-			RootResource: "StatefulTasks",
-			From:         []string{"open"},
-			To:           "approved",
-			TargetField:  "TaskID",
-			RootPKField:  "ID",
-			StateField:   "State",
+			rpcTarget: rpcTarget{
+				RootStruct:   "StatefulTask",
+				RootResource: "StatefulTasks",
+				TargetField:  "TaskID",
+				RootPKField:  "ID",
+				RootPKColumn: "Id",
+				StateField:   "State",
+			},
+			From: []string{"open"},
+			To:   "approved",
 		}
-		if diff := cmp.Diff(want, rpcMethod.Transition); diff != "" {
+		if diff := cmp.Diff(want, rpcMethod.Transition, cmp.AllowUnexported(rpcTransition{})); diff != "" {
 			t.Errorf("resolveTransition() mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -89,9 +92,6 @@ func TestResolveTransition(t *testing.T) {
 		if got, want := rpcMethod.Transition.FromCases(), `"open", "approved"`; got != want {
 			t.Errorf("FromCases() = %q, want %q", got, want)
 		}
-		if got, want := rpcMethod.Transition.FromWords(), "open or approved"; got != want {
-			t.Errorf("FromWords() = %q, want %q", got, want)
-		}
 	})
 
 	t.Run("plain RPC resolves to no transition", func(t *testing.T) {
@@ -104,6 +104,50 @@ func TestResolveTransition(t *testing.T) {
 		}
 		if plain.Transition != nil {
 			t.Errorf("unannotated struct resolved a transition: %+v", plain.Transition)
+		}
+		if plain.Target != nil {
+			t.Errorf("unannotated struct resolved a target: %+v", plain.Target)
+		}
+	})
+
+	t.Run("transition sets the target alias", func(t *testing.T) {
+		t.Parallel()
+
+		c := transitionFixtureClient(t, structs)
+		rpcMethod, err := resolveFixtureTransition(t, c, structs, "ApproveTask")
+		if err != nil {
+			t.Fatalf("resolveTransition() error = %v", err)
+		}
+		if rpcMethod.Target == nil || rpcMethod.Target != &rpcMethod.Transition.rpcTarget {
+			t.Errorf("Target = %+v, want the transition's embedded target", rpcMethod.Target)
+		}
+	})
+
+	t.Run("plain @target(Root) resolves the located-row form", func(t *testing.T) {
+		t.Parallel()
+
+		c := transitionFixtureClient(t, structs)
+		rpcMethod, err := resolveFixtureTransition(t, c, structs, "PlainTargetTask")
+		if err != nil {
+			t.Fatalf("resolveTransition(PlainTargetTask) error = %v", err)
+		}
+		if rpcMethod.Transition != nil {
+			t.Errorf("plain target resolved a transition: %+v", rpcMethod.Transition)
+		}
+		want := &rpcTarget{
+			RootStruct:   "StatefulTask",
+			RootResource: "StatefulTasks",
+			TargetField:  "TaskID",
+			RootPKField:  "ID",
+			RootPKColumn: "Id",
+			// The plain form never touches state, even on a stateful root.
+			StateField: "",
+		}
+		if diff := cmp.Diff(want, rpcMethod.Target); diff != "" {
+			t.Errorf("resolveTransition(PlainTargetTask) target mismatch (-want +got):\n%s", diff)
+		}
+		if got, want := rpcMethod.Target.LocateColumnCalls(), ".ID()"; got != want {
+			t.Errorf("LocateColumnCalls() = %q, want %q (the key itself when no state or tenant column is read)", got, want)
 		}
 	})
 
@@ -118,10 +162,11 @@ func TestResolveTransition(t *testing.T) {
 		{name: "duplicate from value", fixture: "TransitionDuplicateFrom", wantContain: "appears twice in the from set"},
 		{name: "to outside the enum", fixture: "TransitionBadTo", wantContain: `"bogus" is not a value`},
 		{name: "no target field", fixture: "TransitionNoTarget", wantContain: "exactly one @target"},
-		{name: "two target fields", fixture: "TransitionTwoTargets", wantContain: "a transition addresses exactly one target row"},
+		{name: "two target fields", fixture: "TransitionTwoTargets", wantContain: "a method addresses exactly one target row"},
 		{name: "target type mismatch", fixture: "TransitionTargetTypeMismatch", wantContain: "does not match the root key"},
 		{name: "scope mismatch", fixture: "TransitionScopeMismatch", wantContain: "permission scopes differ"},
-		{name: "target without transition", fixture: "TargetWithoutTransition", wantContain: "which this struct does not carry"},
+		{name: "bare target without transition", fixture: "TargetWithoutTransition", wantContain: "names the row resource the handler locates"},
+		{name: "target argument with transition", fixture: "TransitionTargetWithArg", wantContain: "takes no argument"},
 	}
 	for _, tt := range rejections {
 		t.Run(tt.name, func(t *testing.T) {
@@ -213,13 +258,18 @@ func Test_rpcHandlerTemplate_transition(t *testing.T) {
 
 		out := render(t, buildMethod(t, "CloseTask"))
 		for _, want := range []string{
+			"decoder := NewTargetedRPCDecoder[bindingfixture.CloseTask, request](a, accesstypes.Execute)",
+			"params, gate, err := decoder.Decode(r, accesstypes.GlobalScope())",
 			"resources.NewStatefulTaskQuery().",
 			"AddColumns(resources.NewStatefulTaskColumns().State()).",
 			"SetID(p.TaskID).",
 			`httpio.NewNotFoundMessagef("StatefulTask %s does not exist", p.TaskID)`,
 			"switch row.Data.State {",
 			`case "open", "approved":`,
-			`httpio.NewForbiddenMessagef("CloseTask runs from a open or approved StatefulTask; %s is %q", p.TaskID, row.Data.State)`,
+			// One refusal shape for the state check and the grant condition:
+			// the wire never says which said no (§12).
+			`httpio.NewForbiddenMessagef("CloseTask may not run against StatefulTask %s", p.TaskID)`,
+			`gate.Enforce(ctx, txn, resource.ExecuteTarget{Resource: "StatefulTasks", Label: "StatefulTask", PKColumn: "Id"}, p.TaskID)`,
 			`resources.NewStatefulTaskUpdatePatch(p.TaskID).SetState("closed").Buffer(ctx, txn, resource.UserEvent(ctx))`,
 		} {
 			if !strings.Contains(out, want) {
@@ -229,6 +279,29 @@ func Test_rpcHandlerTemplate_transition(t *testing.T) {
 		// A global-scoped root has no tenant key to compare.
 		if strings.Contains(out, "TenantKeyEquals") {
 			t.Errorf("global-scoped transition must not render a tenancy comparison:\n%s", out)
+		}
+	})
+
+	t.Run("plain @target renders the located-row form", func(t *testing.T) {
+		t.Parallel()
+
+		out := render(t, buildMethod(t, "PlainTargetTask"))
+		for _, want := range []string{
+			"decoder := NewTargetedRPCDecoder[bindingfixture.PlainTargetTask, request](a, accesstypes.Execute)",
+			"params, gate, err := decoder.Decode(r, accesstypes.GlobalScope())",
+			"AddColumns(resources.NewStatefulTaskColumns().ID()).",
+			`httpio.NewNotFoundMessagef("StatefulTask %s does not exist", p.TaskID)`,
+			`gate.Enforce(ctx, txn, resource.ExecuteTarget{Resource: "StatefulTasks", Label: "StatefulTask", PKColumn: "Id"}, p.TaskID)`,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("plain-target handler missing %q:\n%s", want, out)
+			}
+		}
+		// No state check, no stamp: the plain form moves no state.
+		for _, notWant := range []string{"switch row.Data", "UpdatePatch", "TenantKeyEquals"} {
+			if strings.Contains(out, notWant) {
+				t.Errorf("plain-target handler must not contain %q:\n%s", notWant, out)
+			}
 		}
 	})
 
@@ -256,7 +329,7 @@ func Test_rpcHandlerTemplate_transition(t *testing.T) {
 			rpcMethod.Fields = append(rpcMethod.Fields, &rpcField{Field: field})
 		}
 		out := render(t, rpcMethod)
-		for _, notWant := range []string{"Declared transition", "TenantKeyEquals", "UpdatePatch", "NotFoundMessagef"} {
+		for _, notWant := range []string{"Declared target", "TenantKeyEquals", "UpdatePatch", "NotFoundMessagef", "gate", "Targeted"} {
 			if strings.Contains(out, notWant) {
 				t.Errorf("plain RPC handler must not contain %q:\n%s", notWant, out)
 			}

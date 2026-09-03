@@ -122,6 +122,14 @@ type CollectionResource struct {
 	// Transition is an RPC method resource's declared state transition
 	// (@transition, design plan §09); nil for everything else.
 	Transition *TransitionData
+
+	// Target is the row resource an RPC method's @target field addresses —
+	// set for every @target method, transition or plain (a transition's
+	// Target repeats its TransitionData.Target); empty for everything else.
+	// A targeted method's Execute grants may carry row-referencing
+	// conditions: the generated handler locates the row in its transaction
+	// and evaluates them there (design plan §12).
+	Target accesstypes.Resource
 }
 
 // TransitionData records a declared state transition on an RPC method
@@ -189,6 +197,12 @@ func (b *CollectionBuilder) SetMethodTransition(scope accesstypes.PermissionScop
 	b.g.setMethodTransition(scope, method, transition)
 }
 
+// SetMethodTarget records the row resource an RPC method's @target field
+// addresses within scope.
+func (b *CollectionBuilder) SetMethodTarget(scope accesstypes.PermissionScope, method, target accesstypes.Resource) {
+	b.g.setMethodTarget(scope, method, target)
+}
+
 // Data returns the canonical, deterministically sorted form of everything registered so
 // far.
 func (b *CollectionBuilder) Data() CollectionData {
@@ -218,6 +232,7 @@ type GeneratedCollection struct {
 	bindings        map[accesstypes.PermissionScope]map[accesstypes.Resource]Bindings
 	computed        map[accesstypes.PermissionScope]map[accesstypes.Resource]struct{}
 	transitions     map[accesstypes.PermissionScope]map[accesstypes.Resource]TransitionData
+	targets         map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource
 }
 
 // newGeneratedCollection creates an empty, populatable GeneratedCollection.
@@ -229,6 +244,7 @@ func newGeneratedCollection() *GeneratedCollection {
 		bindings:        make(map[accesstypes.PermissionScope]map[accesstypes.Resource]Bindings, 2),
 		computed:        make(map[accesstypes.PermissionScope]map[accesstypes.Resource]struct{}, 2),
 		transitions:     make(map[accesstypes.PermissionScope]map[accesstypes.Resource]TransitionData, 2),
+		targets:         make(map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource, 2),
 	}
 }
 
@@ -301,7 +317,14 @@ func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 			if res.Transition.Target == "" || len(res.Transition.From) == 0 || res.Transition.To == "" {
 				return nil, errors.Newf("method resource %q declares an incomplete transition", res.Name)
 			}
+			if res.Target != "" && res.Target != res.Transition.Target {
+				return nil, errors.Newf("method resource %q declares target %q but its transition targets %q", res.Name, res.Target, res.Transition.Target)
+			}
 			g.setMethodTransition(res.Scope, res.Name, *res.Transition)
+		}
+
+		if res.Target != "" {
+			g.setMethodTarget(res.Scope, res.Name, res.Target)
 		}
 	}
 
@@ -422,18 +445,78 @@ func (g *GeneratedCollection) setResourceComputed(scope accesstypes.PermissionSc
 }
 
 // setMethodTransition records an RPC method resource's declared transition
-// within scope.
+// within scope. Every transition addresses a target row, so the target
+// registers alongside it — a transition-only registration still answers
+// MethodTarget and MethodsTargeting.
 func (g *GeneratedCollection) setMethodTransition(scope accesstypes.PermissionScope, method accesstypes.Resource, transition TransitionData) {
 	if g.transitions[scope] == nil {
 		g.transitions[scope] = make(map[accesstypes.Resource]TransitionData)
 	}
 	g.transitions[scope][method] = transition
+	g.setMethodTarget(scope, method, transition.Target)
+}
+
+// setMethodTarget records the row resource an RPC method's @target field
+// addresses within scope.
+func (g *GeneratedCollection) setMethodTarget(scope accesstypes.PermissionScope, method, target accesstypes.Resource) {
+	if g.targets[scope] == nil {
+		g.targets[scope] = make(map[accesstypes.Resource]accesstypes.Resource)
+	}
+	g.targets[scope][method] = target
+}
+
+// MethodTarget reports the row resource method's @target field addresses
+// within scope, and whether the method declares one. A targeted method's
+// Execute grants may carry row-referencing conditions — the generated handler
+// locates the row inside its transaction and evaluates them there — so
+// deploy-time grant validation (access.MigrateRoles) asks this to tell a
+// targeted method from a plain one.
+func (g *GeneratedCollection) MethodTarget(scope accesstypes.PermissionScope, method accesstypes.Resource) (accesstypes.Resource, bool) {
+	target, ok := g.targets[scope][method]
+
+	return target, ok
 }
 
 // TransitionMethod pairs an RPC method resource with its declared transition.
 type TransitionMethod struct {
 	Method     accesstypes.Resource
 	Transition TransitionData
+}
+
+// TargetedMethod pairs an RPC method resource with the row resource its
+// @target field addresses; Transition carries the declared edge when the
+// method is a transition, nil for the plain located-row form.
+type TargetedMethod struct {
+	Method     accesstypes.Resource
+	Target     accesstypes.Resource
+	Transition *TransitionData
+}
+
+// MethodsTargeting lists the RPC method resources whose @target field
+// addresses target, sorted by method name — the capability envelope's Execute
+// candidates: a transition method's affordance is gated on the row's state
+// membership in its from set, a plain method's only on its Execute grant's
+// condition. Every scope is searched: a targeted method and its row resource
+// share their scope kind by construction.
+func (g *GeneratedCollection) MethodsTargeting(target accesstypes.Resource) []TargetedMethod {
+	var methods []TargetedMethod
+	for scope, store := range g.targets {
+		for method, methodTarget := range store {
+			if methodTarget != target {
+				continue
+			}
+			tm := TargetedMethod{Method: method, Target: methodTarget}
+			if transition, ok := g.transitions[scope][method]; ok {
+				tm.Transition = &transition
+			}
+			methods = append(methods, tm)
+		}
+	}
+	slices.SortFunc(methods, func(a, b TargetedMethod) int {
+		return strings.Compare(string(a.Method), string(b.Method))
+	})
+
+	return methods
 }
 
 // TransitionsOnto lists the RPC method resources whose declared transitions
@@ -781,6 +864,10 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 		if transition, ok := g.transitions[key.scope][key.name]; ok {
 			transition.From = slices.Clone(transition.From)
 			res.Transition = &transition
+		}
+
+		if target, ok := g.targets[key.scope][key.name]; ok {
+			res.Target = target
 		}
 
 		data.Resources = append(data.Resources, res)

@@ -92,14 +92,16 @@ func TestWorkOrderWorkflow(t *testing.T) {
 	assertStatus(t, status, http.StatusOK, body)
 
 	// Illegal edge: a draft cannot start. The declared transition (@transition)
-	// answers Forbidden, naming the edge.
+	// answers one uniform Forbidden naming the method and the row — the same
+	// refusal a failing grant condition gets, so the wire never says which
+	// said no (design plan §12).
 	status, body = doRequest(t, h, http.MethodPost, "/api/waystations/ws-alpha/start-work-order",
 		fmt.Sprintf(`{"workOrderId":%q}`, woID))
 	if status != http.StatusForbidden {
 		t.Fatalf("start a draft: status = %d, want 403: %s", status, body)
 	}
-	if !strings.Contains(string(body), "StartWorkOrder runs from a scheduled WorkOrder") {
-		t.Fatalf("start a draft: refusal must name the transition and its from set: %s", body)
+	if !strings.Contains(string(body), "StartWorkOrder may not run against WorkOrder") {
+		t.Fatalf("start a draft: refusal must name the method and the row, nothing more: %s", body)
 	}
 
 	// Legal walk: schedule -> start -> complete.

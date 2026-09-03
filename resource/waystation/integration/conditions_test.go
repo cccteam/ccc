@@ -365,7 +365,9 @@ func TestDemoWorkflowEnforcement(t *testing.T) {
 		fmt.Sprintf(`{"requisitionId":%q}`, reqPumpID))
 	assertStatus(t, status, http.StatusOK, body)
 
-	// ...but a directly addressed over-limit approval is refused by the RPC body.
+	// ...but a directly addressed over-limit approval is refused by the grant's
+	// condition, evaluated against the located row inside the transition frame's
+	// transaction (§12) — the RPC body carries no check at all.
 	status, body = doRequestAs(t, h, "procurement-chen", http.MethodPost, "/api/waystations/ws-alpha/approve-requisition",
 		fmt.Sprintf(`{"requisitionId":%q}`, reqOverhaulID))
 	assertStatus(t, status, http.StatusForbidden, body)

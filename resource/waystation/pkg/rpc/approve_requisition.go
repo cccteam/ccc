@@ -9,11 +9,11 @@ import (
 
 type (
 	// ApproveRequisition moves a requisition submitted -> approved. The declared
-	// transition owns the edge check and the status stamp. The body re-verifies the
-	// approver's spending authority against their Staff row: the conditional Read
-	// grant keeps over-limit requisitions out of the approval queue, and this check
-	// keeps a directly-addressed approval honest too — business logic, not
-	// permission logic.
+	// transition owns the whole frame: the edge check, the status stamp, and the
+	// approver's spending authority — `totalCost <= subject.approvalLimit` rides the
+	// Execute grant and evaluates against the located row inside this transaction
+	// (design plan §12), so a directly addressed over-limit approval is refused
+	// without a line of code here. The body carries no further business effect.
 	//
 	// @rpc
 	// @permissionScope(domain)
@@ -25,6 +25,6 @@ type (
 )
 
 // Execute implements TxnRunner.
-func (m *ApproveRequisition) Execute(ctx context.Context, txn resource.ReadWriteTransaction, _ *Client) error {
-	return verifyApprovalLimit(ctx, txn, m.RequisitionID)
+func (m *ApproveRequisition) Execute(_ context.Context, _ resource.ReadWriteTransaction, _ *Client) error {
+	return nil
 }
