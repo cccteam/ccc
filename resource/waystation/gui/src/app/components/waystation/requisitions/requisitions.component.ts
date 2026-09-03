@@ -48,8 +48,9 @@ export class RequisitionsComponent {
   readonly methods = Methods;
 
   // The capability envelope rides every requisition row: Execute answers which
-  // declared transitions apply to its state — the same answer the server enforces.
-  requisitions = this.ws.stationList((station) => station.requisitions, { capabilities: ['Execute'] });
+  // declared transitions apply to its state, and Create which member resources may
+  // be created beneath it — the same answers the server enforces.
+  requisitions = this.ws.stationList((station) => station.requisitions, { capabilities: ['Execute', 'Create'] });
   // Lines opt into the Delete envelope: the draft-only rule lives in the Foreman's
   // conditional grant, so each row answers whether it may be removed.
   lineRows = this.ws.stationList((station) => station.requisitionLines, { capabilities: ['Delete'] });
@@ -62,12 +63,18 @@ export class RequisitionsComponent {
   station = this.ws.current;
   canList = computed(() => this.ws.can(Permissions.List, Resources.Requisitions));
   canCreate = computed(() => this.ws.can(Permissions.Create, Resources.Requisitions));
-  canAddLine = computed(() => this.ws.can(Permissions.Create, Resources.RequisitionLines));
 
   // Per-row affordances from the capability envelope: no statusId comparisons here —
   // whether a transition button renders is the row's own answer.
   canRun(requisition: Requisitions, method: Method): boolean {
     return this.ws.stationApi().requisitions.rowCan(requisition, 'Execute', method);
+  }
+
+  // The add-line form rides the row's Create affordance: the draft-only rule lives
+  // in the Foreman's conditional RequisitionLines Create grant, evaluated against
+  // this requisition's state — no hand-copied status check.
+  canAddLine(requisition: Requisitions): boolean {
+    return this.ws.stationApi().requisitions.rowCan(requisition, 'Create', Resources.RequisitionLines);
   }
 
   canRemove(line: RequisitionLines): boolean {

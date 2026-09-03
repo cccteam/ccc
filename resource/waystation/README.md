@@ -111,6 +111,14 @@ All login passwords are `waystation`.
   image the response shows. `integration/capabilities_test.go` pins the chief's
   unconditional list (pure RBAC, no extra SQL) against the foreman's
   state-conditioned one, row by row.
+- **Create-under-parent (§11)** — `capabilities=Create` on a parent's read answers,
+  per row, which workflow member resources the user may create beneath it: the
+  member Create grant's state condition evaluates against the parent row's own
+  uniform state binding (an unconditional grant folds structurally, zero SQL). The
+  foreman's `RequisitionLines` Create grant carries `state = 'draft'`, so the
+  add-line form renders exactly where a line-create would commit — the UI's last
+  hand-copied status check retires. `integration/capabilities_test.go` pins the
+  affordance following the parent's state, and the chief's empty answer.
 - **Create-form narrowing (§13)** — the digest's field-level Create entries are the
   enumeration a create form renders its inputs from: the technician's
   `IncidentReports` Create grant covers `summary` and `severity` only, so their
@@ -178,8 +186,9 @@ The same tour in the browser, persona by persona:
 
 1. **foreman-okafor** — create a requisition draft (Needed By is required), add a line
    (the unit cost snapshots from the catalog item), submit it, and watch the total
-   recompute server-side. Try to add a line after submitting: refused, the draft-only
-   grant is gone. File a work order at priority 3 (accepted) and priority 5 (refused —
+   recompute server-side. The add-line form disappears with the submit: it renders
+   from the row's Create affordance, so the draft-only grant leaving the row takes
+   the form with it. File a work order at priority 3 (accepted) and priority 5 (refused —
    the insert-image condition). Nudge the stalled oven order: it jumps to the top of
    the last-activity sort with every field unchanged — the first-class Touch.
 2. **procurement-chen** — the requisitions page shows only submitted requisitions

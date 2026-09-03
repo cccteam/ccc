@@ -67,3 +67,68 @@ func TestWithoutPostImage(t *testing.T) {
 		})
 	}
 }
+
+// TestFailOpen pins the generalized bound under a caller-supplied predicate —
+// here "only atoms whose left side is the uniform state attribute are
+// evaluable", the create-under-parent affordance's posture.
+func TestFailOpen(t *testing.T) {
+	t.Parallel()
+
+	stateOnly := func(atom Expr) bool {
+		switch n := atom.(type) {
+		case Comparison:
+			return !n.Left.PostImage && n.Left.Name == "state"
+		case In:
+			return !n.Left.PostImage && n.Left.Name == "state"
+		case NullTest:
+			return !n.Left.PostImage && n.Left.Name == "state"
+		default:
+			return true
+		}
+	}
+
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name:   "non-state conjuncts assume TRUE, the state residue survives",
+			source: "state = 'draft' AND owner = subject",
+			want:   "state = 'draft'",
+		},
+		{
+			name:   "a pure non-state condition has no residue",
+			source: "new.priority <= 3 AND owner = subject",
+			want:   "TRUE",
+		},
+		{
+			name:   "an OR with an unknown branch widens to TRUE",
+			source: "state = 'draft' OR owner = subject",
+			want:   "TRUE",
+		},
+		{
+			name:   "a negated unknown atom is still potentially-true",
+			source: "state = 'draft' AND NOT owner = subject",
+			want:   "state = 'draft'",
+		},
+		{
+			name:   "a state-only condition is untouched",
+			source: "state IN ('draft', 'scheduled')",
+			want:   "state IN ('draft', 'scheduled')",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			expr, err := Parse(tt.source)
+			if err != nil {
+				t.Fatalf("Parse(%q) error = %v", tt.source, err)
+			}
+			if got := FailOpen(expr, stateOnly).String(); got != tt.want {
+				t.Errorf("FailOpen(%q) = %q, want %q", tt.source, got, tt.want)
+			}
+		})
+	}
+}

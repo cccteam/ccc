@@ -636,6 +636,60 @@ func TestGeneratedCollection_methodTargets(t *testing.T) {
 	}
 }
 
+// TestGeneratedCollection_membersOf pins the workflow-membership surface the
+// create-under-parent affordance rides (§11): MembersOf answers the immediate
+// hop only, sorted, and the Parent field round-trips.
+func TestGeneratedCollection_membersOf(t *testing.T) {
+	t.Parallel()
+
+	g, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{
+		{
+			Name:        "Tasks",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Read},
+		},
+		{
+			Name:        "TaskNotes",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Create},
+			Parent:      "Tasks",
+		},
+		{
+			Name:        "TaskLines",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Create},
+			Parent:      "Tasks",
+		},
+		{
+			// A second-level member: its affordance rides TaskLines, never Tasks.
+			Name:        "TaskLineItems",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Create},
+			Parent:      "TaskLines",
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewGeneratedCollection() error = %v", err)
+	}
+
+	if got := g.MembersOf("Tasks"); len(got) != 2 || got[0] != "TaskLines" || got[1] != "TaskNotes" {
+		t.Errorf("MembersOf(Tasks) = %v, want [TaskLines TaskNotes] (immediate hop only, sorted)", got)
+	}
+	if got := g.MembersOf("TaskLines"); len(got) != 1 || got[0] != "TaskLineItems" {
+		t.Errorf("MembersOf(TaskLines) = %v, want [TaskLineItems]", got)
+	}
+	if got := g.MembersOf("TaskNotes"); len(got) != 0 {
+		t.Errorf("MembersOf(TaskNotes) = %v, want empty", got)
+	}
+
+	data := collectionDataFrom(g)
+	for i := range data.Resources {
+		if data.Resources[i].Name == "TaskLines" && data.Resources[i].Parent != "Tasks" {
+			t.Errorf("round-tripped TaskLines.Parent = %q, want Tasks", data.Resources[i].Parent)
+		}
+	}
+}
+
 // TestNewGeneratedCollection_targetMismatch pins the consistency check: a
 // method whose Target disagrees with its transition's target is invalid data.
 func TestNewGeneratedCollection_targetMismatch(t *testing.T) {

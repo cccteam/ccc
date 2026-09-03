@@ -1942,6 +1942,9 @@ func Collection() *resource.GeneratedCollection {
 				{{- with .Target }}
 				Target: "{{ . }}",
 				{{- end }}
+				{{- with .Parent }}
+				Parent: "{{ . }}",
+				{{- end }}
 			},
 			{{- end }}
 		},

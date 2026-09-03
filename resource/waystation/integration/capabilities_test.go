@@ -127,11 +127,71 @@ func TestCapabilityEnvelope(t *testing.T) {
 	t.Run("an unsupported capability is a bad request", func(t *testing.T) {
 		t.Parallel()
 
-		status, body := doRequestAs(t, h, "chief-alpha", http.MethodGet, "/api/waystations/ws-alpha/work-orders?capabilities=Create", "")
+		status, body := doRequestAs(t, h, "chief-alpha", http.MethodGet, "/api/waystations/ws-alpha/work-orders?capabilities=Read", "")
 		if status != http.StatusBadRequest {
 			t.Fatalf("GET status = %d, want %d (body %s)", status, http.StatusBadRequest, body)
 		}
 	})
+
+	// The create-under-parent affordance (§11): each requisition row lists the
+	// workflow member resources the user may create beneath it. The foreman's
+	// RequisitionLines Create grant carries `state = 'draft'`, so the add-line
+	// affordance follows the parent's state — present on their draft, absent
+	// once submitted or approved — with no status comparison in the UI. The
+	// chief holds no line-create grant, so every row answers empty.
+	createTests := []struct {
+		name string
+		user accesstypes.User
+		want map[string][]any
+	}{
+		{
+			name: "foreman's line-create affordance follows the requisition's state",
+			user: "foreman-okafor",
+			want: map[string][]any{
+				reqPumpID:     {"RequisitionLines"}, // draft
+				reqScrubberID: {},                   // submitted
+				reqTorchID:    {},                   // approved
+			},
+		},
+		{
+			name: "the chief holds no line-create grant, so every row answers empty",
+			user: "chief-alpha",
+			want: map[string][]any{
+				reqPumpID:     {},
+				reqScrubberID: {},
+			},
+		},
+	}
+	for _, tt := range createTests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, body := doRequestAs(t, h, tt.user, http.MethodGet, "/api/waystations/ws-alpha/requisitions?capabilities=Create", "")
+			if status != http.StatusOK {
+				t.Fatalf("GET status = %d, want %d (body %s)", status, http.StatusOK, body)
+			}
+
+			seen := make(map[string]bool, len(tt.want))
+			for _, row := range decodeRows(t, body) {
+				id, _ := row["id"].(string)
+				want, pinned := tt.want[id]
+				if !pinned {
+					continue
+				}
+				seen[id] = true
+
+				caps, _ := row["zzCapabilities"].(map[string]any)
+				if got := caps["Create"]; !reflect.DeepEqual(got, want) {
+					t.Errorf("row %s Create = %v, want %v", id, got, want)
+				}
+			}
+			for id := range tt.want {
+				if !seen[id] {
+					t.Errorf("row %s missing from the response", id)
+				}
+			}
+		})
+	}
 
 	// The Execute affordance (§09/§13): each row lists the targeted methods
 	// that apply to it — declared transitions whose from set contains the

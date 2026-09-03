@@ -201,6 +201,7 @@ func (r *resourceGenerator) computeCollectionData() (resource.CollectionData, er
 	}
 
 	r.collectBindingRegistrations(b)
+	r.collectWorkflowMemberRegistrations(b)
 
 	data := b.Data()
 	if err := r.validateStateEnumTables(data); err != nil {
@@ -218,6 +219,33 @@ func (r *resourceGenerator) computeCollectionData() (resource.CollectionData, er
 func (r *resourceGenerator) collectBindingRegistrations(b *resource.CollectionBuilder) {
 	for _, res := range r.resources {
 		b.SetResourceBindings(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), collectionBindings(res))
+	}
+}
+
+// collectWorkflowMemberRegistrations registers every workflow member's
+// immediate parent hop (@stateRoot). Like bindings, membership describes the
+// data model, not the generated handlers: the create-under-parent affordance
+// (design plan §11) reads it back at runtime to answer, per parent row, which
+// member resources the user may create beneath it.
+func (r *resourceGenerator) collectWorkflowMemberRegistrations(b *resource.CollectionBuilder) {
+	byTable := make(map[string]*resourceInfo, len(r.resources))
+	for _, res := range r.resources {
+		byTable[r.pluralize(res.Name())] = res
+	}
+	for _, res := range r.resources {
+		for _, field := range res.Fields {
+			if field.WorkflowRoot == "" {
+				continue
+			}
+			// Workflow validation has already resolved every hop onto a parsed
+			// resource; a missing entry here would be a generator bug, not a
+			// user error, so it is simply skipped.
+			parent, ok := byTable[field.ReferencedResource]
+			if !ok {
+				continue
+			}
+			b.SetResourceParent(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), accesstypes.Resource(r.pluralize(parent.Name())))
+		}
 	}
 }
 

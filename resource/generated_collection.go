@@ -130,6 +130,13 @@ type CollectionResource struct {
 	// conditions: the generated handler locates the row in its transaction
 	// and evaluates them there (design plan §12).
 	Target accesstypes.Resource
+
+	// Parent is a workflow member's immediate parent: the resource its
+	// @stateRoot foreign key references (the root, or another member on the
+	// chain); empty for everything else. The create-under-parent affordance
+	// (design plan §11) rides it: capabilities=Create on the parent's read
+	// answers, per row, which member resources the user may create beneath it.
+	Parent accesstypes.Resource
 }
 
 // TransitionData records a declared state transition on an RPC method
@@ -203,6 +210,12 @@ func (b *CollectionBuilder) SetMethodTarget(scope accesstypes.PermissionScope, m
 	b.g.setMethodTarget(scope, method, target)
 }
 
+// SetResourceParent records a workflow member's immediate parent within scope:
+// the resource its @stateRoot foreign key references.
+func (b *CollectionBuilder) SetResourceParent(scope accesstypes.PermissionScope, member, parent accesstypes.Resource) {
+	b.g.setResourceParent(scope, member, parent)
+}
+
 // Data returns the canonical, deterministically sorted form of everything registered so
 // far.
 func (b *CollectionBuilder) Data() CollectionData {
@@ -233,6 +246,7 @@ type GeneratedCollection struct {
 	computed        map[accesstypes.PermissionScope]map[accesstypes.Resource]struct{}
 	transitions     map[accesstypes.PermissionScope]map[accesstypes.Resource]TransitionData
 	targets         map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource
+	parents         map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource
 }
 
 // newGeneratedCollection creates an empty, populatable GeneratedCollection.
@@ -245,6 +259,7 @@ func newGeneratedCollection() *GeneratedCollection {
 		computed:        make(map[accesstypes.PermissionScope]map[accesstypes.Resource]struct{}, 2),
 		transitions:     make(map[accesstypes.PermissionScope]map[accesstypes.Resource]TransitionData, 2),
 		targets:         make(map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource, 2),
+		parents:         make(map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource, 2),
 	}
 }
 
@@ -325,6 +340,10 @@ func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 
 		if res.Target != "" {
 			g.setMethodTarget(res.Scope, res.Name, res.Target)
+		}
+
+		if res.Parent != "" {
+			g.setResourceParent(res.Scope, res.Name, res.Parent)
 		}
 	}
 
@@ -463,6 +482,33 @@ func (g *GeneratedCollection) setMethodTarget(scope accesstypes.PermissionScope,
 		g.targets[scope] = make(map[accesstypes.Resource]accesstypes.Resource)
 	}
 	g.targets[scope][method] = target
+}
+
+// setResourceParent records a workflow member's immediate parent within scope.
+func (g *GeneratedCollection) setResourceParent(scope accesstypes.PermissionScope, member, parent accesstypes.Resource) {
+	if g.parents[scope] == nil {
+		g.parents[scope] = make(map[accesstypes.Resource]accesstypes.Resource)
+	}
+	g.parents[scope][member] = parent
+}
+
+// MembersOf lists the workflow member resources whose immediate parent hop is
+// parent, sorted by name — the create-under-parent affordance's candidates
+// (design plan §11): capabilities=Create on the parent's read answers, per
+// row, which of these the user may create beneath it. Every scope is
+// searched: a member and its parent share their scope kind by construction.
+func (g *GeneratedCollection) MembersOf(parent accesstypes.Resource) []accesstypes.Resource {
+	var members []accesstypes.Resource
+	for _, store := range g.parents {
+		for member, memberParent := range store {
+			if memberParent == parent {
+				members = append(members, member)
+			}
+		}
+	}
+	slices.Sort(members)
+
+	return members
 }
 
 // MethodTarget reports the row resource method's @target field addresses
@@ -868,6 +914,10 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 
 		if target, ok := g.targets[key.scope][key.name]; ok {
 			res.Target = target
+		}
+
+		if parent, ok := g.parents[key.scope][key.name]; ok {
+			res.Parent = parent
 		}
 
 		data.Resources = append(data.Resources, res)

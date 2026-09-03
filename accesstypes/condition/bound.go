@@ -1,9 +1,20 @@
 package condition
 
+// FailOpen returns the expression's fail-open upper bound with every atom for
+// which evaluable reports false assumed to pass: such an atom becomes TRUE
+// under an even number of negations and FALSE under an odd number, and the
+// logic simplifies with the usual TRUE/FALSE absorption. An unknown atom is
+// unknown in both polarities, so the bound of a whole expression never
+// simplifies to FALSE — the caller reads a Truth result as "no evaluable
+// residue". The predicate sees only atoms (Comparison, In, NullTest); logic
+// nodes recurse.
+func FailOpen(e Expr, evaluable func(atom Expr) bool) Expr {
+	return bound(e, evaluable, true)
+}
+
 // WithoutPostImage returns the expression's fail-open upper bound with every
-// post-image-reading term assumed to pass: an atom touching `new.` becomes
-// TRUE under an even number of negations and FALSE under an odd number, and
-// the logic simplifies with the usual TRUE/FALSE absorption.
+// post-image-reading term assumed to pass — FailOpen with "touches no `new.`"
+// as the predicate.
 //
 // The capability envelope renders the result (§13): a term depending on a
 // value the user has not yet typed counts potentially-true, while the
@@ -13,18 +24,29 @@ package condition
 // enforcement always evaluates the full expression against the proposed
 // image.
 func WithoutPostImage(e Expr) Expr {
-	return postImageBound(e, true)
+	return FailOpen(e, func(atom Expr) bool {
+		switch n := atom.(type) {
+		case Comparison:
+			return !n.Left.PostImage
+		case In:
+			return !n.Left.PostImage
+		case NullTest:
+			return !n.Left.PostImage
+		default:
+			return true
+		}
+	})
 }
 
-// postImageBound rewrites post-image atoms to the bound the polarity wants:
-// upper (TRUE) where the term's truth can only widen the result, lower
-// (FALSE) where negation flips it.
-func postImageBound(e Expr, upper bool) Expr {
+// bound rewrites unknown atoms to the bound the polarity wants: upper (TRUE)
+// where the term's truth can only widen the result, lower (FALSE) where
+// negation flips it.
+func bound(e Expr, evaluable func(atom Expr) bool, upper bool) Expr {
 	switch n := e.(type) {
 	case And:
 		operands := make([]Expr, 0, len(n.Operands))
 		for _, op := range n.Operands {
-			bounded := postImageBound(op, upper)
+			bounded := bound(op, evaluable, upper)
 			if t, ok := bounded.(Truth); ok {
 				if !t.Value {
 					return Truth{Value: false}
@@ -39,7 +61,7 @@ func postImageBound(e Expr, upper bool) Expr {
 	case Or:
 		operands := make([]Expr, 0, len(n.Operands))
 		for _, op := range n.Operands {
-			bounded := postImageBound(op, upper)
+			bounded := bound(op, evaluable, upper)
 			if t, ok := bounded.(Truth); ok {
 				if t.Value {
 					return Truth{Value: true}
@@ -52,26 +74,14 @@ func postImageBound(e Expr, upper bool) Expr {
 
 		return rebuildLogic(operands, false)
 	case Not:
-		bounded := postImageBound(n.Operand, !upper)
+		bounded := bound(n.Operand, evaluable, !upper)
 		if t, ok := bounded.(Truth); ok {
 			return Truth{Value: !t.Value}
 		}
 
 		return Not{Operand: bounded}
-	case Comparison:
-		if n.Left.PostImage {
-			return Truth{Value: upper}
-		}
-
-		return n
-	case In:
-		if n.Left.PostImage {
-			return Truth{Value: upper}
-		}
-
-		return n
-	case NullTest:
-		if n.Left.PostImage {
+	case Comparison, In, NullTest:
+		if !evaluable(n) {
 			return Truth{Value: upper}
 		}
 

@@ -101,7 +101,7 @@
         <p class="empty">No lines visible on this requisition.</p>
       }
 
-      @if (requisition.statusId === status.Draft && canAddLine()) {
+      @if (canAddLine(requisition)) {
         <form class="inline-form" (ngSubmit)="addLine(requisition)">
           <mat-form-field appearance="outline" class="grow">
             <mat-label>Catalog Item</mat-label>

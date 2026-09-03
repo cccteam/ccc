@@ -154,6 +154,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "state", Column: "Id", Type: "string", Path: []resource.BindingHop{{Table: "Requisitions", JoinColumn: "Id", Column: "StatusId"}}},
 				},
 				Domain: &resource.DomainBindingData{Column: "Id", Path: []resource.BindingHop{{Table: "Requisitions", JoinColumn: "Id", Column: "WaystationId"}}},
+				Parent: "Requisitions",
 			},
 			{
 				Name:        "Requisitions",
@@ -281,6 +282,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "state", Column: "Id", Type: "string", Path: []resource.BindingHop{{Table: "WorkOrders", JoinColumn: "Id", Column: "StatusId"}}},
 				},
 				Domain: &resource.DomainBindingData{Column: "Id", Path: []resource.BindingHop{{Table: "WorkOrders", JoinColumn: "Id", Column: "WaystationId"}}},
+				Parent: "WorkOrders",
 			},
 			{
 				Name:        "WorkOrders",

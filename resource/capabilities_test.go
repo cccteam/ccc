@@ -248,6 +248,170 @@ func executeCollection(t *testing.T) *GeneratedCollection {
 	return g
 }
 
+// createCollection is renderCollection plus workflow membership: two member
+// resources whose immediate parent hop is the enforcement resource (§11).
+func createCollection(t *testing.T) *GeneratedCollection {
+	t.Helper()
+
+	g, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{
+		{
+			Name:        enforcedResource,
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Read},
+			Attributes: []AttributeData{
+				{Name: "owner", Column: "Owner", Type: AttributeTypeString},
+				{Name: StateAttribute, Column: "State", Type: AttributeTypeString},
+			},
+			Domain: &DomainBindingData{Column: "Station"},
+		},
+		{
+			Name:        "TaskLines",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Create},
+			Parent:      enforcedResource,
+		},
+		{
+			Name:        "TaskNotes",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.Create},
+			Parent:      enforcedResource,
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewGeneratedCollection() error = %v", err)
+	}
+
+	return g
+}
+
+// TestQuerySet_stmt_createCapability pins the create-under-parent affordance
+// (§11/§13): the Create list names the workflow members the user may create
+// beneath the row — an unconditional grant is structural (no SQL), a
+// conditional grant renders its state-evaluable residue against the parent's
+// own uniform state binding, every other term counts potentially-true, and an
+// ungranted member never appears.
+func TestQuerySet_stmt_createCapability(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	baseSQL := "SELECT Id, Public, Tagged FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain)"
+
+	tests := []struct {
+		name       string
+		collection func(*testing.T) *GeneratedCollection
+		byPerm     map[accesstypes.Permission]accesstypes.Decisions
+		wantSQL    string
+		checks     []bool
+		want       map[accesstypes.Permission]any
+	}{
+		{
+			name:       "an unconditional member grant is structural",
+			collection: createCollection,
+			byPerm: map[accesstypes.Permission]accesstypes.Decisions{
+				accesstypes.Create: {"TaskLines": accesstypes.Granted()},
+			},
+			wantSQL: baseSQL,
+			want:    map[accesstypes.Permission]any{accesstypes.Create: []string{"TaskLines"}},
+		},
+		{
+			// The member's synthesized state binding is its parent's state, so
+			// the condition lowers against this row's own state column.
+			name:       "a state-conditioned member grant gates per row",
+			collection: createCollection,
+			byPerm: map[accesstypes.Permission]accesstypes.Decisions{
+				accesstypes.Create: {"TaskLines": conditionalOn("TaskLines", "state = 'draft'")},
+			},
+			wantSQL: "SELECT Id, Public, Tagged, ARRAY<BOOL>[(`enforcementResources`.`State` = @_c1)] AS zzCapabilityChecks " +
+				"FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain)",
+			checks: []bool{false},
+			want:   map[accesstypes.Permission]any{accesstypes.Create: []string{}},
+		},
+		{
+			// A term the parent row cannot answer — a column the created row
+			// would carry — counts potentially-true while the state residue
+			// still renders (§13's fail-open posture, per term).
+			name:       "a non-state conjunct assumes true, the state residue renders",
+			collection: createCollection,
+			byPerm: map[accesstypes.Permission]accesstypes.Decisions{
+				accesstypes.Create: {"TaskLines": conditionalOn("TaskLines", "state = 'draft' AND requestedBy = subject")},
+			},
+			wantSQL: "SELECT Id, Public, Tagged, ARRAY<BOOL>[(`enforcementResources`.`State` = @_c1)] AS zzCapabilityChecks " +
+				"FROM enforcementResources WHERE (`enforcementResources`.`Station` = @domain)",
+			checks: []bool{true},
+			want:   map[accesstypes.Permission]any{accesstypes.Create: []string{"TaskLines"}},
+		},
+		{
+			// A condition with no state term at all folds structural: wholly
+			// potentially-true, zero SQL.
+			name:       "a wholly unanswerable condition folds structural",
+			collection: createCollection,
+			byPerm: map[accesstypes.Permission]accesstypes.Decisions{
+				accesstypes.Create: {"TaskNotes": conditionalOn("TaskNotes", "new.severity <= 3")},
+			},
+			wantSQL: baseSQL,
+			want:    map[accesstypes.Permission]any{accesstypes.Create: []string{"TaskNotes"}},
+		},
+		{
+			name:       "an ungranted member never appears",
+			collection: createCollection,
+			byPerm: map[accesstypes.Permission]accesstypes.Decisions{
+				accesstypes.Create: {"TaskLines": accesstypes.Granted()},
+			},
+			wantSQL: baseSQL,
+			want:    map[accesstypes.Permission]any{accesstypes.Create: []string{"TaskLines"}},
+		},
+		{
+			name:       "no members answers empty on the byte-identical statement",
+			collection: renderCollection,
+			byPerm:     map[accesstypes.Permission]accesstypes.Decisions{},
+			wantSQL:    baseSQL,
+			want:       map[accesstypes.Permission]any{accesstypes.Create: []string{}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rSet, err := NewSet[enforcementResource, enforcementReadRequest](accesstypes.Read)
+			if err != nil {
+				t.Fatalf("NewSet() error = %v", err)
+			}
+
+			q := NewQuerySet(NewMetadata[enforcementResource]())
+			q.env = accesstypes.EnvironmentAt(now)
+			q.jsonNames = map[accesstypes.Field]string{"ID": "id", "Public": "public", "Tagged": "tagged"}
+			q.collection = tt.collection(t)
+			q.EnableUserPermissionEnforcement(rSet, capStubPermissions{byPerm: tt.byPerm}, testScope, accesstypes.Read)
+			for _, field := range []accesstypes.Field{"ID", "Public", "Tagged"} {
+				q.AddField(field)
+			}
+			q.RequestCapabilities(accesstypes.Create)
+
+			if err := q.checkPermissions(t.Context(), SpannerDBType); err != nil {
+				t.Fatalf("QuerySet.checkPermissions() error = %v", err)
+			}
+
+			stmt, err := q.stmt(SpannerDBType)
+			if err != nil {
+				t.Fatalf("QuerySet.stmt() error = %v", err)
+			}
+
+			if got := normalizeSQL(stmt.SQL); got != tt.wantSQL {
+				t.Errorf("QuerySet.stmt() SQL =\n%s\nwant\n%s", got, tt.wantSQL)
+			}
+			if stmt.capabilityPlan == nil {
+				t.Fatal("QuerySet.stmt() capabilityPlan = nil, want a plan")
+			}
+
+			got := stmt.capabilityPlan.assemble(tt.checks)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("capabilityPlan.assemble() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 // TestQuerySet_stmt_executeCapability pins the Execute affordance (§09/§13):
 // granted transition methods gate on the row's pre-image state membership —
 // one shared boolean per distinct from set in the reserved array column —

@@ -51,17 +51,20 @@ const (
 
 // capabilityPermissions returns the permissions capability evaluation
 // supports: Update carries a positive list of editable field names, Delete a
-// boolean — its footprint is the row — and Execute a positive list of the RPC
-// methods whose declared transitions apply to the row (§09). Create has no
-// row to ride (the permission digest answers it), and read-shaped permissions
-// are answered by the response itself.
+// boolean — its footprint is the row — Execute a positive list of the RPC
+// methods whose declared transitions apply to the row (§09), and Create a
+// positive list of the workflow member resources the user may create beneath
+// the row (§11 — the affordance rides the immediate parent hop; the
+// permission digest answers every other create). Read-shaped permissions are
+// answered by the response itself.
 func capabilityPermission(name string) (accesstypes.Permission, error) {
 	perm := accesstypes.Permission(name)
-	if perm != accesstypes.Update && perm != accesstypes.Delete && perm != accesstypes.Execute {
-		return "", httpio.NewBadRequestMessagef("capability evaluation supports %s, %s and %s, not %q", accesstypes.Update, accesstypes.Delete, accesstypes.Execute, name)
+	switch perm {
+	case accesstypes.Create, accesstypes.Update, accesstypes.Delete, accesstypes.Execute:
+		return perm, nil
+	default:
+		return "", httpio.NewBadRequestMessagef("capability evaluation supports %s, %s, %s and %s, not %q", accesstypes.Create, accesstypes.Update, accesstypes.Delete, accesstypes.Execute, name)
 	}
-
-	return perm, nil
 }
 
 // capabilityPlan is one statement's capability evaluation: how each row's
@@ -163,6 +166,16 @@ func (q *QuerySet[Resource]) checkCapabilityPermissions(ctx context.Context) err
 			for _, tm := range q.collection.MethodsTargeting(q.resourceSet.BaseResource()) {
 				resources = append(resources, tm.Method)
 			}
+			if len(resources) == 0 {
+				continue
+			}
+		case accesstypes.Create:
+			// The affordance question is per member resource: the workflow
+			// members whose immediate parent hop is this resource (§11).
+			if q.collection == nil {
+				continue
+			}
+			resources = q.collection.MembersOf(q.resourceSet.BaseResource())
 			if len(resources) == 0 {
 				continue
 			}
@@ -358,6 +371,68 @@ func (q *QuerySet[Resource]) plannedExecute(decisions accesstypes.Decisions, gro
 	return planned, nil
 }
 
+// plannedCreate builds the create-under-parent affordance's recipe (§11): the
+// workflow member resources whose immediate parent hop is this resource,
+// gated by the user's Create grants on each member. An unconditional grant is
+// structural — the member lists with no SQL; a conditional grant contributes
+// its state-evaluable residue, lowered against this row's own uniform state
+// binding (the member's synthesized state IS its parent's state, so the
+// immediate-parent row answers it), while every other term counts
+// potentially-true (§13's fail-open posture, per term).
+func (q *QuerySet[Resource]) plannedCreate(decisions accesstypes.Decisions, groups *capabilityGroups) (plannedCapability, error) {
+	planned := plannedCapability{perm: accesstypes.Create, group: -1}
+	if q.collection == nil {
+		return planned, nil
+	}
+	for _, member := range q.collection.MembersOf(q.resourceSet.BaseResource()) {
+		decision := decisions[member]
+		group := -1
+		switch {
+		case decision.IsGranted():
+		case decision.IsConditional():
+			expr, err := conditionalExpr(member, decision)
+			if err != nil {
+				return plannedCapability{}, err
+			}
+			expr = condition.FailOpen(expr, stateEvaluable)
+			if _, ok := expr.(condition.Truth); !ok {
+				group = groups.internExpr(expr)
+			}
+		default:
+			continue
+		}
+		planned.fields = append(planned.fields, capabilityField{jsonName: string(member), group: group})
+	}
+
+	return planned, nil
+}
+
+// stateEvaluable reports whether an atom of a member's Create condition can
+// be answered by the parent row: every reference it carries is the uniform
+// state binding, read from the pre-image. Anything else — a column the
+// created row would carry, a post-image reference, an attribute compared to
+// another attribute — is unknown before the user creates, and counts
+// potentially-true.
+func stateEvaluable(atom condition.Expr) bool {
+	switch n := atom.(type) {
+	case condition.Comparison:
+		if n.Left.PostImage || n.Left.Name != StateAttribute {
+			return false
+		}
+		if _, ok := n.Right.(condition.Ref); ok {
+			return false
+		}
+
+		return true
+	case condition.In:
+		return !n.Left.PostImage && n.Left.Name == StateAttribute
+	case condition.NullTest:
+		return !n.Left.PostImage && n.Left.Name == StateAttribute
+	default:
+		return true
+	}
+}
+
 // renderCapabilities builds the statement's capability plan and, when any
 // condition group needs data, the reserved boolean-array select item. Both
 // are empty when the request asked for no capabilities.
@@ -377,6 +452,8 @@ func (q *QuerySet[Resource]) renderCapabilities(dbType DBType, registry *paramRe
 			planned, err = q.plannedDelete(q.capabilityDecisions[perm], groups)
 		case accesstypes.Execute:
 			planned, err = q.plannedExecute(q.capabilityDecisions[perm], groups)
+		case accesstypes.Create:
+			planned, err = q.plannedCreate(q.capabilityDecisions[perm], groups)
 		default:
 			planned, err = q.plannedUpdate(perm, q.capabilityDecisions[perm], groups)
 		}
