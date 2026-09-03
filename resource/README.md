@@ -208,3 +208,27 @@ the domain guard can never disagree. The global scope is never a domain. The ans
 reports grants, not tenants — a domain the application has since removed still lists
 while grants in it remain; existence stays the application's `DomainExists` seam. An
 empty membership is `[]`, never `null`.
+
+## 6. Impersonated sessions
+
+`cccteam/session` can establish a session that operates as another user or as a role
+on behalf of an authenticated actor, optionally attenuated by an
+`accesstypes.PermissionMask`. Such a session is an ordinary session to every consumer;
+this package supplies the two pieces that must know about it:
+
+- **`SessionPermissions(ctx, forUser, forRole)`** composes the request's
+  `UserPermissions` from the session: `forUser` (typically `access.Client.ForUser`) for a
+  user principal — an ordinary session or an impersonated user — and `forRole` for a
+  role principal, then applies the session's mask. Pass `RolePrincipalsUnsupported` as
+  `forRole` while the access engine has no role-bound checker; a role principal then
+  fails closed (every check Denied, empty digest, no domains) with the actor as
+  `User()`. `Masked(perms, mask)` is the attenuation on its own: a permission the mask
+  does not allow is Denied for every resource before policy is consulted and dropped from
+  the permission digest, so the frontend's digest agrees with what `Check` enforces.
+  Forgetting the mask fails *open*, which is why the composition is here rather than
+  hand-rolled per application.
+- **`UserEvent(ctx)`** — the event source every generated write handler stamps onto
+  `DataChangeEvents` — names the actor first for an impersonated session:
+  `alice impersonating bob (session id)` and `alice as role PartnerViewer (session id)`,
+  unchanged (`bob (session id)`) otherwise. Every tracked data change carries evidence of
+  the real person with no regeneration.
