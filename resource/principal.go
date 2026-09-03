@@ -15,23 +15,31 @@ import (
 // principal — and applies the session's permission mask. It is the per-request
 // accessor for an application with impersonated sessions:
 //
-//	return resource.SessionPermissions(r.Context(), a.access.ForUser, resource.RolePrincipalsUnsupported)
+//	return resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole)
 //
-// While the access engine offers no role-bound checker, pass
+// A role checker has no User(): a role is not anyone. For a role principal the
+// composed UserPermissions reports the session's effective identity — its
+// Username, which is the actor who established the session — so a row
+// condition's subject binds to the real person and nobody's identity is
+// borrowed. An application that does not operate sessions as roles passes
 // RolePrincipalsUnsupported as forRole: a role principal then fails closed —
-// every check Denied, an empty digest, no domains — with the actor as User(), so
-// a deployment that mints role principals without a checker is loud rather than
+// every check Denied, an empty digest, no domains — with the same User(), so a
+// deployment that mints role principals without a checker is loud rather than
 // permissive.
-func SessionPermissions[U, R UserPermissions](ctx context.Context, forUser func(accesstypes.User) U, forRole func(accesstypes.Role) R) UserPermissions {
+func SessionPermissions[U UserPermissions, R RolePermissions](ctx context.Context, forUser func(accesstypes.User) U, forRole func(accesstypes.Role) R) UserPermissions {
 	principal := sessioninfo.PrincipalFromCtx(ctx)
 
 	var perms UserPermissions
 	if role, ok := principal.Role(); ok {
+		var rolePerms RolePermissions
 		if forRole != nil {
-			perms = forRole(role)
+			rolePerms = forRole(role)
 		}
-		if perms == nil {
-			perms = unsupportedRolePermissions{actor: accesstypes.User(sessioninfo.ActorFromCtx(ctx)), role: role}
+		effective := accesstypes.User(sessioninfo.FromCtx(ctx).Username)
+		if rolePerms == nil {
+			perms = unsupportedRolePermissions{user: effective, role: role}
+		} else {
+			perms = rolePrincipalPermissions{RolePermissions: rolePerms, user: effective}
 		}
 	} else {
 		user, _ := principal.User()
@@ -41,11 +49,25 @@ func SessionPermissions[U, R UserPermissions](ctx context.Context, forUser func(
 	return Masked(perms, sessioninfo.MaskFromCtx(ctx))
 }
 
-// RolePrincipalsUnsupported is the forRole argument for SessionPermissions when
-// the access engine offers no role-bound checker. It returns nil, which
-// SessionPermissions replaces with a fail-closed checker for the role.
-func RolePrincipalsUnsupported(accesstypes.Role) UserPermissions {
+// RolePrincipalsUnsupported is the forRole argument for SessionPermissions in
+// an application that does not operate sessions as roles. It returns nil,
+// which SessionPermissions replaces with a fail-closed checker for the role.
+func RolePrincipalsUnsupported(accesstypes.Role) RolePermissions {
 	return nil
+}
+
+// rolePrincipalPermissions completes a role checker into the UserPermissions
+// every decoder consumes: User() is the session's effective identity — the
+// actor who established the role-principal session — which is what a row
+// condition's subject binds to at render time.
+type rolePrincipalPermissions struct {
+	RolePermissions
+	user accesstypes.User
+}
+
+// User returns the session's effective identity.
+func (r rolePrincipalPermissions) User() accesstypes.User {
+	return r.user
 }
 
 // Masked returns perms attenuated by mask: a permission the mask does not allow
@@ -110,10 +132,11 @@ func (m *maskedPermissions) PermissionDigest(ctx context.Context, scope accessty
 }
 
 // unsupportedRolePermissions is the fail-closed checker for a role principal
-// when no role-bound checker is configured.
+// when no role checker is configured. User() is still the session's effective
+// identity, so evidence names the real person even while nothing is granted.
 type unsupportedRolePermissions struct {
-	actor accesstypes.User
-	role  accesstypes.Role
+	user accesstypes.User
+	role accesstypes.Role
 }
 
 func (u unsupportedRolePermissions) Check(
@@ -133,7 +156,7 @@ func (unsupportedRolePermissions) Domains(context.Context) ([]accesstypes.Domain
 }
 
 func (u unsupportedRolePermissions) User() accesstypes.User {
-	return u.actor
+	return u.user
 }
 
 // deniedDecisions is the fail-closed answer for resources: every one Denied.

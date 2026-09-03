@@ -218,15 +218,19 @@ this package supplies the two pieces that must know about it:
 
 - **`SessionPermissions(ctx, forUser, forRole)`** composes the request's
   `UserPermissions` from the session: `forUser` (typically `access.Client.ForUser`) for a
-  user principal — an ordinary session or an impersonated user — and `forRole` for a
-  role principal, then applies the session's mask. Pass `RolePrincipalsUnsupported` as
-  `forRole` while the access engine has no role-bound checker; a role principal then
-  fails closed (every check Denied, empty digest, no domains) with the actor as
-  `User()`. `Masked(perms, mask)` is the attenuation on its own: a permission the mask
-  does not allow is Denied for every resource before policy is consulted and dropped from
-  the permission digest, so the frontend's digest agrees with what `Check` enforces.
-  Forgetting the mask fails *open*, which is why the composition is here rather than
-  hand-rolled per application.
+  user principal — an ordinary session or an impersonated user — and `forRole`
+  (typically `access.Client.ForRole`) for a role principal, then applies the session's
+  mask. A role checker satisfies `RolePermissions` — `UserPermissions` without `User()`,
+  because a role is not anyone — and the composition supplies `User()` itself: the
+  session's effective identity, which for a role principal is the actor who established
+  it, so a row condition's `subject` binds to the real person and nobody's identity is
+  borrowed. An application that does not operate sessions as roles passes
+  `RolePrincipalsUnsupported` as `forRole`; a role principal then fails closed (every
+  check Denied, empty digest, no domains) with the same `User()`. `Masked(perms, mask)`
+  is the attenuation on its own: a permission the mask does not allow is Denied for every
+  resource before policy is consulted and dropped from the permission digest, so the
+  frontend's digest agrees with what `Check` enforces. Forgetting the mask fails *open*,
+  which is why the composition is here rather than hand-rolled per application.
 - **`UserEvent(ctx)`** — the event source every generated write handler stamps onto
   `DataChangeEvents` — names the actor first for an impersonated session:
   `alice impersonating bob (session id)` and `alice as role PartnerViewer (session id)`,

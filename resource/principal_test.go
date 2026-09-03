@@ -49,6 +49,31 @@ func (s *stubPermissions) Domains(context.Context) ([]accesstypes.Domain, error)
 
 func (s *stubPermissions) User() accesstypes.User { return s.user }
 
+// stubRolePermissions is a RolePermissions — deliberately without User(), as
+// a role checker is not anyone — that grants everything it is asked, so the
+// role route can be asserted to accept such a checker and to supply User()
+// itself.
+type stubRolePermissions struct {
+	role accesstypes.Role
+}
+
+func (s *stubRolePermissions) Check(_ context.Context, _ accesstypes.Environment, _ accesstypes.Scope, _ accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
+	decisions := make(accesstypes.Decisions, len(resources))
+	for _, res := range resources {
+		decisions[res] = accesstypes.Granted()
+	}
+
+	return decisions, nil
+}
+
+func (s *stubRolePermissions) PermissionDigest(context.Context, accesstypes.Scope) (accesstypes.PermissionDigest, error) {
+	return accesstypes.PermissionDigest{"documents": {accesstypes.Update: accesstypes.DigestGranted}}, nil
+}
+
+func (s *stubRolePermissions) Domains(context.Context) ([]accesstypes.Domain, error) {
+	return []accesstypes.Domain{"tenant"}, nil
+}
+
 func sessionCtx(username string, imp *sessioninfo.Impersonation) context.Context {
 	return context.WithValue(context.Background(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionData{
 		SessionInfo:   &sessioninfo.SessionInfo{ID: ccc.Must(ccc.UUIDFromString("de6e1a12-2d4d-4c4d-aaf1-d82cb9a9eff5")), Username: username},
@@ -171,10 +196,10 @@ func (r *checkerRecorder) forUser(user accesstypes.User) *stubPermissions {
 	return &stubPermissions{user: user, digest: accesstypes.PermissionDigest{"documents": {accesstypes.Update: accesstypes.DigestGranted}}}
 }
 
-func (r *checkerRecorder) forRole(role accesstypes.Role) *stubPermissions {
+func (r *checkerRecorder) forRole(role accesstypes.Role) *stubRolePermissions {
 	r.roles = append(r.roles, role)
 
-	return &stubPermissions{user: "role:" + accesstypes.User(role)}
+	return &stubRolePermissions{role: role}
 }
 
 func TestSessionPermissions(t *testing.T) {
@@ -210,14 +235,26 @@ func TestSessionPermissions(t *testing.T) {
 			wantDigestLen: 0,
 		},
 		{
-			name:       "role principal routes to the role checker",
-			ctx:        sessionCtx("alice", &sessioninfo.Impersonation{Actor: "alice", Principal: accesstypes.RolePrincipal("PartnerViewer")}),
-			wantRoles:  []accesstypes.Role{"PartnerViewer"},
-			wantUser:   "role:PartnerViewer",
-			wantUpdate: true,
+			name:          "role principal routes to the role checker, which has no User(); the session's effective identity is supplied",
+			ctx:           sessionCtx("alice", &sessioninfo.Impersonation{Actor: "alice", Principal: accesstypes.RolePrincipal("PartnerViewer")}),
+			wantRoles:     []accesstypes.Role{"PartnerViewer"},
+			wantUser:      "alice",
+			wantUpdate:    true,
+			wantDigestLen: 1,
 		},
 		{
-			name:        "role principal without a role checker fails closed with the actor as User()",
+			name: "masked role principal is attenuated like any other session",
+			ctx: sessionCtx("alice", &sessioninfo.Impersonation{
+				Actor:     "alice",
+				Principal: accesstypes.RolePrincipal("PartnerViewer"),
+				Mask:      accesstypes.MaskPermissions(accesstypes.List, accesstypes.Read),
+			}),
+			wantRoles:     []accesstypes.Role{"PartnerViewer"},
+			wantUser:      "alice",
+			wantDigestLen: 0,
+		},
+		{
+			name:        "role principal without a role checker fails closed with the session's effective identity as User()",
 			ctx:         sessionCtx("alice", &sessioninfo.Impersonation{Actor: "alice", Principal: accesstypes.RolePrincipal("PartnerViewer")}),
 			unsupported: true,
 			wantUser:    "alice",

@@ -50,6 +50,30 @@ type UserPermissions interface {
 	User() accesstypes.User
 }
 
+// RolePermissions is the permission surface of a session that operates as a
+// role principal: UserPermissions without User(), because a role is not
+// anyone. SessionPermissions completes it into the UserPermissions every
+// decoder consumes by supplying the session's effective identity as User().
+//
+// The canonical implementation is the access package's request-bound role
+// checker (Client.ForRole), which satisfies this interface structurally —
+// neither package imports the other.
+type RolePermissions interface {
+	// Check returns the Decision for perm on each of resources within scope,
+	// evaluated against the role's effective grants. See
+	// UserPermissions.Check for the contract every implementation owes:
+	// an entry per resource, no short-circuit, one snapshot per call.
+	Check(ctx context.Context, env accesstypes.Environment, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error)
+
+	// PermissionDigest returns the role's structural grant enumeration within
+	// scope. See UserPermissions.PermissionDigest.
+	PermissionDigest(ctx context.Context, scope accesstypes.Scope) (accesstypes.PermissionDigest, error)
+
+	// Domains lists the domains where the role holds at least one grant,
+	// sorted. See UserPermissions.Domains.
+	Domains(ctx context.Context) ([]accesstypes.Domain, error)
+}
+
 // Client is an interface for the supported database Client's to implement. It is not intended
 // for mocking since each database requires an implementation in this package.
 type Client interface {
