@@ -50,10 +50,10 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/cccteam/access v0.9.12-0.20260903211123-6ccdf0096259 h1:LZjnkzyceMqnldsepZ3wq9hrbQO78MsuRbuinzfTBpQ=
 github.com/cccteam/access v0.9.12-0.20260903211123-6ccdf0096259/go.mod h1:QmZn221R/+qzMreSWCwFblJTnkW9nw7Q5wUjJ5TdUhU=
-github.com/cccteam/ccc v0.3.4-0.20260903210924-a4dfff715a78 h1:IKIcY3AcZE16nmCK6sZjbDBEPXhpcS2eVcRevSqnjpY=
-github.com/cccteam/ccc v0.3.4-0.20260903210924-a4dfff715a78/go.mod h1:mMvs+AvedNa8vOADImamEAUqnsxhPlvnXYjFVV+/SeY=
-github.com/cccteam/ccc/accesstypes v0.5.10-0.20260903210924-a4dfff715a78 h1:WFPFTNazgtlyzDUrJ5/s0ehPG/uU2myBhrGkw2AvarU=
-github.com/cccteam/ccc/accesstypes v0.5.10-0.20260903210924-a4dfff715a78/go.mod h1:4wFtH4BXGYEbr5KGRXaU9H7G08B+rZKTNX3bVQO4wlU=
+github.com/cccteam/ccc v0.3.4-0.20260903213935-e66fc967ec56 h1:Oab/s6V0V+01o3n6xNdziFJ7cX9Hhtyv3/b9a3RD5SE=
+github.com/cccteam/ccc v0.3.4-0.20260903213935-e66fc967ec56/go.mod h1:mMvs+AvedNa8vOADImamEAUqnsxhPlvnXYjFVV+/SeY=
+github.com/cccteam/ccc/accesstypes v0.5.10-0.20260903213935-e66fc967ec56 h1:zXXF/YbrIW+zFjrdh6Qq28ZOw4TNf3GitEZogvN/sA0=
+github.com/cccteam/ccc/accesstypes v0.5.10-0.20260903213935-e66fc967ec56/go.mod h1:4wFtH4BXGYEbr5KGRXaU9H7G08B+rZKTNX3bVQO4wlU=
 github.com/cccteam/ccc/cache v0.1.6 h1:lXje8ZfQaclxbMoAAyZE0jk3xKvBd9Z9v7PAopBdzOs=
 github.com/cccteam/ccc/cache v0.1.6/go.mod h1:fGSMqs+HsMam2mAfmAiKJhyR289yuGu0LdWlbYYpkng=
 github.com/cccteam/ccc/pkg v0.1.4 h1:5KI2fUTSFXyUZsBE0+KUqZ9fFpCaI8oneralVyUPVlI=
