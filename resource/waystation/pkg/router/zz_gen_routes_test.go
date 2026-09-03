@@ -62,6 +62,8 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/api/waystations/testDomain/sensor-readings", method: http.MethodGet},
 		{url: "/api/waystations/testDomain/sensor-readings", method: http.MethodPost},
 		{url: "/api/waystations/testDomain/ingest-sensor-batch", method: http.MethodPost},
+		{url: "/automation/permission-digest", method: http.MethodGet},
+		{url: "/automation/user-domains", method: http.MethodGet},
 		{url: "/automation/waystations/testDomain/assets", method: http.MethodGet},
 		{url: "/automation/waystations/testDomain/assets", method: http.MethodPost},
 		{url: "/automation/waystations/testDomain/assets/testAssetID", method: http.MethodGet},

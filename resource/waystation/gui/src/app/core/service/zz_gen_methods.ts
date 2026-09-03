@@ -29,19 +29,6 @@ export interface DeclineRequisition {
   reason: string;
 }
 
-export interface IngestSensorBatchConfig {
-  facilityId: string | FieldPointer;
-  metric: string | FieldPointer;
-  reading: number | FieldPointer;
-  recordedAt: Date | FieldPointer;
-}
-export interface IngestSensorBatch {
-  facilityId: string;
-  metric: string;
-  reading: number;
-  recordedAt: Date;
-}
-
 export interface NudgeWorkOrderConfig {
   workOrderId: string | FieldPointer;
 }
@@ -130,15 +117,6 @@ const methodMap: MethodMap = {
     fields: [
       { fieldName: 'requisitionId', displayType: 'uuid' },
       { fieldName: 'reason', displayType: 'string' },
-    ],
-  },
-  [Methods.IngestSensorBatch]: {
-    route: 'ingest-sensor-batch',
-    fields: [
-      { fieldName: 'facilityId', displayType: 'uuid' },
-      { fieldName: 'metric', displayType: 'string' },
-      { fieldName: 'reading', displayType: 'number' },
-      { fieldName: 'recordedAt', displayType: 'date' },
     ],
   },
   [Methods.NudgeWorkOrder]: {

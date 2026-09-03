@@ -408,13 +408,17 @@ func (c *client) formatGoBytes(destinationPath, templateName string, output []by
 	return c.GoFormatBytes(destinationPath, output)
 }
 
-func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]*enumData, error) {
+// retrieveDatabaseEnumValues resolves every @enumerate named type against the schema's
+// enum values, returning the values keyed by type name alongside each type's table
+// name (the TypeScript generator's outlet filter matches tables to resources).
+func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (values map[string][]*enumData, tables map[string]string, err error) {
 	enumMap := make(map[string][]*enumData)
+	enumTables := make(map[string]string)
 	for _, namedType := range namedTypes {
 		scanner := genlang.NewScanner(resourceKeywords())
 		annotations, err := scanner.ScanNamedType(namedType)
 		if err != nil {
-			return nil, errors.Wrap(err, "scanner.ScanNamedType()")
+			return nil, nil, errors.Wrap(err, "scanner.ScanNamedType()")
 		}
 
 		var tableName string
@@ -425,18 +429,19 @@ func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map
 		}
 
 		if t := namedType.TypeName(); t != stringGoType {
-			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), stringGoType, t)
+			return nil, nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), stringGoType, t)
 		}
 
 		data, ok := c.enumValues[tableName]
 		if !ok {
-			return nil, errors.Newf("cannot enumerate type %q, tableName %q has no values or does not exist", namedType.Name(), tableName)
+			return nil, nil, errors.Newf("cannot enumerate type %q, tableName %q has no values or does not exist", namedType.Name(), tableName)
 		}
 
 		enumMap[namedType.Name()] = data
+		enumTables[namedType.Name()] = tableName
 	}
 
-	return enumMap, nil
+	return enumMap, enumTables, nil
 }
 
 // pluralize returns the plural form of value: an explicit override if one is

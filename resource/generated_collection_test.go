@@ -449,6 +449,80 @@ func TestGeneratedCollection_readMethods(t *testing.T) {
 	}
 }
 
+// TestGeneratedCollection_TypescriptDataExcluding pins the outlet filter's collection
+// half: excluding a resource removes it, its tags, and any permission or scope only
+// it carried, while excluding nothing returns exactly TypescriptData.
+func TestGeneratedCollection_TypescriptDataExcluding(t *testing.T) {
+	t.Parallel()
+
+	widgetSet, err := NewSetData([]FieldTags{
+		{Field: "ID", JSON: "id", Perm: "-"},
+		{Field: "Name", JSON: "name"},
+	}, accesstypes.List)
+	if err != nil {
+		t.Fatalf("NewSetData() error = %v", err)
+	}
+	gadgetSet, err := NewSetData([]FieldTags{
+		{Field: "Code", JSON: "code"},
+	}, accesstypes.Update)
+	if err != nil {
+		t.Fatalf("NewSetData() error = %v", err)
+	}
+
+	b := NewCollectionBuilder()
+	if err := b.AddResourceSet(accesstypes.GlobalPermissionScope, "Widgets", widgetSet); err != nil {
+		t.Fatalf("registering Widgets: %v", err)
+	}
+	if err := b.AddResourceSet(accesstypes.DomainPermissionScope, "Gadgets", gadgetSet); err != nil {
+		t.Fatalf("registering Gadgets: %v", err)
+	}
+	if err := b.AddMethodResource(accesstypes.GlobalPermissionScope, accesstypes.Execute, "DoThing"); err != nil {
+		t.Fatalf("AddMethodResource() error = %v", err)
+	}
+	g := b.GeneratedCollection()
+
+	tests := []struct {
+		name     string
+		excluded []accesstypes.Resource
+		want     *TypescriptData
+	}{
+		{
+			name: "excluding nothing returns the unfiltered data",
+			want: g.TypescriptData(),
+		},
+		{
+			name:     "excluding the sole domain resource drops its tags, permission, and scope",
+			excluded: []accesstypes.Resource{"Gadgets"},
+			want: &TypescriptData{
+				Permissions:      []accesstypes.Permission{accesstypes.Execute, accesstypes.List},
+				Resources:        []accesstypes.Resource{"Widgets"},
+				ResourceTags:     map[accesstypes.Resource][]accesstypes.Tag{"Widgets": {"id", "name"}},
+				PermissionScopes: []accesstypes.PermissionScope{accesstypes.GlobalPermissionScope},
+			},
+		},
+		{
+			name:     "excluding a method drops only its Execute permission",
+			excluded: []accesstypes.Resource{"DoThing"},
+			want: &TypescriptData{
+				Permissions:      []accesstypes.Permission{accesstypes.List, accesstypes.Update},
+				Resources:        []accesstypes.Resource{"Gadgets", "Widgets"},
+				ResourceTags:     map[accesstypes.Resource][]accesstypes.Tag{"Widgets": {"id", "name"}, "Gadgets": {"code"}},
+				PermissionScopes: []accesstypes.PermissionScope{accesstypes.DomainPermissionScope, accesstypes.GlobalPermissionScope},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tt.want, g.TypescriptDataExcluding(tt.excluded...)); diff != "" {
+				t.Errorf("TypescriptDataExcluding() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestGeneratedCollection_HasPermission(t *testing.T) {
 	t.Parallel()
 

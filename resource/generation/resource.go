@@ -45,10 +45,11 @@ type resourceGenerator struct {
 }
 
 // allOutlets returns every declared router outlet: the default outlet first,
-// followed by the WithRouterOutlet declarations in option order.
+// followed by the WithRouterOutlet declarations in option order. The default
+// outlet always serves browser sessions; extra outlets opt in (ServesSessions).
 func (r *resourceGenerator) allOutlets() []routerOutlet {
 	outlets := make([]routerOutlet, 0, len(r.extraOutlets)+1)
-	outlets = append(outlets, routerOutlet{name: defaultOutletName, prefix: r.routePrefix})
+	outlets = append(outlets, routerOutlet{name: defaultOutletName, prefix: r.routePrefix, servesSessions: true})
 
 	return append(outlets, r.extraOutlets...)
 }
@@ -163,7 +164,41 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 		return nil, err
 	}
 
+	if err := r.validateTypescriptOutletTargets(); err != nil {
+		return nil, err
+	}
+
 	return r, nil
+}
+
+// validateTypescriptOutletTargets checks every GenerateTypescript target's outlet
+// binding (ForOutlet) at construction: the outlet must be declared, and it must
+// serve browser sessions — the generated client reads its permission digest and
+// user-domains channels under the outlet's prefix, so a client for a session-less
+// outlet would have no permission channels and fail closed on every page.
+func (r *resourceGenerator) validateTypescriptOutletTargets() error {
+	outlets := r.allOutlets()
+	for _, target := range r.typescriptTargets {
+		t, err := target.resolve()
+		if err != nil {
+			return err
+		}
+
+		i := slices.IndexFunc(outlets, func(outlet routerOutlet) bool { return outlet.name == t.outletName })
+		if i < 0 {
+			declared := make([]string, 0, len(outlets))
+			for _, outlet := range outlets {
+				declared = append(declared, outlet.name)
+			}
+
+			return errors.Newf("GenerateTypescript(%q): ForOutlet(%q) references an undeclared outlet; declared outlets are %v (see WithRouterOutlet)", target.destination, t.outletName, declared)
+		}
+		if !outlets[i].servesSessions {
+			return errors.Newf("GenerateTypescript(%q): outlet %q does not serve browser sessions, so the generated client would have no permission-digest or user-domains channel and would fail closed on every page; declare the outlet with WithRouterOutlet(%q, %q, ServesSessions()), or target a session-serving outlet", target.destination, t.outletName, outlets[i].name, outlets[i].prefix)
+		}
+	}
+
+	return nil
 }
 
 func (r *resourceGenerator) Generate() error {
@@ -512,7 +547,7 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 }
 
 func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error {
-	enumMap, err := r.retrieveDatabaseEnumValues(namedTypes)
+	enumMap, _, err := r.retrieveDatabaseEnumValues(namedTypes)
 	if err != nil {
 		return err
 	}

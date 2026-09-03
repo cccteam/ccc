@@ -30,6 +30,72 @@ type typescriptGenerator struct {
 	domainRouteSegment     string
 	domainRouteParam       string
 	spannerEmulatorVersion string
+	// outletName is the router outlet this target serves (ForOutlet): every emitted
+	// file is filtered to the outlet's members. Empty means the default outlet
+	// (resolveOptions fills the name in; targetOutlet covers directly constructed
+	// generators in tests).
+	outletName string
+	// outletExcluded are the collection resource names owned exclusively by other
+	// outlets — the parsed resources, computed resources, and RPC methods that are
+	// not on the target outlet — which the constants output omits. Registrations the
+	// generator cannot attribute to an outlet (manual declarations) always stay.
+	outletExcluded []accesstypes.Resource
+	// outletExcludedTables are the excluded resource and computed-resource names,
+	// for enum filtering: an @enumerate type whose table belongs exclusively to
+	// other outlets is not emitted.
+	outletExcludedTables map[string]struct{}
+}
+
+// targetOutlet is the router outlet this target serves (ForOutlet), defaulting to
+// the default outlet.
+func (t *typescriptGenerator) targetOutlet() string {
+	if t.outletName == "" {
+		return defaultOutletName
+	}
+
+	return t.outletName
+}
+
+// excludeFromOutlet reports whether the member is off the target outlet, recording
+// an excluded member's collection resource name — and, for table-backed kinds, its
+// table name for enum filtering — so the collection-derived outputs drop the same
+// registrations the parsed sets drop.
+func (t *typescriptGenerator) excludeFromOutlet(m *outletMembership, resourceName string, isTable bool) bool {
+	if m.OnOutlet(t.targetOutlet()) {
+		return false
+	}
+
+	t.outletExcluded = append(t.outletExcluded, accesstypes.Resource(resourceName))
+	if isTable {
+		t.outletExcludedTables[resourceName] = struct{}{}
+	}
+
+	return true
+}
+
+// validateOutletMemberReferences rejects a member RPC method that references a
+// resource excluded from the target outlet — a declared transition's root, or an
+// enumerated field's resource. The emitted metadata names such a resource through
+// the Resources constant, which the filtered constants file no longer declares;
+// silently narrowing the metadata in this client alone would misrepresent the
+// method, so the mismatch fails generation with the fix instead.
+func (t *typescriptGenerator) validateOutletMemberReferences() error {
+	excluded := func(name string) bool {
+		return slices.Contains(t.outletExcluded, accesstypes.Resource(name))
+	}
+
+	for _, method := range t.rpcMethods {
+		if tr := method.Transition; tr != nil && excluded(tr.RootResource) {
+			return errors.Newf("outlet %q: RPC method %s declares a transition on %s, which is not on the outlet; a client cannot carry a transition whose resource it does not emit — attach %s to the outlet via @%s, or move the method off it", t.targetOutlet(), method.Name(), tr.RootResource, tr.RootResource, outletKeyword)
+		}
+		for _, field := range method.Fields {
+			if field.IsEnumerated() && excluded(field.EnumeratedResource()) {
+				return errors.Newf("outlet %q: RPC method %s field %s enumerates %s, which is not on the outlet; attach %s to the outlet via @%s, or drop the enumerated tag", t.targetOutlet(), method.Name(), field.Name(), field.EnumeratedResource(), field.EnumeratedResource(), outletKeyword)
+			}
+		}
+	}
+
+	return nil
 }
 
 // parseResources parses the resource and virtual-resource packages, returning the parsed
@@ -77,6 +143,14 @@ func (t *typescriptGenerator) Generate() error {
 		return err
 	}
 
+	// The target serves one outlet: everything on another outlet falls away here,
+	// so every emitted file below sees only the outlet's members. What falls away
+	// is recorded so the collection-derived constants drop the same registrations.
+	t.outletExcludedTables = make(map[string]struct{})
+	resources = slices.DeleteFunc(resources, func(res *resourceInfo) bool {
+		return t.excludeFromOutlet(&res.outletMembership, t.pluralize(res.Name()), true)
+	})
+
 	if t.genComputedResources {
 		pkg := packageMap[t.computed.Package()]
 		compStructs := parser.ParsePackage(pkg).Structs
@@ -85,12 +159,24 @@ func (t *typescriptGenerator) Generate() error {
 			return err
 		}
 
+		computedResources = slices.DeleteFunc(computedResources, func(res *computedResource) bool {
+			return t.excludeFromOutlet(&res.outletMembership, t.pluralize(res.Name()), true)
+		})
+
 		for _, res := range computedResources {
 			res.Fields = t.computedFieldsTypescriptType(res.Fields)
 		}
 
 		t.computedResources = computedResources
 	}
+
+	// Enumerated-field references resolve against the outlet's members only, so a
+	// field referencing a resource on another outlet degrades to its plain type
+	// instead of referencing a Resources constant the filtered output no longer
+	// declares.
+	t.routerResources = slices.DeleteFunc(slices.Clone(t.routerResources), func(res accesstypes.Resource) bool {
+		return slices.Contains(t.outletExcluded, res)
+	})
 
 	t.resources = make([]*resourceInfo, 0, len(resources))
 	for _, res := range resources {
@@ -105,6 +191,14 @@ func (t *typescriptGenerator) Generate() error {
 		rpcStructs := parser.ParsePackage(pkg).Structs
 		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags)
 		if err != nil {
+			return err
+		}
+
+		t.rpcMethods = slices.DeleteFunc(t.rpcMethods, func(method *rpcMethodInfo) bool {
+			return t.excludeFromOutlet(&method.outletMembership, method.Name(), false)
+		})
+
+		if err := t.validateOutletMemberReferences(); err != nil {
 			return err
 		}
 
@@ -161,7 +255,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 
 	log.Println("Starting typescript resource permission generation...")
 
-	routerData := t.rc.TypescriptData()
+	routerData := t.rc.TypescriptDataExcluding(t.outletExcluded...)
 
 	piiResourceFields := make(map[accesstypes.Resource]map[accesstypes.Tag]bool, len(t.resources)+len(t.computedResources))
 	for _, res := range t.resources {
@@ -335,9 +429,18 @@ func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) erro
 	begin := time.Now()
 	log.Println("Starting enum generation...")
 
-	enumMap, err := t.retrieveDatabaseEnumValues(namedTypes)
+	enumMap, enumTables, err := t.retrieveDatabaseEnumValues(namedTypes)
 	if err != nil {
 		return err
+	}
+
+	// An @enumerate type whose table belongs exclusively to other outlets is not
+	// this client's to enumerate; a table the generator cannot attribute to an
+	// outlet (schema-only, no parsed resource) always stays.
+	for typeName, tableName := range enumTables {
+		if _, gone := t.outletExcludedTables[tableName]; gone {
+			delete(enumMap, typeName)
+		}
 	}
 
 	output, err := t.generateTemplateOutput("typescriptEnumsTemplate", typescriptEnumsTemplate, tsEnumsData{
@@ -450,7 +553,7 @@ func (t *typescriptGenerator) generateAPIClient() error {
 }
 
 // apiClientData assembles the client template's payload from the parsed resources,
-// computed resources, and RPC methods on the default outlet.
+// computed resources, and RPC methods on the target outlet.
 func (t *typescriptGenerator) apiClientData() *tsAPIData {
 	data := &tsAPIData{
 		File:               t,
@@ -459,20 +562,21 @@ func (t *typescriptGenerator) apiClientData() *tsAPIData {
 		DomainRouteParam:   t.domainRouteParam,
 	}
 
+	outlet := t.targetOutlet()
 	for _, res := range t.resources {
-		if !res.OnOutlet(defaultOutletName) || res.RoutingDisabled() {
+		if !res.OnOutlet(outlet) || res.RoutingDisabled() {
 			continue
 		}
 		data.Resources = append(data.Resources, t.apiResource(res))
 	}
 	for _, res := range t.computedResources {
-		if !res.OnOutlet(defaultOutletName) || res.RoutingDisabled() {
+		if !res.OnOutlet(outlet) || res.RoutingDisabled() {
 			continue
 		}
 		data.Resources = append(data.Resources, t.apiComputedResource(res))
 	}
 	for _, method := range t.rpcMethods {
-		if !method.OnOutlet(defaultOutletName) || method.SuppressHandler {
+		if !method.OnOutlet(outlet) || method.SuppressHandler {
 			continue
 		}
 		data.Methods = append(data.Methods, &tsAPIMethod{

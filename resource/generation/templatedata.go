@@ -193,6 +193,14 @@ type routerFileData struct {
 type outletRouteData struct {
 	Name   string
 	Suffix string
+	// Prefix is the outlet's route prefix, under which the session routes render
+	// when the outlet serves sessions (resource routes carry it pre-rendered in
+	// their paths).
+	Prefix string
+	// ServesSessions registers the permission-digest and user-domains routes under
+	// the outlet's prefix and adds their handler requirements to the outlet's
+	// interface (see the ServesSessions option).
+	ServesSessions bool
 	// RoutesMap groups the outlet's routes by source struct name (template map
 	// iteration is name-sorted, keeping output deterministic).
 	RoutesMap             map[string][]*generatedRoute
@@ -221,6 +229,9 @@ type permissionsData struct {
 	// RoutePrefix names the default outlet's route prefix in the emitted doc
 	// comments; the routes themselves are registered by the routes template.
 	RoutePrefix string
+	// HasExtraSessionOutlets extends the doc comments when additional outlets
+	// serve sessions (ServesSessions), whose routes the same handlers serve.
+	HasExtraSessionOutlets bool
 }
 
 type domainGuardData struct {

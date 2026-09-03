@@ -80,15 +80,6 @@ export interface RequisitionLines {
   unitCostSnapshot?: number;
 }
 
-export interface SensorReadings {
-  id: string;
-  waystationId?: string;
-  facilityId?: string;
-  metric?: string;
-  reading?: number;
-  recordedAt?: Date;
-}
-
 export interface Shipments {
   id: string;
   waystationId?: string;
@@ -280,19 +271,6 @@ const resourceMap: ResourceMap = {
       { fieldName: 'unitCostSnapshot', displayType: 'number', required: true, isIndex: false },
     ],
   },
-  [Resources.SensorReadings]: {
-    route: 'waystations/{waystationID}/sensor-readings',
-    consolidatedRoute: 'resources',
-    readDisabled: true,
-    fields: [
-      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
-      { fieldName: 'waystationId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Waystations, readOnly: true },
-      { fieldName: 'facilityId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Facilities },
-      { fieldName: 'metric', displayType: 'string', required: true, isIndex: false },
-      { fieldName: 'reading', displayType: 'number', required: true, isIndex: false },
-      { fieldName: 'recordedAt', displayType: 'date', required: true, isIndex: false },
-    ],
-  },
   [Resources.Shipments]: {
     route: 'waystations/{waystationID}/shipments',
     consolidatedRoute: 'resources',
@@ -439,7 +417,6 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.OpenWorkOrdersByTeams]: PermissionScopes.domain,
   [Resources.Requisitions]: PermissionScopes.domain,
   [Resources.RequisitionLines]: PermissionScopes.domain,
-  [Resources.SensorReadings]: PermissionScopes.domain,
   [Resources.Shipments]: PermissionScopes.domain,
   [Resources.SpendByCategories]: PermissionScopes.global,
   [Resources.StaffMembers]: PermissionScopes.global,
@@ -497,12 +474,6 @@ export interface RequisitionLinesOperation {
   value?: Partial<RequisitionLines>;
 }
 
-export interface SensorReadingsOperation {
-  op: OperationType;
-  path: `/waystations/${string}/sensor-readings` | `/waystations/${string}/sensor-readings/${string}`;
-  value?: Partial<SensorReadings>;
-}
-
 export interface ShipmentsOperation {
   op: OperationType;
   path: `/waystations/${string}/shipments` | `/waystations/${string}/shipments/${string}`;
@@ -544,4 +515,4 @@ export interface WorkOrderTasksOperation {
   path: `/waystations/${string}/work-order-tasks` | `/waystations/${string}/work-order-tasks/${string}`;
   value?: Partial<WorkOrderTasks>;
 }
-export type ConsolidatedOperation = AssetsOperation | CatalogItemsOperation | FacilitiesOperation | IncidentReportsOperation | InventoryLotsOperation | RequisitionsOperation | RequisitionLinesOperation | SensorReadingsOperation | ShipmentsOperation | StaffMembersOperation | TeamsOperation | TeamMembershipsOperation | WaystationsOperation | WorkOrdersOperation | WorkOrderTasksOperation;
+export type ConsolidatedOperation = AssetsOperation | CatalogItemsOperation | FacilitiesOperation | IncidentReportsOperation | InventoryLotsOperation | RequisitionsOperation | RequisitionLinesOperation | ShipmentsOperation | StaffMembersOperation | TeamsOperation | TeamMembershipsOperation | WaystationsOperation | WorkOrdersOperation | WorkOrderTasksOperation;

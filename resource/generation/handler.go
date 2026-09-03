@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -297,11 +298,12 @@ func (r *resourceGenerator) generatePermissions() error {
 	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(permissionsOutputName))
 
 	if err := r.writeFormattedGoFile(destinationFilePath, "permissionsTemplate", permissionsTemplate, &permissionsData{
-		Source:          r.resource.Dir(),
-		Package:         r.handler.Package(),
-		ApplicationName: r.applicationName,
-		ReceiverName:    r.receiverName,
-		RoutePrefix:     r.routePrefix,
+		Source:                 r.resource.Dir(),
+		Package:                r.handler.Package(),
+		ApplicationName:        r.applicationName,
+		ReceiverName:           r.receiverName,
+		RoutePrefix:            r.routePrefix,
+		HasExtraSessionOutlets: slices.ContainsFunc(r.extraOutlets, func(outlet routerOutlet) bool { return outlet.servesSessions }),
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}

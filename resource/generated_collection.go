@@ -458,10 +458,17 @@ func (g *GeneratedCollection) TransitionsOnto(target accesstypes.Resource) []Tra
 
 // Resources returns a sorted list of all unique base resource names in the collection.
 func (g *GeneratedCollection) Resources() []accesstypes.Resource {
+	return g.resources(nil)
+}
+
+func (g *GeneratedCollection) resources(skip map[accesstypes.Resource]struct{}) []accesstypes.Resource {
 	resources := []accesstypes.Resource{}
 	for _, stores := range g.resourceStore {
 		for resource, permissions := range stores {
 			if slices.Contains(permissions, accesstypes.Execute) {
+				continue
+			}
+			if _, skipped := skip[resource]; skipped {
 				continue
 			}
 
@@ -492,11 +499,28 @@ func (g *GeneratedCollection) ResourceExists(r accesstypes.Resource) bool {
 
 // TypescriptData returns a struct containing all the data needed for TypeScript code generation.
 func (g *GeneratedCollection) TypescriptData() *TypescriptData {
+	return g.TypescriptDataExcluding()
+}
+
+// TypescriptDataExcluding returns the TypeScript generation data with every
+// registration on the named resources omitted: the resources themselves, their
+// tags, and any permission or scope no remaining registration carries. The
+// TypeScript generator passes the resources and methods that belong exclusively
+// to other router outlets, so an outlet-scoped target emits only its own members.
+func (g *GeneratedCollection) TypescriptDataExcluding(excluded ...accesstypes.Resource) *TypescriptData {
+	var skip map[accesstypes.Resource]struct{}
+	if len(excluded) > 0 {
+		skip = make(map[accesstypes.Resource]struct{}, len(excluded))
+		for _, res := range excluded {
+			skip[res] = struct{}{}
+		}
+	}
+
 	return &TypescriptData{
-		Permissions:      g.permissions(),
-		Resources:        g.Resources(),
-		ResourceTags:     g.tags(),
-		PermissionScopes: g.permissionScopes(),
+		Permissions:      g.permissions(skip),
+		Resources:        g.resources(skip),
+		ResourceTags:     g.tags(skip),
+		PermissionScopes: g.permissionScopes(skip),
 	}
 }
 
@@ -570,15 +594,21 @@ func (g *GeneratedCollection) addResourceSet(scope accesstypes.PermissionScope, 
 	return nil
 }
 
-func (g *GeneratedCollection) permissions() []accesstypes.Permission {
+func (g *GeneratedCollection) permissions(skip map[accesstypes.Resource]struct{}) []accesstypes.Permission {
 	permissions := []accesstypes.Permission{}
 	for _, stores := range g.resourceStore {
-		for _, perms := range stores {
+		for resource, perms := range stores {
+			if _, skipped := skip[resource]; skipped {
+				continue
+			}
 			permissions = append(permissions, perms...)
 		}
 	}
 	for _, stores := range g.tagStore {
-		for _, tags := range stores {
+		for resource, tags := range stores {
+			if _, skipped := skip[resource]; skipped {
+				continue
+			}
 			for _, perms := range tags {
 				permissions = append(permissions, perms...)
 			}
@@ -589,11 +619,14 @@ func (g *GeneratedCollection) permissions() []accesstypes.Permission {
 	return slices.Compact(permissions)
 }
 
-func (g *GeneratedCollection) tags() map[accesstypes.Resource][]accesstypes.Tag {
+func (g *GeneratedCollection) tags(skip map[accesstypes.Resource]struct{}) map[accesstypes.Resource][]accesstypes.Tag {
 	resourcetags := make(map[accesstypes.Resource][]accesstypes.Tag)
 
 	for _, tagStore := range g.tagStore {
 		for resource, tags := range tagStore {
+			if _, skipped := skip[resource]; skipped {
+				continue
+			}
 			for tag := range tags {
 				resourcetags[resource] = append(resourcetags[resource], tag)
 				slices.Sort(resourcetags[resource])
@@ -607,10 +640,17 @@ func (g *GeneratedCollection) tags() map[accesstypes.Resource][]accesstypes.Tag 
 // permissionScopes returns the permission scopes the collection registers resources
 // under, sorted for deterministic generated output. These are scopes (global/domain),
 // not tenant domains — the tenant universe is app-owned.
-func (g *GeneratedCollection) permissionScopes() []accesstypes.PermissionScope {
+func (g *GeneratedCollection) permissionScopes(skip map[accesstypes.Resource]struct{}) []accesstypes.PermissionScope {
 	scopes := make([]accesstypes.PermissionScope, 0, len(g.resourceStore))
-	for scope := range g.resourceStore {
-		scopes = append(scopes, scope)
+	for scope, store := range g.resourceStore {
+		for resource := range store {
+			if _, skipped := skip[resource]; skipped {
+				continue
+			}
+			scopes = append(scopes, scope)
+
+			break
+		}
 	}
 	slices.Sort(scopes)
 

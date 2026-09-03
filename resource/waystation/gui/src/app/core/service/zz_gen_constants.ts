@@ -29,7 +29,6 @@ export const Resources = {
   OpenWorkOrdersByTeams: 'OpenWorkOrdersByTeams' as Resource,
   RequisitionLines: 'RequisitionLines' as Resource,
   Requisitions: 'Requisitions' as Resource,
-  SensorReadings: 'SensorReadings' as Resource,
   Shipments: 'Shipments' as Resource,
   SpendByCategories: 'SpendByCategories' as Resource,
   StaffMembers: 'StaffMembers' as Resource,
@@ -46,7 +45,6 @@ export const Methods = {
   ApproveRequisition: 'ApproveRequisition' as Method,
   CompleteWorkOrder: 'CompleteWorkOrder' as Method,
   DeclineRequisition: 'DeclineRequisition' as Method,
-  IngestSensorBatch: 'IngestSensorBatch' as Method,
   NudgeWorkOrder: 'NudgeWorkOrder' as Method,
   ReceiveShipment: 'ReceiveShipment' as Method,
   RunSafetyDrill: 'RunSafetyDrill' as Method,
@@ -234,25 +232,6 @@ export namespace Requisitions {
     statusId: 'Requisitions.statusId' as Resource,
     totalCost: 'Requisitions.totalCost' as Resource,
     waystationId: 'Requisitions.waystationId' as Resource,
-  };
-}
-
-export namespace SensorReadings {
-  export const fieldName = {
-    facilityId: 'facilityId' as FieldName,
-    id: 'id' as FieldName,
-    metric: 'metric' as FieldName,
-    reading: 'reading' as FieldName,
-    recordedAt: 'recordedAt' as FieldName,
-    waystationId: 'waystationId' as FieldName,
-  };
-  export const resourceName = {
-    facilityId: 'SensorReadings.facilityId' as Resource,
-    id: 'SensorReadings.id' as Resource,
-    metric: 'SensorReadings.metric' as Resource,
-    reading: 'SensorReadings.reading' as Resource,
-    recordedAt: 'SensorReadings.recordedAt' as Resource,
-    waystationId: 'SensorReadings.waystationId' as Resource,
   };
 }
 
@@ -444,15 +423,6 @@ export namespace DeclineRequisition {
   export const fieldName = {
     requisitionId: 'requisitionId' as FieldName,
     reason: 'reason' as FieldName,
-  };
-}
-
-export namespace IngestSensorBatch {
-  export const fieldName = {
-    facilityId: 'facilityId' as FieldName,
-    metric: 'metric' as FieldName,
-    reading: 'reading' as FieldName,
-    recordedAt: 'recordedAt' as FieldName,
   };
 }
 

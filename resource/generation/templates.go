@@ -604,7 +604,8 @@ import (
 // structural grant enumeration the frontend renders navigation and forms from.
 // The scope is the request's input (?domain= names a tenant partition, absent
 // means global) and the payload is advisory and fail-closed: denied targets are
-// absent. The generated router registers it at GET /{{ .RoutePrefix }}/permission-digest.
+// absent. The generated router registers it at GET /{{ .RoutePrefix }}/permission-digest{{ if .HasExtraSessionOutlets }} and,
+// for each additional session-serving outlet (ServesSessions), under that outlet's prefix{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) PermissionDigest() http.HandlerFunc {
 	return resource.PermissionDigestHandler({{ .ReceiverName }}.UserPermissions)
 }
@@ -613,7 +614,8 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PermissionDigest() http.Handl
 // domains where they hold at least one grant, the tenant picker's question. The
 // predicate is concealed tenancy's own foothold test, so the picker and the
 // domain guard can never disagree. The generated router registers it at
-// GET /{{ .RoutePrefix }}/user-domains.
+// GET /{{ .RoutePrefix }}/user-domains{{ if .HasExtraSessionOutlets }} and, for each additional session-serving
+// outlet (ServesSessions), under that outlet's prefix{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) UserDomains() http.HandlerFunc {
 	return resource.UserDomainsHandler({{ .ReceiverName }}.UserPermissions)
 }
@@ -1979,6 +1981,17 @@ type Generated{{ $outlet.Suffix }}Handlers interface {
 	// domains the application does not recognize before the handler runs.
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
 	{{ end }}
+	{{- if $outlet.ServesSessions }}
+	// PermissionDigest serves the session user's per-scope permission digest:
+	// advisory grant structure for the UI (resource → permission → granted or
+	// conditional, denied targets absent), with the scope taken from the request
+	// (?domain= names a tenant partition, absent means global).
+	PermissionDigest() http.HandlerFunc
+	// UserDomains serves the session user's domain membership: the sorted domains
+	// where they hold at least one grant — the tenant picker's source, on the same
+	// foothold predicate as concealed tenancy.
+	UserDomains() http.HandlerFunc
+	{{ end }}
 	{{- range $Struct, $Routes := $outlet.RoutesMap }}
 	{{- range $Routes }}
 	{{ .HandlerFunc }}() http.HandlerFunc
@@ -1992,6 +2005,10 @@ type Generated{{ $outlet.Suffix }}Handlers interface {
 func generated{{ $outlet.Suffix }}Routes(r chi.Router, h Generated{{ $outlet.Suffix }}Handlers) {
 {{- if $outlet.HasDomainScopedRoutes }}
 	domainGuard := h.DomainGuard()
+{{ end -}}
+{{- if $outlet.ServesSessions }}
+	r.Get("/{{ $outlet.Prefix }}/permission-digest", h.PermissionDigest())
+	r.Get("/{{ $outlet.Prefix }}/user-domains", h.UserDomains())
 {{ end -}}
 {{- range $Struct, $Routes := $outlet.RoutesMap }}
 	{{- range $route := $Routes }}
@@ -2263,6 +2280,16 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "{{ $outlet.ConsolidatedPath }}", method: http.MethodPatch,
 			handlerFunc: "{{ $outlet.ConsolidatedHandlerFunc }}",
+		},
+		{{ end }}{{- end }}
+		{{- range $outlet := .ExtraOutlets }}{{ if $outlet.ServesSessions -}}
+		{
+			url: "/{{ $outlet.Prefix }}/permission-digest", method: http.MethodGet,
+			handlerFunc: "PermissionDigest",
+		},
+		{
+			url: "/{{ $outlet.Prefix }}/user-domains", method: http.MethodGet,
+			handlerFunc: "UserDomains",
 		},
 		{{ end }}{{- end }}
 	}
