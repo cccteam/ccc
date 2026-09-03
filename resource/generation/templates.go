@@ -1766,6 +1766,9 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: {{ $r.Consolidated }},
       keys: [{{ range $i, $k := $r.Keys }}{{ if $i }}, {{ end }}'{{ $k.Name }}'{{ end }}],
       operations: [{{ range $i, $o := $r.Operations }}{{ if $i }}, {{ end }}'{{ $o }}'{{ end }}],
+      {{- if $r.HasPatch }}
+      patchable: [{{ range $i, $f := $r.PatchFields }}{{ if $i }}, {{ end }}'{{ $f.Name }}'{{ end }}],
+      {{- end }}
     },
 {{- end }}
   },

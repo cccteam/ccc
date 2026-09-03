@@ -51,6 +51,9 @@ func Test_apiClientData(t *testing.T) {
 				"consolidated: true,",
 				"keys: ['id'],",
 				"operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],",
+				// The patchable list mirrors the Patch interface exactly: keys,
+				// server-owned, and immutable fields absent.
+				"patchable: ['name', 'listedName', 'secret'],",
 				"  widgets: ResourceHandle<Widgets, WidgetsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', WidgetsCreate, WidgetsPatch>;",
 				"consolidatedRoute: 'resources',",
 			},
@@ -113,6 +116,7 @@ func Test_apiClientData(t *testing.T) {
 			wantNotContains: []string{
 				"SummariesCreate",
 				"SummariesPatch",
+				"patchable:",
 			},
 		},
 		{

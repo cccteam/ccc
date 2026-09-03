@@ -330,6 +330,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['facilityId', 'name', 'commissionedOn'],
     },
     [Resources.CatalogItems]: {
       resource: Resources.CatalogItems,
@@ -339,6 +340,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['name', 'categoryId', 'unitCost', 'hazardous'],
     },
     [Resources.Facilities]: {
       resource: Resources.Facilities,
@@ -348,6 +350,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['moduleId', 'name', 'kind'],
     },
     [Resources.IncidentReports]: {
       resource: Resources.IncidentReports,
@@ -357,6 +360,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['summary', 'severity', 'reporterContact', 'rawStatement'],
     },
     [Resources.InventoryLots]: {
       resource: Resources.InventoryLots,
@@ -366,6 +370,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['catalogItemId', 'quantity', 'expiresOn', 'binLocation'],
     },
     [Resources.Modules]: {
       resource: Resources.Modules,
@@ -375,6 +380,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove'],
+      patchable: ['name', 'zone', 'pressureRated'],
     },
     [Resources.OpenWorkOrdersByTeams]: {
       resource: Resources.OpenWorkOrdersByTeams,
@@ -393,6 +399,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['justification', 'neededBy'],
     },
     [Resources.RequisitionLines]: {
       resource: Resources.RequisitionLines,
@@ -402,6 +409,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['requisitionId', 'lineNumber'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['catalogItemId', 'quantity', 'unitCostSnapshot'],
     },
     [Resources.Shipments]: {
       resource: Resources.Shipments,
@@ -411,6 +419,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['supplierId', 'arrivedAt'],
     },
     [Resources.SpendByCategories]: {
       resource: Resources.SpendByCategories,
@@ -429,6 +438,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['userId', 'displayName', 'approvalLimit', 'homeWaystationId'],
     },
     [Resources.Suppliers]: {
       resource: Resources.Suppliers,
@@ -438,6 +448,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove'],
+      patchable: ['name', 'contactName', 'contactEmail', 'active'],
     },
     [Resources.Teams]: {
       resource: Resources.Teams,
@@ -447,6 +458,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['name', 'specialty'],
     },
     [Resources.TeamMemberships]: {
       resource: Resources.TeamMemberships,
@@ -456,6 +468,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['teamId', 'userId'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: [],
     },
     [Resources.Waystations]: {
       resource: Resources.Waystations,
@@ -465,6 +478,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['name', 'orbitBand', 'commissioned'],
     },
     [Resources.WorkOrders]: {
       resource: Resources.WorkOrders,
@@ -474,6 +488,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['assetId', 'title', 'summary', 'priority', 'assignedTeamId', 'dueAt'],
     },
     [Resources.WorkOrderTasks]: {
       resource: Resources.WorkOrderTasks,
@@ -483,6 +498,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['workOrderId', 'taskNumber'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      patchable: ['instructions', 'done'],
     },
     [Resources.FleetSummaries]: {
       resource: Resources.FleetSummaries,
