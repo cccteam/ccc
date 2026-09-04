@@ -348,33 +348,39 @@ func (ctx *loweringContext) pathTarget(start *comparand, path []BindingHop, regi
 }
 
 // subjectSetExists renders `attr IN subject.<name>`: a correlated EXISTS over
-// the anchor table matching the requester's rows whose value column equals
-// the attribute — with the anchor's own tenancy filter when both the request
-// and the anchor table are partitioned. An empty set matches nothing:
+// the anchor table matching the requester's rows whose value equals the
+// attribute — with the anchor's own tenancy filter when both the request
+// and the anchor table are partitioned. A dotted value (`value: F.G`)
+// continues from the anchor row through its join path, so the equality
+// lands on the terminal column inside the nested EXISTS chain, the same
+// shape a join-path attribute renders. An empty set matches nothing:
 // fail-closed for free.
 func (ctx *loweringContext) subjectSetExists(name string, attr *comparand, registry *paramRegistry) (ExpressionNode, error) {
 	anchor, ok := ctx.collection.SubjectSet(name)
 	if !ok {
 		return nil, errors.Newf("condition lowering: subject.%s is not a declared subject set", name)
 	}
-	if len(anchor.Binding.Path) > 0 {
-		return nil, errors.Newf("condition lowering: subject.%s: dotted value paths are not renderable yet", name)
-	}
 
 	alias := registry.alias()
-	where := andChain(
-		&loweredComparisonNode{
-			left:  columnComparand(alias, anchor.Binding.UserColumn),
-			op:    "=",
-			right: namedComparand(subjectParamName),
-		},
-		&loweredComparisonNode{
-			left:  columnComparand(alias, anchor.Binding.Column),
-			op:    "=",
-			right: *attr,
-		},
-	)
-	where, err := ctx.withAnchorTenancy(where, &anchor, alias, registry)
+	requester := &loweredComparisonNode{
+		left:  columnComparand(alias, anchor.Binding.UserColumn),
+		op:    "=",
+		right: namedComparand(subjectParamName),
+	}
+
+	var match ExpressionNode
+	if len(anchor.Binding.Path) == 0 {
+		match = &loweredComparisonNode{left: columnComparand(alias, anchor.Binding.Column), op: "=", right: *attr}
+	} else {
+		anchorColumn := columnComparand(alias, anchor.Binding.Column)
+		target, wrap, err := ctx.pathTarget(&anchorColumn, anchor.Binding.Path, registry)
+		if err != nil {
+			return nil, err
+		}
+		match = wrap(&loweredComparisonNode{left: target, op: "=", right: *attr})
+	}
+
+	where, err := ctx.withAnchorTenancy(andChain(requester, match), &anchor, alias, registry)
 	if err != nil {
 		return nil, err
 	}
@@ -385,14 +391,14 @@ func (ctx *loweringContext) subjectSetExists(name string, attr *comparand, regis
 // subjectValueSubquery renders a scalar subject.<name>: one value off the
 // anchor table's requester row. The anchor is unique-indexed by generation,
 // so the database enforces at most one row; none yields NULL, which no
-// condition finds TRUE.
+// condition finds TRUE. A dotted value (`value: F.G`) nests one scalar
+// subquery per hop: each hop selects its column from the row its join
+// column matches in the previous hop's value, and every hop resolves
+// many-to-one by generation, so each level yields at most one row.
 func (ctx *loweringContext) subjectValueSubquery(name string, registry *paramRegistry) (*scalarSubqueryNode, error) {
 	anchor, ok := ctx.collection.SubjectValue(name)
 	if !ok {
 		return nil, errors.Newf("condition lowering: subject.%s is not a declared subject value", name)
-	}
-	if len(anchor.Binding.Path) > 0 {
-		return nil, errors.Newf("condition lowering: subject.%s: dotted value paths are not renderable yet", name)
 	}
 
 	alias := registry.alias()
@@ -406,7 +412,22 @@ func (ctx *loweringContext) subjectValueSubquery(name string, registry *paramReg
 		return nil, err
 	}
 
-	return &scalarSubqueryNode{table: string(anchor.Resource), alias: alias, column: anchor.Binding.Column, where: where}, nil
+	subquery := &scalarSubqueryNode{table: string(anchor.Resource), alias: alias, column: anchor.Binding.Column, where: where}
+	for _, hop := range anchor.Binding.Path {
+		hopAlias := registry.alias()
+		subquery = &scalarSubqueryNode{
+			table:  hop.Table,
+			alias:  hopAlias,
+			column: hop.Column,
+			where: &loweredComparisonNode{
+				left:  columnComparand(hopAlias, hop.JoinColumn),
+				op:    "=",
+				right: subqueryComparand(subquery),
+			},
+		}
+	}
+
+	return subquery, nil
 }
 
 // withAnchorTenancy adds the anchor table's derived tenancy filter: applied

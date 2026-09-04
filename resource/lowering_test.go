@@ -31,19 +31,26 @@ func loweringFixtureCollection(t *testing.T) *GeneratedCollection {
 					{Table: "Stations", JoinColumn: "Id", Column: "Sector"},
 				}},
 				{Name: "assignee", Column: "Assignee", Type: AttributeTypeString},
+				{Name: "wing", Column: "WingId", Type: AttributeTypeString},
 			},
 			Domain: &DomainBindingData{Column: "StationId"},
 		},
 		{
-			Name:        "CrewMembers",
-			Scope:       accesstypes.DomainPermissionScope,
-			SubjectSets: []SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "CrewId"}},
-			Domain:      &DomainBindingData{Column: "StationId"},
+			Name:  "CrewMembers",
+			Scope: accesstypes.DomainPermissionScope,
+			SubjectSets: []SubjectBindingData{
+				{Name: "crews", UserColumn: "UserId", Column: "CrewId"},
+				{Name: "wings", UserColumn: "UserId", Column: "CrewId", Path: []BindingHop{{Table: "Crews", JoinColumn: "Id", Column: "WingId"}}},
+			},
+			Domain: &DomainBindingData{Column: "StationId"},
 		},
 		{
-			Name:          "UserProfiles",
-			Scope:         accesstypes.GlobalPermissionScope,
-			SubjectValues: []SubjectBindingData{{Name: "approvalLimit", UserColumn: "UserId", Column: "ApprovalLimit"}},
+			Name:  "UserProfiles",
+			Scope: accesstypes.GlobalPermissionScope,
+			SubjectValues: []SubjectBindingData{
+				{Name: "approvalLimit", UserColumn: "UserId", Column: "ApprovalLimit"},
+				{Name: "homeSector", UserColumn: "UserId", Column: "StationId", Path: []BindingHop{{Table: "Stations", JoinColumn: "Id", Column: "Sector"}}},
+			},
 		},
 	}})
 	if err != nil {
@@ -92,6 +99,19 @@ func TestLowerCondition_rendering(t *testing.T) {
 			source:  "crew IN subject.crews",
 			wantSQL: "EXISTS (SELECT 1 FROM `CrewMembers` `ca1` WHERE `ca1`.`UserId` = @subject AND `ca1`.`CrewId` = `t`.`CrewId`)",
 
+			wantNamed: []string{"subject"},
+		},
+		{
+			name:        "dotted subject set continues through the anchor's join path",
+			source:      "wing IN subject.wings",
+			partitioned: true,
+			wantSQL:     "EXISTS (SELECT 1 FROM `CrewMembers` `ca1` WHERE `ca1`.`UserId` = @subject AND EXISTS (SELECT 1 FROM `Crews` `ca2` WHERE `ca2`.`Id` = `ca1`.`CrewId` AND `ca2`.`WingId` = `t`.`WingId`) AND `ca1`.`StationId` = @domain)",
+			wantNamed:   []string{"domain", "subject"},
+		},
+		{
+			name:      "dotted subject value nests one scalar subquery per hop",
+			source:    "crew = subject.homeSector",
+			wantSQL:   "`t`.`CrewId` = (SELECT `ca2`.`Sector` FROM `Stations` `ca2` WHERE `ca2`.`Id` = (SELECT `ca1`.`StationId` FROM `UserProfiles` `ca1` WHERE `ca1`.`UserId` = @subject))",
 			wantNamed: []string{"subject"},
 		},
 		{
