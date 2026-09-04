@@ -19,10 +19,13 @@ import (
 // Execute grant evaluates — the same pre-image the transition frame's
 // from-set check reads. The decoder carries the caller's Conditional decision
 // to the generated frame as an ExecuteGate; the frame enforces it after its
-// own NotFound/tenancy/state checks and before the body runs. Methods without
-// a target row keep the decode-time posture: MigrateRoles rejects
-// row-referencing conditions on them, and a Conditional decision reaching
-// their decode is a 500-class invariant breach.
+// own NotFound/tenancy/state checks and before the body runs. When the
+// target's @domain binding is a join path, the frame's tenancy check itself
+// rides the gate (VerifyTenancy): the located row carries no tenant key of
+// its own, so the gate walks the binding hops in the same transaction.
+// Methods without a target row keep the decode-time posture: MigrateRoles
+// rejects row-referencing conditions on them, and a Conditional decision
+// reaching their decode is a 500-class invariant breach.
 
 // TargetedRPCDecoder decodes an HTTP request for a @target-bearing RPC
 // method. Unlike RPCDecoder, a Conditional Execute decision here is not an
@@ -177,6 +180,103 @@ func (g *ExecuteGate) Enforce(ctx context.Context, txn ReadWriteTransaction, tar
 	}
 
 	return nil
+}
+
+// VerifyTenancy confirms the located target row resolves to the request's
+// domain, for a target whose @domain binding leaves through a join path — a
+// bare-column binding is read off the located row in the generated frame
+// instead (resource.TenantKeyEquals), so the row itself carries no tenant key
+// here. One SELECT in the frame's transaction: the tenancy predicate rendered
+// from the Collection's domain binding as a single boolean, the row located
+// by its primary key. A missing row and a cross-tenant row are the same
+// NotFound the locate step answers — a row outside the caller's tenant never
+// reveals it exists.
+func (g *ExecuteGate) VerifyTenancy(ctx context.Context, txn ReadWriteTransaction, target ExecuteTarget, pkValue any) error {
+	if g == nil {
+		return errors.New("tenancy verification requires the decoder's ExecuteGate")
+	}
+	if txn.DBType() != SpannerDBType {
+		return errors.Newf("tenancy verification is not implemented for %s", txn.DBType())
+	}
+	if g.collection == nil {
+		return errors.Newf("method %s verifies tenancy against the generated collection, but none is wired", g.method)
+	}
+
+	stmt, err := g.tenancyStatement(target, pkValue)
+	if err != nil {
+		return err
+	}
+
+	it := txn.SpannerReadOnlyTransaction().Query(ctx, stmt.SpannerStatement())
+	defer it.Stop()
+
+	row, err := it.Next()
+	if err != nil {
+		if errors.Is(err, iterator.Done) {
+			return httpio.NewNotFoundMessagef("%s %v does not exist", target.Label, pkValue)
+		}
+
+		return errors.Wrap(err, "spanner.RowIterator.Next()")
+	}
+
+	var inTenant spanner.NullBool
+	if err := row.Column(0, &inTenant); err != nil {
+		return errors.Wrap(err, "spanner.Row.Column()")
+	}
+	if !inTenant.Valid || !inTenant.Bool {
+		return httpio.NewNotFoundMessagef("%s %v does not exist", target.Label, pkValue)
+	}
+
+	return nil
+}
+
+// tenancyStatement renders the tenancy check-SELECT from the target's domain
+// binding: the bare form compares the tenant column, the path form walks the
+// binding hops as the same EXISTS chain conditions lower through.
+func (g *ExecuteGate) tenancyStatement(target ExecuteTarget, pkValue any) (*Statement, error) {
+	bindings, _ := g.collection.Bindings(g.collection.Scope(target.Resource), target.Resource)
+	if bindings.Domain == nil {
+		return nil, errors.Newf("method %s: target %s declares no domain binding to verify tenancy against", g.method, target.Resource)
+	}
+	domain, ok := g.scope.Domain()
+	if !ok {
+		return nil, errors.Newf("method %s: tenancy verification requires a partitioned request", g.method)
+	}
+
+	registry := newParamRegistry()
+	outer := string(target.Resource)
+	tenantColumn := columnComparand(outer, bindings.Domain.Column)
+
+	var predicate ExpressionNode
+	if len(bindings.Domain.Path) == 0 {
+		predicate = &loweredComparisonNode{left: tenantColumn, op: "=", right: namedComparand(domainParamName)}
+	} else {
+		lctx := &loweringContext{outer: outer, bindings: bindings, collection: g.collection, partitioned: true}
+		terminal, wrap, err := lctx.pathTarget(&tenantColumn, bindings.Domain.Path, registry)
+		if err != nil {
+			return nil, err
+		}
+		predicate = wrap(&loweredComparisonNode{left: terminal, op: "=", right: namedComparand(domainParamName)})
+	}
+
+	gen, err := loweredSQLGenerator(SpannerDBType)
+	if err != nil {
+		return nil, err
+	}
+	sql, err := gen.generateLowered(predicate, registry)
+	if err != nil {
+		return nil, errors.Wrapf(err, "method %s: rendering the tenancy predicate for %s", g.method, target.Resource)
+	}
+
+	params := map[string]any{targetKeyParamName: pkValue, domainParamName: string(domain)}
+	for _, param := range registry.boundParams() {
+		params[param.Name] = param.Value
+	}
+
+	return &Statement{
+		SQL:    fmt.Sprintf("SELECT (%s) AS g0 FROM %s WHERE %s = @%s", sql, target.Resource, target.PKColumn, targetKeyParamName),
+		Params: params,
+	}, nil
 }
 
 // checkStatement renders the gate's check-SELECT: the condition lowered

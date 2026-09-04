@@ -63,8 +63,14 @@ type rpcTarget struct {
 	StateField string
 
 	// TenantField is the target's bare tenant-key field, read to locate the
-	// row within the tenancy predicate; empty for a global-scoped target.
+	// row within the tenancy predicate; empty for a global-scoped target and
+	// for a join-path binding (TenantByPath).
 	TenantField string
+
+	// TenantByPath marks a target whose @domain binding is a join path: the
+	// located row carries no tenant key of its own, so the generated frame
+	// verifies tenancy through the gate's join-path check instead.
+	TenantByPath bool
 }
 
 // LocateColumnCalls renders the located-row read's column accessors: the
@@ -236,10 +242,16 @@ func (c *client) resolveTarget(rpcMethod *rpcMethodInfo, pStruct *parser.Struct,
 	}
 
 	if scopeOrGlobal(root.PermissionScope) == accesstypes.DomainPermissionScope {
-		if root.DomainBinding == nil || len(root.DomainBinding.Path) > 0 {
-			return nil, nil, errors.Newf("struct %s: @%s(%s): the generated tenancy check reads the root's own tenant key, so the root needs a bare-column @%s binding", pStruct.Name(), declKeyword, rootName, domainKeyword)
+		switch {
+		case root.DomainBinding == nil:
+			// Unreachable through the normal pipeline — validateDomainBinding
+			// already rejects a domain-scoped resource with no binding.
+			return nil, nil, errors.Newf("struct %s: @%s(%s): the located-row tenancy check needs the root's @%s binding, which the root does not declare", pStruct.Name(), declKeyword, rootName, domainKeyword)
+		case len(root.DomainBinding.Path) == 0:
+			target.TenantField = root.DomainBinding.Anchor.Name()
+		default:
+			target.TenantByPath = true
 		}
-		target.TenantField = root.DomainBinding.Anchor.Name()
 	}
 
 	return target, root, nil

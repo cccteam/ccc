@@ -49,6 +49,7 @@ func bindingFixtureTables() map[string]*tableMetadata {
 		"PartitionBlindAnchors": {PkCount: 1, Columns: map[string]columnMeta{
 			"Id": pk, "UserId": plain, "CrewId": plain,
 		}},
+		"PathTenantTasks":    {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "BerthId": fk("Berths"), "Name": plain}},
 		"StatefulTasks":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "State": fk("TaskStates"), "ShipId": fk("Ships"), "Notes": plain}},
 		"StateOnNonFKs":      {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Label": plain}},
 		"StateBadDefaults":   {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "State": fk("TaskStates")}},

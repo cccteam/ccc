@@ -201,6 +201,22 @@ type (
 	}
 )
 
+type (
+	// PathTenantTask resolves its tenant across a join path — the target
+	// shape a located-row frame verifies through the gate: the row itself
+	// carries no tenant key.
+	//
+	// @permissionScope(domain)
+	PathTenantTask struct {
+		ID ccc.UUID `spanner:"Id"`
+
+		// @domain(via: StationID)
+		BerthID ccc.UUID `spanner:"BerthId"`
+
+		Name string `spanner:"Name"`
+	}
+)
+
 // VirtualWithBinding stands in for every schemaless struct kind in the
 // rejection test.
 type VirtualWithBinding struct {
@@ -404,6 +420,26 @@ type (
 		Note   string
 	}
 
+	// PlainTargetMaintenance targets a domain-scoped root with a bare-column
+	// tenancy binding: the frame reads the located row's own tenant key.
+	//
+	// @rpc
+	// @permissionScope(domain)
+	PlainTargetMaintenance struct {
+		// @target(MaintenanceTask)
+		TaskID ccc.UUID
+	}
+
+	// PlainTargetPathTenant targets a domain-scoped root whose tenancy binding
+	// is a join path: the frame verifies tenancy through the gate.
+	//
+	// @rpc
+	// @permissionScope(domain)
+	PlainTargetPathTenant struct {
+		// @target(PathTenantTask)
+		TaskID ccc.UUID
+	}
+
 	// @rpc
 	// @transition(StatefulTask, from: open, to: approved)
 	TransitionTargetWithArg struct {
@@ -425,4 +461,6 @@ func (TransitionTargetTypeMismatch) RunsInTxn() {}
 func (TransitionScopeMismatch) RunsInTxn()      {}
 func (TargetWithoutTransition) RunsInTxn()      {}
 func (PlainTargetTask) RunsInTxn()              {}
+func (PlainTargetMaintenance) RunsInTxn()       {}
+func (PlainTargetPathTenant) RunsInTxn()        {}
 func (TransitionTargetWithArg) RunsInTxn()      {}

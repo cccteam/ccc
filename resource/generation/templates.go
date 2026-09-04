@@ -2510,6 +2510,15 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 					return httpio.NewNotFoundMessagef("{{ $t.RootStruct }} %s does not exist", p.{{ $t.TargetField }})
 				}
 				{{- end }}
+				{{- if $t.TenantByPath }}
+				// The root's tenant key lives across its @domain join path: the
+				// gate verifies the located row resolves to the request's domain
+				// in this transaction — absent and cross-tenant are the same
+				// NotFound.
+				if err := gate.VerifyTenancy(ctx, txn, resource.ExecuteTarget{Resource: "{{ $t.RootResource }}", Label: "{{ $t.RootStruct }}", PKColumn: "{{ $t.RootPKColumn }}"}, p.{{ $t.TargetField }}); err != nil {
+					return err
+				}
+				{{- end }}
 				{{- end }}
 				{{- with $t := .RPCMethod.Transition }}
 				switch row.Data.{{ $t.StateField }} {

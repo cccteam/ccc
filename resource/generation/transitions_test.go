@@ -33,14 +33,23 @@ func resolveFixtureTransition(t *testing.T, c *client, structs map[string]*parse
 
 // transitionFixtureClient is the state fixture client with the workflow root
 // (and the stateless Ship) resolved into c.resources, the shape the RPC
-// extraction sees.
+// extraction sees — plus the two domain-scoped roots with their tenancy
+// bindings resolved, one per @domain form.
 func transitionFixtureClient(t *testing.T, structs map[string]*parser.Struct) *client {
 	t.Helper()
 
 	c := stateFixtureClient()
 	root := buildWorkflowFixture(t, c, structs, "StatefulTask")
 	ship := buildWorkflowFixture(t, c, structs, "Ship")
-	c.resources = []*resourceInfo{root, ship}
+	maintenance, err := resolveFixtureBindings(t, c, structs, "MaintenanceTask")
+	if err != nil {
+		t.Fatalf("resolveFixtureBindings(MaintenanceTask) error = %v", err)
+	}
+	pathTenant, err := resolveFixtureBindings(t, c, structs, "PathTenantTask")
+	if err != nil {
+		t.Fatalf("resolveFixtureBindings(PathTenantTask) error = %v", err)
+	}
+	c.resources = []*resourceInfo{root, ship, maintenance, pathTenant}
 
 	return c
 }
@@ -148,6 +157,61 @@ func TestResolveTransition(t *testing.T) {
 		}
 		if got, want := rpcMethod.Target.LocateColumnCalls(), ".ID()"; got != want {
 			t.Errorf("LocateColumnCalls() = %q, want %q (the key itself when no state or tenant column is read)", got, want)
+		}
+	})
+
+	t.Run("domain tenancy forms", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name       string
+			fixture    string
+			want       *rpcTarget
+			wantLocate string
+		}{
+			{
+				name:    "bare-column binding reads the located row's tenant key",
+				fixture: "PlainTargetMaintenance",
+				want: &rpcTarget{
+					RootStruct:   "MaintenanceTask",
+					RootResource: "MaintenanceTasks",
+					TargetField:  "TaskID",
+					RootPKField:  "ID",
+					RootPKColumn: "Id",
+					TenantField:  "StationID",
+				},
+				wantLocate: ".StationID()",
+			},
+			{
+				name:    "join-path binding verifies tenancy through the gate",
+				fixture: "PlainTargetPathTenant",
+				want: &rpcTarget{
+					RootStruct:   "PathTenantTask",
+					RootResource: "PathTenantTasks",
+					TargetField:  "TaskID",
+					RootPKField:  "ID",
+					RootPKColumn: "Id",
+					TenantByPath: true,
+				},
+				wantLocate: ".ID()",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				c := transitionFixtureClient(t, structs)
+				rpcMethod, err := resolveFixtureTransition(t, c, structs, tt.fixture)
+				if err != nil {
+					t.Fatalf("resolveTransition(%s) error = %v", tt.fixture, err)
+				}
+				if diff := cmp.Diff(tt.want, rpcMethod.Target); diff != "" {
+					t.Errorf("resolveTransition(%s) target mismatch (-want +got):\n%s", tt.fixture, diff)
+				}
+				if got := rpcMethod.Target.LocateColumnCalls(); got != tt.wantLocate {
+					t.Errorf("LocateColumnCalls() = %q, want %q", got, tt.wantLocate)
+				}
+			})
 		}
 	})
 
@@ -305,19 +369,52 @@ func Test_rpcHandlerTemplate_transition(t *testing.T) {
 		}
 	})
 
-	t.Run("domain-scoped transition locates the row within the tenancy predicate", func(t *testing.T) {
+	t.Run("domain-scoped tenancy forms", func(t *testing.T) {
 		t.Parallel()
 
-		rpcMethod := buildMethod(t, "CloseTask")
-		rpcMethod.Transition.TenantField = "StationID"
-		out := render(t, rpcMethod)
-		for _, want := range []string{
-			"AddColumns(resources.NewStatefulTaskColumns().State().StationID()).",
-			"resource.TenantKeyEquals(row.Data.StationID, domain)",
-		} {
-			if !strings.Contains(out, want) {
-				t.Errorf("domain-scoped transition handler missing %q:\n%s", want, out)
-			}
+		tests := []struct {
+			name     string
+			mutate   func(*rpcMethodInfo)
+			wants    []string
+			notWants []string
+		}{
+			{
+				name:   "bare column compares the located row's tenant key",
+				mutate: func(m *rpcMethodInfo) { m.Transition.TenantField = "StationID" },
+				wants: []string{
+					"AddColumns(resources.NewStatefulTaskColumns().State().StationID()).",
+					"resource.TenantKeyEquals(row.Data.StationID, domain)",
+				},
+				notWants: []string{"VerifyTenancy"},
+			},
+			{
+				name:   "join path verifies tenancy through the gate",
+				mutate: func(m *rpcMethodInfo) { m.Transition.TenantByPath = true },
+				wants: []string{
+					"AddColumns(resources.NewStatefulTaskColumns().State()).",
+					`gate.VerifyTenancy(ctx, txn, resource.ExecuteTarget{Resource: "StatefulTasks", Label: "StatefulTask", PKColumn: "Id"}, p.TaskID)`,
+				},
+				notWants: []string{"TenantKeyEquals"},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				rpcMethod := buildMethod(t, "CloseTask")
+				tt.mutate(rpcMethod)
+				out := render(t, rpcMethod)
+				for _, want := range tt.wants {
+					if !strings.Contains(out, want) {
+						t.Errorf("domain-scoped transition handler missing %q:\n%s", want, out)
+					}
+				}
+				for _, notWant := range tt.notWants {
+					if strings.Contains(out, notWant) {
+						t.Errorf("domain-scoped transition handler must not contain %q:\n%s", notWant, out)
+					}
+				}
+			})
 		}
 	})
 
