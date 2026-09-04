@@ -1,6 +1,7 @@
 package condition
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -185,29 +186,46 @@ func TestFold_temporal(t *testing.T) {
 func TestClassify_temporal(t *testing.T) {
 	t.Parallel()
 
-	expr, err := Parse("dayOfWeek(now, local) IN ('mon', 'tue') AND timeOfDay(now, 'UTC') < '18:00'")
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
+	tests := []struct {
+		name         string
+		source       string
+		wantRowFree  bool
+		wantBindings []string
+		wantUsesNow  bool
+	}{
+		{
+			name:        "temporal terms are environment facts",
+			source:      "dayOfWeek(now, local) IN ('mon', 'tue') AND timeOfDay(now, 'UTC') < '18:00'",
+			wantRowFree: true,
+			wantUsesNow: true,
+		},
+		{
+			name:         "a row term beside a temporal term keeps the row classification",
+			source:       "state = 'draft' AND timeOfDay(now, local) < '18:00'",
+			wantRowFree:  false,
+			wantBindings: []string{"state"},
+			wantUsesNow:  true,
+		},
 	}
 
-	if !RowFree(expr) {
-		t.Error("RowFree() = false, want true: temporal terms are environment facts")
-	}
-	if got := Bindings(expr); len(got) != 0 {
-		t.Errorf("Bindings() = %v, want none", got)
-	}
-	if !UsesNow(expr) {
-		t.Error("UsesNow() = false, want true: temporal functions read the instant")
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	mixed, err := Parse("state = 'draft' AND timeOfDay(now, local) < '18:00'")
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	if RowFree(mixed) {
-		t.Error("RowFree() = true, want false: the state term touches the row")
-	}
-	if got := Bindings(mixed); len(got) != 1 || got[0] != "state" {
-		t.Errorf("Bindings() = %v, want [state]: the temporal term binds nothing", got)
+			expr, err := Parse(tt.source)
+			if err != nil {
+				t.Fatalf("Parse(%q) error = %v", tt.source, err)
+			}
+
+			if got := RowFree(expr); got != tt.wantRowFree {
+				t.Errorf("RowFree() = %v, want %v", got, tt.wantRowFree)
+			}
+			if got := Bindings(expr); !slices.Equal(got, tt.wantBindings) {
+				t.Errorf("Bindings() = %v, want %v", got, tt.wantBindings)
+			}
+			if got := UsesNow(expr); got != tt.wantUsesNow {
+				t.Errorf("UsesNow() = %v, want %v", got, tt.wantUsesNow)
+			}
+		})
 	}
 }
