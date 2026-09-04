@@ -12,10 +12,10 @@ replace github.com/cccteam/ccc/resource => ../
 require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.94.0
-	github.com/cccteam/access v0.9.12-0.20260903211123-6ccdf0096259
-	github.com/cccteam/ccc v0.3.4-0.20260903213935-e66fc967ec56
-	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260903213935-e66fc967ec56
-	github.com/cccteam/ccc/resource v0.10.7-0.20260903213935-e66fc967ec56
+	github.com/cccteam/access v0.9.12-0.20260904003017-13c722a9bc91
+	github.com/cccteam/ccc v0.3.4-0.20260904002909-29e5af75b184
+	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260904002909-29e5af75b184
+	github.com/cccteam/ccc/resource v0.10.7-0.20260904002909-29e5af75b184
 	github.com/cccteam/ccc/tracer v0.1.7
 	github.com/cccteam/db-initiator v0.3.13
 	github.com/cccteam/httpio v0.7.17
