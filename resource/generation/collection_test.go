@@ -14,6 +14,7 @@ import (
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/tools/go/packages"
 )
 
 func loadCollectionFixture(t *testing.T) *parser.Package {
@@ -23,6 +24,22 @@ func loadCollectionFixture(t *testing.T) *parser.Package {
 }
 
 func loadFixture(t *testing.T, name string) *parser.Package {
+	t.Helper()
+
+	_, parsed := loadFixturePackage(t, name)
+
+	return parsed
+}
+
+// loadCollectionFixturePackage returns the collection fixture's loaded package
+// alongside its parse, for validators that read file positions.
+func loadCollectionFixturePackage(t *testing.T) (loaded *packages.Package, parsed *parser.Package) {
+	t.Helper()
+
+	return loadFixturePackage(t, "collectionfixture")
+}
+
+func loadFixturePackage(t *testing.T, name string) (loaded *packages.Package, parsed *parser.Package) {
 	t.Helper()
 
 	// Other tests in the package chdir to the module root (client construction does),
@@ -49,7 +66,7 @@ func loadFixture(t *testing.T, name string) *parser.Package {
 		t.Fatalf("fixture package %s not loaded", name)
 	}
 
-	return parser.ParsePackage(pkg)
+	return pkg, parser.ParsePackage(pkg)
 }
 
 func fixtureStructs(pkg *parser.Package) map[string]*parser.Struct {

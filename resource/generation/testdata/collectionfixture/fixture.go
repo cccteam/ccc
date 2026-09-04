@@ -110,3 +110,9 @@ type DoSomething struct {
 type HiddenMethod struct {
 	Input string
 }
+
+// SmokeTest pins the file-name validator's _test.go trap: its expected file
+// (smoke_test.go) would be a Go test file.
+type SmokeTest struct {
+	Input string
+}

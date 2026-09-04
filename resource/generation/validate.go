@@ -55,8 +55,16 @@ func (c *client) validateStructNameMatchesFile(pkg *packages.Package, plural boo
 			sName = c.pluralize(sName)
 		}
 
-		if caser.ToSnake(sName) != strings.TrimSuffix(fileName, ".go") {
-			return errors.Newf("%s (%s) does not match its file name %s (expected %q)", s.Name(), caser.ToSnake(sName), fileName, caser.ToSnake(sName)+".go")
+		expected := caser.ToSnake(sName)
+		if strings.HasSuffix(expected, "_test") {
+			// The expected file (and the generated zz_gen_ file beside it) would end in
+			// _test.go, which Go compiles only under go test: the struct would vanish
+			// from the build and from generation. Name the trap instead of steering
+			// the author into it.
+			return errors.Newf("%s: its file name %q ends in _test.go, which Go treats as a test file; rename the struct so its name does not end in Test", s.Name(), expected+".go")
+		}
+		if expected != strings.TrimSuffix(fileName, ".go") {
+			return errors.Newf("%s (%s) does not match its file name %s (expected %q)", s.Name(), expected, fileName, expected+".go")
 		}
 
 		return nil
