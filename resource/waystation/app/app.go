@@ -9,6 +9,7 @@ import (
 	"crypto/subtle"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
@@ -61,6 +62,17 @@ type Configurer interface {
 // machine surface goes through the same fail-closed permission checks as the browser.
 const automationUser = "automation"
 
+// operationsClock is the zone the bare word local resolves to in temporal
+// grant conditions: the fleet coordinates on headquarters time.
+var operationsClock = func() *time.Location {
+	loc, err := time.LoadLocation("America/Denver")
+	if err != nil {
+		panic(err) // the timezone database is embedded; this cannot fail at runtime
+	}
+
+	return loc
+}()
+
 // App implements the http handlers for the waystation, most of which are generated. It
 // owns no router: whoever serves it composes one at the edge (main composes
 // router.New, test suites compose router.NewTestRouter).
@@ -79,6 +91,12 @@ type App struct {
 
 // New constructs an App from its dependencies.
 func New(cfg Configurer) *App {
+	// The fleet runs one operations clock: the bare word local in a temporal
+	// grant condition — timeOfDay(now, local), dayOfWeek(now, local) — resolves
+	// to headquarters time. An app choosing per-session or per-tenant zones
+	// wires the same seam from that source instead.
+	resource.SetLocalZone(operationsClock)
+
 	return &App{
 		access:           cfg.Access(),
 		PasswordAuth:     cfg.Session(),

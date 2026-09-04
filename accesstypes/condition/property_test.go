@@ -30,12 +30,27 @@ func genExpr(rng *rand.Rand, depth int) Expr {
 
 func genLeaf(rng *rand.Rand) Expr {
 	ops := []CompareOp{Eq, NotEq, Less, LessEq, Greater, GreaterEq}
-	switch rng.IntN(6) {
+	switch rng.IntN(8) {
 	case 0:
 		return Comparison{Left: genRef(rng), Op: ops[rng.IntN(len(ops))], Right: genOperand(rng)}
 	case 1:
 		// now is relational-only against its operand forms.
 		return Comparison{Left: Ref{Name: "now"}, Op: ops[rng.IntN(len(ops))], Right: StringLiteral{Value: "2026-01-02T15:04:05Z"}}
+	case 6:
+		// timeOfDay is relational-only against 'HH:MM' literals.
+		return Comparison{Left: genTemporalRef(rng, FuncTimeOfDay), Op: ops[rng.IntN(len(ops))], Right: StringLiteral{Value: "06:30"}}
+	case 7:
+		// dayOfWeek: equality or literal-list membership.
+		if rng.IntN(2) == 0 {
+			op := Eq
+			if rng.IntN(2) == 0 {
+				op = NotEq
+			}
+
+			return Comparison{Left: genTemporalRef(rng, FuncDayOfWeek), Op: op, Right: StringLiteral{Value: "mon"}}
+		}
+
+		return In{Left: genTemporalRef(rng, FuncDayOfWeek), Negated: rng.IntN(2) == 0, Literals: []Literal{StringLiteral{Value: "sat"}, StringLiteral{Value: "sun"}}}
 	case 5:
 		// The old-vs-new form: a pre-image attribute operand is legal only
 		// against a new.-qualified left side.
@@ -47,6 +62,14 @@ func genLeaf(rng *rand.Rand) Expr {
 	default:
 		return NullTest{Left: genRef(rng), Negated: rng.IntN(2) == 0}
 	}
+}
+
+func genTemporalRef(rng *rand.Rand, fn string) Ref {
+	if rng.IntN(2) == 0 {
+		return Ref{Func: fn, ZoneLocal: true}
+	}
+
+	return Ref{Func: fn, Zone: "America/Denver"}
 }
 
 func genRef(rng *rand.Rand) Ref {

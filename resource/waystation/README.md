@@ -64,6 +64,17 @@ All login passwords are `waystation`.
   `zz_gen_workflow_*.dot` graphs (membership plus the labeled transition edges) and the
   grant matrix are the whole specification; there is no imperative permission or edge
   code anywhere in the app.
+- **Wall-clock windows (§05)** — a grant may carry a temporal condition:
+  `timeOfDay(now, zone)` and `dayOfWeek(now, zone)` read the decision instant
+  through a zone's wall clock, folded by the ENGINE at check time — SQL never
+  renders timezone arithmetic. The bare word `local` resolves to the zone the
+  app wires (`app.New` sets the fleet's operations clock, America/Denver, via
+  `resource.SetLocalZone`). The shipped demo roles deliberately carry no window
+  — the persona suites pin fixed views — so `integration/temporal_test.go`
+  provisions shift roles through the real engine with windows computed around
+  its own instant: the day shift's list answers, the night shift's refuses, and
+  the digest reads `conditional` for both at any hour (structural, never folded
+  at fetch).
 - **Old-vs-new comparisons (§05)** — an Update grant may compare the proposed value
   against the row's pre-image: the foreman's `new.priority <= priority` conjunct means
   they may lower a work order's priority but never raise it, judged inside the

@@ -17,11 +17,15 @@ func RowFree(e Expr) bool {
 	walk(e, func(node Expr) {
 		switch n := node.(type) {
 		case Comparison:
-			if !n.Left.IsNow() {
+			if !n.Left.IsNow() && !n.Left.IsTemporal() {
 				rowFree = false
 			}
 		case In:
-			rowFree = false // the left side is always a binding: now IN is rejected at parse
+			// The left side is a binding — now IN is rejected at parse — except
+			// a temporal function (dayOfWeek IN days), which is a fact.
+			if !n.Left.IsTemporal() {
+				rowFree = false
+			}
 		case NullTest:
 			rowFree = false
 		}
@@ -52,7 +56,7 @@ func Bindings(e Expr) []string {
 		default:
 			return
 		}
-		if !ref.IsNow() {
+		if !ref.IsNow() && !ref.IsTemporal() {
 			set[ref.Name] = struct{}{}
 		}
 	})
@@ -107,17 +111,23 @@ func SubjectValues(e Expr) []string {
 	return sortedKeys(set)
 }
 
-// UsesNow reports whether the expression references the environment fact now,
-// on either side of a comparison — the check must then carry an Environment
-// with the instant, and its absence is a fail-loud error.
+// UsesNow reports whether the expression references the environment fact now —
+// on either side of a comparison, or through a temporal function of it — the
+// check must then carry an Environment with the instant, and its absence is a
+// fail-loud error.
 func UsesNow(e Expr) bool {
 	uses := false
 	walk(e, func(node Expr) {
-		if n, ok := node.(Comparison); ok {
-			if n.Left.IsNow() {
+		switch n := node.(type) {
+		case Comparison:
+			if n.Left.IsNow() || n.Left.IsTemporal() {
 				uses = true
 			}
 			if _, ok := n.Right.(Now); ok {
+				uses = true
+			}
+		case In:
+			if n.Left.IsTemporal() {
 				uses = true
 			}
 		}

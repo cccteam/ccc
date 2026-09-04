@@ -6,9 +6,10 @@ import (
 )
 
 // Facts carries the fact values folding may substitute: the checked user's
-// identity (subject) and the request's UTC instant (now). Facts are the
-// engine's whole evaluation surface — everything else in a condition is data,
-// which only the database compares.
+// identity (subject), the request's UTC instant (now), and the zone the bare
+// word local resolves to inside a temporal function. Facts are the engine's
+// whole evaluation surface — everything else in a condition is data, which
+// only the database compares.
 //
 // Presence is tracked per fact, mirroring accesstypes.Environment: folding a
 // comparison that needs an absent fact is a fail-loud error, never a silent
@@ -18,6 +19,7 @@ type Facts struct {
 	hasSubject bool
 	now        time.Time
 	hasNow     bool
+	zone       *time.Location
 }
 
 // NewFacts returns a Facts carrying nothing.
@@ -43,6 +45,26 @@ func (f Facts) WithNow(now time.Time) Facts {
 	f.hasNow = true
 
 	return f
+}
+
+// WithZone returns a copy carrying the zone the bare word local resolves to
+// inside a temporal function — the Environment's zone fact. How the zone is
+// chosen (application config, a session claim, the tenant's record) is the
+// application's business; folding sees only the resolved location.
+func (f Facts) WithZone(zone *time.Location) Facts {
+	f.zone = zone
+
+	return f
+}
+
+// Zone returns the local zone and true, or nil and false when the Facts carry
+// none.
+func (f Facts) Zone() (*time.Location, bool) {
+	if f.zone == nil {
+		return nil, false
+	}
+
+	return f.zone, true
 }
 
 // Subject returns the checked user's identity and true, or the empty string
@@ -140,21 +162,35 @@ func Fold(e Expr, f Facts) (Expr, error) {
 		return Not{Operand: folded}, nil
 
 	case Comparison:
-		return foldComparison(n, f)
+		return foldComparison(&n, f)
+
+	case In:
+		return foldIn(&n, f)
 
 	default:
-		// In, NullTest, Truth: In and NullTest always touch row data (a
-		// binding on the left, or a subject attribute the database resolves);
-		// Truth is already folded.
+		// NullTest always touches row data; Truth is already folded.
 		return e, nil
 	}
 }
 
+// foldIn evaluates a temporal membership test (dayOfWeek IN days); an In over
+// a binding always touches row data and passes through for the database.
+func foldIn(in *In, f Facts) (Expr, error) {
+	if in.Left.IsTemporal() {
+		return foldTemporalIn(in, f)
+	}
+
+	return *in, nil
+}
+
 // foldComparison evaluates a comparison when both sides are facts; anything
 // touching row data or a subject attribute passes through for the database.
-func foldComparison(c Comparison, f Facts) (Expr, error) {
+func foldComparison(c *Comparison, f Facts) (Expr, error) {
+	if c.Left.IsTemporal() {
+		return foldTemporalComparison(c, f)
+	}
 	if !c.Left.IsNow() {
-		return c, nil
+		return *c, nil
 	}
 
 	if !f.hasNow {
@@ -173,7 +209,7 @@ func foldComparison(c Comparison, f Facts) (Expr, error) {
 		right = instant.UTC()
 	case SubjectValue:
 		// A subject attribute is data, not a fact — the database compares it.
-		return c, nil
+		return *c, nil
 	default:
 		return nil, fmt.Errorf("condition: now cannot be compared with %q in %q", c.Right.String(), c.String())
 	}

@@ -73,9 +73,9 @@ func lowerCondition(expr condition.Expr, ctx *loweringContext, registry *paramRe
 	case condition.Truth:
 		return &truthNode{value: n.Value}, nil
 	case condition.Comparison:
-		return lowerComparison(n, ctx, registry)
+		return lowerComparison(&n, ctx, registry)
 	case condition.In:
-		return lowerIn(n, ctx, registry)
+		return lowerIn(&n, ctx, registry)
 	case condition.NullTest:
 		return lowerNullTest(n, ctx, registry)
 	default:
@@ -101,7 +101,7 @@ func lowerLogicChain(operands []condition.Expr, op LogicalOperator, ctx *lowerin
 	return &GroupNode{Expression: chain}, nil
 }
 
-func lowerComparison(cmp condition.Comparison, ctx *loweringContext, registry *paramRegistry) (ExpressionNode, error) {
+func lowerComparison(cmp *condition.Comparison, ctx *loweringContext, registry *paramRegistry) (ExpressionNode, error) {
 	right, err := lowerOperand(cmp.Right, ctx, registry)
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func lowerComparison(cmp condition.Comparison, ctx *loweringContext, registry *p
 	return wrap(&loweredComparisonNode{left: target, op: op, right: right}), nil
 }
 
-func lowerIn(in condition.In, ctx *loweringContext, registry *paramRegistry) (ExpressionNode, error) {
+func lowerIn(in *condition.In, ctx *loweringContext, registry *paramRegistry) (ExpressionNode, error) {
 	target, wrap, err := ctx.resolveRef(in.Left, registry)
 	if err != nil {
 		return nil, err
@@ -216,6 +216,14 @@ func lowerOperand(operand condition.Operand, ctx *loweringContext, registry *par
 // proposed foreign-key value.
 func (ctx *loweringContext) resolveRef(ref condition.Ref, registry *paramRegistry) (comparand, func(ExpressionNode) ExpressionNode, error) {
 	identity := func(node ExpressionNode) ExpressionNode { return node }
+
+	if ref.IsTemporal() {
+		// Temporal terms are environment facts: the engine folds them at check
+		// time, so a decision's residue never carries one — SQL never renders
+		// timezone arithmetic (design plan §05). Reaching this is an invariant
+		// breach, never a rendering request.
+		return comparand{}, nil, errors.Newf("condition lowering: invariant breach: %s reached SQL rendering — temporal terms fold at check time", ref.String())
+	}
 
 	binding, ok := ctx.attribute(ref.Name)
 	if !ok {

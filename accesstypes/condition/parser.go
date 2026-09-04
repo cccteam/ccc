@@ -201,6 +201,9 @@ func (p *parser) parseComparison() (Expr, error) {
 		if left.IsNow() {
 			return nil, fmt.Errorf("condition: now supports only relational comparison, not IN")
 		}
+		if left.Func == FuncTimeOfDay {
+			return nil, fmt.Errorf("condition: %s supports only relational comparison, not IN", FuncTimeOfDay)
+		}
 		if err := p.advance(); err != nil {
 			return nil, err
 		}
@@ -210,6 +213,9 @@ func (p *parser) parseComparison() (Expr, error) {
 	case p.keywordIs(kwIs):
 		if left.IsNow() {
 			return nil, fmt.Errorf("condition: now supports only relational comparison, not IS NULL")
+		}
+		if left.IsTemporal() {
+			return nil, fmt.Errorf("condition: %s is an environment fact and is never NULL", left.Func)
 		}
 		if err := p.advance(); err != nil {
 			return nil, err
@@ -277,9 +283,61 @@ func (p *parser) parseRef() (Ref, error) {
 		if err := p.advance(); err != nil {
 			return Ref{}, err
 		}
+		if p.tok.kind == tokenLParen {
+			return p.parseTemporalCall(name, pos)
+		}
 
 		return Ref{Name: name}, nil
 	}
+}
+
+// parseTemporalCall parses a temporal function's argument list — the current
+// token is the opening parenthesis after the function name. The grammar is
+// fixed: `name(now, zone)` where zone is a quoted IANA name or the bare word
+// local (the Environment's zone fact).
+func (p *parser) parseTemporalCall(name string, pos int) (Ref, error) {
+	if name != FuncTimeOfDay && name != FuncDayOfWeek {
+		return Ref{}, fmt.Errorf("condition: unknown function %q at position %d — the temporal functions are %s and %s", name, pos, FuncTimeOfDay, FuncDayOfWeek)
+	}
+	if err := p.advance(); err != nil {
+		return Ref{}, err
+	}
+	if p.tok.kind != tokenIdent || p.tok.text != nowName {
+		return Ref{}, fmt.Errorf("condition: %s reads the environment fact now — %s(now, zone) — at position %d", name, name, p.tok.pos)
+	}
+	if err := p.advance(); err != nil {
+		return Ref{}, err
+	}
+	if p.tok.kind != tokenComma {
+		return Ref{}, fmt.Errorf("condition: expected %q after now at position %d", ",", p.tok.pos)
+	}
+	if err := p.advance(); err != nil {
+		return Ref{}, err
+	}
+
+	ref := Ref{Func: name}
+	switch {
+	case p.tok.kind == tokenString:
+		if p.tok.text == "" {
+			return Ref{}, fmt.Errorf("condition: %s's zone cannot be empty at position %d", name, p.tok.pos)
+		}
+		ref.Zone = p.tok.text
+	case p.tok.kind == tokenIdent && p.tok.text == zoneLocalName:
+		ref.ZoneLocal = true
+	default:
+		return Ref{}, fmt.Errorf("condition: expected a quoted zone name or local at position %d", p.tok.pos)
+	}
+	if err := p.advance(); err != nil {
+		return Ref{}, err
+	}
+	if p.tok.kind != tokenRParen {
+		return Ref{}, fmt.Errorf("condition: expected %q at position %d", ")", p.tok.pos)
+	}
+	if err := p.advance(); err != nil {
+		return Ref{}, err
+	}
+
+	return ref, nil
 }
 
 // parseOperand parses a comparison's right side. left is the comparison's
@@ -371,6 +429,11 @@ func (p *parser) parseOperand(left Ref) (Operand, error) {
 // @subjectSet reference (`subject.name`).
 func (p *parser) parseInBody(left Ref, negated bool) (Expr, error) {
 	if p.tok.kind == tokenIdent && p.tok.text == reservedSubject {
+		if left.IsTemporal() {
+			// A temporal term folds against environment facts alone; a
+			// data-anchored set would keep it from ever settling.
+			return nil, fmt.Errorf("condition: %s tests membership in a literal day list, not a subject set", left.Func)
+		}
 		if err := p.advance(); err != nil {
 			return nil, err
 		}

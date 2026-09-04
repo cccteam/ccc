@@ -47,6 +47,33 @@ func TestParse_canonical(t *testing.T) {
 			want:   "state IN ('draft', 'scheduled') AND new.priority <= priority",
 		},
 		{
+			name:   "time-of-day window in a named zone",
+			source: "timeOfDay(now, 'America/Denver') >= '06:00' AND timeOfDay(now, 'America/Denver') < '13:30'",
+			want:   "timeOfDay(now, 'America/Denver') >= '06:00' AND timeOfDay(now, 'America/Denver') < '13:30'",
+		},
+		{
+			name:   "day-of-week membership in the local zone",
+			source: "dayOfWeek(now, local) IN ('mon', 'tue', 'wed', 'thu', 'fri')",
+			want:   "dayOfWeek(now, local) IN ('mon', 'tue', 'wed', 'thu', 'fri')",
+		},
+		{
+			name:   "wrap-around night window is ordinary OR",
+			source: "timeOfDay(now, local) >= '22:00' OR timeOfDay(now, local) < '06:00'",
+			want:   "timeOfDay(now, local) >= '22:00' OR timeOfDay(now, local) < '06:00'",
+		},
+		{
+			name:   "day equality",
+			source: "dayOfWeek(now, 'UTC') = 'sat'",
+			want:   "dayOfWeek(now, 'UTC') = 'sat'",
+		},
+		{
+			// local is reserved only inside the zone argument: elsewhere it is
+			// an ordinary binding name.
+			name:   "local is an ordinary attribute outside a zone argument",
+			source: "local = true",
+			want:   "local = true",
+		},
+		{
 			name:   "AND binds tighter than OR",
 			source: "a = 1 OR b = 2 AND c = 3",
 			want:   "a = 1 OR b = 2 AND c = 3",
@@ -245,6 +272,46 @@ func TestParse_errors(t *testing.T) {
 			name:        "decimal needs digits after the point",
 			source:      "a = 1.",
 			wantContain: "digits after the point",
+		},
+		{
+			name:        "unknown function",
+			source:      "localHour(now, 'UTC') = '06:00'",
+			wantContain: "unknown function \"localHour\"",
+		},
+		{
+			name:        "a temporal function anchors on now",
+			source:      "timeOfDay(created, 'UTC') = '06:00'",
+			wantContain: "reads the environment fact now",
+		},
+		{
+			name:        "a temporal zone is quoted or local",
+			source:      "timeOfDay(now, zone) = '06:00'",
+			wantContain: "expected a quoted zone name or local",
+		},
+		{
+			name:        "a temporal zone cannot be empty",
+			source:      "timeOfDay(now, '') = '06:00'",
+			wantContain: "zone cannot be empty",
+		},
+		{
+			name:        "timeOfDay has no set membership",
+			source:      "timeOfDay(now, local) IN ('06:00')",
+			wantContain: "timeOfDay supports only relational comparison",
+		},
+		{
+			name:        "temporal functions are never NULL",
+			source:      "dayOfWeek(now, local) IS NULL",
+			wantContain: "never NULL",
+		},
+		{
+			name:        "dayOfWeek takes a literal day list, not a subject set",
+			source:      "dayOfWeek(now, local) IN subject.workdays",
+			wantContain: "literal day list",
+		},
+		{
+			name:        "function names match case-sensitively",
+			source:      "TIMEOFDAY(now, 'UTC') = '06:00'",
+			wantContain: "unknown function",
 		},
 		{
 			name:        "source over the 4 KB limit",

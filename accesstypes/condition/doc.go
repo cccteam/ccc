@@ -13,7 +13,9 @@
 //	            | attr [NOT] IN '(' literal { ',' literal } ')'
 //	            | attr [NOT] IN subject.identifier      -- a @subjectSet name
 //	            | attr IS [NOT] NULL
-//	attr       := [ new. ] identifier | now
+//	attr       := [ new. ] identifier | now | temporal
+//	temporal   := ( timeOfDay | dayOfWeek ) '(' now ',' zone ')'
+//	zone       := 'string' | local
 //	operand    := literal | subject | now | subject.identifier | identifier
 //	literal    := 'string' | number | true | false
 //
@@ -22,6 +24,16 @@
 // 2026-09-03) — and is admitted only against a new.-qualified left side; it
 // never takes its own new. qualifier (two post-image sides would compare the
 // proposed row with itself).
+//
+// The temporal functions (§05, decided 2026-09-03) read the environment's
+// instant through a zone's wall clock: timeOfDay(now, zone) compares against
+// 24-hour 'HH:MM' literals with the relational operators, and
+// dayOfWeek(now, zone) against the day names 'mon' … 'sun' with =, != and
+// [NOT] IN over a literal list. The zone is a quoted IANA name, or the bare
+// word local — the Environment's zone attribute, resolved by the application.
+// Temporal terms are environment facts: row-free, folded at check time in the
+// engine, never rendered to SQL. Function names match case-sensitively; local
+// is reserved only inside the zone argument.
 //
 // Keywords are case-insensitive; identifiers are case-sensitive, charset
 // [A-Za-z_][A-Za-z0-9_]*. The reserved words subject, now, and new match

@@ -168,20 +168,53 @@ func (t Truth) String() string {
 // nowName is the reserved environment fact usable on a comparison's left side.
 const nowName = "now"
 
+// The temporal function names (decided 2026-09-03): both anchor on the
+// environment fact now, take a zone, and always fold in the engine — they
+// never lower to SQL, so no database dialect renders timezone arithmetic.
+const (
+	// FuncTimeOfDay is timeOfDay(now, zone): the instant's wall-clock reading
+	// in the zone, compared against 'HH:MM' literals (24-hour).
+	FuncTimeOfDay = "timeOfDay"
+
+	// FuncDayOfWeek is dayOfWeek(now, zone): the instant's day name in the
+	// zone — one of 'mon' … 'sun' — valid with =, != and [NOT] IN.
+	FuncDayOfWeek = "dayOfWeek"
+)
+
+// zoneLocalName is the bare word naming the Environment's zone fact inside a
+// temporal function's zone argument. It is reserved only in that position.
+const zoneLocalName = "local"
+
 // Ref is an attribute reference: a binding (row attribute) name, optionally
-// read from the post-write image (`new.`), or the reserved environment fact
-// now — distinguished with IsNow, never by matching Name yourself. Every
-// comparison's left side is a Ref; a Ref may also stand as the right operand
-// in the old-vs-new form — `new.attr <op> attr` — where the left side is
-// post-image and the right reads the same row's pre-image (the parser is the
-// gate: an attribute operand is only legal against a `new.`-qualified left
-// side, and never itself `new.`-qualified).
+// read from the post-write image (`new.`), the reserved environment fact
+// now — distinguished with IsNow, never by matching Name yourself — or a
+// temporal function of now (IsTemporal). Every comparison's left side is a
+// Ref; a Ref may also stand as the right operand in the old-vs-new form —
+// `new.attr <op> attr` — where the left side is post-image and the right
+// reads the same row's pre-image (the parser is the gate: an attribute
+// operand is only legal against a `new.`-qualified left side, and never
+// itself `new.`-qualified).
 type Ref struct {
 	Name string
 
 	// PostImage marks the `new.` prefix: the proposed value where the
 	// mutation touches the column, the existing value where it doesn't.
 	PostImage bool
+
+	// Func names the temporal function wrapping now — FuncTimeOfDay or
+	// FuncDayOfWeek — with Zone/ZoneLocal its zone argument. Empty for a
+	// plain reference; a function Ref carries no Name (the anchor is always
+	// now). Temporal terms are environment facts: they fold at check time
+	// and are row-free.
+	Func string
+
+	// Zone is the function's zone argument: an IANA name ('America/Denver'),
+	// empty when ZoneLocal.
+	Zone string
+
+	// ZoneLocal marks the bare word local: the zone resolves from the
+	// Environment's zone fact at fold time.
+	ZoneLocal bool
 }
 
 func (Ref) isOperand() {}
@@ -189,10 +222,25 @@ func (Ref) isOperand() {}
 // IsNow reports whether the Ref is the reserved environment fact now rather
 // than a binding name.
 func (r Ref) IsNow() bool {
-	return !r.PostImage && r.Name == nowName
+	return !r.PostImage && r.Func == "" && r.Name == nowName
+}
+
+// IsTemporal reports whether the Ref is a temporal function of now rather
+// than a binding name — distinguished with this, never by matching Func
+// yourself.
+func (r Ref) IsTemporal() bool {
+	return r.Func != ""
 }
 
 func (r Ref) String() string {
+	if r.Func != "" {
+		zone := "'" + strings.ReplaceAll(r.Zone, "'", "''") + "'"
+		if r.ZoneLocal {
+			zone = zoneLocalName
+		}
+
+		return r.Func + "(" + nowName + ", " + zone + ")"
+	}
 	if r.PostImage {
 		return "new." + r.Name
 	}
