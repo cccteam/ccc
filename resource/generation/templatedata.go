@@ -370,7 +370,11 @@ type tsConstantsData struct {
 	File       *typescriptGenerator
 	Data       *resource.TypescriptData
 	RPCMethods []*rpcMethodInfo
-	PIIMap     map[accesstypes.Resource]map[accesstypes.Tag]bool
+	// ManualMethods are the Execute registrations without a parsed RPC struct
+	// (@manualAddResource(Execute)); they join the Methods constants after the
+	// generated methods.
+	ManualMethods []accesstypes.Resource
+	PIIMap        map[accesstypes.Resource]map[accesstypes.Tag]bool
 }
 
 type tsResourcesData struct {

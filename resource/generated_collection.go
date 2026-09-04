@@ -648,9 +648,33 @@ func (g *GeneratedCollection) TypescriptDataExcluding(excluded ...accesstypes.Re
 	return &TypescriptData{
 		Permissions:      g.permissions(skip),
 		Resources:        g.resources(skip),
+		Methods:          g.methods(skip),
 		ResourceTags:     g.tags(skip),
 		PermissionScopes: g.permissionScopes(skip),
 	}
+}
+
+// methods returns the sorted Execute-gated registrations not skipped: the
+// complement of resources, so every registration lands in exactly one of the
+// two lists.
+func (g *GeneratedCollection) methods(skip map[accesstypes.Resource]struct{}) []accesstypes.Resource {
+	methods := []accesstypes.Resource{}
+	for _, stores := range g.resourceStore {
+		for resource, permissions := range stores {
+			if !slices.Contains(permissions, accesstypes.Execute) {
+				continue
+			}
+			if _, skipped := skip[resource]; skipped {
+				continue
+			}
+
+			methods = append(methods, resource)
+		}
+	}
+
+	slices.Sort(methods)
+
+	return slices.Compact(methods)
 }
 
 // HasPermission reports whether the collection registers permission on res within scope.

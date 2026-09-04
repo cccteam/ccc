@@ -70,8 +70,11 @@ type dbFieldMetadata struct {
 
 // TypescriptData holds all the collected resource and permission information needed for TypeScript code generation.
 type TypescriptData struct {
-	Permissions      []accesstypes.Permission
-	Resources        []accesstypes.Resource
+	Permissions []accesstypes.Permission
+	Resources   []accesstypes.Resource
+	// Methods are the Execute-gated registrations: generated RPC methods and
+	// manual declarations (@manualAddResource(Execute)) alike.
+	Methods          []accesstypes.Resource
 	ResourceTags     map[accesstypes.Resource][]accesstypes.Tag
 	PermissionScopes []accesstypes.PermissionScope
 }

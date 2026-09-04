@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
 	"github.com/google/go-cmp/cmp"
 )
@@ -240,5 +241,68 @@ func Test_typescriptGenerator_applyOutletFilter(t *testing.T) {
 				t.Errorf("routerResources mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+// Test_typescriptGenerator_manualMethods pins that the Methods constants gain the
+// Execute registrations without a parsed RPC struct — @manualAddResource(Execute) —
+// and never repeat a generated method.
+func Test_typescriptGenerator_manualMethods(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+
+	tests := []struct {
+		name    string
+		methods []accesstypes.Resource
+		parsed  []*rpcMethodInfo
+		want    []accesstypes.Resource
+	}{
+		{
+			name:    "a manual registration joins, a generated one is skipped",
+			methods: []accesstypes.Resource{"DoSomething", "ViewAsUser"},
+			parsed:  []*rpcMethodInfo{{Struct: structs["DoSomething"]}},
+			want:    []accesstypes.Resource{"ViewAsUser"},
+		},
+		{
+			name:    "no manual registrations yields none",
+			methods: []accesstypes.Resource{"DoSomething"},
+			parsed:  []*rpcMethodInfo{{Struct: structs["DoSomething"]}},
+			want:    []accesstypes.Resource{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			g := &typescriptGenerator{client: &client{rpcMethods: tt.parsed}}
+			if diff := cmp.Diff(tt.want, g.manualMethods(tt.methods)); diff != "" {
+				t.Errorf("manualMethods() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// Test_typescriptConstantsTemplate_manualMethods pins the emitted constant: a manual
+// Execute registration lands in Methods after the generated methods, typed Method.
+func Test_typescriptConstantsTemplate_manualMethods(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+	c := &client{}
+	out, err := c.generateTemplateOutput("typescriptConstantsTemplate", typescriptConstantsTemplate, tsConstantsData{
+		File:          &typescriptGenerator{client: c},
+		Data:          &resource.TypescriptData{Permissions: []accesstypes.Permission{accesstypes.Execute}},
+		RPCMethods:    []*rpcMethodInfo{{Struct: structs["DoSomething"]}},
+		ManualMethods: []accesstypes.Resource{"ViewAsUser"},
+	})
+	if err != nil {
+		t.Fatalf("generateTemplateOutput() error = %v", err)
+	}
+
+	want := "export const Methods = {\n  DoSomething: 'DoSomething' as Method,\n  ViewAsUser: 'ViewAsUser' as Method,\n};"
+	if !strings.Contains(string(out), want) {
+		t.Errorf("typescriptConstantsTemplate output missing %q:\n%s", want, out)
 	}
 }

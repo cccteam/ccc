@@ -294,10 +294,11 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	}
 
 	templateData := tsConstantsData{
-		File:       t,
-		Data:       routerData,
-		RPCMethods: t.rpcMethods,
-		PIIMap:     piiResourceFields,
+		File:          t,
+		Data:          routerData,
+		RPCMethods:    t.rpcMethods,
+		ManualMethods: t.manualMethods(routerData.Methods),
+		PIIMap:        piiResourceFields,
 	}
 
 	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, typescriptConstantsTemplate, templateData)
@@ -534,6 +535,22 @@ func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []*rpcField) []*rpc
 	}
 
 	return fields
+}
+
+// manualMethods returns the Execute registrations the collection carries without a
+// parsed RPC struct behind them — @manualAddResource(Execute) declarations on
+// hand-written handlers — so the Methods constants name every Execute-gated
+// resource, not only the generated ones.
+func (t *typescriptGenerator) manualMethods(methods []accesstypes.Resource) []accesstypes.Resource {
+	manual := make([]accesstypes.Resource, 0, len(methods))
+	for _, method := range methods {
+		if slices.ContainsFunc(t.rpcMethods, func(m *rpcMethodInfo) bool { return m.Name() == string(method) }) {
+			continue
+		}
+		manual = append(manual, method)
+	}
+
+	return manual
 }
 
 // generateAPIClient emits zz_gen_api.ts: the typed client surface over the generated

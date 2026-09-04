@@ -497,6 +497,7 @@ func TestGeneratedCollection_TypescriptDataExcluding(t *testing.T) {
 			want: &TypescriptData{
 				Permissions:      []accesstypes.Permission{accesstypes.Execute, accesstypes.List},
 				Resources:        []accesstypes.Resource{"Widgets"},
+				Methods:          []accesstypes.Resource{"DoThing"},
 				ResourceTags:     map[accesstypes.Resource][]accesstypes.Tag{"Widgets": {"id", "name"}},
 				PermissionScopes: []accesstypes.PermissionScope{accesstypes.GlobalPermissionScope},
 			},
@@ -507,6 +508,7 @@ func TestGeneratedCollection_TypescriptDataExcluding(t *testing.T) {
 			want: &TypescriptData{
 				Permissions:      []accesstypes.Permission{accesstypes.List, accesstypes.Update},
 				Resources:        []accesstypes.Resource{"Gadgets", "Widgets"},
+				Methods:          []accesstypes.Resource{},
 				ResourceTags:     map[accesstypes.Resource][]accesstypes.Tag{"Widgets": {"id", "name"}, "Gadgets": {"code"}},
 				PermissionScopes: []accesstypes.PermissionScope{accesstypes.DomainPermissionScope, accesstypes.GlobalPermissionScope},
 			},
