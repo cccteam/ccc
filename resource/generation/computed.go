@@ -12,7 +12,9 @@ import (
 
 func (r *resourceGenerator) generateComputedResourceHandler(res *computedResource) error {
 	begin := time.Now()
-	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(res.Name())))
+	// The handler file is plural like every other resource kind's (and like the
+	// handler method it holds); the singular stem also risked ending in _test.go.
+	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
 	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("computedResourceHandlerTemplate:%q", res.Name()), computedResourceHandlerTemplate, &computedHandlerData{
