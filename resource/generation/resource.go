@@ -520,7 +520,7 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 
 func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	begin := time.Now()
-	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
+	fileName := generatedGoFileName(fileStem(r.pluralize(res.Name())))
 	var (
 		packageName         string
 		destinationFilePath string

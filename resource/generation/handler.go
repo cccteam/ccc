@@ -6,7 +6,6 @@ import (
 	"log"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/ettle/strcase"
@@ -335,7 +334,7 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 
 	if len(handlerData) > 0 {
 		begin := time.Now()
-		fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
+		fileName := generatedGoFileName(fileStem(r.pluralize(res.Name())))
 		destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
 		if err := r.writeFormattedGoFile(destinationFilePath, "handlers", handlerHeaderTemplate, &handlersFileData{

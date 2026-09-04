@@ -1008,6 +1008,24 @@ func generatedFileName(name, suffix string) string {
 	return fmt.Sprintf("%s_%s.%s", genPrefix, name, suffix)
 }
 
+// testFileMarker is appended to a file stem that would otherwise end in _test: Go
+// compiles a _test.go file only under go test, so the struct would vanish from the
+// build and its generated files with it. Only the singular kinds (RPC methods) can
+// reach it; the plural kinds' stems end in the plural.
+const testFileMarker = "_rpc"
+
+// fileStem is the file-name stem shared by every file derived from a struct: the
+// authored source file the validator expects and the zz_gen_ files generated beside
+// it. name is the struct name, already pluralized for the plural kinds.
+func fileStem(name string) string {
+	stem := strings.ToLower(caser.ToSnake(name))
+	if strings.HasSuffix(stem, "_test") {
+		stem += testFileMarker
+	}
+
+	return stem
+}
+
 const (
 	resourceKeyword             string = "resource"             // Designates a struct as a resource
 	virtualKeyword              string = "virtual"              // Designates a struct as a virtual resource

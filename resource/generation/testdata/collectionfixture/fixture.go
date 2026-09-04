@@ -111,8 +111,9 @@ type HiddenMethod struct {
 	Input string
 }
 
-// SmokeTest pins the file-name validator's _test.go trap: its expected file
-// (smoke_test.go) would be a Go test file.
-type SmokeTest struct {
+// DrillTest is in the wrong file on purpose: its expected file carries the _rpc marker
+// (drill_test_rpc.go) because drill_test.go would be a Go test file, and the validator's
+// message must say so.
+type DrillTest struct {
 	Input string
 }

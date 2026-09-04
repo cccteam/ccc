@@ -48,9 +48,9 @@ func Test_validateNoPermTags(t *testing.T) {
 	}
 }
 
-// Test_validateStructNameMatchesFile pins the file-name rule and its one trap: a
-// struct whose snake-cased name ends in _test would live in (and generate into) a
-// Go test file, so the validator names that instead of demanding the file.
+// Test_validateStructNameMatchesFile pins the file-name rule and its one exception: a
+// struct whose snake-cased name ends in _test would live in (and generate into) a Go
+// test file, so its expected file carries the _rpc marker and the message says why.
 func Test_validateStructNameMatchesFile(t *testing.T) {
 	t.Parallel()
 
@@ -65,7 +65,8 @@ func Test_validateStructNameMatchesFile(t *testing.T) {
 	}{
 		{name: "a struct in its expected file passes", structName: "DoNothing"},
 		{name: "a struct in another file is rejected", structName: "DoSomething", wantContains: `does not match its file name fixture.go (expected "do_something.go")`},
-		{name: "a name ending in Test is rejected before the file is compared", structName: "SmokeTest", wantContains: `"smoke_test.go" ends in _test.go`},
+		{name: "a name ending in Test passes in its marked file", structName: "SmokeTest"},
+		{name: "a name ending in Test in another file is told about the marker", structName: "DrillTest", wantContains: `(expected "drill_test_rpc.go": the name ends in Test, so the file carries the _rpc marker`},
 		{name: "a pluralized name ending in Tests is not a test file", structName: "SmokeTest", plural: true, wantContains: `(expected "smoke_tests.go")`},
 	}
 
@@ -152,6 +153,34 @@ func Test_structsToVirtualResources_primarykey(t *testing.T) {
 			}
 			if got := field.PermTag(); got != tt.wantMarkerGo {
 				t.Errorf("PermTag() = %q, want %q", got, tt.wantMarkerGo)
+			}
+		})
+	}
+}
+
+// Test_fileStem pins the stem every derived file shares, including the one exception.
+func Test_fileStem(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "plural resource", in: "Assets", want: "assets"},
+		{name: "rpc method", in: "ApproveRequisition", want: "approve_requisition"},
+		{name: "rpc method ending in Test gets the marker", in: "StartFlightTest", want: "start_flight_test_rpc"},
+		{name: "pluralized Tests is not a test file", in: "SmokeTests", want: "smoke_tests"},
+		{name: "Test alone is not a test file", in: "Test", want: "test"},
+		{name: "Test inside the name is not a suffix", in: "TestFlightStart", want: "test_flight_start"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := fileStem(tt.in); got != tt.want {
+				t.Errorf("fileStem(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
 	}
