@@ -6,6 +6,7 @@ import (
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/ettle/strcase"
+	"github.com/google/go-cmp/cmp"
 )
 
 // Test_typescriptGenerator_excludeFromOutlet pins the outlet filter's bookkeeping: a
@@ -152,5 +153,92 @@ func Test_apiClientData_targetOutlet(t *testing.T) {
 	standard := newGenerator("").apiClientData()
 	if len(standard.Resources) != 0 || len(standard.Methods) != 0 {
 		t.Errorf("default target must not carry portal members; Resources = %+v, Methods = %+v", standard.Resources, standard.Methods)
+	}
+}
+
+// Test_typescriptGenerator_applyOutletFilter pins the filter's order: the parsed
+// sets arrive whole (an RPC method resolves its root against every resource), then
+// every member off the target outlet falls away — a method on another outlet may
+// name a resource on another outlet freely — and only the surviving methods'
+// cross-outlet references fail generation.
+func Test_typescriptGenerator_applyOutletFilter(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+	newResources := func(t *testing.T) []*resourceInfo {
+		t.Helper()
+
+		widget := fixtureResource(t, structs, "Widget", func(res *resourceInfo) { res.OutletNames = []string{"portal"} })
+		gadget := fixtureResource(t, structs, "Gadget", nil)
+
+		return []*resourceInfo{widget, gadget}
+	}
+	memberOn := func(name, root string, outlets ...string) *rpcMethodInfo {
+		return &rpcMethodInfo{
+			Struct:           structs[name],
+			Transition:       &rpcTransition{rpcTarget: rpcTarget{RootResource: root}},
+			outletMembership: outletMembership{OutletNames: outlets},
+		}
+	}
+
+	tests := []struct {
+		name           string
+		methods        []*rpcMethodInfo
+		wantMethods    []string
+		wantExcluded   []accesstypes.Resource
+		wantErrContain string
+	}{
+		{
+			name:         "an off-outlet method may root on an off-outlet resource",
+			methods:      []*rpcMethodInfo{memberOn("DoSomething", "Widgets", "portal"), memberOn("HiddenMethod", "Gadgets")},
+			wantMethods:  []string{"DoSomething"},
+			wantExcluded: []accesstypes.Resource{"Gadgets", "HiddenMethod"},
+		},
+		{
+			name:           "a member method rooted off the outlet still fails",
+			methods:        []*rpcMethodInfo{memberOn("DoSomething", "Gadgets", "portal")},
+			wantErrContain: "declares a transition on Gadgets, which is not on the outlet",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			g := &typescriptGenerator{
+				outletName:      "portal",
+				routerResources: []accesstypes.Resource{"Widgets", "Gadgets"},
+				client:          &client{rpcMethods: tt.methods},
+			}
+
+			resources, _, err := g.applyOutletFilter(newResources(t), nil)
+			if tt.wantErrContain != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrContain) {
+					t.Fatalf("applyOutletFilter() error = %v, want containing %q", err, tt.wantErrContain)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("applyOutletFilter() error = %v", err)
+			}
+
+			if len(resources) != 1 || resources[0].Name() != "Widget" {
+				t.Errorf("resources = %v, want exactly Widget", resources)
+			}
+			gotMethods := make([]string, 0, len(g.rpcMethods))
+			for _, m := range g.rpcMethods {
+				gotMethods = append(gotMethods, m.Name())
+			}
+			if diff := cmp.Diff(tt.wantMethods, gotMethods); diff != "" {
+				t.Errorf("rpcMethods mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantExcluded, g.outletExcluded); diff != "" {
+				t.Errorf("outletExcluded mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff([]accesstypes.Resource{"Widgets"}, g.routerResources); diff != "" {
+				t.Errorf("routerResources mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

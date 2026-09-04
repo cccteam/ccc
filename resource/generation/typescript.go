@@ -98,6 +98,36 @@ func (t *typescriptGenerator) validateOutletMemberReferences() error {
 	return nil
 }
 
+// applyOutletFilter narrows the parsed sets to the target outlet's members. Every
+// member on another outlet falls away here — resources, computed resources, and
+// RPC methods — and is recorded so the collection-derived constants drop the same
+// registrations; the surviving methods' cross-outlet references are then validated.
+// Enumerated-field references resolve against the outlet's members only, so a field
+// referencing a resource on another outlet degrades to its plain type instead of
+// referencing a Resources constant the filtered output no longer declares.
+func (t *typescriptGenerator) applyOutletFilter(resources []*resourceInfo, computedResources []*computedResource) ([]*resourceInfo, []*computedResource, error) {
+	t.outletExcludedTables = make(map[string]struct{})
+	resources = slices.DeleteFunc(resources, func(res *resourceInfo) bool {
+		return t.excludeFromOutlet(&res.outletMembership, t.pluralize(res.Name()), true)
+	})
+	computedResources = slices.DeleteFunc(computedResources, func(res *computedResource) bool {
+		return t.excludeFromOutlet(&res.outletMembership, t.pluralize(res.Name()), true)
+	})
+	t.rpcMethods = slices.DeleteFunc(t.rpcMethods, func(method *rpcMethodInfo) bool {
+		return t.excludeFromOutlet(&method.outletMembership, method.Name(), false)
+	})
+
+	if err := t.validateOutletMemberReferences(); err != nil {
+		return nil, nil, err
+	}
+
+	t.routerResources = slices.DeleteFunc(slices.Clone(t.routerResources), func(res accesstypes.Resource) bool {
+		return slices.Contains(t.outletExcluded, res)
+	})
+
+	return resources, computedResources, nil
+}
+
 // parseResources parses the resource and virtual-resource packages, returning the parsed
 // resources alongside the resources package, whose named types the enum generation
 // consumes.
@@ -143,40 +173,40 @@ func (t *typescriptGenerator) Generate() error {
 		return err
 	}
 
-	// The target serves one outlet: everything on another outlet falls away here,
-	// so every emitted file below sees only the outlet's members. What falls away
-	// is recorded so the collection-derived constants drop the same registrations.
-	t.outletExcludedTables = make(map[string]struct{})
-	resources = slices.DeleteFunc(resources, func(res *resourceInfo) bool {
-		return t.excludeFromOutlet(&res.outletMembership, t.pluralize(res.Name()), true)
-	})
-
+	// Every package parses against the whole application before the outlet filter
+	// runs: an RPC method's transition root, target, or enumerated field resolves by
+	// name against the parsed resources, and a method on another outlet may name a
+	// resource on another outlet. Only the members that survive the filter have
+	// references worth validating (validateOutletMemberReferences).
+	var computedResources []*computedResource
 	if t.genComputedResources {
 		pkg := packageMap[t.computed.Package()]
 		compStructs := parser.ParsePackage(pkg).Structs
-		computedResources, err := structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+		computedResources, err = structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
 		if err != nil {
 			return err
 		}
-
-		computedResources = slices.DeleteFunc(computedResources, func(res *computedResource) bool {
-			return t.excludeFromOutlet(&res.outletMembership, t.pluralize(res.Name()), true)
-		})
-
-		for _, res := range computedResources {
-			res.Fields = t.computedFieldsTypescriptType(res.Fields)
-		}
-
-		t.computedResources = computedResources
 	}
 
-	// Enumerated-field references resolve against the outlet's members only, so a
-	// field referencing a resource on another outlet degrades to its plain type
-	// instead of referencing a Resources constant the filtered output no longer
-	// declares.
-	t.routerResources = slices.DeleteFunc(slices.Clone(t.routerResources), func(res accesstypes.Resource) bool {
-		return slices.Contains(t.outletExcluded, res)
-	})
+	t.resources = resources
+	if t.genRPCMethods {
+		pkg := packageMap[t.rpc.Package()]
+		rpcStructs := parser.ParsePackage(pkg).Structs
+		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags)
+		if err != nil {
+			return err
+		}
+	}
+
+	resources, computedResources, err = t.applyOutletFilter(resources, computedResources)
+	if err != nil {
+		return err
+	}
+
+	for _, res := range computedResources {
+		res.Fields = t.computedFieldsTypescriptType(res.Fields)
+	}
+	t.computedResources = computedResources
 
 	t.resources = make([]*resourceInfo, 0, len(resources))
 	for _, res := range resources {
@@ -186,25 +216,8 @@ func (t *typescriptGenerator) Generate() error {
 		}
 	}
 
-	if t.genRPCMethods {
-		pkg := packageMap[t.rpc.Package()]
-		rpcStructs := parser.ParsePackage(pkg).Structs
-		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags)
-		if err != nil {
-			return err
-		}
-
-		t.rpcMethods = slices.DeleteFunc(t.rpcMethods, func(method *rpcMethodInfo) bool {
-			return t.excludeFromOutlet(&method.outletMembership, method.Name(), false)
-		})
-
-		if err := t.validateOutletMemberReferences(); err != nil {
-			return err
-		}
-
-		for _, rpcMethod := range t.rpcMethods {
-			rpcMethod.Fields = t.rpcFieldsTypescriptType(rpcMethod.Fields)
-		}
+	for _, rpcMethod := range t.rpcMethods {
+		rpcMethod.Fields = t.rpcFieldsTypescriptType(rpcMethod.Fields)
 	}
 
 	if err := t.runTypescriptMetadataGeneration(); err != nil {
