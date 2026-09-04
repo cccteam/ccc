@@ -159,40 +159,69 @@ func TestTemporalWindows(t *testing.T) {
 	})
 	h := newTestAppWithAccess(db, client)
 
-	t.Run("the day shift's window is open now", func(t *testing.T) {
-		t.Parallel()
+	tests := []struct {
+		name       string
+		user       accesstypes.User
+		target     string
+		wantStatus int
+		// wantRows asserts a non-empty list body (the seeded station has two teams).
+		wantRows bool
+		// wantDigest asserts the digest's Teams List entry; the digest never
+		// folds a window (§13: structural tri-state), so both shifts read
+		// conditional at any hour — navigation renders, the check refuses per
+		// request.
+		wantDigest accesstypes.DigestState
+	}{
+		{
+			name:       "the day shift's window is open now",
+			user:       "sato-day",
+			target:     "/api/waystations/ws-alpha/teams",
+			wantStatus: http.StatusOK,
+			wantRows:   true,
+		},
+		{
+			name:       "the night shift's window is closed now",
+			user:       "nyx-night",
+			target:     "/api/waystations/ws-alpha/teams",
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "the day shift's digest reads conditional at any hour",
+			user:       "sato-day",
+			target:     "/api/permission-digest?domain=ws-alpha",
+			wantStatus: http.StatusOK,
+			wantDigest: accesstypes.DigestConditional,
+		},
+		{
+			name:       "the night shift's digest reads conditional at any hour",
+			user:       "nyx-night",
+			target:     "/api/permission-digest?domain=ws-alpha",
+			wantStatus: http.StatusOK,
+			wantDigest: accesstypes.DigestConditional,
+		},
+	}
 
-		status, body := doRequestAs(t, h, "sato-day", http.MethodGet, "/api/waystations/ws-alpha/teams", "")
-		assertStatus(t, status, http.StatusOK, body)
-		if rows := decodeRows(t, body); len(rows) == 0 {
-			t.Error("day-shift list returned no teams; the seeded station has two")
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("the night shift's window is closed now", func(t *testing.T) {
-		t.Parallel()
+			status, body := doRequestAs(t, h, tt.user, http.MethodGet, tt.target, "")
+			assertStatus(t, status, tt.wantStatus, body)
 
-		status, body := doRequestAs(t, h, "nyx-night", http.MethodGet, "/api/waystations/ws-alpha/teams", "")
-		assertStatus(t, status, http.StatusForbidden, body)
-	})
-
-	// The digest never folds a window (§13: structural tri-state): both
-	// shifts read conditional at any hour — navigation renders, and the
-	// check refuses per request.
-	t.Run("the digest reports the window conditional at any hour", func(t *testing.T) {
-		t.Parallel()
-
-		for _, user := range []accesstypes.User{"sato-day", "nyx-night"} {
-			status, body := doRequestAs(t, h, user, http.MethodGet, "/api/permission-digest?domain=ws-alpha", "")
-			assertStatus(t, status, http.StatusOK, body)
-
-			var digest accesstypes.PermissionDigest
-			if err := json.Unmarshal(body, &digest); err != nil {
-				t.Fatalf("decoding digest for %s: %v", user, err)
+			if tt.wantRows {
+				if rows := decodeRows(t, body); len(rows) == 0 {
+					t.Error("list returned no teams; the seeded station has two")
+				}
 			}
-			if got := digest["Teams"]["List"]; got != accesstypes.DigestConditional {
-				t.Errorf("digest[Teams][List] for %s = %q, want %q", user, got, accesstypes.DigestConditional)
+			if tt.wantDigest != "" {
+				var digest accesstypes.PermissionDigest
+				if err := json.Unmarshal(body, &digest); err != nil {
+					t.Fatalf("decoding digest: %v", err)
+				}
+				if got := digest["Teams"]["List"]; got != tt.wantDigest {
+					t.Errorf("digest[Teams][List] = %q, want %q", got, tt.wantDigest)
+				}
 			}
-		}
-	})
+		})
+	}
 }
