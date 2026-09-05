@@ -1,0 +1,65 @@
+/* Global styles for the Lodestar crew console. */
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: Roboto, 'Helvetica Neue', sans-serif;
+  background-color: #f4f5f8;
+}
+
+.page-content {
+  padding: 16px 24px;
+}
+
+.empty {
+  padding: 16px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.table-card,
+.detail-card,
+.create-card {
+  margin: 16px 0;
+
+  table {
+    width: 100%;
+  }
+}
+
+.inline-form {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+
+  .grow {
+    flex: 1;
+    min-width: 240px;
+  }
+}
+
+.state-chip {
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.08);
+  text-transform: capitalize;
+}
+
+.redacted {
+  display: inline-block;
+  padding: 0 6px;
+  border: 2px solid #b3261e;
+  color: #b3261e;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  transform: rotate(-4deg);
+}
+
+.overdue {
+  color: #b3261e;
+  font-weight: 500;
+}

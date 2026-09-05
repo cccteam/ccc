@@ -1,0 +1,58 @@
+.header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 24px;
+  background: #15161d;
+  color: #fff;
+
+  .brand {
+    color: #f2b544;
+    font-weight: 700;
+    font-size: 18px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  app-topbar {
+    flex: 1;
+  }
+
+  .session {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .username {
+      font-family: 'Roboto Mono', monospace;
+    }
+
+    button {
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+  }
+}
+
+.impersonation-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 24px;
+  background: #1f6f8b;
+  color: #fff;
+  font-size: 14px;
+
+  &.role {
+    background: #a5640a;
+  }
+
+  span {
+    flex: 1;
+  }
+
+  button {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+}

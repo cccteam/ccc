@@ -1,2 +1,0 @@
-DROP INDEX TeamsByName;
-DROP TABLE Teams;

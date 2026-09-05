@@ -1,0 +1,114 @@
+<div class="portal-header">
+  <span class="brand">✦ Lodestar Client Portal</span>
+  <span class="who">{{ contactName() }}</span>
+  <mat-form-field appearance="outline" class="sector">
+    <mat-label>Sector</mat-label>
+    <mat-select [value]="current()" (selectionChange)="current.set($event.value)">
+      @for (sector of sectors(); track sector) {
+        <mat-option [value]="sector">{{ sector }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <button mat-stroked-button (click)="logout()">Sign out</button>
+</div>
+
+<div class="page-content">
+  <h1>Your missions in {{ current() || '—' }}</h1>
+  <p>
+    The missions your company booked, each drawn as the service's own state graph. The only edge you may fire is Stand
+    down, and only while a mission is open, claimed, or on hold. Hazard, fee, and deadline show; who flies it and what it
+    settled for never reach this page.
+  </p>
+
+  <div class="sheets">
+    @for (mission of missions.value(); track mission.id) {
+      <button type="button" class="sheet" [class.selected]="selected()?.id === mission.id" (click)="select(mission)">
+        <div class="row">
+          <span class="title">{{ mission.title }}</span>
+          <span class="state-chip">{{ mission.statusId }}</span>
+        </div>
+        <div class="row">
+          <span>{{ mission.kindId }} · hazard {{ mission.hazard }}</span>
+          <span class="fee">{{ mission.fee | number: '1.0-0' }} cr</span>
+        </div>
+        <div class="row">
+          <span>deadline {{ mission.deadline | date: 'medium' }}</span>
+        </div>
+      </button>
+    } @empty {
+      <p class="empty">No missions booked by your company in this sector.</p>
+    }
+  </div>
+
+  @if (selected(); as mission) {
+    <mat-card appearance="outlined" class="table-card">
+      <mat-card-header>
+        <mat-card-title>{{ mission.title }}</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <app-tracker-graph
+          [root]="resources.Missions"
+          [current]="mission.statusId ?? ''"
+          [executable]="executable(mission)"
+          (fire)="fire(mission, $event)"></app-tracker-graph>
+        @if (executable(mission).includes(methods.StandDownMission)) {
+          <button mat-stroked-button (click)="fire(mission, methods.StandDownMission)">Stand down</button>
+        } @else {
+          <p class="empty">Nothing you can do on this mission right now.</p>
+        }
+      </mat-card-content>
+    </mat-card>
+  }
+
+  <mat-card appearance="outlined" class="table-card">
+    <mat-card-header>
+      <mat-card-title>Calls you filed</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <ul>
+        @for (call of calls.value(); track call.id) {
+          <li>
+            <b>{{ call.caseNumber }}</b> — {{ call.summary }} (severity {{ call.severity }})
+            @if (call.callerContact) {
+              · {{ call.callerContact }}
+            }
+          </li>
+        } @empty {
+          <li class="empty">No calls filed yet.</li>
+        }
+      </ul>
+    </mat-card-content>
+  </mat-card>
+
+  @if (canFile()) {
+    <mat-card appearance="outlined" class="create-card">
+      <mat-card-header>
+        <mat-card-title>File a distress call</mat-card-title>
+        <mat-card-subtitle>Summary, severity, and how to reach you.</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <form class="inline-form" (ngSubmit)="file()">
+          @if (canWrite(fields.summary)) {
+            <mat-form-field appearance="outline" class="grow">
+              <mat-label>Summary</mat-label>
+              <input matInput name="summary" [(ngModel)]="newSummary" required />
+            </mat-form-field>
+          }
+          @if (canWrite(fields.severity)) {
+            <mat-form-field appearance="outline">
+              <mat-label>Severity (1–5)</mat-label>
+              <input matInput name="severity" type="number" min="1" max="5" [(ngModel)]="newSeverity" required />
+            </mat-form-field>
+          }
+          @if (canWrite(fields.callerContact)) {
+            <mat-form-field appearance="outline">
+              <mat-label>Your contact</mat-label>
+              <input matInput name="callerContact" [(ngModel)]="newCallerContact" />
+            </mat-form-field>
+          }
+          <button mat-flat-button type="submit">File call</button>
+        </form>
+      </mat-card-content>
+    </mat-card>
+  }
+</div>

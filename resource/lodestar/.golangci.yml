@@ -1,0 +1,189 @@
+version: '2'
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bodyclose
+    - copyloopvar
+    - cyclop
+    - depguard
+    - dogsled
+    - durationcheck
+    - errcheck
+    - errorlint
+    - exhaustive
+    - forcetypeassert
+    - funlen
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godox
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - govet
+    - importas
+    - ineffassign
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    - nlreturn
+    - noctx
+    - nolintlint
+    - paralleltest
+    - prealloc
+    - predeclared
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - tagalign
+    - tagliatelle
+    - tparallel
+    - unconvert
+    - unparam
+    - wastedassign
+    - whitespace
+    - wrapcheck
+  settings:
+    cyclop:
+      max-complexity: 25
+    depguard:
+      rules:
+        main:
+          files:
+            - $all
+          allow:
+            - $gostd
+            - cloud.google.com/go/civil
+            - cloud.google.com/go/spanner
+            - github.com/cccteam
+            - github.com/go-chi/chi/v5
+            - github.com/go-playground/errors/v5
+            - github.com/go-playground/validator/v10
+            - github.com/jtwatson/server
+            - github.com/jtwatson/spaassets
+            - github.com/sethvargo/go-envconfig
+            - github.com/shopspring/decimal
+            - go.uber.org/mock/gomock
+            - google.golang.org/api/iterator
+            - google.golang.org/grpc/codes
+    exhaustive:
+      default-signifies-exhaustive: true
+    funlen:
+      lines: 100
+      statements: 50
+    gocognit:
+      min-complexity: 50
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+    gocyclo:
+      min-complexity: 25
+    godox:
+      keywords:
+        - TODO
+        - BUG
+    misspell:
+      locale: US
+    nestif:
+      min-complexity: 10
+    tagalign:
+      order:
+        - json
+        - spanner
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+        use-field-name: true
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .Cause(
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      - linters:
+          - funlen
+          - gochecknoglobals
+          - gochecknoinits
+          - goconst
+          - gocyclo
+          - mnd
+          - nlreturn
+          - scopelint
+          - gocognit
+          - cyclop
+          - nestif
+          # Test tables grow by appending generated cases to a literal of
+          # handwritten ones; preallocation noise adds nothing in tests.
+          - prealloc
+        path: _test\.go
+      # The regen test rewrites the working tree and must not run in parallel.
+      - linters:
+          - paralleltest
+          - tparallel
+        path: cmd/generate/generate_test\.go
+      # The tenancy write cases share seeded rows deliberately — a later case
+      # mutates the row an earlier case proved unreachable — so the subtests
+      # are ordered and must not run in parallel. The language suite's write
+      # half walks one seeded world in order for the same reason.
+      - linters:
+          - paralleltest
+          - tparallel
+        path: test/integration/(tenancy|language)_test\.go
+      # The bootstrap test uses t.Setenv and t.Chdir, which forbid parallel tests.
+      - linters:
+          - paralleltest
+          - tparallel
+        path: cmd/bootstrap/main_test\.go
+      - linters:
+          - gomoddirectives
+        path: go\.mod
+        text: golang-migrate
+      # lodestar is committed in the same repo/commits as the resource module it
+      # exercises, so it permanently builds against local source via this replace
+      # (rationale in go.mod); the no-local-replace rule doesn't apply to it.
+      - linters:
+          - gomoddirectives
+        path: go\.mod
+        text: github.com/cccteam/ccc/resource
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

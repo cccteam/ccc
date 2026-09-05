@@ -1,4 +1,0 @@
-DELETE FROM WorkOrderStatuses WHERE TRUE;
-DELETE FROM RequisitionStatuses WHERE TRUE;
-DELETE FROM ItemCategories WHERE TRUE;
-DELETE FROM DeclineReasons WHERE TRUE;

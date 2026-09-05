@@ -1,0 +1,2706 @@
+{
+  "roles": {
+    "global": [
+      {
+        "name": "CrewCommon",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Sectors",
+              "fields": [
+                "name",
+                "region",
+                "established"
+              ]
+            },
+            {
+              "resource": "ShipClasses",
+              "fields": [
+                "designation",
+                "roleId",
+                "tonnage",
+                "hardened"
+              ]
+            },
+            {
+              "resource": "Pilots",
+              "fields": [
+                "userId",
+                "displayName",
+                "clearance",
+                "feeLimit"
+              ]
+            },
+            {
+              "resource": "PilotCertifications",
+              "fields": []
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Sectors",
+              "fields": [
+                "name",
+                "region",
+                "established"
+              ]
+            },
+            {
+              "resource": "ShipClasses",
+              "fields": [
+                "designation",
+                "roleId",
+                "tonnage",
+                "hardened"
+              ]
+            },
+            {
+              "resource": "Pilots",
+              "fields": [
+                "userId",
+                "displayName",
+                "clearance",
+                "feeLimit"
+              ]
+            },
+            {
+              "resource": "PilotCertifications",
+              "fields": []
+            }
+          ]
+        }
+      },
+      {
+        "name": "Headquarters",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Clients",
+              "fields": [
+                "name",
+                "contactName",
+                "contactEmail",
+                "trusted"
+              ]
+            },
+            {
+              "resource": "ClientContacts",
+              "fields": [
+                "userId",
+                "clientId",
+                "displayName"
+              ]
+            },
+            {
+              "resource": "ServiceLedgers",
+              "fields": [
+                "name",
+                "openMissions",
+                "feesOutstanding",
+                "settlements"
+              ]
+            },
+            {
+              "resource": "FeeByKinds",
+              "fields": [
+                "missionCount",
+                "totalFee",
+                "topFee"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Clients",
+              "fields": [
+                "name",
+                "contactName",
+                "contactEmail",
+                "trusted"
+              ]
+            },
+            {
+              "resource": "ClientContacts",
+              "fields": [
+                "userId",
+                "clientId",
+                "displayName"
+              ]
+            }
+          ],
+          "Create": [
+            {
+              "resource": "Clients",
+              "fields": [
+                "name",
+                "contactName",
+                "contactEmail",
+                "trusted"
+              ]
+            },
+            {
+              "resource": "ShipClasses",
+              "fields": [
+                "designation",
+                "roleId",
+                "tonnage",
+                "hardened"
+              ]
+            },
+            {
+              "resource": "Pilots",
+              "fields": [
+                "userId",
+                "displayName",
+                "clearance",
+                "feeLimit"
+              ]
+            },
+            {
+              "resource": "Sectors",
+              "fields": [
+                "name",
+                "region",
+                "established"
+              ]
+            },
+            {
+              "resource": "PilotCertifications",
+              "fields": []
+            },
+            {
+              "resource": "ClientContacts",
+              "fields": [
+                "userId",
+                "clientId",
+                "displayName"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Clients",
+              "fields": [
+                "name",
+                "contactName",
+                "contactEmail",
+                "trusted"
+              ]
+            },
+            {
+              "resource": "ShipClasses",
+              "fields": [
+                "roleId",
+                "tonnage",
+                "hardened"
+              ]
+            },
+            {
+              "resource": "Pilots",
+              "fields": [
+                "userId",
+                "displayName",
+                "clearance",
+                "feeLimit"
+              ]
+            },
+            {
+              "resource": "Sectors",
+              "fields": [
+                "name",
+                "region",
+                "established"
+              ]
+            },
+            {
+              "resource": "ClientContacts",
+              "fields": [
+                "userId",
+                "clientId",
+                "displayName"
+              ]
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "Clients"
+            },
+            {
+              "resource": "ShipClasses"
+            },
+            {
+              "resource": "Pilots"
+            },
+            {
+              "resource": "PilotCertifications"
+            },
+            {
+              "resource": "ClientContacts"
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "IssueBulletin"
+            }
+          ]
+        }
+      },
+      {
+        "name": "BulletinOfficer",
+        "permissions": {
+          "Execute": [
+            {
+              "resource": "IssueBulletin",
+              "condition": "now < '2027-06-30T00:00:00Z'"
+            }
+          ]
+        }
+      },
+      {
+        "name": "ClientBrowser",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Clients",
+              "fields": [
+                "name",
+                "trusted"
+              ],
+              "condition": "trusted = true"
+            }
+          ]
+        }
+      },
+      {
+        "name": "CommandStaff",
+        "permissions": {
+          "Execute": [
+            {
+              "resource": "ViewAsUser"
+            },
+            {
+              "resource": "AssumeRole"
+            }
+          ]
+        }
+      },
+      {
+        "name": "ClientAccount",
+        "permissions": {
+          "Read": [
+            {
+              "resource": "ClientContacts",
+              "fields": [
+                "displayName",
+                "clientId"
+              ],
+              "condition": "userId = subject"
+            }
+          ],
+          "List": [
+            {
+              "resource": "ClientContacts",
+              "fields": [
+                "displayName",
+                "clientId"
+              ],
+              "condition": "userId = subject"
+            }
+          ]
+        }
+      }
+    ],
+    "domain": [
+      {
+        "name": "SectorMarshal",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Wings",
+              "fields": [
+                "sectorId",
+                "name"
+              ]
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "SquadronMemberships",
+              "fields": []
+            },
+            {
+              "resource": "Hangars",
+              "fields": [
+                "sectorId",
+                "name",
+                "zone"
+              ]
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            },
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes",
+                "settlement"
+              ]
+            },
+            {
+              "resource": "Sorties",
+              "fields": [
+                "missionId",
+                "shipId",
+                "pilotUserId",
+                "launchedAt",
+                "returnedAt",
+                "debrief"
+              ]
+            },
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "sortieId",
+                "category",
+                "amount",
+                "note"
+              ]
+            },
+            {
+              "resource": "Refits",
+              "fields": [
+                "shipId",
+                "statusId",
+                "estimate",
+                "inspectedAt",
+                "openedBy",
+                "notes"
+              ]
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes"
+              ]
+            },
+            {
+              "resource": "Consignments",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "bondCode",
+                "description",
+                "mass",
+                "expiresOn",
+                "releasedAt"
+              ]
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "sectorId",
+                "summary",
+                "severity",
+                "callerContact",
+                "caseNumber",
+                "filedBy"
+              ]
+            },
+            {
+              "resource": "SectorHazardBoards",
+              "fields": [
+                "shipName",
+                "sectorId",
+                "worstReading",
+                "recordedAt"
+              ]
+            },
+            {
+              "resource": "OpenMissionsBySquadrons",
+              "fields": [
+                "squadronName",
+                "openMissions",
+                "nextDeadline"
+              ]
+            },
+            {
+              "resource": "ShipsLogEntries"
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Wings",
+              "fields": [
+                "sectorId",
+                "name"
+              ]
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "SquadronMemberships",
+              "fields": []
+            },
+            {
+              "resource": "Hangars",
+              "fields": [
+                "sectorId",
+                "name",
+                "zone"
+              ]
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            },
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes",
+                "settlement"
+              ]
+            },
+            {
+              "resource": "Sorties",
+              "fields": [
+                "missionId",
+                "shipId",
+                "pilotUserId",
+                "launchedAt",
+                "returnedAt",
+                "debrief"
+              ]
+            },
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "sortieId",
+                "category",
+                "amount",
+                "note"
+              ]
+            },
+            {
+              "resource": "Refits",
+              "fields": [
+                "shipId",
+                "statusId",
+                "estimate",
+                "inspectedAt",
+                "openedBy",
+                "notes"
+              ]
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes"
+              ]
+            },
+            {
+              "resource": "Consignments",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "bondCode",
+                "description",
+                "mass",
+                "expiresOn",
+                "releasedAt"
+              ]
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "sectorId",
+                "summary",
+                "severity",
+                "callerContact",
+                "caseNumber",
+                "filedBy"
+              ]
+            },
+            {
+              "resource": "SectorHazardBoards",
+              "fields": [
+                "shipName",
+                "sectorId",
+                "worstReading",
+                "recordedAt"
+              ]
+            }
+          ],
+          "Create": [
+            {
+              "resource": "Wings",
+              "fields": [
+                "name"
+              ]
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "SquadronMemberships",
+              "fields": []
+            },
+            {
+              "resource": "Hangars",
+              "fields": [
+                "name",
+                "zone"
+              ]
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name"
+              ]
+            },
+            {
+              "resource": "Missions",
+              "fields": [
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "notes"
+              ]
+            },
+            {
+              "resource": "Sorties",
+              "fields": [
+                "missionId",
+                "shipId",
+                "pilotUserId",
+                "launchedAt",
+                "debrief"
+              ]
+            },
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "sortieId",
+                "category",
+                "amount",
+                "note"
+              ]
+            },
+            {
+              "resource": "Refits",
+              "fields": [
+                "shipId",
+                "notes"
+              ]
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes"
+              ]
+            },
+            {
+              "resource": "Consignments",
+              "fields": [
+                "clientId",
+                "bondCode",
+                "description",
+                "mass",
+                "expiresOn"
+              ]
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "callerContact",
+                "transcript"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Wings",
+              "fields": [
+                "name"
+              ]
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "Hangars",
+              "fields": [
+                "name",
+                "zone"
+              ]
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "name"
+              ]
+            },
+            {
+              "resource": "Missions",
+              "fields": [
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "assignedSquadronId",
+                "notes"
+              ]
+            },
+            {
+              "resource": "Sorties",
+              "fields": [
+                "shipId",
+                "pilotUserId",
+                "debrief"
+              ]
+            },
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "category",
+                "amount",
+                "note"
+              ]
+            },
+            {
+              "resource": "Refits",
+              "fields": [
+                "estimate",
+                "notes"
+              ]
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes"
+              ]
+            },
+            {
+              "resource": "Consignments",
+              "fields": [
+                "clientId",
+                "description",
+                "mass",
+                "expiresOn"
+              ]
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "callerContact",
+                "transcript"
+              ]
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "Wings"
+            },
+            {
+              "resource": "Squadrons"
+            },
+            {
+              "resource": "SquadronMemberships"
+            },
+            {
+              "resource": "Hangars"
+            },
+            {
+              "resource": "Ships"
+            },
+            {
+              "resource": "Missions"
+            },
+            {
+              "resource": "Sorties"
+            },
+            {
+              "resource": "SortieExpenses"
+            },
+            {
+              "resource": "Refits"
+            },
+            {
+              "resource": "RefitTasks"
+            },
+            {
+              "resource": "Consignments"
+            },
+            {
+              "resource": "DistressCalls"
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "ClaimMission"
+            },
+            {
+              "resource": "LaunchMission"
+            },
+            {
+              "resource": "HoldMission"
+            },
+            {
+              "resource": "ResumeMission"
+            },
+            {
+              "resource": "StandDownMission"
+            },
+            {
+              "resource": "CompleteMission"
+            },
+            {
+              "resource": "FailMission"
+            },
+            {
+              "resource": "InspectShip"
+            },
+            {
+              "resource": "BeginRefit"
+            },
+            {
+              "resource": "StartFlightTest"
+            },
+            {
+              "resource": "PassFlightTest"
+            },
+            {
+              "resource": "FailFlightTest"
+            },
+            {
+              "resource": "ScrapShip"
+            },
+            {
+              "resource": "HailShip"
+            },
+            {
+              "resource": "ReleaseConsignment"
+            }
+          ]
+        }
+      },
+      {
+        "name": "SectorCrew",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Wings",
+              "fields": [
+                "sectorId",
+                "name"
+              ]
+            },
+            {
+              "resource": "Hangars",
+              "fields": [
+                "sectorId",
+                "name",
+                "zone"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Wings",
+              "fields": [
+                "sectorId",
+                "name"
+              ]
+            },
+            {
+              "resource": "Hangars",
+              "fields": [
+                "sectorId",
+                "name",
+                "zone"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Cadet",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "title",
+                "brief",
+                "kindId",
+                "hazard",
+                "deadline",
+                "statusId",
+                "assignedSquadronId"
+              ],
+              "condition": "hazard IN (1, 2)"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "caseNumber"
+              ],
+              "condition": "filedBy = subject"
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "title",
+                "brief",
+                "kindId",
+                "hazard",
+                "deadline",
+                "statusId",
+                "assignedSquadronId"
+              ],
+              "condition": "hazard IN (1, 2)"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "caseNumber"
+              ],
+              "condition": "filedBy = subject"
+            }
+          ],
+          "Create": [
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity"
+              ]
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "ClaimMission",
+              "condition": "hazard IN (1, 2)"
+            }
+          ]
+        }
+      },
+      {
+        "name": "Pilot",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)"
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "registry",
+                "name",
+                "classId",
+                "hangarId",
+                "lastRefitAt"
+              ],
+              "condition": "hangarZone != 'quarantine'"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)"
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "registry",
+                "name",
+                "classId",
+                "hangarId",
+                "lastRefitAt"
+              ],
+              "condition": "hangarZone != 'quarantine'"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "ClaimMission",
+              "condition": "hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)"
+            },
+            {
+              "resource": "HailShip",
+              "condition": "hangarZone != 'quarantine'"
+            }
+          ]
+        }
+      },
+      {
+        "name": "Veteran",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "NOT (hazard IN (1, 2) OR fee < 5000)"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "NOT (hazard IN (1, 2) OR fee < 5000)"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "FlightLead",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "assignedSquadron IN subject.squadrons OR bookedBy = subject"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            },
+            {
+              "resource": "Sorties",
+              "fields": [
+                "missionId",
+                "shipId",
+                "pilotUserId",
+                "launchedAt",
+                "returnedAt",
+                "debrief"
+              ]
+            },
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "sortieId",
+                "category",
+                "amount",
+                "note"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "assignedSquadron IN subject.squadrons OR bookedBy = subject"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            },
+            {
+              "resource": "Sorties",
+              "fields": [
+                "missionId",
+                "shipId",
+                "pilotUserId",
+                "launchedAt",
+                "returnedAt",
+                "debrief"
+              ]
+            },
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "sortieId",
+                "category",
+                "amount",
+                "note"
+              ]
+            }
+          ],
+          "Create": [
+            {
+              "resource": "Sorties",
+              "fields": [
+                "missionId",
+                "shipId",
+                "pilotUserId",
+                "debrief"
+              ],
+              "condition": "state = 'underway'"
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Sorties",
+              "fields": [
+                "shipId",
+                "pilotUserId",
+                "debrief"
+              ],
+              "condition": "state = 'underway'"
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "LaunchMission"
+            },
+            {
+              "resource": "HoldMission"
+            },
+            {
+              "resource": "ResumeMission"
+            },
+            {
+              "resource": "CompleteMission",
+              "condition": "assignedSquadron IN subject.squadrons"
+            },
+            {
+              "resource": "FailMission",
+              "condition": "assignedSquadron IN subject.squadrons"
+            }
+          ]
+        }
+      },
+      {
+        "name": "Dispatcher",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "state NOT IN ('completed', 'failed', 'stood_down')"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "SquadronMemberships",
+              "fields": []
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "sectorId",
+                "summary",
+                "severity",
+                "callerContact",
+                "caseNumber",
+                "filedBy"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "state NOT IN ('completed', 'failed', 'stood_down')"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "SquadronMemberships",
+              "fields": []
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "sectorId",
+                "summary",
+                "severity",
+                "callerContact",
+                "caseNumber",
+                "filedBy"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "assignedSquadronId"
+              ],
+              "condition": "state IN ('open', 'claimed') AND new.assignedSquadron IN subject.squadrons"
+            },
+            {
+              "resource": "Missions",
+              "fields": [
+                "notes",
+                "deadline"
+              ],
+              "condition": "state NOT IN ('completed', 'failed', 'stood_down') AND new.deadline >= deadline"
+            }
+          ]
+        }
+      },
+      {
+        "name": "Overseer",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "deadline < now AND state NOT IN ('completed', 'failed', 'stood_down')"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "deadline < now AND state NOT IN ('completed', 'failed', 'stood_down')"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "assignedSquadronId"
+              ],
+              "condition": "state = 'claimed' AND deadline < now"
+            }
+          ]
+        }
+      },
+      {
+        "name": "BookingAgent",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "fee > 10000 OR bookedBy = subject"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "fee > 10000 OR bookedBy = subject"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            }
+          ],
+          "Create": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "notes"
+              ],
+              "condition": "new.fee <= subject.feeLimit"
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "fee"
+              ],
+              "condition": "state = 'open' AND new.fee <= subject.feeLimit"
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "Missions",
+              "condition": "state = 'open'"
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "StandDownMission",
+              "condition": "bookedBy = subject"
+            }
+          ]
+        }
+      },
+      {
+        "name": "WingCommander",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "hazard >= 4"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "name",
+                "wingId"
+              ],
+              "condition": "wing IN subject.wings"
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "hazard >= 4"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "name",
+                "wingId"
+              ],
+              "condition": "wing IN subject.wings"
+            }
+          ]
+        }
+      },
+      {
+        "name": "Engineer",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            },
+            {
+              "resource": "Refits",
+              "fields": [
+                "shipId",
+                "statusId",
+                "estimate",
+                "inspectedAt",
+                "openedBy",
+                "notes"
+              ]
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            },
+            {
+              "resource": "Refits",
+              "fields": [
+                "shipId",
+                "statusId",
+                "estimate",
+                "inspectedAt",
+                "openedBy",
+                "notes"
+              ]
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes"
+              ]
+            }
+          ],
+          "Create": [
+            {
+              "resource": "Refits",
+              "fields": [
+                "shipId",
+                "notes"
+              ]
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions"
+              ],
+              "condition": "state IN ('inspected', 'in_refit')"
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Refits",
+              "fields": [
+                "estimate",
+                "notes"
+              ],
+              "condition": "inspectedAt IS NOT NULL"
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "done"
+              ],
+              "condition": "state = 'in_refit'"
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "InspectShip"
+            },
+            {
+              "resource": "BeginRefit"
+            },
+            {
+              "resource": "StartFlightTest"
+            },
+            {
+              "resource": "PassFlightTest"
+            },
+            {
+              "resource": "FailFlightTest"
+            },
+            {
+              "resource": "HailShip"
+            }
+          ]
+        }
+      },
+      {
+        "name": "Quartermaster",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "title",
+                "kindId",
+                "statusId",
+                "assignedSquadronId",
+                "deadline"
+              ]
+            },
+            {
+              "resource": "Sorties",
+              "fields": [
+                "missionId",
+                "shipId",
+                "pilotUserId",
+                "launchedAt",
+                "returnedAt",
+                "debrief"
+              ]
+            },
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "sortieId",
+                "category",
+                "amount",
+                "note"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "title",
+                "kindId",
+                "statusId",
+                "assignedSquadronId",
+                "deadline"
+              ]
+            },
+            {
+              "resource": "Sorties",
+              "fields": [
+                "missionId",
+                "shipId",
+                "pilotUserId",
+                "launchedAt",
+                "returnedAt",
+                "debrief"
+              ]
+            },
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "sortieId",
+                "category",
+                "amount",
+                "note"
+              ]
+            }
+          ],
+          "Create": [
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "sortieId",
+                "category",
+                "amount",
+                "note"
+              ],
+              "condition": "state = 'underway'"
+            }
+          ],
+          "Update": [
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "category",
+                "amount",
+                "note"
+              ],
+              "condition": "state = 'underway'"
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "SortieExpenses",
+              "condition": "state = 'underway'"
+            }
+          ]
+        }
+      },
+      {
+        "name": "Supercargo",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Consignments",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "bondCode",
+                "description",
+                "mass",
+                "expiresOn",
+                "releasedAt"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Consignments",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "bondCode",
+                "description",
+                "mass",
+                "expiresOn",
+                "releasedAt"
+              ]
+            }
+          ],
+          "Create": [
+            {
+              "resource": "Consignments",
+              "fields": [
+                "clientId",
+                "bondCode",
+                "description",
+                "mass",
+                "expiresOn"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Consignments",
+              "fields": [
+                "clientId",
+                "description"
+              ],
+              "condition": "releasedAt IS NULL"
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "Consignments",
+              "condition": "expiresOn < '2026-09-01'"
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "ReleaseConsignment",
+              "condition": "releasedAt IS NULL"
+            }
+          ]
+        }
+      },
+      {
+        "name": "Archivist",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "state IN ('completed', 'failed', 'stood_down')"
+            },
+            {
+              "resource": "Missions",
+              "fields": [
+                "fee",
+                "settlement"
+              ],
+              "condition": "state = 'completed'"
+            },
+            {
+              "resource": "Sorties",
+              "fields": [
+                "missionId",
+                "shipId",
+                "pilotUserId",
+                "launchedAt",
+                "returnedAt",
+                "debrief"
+              ],
+              "condition": "state IN ('completed', 'failed', 'stood_down')"
+            },
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "sortieId",
+                "category",
+                "amount",
+                "note"
+              ],
+              "condition": "state IN ('completed', 'failed', 'stood_down')"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "caseNumber",
+                "filedBy"
+              ]
+            },
+            {
+              "resource": "ShipsLogEntries"
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "kindId",
+                "title",
+                "brief",
+                "hazard",
+                "deadline",
+                "requiredCertId",
+                "bookedBy",
+                "assignedSquadronId",
+                "statusId",
+                "notes"
+              ],
+              "condition": "state IN ('completed', 'failed', 'stood_down')"
+            },
+            {
+              "resource": "Missions",
+              "fields": [
+                "fee",
+                "settlement"
+              ],
+              "condition": "state = 'completed'"
+            },
+            {
+              "resource": "Sorties",
+              "fields": [
+                "missionId",
+                "shipId",
+                "pilotUserId",
+                "launchedAt",
+                "returnedAt",
+                "debrief"
+              ],
+              "condition": "state IN ('completed', 'failed', 'stood_down')"
+            },
+            {
+              "resource": "SortieExpenses",
+              "fields": [
+                "sortieId",
+                "category",
+                "amount",
+                "note"
+              ],
+              "condition": "state IN ('completed', 'failed', 'stood_down')"
+            },
+            {
+              "resource": "Squadrons",
+              "fields": [
+                "wingId",
+                "name"
+              ]
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "caseNumber",
+                "filedBy"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "HazardAnalyst",
+        "permissions": {
+          "List": [
+            {
+              "resource": "SectorHazardBoards",
+              "fields": [
+                "shipName",
+                "sectorId",
+                "worstReading",
+                "recordedAt"
+              ],
+              "condition": "now < '2027-01-01T00:00:00Z'"
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Dockmaster",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Refits",
+              "fields": [
+                "shipId",
+                "statusId",
+                "estimate",
+                "inspectedAt",
+                "openedBy",
+                "notes"
+              ],
+              "condition": "timeOfDay(now, local) >= '06:00' AND timeOfDay(now, local) < '18:00'"
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes"
+              ]
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Refits",
+              "fields": [
+                "shipId",
+                "statusId",
+                "estimate",
+                "inspectedAt",
+                "openedBy",
+                "notes"
+              ],
+              "condition": "timeOfDay(now, local) >= '06:00' AND timeOfDay(now, local) < '18:00'"
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes"
+              ]
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "NightWatch",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Refits",
+              "fields": [
+                "shipId",
+                "statusId",
+                "estimate",
+                "inspectedAt",
+                "openedBy",
+                "notes"
+              ],
+              "condition": "timeOfDay(now, 'America/Denver') >= '18:00' OR timeOfDay(now, 'America/Denver') < '06:00'"
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes"
+              ]
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Refits",
+              "fields": [
+                "shipId",
+                "statusId",
+                "estimate",
+                "inspectedAt",
+                "openedBy",
+                "notes"
+              ],
+              "condition": "timeOfDay(now, 'America/Denver') >= '18:00' OR timeOfDay(now, 'America/Denver') < '06:00'"
+            },
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "instructions",
+                "done",
+                "notes"
+              ]
+            },
+            {
+              "resource": "Ships",
+              "fields": [
+                "hangarId",
+                "classId",
+                "registry",
+                "name",
+                "lastRefitAt",
+                "updatedAt"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "RefitTasks",
+              "fields": [
+                "notes"
+              ],
+              "condition": "dayOfWeek(now, local) NOT IN ('sat', 'sun') AND state = 'in_refit'"
+            }
+          ]
+        }
+      },
+      {
+        "name": "ClientPortal",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "title",
+                "kindId",
+                "statusId",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId"
+              ],
+              "condition": "client = subject.client"
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "caseNumber",
+                "callerContact"
+              ],
+              "condition": "filedBy = subject"
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "title",
+                "kindId",
+                "statusId",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId"
+              ],
+              "condition": "client = subject.client"
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "caseNumber",
+                "callerContact"
+              ],
+              "condition": "filedBy = subject"
+            }
+          ],
+          "Create": [
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "callerContact"
+              ]
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "StandDownMission",
+              "condition": "client = subject.client"
+            }
+          ]
+        }
+      },
+      {
+        "name": "DroidIngest",
+        "permissions": {
+          "Execute": [
+            {
+              "resource": "IngestDroidReports"
+            },
+            {
+              "resource": "ReleaseConsignment",
+              "condition": "releasedAt IS NULL"
+            }
+          ],
+          "List": [
+            {
+              "resource": "DroidReports",
+              "fields": [
+                "shipId",
+                "subsystem",
+                "reading",
+                "recordedAt"
+              ]
+            },
+            {
+              "resource": "Consignments",
+              "fields": [
+                "sectorId",
+                "clientId",
+                "bondCode",
+                "description",
+                "mass",
+                "expiresOn",
+                "releasedAt"
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "users": [
+    {
+      "user": "governor",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "Headquarters",
+          "BulletinOfficer",
+          "ClientBrowser",
+          "CommandStaff"
+        ],
+        "domains": {
+          "anvil": [
+            "SectorMarshal"
+          ],
+          "bastion": [
+            "SectorMarshal"
+          ],
+          "cinder": [
+            "SectorMarshal"
+          ]
+        }
+      }
+    },
+    {
+      "user": "marshal",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "BulletinOfficer",
+          "ClientBrowser",
+          "CommandStaff"
+        ],
+        "domains": {
+          "anvil": [
+            "SectorMarshal"
+          ]
+        }
+      }
+    },
+    {
+      "user": "cadet",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Cadet",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "pilot",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Pilot",
+            "SectorCrew"
+          ],
+          "bastion": [
+            "Pilot",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "veteran",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Veteran",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "lead",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "FlightLead",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "dispatcher",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Dispatcher",
+            "SectorCrew"
+          ],
+          "bastion": [
+            "Dispatcher",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "overseer",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Overseer",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "booking",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "BookingAgent",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "wingco",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "WingCommander",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "engineer",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "Engineer",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "quartermaster",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "Quartermaster",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "supercargo",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Supercargo",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "archivist",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Archivist"
+          ],
+          "bastion": [
+            "Archivist"
+          ],
+          "cinder": [
+            "Archivist"
+          ]
+        }
+      }
+    },
+    {
+      "user": "hazards",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "HazardAnalyst",
+            "SectorCrew"
+          ],
+          "cinder": [
+            "HazardAnalyst",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "dock",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "Dockmaster",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "watch",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "NightWatch",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "client",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "ClientAccount"
+        ],
+        "domains": {
+          "anvil": [
+            "ClientPortal"
+          ]
+        }
+      }
+    }
+  ],
+  "serviceAccounts": [
+    {
+      "user": "droid-r7",
+      "roles": {
+        "global": [],
+        "domains": {
+          "anvil": [
+            "DroidIngest"
+          ],
+          "bastion": [
+            "DroidIngest"
+          ],
+          "cinder": [
+            "DroidIngest"
+          ]
+        }
+      }
+    }
+  ]
+}

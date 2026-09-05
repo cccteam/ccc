@@ -1,0 +1,42 @@
+<h1>Hazard Board</h1>
+<p>
+  The worst reading per ship and subsystem, folded server-side from droid telemetry. The droids post readings over
+  their own API-keyed channel and no login persona can address the readings directly — this computed board is the
+  human window. It goes dark when the analyst's certification lapses.
+</p>
+
+<app-star-chart></app-star-chart>
+
+@if (!canList()) {
+  <mat-card appearance="outlined" class="table-card">
+    <p class="empty">Your posting in {{ sector() || 'this sector' }} does not cover the hazard board.</p>
+  </mat-card>
+} @else {
+  <mat-card appearance="outlined" class="table-card">
+    <table mat-table [dataSource]="rows.value()">
+      <ng-container matColumnDef="shipName">
+        <th mat-header-cell *matHeaderCellDef>Ship</th>
+        <td mat-cell *matCellDef="let row">{{ row.shipName }}</td>
+      </ng-container>
+      <ng-container matColumnDef="subsystem">
+        <th mat-header-cell *matHeaderCellDef>Subsystem</th>
+        <td mat-cell *matCellDef="let row">{{ row.subsystem }}</td>
+      </ng-container>
+      <ng-container matColumnDef="worstReading">
+        <th mat-header-cell *matHeaderCellDef>Worst reading</th>
+        <td mat-cell *matCellDef="let row">
+          <span class="reading" [class]="severity(row.worstReading)">{{ row.worstReading }}</span>
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="recordedAt">
+        <th mat-header-cell *matHeaderCellDef>Recorded</th>
+        <td mat-cell *matCellDef="let row">{{ row.recordedAt | date: 'medium' }}</td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let row; columns: columns"></tr>
+    </table>
+    @if (!rows.value().length) {
+      <p class="empty">No telemetry in {{ sector() }} yet — run the droid channel from walkthrough.sh.</p>
+    }
+  </mat-card>
+}

@@ -1,0 +1,75 @@
+.chart {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 8px 0 16px;
+}
+
+.constellation {
+  width: 340px;
+  height: 160px;
+  background: radial-gradient(circle at 30% 30%, #1b1e2c, #0f1118);
+  border-radius: 12px;
+
+  .lane {
+    stroke: rgba(255, 255, 255, 0.15);
+    stroke-dasharray: 3 4;
+  }
+
+  .star {
+    cursor: pointer;
+
+    circle {
+      fill: #f2b544;
+      transition: fill 120ms;
+    }
+
+    .halo {
+      fill: none;
+      stroke: transparent;
+    }
+
+    text {
+      fill: #e6e7ee;
+      font-size: 12px;
+      text-anchor: middle;
+      font-family: 'Roboto Mono', monospace;
+    }
+
+    &.dark circle {
+      fill: #2a2e3d;
+    }
+
+    &.dark text {
+      fill: #6a6f85;
+    }
+
+    &.selected .halo {
+      stroke: #5cc0dd;
+      stroke-width: 2;
+    }
+
+    &:focus-visible {
+      outline: none;
+
+      .halo {
+        stroke: #fff;
+      }
+    }
+  }
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+
+  .shift {
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.6);
+  }
+}
