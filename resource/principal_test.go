@@ -106,7 +106,7 @@ func TestMasked(t *testing.T) {
 		},
 		{
 			name:        "allowed permission delegates to policy",
-			mask:        accesstypes.MaskPermissions(accesstypes.List, accesstypes.Read),
+			mask:        accesstypes.MaskPermissions(accesstypes.DenyAll(), accesstypes.List, accesstypes.Read),
 			perm:        accesstypes.Read,
 			wantGranted: true,
 			wantChecked: []accesstypes.Permission{accesstypes.Read},
@@ -114,14 +114,14 @@ func TestMasked(t *testing.T) {
 		},
 		{
 			name:        "masked permission is denied without consulting policy",
-			mask:        accesstypes.MaskPermissions(accesstypes.List, accesstypes.Read),
+			mask:        accesstypes.MaskPermissions(accesstypes.DenyAll(), accesstypes.List, accesstypes.Read),
 			perm:        accesstypes.Update,
 			wantChecked: nil,
 			wantDigest:  accesstypes.PermissionDigest{"documents": {accesstypes.Read: accesstypes.DigestGranted}},
 		},
 		{
 			name:        "mask that allows nothing denies everything and empties the digest",
-			mask:        accesstypes.MaskPermissions(),
+			mask:        accesstypes.DenyAll(),
 			perm:        accesstypes.Read,
 			wantChecked: nil,
 			wantDigest:  accesstypes.PermissionDigest{},
@@ -173,7 +173,7 @@ func TestMasked_WrapsDelegateErrors(t *testing.T) {
 	t.Parallel()
 
 	stub := &stubPermissions{user: "bob", err: errors.New("snapshot unavailable")}
-	perms := Masked(stub, accesstypes.MaskPermissions(accesstypes.Read))
+	perms := Masked(stub, accesstypes.MaskPermissions(accesstypes.DenyAll(), accesstypes.Read))
 
 	if _, err := perms.Check(context.Background(), accesstypes.NewEnvironment(), accesstypes.GlobalScope(), accesstypes.Read, "documents"); err == nil {
 		t.Error("Check() error = nil, want the delegate's error")
@@ -228,7 +228,7 @@ func TestSessionPermissions(t *testing.T) {
 			ctx: sessionCtx("bob", &sessioninfo.Impersonation{
 				Actor:     "alice",
 				Principal: accesstypes.UserPrincipal("bob"),
-				Mask:      accesstypes.MaskPermissions(accesstypes.List, accesstypes.Read),
+				Mask:      accesstypes.MaskPermissions(accesstypes.DenyAll(), accesstypes.List, accesstypes.Read),
 			}),
 			wantUsers:     []accesstypes.User{"bob"},
 			wantUser:      "bob",
@@ -247,7 +247,7 @@ func TestSessionPermissions(t *testing.T) {
 			ctx: sessionCtx("alice", &sessioninfo.Impersonation{
 				Actor:     "alice",
 				Principal: accesstypes.RolePrincipal("PartnerViewer"),
-				Mask:      accesstypes.MaskPermissions(accesstypes.List, accesstypes.Read),
+				Mask:      accesstypes.MaskPermissions(accesstypes.DenyAll(), accesstypes.List, accesstypes.Read),
 			}),
 			wantRoles:     []accesstypes.Role{"PartnerViewer"},
 			wantUser:      "alice",

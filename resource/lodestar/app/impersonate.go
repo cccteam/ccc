@@ -53,25 +53,21 @@ func (a *App) Impersonate() http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewBadRequestMessage("principal is required"))
 		}
 
-		// The zero mask is the unrestricted session; a mask built from no permissions
-		// would allow nothing, so it is only ever built from an explicit list — or the
-		// view-as default, List and Read.
+		// An empty request list falls back to the kind's default mask: view-as is
+		// read-only, act-as-role is unrestricted (the role's grants are the limit).
 		var gate accesstypes.Resource
 		var principal accesstypes.Principal
 		var mask accesstypes.PermissionMask
-		if len(req.Mask) > 0 {
-			mask = accesstypes.MaskPermissions(req.Mask...)
-		}
 		switch req.Kind {
 		case "user":
 			gate = resources.ViewAsUser
 			principal = accesstypes.UserPrincipal(accesstypes.User(req.Principal))
-			if len(req.Mask) == 0 {
-				mask = accesstypes.MaskPermissions(accesstypes.List, accesstypes.Read)
-			}
+			readOnly := accesstypes.MaskPermissions(accesstypes.DenyAll(), accesstypes.List, accesstypes.Read)
+			mask = accesstypes.MaskPermissions(readOnly, req.Mask...)
 		case "role":
 			gate = resources.AssumeRole
 			principal = accesstypes.RolePrincipal(accesstypes.Role(req.Principal))
+			mask = accesstypes.MaskPermissions(accesstypes.AllowAll(), req.Mask...)
 		default:
 			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewBadRequestMessagef("kind %q must be user or role", req.Kind))
 		}

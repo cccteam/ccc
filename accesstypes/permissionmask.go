@@ -11,24 +11,41 @@ import (
 // and only then asks policy, so nothing a mask does can grant what policy
 // denies.
 //
-// The zero PermissionMask is unrestricted: every permission passes. A mask
-// built with MaskPermissions allows exactly the listed permissions, and one
-// built from no permissions allows none. The two are distinguished by
-// Permissions, whose nil result is the unrestricted mask's persistence form.
+// The zero PermissionMask is unrestricted: every permission passes (AllowAll).
+// A mask built with MaskPermissions allows exactly the listed permissions, and
+// DenyAll allows none. The unrestricted mask and the mask that allows nothing
+// are distinguished by Permissions, whose nil result is the unrestricted mask's
+// persistence form.
 type PermissionMask struct {
 	allowed map[Permission]struct{}
 }
 
+// AllowAll returns the unrestricted mask: the zero value, spelled out.
+func AllowAll() PermissionMask {
+	return PermissionMask{}
+}
+
+// DenyAll returns the mask that allows nothing.
+func DenyAll() PermissionMask {
+	return PermissionMask{allowed: map[Permission]struct{}{}}
+}
+
 // MaskPermissions returns the mask allowing exactly perms. Duplicates and the
-// NullPermission are ignored; MaskPermissions() with no permissions allows
-// nothing.
-func MaskPermissions(perms ...Permission) PermissionMask {
+// NullPermission are ignored. With no permissions left it returns fallback, so
+// the caller states what an empty list means where the list is built:
+// AllowAll() for "no mask", DenyAll() for "nothing", or any narrower mask of
+// its own. A list that may be empty cannot be spread into the function without
+// that choice, which is the point.
+func MaskPermissions(fallback PermissionMask, perms ...Permission) PermissionMask {
 	allowed := make(map[Permission]struct{}, len(perms))
 	for _, perm := range perms {
 		if perm == NullPermission {
 			continue
 		}
 		allowed[perm] = struct{}{}
+	}
+	if len(allowed) == 0 {
+		return fallback
 	}
 
 	return PermissionMask{allowed: allowed}

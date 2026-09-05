@@ -27,7 +27,7 @@ func TestPermissionMask(t *testing.T) {
 		},
 		{
 			name:            "read-only mask",
-			mask:            MaskPermissions(List, Read),
+			mask:            MaskPermissions(DenyAll(), List, Read),
 			wantAllowed:     []Permission{List, Read},
 			wantDenied:      []Permission{Create, Update, Delete, Execute, "Custom"},
 			wantPermissions: []Permission{List, Read},
@@ -35,14 +35,14 @@ func TestPermissionMask(t *testing.T) {
 		},
 		{
 			name:            "mask with no permissions allows nothing",
-			mask:            MaskPermissions(),
+			mask:            DenyAll(),
 			wantDenied:      []Permission{List, Read, Create, Update, Delete, Execute},
 			wantPermissions: []Permission{},
 			wantString:      "",
 		},
 		{
 			name:            "duplicates and the null permission are ignored",
-			mask:            MaskPermissions(Read, Read, NullPermission, Execute),
+			mask:            MaskPermissions(DenyAll(), Read, Read, NullPermission, Execute),
 			wantAllowed:     []Permission{Read, Execute},
 			wantDenied:      []Permission{List, NullPermission},
 			wantPermissions: []Permission{Execute, Read},
@@ -50,7 +50,7 @@ func TestPermissionMask(t *testing.T) {
 		},
 		{
 			name:            "the null permission alone allows nothing",
-			mask:            MaskPermissions(NullPermission),
+			mask:            MaskPermissions(DenyAll(), NullPermission),
 			wantDenied:      []Permission{NullPermission, Read},
 			wantPermissions: []Permission{},
 			wantString:      "",
@@ -92,21 +92,54 @@ func TestPermissionMask_PermissionsRoundTrip(t *testing.T) {
 		name string
 		mask PermissionMask
 	}{
-		{name: "read-only", mask: MaskPermissions(Read, List)},
-		{name: "single permission", mask: MaskPermissions(Execute)},
-		{name: "allows nothing", mask: MaskPermissions()},
+		{name: "read-only", mask: MaskPermissions(DenyAll(), Read, List)},
+		{name: "single permission", mask: MaskPermissions(DenyAll(), Execute)},
+		{name: "allows nothing", mask: DenyAll()},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rebuilt := MaskPermissions(tt.mask.Permissions()...)
+			rebuilt := MaskPermissions(DenyAll(), tt.mask.Permissions()...)
 			if !slices.Equal(tt.mask.Permissions(), rebuilt.Permissions()) {
 				t.Errorf("round trip: rebuilt %#v, want %#v", rebuilt.Permissions(), tt.mask.Permissions())
 			}
 			if rebuilt.IsZero() {
 				t.Error("rebuilt restricted mask reads as unrestricted")
+			}
+		})
+	}
+}
+
+// TestMaskPermissions_fallback pins the empty-list rule: with no permissions
+// left after filtering, the caller's fallback is the mask — whatever it is —
+// and a non-empty list ignores the fallback entirely.
+func TestMaskPermissions_fallback(t *testing.T) {
+	t.Parallel()
+
+	readOnly := MaskPermissions(DenyAll(), List, Read)
+
+	tests := []struct {
+		name     string
+		fallback PermissionMask
+		perms    []Permission
+		want     PermissionMask
+	}{
+		{name: "no list falls back to unrestricted", fallback: AllowAll(), perms: nil, want: AllowAll()},
+		{name: "no list falls back to nothing", fallback: DenyAll(), perms: []Permission{}, want: DenyAll()},
+		{name: "no list falls back to a narrower default", fallback: readOnly, perms: nil, want: readOnly},
+		{name: "only the null permission is an empty list", fallback: AllowAll(), perms: []Permission{NullPermission}, want: AllowAll()},
+		{name: "a list ignores the fallback", fallback: AllowAll(), perms: []Permission{Execute}, want: MaskPermissions(DenyAll(), Execute)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := MaskPermissions(tt.fallback, tt.perms...)
+			if got.IsZero() != tt.want.IsZero() || !slices.Equal(got.Permissions(), tt.want.Permissions()) {
+				t.Errorf("MaskPermissions() = %v, want %v", got, tt.want)
 			}
 		})
 	}
