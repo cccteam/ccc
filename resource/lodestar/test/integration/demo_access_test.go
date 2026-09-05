@@ -23,7 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
 	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/ccc/accesstypes"
@@ -140,77 +139,17 @@ func waitForDemoPolicy(ctx context.Context, client *access.Client) error {
 	}
 }
 
-// newDemoAccessClient gives one suite its own provisioned engine over db. Rather than
-// running MigrateRoles again (a minute of row-at-a-time writes on the emulator), it
-// clones the shared world's provisioned access tables — the same rows the deploy path
-// wrote — into db with batched mutations, then opens the engine over them.
+// newDemoAccessClient gives one suite its own provisioned engine over db, through the
+// same deploy path the bootstrap runs: MigrateRoles and the persona assignments.
 func newDemoAccessClient(ctx context.Context, t *testing.T, db *initiator.SpannerDB) *access.Client {
 	t.Helper()
 
-	source, _, _ := sharedWorld(t)
-	if err := cloneAccessTables(ctx, source, db); err != nil {
-		t.Fatal(err)
-	}
-
-	client, err := openAccessClient(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := client.Close(); err != nil {
-			t.Errorf("access.Client.Close() error = %v", err)
-		}
-	})
-	if err := waitForDemoPolicy(ctx, client); err != nil {
+	client := newAccessClient(t, db)
+	if err := provisionDemoAccess(ctx, client); err != nil {
 		t.Fatal(err)
 	}
 
 	return client
-}
-
-// accessTables are the engine's store tables in parent-first order, with the columns
-// the clone copies.
-var accessTables = []struct {
-	name    string
-	columns []string
-}{
-	{name: "AccessRoles", columns: []string{"IsGlobal", "Domain", "Role", "UpdatedAt"}},
-	{name: "AccessUserRoles", columns: []string{"IsGlobal", "Domain", "Role", "User", "CreatedAt"}},
-	{name: "AccessRoleGrants", columns: []string{"IsGlobal", "Domain", "Role", "Permission", "Resource", "Field", "Condition", "UpdatedAt"}},
-}
-
-// cloneAccessTables copies the provisioned policy rows from one database to another in
-// batches — the harness's shortcut past a second MigrateRoles.
-func cloneAccessTables(ctx context.Context, from, to *initiator.SpannerDB) error {
-	const batch = 500
-	for _, table := range accessTables {
-		iter := from.Single().Read(ctx, table.name, spanner.AllKeys(), table.columns)
-		var mutations []*spanner.Mutation
-		err := iter.Do(func(row *spanner.Row) error {
-			values := make([]any, len(table.columns))
-			for i := range values {
-				var v spanner.GenericColumnValue
-				if err := row.Column(i, &v); err != nil {
-					return fmt.Errorf("reading %s.%s: %w", table.name, table.columns[i], err)
-				}
-				values[i] = v
-			}
-			mutations = append(mutations, spanner.InsertOrUpdate(table.name, table.columns, values))
-
-			return nil
-		})
-		if err != nil {
-			return fmt.Errorf("reading %s: %w", table.name, err)
-		}
-		for start := 0; start < len(mutations); start += batch {
-			end := min(start+batch, len(mutations))
-			if _, err := to.Apply(ctx, mutations[start:end]); err != nil {
-				return fmt.Errorf("writing %s: %w", table.name, err)
-			}
-		}
-	}
-
-	return nil
 }
 
 // newAccessClient opens an unprovisioned engine over db, closed with the test.
