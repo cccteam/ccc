@@ -39,6 +39,7 @@ func newRoot() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.AddCommand(newCheck())
+	root.AddCommand(newRender())
 
 	return root
 }

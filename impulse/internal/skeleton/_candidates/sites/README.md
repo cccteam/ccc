@@ -35,17 +35,32 @@ concealed from logins that hold nothing there.
 ## Running it
 
     cp .envrc.template .envrc && direnv allow
-    overmind start
+    overmind start -l spanner,console,portal
 
 That starts a fresh emulator, bootstraps it (schema, the `north` and `south` tenants,
 roles, the logins `admin` — every tenant — `member` and `client` — north only — with
-password `password`), serves the console site on :8094 and the portal site on :8095, and
-runs `ng serve` for each (console http://127.0.0.1:4304, portal http://127.0.0.1:4305).
+password `password`), and serves the console site on :8094 and the portal site on :8095.
+The first run compiles and bootstraps before it listens; wait for "Starting Server" in
+the console pane, then the portal pane.
+
+### Browser apps
+
+Each site has its own Angular workspace, `apps/console/web` and `apps/portal/web`, riding
+the local ccc-lib checkout through yalc until `@cccteam/resource` is published. Attach
+each once (the script publishes both packages to the local yalc store, links them, and
+runs `bun install`):
+
+    (cd apps/console/web && ./ccclib.sh local)
+    (cd apps/portal/web && ./ccclib.sh local)
+
+`ccclib.sh` expects the ccc-lib checkout beside this application; set `CCC_LIB` to point
+elsewhere. Then `overmind start` runs everything, with `ng serve` for the console at
+http://127.0.0.1:4304 and the portal at http://127.0.0.1:4305.
 
 ## Checks
 
     go generate ./...           # regenerate; cmd/generate's test fails on drift
     go test ./...               # needs podman for the emulator
     golangci-lint-v2 run
-    (cd apps/console/web && npm run build && npm run lint)
-    (cd apps/portal/web && npm run build && npm run lint)
+    (cd apps/console/web && bun run build && bun run lint)
+    (cd apps/portal/web && bun run build && bun run lint)

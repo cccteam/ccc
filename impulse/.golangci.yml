@@ -137,6 +137,12 @@ linters:
           - gosec
         path: internal/check/prettier\.go
         text: G302
+      # render writes a project tree a person works in: 0755 directories and 0644 files
+      # are the conventional modes, not a leak. Writes go through an os.Root.
+      - linters:
+          - gosec
+        path: internal/skeleton/render\.go
+        text: G30[16]
     paths:
       - third_party$
       - builtin$

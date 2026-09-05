@@ -1,0 +1,6 @@
+{
+  "name": "portal",
+  "scripts": {
+    "start": "ng serve portal"
+  }
+}

@@ -10,7 +10,13 @@
 #           http://127.0.0.1:4302.
 # portal:   ng serve for the portal on :4303 with /portal/api proxied. Browse
 #           http://127.0.0.1:4303/portal/ and sign in as client / password.
+#
+# The browser processes need the web workspace installed once first (README, "Browser
+# apps"); until then start the Go side alone: overmind start -l spanner,server
+#
+# .envrc sets OVERMIND_NO_PORT so PORT reaches each process as written; without it overmind
+# reassigns PORT per process (base, base+100, ...) and the server binds the wrong port.
 spanner: podman run --rm -p 127.0.0.1:${SPANNER_EMULATOR_PORT}:9010 gcr.io/cloud-spanner-emulator/emulator:1.5.56
 server: bash -c 'for i in {1..300}; do (echo > /dev/tcp/127.0.0.1/${SPANNER_EMULATOR_PORT}) >/dev/null 2>&1 && break || sleep 0.1; done; go run ./cmd/bootstrap && go run .'
-console: bash -c 'for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/${PORT}) >/dev/null 2>&1 && break || sleep 0.5; done; cd web && npm run start:console'
-portal: bash -c 'for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/${PORT}) >/dev/null 2>&1 && break || sleep 0.5; done; cd web && npm run start:portal'
+console: bash -c 'for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/${PORT}) >/dev/null 2>&1 && break || sleep 0.5; done; cd web && bun install && bun run start:console'
+portal: bash -c 'for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/${PORT}) >/dev/null 2>&1 && break || sleep 0.5; done; cd web && bun install && bun run start:portal'

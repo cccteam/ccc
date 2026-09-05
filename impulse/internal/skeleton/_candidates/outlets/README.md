@@ -41,14 +41,29 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
 ## Running it
 
     cp .envrc.template .envrc && direnv allow
-    overmind start
+    overmind start -l spanner,server
 
-That starts a fresh emulator, bootstraps it (schema, roles, the `admin` / `password`
-login), serves the API on `$PORT`, and runs `ng serve` for the console on :4300.
+That starts a fresh emulator, bootstraps it (schema, tenants, roles, the `admin`,
+`member`, and `client` logins with password `password`, and the machines service
+account), and serves every outlet on `$PORT` (:8093). The first run compiles and
+bootstraps before it listens; wait for "Starting Server" in the server pane.
+
+### Browser apps
+
+The console and the portal are two projects in one Angular workspace under `web/`, riding
+the local ccc-lib checkout through yalc until `@cccteam/resource` is published. Attach it
+once (the script publishes both packages to the local yalc store, links them, and runs
+`bun install`):
+
+    (cd web && ./ccclib.sh local)
+
+`ccclib.sh` expects the ccc-lib checkout beside this application; set `CCC_LIB` to point
+elsewhere. Then `overmind start` runs everything: the console at http://127.0.0.1:4302
+and the portal at http://127.0.0.1:4303/portal/ (sign in as `client`).
 
 ## Checks
 
     go generate ./...           # regenerate; cmd/generate's test fails on drift
     go test ./...               # needs podman for the emulator
     golangci-lint-v2 run
-    cd web && npm run build && npm run lint
+    cd web && bun run build && bun run lint

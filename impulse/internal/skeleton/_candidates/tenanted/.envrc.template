@@ -27,3 +27,6 @@ export PORT=8092
 # --- local development only: the Spanner emulator the Procfile starts ---
 export SPANNER_EMULATOR_PORT=9015
 export SPANNER_EMULATOR_HOST=127.0.0.1:${SPANNER_EMULATOR_PORT}
+# overmind otherwise takes PORT as its base and hands every process its own (base, base+100,
+# ...), so the server would listen on PORT+100 and the console proxy would miss it.
+export OVERMIND_NO_PORT=1

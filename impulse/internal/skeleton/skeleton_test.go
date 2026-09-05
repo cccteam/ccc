@@ -38,19 +38,20 @@ func TestFS(t *testing.T) {
 	// be present in every candidate, and nothing from these directories may be embedded.
 	required := []string{ModFile, "go.sum", ".gitignore", ".golangci.yml", ".envrc.template", "Procfile", "README.md", "schema/roles.json"}
 	forbiddenDirs := []string{"node_modules", ".angular", "dist", ".ccc-cache", ".yalc", ".git"}
-	forbiddenFiles := []string{"go.mod", "go.work", "go.work.sum", ".envrc", ".overmind.sock", "yalc.lock"}
+	forbiddenFiles := []string{"go.mod", "go.work", "go.work.sum", ".envrc", ".overmind.sock", "yalc.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"}
 
 	tests := []struct {
 		name    string
 		wantErr bool
 		// entry is the file that proves the layout: main.go at the root for a
-		// single-site template, the apps directory for multi-site.
-		entry string
+		// single-site template, the apps directory for multi-site. lockfile is the bun
+		// lockfile of the (first) browser workspace; bunfig.toml sits beside it.
+		entry, lockfile string
 	}{
-		{name: "solo", entry: "main.go"},
-		{name: "tenanted", entry: "main.go"},
-		{name: "outlets", entry: "main.go"},
-		{name: "sites", entry: "apps/console/main.go"},
+		{name: "solo", entry: "main.go", lockfile: "web/bun.lock"},
+		{name: "tenanted", entry: "main.go", lockfile: "web/bun.lock"},
+		{name: "outlets", entry: "main.go", lockfile: "web/bun.lock"},
+		{name: "sites", entry: "apps/console/main.go", lockfile: "apps/console/web/bun.lock"},
 		{name: "unknown", wantErr: true},
 	}
 
@@ -66,7 +67,7 @@ func TestFS(t *testing.T) {
 				return
 			}
 
-			for _, rel := range append(required, tt.entry) {
+			for _, rel := range append(required, tt.entry, tt.lockfile, path.Join(path.Dir(tt.lockfile), "bunfig.toml")) {
 				if _, err := fs.Stat(sub, rel); err != nil {
 					t.Errorf("%s: missing %s: %v", tt.name, rel, err)
 				}

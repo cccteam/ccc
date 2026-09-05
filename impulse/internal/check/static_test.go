@@ -75,6 +75,46 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			},
 		},
 		{
+			name: "eslint-ignore single site", fixture: "singlesite", check: eslintIgnore{},
+			wantStatus: Pass, wantSummary: "1 browser app(s) ignore the generated TypeScript",
+			wantDetails: []string{
+				"web/portal: no eslint configuration, nothing to check",
+			},
+		},
+		{
+			name: "eslint-ignore multi site", fixture: "multisite", check: eslintIgnore{},
+			wantStatus: Fail, wantSummary: "2 TypeScript target(s) not ignored by eslint",
+			wantDetails: []string{
+				"apps/pilots/gui/eslint.config.js does not ignore src/app/core/service/zz_gen_*.ts (add ignores: ['**/zz_gen_*.ts'])",
+				"apps/pilots/gui/eslint.config.js does not ignore src/app/core/service/shared-resources/zz_gen_*.ts (add ignores: ['**/zz_gen_*.ts'])",
+				"apps/tugs/gui: no eslint configuration, nothing to check",
+			},
+		},
+		{
+			name: "eslint-ignore no browser app", fixture: "badprogram", check: eslintIgnore{},
+			wantStatus: Skip, wantSummary: "no GenerateTypescript target inside a browser app",
+		},
+		{
+			name: "package-manager mixed lockfiles", fixture: "singlesite", check: packageManager{},
+			wantStatus: Fail, wantSummary: "browser apps are locked by 2 different package managers",
+			wantDetails: []string{
+				"bun: web/console",
+				"npm: web/portal",
+			},
+		},
+		{
+			name: "package-manager foreign invocations", fixture: "multisite", check: packageManager{},
+			wantStatus: Fail, wantSummary: "2 place(s) disagree with bun, the package manager the lockfiles name",
+			wantDetails: []string{
+				"process-compose.yaml:5 runs npm",
+				`apps/pilots/gui/package.json script "lint" runs npm`,
+			},
+		},
+		{
+			name: "package-manager no browser apps", fixture: "badprogram", check: packageManager{},
+			wantStatus: Skip, wantSummary: "no browser apps",
+		},
+		{
 			name: "rpc-execute single site", fixture: "singlesite", check: rpcExecute{},
 			wantStatus: Fail, wantSummary: "1 of 2 RPC handler(s) never call Execute (regenerate and read the generator output)",
 			wantDetails: []string{

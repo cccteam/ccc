@@ -30,6 +30,8 @@ impulse check --list
 | `generator-program` | Every generator program uses options this release knows, with literal arguments. A program the tool cannot read completely is one it cannot later edit or migrate. |
 | `emulator-version` | The generator option, the process files' image tags, and the test harnesses name one Spanner emulator version. |
 | `prettier-ignore` | Each browser app's `.prettierignore` excludes the generated TypeScript. Prettier reflowing generated files breaks generate idempotence. `--fix` adds the entry. |
+| `eslint-ignore` | Each browser app receiving generated TypeScript ignores it in its eslint flat config (`ignores: ['**/zz_gen_*.ts']`) or `.eslintignore`. Generated shapes trip stylistic rules, and the output is not the developer's to change. |
+| `package-manager` | Every browser app carries the same kind of lockfile (bun, npm, yarn, or pnpm), and the process files and package scripts invoke that tool and no other. Two tools in one repository means two lockfiles drifting apart. |
 | `rpc-execute` | Every generated RPC handler calls the method's `Execute`. A handler the generator could not type-check decodes and returns without running the method. |
 | `multi-site` | In a multi-site application, every generator reads the one schema and the shared generator's TypeScript reaches every site's browser app. |
 | `env-template` | Every `env` struct tag without a default appears in the development environment template (`.envrc.template`, `.env.template`, or `.env.example`). `--fix` adds the missing lines. |
@@ -39,6 +41,25 @@ impulse check --list
 
 Statuses: `PASS`, `FAIL`, `WARN` (reported, does not fail the run), `SKIP` (with the
 reason).
+
+## impulse render
+
+`render` copies one embedded skeleton into a new or empty directory under the module
+path you name, rewriting every import and `go.mod` to it. It is the primitive `new` will
+build on and the way the templates are validated: render one, then build, test, and
+`impulse check` the result.
+
+```sh
+impulse render solo ../beacon --module example.com/acme/beacon
+impulse render sites ../harbor --module example.com/acme/harbor --dev-root ~/Development/github.com/cccteam
+```
+
+`--dev-root` names a directory of cccteam checkouts laid out by repository
+(`<root>/ccc/resource`, `<root>/session`, ...). The rendering then writes a `go.work`
+using every framework module the application requires directly that has a checkout there,
+so it builds against local framework work instead of the pins; indirect requirements
+stay pinned, since a checkout of a library's own dependency can lag what the library needs. That `go.work` is for
+development only; never commit it.
 
 ## Templates
 
@@ -51,7 +72,13 @@ While embedded they are not Go modules: each carries its `go.mod` as `go.mod.tmp
 the leading underscore keeps the tree out of `./...` so nothing compiles it in place.
 Rendering writes `go.mod` back under the target module path and rewrites every import.
 The templates are therefore validated by rendering them and running the rendered
-application's build, tests, and `impulse check`, never in place. Build products
+application's build, tests, and `impulse check`, never in place. Their browser workspaces
+use bun, with `bun.lock` committed. Two yalc-era settings travel with them until
+`@cccteam/resource` is published: an `overrides` entry in package.json that points
+ccc-lib's peer dependency on the client at the yalc link, and `peer = false` in
+bunfig.toml, because bun would otherwise install a second copy of the client beneath
+ccc-lib and TypeScript would see two declarations of every client type. Every peer an
+application needs is therefore a direct dependency. Build products
 (`node_modules`, `.angular`, `dist`, `.ccc-cache`, `.yalc`, `go.work`) are never embedded;
 `internal/skeleton`'s tests enforce that.
 

@@ -120,6 +120,8 @@ func All() []Check {
 		generatorProgram{},
 		emulatorVersion{},
 		prettierIgnore{},
+		eslintIgnore{},
+		packageManager{},
 		rpcExecute{},
 		multiSite{},
 		envTemplate{},

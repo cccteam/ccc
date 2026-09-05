@@ -1,0 +1,7 @@
+{
+  "name": "pilots",
+  "scripts": {
+    "start": "bun run ng serve",
+    "lint": "npx eslint ."
+  }
+}

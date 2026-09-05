@@ -82,7 +82,10 @@ func TestSelect(t *testing.T) {
 		want    []string
 		wantErr string
 	}{
-		{name: "all", want: []string{"generator-program", "emulator-version", "prettier-ignore", "rpc-execute", "multi-site", "env-template", "pins", "gowork-off", "regen"}},
+		{name: "all", want: []string{
+			"generator-program", "emulator-version", "prettier-ignore", "eslint-ignore",
+			"package-manager", "rpc-execute", "multi-site", "env-template", "pins", "gowork-off", "regen",
+		}},
 		{name: "subset keeps run order", only: []string{regen{}.Name(), pins{}.Name()}, want: []string{pins{}.Name(), regen{}.Name()}},
 		{name: "unknown", only: []string{"nope"}, wantErr: `unknown check "nope"`},
 	}
