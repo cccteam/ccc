@@ -76,33 +76,9 @@ the verification removes it when everything is clean, and it is never committed.
 				return err
 			}
 			brief := &handoff.Brief{App: a, Results: results, Reference: reference, Guard: guard}
-			if err := os.WriteFile(a.Abs(handoff.File), []byte(brief.String()), 0o600); err != nil {
-				return errors.Wrap(err, "os.WriteFile()")
-			}
 			ag := handoff.Agent{Command: agentCommand, ExtraArgs: agentArgs}
-			report := handoffReport{results: results, agent: ag, styled: isTerminal(out)}
-			if !agent {
-				report.write(out)
 
-				return nil
-			}
-
-			base, err := handoff.Record(ctx, repo)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(out, "\nHanding %s to %s.\n\n", report.obligations(), ag.Args()[0])
-			if err := ag.Run(ctx, a.Root, brief.String(), out); err != nil {
-				return err
-			}
-			fmt.Fprintf(out, "\nThe agent returned. Verifying.\n\n")
-			// The agent changed the tree, so the application is read again.
-			env.App, err = app.Discover(appDir)
-			if err != nil {
-				return err
-			}
-
-			return verifyHandoff(ctx, env, repo, base, out)
+			return completeHandoff(ctx, out, appDir, env, repo, brief, ag, agent)
 		},
 	}
 
@@ -115,6 +91,38 @@ the verification removes it when everything is clean, and it is never committed.
 	cmd.Flags().StringVar(&reference, "reference", "", "path of a finished application with the same options wired, for the agent to read")
 
 	return cmd
+}
+
+// completeHandoff writes the brief and either prints the command to run the agent or
+// launches it and verifies its work. It is the tail every transition shares.
+func completeHandoff(ctx context.Context, out io.Writer, appDir string, env *check.Env, repo handoff.Repo, brief *handoff.Brief, ag handoff.Agent, launch bool) error {
+	a := env.App
+	if err := os.WriteFile(a.Abs(handoff.File), []byte(brief.String()), 0o600); err != nil {
+		return errors.Wrap(err, "os.WriteFile()")
+	}
+	report := handoffReport{results: brief.Results, agent: ag, reference: brief.Reference, styled: isTerminal(out)}
+	if !launch {
+		report.write(out)
+
+		return nil
+	}
+
+	base, err := handoff.Record(ctx, repo)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "\nHanding %s to %s.\n\n", report.obligations(), ag.Args()[0])
+	if err := ag.Run(ctx, a.Root, brief.String(), out); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "\nThe agent returned. Verifying.\n\n")
+	// The agent changed the tree, so the application is read again.
+	env.App, err = app.Discover(appDir)
+	if err != nil {
+		return err
+	}
+
+	return verifyHandoff(ctx, env, repo, base, out)
 }
 
 // verifyHandoff re-runs the check and the guardrail comparison and reports both. A clean
@@ -149,7 +157,9 @@ func removeBrief(a *app.App) error {
 type handoffReport struct {
 	results []check.Result
 	agent   handoff.Agent
-	styled  bool
+	// reference is the finished application the brief points at, or empty.
+	reference string
+	styled    bool
 }
 
 // obligations counts the failing checks' detail lines and the checks they fall under.
@@ -180,4 +190,7 @@ func (r *handoffReport) write(w io.Writer) {
 	fmt.Fprintf(w, "     Runs the agent on the brief, or read the brief and do the work yourself.\n")
 	fmt.Fprintf(w, "  %s impulse handoff --verify\n", bold("2."))
 	fmt.Fprintf(w, "     Re-runs the check and compares the generator programs and lint configuration against the index.\n")
+	if r.reference != "" {
+		fmt.Fprintf(w, "     The brief points the agent at %s for the finished shape; delete it when done.\n", r.reference)
+	}
 }

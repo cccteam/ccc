@@ -95,7 +95,11 @@ func (k paramKind) optionKind() optionKind {
 }
 
 // Option constructor names the profile reads beyond the positional accessors.
-const optServesSessions = "ServesSessions"
+const (
+	optServesSessions     = "ServesSessions"
+	optGenerateHandlers   = "GenerateHandlers"
+	optGenerateTypescript = "GenerateTypescript"
+)
 
 // optionSpec describes one known option constructor: what it returns and what it takes.
 type optionSpec struct {
@@ -110,14 +114,14 @@ type optionSpec struct {
 // constructor missing here fails the generator-program check: the release must learn the
 // option before the framework grows it, which is what keeps the two in step.
 var knownOptions = map[string]optionSpec{
-	"GenerateHandlers":           {kind: kindResourceOption, params: []paramKind{paramString}},
+	optGenerateHandlers:          {kind: kindResourceOption, params: []paramKind{paramString}},
 	"GenerateHandlerTests":       {kind: kindResourceOption, params: []paramKind{paramString}},
 	"ApplicationName":            {kind: kindResourceOption, params: []paramKind{paramString}},
 	"GenerateRoutes":             {kind: kindResourceOption, params: []paramKind{paramString, paramString}},
 	"WithRouterOutlet":           {kind: kindResourceOption, params: []paramKind{paramString, paramString}, variadic: paramOutletOption},
 	"WithDomainRoute":            {kind: kindResourceOption, params: []paramKind{paramString}},
 	"WithConcealedDomains":       {kind: kindResourceOption},
-	"GenerateTypescript":         {kind: kindResourceOption, params: []paramKind{paramString}, variadic: paramTSOption},
+	optGenerateTypescript:        {kind: kindResourceOption, params: []paramKind{paramString}, variadic: paramTSOption},
 	"WithManualResources":        {kind: kindResourceOption, variadic: paramComposite},
 	"WithSpannerEmulatorVersion": {kind: kindResourceOption, params: []paramKind{paramString}},
 	"WithPluralOverrides":        {kind: kindResourceOption, params: []paramKind{paramStringMap}},

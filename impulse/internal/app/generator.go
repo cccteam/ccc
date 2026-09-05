@@ -123,7 +123,7 @@ func (g *Generator) firstString(name string) string {
 
 // HandlersDir is the GenerateHandlers target directory, or empty when the generator
 // emits no handlers (a shared generator).
-func (g *Generator) HandlersDir() string { return g.firstString("GenerateHandlers") }
+func (g *Generator) HandlersDir() string { return g.firstString(optGenerateHandlers) }
 
 // RoutesDir is the GenerateRoutes target directory, or empty.
 func (g *Generator) RoutesDir() string { return g.firstString("GenerateRoutes") }
@@ -157,7 +157,7 @@ type TSTarget struct {
 // TypescriptTargets returns every GenerateTypescript target, in order.
 func (g *Generator) TypescriptTargets() []TSTarget {
 	var targets []TSTarget
-	for _, c := range g.OptionsNamed("GenerateTypescript") {
+	for _, c := range g.OptionsNamed(optGenerateTypescript) {
 		if len(c.Args) == 0 || c.Args[0].Kind != ArgString {
 			continue
 		}
@@ -195,19 +195,7 @@ func parseGenerator(rel string, src []byte) (*Generator, error) {
 		return nil, nil
 	}
 
-	var call *ast.CallExpr
-	ast.Inspect(f, func(n ast.Node) bool {
-		if call != nil {
-			return false
-		}
-		if c, ok := n.(*ast.CallExpr); ok && isQualified(c.Fun, pkgName, "NewResourceGenerator") {
-			call = c
-
-			return false
-		}
-
-		return true
-	})
+	call := findGeneratorCall(f, pkgName)
 	if call == nil {
 		return nil, nil
 	}

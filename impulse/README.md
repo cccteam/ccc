@@ -97,6 +97,29 @@ The brief's rules are the ones the verification enforces: run the check until it
 clean, do not edit generated files, the generator programs, or the lint configuration,
 do not stage or commit, keep the tests table-driven, stop when the check is clean.
 
+## impulse add
+
+`add` makes the deterministic half of an option, stages it, runs the check, and hands
+the failing checks to an agent exactly as `impulse handoff` does, with two additions to
+the brief: what the tool changed (and what it could not), and what the option means in
+this framework, alongside a rendered reference application with the option wired.
+
+```sh
+impulse add outlet portal --prefix portal/api --sessions --agent
+impulse add outlet machines --prefix machines --api-key
+```
+
+`add outlet` adds a router outlet to a flat application. For a session outlet the
+generator program gains `WithRouterOutlet(name, prefix, ServesSessions())` after
+`GenerateRoutes` and a `GenerateTypescript` target for the outlet copied from the default
+target's, and the console's browser project is copied to `web/<name>` with its API prefix,
+base path, and compiler output rewritten and registered in `angular.json` (serving under
+`/<name>` on the next port), the package scripts, and the Procfile. For an API-key outlet
+the program gains `WithRouterOutlet(name, prefix)` alone. `go generate` then emits the
+outlet's routes, handlers, and client. The router mount, the served assets, the
+configuration, the members (`@outlet`), and the tests are the agent's, and `outlet-wired`
+holds it to them.
+
 ## Templates
 
 The application skeletons `new` and `add` will render live under

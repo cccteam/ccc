@@ -144,6 +144,12 @@ linters:
           - gosec
         path: internal/skeleton/render\.go
         text: G30[16]
+      # A transition writes project files a person works in: 0755 directories and 0644
+      # files are the conventional modes.
+      - linters:
+          - gosec
+        path: internal/transition/.*\.go
+        text: G30[16]
       # The agent executable is the --agent-command flag: launching what the user named is
       # the command's purpose, and the brief goes to it on standard input.
       - linters:

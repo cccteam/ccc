@@ -70,6 +70,15 @@ func (r Repo) Staged(ctx context.Context) ([]string, error) {
 	return strings.Fields(string(out)), nil
 }
 
+// StageAll stages every change in the tree, so the index holds the tree at the handoff.
+func (r Repo) StageAll(ctx context.Context) error {
+	if _, err := r.Exec.Run(ctx, r.Root, nil, "git", "add", "-A"); err != nil {
+		return errors.Wrap(err, "git add -A")
+	}
+
+	return nil
+}
+
 // FromIndex reads files as the index holds them: the tree at the handoff, when the
 // agent has staged nothing. A path not in the index reads as absent.
 func (r Repo) FromIndex(ctx context.Context) Reader {
