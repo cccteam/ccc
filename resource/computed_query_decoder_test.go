@@ -164,6 +164,15 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 				t.Errorf("QuerySet.Fields() = %v, want %v", gotFields, wantFields)
 			}
 
+			// The decoded QuerySet carries the checked scope and permission for the
+			// application's List and Read to partition on.
+			if qSet.Scope() != testScope {
+				t.Errorf("QuerySet.Scope() = %v, want %v", qSet.Scope(), testScope)
+			}
+			if qSet.RequiredPermission() != accesstypes.List && qSet.RequiredPermission() != accesstypes.Read {
+				t.Errorf("QuerySet.RequiredPermission() = %v, want List or Read", qSet.RequiredPermission())
+			}
+
 			for _, scope := range userPermissions.gotScopes {
 				if scope != testScope {
 					t.Errorf("Check() scope = %v, want %v", scope, testScope)

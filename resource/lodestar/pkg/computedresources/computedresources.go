@@ -6,11 +6,9 @@
 package computedresources
 
 import (
-	"context"
-
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
-	"github.com/go-chi/chi/v5"
+	"github.com/cccteam/ccc/resource"
+	"github.com/go-playground/errors/v5"
 )
 
 // Client carries application dependencies into computed-resource query logic. The
@@ -22,12 +20,16 @@ func NewClient() *Client {
 	return &Client{}
 }
 
-// requestDomain reads the sector the request was made in. The generated computed
-// handlers check permissions in the URL sector's partition but hand the List and Read
-// functions no domain (the QuerySet does not expose its scope), so a sector-scoped
-// computed resource reads the route parameter back off the request context — the
-// same value the handler checked — to partition its own rows. Recorded as a finding:
-// structural tenancy for computed resources is the framework's to supply.
-func requestDomain(ctx context.Context) accesstypes.Domain {
-	return accesstypes.Domain(chi.URLParamFromCtx(ctx, string(router.Domain)))
+// sectorOf returns the sector the request was checked in. The generated computed
+// handlers check permissions in the URL sector's partition and hand the List and Read
+// functions the QuerySet that carries that scope, so a sector-scoped computed resource
+// partitions its rows on exactly the value the permission check ran against. A global
+// scope here is a wiring error: the resource is declared @domain.
+func sectorOf[Resource resource.Resourcer](qSet *resource.QuerySet[Resource]) (accesstypes.Domain, error) {
+	sector, ok := qSet.Scope().Domain()
+	if !ok {
+		return "", errors.Newf("%s is sector-scoped but was checked in the global scope", qSet.Resource())
+	}
+
+	return sector, nil
 }

@@ -41,9 +41,16 @@ func (SectorHazardBoard) Resource() accesstypes.Resource {
 
 // ListSectorHazardBoard computes the worst reading per ship and subsystem in the
 // request's sector.
-func ListSectorHazardBoard(ctx context.Context, _ *resource.QuerySet[SectorHazardBoard], client resource.Client, _ *Client) iter.Seq2[*SectorHazardBoard, error] {
+func ListSectorHazardBoard(ctx context.Context, qSet *resource.QuerySet[SectorHazardBoard], client resource.Client, _ *Client) iter.Seq2[*SectorHazardBoard, error] {
 	return func(yield func(*SectorHazardBoard, error) bool) {
-		boards, err := worstReadings(ctx, client, requestDomain(ctx), nil, "")
+		sector, err := sectorOf(qSet)
+		if err != nil {
+			yield(nil, err)
+
+			return
+		}
+
+		boards, err := worstReadings(ctx, client, sector, nil, "")
 		if err != nil {
 			yield(nil, err)
 
@@ -60,8 +67,13 @@ func ListSectorHazardBoard(ctx context.Context, _ *resource.QuerySet[SectorHazar
 
 // ReadSectorHazardBoard computes the worst reading for one ship and subsystem; nil
 // when that pair has no readings in the sector.
-func ReadSectorHazardBoard(ctx context.Context, shipID ccc.UUID, subsystem string, _ *resource.QuerySet[SectorHazardBoard], client resource.Client, _ *Client) (*SectorHazardBoard, error) {
-	boards, err := worstReadings(ctx, client, requestDomain(ctx), &shipID, subsystem)
+func ReadSectorHazardBoard(ctx context.Context, shipID ccc.UUID, subsystem string, qSet *resource.QuerySet[SectorHazardBoard], client resource.Client, _ *Client) (*SectorHazardBoard, error) {
+	sector, err := sectorOf(qSet)
+	if err != nil {
+		return nil, err
+	}
+
+	boards, err := worstReadings(ctx, client, sector, &shipID, subsystem)
 	if err != nil {
 		return nil, err
 	}

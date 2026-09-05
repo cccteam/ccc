@@ -78,6 +78,13 @@ func (d *ComputedQueryDecoder[Resource, Request]) Decode(request *http.Request, 
 	ctx := request.Context()
 	rSet := d.inner.resourceSet
 
+	// The QuerySet carries the scope and permission the checks below run in, so the
+	// application's List and Read partition their rows on the checked scope
+	// (QuerySet.Scope). Enforcement itself stays here: a computed resource executes
+	// no library query for the QuerySet's own gates to guard.
+	qSet.scope = scope
+	qSet.requiredPermission = requiredPermission
+
 	decisions, err := userPermissions.Check(ctx, qSet.env, scope, requiredPermission, rSet.BaseResource())
 	if err != nil {
 		return nil, errors.Wrap(err, "resource.UserPermissions.Check()")

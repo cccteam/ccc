@@ -113,6 +113,15 @@ func (q *QuerySet[Resource]) RequiredPermission() accesstypes.Permission {
 	return q.requiredPermission
 }
 
+// Scope returns the permission scope the query is checked in: the request's tenant
+// domain for a domain-scoped resource, the global scope otherwise. It is set by
+// EnableUserPermissionEnforcement, which every generated handler runs at decode, so
+// application query logic — a computed resource's List and Read — partitions its
+// rows on the same value the permission check ran against.
+func (q *QuerySet[Resource]) Scope() accesstypes.Scope {
+	return q.scope
+}
+
 // ReturnAccessibleFields configures the QuerySet to automatically include all fields
 // the user has access to if no specific fields are requested.
 func (q *QuerySet[Resource]) ReturnAccessibleFields(b bool) *QuerySet[Resource] {

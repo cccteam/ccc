@@ -513,3 +513,32 @@ func TestQuerySetCompare(t *testing.T) {
 		})
 	}
 }
+
+// TestQuerySet_Scope pins that the QuerySet hands application query logic the scope
+// its permission check ran in, so a computed resource partitions on the checked value.
+func TestQuerySet_Scope(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		scope accesstypes.Scope
+	}{
+		{name: "domain scope", scope: accesstypes.DomainScope("anvil")},
+		{name: "global scope", scope: accesstypes.GlobalScope()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rSet, err := NewSet[SortTestResource, struct{}](accesstypes.List)
+			if err != nil {
+				t.Fatalf("NewSet() error = %v", err)
+			}
+			qSet := NewQuerySet(NewMetadata[SortTestResource]()).EnableUserPermissionEnforcement(rSet, nil, tt.scope, accesstypes.List)
+
+			if got := qSet.Scope(); got != tt.scope {
+				t.Errorf("Scope() = %v, want %v", got, tt.scope)
+			}
+		})
+	}
+}
