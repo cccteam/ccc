@@ -50,7 +50,7 @@ func TestRender(t *testing.T) {
 		{name: "outlets", candidate: "outlets", script: "web/ccclib.sh"},
 		{name: "sites", candidate: "sites", script: "apps/console/web/ccclib.sh"},
 	}
-	static := []string{"generator-program", "options", "tenancy-wired", "outlet-wired", "sites-wired", "emulator-version", "prettier-ignore", "eslint-ignore", "package-manager", "multi-site", "env-template"}
+	static := []string{"generator-program", "options", "tenancy-wired", "outlet-wired", "sites-wired", "auth-wired", "emulator-version", "prettier-ignore", "eslint-ignore", "package-manager", "multi-site", "env-template"}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

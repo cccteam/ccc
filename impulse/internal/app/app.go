@@ -44,10 +44,44 @@ type App struct {
 	// OutletMembers are the structs the application's own code annotates @outlet: the
 	// resources attached to router outlets other than, or in addition to, the default.
 	OutletMembers []OutletMember
+	// Auths are the session authentication constructions outside tests: the user pools'
+	// login flavors and the tables they read.
+	Auths []Auth
 	// GoGenerate are the //go:generate directives in the tree.
 	GoGenerate []Directive
 	// MainPackages are the root-relative directories holding a package main.
 	MainPackages []string
+}
+
+// Auth is one construction of a session authenticator: session.NewPasswordAuth,
+// NewOIDCAzure, NewOIDCGoogle, or NewPreauth.
+type Auth struct {
+	File string
+	Line int
+	// Flavor is the login flavor: password, oidc-azure, oidc-google, or preauth.
+	Flavor string
+	// SessionTable is the sessions table the authenticator reads: WithSessionTableName or
+	// the library default.
+	SessionTable string
+	// UserTable is the users table: WithUserTableName or the default for password auth;
+	// for the OIDC flavors, the anchor table (WithOIDCUserTableName or the default) only
+	// when the storage enables it with sessionstorage.WithOIDCUsers; empty for preauth.
+	UserTable string
+	// ExtraTables are the custom session and user data tables the storage attaches
+	// (sessionstorage.NewSpannerCustomSessionData and NewSpannerCustomUserData), when
+	// their names are literals.
+	ExtraTables []string
+	// CookieName is the WithCookieName argument, or empty for the library default.
+	CookieName string
+	// Impersonation reports a storage constructed with sessionstorage.WithImpersonation.
+	Impersonation bool
+	// ImpersonationTable is the impersonation table's literal name, or empty when the
+	// name is not a literal in the call (the library default is then assumed).
+	ImpersonationTable string
+	// OptionsForwarded reports a variadic pass-through (opts...) in the call: options
+	// the callers add are not visible here, so the tables are the defaults as far as
+	// this construction shows.
+	OptionsForwarded bool
 }
 
 // Directive is one //go:generate directive.

@@ -122,6 +122,7 @@ func All() []Check {
 		tenancyWired{},
 		outletWired{},
 		sitesWired{},
+		authWired{},
 		emulatorVersion{},
 		prettierIgnore{},
 		eslintIgnore{},

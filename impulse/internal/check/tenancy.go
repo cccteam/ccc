@@ -104,6 +104,25 @@ func (c tenancyWired) untenanted(a *app.App) Result {
 // names kebab-case to the domain route segment, as "Table (file)". Sources the check
 // cannot read are returned as notes.
 func tenantTables(a *app.App, p app.Profile, segment string) (tables, unread []string, err error) {
+	all, unread, err := migrationTables(a, p)
+	if err != nil {
+		return nil, nil, err
+	}
+	for name, file := range all {
+		if strcase.ToKebab(name) == segment {
+			tables = append(tables, fmt.Sprintf("%s (%s)", name, file))
+		}
+	}
+	sort.Strings(tables)
+
+	return tables, unread, nil
+}
+
+// migrationTables reads the up migrations of every site's file:// migration sources and
+// returns the created tables by name, each with the migration that creates it. Sources
+// the check cannot read are returned as notes.
+func migrationTables(a *app.App, p app.Profile) (tables map[string]string, unread []string, err error) {
+	tables = map[string]string{}
 	seen := map[string]bool{}
 	for _, s := range p.Sites {
 		for _, src := range s.Generator.MigrationSources {
@@ -112,35 +131,28 @@ func tenantTables(a *app.App, p app.Profile, segment string) (tables, unread []s
 			}
 			seen[src] = true
 			if !strings.HasPrefix(src, fileScheme) {
-				unread = append(unread, fmt.Sprintf("%s: migration source %s is not a file:// path; the tenant-record table was not checked there", s.Generator.File, src))
+				unread = append(unread, fmt.Sprintf("%s: migration source %s is not a file:// path; its tables were not read", s.Generator.File, src))
 
 				continue
 			}
-			dir := strings.TrimPrefix(src, fileScheme)
-			found, err := tablesNamed(a, dir, segment)
-			if err != nil {
+			if err := readTables(a, strings.TrimPrefix(src, fileScheme), tables); err != nil {
 				return nil, nil, err
 			}
-			tables = append(tables, found...)
 		}
 	}
-	sort.Strings(tables)
 
 	return tables, unread, nil
 }
 
-// tablesNamed reads the up migrations under a root-relative directory and returns the
-// created tables whose kebab-cased names equal segment.
-func tablesNamed(a *app.App, dir, segment string) ([]string, error) {
+// readTables adds the tables the up migrations under a root-relative directory create.
+func readTables(a *app.App, dir string, tables map[string]string) error {
 	entries, err := os.ReadDir(a.Abs(dir))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return nil
 	}
 	if err != nil {
-		return nil, errors.Wrap(err, "os.ReadDir()")
+		return errors.Wrap(err, "os.ReadDir()")
 	}
-
-	var tables []string
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".up.sql") {
 			continue
@@ -148,14 +160,14 @@ func tablesNamed(a *app.App, dir, segment string) ([]string, error) {
 		rel := filepath.ToSlash(filepath.Join(dir, e.Name()))
 		data, err := os.ReadFile(a.Abs(rel))
 		if err != nil {
-			return nil, errors.Wrap(err, "os.ReadFile()")
+			return errors.Wrap(err, "os.ReadFile()")
 		}
 		for _, m := range createTableRE.FindAllSubmatch(data, -1) {
-			if name := string(m[1]); strcase.ToKebab(name) == segment {
-				tables = append(tables, fmt.Sprintf("%s (%s)", name, rel))
+			if name := string(m[1]); tables[name] == "" {
+				tables[name] = rel
 			}
 		}
 	}
 
-	return tables, nil
+	return nil
 }

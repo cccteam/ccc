@@ -138,6 +138,14 @@ func (a *App) scanGoFile(abs, rel string) error {
 		}
 	}
 
+	if bytes.Contains(data, []byte(sessionImportPath)) {
+		auths, err := parseAuths(rel, data)
+		if err != nil {
+			return err
+		}
+		a.Auths = append(a.Auths, auths...)
+	}
+
 	if bytes.Contains(data, []byte("MigrateRoles(")) {
 		calls, err := parseRoleMigrations(rel, data)
 		if err != nil {

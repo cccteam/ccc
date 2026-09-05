@@ -114,6 +114,22 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no site generator",
 		},
 		{
+			name: "auth-wired tables missing", fixture: "singlesite", check: authWired{},
+			wantStatus: Fail, wantSummary: "2 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/config/session.go:11: password auth reads table LighthouseSessions, which no migration creates (the session library's schema is under schema/spanner/migrations)",
+				"pkg/config/session.go:11: password auth reads table SessionUsers, which no migration creates (the session library's schema is under schema/spanner/migrations)",
+			},
+		},
+		{
+			name: "auth-wired no authenticator", fixture: "multisite", check: authWired{},
+			wantStatus: Fail, wantSummary: "no session authenticator is constructed outside tests (session.NewPasswordAuth, NewOIDCAzure, NewOIDCGoogle, or NewPreauth)",
+		},
+		{
+			name: "auth-wired no site", fixture: "badprogram", check: authWired{},
+			wantStatus: Skip, wantSummary: "no site generator",
+		},
+		{
 			name: "emulator-version single site", fixture: "singlesite", check: emulatorVersion{},
 			wantStatus: Pass, wantSummary: "3 reference(s) agree on 1.5.56",
 		},
