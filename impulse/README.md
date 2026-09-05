@@ -120,6 +120,24 @@ outlet's routes, handlers, and client. The router mount, the served assets, the
 configuration, the members (`@outlet`), and the tests are the agent's, and `outlet-wired`
 holds it to them.
 
+`add tenancy` makes a flat, untenanted application tenanted. The generator program gains
+`WithDomainRoute` (the table's kebab-case name) and `WithConcealedDomains`; the tenant
+table becomes the next schema migration, with two development tenants as a data migration
+under `schema/devseed`; the tenant-record struct joins the resource package as a global
+resource; the data level gains the roster read at startup and the `DomainVisible` seam
+(a new `tenancy.go` plus a field and the load inserted into `DataConfiguration`); the app
+exposes the seam to the generated code (a new `tenancy.go` plus the `Configurer` and `App`
+edits); and the reference's tenant service is copied into the browser app. Every edit
+whose anchor the application lacks is recorded in the brief as the agent's. Which
+resources become tenant-scoped and how their rows are assigned, the bootstrap order, the
+harnesses, the tests, and the tenant picker are the agent's, and `tenancy-wired` holds it
+to them.
+
+```sh
+impulse add tenancy --agent
+impulse add tenancy --table Organizations
+```
+
 ## Templates
 
 The application skeletons `new` and `add` will render live under

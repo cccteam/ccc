@@ -144,8 +144,9 @@ server: bash -c 'go run ./cmd/bootstrap && go run .'
 console: bash -c 'cd web && bun install && bun run start:console'
 `
 
-// beacon writes a flat application with one console project and discovers it.
-func beacon(t *testing.T) *app.App {
+// beacon writes a flat application with one console project, plus any extra files, and
+// discovers it.
+func beacon(t *testing.T, extra map[string]string) *app.App {
 	t.Helper()
 
 	root := t.TempDir()
@@ -166,6 +167,9 @@ func beacon(t *testing.T) *app.App {
 		"web/console/src/app/core/api/api.ts":            "import { Api } from '@app/service/zz_gen_api';\nexport const api = new Api();\n",
 		"web/console/src/app/core/service/zz_gen_api.ts": "// generated\n",
 		"web/console/node_modules/left/index.js":         "// installed\n",
+	}
+	for rel, content := range extra {
+		files[rel] = content
 	}
 	for rel, content := range files {
 		abs := filepath.Join(root, filepath.FromSlash(rel))
@@ -229,7 +233,7 @@ func TestOutletValidate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := tt.outlet.Validate(beacon(t))
+			err := tt.outlet.Validate(beacon(t, nil))
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("Validate() error = %v", err)
@@ -404,7 +408,7 @@ func TestOutletApply(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			a := beacon(t)
+			a := beacon(t, nil)
 			exec := &fakeExec{err: tt.generateErr}
 			ch, err := tt.outlet.Apply(t.Context(), a, exec)
 			if err != nil {
