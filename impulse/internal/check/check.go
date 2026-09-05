@@ -120,6 +120,7 @@ func All() []Check {
 		generatorProgram{},
 		options{},
 		tenancyWired{},
+		outletWired{},
 		emulatorVersion{},
 		prettierIgnore{},
 		eslintIgnore{},

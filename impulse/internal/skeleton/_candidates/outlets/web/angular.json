@@ -112,7 +112,7 @@
           "style": "scss"
         }
       },
-      "root": "console",
+      "root": "portal",
       "sourceRoot": "portal/src",
       "prefix": "app",
       "architect": {

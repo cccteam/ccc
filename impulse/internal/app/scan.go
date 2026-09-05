@@ -106,12 +106,25 @@ func (a *App) scanGoFile(abs, rel string) error {
 		a.EnvTags = append(a.EnvTags, tags...)
 	}
 
-	if bytes.Contains(data, []byte("@"+permissionScopeKeyword)) && !generated {
-		resources, err := parseDomainResources(rel, data)
+	if (bytes.Contains(data, []byte("@"+permissionScopeKeyword)) || bytes.Contains(data, []byte("@"+outletKeyword))) && !generated {
+		docs, err := parseStructDocs(rel, data)
 		if err != nil {
 			return err
 		}
-		a.DomainResources = append(a.DomainResources, resources...)
+		for _, d := range docs {
+			if domainScopeRE.MatchString(d.Doc) {
+				a.DomainResources = append(a.DomainResources, DomainResource{File: rel, Line: d.Line, Name: d.Name})
+			}
+			for _, m := range outletRE.FindAllStringSubmatch(d.Doc, -1) {
+				member := OutletMember{File: rel, Line: d.Line, Name: d.Name}
+				for _, name := range strings.Split(m[1], ",") {
+					if name = strings.TrimSpace(name); name != "" {
+						member.Outlets = append(member.Outlets, name)
+					}
+				}
+				a.OutletMembers = append(a.OutletMembers, member)
+			}
+		}
 	}
 
 	if bytes.Contains(data, []byte("MigrateRoles(")) {
@@ -140,28 +153,39 @@ func findRefs(rel string, data []byte, re *regexp.Regexp) []EmulatorRef {
 	return refs
 }
 
-// The annotation and import the tenancy scan reads.
+// The annotations and import the scan reads.
 const (
 	permissionScopeKeyword = "permissionScope"
+	outletKeyword          = "outlet"
 	accessImportPath       = "github.com/cccteam/access"
 	// migrateRolesFixedArgs is how many arguments access.MigrateRoles takes before the
 	// domains: ctx, manager, collection, roles.
 	migrateRolesFixedArgs = 4
 )
 
-// domainScopeRE matches the @permissionScope(domain) struct annotation in a doc comment.
-var domainScopeRE = regexp.MustCompile(`@` + permissionScopeKeyword + `\(\s*domain\s*\)`)
+// domainScopeRE matches the @permissionScope(domain) struct annotation; outletRE
+// captures the names an @outlet(...) annotation lists.
+var (
+	domainScopeRE = regexp.MustCompile(`@` + permissionScopeKeyword + `\(\s*domain\s*\)`)
+	outletRE      = regexp.MustCompile(`@` + outletKeyword + `\(([^)]*)\)`)
+)
 
-// parseDomainResources returns every struct type in the file whose doc comment carries
-// @permissionScope(domain).
-func parseDomainResources(rel string, src []byte) ([]DomainResource, error) {
+// structDoc is one struct type declaration with its doc comment.
+type structDoc struct {
+	Name string
+	Line int
+	Doc  string
+}
+
+// parseStructDocs returns every struct type in the file that has a doc comment.
+func parseStructDocs(rel string, src []byte) ([]structDoc, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, rel, src, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
 		return nil, errors.Wrap(err, "parser.ParseFile()")
 	}
 
-	var resources []DomainResource
+	var docs []structDoc
 	for _, decl := range f.Decls {
 		gen, ok := decl.(*ast.GenDecl)
 		if !ok || gen.Tok != token.TYPE {
@@ -179,14 +203,14 @@ func parseDomainResources(rel string, src []byte) ([]DomainResource, error) {
 			if doc == nil && len(gen.Specs) == 1 {
 				doc = gen.Doc
 			}
-			if doc == nil || !domainScopeRE.MatchString(doc.Text()) {
+			if doc == nil {
 				continue
 			}
-			resources = append(resources, DomainResource{File: rel, Line: fset.Position(ts.Pos()).Line, Name: ts.Name.Name})
+			docs = append(docs, structDoc{Name: ts.Name.Name, Line: fset.Position(ts.Pos()).Line, Doc: doc.Text()})
 		}
 	}
 
-	return resources, nil
+	return docs, nil
 }
 
 // parseRoleMigrations returns every access.MigrateRoles call in the file. Calls through

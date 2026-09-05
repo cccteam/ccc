@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -223,31 +222,14 @@ func webWorkspaces(dir string) ([]webWorkspace, error) {
 
 	workspaces := make([]webWorkspace, 0, len(a.WebApps))
 	for _, w := range a.WebApps {
-		data, err := os.ReadFile(a.Abs(filepath.Join(w.Dir, "angular.json")))
+		projects, err := a.ReadAngular(w.Dir)
 		if err != nil {
-			return nil, errors.Wrap(err, "os.ReadFile()")
-		}
-		var angular struct {
-			Projects map[string]struct {
-				Architect struct {
-					Serve struct {
-						Configurations struct {
-							Development struct {
-								Port int `json:"port"`
-							} `json:"development"`
-						} `json:"configurations"`
-					} `json:"serve"`
-				} `json:"architect"`
-			} `json:"projects"`
-		}
-		if err := json.Unmarshal(data, &angular); err != nil {
-			return nil, errors.Wrapf(err, "json.Unmarshal(): %s/angular.json", w.Dir)
+			return nil, err
 		}
 		ws := webWorkspace{Dir: w.Dir}
-		for name, p := range angular.Projects {
-			ws.Projects = append(ws.Projects, webProject{Name: name, Port: p.Architect.Serve.Configurations.Development.Port})
+		for _, p := range projects {
+			ws.Projects = append(ws.Projects, webProject{Name: p.Name, Port: p.DevPort})
 		}
-		sort.Slice(ws.Projects, func(i, j int) bool { return ws.Projects[i].Name < ws.Projects[j].Name })
 		workspaces = append(workspaces, ws)
 	}
 	sort.Slice(workspaces, func(i, j int) bool { return workspaces[i].Dir < workspaces[j].Dir })

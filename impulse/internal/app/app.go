@@ -41,6 +41,18 @@ type App struct {
 	// RoleMigrations are the calls to access.MigrateRoles outside tests: where the
 	// application provisions its roles.
 	RoleMigrations []RoleMigration
+	// OutletMembers are the structs the application's own code annotates @outlet: the
+	// resources attached to router outlets other than, or in addition to, the default.
+	OutletMembers []OutletMember
+}
+
+// OutletMember is one struct annotated @outlet(...).
+type OutletMember struct {
+	File string
+	Line int
+	Name string
+	// Outlets are the outlet names the annotation lists.
+	Outlets []string
 }
 
 // DomainResource is one struct annotated @permissionScope(domain).

@@ -76,6 +76,25 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no site generator",
 		},
 		{
+			name: "outlet-wired portal never mounted", fixture: "singlesite", check: outletWired{},
+			wantStatus: Fail, wantSummary: "1 outlet wiring problem(s)",
+			wantDetails: []string{
+				"cmd/generate/resourcegenerator/main.go: no file in pkg/router calls generatedPortalRoutes; the portal outlet's routes are not mounted",
+			},
+		},
+		{
+			name: "outlet-wired no router files", fixture: "multisite", check: outletWired{},
+			wantStatus: Fail, wantSummary: "2 outlet wiring problem(s)",
+			wantDetails: []string{
+				"cmd/generate/resourcegenerator_pilots/main.go: no file in apps/pilots/pkg/router calls generatedRoutes; the default outlet's routes are not mounted",
+				"cmd/generate/resourcegenerator_tugs/main.go: no file in apps/tugs/pkg/router calls generatedRoutes; the default outlet's routes are not mounted",
+			},
+		},
+		{
+			name: "outlet-wired no site", fixture: "badprogram", check: outletWired{},
+			wantStatus: Skip, wantSummary: "no site generator",
+		},
+		{
 			name: "emulator-version single site", fixture: "singlesite", check: emulatorVersion{},
 			wantStatus: Pass, wantSummary: "3 reference(s) agree on 1.5.56",
 		},
