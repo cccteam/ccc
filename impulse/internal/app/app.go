@@ -51,6 +51,22 @@ type App struct {
 	GoGenerate []Directive
 	// MainPackages are the root-relative directories holding a package main.
 	MainPackages []string
+
+	// goFiles are the non-test Go files scanned, for the passes that follow the walk.
+	goFiles []string
+	// roleWrappers are the application's own functions that pass their variadic domains
+	// through to access.MigrateRoles; their callers are role migrations too.
+	roleWrappers []roleWrapper
+}
+
+// roleWrapper is an application function wrapping access.MigrateRoles.
+type roleWrapper struct {
+	// Pkg is the wrapper's package import path.
+	Pkg string
+	// Func is the wrapper's name.
+	Func string
+	// Fixed is how many parameters precede the variadic domains.
+	Fixed int
 }
 
 // Auth is one construction of a session authenticator: session.NewPasswordAuth,
@@ -108,19 +124,32 @@ type DomainResource struct {
 	Name string
 }
 
-// RoleMigration is one call to access.MigrateRoles.
+// RoleMigration is one call to access.MigrateRoles, or to an application wrapper that
+// passes its own variadic domains through to it.
 type RoleMigration struct {
 	File string
 	Line int
-	// Domains counts the domain arguments after the four fixed ones.
+	// Domains counts the domain arguments after the callee's fixed ones.
 	Domains int
 	// Spread reports a trailing slice argument (domains...), which may be empty at run
 	// time: an untenanted application's wrapper passes its own empty variadic through.
 	Spread bool
+	// Via is the wrapper as the caller writes it (deploy.MigrateRoles), or empty for a
+	// direct access.MigrateRoles call.
+	Via string
 }
 
 // WithDomains reports whether the call can provision roles into tenants.
 func (m RoleMigration) WithDomains() bool { return m.Domains > 0 || m.Spread }
+
+// Callee is the function called, as written.
+func (m RoleMigration) Callee() string {
+	if m.Via != "" {
+		return m.Via
+	}
+
+	return "access.MigrateRoles"
+}
 
 // WebApp is one browser application.
 type WebApp struct {

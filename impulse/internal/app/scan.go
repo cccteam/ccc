@@ -53,7 +53,7 @@ func (a *App) scan() error {
 		return errors.Wrap(err, "filepath.WalkDir()")
 	}
 
-	return nil
+	return a.followRoleWrappers()
 }
 
 func (a *App) scanFile(abs, name string) error {
@@ -146,15 +146,102 @@ func (a *App) scanGoFile(abs, rel string) error {
 		a.Auths = append(a.Auths, auths...)
 	}
 
-	if bytes.Contains(data, []byte("MigrateRoles(")) {
-		calls, err := parseRoleMigrations(rel, data)
-		if err != nil {
-			return err
-		}
-		a.RoleMigrations = append(a.RoleMigrations, calls...)
+	a.goFiles = append(a.goFiles, rel)
+
+	return a.scanRoleMigrations(rel, data)
+}
+
+// scanRoleMigrations records the file's access.MigrateRoles calls and wrappers.
+func (a *App) scanRoleMigrations(rel string, data []byte) error {
+	if !bytes.Contains(data, []byte("MigrateRoles(")) {
+		return nil
+	}
+	calls, wrappers, err := parseRoleMigrations(rel, data)
+	if err != nil {
+		return err
+	}
+	a.RoleMigrations = append(a.RoleMigrations, calls...)
+	for _, w := range wrappers {
+		w.Pkg = a.packagePath(path.Dir(rel))
+		a.roleWrappers = append(a.roleWrappers, w)
 	}
 
 	return nil
+}
+
+// packagePath is the import path of a root-relative directory, or empty without a module
+// directive.
+func (a *App) packagePath(dir string) string {
+	if a.GoMod == nil || a.GoMod.Module == nil {
+		return ""
+	}
+	if dir == "." {
+		return a.GoMod.Module.Mod.Path
+	}
+
+	return a.GoMod.Module.Mod.Path + "/" + dir
+}
+
+// followRoleWrappers records the calls to the application's MigrateRoles wrappers as role
+// migrations, so the domains an application passes are checked where it passes them and
+// not only inside the wrapper that forwards them.
+func (a *App) followRoleWrappers() error {
+	if len(a.roleWrappers) == 0 {
+		return nil
+	}
+	for _, rel := range a.goFiles {
+		data, err := os.ReadFile(a.Abs(rel))
+		if err != nil {
+			return errors.Wrap(err, "os.ReadFile()")
+		}
+		for _, w := range a.roleWrappers {
+			if w.Pkg == "" || !bytes.Contains(data, []byte(w.Func+"(")) {
+				continue
+			}
+			calls, err := parseWrapperCalls(rel, data, w)
+			if err != nil {
+				return err
+			}
+			a.RoleMigrations = append(a.RoleMigrations, calls...)
+		}
+	}
+
+	return nil
+}
+
+// parseWrapperCalls returns the file's calls to the wrapper, through its import.
+func parseWrapperCalls(rel string, src []byte, w roleWrapper) ([]RoleMigration, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, errors.Wrap(err, "parser.ParseFile()")
+	}
+	local := localImportName(f, w.Pkg)
+	if local == "" {
+		return nil, nil
+	}
+	var calls []RoleMigration
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || !isQualified(call.Fun, local, w.Func) {
+			return true
+		}
+		domains := len(call.Args) - w.Fixed
+		if call.Ellipsis.IsValid() {
+			domains--
+		}
+		calls = append(calls, RoleMigration{
+			File:    rel,
+			Line:    fset.Position(call.Pos()).Line,
+			Domains: max(domains, 0),
+			Spread:  call.Ellipsis.IsValid(),
+			Via:     local + "." + w.Func,
+		})
+
+		return true
+	})
+
+	return calls, nil
 }
 
 // findRefs returns one EmulatorRef per line of data matching re, whose first group is the
@@ -273,40 +360,72 @@ func parseStructDocs(rel string, src []byte) ([]structDoc, error) {
 	return docs, nil
 }
 
-// parseRoleMigrations returns every access.MigrateRoles call in the file. Calls through
-// an application wrapper of the same name are not counted: the wrapper's own call is.
-func parseRoleMigrations(rel string, src []byte) ([]RoleMigration, error) {
+// parseRoleMigrations returns every access.MigrateRoles call in the file, and the
+// functions that wrap it by passing their own variadic domains through, whose callers
+// are role migrations as well.
+func parseRoleMigrations(rel string, src []byte) (calls []RoleMigration, wrappers []roleWrapper, err error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
 	if err != nil {
-		return nil, errors.Wrap(err, "parser.ParseFile()")
+		return nil, nil, errors.Wrap(err, "parser.ParseFile()")
 	}
 	pkg := localImportName(f, accessImportPath)
 	if pkg == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 
-	var calls []RoleMigration
-	ast.Inspect(f, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok || !isQualified(call.Fun, pkg, "MigrateRoles") {
+	for _, decl := range f.Decls {
+		fd, _ := decl.(*ast.FuncDecl)
+		ast.Inspect(decl, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok || !isQualified(call.Fun, pkg, "MigrateRoles") {
+				return true
+			}
+			domains := len(call.Args) - migrateRolesFixedArgs
+			if call.Ellipsis.IsValid() {
+				domains-- // the spread slice is not a domain
+			}
+			calls = append(calls, RoleMigration{
+				File:    rel,
+				Line:    fset.Position(call.Pos()).Line,
+				Domains: max(domains, 0),
+				Spread:  call.Ellipsis.IsValid(),
+			})
+			if w, ok := wrapperOf(fd, call); ok {
+				wrappers = append(wrappers, w)
+			}
+
 			return true
-		}
-		domains := len(call.Args) - migrateRolesFixedArgs
-		if call.Ellipsis.IsValid() {
-			domains-- // the spread slice is not a domain
-		}
-		calls = append(calls, RoleMigration{
-			File:    rel,
-			Line:    fset.Position(call.Pos()).Line,
-			Domains: max(domains, 0),
-			Spread:  call.Ellipsis.IsValid(),
 		})
+	}
 
-		return true
-	})
+	return calls, wrappers, nil
+}
 
-	return calls, nil
+// wrapperOf reports whether the call spreads the enclosing top-level function's own
+// variadic parameter, which makes that function a MigrateRoles wrapper.
+func wrapperOf(fd *ast.FuncDecl, call *ast.CallExpr) (roleWrapper, bool) {
+	if fd == nil || fd.Recv != nil || !call.Ellipsis.IsValid() || len(call.Args) == 0 || fd.Type.Params == nil {
+		return roleWrapper{}, false
+	}
+	params := fd.Type.Params.List
+	if len(params) == 0 {
+		return roleWrapper{}, false
+	}
+	last := params[len(params)-1]
+	if _, variadic := last.Type.(*ast.Ellipsis); !variadic || len(last.Names) != 1 {
+		return roleWrapper{}, false
+	}
+	spread, ok := call.Args[len(call.Args)-1].(*ast.Ident)
+	if !ok || spread.Name != last.Names[0].Name {
+		return roleWrapper{}, false
+	}
+	fixed := 0
+	for _, p := range params[:len(params)-1] {
+		fixed += max(len(p.Names), 1)
+	}
+
+	return roleWrapper{Func: fd.Name.Name, Fixed: fixed}, true
 }
 
 // localImportName returns the name the file imports the path under, or empty when the

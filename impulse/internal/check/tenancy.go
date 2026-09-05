@@ -64,7 +64,7 @@ func (c tenancyWired) Run(_ context.Context, env *Env) Result {
 	}
 	for _, m := range a.RoleMigrations {
 		if !m.WithDomains() {
-			details = append(details, fmt.Sprintf("%s:%d: access.MigrateRoles is called without domains; roles never reach the tenants", m.File, m.Line))
+			details = append(details, fmt.Sprintf("%s:%d: %s is called without domains; roles never reach the tenants", m.File, m.Line, m.Callee()))
 		}
 	}
 
@@ -90,7 +90,7 @@ func (c tenancyWired) untenanted(a *app.App) Result {
 	}
 	for _, m := range a.RoleMigrations {
 		if m.Domains > 0 {
-			details = append(details, fmt.Sprintf("%s:%d: access.MigrateRoles receives %d domain(s), but the application is not tenanted", m.File, m.Line, m.Domains))
+			details = append(details, fmt.Sprintf("%s:%d: %s receives %d domain(s), but the application is not tenanted", m.File, m.Line, m.Callee(), m.Domains))
 		}
 	}
 	if len(details) > 0 {
