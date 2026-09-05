@@ -144,6 +144,17 @@ linters:
           - gosec
         path: internal/skeleton/render\.go
         text: G30[16]
+      # The agent executable is the --agent-command flag: launching what the user named is
+      # the command's purpose, and the brief goes to it on standard input.
+      - linters:
+          - gosec
+        path: internal/handoff/agent\.go
+        text: G204
+      # Tests edit copies of the fixture applications under their own temporary directory.
+      - linters:
+          - gosec
+        path: _test\.go
+        text: G703
     paths:
       - third_party$
       - builtin$

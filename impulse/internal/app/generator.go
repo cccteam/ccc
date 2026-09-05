@@ -173,6 +173,14 @@ func (g *Generator) TypescriptTargets() []TSTarget {
 	return targets
 }
 
+// ParseGenerator reads one Go source file and returns the generator program it holds, or
+// nil when the file makes no generation.NewResourceGenerator call. Discover reads the
+// programs in the tree; this reads one from elsewhere, such as an earlier version of the
+// file held by version control.
+func ParseGenerator(rel string, src []byte) (*Generator, error) {
+	return parseGenerator(rel, src)
+}
+
 // parseGenerator reads one Go source file and returns the generator program it holds, or
 // nil when the file makes no generation.NewResourceGenerator call.
 func parseGenerator(rel string, src []byte) (*Generator, error) {

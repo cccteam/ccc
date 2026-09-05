@@ -40,6 +40,7 @@ func newRoot() *cobra.Command {
 	}
 	root.AddCommand(newCheck())
 	root.AddCommand(newRender())
+	root.AddCommand(newHandoff())
 
 	return root
 }

@@ -66,6 +66,37 @@ so it builds against local framework work instead of the pins; indirect requirem
 stay pinned, since a checkout of a library's own dependency can lag what the library needs. That `go.work` is for
 development only; never commit it.
 
+## impulse handoff
+
+`handoff` is the protocol between the tool and an agent for the work the tool cannot do
+mechanically. It runs `impulse check` on a clean working tree in a git repository and,
+when checks fail, writes a brief for an agent to `.impulse-handoff.md` at the application
+root: the failing checks verbatim as the obligations, the option set in force (read from
+the generator programs), a reference application when one is given, and the rules. The
+brief is Markdown any agent can read; the tool never reads it back.
+
+```sh
+impulse handoff                      # write the brief and print the command to run the agent
+impulse handoff --agent              # launch Claude Code on the brief, then verify
+impulse handoff --verify             # after an agent run by hand: check + guardrails
+impulse handoff --reference ../tenanted --skip-generate
+```
+
+With `--agent` the tool launches Claude Code non-interactively (`claude -p`) with the
+brief on standard input and a tool set restricted to reading, editing, and the build
+commands; `--agent-command` names another executable, and each `--agent-arg` appends an
+argument to its command line (a model, a turn limit, a budget). When the agent returns, or on
+`--verify`, the tool re-runs the check and adds a `guardrails` result: the generator
+programs' option set and the lint configuration (`.golangci.*` at the root, the eslint
+configuration of each browser app) must read the same as the git index holds them, and
+with `--agent` the commit and the staged paths must not have moved. A weakened check is a
+failure, not a pass. A clean verification removes the brief; the pull request is the
+review, and there is no gate before it.
+
+The brief's rules are the ones the verification enforces: run the check until it is
+clean, do not edit generated files, the generator programs, or the lint configuration,
+do not stage or commit, keep the tests table-driven, stop when the check is clean.
+
 ## Templates
 
 The application skeletons `new` and `add` will render live under
