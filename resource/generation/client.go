@@ -372,6 +372,9 @@ func (c *client) writeFormattedGoFile(destinationPath, templateName, fileTemplat
 		return err
 	}
 
+	if err := os.MkdirAll(filepath.Dir(destinationPath), 0o750); err != nil {
+		return errors.Wrap(err, "os.MkdirAll()")
+	}
 	if err := os.WriteFile(destinationPath, formattedOutput, 0o644); err != nil {
 		return errors.Wrapf(err, "os.WriteFile(): file: %s", destinationPath)
 	}
@@ -478,9 +481,15 @@ func isVowel(b byte) bool {
 	}
 }
 
+// removeGeneratedFiles sweeps the previous run's output from directory. A directory
+// that does not exist yet holds nothing to remove: the first generate into a fresh
+// target creates it when the first file is written.
 func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) error {
 	log.Printf("removing generated files in directory %q...", directory)
 	dir, err := os.Open(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		return errors.Wrap(err, "os.Open()")
 	}

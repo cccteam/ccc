@@ -220,6 +220,12 @@ func (t *typescriptGenerator) Generate() error {
 		rpcMethod.Fields = t.rpcFieldsTypescriptType(rpcMethod.Fields)
 	}
 
+	// The target directory may not exist on a first generate into a fresh
+	// application; nothing else in the pipeline creates it.
+	if err := os.MkdirAll(t.typescriptDestination, 0o750); err != nil {
+		return errors.Wrap(err, "os.MkdirAll()")
+	}
+
 	if err := t.runTypescriptMetadataGeneration(); err != nil {
 		return err
 	}
