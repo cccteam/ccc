@@ -118,6 +118,7 @@ func (OSExec) Run(ctx context.Context, dir string, extraEnv []string, name strin
 func All() []Check {
 	return []Check{
 		generatorProgram{},
+		options{},
 		emulatorVersion{},
 		prettierIgnore{},
 		eslintIgnore{},

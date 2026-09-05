@@ -43,6 +43,24 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			},
 		},
 		{
+			name: "options single site", fixture: "singlesite", check: options{},
+			wantStatus: Pass, wantSummary: "flat layout, 1 site(s); not tenanted; outlets portal (sessions)",
+			wantDetails: []string{
+				"lighthouse (cmd/generate/resourcegenerator/main.go): resources pkg/resources, handlers app, routes pkg/router under /api, tests test/authz, rpc pkg/rpc, typescript web/console/src/app/core/service, typescript web/portal/src/app/core/service (outlet portal)",
+			},
+		},
+		{
+			name: "options multi site", fixture: "multisite", check: options{},
+			wantStatus: Fail, wantSummary: "1 option set problem(s)",
+			wantDetails: []string{
+				"cmd/generate/resourcegenerator_tugs/main.go: GenerateRoutes names apps/tugs/pkg/router, which is not a directory in the tree",
+			},
+		},
+		{
+			name: "options bad program", fixture: "badprogram", check: options{},
+			wantStatus: Skip, wantSummary: "a generator program could not be read completely (see generator-program)",
+		},
+		{
 			name: "emulator-version single site", fixture: "singlesite", check: emulatorVersion{},
 			wantStatus: Pass, wantSummary: "3 reference(s) agree on 1.5.56",
 		},

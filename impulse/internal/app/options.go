@@ -94,6 +94,9 @@ func (k paramKind) optionKind() optionKind {
 	}
 }
 
+// Option constructor names the profile reads beyond the positional accessors.
+const optServesSessions = "ServesSessions"
+
 // optionSpec describes one known option constructor: what it returns and what it takes.
 type optionSpec struct {
 	kind     optionKind
@@ -124,7 +127,7 @@ var knownOptions = map[string]optionSpec{
 	"WithComputedResources":      {kind: kindResourceOption, params: []paramKind{paramString}},
 	"WithRPC":                    {kind: kindResourceOption, params: []paramKind{paramString}},
 
-	"ServesSessions": {kind: kindOutletOption},
+	optServesSessions: {kind: kindOutletOption},
 
 	"WithTypescriptOverrides": {kind: kindTSOption, params: []paramKind{paramStringMap}},
 	"ForOutlet":               {kind: kindTSOption, params: []paramKind{paramString}},
