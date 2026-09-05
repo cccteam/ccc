@@ -119,6 +119,7 @@ func All() []Check {
 	return []Check{
 		generatorProgram{},
 		options{},
+		tenancyWired{},
 		emulatorVersion{},
 		prettierIgnore{},
 		eslintIgnore{},

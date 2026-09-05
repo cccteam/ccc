@@ -3,6 +3,7 @@ module github.com/cccteam/ccc/impulse
 go 1.26.6
 
 require (
+	github.com/ettle/strcase v0.2.0
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
 	github.com/spf13/cobra v1.10.2

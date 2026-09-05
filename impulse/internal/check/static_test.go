@@ -61,6 +61,21 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "a generator program could not be read completely (see generator-program)",
 		},
 		{
+			name: "tenancy-wired untenanted with a tenant-scoped struct", fixture: "singlesite", check: tenancyWired{},
+			wantStatus: Fail, wantSummary: "1 tenancy wiring problem(s) in an untenanted application",
+			wantDetails: []string{
+				"pkg/resources/beacons.go:8: Beacon is @permissionScope(domain), but no WithDomainRoute names the tenant segment; it is served under the default /domain/{domain}/ pair",
+			},
+		},
+		{
+			name: "tenancy-wired untenanted multi site", fixture: "multisite", check: tenancyWired{},
+			wantStatus: Pass, wantSummary: "not tenanted: no tenant-scoped resources, roles provisioned globally",
+		},
+		{
+			name: "tenancy-wired no site", fixture: "badprogram", check: tenancyWired{},
+			wantStatus: Skip, wantSummary: "no site generator",
+		},
+		{
 			name: "emulator-version single site", fixture: "singlesite", check: emulatorVersion{},
 			wantStatus: Pass, wantSummary: "3 reference(s) agree on 1.5.56",
 		},

@@ -111,3 +111,19 @@ func TestSiteDir(t *testing.T) {
 		})
 	}
 }
+
+func TestTenancyScan(t *testing.T) {
+	t.Parallel()
+
+	a, err := Discover("testdata/singlesite")
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	wantResources := []DomainResource{{File: "pkg/resources/beacons.go", Line: 8, Name: "Beacon"}}
+	if diff := cmp.Diff(wantResources, a.DomainResources); diff != "" {
+		t.Errorf("DomainResources mismatch (-want +got):\n%s", diff)
+	}
+	if len(a.RoleMigrations) != 0 {
+		t.Errorf("RoleMigrations = %v, want none", a.RoleMigrations)
+	}
+}

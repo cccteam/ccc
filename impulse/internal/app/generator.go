@@ -213,19 +213,7 @@ func parseGenerator(rel string, src []byte) (*Generator, error) {
 // generationLocalName returns the local name the file imports the generation package
 // under, or empty when the file does not import it.
 func generationLocalName(f *ast.File) string {
-	for _, imp := range f.Imports {
-		p, err := strconv.Unquote(imp.Path.Value)
-		if err != nil || p != generationImportPath {
-			continue
-		}
-		if imp.Name != nil {
-			return imp.Name.Name
-		}
-
-		return path.Base(p)
-	}
-
-	return ""
+	return localImportName(f, generationImportPath)
 }
 
 // isQualified reports whether fun is the selector pkg.name.

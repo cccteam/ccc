@@ -60,6 +60,7 @@ linters:
           allow:
             - $gostd
             - github.com/cccteam
+            - github.com/ettle/strcase
             - github.com/go-playground/errors/v5
             - github.com/google/go-cmp
             - github.com/spf13/cobra

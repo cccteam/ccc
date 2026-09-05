@@ -7,9 +7,11 @@ import (
 	"go/token"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -95,12 +97,29 @@ func (a *App) scanGoFile(abs, rel string) error {
 		}
 	}
 
-	if bytes.Contains(data, []byte(`env:"`)) && !strings.HasPrefix(filepath.Base(rel), "zz_gen_") {
+	generated := strings.HasPrefix(filepath.Base(rel), "zz_gen_")
+	if bytes.Contains(data, []byte(`env:"`)) && !generated {
 		tags, err := parseEnvTags(rel, data)
 		if err != nil {
 			return err
 		}
 		a.EnvTags = append(a.EnvTags, tags...)
+	}
+
+	if bytes.Contains(data, []byte("@"+permissionScopeKeyword)) && !generated {
+		resources, err := parseDomainResources(rel, data)
+		if err != nil {
+			return err
+		}
+		a.DomainResources = append(a.DomainResources, resources...)
+	}
+
+	if bytes.Contains(data, []byte("MigrateRoles(")) {
+		calls, err := parseRoleMigrations(rel, data)
+		if err != nil {
+			return err
+		}
+		a.RoleMigrations = append(a.RoleMigrations, calls...)
 	}
 
 	return nil
@@ -119,6 +138,109 @@ func findRefs(rel string, data []byte, re *regexp.Regexp) []EmulatorRef {
 	}
 
 	return refs
+}
+
+// The annotation and import the tenancy scan reads.
+const (
+	permissionScopeKeyword = "permissionScope"
+	accessImportPath       = "github.com/cccteam/access"
+	// migrateRolesFixedArgs is how many arguments access.MigrateRoles takes before the
+	// domains: ctx, manager, collection, roles.
+	migrateRolesFixedArgs = 4
+)
+
+// domainScopeRE matches the @permissionScope(domain) struct annotation in a doc comment.
+var domainScopeRE = regexp.MustCompile(`@` + permissionScopeKeyword + `\(\s*domain\s*\)`)
+
+// parseDomainResources returns every struct type in the file whose doc comment carries
+// @permissionScope(domain).
+func parseDomainResources(rel string, src []byte) ([]DomainResource, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.ParseComments|parser.SkipObjectResolution)
+	if err != nil {
+		return nil, errors.Wrap(err, "parser.ParseFile()")
+	}
+
+	var resources []DomainResource
+	for _, decl := range f.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			if _, isStruct := ts.Type.(*ast.StructType); !isStruct {
+				continue
+			}
+			doc := ts.Doc
+			if doc == nil && len(gen.Specs) == 1 {
+				doc = gen.Doc
+			}
+			if doc == nil || !domainScopeRE.MatchString(doc.Text()) {
+				continue
+			}
+			resources = append(resources, DomainResource{File: rel, Line: fset.Position(ts.Pos()).Line, Name: ts.Name.Name})
+		}
+	}
+
+	return resources, nil
+}
+
+// parseRoleMigrations returns every access.MigrateRoles call in the file. Calls through
+// an application wrapper of the same name are not counted: the wrapper's own call is.
+func parseRoleMigrations(rel string, src []byte) ([]RoleMigration, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, errors.Wrap(err, "parser.ParseFile()")
+	}
+	pkg := localImportName(f, accessImportPath)
+	if pkg == "" {
+		return nil, nil
+	}
+
+	var calls []RoleMigration
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || !isQualified(call.Fun, pkg, "MigrateRoles") {
+			return true
+		}
+		domains := len(call.Args) - migrateRolesFixedArgs
+		if call.Ellipsis.IsValid() {
+			domains-- // the spread slice is not a domain
+		}
+		calls = append(calls, RoleMigration{
+			File:    rel,
+			Line:    fset.Position(call.Pos()).Line,
+			Domains: max(domains, 0),
+			Spread:  call.Ellipsis.IsValid(),
+		})
+
+		return true
+	})
+
+	return calls, nil
+}
+
+// localImportName returns the name the file imports the path under, or empty when the
+// file does not import it.
+func localImportName(f *ast.File, importPath string) string {
+	for _, imp := range f.Imports {
+		p, err := strconv.Unquote(imp.Path.Value)
+		if err != nil || p != importPath {
+			continue
+		}
+		if imp.Name != nil {
+			return imp.Name.Name
+		}
+
+		return path.Base(p)
+	}
+
+	return ""
 }
 
 // parseEnvTags returns every env struct tag in the file. Tags without a name (such as

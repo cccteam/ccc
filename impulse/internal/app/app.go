@@ -35,7 +35,34 @@ type App struct {
 	// EnvTemplate is the root-relative path of the development environment template
 	// (.envrc.template or similar), or empty when the application has none.
 	EnvTemplate string
+	// DomainResources are the structs the application's own code annotates
+	// @permissionScope(domain): the tenant-scoped resources.
+	DomainResources []DomainResource
+	// RoleMigrations are the calls to access.MigrateRoles outside tests: where the
+	// application provisions its roles.
+	RoleMigrations []RoleMigration
 }
+
+// DomainResource is one struct annotated @permissionScope(domain).
+type DomainResource struct {
+	File string
+	Line int
+	Name string
+}
+
+// RoleMigration is one call to access.MigrateRoles.
+type RoleMigration struct {
+	File string
+	Line int
+	// Domains counts the domain arguments after the four fixed ones.
+	Domains int
+	// Spread reports a trailing slice argument (domains...), which may be empty at run
+	// time: an untenanted application's wrapper passes its own empty variadic through.
+	Spread bool
+}
+
+// WithDomains reports whether the call can provision roles into tenants.
+func (m RoleMigration) WithDomains() bool { return m.Domains > 0 || m.Spread }
 
 // WebApp is one browser application.
 type WebApp struct {
