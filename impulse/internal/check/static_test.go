@@ -51,9 +51,10 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 		},
 		{
 			name: "options multi site", fixture: "multisite", check: options{},
-			wantStatus: Fail, wantSummary: "1 option set problem(s)",
+			wantStatus: Fail, wantSummary: "2 option set problem(s)",
 			wantDetails: []string{
 				"cmd/generate/resourcegenerator_tugs/main.go: GenerateRoutes names apps/tugs/pkg/router, which is not a directory in the tree",
+				"cmd/generate/resourcegenerator_tugs/main.go: no //go:generate directive runs this program, so go generate ./... never regenerates it",
 			},
 		},
 		{
@@ -92,6 +93,24 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 		},
 		{
 			name: "outlet-wired no site", fixture: "badprogram", check: outletWired{},
+			wantStatus: Skip, wantSummary: "no site generator",
+		},
+		{
+			name: "sites-wired flat", fixture: "singlesite", check: sitesWired{},
+			wantStatus: Skip, wantSummary: "flat layout: one site",
+		},
+		{
+			name: "sites-wired nothing serves the sites", fixture: "multisite", check: sitesWired{},
+			wantStatus: Fail, wantSummary: "4 site wiring problem(s)",
+			wantDetails: []string{
+				"site pilots has no main package in apps/pilots; nothing serves it",
+				"no process file runs site pilots (expected a process running go run ./apps/pilots)",
+				"site tugs has no main package in apps/tugs; nothing serves it",
+				"no process file runs site tugs (expected a process running go run ./apps/tugs)",
+			},
+		},
+		{
+			name: "sites-wired no site", fixture: "badprogram", check: sitesWired{},
 			wantStatus: Skip, wantSummary: "no site generator",
 		},
 		{

@@ -13,9 +13,12 @@ import (
 )
 
 // program renders one generator program: the resource package, its module-local
-// packages, and the option calls, one per line.
+// packages, and the option calls, one per line. The program runs itself under go
+// generate, as the options check requires.
 func program(resourceDir string, options ...string) string {
 	return `package main
+
+//go:generate go run .
 
 import (
 	"context"
@@ -83,14 +86,14 @@ func TestOptionsCoherence(t *testing.T) {
 			wantStatus:  Fail,
 			wantSummary: "8 option set problem(s)",
 			wantDetails: []string{
-				"cmd/generate/main.go:12: GenerateHandlers passed 2 times; the last call silently wins",
-				"cmd/generate/main.go:17: GenerateTypescript target web/portal/src repeats the target at cmd/generate/main.go:16",
+				"cmd/generate/main.go:14: GenerateHandlers passed 2 times; the last call silently wins",
+				"cmd/generate/main.go:19: GenerateTypescript target web/portal/src repeats the target at cmd/generate/main.go:18",
 				"cmd/generate/main.go: GenerateHandlers without GenerateRoutes; nothing serves the handlers",
-				"cmd/generate/main.go:13: WithRouterOutlet requires GenerateRoutes",
+				"cmd/generate/main.go:15: WithRouterOutlet requires GenerateRoutes",
 				"cmd/generate/main.go: WithConcealedDomains without WithDomainRoute; there are no domains to conceal",
-				`cmd/generate/main.go:14: outlet "portal" is declared again (first at cmd/generate/main.go:13)`,
-				`cmd/generate/main.go:16: ForOutlet("portal") names an outlet without ServesSessions; a browser app cannot bootstrap there`,
-				`cmd/generate/main.go:17: ForOutlet("ghost") names an outlet the program does not declare`,
+				`cmd/generate/main.go:16: outlet "portal" is declared again (first at cmd/generate/main.go:15)`,
+				`cmd/generate/main.go:18: ForOutlet("portal") names an outlet without ServesSessions; a browser app cannot bootstrap there`,
+				`cmd/generate/main.go:19: ForOutlet("ghost") names an outlet the program does not declare`,
 			},
 		},
 		{
@@ -111,7 +114,7 @@ func TestOptionsCoherence(t *testing.T) {
 				"cmd/generate/main.go: GenerateRoutes names pkg/router, which is not a directory in the tree",
 				"cmd/generate/main.go: WithRPC names pkg/rpc, which is not a directory in the tree",
 				"cmd/generate/main.go: local package example.com/harbor/pkg/resources has no directory pkg/resources in the module",
-				`cmd/generate/main.go:14: ForOutlet("portal") names an outlet the program does not declare`,
+				`cmd/generate/main.go:16: ForOutlet("portal") names an outlet the program does not declare`,
 			},
 		},
 		{

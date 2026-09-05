@@ -105,7 +105,7 @@ func New(h any) {
 			wantSummary: "3 outlet wiring problem(s)",
 			wantDetails: []string{
 				"web/portal/proxy.conf.js does not forward /portal/api, the portal outlet's prefix, so ng serve for portal cannot reach it",
-				"cmd/generate/main.go:14: outlet kiosk serves sessions, but no GenerateTypescript target names it (ForOutlet); no browser app can bootstrap there",
+				"cmd/generate/main.go:16: outlet kiosk serves sessions, but no GenerateTypescript target names it (ForOutlet); no browser app can bootstrap there",
 				"cmd/generate/main.go: no file in pkg/router calls generatedMachinesRoutes; the machines outlet's routes are not mounted",
 				"outlet kiosk has no @outlet(kiosk) members yet",
 			},

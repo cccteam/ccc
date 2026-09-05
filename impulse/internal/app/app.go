@@ -44,6 +44,18 @@ type App struct {
 	// OutletMembers are the structs the application's own code annotates @outlet: the
 	// resources attached to router outlets other than, or in addition to, the default.
 	OutletMembers []OutletMember
+	// GoGenerate are the //go:generate directives in the tree.
+	GoGenerate []Directive
+	// MainPackages are the root-relative directories holding a package main.
+	MainPackages []string
+}
+
+// Directive is one //go:generate directive.
+type Directive struct {
+	File string
+	Line int
+	// Command is the directive's command line.
+	Command string
 }
 
 // OutletMember is one struct annotated @outlet(...).

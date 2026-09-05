@@ -59,8 +59,9 @@ func (c options) Run(_ context.Context, env *Env) Result {
 }
 
 // programFindings checks one program against itself and the tree: repeated
-// single-valued options, referenced directories that do not exist, and local packages
-// outside the module or without a directory.
+// single-valued options, referenced directories that do not exist, local packages
+// without a directory in the module, a program go generate never runs, and repeated
+// TypeScript targets.
 func (options) programFindings(a *app.App, g *app.Generator) []string {
 	var details []string
 	for _, name := range singleOptions {
@@ -99,6 +100,10 @@ func (options) programFindings(a *app.App, g *app.Generator) []string {
 		if info, err := os.Stat(a.Abs(dir)); err != nil || !info.IsDir() {
 			details = append(details, fmt.Sprintf("%s: local package %s has no directory %s in the module", g.File, pkg, dir))
 		}
+	}
+
+	if _, ok := a.RunsGenerator(g); !ok {
+		details = append(details, fmt.Sprintf("%s: no //go:generate directive runs this program, so go generate ./... never regenerates it", g.File))
 	}
 
 	seen := map[string]string{}

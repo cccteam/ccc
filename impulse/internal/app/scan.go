@@ -127,6 +127,17 @@ func (a *App) scanGoFile(abs, rel string) error {
 		}
 	}
 
+	if bytes.Contains(data, []byte("//go:generate")) {
+		a.GoGenerate = append(a.GoGenerate, findDirectives(rel, data)...)
+	}
+
+	if bytes.HasPrefix(bytes.TrimSpace(stripLeadingComments(data)), []byte("package main")) {
+		dir := path.Dir(rel)
+		if len(a.MainPackages) == 0 || a.MainPackages[len(a.MainPackages)-1] != dir {
+			a.MainPackages = append(a.MainPackages, dir)
+		}
+	}
+
 	if bytes.Contains(data, []byte("MigrateRoles(")) {
 		calls, err := parseRoleMigrations(rel, data)
 		if err != nil {
@@ -151,6 +162,47 @@ func findRefs(rel string, data []byte, re *regexp.Regexp) []EmulatorRef {
 	}
 
 	return refs
+}
+
+// goGenerateRE matches a //go:generate directive at the start of a line.
+var goGenerateRE = regexp.MustCompile(`^//go:generate\s+(.+?)\s*$`)
+
+// findDirectives returns the //go:generate directives in the file.
+func findDirectives(rel string, data []byte) []Directive {
+	var directives []Directive
+	line := 0
+	for l := range bytes.Lines(data) {
+		line++
+		if m := goGenerateRE.FindSubmatch(bytes.TrimRight(l, "\r\n")); m != nil {
+			directives = append(directives, Directive{File: rel, Line: line, Command: string(m[1])})
+		}
+	}
+
+	return directives
+}
+
+// stripLeadingComments drops the comment lines and blank lines before a file's package
+// clause, so the clause can be read without a full parse.
+func stripLeadingComments(data []byte) []byte {
+	for {
+		trimmed := bytes.TrimLeft(data, " \t\r\n")
+		switch {
+		case bytes.HasPrefix(trimmed, []byte("//")):
+			i := bytes.IndexByte(trimmed, '\n')
+			if i < 0 {
+				return nil
+			}
+			data = trimmed[i+1:]
+		case bytes.HasPrefix(trimmed, []byte("/*")):
+			i := bytes.Index(trimmed, []byte("*/"))
+			if i < 0 {
+				return nil
+			}
+			data = trimmed[i+2:]
+		default:
+			return trimmed
+		}
+	}
 }
 
 // The annotations and import the scan reads.
