@@ -55,6 +55,11 @@ func (s *RPCDecoder[Request]) WithValidator(v ValidatorFunc) *RPCDecoder[Request
 
 // Decode decodes the HTTP request body into the Request struct and checks user permissions
 // in the given domain partition.
+//
+// The check is eager (decode is the last library-controlled point before application
+// code executes), so it must resolve to Granted or Denied: a Conditional decision here
+// is a 500-class invariant breach — an RPC method has no rows for a condition to
+// evaluate against, and MigrateRoles rejects such grants at deploy.
 func (s *RPCDecoder[Request]) Decode(request *http.Request, scope accesstypes.Scope) (*Request, error) {
 	req, err := s.d.Decode(request)
 	if err != nil {
@@ -62,10 +67,15 @@ func (s *RPCDecoder[Request]) Decode(request *http.Request, scope accesstypes.Sc
 	}
 
 	userPermissions := s.userPermissions(request)
-	if missing, err := userPermissions.Check(request.Context(), scope, s.requiredPermission, s.res); err != nil {
-		return nil, errors.Wrap(err, "enforcer.RequireResource()")
-	} else if len(missing) > 0 {
-		return nil, httpio.NewForbiddenMessagef("user %s, scope %s, does not have %s on %s", userPermissions.User(), scope, s.requiredPermission, missing)
+	decisions, err := userPermissions.Check(request.Context(), newRequestEnvironment(), scope, s.requiredPermission, s.res)
+	if err != nil {
+		return nil, errors.Wrap(err, "resource.UserPermissions.Check()")
+	}
+	if denied := decisions.DeniedResources(); len(denied) > 0 {
+		return nil, httpio.NewForbiddenMessagef("user %s, scope %s, does not have %s on %s", userPermissions.User(), scope, s.requiredPermission, denied)
+	}
+	if conditional := decisions.ConditionalResources(); len(conditional) > 0 {
+		return nil, errConditionalAtDecode(s.requiredPermission, conditional)
 	}
 
 	return req, nil

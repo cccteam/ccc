@@ -1,0 +1,48 @@
+<h1>Ship's Log</h1>
+<p>
+  Every change to a mission, a refit, or a ship in this sector, newest first. A Hail appears as an entry whose only
+  changed field is the timestamp — a touch. Under an assumed role the source names the actor and the role.
+</p>
+
+<app-star-chart></app-star-chart>
+
+@if (!canList()) {
+  <mat-card appearance="outlined" class="table-card">
+    <p class="empty">Your posting in {{ sector() || 'this sector' }} does not cover the ship's log.</p>
+  </mat-card>
+} @else {
+  <mat-card appearance="outlined" class="table-card">
+    <table mat-table [dataSource]="entries.value()">
+      <ng-container matColumnDef="eventTime">
+        <th mat-header-cell *matHeaderCellDef>When</th>
+        <td mat-cell *matCellDef="let entry">{{ entry.eventTime | date: 'medium' }}</td>
+      </ng-container>
+      <ng-container matColumnDef="tableName">
+        <th mat-header-cell *matHeaderCellDef>Resource</th>
+        <td mat-cell *matCellDef="let entry">{{ entry.tableName }}</td>
+      </ng-container>
+      <ng-container matColumnDef="rowId">
+        <th mat-header-cell *matHeaderCellDef>Row</th>
+        <td mat-cell *matCellDef="let entry" class="mono">{{ entry.rowId }}</td>
+      </ng-container>
+      <ng-container matColumnDef="eventSource">
+        <th mat-header-cell *matHeaderCellDef>Who</th>
+        <td mat-cell *matCellDef="let entry" class="mono">{{ entry.eventSource }}</td>
+      </ng-container>
+      <ng-container matColumnDef="changeSet">
+        <th mat-header-cell *matHeaderCellDef>Change</th>
+        <td mat-cell *matCellDef="let entry" class="change">
+          @if (isTouch(entry)) {
+            <span class="touch">hail (touch)</span>
+          }
+          {{ changeSetLabel(entry) }}
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let row; columns: columns"></tr>
+    </table>
+    @if (!entries.value().length) {
+      <p class="empty">No log entries yet in {{ sector() }} — move a mission or hail a ship and come back.</p>
+    }
+  </mat-card>
+}

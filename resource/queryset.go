@@ -35,6 +35,38 @@ type QuerySet[Resource Resourcer] struct {
 	requiredPermission     accesstypes.Permission
 	filterAst              ExpressionNode
 	filterParser           func(DBType) (ExpressionNode, error)
+
+	// env is the request's decision context, stamped by the decoder that built
+	// the QuerySet (a QuerySet built by hand carries the empty Environment).
+	// The permission checks fold conditions against it, and condition rendering
+	// binds the same value as SQL parameters.
+	env accesstypes.Environment
+
+	// conditionalDecisions carries the Conditional decisions the permission
+	// checks returned, keyed by checked resource — a conditional grant is a
+	// grant, so its resources pass the gate and the conditions travel here for
+	// the E-phase lowering (read WHERE/CASE mask rendering, the delete
+	// check-SELECT). While the engine holds no conditions the map stays empty
+	// and behavior is byte-identical RBAC.
+	conditionalDecisions accesstypes.Decisions
+
+	// collection resolves condition rendering: the checked resource's bindings
+	// and the app's subject anchors. Stamped by the decoder; nil on a
+	// hand-built QuerySet, which errors if conditions ever need rendering.
+	collection *GeneratedCollection
+
+	// jsonNames maps resource fields to their request-type JSON names for the
+	// masked-names column. Stamped by the decoder; a missing entry falls back
+	// to the Go field name.
+	jsonNames map[accesstypes.Field]string
+
+	// capabilities are the write permissions the request asked to evaluate
+	// per row (the §13 capability envelope), in request order;
+	// capabilityDecisions carries each one's full engine answer for the
+	// statement's capability plan. Both stay empty unless the request opted
+	// in, keeping capability-free statements byte-identical.
+	capabilities        []accesstypes.Permission
+	capabilityDecisions map[accesstypes.Permission]accesstypes.Decisions
 }
 
 // NewQuerySet creates a new, empty QuerySet for a given resource metadata.
@@ -104,13 +136,27 @@ func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource]
 	return q
 }
 
+// checkPermissions runs the read's own permission gates and, when the request
+// opted into the capability envelope, the advisory capability checks — all
+// against the same environment.
 func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType) error {
+	if err := q.checkReadPermissions(ctx, dbType); err != nil {
+		return err
+	}
+
+	return q.checkCapabilityPermissions(ctx)
+}
+
+func (q *QuerySet[Resource]) checkReadPermissions(ctx context.Context, dbType DBType) error {
 	if q.resourceSet != nil {
-		if missing, err := q.userPermissions.Check(ctx, q.scope, q.requiredPermission, q.resourceSet.BaseResource()); err != nil {
-			return errors.Wrap(err, "enforcer.RequireResource()")
-		} else if len(missing) > 0 {
-			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, missing)
+		decisions, err := q.userPermissions.Check(ctx, q.env, q.scope, q.requiredPermission, q.resourceSet.BaseResource())
+		if err != nil {
+			return errors.Wrap(err, "resource.UserPermissions.Check()")
 		}
+		if denied := decisions.DeniedResources(); len(denied) > 0 {
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, denied)
+		}
+		q.carryConditionalDecisions(decisions)
 	}
 
 	fields := q.Fields()
@@ -128,14 +174,44 @@ func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType
 			}
 		}
 
-		if missing, err := q.userPermissions.Check(ctx, q.scope, q.requiredPermission, resources...); err != nil {
-			return errors.Wrap(err, "enforcer.RequireResource()")
-		} else if len(missing) > 0 {
-			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, missing)
+		// A conditional grant is a grant: explicitly requested fields it covers
+		// pass this gate, and their conditions ride the set. Only a field no
+		// grant covers at all is Forbidden.
+		decisions, err := q.userPermissions.Check(ctx, q.env, q.scope, q.requiredPermission, resources...)
+		if err != nil {
+			return errors.Wrap(err, "resource.UserPermissions.Check()")
 		}
+		if denied := decisions.DeniedResources(); len(denied) > 0 {
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, denied)
+		}
+		q.carryConditionalDecisions(decisions)
 	}
 
 	return nil
+}
+
+// RequestCapabilities asks the read to evaluate per-row write affordances for
+// perms and attach them under the reserved capability property (§13). The
+// supported permissions are Update (a positive list of editable JSON field
+// names), Delete (a boolean), and Execute (a positive list of the RPC methods
+// whose declared transitions apply to the row). The answers are advisory
+// hints for the UI; enforcement stays with the write stages.
+func (q *QuerySet[Resource]) RequestCapabilities(perms ...accesstypes.Permission) {
+	q.capabilities = perms
+}
+
+// carryConditionalDecisions records the Conditional decisions from one Check
+// call on the QuerySet for the E-phase condition lowering.
+func (q *QuerySet[Resource]) carryConditionalDecisions(decisions accesstypes.Decisions) {
+	for res, decision := range decisions {
+		if !decision.IsConditional() {
+			continue
+		}
+		if q.conditionalDecisions == nil {
+			q.conditionalDecisions = accesstypes.Decisions{}
+		}
+		q.conditionalDecisions[res] = decision
+	}
 }
 
 // requestable reports whether a field can be requested by a client. A field outside the
@@ -176,20 +252,21 @@ func (q *QuerySet[Resource]) addAccessibleFields(ctx context.Context, dbType DBT
 			}
 		}
 
-		denied := make(map[accesstypes.Resource]struct{})
+		// The default projection is every field some grant mentions: Granted and
+		// Conditional candidates are included (a blocked cell is the rendering's
+		// job, not the projection's), Denied candidates are filtered out.
+		var decisions accesstypes.Decisions
 		if len(resources) > 0 {
-			missing, err := q.userPermissions.Check(ctx, q.scope, q.requiredPermission, resources...)
+			var err error
+			decisions, err = q.userPermissions.Check(ctx, q.env, q.scope, q.requiredPermission, resources...)
 			if err != nil {
-				return errors.Wrap(err, "enforcer.RequireResource()")
+				return errors.Wrap(err, "resource.UserPermissions.Check()")
 			}
-
-			for _, res := range missing {
-				denied[res] = struct{}{}
-			}
+			q.carryConditionalDecisions(decisions)
 		}
 
 		for _, c := range candidates {
-			if _, deny := denied[c.res]; c.res == "" || !deny {
+			if c.res == "" || !decisions[c.res].IsDenied() {
 				fields = append(fields, c.field)
 			}
 		}
@@ -275,34 +352,67 @@ func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
 	return "ORDER BY " + strings.Join(orderByParts, ", "), nil
 }
 
-// columns returns the database struct tags for the fields in databaseType that the user has access to view.
-func (q *QuerySet[Resource]) columns(dbType DBType) (Columns, error) {
-	dbFields := make([]dbFieldMetadata, 0, q.Len())
+// fieldColumnMetadata pairs a projected field with its database metadata.
+type fieldColumnMetadata struct {
+	field accesstypes.Field
+	meta  dbFieldMetadata
+}
+
+// orderedDBFields returns the projected fields with their database metadata,
+// in struct declaration order — the projection order of every select list.
+func (q *QuerySet[Resource]) orderedDBFields(dbType DBType) ([]fieldColumnMetadata, error) {
+	fieldColumns := make([]fieldColumnMetadata, 0, q.Len())
 	for _, field := range q.Fields() {
 		dbField, ok := q.rMeta.dbFieldMap(dbType)[field]
 		if !ok {
-			return "", errors.Newf("field %s not found in db struct", field)
+			return nil, errors.Newf("field %s not found in db struct", field)
 		}
 
-		dbFields = append(dbFields, dbField)
+		fieldColumns = append(fieldColumns, fieldColumnMetadata{field: field, meta: dbField})
 	}
-	sort.Slice(dbFields, func(i, j int) bool {
-		return dbFields[i].index < dbFields[j].index
+	sort.Slice(fieldColumns, func(i, j int) bool {
+		return fieldColumns[i].meta.index < fieldColumns[j].meta.index
 	})
 
-	columns := make([]string, 0, len(dbFields))
-	for _, dbField := range dbFields {
-		columns = append(columns, dbField.ColumnName)
+	return fieldColumns, nil
+}
+
+// columns returns the select list for the fields the user has access to view.
+// With no rendered conditions it is the plain column list; conditionally
+// granted columns render as their CASE, and the reserved masked-names column
+// is appended when any CASE survives pruning.
+func (q *QuerySet[Resource]) columns(dbType DBType, rendered *renderedReadConditions, capChecksItem string) (Columns, error) {
+	fieldColumns, err := q.orderedDBFields(dbType)
+	if err != nil {
+		return "", err
 	}
 
-	switch dbType {
-	case SpannerDBType:
-		return Columns(strings.Join(columns, ", ")), nil
-	case PostgresDBType:
-		return Columns(fmt.Sprintf(`"%s"`, strings.Join(columns, `", "`))), nil
-	default:
-		return "", errors.Newf("unsupported dbType: %s", dbType)
+	columns := make([]string, 0, len(fieldColumns)+1)
+	for _, fieldColumn := range fieldColumns {
+		if rendered != nil {
+			if override, ok := rendered.overrides[fieldColumn.field]; ok {
+				columns = append(columns, override)
+
+				continue
+			}
+		}
+		switch dbType {
+		case SpannerDBType:
+			columns = append(columns, fieldColumn.meta.ColumnName)
+		case PostgresDBType:
+			columns = append(columns, fmt.Sprintf(`"%s"`, fieldColumn.meta.ColumnName))
+		default:
+			return "", errors.Newf("unsupported dbType: %s", dbType)
+		}
 	}
+	if rendered != nil && rendered.maskColumn != "" {
+		columns = append(columns, rendered.maskColumn)
+	}
+	if capChecksItem != "" {
+		columns = append(columns, capChecksItem)
+	}
+
+	return Columns(strings.Join(columns, ", ")), nil
 }
 
 func (q *QuerySet[Resource]) astWhereClause(dbType DBType, filterAst ExpressionNode) (*Statement, error) {
@@ -361,6 +471,34 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*St
 	}, nil
 }
 
+// whereWithPredicates builds the WHERE clause and appends the lowered
+// predicate fragments: the tenancy AND sits in the WHERE before the read
+// rules' row predicate (design plan §06) — checked domain == filtered domain
+// by construction.
+func (q *QuerySet[Resource]) whereWithPredicates(dbType DBType, filterAst ExpressionNode, tenancy string, rendered *renderedReadConditions) (*Statement, error) {
+	where, err := q.where(dbType, filterAst)
+	if err != nil {
+		return nil, errors.Wrap(err, "patcher.Where()")
+	}
+
+	predicates := []string{tenancy}
+	if rendered != nil && rendered.rowPredicate != "" {
+		predicates = append(predicates, rendered.rowPredicate)
+	}
+	for _, predicate := range predicates {
+		if predicate == "" {
+			continue
+		}
+		if where.SQL == "" {
+			where.SQL = "WHERE " + predicate
+		} else {
+			where.SQL += " AND " + predicate
+		}
+	}
+
+	return where, nil
+}
+
 // stmt builds a SQL statement for the given database type from the QuerySet.
 func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	filterAst, err := q.FilterAst(dbType)
@@ -372,14 +510,41 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, httpio.NewBadRequestMessage("cannot use multiple sources for WHERE clause together (e.g. QueryClause and KeySet)")
 	}
 
-	columns, err := q.columns(dbType)
+	plan, err := q.readConditionPlan()
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.readConditionPlan()")
+	}
+
+	// The registry is statement-scoped: the read-condition fragments and the
+	// tenancy predicate share it, so aliases and placeholders stay unique.
+	registry := newParamRegistry()
+
+	var rendered *renderedReadConditions
+	if plan != nil {
+		rendered, err = q.renderReadConditions(dbType, plan, registry)
+		if err != nil {
+			return nil, errors.Wrap(err, "QuerySet.renderReadConditions()")
+		}
+	}
+
+	tenancy, err := q.tenancyPredicate(dbType, registry)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.tenancyPredicate()")
+	}
+
+	capPlan, capChecksItem, err := q.renderCapabilities(dbType, registry)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.renderCapabilities()")
+	}
+
+	columns, err := q.columns(dbType, rendered, capChecksItem)
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	where, err := q.where(dbType, filterAst)
+	where, err := q.whereWithPredicates(dbType, filterAst, tenancy, rendered)
 	if err != nil {
-		return nil, errors.Wrap(err, "patcher.Where()")
+		return nil, err
 	}
 
 	orderByClause, err := q.buildOrderByClause(dbType)
@@ -387,15 +552,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
 
-	var limitClause string
-	if q.limit != nil {
-		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
-	}
-
-	var offsetClause string
-	if q.offset != nil {
-		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
-	}
+	limitClause, offsetClause := q.pageClauses()
 
 	withClause, query, subqueryParams := q.query()
 	for k := range subqueryParams {
@@ -404,6 +561,10 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		}
 
 		where.Params[k] = subqueryParams[k]
+	}
+
+	if err := q.mergeRegistryParams(registry, where.Params); err != nil {
+		return nil, err
 	}
 
 	sql := fmt.Sprintf(`
@@ -422,11 +583,29 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "failed to substitute SQL params for resolvedWhereClause")
 	}
 
-	return &Statement{resolvedWhereClause: resolvedSQL, SQL: sql, Params: where.Params}, nil
+	stmt := &Statement{resolvedWhereClause: resolvedSQL, SQL: sql, Params: where.Params}
+	if rendered != nil && rendered.maskColumn != "" {
+		stmt.maskedNamesColumn = maskedNamesColumnName
+	}
+	stmt.capabilityPlan = capPlan
+
+	return stmt, nil
 }
 
-// Read executes the query and returns a single result.
-func (q *QuerySet[Resource]) Read(ctx context.Context, txn ReadOnlyTransaction) (*Resource, error) {
+// pageClauses renders the statement's LIMIT and OFFSET clauses.
+func (q *QuerySet[Resource]) pageClauses() (limitClause, offsetClause string) {
+	if q.limit != nil {
+		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
+	}
+	if q.offset != nil {
+		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
+	}
+
+	return limitClause, offsetClause
+}
+
+// Read executes the query and returns a single result wrapped in the Row envelope.
+func (q *QuerySet[Resource]) Read(ctx context.Context, txn ReadOnlyTransaction) (*Row[Resource], error) {
 	r := newReader[Resource](txn)
 	if err := q.checkPermissions(ctx, r.DBType()); err != nil {
 		return nil, err
@@ -445,9 +624,9 @@ func (q *QuerySet[Resource]) Read(ctx context.Context, txn ReadOnlyTransaction) 
 	return dst, nil
 }
 
-// List executes the query and returns an iterator for the results.
-func (q *QuerySet[Resource]) List(ctx context.Context, txn ReadOnlyTransaction) iter.Seq2[*Resource, error] {
-	return func(yield func(*Resource, error) bool) {
+// List executes the query and returns an iterator for the results, each wrapped in the Row envelope.
+func (q *QuerySet[Resource]) List(ctx context.Context, txn ReadOnlyTransaction) iter.Seq2[*Row[Resource], error] {
+	return func(yield func(*Row[Resource], error) bool) {
 		r := newReader[Resource](txn)
 		if err := q.checkPermissions(ctx, r.DBType()); err != nil {
 			yield(nil, err)
@@ -470,8 +649,8 @@ func (q *QuerySet[Resource]) List(ctx context.Context, txn ReadOnlyTransaction) 
 	}
 }
 
-// BatchList executes the query and returns an iterator for the results in batches.
-func (q *QuerySet[Resource]) BatchList(ctx context.Context, client Client, size int) iter.Seq[iter.Seq2[*Resource, error]] {
+// BatchList executes the query and returns an iterator for the results in batches, each result wrapped in the Row envelope.
+func (q *QuerySet[Resource]) BatchList(ctx context.Context, client Client, size int) iter.Seq[iter.Seq2[*Row[Resource], error]] {
 	return ccc.BatchIter2(q.List(ctx, client), size)
 }
 

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,7 @@ type parsedQueryParams struct {
 	FilterParser func(DBType) (ExpressionNode, error)
 	Limit        *uint64
 	Offset       *uint64
+	Capabilities []accesstypes.Permission
 }
 
 type filterBody struct {
@@ -31,6 +33,11 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	resourceSet        *Set[Resource]
 	filterParserFields map[jsonFieldName]FilterFieldInfo
 	structDecoder      *StructDecoder[filterBody]
+
+	// collection resolves condition rendering for the QuerySets this decoder
+	// builds; nil leaves conditions unrenderable (an error if one ever
+	// arrives).
+	collection *GeneratedCollection
 }
 
 // NewQueryDecoder creates a new QueryDecoder for a given Resource and Request type.
@@ -60,11 +67,12 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 	}, nil
 }
 
-// MustNewQueryDecoder builds a query decoder for a resource and request pair. It
-// panics on construction errors: they are programming errors (a request struct out of
-// sync with its resource), surfaced at application startup where generated handlers
-// construct their decoders.
-func MustNewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *QueryDecoder[Resource, Request] {
+// MustNewQueryDecoder builds a query decoder for a resource and request pair,
+// wired to the application's generated collection so conditional grants can
+// render. It panics on construction errors: they are programming errors (a
+// request struct out of sync with its resource), surfaced at application
+// startup where generated handlers construct their decoders.
+func MustNewQueryDecoder[Resource Resourcer, Request any](collection *GeneratedCollection, permissions ...accesstypes.Permission) *QueryDecoder[Resource, Request] {
 	rSet, err := NewSet[Resource, Request](permissions...)
 	if err != nil {
 		panic(err)
@@ -74,6 +82,7 @@ func MustNewQueryDecoder[Resource Resourcer, Request any](permissions ...accesst
 	if err != nil {
 		panic(err)
 	}
+	decoder.collection = collection
 
 	return decoder
 }
@@ -108,11 +117,15 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
+	qSet.env = newRequestEnvironment()
 	qSet.requestableFields = d.requestFieldMapper.Fields()
+	qSet.collection = d.collection
+	qSet.jsonNames = d.requestFieldMapper.JSONNames()
 	qSet.SetFilterParser(parsedQuery.FilterParser)
 	qSet.SetSortFields(parsedQuery.SortFields)
 	qSet.SetLimit(parsedQuery.Limit)
 	qSet.SetOffset(parsedQuery.Offset)
+	qSet.RequestCapabilities(parsedQuery.Capabilities...)
 	if len(parsedQuery.ColumnFields) == 0 {
 		qSet.ReturnAccessibleFields(true)
 	} else {
@@ -203,6 +216,23 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		delete(query, filterParam)
 	}
 
+	var capabilities []accesstypes.Permission
+	if capStr := query.Get(capabilitiesParam); capStr != "" {
+		// The capability envelope (README §5): a comma-separated list of the
+		// write permissions to evaluate per row.
+		for name := range strings.SplitSeq(capStr, ",") {
+			perm, err := capabilityPermission(strings.TrimSpace(name))
+			if err != nil {
+				return nil, err
+			}
+			if !slices.Contains(capabilities, perm) {
+				capabilities = append(capabilities, perm)
+			}
+		}
+
+		delete(query, capabilitiesParam)
+	}
+
 	if len(query) > 0 {
 		return nil, httpio.NewBadRequestMessagef("unknown query parameters: %v", query)
 	}
@@ -213,6 +243,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		FilterParser: filterParser,
 		Limit:        limit,
 		Offset:       offset,
+		Capabilities: capabilities,
 	}, nil
 }
 

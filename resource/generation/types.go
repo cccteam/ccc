@@ -17,6 +17,17 @@ import (
 
 const (
 	booleanStr = "boolean"
+
+	// reservedMaskedNamesColumn is the read statements' reserved output column
+	// (the masked cells' JSON names); resource columns must not collide with it.
+	reservedMaskedNamesColumn = "zzMaskedFields"
+
+	// reservedCapabilitiesProperty is the reserved per-row JSON property the
+	// capability envelope rides (resource.CapabilitiesProperty), and
+	// reservedCapabilityChecksColumn its statement's reserved boolean-array
+	// output column; resource columns must not collide with either.
+	reservedCapabilitiesProperty   = "zzCapabilities"
+	reservedCapabilityChecksColumn = "zzCapabilityChecks"
 )
 
 // Generator provides methods for generating Go or Typescript for a resource-driven web application.
@@ -182,6 +193,7 @@ const (
 	resourceInterfaceOutputName   = "resources_iface"
 	resourceEnumsFileName         = "enums"
 	domainGuardOutputName         = "domain_guard"
+	permissionsOutputName         = "permissions"
 	decodersOutputName            = "decoders"
 	appContractOutputName         = "app_contract"
 	routesOutputName              = "routes"
@@ -301,6 +313,13 @@ type rpcMethodInfo struct {
 	// PermissionScope is the scope the method's registration uses
 	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
 	PermissionScope accesstypes.PermissionScope
+	// Transition is the method's validated @transition declaration; nil for a
+	// plain RPC method, whose generated handler is unchanged.
+	Transition *rpcTransition
+	// Target is the method's validated @target declaration — set for every
+	// targeted method (a transition's Target aliases its embedded rpcTarget);
+	// nil for a method with no target row.
+	Target *rpcTarget
 }
 
 // IsDomainScoped reports whether the method's @permissionScope resolves to the
@@ -513,12 +532,44 @@ type resourceInfo struct {
 	DefaultsUpdateType string
 	ValidateCreateType string
 	ValidateUpdateType string
+
+	// The resource's compiled binding vocabulary (ABAC design plan §04):
+	// Attributes are the row attributes conditions reference (@attribute),
+	// DomainBinding resolves rows to their tenant (@domain), and SubjectSets /
+	// SubjectValues are the subject-side vocabulary anchored at user-id
+	// columns (@subjectSet / @subjectValue).
+	Attributes    []*attributeBinding
+	DomainBinding *domainBinding
+	SubjectSets   []*subjectBinding
+	SubjectValues []*subjectBinding
 }
 
 // IsDomainScoped reports whether the resource's @permissionScope resolves to the
 // domain scope (an absent annotation defaults to global).
 func (r *resourceInfo) IsDomainScoped() bool {
 	return r.PermissionScope == accesstypes.DomainPermissionScope
+}
+
+// TouchFields returns the fields a generated touch stamps: every field carrying
+// an output_only_update_fn, the mechanical enforcement stamp that fires on
+// every update — a touch included. Timestamps with domain meaning are never
+// update functions; they are explicit updates in application code.
+func (r *resourceInfo) TouchFields() []*resourceField {
+	fields := make([]*resourceField, 0, len(r.Fields))
+	for _, f := range r.Fields {
+		if f.HasOutputOnlyUpdateFunc() {
+			fields = append(fields, f)
+		}
+	}
+
+	return fields
+}
+
+// HasTouch reports whether the resource gets a generated Touch: it does exactly
+// when at least one field declares an update function, so touching a resource
+// with nothing to stamp does not compile.
+func (r *resourceInfo) HasTouch() bool {
+	return len(r.TouchFields()) > 0
 }
 
 func (r *resourceInfo) HasNullBool() bool {
@@ -608,7 +659,7 @@ func (r *resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
 				return false
 			}
 
-			return f.Type() == "ccc.UUID"
+			return f.Type() == cccUUIDGoType
 		}
 	}
 
@@ -674,6 +725,24 @@ type resourceField struct {
 	ReferencedResource string
 	ReferencedField    string
 	HasDefault         bool
+
+	// The @state marker (design plan §09): IsState derives output-only decode
+	// and the ungrantable Create/Update; StateDefault is the declared initial
+	// state, applied on the insert path.
+	IsState      bool
+	StateDefault string
+
+	// IsTenantKey marks the anchor of a bare-column @domain binding (design
+	// plan §06): the tenant column decodes output-only — the wire cannot
+	// express a tenant write, on create or update — and the framework stamps
+	// the value from the request's domain partition at decode, so the checked
+	// domain and the written domain are the same value by construction.
+	IsTenantKey bool
+
+	// WorkflowRoot is the @stateRoot argument: the workflow root's struct
+	// name, declared on the member's anchoring FK field (the field IS the
+	// hop). Empty for fields outside any workflow.
+	WorkflowRoot string
 }
 
 // When generating QueryClauses for Null-style wrapper types we want to use the underlying type
@@ -825,6 +894,14 @@ func (f *resourceField) IsImmutable() bool {
 }
 
 func (f *resourceField) IsOutputOnly() bool {
+	// A state field decodes output-only by derivation: the wire must not be
+	// able to express a state write (transitions live in RPC bodies). A
+	// tenant-key column is the same shape: the framework stamps it from the
+	// request's domain partition, so the wire cannot write it.
+	if f.IsState || f.IsTenantKey {
+		return true
+	}
+
 	tag, ok := f.LookupTag(conditionsTagKey)
 	if !ok {
 		return f.HasOutputOnlyUpdateFunc()
@@ -931,6 +1008,24 @@ func generatedFileName(name, suffix string) string {
 	return fmt.Sprintf("%s_%s.%s", genPrefix, name, suffix)
 }
 
+// testFileMarker is appended to a file stem that would otherwise end in _test: Go
+// compiles a _test.go file only under go test, so the struct would vanish from the
+// build and its generated files with it. Only the singular kinds (RPC methods) can
+// reach it; the plural kinds' stems end in the plural.
+const testFileMarker = "_rpc"
+
+// fileStem is the file-name stem shared by every file derived from a struct: the
+// authored source file the validator expects and the zz_gen_ files generated beside
+// it. name is the struct name, already pluralized for the plural kinds.
+func fileStem(name string) string {
+	stem := strings.ToLower(caser.ToSnake(name))
+	if strings.HasSuffix(stem, "_test") {
+		stem += testFileMarker
+	}
+
+	return stem
+}
+
 const (
 	resourceKeyword             string = "resource"             // Designates a struct as a resource
 	virtualKeyword              string = "virtual"              // Designates a struct as a virtual resource
@@ -947,6 +1042,14 @@ const (
 	manualAddResourceSetKeyword string = "manualAddResourceSet" // Declares that hand-written handlers register this resource's permission Sets for the given handler types
 	permissionScopeKeyword      string = "permissionScope"      // Declares the permission scope (global or domain) all of a resource's registrations use
 	outletKeyword               string = "outlet"               // Declares the router outlets a resource's routes are registered under
+	attributeKeyword            string = "attribute"            // Declares an attribute binding on its anchor field: a column binding, or a join-path binding via a FK
+	domainKeyword               string = "domain"               // Declares the structural tenancy binding on its anchor field (bare, or via: a FK path to the tenant key)
+	subjectSetKeyword           string = "subjectSet"           // Declares subject-side set vocabulary (subject.<name>, used with IN) anchored on a user-id column
+	subjectValueKeyword         string = "subjectValue"         // Declares subject-side scalar vocabulary (threshold comparisons) anchored on a unique user-id column
+	stateKeyword                string = "state"                // Marks a resource's state column (FK to its state enum table) and declares the initial state
+	stateRootKeyword            string = "stateRoot"            // Declares workflow membership on the member's anchoring FK field, naming the workflow root struct
+	transitionKeyword           string = "transition"           // Declares an RPC method as a workflow state transition: @transition(Root, from: a, b, to: c)
+	targetKeyword               string = "target"               // Marks the RPC field carrying the target row key; @target(Root) names the resource when no @transition does
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -966,6 +1069,14 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		manualAddResourceSetKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
 		permissionScopeKeyword:      {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		outletKeyword:               {genlang.ScanStruct: genlang.ArgsRequired},
+		attributeKeyword:            {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		domainKeyword:               {genlang.ScanField: genlang.Exclusive},
+		subjectSetKeyword:           {genlang.ScanField: genlang.ArgsRequired},
+		subjectValueKeyword:         {genlang.ScanField: genlang.ArgsRequired},
+		stateKeyword:                {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		stateRootKeyword:            {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		transitionKeyword:           {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		targetKeyword:               {genlang.ScanField: genlang.Exclusive},
 	}
 }
 

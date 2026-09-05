@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -265,7 +266,8 @@ func testNewSetRun[Resource Resourcer, Request any](t *testing.T, name string, p
 			t.Errorf("NewSet() error = %v, wantErr %v", err, w.wantErr)
 			return
 		}
-		if diff := cmp.Diff(want, got, cmp.AllowUnexported(Set[Resource]{}, Metadata[Resource]{}, dbFieldMetadata{})); diff != "" {
+		reflectTypesByIdentity := cmp.Comparer(func(a, b reflect.Type) bool { return a == b })
+		if diff := cmp.Diff(want, got, cmp.AllowUnexported(Set[Resource]{}, Metadata[Resource]{}, dbFieldMetadata{}), reflectTypesByIdentity); diff != "" {
 			t.Errorf("NewSet() mismatch (-want +got):\n%s", diff)
 		}
 	})

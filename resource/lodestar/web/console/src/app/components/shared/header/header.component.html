@@ -1,0 +1,15 @@
+@if (banner(); as banner) {
+  <div class="impersonation-banner" [class.role]="banner.kind === 'Role'">
+    <mat-icon>{{ banner.kind === 'Role' ? 'badge' : 'visibility' }}</mat-icon>
+    <span>{{ banner.text }}</span>
+    <button mat-stroked-button (click)="logout()">End session</button>
+  </div>
+}
+<div class="header">
+  <a class="brand" [routerLink]="['']">✦ Lodestar</a>
+  <app-topbar></app-topbar>
+  <div class="session">
+    <span class="username">{{ auth.sessionInfo().username }}</span>
+    <button mat-stroked-button (click)="logout()">Logout</button>
+  </div>
+</div>

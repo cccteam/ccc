@@ -36,6 +36,9 @@ type enforcementResource struct {
 	Tagged string   `spanner:"Tagged"`
 	Locked string   `spanner:"Locked"`
 	Frozen string   `spanner:"Frozen"`
+	// Station is the bare-column tenant key (the fixture collections declare
+	// it as the domain binding); wire-closed like generated output.
+	Station string `spanner:"Station"`
 }
 
 func (enforcementResource) Resource() accesstypes.Resource { return enforcedResource }
@@ -43,17 +46,19 @@ func (enforcementResource) Resource() accesstypes.Resource { return enforcedReso
 func (enforcementResource) DefaultConfig() Config { return Config{} }
 
 type enforcementReadRequest struct {
-	ID     ccc.UUID `json:"id"     perm:"-"`
-	Public string   `json:"public"`
-	Tagged string   `json:"tagged"`
-	Locked string   `json:"locked"`
-	Frozen string   `json:"frozen"`
+	ID      ccc.UUID `json:"id"     perm:"-"`
+	Public  string   `json:"public"`
+	Tagged  string   `json:"tagged"`
+	Locked  string   `json:"locked"`
+	Frozen  string   `json:"frozen"`
+	Station string   `json:"-"`
 }
 
 type enforcementPatchRequest struct {
-	Public string `json:"public"`
-	Tagged string `json:"tagged"`
-	Frozen string `json:"frozen" immutable:"true"`
+	Public  string `json:"public"`
+	Tagged  string `json:"tagged"`
+	Frozen  string `json:"frozen" immutable:"true"`
+	Station string `json:"-"`
 }
 
 // enforcementExemptReadRequest has only the exempt primary key, so enforcement needs no
@@ -65,19 +70,58 @@ type enforcementExemptReadRequest struct {
 // testScope is the tenant scope the enforcement fixtures evaluate in.
 var testScope = accesstypes.DomainScope("testDomain")
 
-// fakeUserPermissions is a UserPermissions implementation backed by a static grant table.
-// It records every Check invocation so tests can assert call batching and scope routing.
+// testCondition is the payload every fixture Conditional decision carries: a
+// row-referencing condition over the fixture collection's one attribute.
+var testCondition = mustCondition("owner = subject")
+
+func mustCondition(source string) accesstypes.Condition {
+	c, err := accesstypes.NewCondition(source)
+	if err != nil {
+		panic(err)
+	}
+
+	return c
+}
+
+// enforcementCollection is the generated-collection stand-in read rendering
+// resolves against: the fixture resource with the owner attribute bound to its
+// Owner column.
+func enforcementCollection(t *testing.T) *GeneratedCollection {
+	t.Helper()
+
+	g, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{{
+		Name:        enforcedResource,
+		Scope:       accesstypes.DomainPermissionScope,
+		Permissions: []accesstypes.Permission{accesstypes.Read},
+		Attributes:  []AttributeData{{Name: "owner", Column: "Owner", Type: AttributeTypeString}},
+		Domain:      &DomainBindingData{Column: "Station"},
+	}}})
+	if err != nil {
+		t.Fatalf("NewGeneratedCollection() error = %v", err)
+	}
+
+	return g
+}
+
+// fakeUserPermissions is a UserPermissions implementation backed by a static grant
+// table: resources under conditional answer Conditional, resources under granted
+// answer Granted, everything else fails closed to Denied. It records every Check
+// invocation so tests can assert call batching, scope routing, and the decode-stamped
+// Environment.
 type fakeUserPermissions struct {
-	granted map[accesstypes.Permission][]accesstypes.Resource
-	err     error
+	granted     map[accesstypes.Permission][]accesstypes.Resource
+	conditional map[accesstypes.Permission][]accesstypes.Resource
+	err         error
 
 	checkCalls   int
+	gotEnvs      []accesstypes.Environment
 	gotScopes    []accesstypes.Scope
 	gotResources [][]accesstypes.Resource
 }
 
-func (f *fakeUserPermissions) Check(_ context.Context, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (missing []accesstypes.Resource, err error) {
+func (f *fakeUserPermissions) Check(_ context.Context, env accesstypes.Environment, scope accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
 	f.checkCalls++
+	f.gotEnvs = append(f.gotEnvs, env)
 	f.gotScopes = append(f.gotScopes, scope)
 	f.gotResources = append(f.gotResources, slices.Clone(resources))
 
@@ -85,13 +129,27 @@ func (f *fakeUserPermissions) Check(_ context.Context, scope accesstypes.Scope, 
 		return nil, f.err
 	}
 
+	decisions := make(accesstypes.Decisions, len(resources))
 	for _, res := range resources {
-		if !slices.Contains(f.granted[perm], res) {
-			missing = append(missing, res)
+		switch {
+		case slices.Contains(f.conditional[perm], res):
+			decisions[res] = accesstypes.Conditional(accesstypes.ConditionGroup{Resources: []accesstypes.Resource{res}, Condition: testCondition})
+		case slices.Contains(f.granted[perm], res):
+			decisions[res] = accesstypes.Granted()
+		default:
+			decisions[res] = accesstypes.Denied()
 		}
 	}
 
-	return missing, nil
+	return decisions, nil
+}
+
+func (f *fakeUserPermissions) PermissionDigest(context.Context, accesstypes.Scope) (accesstypes.PermissionDigest, error) {
+	return accesstypes.PermissionDigest{}, nil
+}
+
+func (f *fakeUserPermissions) Domains(context.Context) ([]accesstypes.Domain, error) {
+	return []accesstypes.Domain{}, nil
 }
 
 func (f *fakeUserPermissions) User() accesstypes.User { return "testUser" }
@@ -264,7 +322,7 @@ func TestQuerySet_Read_permissionEnforcement(t *testing.T) {
 			reader := NewMockReader[enforcementResource](ctrl)
 			reader.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
 			if !wantErr {
-				reader.EXPECT().Read(gomock.Any(), gomock.Any()).Return(&enforcementResource{}, nil)
+				reader.EXPECT().Read(gomock.Any(), gomock.Any()).Return(&Row[enforcementResource]{}, nil)
 			}
 			client := NewMockClient(nil, []any{reader}, nil)
 
@@ -307,6 +365,7 @@ func decodeForBatching[Request any](t *testing.T, target string, userPermissions
 	if err != nil {
 		t.Fatalf("NewQueryDecoder() error = %v", err)
 	}
+	decoder.collection = enforcementCollection(t)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, http.NoBody)
 
@@ -346,12 +405,12 @@ func TestQuerySet_Read_checkBatching(t *testing.T) {
 			wantCheckCalls: 1,
 		},
 		{
-			name:             "requested columns forbidden lists missing in request order",
+			name:             "requested columns forbidden lists denied resources sorted",
 			target:           "/?columns=id,tagged,locked",
 			grants:           map[accesstypes.Permission][]accesstypes.Resource{accesstypes.Read: {enforcedResource}},
 			wantCheckCalls:   2,
 			wantForbidden:    true,
-			wantOrderedInErr: []string{string(enforcedResource) + ".tagged", string(enforcedResource) + ".locked"},
+			wantOrderedInErr: []string{string(enforcedResource) + ".locked", string(enforcedResource) + ".tagged"},
 		},
 	}
 
@@ -376,7 +435,7 @@ func TestQuerySet_Read_checkBatching(t *testing.T) {
 			reader := NewMockReader[enforcementResource](ctrl)
 			reader.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
 			if !tt.wantForbidden {
-				reader.EXPECT().Read(gomock.Any(), gomock.Any()).Return(&enforcementResource{}, nil)
+				reader.EXPECT().Read(gomock.Any(), gomock.Any()).Return(&Row[enforcementResource]{}, nil)
 			}
 			client := NewMockClient(nil, []any{reader}, nil)
 
@@ -415,6 +474,117 @@ func TestQuerySet_Read_checkBatching(t *testing.T) {
 				gotBatched := slices.Sorted(slices.Values(userPermissions.gotResources[1]))
 				if !slices.Equal(gotBatched, tt.wantBatched) {
 					t.Errorf("batched Check resources = %v, want %v", gotBatched, tt.wantBatched)
+				}
+			}
+		})
+	}
+}
+
+// TestQuerySet_Read_conditionalDecisions pins the read-path gate semantics for
+// Conditional decisions: a conditional grant is a grant, so its resources pass the
+// gate — explicitly requested or defaulted into the projection — and the conditions
+// are carried on the QuerySet for the E-phase lowering. It also pins the Environment
+// plumbing: every Check receives the decode-stamped decision context.
+func TestQuerySet_Read_conditionalDecisions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		target      string
+		grants      map[accesstypes.Permission][]accesstypes.Resource
+		conditional map[accesstypes.Permission][]accesstypes.Resource
+		wantFields  []accesstypes.Field
+		wantCarried []accesstypes.Resource
+	}{
+		{
+			name:   "conditional field joins the accessible-fields projection and is carried",
+			target: "/",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.Read: {enforcedResource, enforcedResource + ".public"},
+			},
+			conditional: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.Read: {enforcedResource + ".tagged"},
+			},
+			wantFields:  []accesstypes.Field{"ID", "Public", "Tagged"},
+			wantCarried: []accesstypes.Resource{enforcedResource + ".tagged"},
+		},
+		{
+			name:   "explicitly requested conditional field passes the gate and is carried",
+			target: "/?columns=id,tagged",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.Read: {enforcedResource},
+			},
+			conditional: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.Read: {enforcedResource + ".tagged"},
+			},
+			wantFields:  []accesstypes.Field{"ID", "Tagged"},
+			wantCarried: []accesstypes.Resource{enforcedResource + ".tagged"},
+		},
+		{
+			name:   "conditional base-resource grant passes the gate and is carried",
+			target: "/?columns=id,public",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.Read: {enforcedResource + ".public"},
+			},
+			conditional: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.Read: {enforcedResource},
+			},
+			wantFields:  []accesstypes.Field{"ID", "Public"},
+			wantCarried: []accesstypes.Resource{enforcedResource},
+		},
+		{
+			name:   "no conditional grants carry nothing",
+			target: "/",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.Read: {enforcedResource, enforcedResource + ".public"},
+			},
+			wantFields: []accesstypes.Field{"ID", "Public"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			userPermissions := &fakeUserPermissions{granted: tt.grants, conditional: tt.conditional}
+
+			qSet, err := decodeForBatching[enforcementReadRequest](t, tt.target, userPermissions, accesstypes.Read)
+			if err != nil {
+				t.Fatalf("QueryDecoder.Decode() error = %v", err)
+			}
+
+			ctrl := gomock.NewController(t)
+			reader := NewMockReader[enforcementResource](ctrl)
+			reader.EXPECT().DBType().MinTimes(1).Return(SpannerDBType)
+			reader.EXPECT().Read(gomock.Any(), gomock.Any()).Return(&Row[enforcementResource]{}, nil)
+			client := NewMockClient(nil, []any{reader}, nil)
+
+			if _, err := qSet.Read(t.Context(), client); err != nil {
+				t.Fatalf("QuerySet.Read() error = %v", err)
+			}
+
+			gotFields := slices.Sorted(slices.Values(qSet.Fields()))
+			wantFields := slices.Sorted(slices.Values(tt.wantFields))
+			if !slices.Equal(gotFields, wantFields) {
+				t.Errorf("QuerySet.Fields() = %v, want %v", gotFields, wantFields)
+			}
+
+			gotCarried := slices.Sorted(maps.Keys(qSet.conditionalDecisions))
+			if !slices.Equal(gotCarried, tt.wantCarried) {
+				t.Errorf("conditionalDecisions resources = %v, want %v", gotCarried, tt.wantCarried)
+			}
+			for res, decision := range qSet.conditionalDecisions {
+				if !decision.IsConditional() {
+					t.Errorf("carried decision for %s = %s, want conditional", res, decision)
+				}
+			}
+
+			if len(userPermissions.gotEnvs) == 0 {
+				t.Fatal("Check() was never called")
+			}
+			for i, env := range userPermissions.gotEnvs {
+				if _, ok := env.Now(); !ok {
+					t.Errorf("Check call %d Environment carries no now; decoders must stamp the decision context", i)
 				}
 			}
 		})

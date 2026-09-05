@@ -184,6 +184,16 @@ func (c *client) hasRPCMethods() bool {
 	return len(c.rpcMethods) > 0
 }
 
+func (c *client) hasRPCMethodWithTransition() bool {
+	for _, rpcMethod := range c.rpcMethods {
+		if rpcMethod.Transition != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (c *client) localPackageImports() string {
 	// Standard-library packages are skipped: goimports resolves them natively into the
 	// stdlib import group, whereas rendering them here puts them in the local-package
@@ -272,9 +282,31 @@ func (c *client) templateFuncs() map[string]any {
 		"TypescriptConstImports":  typescriptConsImports,
 		"PermissionConstant":      permissionConstant,
 		"ScopeConstant":           scopeConstant,
+		"BindingHops":             bindingHopsLiteral,
 	}
 
 	return templateFuncs
+}
+
+// bindingHopsLiteral renders a binding path as its Path field literal, or
+// nothing for a column binding — shared by every binding kind the collection
+// template emits.
+func bindingHopsLiteral(path []resource.BindingHop) string {
+	if len(path) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(", Path: []resource.BindingHop{")
+	for i, hop := range path {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "{Table: %q, JoinColumn: %q, Column: %q}", hop.Table, hop.JoinColumn, hop.Column)
+	}
+	b.WriteString("}")
+
+	return b.String()
 }
 
 // permissionConstant renders a permission as its accesstypes constant when one exists,
@@ -340,6 +372,9 @@ func (c *client) writeFormattedGoFile(destinationPath, templateName, fileTemplat
 		return err
 	}
 
+	if err := os.MkdirAll(filepath.Dir(destinationPath), 0o750); err != nil {
+		return errors.Wrap(err, "os.MkdirAll()")
+	}
 	if err := os.WriteFile(destinationPath, formattedOutput, 0o644); err != nil {
 		return errors.Wrapf(err, "os.WriteFile(): file: %s", destinationPath)
 	}
@@ -376,13 +411,17 @@ func (c *client) formatGoBytes(destinationPath, templateName string, output []by
 	return c.GoFormatBytes(destinationPath, output)
 }
 
-func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]*enumData, error) {
+// retrieveDatabaseEnumValues resolves every @enumerate named type against the schema's
+// enum values, returning the values keyed by type name alongside each type's table
+// name (the TypeScript generator's outlet filter matches tables to resources).
+func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (values map[string][]*enumData, tables map[string]string, err error) {
 	enumMap := make(map[string][]*enumData)
+	enumTables := make(map[string]string)
 	for _, namedType := range namedTypes {
 		scanner := genlang.NewScanner(resourceKeywords())
 		annotations, err := scanner.ScanNamedType(namedType)
 		if err != nil {
-			return nil, errors.Wrap(err, "scanner.ScanNamedType()")
+			return nil, nil, errors.Wrap(err, "scanner.ScanNamedType()")
 		}
 
 		var tableName string
@@ -393,18 +432,19 @@ func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map
 		}
 
 		if t := namedType.TypeName(); t != stringGoType {
-			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), stringGoType, t)
+			return nil, nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), stringGoType, t)
 		}
 
 		data, ok := c.enumValues[tableName]
 		if !ok {
-			return nil, errors.Newf("cannot enumerate type %q, tableName %q has no values or does not exist", namedType.Name(), tableName)
+			return nil, nil, errors.Newf("cannot enumerate type %q, tableName %q has no values or does not exist", namedType.Name(), tableName)
 		}
 
 		enumMap[namedType.Name()] = data
+		enumTables[namedType.Name()] = tableName
 	}
 
-	return enumMap, nil
+	return enumMap, enumTables, nil
 }
 
 // pluralize returns the plural form of value: an explicit override if one is
@@ -441,9 +481,15 @@ func isVowel(b byte) bool {
 	}
 }
 
+// removeGeneratedFiles sweeps the previous run's output from directory. A directory
+// that does not exist yet holds nothing to remove: the first generate into a fresh
+// target creates it when the first file is written.
 func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) error {
 	log.Printf("removing generated files in directory %q...", directory)
 	dir, err := os.Open(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		return errors.Wrap(err, "os.Open()")
 	}
@@ -459,7 +505,7 @@ func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) er
 	}
 
 	for _, f := range files {
-		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") {
+		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") && !strings.HasSuffix(f, ".dot") {
 			continue
 		}
 
@@ -606,7 +652,7 @@ func typescriptMethodImports(t *typescriptGenerator) string {
 	if t.hasRPCMethods() {
 		pkgs = append(pkgs, "Methods")
 	}
-	if t.hasRPCMethodWithEnumeratedResource() {
+	if t.hasRPCMethodWithEnumeratedResource() || t.hasRPCMethodWithTransition() {
 		pkgs = append(pkgs, "Resources")
 	}
 

@@ -1,0 +1,37 @@
+<div class="chart">
+  <svg viewBox="0 0 340 160" class="constellation" role="img" aria-label="Star chart of sectors">
+    <line x1="60" y1="70" x2="180" y2="40" class="lane" />
+    <line x1="180" y1="40" x2="290" y2="90" class="lane" />
+    @for (star of stars(); track star.sector) {
+      <g
+        class="star"
+        [class.lit]="star.lit"
+        [class.dark]="!star.lit"
+        [class.selected]="star.selected"
+        (click)="sectors.select(star.sector)"
+        (keydown.enter)="sectors.select(star.sector)"
+        tabindex="0"
+        role="button"
+        [attr.aria-label]="'Select sector ' + star.sector">
+        <circle [attr.cx]="star.x" [attr.cy]="star.y" r="9" />
+        <circle [attr.cx]="star.x" [attr.cy]="star.y" r="16" class="halo" />
+        <text [attr.x]="star.x" [attr.y]="star.y + 32">{{ star.sector }}</text>
+      </g>
+    }
+  </svg>
+  <div class="legend">
+    <div class="current">
+      Selected sector: <b>{{ sectors.current() || 'none' }}</b>
+    </div>
+    <mat-slide-toggle
+      [checked]="sectors.chartAll()"
+      (change)="sectors.setChartAll($event.checked)"
+      matTooltip="Demo affordance: chart sectors you hold no roles in, to watch every request refuse fail-closed. A real application would not offer this.">
+      Chart every sector
+    </mat-slide-toggle>
+    <div class="shift">
+      <span class="clock">Operations clock: {{ shift().hour | number: '2.0-0' }}:00 Denver</span>
+      <span>On watch: <b>{{ shift().onWatch }}</b> ({{ shift().window }})</span>
+    </div>
+  </div>
+</div>

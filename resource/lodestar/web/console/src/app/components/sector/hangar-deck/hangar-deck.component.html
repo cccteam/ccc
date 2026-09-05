@@ -1,0 +1,152 @@
+<h1>Hangar Deck</h1>
+<p>
+  Refits move between bays. Drag a ship onto the next bay to fire the transition — a bay accepts the drop only when the
+  ship's own capability envelope lists that edge for you; three bays can send a ship to the scrapyard. The deck is empty
+  outside your shift: the Dockmaster holds it 06:00–18:00 headquarters time, the Night Watch the rest.
+</p>
+
+<app-star-chart></app-star-chart>
+
+@if (!canList()) {
+  <mat-card appearance="outlined" class="table-card">
+    <p class="empty">Your posting in {{ sector() || 'this sector' }} does not cover the hangar deck right now.</p>
+  </mat-card>
+} @else {
+  @if (refusal(); as refusal) {
+    <p class="refusal">{{ refusal }}</p>
+  }
+  <div class="bays">
+    @for (bay of bays; track bay) {
+      <div class="bay" [class.scrapyard]="bay === 'scrapped'" (dragover)="onDragOver($event)" (drop)="onDrop(bay)">
+        <h3>{{ bay.replace('_', ' ') }}</h3>
+        @for (refit of inBay(bay); track refit.id) {
+          <button
+            type="button"
+            class="ship"
+            draggable="true"
+            [class.selected]="selected()?.id === refit.id"
+            (dragstart)="onDragStart(refit)"
+            (click)="select(refit)">
+            <span class="name">{{ shipName(refit.shipId) }}</span>
+            <span class="meta">{{ refit.estimate !== undefined && refit.estimate !== null ? refit.estimate + ' cr' : 'no estimate' }}</span>
+          </button>
+        }
+      </div>
+    }
+  </div>
+}
+
+@if (selected(); as refit) {
+  <mat-card appearance="outlined" class="detail-card">
+    <mat-card-header>
+      <mat-card-title>{{ shipName(refit.shipId) }}</mat-card-title>
+      <mat-card-subtitle>
+        Opened by {{ refit.openedBy }} ·
+        {{ refit.inspectedAt ? 'inspected ' + (refit.inspectedAt | date: 'medium') : 'not yet inspected' }}
+      </mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <app-workflow-graph
+        [root]="resources.Refits"
+        [current]="refit.statusId ?? ''"
+        [executable]="executable(refit)"
+        (fire)="fire(refit, $event)"></app-workflow-graph>
+      <div class="edges">
+        @for (method of executable(refit); track method) {
+          <button mat-stroked-button (click)="fire(refit, method)">{{ method }}</button>
+        } @empty {
+          <span class="empty">No edges are lit for you on this refit.</span>
+        }
+      </div>
+
+      @if (canEdit(refit, 'estimate') || canEdit(refit, 'notes')) {
+        <form class="inline-form" (ngSubmit)="saveEdits(refit)">
+          @if (canEdit(refit, 'estimate')) {
+            <mat-form-field appearance="outline">
+              <mat-label>Estimate (whole credits)</mat-label>
+              <input matInput name="estimate" type="number" [(ngModel)]="editEstimate" />
+            </mat-form-field>
+          }
+          @if (canEdit(refit, 'notes')) {
+            <mat-form-field appearance="outline" class="grow">
+              <mat-label>Notes</mat-label>
+              <input matInput name="notes" [(ngModel)]="editNotes" />
+            </mat-form-field>
+          }
+          <button mat-flat-button type="submit">Save</button>
+        </form>
+      }
+
+      <h3>Checklist</h3>
+      @for (task of tasksOf(refit); track task.taskNumber) {
+        <div class="task-row">
+          <mat-slide-toggle [checked]="task.done" [disabled]="!canTick(task)" (change)="toggleTask(task)">
+            {{ task.taskNumber }}. {{ task.instructions }}
+          </mat-slide-toggle>
+          @if (task.notes) {
+            <span class="task-notes">{{ task.notes }}</span>
+          }
+          @if (canNote(task)) {
+            <form class="inline-form" (ngSubmit)="noteTask(task)">
+              <mat-form-field appearance="outline" class="grow">
+                <mat-label>Note (weekdays only for the night watch)</mat-label>
+                <input matInput [name]="'note-' + task.taskNumber" [(ngModel)]="taskNotes[taskKey(task)]" />
+              </mat-form-field>
+              <button mat-stroked-button type="submit">Note</button>
+            </form>
+          }
+        </div>
+      } @empty {
+        <p class="empty">No tasks on this refit yet.</p>
+      }
+      @if (canAddTask(refit)) {
+        <form class="inline-form" (ngSubmit)="addTask(refit)">
+          <mat-form-field appearance="outline" class="grow">
+            <mat-label>New task</mat-label>
+            <input matInput name="instructions" [(ngModel)]="newTaskInstructions" />
+          </mat-form-field>
+          <button mat-stroked-button type="submit">Add task</button>
+        </form>
+      }
+    </mat-card-content>
+  </mat-card>
+}
+
+@if (canListShips()) {
+  <mat-card appearance="outlined" class="table-card">
+    <mat-card-header>
+      <mat-card-title>Ships in {{ sector() }}</mat-card-title>
+      <mat-card-subtitle>
+        Hail is the first-class Touch: every field stays as it was, the timestamp bumps, and the ship's log records
+        who hailed. The Pilot's grant excludes quarantined ships.
+      </mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <div class="ships">
+        @for (ship of ships.value(); track ship.id) {
+          <div class="ship-card">
+            <b>{{ ship.name }}</b>
+            <span class="meta">{{ ship.registry }} · last refit {{ ship.lastRefitAt ? (ship.lastRefitAt | date: 'mediumDate') : 'never' }}</span>
+            <span class="meta">updated {{ ship.updatedAt ? (ship.updatedAt | date: 'medium') : 'never' }}</span>
+            @if (canHail(ship)) {
+              <button mat-stroked-button (click)="hail(ship)">Hail</button>
+            }
+          </div>
+        }
+      </div>
+      @if (canOpen()) {
+        <form class="inline-form" (ngSubmit)="openRefit()">
+          <mat-form-field appearance="outline">
+            <mat-label>Dock a ship for refit</mat-label>
+            <mat-select name="refitShip" [(ngModel)]="newRefitShipId" required>
+              @for (ship of ships.value(); track ship.id) {
+                <mat-option [value]="ship.id">{{ ship.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <button mat-flat-button type="submit">Dock</button>
+        </form>
+      }
+    </mat-card-content>
+  </mat-card>
+}

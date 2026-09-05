@@ -40,6 +40,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		name            string
 		target          string
 		grants          map[accesstypes.Permission][]accesstypes.Resource
+		conditional     map[accesstypes.Permission][]accesstypes.Resource
 		permCheckErr    error
 		wantForbidden   bool
 		wantErrContains string
@@ -97,6 +98,36 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 			permCheckErr:    errors.New("engine unavailable"),
 			wantErrContains: "engine unavailable",
 		},
+		{
+			name:   "conditional resource-level grant is an invariant breach, not Forbidden",
+			target: "/",
+			conditional: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource},
+			},
+			wantErrContains: "invariant breach",
+		},
+		{
+			name:   "conditional grant on an explicitly requested field is an invariant breach",
+			target: "/?columns=public",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource},
+			},
+			conditional: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource + ".public"},
+			},
+			wantErrContains: "invariant breach",
+		},
+		{
+			name:   "conditional field grant on the narrowing path is an invariant breach",
+			target: "/",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
+			},
+			conditional: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource + ".tagged"},
+			},
+			wantErrContains: "invariant breach",
+		},
 	}
 
 	for _, tt := range tests {
@@ -106,7 +137,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 			decoder := MustNewComputedQueryDecoder[computedEnforcementResource, computedEnforcementRequest](accesstypes.List)
 
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, http.NoBody)
-			userPermissions := &fakeUserPermissions{granted: tt.grants, err: tt.permCheckErr}
+			userPermissions := &fakeUserPermissions{granted: tt.grants, conditional: tt.conditional, err: tt.permCheckErr}
 
 			qSet, err := decoder.Decode(req, userPermissions, testScope)
 

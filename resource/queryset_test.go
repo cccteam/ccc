@@ -298,7 +298,7 @@ func TestQuerySet_BatchList(t *testing.T) {
 
 			var collectedResources []*SortTestResource
 			for batch := range tt.qSet.BatchList(t.Context(), txn, tt.batchSize) {
-				for resource, err := range batch {
+				for row, err := range batch {
 					if tt.expectError {
 						if err == nil {
 							t.Fatal("Expected an error but got nil")
@@ -312,7 +312,7 @@ func TestQuerySet_BatchList(t *testing.T) {
 					if err != nil {
 						t.Fatalf("Unexpected error while iterating a batch: %v", err)
 					}
-					collectedResources = append(collectedResources, resource)
+					collectedResources = append(collectedResources, &row.Data)
 				}
 			}
 

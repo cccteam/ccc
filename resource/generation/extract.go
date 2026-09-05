@@ -14,6 +14,13 @@ import (
 )
 
 func (c *client) structsToResources(structs []*parser.Struct, validators ...structValidator) ([]*resourceInfo, error) {
+	// structsByTable resolves a binding path's remote hops: each hop names Go
+	// fields on the struct backing the table the hop lands on.
+	structsByTable := make(map[string]*parser.Struct, len(structs))
+	for _, s := range structs {
+		structsByTable[c.pluralize(s.Name())] = s
+	}
+
 	resources := make([]*resourceInfo, 0, len(structs))
 	var resourceErrors []error
 	for _, pStruct := range structs {
@@ -36,6 +43,12 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 
 		if fieldAnnotationErr := rejectPrimaryKeyAnnotations(pStruct, annotations); fieldAnnotationErr != nil {
 			resourceErrors = append(resourceErrors, fieldAnnotationErr)
+
+			continue
+		}
+
+		if err := rejectTransitionAnnotations(pStruct, annotations, "resource"); err != nil {
+			resourceErrors = append(resourceErrors, err)
 
 			continue
 		}
@@ -73,6 +86,18 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 
+		if err := c.resolveBindingAnnotations(resource, pStruct, annotations, structsByTable); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
+		if err := c.resolveStateAnnotations(resource, pStruct, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
 		resources = append(resources, resource)
 	}
 
@@ -80,7 +105,42 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 		return nil, errors.Wrapf(errors.Join(resourceErrors...), "encountered %d errors converting structs to resources", len(resourceErrors))
 	}
 
+	// Workflow chains cross resources, so they resolve — and the uniform
+	// state bindings synthesize — only once every resource is extracted.
+	if err := c.resolveWorkflows(resources); err != nil {
+		return nil, err
+	}
+
 	return resources, nil
+}
+
+// resolveVirtualAnnotations applies a virtual resource's struct- and
+// field-level annotations: suppression, manual Sets, permission scope,
+// outlets, and — with the scope resolved — the @domain tenancy binding.
+func resolveVirtualAnnotations(resource *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
+	if annotations.Struct.Has(suppressKeyword) {
+		if err := applySuppressDirectives(resource, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
+			return errors.Wrapf(err, "@suppress on %s", pStruct.Name())
+		}
+	}
+
+	if annotations.Struct.Has(manualAddResourceSetKeyword) {
+		if err := applyManualAddResourceSetDirectives(resource, annotations.Struct.Get(manualAddResourceSetKeyword).Seq()); err != nil {
+			return errors.Wrapf(err, "@%s on %s", manualAddResourceSetKeyword, pStruct.Name())
+		}
+	}
+
+	if err := resolvePermissionScope(annotations, &resource.PermissionScope); err != nil {
+		return errors.Wrapf(err, "on %s", pStruct.Name())
+	}
+
+	if err := resolveOutlets(annotations, &resource.outletMembership); err != nil {
+		return errors.Wrapf(err, "on %s", pStruct.Name())
+	}
+
+	// Scope resolves above; the tenancy pairing (domain-scoped ⇔ @domain)
+	// validates against it.
+	return resolveVirtualDomain(resource, pStruct, annotations)
 }
 
 // parsePermissionScopeAnnotation resolves a @permissionScope argument to one of the two
@@ -243,6 +303,18 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 
+		if err := rejectBindingAnnotations(pStruct, annotations, "virtual resource", domainKeyword); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
+		if err := rejectTransitionAnnotations(pStruct, annotations, "virtual resource"); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
 		if err := validate(pStruct, validators...); err != nil {
 			errs = append(errs, err)
 
@@ -279,30 +351,8 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			field.IsNullable = nullability
 		}
 
-		if annotations.Struct.Has(suppressKeyword) {
-			if err := applySuppressDirectives(resource, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
-				errs = append(errs, errors.Wrapf(err, "@suppress on %s", pStruct.Name()))
-
-				continue
-			}
-		}
-
-		if annotations.Struct.Has(manualAddResourceSetKeyword) {
-			if err := applyManualAddResourceSetDirectives(resource, annotations.Struct.Get(manualAddResourceSetKeyword).Seq()); err != nil {
-				errs = append(errs, errors.Wrapf(err, "@%s on %s", manualAddResourceSetKeyword, pStruct.Name()))
-
-				continue
-			}
-		}
-
-		if err := resolvePermissionScope(annotations, &resource.PermissionScope); err != nil {
-			errs = append(errs, errors.Wrapf(err, "on %s", pStruct.Name()))
-
-			continue
-		}
-
-		if err := resolveOutlets(annotations, &resource.outletMembership); err != nil {
-			errs = append(errs, errors.Wrapf(err, "on %s", pStruct.Name()))
+		if err := resolveVirtualAnnotations(resource, pStruct, annotations); err != nil {
+			errs = append(errs, err)
 
 			continue
 		}
@@ -344,6 +394,14 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 		spannerTag, ok := field.LookupTag(spannerTagKey)
 		if !ok {
 			field.AddError("missing spanner tag")
+
+			continue
+		}
+		if reserved, collides := reservedRowName(spannerTag, field.Name()); collides {
+			// The read statements' reserved output columns and the reserved
+			// per-row wire property: a colliding resource column would be
+			// indistinguishable from the envelope metadata.
+			field.AddError(fmt.Sprintf("column name %q is reserved for the row envelope", reserved))
 
 			continue
 		}
@@ -432,6 +490,12 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
+		if err := rejectBindingAnnotations(s, annotations, "RPC method"); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
 		if err := validate(s, validators...); err != nil {
 			errs = append(errs, err)
 
@@ -477,6 +541,12 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
+		if err := c.resolveTransition(rpcMethod, s, annotations); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
 		rpcMethods = append(rpcMethods, rpcMethod)
 	}
 
@@ -499,6 +569,18 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 		}
 
 		if !annotations.Struct.Has(computedKeyword) {
+			continue
+		}
+
+		if err := rejectBindingAnnotations(s, annotations, "computed resource"); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
+		if err := rejectTransitionAnnotations(s, annotations, "computed resource"); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
 			continue
 		}
 
@@ -556,6 +638,18 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 	}
 
 	return compResources, nil
+}
+
+// reservedRowName reports whether a column or field name collides with one of
+// the row envelope's reserved names, returning the name it collides with.
+func reservedRowName(spannerTag, fieldName string) (string, bool) {
+	for _, reserved := range []string{reservedMaskedNamesColumn, reservedCapabilitiesProperty, reservedCapabilityChecksColumn} {
+		if strings.EqualFold(spannerTag, reserved) || strings.EqualFold(fieldName, reserved) {
+			return reserved, true
+		}
+	}
+
+	return "", false
 }
 
 func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {

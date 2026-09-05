@@ -53,6 +53,7 @@ func Test_decodersTemplate_gating(t *testing.T) {
 				ApplicationName:         "App",
 				ReceiverName:            "a",
 				RPCPackage:              "rpc",
+				RouterPackage:           "router",
 				HasQueryDecoder:         true,
 				HasComputedQueryDecoder: true,
 				HasPatchDecoder:         true,
@@ -60,11 +61,11 @@ func Test_decodersTemplate_gating(t *testing.T) {
 			},
 			wantContains: []string{
 				"func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {",
-				"resource.MustNewQueryDecoder[Resource, Request](permissions...)",
+				"resource.MustNewQueryDecoder[Resource, Request](router.Collection(), permissions...)",
 				"func NewComputedQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {",
 				"resource.MustNewComputedQueryDecoder[Resource, Request](permissions...)",
 				"func NewDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.Decoder[Resource, Request] {",
-				"resource.MustNewDecoder[Resource, Request](a, permissions...)",
+				"resource.MustNewDecoder[Resource, Request](a, router.Collection(), permissions...)",
 				"func NewRPCDecoder[Method rpc.Method, Request any](a *App, perm accesstypes.Permission) *resource.RPCDecoder[Request] {",
 				"resource.MustNewRPCDecoder[Request](a, method.Method(), perm)",
 			},
@@ -168,6 +169,21 @@ func Test_appContractTemplate_gating(t *testing.T) {
 				"var _ = (*App).RPCClient",
 				"var _ = (*App).ComputedClient",
 			},
+		},
+		{
+			name: "concealed domains swap the contract method to DomainVisible",
+			data: appContractData{
+				Package:          "app",
+				ApplicationName:  "App",
+				HasDomainScoped:  true,
+				ConcealedDomains: true,
+			},
+			wantContains: []string{
+				"DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)",
+				"DomainGuard() func(http.HandlerFunc) http.HandlerFunc",
+				"var _ domainScopedApp = (*App)(nil)",
+			},
+			wantNotContains: []string{"DomainExists"},
 		},
 		{
 			name: "query-only app asserts the resource surface alone",
@@ -398,7 +414,36 @@ func Test_routesTemplate_outlets(t *testing.T) {
 				"func NewTestRouter(h AllGeneratedHandlers) *chi.Mux {",
 				"generatedAutomationRoutes(r, h)",
 			},
-			wantNotContains: []string{"func NewTestRouter(h GeneratedHandlers) *chi.Mux {"},
+			wantNotContains: []string{
+				"func NewTestRouter(h GeneratedHandlers) *chi.Mux {",
+				// A session-less outlet acquires no permission routes and no
+				// PermissionDigest/UserDomains requirement of its own.
+				`r.Get("/automation/permission-digest"`,
+				`r.Get("/automation/user-domains"`,
+			},
+		},
+		{
+			name: "a session-serving outlet registers the permission routes under its prefix",
+			data: routerFileData{
+				Package: "router",
+				RoutesMap: map[string][]*generatedRoute{
+					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+				},
+				ExtraOutlets: []*outletRouteData{{
+					Name:           "portal",
+					Suffix:         "Portal",
+					Prefix:         "portal",
+					ServesSessions: true,
+					RoutesMap: map[string][]*generatedRoute{
+						"Widget": {{Method: "GET", Path: "/portal/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
+					},
+				}},
+			},
+			wantContains: []string{
+				"type GeneratedPortalHandlers interface {",
+				`r.Get("/portal/permission-digest", h.PermissionDigest())`,
+				`r.Get("/portal/user-domains", h.UserDomains())`,
+			},
 		},
 		{
 			name: "no extra outlets renders the single-outlet file",
@@ -439,6 +484,92 @@ func Test_routesTemplate_outlets(t *testing.T) {
 	}
 }
 
+// Test_permissionsTemplate_sessionOutlets pins the handlers' doc comments: with only
+// the default outlet the wording is unchanged; with an additional session-serving
+// outlet the comments say the routes also ride that outlet's prefix.
+func Test_permissionsTemplate_sessionOutlets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		data            permissionsData
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "default outlet only keeps today's wording",
+			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api"},
+			wantContains: []string{
+				"registers it at GET /api/permission-digest.",
+				"GET /api/user-domains.",
+			},
+			wantNotContains: []string{"additional session-serving"},
+		},
+		{
+			name: "extra session outlets extend the comments",
+			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", HasExtraSessionOutlets: true},
+			wantContains: []string{
+				"registers it at GET /api/permission-digest and,",
+				"for each additional session-serving outlet (ServesSessions), under that outlet's prefix.",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			out, err := c.generateTemplateOutput("permissionsTemplate", permissionsTemplate, tt.data)
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("permissionsTemplate output missing %q:\n%s", want, out)
+				}
+			}
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(string(out), notWant) {
+					t.Errorf("permissionsTemplate output must not contain %q:\n%s", notWant, out)
+				}
+			}
+		})
+	}
+}
+
+// Test_routesTemplate_sessionOutletHandlers pins that a session-serving outlet's
+// interface requires the permission handlers itself: the methods appear once in the
+// default GeneratedHandlers interface and once in the outlet's.
+func Test_routesTemplate_sessionOutletHandlers(t *testing.T) {
+	t.Parallel()
+
+	data := routerFileData{
+		Package:   "router",
+		RoutesMap: map[string][]*generatedRoute{},
+		ExtraOutlets: []*outletRouteData{{
+			Name:           "portal",
+			Suffix:         "Portal",
+			Prefix:         "portal",
+			ServesSessions: true,
+			RoutesMap:      map[string][]*generatedRoute{},
+		}},
+	}
+
+	c := &client{}
+	out, err := c.generateTemplateOutput("routesTemplate", routesTemplate, data)
+	if err != nil {
+		t.Fatalf("generateTemplateOutput() error = %v", err)
+	}
+
+	for _, method := range []string{"PermissionDigest() http.HandlerFunc", "UserDomains() http.HandlerFunc"} {
+		if got := strings.Count(string(out), method); got != 2 {
+			t.Errorf("%q appears %d times, want 2 (default interface and portal interface):\n%s", method, got, out)
+		}
+	}
+}
+
 // Test_routerTestTemplate_outletIsolation pins the outlet dimension of the generated
 // router tests: extra-outlet consolidated dispatch cases, stub methods for handlers
 // served only under extra outlets, and the 404 isolation test — none of which render
@@ -459,14 +590,24 @@ func Test_routerTestTemplate_outletIsolation(t *testing.T) {
 				RoutesMap: map[string][]*generatedRoute{
 					"Widget": {{Method: "GET", Path: "/api/widgets", HandlerFunc: "Widgets", HandlerType: ListHandler}},
 				},
-				ExtraOutlets: []*outletRouteData{{
-					Name:                    "automation",
-					Suffix:                  "Automation",
-					RoutesMap:               map[string][]*generatedRoute{},
-					HasConsolidatedHandler:  true,
-					ConsolidatedHandlerFunc: "PatchAutomationResources",
-					ConsolidatedPath:        "/automation/resources",
-				}},
+				ExtraOutlets: []*outletRouteData{
+					{
+						Name:                    "automation",
+						Suffix:                  "Automation",
+						Prefix:                  "automation",
+						RoutesMap:               map[string][]*generatedRoute{},
+						HasConsolidatedHandler:  true,
+						ConsolidatedHandlerFunc: "PatchAutomationResources",
+						ConsolidatedPath:        "/automation/resources",
+					},
+					{
+						Name:           "portal",
+						Suffix:         "Portal",
+						Prefix:         "portal",
+						ServesSessions: true,
+						RoutesMap:      map[string][]*generatedRoute{},
+					},
+				},
 				ExtraStubHandlerFuncs: []string{"PatchAutomationResources"},
 				NegativeRouterTests: []negativeRouterTest{
 					{Method: "http.MethodGet", URL: "/automation/widgets"},
@@ -479,6 +620,14 @@ func Test_routerTestTemplate_outletIsolation(t *testing.T) {
 				"func (s *generatedHandlersStub) PatchAutomationResources() http.HandlerFunc {",
 				`url: "/automation/resources", method: http.MethodPatch,`,
 				`handlerFunc: "PatchAutomationResources",`,
+				// The session-serving outlet's permission routes get dispatch cases;
+				// the session-less outlet's do not.
+				`url: "/portal/permission-digest", method: http.MethodGet,`,
+				`url: "/portal/user-domains", method: http.MethodGet,`,
+			},
+			wantNotContains: []string{
+				`url: "/automation/permission-digest"`,
+				`url: "/automation/user-domains"`,
 			},
 		},
 		{

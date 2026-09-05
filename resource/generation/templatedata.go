@@ -1,6 +1,8 @@
 package generation
 
 import (
+	"strings"
+
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
@@ -90,6 +92,9 @@ type consolidatedPatchData struct {
 	// HandlerName is the dispatcher method's name: PatchResources on the default
 	// outlet, Patch<Suffix>Resources on an extra outlet's dispatcher.
 	HandlerName string
+	// ConcealedDomains swaps the descent's question from DomainExists to
+	// DomainVisible (WithConcealedDomains).
+	ConcealedDomains bool
 }
 
 // consolidatedCaseData is one resource case of the consolidated dispatch, carrying the
@@ -188,6 +193,14 @@ type routerFileData struct {
 type outletRouteData struct {
 	Name   string
 	Suffix string
+	// Prefix is the outlet's route prefix, under which the session routes render
+	// when the outlet serves sessions (resource routes carry it pre-rendered in
+	// their paths).
+	Prefix string
+	// ServesSessions registers the permission-digest and user-domains routes under
+	// the outlet's prefix and adds their handler requirements to the outlet's
+	// interface (see the ServesSessions option).
+	ServesSessions bool
 	// RoutesMap groups the outlet's routes by source struct name (template map
 	// iteration is name-sorted, keeping output deterministic).
 	RoutesMap             map[string][]*generatedRoute
@@ -206,12 +219,31 @@ type negativeRouterTest struct {
 	URL    string
 }
 
+// permissionsData feeds the permissions template: the application's
+// library-delegating PermissionDigest and UserDomains handlers.
+type permissionsData struct {
+	Source          string
+	Package         string
+	ApplicationName string
+	ReceiverName    string
+	// RoutePrefix names the default outlet's route prefix in the emitted doc
+	// comments; the routes themselves are registered by the routes template.
+	RoutePrefix string
+	// HasExtraSessionOutlets extends the doc comments when additional outlets
+	// serve sessions (ServesSessions), whose routes the same handlers serve.
+	HasExtraSessionOutlets bool
+}
+
 type domainGuardData struct {
 	Source              string
 	Package             string
 	LocalPackageImports string
 	ApplicationName     string
 	ReceiverName        string
+	// ConcealedDomains swaps the guard's question from DomainExists to
+	// DomainVisible, collapsing "unauthorized" into "nonexistent"
+	// (WithConcealedDomains).
+	ConcealedDomains bool
 }
 
 type decodersFileData struct {
@@ -222,12 +254,16 @@ type decodersFileData struct {
 	ReceiverName        string
 	// RPCPackage qualifies the generated Method union constraining NewRPCDecoder.
 	RPCPackage string
+	// RouterPackage qualifies the generated collection the query decoders render
+	// conditional grants against.
+	RouterPackage string
 	// The Has* fields emit each constructor only when a generated handler calls it,
 	// so an application carries no constructor its code does not use.
 	HasQueryDecoder         bool
 	HasComputedQueryDecoder bool
 	HasPatchDecoder         bool
 	HasRPCDecoder           bool
+	HasTargetedRPCDecoder   bool
 }
 
 type appContractData struct {
@@ -242,6 +278,9 @@ type appContractData struct {
 	HasDomainScoped bool
 	HasRPC          bool
 	HasComputed     bool
+	// ConcealedDomains swaps the domain-scoped contract method from
+	// DomainExists to DomainVisible (WithConcealedDomains).
+	ConcealedDomains bool
 }
 
 type handlerTestsMainData struct {
@@ -273,6 +312,11 @@ type authzCase struct {
 	Body string
 	// DeniedOnly suppresses the granted case (mutation endpoints).
 	DeniedOnly bool
+	// DeniedStatus overrides the denied case's expected status (default 403).
+	// Concealed domains (WithConcealedDomains) answer a caller with no grants
+	// as if the domain did not exist: 404 from the route guard, 400 from the
+	// consolidated dispatcher's operation-path descent.
+	DeniedStatus string
 }
 
 type authzTestData struct {
@@ -298,6 +342,9 @@ type rpcHandlerData struct {
 	Package             string
 	ApplicationName     string
 	ReceiverName        string
+	// ResourcesPackage names the resources package, whose generated query and
+	// patch builders the declared-transition frame works through.
+	ResourcesPackage string
 }
 
 func (d *rpcHandlerData) typeImports() []fixerImport {
@@ -323,7 +370,11 @@ type tsConstantsData struct {
 	File       *typescriptGenerator
 	Data       *resource.TypescriptData
 	RPCMethods []*rpcMethodInfo
-	PIIMap     map[accesstypes.Resource]map[accesstypes.Tag]bool
+	// ManualMethods are the Execute registrations without a parsed RPC struct
+	// (@manualAddResource(Execute)); they join the Methods constants after the
+	// generated methods.
+	ManualMethods []accesstypes.Resource
+	PIIMap        map[accesstypes.Resource]map[accesstypes.Tag]bool
 }
 
 type tsResourcesData struct {
@@ -342,6 +393,11 @@ type tsResourcesData struct {
 	DomainRouteParam    string
 	HasDomainScoped     bool
 	HasConsolidated     bool
+	// Workflows carries each stateful root's assembled graph — the same facts
+	// the DOT files draw (minus context references) — so a frontend can render
+	// the workflow itself. Empty for applications without workflows, which then
+	// emit nothing (byte-identical output).
+	Workflows []*workflowGraph
 }
 
 type tsMethodsData struct {
@@ -385,4 +441,115 @@ func rpcTypeImports(dst []fixerImport, method *rpcMethodInfo) []fixerImport {
 	}
 
 	return dst
+}
+
+// tsAPIData feeds the typed API client template (zz_gen_api.ts): the descriptor the
+// @cccteam/resource runtime interprets plus the per-resource write shapes and key
+// tuples only the generator can derive. Only default-outlet resources and methods
+// appear — the browser client addresses the default outlet.
+type tsAPIData struct {
+	File               *typescriptGenerator
+	GenPrefix          string
+	Resources          []*tsAPIResource
+	Methods            []*tsAPIMethod
+	DomainRouteSegment string
+	DomainRouteParam   string
+	ConsolidatedRoute  string
+	HasDomainScoped    bool
+	HasGlobal          bool
+	HasDomain          bool
+}
+
+// ResourceImports lists the row types the client file imports from the resources file.
+func (d *tsAPIData) ResourceImports() string {
+	names := make([]string, 0, len(d.Resources))
+	for _, res := range d.Resources {
+		names = append(names, res.Name)
+	}
+
+	return strings.Join(names, ", ")
+}
+
+// MethodImports lists the body types the client file imports from the methods file.
+func (d *tsAPIData) MethodImports() string {
+	names := make([]string, 0, len(d.Methods))
+	for _, method := range d.Methods {
+		names = append(names, method.Name)
+	}
+
+	return strings.Join(names, ", ")
+}
+
+type tsAPIResource struct {
+	// Name is the plural PascalCase resource name — the Resources constant and the row type.
+	Name string
+	// Property is the camelCase name the handle hangs off the client under.
+	Property     string
+	Route        string
+	Scope        accesstypes.PermissionScope
+	Consolidated bool
+	Keys         []*tsAPIField
+	Operations   []string
+	HasCreate    bool
+	CreateFields []*tsAPIField
+	HasPatch     bool
+	PatchFields  []*tsAPIField
+}
+
+// HandleType renders the ResourceHandle instantiation for the resource: the row type,
+// the key tuple, the operations the server generated, and the write shapes when the
+// resource accepts writes.
+func (r *tsAPIResource) HandleType() string {
+	ops := make([]string, 0, len(r.Operations))
+	for _, op := range r.Operations {
+		ops = append(ops, "'"+op+"'")
+	}
+	args := []string{r.Name, r.Name + "Key", strings.Join(ops, " | ")}
+	switch {
+	case r.HasPatch:
+		args = append(args, r.createTypeName(), r.Name+"Patch")
+	case r.HasCreate:
+		args = append(args, r.createTypeName())
+	}
+
+	return "ResourceHandle<" + strings.Join(args, ", ") + ">"
+}
+
+func (r *tsAPIResource) createTypeName() string {
+	if r.HasCreate {
+		return r.Name + "Create"
+	}
+
+	return "never"
+}
+
+type tsAPIField struct {
+	Name     string
+	Type     string
+	Required bool
+}
+
+type tsAPIMethod struct {
+	Name     string
+	Property string
+	Route    string
+	Scope    accesstypes.PermissionScope
+}
+
+// ScopeKind renders the resource's permission scope as the client descriptor spells it.
+func (r *tsAPIResource) ScopeKind() string {
+	return scopeKind(r.Scope)
+}
+
+// ScopeKind renders the method's permission scope as the client descriptor spells it.
+func (m *tsAPIMethod) ScopeKind() string {
+	return scopeKind(m.Scope)
+}
+
+func scopeKind(scope accesstypes.PermissionScope) string {
+	if scope == accesstypes.DomainPermissionScope {
+		return string(accesstypes.DomainPermissionScope)
+	}
+
+	return string(accesstypes.GlobalPermissionScope)
 }

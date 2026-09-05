@@ -1,0 +1,68 @@
+.portal-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 24px;
+  background: #1f2331;
+  color: #fff;
+
+  .brand {
+    color: #f2b544;
+    font-weight: 700;
+    font-size: 18px;
+    flex: 1;
+  }
+
+  .who {
+    font-family: 'Roboto Mono', monospace;
+  }
+
+  .sector {
+    width: 160px;
+    margin-bottom: -20px;
+  }
+
+  button {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.4);
+  }
+}
+
+.sheets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.sheet {
+  text-align: left;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: inherit;
+
+  &.selected {
+    border-color: #a5640a;
+    box-shadow: 0 0 0 2px rgba(165, 100, 10, 0.25);
+  }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .title {
+    font-weight: 500;
+  }
+
+  .fee {
+    font-weight: 500;
+  }
+}

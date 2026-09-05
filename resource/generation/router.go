@@ -31,6 +31,8 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		outletRoutes[i] = &outletRouteData{
 			Name:                    outlet.name,
 			Suffix:                  outlet.suffix(),
+			Prefix:                  outlet.prefix,
+			ServesSessions:          outlet.servesSessions,
 			RoutesMap:               make(map[string][]*generatedRoute),
 			ConsolidatedHandlerFunc: fmt.Sprintf("Patch%sResources", outlet.suffix()),
 			ConsolidatedPath:        fmt.Sprintf("/%s/%s", outlet.prefix, r.ConsolidatedRoute),
@@ -365,13 +367,21 @@ func (r *resourceGenerator) negativeRouterTests(outlets []routerOutlet) ([]negat
 }
 
 // negativeTestsForOutlet builds one outlet's isolation cases: the URLs of everything
-// routed that is NOT attached to the outlet, addressed under the outlet's prefix.
+// routed that is NOT attached to the outlet, addressed under the outlet's prefix —
+// including the permission routes for an outlet that does not serve sessions.
 func (r *resourceGenerator) negativeTestsForOutlet(outlet routerOutlet) ([]negativeRouterTest, error) {
 	var tests []negativeRouterTest
 	addRoute := func(route *generatedRoute) {
 		for _, method := range route.TestMethods() {
 			tests = append(tests, negativeRouterTest{Method: method, URL: route.TestURL})
 		}
+	}
+
+	if !outlet.servesSessions {
+		tests = append(tests,
+			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/permission-digest", outlet.prefix)},
+			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/user-domains", outlet.prefix)},
+		)
 	}
 
 	anyConsolidated, outletHasConsolidated := false, false

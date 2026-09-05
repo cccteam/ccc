@@ -64,12 +64,12 @@ func (c *postgresReader[Resource]) DBType() DBType {
 }
 
 // Read reads a single resource from the database.
-func (c *postgresReader[Resource]) Read(_ context.Context, _ *Statement) (*Resource, error) {
+func (c *postgresReader[Resource]) Read(_ context.Context, _ *Statement) (*Row[Resource], error) {
 	panic("Read() not implemented for PostgresReader[Resource]")
 }
 
 // List reads a list of resources from the database.
-func (c *postgresReader[Resource]) List(_ context.Context, _ *Statement) iter.Seq2[*Resource, error] {
+func (c *postgresReader[Resource]) List(_ context.Context, _ *Statement) iter.Seq2[*Row[Resource], error] {
 	panic("List() not implemented for PostgresReader[Resource]")
 }
 

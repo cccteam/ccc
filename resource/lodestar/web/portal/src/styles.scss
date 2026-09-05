@@ -1,0 +1,49 @@
+/* Global styles for the Lodestar client portal: smaller, calmer than the console. */
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: Roboto, 'Helvetica Neue', sans-serif;
+  background-color: #f7f6f2;
+}
+
+.page-content {
+  padding: 16px 24px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.empty {
+  padding: 16px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.table-card,
+.create-card {
+  margin: 16px 0;
+
+  table {
+    width: 100%;
+  }
+}
+
+.inline-form {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+
+  .grow {
+    flex: 1;
+    min-width: 240px;
+  }
+}
+
+.state-chip {
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.08);
+  text-transform: capitalize;
+}

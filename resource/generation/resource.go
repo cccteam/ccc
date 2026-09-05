@@ -31,6 +31,12 @@ type resourceGenerator struct {
 	// Defaults: "domains"/"domain"; customized via WithDomainRoute.
 	domainRouteSegment string
 	domainRouteParam   string
+	// concealedDomains collapses "unauthorized" into "nonexistent" on every
+	// domain-naming surface (WithConcealedDomains): the DomainGuard and the
+	// consolidated dispatcher ask DomainVisible — does the domain exist AND
+	// does the caller hold any grant in it — instead of DomainExists, so a
+	// prober cannot confirm a tenant exists from the rejection shape.
+	concealedDomains bool
 	// extraOutlets are the router outlets declared by WithRouterOutlet, beyond the
 	// default outlet GenerateRoutes declares. Resources join them via @outlet.
 	extraOutlets        []routerOutlet
@@ -39,10 +45,11 @@ type resourceGenerator struct {
 }
 
 // allOutlets returns every declared router outlet: the default outlet first,
-// followed by the WithRouterOutlet declarations in option order.
+// followed by the WithRouterOutlet declarations in option order. The default
+// outlet always serves browser sessions; extra outlets opt in (ServesSessions).
 func (r *resourceGenerator) allOutlets() []routerOutlet {
 	outlets := make([]routerOutlet, 0, len(r.extraOutlets)+1)
-	outlets = append(outlets, routerOutlet{name: defaultOutletName, prefix: r.routePrefix})
+	outlets = append(outlets, routerOutlet{name: defaultOutletName, prefix: r.routePrefix, servesSessions: true})
 
 	return append(outlets, r.extraOutlets...)
 }
@@ -157,7 +164,41 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 		return nil, err
 	}
 
+	if err := r.validateTypescriptOutletTargets(); err != nil {
+		return nil, err
+	}
+
 	return r, nil
+}
+
+// validateTypescriptOutletTargets checks every GenerateTypescript target's outlet
+// binding (ForOutlet) at construction: the outlet must be declared, and it must
+// serve browser sessions — the generated client reads its permission digest and
+// user-domains channels under the outlet's prefix, so a client for a session-less
+// outlet would have no permission channels and fail closed on every page.
+func (r *resourceGenerator) validateTypescriptOutletTargets() error {
+	outlets := r.allOutlets()
+	for _, target := range r.typescriptTargets {
+		t, err := target.resolve()
+		if err != nil {
+			return err
+		}
+
+		i := slices.IndexFunc(outlets, func(outlet routerOutlet) bool { return outlet.name == t.outletName })
+		if i < 0 {
+			declared := make([]string, 0, len(outlets))
+			for _, outlet := range outlets {
+				declared = append(declared, outlet.name)
+			}
+
+			return errors.Newf("GenerateTypescript(%q): ForOutlet(%q) references an undeclared outlet; declared outlets are %v (see WithRouterOutlet)", target.destination, t.outletName, declared)
+		}
+		if !outlets[i].servesSessions {
+			return errors.Newf("GenerateTypescript(%q): outlet %q does not serve browser sessions, so the generated client would have no permission-digest or user-domains channel and would fail closed on every page; declare the outlet with WithRouterOutlet(%q, %q, ServesSessions()), or target a session-serving outlet", target.destination, t.outletName, outlets[i].name, outlets[i].prefix)
+		}
+	}
+
+	return nil
 }
 
 func (r *resourceGenerator) Generate() error {
@@ -165,9 +206,12 @@ func (r *resourceGenerator) Generate() error {
 
 	begin := time.Now()
 
-	packageMap, err := parser.LoadPackages(r.loadPackages...)
+	// Resilient load: stale generated output from a previous run must not stop the
+	// run that would overwrite it. Anything tolerated here is re-checked strictly
+	// after generation below.
+	packageMap, toleratedStaleOutput, err := parser.LoadPackagesResilient(r.loadPackages...)
 	if err != nil {
-		return errors.Wrap(err, "parser.LoadPackages()")
+		return errors.Wrap(err, "parser.LoadPackagesResilient()")
 	}
 
 	pkg := packageMap[r.resource.Package()]
@@ -233,11 +277,46 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
+	// Workflow DOT files draw declared transitions, so they render only after
+	// RPC extraction resolves them.
+	if err := r.generateWorkflowGraphs(); err != nil {
+		return errors.Wrap(err, "resourceGenerator.generateWorkflowGraphs()")
+	}
+
 	// Runs after every annotated struct kind is extracted (rpc methods last).
 	if err := r.validateAnnotatedOutlets(); err != nil {
 		return err
 	}
 
+	if err := r.runWiringGeneration(); err != nil {
+		return err
+	}
+
+	if err := r.populateCache(); err != nil {
+		return err
+	}
+
+	if err := r.runCollectionGeneration(); err != nil {
+		return err
+	}
+
+	if toleratedStaleOutput {
+		// Everything has been regenerated; whatever still fails to type-check is real
+		// breakage the generator does not own (hand-written call sites, bad struct
+		// definitions) and must fail the run.
+		if _, err := parser.LoadPackages(r.loadPackages...); err != nil {
+			return errors.Wrap(err, "post-generation type check: generated files were written, remaining errors are outside generator-owned output")
+		}
+	}
+
+	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
+
+	return nil
+}
+
+// runWiringGeneration renders the enabled wiring outputs: routes, handlers,
+// and handler tests.
+func (r *resourceGenerator) runWiringGeneration() error {
 	if r.genRoutes {
 		if err := r.runRouteGeneration(); err != nil {
 			return err
@@ -253,16 +332,6 @@ func (r *resourceGenerator) Generate() error {
 			return err
 		}
 	}
-
-	if err := r.populateCache(); err != nil {
-		return err
-	}
-
-	if err := r.runCollectionGeneration(); err != nil {
-		return err
-	}
-
-	log.Printf("Finished Resource generation in %s\n", time.Since(begin))
 
 	return nil
 }
@@ -451,7 +520,7 @@ func (r *resourceGenerator) generateResourceInterfaces() error {
 
 func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 	begin := time.Now()
-	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(r.pluralize(res.Name()))))
+	fileName := generatedGoFileName(fileStem(r.pluralize(res.Name())))
 	var (
 		packageName         string
 		destinationFilePath string
@@ -478,7 +547,7 @@ func (r *resourceGenerator) generateResources(res *resourceInfo) error {
 }
 
 func (r *resourceGenerator) generateEnums(namedTypes []*parser.NamedType) error {
-	enumMap, err := r.retrieveDatabaseEnumValues(namedTypes)
+	enumMap, _, err := r.retrieveDatabaseEnumValues(namedTypes)
 	if err != nil {
 		return err
 	}

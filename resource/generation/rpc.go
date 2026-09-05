@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/go-playground/errors/v5"
@@ -31,7 +30,7 @@ func (r *resourceGenerator) runRPCGeneration() error {
 }
 
 func (r *resourceGenerator) generateRPCMethod(rpc *rpcMethodInfo) error {
-	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(rpc.Name())))
+	fileName := generatedGoFileName(fileStem(rpc.Name()))
 	destinationFilePath := filepath.Join(r.rpc.Dir(), fileName)
 
 	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rpcFileTemplate:%q", rpc.Name()), rpcFileTemplate, &rpcFileData{
@@ -47,7 +46,7 @@ func (r *resourceGenerator) generateRPCMethod(rpc *rpcMethodInfo) error {
 
 func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 	begin := time.Now()
-	fileName := generatedGoFileName(strings.ToLower(caser.ToSnake(rpcMethod.Name())))
+	fileName := generatedGoFileName(fileStem(rpcMethod.Name()))
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
 	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rcpHandlerTemplate:%q", rpcMethod.Name()), rpcHandlerTemplate, &rpcHandlerData{
@@ -57,6 +56,7 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 		Package:             r.handler.Package(),
 		ApplicationName:     r.applicationName,
 		ReceiverName:        r.receiverName,
+		ResourcesPackage:    r.resource.Package(),
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}

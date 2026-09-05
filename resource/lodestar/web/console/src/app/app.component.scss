@@ -1,0 +1,15 @@
+.progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+}
+
+.alert-container {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 1001;
+  max-width: 480px;
+}

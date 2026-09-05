@@ -1,0 +1,26 @@
+<svg [attr.viewBox]="'0 0 ' + width + ' ' + height" class="graph" role="img" aria-label="Workflow graph">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="arrowhead" />
+    </marker>
+  </defs>
+  @for (edge of edges(); track edge.method + edge.from) {
+    <g
+      class="edge"
+      [class.live]="edge.live"
+      (click)="emit(edge)"
+      (keydown.enter)="emit(edge)"
+      [attr.tabindex]="edge.live ? 0 : -1"
+      [attr.role]="edge.live ? 'button' : null"
+      [attr.aria-label]="edge.method">
+      <path [attr.d]="edge.path" marker-end="url(#arrow)" />
+      <text [attr.x]="edge.labelX" [attr.y]="edge.labelY">{{ edge.method }}</text>
+    </g>
+  }
+  @for (node of nodes(); track node.state) {
+    <g class="node" [class.current]="node.state === current()" [class.terminal]="node.terminal" [class.default]="node.isDefault">
+      <rect [attr.x]="node.x - 36" [attr.y]="node.y - 14" width="72" height="28" rx="6" />
+      <text [attr.x]="node.x" [attr.y]="node.y + 4">{{ label(node.state) }}</text>
+    </g>
+  }
+</svg>

@@ -1,0 +1,31 @@
+<div class="login-page">
+  <mat-card class="login-card" appearance="outlined">
+    <mat-card-header>
+      <mat-card-title>✦ Lodestar Client Portal</mat-card-title>
+      <mat-card-subtitle>Track the calls and missions your company booked</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <form (ngSubmit)="login()">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Login</mat-label>
+          <input matInput name="username" [(ngModel)]="username" autocomplete="username" required />
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Password</mat-label>
+          <input matInput name="password" type="password" [(ngModel)]="password" autocomplete="current-password" required />
+        </mat-form-field>
+        <button mat-flat-button color="primary" type="submit" class="full-width" [disabled]="busy()">Sign in</button>
+      </form>
+      <div class="manifest">
+        @for (persona of manifest; track persona.login) {
+          <button type="button" class="persona" (click)="fillPersona(persona.login)">
+            <span class="login">{{ persona.login }}</span>
+            <span class="name">{{ persona.name }} · {{ persona.company }}</span>
+            <span class="proves">{{ persona.proves }}</span>
+          </button>
+        }
+      </div>
+      <p class="hint">Demo client logins share the password <code>lodestar</code>.</p>
+    </mat-card-content>
+  </mat-card>
+</div>

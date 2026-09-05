@@ -11,6 +11,7 @@ import (
 	"github.com/cccteam/spxscan"
 	"github.com/cccteam/spxscan/spxapi"
 	"github.com/go-playground/errors/v5"
+	"google.golang.org/api/iterator"
 )
 
 var _ Client = (*SpannerClient)(nil)
@@ -71,11 +72,30 @@ func (c *spannerReader[Resource]) DBType() DBType {
 	return SpannerDBType
 }
 
+// envelopeScan reports whether the statement carries reserved metadata
+// columns (masked names, capability checks) or an assembly plan, requiring
+// the lenient per-row scan instead of the plain spxscan path.
+func envelopeScan(stmt *Statement) bool {
+	return stmt.maskedNamesColumn != "" || stmt.capabilityPlan != nil
+}
+
 // Read reads a single resource from the database.
-func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Resource, error) {
+func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
 	var res Resource
-	dst := new(Resource)
-	if err := spxscan.Get(ctx, c.readTxn(), dst, stmt.SpannerStatement()); err != nil {
+	if envelopeScan(stmt) {
+		row, err := c.readEnvelope(ctx, stmt)
+		if err != nil {
+			return nil, err
+		}
+		if row == nil {
+			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", res.Resource(), stmt.resolvedWhereClause)
+		}
+
+		return row, nil
+	}
+
+	row := new(Row[Resource])
+	if err := spxscan.Get(ctx, c.readTxn(), &row.Data, stmt.SpannerStatement()); err != nil {
 		if errors.Is(err, spxapi.ErrNotFound) {
 			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", res.Resource(), stmt.resolvedWhereClause)
 		}
@@ -83,23 +103,111 @@ func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*R
 		return nil, errors.Wrap(err, "spxscan.Get()")
 	}
 
-	return dst, nil
+	return row, nil
+}
+
+// readEnvelope reads the first row of an envelope statement; a nil row with
+// no error means no row matched.
+func (c *spannerReader[Resource]) readEnvelope(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
+	it := c.readTxn().Query(ctx, stmt.SpannerStatement())
+	defer it.Stop()
+
+	spannerRow, err := it.Next()
+	if err != nil {
+		if errors.Is(err, iterator.Done) {
+			return nil, nil
+		}
+
+		return nil, errors.Wrap(err, "spanner.RowIterator.Next()")
+	}
+
+	return scanEnvelopeRow[Resource](spannerRow, stmt)
 }
 
 // List reads a list of resources from the database.
-func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Resource, error] {
-	return func(yield func(*Resource, error) bool) {
+func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
+	if envelopeScan(stmt) {
+		return c.listEnvelope(ctx, stmt)
+	}
+
+	return func(yield func(*Row[Resource], error) bool) {
 		for r, err := range spxscan.SelectSeq[Resource](ctx, c.readTxn(), stmt.SpannerStatement()) {
 			if err != nil {
 				yield(nil, errors.Wrap(err, "spxscan.SelectSeq()"))
 
 				return
 			}
-			if !yield(r, nil) {
+			if !yield(&Row[Resource]{Data: *r}, nil) {
 				return
 			}
 		}
 	}
+}
+
+// listEnvelope iterates an envelope statement, scanning each row's data and
+// its reserved metadata columns into the Row envelope.
+func (c *spannerReader[Resource]) listEnvelope(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
+	return func(yield func(*Row[Resource], error) bool) {
+		it := c.readTxn().Query(ctx, stmt.SpannerStatement())
+		defer it.Stop()
+
+		for {
+			spannerRow, err := it.Next()
+			if err != nil {
+				if !errors.Is(err, iterator.Done) {
+					yield(nil, errors.Wrap(err, "spanner.RowIterator.Next()"))
+				}
+
+				return
+			}
+
+			row, err := scanEnvelopeRow[Resource](spannerRow, stmt)
+			if err != nil {
+				yield(nil, err)
+
+				return
+			}
+			if !yield(row, nil) {
+				return
+			}
+		}
+	}
+}
+
+// scanEnvelopeRow scans one envelope-statement row: the resource columns into
+// the envelope's data (leniently, so the reserved columns are skipped), the
+// reserved masked-names column into the mask list, and the reserved
+// capability-checks column through the plan into the capability answers. A
+// NULL check boolean reads as false — a condition permits only on TRUE.
+func scanEnvelopeRow[Resource Resourcer](spannerRow *spanner.Row, stmt *Statement) (*Row[Resource], error) {
+	row := new(Row[Resource])
+	if err := spannerRow.ToStructLenient(&row.Data); err != nil {
+		return nil, errors.Wrap(err, "spanner.Row.ToStructLenient()")
+	}
+	if stmt.maskedNamesColumn != "" {
+		if err := spannerRow.ColumnByName(stmt.maskedNamesColumn, &row.masked); err != nil {
+			return nil, errors.Wrap(err, "spanner.Row.ColumnByName()")
+		}
+	}
+	if plan := stmt.capabilityPlan; plan != nil {
+		var checks []bool
+		if plan.checksColumn != "" {
+			var scanned []spanner.NullBool
+			if err := spannerRow.ColumnByName(plan.checksColumn, &scanned); err != nil {
+				return nil, errors.Wrap(err, "spanner.Row.ColumnByName()")
+			}
+			if len(scanned) != plan.groups {
+				return nil, errors.Newf("capability checks column carries %d booleans, plan expects %d", len(scanned), plan.groups)
+			}
+			checks = make([]bool, len(scanned))
+			for i, b := range scanned {
+				checks[i] = b.Valid && b.Bool
+			}
+		}
+		row.capabilities = plan.assemble(checks)
+	}
+
+	return row, nil
 }
 
 var _ ReadOnlyTransactionCloser = (*SpannerReadOnlyTransaction)(nil)

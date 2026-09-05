@@ -50,6 +50,11 @@ func Test_LoadPackages(t *testing.T) {
 			WantPackageNames: []string{"resources", "otherresources"},
 			wantErr:          false,
 		},
+		{
+			name:    "strict load fails on stale generated output",
+			args:    args{packagePatterns: []string{"../testdata/staleoutput"}},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -68,6 +73,65 @@ func Test_LoadPackages(t *testing.T) {
 			for _, packageName := range tt.WantPackageNames {
 				if !slices.Contains(packageNames, packageName) {
 					t.Errorf("loadPackages() = `%v`, does not contain expected package %s", packageNames, packageName)
+				}
+			}
+		})
+	}
+}
+
+func Test_LoadPackagesResilient(t *testing.T) {
+	t.Parallel()
+	type args struct {
+		packagePatterns []string
+	}
+
+	tests := []struct {
+		name             string
+		args             args
+		wantPackageNames []string
+		wantTolerated    bool
+		wantErr          bool
+	}{
+		{
+			name:             "tolerates stale generated output in the loaded package",
+			args:             args{packagePatterns: []string{"../testdata/staleoutput"}},
+			wantPackageNames: []string{"staleoutput"},
+			wantTolerated:    true,
+			wantErr:          false,
+		},
+		{
+			name:             "clean package loads with nothing tolerated",
+			args:             args{packagePatterns: []string{"../testdata/resources"}},
+			wantPackageNames: []string{"resources"},
+			wantTolerated:    false,
+			wantErr:          false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			packageMap, tolerated, err := LoadPackagesResilient(tt.args.packagePatterns...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("LoadPackagesResilient() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tolerated != tt.wantTolerated {
+				t.Errorf("LoadPackagesResilient() tolerated = %v, want %v", tolerated, tt.wantTolerated)
+			}
+
+			for _, packageName := range tt.wantPackageNames {
+				pkg, ok := packageMap[packageName]
+				if !ok {
+					t.Errorf("LoadPackagesResilient() missing expected package %s", packageName)
+
+					continue
+				}
+
+				// The tolerated package must still be parseable: generation needs its
+				// structs even while the stale generated file fails type-checking.
+				parsed := ParsePackage(pkg)
+				if len(parsed.Structs) == 0 {
+					t.Errorf("ParsePackage(%s) returned no structs", packageName)
 				}
 			}
 		})

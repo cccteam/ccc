@@ -56,10 +56,10 @@ func (mr *MockReaderMockRecorder[Resource]) DBType() *gomock.Call {
 }
 
 // List mocks base method.
-func (m *MockReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Resource, error] {
+func (m *MockReader[Resource]) List(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, stmt)
-	ret0, _ := ret[0].(iter.Seq2[*Resource, error])
+	ret0, _ := ret[0].(iter.Seq2[*Row[Resource], error])
 	return ret0
 }
 
@@ -70,10 +70,10 @@ func (mr *MockReaderMockRecorder[Resource]) List(ctx, stmt any) *gomock.Call {
 }
 
 // Read mocks base method.
-func (m *MockReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Resource, error) {
+func (m *MockReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Read", ctx, stmt)
-	ret0, _ := ret[0].(*Resource)
+	ret0, _ := ret[0].(*Row[Resource])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

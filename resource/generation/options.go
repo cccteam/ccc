@@ -116,6 +116,11 @@ const defaultOutletName = "default"
 type routerOutlet struct {
 	name   string
 	prefix string
+	// servesSessions declares the outlet a browser-session surface: the generated
+	// router registers the permission-digest and user-domains routes under its
+	// prefix. Always true for the default outlet; opt-in via ServesSessions() for
+	// additional outlets.
+	servesSessions bool
 }
 
 // suffix returns the outlet's contribution to generated identifiers
@@ -141,8 +146,8 @@ func (o routerOutlet) suffix() string {
 // identifiers), and the route prefix must be a static path segment distinct from —
 // and not nested with — every other outlet's prefix, so the outlets' URL spaces
 // stay disjoint. The option may be passed once per additional outlet and requires
-// GenerateRoutes.
-func WithRouterOutlet(name, routePrefix string) ResourceOption {
+// GenerateRoutes. Outlet options (ServesSessions) refine the declaration.
+func WithRouterOutlet(name, routePrefix string, options ...OutletOption) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		if !outletNamePattern.MatchString(name) {
 			return errors.Newf("WithRouterOutlet(%q) requires a lowerCamelCase name matching %s", name, outletNamePattern)
@@ -157,10 +162,35 @@ func WithRouterOutlet(name, routePrefix string) ResourceOption {
 			return errors.Newf("WithRouterOutlet(%q, %q) route prefix must not contain '{', '}', or leading/trailing '/'", name, routePrefix)
 		}
 
-		r.extraOutlets = append(r.extraOutlets, routerOutlet{name: name, prefix: routePrefix})
+		outlet := routerOutlet{name: name, prefix: routePrefix}
+		for _, opt := range options {
+			opt.applyToOutlet(&outlet)
+		}
+		r.extraOutlets = append(r.extraOutlets, outlet)
 
 		return nil
 	})
+}
+
+// OutletOption refines one WithRouterOutlet declaration.
+type OutletOption interface {
+	applyToOutlet(*routerOutlet)
+}
+
+// outletOption adapts a function to OutletOption.
+type outletOption func(*routerOutlet)
+
+func (f outletOption) applyToOutlet(o *routerOutlet) { f(o) }
+
+// ServesSessions declares that the outlet serves browser sessions: the generated
+// router registers the permission-digest and user-domains routes under the outlet's
+// prefix — behind whatever session middleware the application composes around the
+// outlet, exactly like its resource routes — and the application's generated
+// PermissionDigest and UserDomains handlers serve them. The default outlet always
+// serves sessions; an outlet without the declaration gets no permission routes, and
+// a GenerateTypescript target may only name a session-serving outlet (ForOutlet).
+func ServesSessions() OutletOption {
+	return outletOption(func(o *routerOutlet) { o.servesSessions = true })
 }
 
 // outletNamePattern constrains outlet names to lowerCamelCase identifiers so the
@@ -202,6 +232,23 @@ func WithDomainRoute(segment string) ResourceOption {
 		}
 
 		r.domainRouteSegment = segment
+
+		return nil
+	})
+}
+
+// WithConcealedDomains makes "unauthorized" indistinguishable from "nonexistent" on
+// every surface that names a domain (ABAC design plan §06, the existence oracle): the
+// generated DomainGuard and the consolidated dispatcher consult the application's
+// DomainVisible(ctx, user, domain) — the domain exists AND the caller holds at least
+// one grant in it — instead of DomainExists, answering the same not-found either way.
+// A caller with any foothold in the domain still receives ordinary 403s for the
+// specific permissions they lack. Off by default: most applications' tenant lists are
+// not secret, and the distinct errors are better DX; opt in when tenant existence is
+// itself sensitive (e.g. a client list).
+func WithConcealedDomains() ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		r.concealedDomains = true
 
 		return nil
 	})
@@ -283,6 +330,27 @@ func WithTypescriptOverrides(overrides map[string]string) TSOption {
 		tempMap := defaultTypescriptOverrides()
 		maps.Copy(tempMap, overrides)
 		t.typescriptOverrides = tempMap
+
+		return nil
+	})
+}
+
+// ForOutlet names the router outlet a GenerateTypescript target serves: every file
+// the target emits — constants, resource and method metadata, enums, and the client
+// descriptor — is filtered to the outlet's members (see WithRouterOutlet and the
+// @outlet annotation), so one target never spans two outlets. Without the option a
+// target serves the default outlet declared by GenerateRoutes.
+//
+// The named outlet must be declared, and must serve browser sessions
+// (ServesSessions): the generated client reads its permission digest and
+// user-domains channels under the outlet's prefix, and a client without those
+// channels would fail closed on every page.
+func ForOutlet(name string) TSOption {
+	return tsOption(func(t *typescriptGenerator) error {
+		if name == "" {
+			return errors.New("ForOutlet() requires an outlet name")
+		}
+		t.outletName = name
 
 		return nil
 	})
@@ -490,6 +558,9 @@ func resolveOptions(generator any, options []option) error {
 		if g.spannerEmulatorVersion == "" {
 			g.spannerEmulatorVersion = "latest"
 		}
+		if g.outletName == "" {
+			g.outletName = defaultOutletName
+		}
 	case *client: // no-op
 	default:
 		panic(fmt.Sprintf("unexpected generator type: %T", g))
@@ -552,6 +623,7 @@ const (
 	complex64GoType  = "complex64"
 	complex128GoType = "complex128"
 	cccUUIDGoType    = "ccc.UUID"
+	civilDateGoType  = "civil.Date"
 )
 
 // jsonTrueLiteral is the JSON boolean literal the authorization matrix's synthesized

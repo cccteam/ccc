@@ -55,8 +55,13 @@ func (c *client) validateStructNameMatchesFile(pkg *packages.Package, plural boo
 			sName = c.pluralize(sName)
 		}
 
-		if caser.ToSnake(sName) != strings.TrimSuffix(fileName, ".go") {
-			return errors.Newf("%s (%s) does not match its file name %s (expected %q)", s.Name(), caser.ToSnake(sName), fileName, caser.ToSnake(sName)+".go")
+		expected := fileStem(sName)
+		if expected != strings.TrimSuffix(fileName, ".go") {
+			if strings.HasSuffix(expected, "_test"+testFileMarker) {
+				return errors.Newf("%s (%s) does not match its file name %s (expected %q: the name ends in Test, so the file carries the %s marker to keep it, and the generated files beside it, out of Go's _test.go files)", s.Name(), expected, fileName, expected+".go", testFileMarker)
+			}
+
+			return errors.Newf("%s (%s) does not match its file name %s (expected %q)", s.Name(), expected, fileName, expected+".go")
 		}
 
 		return nil

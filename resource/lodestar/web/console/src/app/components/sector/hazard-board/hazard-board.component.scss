@@ -1,0 +1,18 @@
+.reading {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-family: 'Roboto Mono', monospace;
+
+  &.nominal {
+    background: rgba(47, 122, 62, 0.18);
+  }
+
+  &.elevated {
+    background: rgba(165, 100, 10, 0.2);
+  }
+
+  &.critical {
+    background: rgba(179, 38, 30, 0.2);
+    color: #b3261e;
+  }
+}

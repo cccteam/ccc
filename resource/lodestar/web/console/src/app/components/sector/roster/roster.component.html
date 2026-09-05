@@ -1,0 +1,76 @@
+<h1>Squadron Roster</h1>
+<p>
+  The sector's wings, squadrons, and who flies with whom — the anchors behind <code>subject.squadrons</code> and
+  <code>subject.wings</code>. Headquarters and the Marshal may also view the console as another crew member, read-only,
+  or act as a role: the role lends its grants, never anyone's identity.
+</p>
+
+<app-star-chart></app-star-chart>
+
+@if (!canListSquadrons()) {
+  <mat-card appearance="outlined" class="table-card">
+    <p class="empty">Your posting in {{ sector() || 'this sector' }} does not cover the squadron roster.</p>
+  </mat-card>
+} @else {
+  <mat-card appearance="outlined" class="table-card">
+    <table mat-table [dataSource]="squadrons.value()">
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef>Squadron</th>
+        <td mat-cell *matCellDef="let row">{{ row.name }}</td>
+      </ng-container>
+      <ng-container matColumnDef="wing">
+        <th mat-header-cell *matHeaderCellDef>Wing</th>
+        <td mat-cell *matCellDef="let row">{{ wingName(row.wingId) }}</td>
+      </ng-container>
+      <ng-container matColumnDef="members">
+        <th mat-header-cell *matHeaderCellDef>Flies with</th>
+        <td mat-cell *matCellDef="let row">{{ members(row.id) || '—' }}</td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let row; columns: columns"></tr>
+    </table>
+    @if (!squadrons.value().length) {
+      <p class="empty">No squadrons visible in {{ sector() }} for your posting.</p>
+    }
+  </mat-card>
+}
+
+@if ((canViewAs() || canAssumeRole()) && !alreadyImpersonating()) {
+  <mat-card appearance="outlined" class="create-card">
+    <mat-card-header>
+      <mat-card-title>Viewing as, acting as</mat-card-title>
+      <mat-card-subtitle>
+        A minted session replaces yours: end it from the banner. Chaining is refused — an impersonated session cannot
+        mint another.
+      </mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      @if (canViewAs()) {
+        <form class="inline-form" (ngSubmit)="viewAs()">
+          <mat-form-field appearance="outline">
+            <mat-label>View as (read-only)</mat-label>
+            <mat-select name="viewAs" [(ngModel)]="viewAsUser">
+              @for (person of crew; track person.login) {
+                <mat-option [value]="person.login">{{ person.name }} ({{ person.login }})</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <button mat-flat-button type="submit">View as</button>
+        </form>
+      }
+      @if (canAssumeRole()) {
+        <form class="inline-form" (ngSubmit)="assumeRole()">
+          <mat-form-field appearance="outline">
+            <mat-label>Act as role</mat-label>
+            <mat-select name="assumeRole" [(ngModel)]="assumeRoleName">
+              @for (role of roles; track role) {
+                <mat-option [value]="role">{{ role }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <button mat-flat-button type="submit">Assume role</button>
+        </form>
+      }
+    </mat-card-content>
+  </mat-card>
+}

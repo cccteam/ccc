@@ -1,0 +1,20 @@
+# Development process file for overmind (https://github.com/DarthSim/overmind):
+#
+#     overmind start
+#
+# spanner: a fresh Spanner emulator (--rm, so every start bootstraps from scratch).
+# server:  waits for the emulator port, bootstraps the database (schema, roles, demo
+#          personas, demo data), then serves the app. Bootstrap and serve share one
+#          process so the server never races the bootstrap.
+# ui:      waits for the Go server's port, then ng serve for BOTH browser apps: the
+#          crew console on :4300 (/api proxied) and the client portal on :4301
+#          (/portal proxied). Browse http://127.0.0.1:4300 and sign in as any demo
+#          persona (see cmd/bootstrap/demo_access.json — e.g. marshal / lodestar);
+#          browse http://127.0.0.1:4301/client/ as client / lodestar.
+#
+# SPANNER_EMULATOR_PORT and LODESTAR_PORT are overridable (e.g. via an .env file,
+# which overmind loads automatically). The defaults differ from waystation's so both
+# demos can run side by side.
+spanner: podman run --rm -p 127.0.0.1:${SPANNER_EMULATOR_PORT:-9013}:9010 gcr.io/cloud-spanner-emulator/emulator:1.5.56
+server: bash -c 'export SPANNER_EMULATOR_HOST=127.0.0.1:${SPANNER_EMULATOR_PORT:-9013}; for i in {1..300}; do (echo > /dev/tcp/127.0.0.1/${SPANNER_EMULATOR_PORT:-9013}) >/dev/null 2>&1 && break || sleep 0.1; done; go run ./cmd/bootstrap && go run .'
+ui: bash -c 'echo "waiting for the server on :${LODESTAR_PORT:-8083} (emulator + bootstrap)..."; for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/${LODESTAR_PORT:-8083}) >/dev/null 2>&1 && break || sleep 0.5; done; cd web && npm run start:console & cd web && npm run start:portal; wait'
