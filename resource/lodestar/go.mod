@@ -16,6 +16,7 @@ require (
 	github.com/cccteam/ccc v0.3.4-0.20260904195933-c2b62ab089ac
 	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260904195933-c2b62ab089ac
 	github.com/cccteam/ccc/resource v0.10.7-0.20260904195933-c2b62ab089ac
+	github.com/cccteam/ccc/tracer v0.1.7
 	github.com/cccteam/db-initiator v0.3.13
 	github.com/cccteam/httpio v0.7.17
 	github.com/cccteam/logger v0.1.27
@@ -24,11 +25,13 @@ require (
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/go-playground/validator/v10 v10.30.3
+	github.com/google/go-cmp v0.7.0
 	github.com/jtwatson/server v0.2.2
 	github.com/jtwatson/spaassets v0.0.0-20160917192555-583a733b0a63
 	github.com/sethvargo/go-envconfig v1.4.3
 	github.com/shopspring/decimal v1.4.1-0.20260819210736-ca4740823783
 	google.golang.org/api v0.293.0
+	google.golang.org/grpc v1.83.0
 )
 
 require (
@@ -54,7 +57,6 @@ require (
 	github.com/cccteam/ccc/cache v0.1.6 // indirect
 	github.com/cccteam/ccc/pkg v0.1.4 // indirect
 	github.com/cccteam/ccc/securehash v0.0.13 // indirect
-	github.com/cccteam/ccc/tracer v0.1.7 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudspannerecosystem/memefish v0.8.1 // indirect
@@ -86,7 +88,6 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/golang-migrate/migrate/v4 v4.19.1 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.21 // indirect
@@ -138,7 +139,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/mod v0.39.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
@@ -150,7 +151,6 @@ require (
 	google.golang.org/genproto v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260818201246-1b0934165a6f // indirect
-	google.golang.org/grpc v1.83.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
