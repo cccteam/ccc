@@ -9,7 +9,9 @@ import "github.com/cccteam/ccc/accesstypes"
 // generator cannot derive is declared manually, with the scope argument:
 // @manualAddResource(List, domain) puts List into the generated permission collection
 // in the domain scope (MigrateRoles validates grants against it, the TypeScript
-// permission constants include it) and the handler in the app package checks it.
+// permission constants include it) and the handler in the app package checks it. It
+// carries no outlet annotation: the route is mounted on the default outlet only, so
+// the portal's TypeScript target does not carry it.
 //
 // @manualAddResource(List, domain)
 const ShipsLogEntries accesstypes.Resource = "ShipsLogEntries"

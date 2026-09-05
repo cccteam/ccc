@@ -27,7 +27,10 @@ const accesstypesResourceType = "github.com/cccteam/ccc/accesstypes.Resource"
 // manualRegistrationsFromConstants extracts @manualAddResource annotations from the
 // resources package's accesstypes.Resource constants. The registered resource name is
 // the constant's value; the annotation supplies the permission and, optionally, the
-// scope: @manualAddResource(Execute) or @manualAddResource(Read, domain).
+// scope: @manualAddResource(Execute) or @manualAddResource(Read, domain). An @outlet
+// annotation beside it names the outlets the hand-written route is mounted under, with
+// the same meaning it has on a struct; every registration the constant declares
+// shares it.
 func manualRegistrationsFromConstants(constants []*parser.Constant) ([]ManualRegistration, error) {
 	var registrations []ManualRegistration
 	for _, c := range constants {
@@ -44,11 +47,17 @@ func manualRegistrationsFromConstants(constants []*parser.Constant) ([]ManualReg
 			continue
 		}
 
+		var outlets outletMembership
+		if err := resolveOutlets(annotations.Const, &outlets); err != nil {
+			return nil, errors.Wrapf(err, "constant %q", c.Name())
+		}
+
 		for arg := range annotations.Const.Get(manualAddResourceKeyword).Seq() {
 			registration, err := parseManualAddResourceArgs(c, arg)
 			if err != nil {
 				return nil, err
 			}
+			registration.Outlets = outlets.OutletNames
 
 			registrations = append(registrations, registration)
 		}

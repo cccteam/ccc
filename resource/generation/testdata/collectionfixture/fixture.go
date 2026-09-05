@@ -12,7 +12,9 @@ import (
 )
 
 const (
+	// ManualThing's hand-written route is mounted on the portal outlet.
 	// @manualAddResource(Execute)
+	// @outlet(portal)
 	ManualThing accesstypes.Resource = "ManualThings"
 
 	// ScopedThing has an ordinary doc comment above its annotation.

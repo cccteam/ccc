@@ -13,9 +13,9 @@ import (
 // portal client, emitted by the same generator run as the console's but filtered to the
 // portal outlet, names the portal's four members and none of the console-only
 // resources, and its descriptor bootstraps under the domain route the console shares.
-// Manual registrations (@manualAddResource) are not outlet-aware and reach every
-// target — recorded as a finding — so the pin lists them as present rather than
-// pretending the filter drops them. Needs no emulator: it reads the committed output.
+// The manual registrations (@manualAddResource) carry no @outlet, so they are on the
+// default outlet only and the portal filter drops them. Needs no emulator: it reads
+// the committed output.
 func TestPortalTargetEmission(t *testing.T) {
 	t.Parallel()
 
@@ -45,16 +45,16 @@ func TestPortalTargetEmission(t *testing.T) {
 		absent []string
 	}{
 		{
-			name:   "the portal's Resources constant carries its members and the manual registration",
+			name:   "the portal's Resources constant carries its members only",
 			source: portalConstants,
-			want:   []string{"ClientContacts: 'ClientContacts'", "DistressCalls: 'DistressCalls'", "Missions: 'Missions'", "ShipsLogEntries: 'ShipsLogEntries'"},
-			absent: []string{"Refits:", "Ships:", "Squadrons:", "Pilots:", "Sorties:", "Consignments:", "SectorHazardBoards:", "Wings:"},
+			want:   []string{"ClientContacts: 'ClientContacts'", "DistressCalls: 'DistressCalls'", "Missions: 'Missions'"},
+			absent: []string{"Refits:", "Ships:", "Squadrons:", "Pilots:", "Sorties:", "Consignments:", "SectorHazardBoards:", "Wings:", "ShipsLogEntries:"},
 		},
 		{
-			name:   "the portal's Methods constant carries Stand Down and the manual Execute registrations only",
+			name:   "the portal's Methods constant carries Stand Down only; the default-outlet manual registrations drop",
 			source: portalConstants,
-			want:   []string{"StandDownMission: 'StandDownMission'", "ViewAsUser: 'ViewAsUser'", "AssumeRole: 'AssumeRole'"},
-			absent: []string{"ClaimMission:", "HailShip:", "ScrapShip:", "IngestDroidReports:"},
+			want:   []string{"StandDownMission: 'StandDownMission'"},
+			absent: []string{"ClaimMission:", "HailShip:", "ScrapShip:", "IngestDroidReports:", "ViewAsUser:", "AssumeRole:"},
 		},
 		{
 			name:   "the portal descriptor bootstraps under the shared domain route with its own permission channels",
@@ -85,8 +85,8 @@ func TestPortalTargetEmission(t *testing.T) {
 		})
 	}
 
-	// The portal emits exactly four resource interfaces (the members) — the manual
-	// registration has no struct, so no interface — and the console emits every one.
+	// The portal emits exactly three resource interfaces (the members with a struct)
+	// and the console emits every one.
 	iface := regexp.MustCompile(`(?m)^export interface (\w+) \{`)
 	portalIfaces := iface.FindAllStringSubmatch(read("web/portal/src/app/core/service/zz_gen_resources.ts"), -1)
 	var names []string

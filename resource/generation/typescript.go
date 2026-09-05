@@ -25,6 +25,9 @@ type typescriptGenerator struct {
 	typescriptOverrides   map[string]string
 	rc                    *resource.GeneratedCollection
 	routerResources       []accesstypes.Resource
+	// manualRegistrations are the declared registrations with no generated handler;
+	// each carries its own outlet membership for the outlet filter.
+	manualRegistrations []ManualRegistration
 	// domainRouteSegment/domainRouteParam mirror the resourceGenerator's route pair so
 	// TypeScript route metadata can render the domain segment of domain-scoped routes.
 	domainRouteSegment     string
@@ -36,9 +39,9 @@ type typescriptGenerator struct {
 	// generators in tests).
 	outletName string
 	// outletExcluded are the collection resource names owned exclusively by other
-	// outlets — the parsed resources, computed resources, and RPC methods that are
-	// not on the target outlet — which the constants output omits. Registrations the
-	// generator cannot attribute to an outlet (manual declarations) always stay.
+	// outlets — the parsed resources, computed resources, RPC methods, and manual
+	// registrations that are not on the target outlet — which the constants output
+	// omits.
 	outletExcluded []accesstypes.Resource
 	// outletExcludedTables are the excluded resource and computed-resource names,
 	// for enum filtering: an @enumerate type whose table belongs exclusively to
@@ -121,11 +124,43 @@ func (t *typescriptGenerator) applyOutletFilter(resources []*resourceInfo, compu
 		return nil, nil, err
 	}
 
+	t.excludeManualRegistrations(resources, computedResources)
+
 	t.routerResources = slices.DeleteFunc(slices.Clone(t.routerResources), func(res accesstypes.Resource) bool {
 		return slices.Contains(t.outletExcluded, res)
 	})
 
 	return resources, computedResources, nil
+}
+
+// excludeManualRegistrations drops the manual registrations off the target outlet
+// from the collection-derived constants. Exclusion is by resource name, so a name
+// the outlet still claims — through a surviving member or a manual registration on
+// the outlet — stays even when another registration on it is off the outlet.
+func (t *typescriptGenerator) excludeManualRegistrations(resources []*resourceInfo, computedResources []*computedResource) {
+	claimed := make(map[accesstypes.Resource]struct{}, len(resources)+len(computedResources)+len(t.rpcMethods)+len(t.manualRegistrations))
+	for _, res := range resources {
+		claimed[accesstypes.Resource(t.pluralize(res.Name()))] = struct{}{}
+	}
+	for _, res := range computedResources {
+		claimed[accesstypes.Resource(t.pluralize(res.Name()))] = struct{}{}
+	}
+	for _, method := range t.rpcMethods {
+		claimed[accesstypes.Resource(method.Name())] = struct{}{}
+	}
+	for _, reg := range t.manualRegistrations {
+		m := outletMembership{OutletNames: reg.Outlets}
+		if m.OnOutlet(t.targetOutlet()) {
+			claimed[reg.Resource] = struct{}{}
+		}
+	}
+
+	for _, reg := range t.manualRegistrations {
+		if _, ok := claimed[reg.Resource]; ok || slices.Contains(t.outletExcluded, reg.Resource) {
+			continue
+		}
+		t.outletExcluded = append(t.outletExcluded, reg.Resource)
+	}
 }
 
 // parseResources parses the resource and virtual-resource packages, returning the parsed

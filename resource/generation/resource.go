@@ -2,6 +2,7 @@ package generation
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"path/filepath"
 	"slices"
@@ -125,6 +126,9 @@ func (r *resourceGenerator) validateAnnotatedOutlets() error {
 	}
 	for _, rpcStruct := range r.rpcMethods {
 		check(rpcStruct.Name(), &rpcStruct.outletMembership)
+	}
+	for _, reg := range r.manualRegistrations {
+		check(fmt.Sprintf("manual registration %s", reg.Resource), &outletMembership{OutletNames: reg.Outlets})
 	}
 
 	if len(errs) != 0 {
@@ -433,6 +437,7 @@ func (r *resourceGenerator) buildUnifiedTypescriptGenerator(gc *resource.Generat
 	t.client = r.client
 	t.rc = gc
 	t.routerResources = routerResources
+	t.manualRegistrations = r.manualRegistrations
 	t.domainRouteSegment = r.domainRouteSegment
 	t.domainRouteParam = r.domainRouteParam
 

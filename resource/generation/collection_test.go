@@ -458,9 +458,10 @@ func Test_manualRegistrationsFromConstants(t *testing.T) {
 		t.Fatalf("manualRegistrationsFromConstants() error = %v", err)
 	}
 
-	// An absent scope stays empty; the global default applies at registration.
+	// An absent scope stays empty; the global default applies at registration. An
+	// absent @outlet leaves Outlets empty: the default outlet.
 	want := []ManualRegistration{
-		{Permission: accesstypes.Execute, Resource: "ManualThings"},
+		{Permission: accesstypes.Execute, Resource: "ManualThings", Outlets: []string{"portal"}},
 		{Scope: accesstypes.DomainPermissionScope, Permission: accesstypes.Read, Resource: "ScopedThings"},
 		{Permission: accesstypes.Execute, Resource: "UploadThings"},
 	}

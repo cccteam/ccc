@@ -306,3 +306,98 @@ func Test_typescriptConstantsTemplate_manualMethods(t *testing.T) {
 		t.Errorf("typescriptConstantsTemplate output missing %q:\n%s", want, out)
 	}
 }
+
+// Test_typescriptGenerator_excludeManualRegistrations pins the outlet filter for
+// manual registrations: one off the target outlet drops its resource from the
+// constants, one on it stays, and a name the outlet still claims — through a member
+// or another registration — is never excluded.
+func Test_typescriptGenerator_excludeManualRegistrations(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+
+	tests := []struct {
+		name          string
+		targetOutlet  string
+		registrations []ManualRegistration
+		resources     []string
+		methods       []string
+		wantExcluded  []accesstypes.Resource
+	}{
+		{
+			name:          "an unannotated registration stays on the default target",
+			targetOutlet:  "",
+			registrations: []ManualRegistration{{Permission: accesstypes.Execute, Resource: "ViewAsUser"}},
+		},
+		{
+			name:          "an unannotated registration falls off an extra-outlet target",
+			targetOutlet:  "portal",
+			registrations: []ManualRegistration{{Permission: accesstypes.Execute, Resource: "ViewAsUser"}},
+			wantExcluded:  []accesstypes.Resource{"ViewAsUser"},
+		},
+		{
+			name:          "a registration naming the target stays",
+			targetOutlet:  "portal",
+			registrations: []ManualRegistration{{Permission: accesstypes.Execute, Resource: "ViewAsUser", Outlets: []string{"default", "portal"}}},
+		},
+		{
+			name:          "a registration naming another outlet falls off the default target",
+			targetOutlet:  "",
+			registrations: []ManualRegistration{{Permission: accesstypes.List, Resource: "Uploads", Outlets: []string{"portal"}}},
+			wantExcluded:  []accesstypes.Resource{"Uploads"},
+		},
+		{
+			name:         "a name a surviving member claims is never excluded",
+			targetOutlet: "portal",
+			registrations: []ManualRegistration{
+				{Permission: accesstypes.Delete, Resource: "Widgets"},
+				{Permission: accesstypes.Execute, Resource: "DoSomething"},
+			},
+			resources: []string{"Widget"},
+			methods:   []string{"DoSomething"},
+		},
+		{
+			name:         "a name another registration claims on the outlet is never excluded",
+			targetOutlet: "portal",
+			registrations: []ManualRegistration{
+				{Permission: accesstypes.List, Resource: "Uploads"},
+				{Permission: accesstypes.Create, Resource: "Uploads", Outlets: []string{"portal"}},
+			},
+		},
+		{
+			name:         "two off-outlet registrations on one resource exclude it once",
+			targetOutlet: "portal",
+			registrations: []ManualRegistration{
+				{Permission: accesstypes.List, Resource: "Uploads"},
+				{Permission: accesstypes.Create, Resource: "Uploads"},
+			},
+			wantExcluded: []accesstypes.Resource{"Uploads"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			methods := make([]*rpcMethodInfo, 0, len(tt.methods))
+			for _, name := range tt.methods {
+				methods = append(methods, &rpcMethodInfo{Struct: structs[name]})
+			}
+			resources := make([]*resourceInfo, 0, len(tt.resources))
+			for _, name := range tt.resources {
+				resources = append(resources, fixtureResource(t, structs, name, nil))
+			}
+
+			g := &typescriptGenerator{
+				outletName:          tt.targetOutlet,
+				manualRegistrations: tt.registrations,
+				client:              &client{rpcMethods: methods},
+			}
+			g.excludeManualRegistrations(resources, nil)
+
+			if diff := cmp.Diff(tt.wantExcluded, g.outletExcluded); diff != "" {
+				t.Errorf("outletExcluded mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

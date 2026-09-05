@@ -85,6 +85,11 @@ type ManualRegistration struct {
 	Scope      accesstypes.PermissionScope
 	Permission accesstypes.Permission
 	Resource   accesstypes.Resource
+	// Outlets names the router outlets the hand-written route is mounted under, as
+	// @outlet does for a generated one. Empty means the default outlet only. A
+	// TypeScript target filtered to an outlet (ForOutlet) emits the registration's
+	// constants only when the target's outlet is named here.
+	Outlets []string
 }
 
 // CollectionData is the stable, serializable description of a permission collection. It

@@ -134,7 +134,7 @@ func resolveVirtualAnnotations(resource *resourceInfo, pStruct *parser.Struct, a
 		return errors.Wrapf(err, "on %s", pStruct.Name())
 	}
 
-	if err := resolveOutlets(annotations, &resource.outletMembership); err != nil {
+	if err := resolveOutlets(annotations.Struct, &resource.outletMembership); err != nil {
 		return errors.Wrapf(err, "on %s", pStruct.Name())
 	}
 
@@ -190,7 +190,7 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 		return errors.Wrapf(err, "on %s", res.Name())
 	}
 
-	if err := resolveOutlets(annotations, &res.outletMembership); err != nil {
+	if err := resolveOutlets(annotations.Struct, &res.outletMembership); err != nil {
 		return errors.Wrapf(err, "on %s", res.Name())
 	}
 
@@ -211,15 +211,16 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 }
 
 // resolveOutlets applies an @outlet annotation to dest if present; both comma lists
-// and repeated annotations are accepted. Names are validated against the declared
-// outlets after every struct kind is extracted (validateAnnotatedOutlets); here only
-// empty and duplicate names are rejected.
-func resolveOutlets(annotations genlang.StructAnnotations, dest *outletMembership) error {
-	if !annotations.Struct.Has(outletKeyword) {
+// and repeated annotations are accepted. The annotations are a struct's or, for a
+// manual registration, an accesstypes.Resource constant's. Names are validated
+// against the declared outlets after everything is extracted
+// (validateAnnotatedOutlets); here only empty and duplicate names are rejected.
+func resolveOutlets(annotations genlang.ArgMap, dest *outletMembership) error {
+	if !annotations.Has(outletKeyword) {
 		return nil
 	}
 
-	for arg := range annotations.Struct.Get(outletKeyword).Seq() {
+	for arg := range annotations.Get(outletKeyword).Seq() {
 		for part := range strings.SplitSeq(arg, ",") {
 			name := strings.TrimSpace(part)
 			if name == "" {
@@ -535,7 +536,7 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
-		if err := resolveOutlets(annotations, &rpcMethod.outletMembership); err != nil {
+		if err := resolveOutlets(annotations.Struct, &rpcMethod.outletMembership); err != nil {
 			errs = append(errs, errors.Wrapf(err, "on %s", s.Name()))
 
 			continue
@@ -609,7 +610,7 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 			continue
 		}
 
-		if err := resolveOutlets(annotations, &res.outletMembership); err != nil {
+		if err := resolveOutlets(annotations.Struct, &res.outletMembership); err != nil {
 			resourceErrors = append(resourceErrors, errors.Wrapf(err, "on %s", s.Name()))
 
 			continue

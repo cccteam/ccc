@@ -21,13 +21,10 @@ export const Resources = {
   ClientContacts: 'ClientContacts' as Resource,
   DistressCalls: 'DistressCalls' as Resource,
   Missions: 'Missions' as Resource,
-  ShipsLogEntries: 'ShipsLogEntries' as Resource,
 };
 
 export const Methods = {
   StandDownMission: 'StandDownMission' as Method,
-  AssumeRole: 'AssumeRole' as Method,
-  ViewAsUser: 'ViewAsUser' as Method,
 };
 
 export namespace ClientContacts {
