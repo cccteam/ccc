@@ -198,6 +198,8 @@ r=$(req marshal POST "$API/impersonate" '{"kind":"user","principal":"cadet","rea
 r=$(req marshal GET "$API/user/session"); assert_py "the console is now Cass's" "$r" "rows['username']=='cadet' and rows['impersonation']['actor']=='marshal'"
 r=$(req marshal GET "$ANVIL/missions?capabilities=Execute"); assert_py "every edge unlit under the mask" "$r" "rows and all(not m['zzCapabilities']['Execute'] for m in rows)"
 r=$(req marshal POST "$API/impersonate" '{"kind":"user","principal":"pilot"}'); check "chaining is refused" 403 "$r"
+r=$(req marshal POST "$API/impersonate/end" '{}'); assert_py "marshal returns to self" "$r" "rows['restored'] is True"
+r=$(req marshal GET "$API/user/session"); assert_py "the console is Maren's again, no record" "$r" "rows['username']=='marshal' and not rows.get('impersonation')"
 r=$(req governor POST "$API/impersonate" '{"kind":"role","principal":"Dispatcher","reason":"walkthrough"}'); check "governor assumes the Dispatcher role" 200 "$r"
 r=$(req governor PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/missions/$COURIER\",\"value\":{\"deadline\":\"2026-12-02T00:00:00Z\"}}]"); check "deadline extended under the role (grant B, on hold is not terminal)" 200 "$r"
 r=$(req governor PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/missions/$CORVID\",\"value\":{\"assignedSquadronId\":\"$HAMMER\"}}]"); check "assignment refused on a claimed mission: subject is Greer, not a dispatcher" 403 "$r"

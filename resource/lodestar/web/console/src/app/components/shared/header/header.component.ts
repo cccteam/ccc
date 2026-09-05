@@ -32,4 +32,16 @@ export class HeaderComponent {
       .pipe(tap(() => this.router.navigate(['/login'])))
       .subscribe();
   }
+
+  /**
+   * Return to yourself: end the minted session and land back in the actor's own
+   * session. When that session is gone (expired, or past the hard cap) there is
+   * nothing to return to, so the actor logs in again.
+   */
+  async endImpersonation(): Promise<void> {
+    const restored = await this.impersonation.end();
+    if (!restored) {
+      this.logout();
+    }
+  }
 }

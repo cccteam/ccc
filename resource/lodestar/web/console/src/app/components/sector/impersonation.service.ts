@@ -21,6 +21,11 @@ interface SessionResponse {
   impersonation?: ImpersonationRecord;
 }
 
+interface EndImpersonationResponse {
+  /** Whether the actor's own session was still live and the browser is back in it. */
+  restored: boolean;
+}
+
 /**
  * ImpersonationService drives the two impersonation moments (design plan §3): "view
  * as" mints a session that operates as another user under a List, Read mask, and
@@ -81,8 +86,28 @@ export class ImpersonationService {
 
   private async mint(body: { kind: 'user' | 'role'; principal: string; reason: string }): Promise<void> {
     await firstValueFrom(this.http.post(`${this.apiUrl}/impersonate`, body));
-    // The minted session replaced the cookie: re-establish the client-side session and
-    // its permission cache as the new principal, then start over at the dashboard.
+    await this.rebind();
+  }
+
+  /**
+   * Ends the minted session (its record ends Released) and returns to the actor's own
+   * session when that session is still live. Resolves true when the browser is back in
+   * the actor's session; false when it is not (the source session expired or the hard
+   * cap passed), in which case the caller sends the actor to login.
+   */
+  async end(): Promise<boolean> {
+    const { restored } = await firstValueFrom(this.http.post<EndImpersonationResponse>(`${this.apiUrl}/impersonate/end`, {}));
+    if (restored) {
+      await this.rebind();
+    }
+    return restored;
+  }
+
+  /**
+   * The cookie now names a different session: re-establish the client-side session and
+   * its permission cache as the new principal, then start over at the dashboard.
+   */
+  private async rebind(): Promise<void> {
     this.auth.permissions.clear();
     await firstValueFrom(this.auth.checkUserSession());
     await this.auth.permissions.refresh();

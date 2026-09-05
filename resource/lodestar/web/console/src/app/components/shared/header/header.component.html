@@ -2,7 +2,7 @@
   <div class="impersonation-banner" [class.role]="banner.kind === 'Role'">
     <mat-icon>{{ banner.kind === 'Role' ? 'badge' : 'visibility' }}</mat-icon>
     <span>{{ banner.text }}</span>
-    <button mat-stroked-button (click)="logout()">End session</button>
+    <button mat-stroked-button (click)="endImpersonation()">Return to yourself</button>
   </div>
 }
 <div class="header">

@@ -22,7 +22,7 @@ overmind start
 
 That starts a fresh emulator, bootstraps it (schema, roles, personas, demo data — the
 bootstrap requires a fresh emulator and is not idempotent; provisioning the roles takes
-about a minute), serves the app on :8083, and runs `ng serve` for both browser apps:
+a few seconds), serves the app on :8083, and runs `ng serve` for both browser apps:
 the crew console on :4300 (`/api` proxied) and the client portal on :4301 (`/portal`
 proxied). Browse http://127.0.0.1:4300 and sign in as any persona on the crew manifest;
 browse http://127.0.0.1:4301/client/ as `client`. Without overmind, run the Procfile's commands
@@ -75,7 +75,8 @@ manifest: pick a card, sign in, switch — never more than two clicks.
   thirteen transitions and four effect methods; `pkg/computedresources` and
   `pkg/virtualresources`; `pkg/router` — the router over three outlets (`/api`,
   `/portal`, `/droids`); `app/` — wiring, middleware, the ship's-log route, and the
-  impersonation mint route.
+  impersonation mint route (its return-to-self counterpart is the session library's
+  `EndImpersonation` handler, mounted beside it).
 - `cmd/bootstrap/demo_access.json` — every grant in §7, provisioned by
   `access.MigrateRoles` and frozen by the bootstrap-parity suites.
 - `schema/migrations` and `schema/demoseed` — the schema and the world the suites and the

@@ -273,6 +273,58 @@ func TestImpersonatedSessions(t *testing.T) {
 		}
 	})
 
+	t.Run("return to self: the marshal ends the view and is Maren again", func(t *testing.T) {
+		t.Parallel()
+
+		maren := newBrowser(t, srv)
+		maren.login("marshal")
+		status, body := maren.do(http.MethodPost, "/api/impersonate", `{"kind":"user","principal":"cadet","reason":"walkthrough"}`)
+		assertStatus(t, status, http.StatusOK, body)
+		if info := maren.session(); info["username"] != "cadet" {
+			t.Fatalf("session username = %v, want cadet before ending", info["username"])
+		}
+
+		// Ending the minted session hands the browser the actor's own session back:
+		// a local actor whose source session is still live is restored, not logged out.
+		status, body = maren.do(http.MethodPost, "/api/impersonate/end", "")
+		assertStatus(t, status, http.StatusOK, body)
+		var ended struct {
+			Restored bool `json:"restored"`
+		}
+		if err := json.Unmarshal(body, &ended); err != nil {
+			t.Fatal(err)
+		}
+		if !ended.Restored {
+			t.Fatalf("restored = false, want the marshal's own session back: %s", body)
+		}
+
+		info := maren.session()
+		if info["username"] != "marshal" {
+			t.Errorf("session username = %v, want marshal", info["username"])
+		}
+		if info["impersonation"] != nil {
+			t.Errorf("impersonation record = %v, want none after ending", info["impersonation"])
+		}
+
+		// The mask is gone with the minted session: the marshal's own digest carries
+		// the write permissions the view withheld.
+		status, body = maren.do(http.MethodGet, "/api/permission-digest?domain="+anvil, "")
+		assertStatus(t, status, http.StatusOK, body)
+		var digest accesstypes.PermissionDigest
+		if err := json.Unmarshal(body, &digest); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := digest["Missions"][accesstypes.Update]; !ok {
+			t.Errorf("digest[Missions] = %v, want Update back for the marshal", digest["Missions"])
+		}
+
+		// Ending from a session that is not impersonated has nothing to end.
+		status, body = maren.do(http.MethodPost, "/api/impersonate/end", "")
+		if status == http.StatusOK {
+			t.Errorf("ending an ordinary session succeeded: %s", body)
+		}
+	})
+
 	t.Run("the gates are the manual Execute registrations", func(t *testing.T) {
 		t.Parallel()
 

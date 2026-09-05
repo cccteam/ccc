@@ -37,6 +37,9 @@ type Handlers interface {
 
 	// Impersonate is the hand-written mint route for view-as-user and act-as-role
 	// sessions, gated by the manual ViewAsUser and AssumeRole Execute registrations.
+	// Its counterpart, EndImpersonation, is the session library's own handler (via
+	// PasswordAuthHandlers): it ends the minted session Released and returns the
+	// browser to the actor's own session.
 	Impersonate() http.HandlerFunc
 
 	// Angular app assets: the crew console at / and the client portal at /client/.
@@ -74,6 +77,7 @@ func newRouter(h Handlers, api, portalAPI, droidsAPI func(chi.Router)) *chi.Mux 
 	sessionGroup(r, h, "/api", func(r chi.Router) {
 		r.Get("/api/sectors/{sectorID}/ships-log-entries", h.DomainGuard()(h.ShipsLogEntries()))
 		r.Post("/api/impersonate", h.Impersonate())
+		r.Post("/api/impersonate/end", h.EndImpersonation())
 
 		api(r)
 	})
