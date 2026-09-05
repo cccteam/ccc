@@ -1,0 +1,17 @@
+<div class="header">
+  <a class="brand" [routerLink]="['']">Tenanted</a>
+  <app-topbar></app-topbar>
+  <div class="session">
+    <!-- The tenant picker: the tenants where the session holds a grant (user-domains). -->
+    <mat-form-field appearance="outline" class="tenant" subscriptSizing="dynamic">
+      <mat-label>Tenant</mat-label>
+      <mat-select [value]="tenants.current()" (selectionChange)="tenants.select($event.value)">
+        @for (tenant of tenants.tenants(); track tenant) {
+          <mat-option [value]="tenant">{{ tenant }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <span class="username">{{ auth.sessionInfo().username }}</span>
+    <button mat-stroked-button (click)="logout()">Sign out</button>
+  </div>
+</div>

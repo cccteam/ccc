@@ -1,0 +1,327 @@
+package check
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"golang.org/x/mod/modfile"
+
+	"github.com/cccteam/ccc/impulse/internal/app"
+)
+
+// TestStaticChecksOnFixtures runs every check that reads files against the fixture
+// applications. Each case pins the status, the summary, and the detail lines.
+func TestStaticChecksOnFixtures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		fixture     string
+		check       Check
+		wantStatus  Status
+		wantSummary string
+		wantDetails []string
+	}{
+		{
+			name: "generator-program single site", fixture: "singlesite", check: generatorProgram{},
+			wantStatus: Pass, wantSummary: "1 generator program(s) read completely",
+		},
+		{
+			name: "generator-program bad program", fixture: "badprogram", check: generatorProgram{},
+			wantStatus: Fail, wantSummary: "6 generator program problem(s)",
+			wantDetails: []string{
+				"cmd/generate/main.go:18: GenerateHandlers argument handlersDir is not a literal",
+				"cmd/generate/main.go:19: GenerateRoutes takes 2 argument(s), found 1",
+				"cmd/generate/main.go:20: unknown option generation.WithFrobnicator: this impulse release does not know it",
+				"cmd/generate/main.go:21: GenerateEnums is a TSOption, but a ResourceOption is expected here",
+				`cmd/generate/main.go:22: WithConsolidatedHandlers argument "yes" should be a bool literal`,
+				"cmd/generate/main.go:23: WithRPC is a ResourceOption, but a TSOption is expected here",
+			},
+		},
+		{
+			name: "emulator-version single site", fixture: "singlesite", check: emulatorVersion{},
+			wantStatus: Pass, wantSummary: "3 reference(s) agree on 1.5.56",
+		},
+		{
+			name: "emulator-version multi site", fixture: "multisite", check: emulatorVersion{},
+			wantStatus: Fail, wantSummary: "2 different emulator versions in use",
+			wantDetails: []string{
+				"1.5.43     process-compose.yaml:3",
+				"1.5.44     cmd/generate/resourcegenerator_pilots/main.go",
+				"1.5.44     cmd/generate/resourcegenerator_shared/main.go",
+				"1.5.44     cmd/generate/resourcegenerator_tugs/main.go",
+			},
+		},
+		{
+			name: "emulator-version none", fixture: "badprogram", check: emulatorVersion{},
+			wantStatus: Skip, wantSummary: "no Spanner emulator version is named anywhere",
+		},
+		{
+			name: "prettier-ignore single site", fixture: "singlesite", check: prettierIgnore{},
+			wantStatus: Fail, wantSummary: "1 TypeScript target(s) not excluded from prettier (--fix adds the entries)",
+			wantDetails: []string{
+				"web/portal/.prettierignore does not cover src/app/core/service/zz_gen_*.ts (add: src/app/core/service/zz_gen_*.ts)",
+			},
+		},
+		{
+			name: "prettier-ignore target outside a browser app", fixture: "badprogram", check: prettierIgnore{},
+			wantStatus: Fail, wantSummary: "1 TypeScript target(s) not excluded from prettier (--fix adds the entries)",
+			wantDetails: []string{
+				"cmd/generate/main.go:23: TypeScript target gui/src/app/core/service is not inside a browser app (no angular.json above it)",
+			},
+		},
+		{
+			name: "rpc-execute single site", fixture: "singlesite", check: rpcExecute{},
+			wantStatus: Fail, wantSummary: "1 of 2 RPC handler(s) never call Execute (regenerate and read the generator output)",
+			wantDetails: []string{
+				"app/zz_gen_relight_beacon.go: no Execute call; the handler decodes and returns without running the method",
+			},
+		},
+		{
+			name: "rpc-execute no rpc", fixture: "multisite", check: rpcExecute{},
+			wantStatus: Skip, wantSummary: "no generated RPC handlers",
+		},
+		{
+			name: "multi-site single generator", fixture: "singlesite", check: multiSite{},
+			wantStatus: Skip, wantSummary: "single generator",
+		},
+		{
+			name: "multi-site disagreements", fixture: "multisite", check: multiSite{},
+			wantStatus: Fail, wantSummary: "2 multi-site disagreement(s)",
+			wantDetails: []string{
+				"cmd/generate/resourcegenerator_tugs/main.go reads migrations [file://apps/tugs/schema/migrations] but cmd/generate/resourcegenerator_pilots/main.go reads [file://schema/migrations]",
+				"cmd/generate/resourcegenerator_shared/main.go emits no TypeScript into apps/tugs/gui (site generator cmd/generate/resourcegenerator_tugs/main.go writes there)",
+			},
+		},
+		{
+			name: "env-template single site", fixture: "singlesite", check: envTemplate{},
+			wantStatus: Fail, wantSummary: "1 variable(s) missing from .envrc.template (--fix adds them)",
+			wantDetails: []string{
+				"pkg/config/config.go:23: LIGHTHOUSE_BEACON_API_KEY (required) is not in .envrc.template",
+			},
+		},
+		{
+			name: "env-template no tags", fixture: "multisite", check: envTemplate{},
+			wantStatus: Skip, wantSummary: "no env tags declared",
+		},
+		{
+			name: "pins released", fixture: "singlesite", check: pins{},
+			wantStatus: Pass, wantSummary: "3 framework pin(s) are released versions",
+		},
+		{
+			name: "pins unreleased", fixture: "multisite", check: pins{},
+			wantStatus: Warn, wantSummary: "2 framework pin(s) point at unreleased code",
+			wantDetails: []string{
+				"github.com/cccteam/session is pinned to pseudo-version v0.11.2-0.20260903182144-ffa51dacf20e",
+				"github.com/cccteam/ccc/resource is replaced by local path ../resource",
+			},
+		},
+		{
+			name: "pins none", fixture: "badprogram", check: pins{},
+			wantStatus: Skip, wantSummary: "go.mod requires no github.com/cccteam/* module",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := tt.check.Run(context.Background(), &Env{App: fixture(t, tt.fixture)})
+			want := Result{Name: tt.check.Name(), Status: tt.wantStatus, Summary: tt.wantSummary, Details: tt.wantDetails}
+			if diff := cmp.Diff(want, got); diff != "" {
+				t.Errorf("Run() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestRPCExecuteHeaderless(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, rel)), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("go.mod", "module example.com/headerless\n\ngo 1.26.6\n")
+	write("cmd/generate/main.go", `package main
+
+import (
+	"context"
+
+	"github.com/cccteam/ccc/resource/generation"
+)
+
+func main() {
+	_, _ = generation.NewResourceGenerator(context.Background(), "pkg/resources", []string{"file://schema"}, []string{"example.com/headerless/pkg/resources"},
+		generation.GenerateHandlers("app"),
+		generation.WithRPC("pkg/rpc"),
+	)
+}
+`)
+	write("app/zz_gen_handwritten.go", "package app\n\nfunc (a *App) Nothing() {}\n")
+
+	a, err := app.Discover(root)
+	if err != nil {
+		t.Fatalf("app.Discover() error = %v", err)
+	}
+	got := rpcExecute{}.Run(context.Background(), &Env{App: a})
+	want := Result{
+		Name:    rpcExecute{}.Name(),
+		Status:  Warn,
+		Summary: "cannot identify RPC handlers: 1 zz_gen file(s) in the handlers directory carry no Source header, so the resource generator did not write them",
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Run() mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestFixes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		check       Check
+		wantSummary string
+		wantFile    string
+		wantContent string
+	}{
+		{
+			name:        "prettier-ignore creates the file",
+			check:       prettierIgnore{},
+			wantSummary: "1 .prettierignore file(s) updated",
+			wantFile:    "web/portal/.prettierignore",
+			wantContent: "# Generated by the resource generator; reformatting it breaks generate idempotence.\nsrc/app/core/service/zz_gen_*.ts\n",
+		},
+		{
+			name:        "env-template appends the variables",
+			check:       envTemplate{},
+			wantSummary: "1 variable(s) added to .envrc.template",
+			wantFile:    ".envrc.template",
+			wantContent: "# Lighthouse local development\nexport LIGHTHOUSE_PROJECT_ID=\nexport LIGHTHOUSE_SPANNER_DATABASE=\n# export LIGHTHOUSE_COOKIE_KEY=\n# Added by impulse check --fix: set these for local development.\nexport LIGHTHOUSE_BEACON_API_KEY=\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := fixtureCopy(t, "singlesite")
+			got := tt.check.Run(context.Background(), &Env{App: a, Fix: true})
+			if got.Status != Pass || got.Summary != tt.wantSummary {
+				t.Fatalf("Run() with Fix = %s %q, want PASS %q\n%s", got.Status, got.Summary, tt.wantSummary, strings.Join(got.Details, "\n"))
+			}
+			data, err := os.ReadFile(filepath.Join(a.Root, tt.wantFile))
+			if err != nil {
+				t.Fatalf("read fixed file: %v", err)
+			}
+			if diff := cmp.Diff(tt.wantContent, string(data)); diff != "" {
+				t.Errorf("fixed file mismatch (-want +got):\n%s", diff)
+			}
+
+			// The fix is complete: the check passes on the next run.
+			again := tt.check.Run(context.Background(), &Env{App: a})
+			if again.Status != Pass {
+				t.Errorf("second Run() = %s %q, want PASS", again.Status, again.Summary)
+			}
+		})
+	}
+}
+
+func TestIgnored(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		patterns []string
+		rel      string
+		want     bool
+	}{
+		{name: "anchored glob", patterns: []string{"src/app/core/service/zz_gen_*.ts"}, rel: "src/app/core/service/zz_gen_api.ts", want: true},
+		{name: "anchored glob wrong dir", patterns: []string{"src/app/core/service/zz_gen_*.ts"}, rel: "src/app/other/zz_gen_api.ts", want: false},
+		{name: "leading slash", patterns: []string{"/src/app/core/service/zz_gen_*.ts"}, rel: "src/app/core/service/zz_gen_api.ts", want: true},
+		{name: "basename anywhere", patterns: []string{"zz_gen_*.ts"}, rel: "src/app/core/service/zz_gen_api.ts", want: true},
+		{name: "directory pattern", patterns: []string{"src/app/core/service"}, rel: "src/app/core/service/zz_gen_api.ts", want: true},
+		{name: "directory with trailing slash", patterns: []string{"src/app/core/service/"}, rel: "src/app/core/service/zz_gen_api.ts", want: true},
+		{name: "directory name anywhere", patterns: []string{"service"}, rel: "src/app/core/service/zz_gen_api.ts", want: true},
+		{name: "directory-only pattern does not match a file", patterns: []string{"zz_gen_api.ts/"}, rel: "src/zz_gen_api.ts", want: false},
+		{name: "double star", patterns: []string{"src/**/zz_gen_*.ts"}, rel: "src/app/core/service/zz_gen_api.ts", want: true},
+		{name: "double star zero dirs", patterns: []string{"src/**/zz_gen_*.ts"}, rel: "src/zz_gen_api.ts", want: true},
+		{name: "trailing double star", patterns: []string{"src/app/**"}, rel: "src/app/core/service/zz_gen_api.ts", want: true},
+		{name: "negation wins later", patterns: []string{"src/**", "!src/app/core/service/zz_gen_*.ts"}, rel: "src/app/core/service/zz_gen_api.ts", want: false},
+		{name: "re-ignored after negation", patterns: []string{"*.ts", "!zz_gen_*.ts", "src/app/core/service/"}, rel: "src/app/core/service/zz_gen_api.ts", want: true},
+		{name: "no patterns", patterns: nil, rel: "src/zz_gen_api.ts", want: false},
+		{name: "unrelated", patterns: []string{"dist", "node_modules/"}, rel: "src/zz_gen_api.ts", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := ignored(tt.patterns, tt.rel); got != tt.want {
+				t.Errorf("ignored(%v, %q) = %v, want %v", tt.patterns, tt.rel, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPinsFromGoMod(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		gomod      string
+		wantStatus Status
+		wantDetail string
+	}{
+		{
+			name:       "released",
+			gomod:      "module x\n\nrequire github.com/cccteam/httpio v0.7.17\n",
+			wantStatus: Pass,
+		},
+		{
+			name:       "pseudo-version",
+			gomod:      "module x\n\nrequire github.com/cccteam/httpio v0.7.18-0.20260901000000-0123456789ab\n",
+			wantStatus: Warn,
+			wantDetail: "github.com/cccteam/httpio is pinned to pseudo-version v0.7.18-0.20260901000000-0123456789ab",
+		},
+		{
+			name:       "versioned replace",
+			gomod:      "module x\n\nrequire github.com/cccteam/httpio v0.7.17\n\nreplace github.com/cccteam/httpio => github.com/someone/httpio v0.7.17\n",
+			wantStatus: Warn,
+			wantDetail: "github.com/cccteam/httpio is replaced by github.com/someone/httpio v0.7.17",
+		},
+		{
+			name:       "non-framework replace is ignored",
+			gomod:      "module x\n\nrequire github.com/cccteam/httpio v0.7.17\n\nreplace github.com/golang-migrate/migrate/v4 => github.com/other/migrate/v4 v4.19.2\n",
+			wantStatus: Pass,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mod, err := modfile.Parse("go.mod", []byte(tt.gomod), nil)
+			if err != nil {
+				t.Fatalf("modfile.Parse() error = %v", err)
+			}
+			got := pins{}.Run(context.Background(), &Env{App: &app.App{GoMod: mod}})
+			if got.Status != tt.wantStatus {
+				t.Errorf("Status = %s, want %s (%s)", got.Status, tt.wantStatus, got.Summary)
+			}
+			if tt.wantDetail != "" && (len(got.Details) != 1 || got.Details[0] != tt.wantDetail) {
+				t.Errorf("Details = %v, want [%q]", got.Details, tt.wantDetail)
+			}
+		})
+	}
+}

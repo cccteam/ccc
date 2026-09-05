@@ -1,0 +1,18 @@
+# Development process file for overmind (https://github.com/DarthSim/overmind):
+#
+#     cp .envrc.template .envrc && direnv allow && overmind start
+#
+# spanner:  a fresh Spanner emulator (--rm, so every start bootstraps from scratch).
+# console:  waits for the emulator, bootstraps the database (schema, development tenants,
+#           roles, development logins), then serves the console site. Bootstrap and serve
+#           share one process so no site races the bootstrap.
+# portal:   waits for the console site (so the bootstrap is done), then serves the portal
+#           site. Each site is its own process with its own PORT, APP_DIST, and
+#           APP_SERVICE_NAME — the site level of pkg/config — over the shared data level.
+# *-web:    ng serve per site with /api proxied to that site's server.
+#           Console: http://127.0.0.1:4304 · Portal: http://127.0.0.1:4305
+spanner: podman run --rm -p 127.0.0.1:${SPANNER_EMULATOR_PORT}:9010 gcr.io/cloud-spanner-emulator/emulator:1.5.56
+console: bash -c 'for i in {1..300}; do (echo > /dev/tcp/127.0.0.1/${SPANNER_EMULATOR_PORT}) >/dev/null 2>&1 && break || sleep 0.1; done; go run ./cmd/bootstrap && APP_SERVICE_NAME=console PORT=8094 APP_DIST=apps/console/web/dist go run ./apps/console'
+portal: bash -c 'for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/8094) >/dev/null 2>&1 && break || sleep 0.5; done; APP_SERVICE_NAME=portal PORT=8095 APP_DIST=apps/portal/web/dist go run ./apps/portal'
+console-web: bash -c 'for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/8094) >/dev/null 2>&1 && break || sleep 0.5; done; cd apps/console/web && PORT=8094 npm start'
+portal-web: bash -c 'for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/8095) >/dev/null 2>&1 && break || sleep 0.5; done; cd apps/portal/web && PORT=8095 npm start'

@@ -1,0 +1,29 @@
+# Development environment for tenanted. Copy to .envrc and run `direnv allow`.
+#
+# Variables are grouped by configuration level (pkg/config). A process reads the levels
+# it constructs and nothing above them: cmd/bootstrap and cmd/deployment/migrate read
+# core and data; the served application reads all three.
+
+# --- core: every process ---
+export APP_SERVICE_NAME=tenanted
+export APP_VERSION=dev
+# GOOGLE_CLOUD_LOGGING_PROJECT ships request logs to Cloud Logging; unset logs to the console.
+# export GOOGLE_CLOUD_LOGGING_PROJECT=
+
+# --- data: every process that opens the database ---
+export GOOGLE_CLOUD_SPANNER_PROJECT=tenanted-dev
+export GOOGLE_CLOUD_SPANNER_INSTANCE_ID=tenanted
+export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=tenanted
+# APP_DEFAULT_SESSION_TIMEOUT is the idle timeout of a browser session (default 10m).
+# export APP_DEFAULT_SESSION_TIMEOUT=10m
+# APP_COOKIE_KEY signs session cookies: Base64 of 32+ random bytes. Unset, the process
+# generates an ephemeral key and sessions end when it restarts.
+# export APP_COOKIE_KEY=
+
+# --- server: the served application ---
+export PORT=8092
+# export APP_CONSOLE_DIST=web/dist/console
+
+# --- local development only: the Spanner emulator the Procfile starts ---
+export SPANNER_EMULATOR_PORT=9015
+export SPANNER_EMULATOR_HOST=127.0.0.1:${SPANNER_EMULATOR_PORT}

@@ -1,0 +1,31 @@
+# Development environment for sites. Copy to .envrc and run `direnv allow`.
+#
+# Variables are grouped by configuration level (pkg/config). A process reads the levels
+# it constructs and nothing above them: cmd/bootstrap and cmd/deployment/migrate read
+# core and data; each served site reads all three. The site level's values differ per
+# site, so the Procfile sets them per process; this file carries the shared levels.
+
+# --- core: every process ---
+export APP_SERVICE_NAME=sites
+export APP_VERSION=dev
+# GOOGLE_CLOUD_LOGGING_PROJECT ships request logs to Cloud Logging; unset logs to the console.
+# export GOOGLE_CLOUD_LOGGING_PROJECT=
+
+# --- data: every process that opens the database ---
+export GOOGLE_CLOUD_SPANNER_PROJECT=sites-dev
+export GOOGLE_CLOUD_SPANNER_INSTANCE_ID=sites
+export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=sites
+# APP_DEFAULT_SESSION_TIMEOUT is the idle timeout of a browser session (default 10m).
+# export APP_DEFAULT_SESSION_TIMEOUT=10m
+# APP_COOKIE_KEY signs session cookies: Base64 of 32+ random bytes. Unset, the process
+# generates an ephemeral key and sessions end when it restarts.
+# export APP_COOKIE_KEY=
+
+# --- site: one served site; per process, set by the Procfile (see it) ---
+# PORT is the site's TCP port; APP_DIST its built Angular bundle.
+# export PORT=
+# export APP_DIST=
+
+# --- local development only: the Spanner emulator the Procfile starts ---
+export SPANNER_EMULATOR_PORT=9017
+export SPANNER_EMULATOR_HOST=127.0.0.1:${SPANNER_EMULATOR_PORT}

@@ -1,0 +1,32 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../out-tsc/console",
+    "rootDir": "./src",
+    "baseUrl": "./",
+    "paths": {
+      "@app/*": [
+        "./src/app/core/*"
+      ],
+      "@env": [
+        "./src/environments/environment"
+      ],
+      "@components/*": [
+        "./src/app/components/*"
+      ],
+      "@shared/*": [
+        "./src/app/components/shared/*"
+      ]
+    },
+    "types": []
+  },
+  "files": [
+    "src/main.ts"
+  ],
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/**/*.spec.ts"
+  ]
+}
