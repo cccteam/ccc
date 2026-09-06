@@ -14,15 +14,14 @@ import (
 	"time"
 
 	"github.com/cccteam/access"
-	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/app"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
 	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
-	"github.com/cccteam/session/sessionstorage"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
 )
@@ -30,7 +29,7 @@ import (
 const (
 	migrationsSource = "file://../../schema/migrations"
 	devSeedSource    = "file://../../schema/devseed"
-	rolesPath        = "../../schema/roles.json"
+	rolesPath        = "../../" + staff.RolesPath
 
 	// The development tenants, matching schema/devseed.
 	north = "north"
@@ -57,9 +56,8 @@ const (
 // database, the real permission engine, and a real session manager, so the suites
 // exercise the same served stack main composes.
 type servedConfigurer struct {
-	db      *initiator.SpannerDB
-	access  *access.Client
-	session *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
+	db   *initiator.SpannerDB
+	auth *staff.Auth
 }
 
 // DomainVisible composes the development roster with the engine's foothold answer — the
@@ -69,7 +67,7 @@ func (c *servedConfigurer) DomainVisible(ctx context.Context, user accesstypes.U
 		return false, nil
 	}
 
-	visible, err := c.access.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
+	visible, err := c.auth.Access().UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
 	if err != nil {
 		return false, errors.Wrap(err, "access.Client.UserHasGrants()")
 	}
@@ -81,11 +79,9 @@ func (c *servedConfigurer) ResourceClient() resource.Client {
 	return resource.NewSpannerClient(c.db.Client)
 }
 
-func (c *servedConfigurer) Access() access.Controller { return c.access }
+func (c *servedConfigurer) Access() access.Controller { return c.auth.Access() }
 
-func (c *servedConfigurer) Session() *session.PasswordAuth[session.NoCustomData, session.NoCustomData] {
-	return c.session
-}
+func (c *servedConfigurer) Staff() *staff.Auth { return c.auth }
 
 func (c *servedConfigurer) Validator() *validator.Validate { return validator.New() }
 
@@ -113,30 +109,23 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatal(err)
 	}
 
-	store, err := spannerstore.New(db.Client)
+	auth, err := staff.New(ctx, db.Client, staff.Settings{CookieKey: testCookieKey, SessionTimeout: time.Minute})
 	if err != nil {
-		t.Fatalf("spannerstore.New() error = %v", err)
-	}
-	accessClient, err := access.New(store)
-	if err != nil {
-		t.Fatalf("access.New() error = %v", err)
+		t.Fatalf("staff.New() error = %v", err)
 	}
 	t.Cleanup(func() {
-		if err := accessClient.Close(); err != nil {
-			t.Errorf("access.Client.Close() error = %v", err)
+		if err := auth.Close(); err != nil {
+			t.Errorf("staff.Auth.Close() error = %v", err)
 		}
 	})
+	accessClient := auth.Access()
 
 	roles := loadRoles(t)
 	if err := access.MigrateRoles(ctx, accessClient.UserManager(), router.Collection(), roles, north, south); err != nil {
 		t.Fatalf("access.MigrateRoles() error = %v", err)
 	}
 
-	passwordAuth, err := session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](
-		sessionstorage.NewSpannerPasswordAuth(db.Client), testCookieKey)
-	if err != nil {
-		t.Fatalf("session.NewPasswordAuth() error = %v", err)
-	}
+	passwordAuth := auth.Session()
 	password := adminPassword
 	for _, user := range []string{adminUser, memberUser, clientUser} {
 		if _, err := passwordAuth.API().CreateSessionUser(ctx, &session.CreateUserRequest{Username: user, Password: &password}); err != nil {
@@ -164,7 +153,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	// visible to the engine before serving.
 	waitForDomains(ctx, t, accessClient, machinesUser, []accesstypes.Domain{north})
 
-	handler := router.New(app.New(&servedConfigurer{db: db, access: accessClient, session: passwordAuth}))
+	handler := router.New(app.New(&servedConfigurer{db: db, auth: auth}))
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 

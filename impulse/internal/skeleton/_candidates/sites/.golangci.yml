@@ -59,6 +59,7 @@ linters:
             - $all
           allow:
             - $gostd
+            - github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites
             - cloud.google.com/go/logging
             - cloud.google.com/go/spanner
             - github.com/cccteam

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/config"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/deploy"
 	"github.com/go-playground/errors/v5"
@@ -40,7 +41,7 @@ func run(ctx context.Context) error {
 	}
 	defer data.Close()
 
-	if err := deploy.MigrateRoles(ctx, data.UserManager()); err != nil {
+	if err := deploy.MigrateRoles(ctx, data.UserManager(), staff.RolesPath); err != nil {
 		return errors.Wrap(err, "deploy.MigrateRoles()")
 	}
 

@@ -31,8 +31,9 @@ impulse check --list
 | `options` | The generator programs declare one coherent option set, and the report states it: layout (flat or multi-site), sites, tenancy (`WithDomainRoute`, `WithConcealedDomains`), outlets, and targets. Handlers come with routes, `ForOutlet` names a declared session-serving outlet, the referenced directories exist, a `//go:generate` directive runs every program, the sites agree on tenancy, and a second site lives under `apps/<site>/`. |
 | `tenancy-wired` | A program with `WithDomainRoute` has a migration creating the tenant-record table the segment names, at least one struct annotated `@permissionScope(domain)`, and every `access.MigrateRoles` call outside tests passing domains. A program without it has no tenant-scoped structs and passes no domains. The compiler and the generator hold the rest of the seam. |
 | `outlet-wired` | Every outlet a program declares (the default from `GenerateRoutes` and each `WithRouterOutlet`) has its generated routes mounted by a hand-written file in the router package, a session-serving outlet has a `GenerateTypescript` target naming it, and that browser project's development proxy forwards the outlet's prefix. An outlet with no `@outlet` members yet is noted, not failed. |
-| `sites-wired` | In the multi-site layout, every site has a main package under `apps/<site>/`, a process in the Procfile or process-compose file running it on its own `PORT`, and every site's router is imported by some package calling `access.MigrateRoles`, so a role migration (the union collection, or one per user pool) reconciles against the site's resources. |
-| `auth-wired` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the user pools: one per distinct flavor and table set. |
+| `sites-wired` | In the multi-site layout, every site has a main package under `apps/<site>/`, a process in the Procfile or process-compose file running it on its own `PORT`, and every site's router is imported by some package calling `access.MigrateRoles`, so a role migration (the union collection, or one per auth) reconciles against the site's resources. |
+| `auth-wired` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the auths, one per distinct flavor and table set, each named by its package when it lives in one (`pkg/auth/<name>`). |
+| `auths-wired` | Every auth package (`pkg/auth/<name>`, constructing a session authenticator) is constructed by the data level (`<name>.New` called outside tests), provisioned from its roles file (`<name>.RolesPath` read by a file that migrates roles, and the file exists), and bound by a surface (a package outside `config` and `cmd/` takes `*<name>.Auth`). Authenticators outside auth packages warn. |
 | `emulator-version` | The generator option, the process files' image tags, and the test harnesses name one Spanner emulator version. |
 | `prettier-ignore` | Each browser app's `.prettierignore` excludes the generated TypeScript. Prettier reflowing generated files breaks generate idempotence. `--fix` adds the entry. |
 | `eslint-ignore` | Each browser app receiving generated TypeScript ignores it in its eslint flat config (`ignores: ['**/zz_gen_*.ts']`) or `.eslintignore`. Generated shapes trip stylistic rules, and the output is not the developer's to change. |
@@ -136,6 +137,22 @@ to them.
 ```sh
 impulse add tenancy --agent
 impulse add tenancy --table Organizations
+```
+
+`add auth` adds an auth: a population that signs in one way and holds roles in its own
+permission store. An auth is a package, `pkg/auth/<name>`, and the base has one, `staff`.
+The new package is a copy of an existing auth's with every name substituted, so it owns
+`<Name>Sessions`, `<Name>SessionUsers` (password only), the `<Name>` store prefix, the
+`<name>` cookie, and `schema/roles/<name>.json` from the start; its table migrations are
+copied under the new prefix; and the data level constructs it beside the auth it came
+from, with an accessor in a new file. `--preauth` swaps the constructor to the preauth
+flavor. Binding a surface to it, provisioning its roles and development identities, and
+the stranger tests are the agent's. The OIDC flavors follow once the membership-authority
+question is answered.
+
+```sh
+impulse add auth partners --agent
+impulse add auth devices --preauth
 ```
 
 ## Templates

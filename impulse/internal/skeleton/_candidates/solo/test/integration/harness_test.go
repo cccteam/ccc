@@ -10,23 +10,23 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/cccteam/access"
-	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/app"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/router"
 	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
-	"github.com/cccteam/session/sessionstorage"
 	"github.com/go-playground/validator/v10"
 )
 
 const (
 	migrationsSource = "file://../../schema/migrations"
-	rolesPath        = "../../schema/roles.json"
+	rolesPath        = "../../" + staff.RolesPath
 
 	// The development login the served suites sign in as.
 	adminUser     = "admin"
@@ -37,20 +37,17 @@ const (
 // database, the real permission engine, and a real session manager, so the suites
 // exercise the same served stack main composes.
 type servedConfigurer struct {
-	db      *initiator.SpannerDB
-	access  *access.Client
-	session *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
+	db   *initiator.SpannerDB
+	auth *staff.Auth
 }
 
 func (c *servedConfigurer) ResourceClient() resource.Client {
 	return resource.NewSpannerClient(c.db.Client)
 }
 
-func (c *servedConfigurer) Access() access.Controller { return c.access }
+func (c *servedConfigurer) Access() access.Controller { return c.auth.Access() }
 
-func (c *servedConfigurer) Session() *session.PasswordAuth[session.NoCustomData, session.NoCustomData] {
-	return c.session
-}
+func (c *servedConfigurer) Staff() *staff.Auth { return c.auth }
 
 func (c *servedConfigurer) Validator() *validator.Validate { return validator.New() }
 
@@ -74,30 +71,23 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatal(err)
 	}
 
-	store, err := spannerstore.New(db.Client)
+	auth, err := staff.New(ctx, db.Client, staff.Settings{CookieKey: testCookieKey, SessionTimeout: time.Minute})
 	if err != nil {
-		t.Fatalf("spannerstore.New() error = %v", err)
-	}
-	accessClient, err := access.New(store)
-	if err != nil {
-		t.Fatalf("access.New() error = %v", err)
+		t.Fatalf("staff.New() error = %v", err)
 	}
 	t.Cleanup(func() {
-		if err := accessClient.Close(); err != nil {
-			t.Errorf("access.Client.Close() error = %v", err)
+		if err := auth.Close(); err != nil {
+			t.Errorf("staff.Auth.Close() error = %v", err)
 		}
 	})
+	accessClient := auth.Access()
 
 	roles := loadRoles(t)
 	if err := access.MigrateRoles(ctx, accessClient.UserManager(), router.Collection(), roles); err != nil {
 		t.Fatalf("access.MigrateRoles() error = %v", err)
 	}
 
-	passwordAuth, err := session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](
-		sessionstorage.NewSpannerPasswordAuth(db.Client), testCookieKey)
-	if err != nil {
-		t.Fatalf("session.NewPasswordAuth() error = %v", err)
-	}
+	passwordAuth := auth.Session()
 	password := adminPassword
 	if _, err := passwordAuth.API().CreateSessionUser(ctx, &session.CreateUserRequest{Username: adminUser, Password: &password}); err != nil {
 		t.Fatalf("CreateSessionUser() error = %v", err)
@@ -106,7 +96,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatalf("AddUserRoles() error = %v", err)
 	}
 
-	handler := router.New(app.New(&servedConfigurer{db: db, access: accessClient, session: passwordAuth}))
+	handler := router.New(app.New(&servedConfigurer{db: db, auth: auth}))
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 

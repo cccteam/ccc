@@ -53,7 +53,11 @@ func (a *App) scan() error {
 		return errors.Wrap(err, "filepath.WalkDir()")
 	}
 
-	return a.followRoleWrappers()
+	if err := a.followRoleWrappers(); err != nil {
+		return err
+	}
+
+	return a.authPackages()
 }
 
 func (a *App) scanFile(abs, name string) error {

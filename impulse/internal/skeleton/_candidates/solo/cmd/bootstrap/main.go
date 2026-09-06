@@ -15,6 +15,7 @@ import (
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/config"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/deploy"
 	initiator "github.com/cccteam/db-initiator"
@@ -91,10 +92,10 @@ func run(ctx context.Context) error {
 	}
 	defer data.Close()
 
-	if err := deploy.MigrateRoles(ctx, data.UserManager()); err != nil {
+	if err := deploy.MigrateRoles(ctx, data.UserManager(), staff.RolesPath); err != nil {
 		return errors.Wrap(err, "deploy.MigrateRoles()")
 	}
-	fmt.Printf("Provisioned roles from %s\n", deploy.RolesPath)
+	fmt.Printf("Provisioned roles from %s\n", staff.RolesPath)
 
 	if err := seedIdentities(ctx, data); err != nil {
 		return errors.Wrap(err, "seedIdentities()")
@@ -116,7 +117,7 @@ func seedIdentities(ctx context.Context, data *config.DataConfiguration) error {
 	}
 
 	for _, user := range identities.Users {
-		if _, err := data.Session().API().CreateSessionUser(ctx, &session.CreateUserRequest{
+		if _, err := data.Staff().Session().API().CreateSessionUser(ctx, &session.CreateUserRequest{
 			Username: string(user.User),
 			Password: &user.Password,
 		}); err != nil {

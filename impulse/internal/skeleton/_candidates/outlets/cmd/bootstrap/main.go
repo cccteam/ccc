@@ -20,6 +20,7 @@ import (
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/config"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/deploy"
 	initiator "github.com/cccteam/db-initiator"
@@ -115,10 +116,10 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "config.DataConfiguration.Domains()")
 	}
-	if err := deploy.MigrateRoles(ctx, data.UserManager(), domains...); err != nil {
+	if err := deploy.MigrateRoles(ctx, data.UserManager(), staff.RolesPath, domains...); err != nil {
 		return errors.Wrap(err, "deploy.MigrateRoles()")
 	}
-	fmt.Printf("Provisioned roles from %s across %v\n", deploy.RolesPath, domains)
+	fmt.Printf("Provisioned roles from %s across %v\n", staff.RolesPath, domains)
 
 	if err := seedIdentities(ctx, data); err != nil {
 		return errors.Wrap(err, "seedIdentities()")
@@ -140,7 +141,7 @@ func seedIdentities(ctx context.Context, data *config.DataConfiguration) error {
 	}
 
 	for _, user := range identities.Users {
-		if _, err := data.Session().API().CreateSessionUser(ctx, &session.CreateUserRequest{
+		if _, err := data.Staff().Session().API().CreateSessionUser(ctx, &session.CreateUserRequest{
 			Username: string(user.User),
 			Password: &user.Password,
 		}); err != nil {

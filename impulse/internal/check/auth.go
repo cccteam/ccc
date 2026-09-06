@@ -12,7 +12,7 @@ import (
 // authWired verifies that every session authenticator the application constructs has its
 // tables in the schema (sessions, users where the flavor keeps them, impersonation and
 // custom data tables where the storage attaches them), that two login flavors never share
-// a sessions table, and reports the user pools that result: one per distinct flavor and
+// a sessions table, and reports the auths that result: one per distinct flavor and
 // table set. The compiler holds
 // the handler wiring (the router's Handlers interface embeds the flavor's handler set);
 // this check holds the schema the flavor reads, which nothing compiles against.
@@ -21,7 +21,7 @@ type authWired struct{}
 func (authWired) Name() string { return "auth-wired" }
 
 func (authWired) Describe() string {
-	return "every session authenticator's tables exist in the schema, flavors do not share a sessions table, and the user pools are reported"
+	return "every session authenticator's tables exist in the schema, flavors do not share a sessions table, and the auths are reported"
 }
 
 func (c authWired) Run(_ context.Context, env *Env) Result {
@@ -60,9 +60,9 @@ func (c authWired) Run(_ context.Context, env *Env) Result {
 		return fail(c.Name(), fmt.Sprintf("%d auth wiring problem(s)", len(details)), append(details, unread...)...)
 	}
 
-	pools, notes := poolSummary(a.Auths)
+	auths, notes := authSummary(a.Auths)
 
-	return passWithDetails(c.Name(), fmt.Sprintf("%d user pool(s): %s", len(pools), strings.Join(pools, "; ")), append(notes, unread...)...)
+	return passWithDetails(c.Name(), fmt.Sprintf("%d auth(s): %s", len(auths), strings.Join(auths, "; ")), append(notes, unread...)...)
 }
 
 // authTables lists the tables one construction reads.
@@ -95,9 +95,10 @@ func schemaDir(flavor string) string {
 	}
 }
 
-// poolSummary groups the constructions into pools (one per flavor and table set) and
-// renders each, with notes on what the constructions leave to their callers.
-func poolSummary(auths []app.Auth) (pools, notes []string) {
+// authSummary groups the constructions into auths (one per flavor and table set) and
+// renders each, named by its package when it lives in one (pkg/auth/<name>), with notes
+// on what the constructions leave to their callers.
+func authSummary(auths []app.Auth) (summaries, notes []string) {
 	seen := map[string]bool{}
 	for i := range auths {
 		auth := &auths[i]
@@ -110,7 +111,11 @@ func poolSummary(auths []app.Auth) (pools, notes []string) {
 		if auth.CookieName != "" {
 			desc += ", cookie " + auth.CookieName
 		}
-		pools = append(pools, desc+")")
+		desc += ")"
+		if name := app.AuthPackageName(auth.File); name != "" {
+			desc = name + ": " + desc
+		}
+		summaries = append(summaries, desc)
 		if auth.OptionsForwarded {
 			notes = append(notes, fmt.Sprintf("%s:%d: options are forwarded from the caller (opts...); tables and cookie beyond the defaults are not visible here", auth.File, auth.Line))
 		}
@@ -118,7 +123,7 @@ func poolSummary(auths []app.Auth) (pools, notes []string) {
 			notes = append(notes, fmt.Sprintf("%s:%d: the impersonation table name is not a literal; %s assumed", auth.File, auth.Line, app.DefaultImpersonationTable))
 		}
 	}
-	sort.Strings(pools)
+	sort.Strings(summaries)
 
-	return pools, notes
+	return summaries, notes
 }

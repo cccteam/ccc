@@ -1,9 +1,14 @@
 package app
 
 import (
+	"bytes"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path"
+	"sort"
+	"strconv"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -55,6 +60,7 @@ func parseAuths(rel string, src []byte) ([]Auth, error) {
 		return nil, nil
 	}
 	storage := localImportName(f, sessionStorageImportPath)
+	consts := fileConstStrings(f)
 
 	var auths []Auth
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -77,7 +83,7 @@ func parseAuths(rel string, src []byte) ([]Auth, error) {
 		}
 		oidcUsers := false
 		for _, arg := range call.Args {
-			readAuthArg(&auth, &oidcUsers, arg, pkg, storage)
+			readAuthArg(&auth, &oidcUsers, arg, pkg, storage, consts)
 		}
 		if (spec.flavor == FlavorOIDCAzure || spec.flavor == FlavorOIDCGoogle) && !oidcUsers {
 			auth.UserTable = ""
@@ -93,13 +99,13 @@ func parseAuths(rel string, src []byte) ([]Auth, error) {
 // readAuthArg applies one constructor argument to the construction: a session option
 // naming a table or cookie, or a storage constructed with impersonation, the OIDC user
 // anchor, or custom data tables.
-func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string) {
+func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string, consts map[string]string) {
 	call, ok := arg.(*ast.CallExpr)
 	if !ok {
 		return
 	}
 	if name, ok := qualifiedName(call.Fun, pkg); ok && len(call.Args) == 1 {
-		if s, isString := stringLit(call.Args[0]); isString {
+		if s, isString := constString(call.Args[0], consts); isString {
 			switch name {
 			case "WithSessionTableName":
 				auth.SessionTable = s
@@ -127,7 +133,7 @@ func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string)
 			auth.Impersonation = true
 		case "NewImpersonationTable":
 			if len(c.Args) == 1 {
-				if s, ok := stringLit(c.Args[0]); ok {
+				if s, ok := constString(c.Args[0], consts); ok {
 					auth.ImpersonationTable = s
 				}
 			}
@@ -135,7 +141,7 @@ func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string)
 			*oidcUsers = true
 		case "NewSpannerCustomSessionData", "NewPostgresCustomSessionData", "NewSpannerCustomUserData", "NewPostgresCustomUserData":
 			if len(c.Args) >= 1 {
-				if s, ok := stringLit(c.Args[0]); ok {
+				if s, ok := constString(c.Args[0], consts); ok {
 					auth.ExtraTables = append(auth.ExtraTables, s)
 				}
 			}
@@ -160,4 +166,231 @@ func qualifiedName(fun ast.Expr, pkg string) (string, bool) {
 	}
 
 	return "", false
+}
+
+// fileConstStrings evaluates the file's package-level string constants: literals, other
+// constants of the file, and concatenations of them, so a table name written as
+// TablePrefix + "Sessions" reads as the name it is.
+func fileConstStrings(f *ast.File) map[string]string {
+	specs := map[string]ast.Expr{}
+	for _, d := range f.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, sp := range gd.Specs {
+			vs, ok := sp.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, name := range vs.Names {
+				if i < len(vs.Values) {
+					specs[name.Name] = vs.Values[i]
+				}
+			}
+		}
+	}
+	consts := map[string]string{}
+	for name := range specs {
+		if s, ok := evalConst(name, specs, map[string]bool{}); ok {
+			consts[name] = s
+		}
+	}
+
+	return consts
+}
+
+// evalConst folds one constant; visiting guards against a cycle.
+func evalConst(name string, specs map[string]ast.Expr, visiting map[string]bool) (string, bool) {
+	expr, ok := specs[name]
+	if !ok || visiting[name] {
+		return "", false
+	}
+	visiting[name] = true
+	defer delete(visiting, name)
+
+	return foldString(expr, specs, visiting)
+}
+
+func foldString(expr ast.Expr, specs map[string]ast.Expr, visiting map[string]bool) (string, bool) {
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		return stringLit(e)
+	case *ast.Ident:
+		return evalConst(e.Name, specs, visiting)
+	case *ast.ParenExpr:
+		return foldString(e.X, specs, visiting)
+	case *ast.BinaryExpr:
+		if e.Op != token.ADD {
+			return "", false
+		}
+		left, ok := foldString(e.X, specs, visiting)
+		if !ok {
+			return "", false
+		}
+		right, ok := foldString(e.Y, specs, visiting)
+		if !ok {
+			return "", false
+		}
+
+		return left + right, true
+	default:
+		return "", false
+	}
+}
+
+// constString reads a string argument that is a literal, a constant of the file, or a
+// concatenation of them.
+func constString(expr ast.Expr, consts map[string]string) (string, bool) {
+	if s, ok := stringLit(expr); ok {
+		return s, true
+	}
+	specs := map[string]ast.Expr{}
+	for name, value := range consts {
+		specs[name] = &ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(value)}
+	}
+
+	return foldString(expr, specs, map[string]bool{})
+}
+
+// authDir is the directory the auth packages live under: pkg/auth/<name>, one per
+// population that signs in one way and holds roles in one store.
+const authDir = "auth"
+
+// AuthPackageName returns the auth an authenticator construction belongs to, from its
+// file's place in the tree (a package directly under an auth directory), or empty.
+func AuthPackageName(file string) string {
+	dir := path.Dir(file)
+	if path.Base(path.Dir(dir)) != authDir {
+		return ""
+	}
+
+	return path.Base(dir)
+}
+
+// AuthPackage is one auth: a package under an auth directory constructing a session
+// authenticator, with every reference to it from the rest of the application.
+type AuthPackage struct {
+	// Name is the auth's name, the package's directory name.
+	Name string
+	// Dir is the package's root-relative directory.
+	Dir string
+	// Path is the package's import path.
+	Path string
+	// Refs are the files referencing the package, with the identifiers they take from it.
+	Refs []AuthRef
+}
+
+// AuthRef is one file's references to an auth package.
+type AuthRef struct {
+	File string
+	// Names are the package-level identifiers the file uses, sorted and without repeats.
+	Names []string
+}
+
+// References reports whether some file outside the excluded directories uses the
+// identifier.
+func (p *AuthPackage) References(name string, excluding func(file string) bool) []string {
+	var files []string
+	for _, r := range p.Refs {
+		if excluding != nil && excluding(r.File) {
+			continue
+		}
+		for _, n := range r.Names {
+			if n == name {
+				files = append(files, r.File)
+
+				break
+			}
+		}
+	}
+
+	return files
+}
+
+// authPackages collects the auth packages and their references, after the walk.
+func (a *App) authPackages() error {
+	byDir := map[string]*AuthPackage{}
+	for i := range a.Auths {
+		file := a.Auths[i].File
+		name := AuthPackageName(file)
+		if name == "" {
+			continue
+		}
+		dir := path.Dir(file)
+		if _, ok := byDir[dir]; !ok {
+			byDir[dir] = &AuthPackage{Name: name, Dir: dir, Path: a.packagePath(dir)}
+		}
+	}
+	if len(byDir) == 0 {
+		return nil
+	}
+	for _, rel := range a.goFiles {
+		data, err := os.ReadFile(a.Abs(rel))
+		if err != nil {
+			return errors.Wrap(err, "os.ReadFile()")
+		}
+		for _, pkg := range byDir {
+			if pkg.Path == "" || path.Dir(rel) == pkg.Dir || !bytes.Contains(data, []byte(pkg.Path)) {
+				continue
+			}
+			names, err := selectorsOf(rel, data, pkg.Path)
+			if err != nil {
+				return err
+			}
+			if len(names) > 0 {
+				pkg.Refs = append(pkg.Refs, AuthRef{File: rel, Names: names})
+			}
+		}
+	}
+	for _, pkg := range byDir {
+		a.AuthPackages = append(a.AuthPackages, *pkg)
+	}
+	sort.Slice(a.AuthPackages, func(i, j int) bool { return a.AuthPackages[i].Name < a.AuthPackages[j].Name })
+
+	return nil
+}
+
+// selectorsOf lists the identifiers a file takes from the package at importPath.
+func selectorsOf(rel string, src []byte, importPath string) ([]string, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, errors.Wrap(err, "parser.ParseFile()")
+	}
+	local := localImportName(f, importPath)
+	if local == "" {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if id, ok := sel.X.(*ast.Ident); ok && id.Name == local {
+			seen[sel.Sel.Name] = true
+		}
+
+		return true
+	})
+	names := make([]string, 0, len(seen))
+	for n := range seen {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	return names, nil
+}
+
+// ConstString evaluates the named package-level string constant of a file.
+func ConstString(rel string, src []byte, name string) (string, bool) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+	if err != nil {
+		return "", false
+	}
+	value, ok := fileConstStrings(f)[name]
+
+	return value, ok
 }

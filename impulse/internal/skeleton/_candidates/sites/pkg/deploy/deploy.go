@@ -25,11 +25,6 @@ const MigrationsSource = "file://schema/migrations"
 // by cmd/bootstrap only, relative to the module root.
 const DevSeedSource = "file://schema/devseed"
 
-// RolesPath is the committed role configuration MigrateRoles reconciles, relative to
-// the module root. The Administrator role at each scope is implicit: it carries every
-// permission registered there.
-const RolesPath = "schema/roles.json"
-
 // MigrateSchema connects to the existing database and applies every pending schema
 // migration. Creating the database is not its business: a deployment's database exists
 // before its first migration runs, and cmd/bootstrap creates the emulator's.
@@ -68,8 +63,8 @@ func SeedDevelopmentData(ctx context.Context, settings config.SpannerSettings) e
 // MigrateRoles reconciles the committed role configuration into the policy store,
 // validated against the generated permission collection, across the given tenant
 // domains — the roster read from the Tenants table.
-func MigrateRoles(ctx context.Context, manager access.UserManager, domains ...accesstypes.Domain) error {
-	roles, err := loadRoles(RolesPath)
+func MigrateRoles(ctx context.Context, manager access.UserManager, rolesPath string, domains ...accesstypes.Domain) error {
+	roles, err := loadRoles(rolesPath)
 	if err != nil {
 		return err
 	}

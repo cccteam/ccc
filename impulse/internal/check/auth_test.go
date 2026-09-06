@@ -62,6 +62,36 @@ func tables(names ...string) string {
 	return sql
 }
 
+// constNamed constructs a password auth whose table and cookie names are package
+// constants, as an auth package writes them.
+const constNamed = `package staff
+
+import (
+	"context"
+
+	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/session"
+	"github.com/cccteam/session/sessionstorage"
+)
+
+const (
+	Name        = "staff"
+	TablePrefix = "Staff"
+
+	sessionsTable = TablePrefix + "Sessions"
+	usersTable    = TablePrefix + "SessionUsers"
+)
+
+func New(ctx context.Context, db *cloudspanner.Client, key string) (*session.PasswordAuth[session.NoCustomData, session.NoCustomData], error) {
+	return session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](
+		sessionstorage.NewSpannerPasswordAuth(db), key,
+		session.WithSessionTableName(sessionsTable),
+		session.WithUserTableName(usersTable),
+		session.WithCookieName(Name),
+	)
+}
+`
+
 func TestAuthWired(t *testing.T) {
 	t.Parallel()
 
@@ -85,7 +115,17 @@ func TestAuthWired(t *testing.T) {
 				"schema/migrations/000003_Sessions.up.sql": tables("PartnerSessions", "PartnerUsers", "Impersonations", "PreauthSessions", "StaffSessions", "GoogleOIDCUsers", "StaffSessionData"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "3 user pool(s): oidc-google (StaffSessions, GoogleOIDCUsers, StaffSessionData); password (PartnerSessions, PartnerUsers, Impersonations, cookie partner); preauth (PreauthSessions, cookie enrollment)",
+			wantSummary: "3 auth(s): oidc-google (StaffSessions, GoogleOIDCUsers, StaffSessionData); password (PartnerSessions, PartnerUsers, Impersonations, cookie partner); preauth (PreauthSessions, cookie enrollment)",
+		},
+		{
+			name: "an auth package naming its tables through constants",
+			files: map[string]string{
+				"cmd/generate/main.go":                  program("pkg/resources", `generation.GenerateHandlers("app"),`, `generation.GenerateRoutes("pkg/router", "api"),`),
+				"pkg/auth/staff/staff.go":               constNamed,
+				"schema/migrations/000002_Staff.up.sql": "CREATE TABLE StaffSessions (Id STRING(36) NOT NULL) PRIMARY KEY (Id);\nCREATE TABLE StaffSessionUsers (Id STRING(36) NOT NULL) PRIMARY KEY (Id);\n",
+			},
+			wantStatus:  Pass,
+			wantSummary: "1 auth(s): staff: password (StaffSessions, StaffSessionUsers, cookie staff)",
 		},
 		{
 			name: "one pool with forwarded options",
@@ -95,7 +135,7 @@ func TestAuthWired(t *testing.T) {
 				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "1 user pool(s): password (Sessions, SessionUsers)",
+			wantSummary: "1 auth(s): password (Sessions, SessionUsers)",
 			wantDetails: []string{
 				"pkg/config/session.go:9: options are forwarded from the caller (opts...); tables and cookie beyond the defaults are not visible here",
 			},
@@ -108,7 +148,7 @@ func TestAuthWired(t *testing.T) {
 				"schema/migrations/000003_Sessions.up.sql": tables("Sessions"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "1 user pool(s): oidc-azure (Sessions)",
+			wantSummary: "1 auth(s): oidc-azure (Sessions)",
 		},
 		{
 			name: "missing tables and a shared sessions table",

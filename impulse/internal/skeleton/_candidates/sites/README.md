@@ -28,7 +28,7 @@ concealed from logins that hold nothing there.
 - `cmd/generate` runs the three generators: console, portal, shared. `impulse check`'s
   multi-site check fails the build when a generator reads a different schema or the shared
   generator misses a site.
-- `schema/migrations` is the one schema; `schema/roles.json` the role configuration.
+- `schema/migrations` is the one schema; `schema/roles/staff.json` the role configuration.
 - `test/integration` serves both sites over one database and drives each the way its
   browser application does.
 

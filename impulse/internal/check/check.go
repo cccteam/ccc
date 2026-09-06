@@ -123,6 +123,7 @@ func All() []Check {
 		outletWired{},
 		sitesWired{},
 		authWired{},
+		authsWired{},
 		emulatorVersion{},
 		prettierIgnore{},
 		eslintIgnore{},

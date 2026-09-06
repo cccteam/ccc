@@ -9,10 +9,10 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/portal/app"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/portal/pkg/router"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
-	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-playground/validator/v10"
 )
@@ -75,9 +75,7 @@ func (c *testConfigurer) Access() access.Controller {
 	return &fakeAccess{g: c.g}
 }
 
-func (c *testConfigurer) Session() *session.PasswordAuth[session.NoCustomData, session.NoCustomData] {
-	return nil
-}
+func (c *testConfigurer) Staff() *staff.Auth { return nil }
 
 func (c *testConfigurer) Validator() *validator.Validate {
 	return validator.New()

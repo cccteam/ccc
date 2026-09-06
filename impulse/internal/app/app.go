@@ -51,6 +51,9 @@ type App struct {
 	GoGenerate []Directive
 	// MainPackages are the root-relative directories holding a package main.
 	MainPackages []string
+	// AuthPackages are the auths: the packages under an auth directory constructing a
+	// session authenticator, with every reference to them, sorted by name.
+	AuthPackages []AuthPackage
 
 	// goFiles are the non-test Go files scanned, for the passes that follow the walk.
 	goFiles []string

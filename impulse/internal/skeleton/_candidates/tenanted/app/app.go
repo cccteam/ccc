@@ -11,6 +11,7 @@ import (
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
@@ -43,7 +44,9 @@ type Configurer interface {
 	ResourceClient() resource.Client
 	Access() access.Controller
 	DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
-	Session() *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
+	// Staff returns the auth this surface binds to: the staff auth, whose session manager
+	// the App composes its login and session handlers from.
+	Staff() *staff.Auth
 	Validator() *validator.Validate
 	LogExporter() logger.Exporter
 	ConsoleDist() string
@@ -64,15 +67,21 @@ type App struct {
 
 // New constructs an App from its dependencies.
 func New(cfg Configurer) *App {
-	return &App{
+	a := &App{
 		access:         cfg.Access(),
-		PasswordAuth:   cfg.Session(),
 		resourceClient: cfg.ResourceClient(),
 		domainVisible:  cfg.DomainVisible,
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
 		consoleDist:    cfg.ConsoleDist(),
 	}
+	// The authorization suites bind no auth: they compose the API surface through the
+	// test router, and nothing on that path touches the session.
+	if auth := cfg.Staff(); auth != nil {
+		a.PasswordAuth = auth.Session()
+	}
+
+	return a
 }
 
 // LoggerMiddleware returns a middleware that logs requests.

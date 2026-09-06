@@ -21,7 +21,7 @@ the digest for the selected tenant.
 - `pkg/resources` holds the resource structs the generator reads: `Tenant` (the tenant
   record, a global resource) and `Announcement` (tenant-scoped, `@domain` on its
   TenantId). `schema/migrations` holds the tables they describe; `schema/devseed` the
-  development tenants; `schema/roles.json` the role configuration the deployment
+  development tenants; `schema/roles/staff.json` the role configuration the deployment
   reconciles across the tenant roster (the Administrator role at each scope is implicit).
 - `pkg/deploy` holds the database steps a deployment runs: schema migrations, then
   roles across the tenants read from the table. `cmd/deployment/migrate` is the deploy

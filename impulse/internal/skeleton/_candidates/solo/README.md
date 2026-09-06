@@ -15,7 +15,7 @@ console shows who is signed in and what they hold.
 - `app` holds the handlers: generated resource handlers plus the hand-written middleware
   and static-asset surface. `pkg/router` composes them behind the session.
 - `pkg/resources` holds the resource structs the generator reads; `schema/migrations`
-  the tables they describe; `schema/roles.json` the role configuration the deployment
+  the tables they describe; `schema/roles/staff.json` the role configuration the deployment
   reconciles (the Administrator role at each scope is implicit).
 - `pkg/deploy` holds the database steps a deployment runs: schema migrations, then
   roles. `cmd/deployment/migrate` is the deploy step; `cmd/bootstrap` reuses it to stand

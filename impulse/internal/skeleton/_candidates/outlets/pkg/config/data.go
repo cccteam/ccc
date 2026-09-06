@@ -11,11 +11,9 @@ import (
 
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
-	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
-	"github.com/cccteam/session"
-	"github.com/cccteam/session/sessionstorage"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 	"google.golang.org/api/iterator"
@@ -54,8 +52,7 @@ type DataConfiguration struct {
 	env            *dataConfig
 	spannerClient  *cloudspanner.Client
 	resourceClient *resource.SpannerClient
-	access         *access.Client
-	session        *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
+	staff          *staff.Auth
 	domains        []accesstypes.Domain
 	domainSet      map[accesstypes.Domain]bool
 }
@@ -78,31 +75,14 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "spanner.NewClient()")
 	}
 
-	store, err := spannerstore.New(spannerClient)
-	if err != nil {
-		return nil, errors.Wrap(err, "spannerstore.New()")
-	}
-
-	accessClient, err := access.New(store)
-	if err != nil {
-		return nil, errors.Wrap(err, "access.New()")
-	}
-	if err := accessClient.WaitReady(ctx); err != nil {
-		return nil, errors.Wrap(err, "access.Client.WaitReady()")
-	}
-
 	cookieKey, err := cookieKey(env.CookieKey)
 	if err != nil {
 		return nil, err
 	}
 
-	passwordAuth, err := session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](
-		sessionstorage.NewSpannerPasswordAuth(spannerClient),
-		cookieKey,
-		session.WithSessionTimeout(env.SessionTimeout),
-	)
+	staffAuth, err := staff.New(ctx, spannerClient, staff.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
 	if err != nil {
-		return nil, errors.Wrap(err, "session.NewPasswordAuth()")
+		return nil, errors.Wrap(err, "staff.New()")
 	}
 
 	conf := &DataConfiguration{
@@ -110,8 +90,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		env:               env,
 		spannerClient:     spannerClient,
 		resourceClient:    resource.NewSpannerClient(spannerClient),
-		access:            accessClient,
-		session:           passwordAuth,
+		staff:             staffAuth,
 	}
 	if err := conf.loadDomains(ctx); err != nil {
 		return nil, errors.Wrap(err, "loadDomains()")
@@ -122,8 +101,8 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 
 // Close releases the level's clients, then the levels below it.
 func (c *DataConfiguration) Close() {
-	if err := c.access.Close(); err != nil {
-		log.Print(errors.Wrap(err, "access.Client.Close()"))
+	if err := c.staff.Close(); err != nil {
+		log.Print(errors.Wrap(err, "staff.Auth.Close()"))
 	}
 	c.spannerClient.Close()
 	c.coreConfiguration.Close()
@@ -141,18 +120,18 @@ func (c *DataConfiguration) ResourceClient() resource.Client {
 
 // Access returns the permission engine the handlers check against.
 func (c *DataConfiguration) Access() access.Controller {
-	return c.access
+	return c.staff.Access()
 }
 
 // UserManager returns the permission engine's writer: roles, grants, and role
 // assignments.
 func (c *DataConfiguration) UserManager() access.UserManager {
-	return c.access.UserManager()
+	return c.staff.Access().UserManager()
 }
 
-// Session returns the session manager.
-func (c *DataConfiguration) Session() *session.PasswordAuth[session.NoCustomData, session.NoCustomData] {
-	return c.session
+// Staff returns the staff auth: the one the console binds to.
+func (c *DataConfiguration) Staff() *staff.Auth {
+	return c.staff
 }
 
 // Domains lists the tenants as permission domains, from the roster read at startup.
@@ -170,7 +149,7 @@ func (c *DataConfiguration) DomainVisible(ctx context.Context, user accesstypes.
 		return false, nil
 	}
 
-	visible, err := c.access.UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
+	visible, err := c.staff.Access().UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
 	if err != nil {
 		return false, errors.Wrap(err, "access.Client.UserHasGrants()")
 	}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/config"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/deploy"
 	"github.com/go-playground/errors/v5"
@@ -47,7 +48,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "config.DataConfiguration.Domains()")
 	}
-	if err := deploy.MigrateRoles(ctx, data.UserManager(), domains...); err != nil {
+	if err := deploy.MigrateRoles(ctx, data.UserManager(), staff.RolesPath, domains...); err != nil {
 		return errors.Wrap(err, "deploy.MigrateRoles()")
 	}
 
