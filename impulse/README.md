@@ -40,6 +40,18 @@ uncommitted), so `impulse add` can start from a clean tree; with `--dev-root` th
 it writes is ignored by git. Options come afterwards, one reviewable change each:
 `impulse add tenancy`, `impulse add outlet`, `impulse add auth`.
 
+Options can be composed into the creation: `--tenancy` (with `--tenant-table`, default
+`Tenants`) and `--outlet <name>=<prefix>` (repeatable; `--api-outlet` for a machine surface)
+run the same transitions `impulse add` runs, on the fresh tree in order, tenancy first, and
+end in one check and one handoff brief carrying every obligation, so the agent wires the
+whole shape in one sitting (`--agent` launches it). The first commit is the base alone, so
+the composed options are one reviewable diff on top of it; the brief's reference is the
+`outlets` skeleton when an outlet is composed, else `tenanted`.
+
+```sh
+impulse new ./harbor --module example.com/harbor --auth staff --tenancy --outlet portal=portal/api --agent
+```
+
 ## impulse check
 
 `check` verifies the agreements between an application's parts and exits non-zero when

@@ -227,6 +227,34 @@ func TestTenancyApply(t *testing.T) {
 			},
 		},
 	}
+	// The base as impulse new renders it: the data level holds the engine through the
+	// auth package (*staff.Auth), not an *access.Client field.
+	authShape := tenancyFiles()
+	authShape["pkg/config/data.go"] = authConfig
+	authShape["pkg/auth/staff/staff.go"] = staffPackage(t)
+	tests = append(tests, struct {
+		name        string
+		files       map[string]string
+		wantDid     []string
+		wantSkipped []string
+		check       func(t *testing.T, a *app.App)
+	}{
+		name:    "the base with an auth package",
+		files:   authShape,
+		wantDid: tests[0].wantDid,
+		check: func(t *testing.T, a *app.App) {
+			t.Helper()
+			config := read(t, a, "pkg/config/tenancy.go")
+			for _, want := range []string{"c.spannerClient.Single().Query", "c.staff.Access().UserHasGrants"} {
+				if !strings.Contains(config, want) {
+					t.Errorf("tenancy.go lacks %q:\n%s", want, config)
+				}
+			}
+			if data := read(t, a, "pkg/config/data.go"); !strings.Contains(data, "\ttenants       tenantRoster\n") || !strings.Contains(data, "conf.loadTenants(ctx)") {
+				t.Errorf("data.go = %q", data)
+			}
+		},
+	})
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

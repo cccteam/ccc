@@ -255,12 +255,12 @@ func (tn Tenancy) editConfig(a *app.App, ch *Change) error {
 	if err != nil {
 		return err
 	}
-	accessField, err := app.StructFieldOfType(rel, src, "DataConfiguration", "github.com/cccteam/access", "Client")
+	engine, err := tn.engineField(a, rel, src)
 	if err != nil {
 		return err
 	}
-	if spannerField == "" || accessField == "" {
-		ch.skipf("%s: DataConfiguration holds no *spanner.Client and *access.Client fields the roster could read through, so the tenant roster and DomainVisible were not added; add them", rel)
+	if spannerField == "" || engine == "" {
+		ch.skipf("%s: DataConfiguration holds no *spanner.Client field and no permission engine (an *access.Client, or an auth package's *Auth) the roster and the visibility check could read through, so the tenant roster and DomainVisible were not added; add them", rel)
 
 		return nil
 	}
@@ -286,12 +286,41 @@ func (tn Tenancy) editConfig(a *app.App, ch *Change) error {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
 	tenancyFile := path.Join(path.Dir(rel), "tenancy.go")
-	if err := writeNew(a, tenancyFile, tn.configSource(pkg, spannerField, accessField)); err != nil {
+	if err := writeNew(a, tenancyFile, tn.configSource(pkg, spannerField, engine)); err != nil {
 		return err
 	}
 	ch.didf("%s: the tenant roster (tenantRoster, loaded from %s at startup), Domains(), and DomainVisible() on DataConfiguration; %s gained the field and the load", tenancyFile, tn.Table, rel)
 
 	return nil
+}
+
+// engineField returns the expression on DataConfiguration that reaches the permission
+// engine the visibility check asks: an *access.Client field as it is, or an auth
+// package's *Auth field through its Access() accessor (the first auth's, when the data
+// level holds several: the tenant roster is one and the sites' auths share it).
+func (Tenancy) engineField(a *app.App, rel string, src []byte) (string, error) {
+	field, err := app.StructFieldOfType(rel, src, "DataConfiguration", "github.com/cccteam/access", "Client")
+	if err != nil {
+		return "", err
+	}
+	if field != "" {
+		return field, nil
+	}
+	for i := range a.AuthPackages {
+		pkg := &a.AuthPackages[i]
+		if pkg.Path == "" {
+			continue
+		}
+		field, err := app.StructFieldOfType(rel, src, "DataConfiguration", pkg.Path, "Auth")
+		if err != nil {
+			return "", err
+		}
+		if field != "" {
+			return field + ".Access()", nil
+		}
+	}
+
+	return "", nil
 }
 
 func (tn Tenancy) configSource(pkg, spannerField, accessField string) string {

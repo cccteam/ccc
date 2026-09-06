@@ -126,6 +126,12 @@ type transitionFlags struct {
 
 func (f *transitionFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.appDir, "app", ".", "application root (the directory holding go.mod)")
+	f.bindAgent(cmd)
+}
+
+// bindAgent binds the flags of the handoff alone, for a command whose application root is
+// not a flag.
+func (f *transitionFlags) bindAgent(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&f.agent, "agent", false, "launch the agent on the brief and verify when it returns")
 	cmd.Flags().StringVar(&f.agentCommand, "agent-command", handoff.DefaultCommand, "the agent executable")
 	cmd.Flags().StringArrayVar(&f.agentArgs, "agent-arg", nil, "an argument appended to the agent's command line (repeatable), such as --model or --max-budget-usd")
@@ -323,13 +329,11 @@ func askAuthority(cmd *cobra.Command) (string, error) {
 // staging, and the handoff.
 func runTransition(cmd *cobra.Command, f *transitionFlags, t transition, reference string) error {
 	ctx := cmd.Context()
-	out := cmd.OutOrStdout()
 	a, err := app.Discover(f.appDir)
 	if err != nil {
 		return err
 	}
-	exec := check.OSExec{}
-	repo := handoff.For(a, exec)
+	repo := handoff.For(a, check.OSExec{})
 	if err := repo.Check(ctx); err != nil {
 		return err
 	}
@@ -340,17 +344,38 @@ func runTransition(cmd *cobra.Command, f *transitionFlags, t transition, referen
 	if len(dirty) > 0 {
 		return errors.Newf("the working tree is not clean (%d path(s)): commit or stash first, so the transition is one reviewable diff", len(dirty))
 	}
-	if err := t.Validate(a); err != nil {
-		return err
+
+	return runTransitions(cmd, f, repo, []transition{t}, reference)
+}
+
+// runTransitions applies the transitions in order, each on the tree the one before it
+// left, then runs the check once, stages everything, and hands what is left to the agent
+// in one brief. impulse new composes its options this way; add runs one.
+func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, ts []transition, reference string) error {
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
+	exec := check.OSExec{}
+	var changes, meanings []string
+	for _, t := range ts {
+		// Each transition reads the tree the one before it left.
+		a, err := app.Discover(f.appDir)
+		if err != nil {
+			return err
+		}
+		if err := t.Validate(a); err != nil {
+			return err
+		}
+		change, err := t.Apply(ctx, a, exec)
+		if err != nil {
+			return err
+		}
+		writeChange(out, change)
+		changes = append(changes, change.Text())
+		meanings = append(meanings, t.Meaning())
 	}
-	change, err := t.Apply(ctx, a, exec)
-	if err != nil {
-		return err
-	}
-	writeChange(out, change)
 
 	// The tree changed, so the application is read again for the checks.
-	a, err = app.Discover(f.appDir)
+	a, err := app.Discover(f.appDir)
 	if err != nil {
 		return err
 	}
@@ -361,7 +386,11 @@ func runTransition(cmd *cobra.Command, f *transitionFlags, t transition, referen
 	}
 	check.Report(out, results)
 	if !check.Failed(results) {
-		fmt.Fprintf(out, "\nThe check is clean: the option is wired. Review the diff and open the pull request.\n")
+		if len(ts) == 1 {
+			fmt.Fprintf(out, "\nThe check is clean: the option is wired. Review the diff and open the pull request.\n")
+		} else {
+			fmt.Fprintf(out, "\nThe check is clean: the %d options are wired. Review the diff and open the pull request.\n", len(ts))
+		}
 
 		return nil
 	}
@@ -374,7 +403,7 @@ func runTransition(cmd *cobra.Command, f *transitionFlags, t transition, referen
 	if err != nil {
 		return err
 	}
-	brief := &handoff.Brief{App: a, Change: change.Text(), Meaning: t.Meaning(), Results: results, Reference: referenceDir, Guard: guard}
+	brief := &handoff.Brief{App: a, Change: strings.Join(changes, "\n"), Meaning: strings.Join(meanings, "\n\n"), Results: results, Reference: referenceDir, Guard: guard}
 	ag := handoff.Agent{Command: f.agentCommand, ExtraArgs: f.agentArgs}
 
 	return completeHandoff(ctx, out, f.appDir, env, repo, brief, ag, f.agent)
