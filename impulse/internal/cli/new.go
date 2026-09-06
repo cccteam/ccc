@@ -48,10 +48,11 @@ a go.work that uses the framework checkouts under that directory (laid out by re
 
 Options are added afterwards, each as one reviewable change: impulse add tenancy, impulse
 add outlet <name>, impulse add auth <name>, impulse add site <name>. Or they are composed
-into the creation: --tenancy and --outlet <name>=<prefix> (repeatable; --api-outlet for a
-machine surface) apply the same transitions to the fresh tree in order, tenancy first, and
-end in one check and one handoff brief carrying every obligation, so the agent wires the
-whole shape in one sitting. The first commit is the base alone, so the composed options are
+into the creation: --tenancy, --outlet <name>=<prefix> (repeatable; --api-outlet for a
+machine surface), and --site <name> (two or more, the first being what the base site
+becomes under apps/) apply the same transitions to the fresh tree in order, tenancy first
+and the sites last, and end in one check and one handoff brief carrying every obligation,
+so the agent wires the whole shape in one sitting. The first commit is the base alone, so the composed options are
 one reviewable diff on top of it.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -84,7 +85,7 @@ one reviewable diff on top of it.`,
 				return nil
 			}
 
-			return composeOptions(cmd, &f, dir, opts, transitions)
+			return composeOptions(cmd, &f, dir, &opts, transitions)
 		},
 	}
 
@@ -96,6 +97,7 @@ one reviewable diff on top of it.`,
 	cmd.Flags().StringVar(&opts.tenantTable, "tenant-table", "Tenants", "the tenant-record table when --tenancy is given, PascalCase and plural")
 	cmd.Flags().StringArrayVar(&opts.outlets, "outlet", nil, "compose a session outlet, <name>=<prefix> (repeatable), such as portal=portal/api")
 	cmd.Flags().StringArrayVar(&opts.apiOutlets, "api-outlet", nil, "compose an API-key outlet, <name>=<prefix> (repeatable), such as machines=machines")
+	cmd.Flags().StringArrayVar(&opts.sites, "site", nil, "compose the multi-site layout: two or more site names (repeatable), the first being what the base site becomes under apps/")
 	f.bindAgent(cmd)
 	_ = cmd.MarkFlagRequired("module")
 
@@ -141,7 +143,7 @@ func renderBase(cmd *cobra.Command, dir, modulePath, authName, devRoot string, s
 
 // composeOptions runs the composed options' transitions on the fresh tree: the same ones
 // add would run one at a time, in order, ending in one check and one brief.
-func composeOptions(cmd *cobra.Command, f *transitionFlags, dir string, opts composedOptions, transitions []transition) error {
+func composeOptions(cmd *cobra.Command, f *transitionFlags, dir string, opts *composedOptions, transitions []transition) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "\nAdding %s.\n\n", opts.describe())
 	f.appDir = dir
 	a, err := app.Discover(dir)
@@ -162,11 +164,13 @@ type composedOptions struct {
 	tenantTable string
 	outlets     []string
 	apiOutlets  []string
+	sites       []string
 }
 
 // transitions returns the transitions the options ask for, in the order add would run
-// them: tenancy first, since an outlet's members may be tenant-scoped, then the outlets.
-func (o composedOptions) transitions() ([]transition, error) {
+// them: tenancy first, since an outlet's members may be tenant-scoped, then the outlets,
+// then the sites, since promotion moves what the others laid in.
+func (o *composedOptions) transitions() ([]transition, error) {
 	var ts []transition
 	if o.tenancy {
 		ts = append(ts, transition_.Tenancy{Table: o.tenantTable})
@@ -184,12 +188,25 @@ func (o composedOptions) transitions() ([]transition, error) {
 			ts = append(ts, transition_.Outlet{Name: name, Prefix: prefix, Sessions: kind.sessions})
 		}
 	}
+	if len(o.sites) == 1 {
+		return nil, errors.Newf("--site %s: name at least two sites, the first being what the base site becomes under apps/ (an application with one site stays flat)", o.sites[0])
+	}
+	for i, site := range o.sites {
+		if i == 0 {
+			continue
+		}
+		s := transition_.Site{Name: site}
+		if i == 1 {
+			s.First = o.sites[0]
+		}
+		ts = append(ts, s)
+	}
 
 	return ts, nil
 }
 
 // describe names the composed options for the report.
-func (o composedOptions) describe() string {
+func (o *composedOptions) describe() string {
 	var parts []string
 	if o.tenancy {
 		parts = append(parts, "tenancy ("+o.tenantTable+")")
@@ -200,18 +217,24 @@ func (o composedOptions) describe() string {
 	for _, spec := range o.apiOutlets {
 		parts = append(parts, "the API-key outlet "+spec)
 	}
+	if len(o.sites) > 1 {
+		parts = append(parts, "the sites "+strings.Join(o.sites, ", ")+" (the base site becomes "+o.sites[0]+")")
+	}
 
 	return strings.Join(parts, ", ")
 }
 
 // reference picks the finished application the brief points the agent at: the one with
-// every composed option wired.
-func (o composedOptions) reference() string {
-	if len(o.outlets)+len(o.apiOutlets) > 0 {
+// the most of the composed options wired.
+func (o *composedOptions) reference() string {
+	switch {
+	case len(o.sites) > 1:
+		return transition_.SitesReference
+	case len(o.outlets)+len(o.apiOutlets) > 0:
 		return transition_.ReferenceCandidate
+	default:
+		return transition_.TenancyReferenceCandidate
 	}
-
-	return transition_.TenancyReferenceCandidate
 }
 
 // authQuestion is what a person at the terminal is asked when --auth is not given.

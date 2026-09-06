@@ -23,9 +23,7 @@
             },
             "index": "console/src/index.html",
             "browser": "console/src/main.ts",
-            "polyfills": [
-              "zone.js"
-            ],
+            "polyfills": ["zone.js"],
             "tsConfig": "console/tsconfig.app.json",
             "inlineStyleLanguage": "scss",
             "assets": [
@@ -34,10 +32,7 @@
                 "input": "console/public"
               }
             ],
-            "styles": [
-              "@angular/material/prebuilt-themes/azure-blue.css",
-              "console/src/styles.scss"
-            ],
+            "styles": ["@angular/material/prebuilt-themes/azure-blue.css", "console/src/styles.scss"],
             "scripts": []
           },
           "configurations": {
@@ -97,10 +92,7 @@
         "lint": {
           "builder": "@angular-eslint/builder:lint",
           "options": {
-            "lintFilePatterns": [
-              "console/src/**/*.ts",
-              "console/src/**/*.html"
-            ]
+            "lintFilePatterns": ["console/src/**/*.ts", "console/src/**/*.html"]
           }
         }
       }
@@ -125,9 +117,7 @@
             },
             "index": "portal/src/index.html",
             "browser": "portal/src/main.ts",
-            "polyfills": [
-              "zone.js"
-            ],
+            "polyfills": ["zone.js"],
             "tsConfig": "portal/tsconfig.app.json",
             "inlineStyleLanguage": "scss",
             "assets": [
@@ -136,10 +126,7 @@
                 "input": "portal/public"
               }
             ],
-            "styles": [
-              "@angular/material/prebuilt-themes/cyan-orange.css",
-              "portal/src/styles.scss"
-            ],
+            "styles": ["@angular/material/prebuilt-themes/cyan-orange.css", "portal/src/styles.scss"],
             "scripts": [],
             "baseHref": "/portal/"
           },
@@ -200,10 +187,7 @@
         "lint": {
           "builder": "@angular-eslint/builder:lint",
           "options": {
-            "lintFilePatterns": [
-              "portal/src/**/*.ts",
-              "portal/src/**/*.html"
-            ]
+            "lintFilePatterns": ["portal/src/**/*.ts", "portal/src/**/*.html"]
           }
         }
       }

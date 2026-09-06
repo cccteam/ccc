@@ -37,6 +37,17 @@ func TestComposedOptions(t *testing.T) {
 			wantDescribe:  "tenancy (Tenants), the session outlet portal=portal/api, the session outlet kiosk=kiosk/api, the API-key outlet machines=machines",
 			wantReference: transition_.ReferenceCandidate,
 		},
+		{
+			name: "sites promote the base and add the rest", opts: composedOptions{tenancy: true, tenantTable: "Tenants", sites: []string{"console", "portal", "kiosk"}},
+			want: []transition{
+				transition_.Tenancy{Table: "Tenants"},
+				transition_.Site{Name: "portal", First: "console"},
+				transition_.Site{Name: "kiosk"},
+			},
+			wantDescribe:  "tenancy (Tenants), the sites console, portal, kiosk (the base site becomes console)",
+			wantReference: transition_.SitesReference,
+		},
+		{name: "one site is no layout", opts: composedOptions{sites: []string{"console"}}, wantErr: "name at least two sites"},
 		{name: "an outlet without a prefix", opts: composedOptions{outlets: []string{"portal"}}, wantErr: `--outlet "portal": name the outlet and its prefix`},
 		{name: "an API outlet without a name", opts: composedOptions{apiOutlets: []string{"=machines"}}, wantErr: `--api-outlet "=machines"`},
 	}

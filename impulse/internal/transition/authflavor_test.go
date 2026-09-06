@@ -1,6 +1,7 @@
 package transition
 
 import (
+	"go/format"
 	"io/fs"
 	"regexp"
 	"strings"
@@ -215,6 +216,50 @@ func TestAuthFlavorApply(t *testing.T) {
 					t.Errorf("router.go = %q", router)
 				}
 				if env := read(t, a, ".envrc.template"); !strings.Contains(env, "export APP_STAFF_OIDC_REDIRECT_URL=\n") {
+					t.Errorf(".envrc.template = %q", env)
+				}
+			},
+		},
+		{
+			name:   "staff moves to Google with the directory as authority",
+			flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory},
+			wantDid: []string{
+				"pkg/auth/staff/staff.go: rewritten as the staff auth in the oidc-google flavor (Google OpenID Connect) from the reference skeleton's members auth, role membership the directory's (session.GoogleRoleSync) (tables StaffSessions and StaffOIDCUsers, cookie staff, store prefix Staff); what the file carried beyond the base's shape is in git to re-apply",
+				"schema/migrations: 000005_StaffOIDCGoogle, the staff auth's session tables (StaffSessions, StaffSessionUsers) dropped and created in the oidc-google shape, StaffSessions and StaffOIDCUsers, and StaffUserRoles dropped and recreated so no role stays keyed by a password username; down recreates them from 000003_StaffSessions, 000004_StaffSessionUsers",
+				"pkg/config/data.go: dataConfig reads the staff auth's directory registration from APP_STAFF_OIDC_CLIENT_ID, _CLIENT_SECRET, _REDIRECT_URL, _HOSTED_DOMAIN, _GROUP_PREFIX, _ADMIN_CREDENTIALS, and _ADMIN_SUBJECT",
+				"pkg/config/data.go: the staff auth's construction now passes the login page and the directory registration",
+				"app/app.go, pkg/router/router.go: session.PasswordAuthHandlers and *session.PasswordAuth[session.NoCustomData, session.NoCustomData] swapped for session.OIDCGoogleHandlers and *session.OIDCGoogle[session.NoCustomData, session.NoCustomData]",
+				"pkg/router/router.go: the password login route replaced by the directory's: GET /user/login (the redirect), GET /user/callback (the return)",
+				"Procfile: 2 go run command(s) build with -tags skipAuth, so the staff auth's directory is simulated in development and every staff login is APP_USERNAME",
+				".envrc.template: APP_USERNAME and APP_ROLES for the simulated directory, and the staff auth's APP_STAFF_OIDC_* registration, to fill in",
+				"ran go generate ./...",
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				pkg := read(t, a, "pkg/auth/staff/staff.go")
+				for _, want := range []string{
+					"\t\"github.com/cccteam/session/googlegroups\"\n",
+					"groups, err := googlegroups.NewDirectory(ctx, settings.Directory.AdminCredentials, settings.Directory.AdminSubject)",
+					"session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, groups),",
+					"\tGroupPrefix string\n", "\tAdminCredentials []byte\n", "\tDomains session.DomainsProvider\n",
+				} {
+					if !strings.Contains(pkg, want) {
+						t.Errorf("staff.go lacks %q:\n%s", want, pkg)
+					}
+				}
+				if strings.Contains(pkg, "DisableRoleSync(),") || strings.Contains(pkg, "session.RoleSync(") {
+					t.Error("staff.go keeps another authority's slot")
+				}
+				if _, err := format.Source([]byte(pkg)); err != nil {
+					t.Errorf("staff.go does not parse: %v", err)
+				}
+				config := read(t, a, "pkg/config/data.go")
+				for _, want := range []string{"\t\t\tGroupPrefix:      env.StaffGroupPrefix,\n\t\t\tAdminCredentials: env.StaffAdminCredentials,\n", "\tStaffAdminCredentials []byte `env:\"APP_STAFF_OIDC_ADMIN_CREDENTIALS\"`\n"} {
+					if !strings.Contains(config, want) {
+						t.Errorf("data.go lacks %q:\n%s", want, config)
+					}
+				}
+				if env := read(t, a, ".envrc.template"); !strings.Contains(env, "export APP_STAFF_OIDC_GROUP_PREFIX=staff-\n") || !strings.Contains(env, "# export APP_STAFF_OIDC_ADMIN_SUBJECT=\n") {
 					t.Errorf(".envrc.template = %q", env)
 				}
 			},
