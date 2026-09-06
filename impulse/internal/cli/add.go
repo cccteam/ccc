@@ -32,8 +32,87 @@ launches Claude Code on it and verifies the guardrails when it returns.`,
 	cmd.AddCommand(newAddOutlet())
 	cmd.AddCommand(newAddTenancy())
 	cmd.AddCommand(newAddAuth())
+	cmd.AddCommand(newAddSite())
 
 	return cmd
+}
+
+func newAddSite() *cobra.Command {
+	var (
+		f     transitionFlags
+		first string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "site <name>",
+		Short: "Add a site: a stand-alone application on a host of its own under apps/<name>/",
+		Long: `site adds a site, a stand-alone application on a host of its own: its own main package,
+handlers, router, resources (empty to start), authorization suite, and browser workspace
+under apps/<name>/, copied from the first site with the imports renamed; its generator
+program and directive; its serve and browser processes on the next ports; its TypeScript
+target in the shared generator; and its router collection in the union the roles are
+reconciled against.
+
+On a flat application the first site added promotes the layout, the one non-additive
+transition: the existing site moves under apps/<first>/ (every import of its packages
+changes), its generator becomes cmd/generate/<first>generator, the served configuration
+level becomes the site level (SiteConfiguration reading PORT and APP_DIST per site
+process), the deployment's collection becomes the union of the sites' router collections,
+and a shared generator is laid in over an empty pkg/sharedresources. --first names what the
+existing site becomes and is asked when not given, since the name is the site's directory
+for good. Everything existing belongs to the first site.
+
+The new site's resources, its place in the integration suite, its browser application's
+own titles and pages, and the deployment configuration outside the repository are handed
+to the agent.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if first == "" {
+				a, err := app.Discover(f.appDir)
+				if err != nil {
+					return err
+				}
+				if a.Profile().Layout == app.LayoutFlat {
+					answer, err := askFirstSite(cmd, a)
+					if err != nil {
+						return err
+					}
+					first = answer
+				}
+			}
+
+			return runTransition(cmd, &f, transition_.Site{Name: args[0], First: first}, transition_.SitesReference)
+		},
+	}
+	f.bind(cmd)
+	cmd.Flags().StringVar(&first, "first", "", "on a flat application, the name the existing site takes under apps/ (asked when not given)")
+
+	return cmd
+}
+
+// askFirstSite asks what the existing site is called when a flat application grows its
+// second site and --first did not say.
+func askFirstSite(cmd *cobra.Command, a *app.App) (string, error) {
+	if !stdinIsTerminal() {
+		return "", errors.New("--first is required on a flat application: the existing site moves under apps/<first>/ and the name is its directory for good, so it is asked rather than defaulted")
+	}
+	hint := ""
+	if len(a.WebApps) > 0 {
+		if projects, err := a.ReadAngular(a.WebApps[0].Dir); err == nil && len(projects) > 0 {
+			hint = fmt.Sprintf(" Its browser application is the %s project.", projects[0].Name)
+		}
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "The application is flat: adding a second site moves the existing one under apps/<name>/.\nWhat is the existing site called? The name is its directory for good.%s\n> ", hint)
+	answer, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil && answer == "" {
+		return "", errors.Wrap(err, "reading the answer")
+	}
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return "", errors.New("no name given: pass --first <name>")
+	}
+
+	return answer, nil
 }
 
 // transitionFlags are the flags every add subcommand shares.

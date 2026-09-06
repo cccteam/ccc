@@ -217,6 +217,32 @@ impulse add auth staff2 --oidc-azure            # asks: directory or application
 impulse add auth alumni --oidc-google --authority application
 ```
 
+### add site
+
+`add site <name>` adds a site: a stand-alone application on a host of its own under
+`apps/<name>/`, with its own main package, handlers, router, resources (empty to start),
+authorization suite, and browser workspace, copied from the first site with the imports
+renamed; its generator program and directive; its serve and browser processes on the next
+ports; its TypeScript target in the shared generator; and its router collection in the union
+the roles are reconciled against. On a flat application the first site added promotes the
+layout, the one non-additive transition: the existing site moves under `apps/<first>/` and
+every import of its packages follows, its generator becomes `cmd/generate/<first>generator`,
+the served configuration level becomes the site level (`SiteConfiguration` reading `PORT`
+and `APP_DIST` per site process, set inline in the Procfile), the deployment's collection
+becomes the union of the sites' router collections (`pkg/deploy/union.go` from the
+reference), and a shared generator is laid in over an empty `pkg/sharedresources`.
+`--first` names what the existing site becomes and is asked when not given, never
+defaulted, since the name is the site's directory for good. Everything existing belongs to
+the first site. The new site's resources, its place in the integration suite, its browser
+application's own titles and pages, and the deployment configuration outside the repository
+(build path filters, source directories, a host) are the agent's; the reference is the
+`sites` skeleton.
+
+```sh
+impulse add site portal --first console   # promotes a flat application, then adds portal
+impulse add site kiosk                    # a third site, copied from the first
+```
+
 ### swap auth
 
 `swap auth <name>` moves an existing auth to a directory: `--oidc-azure` or `--oidc-google`,

@@ -203,7 +203,7 @@ func defaultTarget(g *app.Generator) *app.TSTarget {
 
 // skippedNames are the directories a project copy leaves out: build products and the
 // generated client, which go generate writes for the new target.
-var skippedNames = map[string]bool{"node_modules": true, "dist": true, ".angular": true}
+var skippedNames = map[string]bool{"node_modules": true, "dist": true, ".angular": true, ".yalc": true}
 
 // cloneProject copies the default outlet's browser project to the outlet's, rewrites the
 // API prefix, base path, and output paths in the copy, and registers the project in
@@ -328,7 +328,12 @@ func copyProject(src, dst string, rewrites []rewrite) error {
 			}
 			data = []byte(text)
 		}
-		if err := to.WriteFile(filepath.FromSlash(p), data, 0o644); err != nil {
+		// The mode carries over, so a script such as ccclib.sh stays executable.
+		info, err := d.Info()
+		if err != nil {
+			return errors.Wrap(err, "fs.DirEntry.Info()")
+		}
+		if err := to.WriteFile(filepath.FromSlash(p), data, info.Mode().Perm()); err != nil {
 			return errors.Wrap(err, "os.Root.WriteFile()")
 		}
 
