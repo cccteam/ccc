@@ -29,7 +29,7 @@ import (
 type Auth struct {
 	// Name is the auth's lowercase name, the population it serves: partners, learners.
 	Name string
-	// Flavor is the login flavor: password, preauth, or oidc-azure.
+	// Flavor is the login flavor: password, preauth, oidc-azure, or oidc-google.
 	Flavor string
 	// Authority is who owns role membership for an OIDC flavor: directory (the
 	// directory's role claims are synchronized at every login, session.RoleSync) or
@@ -41,9 +41,10 @@ type Auth struct {
 
 // The flavors add auth lays in.
 const (
-	FlavorPassword  = app.FlavorPassword
-	FlavorPreauth   = app.FlavorPreauth
-	FlavorOIDCAzure = app.FlavorOIDCAzure
+	FlavorPassword   = app.FlavorPassword
+	FlavorPreauth    = app.FlavorPreauth
+	FlavorOIDCAzure  = app.FlavorOIDCAzure
+	FlavorOIDCGoogle = app.FlavorOIDCGoogle
 )
 
 // The authorities for an OIDC auth's role membership.
@@ -52,9 +53,9 @@ const (
 	AuthorityApplication = app.AuthorityApplication
 )
 
-// The reference auth for the OIDC flavor: the outlets skeleton's members auth, an Azure
+// The reference auth for the OIDC flavors: the outlets skeleton's members auth, an Azure
 // OIDC auth with the application as its authority, copied when the application has no
-// OIDC auth of its own to copy.
+// OIDC auth of its own to copy, and rewritten for Google when that is the flavor asked for.
 const (
 	oidcReferenceAuth = "members"
 	oidcReferenceDir  = "pkg/auth/" + oidcReferenceAuth
@@ -78,7 +79,55 @@ func (au Auth) Command() string {
 func (au Auth) Pascal() string { return names.Pascal(au.Name) }
 
 // oidc reports whether the flavor signs in through a directory.
-func (au Auth) oidc() bool { return au.Flavor == FlavorOIDCAzure }
+func (au Auth) oidc() bool { return au.Flavor == FlavorOIDCAzure || au.Flavor == FlavorOIDCGoogle }
+
+// directoryLabel names the directory an OIDC flavor signs in through.
+func (au Auth) directoryLabel() string {
+	if au.Flavor == FlavorOIDCGoogle {
+		return "Google OpenID Connect"
+	}
+
+	return "Azure OpenID Connect"
+}
+
+// registrationVar is one variable of an OIDC auth's directory registration: the Settings
+// field it fills and the suffix of its environment variable, APP_<NAME>_OIDC_<suffix>.
+type registrationVar struct{ field, suffix string }
+
+// registration lists the directory registration an OIDC flavor reads from the
+// environment: Azure names its issuer, Google (one issuer) the Workspace domain logins
+// are restricted to.
+func (au Auth) registration() []registrationVar {
+	if au.Flavor == FlavorOIDCGoogle {
+		return []registrationVar{{"ClientID", "CLIENT_ID"}, {"ClientSecret", "CLIENT_SECRET"}, {"RedirectURL", "REDIRECT_URL"}, {"HostedDomain", "HOSTED_DOMAIN"}}
+	}
+
+	return []registrationVar{{"IssuerURL", "ISSUER_URL"}, {"ClientID", "CLIENT_ID"}, {"ClientSecret", "CLIENT_SECRET"}, {"RedirectURL", "REDIRECT_URL"}}
+}
+
+// registrationVars renders the registration's variables for a message: the first in
+// full, the rest by suffix.
+func (au Auth) registrationVars() string {
+	upper := strings.ToUpper(au.Name)
+	vars := au.registration()
+	parts := make([]string, len(vars))
+	for i, v := range vars {
+		parts[i] = "_" + v.suffix
+	}
+	parts[0] = "APP_" + upper + "_OIDC" + parts[0]
+
+	return strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1]
+}
+
+// simulatedReads names what the simulated directory (the session library's skipAuth build
+// tag) still reads from the registration.
+func (au Auth) simulatedReads() string {
+	if au.Flavor == FlavorOIDCGoogle {
+		return "the redirect URL and the hosted domain"
+	}
+
+	return "the redirect URL"
+}
 
 // authSource is the auth package the new one is copied from.
 type authSource struct {
@@ -110,14 +159,15 @@ func (au Auth) Validate(a *app.App) error {
 		if au.Authority == AuthorityDirectory {
 			return errors.Newf("flavor %q: only an auth that signs in through a directory can hand it role membership; a %s auth's roles are the application's", au.Flavor, au.Flavor)
 		}
-	case FlavorOIDCAzure:
+	case FlavorOIDCAzure, FlavorOIDCGoogle:
 		if au.Authority != AuthorityDirectory && au.Authority != AuthorityApplication {
 			return errors.Newf("an OIDC auth needs --authority: directory (the directory's role claims are the authority: every login reconciles the person's roles to them and removes what they do not name) or application (roles are assigned in the application: the bootstrap now, an administration surface later). It is asked because the wrong answer deletes hand-assigned roles at the next login")
 		}
-	case app.FlavorOIDCGoogle:
-		return errors.Newf("flavor %q: the Google flavor follows the Azure one", au.Flavor)
+		if au.Flavor == FlavorOIDCGoogle && au.Authority == AuthorityDirectory {
+			return errors.Newf("flavor %q: the directory authority is not laid in for the Google flavor. Google role membership comes from a Groups lookup (session.GoogleRoleSync over googlegroups.NewDirectory, with Admin SDK credentials), which the session library's simulated directory (the skipAuth tag) does not simulate, so a directory-run Google auth could not be signed in to in development. Hand membership to the application (--authority application), or wire session.GoogleRoleSync by hand", au.Flavor)
+		}
 	default:
-		return errors.Newf("flavor %q: add auth lays in password, preauth, or oidc-azure", au.Flavor)
+		return errors.Newf("flavor %q: add auth lays in password, preauth, oidc-azure, or oidc-google", au.Flavor)
 	}
 	if _, err := au.source(a); err != nil {
 		return err
@@ -298,7 +348,11 @@ func (au Auth) copyPackage(a *app.App, src *authSource, ch *Change) error {
 		if src.FS != nil {
 			from = "the reference skeleton's " + src.Name + " auth"
 		}
-		ch.didf("%s: the %s auth package, a copy of %s (Azure OpenID Connect) with its names substituted, role membership the %s's (%s) (tables %sSessions and %sOIDCUsers, cookie %s, store prefix %s)", dst, au.Name, from, au.Authority, roleSyncSlot(au.Authority), au.Pascal(), au.Pascal(), au.Name, au.Pascal())
+		rewrite := " with its names substituted"
+		if src.Flavor != au.Flavor {
+			rewrite = " with its names substituted and the constructor rewritten for Google (session.NewOIDCGoogle: a hosted domain in place of an issuer, a subject-keyed user anchor, no front-channel logout); read it over, since the rewrite is textual"
+		}
+		ch.didf("%s: the %s auth package, a copy of %s (%s)%s, role membership the %s's (%s) (tables %sSessions and %sOIDCUsers, cookie %s, store prefix %s)", dst, au.Name, from, Auth{Flavor: src.Flavor}.directoryLabel(), rewrite, au.Authority, roleSyncSlot(au.Authority), au.Pascal(), au.Pascal(), au.Name, au.Pascal())
 		if !authoritySet {
 			ch.skipf("%s: the role-synchronization slot was not found where the reference keeps it, so the authority may not be %s; set the constructor's slot to %s", dst, au.Authority, roleSyncSlot(au.Authority))
 		}
@@ -357,6 +411,30 @@ const (
 `
 )
 
+// The reference package's explanations of its directory registration and its user anchor,
+// as the Azure auth writes them and as the Google rewrite says them.
+const (
+	azureDirectoryDoc = `// Directory is the application's OpenID Connect registration with the directory: the
+// issuer, the client credentials, and the callback the directory returns the browser to.
+// Under the session library's skipAuth build tag the directory is simulated, every login
+// is APP_USERNAME, and only RedirectURL is read: it is where the simulated login returns.
+`
+	googleDirectoryDoc = `// Directory is the application's OpenID Connect registration with Google: the client
+// credentials, the callback the directory returns the browser to, and the Workspace domain
+// (hosted domain) logins are restricted to. Under the session library's skipAuth build tag
+// the directory is simulated, every login is APP_USERNAME, and only RedirectURL and
+// HostedDomain are read: where the simulated login returns, and the domain it presents.
+`
+	azureAnchorDoc = `	// The auth's tables, which schema/migrations creates: the sessions, and the user
+	// anchor keyed by the directory's immutable (tenant, object) identifier pair, so a
+	// renamed account stays the same person.
+`
+	googleAnchorDoc = `	// The auth's tables, which schema/migrations creates: the sessions, and the user
+	// anchor keyed by the directory's immutable subject identifier, so a renamed account
+	// stays the same person.
+`
+)
+
 // swapAuthority sets an OIDC auth package's role-membership authority: the constructor's
 // role-synchronization slot, the Settings field the directory-run form needs, and the
 // package documentation. It reports whether the slot was found in either form.
@@ -389,11 +467,25 @@ func (au Auth) rename(text string, src *authSource) string {
 	return names.Rename(text, src.Name, au.Name)
 }
 
-// swapFlavor rewrites a password auth package into a preauth one or back: the session
-// constructor, the storage constructor, the type, and the user table, which preauth
-// has none of.
+// swapFlavor rewrites a password auth package into a preauth one or back (the session
+// constructor, the storage constructor, the type, and the user table, which preauth has
+// none of), or an Azure OIDC package into a Google one (the constructor and storage, the
+// hosted domain in place of the issuer, and the subject-keyed user anchor).
 func swapFlavor(text, from, to string) string {
 	switch {
+	case from == FlavorOIDCAzure && to == FlavorOIDCGoogle:
+		text = strings.ReplaceAll(text, "session.NewOIDCAzure[", "session.NewOIDCGoogle[")
+		text = strings.ReplaceAll(text, "*session.OIDCAzure[", "*session.OIDCGoogle[")
+		text = strings.ReplaceAll(text, "sessionstorage.NewSpannerOIDC(", "sessionstorage.NewSpannerGoogleOIDC(")
+		text = strings.ReplaceAll(text, "sessionstorage.NewPostgresOIDC(", "sessionstorage.NewPostgresGoogleOIDC(")
+		text = strings.ReplaceAll(text, `"session.NewOIDCAzure()"`, `"session.NewOIDCGoogle()"`)
+		text = strings.ReplaceAll(text, "(OpenID Connect against Azure)", "(OpenID Connect against Google)")
+		text = regexp.MustCompile(`(?m)^\s*settings\.Directory\.IssuerURL,\n`).ReplaceAllString(text, "")
+		text = regexp.MustCompile(`(?m)^(\s*)settings\.Directory\.RedirectURL,\n`).ReplaceAllString(text, "${1}settings.Directory.RedirectURL,\n${1}settings.Directory.HostedDomain,\n")
+		text = regexp.MustCompile(`(?m)^\s*IssuerURL\s+string\n`).ReplaceAllString(text, "")
+		text = regexp.MustCompile(`(?m)^(\s*)RedirectURL(\s+)string\n`).ReplaceAllString(text, "${1}RedirectURL${2}string\n${1}HostedDomain string\n")
+		text = strings.Replace(text, azureDirectoryDoc, googleDirectoryDoc, 1)
+		text = strings.Replace(text, azureAnchorDoc, googleAnchorDoc, 1)
 	case from == FlavorPassword && to == FlavorPreauth:
 		text = strings.ReplaceAll(text, "session.NewPasswordAuth[session.NoCustomData, session.NoCustomData]", "session.NewPreauth[session.NoCustomData]")
 		text = strings.ReplaceAll(text, "*session.PasswordAuth[session.NoCustomData, session.NoCustomData]", "*session.Preauth[session.NoCustomData]")
@@ -450,12 +542,12 @@ func (au Auth) copyMigrations(a *app.App, src *authSource, ch *Change) error {
 		_, stem, _ := strings.Cut(strings.TrimSuffix(name, ".up.sql"), "_")
 		base := fmt.Sprintf("%06d_%s", next, strings.Replace(stem, src.Pascal, au.Pascal(), 1))
 		next++
-		if err := writeNew(a, path.Join(dir, base+".up.sql"), au.rename(string(data), src)); err != nil {
+		if err := writeNew(a, path.Join(dir, base+".up.sql"), swapMigrationFlavor(au.rename(string(data), src), src.Flavor, au.Flavor)); err != nil {
 			return err
 		}
 		down, err := src.readFile(a, path.Join(src.MigrationsDir, strings.TrimSuffix(name, ".up.sql")+".down.sql"))
 		if err == nil {
-			if err := writeNew(a, path.Join(dir, base+".down.sql"), au.rename(string(down), src)); err != nil {
+			if err := writeNew(a, path.Join(dir, base+".down.sql"), swapMigrationFlavor(au.rename(string(down), src), src.Flavor, au.Flavor)); err != nil {
 				return err
 			}
 		}
@@ -470,6 +562,34 @@ func (au Auth) copyMigrations(a *app.App, src *authSource, ch *Change) error {
 
 	return nil
 }
+
+// swapMigrationFlavor rewrites the Azure reference's session DDL for Google, whose
+// sessions carry no directory session identifier (Google has no front-channel logout to
+// look one up for) and whose user anchor is keyed by the subject claim and its hosted
+// domain in place of Azure's tenant and object identifiers. Other flavor pairs share
+// their DDL.
+func swapMigrationFlavor(text, from, to string) string {
+	if from != FlavorOIDCAzure || to != FlavorOIDCGoogle {
+		return text
+	}
+	text = oidcSidColumnRE.ReplaceAllString(text, "")
+	text = oidcSidIndexRE.ReplaceAllString(text, "")
+	text = oidcSidDropRE.ReplaceAllString(text, "")
+	text = tidOidColumnsRE.ReplaceAllString(text, "${1}Sub${2}STRING(MAX) NOT NULL,\n${1}Hd${3} STRING(MAX) NOT NULL,\n")
+	text = tidOidIndexRE.ReplaceAllString(text, "BySub ON ${1} (Sub)")
+	text = strings.ReplaceAll(text, "ByTidOid;", "BySub;")
+
+	return text
+}
+
+// The Azure-only parts of the reference's session DDL.
+var (
+	oidcSidColumnRE = regexp.MustCompile(`(?m)^\s*OidcSid\s+STRING\(MAX\) NOT NULL,\n`)
+	oidcSidIndexRE  = regexp.MustCompile(`CREATE INDEX \w+SessionsByOidcSid ON \w+ \([^)]*\);\n\n?`)
+	oidcSidDropRE   = regexp.MustCompile(`DROP INDEX \w+SessionsByOidcSid;\n\n?`)
+	tidOidColumnsRE = regexp.MustCompile(`(?m)^(\s*)Tid(\s+)STRING\(36\) NOT NULL,\n\s*Oid(\s+)STRING\(36\) NOT NULL,\n`)
+	tidOidIndexRE   = regexp.MustCompile(`ByTidOid ON (\w+) \(Tid, Oid\)`)
+)
 
 // fileScheme prefixes a migration source the transition can read.
 const fileScheme = "file://"
@@ -597,7 +717,7 @@ var envVarRE = regexp.MustCompile(`(?m)^\s*env := &(\w+)\{\}`)
 func (au Auth) oidcConstruction(rel string, edited []byte, statements string, ch *Change) (extended string, file []byte, err error) {
 	m := settingsLiteralRE.FindStringSubmatch(statements)
 	if m == nil {
-		ch.skipf("%s: the copied construction has no %s.Settings literal to extend, so the %s auth's directory registration (issuer, client, secret, callback) is not read from the environment; pass it in %s.Settings.Directory", rel, au.Name, au.Name, au.Name)
+		ch.skipf("%s: the copied construction has no %s.Settings literal to extend, so the %s auth's directory registration (%s) is not read from the environment; pass it in %s.Settings.Directory", rel, au.Name, au.Name, au.registrationVars(), au.Name)
 
 		return statements, edited, nil
 	}
@@ -613,8 +733,13 @@ func (au Auth) oidcConstruction(rel string, edited []byte, statements string, ch
 	if env := envVarRE.FindSubmatch(edited); env != nil {
 		structName := string(env[1])
 		comment := fmt.Sprintf("// The %s auth's directory registration (pkg/auth/%s): the OpenID Connect issuer, the\n// application's client credentials, and the callback the directory returns the browser to.\n// Under the session library's skipAuth build tag only the redirect URL is read.\n", au.Name, au.Name)
-		for i, v := range [][2]string{{"IssuerURL", "ISSUER_URL"}, {"ClientID", "CLIENT_ID"}, {"ClientSecret", "CLIENT_SECRET"}, {"RedirectURL", "REDIRECT_URL"}} {
-			field := fmt.Sprintf("%s%s string `env:\"APP_%s_OIDC_%s\"`", au.Pascal(), v[0], upper, v[1])
+		if au.Flavor == FlavorOIDCGoogle {
+			comment = fmt.Sprintf("// The %s auth's directory registration (pkg/auth/%s): the application's client\n// credentials, the callback Google returns the browser to, and the Workspace domain logins\n// are restricted to. Under the session library's skipAuth build tag only the redirect URL\n// and the hosted domain are read.\n", au.Name, au.Name)
+		}
+		var directory strings.Builder
+		fmt.Fprintf(&directory, "Directory: %s.Directory{\n", au.Name)
+		for i, v := range au.registration() {
+			field := fmt.Sprintf("%s%s string `env:\"APP_%s_OIDC_%s\"`", au.Pascal(), v.field, upper, v.suffix)
 			if i == 0 {
 				field = comment + field
 			}
@@ -622,11 +747,13 @@ func (au Auth) oidcConstruction(rel string, edited []byte, statements string, ch
 			if err != nil {
 				return "", nil, err
 			}
+			fmt.Fprintf(&directory, "\t%s: env.%s%s,\n", v.field, au.Pascal(), v.field)
 		}
-		fields = append(fields, fmt.Sprintf("Directory: %s.Directory{\n\tIssuerURL: env.%[2]sIssuerURL,\n\tClientID: env.%[2]sClientID,\n\tClientSecret: env.%[2]sClientSecret,\n\tRedirectURL: env.%[2]sRedirectURL,\n}", au.Name, au.Pascal()))
-		ch.didf("%s: %s reads the %s auth's directory registration from APP_%s_OIDC_ISSUER_URL, _CLIENT_ID, _CLIENT_SECRET, and _REDIRECT_URL", rel, structName, au.Name, upper)
+		directory.WriteString("}")
+		fields = append(fields, directory.String())
+		ch.didf("%s: %s reads the %s auth's directory registration from %s", rel, structName, au.Name, au.registrationVars())
 	} else {
-		ch.skipf("%s: no environment struct (env := &T{}) to add the %s auth's directory registration to; read APP_%s_OIDC_ISSUER_URL, _CLIENT_ID, _CLIENT_SECRET, and _REDIRECT_URL and pass them in %s.Settings.Directory", rel, au.Name, upper, au.Name)
+		ch.skipf("%s: no environment struct (env := &T{}) to add the %s auth's directory registration to; read %s and pass them in %s.Settings.Directory", rel, au.Name, au.registrationVars(), au.Name)
 	}
 	literal := "&" + au.Name + ".Settings{\n\t" + strings.Join(fields, ",\n\t") + ",\n}"
 
@@ -685,11 +812,15 @@ func (au Auth) writeEnvTemplate(a *app.App, ch *Change) error {
 	fmt.Fprintf(&b, "\n# --- %s auth: the directory its people sign in through (pkg/auth/%s) ---\n", au.Name, au.Name)
 	b.WriteString("# The Procfile builds with the session library's skipAuth tag, which simulates the\n")
 	if !strings.Contains(string(data), "APP_USERNAME=") {
-		fmt.Fprintf(&b, "# directory: every login through it is APP_USERNAME (APP_ROLES are the role claims), and\n# only the redirect URL below is read. Register the application in a directory, fill the\n# rest in, and drop the tag to use one.\nexport APP_USERNAME=%s-dev\nexport APP_ROLES=\n", au.Name)
+		fmt.Fprintf(&b, "# directory: every login through it is APP_USERNAME (APP_ROLES are the role claims), and\n# only %s below is read. Register the application in a directory, fill the\n# rest in, and drop the tag to use one.\nexport APP_USERNAME=%s-dev\nexport APP_ROLES=\n", au.simulatedReads(), au.Name)
 	} else {
-		b.WriteString("# directory: every login through it is APP_USERNAME (set above), and only the redirect\n# URL below is read. Register the application in a directory, fill the rest in, and drop\n# the tag to use one.\n")
+		fmt.Fprintf(&b, "# directory: every login through it is APP_USERNAME (set above), and only %s\n# below is read. Register the application in a directory, fill the rest in, and drop\n# the tag to use one.\n", au.simulatedReads())
 	}
-	fmt.Fprintf(&b, "# export APP_%[1]s_OIDC_ISSUER_URL=\n# export APP_%[1]s_OIDC_CLIENT_ID=\n# export APP_%[1]s_OIDC_CLIENT_SECRET=\n# APP_%[1]s_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to\n# the %[2]s auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy.\nexport APP_%[1]s_OIDC_REDIRECT_URL=\n", upper, au.Name)
+	if au.Flavor == FlavorOIDCGoogle {
+		fmt.Fprintf(&b, "# export APP_%[1]s_OIDC_CLIENT_ID=\n# export APP_%[1]s_OIDC_CLIENT_SECRET=\n# APP_%[1]s_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to\n# the %[2]s auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy.\nexport APP_%[1]s_OIDC_REDIRECT_URL=\n# APP_%[1]s_OIDC_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to; the\n# simulated directory presents it too, so it is set in development.\nexport APP_%[1]s_OIDC_HOSTED_DOMAIN=example.com\n", upper, au.Name)
+	} else {
+		fmt.Fprintf(&b, "# export APP_%[1]s_OIDC_ISSUER_URL=\n# export APP_%[1]s_OIDC_CLIENT_ID=\n# export APP_%[1]s_OIDC_CLIENT_SECRET=\n# APP_%[1]s_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to\n# the %[2]s auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy.\nexport APP_%[1]s_OIDC_REDIRECT_URL=\n", upper, au.Name)
+	}
 	text := strings.TrimRight(string(data), "\n") + "\n" + b.String()
 	if err := os.WriteFile(a.Abs(a.EnvTemplate), []byte(text), mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
@@ -746,7 +877,11 @@ func (au Auth) Meaning() string {
 // oidcMeaning explains an auth whose people sign in through a directory.
 func (au Auth) oidcMeaning() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "An auth is a population that signs in one way and holds roles in its own permission store, and it is a package: `pkg/auth/%s` owns the %s session manager (tables `%sSessions` and `%sOIDCUsers`, the user anchor keyed by the directory's immutable tenant and object identifiers; cookie `%s`), the %s permission store (tables prefixed `%s`), and the roles file `schema/roles/%s.json`. Its people sign in through the organization's directory over OpenID Connect (Azure): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths, reading the directory registration from the environment.\n\n", au.Name, au.Flavor, au.Pascal(), au.Pascal(), au.Name, au.Name, au.Pascal(), au.Name)
+	anchor, directory, handlers, logoutRoute := "tenant and object identifiers", "Azure", "session.OIDCAzureHandlers", ", `GET <prefix>/user/logout` (the directory's front-channel logout)"
+	if au.Flavor == FlavorOIDCGoogle {
+		anchor, directory, handlers, logoutRoute = "subject identifier", "Google, restricted to the Workspace domain the registration names", "session.OIDCGoogleHandlers", " (Google has no directory-initiated logout, so there is no front-channel route: the session's own logout route ends it)"
+	}
+	fmt.Fprintf(&b, "An auth is a population that signs in one way and holds roles in its own permission store, and it is a package: `pkg/auth/%s` owns the %s session manager (tables `%sSessions` and `%sOIDCUsers`, the user anchor keyed by the directory's immutable %s; cookie `%s`), the %s permission store (tables prefixed `%s`), and the roles file `schema/roles/%s.json`. Its people sign in through the organization's directory over OpenID Connect (%s): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths, reading the directory registration from the environment.\n\n", au.Name, au.Flavor, au.Pascal(), au.Pascal(), anchor, au.Name, au.Name, au.Pascal(), au.Name, directory)
 	switch au.Authority {
 	case AuthorityDirectory:
 		fmt.Fprintf(&b, "Role membership is the directory's (`session.RoleSync`): every login reconciles the person's roles to the directory's role claims and removes any it does not name, and a login naming no known role is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the roles file only defines the roles and their grants; the directory assigns them. In a tenanted application, pass the tenant roster as `%s.Settings.Domains` so the sweep covers every tenant scope.\n\n", au.Name, au.Name, au.Name)
@@ -755,9 +890,9 @@ func (au Auth) oidcMeaning() string {
 	}
 	b.WriteString("Left to wire:\n\n")
 	items := []string{
-		fmt.Sprintf("Bind a surface to it. Decide which site or outlet serves the %s population and compose an OIDC session group around the %s auth's handlers, as the reference's `pkg/router/router.go` does for its members auth (`oidcGroup`): session start and XSRF, `GET <prefix>/user/login` (the redirect to the directory), `GET <prefix>/user/callback` (the directory's return), `GET <prefix>/user/logout` (the directory's front-channel logout), the session and logout routes, then the API behind session validation and the XSRF guard. Give the App a method returning the %s auth's `session.OIDCAzureHandlers` for the router. Bind the group's requests to the auth (`pkg/auth.Bind`, the reference's `BindAuth` middleware) so permission checks and tenant visibility answer from the %s store, and set `LoginURL` in the data level's construction to the surface's login page. The surface's web app names the auth's XSRF cookie, `%s.XSRFCookie` (`%s-xsrf`), in its HttpClient configuration (`withXsrfConfiguration`), as the reference's portal does. If the population has no surface yet, add an outlet for it first.", au.Name, au.Name, au.Name, au.Name, au.Name, au.Name),
+		fmt.Sprintf("Bind a surface to it. Decide which site or outlet serves the %s population and compose an OIDC session group around the %s auth's handlers, as the reference's `pkg/router/router.go` does for its members auth (`oidcGroup`): session start and XSRF, `GET <prefix>/user/login` (the redirect to the directory), `GET <prefix>/user/callback` (the directory's return)%s, the session and logout routes, then the API behind session validation and the XSRF guard. Give the App a method returning the %s auth's `%s` for the router. Bind the group's requests to the auth (`pkg/auth.Bind`, the reference's `BindAuth` middleware) so permission checks and tenant visibility answer from the %s store, and set `LoginURL` in the data level's construction to the surface's login page. The surface's web app names the auth's XSRF cookie, `%s.XSRFCookie` (`%s-xsrf`), in its HttpClient configuration (`withXsrfConfiguration`), as the reference's portal does. If the population has no surface yet, add an outlet for it first.", au.Name, au.Name, logoutRoute, au.Name, handlers, au.Name, au.Name, au.Name),
 		fmt.Sprintf("Provision its roles. Call the roles migration for the %s auth in the bootstrap and the deployment's migrate step with `%s.RolesPath` and the %s auth's user manager, across the tenants when the application is tenanted.%s", au.Name, au.Name, au.Name, au.identitiesNote()),
-		fmt.Sprintf("Register it. The environment template now carries the %s auth's `APP_%s_OIDC_*` variables: set the redirect URL to the browser-facing callback of the surface it binds to (through the dev proxy in development), and fill in the issuer, client, and secret when the application is registered in a directory. Until then the Procfile builds with the session library's `skipAuth` tag, which simulates the directory: every %s login is `APP_USERNAME`.", au.Name, strings.ToUpper(au.Name), au.Name),
+		fmt.Sprintf("Register it. The environment template now carries the %s auth's `APP_%s_OIDC_*` variables: set the redirect URL to the browser-facing callback of the surface it binds to (through the dev proxy in development), and fill in %s when the application is registered in a directory. Until then the Procfile builds with the session library's `skipAuth` tag, which simulates the directory: every %s login is `APP_USERNAME`.", au.Name, strings.ToUpper(au.Name), au.registrationToFill(), au.Name),
 		"Sign in from the browser. The surface's login page becomes a button that sends the browser to `<prefix>/user/login?returnUrl=<page>`, as the reference's portal login component does; a refused login returns to the login page with the reason in `?message=`.",
 		fmt.Sprintf("Release it. Close the %s auth where the data level closes the others.", au.Name),
 		fmt.Sprintf("Prove it in the integration tests under `-tags skipAuth`, as the reference's `test/integration/portal_login_skipauth_test.go` does: a login helper that sets `APP_USERNAME` under a mutex and follows the login route to the callback, with a `!skipAuth` twin that skips with the reason, so `go test ./...` without the tag skips the %s login tests visibly and CI runs with it. Prove the segmentation: a %s session is refused by every other auth's surface, another auth's session by the %s surface, and a username that exists in two auths is two principals with separate roles.", au.Name, au.Name, au.Name),
@@ -768,6 +903,16 @@ func (au Auth) oidcMeaning() string {
 	b.WriteString("\nData consequence: none for existing people, since the new auth starts empty. If people are to move from another auth into this one, their roles are re-created here by a migration a person reviews, keyed by the username the directory will present, and the old auth keeps or deletes them by decision, never by default.\n")
 
 	return b.String()
+}
+
+// registrationToFill names the registration a person fills in once the application is
+// registered with its directory.
+func (au Auth) registrationToFill() string {
+	if au.Flavor == FlavorOIDCGoogle {
+		return "the client, secret, and hosted domain (the Workspace domain logins are restricted to, which the simulated directory presents too, so it is set from the start)"
+	}
+
+	return "the issuer, client, and secret"
 }
 
 // identitiesNote says what the bootstrap does with development identities for the

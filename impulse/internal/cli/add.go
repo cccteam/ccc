@@ -134,10 +134,11 @@ failing checks as the obligations.`,
 
 func newAddAuth() *cobra.Command {
 	var (
-		f         transitionFlags
-		preauth   bool
-		oidcAzure bool
-		authority string
+		f          transitionFlags
+		preauth    bool
+		oidcAzure  bool
+		oidcGoogle bool
+		authority  string
 	)
 
 	cmd := &cobra.Command{
@@ -151,16 +152,20 @@ data level constructs it beside the auth it was copied from. The default is a pa
 auth; --preauth swaps the constructor to the preauth flavor (the application proves who
 someone is and asks the session library for a session).
 
---oidc-azure adds an auth whose people sign in through the organization's directory over
-OpenID Connect. It is copied from an OIDC auth the application has, or from the reference
-skeleton's, with the directory registration read from APP_<NAME>_OIDC_* variables, the
-Procfile built with the session library's skipAuth tag (the directory simulated from
-APP_USERNAME until the application is registered with one), and the role-membership
-authority set by --authority, which is asked when it is not given: "directory" makes the
-directory's role claims the authority (session.RoleSync: every login reconciles the
-person's roles to them and removes what they do not name), "application" keeps role
-assignment in the application (session.DisableRoleSync). There is no default, because the
-wrong answer deletes hand-assigned roles at the next login.
+--oidc-azure and --oidc-google add an auth whose people sign in through the organization's
+directory over OpenID Connect. It is copied from an OIDC auth the application has, or from
+the reference skeleton's (rewritten for Google when that is the flavor: a hosted domain in
+place of an issuer, a subject-keyed user anchor, no front-channel logout), with the
+directory registration read from APP_<NAME>_OIDC_* variables, the Procfile built with the
+session library's skipAuth tag (the directory simulated from APP_USERNAME until the
+application is registered with one), and the role-membership authority set by
+--authority, which is asked when it is not given: "directory" makes the directory's role
+claims the authority (session.RoleSync: every login reconciles the person's roles to them
+and removes what they do not name), "application" keeps role assignment in the application
+(session.DisableRoleSync). There is no default, because the wrong answer deletes
+hand-assigned roles at the next login. The Google flavor lays in the application authority
+only: its directory authority is a Groups lookup the simulated directory does not
+simulate.
 
 Binding a site or an outlet to the new auth, provisioning its roles, its development
 identities, and the tests that prove its people are strangers to the other auths are
@@ -168,13 +173,22 @@ handed to the agent.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flavor := transition_.FlavorPassword
+			chosen := 0
+			for _, on := range []bool{preauth, oidcAzure, oidcGoogle} {
+				if on {
+					chosen++
+				}
+			}
 			switch {
-			case preauth && oidcAzure:
-				return errors.New("--preauth and --oidc-azure are two flavors; pick one")
+			case chosen > 1:
+				return errors.New("--preauth, --oidc-azure, and --oidc-google are flavors; pick one")
 			case preauth:
 				flavor = transition_.FlavorPreauth
-			case oidcAzure:
+			case oidcAzure, oidcGoogle:
 				flavor = transition_.FlavorOIDCAzure
+				if oidcGoogle {
+					flavor = transition_.FlavorOIDCGoogle
+				}
 				if authority == "" {
 					answer, err := askAuthority(cmd)
 					if err != nil {
@@ -190,6 +204,7 @@ handed to the agent.`,
 	f.bind(cmd)
 	cmd.Flags().BoolVar(&preauth, "preauth", false, "a preauth auth: the application proves the principal and the session library issues the session")
 	cmd.Flags().BoolVar(&oidcAzure, "oidc-azure", false, "an OIDC auth: its people sign in through the organization's Azure directory")
+	cmd.Flags().BoolVar(&oidcGoogle, "oidc-google", false, "an OIDC auth: its people sign in through the organization's Google Workspace directory")
 	cmd.Flags().StringVar(&authority, "authority", "", "who owns role membership for an OIDC auth: directory (role claims synchronized at every login) or application (roles assigned in the application); asked when not given")
 
 	return cmd

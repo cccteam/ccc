@@ -218,7 +218,9 @@ func TestAuthValidate(t *testing.T) {
 		{name: "an OIDC auth without an authority", auth: Auth{Name: "partners", Flavor: FlavorOIDCAzure}, wantErr: "an OIDC auth needs --authority"},
 		{name: "an OIDC auth with a made-up authority", auth: Auth{Name: "partners", Flavor: FlavorOIDCAzure, Authority: "nobody"}, wantErr: "an OIDC auth needs --authority"},
 		{name: "a password auth cannot hand membership to a directory", auth: Auth{Name: "partners", Flavor: FlavorPassword, Authority: AuthorityDirectory}, wantErr: "only an auth that signs in through a directory"},
-		{name: "the Google flavor follows", auth: Auth{Name: "partners", Flavor: app.FlavorOIDCGoogle, Authority: AuthorityDirectory}, wantErr: "the Google flavor follows"},
+		{name: "a Google auth with the application as authority", auth: Auth{Name: "partners", Flavor: FlavorOIDCGoogle, Authority: AuthorityApplication}},
+		{name: "a Google auth without an authority", auth: Auth{Name: "partners", Flavor: FlavorOIDCGoogle}, wantErr: "an OIDC auth needs --authority"},
+		{name: "a Google auth cannot hand membership to the directory yet", auth: Auth{Name: "partners", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory}, wantErr: "the directory authority is not laid in for the Google flavor"},
 		{name: "an unknown flavor", auth: Auth{Name: "partners", Flavor: "ldap"}, wantErr: `flavor "ldap"`},
 		{name: "the auth exists", auth: Auth{Name: "staff", Flavor: FlavorPassword}, wantErr: "the staff auth already exists"},
 		{name: "no auth package to copy", auth: Auth{Name: "partners", Flavor: FlavorPassword}, bare: true, wantErr: "no auth package to copy"},
@@ -319,6 +321,87 @@ func TestAuthApply(t *testing.T) {
 					if !strings.Contains(env, want) {
 						t.Errorf(".envrc.template lacks %q", want)
 					}
+				}
+			},
+		},
+		{
+			name: "a Google OIDC auth rewritten from the reference, the application its authority",
+			auth: Auth{Name: "partners", Flavor: FlavorOIDCGoogle, Authority: AuthorityApplication},
+			extra: map[string]string{
+				"pkg/config/data.go": authConfigEnv,
+				".envrc.template":    "export PORT=8090\n",
+			},
+			wantDid: []string{
+				"pkg/auth/partners: the partners auth package, a copy of the reference skeleton's members auth (Azure OpenID Connect) with its names substituted and the constructor rewritten for Google (session.NewOIDCGoogle: a hosted domain in place of an issuer, a subject-keyed user anchor, no front-channel logout); read it over, since the rewrite is textual, role membership the application's (session.DisableRoleSync) (tables PartnersSessions and PartnersOIDCUsers, cookie partners, store prefix Partners)",
+				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersOIDCUsers, the partners auth's tables copied from the members auth's under the Partners prefix",
+				"schema/roles/partners.json: the partners auth's role configuration, empty (the Administrator role at each scope is implicit)",
+				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_OIDC_CLIENT_ID, _CLIENT_SECRET, _REDIRECT_URL, and _HOSTED_DOMAIN",
+				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
+				"Procfile: 2 go run command(s) build with -tags skipAuth, so the partners auth's directory is simulated in development and every partners login is APP_USERNAME",
+				".envrc.template: APP_USERNAME and APP_ROLES for the simulated directory, and the partners auth's APP_PARTNERS_OIDC_* registration, to fill in",
+				"ran go generate ./...",
+			},
+			wantSkipped: []string{"pkg/config/data.go: Close releases the staff auth only; release the partners auth too"},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				pkg := read(t, a, "pkg/auth/partners/partners.go")
+				for _, want := range []string{
+					"package partners", "(OpenID Connect against Google)", "session.NewOIDCGoogle[session.NoCustomData, session.NoCustomData](",
+					"sessionstorage.NewSpannerGoogleOIDC(db, sessionstorage.WithOIDCUsers()),", "session.DisableRoleSync(),",
+					"\t\tsettings.Directory.ClientSecret,\n\t\tsettings.Directory.RedirectURL,\n\t\tsettings.Directory.HostedDomain,\n\t\tsession.WithSessionTableName(sessionsTable),",
+					"\tClientID     string\n\tClientSecret string\n\tRedirectURL  string\n\tHostedDomain string\n}",
+					"*session.OIDCGoogle[session.NoCustomData, session.NoCustomData]", `"session.NewOIDCGoogle()"`,
+					"keyed by the directory's immutable subject identifier", "only RedirectURL and\n// HostedDomain are read",
+				} {
+					if !strings.Contains(pkg, want) {
+						t.Errorf("partners.go lacks %q", want)
+					}
+				}
+				for _, absent := range []string{"Azure", "IssuerURL", "OidcSid", "(tenant, object)"} {
+					if strings.Contains(pkg, absent) {
+						t.Errorf("partners.go still has %q", absent)
+					}
+				}
+				config := read(t, a, "pkg/config/data.go")
+				for _, want := range []string{
+					"\t\tDirectory: partners.Directory{\n\t\t\tClientID:     env.PartnersClientID,\n\t\t\tClientSecret: env.PartnersClientSecret,\n\t\t\tRedirectURL:  env.PartnersRedirectURL,\n\t\t\tHostedDomain: env.PartnersHostedDomain,\n\t\t},",
+					"\tPartnersHostedDomain string `env:\"APP_PARTNERS_OIDC_HOSTED_DOMAIN\"`\n",
+					"// and the hosted domain are read.\n\tPartnersClientID     string `env:\"APP_PARTNERS_OIDC_CLIENT_ID\"`\n",
+				} {
+					if !strings.Contains(config, want) {
+						t.Errorf("data.go lacks %q", want)
+					}
+				}
+				if strings.Contains(config, "IssuerURL") {
+					t.Error("data.go still reads an issuer")
+				}
+				sessions := read(t, a, "schema/migrations/000006_PartnersSessions.up.sql")
+				if !strings.Contains(sessions, "CREATE TABLE PartnersSessions") || strings.Contains(sessions, "OidcSid") || !strings.Contains(sessions, "CREATE INDEX PartnersSessionsByUsername ON PartnersSessions (Username);") {
+					t.Errorf("sessions migration = %q", sessions)
+				}
+				if down := read(t, a, "schema/migrations/000006_PartnersSessions.down.sql"); strings.Contains(down, "OidcSid") || !strings.Contains(down, "DROP INDEX PartnersSessionsByUsername;") {
+					t.Errorf("sessions down migration = %q", down)
+				}
+				users := read(t, a, "schema/migrations/000007_PartnersOIDCUsers.up.sql")
+				for _, want := range []string{"CREATE TABLE PartnersOIDCUsers", "    Sub        STRING(MAX) NOT NULL,\n    Hd         STRING(MAX) NOT NULL,\n    Username", "CREATE UNIQUE INDEX PartnersOIDCUsersBySub ON PartnersOIDCUsers (Sub);"} {
+					if !strings.Contains(users, want) {
+						t.Errorf("users migration lacks %q:\n%s", want, users)
+					}
+				}
+				if strings.Contains(users, "Tid") || strings.Contains(users, "Oid ") {
+					t.Errorf("users migration still keyed by tenant and object:\n%s", users)
+				}
+				if down := read(t, a, "schema/migrations/000007_PartnersOIDCUsers.down.sql"); !strings.Contains(down, "DROP INDEX PartnersOIDCUsersBySub;\n\nDROP TABLE PartnersOIDCUsers;") {
+					t.Errorf("users down migration = %q", down)
+				}
+				env := read(t, a, ".envrc.template")
+				for _, want := range []string{"export APP_USERNAME=partners-dev\n", "only the redirect URL and the hosted domain below is read", "# export APP_PARTNERS_OIDC_CLIENT_ID=\n", "export APP_PARTNERS_OIDC_REDIRECT_URL=\n", "export APP_PARTNERS_OIDC_HOSTED_DOMAIN=example.com\n"} {
+					if !strings.Contains(env, want) {
+						t.Errorf(".envrc.template lacks %q", want)
+					}
+				}
+				if strings.Contains(env, "ISSUER_URL") {
+					t.Error(".envrc.template still names an issuer")
 				}
 			},
 		},

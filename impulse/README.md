@@ -196,11 +196,25 @@ they do not name are removed; the bootstrap seeds no roles), `application` write
 (login redirect, callback, front-channel logout), the login button, the harness login
 helper, and the stranger tests are the agent's, with the reference showing each.
 
+`--oidc-google` is the same auth against Google Workspace. When the application has no
+Google auth to copy, the Azure reference is rewritten for it: `session.NewOIDCGoogle` over
+`sessionstorage.NewSpannerGoogleOIDC`, a hosted domain (the Workspace domain logins are
+restricted to) in place of the issuer, so the registration is `APP_<NAME>_OIDC_CLIENT_ID`,
+`_CLIENT_SECRET`, `_REDIRECT_URL`, and `_HOSTED_DOMAIN`; a user anchor keyed by the
+subject claim (`Sub`, `Hd`) in place of Azure's tenant and object identifiers; and no
+front-channel logout, since Google has no directory-initiated logout. The rewrite is
+textual, so the brief says to read the package over. Only `--authority application` is
+laid in for Google: its directory authority is a Groups lookup (`session.GoogleRoleSync`
+over `googlegroups.NewDirectory`, with Admin SDK credentials) that the session library's
+simulated directory does not simulate, so a directory-run Google auth could not be signed
+in to in development; it is refused with that reason.
+
 ```sh
 impulse add auth partners --agent
 impulse add auth devices --preauth
 impulse add auth members --oidc-azure --authority application --agent
 impulse add auth staff2 --oidc-azure            # asks: directory or application?
+impulse add auth alumni --oidc-google --authority application
 ```
 
 ## Templates
