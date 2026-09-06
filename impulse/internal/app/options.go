@@ -98,6 +98,7 @@ func (k paramKind) optionKind() optionKind {
 const (
 	optServesSessions     = "ServesSessions"
 	optGenerateHandlers   = "GenerateHandlers"
+	optGenerateRoutes     = "GenerateRoutes"
 	optGenerateTypescript = "GenerateTypescript"
 )
 
@@ -117,7 +118,7 @@ var knownOptions = map[string]optionSpec{
 	optGenerateHandlers:          {kind: kindResourceOption, params: []paramKind{paramString}},
 	"GenerateHandlerTests":       {kind: kindResourceOption, params: []paramKind{paramString}},
 	"ApplicationName":            {kind: kindResourceOption, params: []paramKind{paramString}},
-	"GenerateRoutes":             {kind: kindResourceOption, params: []paramKind{paramString, paramString}},
+	optGenerateRoutes:            {kind: kindResourceOption, params: []paramKind{paramString, paramString}},
 	"WithRouterOutlet":           {kind: kindResourceOption, params: []paramKind{paramString, paramString}, variadic: paramOutletOption},
 	"WithDomainRoute":            {kind: kindResourceOption, params: []paramKind{paramString}},
 	"WithConcealedDomains":       {kind: kindResourceOption},

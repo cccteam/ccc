@@ -143,3 +143,58 @@ func TestCloneAngularProject(t *testing.T) {
 		})
 	}
 }
+
+func TestRemoveAngularProject(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		project string
+		want    string
+		wantErr string
+	}{
+		{
+			name:    "the last project takes the comma before it",
+			project: "other",
+			want: strings.Replace(smallAngular, `    },
+    "other": {
+      "root": "other"
+    }
+`, "    }\n", 1),
+		},
+		{
+			name:    "the first project takes its own comma",
+			project: "console",
+			want: `{
+  "version": 1,
+  "projects": {
+    "other": {
+      "root": "other"
+    }
+  }
+}
+`,
+		},
+		{name: "a project the workspace lacks", project: "portal", wantErr: `project "portal" not found`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := removeAngularProject([]byte(smallAngular), tt.project)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("removeAngularProject() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("removeAngularProject() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
+				t.Errorf("removeAngularProject() diff (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

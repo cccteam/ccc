@@ -135,3 +135,73 @@ func findGeneratorCall(f *ast.File, pkg string) *ast.CallExpr {
 
 	return call
 }
+
+// RemoveOptions returns the program's source with every option call named name whose
+// first argument is the string literal first removed, along with the comment lines that
+// introduce it, and how many were removed. The edit is textual, so the rest of the file's
+// comments and layout survive; the result is formatted.
+func RemoveOptions(rel string, src []byte, name, first string) (out []byte, removed int, err error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.ParseComments)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "parser.ParseFile()")
+	}
+	pkg := generationLocalName(f)
+	if pkg == "" {
+		return nil, 0, errors.Newf("%s does not import %s", rel, generationImportPath)
+	}
+	call := findGeneratorCall(f, pkg)
+	if call == nil {
+		return nil, 0, errors.Newf("%s makes no %s.NewResourceGenerator call", rel, pkg)
+	}
+	if len(call.Args) < positionalArgs {
+		return nil, 0, errors.Newf("%s: NewResourceGenerator needs %d positional arguments, found %d", rel, positionalArgs, len(call.Args))
+	}
+
+	type span struct{ start, end int }
+	var spans []span
+	for i := positionalArgs; i < len(call.Args); i++ {
+		ce, ok := call.Args[i].(*ast.CallExpr)
+		if !ok || !isQualified(ce.Fun, pkg, name) || len(ce.Args) == 0 {
+			continue
+		}
+		if s, ok := stringLit(ce.Args[0]); !ok || s != first {
+			continue
+		}
+		start := fset.Position(ce.Pos()).Offset
+		// The comment lines between the previous argument and this one introduce it.
+		prevLine := fset.Position(call.Args[i-1].End()).Line
+		for _, cg := range f.Comments {
+			if fset.Position(cg.Pos()).Line > prevLine && fset.Position(cg.End()).Offset <= start {
+				start = min(start, fset.Position(cg.Pos()).Offset)
+			}
+		}
+		start = bytes.LastIndexByte(src[:start], '\n') + 1
+		end := fset.Position(ce.End()).Offset
+		// Through the trailing comma and the end of the line.
+		if rest := bytes.TrimLeft(src[end:], " \t"); len(rest) > 0 && rest[0] == ',' {
+			end = len(src) - len(rest) + 1
+		}
+		if rest := bytes.TrimLeft(src[end:], " \t\r"); len(rest) > 0 && rest[0] == '\n' {
+			end = len(src) - len(rest) + 1
+		}
+		spans = append(spans, span{start, end})
+	}
+	if len(spans) == 0 {
+		return src, 0, nil
+	}
+	var b bytes.Buffer
+	at := 0
+	for _, s := range spans {
+		b.Write(src[at:s.start])
+		at = s.end
+	}
+	b.Write(src[at:])
+
+	out, err = format.Source(b.Bytes())
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "format.Source(): %s after removing options", rel)
+	}
+
+	return out, len(spans), nil
+}

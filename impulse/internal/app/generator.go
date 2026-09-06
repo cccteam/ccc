@@ -126,7 +126,7 @@ func (g *Generator) firstString(name string) string {
 func (g *Generator) HandlersDir() string { return g.firstString(optGenerateHandlers) }
 
 // RoutesDir is the GenerateRoutes target directory, or empty.
-func (g *Generator) RoutesDir() string { return g.firstString("GenerateRoutes") }
+func (g *Generator) RoutesDir() string { return g.firstString(optGenerateRoutes) }
 
 // HandlerTestsDir is the GenerateHandlerTests target directory, or empty.
 func (g *Generator) HandlerTestsDir() string { return g.firstString("GenerateHandlerTests") }

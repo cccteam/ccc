@@ -44,6 +44,7 @@ func newRoot() *cobra.Command {
 	root.AddCommand(newHandoff())
 	root.AddCommand(newAdd())
 	root.AddCommand(newSwap())
+	root.AddCommand(newRemove())
 
 	return root
 }

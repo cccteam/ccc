@@ -47,7 +47,7 @@ func (o Outlet) Command() string {
 
 // Validate checks the outlet against the application before anything is changed.
 func (o Outlet) Validate(a *app.App) error {
-	if !outletNameRE.MatchString(o.Name) || o.Name == "default" {
+	if !outletNameRE.MatchString(o.Name) || o.Name == defaultOutletName {
 		return errors.Newf("outlet name %q: use a lowerCamelCase identifier other than default", o.Name)
 	}
 	if o.Prefix == "" || strings.HasPrefix(o.Prefix, "/") || strings.HasSuffix(o.Prefix, "/") {

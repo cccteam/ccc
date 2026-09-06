@@ -130,3 +130,38 @@ func skipValue(dec *json.Decoder) {
 	var raw json.RawMessage
 	_ = dec.Decode(&raw)
 }
+
+// removeAngularProject returns angular.json without the named project's entry, the
+// comma that joined it to its neighbor included. The edit is textual so the file keeps
+// its layout.
+func removeAngularProject(data []byte, name string) ([]byte, error) {
+	start, end, _, err := projectRange(data, name)
+	if err != nil {
+		return nil, err
+	}
+	key := bytes.LastIndex(data[:start], []byte(`"`+name+`"`))
+	if key < 0 {
+		return nil, errors.Newf("project %q: its key was not found before its object", name)
+	}
+	from := bytes.LastIndexByte(data[:key], '\n') + 1
+	to := end
+	if rest := bytes.TrimLeft(data[end:], " \t\r\n"); len(rest) > 0 && rest[0] == ',' {
+		// Not the last project: the entry and its comma go, up to the next key's line.
+		to = len(data) - len(rest) + 1
+		if rest := bytes.TrimLeft(data[to:], " \t\r"); len(rest) > 0 && rest[0] == '\n' {
+			to = len(data) - len(rest) + 1
+		}
+	} else {
+		// The last project: the comma that joined it to the one before goes too.
+		head := bytes.TrimRight(data[:from], " \t\r\n")
+		if len(head) > 0 && head[len(head)-1] == ',' {
+			from = len(head) - 1
+		}
+	}
+
+	var b bytes.Buffer
+	b.Write(data[:from])
+	b.Write(data[to:])
+
+	return b.Bytes(), nil
+}

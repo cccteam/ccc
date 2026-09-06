@@ -143,3 +143,42 @@ func TestOptionText(t *testing.T) {
 		})
 	}
 }
+
+func TestRemoveOptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, option, first string
+		want                string
+		wantN               int
+	}{
+		{
+			name: "an option with the comment that introduces it", option: "GenerateRoutes", first: "pkg/router",
+			want:  strings.Replace(editProgram, "\t\t// Routes under /api.\n\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\"),\n", "", 1),
+			wantN: 1,
+		},
+		{
+			name: "the last option, spanning lines", option: "GenerateTypescript", first: "web/console/src/app/core/service",
+			want:  strings.Replace(editProgram, "\t\tgeneration.GenerateTypescript(\"web/console/src/app/core/service\",\n\t\t\tgeneration.GenerateEnums(),\n\t\t),\n", "", 1),
+			wantN: 1,
+		},
+		{name: "an option the program lacks", option: "WithRouterOutlet", first: "portal", want: editProgram},
+		{name: "the same option under another first argument", option: "GenerateRoutes", first: "pkg/other", want: editProgram},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, n, err := RemoveOptions("main.go", []byte(editProgram), tt.option, tt.first)
+			if err != nil {
+				t.Fatalf("RemoveOptions() error = %v", err)
+			}
+			if n != tt.wantN {
+				t.Errorf("RemoveOptions() n = %d, want %d", n, tt.wantN)
+			}
+			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
+				t.Errorf("RemoveOptions() diff (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

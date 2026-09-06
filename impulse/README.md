@@ -287,6 +287,44 @@ impulse swap auth staff --oidc-azure --authority application --agent
 impulse swap auth staff --oidc-google --authority application --carry-roles
 ```
 
+## impulse remove
+
+`remove` takes an option out the way `add` puts one in: the deterministic half is made
+(the option's files deleted, the generator program and the registrations edited, `go
+generate` run), staged, and checked, and what still names the option in the hand-written
+code is handed to an agent with the same brief, the rendered reference showing what the
+option's wiring looks like so it is recognizable on the way out.
+
+`remove outlet <name>` removes a router outlet from every site that declares it. The
+generator program loses `WithRouterOutlet` (with the comment lines that introduced it) and,
+for a session outlet, the `GenerateTypescript` target for the outlet; the outlet's browser
+project is deleted and taken out of `angular.json`, the package scripts (`start:<name>`,
+`build:<name>`, `lint:<name>`, and its part of `build` and `lint`), and the Procfile; and
+an `@outlet` list that names the outlet beside others drops it, so those structs keep
+their other outlets. A struct on the outlet alone keeps its annotation, which fails
+generation, because whether it moves to the default outlet (the console's people reach it
+then) or leaves the application with its table is a decision about who may reach it; the
+brief lists each. The router group that mounted the outlet, the App's handlers for it, its
+configuration and environment lines (the brief quotes them), and its tests are the
+agent's. The auth the outlet was bound to stays. There is no data consequence.
+
+`remove site <name>` removes a site from a multi-site application: `apps/<name>/` is
+deleted with its generator program and directive, its TypeScript target leaves the shared
+generator, its router collection leaves the union the roles are reconciled against, and
+its processes leave the Procfile. The remaining sites stay where they are: an application
+left with one site is a multi-site application of one, with the site under `apps/`, the
+shared generator emitting into it, and a union of one element; nothing moves back to the
+root. The application's last site is not removed. The integration suite that served the
+site (and any other file still importing its packages, which the brief lists), the
+deployment configuration outside the repository, and the tables only the site's resources
+declared (declare them in the site that serves them now, or drop them by migration) are
+the agent's.
+
+```sh
+impulse remove outlet portal --agent
+impulse remove site kiosk
+```
+
 ## Templates
 
 The application skeletons `new` and `add` will render live under
