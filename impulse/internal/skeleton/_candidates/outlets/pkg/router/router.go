@@ -4,6 +4,8 @@ package router
 import (
 	"net/http"
 
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5"
 )
@@ -15,7 +17,14 @@ type Handlers interface {
 	GeneratedHandlers
 	GeneratedPortalHandlers
 	GeneratedMachinesHandlers
+	// The console's session handlers: the staff auth's.
 	session.PasswordAuthHandlers
+	// Portal returns the portal outlet's session handlers: the members auth's, whose
+	// people sign in through a directory.
+	Portal() session.OIDCAzureHandlers
+	// BindAuth marks a session group's requests as authenticated by the named auth, so
+	// the handlers behind it check permissions and tenant visibility in that auth's store.
+	BindAuth(name string) func(http.Handler) http.Handler
 
 	// app middleware
 	LoggerMiddleware() func(http.Handler) http.Handler
@@ -37,10 +46,10 @@ type Handlers interface {
 	PortalAssets() http.HandlerFunc
 }
 
-// New wires the full served application: session handling and login around the
-// console's generated API routes, the same session handling around the portal outlet's
-// routes under its own prefix, the API-key group around the machines outlet's routes,
-// and the two Angular applications for everything else.
+// New wires the full served application: the staff auth's session handling and login
+// around the console's generated API routes, the members auth's around the portal
+// outlet's routes under its own prefix, the API-key group around the machines outlet's
+// routes, and the two Angular applications for everything else.
 func New(h Handlers) *chi.Mux {
 	return newRouter(h,
 		func(r chi.Router) { generatedRoutes(r, h) },
@@ -59,13 +68,14 @@ func newRouter(h Handlers, api, portalAPI, machinesAPI func(chi.Router)) *chi.Mu
 	r.Use(h.SecurityHeaders)
 	r.Use(h.WithParamsHTTP())
 
-	// The console: browser sessions under /api.
-	sessionGroup(r, h, "/api", api)
+	// The console: the staff auth's browser sessions under /api.
+	sessionGroup(r, h, staff.Name, "/api", api)
 
-	// The portal: the same PasswordAuth composed around the portal prefix, so a portal
-	// user signs in at /portal/api/user/login and the portal's generated client reads
-	// its digest and user-domains under /portal/api.
-	sessionGroup(r, h, "/portal/api", portalAPI)
+	// The portal: the members auth composed around the portal prefix, so a member
+	// signs in through the directory at /portal/api/user/login and the portal's
+	// generated client reads its digest and user-domains under /portal/api. Its
+	// session is its own: a member's cookie opens nothing under /api.
+	oidcGroup(r, h, h.Portal(), members.Name, "/portal/api", portalAPI)
 
 	r.Group(func(r chi.Router) {
 		// The machines outlet: clients authenticate with an API key, so the group
@@ -100,11 +110,14 @@ func newRouter(h Handlers, api, portalAPI, machinesAPI func(chi.Router)) *chi.Mu
 	return r
 }
 
-// sessionGroup composes one browser-session surface under prefix: the login, session,
-// and logout routes, then the authenticated API routes behind session validation and
-// the XSRF guard.
-func sessionGroup(r chi.Router, h Handlers, prefix string, api func(chi.Router)) {
+// sessionGroup composes one browser-session surface under prefix for the staff auth, the
+// application's password auth: the login, session, and logout routes, then the
+// authenticated API routes behind session validation and the XSRF guard. Every request
+// in the group is bound to the named auth.
+func sessionGroup(r chi.Router, h Handlers, name, prefix string, api func(chi.Router)) {
 	r.Group(func(r chi.Router) {
+		r.Use(h.BindAuth(name))
+
 		// Disable all caching of API requests
 		r.Use(h.NoCaching)
 
@@ -128,6 +141,47 @@ func sessionGroup(r chi.Router, h Handlers, prefix string, api func(chi.Router))
 			r.Use(h.ValidateSession)
 			// check xsrf token for all api calls
 			r.Use(h.ValidateXSRFToken)
+
+			api(r)
+		})
+	})
+}
+
+// oidcGroup composes one browser-session surface under prefix for an auth whose people
+// sign in through a directory: the login redirect, the directory's callback, the
+// front-channel logout the directory calls when the person signs out elsewhere, the
+// session and logout routes, then the authenticated API routes behind session validation
+// and the XSRF guard. Every request in the group is bound to the named auth.
+func oidcGroup(r chi.Router, h Handlers, s session.OIDCAzureHandlers, name, prefix string, api func(chi.Router)) {
+	r.Group(func(r chi.Router) {
+		r.Use(h.BindAuth(name))
+
+		// Disable all caching of API requests
+		r.Use(h.NoCaching)
+
+		// compress api data so large responses are not a problem
+		r.Use(h.CompressionMiddleware())
+
+		// Configure global session handling
+		r.Use(s.StartSession)
+
+		// Set xsrf token
+		r.Use(s.SetXSRFToken)
+
+		// Login sends the browser to the directory; the directory returns it to the
+		// callback, which starts the session and returns the browser to the page it left.
+		r.Get(prefix+"/user/login", s.Login())
+		r.Get(prefix+"/user/callback", s.CallbackOIDC())
+		r.Get(prefix+"/user/logout", s.FrontChannelLogout())
+
+		r.Get(prefix+"/user/session", s.Authenticated())
+		r.Delete(prefix+"/user/session", s.Logout())
+
+		r.Group(func(r chi.Router) {
+			// all api requests must be authenticated
+			r.Use(s.ValidateSession)
+			// check xsrf token for all api calls
+			r.Use(s.ValidateXSRFToken)
 
 			api(r)
 		})

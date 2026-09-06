@@ -20,6 +20,7 @@ import (
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/config"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/deploy"
@@ -28,15 +29,21 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// usersPath is the committed development identities: session users with plaintext
-// passwords and their role assignments, and the service accounts the machine outlet's
-// API key binds requests to. Development only — a deployed application's membership
-// comes from its identity provider or its administration surface.
+// usersPath is the committed development identities: the staff logins with plaintext
+// passwords and their role assignments, the members (the portal's people, who sign in
+// through the directory and so get no password here, only their roles in the members
+// store), and the service accounts the machine outlet's API key binds requests to.
+// Development only — a deployed application's membership comes from its identity
+// provider or its administration surface.
 const usersPath = "cmd/bootstrap/users.json"
 
 // devIdentities is the file's shape.
 type devIdentities struct {
 	Users []devUser `json:"users"`
+	// Members are the portal's people: the directory proves who they are (under the
+	// skipAuth build tag, APP_USERNAME does), and the application assigns their roles,
+	// so a member here is role assignments in the members store and nothing more.
+	Members []devMember `json:"members"`
 	// ServiceAccounts are machine identities: they hold roles like any user but get
 	// no login — an outlet's API-key middleware binds requests to them.
 	ServiceAccounts []devServiceAccount `json:"serviceAccounts"`
@@ -54,6 +61,13 @@ type devUser struct {
 	User     accesstypes.User `json:"user"`
 	Password string           `json:"password"`
 	Roles    devRoles         `json:"roles"`
+}
+
+// devMember is one development member: role assignments in the members store, keyed by
+// the username the directory will present.
+type devMember struct {
+	User  accesstypes.User `json:"user"`
+	Roles devRoles         `json:"roles"`
 }
 
 // devServiceAccount is one machine identity: role assignments without a login.
@@ -121,6 +135,11 @@ func run(ctx context.Context) error {
 	}
 	fmt.Printf("Provisioned roles from %s across %v\n", staff.RolesPath, domains)
 
+	if err := deploy.MigrateRoles(ctx, data.Members().Access().UserManager(), members.RolesPath, domains...); err != nil {
+		return errors.Wrap(err, "deploy.MigrateRoles()")
+	}
+	fmt.Printf("Provisioned roles from %s across %v\n", members.RolesPath, domains)
+
 	if err := seedIdentities(ctx, data); err != nil {
 		return errors.Wrap(err, "seedIdentities()")
 	}
@@ -128,8 +147,8 @@ func run(ctx context.Context) error {
 	return nil
 }
 
-// seedIdentities creates the development logins as session users and assigns every
-// identity — logins and service accounts — its roles.
+// seedIdentities creates the development logins as staff session users and assigns
+// every identity — logins, members, and service accounts — its roles in its auth's store.
 func seedIdentities(ctx context.Context, data *config.DataConfiguration) error {
 	raw, err := os.ReadFile(usersPath)
 	if err != nil {
@@ -150,6 +169,13 @@ func seedIdentities(ctx context.Context, data *config.DataConfiguration) error {
 		fmt.Printf("Created login %s\n", user.User)
 
 		if err := assignRoles(ctx, data.UserManager(), user.User, user.Roles); err != nil {
+			return err
+		}
+	}
+
+	for _, member := range identities.Members {
+		fmt.Printf("Seeding member %s\n", member.User)
+		if err := assignRoles(ctx, data.Members().Access().UserManager(), member.User, member.Roles); err != nil {
 			return err
 		}
 	}

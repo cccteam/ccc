@@ -147,8 +147,13 @@ The new package is a copy of an existing auth's with every name substituted, so 
 copied under the new prefix; and the data level constructs it beside the auth it came
 from, with an accessor in a new file. `--preauth` swaps the constructor to the preauth
 flavor. Binding a surface to it, provisioning its roles and development identities, and
-the stranger tests are the agent's. The OIDC flavors follow once the membership-authority
-question is answered.
+the stranger tests are the agent's. The `outlets` skeleton carries the reference for an
+auth whose people sign in through a directory: `members`, an Azure OpenID Connect auth
+bound to its portal outlet, with role membership left to the application
+(`session.DisableRoleSync`), its login simulated in development and in the tests by the
+session library's `skipAuth` build tag, and every request in a session group bound to its
+auth so permission checks and tenant visibility answer from that auth's store. The OIDC
+flavors of `add auth` follow from it.
 
 ```sh
 impulse add auth partners --agent

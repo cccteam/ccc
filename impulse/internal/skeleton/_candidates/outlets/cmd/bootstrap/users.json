@@ -9,10 +9,11 @@
       "user": "member",
       "password": "password",
       "roles": { "global": [], "domains": { "north": ["Administrator"] } }
-    },
+    }
+  ],
+  "members": [
     {
       "user": "client",
-      "password": "password",
       "roles": { "global": [], "domains": { "north": ["Administrator"] } }
     }
   ],

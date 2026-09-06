@@ -12,6 +12,8 @@ import (
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
 	"github.com/go-playground/errors/v5"
@@ -45,14 +47,16 @@ func (s SpannerSettings) DatabasePath() string {
 }
 
 // DataConfiguration is the second level: every process that opens the database. It
-// owns the Spanner client, the resource client over it, the permission engine, the
-// session manager, and the tenant roster.
+// owns the Spanner client, the resource client over it, the two auths (the staff auth the
+// console binds to and the members auth the portal binds to, each its own permission
+// engine and session manager), and the tenant roster.
 type DataConfiguration struct {
 	*coreConfiguration
 	env            *dataConfig
 	spannerClient  *cloudspanner.Client
 	resourceClient *resource.SpannerClient
 	staff          *staff.Auth
+	members        *members.Auth
 	domains        []accesstypes.Domain
 	domainSet      map[accesstypes.Domain]bool
 }
@@ -85,12 +89,30 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "staff.New()")
 	}
 
+	// The portal's login page is where a refused directory login returns to; the data
+	// level knows it because the auth's error redirects are configured here.
+	membersAuth, err := members.New(ctx, spannerClient, &members.Settings{
+		CookieKey:      cookieKey,
+		SessionTimeout: env.SessionTimeout,
+		LoginURL:       "/portal/login",
+		Directory: members.Directory{
+			IssuerURL:    env.MembersIssuerURL,
+			ClientID:     env.MembersClientID,
+			ClientSecret: env.MembersClientSecret,
+			RedirectURL:  env.MembersRedirectURL,
+		},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "members.New()")
+	}
+
 	conf := &DataConfiguration{
 		coreConfiguration: core,
 		env:               env,
 		spannerClient:     spannerClient,
 		resourceClient:    resource.NewSpannerClient(spannerClient),
 		staff:             staffAuth,
+		members:           membersAuth,
 	}
 	if err := conf.loadDomains(ctx); err != nil {
 		return nil, errors.Wrap(err, "loadDomains()")
@@ -103,6 +125,9 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 func (c *DataConfiguration) Close() {
 	if err := c.staff.Close(); err != nil {
 		log.Print(errors.Wrap(err, "staff.Auth.Close()"))
+	}
+	if err := c.members.Close(); err != nil {
+		log.Print(errors.Wrap(err, "members.Auth.Close()"))
 	}
 	c.spannerClient.Close()
 	c.coreConfiguration.Close()
@@ -134,6 +159,21 @@ func (c *DataConfiguration) Staff() *staff.Auth {
 	return c.staff
 }
 
+// engine returns the permission engine of the auth the request came through: the
+// members auth's for a request its session group bound, the staff auth's otherwise.
+func (c *DataConfiguration) engine(ctx context.Context) *access.Client {
+	if auth.Name(ctx) == members.Name {
+		return c.members.Access()
+	}
+
+	return c.staff.Access()
+}
+
+// Members returns the members auth: the one the portal binds to.
+func (c *DataConfiguration) Members() *members.Auth {
+	return c.members
+}
+
 // Domains lists the tenants as permission domains, from the roster read at startup.
 func (c *DataConfiguration) Domains(_ context.Context) ([]accesstypes.Domain, error) {
 	return c.domains, nil
@@ -142,14 +182,16 @@ func (c *DataConfiguration) Domains(_ context.Context) ([]accesstypes.Domain, er
 // DomainVisible reports whether the domain is a known tenant AND the user holds at
 // least one grant in it — existence from the startup roster, foothold from the
 // permission engine's in-memory policy snapshot (no store read, so it is safe inside
-// the consolidated handler's mutation transaction). Tenant existence is concealed: a
-// caller with no foothold is answered exactly like the tenant does not exist.
+// the consolidated handler's mutation transaction). The engine is the one of the auth
+// the request came through (auth.Name): a member's foothold is in the members store.
+// Tenant existence is concealed: a caller with no foothold is answered exactly like the
+// tenant does not exist.
 func (c *DataConfiguration) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
 	if !c.domainSet[domain] {
 		return false, nil
 	}
 
-	visible, err := c.staff.Access().UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
+	visible, err := c.engine(ctx).UserHasGrants(ctx, user, accesstypes.DomainScope(domain))
 	if err != nil {
 		return false, errors.Wrap(err, "access.Client.UserHasGrants()")
 	}
@@ -217,4 +259,13 @@ type dataConfig struct {
 	// cryptographically secure random data. Unset, an ephemeral key is generated at
 	// startup.
 	CookieKey string `env:"APP_COOKIE_KEY"`
+
+	// The members auth's directory registration (pkg/auth/members): the OpenID Connect
+	// issuer, the application's client credentials, and the callback the directory
+	// returns the browser to. Under the session library's skipAuth build tag the
+	// directory is simulated and only the redirect URL is read.
+	MembersIssuerURL    string `env:"APP_MEMBERS_OIDC_ISSUER_URL"`
+	MembersClientID     string `env:"APP_MEMBERS_OIDC_CLIENT_ID"`
+	MembersClientSecret string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET"`
+	MembersRedirectURL  string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
 }

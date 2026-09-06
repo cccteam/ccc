@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/config"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/deploy"
@@ -49,6 +50,9 @@ func run(ctx context.Context) error {
 		return errors.Wrap(err, "config.DataConfiguration.Domains()")
 	}
 	if err := deploy.MigrateRoles(ctx, data.UserManager(), staff.RolesPath, domains...); err != nil {
+		return errors.Wrap(err, "deploy.MigrateRoles()")
+	}
+	if err := deploy.MigrateRoles(ctx, data.Members().Access().UserManager(), members.RolesPath, domains...); err != nil {
 		return errors.Wrap(err, "deploy.MigrateRoles()")
 	}
 

@@ -1,36 +1,38 @@
-import { HttpClient } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { DOCUMENT } from '@angular/common';
+import { Component, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
-import { Router } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { API_URL } from '@cccteam/ccc-lib/types';
+import { API_URL, BASE_URL } from '@cccteam/ccc-lib/types';
 import { IdleService } from '@cccteam/ccc-lib/ui-idle-service';
+import { map } from 'rxjs';
 
 /**
- * The login page posts the credentials to the session's login route, then loads the
- * session (and with it the permission digest) before entering the application.
+ * The portal's people sign in through the organization's directory. The login page sends
+ * the browser to the session's login route, which redirects it to the directory; the
+ * directory returns it to the callback, which starts the session and returns the browser
+ * to the page it was going to. A refused login comes back here with the reason in the
+ * query.
  */
 @Component({
   selector: 'app-login',
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss'],
-  imports: [FormsModule, MatButtonModule, MatCardModule, MatFormFieldModule, MatInputModule],
+  imports: [MatButtonModule, MatCardModule],
 })
 export class LoginComponent {
-  private http = inject(HttpClient);
   private auth = inject(AuthService);
-  private router = inject(Router);
   private idle = inject(IdleService);
   private apiUrl = inject(API_URL);
+  private baseUrl = inject(BASE_URL);
+  private document = inject(DOCUMENT);
+  private route = inject(ActivatedRoute);
 
-  username = '';
-  password = '';
-  busy = signal(false);
-  failed = signal(false);
+  message = toSignal(this.route.queryParamMap.pipe(map((params) => params.get('message') ?? '')), {
+    initialValue: '',
+  });
 
   constructor() {
     this.auth.logout().subscribe();
@@ -38,35 +40,17 @@ export class LoginComponent {
   }
 
   login(): void {
-    if (this.busy()) {
-      return;
-    }
-    this.busy.set(true);
-    this.failed.set(false);
-
-    this.http.post(`${this.apiUrl}/user/login`, { username: this.username, password: this.password }).subscribe({
-      next: () => {
-        this.auth.checkUserSession().subscribe({
-          next: () => {
-            this.idle.start();
-            this.router.navigateByUrl(this.getAndResetRedirectUrl());
-          },
-          complete: () => this.busy.set(false),
-        });
-      },
-      error: () => {
-        this.failed.set(true);
-        this.busy.set(false);
-      },
-    });
+    const returnUrl = encodeURIComponent(this.getAndResetReturnUrl());
+    this.document.location.assign(`${this.apiUrl}/user/login?returnUrl=${returnUrl}`);
   }
 
-  private getAndResetRedirectUrl(): string {
+  /** The browser path the callback returns to: the page the guard turned away from, else the dashboard. */
+  private getAndResetReturnUrl(): string {
     const redirectUrl = this.auth.redirectUrl();
     this.auth.redirectUrl.set('');
     if (redirectUrl === '' || redirectUrl.startsWith('/login')) {
-      return '/dashboard';
+      return `${this.baseUrl}dashboard`;
     }
-    return redirectUrl;
+    return `${this.baseUrl}${redirectUrl.replace(/^\//, '')}`;
   }
 }

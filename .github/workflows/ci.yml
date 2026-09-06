@@ -50,9 +50,9 @@ jobs:
       - name: Build and vet
         working-directory: app
         run: go build ./... && go vet ./...
-      - name: Test (the harnesses start the Spanner emulator in a container)
+      - name: Test (the harnesses start the Spanner emulator in a container; skipAuth simulates the directory an OIDC auth signs in through)
         working-directory: app
-        run: go test ./... -timeout 20m
+        run: go test -tags skipAuth ./... -timeout 20m
       - name: impulse check
         working-directory: app
         run: |

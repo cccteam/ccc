@@ -19,6 +19,17 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=outlets
 # APP_COOKIE_KEY signs session cookies: Base64 of 32+ random bytes. Unset, the process
 # generates an ephemeral key and sessions end when it restarts.
 # export APP_COOKIE_KEY=
+# The members auth (pkg/auth/members) signs the portal's people in through a directory
+# (OpenID Connect against Azure). The Procfile builds with the session library's skipAuth
+# tag, which simulates the directory: every login is APP_USERNAME (the role claims in
+# APP_ROLES are ignored, since the application assigns members their roles), and only the
+# redirect URL is read. Register the application in a directory and drop the tag to use one.
+export APP_USERNAME=client
+export APP_ROLES=
+# export APP_MEMBERS_OIDC_ISSUER_URL=
+# export APP_MEMBERS_OIDC_CLIENT_ID=
+# export APP_MEMBERS_OIDC_CLIENT_SECRET=
+export APP_MEMBERS_OIDC_REDIRECT_URL=http://127.0.0.1:4303/portal/api/user/callback
 
 # --- server: the served application ---
 export PORT=8093

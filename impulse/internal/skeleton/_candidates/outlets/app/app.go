@@ -13,6 +13,8 @@ import (
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/httpio"
@@ -47,9 +49,12 @@ type Configurer interface {
 	ResourceClient() resource.Client
 	Access() access.Controller
 	DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
-	// Staff returns the auth this surface binds to: the staff auth, whose session manager
-	// the App composes its login and session handlers from.
+	// Staff returns the auth the console binds to: the staff auth, whose session manager
+	// the App composes the console's login and session handlers from.
 	Staff() *staff.Auth
+	// Members returns the auth the portal outlet binds to: the members auth, whose
+	// session manager the App hands the router for the portal's session group.
+	Members() *members.Auth
 	Validator() *validator.Validate
 	LogExporter() logger.Exporter
 	ConsoleDist() string
@@ -66,8 +71,12 @@ const machineUser = "machines"
 // router: whoever serves it composes one at the edge (main composes router.New, test
 // suites compose router.NewTestRouter).
 type App struct {
-	access access.Controller
+	// access is the default auth's engine, the staff auth's; engines holds every auth's
+	// by name, for requests a session group bound to another auth.
+	access  access.Controller
+	engines map[string]access.Controller
 	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
+	portal         *session.OIDCAzure[session.NoCustomData, session.NoCustomData]
 	resourceClient resource.Client
 	domainVisible  func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
 	validate       *validator.Validate
@@ -81,6 +90,7 @@ type App struct {
 func New(cfg Configurer) *App {
 	a := &App{
 		access:         cfg.Access(),
+		engines:        map[string]access.Controller{},
 		resourceClient: cfg.ResourceClient(),
 		domainVisible:  cfg.DomainVisible,
 		validate:       cfg.Validator(),
@@ -91,11 +101,45 @@ func New(cfg Configurer) *App {
 	}
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.
-	if auth := cfg.Staff(); auth != nil {
-		a.PasswordAuth = auth.Session()
+	if staffAuth := cfg.Staff(); staffAuth != nil {
+		a.PasswordAuth = staffAuth.Session()
+	}
+	if membersAuth := cfg.Members(); membersAuth != nil {
+		a.portal = membersAuth.Session()
+		a.engines[members.Name] = membersAuth.Access()
 	}
 
 	return a
+}
+
+// BindAuth is the middleware a session group carries to say which auth authenticated its
+// requests, so the permission checks and the tenant visibility of everything behind it
+// answer from that auth's store. A group that binds nothing gets the default auth.
+func (a *App) BindAuth(name string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(auth.Bind(r.Context(), name)))
+		})
+	}
+}
+
+// engine returns the permission engine of the auth the request came through.
+func (a *App) engine(ctx context.Context) access.Controller {
+	if engine, ok := a.engines[auth.Name(ctx)]; ok {
+		return engine
+	}
+
+	return a.access
+}
+
+// Portal returns the portal outlet's session handlers: the members auth's, so a portal
+// session opens nothing on the console and a console session nothing on the portal.
+func (a *App) Portal() session.OIDCAzureHandlers {
+	if a.portal == nil {
+		return nil
+	}
+
+	return a.portal
 }
 
 // LoggerMiddleware returns a middleware that logs requests.
@@ -198,16 +242,19 @@ func serveSPA(assets http.Handler) http.HandlerFunc {
 }
 
 // UserPermissions returns the permission checker for a request, composed from the
-// session's principal: the access engine bound to the user for an ordinary or
-// impersonated-user session, bound to the role for a session established as a role,
-// and attenuated by the session's permission mask.
+// session's principal: the engine of the auth the request came through, bound to the
+// user for an ordinary or impersonated-user session, bound to the role for a session
+// established as a role, and attenuated by the session's permission mask.
 func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
-	return resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole)
+	engine := a.engine(r.Context())
+
+	return resource.SessionPermissions(r.Context(), engine.ForUser, engine.ForRole)
 }
 
 // DomainVisible reports whether the tenant exists and the user holds at least one grant
-// in it; the generated DomainGuard middleware and the consolidated dispatcher answer
-// "no" with the same not-found an unknown tenant gets.
+// in it, in the store of the auth the request came through; the generated DomainGuard
+// middleware and the consolidated dispatcher answer "no" with the same not-found an
+// unknown tenant gets.
 func (a *App) DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error) {
 	return a.domainVisible(ctx, user, domain)
 }

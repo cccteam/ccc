@@ -18,20 +18,31 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
   (every process that opens the database), server (the served application). Each process
   constructs the level it needs — `cmd/bootstrap` and `cmd/deployment/migrate` stop at
   data — so a deploy step supplies exactly the variables its process reads.
+- `pkg/auth` holds the auths, one package per population: `staff` (the console's people,
+  who sign in with a password) and `members` (the portal's people, who sign in through the
+  organization's directory over OpenID Connect). Each owns its session tables and cookie,
+  its permission store, and its roles file, so a member and a staff login with the same
+  name are two unrelated principals. The members auth leaves role membership to the
+  application (`session.DisableRoleSync`): the bootstrap assigns the development members
+  their roles.
 - `app` holds the handlers: generated resource handlers for every outlet plus the
   hand-written middleware, the machines outlet's API-key authentication, and the two
-  static-asset surfaces. `pkg/router` composes them: a session group per browser outlet,
-  an API-key group for the machines outlet, one Angular application per browser outlet.
+  static-asset surfaces. `pkg/router` composes them: the staff auth's session group
+  around the console, the members auth's around the portal (login redirect, directory
+  callback, front-channel logout), an API-key group for the machines outlet, one Angular
+  application per browser outlet.
 - `pkg/resources` holds the resource structs the generator reads: `Tenant` (the tenant
   record, a global resource), `Announcement` (tenant-scoped, on the console and the
   portal), and `Reading` (tenant-scoped, machines-only). `schema/migrations` holds the tables they describe; `schema/devseed` the
-  development tenants; `schema/roles/staff.json` the role configuration the deployment
-  reconciles across the tenant roster (the Administrator role at each scope is implicit).
+  development tenants; `schema/roles/staff.json` and `schema/roles/members.json` the role
+  configuration the deployment reconciles into each auth's store across the tenant roster
+  (the Administrator role at each scope is implicit).
 - `pkg/deploy` holds the database steps a deployment runs: schema migrations, then
   roles across the tenants read from the table. `cmd/deployment/migrate` is the deploy
   step; `cmd/bootstrap` reuses it to stand up an emulator database, seeds the development
   tenants first (the roster MigrateRoles reconciles across is data), and adds the
-  development logins and the machines service account from `cmd/bootstrap/users.json`.
+  development logins, the development member, and the machines service account from
+  `cmd/bootstrap/users.json`.
 - `test/authz` is the generated authorization matrix over the generated test router;
   `test/integration` drives the served stack (real router, session, engine) end to end.
 - `web/` is the Angular workspace, one project per browser application (`console`,
@@ -43,10 +54,16 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
     cp .envrc.template .envrc && direnv allow
     overmind start -l spanner,server
 
-That starts a fresh emulator, bootstraps it (schema, tenants, roles, the `admin`,
-`member`, and `client` logins with password `password`, and the machines service
-account), and serves every outlet on `$PORT` (:8093). The first run compiles and
-bootstraps before it listens; wait for "Starting Server" in the server pane.
+That starts a fresh emulator, bootstraps it (schema, tenants, both auths' roles, the
+`admin` and `member` staff logins with password `password`, the `client` member, and the
+machines service account), and serves every outlet on `$PORT` (:8093). The first run
+compiles and bootstraps before it listens; wait for "Starting Server" in the server pane.
+
+The server builds with the session library's `skipAuth` tag (see the Procfile), which
+simulates the portal's directory: every portal login is `APP_USERNAME` from `.envrc`
+(`client`), no directory is contacted, and only `APP_MEMBERS_OIDC_REDIRECT_URL` is read.
+To sign in through a real directory, register the application there, fill in the
+`APP_MEMBERS_OIDC_*` variables, and drop the tag. A deployed build never carries it.
 
 ### Browser apps
 
@@ -59,11 +76,13 @@ once (the script publishes both packages to the local yalc store, links them, an
 
 `ccclib.sh` expects the ccc-lib checkout beside this application; set `CCC_LIB` to point
 elsewhere. Then `overmind start` runs everything: the console at http://127.0.0.1:4302
-and the portal at http://127.0.0.1:4303/portal/ (sign in as `client`).
+and the portal at http://127.0.0.1:4303/portal/ (the sign-in button signs in as the
+simulated directory's `client`).
 
 ## Checks
 
     go generate ./...           # regenerate; cmd/generate's test fails on drift
-    go test ./...               # needs podman for the emulator
+    go test -tags skipAuth ./...  # needs podman for the emulator; the tag simulates the
+                                  # portal's directory, and the portal login tests skip without it
     golangci-lint-v2 run
     cd web && bun run build && bun run lint

@@ -8,6 +8,7 @@ import (
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/app"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
 	"github.com/cccteam/ccc/resource"
@@ -76,6 +77,8 @@ func (c *testConfigurer) Access() access.Controller {
 }
 
 func (c *testConfigurer) Staff() *staff.Auth { return nil }
+
+func (c *testConfigurer) Members() *members.Auth { return nil }
 
 func (c *testConfigurer) Validator() *validator.Validate {
 	return validator.New()
