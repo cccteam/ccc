@@ -158,7 +158,7 @@ func TestImpersonatedSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	controller := newDemoAccessClient(ctx, t, db)
+	controller := demoAccessClient(t)
 	srv := servedStack(t, db, controller)
 
 	t.Run("view as: the marshal sees Cass's board read-only", func(t *testing.T) {

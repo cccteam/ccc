@@ -139,15 +139,17 @@ func waitForDemoPolicy(ctx context.Context, client *access.Client) error {
 	}
 }
 
-// newDemoAccessClient gives one suite its own provisioned engine over db, through the
-// same deploy path the bootstrap runs: MigrateRoles and the persona assignments.
-func newDemoAccessClient(ctx context.Context, t *testing.T, db *initiator.SpannerDB) *access.Client {
+// demoAccessClient returns the shared provisioned engine. The demo policy is the same for
+// every suite and no suite changes it, so one engine serves them all while each mutating
+// suite keeps its own database for the rows it changes: the engine answers from its policy
+// snapshot, and the rows live wherever the application's database is. Provisioning once per
+// binary is what keeps the suite inside its budget, since MigrateRoles is thousands of
+// sequential store queries and the emulator answers them slowly on a shared runner. A
+// suite that changes policy opens its own engine with newAccessClient.
+func demoAccessClient(t *testing.T) *access.Client {
 	t.Helper()
 
-	client := newAccessClient(t, db)
-	if err := provisionDemoAccess(ctx, client); err != nil {
-		t.Fatal(err)
-	}
+	_, _, client := sharedWorld(t)
 
 	return client
 }
@@ -169,7 +171,7 @@ func newAccessClient(t *testing.T, db *initiator.SpannerDB) *access.Client {
 	return client
 }
 
-// demoWorld prepares a fresh seeded database and the application over its own freshly
+// demoWorld prepares a fresh seeded database and the application over it, with the shared
 // provisioned engine — for suites that MUTATE the seeded rows. Read-only suites use
 // sharedWorld instead.
 func demoWorld(t *testing.T) (context.Context, *initiator.SpannerDB, http.Handler) {
@@ -181,7 +183,7 @@ func demoWorld(t *testing.T) (context.Context, *initiator.SpannerDB, http.Handle
 		t.Fatal(err)
 	}
 
-	return ctx, db, newTestAppWithAccess(db, newDemoAccessClient(ctx, t, db))
+	return ctx, db, newTestAppWithAccess(db, demoAccessClient(t))
 }
 
 // The shared world: one seeded database and one provisioned engine for every
