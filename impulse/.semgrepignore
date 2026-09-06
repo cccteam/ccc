@@ -1,0 +1,9 @@
+# Semgrep path exclusions for the impulse module scan (see the repository root's
+# .semgrepignore for the same entries under their root-relative paths).
+#
+# impulse is a build tool: running go, git, and the agent's command line with arguments
+# read from the application under construction is its purpose, so the two places that
+# spawn processes are excluded from the dangerous-exec-command audit rather than marked
+# inline. Everything else in the module stays scanned.
+internal/check/check.go
+internal/handoff/agent.go

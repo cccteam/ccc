@@ -16,11 +16,9 @@ import (
 // packages, and the option calls, one per line. The program runs itself under go
 // generate, as the options check requires.
 func program(resourceDir string, options ...string) string {
-	return `package main
-
-//go:generate go run .
-
-import (
+	// The directive is spliced in so this file's own source does not start a line with
+	// it: go generate reads every Go file for that prefix, raw strings included.
+	return "package main\n\n" + "//go:generate go run .\n\n" + `import (
 	"context"
 
 	"github.com/cccteam/ccc/resource/generation"
