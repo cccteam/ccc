@@ -27,8 +27,8 @@ func newRender() *cobra.Command {
 		Short: "Render one embedded skeleton into a directory (developer command)",
 		Long: `render copies one of the embedded skeleton templates into a new or empty directory
 under the module path you name, rewriting every import and go.mod to it. It is the
-primitive impulse new will build on, and the way the templates are validated: render one,
-then build, test, and check the result.
+primitive impulse new builds on, and the way the templates are validated: render one,
+then build, test, and check the result. The placeholder auth (staff) is kept; new renames it.
 
 With --dev-root, render also writes a go.work that uses every framework module the
 application requires directly and that has a checkout under that directory (laid out by
@@ -36,7 +36,7 @@ repository: <root>/ccc/resource, <root>/session, ...), so the application builds
 local framework work instead of the pins. Do not commit that go.work.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			got, err := skeleton.Render(skeleton.Options{Candidate: args[0], Dir: args[1], ModulePath: modulePath, DevRoot: devRoot})
+			got, err := skeleton.Render(&skeleton.Options{Candidate: args[0], Dir: args[1], ModulePath: modulePath, DevRoot: devRoot})
 			if err != nil {
 				return err
 			}
@@ -98,6 +98,11 @@ func templatePorts(dir string) (port, emulator string) {
 // then the numbered steps to a running application. The steps are the part a reader
 // acts on, so they carry the emphasis when the output is a terminal.
 type renderReport struct {
+	// headline replaces the "Rendered ..." line when set (impulse new); gitNote reports
+	// the first commit; options adds the step that names the options to add next.
+	headline, gitNote string
+	options           bool
+
 	candidate, dir, modulePath, devRoot string
 	rendered                            *skeleton.Rendered
 	port, emulator                      string
@@ -131,7 +136,14 @@ func (r *renderReport) write(w io.Writer) {
 		return "\x1b[1m" + s + "\x1b[0m"
 	}
 
-	fmt.Fprintf(w, "Rendered %s into %s as %s (%d files).\n", r.candidate, r.dir, r.modulePath, r.rendered.Files)
+	if r.headline != "" {
+		fmt.Fprintln(w, r.headline)
+	} else {
+		fmt.Fprintf(w, "Rendered %s into %s as %s (%d files).\n", r.candidate, r.dir, r.modulePath, r.rendered.Files)
+	}
+	if r.gitNote != "" {
+		fmt.Fprintln(w, r.gitNote)
+	}
 	if r.rendered.Workspace != "" {
 		fmt.Fprintf(w, "Wrote go.work using %d local framework checkout(s) under %s.\n", len(r.rendered.DevUsed), r.devRoot)
 		if len(r.rendered.DevMissing) > 0 {
@@ -159,6 +171,7 @@ func (r *renderReport) write(w io.Writer) {
 		next("overmind start")
 		note("The first run compiles and bootstraps before it listens. Wait for \"Starting Server\",")
 		note("then sign in as admin with the password \"password\".")
+		r.optionsStep(next, note)
 
 		return
 	}
@@ -183,6 +196,18 @@ func (r *renderReport) write(w io.Writer) {
 	if len(urls) > 0 {
 		note("Everything, with ng serve for the %s.", strings.Join(urls, " and the "))
 	}
+	r.optionsStep(next, note)
+}
+
+// optionsStep names the options an application takes on afterwards, when the report is
+// for a new application.
+func (r *renderReport) optionsStep(next, note func(format string, args ...any)) {
+	if !r.options {
+		return
+	}
+	next("impulse add tenancy | impulse add outlet <name> --prefix <p> --sessions | impulse add auth <name>")
+	note("Options are added one at a time from a clean tree; each ends in a handoff brief for the")
+	note("wiring the tool cannot do and a check that says when it is done.")
 }
 
 // goProcesses lists the Procfile processes that run no package manager: the emulator and

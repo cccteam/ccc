@@ -38,6 +38,7 @@ func newRoot() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	root.AddCommand(newNew())
 	root.AddCommand(newCheck())
 	root.AddCommand(newRender())
 	root.AddCommand(newHandoff())

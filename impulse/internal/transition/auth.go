@@ -14,6 +14,7 @@ import (
 
 	"github.com/cccteam/ccc/impulse/internal/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
+	"github.com/cccteam/ccc/impulse/internal/names"
 	"github.com/cccteam/ccc/impulse/internal/skeleton"
 )
 
@@ -74,7 +75,7 @@ func (au Auth) Command() string {
 }
 
 // Pascal is the name's PascalCase form: the table prefix.
-func (au Auth) Pascal() string { return strings.ToUpper(au.Name[:1]) + au.Name[1:] }
+func (au Auth) Pascal() string { return names.Pascal(au.Name) }
 
 // oidc reports whether the flavor signs in through a directory.
 func (au Auth) oidc() bool { return au.Flavor == FlavorOIDCAzure }
@@ -147,7 +148,7 @@ func (au Auth) source(a *app.App) (*authSource, error) {
 		})
 	}
 	if len(sources) == 0 {
-		return nil, errors.New("no auth package to copy: an auth is pkg/auth/<name> constructing its session manager and store, and the application has none (impulse init lays the first one in)")
+		return nil, errors.New("no auth package to copy: an auth is pkg/auth/<name> constructing its session manager and store, and the application has none (impulse new lays the first one in)")
 	}
 	sort.Slice(sources, func(i, j int) bool { return sources[i].Name < sources[j].Name })
 	for i := range sources {
@@ -382,14 +383,10 @@ func swapAuthority(text, authority string) (string, bool) {
 }
 
 // rename substitutes the source auth's name for the new one, in both cases, where the
-// name stands on its own or starts an identifier (members, membersAuth, MembersSessions)
-// and not inside an English word that happens to begin with it (membership).
+// name stands on its own or starts an identifier and not inside an English word that
+// happens to begin with it (names.Rename).
 func (au Auth) rename(text string, src *authSource) string {
-	pascal := regexp.MustCompile(regexp.QuoteMeta(src.Pascal) + `([^a-z]|$)`)
-	text = pascal.ReplaceAllString(text, au.Pascal()+"${1}")
-	lower := regexp.MustCompile(`(^|[^A-Za-z])` + regexp.QuoteMeta(src.Name) + `([^a-z]|$)`)
-
-	return lower.ReplaceAllString(text, "${1}"+au.Name+"${2}")
+	return names.Rename(text, src.Name, au.Name)
 }
 
 // swapFlavor rewrites a password auth package into a preauth one or back: the session

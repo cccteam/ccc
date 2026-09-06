@@ -8,8 +8,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
@@ -57,7 +59,7 @@ func TestRender(t *testing.T) {
 			t.Parallel()
 
 			dir := filepath.Join(t.TempDir(), "beacon")
-			got, err := Render(Options{Candidate: tt.candidate, Dir: dir, ModulePath: targetModule})
+			got, err := Render(&Options{Candidate: tt.candidate, Dir: dir, ModulePath: targetModule})
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}
@@ -138,6 +140,113 @@ func TestRender(t *testing.T) {
 	}
 }
 
+// TestRenderAuth renders the base with its first auth named: the placeholder is gone from
+// every path and every file, the named auth is where the placeholder was, and the static
+// checks read the renamed auth as wired.
+func TestRenderAuth(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "beacon")
+	if _, err := Render(&Options{Candidate: Base, Dir: dir, ModulePath: targetModule, Auth: "members"}); err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	for _, rel := range []string{"pkg/auth/members/members.go", "schema/roles/members.json", "schema/migrations/000002_MembersAccess.up.sql", "schema/migrations/000003_MembersSessions.down.sql", "schema/migrations/000004_MembersSessionUsers.up.sql"} {
+		if _, err := root.Stat(filepath.FromSlash(rel)); err != nil {
+			t.Errorf("%s: %v", rel, err)
+		}
+	}
+	placeholder := regexp.MustCompile(`(^|[^A-Za-z])staff([^a-z]|$)|Staff([^a-z]|$)`)
+	err = fs.WalkDir(root.FS(), ".", func(rel string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return errors.Wrap(err, "fs.WalkDir()")
+		}
+		if strings.Contains(strings.ToLower(rel), "staff") {
+			t.Errorf("%s: the placeholder auth is still in the path", rel)
+		}
+		if d.IsDir() {
+			return nil
+		}
+		data, err := root.ReadFile(rel)
+		if err != nil {
+			return errors.Wrap(err, "os.Root.ReadFile()")
+		}
+		if !utf8.Valid(data) {
+			return nil
+		}
+		if m := placeholder.FindString(string(data)); m != "" {
+			t.Errorf("%s: the placeholder auth is still in the text: %q", rel, m)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := root.ReadFile("pkg/auth/members/members.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"package members", `Name = "members"`, `TablePrefix = "Members"`, "// Package members is the members auth"} {
+		if !strings.Contains(string(pkg), want) {
+			t.Errorf("members.go lacks %q", want)
+		}
+	}
+
+	a, err := app.Discover(dir)
+	if err != nil {
+		t.Fatalf("app.Discover() error = %v", err)
+	}
+	for _, name := range []string{"auth-wired", "auths-wired", "env-template", "options"} {
+		checks, err := check.Select([]string{name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range check.Run(context.Background(), &check.Env{App: a, SkipGenerate: true}, checks) {
+			if r.Status == check.Fail {
+				t.Errorf("%s: %s %v", r.Name, r.Summary, r.Details)
+			}
+			if r.Name == "auths-wired" && r.Summary != "1 auth(s) constructed, provisioned, and bound: members" {
+				t.Errorf("auths-wired summary = %q", r.Summary)
+			}
+		}
+	}
+}
+
+func TestReserved(t *testing.T) {
+	t.Parallel()
+
+	reserved, err := Reserved(Base)
+	if err != nil {
+		t.Fatalf("Reserved() error = %v", err)
+	}
+	tests := []struct {
+		name     string
+		word     string
+		reserved bool
+	}{
+		{name: "a directory", word: "config", reserved: true},
+		{name: "an imported framework package", word: "session", reserved: true},
+		{name: "an imported package by its local name", word: "cloudspanner", reserved: true},
+		{name: "a declared package", word: "router", reserved: true},
+		{name: "the placeholder auth", word: PlaceholderAuth, reserved: false},
+		{name: "a population", word: "members", reserved: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := reserved[tt.word]; got != tt.reserved {
+				t.Errorf("reserved[%q] = %v, want %v", tt.word, got, tt.reserved)
+			}
+		})
+	}
+}
+
 func TestRenderRefusals(t *testing.T) {
 	t.Parallel()
 
@@ -179,7 +288,8 @@ func TestRenderRefusals(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := Render(tt.opts(t))
+			opts := tt.opts(t)
+			_, err := Render(&opts)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("Render() error = %v, want containing %q", err, tt.wantErr)
 			}
@@ -253,7 +363,7 @@ func TestRenderDevWorkspace(t *testing.T) {
 				wantUses[i] = strings.Replace(u, "DEV", devRoot, 1)
 			}
 
-			got, err := Render(Options{Candidate: "solo", Dir: dir, ModulePath: targetModule, DevRoot: devRoot})
+			got, err := Render(&Options{Candidate: "solo", Dir: dir, ModulePath: targetModule, DevRoot: devRoot})
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}

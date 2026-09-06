@@ -13,6 +13,30 @@ application already depends on: the generator program, `go.mod`, the browser app
 go install github.com/cccteam/ccc/impulse@latest
 ```
 
+## impulse new
+
+`new` creates an application: the base skeleton (flat layout, one auth, nothing else on)
+rendered under your module path, with the first auth named by you.
+
+```sh
+impulse new ../beacon --module example.com/acme/beacon --auth staff
+impulse new ../harbor --module example.com/acme/harbor            # asks for the auth name
+impulse new ../harbor --module example.com/acme/harbor --auth members --dev-root ~/Development/github.com/cccteam
+```
+
+An auth is a population that signs in one way and holds roles in its own permission
+store, and it is a package, `pkg/auth/<name>`, whose name is also the prefix of its tables
+(`<Name>Sessions`, `<Name>Roles`, ...), its cookie, and the stem of its roles file. So the
+name is asked for when `--auth` is not given, and there is no default: a default word would
+land in every application whose author skipped the question. A good name is the population
+that signs in, plural, lowercase, one word: staff, members, partners, devices. It cannot be
+a Go keyword, a package the application imports, or a directory it has.
+
+The tree is committed as the application's first commit (`--skip-git` leaves it
+uncommitted), so `impulse add` can start from a clean tree; with `--dev-root` the `go.work`
+it writes is ignored by git. Options come afterwards, one reviewable change each:
+`impulse add tenancy`, `impulse add outlet`, `impulse add auth`.
+
 ## impulse check
 
 `check` verifies the agreements between an application's parts and exits non-zero when
@@ -52,9 +76,10 @@ reason).
 ## impulse render
 
 `render` copies one embedded skeleton into a new or empty directory under the module
-path you name, rewriting every import and `go.mod` to it. It is the primitive `new` will
-build on and the way the templates are validated: render one, then build, test, and
-`impulse check` the result.
+path you name, rewriting every import and `go.mod` to it. It is the primitive `new`
+builds on and the way the templates are validated: render one, then build, test, and
+`impulse check` the result. The templates carry `staff` as their placeholder auth; `new`
+renames it, `render` keeps it.
 
 ```sh
 impulse render solo ../beacon --module example.com/acme/beacon

@@ -2,6 +2,8 @@ package skeleton
 
 import (
 	"go/format"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path"
@@ -13,6 +15,8 @@ import (
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/module"
+
+	"github.com/cccteam/ccc/impulse/internal/names"
 )
 
 // Options describe one rendering of an embedded template.
@@ -32,7 +36,20 @@ type Options struct {
 	// dependency can lag what the library needs, and pulling it in would break the build
 	// for work the developer is not doing.
 	DevRoot string
+	// Auth names the application's first auth. The template carries a placeholder auth
+	// (PlaceholderAuth) in its paths and contents; the rendering substitutes the name
+	// everywhere the placeholder stands as a name or starts an identifier. Empty keeps
+	// the placeholder.
+	Auth string
 }
+
+// PlaceholderAuth is the auth every template carries: the name render substitutes when
+// Options.Auth is set. The templates keep it because they are also the reference fixtures
+// the handoff brief points at.
+const PlaceholderAuth = "staff"
+
+// Base is the skeleton every application starts from: flat, one auth, nothing else on.
+const Base = "solo"
 
 // Rendered reports what a rendering produced.
 type Rendered struct {
@@ -57,7 +74,7 @@ const goExt = ".go"
 // becomes go.mod, the placeholder module path is rewritten everywhere it appears, Go
 // files are reformatted (the rewrite changes line lengths), and shell scripts regain
 // their execute bit, which embedding drops.
-func Render(opts Options) (*Rendered, error) {
+func Render(opts *Options) (*Rendered, error) {
 	if err := module.CheckPath(opts.ModulePath); err != nil {
 		return nil, errors.Wrapf(err, "module path %q", opts.ModulePath)
 	}
@@ -88,7 +105,7 @@ func Render(opts Options) (*Rendered, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if err := renderFile(sub, target, p, opts.ModulePath, candidate.ModulePath); err != nil {
+		if err := renderFile(sub, target, p, opts, candidate.ModulePath); err != nil {
 			return err
 		}
 		rendered.Files++
@@ -110,8 +127,9 @@ func Render(opts Options) (*Rendered, error) {
 
 // renderFile writes one template file into the target tree. The rendered tree is a
 // project a person works in, so it gets the conventional modes: 0755 directories, 0644
-// files, 0755 shell scripts.
-func renderFile(sub fs.FS, target *os.Root, p, modulePath, placeholder string) error {
+// files, 0755 shell scripts. With Options.Auth, the placeholder auth is renamed in the
+// file's path and its text.
+func renderFile(sub fs.FS, target *os.Root, p string, opts *Options, placeholder string) error {
 	src, err := fs.ReadFile(sub, p)
 	if err != nil {
 		return errors.Wrapf(err, "fs.ReadFile(): %s", p)
@@ -121,10 +139,18 @@ func renderFile(sub fs.FS, target *os.Root, p, modulePath, placeholder string) e
 	if path.Base(p) == ModFile {
 		rel = path.Join(path.Dir(p), "go.mod")
 	}
+	rename := opts.Auth != "" && opts.Auth != PlaceholderAuth
+	if rename {
+		rel = names.Rename(rel, PlaceholderAuth, opts.Auth)
+	}
 
 	out := src
 	if utf8.Valid(src) {
-		out = []byte(strings.ReplaceAll(string(src), placeholder, modulePath))
+		text := strings.ReplaceAll(string(src), placeholder, opts.ModulePath)
+		if rename {
+			text = names.Rename(text, PlaceholderAuth, opts.Auth)
+		}
+		out = []byte(text)
 		if path.Ext(rel) == goExt {
 			formatted, err := format.Source(out)
 			if err != nil {
@@ -155,7 +181,7 @@ func renderFile(sub fs.FS, target *os.Root, p, modulePath, placeholder string) e
 // module go.mod requires directly that has a checkout under DevRoot. Use paths are
 // relative when the application lives under the dev root, so the workspace survives a
 // move of the whole tree, and absolute otherwise.
-func writeWorkspace(opts Options, target *os.Root, rendered *Rendered) error {
+func writeWorkspace(opts *Options, target *os.Root, rendered *Rendered) error {
 	data, err := target.ReadFile("go.mod")
 	if err != nil {
 		return errors.Wrap(err, "os.Root.ReadFile()")
@@ -246,12 +272,12 @@ func candidateByName(name string) (Candidate, error) {
 			return c, nil
 		}
 	}
-	names := make([]string, 0, len(candidates))
+	known := make([]string, 0, len(candidates))
 	for _, c := range candidates {
-		names = append(names, c.Name)
+		known = append(known, c.Name)
 	}
 
-	return Candidate{}, errors.Newf("unknown candidate %q: choose one of %s", name, strings.Join(names, ", "))
+	return Candidate{}, errors.Newf("unknown candidate %q: choose one of %s", name, strings.Join(known, ", "))
 }
 
 // ensureEmptyDir creates dir when absent and refuses a non-empty one, so a rendering
@@ -272,4 +298,60 @@ func ensureEmptyDir(dir string) error {
 	default:
 		return nil
 	}
+}
+
+// Reserved lists the names an auth cannot take in an application rendered from the
+// candidate: every package the template imports (by its last path segment and any local
+// name), every package the template declares, and every directory in the tree, since the
+// auth becomes a package and a directory of its own. The placeholder auth is not reserved:
+// it is what the name replaces.
+func Reserved(candidate string) (map[string]bool, error) {
+	sub, err := FS(candidate)
+	if err != nil {
+		return nil, err
+	}
+	reserved := map[string]bool{}
+	fset := token.NewFileSet()
+	err = fs.WalkDir(sub, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return errors.Wrap(err, "fs.WalkDir()")
+		}
+		if d.IsDir() {
+			if p != "." && d.Name() != PlaceholderAuth {
+				reserved[d.Name()] = true
+			}
+
+			return nil
+		}
+		if path.Ext(p) != goExt {
+			return nil
+		}
+		src, err := fs.ReadFile(sub, p)
+		if err != nil {
+			return errors.Wrapf(err, "fs.ReadFile(): %s", p)
+		}
+		f, err := parser.ParseFile(fset, p, src, parser.ImportsOnly)
+		if err != nil {
+			return errors.Wrapf(err, "parser.ParseFile(): %s", p)
+		}
+		if f.Name.Name != PlaceholderAuth {
+			reserved[f.Name.Name] = true
+		}
+		for _, imp := range f.Imports {
+			importPath := strings.Trim(imp.Path.Value, `"`)
+			if base := path.Base(importPath); base != PlaceholderAuth {
+				reserved[base] = true
+			}
+			if imp.Name != nil && imp.Name.Name != "_" && imp.Name.Name != "." {
+				reserved[imp.Name.Name] = true
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "fs.WalkDir()")
+	}
+
+	return reserved, nil
 }

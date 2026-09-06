@@ -208,7 +208,7 @@ const authorityQuestion = `Who is the authority for this auth's role membership?
 // the terminal. Without a terminal the flag is required: there is no default, because the
 // wrong answer deletes hand-assigned roles at the next login.
 func askAuthority(cmd *cobra.Command) (string, error) {
-	if info, err := os.Stdin.Stat(); err != nil || info.Mode()&os.ModeCharDevice == 0 {
+	if !stdinIsTerminal() {
 		return "", errors.New("--authority is required for an OIDC auth: directory (the directory's role claims are synchronized at every login and roles it does not name are removed) or application (roles are assigned in the application). It is asked because the wrong answer deletes hand-assigned roles at the next login")
 	}
 	fmt.Fprint(cmd.ErrOrStderr(), authorityQuestion)
@@ -308,7 +308,7 @@ func renderReference(candidate string) (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err, "os.MkdirTemp()")
 	}
-	if _, err := skeleton.Render(skeleton.Options{Candidate: candidate, Dir: dir, ModulePath: "example.com/reference/" + candidate}); err != nil {
+	if _, err := skeleton.Render(&skeleton.Options{Candidate: candidate, Dir: dir, ModulePath: "example.com/reference/" + candidate}); err != nil {
 		return "", err
 	}
 

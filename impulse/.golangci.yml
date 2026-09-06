@@ -65,6 +65,7 @@ linters:
             - github.com/google/go-cmp
             - github.com/spf13/cobra
             - golang.org/x/mod
+            - golang.org/x/term
     exhaustive:
       default-signifies-exhaustive: true
     funlen:
