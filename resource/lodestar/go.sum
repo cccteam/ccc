@@ -52,8 +52,8 @@ github.com/cccteam/access v0.9.12-0.20260904174510-0f95201b5362 h1:cfMju8srrV8yj
 github.com/cccteam/access v0.9.12-0.20260904174510-0f95201b5362/go.mod h1:rtcV47PabHOmNmqqAdHKVoPqkSsq6RgDFzVFwFWIosQ=
 github.com/cccteam/ccc v0.3.4-0.20260904195933-c2b62ab089ac h1:j73WgG+N6e4g3cEEZwX5FWYrgxrOb8ov3x1AaPpPHyE=
 github.com/cccteam/ccc v0.3.4-0.20260904195933-c2b62ab089ac/go.mod h1:mMvs+AvedNa8vOADImamEAUqnsxhPlvnXYjFVV+/SeY=
-github.com/cccteam/ccc/accesstypes v0.5.10-0.20260904195933-c2b62ab089ac h1:Q/yqfzdylM8A/FLFo3t7+aW8qDxgtXi1c2pavD/w1nA=
-github.com/cccteam/ccc/accesstypes v0.5.10-0.20260904195933-c2b62ab089ac/go.mod h1:4wFtH4BXGYEbr5KGRXaU9H7G08B+rZKTNX3bVQO4wlU=
+github.com/cccteam/ccc/accesstypes v0.5.10-0.20260906144202-15d698aad913 h1:amebfTYc2ZK9YAmiKrWEqAbqYwoUYSghpRK0wXWQ4Z0=
+github.com/cccteam/ccc/accesstypes v0.5.10-0.20260906144202-15d698aad913/go.mod h1:4wFtH4BXGYEbr5KGRXaU9H7G08B+rZKTNX3bVQO4wlU=
 github.com/cccteam/ccc/cache v0.1.6 h1:lXje8ZfQaclxbMoAAyZE0jk3xKvBd9Z9v7PAopBdzOs=
 github.com/cccteam/ccc/cache v0.1.6/go.mod h1:fGSMqs+HsMam2mAfmAiKJhyR289yuGu0LdWlbYYpkng=
 github.com/cccteam/ccc/pkg v0.1.4 h1:5KI2fUTSFXyUZsBE0+KUqZ9fFpCaI8oneralVyUPVlI=

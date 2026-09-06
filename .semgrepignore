@@ -7,3 +7,8 @@
 # inline. Everything else in the module stays scanned.
 impulse/internal/check/check.go
 impulse/internal/handoff/agent.go
+
+# Property-based tests draw their cases from a seeded math/rand, which is what a
+# reproducible property test needs; the crypto-randomness audit does not apply to them.
+accesstypes/condition/property_test.go
+resource/lowering_property_test.go
