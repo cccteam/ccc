@@ -154,23 +154,34 @@ func (au Auth) Validate(a *app.App) error {
 	if !authNameRE.MatchString(au.Name) {
 		return errors.Newf("auth name %q: name the population in lowercase letters and digits, such as partners", au.Name)
 	}
-	switch au.Flavor {
-	case FlavorPassword, FlavorPreauth:
-		if au.Authority == AuthorityDirectory {
-			return errors.Newf("flavor %q: only an auth that signs in through a directory can hand it role membership; a %s auth's roles are the application's", au.Flavor, au.Flavor)
-		}
-	case FlavorOIDCAzure, FlavorOIDCGoogle:
-		if au.Authority != AuthorityDirectory && au.Authority != AuthorityApplication {
-			return errors.Newf("an OIDC auth needs --authority: directory (the directory's role claims are the authority: every login reconciles the person's roles to them and removes what they do not name) or application (roles are assigned in the application: the bootstrap now, an administration surface later). It is asked because the wrong answer deletes hand-assigned roles at the next login")
-		}
-		if au.Flavor == FlavorOIDCGoogle && au.Authority == AuthorityDirectory {
-			return errors.Newf("flavor %q: the directory authority is not laid in for the Google flavor. Google role membership comes from a Groups lookup (session.GoogleRoleSync over googlegroups.NewDirectory, with Admin SDK credentials), which the session library's simulated directory (the skipAuth tag) does not simulate, so a directory-run Google auth could not be signed in to in development. Hand membership to the application (--authority application), or wire session.GoogleRoleSync by hand", au.Flavor)
-		}
-	default:
-		return errors.Newf("flavor %q: add auth lays in password, preauth, oidc-azure, or oidc-google", au.Flavor)
+	if err := validateFlavor(au.Flavor, au.Authority); err != nil {
+		return err
 	}
 	if _, err := au.source(a); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// validateFlavor checks a flavor and the authority asked for it: an OIDC flavor needs one,
+// the others have none to choose, and the Google flavor's directory authority is not laid
+// in.
+func validateFlavor(flavor, authority string) error {
+	switch flavor {
+	case FlavorPassword, FlavorPreauth:
+		if authority == AuthorityDirectory {
+			return errors.Newf("flavor %q: only an auth that signs in through a directory can hand it role membership; a %s auth's roles are the application's", flavor, flavor)
+		}
+	case FlavorOIDCAzure, FlavorOIDCGoogle:
+		if authority != AuthorityDirectory && authority != AuthorityApplication {
+			return errors.New("an OIDC auth needs --authority: directory (the directory's role claims are the authority: every login reconciles the person's roles to them and removes what they do not name) or application (roles are assigned in the application: the bootstrap now, an administration surface later). It is asked because the wrong answer deletes hand-assigned roles at the next login")
+		}
+		if flavor == FlavorOIDCGoogle && authority == AuthorityDirectory {
+			return errors.Newf("flavor %q: the directory authority is not laid in for the Google flavor. Google role membership comes from a Groups lookup (session.GoogleRoleSync over googlegroups.NewDirectory, with Admin SDK credentials), which the session library's simulated directory (the skipAuth tag) does not simulate, so a directory-run Google auth could not be signed in to in development. Hand membership to the application (--authority application), or wire session.GoogleRoleSync by hand", flavor)
+		}
+	default:
+		return errors.Newf("flavor %q: add auth lays in password, preauth, oidc-azure, or oidc-google", flavor)
 	}
 
 	return nil
@@ -328,7 +339,7 @@ func (au Auth) copyPackage(a *app.App, src *authSource, ch *Change) error {
 		if err != nil {
 			return err
 		}
-		text := au.rename(string(data), src)
+		text := dropReferenceContext(au.rename(string(data), src))
 		if src.Flavor != au.Flavor {
 			text = swapFlavor(text, src.Flavor, au.Flavor)
 		}

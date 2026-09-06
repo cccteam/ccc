@@ -217,6 +217,31 @@ impulse add auth staff2 --oidc-azure            # asks: directory or application
 impulse add auth alumni --oidc-google --authority application
 ```
 
+### swap auth
+
+`swap auth <name>` moves an existing auth to a directory: `--oidc-azure` or `--oidc-google`,
+with `--authority` asked as for `add auth`. The auth keeps its name, its permission store,
+its roles file, and the surfaces bound to it. Its package file is rewritten from the
+reference OIDC auth under its own name (what the file carried beyond the base's shape is in
+git to re-apply); one migration drops its session tables and creates them in the new shape,
+with a down that recreates the old tables from their own migrations; the data level's
+construction gains the login page and the directory registration; the Procfile builds with
+`skipAuth`; and where the App and the router stand in the base's shape, the handler types
+(`session.PasswordAuthHandlers`, the embedded `*session.PasswordAuth`) and the password
+login route are swapped for the directory's. Everyone in the auth signs in again. Its role
+assignments are dropped by recreating the assignment table, since they were keyed by
+password usernames the directory need not present; `--carry-roles` keeps them when the
+usernames were already the directory's. The bootstrap (identities without passwords, no
+account creation), the login page (a button to the login route), the harness login helper
+(the `skipAuth` twin), and the removal of password user management are the agent's, so the
+tree does not build until the bootstrap follows; the brief says so and names the model for
+each.
+
+```sh
+impulse swap auth staff --oidc-azure --authority application --agent
+impulse swap auth staff --oidc-google --authority application --carry-roles
+```
+
 ## Templates
 
 The application skeletons `new` and `add` will render live under
