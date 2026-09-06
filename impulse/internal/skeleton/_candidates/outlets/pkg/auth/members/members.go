@@ -1,10 +1,10 @@
-// Package members is the members auth: the portal's people, who sign in through the
-// organization's directory (OpenID Connect against Azure) and hold their roles in the
-// members permission store.
+// Package members is the members auth: the people who sign in through the organization's
+// directory (OpenID Connect against Azure) and hold their roles in the members permission
+// store. In this application they are the portal's people.
 //
 // The directory proves who someone is; the application decides what they may do. Role
 // membership is the application's (session.DisableRoleSync): the bootstrap assigns the
-// development members their roles, and a deployed application assigns them through its
+// development identities their roles, and a deployed application assigns them through its
 // administration surface. The directory-run alternative, session.RoleSync, makes the
 // directory's role claims the authority and removes every hand-assigned role at the next
 // login, so one auth is never both.
@@ -13,7 +13,7 @@
 // session and user tables and cookie; its permission store, with its own table prefix; and
 // its role configuration. A site or an outlet binds to an auth by composing its handlers,
 // and two auths on one database and one host never collide, because everything an auth
-// names carries its name. A member and a staff login with the same name are two unrelated
+// names carries its name. The same name in this auth and in another is two unrelated
 // principals.
 package members
 
@@ -43,7 +43,7 @@ const (
 
 	// The auth's tables, which schema/migrations creates: the sessions, and the user
 	// anchor keyed by the directory's immutable (tenant, object) identifier pair, so a
-	// renamed account stays the same member.
+	// renamed account stays the same person.
 	sessionsTable = TablePrefix + "Sessions"
 	usersTable    = TablePrefix + "OIDCUsers"
 )
@@ -56,7 +56,7 @@ type Settings struct {
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration
 	// LoginURL is the browser page a refused login returns to, with the reason in the
-	// query (?message=): the portal's login page.
+	// query (?message=): the login page of the surface that binds to this auth.
 	LoginURL string
 	// Directory identifies the application to the directory that verifies its logins.
 	Directory Directory
@@ -97,7 +97,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	oidcAuth, err := session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](
 		sessionstorage.NewSpannerOIDC(db, sessionstorage.WithOIDCUsers()),
 		// The application is the authority for role membership: a login neither reads
-		// nor changes the member's roles.
+		// nor changes the person's roles.
 		session.DisableRoleSync(),
 		settings.CookieKey,
 		settings.Directory.IssuerURL,

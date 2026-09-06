@@ -62,6 +62,11 @@ type App struct {
 	roleWrappers []roleWrapper
 }
 
+// GoFiles lists the non-test Go files of the application, root-relative.
+func (a *App) GoFiles() []string {
+	return a.goFiles
+}
+
 // roleWrapper is an application function wrapping access.MigrateRoles.
 type roleWrapper struct {
 	// Pkg is the wrapper's package import path.
@@ -77,6 +82,10 @@ type roleWrapper struct {
 type Auth struct {
 	File string
 	Line int
+	// Authority is who owns role membership for an OIDC flavor: AuthorityDirectory when
+	// the constructor's slot is RoleSync, AuthorityApplication for DisableRoleSync, and
+	// empty for the other flavors (the application's by nature) or a slot not read.
+	Authority string
 	// Flavor is the login flavor: password, oidc-azure, oidc-google, or preauth.
 	Flavor string
 	// SessionTable is the sessions table the authenticator reads: WithSessionTableName or

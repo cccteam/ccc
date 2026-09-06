@@ -50,6 +50,7 @@ const (
 		session.WithSessionTableName("StaffSessions"),
 	)`
 	azureAnchorless = `session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerOIDC(client), nil, key, "issuer", "id", "secret", "http://localhost/callback", session.WithOIDCUserTableName("Ignored"))`
+	azureDirectory  = `session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerOIDC(client, sessionstorage.WithOIDCUsers()), session.RoleSync(nil, nil), key, "issuer", "id", "secret", "http://localhost/callback", session.WithSessionTableName("MembersSessions"), session.WithOIDCUserTableName("MembersOIDCUsers"), session.WithCookieName("members"))`
 	forwarded       = `session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerPasswordAuth(client), key, opts...)`
 )
 
@@ -149,6 +150,16 @@ func TestAuthWired(t *testing.T) {
 			},
 			wantStatus:  Pass,
 			wantSummary: "1 auth(s): oidc-azure (Sessions)",
+		},
+		{
+			name: "a directory-run azure auth names its authority",
+			files: map[string]string{
+				"cmd/generate/main.go":                     site,
+				"pkg/config/session.go":                    authFile(azureDirectory),
+				"schema/migrations/000003_Sessions.up.sql": tables("MembersSessions", "MembersOIDCUsers"),
+			},
+			wantStatus:  Pass,
+			wantSummary: "1 auth(s): oidc-azure (MembersSessions, MembersOIDCUsers, cookie members, directory authority)",
 		},
 		{
 			name: "missing tables and a shared sessions table",

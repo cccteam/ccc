@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -118,6 +119,95 @@ func MigrateRoles(ctx context.Context, manager access.UserManager, roles *access
 	rolesJSON = "{\"roles\": {\"global\": [], \"domain\": []}}\n"
 )
 
+// membersAuth is an OIDC auth package with the role-synchronization slot left to fill in.
+const membersAuth = `package members
+
+import (
+	"context"
+
+	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/session"
+	"github.com/cccteam/session/sessionstorage"
+)
+
+const (
+	Name        = "members"
+	TablePrefix = "Members"
+	RolesPath   = "schema/roles/" + Name + ".json"
+)
+
+type Auth struct {
+	session *session.OIDCAzure[session.NoCustomData, session.NoCustomData]
+}
+
+func New(ctx context.Context, db *cloudspanner.Client, key string) (*Auth, error) {
+	s, err := session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerOIDC(db, sessionstorage.WithOIDCUsers()), %s, key, "", "", "", "",
+		session.WithSessionTableName(TablePrefix+"Sessions"), session.WithOIDCUserTableName(TablePrefix+"OIDCUsers"))
+	if err != nil {
+		return nil, err
+	}
+
+	return &Auth{session: s}, nil
+}
+
+func (a *Auth) Session() *session.OIDCAzure[session.NoCustomData, session.NoCustomData] { return a.session }
+`
+
+const (
+	membersConfig = `package config
+
+import (
+	"context"
+
+	"example.com/harbor/pkg/auth/members"
+)
+
+type DataConfiguration struct {
+	members *members.Auth
+}
+
+func New(ctx context.Context) (*DataConfiguration, error) {
+	m, err := members.New(ctx, nil, "")
+	if err != nil {
+		return nil, err
+	}
+
+	return &DataConfiguration{members: m}, nil
+}
+
+func (c *DataConfiguration) Members() *members.Auth { return c.members }
+`
+	// membersBootstrap provisions the members roles and assigns a development member.
+	membersBootstrap = `package main
+
+import (
+	"context"
+
+	"github.com/cccteam/access"
+
+	"example.com/harbor/pkg/auth/members"
+	"example.com/harbor/pkg/config"
+	"example.com/harbor/pkg/deploy"
+)
+
+func run(ctx context.Context, data *config.DataConfiguration, roles *access.RoleConfig) error {
+	if err := deploy.MigrateRoles(ctx, data.Members().Access().UserManager(), roles, members.RolesPath); err != nil {
+		return err
+	}
+
+	return data.Members().Access().UserManager().AddUserRoles(ctx, nil, "client", "Administrator")
+}
+`
+	membersApp = `package app
+
+import "example.com/harbor/pkg/auth/members"
+
+type Configurer interface {
+	Members() *members.Auth
+}
+`
+)
+
 func TestAuthsWired(t *testing.T) {
 	t.Parallel()
 
@@ -179,6 +269,31 @@ func TestAuthsWired(t *testing.T) {
 			name: "the roles file is missing", files: without("schema/roles/staff.json"),
 			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
 			wantDetails: []string{"pkg/auth/staff: staff.RolesPath names schema/roles/staff.json, which does not exist"},
+		},
+		{
+			name: "an application-run directory auth assigns roles in the bootstrap",
+			files: map[string]string{
+				"pkg/auth/members/members.go": fmt.Sprintf(membersAuth, "session.DisableRoleSync()"),
+				"pkg/config/data.go":          membersConfig,
+				"pkg/deploy/deploy.go":        rolesWrapper,
+				"cmd/bootstrap/main.go":       membersBootstrap,
+				"app/app.go":                  membersApp,
+				"schema/roles/members.json":   rolesJSON,
+			},
+			wantStatus: Pass, wantSummary: "1 auth(s) constructed, provisioned, and bound: members",
+		},
+		{
+			name: "a directory-run auth with a role writer in the bootstrap",
+			files: map[string]string{
+				"pkg/auth/members/members.go": fmt.Sprintf(membersAuth, "session.RoleSync(nil, nil)"),
+				"pkg/config/data.go":          membersConfig,
+				"pkg/deploy/deploy.go":        rolesWrapper,
+				"cmd/bootstrap/main.go":       membersBootstrap,
+				"app/app.go":                  membersApp,
+				"schema/roles/members.json":   rolesJSON,
+			},
+			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{"cmd/bootstrap/main.go:18: the members auth hands role membership to the directory (session.RoleSync), but this assigns roles in its store; the directory removes them at the next login. Assign the roles in the directory, or hand membership to the application (session.DisableRoleSync)"},
 		},
 		{
 			name: "an authenticator outside an auth package", files: map[string]string{"pkg/config/session.go": authFile(passwordDefault)},

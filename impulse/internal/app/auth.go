@@ -27,6 +27,15 @@ const (
 	FlavorPreauth    = "preauth"
 )
 
+// The authorities for an OIDC auth's role membership, read from the constructor's
+// role-synchronization slot: RoleSync (or GoogleRoleSync) makes the directory's role
+// claims the authority, DisableRoleSync leaves membership to the application. A password
+// or preauth auth has no slot and is the application's by nature.
+const (
+	AuthorityDirectory   = "directory"
+	AuthorityApplication = "application"
+)
+
 // defaultSessionTable is the session library's sessions table name for every flavor.
 const defaultSessionTable = "Sessions"
 
@@ -102,6 +111,16 @@ func parseAuths(rel string, src []byte) ([]Auth, error) {
 func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string, consts map[string]string) {
 	call, ok := arg.(*ast.CallExpr)
 	if !ok {
+		return
+	}
+	switch name, _ := qualifiedName(call.Fun, pkg); name {
+	case "RoleSync", "GoogleRoleSync":
+		auth.Authority = AuthorityDirectory
+
+		return
+	case "DisableRoleSync":
+		auth.Authority = AuthorityApplication
+
 		return
 	}
 	if name, ok := qualifiedName(call.Fun, pkg); ok && len(call.Args) == 1 {

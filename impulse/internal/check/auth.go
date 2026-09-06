@@ -111,6 +111,9 @@ func authSummary(auths []app.Auth) (summaries, notes []string) {
 		if auth.CookieName != "" {
 			desc += ", cookie " + auth.CookieName
 		}
+		if auth.Authority != "" {
+			desc += ", " + auth.Authority + " authority"
+		}
 		desc += ")"
 		if name := app.AuthPackageName(auth.File); name != "" {
 			desc = name + ": " + desc

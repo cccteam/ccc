@@ -124,6 +124,7 @@ func All() []Check {
 		sitesWired{},
 		authWired{},
 		authsWired{},
+		skipAuth{},
 		emulatorVersion{},
 		prettierIgnore{},
 		eslintIgnore{},

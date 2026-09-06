@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
@@ -132,8 +134,10 @@ failing checks as the obligations.`,
 
 func newAddAuth() *cobra.Command {
 	var (
-		f       transitionFlags
-		preauth bool
+		f         transitionFlags
+		preauth   bool
+		oidcAzure bool
+		authority string
 	)
 
 	cmd := &cobra.Command{
@@ -143,9 +147,20 @@ func newAddAuth() *cobra.Command {
 has with every name substituted, so the new population owns its own session and user
 tables, cookie, store prefix, and roles file from the start. Its table migrations are
 copied under the new prefix, an empty roles file is written beside the others, and the
-data level constructs it beside the auth it was copied from. --preauth swaps the
-constructor to the preauth flavor (the application proves who someone is and asks the
-session library for a session); the default is a password auth.
+data level constructs it beside the auth it was copied from. The default is a password
+auth; --preauth swaps the constructor to the preauth flavor (the application proves who
+someone is and asks the session library for a session).
+
+--oidc-azure adds an auth whose people sign in through the organization's directory over
+OpenID Connect. It is copied from an OIDC auth the application has, or from the reference
+skeleton's, with the directory registration read from APP_<NAME>_OIDC_* variables, the
+Procfile built with the session library's skipAuth tag (the directory simulated from
+APP_USERNAME until the application is registered with one), and the role-membership
+authority set by --authority, which is asked when it is not given: "directory" makes the
+directory's role claims the authority (session.RoleSync: every login reconciles the
+person's roles to them and removes what they do not name), "application" keeps role
+assignment in the application (session.DisableRoleSync). There is no default, because the
+wrong answer deletes hand-assigned roles at the next login.
 
 Binding a site or an outlet to the new auth, provisioning its roles, its development
 identities, and the tests that prove its people are strangers to the other auths are
@@ -153,17 +168,60 @@ handed to the agent.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flavor := transition_.FlavorPassword
-			if preauth {
+			switch {
+			case preauth && oidcAzure:
+				return errors.New("--preauth and --oidc-azure are two flavors; pick one")
+			case preauth:
 				flavor = transition_.FlavorPreauth
+			case oidcAzure:
+				flavor = transition_.FlavorOIDCAzure
+				if authority == "" {
+					answer, err := askAuthority(cmd)
+					if err != nil {
+						return err
+					}
+					authority = answer
+				}
 			}
 
-			return runTransition(cmd, &f, transition_.Auth{Name: args[0], Flavor: flavor}, transition_.ReferenceCandidate)
+			return runTransition(cmd, &f, transition_.Auth{Name: args[0], Flavor: flavor, Authority: authority}, transition_.ReferenceCandidate)
 		},
 	}
 	f.bind(cmd)
 	cmd.Flags().BoolVar(&preauth, "preauth", false, "a preauth auth: the application proves the principal and the session library issues the session")
+	cmd.Flags().BoolVar(&oidcAzure, "oidc-azure", false, "an OIDC auth: its people sign in through the organization's Azure directory")
+	cmd.Flags().StringVar(&authority, "authority", "", "who owns role membership for an OIDC auth: directory (role claims synchronized at every login) or application (roles assigned in the application); asked when not given")
 
 	return cmd
+}
+
+// authorityQuestion is what a person at the terminal is asked when --authority is not
+// given for an OIDC auth.
+const authorityQuestion = `Who is the authority for this auth's role membership?
+  directory    the directory's role claims are synchronized at every login; roles it does
+               not name are removed, and a login naming no known role is refused
+  application  roles are assigned in the application: the bootstrap now, an
+               administration surface later
+[directory/application]: `
+
+// askAuthority asks who owns role membership when the flag did not say and a person is at
+// the terminal. Without a terminal the flag is required: there is no default, because the
+// wrong answer deletes hand-assigned roles at the next login.
+func askAuthority(cmd *cobra.Command) (string, error) {
+	if info, err := os.Stdin.Stat(); err != nil || info.Mode()&os.ModeCharDevice == 0 {
+		return "", errors.New("--authority is required for an OIDC auth: directory (the directory's role claims are synchronized at every login and roles it does not name are removed) or application (roles are assigned in the application). It is asked because the wrong answer deletes hand-assigned roles at the next login")
+	}
+	fmt.Fprint(cmd.ErrOrStderr(), authorityQuestion)
+	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil && line == "" {
+		return "", errors.Wrap(err, "reading the answer")
+	}
+	answer := strings.ToLower(strings.TrimSpace(line))
+	if answer != transition_.AuthorityDirectory && answer != transition_.AuthorityApplication {
+		return "", errors.Newf("%q is not an answer: directory or application", strings.TrimSpace(line))
+	}
+
+	return answer, nil
 }
 
 // runTransition is the flow every add subcommand shares: a clean tree, the

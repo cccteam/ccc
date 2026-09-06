@@ -32,8 +32,9 @@ impulse check --list
 | `tenancy-wired` | A program with `WithDomainRoute` has a migration creating the tenant-record table the segment names, at least one struct annotated `@permissionScope(domain)`, and every `access.MigrateRoles` call outside tests passing domains. A program without it has no tenant-scoped structs and passes no domains. The compiler and the generator hold the rest of the seam. |
 | `outlet-wired` | Every outlet a program declares (the default from `GenerateRoutes` and each `WithRouterOutlet`) has its generated routes mounted by a hand-written file in the router package, a session-serving outlet has a `GenerateTypescript` target naming it, and that browser project's development proxy forwards the outlet's prefix. An outlet with no `@outlet` members yet is noted, not failed. |
 | `sites-wired` | In the multi-site layout, every site has a main package under `apps/<site>/`, a process in the Procfile or process-compose file running it on its own `PORT`, and every site's router is imported by some package calling `access.MigrateRoles`, so a role migration (the union collection, or one per auth) reconciles against the site's resources. |
-| `auth-wired` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the auths, one per distinct flavor and table set, each named by its package when it lives in one (`pkg/auth/<name>`). |
-| `auths-wired` | Every auth package (`pkg/auth/<name>`, constructing a session authenticator) is constructed by the data level (`<name>.New` called outside tests), provisioned from its roles file (`<name>.RolesPath` read by a file that migrates roles, and the file exists), and bound by a surface (a package outside `config` and `cmd/` takes `*<name>.Auth`). Authenticators outside auth packages warn. |
+| `auth-wired` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the auths, one per distinct flavor and table set, each named by its package when it lives in one (`pkg/auth/<name>`), with an OIDC auth's role-membership authority (directory for `RoleSync`, application for `DisableRoleSync`). |
+| `auths-wired` | Every auth package (`pkg/auth/<name>`, constructing a session authenticator) is constructed by the data level (`<name>.New` called outside tests), provisioned from its roles file (`<name>.RolesPath` read by a file that migrates roles, and the file exists), and bound by a surface (a package outside `config` and `cmd/` takes `*<name>.Auth`). An auth that hands role membership to its directory (`session.RoleSync`) has no role writer in the application reaching its store, since the directory removes those roles at the next login. Authenticators outside auth packages warn. |
+| `skipauth` | When an auth signs in through a directory (the OIDC flavors), the simulated directory stays in development and tests: no application code reads `APP_USERNAME` or `APP_ROLES` (only the session library's `skipAuth` build does), and no build description (Dockerfile, cloudbuild, Makefile) carries the tag, which would let a deployed build accept any name as a login. |
 | `emulator-version` | The generator option, the process files' image tags, and the test harnesses name one Spanner emulator version. |
 | `prettier-ignore` | Each browser app's `.prettierignore` excludes the generated TypeScript. Prettier reflowing generated files breaks generate idempotence. `--fix` adds the entry. |
 | `eslint-ignore` | Each browser app receiving generated TypeScript ignores it in its eslint flat config (`ignores: ['**/zz_gen_*.ts']`) or `.eslintignore`. Generated shapes trip stylistic rules, and the output is not the developer's to change. |
@@ -147,17 +148,31 @@ The new package is a copy of an existing auth's with every name substituted, so 
 copied under the new prefix; and the data level constructs it beside the auth it came
 from, with an accessor in a new file. `--preauth` swaps the constructor to the preauth
 flavor. Binding a surface to it, provisioning its roles and development identities, and
-the stranger tests are the agent's. The `outlets` skeleton carries the reference for an
-auth whose people sign in through a directory: `members`, an Azure OpenID Connect auth
-bound to its portal outlet, with role membership left to the application
-(`session.DisableRoleSync`), its login simulated in development and in the tests by the
-session library's `skipAuth` build tag, and every request in a session group bound to its
-auth so permission checks and tenant visibility answer from that auth's store. The OIDC
-flavors of `add auth` follow from it.
+the stranger tests are the agent's.
+
+`--oidc-azure` adds an auth whose people sign in through the organization's directory over
+OpenID Connect. It is copied from an OIDC auth the application already has, or else from
+the reference: the `outlets` skeleton's `members` auth, bound to its portal outlet, with
+every request in a session group bound to its auth (`pkg/auth.Bind`) so permission checks
+and tenant visibility answer from that auth's store. The copy owns `<Name>Sessions` and
+`<Name>OIDCUsers` (the user anchor keyed by the directory's immutable identifiers), the
+data level reads its directory registration from `APP_<NAME>_OIDC_ISSUER_URL`,
+`_CLIENT_ID`, `_CLIENT_SECRET`, and `_REDIRECT_URL`, and the Procfile builds with the
+session library's `skipAuth` tag, which simulates the directory from `APP_USERNAME` until
+the application is registered with one; the tests run under the same tag. `--authority`
+says who owns role membership and is asked when not given, never defaulted, because the
+wrong answer deletes hand-assigned roles at the next login: `directory` writes
+`session.RoleSync` (the directory's role claims are reconciled at every login and roles
+they do not name are removed; the bootstrap seeds no roles), `application` writes
+`session.DisableRoleSync` (roles are assigned in the application). The OIDC session group
+(login redirect, callback, front-channel logout), the login button, the harness login
+helper, and the stranger tests are the agent's, with the reference showing each.
 
 ```sh
 impulse add auth partners --agent
 impulse add auth devices --preauth
+impulse add auth members --oidc-azure --authority application --agent
+impulse add auth staff2 --oidc-azure            # asks: directory or application?
 ```
 
 ## Templates

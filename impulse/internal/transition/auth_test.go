@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -67,6 +68,122 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 }
 `
 
+// authConfigEnv is a data level reading its settings from an environment struct, as the
+// base does.
+const authConfigEnv = `package config
+
+import (
+	"context"
+	"time"
+
+	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/go-playground/errors/v5"
+
+	"example.com/acme/beacon/pkg/auth/staff"
+)
+
+// DataConfiguration is the second level.
+type DataConfiguration struct {
+	spannerClient *cloudspanner.Client
+	staff         *staff.Auth
+}
+
+// NewDataConfiguration opens the clients.
+func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
+	env := &dataConfig{}
+	spannerClient, cookieKey, err := open(ctx, env)
+	if err != nil {
+		return nil, errors.Wrap(err, "open()")
+	}
+
+	staffAuth, err := staff.New(ctx, spannerClient, staff.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	if err != nil {
+		return nil, errors.Wrap(err, "staff.New()")
+	}
+
+	return &DataConfiguration{
+		spannerClient: spannerClient,
+		staff:         staffAuth,
+	}, nil
+}
+
+// dataConfig holds the environment every database-opening process reads.
+type dataConfig struct {
+	// SessionTimeout is the idle timeout of a browser session.
+	SessionTimeout time.Duration ` + "`" + `env:"APP_DEFAULT_SESSION_TIMEOUT,default=10m"` + "`" + `
+}
+`
+
+// wantConfigEnv is authConfigEnv with the partners OIDC auth constructed beside staff.
+const wantConfigEnv = `package config
+
+import (
+	"context"
+	"time"
+
+	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/go-playground/errors/v5"
+
+	"example.com/acme/beacon/pkg/auth/partners"
+	"example.com/acme/beacon/pkg/auth/staff"
+)
+
+// DataConfiguration is the second level.
+type DataConfiguration struct {
+	spannerClient *cloudspanner.Client
+	staff         *staff.Auth
+	partners      *partners.Auth
+}
+
+// NewDataConfiguration opens the clients.
+func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
+	env := &dataConfig{}
+	spannerClient, cookieKey, err := open(ctx, env)
+	if err != nil {
+		return nil, errors.Wrap(err, "open()")
+	}
+
+	staffAuth, err := staff.New(ctx, spannerClient, staff.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	if err != nil {
+		return nil, errors.Wrap(err, "staff.New()")
+	}
+
+	partnersAuth, err := partners.New(ctx, spannerClient, &partners.Settings{
+		CookieKey:      cookieKey,
+		SessionTimeout: env.SessionTimeout,
+		LoginURL:       "/login",
+		Directory: partners.Directory{
+			IssuerURL:    env.PartnersIssuerURL,
+			ClientID:     env.PartnersClientID,
+			ClientSecret: env.PartnersClientSecret,
+			RedirectURL:  env.PartnersRedirectURL,
+		},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "partners.New()")
+	}
+
+	return &DataConfiguration{
+		spannerClient: spannerClient,
+		staff:         staffAuth,
+		partners:      partnersAuth,
+	}, nil
+}
+
+// dataConfig holds the environment every database-opening process reads.
+type dataConfig struct {
+	// SessionTimeout is the idle timeout of a browser session.
+	SessionTimeout time.Duration ` + "`" + `env:"APP_DEFAULT_SESSION_TIMEOUT,default=10m"` + "`" + `
+	// The partners auth's directory registration (pkg/auth/partners): the OpenID Connect issuer, the
+	// application's client credentials, and the callback the directory returns the browser to.
+	// Under the session library's skipAuth build tag only the redirect URL is read.
+	PartnersIssuerURL    string ` + "`" + `env:"APP_PARTNERS_OIDC_ISSUER_URL"` + "`" + `
+	PartnersClientID     string ` + "`" + `env:"APP_PARTNERS_OIDC_CLIENT_ID"` + "`" + `
+	PartnersClientSecret string ` + "`" + `env:"APP_PARTNERS_OIDC_CLIENT_SECRET"` + "`" + `
+	PartnersRedirectURL  string ` + "`" + `env:"APP_PARTNERS_OIDC_REDIRECT_URL"` + "`" + `
+}
+`
+
 func authFiles(t *testing.T) map[string]string {
 	t.Helper()
 
@@ -96,7 +213,13 @@ func TestAuthValidate(t *testing.T) {
 		{name: "a password auth", auth: Auth{Name: "partners", Flavor: FlavorPassword}},
 		{name: "a preauth auth", auth: Auth{Name: "devices", Flavor: FlavorPreauth}},
 		{name: "a bad name", auth: Auth{Name: "Partners", Flavor: FlavorPassword}, wantErr: `auth name "Partners"`},
-		{name: "an OIDC flavor", auth: Auth{Name: "partners", Flavor: app.FlavorOIDCAzure}, wantErr: `flavor "oidc-azure"`},
+		{name: "an OIDC auth with the directory as authority", auth: Auth{Name: "partners", Flavor: FlavorOIDCAzure, Authority: AuthorityDirectory}},
+		{name: "an OIDC auth with the application as authority", auth: Auth{Name: "partners", Flavor: FlavorOIDCAzure, Authority: AuthorityApplication}},
+		{name: "an OIDC auth without an authority", auth: Auth{Name: "partners", Flavor: FlavorOIDCAzure}, wantErr: "an OIDC auth needs --authority"},
+		{name: "an OIDC auth with a made-up authority", auth: Auth{Name: "partners", Flavor: FlavorOIDCAzure, Authority: "nobody"}, wantErr: "an OIDC auth needs --authority"},
+		{name: "a password auth cannot hand membership to a directory", auth: Auth{Name: "partners", Flavor: FlavorPassword, Authority: AuthorityDirectory}, wantErr: "only an auth that signs in through a directory"},
+		{name: "the Google flavor follows", auth: Auth{Name: "partners", Flavor: app.FlavorOIDCGoogle, Authority: AuthorityDirectory}, wantErr: "the Google flavor follows"},
+		{name: "an unknown flavor", auth: Auth{Name: "partners", Flavor: "ldap"}, wantErr: `flavor "ldap"`},
 		{name: "the auth exists", auth: Auth{Name: "staff", Flavor: FlavorPassword}, wantErr: "the staff auth already exists"},
 		{name: "no auth package to copy", auth: Auth{Name: "partners", Flavor: FlavorPassword}, bare: true, wantErr: "no auth package to copy"},
 	}
@@ -135,10 +258,102 @@ func TestAuthApply(t *testing.T) {
 	tests := []struct {
 		name        string
 		auth        Auth
+		extra       map[string]string
 		wantDid     []string
 		wantSkipped []string
 		check       func(t *testing.T, a *app.App)
 	}{
+		{
+			name: "an OIDC auth copied from the reference, the application its authority",
+			auth: Auth{Name: "partners", Flavor: FlavorOIDCAzure, Authority: AuthorityApplication},
+			extra: map[string]string{
+				"pkg/config/data.go": authConfigEnv,
+				".envrc.template":    "export PORT=8090\n",
+			},
+			wantDid: []string{
+				"pkg/auth/partners: the partners auth package, a copy of the reference skeleton's members auth (Azure OpenID Connect) with its names substituted, role membership the application's (session.DisableRoleSync) (tables PartnersSessions and PartnersOIDCUsers, cookie partners, store prefix Partners)",
+				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersOIDCUsers, the partners auth's tables copied from the members auth's under the Partners prefix",
+				"schema/roles/partners.json: the partners auth's role configuration, empty (the Administrator role at each scope is implicit)",
+				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_OIDC_ISSUER_URL, _CLIENT_ID, _CLIENT_SECRET, and _REDIRECT_URL",
+				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
+				"Procfile: 2 go run command(s) build with -tags skipAuth, so the partners auth's directory is simulated in development and every partners login is APP_USERNAME",
+				".envrc.template: APP_USERNAME and APP_ROLES for the simulated directory, and the partners auth's APP_PARTNERS_OIDC_* registration, to fill in",
+				"ran go generate ./...",
+			},
+			wantSkipped: []string{"pkg/config/data.go: Close releases the staff auth only; release the partners auth too"},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				pkg := read(t, a, "pkg/auth/partners/partners.go")
+				for _, want := range []string{"package partners", `Name = "partners"`, `TablePrefix = "Partners"`, "session.NewOIDCAzure[", "session.DisableRoleSync(),", `usersTable    = TablePrefix + "OIDCUsers"`, "Role\n// membership is the application's"} {
+					if !strings.Contains(pkg, want) {
+						t.Errorf("partners.go lacks %q", want)
+					}
+				}
+				for _, absent := range []string{"RoleSync(accessClient", "Domains session.DomainsProvider"} {
+					if strings.Contains(pkg, absent) {
+						t.Errorf("partners.go still has %q", absent)
+					}
+				}
+				// The reference's name is gone as a name ("members", "membersAuth", "MembersSessions"),
+				// while the English word "membership" stays.
+				if leftover := regexp.MustCompile(`(^|[^A-Za-z])members([^a-z]|$)|Members([^a-z]|$)`).FindString(pkg); leftover != "" {
+					t.Errorf("partners.go still names the reference auth: %q", leftover)
+				}
+				if !strings.Contains(pkg, "membership") {
+					t.Error("partners.go lost the word membership to the rename")
+				}
+				if diff := cmp.Diff(wantConfigEnv, read(t, a, "pkg/config/data.go")); diff != "" {
+					t.Errorf("data.go mismatch (-want +got):\n%s", diff)
+				}
+				if got := read(t, a, "schema/migrations/000006_PartnersSessions.up.sql"); !strings.Contains(got, "CREATE TABLE PartnersSessions") || !strings.Contains(got, "OidcSid") || !strings.Contains(got, "PartnersSessionsByOidcSid") {
+					t.Errorf("sessions migration = %q", got)
+				}
+				if got := read(t, a, "schema/migrations/000007_PartnersOIDCUsers.down.sql"); !strings.Contains(got, "DROP TABLE PartnersOIDCUsers;") {
+					t.Errorf("users down migration = %q", got)
+				}
+				if got := read(t, a, "Procfile"); !strings.Contains(got, "go run -tags skipAuth ./cmd/bootstrap && go run -tags skipAuth .") {
+					t.Errorf("Procfile = %q", got)
+				}
+				env := read(t, a, ".envrc.template")
+				for _, want := range []string{"export PORT=8090\n\n# --- partners auth", "export APP_USERNAME=partners-dev\n", "export APP_ROLES=\n", "# export APP_PARTNERS_OIDC_ISSUER_URL=\n", "export APP_PARTNERS_OIDC_REDIRECT_URL=\n"} {
+					if !strings.Contains(env, want) {
+						t.Errorf(".envrc.template lacks %q", want)
+					}
+				}
+			},
+		},
+		{
+			name: "an OIDC auth with the directory as authority",
+			auth: Auth{Name: "partners", Flavor: FlavorOIDCAzure, Authority: AuthorityDirectory},
+			wantDid: []string{
+				"pkg/auth/partners: the partners auth package, a copy of the reference skeleton's members auth (Azure OpenID Connect) with its names substituted, role membership the directory's (session.RoleSync) (tables PartnersSessions and PartnersOIDCUsers, cookie partners, store prefix Partners)",
+				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersOIDCUsers, the partners auth's tables copied from the members auth's under the Partners prefix",
+				"schema/roles/partners.json: the partners auth's role configuration, empty (the Administrator role at each scope is implicit)",
+				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
+				"Procfile: 2 go run command(s) build with -tags skipAuth, so the partners auth's directory is simulated in development and every partners login is APP_USERNAME",
+				"ran go generate ./...",
+			},
+			wantSkipped: []string{
+				"pkg/config/data.go: no environment struct (env := &T{}) to add the partners auth's directory registration to; read APP_PARTNERS_OIDC_ISSUER_URL, _CLIENT_ID, _CLIENT_SECRET, and _REDIRECT_URL and pass them in partners.Settings.Directory",
+				"pkg/config/data.go: Close releases the staff auth only; release the partners auth too",
+				"no environment template (.envrc.template, .env.template, .env.example) to add APP_USERNAME and the partners auth's APP_PARTNERS_OIDC_* variables to",
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				pkg := read(t, a, "pkg/auth/partners/partners.go")
+				for _, want := range []string{"session.RoleSync(accessClient.UserManager(), settings.Domains),", "Domains session.DomainsProvider", "Role membership is the\n// directory's (session.RoleSync)"} {
+					if !strings.Contains(pkg, want) {
+						t.Errorf("partners.go lacks %q", want)
+					}
+				}
+				if strings.Contains(pkg, "session.DisableRoleSync(),") {
+					t.Error("partners.go still disables role sync")
+				}
+				if got := read(t, a, "pkg/config/data.go"); !strings.Contains(got, "partnersAuth, err := partners.New(ctx, spannerClient, &partners.Settings{\n\t\tCookieKey: cookieKey,\n\t\tLoginURL:  \"/login\",\n\t})") {
+					t.Errorf("data.go construction = %q", got)
+				}
+			},
+		},
 		{
 			name: "a password auth copied from staff",
 			auth: Auth{Name: "partners", Flavor: FlavorPassword},
@@ -209,7 +424,11 @@ func TestAuthApply(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			a := beacon(t, authFiles(t))
+			files := authFiles(t)
+			for rel, content := range tt.extra {
+				files[rel] = content
+			}
+			a := beacon(t, files)
 			exec := &fakeExec{}
 			ch, err := tt.auth.Apply(t.Context(), a, exec)
 			if err != nil {

@@ -23,7 +23,7 @@ const authsWiredName = "auths-wired"
 func (authsWired) Name() string { return authsWiredName }
 
 func (authsWired) Describe() string {
-	return "every auth package is constructed by the data level, provisioned from its roles file, and bound by a surface"
+	return "every auth package is constructed by the data level, provisioned from its roles file, and bound by a surface, and a directory-run auth has no role writers in the application"
 }
 
 // The identifiers an auth package exports that the wiring is read from.
@@ -89,6 +89,43 @@ func (authsWired) packageFindings(a *app.App, p *app.AuthPackage) []string {
 	})
 	if len(bound) == 0 {
 		details = append(details, fmt.Sprintf("%s: no surface takes *%s.Auth; nothing binds to the %s auth, so its people can sign in nowhere", p.Dir, p.Name, p.Name))
+	}
+
+	if authorityOf(a, p) == app.AuthorityDirectory {
+		details = append(details, directoryWriters(a, p)...)
+	}
+
+	return details
+}
+
+// authorityOf returns the role-membership authority of the auth package's constructor.
+func authorityOf(a *app.App, p *app.AuthPackage) string {
+	for i := range a.Auths {
+		if path.Dir(a.Auths[i].File) == p.Dir {
+			return a.Auths[i].Authority
+		}
+	}
+
+	return ""
+}
+
+// directoryWriters finds role assignments in the store of an auth whose membership is the
+// directory's: a role assigned in the application is removed at the person's next login,
+// so the two cannot coexist. It reads every non-test file for a role-writer call
+// (AddUserRoles, AddRoleUsers, DeleteUserRoles, DeleteRoleUsers) whose receiver is the
+// auth's user manager, reached through the auth's accessor (<Name>()) or its variable
+// (<name>Auth), and for the user manager handed to a function of the same file that
+// calls a role writer.
+func directoryWriters(a *app.App, p *app.AuthPackage) []string {
+	var details []string
+	for _, rel := range a.GoFiles() {
+		src, err := os.ReadFile(a.Abs(rel))
+		if err != nil {
+			continue
+		}
+		for _, line := range app.RoleWriters(rel, src, p.Name) {
+			details = append(details, fmt.Sprintf("%s:%d: the %s auth hands role membership to the directory (session.RoleSync), but this assigns roles in its store; the directory removes them at the next login. Assign the roles in the directory, or hand membership to the application (session.DisableRoleSync)", rel, line, p.Name))
+		}
 	}
 
 	return details
