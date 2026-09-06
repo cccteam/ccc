@@ -246,7 +246,7 @@ func (b *browser) xsrfToken() string {
 		b.t.Fatal(err)
 	}
 	for _, cookie := range b.client.Jar.Cookies(req.URL) {
-		if cookie.Name == "XSRF-TOKEN" {
+		if cookie.Name == staff.XSRFCookie {
 			return cookie.Value
 		}
 	}

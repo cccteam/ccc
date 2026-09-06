@@ -79,6 +79,8 @@ const (
 	Name        = "staff"
 	TablePrefix = "Staff"
 
+	XSRFCookie = Name + "-xsrf"
+
 	sessionsTable = TablePrefix + "Sessions"
 	usersTable    = TablePrefix + "SessionUsers"
 )
@@ -89,6 +91,7 @@ func New(ctx context.Context, db *cloudspanner.Client, key string) (*session.Pas
 		session.WithSessionTableName(sessionsTable),
 		session.WithUserTableName(usersTable),
 		session.WithCookieName(Name),
+		session.WithXSRFCookieName(XSRFCookie),
 	)
 }
 `
@@ -126,7 +129,7 @@ func TestAuthWired(t *testing.T) {
 				"schema/migrations/000002_Staff.up.sql": "CREATE TABLE StaffSessions (Id STRING(36) NOT NULL) PRIMARY KEY (Id);\nCREATE TABLE StaffSessionUsers (Id STRING(36) NOT NULL) PRIMARY KEY (Id);\n",
 			},
 			wantStatus:  Pass,
-			wantSummary: "1 auth(s): staff: password (StaffSessions, StaffSessionUsers, cookie staff)",
+			wantSummary: "1 auth(s): staff: password (StaffSessions, StaffSessionUsers, cookie staff, xsrf cookie staff-xsrf)",
 		},
 		{
 			name: "one pool with forwarded options",

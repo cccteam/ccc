@@ -296,6 +296,18 @@ func TestAuthsWired(t *testing.T) {
 			wantDetails: []string{"cmd/bootstrap/main.go:18: the members auth hands role membership to the directory (session.RoleSync), but this assigns roles in its store; the directory removes them at the next login. Assign the roles in the directory, or hand membership to the application (session.DisableRoleSync)"},
 		},
 		{
+			name:       "two auths leave their cookies at the library defaults",
+			files:      with(without(), "pkg/auth/members/members.go", fmt.Sprintf(membersAuth, "session.DisableRoleSync()")),
+			wantStatus: Fail, wantSummary: "5 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/auth/members: nothing outside tests calls members.New; the members auth is never constructed",
+				"pkg/auth/members: nothing outside tests reads members.RolesPath; the members auth's roles are never provisioned",
+				"pkg/auth/members: no surface takes *members.Auth; nothing binds to the members auth, so its people can sign in nowhere",
+				"pkg/auth/members, pkg/auth/staff: both issue their XSRF token in the cookie XSRF-TOKEN, so a login to one overwrites the other's token in the browser; name each auth's cookie (session.WithXSRFCookieName) and the same name in the web app that binds to it (withXsrfConfiguration)",
+				"pkg/auth/members, pkg/auth/staff: both ride their sessions in the cookie auth, so a login to one ends the other's session in the browser; name each auth's cookie (session.WithCookieName)",
+			},
+		},
+		{
 			name: "an authenticator outside an auth package", files: map[string]string{"pkg/config/session.go": authFile(passwordDefault)},
 			wantStatus: Warn, wantSummary: "no auth package: the authenticators are constructed outside pkg/auth/<name> packages, so the auths cannot be told apart",
 			wantDetails: []string{"pkg/config/session.go:9: password"},
@@ -331,6 +343,57 @@ func TestAuthsWired(t *testing.T) {
 			want := Result{Name: "auths-wired", Status: tt.wantStatus, Summary: tt.wantSummary, Details: tt.wantDetails}
 			if diff := cmp.Diff(want, got); diff != "" {
 				t.Errorf("Run() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestCookieCollisions(t *testing.T) {
+	t.Parallel()
+
+	auth := func(file, cookie, xsrf string) app.Auth {
+		return app.Auth{File: file, CookieName: cookie, XSRFCookieName: xsrf}
+	}
+	tests := []struct {
+		name  string
+		auths []app.Auth
+		want  []string
+	}{
+		{name: "one auth", auths: []app.Auth{auth("pkg/auth/staff/staff.go", "", "")}},
+		{
+			name:  "two auths, every cookie named",
+			auths: []app.Auth{auth("pkg/auth/staff/staff.go", "staff", "staff-xsrf"), auth("pkg/auth/members/members.go", "members", "members-xsrf")},
+		},
+		{
+			name:  "two auths sharing both defaults",
+			auths: []app.Auth{auth("pkg/auth/staff/staff.go", "", ""), auth("pkg/auth/members/members.go", "", "")},
+			want: []string{
+				"pkg/auth/members, pkg/auth/staff: both issue their XSRF token in the cookie XSRF-TOKEN, so a login to one overwrites the other's token in the browser; name each auth's cookie (session.WithXSRFCookieName) and the same name in the web app that binds to it (withXsrfConfiguration)",
+				"pkg/auth/members, pkg/auth/staff: both ride their sessions in the cookie auth, so a login to one ends the other's session in the browser; name each auth's cookie (session.WithCookieName)",
+			},
+		},
+		{
+			name:  "two auths naming the same cookie",
+			auths: []app.Auth{auth("pkg/auth/staff/staff.go", "staff", "token"), auth("pkg/auth/members/members.go", "members", "token")},
+			want: []string{
+				"pkg/auth/members, pkg/auth/staff: both issue their XSRF token in the cookie token, so a login to one overwrites the other's token in the browser; name each auth's cookie (session.WithXSRFCookieName) and the same name in the web app that binds to it (withXsrfConfiguration)",
+			},
+		},
+		{
+			name:  "a construction forwarding its options is not judged",
+			auths: []app.Auth{auth("pkg/auth/staff/staff.go", "", ""), {File: "pkg/auth/members/members.go", OptionsForwarded: true}},
+		},
+		{
+			name:  "constructions outside auth packages are not judged",
+			auths: []app.Auth{auth("pkg/config/session.go", "", ""), auth("pkg/config/other.go", "", "")},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tt.want, cookieCollisions(tt.auths)); diff != "" {
+				t.Errorf("cookieCollisions() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

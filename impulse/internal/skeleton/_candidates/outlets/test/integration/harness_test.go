@@ -243,12 +243,20 @@ func loadRoles(t *testing.T, path string) *access.RoleConfig {
 	return &roles
 }
 
+// outletXSRF names the XSRF cookie each session-serving outlet's auth issues: the browser
+// on an outlet echoes that auth's cookie, as the outlet's web app does.
+var outletXSRF = map[string]string{
+	consoleAPI: staff.XSRFCookie,
+	portalAPI:  members.XSRFCookie,
+}
+
 // browser is one browser's view of the served application on one session-serving
 // outlet: a cookie jar and the XSRF token the session middleware issued into it.
 type browser struct {
 	t      *testing.T
 	base   string
 	prefix string
+	xsrf   string
 	client *http.Client
 }
 
@@ -260,7 +268,12 @@ func newBrowser(t *testing.T, s *served, prefix string) *browser {
 		t.Fatal(err)
 	}
 
-	return &browser{t: t, base: s.server.URL, prefix: prefix, client: &http.Client{Jar: jar}}
+	xsrf, ok := outletXSRF[prefix]
+	if !ok {
+		t.Fatalf("no auth issues an XSRF cookie on %s", prefix)
+	}
+
+	return &browser{t: t, base: s.server.URL, prefix: prefix, xsrf: xsrf, client: &http.Client{Jar: jar}}
 }
 
 // login posts the credentials to the outlet's login route and returns the status.
@@ -364,7 +377,7 @@ func (b *browser) xsrfToken() string {
 		b.t.Fatal(err)
 	}
 	for _, cookie := range b.client.Jar.Cookies(req.URL) {
-		if cookie.Name == "XSRF-TOKEN" {
+		if cookie.Name == b.xsrf {
 			return cookie.Value
 		}
 	}

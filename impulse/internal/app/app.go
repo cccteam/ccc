@@ -101,6 +101,8 @@ type Auth struct {
 	ExtraTables []string
 	// CookieName is the WithCookieName argument, or empty for the library default.
 	CookieName string
+	// XSRFCookieName is the WithXSRFCookieName argument, or empty for the library default.
+	XSRFCookieName string
 	// Impersonation reports a storage constructed with sessionstorage.WithImpersonation.
 	Impersonation bool
 	// ImpersonationTable is the impersonation table's literal name, or empty when the

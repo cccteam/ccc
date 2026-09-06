@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/cccteam/ccc/impulse/internal/app"
@@ -23,7 +25,7 @@ const authsWiredName = "auths-wired"
 func (authsWired) Name() string { return authsWiredName }
 
 func (authsWired) Describe() string {
-	return "every auth package is constructed by the data level, provisioned from its roles file, and bound by a surface, and a directory-run auth has no role writers in the application"
+	return "every auth package is constructed by the data level, provisioned from its roles file, and bound by a surface; no two auths share a session or XSRF cookie; and a directory-run auth has no role writers in the application"
 }
 
 // The identifiers an auth package exports that the wiring is read from.
@@ -49,6 +51,7 @@ func (c authsWired) Run(_ context.Context, env *Env) Result {
 		details = append(details, c.packageFindings(a, p)...)
 		summaries = append(summaries, p.Name)
 	}
+	details = append(details, cookieCollisions(a.Auths)...)
 	if len(details) > 0 {
 		return fail(c.Name(), fmt.Sprintf("%d auth wiring problem(s)", len(details)), details...)
 	}
@@ -94,6 +97,58 @@ func (authsWired) packageFindings(a *app.App, p *app.AuthPackage) []string {
 	if authorityOf(a, p) == app.AuthorityDirectory {
 		details = append(details, directoryWriters(a, p)...)
 	}
+
+	return details
+}
+
+// The session library's cookie names when a construction leaves them unset.
+const (
+	defaultSessionCookie = "auth"
+	defaultXSRFCookie    = "XSRF-TOKEN"
+)
+
+// cookieCollisions finds two auth packages issuing the same cookie: the session cookie or
+// the XSRF token cookie. The browser holds one cookie of a name per host, so a login to
+// one auth then overwrites the other's, and a name left unset is the library default,
+// which every other unset auth shares. A construction that forwards its callers' options
+// is not judged, since its names are not visible.
+func cookieCollisions(auths []app.Auth) []string {
+	type cookie struct{ kind, name string }
+	holders := map[cookie][]string{}
+	for i := range auths {
+		auth := &auths[i]
+		if app.AuthPackageName(auth.File) == "" || auth.OptionsForwarded {
+			continue
+		}
+		pkg := path.Dir(auth.File)
+		session, xsrf := auth.CookieName, auth.XSRFCookieName
+		if session == "" {
+			session = defaultSessionCookie
+		}
+		if xsrf == "" {
+			xsrf = defaultXSRFCookie
+		}
+		for _, c := range []cookie{{"session", session}, {"xsrf", xsrf}} {
+			if !slices.Contains(holders[c], pkg) {
+				holders[c] = append(holders[c], pkg)
+			}
+		}
+	}
+
+	var details []string
+	for c, pkgs := range holders {
+		if len(pkgs) < 2 {
+			continue
+		}
+		sort.Strings(pkgs)
+		switch c.kind {
+		case "session":
+			details = append(details, fmt.Sprintf("%s: both ride their sessions in the cookie %s, so a login to one ends the other's session in the browser; name each auth's cookie (session.WithCookieName)", strings.Join(pkgs, ", "), c.name))
+		default:
+			details = append(details, fmt.Sprintf("%s: both issue their XSRF token in the cookie %s, so a login to one overwrites the other's token in the browser; name each auth's cookie (session.WithXSRFCookieName) and the same name in the web app that binds to it (withXsrfConfiguration)", strings.Join(pkgs, ", "), c.name))
+		}
+	}
+	sort.Strings(details)
 
 	return details
 }

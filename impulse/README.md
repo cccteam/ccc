@@ -26,8 +26,11 @@ impulse new ../harbor --module example.com/acme/harbor --auth members --dev-root
 
 An auth is a population that signs in one way and holds roles in its own permission
 store, and it is a package, `pkg/auth/<name>`, whose name is also the prefix of its tables
-(`<Name>Sessions`, `<Name>Roles`, ...), its cookie, and the stem of its roles file. So the
-name is asked for when `--auth` is not given, and there is no default: a default word would
+(`<Name>Sessions`, `<Name>Roles`, ...), its cookies (`<name>` for the session, `<name>-xsrf`
+for the XSRF token, so two auths on one host never overwrite each other's), and the stem of
+its roles file. The web app that binds to an auth names the same XSRF cookie in its
+HttpClient configuration (`withXsrfConfiguration`), since the browser echoes that cookie
+in the `X-XSRF-TOKEN` header. So the name is asked for when `--auth` is not given, and there is no default: a default word would
 land in every application whose author skipped the question. A good name is the population
 that signs in, plural, lowercase, one word: staff, members, partners, devices. It cannot be
 a Go keyword, a package the application imports, or a directory it has.
@@ -56,8 +59,8 @@ impulse check --list
 | `tenancy-wired` | A program with `WithDomainRoute` has a migration creating the tenant-record table the segment names, at least one struct annotated `@permissionScope(domain)`, and every `access.MigrateRoles` call outside tests passing domains. A program without it has no tenant-scoped structs and passes no domains. The compiler and the generator hold the rest of the seam. |
 | `outlet-wired` | Every outlet a program declares (the default from `GenerateRoutes` and each `WithRouterOutlet`) has its generated routes mounted by a hand-written file in the router package, a session-serving outlet has a `GenerateTypescript` target naming it, and that browser project's development proxy forwards the outlet's prefix. An outlet with no `@outlet` members yet is noted, not failed. |
 | `sites-wired` | In the multi-site layout, every site has a main package under `apps/<site>/`, a process in the Procfile or process-compose file running it on its own `PORT`, and every site's router is imported by some package calling `access.MigrateRoles`, so a role migration (the union collection, or one per auth) reconciles against the site's resources. |
-| `auth-wired` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the auths, one per distinct flavor and table set, each named by its package when it lives in one (`pkg/auth/<name>`), with an OIDC auth's role-membership authority (directory for `RoleSync`, application for `DisableRoleSync`). |
-| `auths-wired` | Every auth package (`pkg/auth/<name>`, constructing a session authenticator) is constructed by the data level (`<name>.New` called outside tests), provisioned from its roles file (`<name>.RolesPath` read by a file that migrates roles, and the file exists), and bound by a surface (a package outside `config` and `cmd/` takes `*<name>.Auth`). An auth that hands role membership to its directory (`session.RoleSync`) has no role writer in the application reaching its store, since the directory removes those roles at the next login. Authenticators outside auth packages warn. |
+| `auth-wired` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the auths, one per distinct flavor and table set, each named by its package when it lives in one (`pkg/auth/<name>`), with its session and XSRF cookies when named, and an OIDC auth's role-membership authority (directory for `RoleSync`, application for `DisableRoleSync`). |
+| `auths-wired` | Every auth package (`pkg/auth/<name>`, constructing a session authenticator) is constructed by the data level (`<name>.New` called outside tests), provisioned from its roles file (`<name>.RolesPath` read by a file that migrates roles, and the file exists), and bound by a surface (a package outside `config` and `cmd/` takes `*<name>.Auth`). No two auth packages issue the same cookie, session or XSRF, a name left unset being the session library's default (`auth`, `XSRF-TOKEN`); the browser keeps one cookie of a name per host, so a login to one auth would overwrite the other's. An auth that hands role membership to its directory (`session.RoleSync`) has no role writer in the application reaching its store, since the directory removes those roles at the next login. Authenticators outside auth packages warn. |
 | `skipauth` | When an auth signs in through a directory (the OIDC flavors), the simulated directory stays in development and tests: no application code reads `APP_USERNAME` or `APP_ROLES` (only the session library's `skipAuth` build does), and no build description (Dockerfile, cloudbuild, Makefile) carries the tag, which would let a deployed build accept any name as a login. |
 | `emulator-version` | The generator option, the process files' image tags, and the test harnesses name one Spanner emulator version. |
 | `prettier-ignore` | Each browser app's `.prettierignore` excludes the generated TypeScript. Prettier reflowing generated files breaks generate idempotence. `--fix` adds the entry. |
@@ -169,7 +172,7 @@ impulse add tenancy --table Organizations
 permission store. An auth is a package, `pkg/auth/<name>`, and the base has one, `staff`.
 The new package is a copy of an existing auth's with every name substituted, so it owns
 `<Name>Sessions`, `<Name>SessionUsers` (password only), the `<Name>` store prefix, the
-`<name>` cookie, and `schema/roles/<name>.json` from the start; its table migrations are
+`<name>` and `<name>-xsrf` cookies, and `schema/roles/<name>.json` from the start; its table migrations are
 copied under the new prefix; and the data level constructs it beside the auth it came
 from, with an accessor in a new file. `--preauth` swaps the constructor to the preauth
 flavor. Binding a surface to it, provisioning its roles and development identities, and

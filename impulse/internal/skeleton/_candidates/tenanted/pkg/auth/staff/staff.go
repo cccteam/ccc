@@ -28,6 +28,11 @@ const (
 	// TablePrefix is the name's PascalCase form, which prefixes every table the auth owns.
 	TablePrefix = "Staff"
 
+	// XSRFCookie is the cookie the auth issues its XSRF token in. It carries the auth's name
+	// so two auths on one host never overwrite each other's token; the browser echoes it in
+	// the X-XSRF-TOKEN header, so the web app that binds to this auth names the same cookie.
+	XSRFCookie = Name + "-xsrf"
+
 	// RolesPath is the committed role configuration MigrateRoles reconciles into this
 	// auth's store, relative to the module root. The Administrator role at each scope is
 	// implicit: it carries every permission registered there.
@@ -74,6 +79,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings Settings) (*Auth
 		session.WithSessionTableName(sessionsTable),
 		session.WithUserTableName(usersTable),
 		session.WithCookieName(Name),
+		session.WithXSRFCookieName(XSRFCookie),
 		session.WithSessionTimeout(settings.SessionTimeout),
 	)
 	if err != nil {

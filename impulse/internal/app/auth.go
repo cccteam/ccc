@@ -132,6 +132,8 @@ func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string,
 				auth.UserTable = s
 			case "WithCookieName":
 				auth.CookieName = s
+			case "WithXSRFCookieName":
+				auth.XSRFCookieName = s
 			}
 		}
 

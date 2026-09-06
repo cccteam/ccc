@@ -1,4 +1,9 @@
-import { HTTP_INTERCEPTORS, provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import {
+  HTTP_INTERCEPTORS,
+  provideHttpClient,
+  withInterceptorsFromDi,
+  withXsrfConfiguration,
+} from '@angular/common/http';
 import { ApplicationConfig, importProvidersFrom } from '@angular/core';
 import { MatNativeDateModule } from '@angular/material/core';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
@@ -34,6 +39,8 @@ export const appConfig: ApplicationConfig = {
     provideResourceClient((transport) => createApi({ baseUrl: environment.apiUrl, transport })),
     provideRouter(routes, withComponentInputBinding(), withRouterConfig({ paramsInheritanceStrategy: 'always' })),
     importProvidersFrom(MatNativeDateModule, BrowserAnimationsModule),
-    provideHttpClient(withInterceptorsFromDi()),
+    // The XSRF cookie is the staff auth's (pkg/auth/staff, XSRFCookie): HttpClient echoes it in
+    // the X-XSRF-TOKEN header on every mutating request, and the server verifies the echo.
+    provideHttpClient(withInterceptorsFromDi(), withXsrfConfiguration({ cookieName: 'staff-xsrf' })),
   ],
 };
