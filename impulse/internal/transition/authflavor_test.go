@@ -91,7 +91,7 @@ func TestAuthFlavorValidate(t *testing.T) {
 		{name: "to Azure, the application its authority", flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCAzure, Authority: AuthorityApplication}},
 		{name: "to Azure, the directory its authority", flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCAzure, Authority: AuthorityDirectory}},
 		{name: "to Google, the application its authority", flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCGoogle, Authority: AuthorityApplication}},
-		{name: "to Google, the directory its authority", flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory}, wantErr: "not laid in for the Google flavor"},
+		{name: "to Google, the directory its authority", flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory}},
 		{name: "without an authority", flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCAzure}, wantErr: "an OIDC auth needs --authority"},
 		{name: "back to a password", flavor: AuthFlavor{Name: "staff", Flavor: FlavorPassword}, wantErr: "moving one back to a password or preauth"},
 		{name: "an unknown flavor", flavor: AuthFlavor{Name: "staff", Flavor: "ldap", Authority: AuthorityApplication}, wantErr: `flavor "ldap"`},

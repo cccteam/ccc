@@ -90,19 +90,41 @@ func (au Auth) directoryLabel() string {
 	return "Azure OpenID Connect"
 }
 
+// The names the registration and the briefs repeat.
+const (
+	issuerURLField = "IssuerURL"
+	azureName      = "Azure"
+)
+
 // registrationVar is one variable of an OIDC auth's directory registration: the Settings
-// field it fills and the suffix of its environment variable, APP_<NAME>_OIDC_<suffix>.
-type registrationVar struct{ field, suffix string }
+// field it fills, the suffix of its environment variable, APP_<NAME>_OIDC_<suffix>, and
+// the field's Go type when it is not a string.
+type registrationVar struct{ field, suffix, goType string }
 
 // registration lists the directory registration an OIDC flavor reads from the
 // environment: Azure names its issuer, Google (one issuer) the Workspace domain logins
-// are restricted to.
+// are restricted to, and a directory-run Google auth the group prefix its role groups
+// carry and the Admin SDK service account that reads them.
 func (au Auth) registration() []registrationVar {
 	if au.Flavor == FlavorOIDCGoogle {
-		return []registrationVar{{"ClientID", "CLIENT_ID"}, {"ClientSecret", "CLIENT_SECRET"}, {"RedirectURL", "REDIRECT_URL"}, {"HostedDomain", "HOSTED_DOMAIN"}}
+		vars := []registrationVar{{"ClientID", "CLIENT_ID", ""}, {"ClientSecret", "CLIENT_SECRET", ""}, {"RedirectURL", "REDIRECT_URL", ""}, {"HostedDomain", "HOSTED_DOMAIN", ""}}
+		if au.Authority == AuthorityDirectory {
+			vars = append(vars, registrationVar{"GroupPrefix", "GROUP_PREFIX", ""}, registrationVar{"AdminCredentials", "ADMIN_CREDENTIALS", "[]byte"}, registrationVar{"AdminSubject", "ADMIN_SUBJECT", ""})
+		}
+
+		return vars
 	}
 
-	return []registrationVar{{"IssuerURL", "ISSUER_URL"}, {"ClientID", "CLIENT_ID"}, {"ClientSecret", "CLIENT_SECRET"}, {"RedirectURL", "REDIRECT_URL"}}
+	return []registrationVar{{issuerURLField, "ISSUER_URL", ""}, {"ClientID", "CLIENT_ID", ""}, {"ClientSecret", "CLIENT_SECRET", ""}, {"RedirectURL", "REDIRECT_URL", ""}}
+}
+
+// typeOf is the registration variable's Go type in the environment struct.
+func (v registrationVar) typeOf() string {
+	if v.goType == "" {
+		return "string"
+	}
+
+	return v.goType
 }
 
 // registrationVars renders the registration's variables for a message: the first in
@@ -122,11 +144,14 @@ func (au Auth) registrationVars() string {
 // simulatedReads names what the simulated directory (the session library's skipAuth build
 // tag) still reads from the registration.
 func (au Auth) simulatedReads() string {
-	if au.Flavor == FlavorOIDCGoogle {
+	switch {
+	case au.Flavor == FlavorOIDCGoogle && au.Authority == AuthorityDirectory:
+		return "the redirect URL, the hosted domain, and the group prefix"
+	case au.Flavor == FlavorOIDCGoogle:
 		return "the redirect URL and the hosted domain"
+	default:
+		return "the redirect URL"
 	}
-
-	return "the redirect URL"
 }
 
 // authSource is the auth package the new one is copied from.
@@ -165,8 +190,7 @@ func (au Auth) Validate(a *app.App) error {
 }
 
 // validateFlavor checks a flavor and the authority asked for it: an OIDC flavor needs one,
-// the others have none to choose, and the Google flavor's directory authority is not laid
-// in.
+// the others have none to choose.
 func validateFlavor(flavor, authority string) error {
 	switch flavor {
 	case FlavorPassword, FlavorPreauth:
@@ -176,9 +200,6 @@ func validateFlavor(flavor, authority string) error {
 	case FlavorOIDCAzure, FlavorOIDCGoogle:
 		if authority != AuthorityDirectory && authority != AuthorityApplication {
 			return errors.New("an OIDC auth needs --authority: directory (the directory's role claims are the authority: every login reconciles the person's roles to them and removes what they do not name) or application (roles are assigned in the application: the bootstrap now, an administration surface later). It is asked because the wrong answer deletes hand-assigned roles at the next login")
-		}
-		if flavor == FlavorOIDCGoogle && authority == AuthorityDirectory {
-			return errors.Newf("flavor %q: the directory authority is not laid in for the Google flavor. Google role membership comes from a Groups lookup (session.GoogleRoleSync over googlegroups.NewDirectory, with Admin SDK credentials), which the session library's simulated directory (the skipAuth tag) does not simulate, so a directory-run Google auth could not be signed in to in development. Hand membership to the application (--authority application), or wire session.GoogleRoleSync by hand", flavor)
 		}
 	default:
 		return errors.Newf("flavor %q: add auth lays in password, preauth, oidc-azure, or oidc-google", flavor)
@@ -344,7 +365,7 @@ func (au Auth) copyPackage(a *app.App, src *authSource, ch *Change) error {
 			text = swapFlavor(text, src.Flavor, au.Flavor)
 		}
 		if au.oidc() {
-			if swapped, ok := swapAuthority(text, au.Authority); ok {
+			if swapped, ok := swapAuthority(text, au.Flavor, au.Authority); ok {
 				text, authoritySet = swapped, true
 			}
 		}
@@ -363,9 +384,9 @@ func (au Auth) copyPackage(a *app.App, src *authSource, ch *Change) error {
 		if src.Flavor != au.Flavor {
 			rewrite = " with its names substituted and the constructor rewritten for Google (session.NewOIDCGoogle: a hosted domain in place of an issuer, a subject-keyed user anchor, no front-channel logout); read it over, since the rewrite is textual"
 		}
-		ch.didf("%s: the %s auth package, a copy of %s (%s)%s, role membership the %s's (%s) (tables %sSessions and %sOIDCUsers, cookie %s, store prefix %s)", dst, au.Name, from, Auth{Flavor: src.Flavor}.directoryLabel(), rewrite, au.Authority, roleSyncSlot(au.Authority), au.Pascal(), au.Pascal(), au.Name, au.Pascal())
+		ch.didf("%s: the %s auth package, a copy of %s (%s)%s, role membership the %s's (%s) (tables %sSessions and %sOIDCUsers, cookie %s, store prefix %s)", dst, au.Name, from, Auth{Flavor: src.Flavor}.directoryLabel(), rewrite, au.Authority, roleSyncSlot(au.Flavor, au.Authority), au.Pascal(), au.Pascal(), au.Name, au.Pascal())
 		if !authoritySet {
-			ch.skipf("%s: the role-synchronization slot was not found where the reference keeps it, so the authority may not be %s; set the constructor's slot to %s", dst, au.Authority, roleSyncSlot(au.Authority))
+			ch.skipf("%s: the role-synchronization slot was not found where the reference keeps it, so the authority may not be %s; set the constructor's slot to %s", dst, au.Authority, roleSyncSlot(au.Flavor, au.Authority))
 		}
 	case src.Flavor == au.Flavor:
 		ch.didf("%s: the %s auth package, a copy of %s with its names substituted (tables %sSessions and %sSessionUsers, cookie %s, store prefix %s)", dst, au.Name, src.Name, au.Pascal(), au.Pascal(), au.Name, au.Pascal())
@@ -376,13 +397,17 @@ func (au Auth) copyPackage(a *app.App, src *authSource, ch *Change) error {
 	return nil
 }
 
-// roleSyncSlot is the session library's role-synchronization slot for an authority.
-func roleSyncSlot(authority string) string {
-	if authority == AuthorityDirectory {
+// roleSyncSlot is the session library's role-synchronization slot for a flavor and an
+// authority.
+func roleSyncSlot(flavor, authority string) string {
+	switch {
+	case authority == AuthorityDirectory && flavor == FlavorOIDCGoogle:
+		return "session.GoogleRoleSync"
+	case authority == AuthorityDirectory:
 		return "session.RoleSync"
+	default:
+		return "session.DisableRoleSync"
 	}
-
-	return "session.DisableRoleSync"
 }
 
 // The role-synchronization slot and its explanation as the reference auth package writes
@@ -422,6 +447,59 @@ const (
 `
 )
 
+// The Google directory authority's forms: the slot over the directory's groups, the
+// groups adapter constructed before the session manager, the registration fields the
+// lookup needs, and the package documentation. swapGoogleAuthority lays them in or takes
+// them out.
+const (
+	googleDirectorySlot = `		// The directory is the authority for role membership: every login reconciles the
+		// person's roles to the Google Groups the directory places them in (those named
+		// by the group prefix), removing any it does not name, and a login naming no known
+		// role is refused. Hand-assigned roles do not survive it, so nothing in the
+		// application assigns roles in this store.
+		session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, groups),
+`
+	googleGroupsConstruction = `	// The directory's groups are the source of role membership, read through the Admin
+	// SDK. Under the session library's skipAuth build tag the lookup is simulated: every
+	// login is in the groups APP_ROLES names.
+	groups, err := googlegroups.NewDirectory(ctx, settings.Directory.AdminCredentials, settings.Directory.AdminSubject)
+	if err != nil {
+		return nil, errors.Wrap(err, "googlegroups.NewDirectory()")
+	}
+
+`
+	googleGroupsFields = `	// GroupPrefix is the local-part prefix of the Google Groups that carry roles: a group
+	// <GroupPrefix><role>@<domain> assigns <role>. It is never empty, since it is the only
+	// filter between role groups and the rest of the directory.
+	GroupPrefix string
+	// AdminCredentials is the service-account key (JSON) with domain-wide delegation for
+	// the Admin SDK's groups scope, and AdminSubject the account it impersonates, which
+	// holds a Groups-read privilege. Neither is read under the skipAuth build tag.
+	AdminCredentials []byte
+	AdminSubject     string
+`
+	googleSessionImport = `	"github.com/cccteam/session"
+`
+	googleGroupsImport = `	"github.com/cccteam/session/googlegroups"
+`
+	googleConstructor    = `	oidcAuth, err := session.NewOIDCGoogle[`
+	googleHostedField    = "\tHostedDomain string\n"
+	googleApplicationDoc = `// The directory proves who someone is; the application decides what they may do. Role
+// membership is the application's (session.DisableRoleSync): the bootstrap assigns the
+// development identities their roles, and a deployed application assigns them through its
+// administration surface. The directory-run alternative, session.GoogleRoleSync, makes the
+// directory's groups the authority and removes every hand-assigned role at the next
+// login, so one auth is never both.
+`
+	googleDirectoryPkgDoc = `// The directory proves who someone is and says what they may do. Role membership is the
+// directory's (session.GoogleRoleSync): every login reconciles the person's roles to the
+// Google Groups the directory places them in and removes any it does not name, so nothing
+// in the application assigns roles in this store and the bootstrap seeds none. The
+// application-run alternative, session.DisableRoleSync, leaves role membership to the
+// application, so one auth is never both.
+`
+)
+
 // The reference package's explanations of its directory registration and its user anchor,
 // as the Azure auth writes them and as the Google rewrite says them.
 const (
@@ -436,6 +514,13 @@ const (
 // the directory is simulated, every login is APP_USERNAME, and only RedirectURL and
 // HostedDomain are read: where the simulated login returns, and the domain it presents.
 `
+	googleDirectoryRunDoc = `// Directory is the application's OpenID Connect registration with Google: the client
+// credentials, the callback the directory returns the browser to, the Workspace domain
+// (hosted domain) logins are restricted to, and the groups lookup that carries role
+// membership. Under the session library's skipAuth build tag the directory is simulated,
+// every login is APP_USERNAME in the groups APP_ROLES names, and only RedirectURL,
+// HostedDomain, and GroupPrefix are read.
+`
 	azureAnchorDoc = `	// The auth's tables, which schema/migrations creates: the sessions, and the user
 	// anchor keyed by the directory's immutable (tenant, object) identifier pair, so a
 	// renamed account stays the same person.
@@ -447,9 +532,13 @@ const (
 )
 
 // swapAuthority sets an OIDC auth package's role-membership authority: the constructor's
-// role-synchronization slot, the Settings field the directory-run form needs, and the
-// package documentation. It reports whether the slot was found in either form.
-func swapAuthority(text, authority string) (string, bool) {
+// role-synchronization slot, the Settings fields the directory-run form needs, the groups
+// adapter a directory-run Google auth reads through, and the package documentation. It
+// reports whether the slot was found in either form.
+func swapAuthority(text, flavor, authority string) (string, bool) {
+	if flavor == FlavorOIDCGoogle {
+		return swapGoogleAuthority(text, authority)
+	}
 	switch {
 	case authority == AuthorityDirectory && strings.Contains(text, applicationSlot):
 		text = strings.Replace(text, applicationSlot, directorySlot, 1)
@@ -464,6 +553,40 @@ func swapAuthority(text, authority string) (string, bool) {
 
 		return text, true
 	case authority == AuthorityDirectory && strings.Contains(text, directorySlot),
+		authority == AuthorityApplication && strings.Contains(text, applicationSlot):
+		return text, true
+	default:
+		return text, false
+	}
+}
+
+// swapGoogleAuthority is swapAuthority for a package already in the Google flavor: the
+// directory-run form reads role membership from the directory's groups, so it constructs
+// the groups adapter, imports its package, and registers the group prefix and the Admin
+// SDK account beside the rest of the registration.
+func swapGoogleAuthority(text, authority string) (string, bool) {
+	switch {
+	case authority == AuthorityDirectory && strings.Contains(text, applicationSlot):
+		text = strings.Replace(text, applicationSlot, googleDirectorySlot, 1)
+		text = strings.Replace(text, googleConstructor, googleGroupsConstruction+googleConstructor, 1)
+		text = strings.Replace(text, googleSessionImport, googleSessionImport+googleGroupsImport, 1)
+		text = strings.Replace(text, directoryField, directoryField+domainsField, 1)
+		text = strings.Replace(text, googleHostedField, googleHostedField+googleGroupsFields, 1)
+		text = strings.Replace(text, googleDirectoryDoc, googleDirectoryRunDoc, 1)
+		text = strings.Replace(text, googleApplicationDoc, googleDirectoryPkgDoc, 1)
+
+		return text, true
+	case authority == AuthorityApplication && strings.Contains(text, googleDirectorySlot):
+		text = strings.Replace(text, googleDirectorySlot, applicationSlot, 1)
+		text = strings.Replace(text, googleGroupsConstruction, "", 1)
+		text = strings.Replace(text, googleGroupsImport, "", 1)
+		text = strings.Replace(text, domainsField, "", 1)
+		text = strings.Replace(text, googleGroupsFields, "", 1)
+		text = strings.Replace(text, googleDirectoryRunDoc, googleDirectoryDoc, 1)
+		text = strings.Replace(text, googleDirectoryPkgDoc, googleApplicationDoc, 1)
+
+		return text, true
+	case authority == AuthorityDirectory && strings.Contains(text, googleDirectorySlot),
 		authority == AuthorityApplication && strings.Contains(text, applicationSlot):
 		return text, true
 	default:
@@ -497,6 +620,7 @@ func swapFlavor(text, from, to string) string {
 		text = regexp.MustCompile(`(?m)^(\s*)RedirectURL(\s+)string\n`).ReplaceAllString(text, "${1}RedirectURL${2}string\n${1}HostedDomain string\n")
 		text = strings.Replace(text, azureDirectoryDoc, googleDirectoryDoc, 1)
 		text = strings.Replace(text, azureAnchorDoc, googleAnchorDoc, 1)
+		text = strings.Replace(text, applicationDoc, googleApplicationDoc, 1)
 	case from == FlavorPassword && to == FlavorPreauth:
 		text = strings.ReplaceAll(text, "session.NewPasswordAuth[session.NoCustomData, session.NoCustomData]", "session.NewPreauth[session.NoCustomData]")
 		text = strings.ReplaceAll(text, "*session.PasswordAuth[session.NoCustomData, session.NoCustomData]", "*session.Preauth[session.NoCustomData]")
@@ -745,12 +869,15 @@ func (au Auth) oidcConstruction(rel string, edited []byte, statements string, ch
 		structName := string(env[1])
 		comment := fmt.Sprintf("// The %s auth's directory registration (pkg/auth/%s): the OpenID Connect issuer, the\n// application's client credentials, and the callback the directory returns the browser to.\n// Under the session library's skipAuth build tag only the redirect URL is read.\n", au.Name, au.Name)
 		if au.Flavor == FlavorOIDCGoogle {
-			comment = fmt.Sprintf("// The %s auth's directory registration (pkg/auth/%s): the application's client\n// credentials, the callback Google returns the browser to, and the Workspace domain logins\n// are restricted to. Under the session library's skipAuth build tag only the redirect URL\n// and the hosted domain are read.\n", au.Name, au.Name)
+			comment = fmt.Sprintf("// The %s auth's directory registration (pkg/auth/%s): the application's client\n// credentials, the callback Google returns the browser to, and the Workspace domain logins\n// are restricted to. Under the session library's skipAuth build tag only %s are read.\n", au.Name, au.Name, au.simulatedReads())
+			if au.Authority == AuthorityDirectory {
+				comment = fmt.Sprintf("// The %s auth's directory registration (pkg/auth/%s): the application's client\n// credentials, the callback Google returns the browser to, the Workspace domain logins are\n// restricted to, the prefix of the Google Groups that carry roles, and the Admin SDK service\n// account (a key with domain-wide delegation, and the admin it impersonates) that reads them.\n// Under the session library's skipAuth build tag only %s are read.\n", au.Name, au.Name, au.simulatedReads())
+			}
 		}
 		var directory strings.Builder
 		fmt.Fprintf(&directory, "Directory: %s.Directory{\n", au.Name)
 		for i, v := range au.registration() {
-			field := fmt.Sprintf("%s%s string `env:\"APP_%s_OIDC_%s\"`", au.Pascal(), v.field, upper, v.suffix)
+			field := fmt.Sprintf("%s%s %s `env:\"APP_%s_OIDC_%s\"`", au.Pascal(), v.field, v.typeOf(), upper, v.suffix)
 			if i == 0 {
 				field = comment + field
 			}
@@ -829,6 +956,9 @@ func (au Auth) writeEnvTemplate(a *app.App, ch *Change) error {
 	}
 	if au.Flavor == FlavorOIDCGoogle {
 		fmt.Fprintf(&b, "# export APP_%[1]s_OIDC_CLIENT_ID=\n# export APP_%[1]s_OIDC_CLIENT_SECRET=\n# APP_%[1]s_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to\n# the %[2]s auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy.\nexport APP_%[1]s_OIDC_REDIRECT_URL=\n# APP_%[1]s_OIDC_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to; the\n# simulated directory presents it too, so it is set in development.\nexport APP_%[1]s_OIDC_HOSTED_DOMAIN=example.com\n", upper, au.Name)
+		if au.Authority == AuthorityDirectory {
+			fmt.Fprintf(&b, "# APP_%[1]s_OIDC_GROUP_PREFIX names the Google Groups that carry roles: <prefix><role>@<domain>\n# assigns <role>. Read under the simulated directory too (APP_ROLES stand in for the groups),\n# so it is set in development.\nexport APP_%[1]s_OIDC_GROUP_PREFIX=%[2]s-\n# The Admin SDK service account that reads the groups: a key with domain-wide delegation for\n# the groups scope, and the admin it impersonates. Unread under the simulated directory.\n# export APP_%[1]s_OIDC_ADMIN_CREDENTIALS=\n# export APP_%[1]s_OIDC_ADMIN_SUBJECT=\n", upper, au.Name)
+		}
 	} else {
 		fmt.Fprintf(&b, "# export APP_%[1]s_OIDC_ISSUER_URL=\n# export APP_%[1]s_OIDC_CLIENT_ID=\n# export APP_%[1]s_OIDC_CLIENT_SECRET=\n# APP_%[1]s_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to\n# the %[2]s auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy.\nexport APP_%[1]s_OIDC_REDIRECT_URL=\n", upper, au.Name)
 	}
@@ -888,13 +1018,15 @@ func (au Auth) Meaning() string {
 // oidcMeaning explains an auth whose people sign in through a directory.
 func (au Auth) oidcMeaning() string {
 	var b strings.Builder
-	anchor, directory, handlers, logoutRoute := "tenant and object identifiers", "Azure", "session.OIDCAzureHandlers", ", `GET <prefix>/user/logout` (the directory's front-channel logout)"
+	anchor, directory, handlers, logoutRoute := "tenant and object identifiers", azureName, "session.OIDCAzureHandlers", ", `GET <prefix>/user/logout` (the directory's front-channel logout)"
 	if au.Flavor == FlavorOIDCGoogle {
 		anchor, directory, handlers, logoutRoute = "subject identifier", "Google, restricted to the Workspace domain the registration names", "session.OIDCGoogleHandlers", " (Google has no directory-initiated logout, so there is no front-channel route: the session's own logout route ends it)"
 	}
 	fmt.Fprintf(&b, "An auth is a population that signs in one way and holds roles in its own permission store, and it is a package: `pkg/auth/%s` owns the %s session manager (tables `%sSessions` and `%sOIDCUsers`, the user anchor keyed by the directory's immutable %s; cookie `%s`), the %s permission store (tables prefixed `%s`), and the roles file `schema/roles/%s.json`. Its people sign in through the organization's directory over OpenID Connect (%s): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths, reading the directory registration from the environment.\n\n", au.Name, au.Flavor, au.Pascal(), au.Pascal(), anchor, au.Name, au.Name, au.Pascal(), au.Name, directory)
-	switch au.Authority {
-	case AuthorityDirectory:
+	switch {
+	case au.Authority == AuthorityDirectory && au.Flavor == FlavorOIDCGoogle:
+		fmt.Fprintf(&b, "Role membership is the directory's (`session.GoogleRoleSync`): every login reconciles the person's roles to the Google Groups the directory places them in, a group named `<prefix><role>@<domain>` assigning `<role>`, and removes any role no group names; a login in no role group is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the roles file only defines the roles and their grants; the directory's groups assign them. The groups are read through the Admin SDK (`googlegroups.NewDirectory`, a service-account key with domain-wide delegation and the admin it impersonates); under the session library's `skipAuth` tag the lookup is simulated and `APP_ROLES` names the groups every login is in. In a tenanted application, pass the tenant roster as `%s.Settings.Domains` so the sweep covers every tenant scope.\n\n", au.Name, au.Name, au.Name)
+	case au.Authority == AuthorityDirectory:
 		fmt.Fprintf(&b, "Role membership is the directory's (`session.RoleSync`): every login reconciles the person's roles to the directory's role claims and removes any it does not name, and a login naming no known role is refused. So nothing in the application assigns roles in the %s store, the bootstrap seeds no %s identities, and the roles file only defines the roles and their grants; the directory assigns them. In a tenanted application, pass the tenant roster as `%s.Settings.Domains` so the sweep covers every tenant scope.\n\n", au.Name, au.Name, au.Name)
 	default:
 		fmt.Fprintf(&b, "Role membership is the application's (`session.DisableRoleSync`): the directory proves who someone is and the application decides what they may do. A login neither reads nor changes roles, so the bootstrap assigns the development %s identities their roles in the %s store by username, with no password and no account to create, since the directory presents the name.\n\n", au.Name, au.Name)
@@ -919,6 +1051,9 @@ func (au Auth) oidcMeaning() string {
 // registrationToFill names the registration a person fills in once the application is
 // registered with its directory.
 func (au Auth) registrationToFill() string {
+	if au.Flavor == FlavorOIDCGoogle && au.Authority == AuthorityDirectory {
+		return "the client and secret, the hosted domain (the Workspace domain logins are restricted to, which the simulated directory presents too, so it is set from the start), the group prefix (set from the start too, since the simulated groups carry it), and the Admin SDK service account that reads the groups"
+	}
 	if au.Flavor == FlavorOIDCGoogle {
 		return "the client, secret, and hosted domain (the Workspace domain logins are restricted to, which the simulated directory presents too, so it is set from the start)"
 	}
@@ -929,6 +1064,9 @@ func (au Auth) registrationToFill() string {
 // identitiesNote says what the bootstrap does with development identities for the
 // authority.
 func (au Auth) identitiesNote() string {
+	if au.Authority == AuthorityDirectory && au.Flavor == FlavorOIDCGoogle {
+		return " Seed no role assignments for it: the directory's groups assign them, and the roles file defines what each role may do. In development, APP_ROLES names the groups every simulated login is in."
+	}
 	if au.Authority == AuthorityDirectory {
 		return " Seed no role assignments for it: the directory assigns them, and the roles file defines what each role may do."
 	}

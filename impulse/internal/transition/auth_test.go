@@ -2,6 +2,7 @@ package transition
 
 import (
 	"errors"
+	"go/format"
 	"io/fs"
 	"os"
 	"regexp"
@@ -220,7 +221,7 @@ func TestAuthValidate(t *testing.T) {
 		{name: "a password auth cannot hand membership to a directory", auth: Auth{Name: "partners", Flavor: FlavorPassword, Authority: AuthorityDirectory}, wantErr: "only an auth that signs in through a directory"},
 		{name: "a Google auth with the application as authority", auth: Auth{Name: "partners", Flavor: FlavorOIDCGoogle, Authority: AuthorityApplication}},
 		{name: "a Google auth without an authority", auth: Auth{Name: "partners", Flavor: FlavorOIDCGoogle}, wantErr: "an OIDC auth needs --authority"},
-		{name: "a Google auth cannot hand membership to the directory yet", auth: Auth{Name: "partners", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory}, wantErr: "the directory authority is not laid in for the Google flavor"},
+		{name: "a Google auth with the directory as authority", auth: Auth{Name: "partners", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory}},
 		{name: "an unknown flavor", auth: Auth{Name: "partners", Flavor: "ldap"}, wantErr: `flavor "ldap"`},
 		{name: "the auth exists", auth: Auth{Name: "staff", Flavor: FlavorPassword}, wantErr: "the staff auth already exists"},
 		{name: "no auth package to copy", auth: Auth{Name: "partners", Flavor: FlavorPassword}, bare: true, wantErr: "no auth package to copy"},
@@ -366,7 +367,7 @@ func TestAuthApply(t *testing.T) {
 				for _, want := range []string{
 					"\t\tDirectory: partners.Directory{\n\t\t\tClientID:     env.PartnersClientID,\n\t\t\tClientSecret: env.PartnersClientSecret,\n\t\t\tRedirectURL:  env.PartnersRedirectURL,\n\t\t\tHostedDomain: env.PartnersHostedDomain,\n\t\t},",
 					"\tPartnersHostedDomain string `env:\"APP_PARTNERS_OIDC_HOSTED_DOMAIN\"`\n",
-					"// and the hosted domain are read.\n\tPartnersClientID     string `env:\"APP_PARTNERS_OIDC_CLIENT_ID\"`\n",
+					"only the redirect URL and the hosted domain are read.\n\tPartnersClientID     string `env:\"APP_PARTNERS_OIDC_CLIENT_ID\"`\n",
 				} {
 					if !strings.Contains(config, want) {
 						t.Errorf("data.go lacks %q", want)
@@ -402,6 +403,68 @@ func TestAuthApply(t *testing.T) {
 				}
 				if strings.Contains(env, "ISSUER_URL") {
 					t.Error(".envrc.template still names an issuer")
+				}
+			},
+		},
+		{
+			name: "a Google OIDC auth with the directory as authority reads roles from the directory's groups",
+			auth: Auth{Name: "partners", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory},
+			extra: map[string]string{
+				"pkg/config/data.go": authConfigEnv,
+				".envrc.template":    "export PORT=8090\n",
+			},
+			wantDid: []string{
+				"pkg/auth/partners: the partners auth package, a copy of the reference skeleton's members auth (Azure OpenID Connect) with its names substituted and the constructor rewritten for Google (session.NewOIDCGoogle: a hosted domain in place of an issuer, a subject-keyed user anchor, no front-channel logout); read it over, since the rewrite is textual, role membership the directory's (session.GoogleRoleSync) (tables PartnersSessions and PartnersOIDCUsers, cookie partners, store prefix Partners)",
+				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersOIDCUsers, the partners auth's tables copied from the members auth's under the Partners prefix",
+				"schema/roles/partners.json: the partners auth's role configuration, empty (the Administrator role at each scope is implicit)",
+				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_OIDC_CLIENT_ID, _CLIENT_SECRET, _REDIRECT_URL, _HOSTED_DOMAIN, _GROUP_PREFIX, _ADMIN_CREDENTIALS, and _ADMIN_SUBJECT",
+				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
+				"Procfile: 2 go run command(s) build with -tags skipAuth, so the partners auth's directory is simulated in development and every partners login is APP_USERNAME",
+				".envrc.template: APP_USERNAME and APP_ROLES for the simulated directory, and the partners auth's APP_PARTNERS_OIDC_* registration, to fill in",
+				"ran go generate ./...",
+			},
+			wantSkipped: []string{"pkg/config/data.go: Close releases the staff auth only; release the partners auth too"},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				pkg := read(t, a, "pkg/auth/partners/partners.go")
+				for _, want := range []string{
+					"\t\"github.com/cccteam/session\"\n\t\"github.com/cccteam/session/googlegroups\"\n",
+					"groups, err := googlegroups.NewDirectory(ctx, settings.Directory.AdminCredentials, settings.Directory.AdminSubject)",
+					"session.GoogleRoleSync(accessClient.UserManager(), settings.Domains, settings.Directory.GroupPrefix, groups),",
+					"\tDomains session.DomainsProvider\n",
+					"\tHostedDomain string\n\t// GroupPrefix is the local-part prefix",
+					"\tAdminCredentials []byte\n\tAdminSubject     string\n}",
+					"Role membership is the\n// directory's (session.GoogleRoleSync)",
+					"only RedirectURL,\n// HostedDomain, and GroupPrefix are read",
+				} {
+					if !strings.Contains(pkg, want) {
+						t.Errorf("partners.go lacks %q:\n%s", want, pkg)
+					}
+				}
+				for _, absent := range []string{"session.DisableRoleSync(),", "session.RoleSync(", "Azure", "IssuerURL"} {
+					if strings.Contains(pkg, absent) {
+						t.Errorf("partners.go still has %q", absent)
+					}
+				}
+				if _, err := format.Source([]byte(pkg)); err != nil {
+					t.Errorf("partners.go does not parse: %v", err)
+				}
+				config := read(t, a, "pkg/config/data.go")
+				for _, want := range []string{
+					"\t\t\tHostedDomain:     env.PartnersHostedDomain,\n\t\t\tGroupPrefix:      env.PartnersGroupPrefix,\n\t\t\tAdminCredentials: env.PartnersAdminCredentials,\n\t\t\tAdminSubject:     env.PartnersAdminSubject,\n\t\t},",
+					"\tPartnersAdminCredentials []byte `env:\"APP_PARTNERS_OIDC_ADMIN_CREDENTIALS\"`\n",
+					"\tPartnersGroupPrefix      string `env:\"APP_PARTNERS_OIDC_GROUP_PREFIX\"`\n",
+					"// Under the session library's skipAuth build tag only the redirect URL, the hosted domain, and the group prefix are read.\n",
+				} {
+					if !strings.Contains(config, want) {
+						t.Errorf("data.go lacks %q:\n%s", want, config)
+					}
+				}
+				env := read(t, a, ".envrc.template")
+				for _, want := range []string{"export APP_PARTNERS_OIDC_HOSTED_DOMAIN=example.com\n", "export APP_PARTNERS_OIDC_GROUP_PREFIX=partners-\n", "# export APP_PARTNERS_OIDC_ADMIN_CREDENTIALS=\n", "# export APP_PARTNERS_OIDC_ADMIN_SUBJECT=\n", "only the redirect URL, the hosted domain, and the group prefix below is read"} {
+					if !strings.Contains(env, want) {
+						t.Errorf(".envrc.template lacks %q:\n%s", want, env)
+					}
 				}
 			},
 		},

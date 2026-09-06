@@ -215,11 +215,15 @@ restricted to) in place of the issuer, so the registration is `APP_<NAME>_OIDC_C
 `_CLIENT_SECRET`, `_REDIRECT_URL`, and `_HOSTED_DOMAIN`; a user anchor keyed by the
 subject claim (`Sub`, `Hd`) in place of Azure's tenant and object identifiers; and no
 front-channel logout, since Google has no directory-initiated logout. The rewrite is
-textual, so the brief says to read the package over. Only `--authority application` is
-laid in for Google: its directory authority is a Groups lookup (`session.GoogleRoleSync`
-over `googlegroups.NewDirectory`, with Admin SDK credentials) that the session library's
-simulated directory does not simulate, so a directory-run Google auth could not be signed
-in to in development; it is refused with that reason.
+textual, so the brief says to read the package over. With `--authority directory` the
+directory's authority is its Groups: the package constructs the Admin SDK adapter
+(`googlegroups.NewDirectory`) and hands `session.GoogleRoleSync` the group prefix its
+role groups carry, so a group `<prefix><role>@<domain>` assigns `<role>`; the
+registration gains `_GROUP_PREFIX`, `_ADMIN_CREDENTIALS` (a service-account key with
+domain-wide delegation), and `_ADMIN_SUBJECT` (the admin it impersonates). Under the
+session library's `skipAuth` tag the lookup is simulated: every login is in the groups
+`APP_ROLES` names, so the group prefix is set from the start and the Admin SDK account is
+left for the registration.
 
 ```sh
 impulse add auth partners --agent

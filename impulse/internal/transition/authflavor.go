@@ -163,7 +163,7 @@ func (f AuthFlavor) rewritePackage(a *app.App, cur *app.Auth, ch *Change) error 
 	if au.Flavor != src.Flavor {
 		text = swapFlavor(text, src.Flavor, au.Flavor)
 	}
-	text, authoritySet := swapAuthority(text, au.Authority)
+	text, authoritySet := swapAuthority(text, au.Flavor, au.Authority)
 	_, mode, err := readFile(a, cur.File)
 	if err != nil {
 		return err
@@ -171,9 +171,9 @@ func (f AuthFlavor) rewritePackage(a *app.App, cur *app.Auth, ch *Change) error 
 	if err := os.WriteFile(a.Abs(cur.File), []byte(text), mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	ch.didf("%s: rewritten as the %s auth in the %s flavor (%s) from the reference skeleton's %s auth, role membership the %s's (%s) (tables %sSessions and %sOIDCUsers, cookie %s, store prefix %s); what the file carried beyond the base's shape is in git to re-apply", cur.File, au.Name, au.Flavor, au.directoryLabel(), src.Name, au.Authority, roleSyncSlot(au.Authority), au.Pascal(), au.Pascal(), au.Name, au.Pascal())
+	ch.didf("%s: rewritten as the %s auth in the %s flavor (%s) from the reference skeleton's %s auth, role membership the %s's (%s) (tables %sSessions and %sOIDCUsers, cookie %s, store prefix %s); what the file carried beyond the base's shape is in git to re-apply", cur.File, au.Name, au.Flavor, au.directoryLabel(), src.Name, au.Authority, roleSyncSlot(au.Flavor, au.Authority), au.Pascal(), au.Pascal(), au.Name, au.Pascal())
 	if !authoritySet {
-		ch.skipf("%s: the role-synchronization slot was not found where the reference keeps it; set the constructor's slot to %s", cur.File, roleSyncSlot(au.Authority))
+		ch.skipf("%s: the role-synchronization slot was not found where the reference keeps it; set the constructor's slot to %s", cur.File, roleSyncSlot(au.Flavor, au.Authority))
 	}
 
 	return nil
