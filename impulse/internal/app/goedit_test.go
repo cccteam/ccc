@@ -174,3 +174,59 @@ func TestStructFieldOfType(t *testing.T) {
 		})
 	}
 }
+
+func TestAddImport(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, src, path, want string
+	}{
+		{
+			name: "into a block", src: appSource, path: "example.com/beacon/pkg/auth/partners",
+			want: strings.Replace(appSource, "package app\n", "package app\n\nimport \"example.com/beacon/pkg/auth/partners\"\n", 1),
+		},
+		{
+			name: "already imported", src: configSource, path: "github.com/cccteam/access",
+			want: configSource,
+		},
+		{
+			name: "into an existing block", src: configSource, path: "example.com/beacon/pkg/auth/partners",
+			// gofmt sorts the new path into the block.
+			want: strings.Replace(configSource, "\tcloudspanner \"cloud.google.com/go/spanner\"\n", "\tcloudspanner \"cloud.google.com/go/spanner\"\n\t\"example.com/beacon/pkg/auth/partners\"\n", 1),
+		},
+		{
+			name: "a single unparenthesized import", src: "package x\n\nimport \"fmt\"\n\nvar _ = fmt.Sprint\n", path: "os",
+			want: "package x\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nvar _ = fmt.Sprint\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := AddImport("x.go", []byte(tt.src), tt.path)
+			if err != nil {
+				t.Fatalf("AddImport() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
+				t.Errorf("AddImport() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestAddStatementsBeforeReturn(t *testing.T) {
+	t.Parallel()
+
+	got, err := AddStatementsBeforeReturn("data.go", []byte(configSource), "NewDataConfiguration", "DataConfiguration",
+		"partnersAuth, err := partners.New(ctx)\nif err != nil {\nreturn nil, err\n}")
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	want := strings.Replace(configSource, "\treturn &DataConfiguration{", "\tpartnersAuth, err := partners.New(ctx)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\n\treturn &DataConfiguration{", 1)
+	if diff := cmp.Diff(want, string(got)); diff != "" {
+		t.Errorf("mismatch (-want +got):\n%s", diff)
+	}
+	if _, err := AddStatementsBeforeReturn("app.go", []byte(appSource), "New", "Server", "x := 1"); !errors.Is(err, ErrNoAnchor) {
+		t.Errorf("error = %v, want ErrNoAnchor", err)
+	}
+}

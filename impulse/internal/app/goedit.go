@@ -278,3 +278,54 @@ func StructFieldOfType(rel string, src []byte, structName, importPath, typeName 
 
 	return "", nil
 }
+
+// AddImport adds an import path to the file's first import block, or an import
+// declaration after the package clause when the file has none. The result is formatted.
+func AddImport(rel string, src []byte, importPath string) ([]byte, error) {
+	p, err := parseSource(rel, src)
+	if err != nil {
+		return nil, err
+	}
+	if localImportName(p.file, importPath) != "" {
+		return src, nil
+	}
+	for _, d := range p.file.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok || gd.Tok != token.IMPORT {
+			continue
+		}
+		if gd.Lparen.IsValid() {
+			rparen := p.offset(gd.Rparen)
+
+			return p.splice(rel, rparen, rparen, "\""+importPath+"\"\n")
+		}
+		// A single import without parentheses: wrap it.
+		start, end := p.offset(gd.Pos()), p.offset(gd.End())
+		spec := string(p.src[p.offset(gd.Specs[0].Pos()):p.offset(gd.Specs[0].End())])
+
+		return p.splice(rel, start, end, "import (\n"+spec+"\n\""+importPath+"\"\n)")
+	}
+	after := p.offset(p.file.Name.End())
+
+	return p.splice(rel, after, after, "\n\nimport \""+importPath+"\"")
+}
+
+// AddStatementsBeforeReturn inserts statements before the "return &Type{...}, <x>" of
+// the named function.
+func AddStatementsBeforeReturn(rel string, src []byte, funcName, typeName, statements string) ([]byte, error) {
+	p, err := parseSource(rel, src)
+	if err != nil {
+		return nil, err
+	}
+	fd := p.funcDecl(funcName)
+	if fd == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no function %s", rel, funcName)
+	}
+	ret := returnOfLiteral(fd, typeName)
+	if ret == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s has no \"return &%s{...}, nil\"", rel, funcName, typeName)
+	}
+	at := p.offset(ret.Pos())
+
+	return p.splice(rel, at, at, statements+"\n\n")
+}

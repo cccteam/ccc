@@ -29,6 +29,7 @@ launches Claude Code on it and verifies the guardrails when it returns.`,
 	}
 	cmd.AddCommand(newAddOutlet())
 	cmd.AddCommand(newAddTenancy())
+	cmd.AddCommand(newAddAuth())
 
 	return cmd
 }
@@ -125,6 +126,42 @@ failing checks as the obligations.`,
 	}
 	f.bind(cmd)
 	cmd.Flags().StringVar(&table, "table", "Tenants", "the tenant-record table, PascalCase and plural")
+
+	return cmd
+}
+
+func newAddAuth() *cobra.Command {
+	var (
+		f       transitionFlags
+		preauth bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "auth <name>",
+		Short: "Add an auth: a population that signs in one way and holds roles in its own store",
+		Long: `auth adds an auth package, pkg/auth/<name>, copied from an auth the application already
+has with every name substituted, so the new population owns its own session and user
+tables, cookie, store prefix, and roles file from the start. Its table migrations are
+copied under the new prefix, an empty roles file is written beside the others, and the
+data level constructs it beside the auth it was copied from. --preauth swaps the
+constructor to the preauth flavor (the application proves who someone is and asks the
+session library for a session); the default is a password auth.
+
+Binding a site or an outlet to the new auth, provisioning its roles, its development
+identities, and the tests that prove its people are strangers to the other auths are
+handed to the agent.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			flavor := transition_.FlavorPassword
+			if preauth {
+				flavor = transition_.FlavorPreauth
+			}
+
+			return runTransition(cmd, &f, transition_.Auth{Name: args[0], Flavor: flavor}, transition_.ReferenceCandidate)
+		},
+	}
+	f.bind(cmd)
+	cmd.Flags().BoolVar(&preauth, "preauth", false, "a preauth auth: the application proves the principal and the session library issues the session")
 
 	return cmd
 }
