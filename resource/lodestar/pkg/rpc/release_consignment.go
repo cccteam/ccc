@@ -28,7 +28,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *ReleaseConsignment) Execute(ctx context.Context, txn resource.ReadWriteTransaction, _ *Client) error {
 	now := time.Now().UTC()
 	if err := resources.NewConsignmentUpdatePatch(m.ConsignmentID).SetReleasedAt(&now).Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {

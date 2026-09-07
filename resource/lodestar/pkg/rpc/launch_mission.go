@@ -27,7 +27,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *LaunchMission) Execute(ctx context.Context, txn resource.ReadWriteTransaction, _ *Client) error {
 	if m.PilotUserID == "" {
 		return httpio.NewBadRequestMessage("pilotUserId is required")

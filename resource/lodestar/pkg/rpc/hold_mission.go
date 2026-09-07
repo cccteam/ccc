@@ -22,7 +22,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *HoldMission) Execute(ctx context.Context, txn resource.ReadWriteTransaction, _ *Client) error {
 	if m.Reason == "" {
 		return httpio.NewBadRequestMessage("reason is required")

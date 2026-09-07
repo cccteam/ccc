@@ -20,7 +20,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner. Resuming has no effect beyond the declared edge.
+// Execute runs inside the handler's transaction. Resuming has no effect beyond the declared edge.
 func (m *ResumeMission) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
 	return nil
 }

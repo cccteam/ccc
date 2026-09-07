@@ -503,8 +503,19 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
+		// The Execute signature is the method's declaration of how it runs; a
+		// struct without a recognizable one never reaches the templates, so no
+		// handler can be generated that decodes and returns without running it.
+		form, err := classifyExecute(s)
+		if err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
 		rpcMethod := &rpcMethodInfo{
 			Struct: s,
+			Form:   form,
 			Fields: make([]*rpcField, 0, len(s.Fields())),
 		}
 

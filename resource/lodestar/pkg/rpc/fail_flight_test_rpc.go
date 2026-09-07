@@ -21,7 +21,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *FailFlightTest) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
 	return nil
 }

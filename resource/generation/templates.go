@@ -2491,7 +2491,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 
 		p := (*{{ .RPCMethod.Type }})(params)
 		{{- end }}
-		{{- if .RPCMethod.IsTxnRunner }}
+		{{- if .RPCMethod.IsTxnForm }}
 			if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 				{{- with $t := .RPCMethod.Target }}
 				// Declared target: locate the row within the tenancy predicate
@@ -2555,7 +2555,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 			}); err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 			}
-		{{- else if .RPCMethod.IsDBRunner }}
+		{{- else }}
 		if err := p.Execute(ctx, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.RPCClient()); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}

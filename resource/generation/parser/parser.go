@@ -2,7 +2,6 @@
 package parser
 
 import (
-	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/token"
@@ -197,24 +196,10 @@ func ParsePackage(pkg *packages.Package) *Package {
 	log.Printf("Parsing structs from package %q...", pkg.Types.Name())
 
 	typeSpecs := packageTypeSpecs(pkg.Syntax)
-	interfaces := make([]*Interface, 0, 16)
 	parsedStructs := make([]*Struct, 0, 128)
 	namedTypes := make([]*NamedType, 0, 16)
 	for _, typeSpec := range typeSpecs {
 		switch astNode := typeSpec.Type.(type) {
-		case *ast.InterfaceType:
-			obj := pkg.TypesInfo.ObjectOf(typeSpec.Name)
-			named, ok := obj.Type().(*types.Named)
-			if !ok {
-				panic(fmt.Sprintf("cannot assert %q to *types.Named", typeSpec.Name.Name))
-			}
-
-			i := &Interface{Name: typeSpec.Name.Name, named: named}
-			if typeSpec.TypeParams != nil {
-				i.isGeneric = true
-			}
-
-			interfaces = append(interfaces, i)
 		case *ast.Ident:
 			namedType := &NamedType{}
 			obj := pkg.TypesInfo.ObjectOf(typeSpec.Name) // NamedType's name
@@ -257,14 +242,6 @@ func ParsePackage(pkg *packages.Package) *Package {
 			}
 
 			parsedStructs = append(parsedStructs, pStruct)
-		}
-	}
-
-	for _, pStruct := range parsedStructs {
-		for _, iface := range interfaces {
-			if implementsInterface(pStruct, iface) {
-				pStruct.setInterface(iface.Name)
-			}
 		}
 	}
 
@@ -348,46 +325,6 @@ func packageTypeSpecs(syntax []*ast.File) []*ast.TypeSpec {
 	}
 
 	return typeSpecs
-}
-
-func implementsInterface(pStruct *Struct, iface *Interface) bool {
-	var ifaceType *types.Interface
-
-	if iface.isGeneric && iface.named.TypeParams().Len() == 1 {
-		instance, err := types.Instantiate(types.NewContext(), iface.named, []types.Type{pStruct.obj.Type()}, false)
-		if err != nil {
-			panic(err)
-		}
-
-		interfaceInstance, ok := decodeToType[*types.Interface](instance)
-		if !ok { // this is impossible but I'm including it to appease the linter
-			panic("unreachable: cannot assert instantiated interface's underlying type to *types.Interface")
-		}
-		ifaceType = interfaceInstance
-	} else {
-		interfaceInstance, ok := decodeToType[*types.Interface](iface.named)
-		if !ok { // this is impossible but I'm including it to appease the linter
-			panic("unreachable: cannot assert *types.Named to *types.Interface")
-		}
-		ifaceType = interfaceInstance
-	}
-
-	// It's necessary to check with and without a pointer because method receivers may or may not be pointer types.
-	return types.Implements(pStruct.obj.Type(), ifaceType) || types.Implements(types.NewPointer(pStruct.obj.Type()), ifaceType)
-}
-
-// FilterStructsByInterface returns a filtered slice of structs that satisfy one or more from the list of interface names.
-func FilterStructsByInterface(pStructs []*Struct, interfaceNames []string) []*Struct {
-	filteredStructs := make([]*Struct, 0, len(pStructs))
-	for _, pStruct := range pStructs {
-		for _, iface := range interfaceNames {
-			if pStruct.Implements(iface) {
-				filteredStructs = append(filteredStructs, pStruct)
-			}
-		}
-	}
-
-	return slices.Clip(filteredStructs)
 }
 
 // The [types.Type] interface can be one of 14 concrete types:

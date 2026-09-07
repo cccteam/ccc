@@ -205,8 +205,8 @@ func (c *client) resolveTarget(rpcMethod *rpcMethodInfo, pStruct *parser.Struct,
 	switch {
 	case rpcMethod.SuppressHandler:
 		return nil, nil, errors.Newf("struct %s: @%s runs its checks in the generated handler, which @%s suppresses — remove one of them", pStruct.Name(), declKeyword, suppressKeyword)
-	case !rpcMethod.IsTxnRunner():
-		return nil, nil, errors.Newf("struct %s: @%s requires the TxnRunner form — the located-row checks run inside the handler's transaction", pStruct.Name(), declKeyword)
+	case !rpcMethod.IsTxnForm():
+		return nil, nil, errors.Newf("struct %s: @%s requires the transaction form of Execute (second parameter resource.ReadWriteTransaction) — the located-row checks run inside the handler's transaction", pStruct.Name(), declKeyword)
 	}
 
 	var root *resourceInfo

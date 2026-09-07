@@ -25,7 +25,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *InspectShip) Execute(ctx context.Context, txn resource.ReadWriteTransaction, _ *Client) error {
 	return stampRefitInspected(ctx, txn, m.RefitID)
 }

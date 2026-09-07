@@ -151,21 +151,13 @@ func (t *TypeInfo) IsIterable() bool {
 	}
 }
 
-// Interface is an abstraction over types.Interface
-type Interface struct {
-	Name      string
-	named     *types.Named
-	isGeneric bool
-}
-
 // Struct is an abstraction combining types.Struct and ast.StructType for simpler parsing.
 type Struct struct {
 	*TypeInfo
-	astInfo    *ast.StructType
-	fields     []*Field
-	interfaces []string
-	methodSet  map[string]struct{}
-	comments   string
+	astInfo  *ast.StructType
+	fields   []*Field
+	methods  map[string]*types.Func
+	comments string
 }
 
 func newStruct(obj types.Object) *Struct {
@@ -177,19 +169,23 @@ func newStruct(obj types.Object) *Struct {
 	}
 
 	s := &Struct{
-		TypeInfo:  &TypeInfo{obj},
-		methodSet: make(map[string]struct{}),
+		TypeInfo: &TypeInfo{obj},
+		methods:  make(map[string]*types.Func),
 	}
 
+	// The pointer method set holds both receiver forms, so a method declared on
+	// the value receiver is found alongside one declared on the pointer.
 	methodSet := types.NewMethodSet(types.NewPointer(tt))
 	for method := range methodSet.Methods() {
-		kind := method.Kind()
-		if kind != types.MethodVal {
+		if method.Kind() != types.MethodVal {
 			continue
 		}
 
-		name := method.Obj().Name()
-		s.methodSet[name] = struct{}{}
+		fn, ok := method.Obj().(*types.Func)
+		if !ok {
+			continue
+		}
+		s.methods[fn.Name()] = fn
 	}
 
 	for i := range st.NumFields() {
@@ -213,17 +209,6 @@ func (s *Struct) Comments() string {
 // Pos returns the position of the struct keyword in its fileset.
 func (s *Struct) Pos() token.Pos {
 	return s.astInfo.Struct
-}
-
-func (s *Struct) setInterface(iface string) {
-	if !slices.Contains(s.interfaces, iface) {
-		s.interfaces = append(s.interfaces, iface)
-	}
-}
-
-// Implements returns true if the interface's name matches a name in the set of interfaces the Struct satisfies.
-func (s *Struct) Implements(interfaceName string) bool {
-	return slices.Contains(s.interfaces, interfaceName)
 }
 
 func (s *Struct) String() string {
@@ -338,9 +323,17 @@ func (s *Struct) Fields() []*Field {
 
 // HasMethod returns true if the method name matches a name in the set of methods belonging to the struct.
 func (s *Struct) HasMethod(methodName string) bool {
-	_, ok := s.methodSet[methodName]
+	_, ok := s.methods[methodName]
 
 	return ok
+}
+
+// Method returns the struct's method of that name, declared on either receiver
+// form, or nil when the struct has none. The returned object carries the
+// method's signature for callers that classify a struct by what it declares
+// rather than by the interfaces it happens to satisfy.
+func (s *Struct) Method(methodName string) *types.Func {
+	return s.methods[methodName]
 }
 
 // Field is an abstraction combining types.Var and ast.Field for simpler parsing.

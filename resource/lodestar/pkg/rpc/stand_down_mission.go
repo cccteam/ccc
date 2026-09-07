@@ -25,7 +25,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner. Standing down has no effect beyond the declared edge.
+// Execute runs inside the handler's transaction. Standing down has no effect beyond the declared edge.
 func (m *StandDownMission) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
 	return nil
 }

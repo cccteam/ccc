@@ -21,7 +21,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *PassFlightTest) Execute(ctx context.Context, txn resource.ReadWriteTransaction, _ *Client) error {
 	return stampShipRefitted(ctx, txn, m.RefitID)
 }

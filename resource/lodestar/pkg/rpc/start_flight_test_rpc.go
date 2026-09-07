@@ -22,7 +22,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *StartFlightTest) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
 	return nil
 }

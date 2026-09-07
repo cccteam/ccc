@@ -26,7 +26,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *HailShip) Execute(ctx context.Context, txn resource.ReadWriteTransaction, _ *Client) error {
 	if err := resources.NewShipTouch(m.ShipID).Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
 		return errors.Wrap(err, "resources.ShipTouch.Buffer()")

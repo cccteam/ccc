@@ -5,7 +5,10 @@
 package bindingfixture
 
 import (
+	"context"
+
 	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/resource"
 )
 
 // Struct-level annotations only parse from a TypeSpec doc comment, so scoped
@@ -307,11 +310,8 @@ type (
 	}
 )
 
-// TxnRunner mirrors the generated RPC interface's name so transition fixtures
-// can implement it — the extractor matches interfaces by name.
-type TxnRunner interface {
-	RunsInTxn()
-}
+// Client stands in for the application's RPC client, the third Execute parameter.
+type Client struct{}
 
 // The transition fixtures: one well-formed shape and one struct per rejection
 // the resolver enforces.
@@ -394,7 +394,7 @@ type (
 
 	// @rpc
 	// @transition(StatefulTask, from: open, to: approved)
-	TransitionNotTxnRunner struct {
+	TransitionClientForm struct {
 		// @target
 		TaskID ccc.UUID
 	}
@@ -448,19 +448,51 @@ type (
 	}
 )
 
-func (ApproveTask) RunsInTxn()                  {}
-func (CloseTask) RunsInTxn()                    {}
-func (TransitionUnknownRoot) RunsInTxn()        {}
-func (TransitionStatelessRoot) RunsInTxn()      {}
-func (TransitionBadFrom) RunsInTxn()            {}
-func (TransitionDuplicateFrom) RunsInTxn()      {}
-func (TransitionBadTo) RunsInTxn()              {}
-func (TransitionNoTarget) RunsInTxn()           {}
-func (TransitionTwoTargets) RunsInTxn()         {}
-func (TransitionTargetTypeMismatch) RunsInTxn() {}
-func (TransitionScopeMismatch) RunsInTxn()      {}
-func (TargetWithoutTransition) RunsInTxn()      {}
-func (PlainTargetTask) RunsInTxn()              {}
-func (PlainTargetMaintenance) RunsInTxn()       {}
-func (PlainTargetPathTenant) RunsInTxn()        {}
-func (TransitionTargetWithArg) RunsInTxn()      {}
+// Every RPC fixture declares Execute in the transaction form the transition
+// resolver requires; TransitionClientForm alone declares the client form.
+func (ApproveTask) Execute(context.Context, resource.ReadWriteTransaction, *Client) error { return nil }
+func (CloseTask) Execute(context.Context, resource.ReadWriteTransaction, *Client) error   { return nil }
+func (TransitionUnknownRoot) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (TransitionStatelessRoot) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (TransitionBadFrom) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (TransitionDuplicateFrom) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (TransitionBadTo) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (TransitionNoTarget) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (TransitionTwoTargets) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (TransitionTargetTypeMismatch) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (TransitionScopeMismatch) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (TargetWithoutTransition) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (PlainTargetTask) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (PlainTargetMaintenance) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (PlainTargetPathTenant) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (TransitionTargetWithArg) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+
+func (TransitionClientForm) Execute(context.Context, *resource.Client, *Client) error { return nil }

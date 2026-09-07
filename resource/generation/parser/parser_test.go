@@ -2,7 +2,6 @@ package parser
 
 import (
 	"go/types"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -218,46 +217,54 @@ func Test_ParseStructs(t *testing.T) {
 	}
 }
 
-func Test_FilterStructsByInterface(t *testing.T) {
+func Test_Struct_Method(t *testing.T) {
 	t.Parallel()
-	type args struct {
-		packagePath string
-		packageName string
-		interfaces  []string
+
+	pkgMap, err := LoadPackages("../testdata/rpc")
+	if err != nil {
+		t.Fatalf("LoadPackages() error = %v", err)
 	}
+	structs := make(map[string]*Struct)
+	for _, s := range ParsePackage(pkgMap["rpc"]).Structs {
+		structs[s.Name()] = s
+	}
+
 	tests := []struct {
-		name    string
-		args    args
-		want    []string
-		wantErr bool
+		name       string
+		structName string
+		method     string
+		wantParams int
 	}{
-		{
-			name:    "returns structs that implement a given interface",
-			args:    args{packagePath: "../testdata/rpc", packageName: "rpc", interfaces: []string{"TxnRunner"}},
-			want:    []string{"Banana", "Cofveve"},
-			wantErr: false,
-		},
+		{name: "pointer-receiver Execute is found", structName: "Banana", method: "Execute", wantParams: 3},
+		{name: "Execute declared in another file is found", structName: "Cofveve", method: "Execute", wantParams: 3},
+		{name: "value-receiver method is found", structName: "Durian", method: "Execute", wantParams: 3},
+		{name: "a struct without the method answers nil", structName: "Apple", method: "Execute", wantParams: -1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			pkgMap, err := LoadPackages(tt.args.packagePath)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("loadPackages() error = %v, wantErr %v", err, tt.wantErr)
+
+			s := structs[tt.structName]
+			if s == nil {
+				t.Fatalf("struct %q not in fixture", tt.structName)
+			}
+			fn := s.Method(tt.method)
+			if tt.wantParams < 0 {
+				if fn != nil {
+					t.Fatalf("Method(%q) = %v, want nil", tt.method, fn)
+				}
+
 				return
 			}
-
-			rpcStructs := ParsePackage(pkgMap[tt.args.packageName]).Structs
-
-			rpcStructs = FilterStructsByInterface(rpcStructs, tt.args.interfaces)
-
-			var rpcStructNames []string
-			for _, s := range rpcStructs {
-				rpcStructNames = append(rpcStructNames, s.Name())
+			if fn == nil {
+				t.Fatalf("Method(%q) = nil, want the method", tt.method)
 			}
-
-			if !reflect.DeepEqual(rpcStructNames, tt.want) {
-				t.Errorf("extractRPCMethods() = %v, want %v", rpcStructNames, tt.want)
+			sig, ok := fn.Type().(*types.Signature)
+			if !ok {
+				t.Fatalf("Method(%q).Type() = %T, want *types.Signature", tt.method, fn.Type())
+			}
+			if got := sig.Params().Len(); got != tt.wantParams {
+				t.Errorf("Method(%q) params = %d, want %d", tt.method, got, tt.wantParams)
 			}
 		})
 	}

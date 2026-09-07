@@ -24,7 +24,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *FailMission) Execute(ctx context.Context, txn resource.ReadWriteTransaction, _ *Client) error {
 	switch resources.FailReason(m.ReasonID) {
 	case resources.UnrecoverableFailReason, resources.SolarWeatherFailReason, resources.AbortedFailReason, resources.RecalledFailReason:

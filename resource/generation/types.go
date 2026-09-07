@@ -308,6 +308,8 @@ type routeTestParam struct {
 type rpcMethodInfo struct {
 	*parser.Struct
 	outletMembership
+	// Form is how Execute runs, read off its signature at extraction.
+	Form            rpcForm
 	Fields          []*rpcField
 	SuppressHandler bool
 	// PermissionScope is the scope the method's registration uses
@@ -328,12 +330,16 @@ func (r *rpcMethodInfo) IsDomainScoped() bool {
 	return r.PermissionScope == accesstypes.DomainPermissionScope
 }
 
-func (r *rpcMethodInfo) IsTxnRunner() bool {
-	return r.Implements("TxnRunner")
+// IsTxnForm reports whether Execute runs inside the generated handler's
+// read-write transaction (its second parameter is resource.ReadWriteTransaction).
+func (r *rpcMethodInfo) IsTxnForm() bool {
+	return r.Form == rpcFormTxn
 }
 
-func (r *rpcMethodInfo) IsDBRunner() bool {
-	return r.Implements("DBRunner")
+// IsClientForm reports whether Execute runs outside a handler-owned
+// transaction (its second parameter is *resource.Client).
+func (r *rpcMethodInfo) IsClientForm() bool {
+	return r.Form == rpcFormClient
 }
 
 func (r *rpcMethodInfo) hasEnumeratedResource() bool {

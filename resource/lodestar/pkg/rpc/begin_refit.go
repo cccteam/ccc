@@ -20,7 +20,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *BeginRefit) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
 	return nil
 }

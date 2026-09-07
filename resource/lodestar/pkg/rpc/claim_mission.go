@@ -27,7 +27,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *ClaimMission) Execute(ctx context.Context, txn resource.ReadWriteTransaction, _ *Client) error {
 	squadron := ccc.NullUUID{UUID: m.SquadronID, Valid: true}
 	if err := resources.NewMissionUpdatePatch(m.MissionID).SetAssignedSquadronID(squadron).Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {

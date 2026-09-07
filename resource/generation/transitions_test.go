@@ -23,12 +23,30 @@ func resolveFixtureTransition(t *testing.T, c *client, structs map[string]*parse
 	if err != nil {
 		t.Fatalf("ScanStruct(%s) error = %v", name, err)
 	}
-	rpcMethod := &rpcMethodInfo{Struct: s}
+	rpcMethod := &rpcMethodInfo{Struct: s, Form: fixtureForm(t, s)}
 	if err := resolvePermissionScope(annotations, &rpcMethod.PermissionScope); err != nil {
 		t.Fatalf("resolvePermissionScope(%s) error = %v", name, err)
 	}
 
 	return rpcMethod, c.resolveTransition(rpcMethod, s, annotations)
+}
+
+// fixtureForm classifies a fixture struct's Execute the way extraction does; a
+// struct without one (a resource fixture standing in for a plain struct) stays
+// unclassified.
+func fixtureForm(t *testing.T, s *parser.Struct) rpcForm {
+	t.Helper()
+
+	if !s.HasMethod("Execute") {
+		return rpcFormUnclassified
+	}
+
+	form, err := classifyExecute(s)
+	if err != nil {
+		t.Fatalf("classifyExecute(%s) error = %v", s.Name(), err)
+	}
+
+	return form
 }
 
 // transitionFixtureClient is the state fixture client with the workflow root
@@ -247,14 +265,15 @@ func TestResolveTransition(t *testing.T) {
 		})
 	}
 
-	t.Run("DBRunner form is rejected", func(t *testing.T) {
+	t.Run("client form is rejected", func(t *testing.T) {
 		t.Parallel()
 
-		// TransitionNotTxnRunner has no RunsInTxn method, so Implements fails.
+		// TransitionClientForm's Execute takes *resource.Client, so it runs
+		// outside the transaction the located-row checks need.
 		c := transitionFixtureClient(t, structs)
-		_, err := resolveFixtureTransition(t, c, structs, "TransitionNotTxnRunner")
-		if err == nil || !strings.Contains(err.Error(), "requires the TxnRunner form") {
-			t.Errorf("resolveTransition(TransitionNotTxnRunner) error = %v, want the TxnRunner requirement", err)
+		_, err := resolveFixtureTransition(t, c, structs, "TransitionClientForm")
+		if err == nil || !strings.Contains(err.Error(), "requires the transaction form") {
+			t.Errorf("resolveTransition(TransitionClientForm) error = %v, want the transaction-form requirement", err)
 		}
 	})
 
@@ -267,7 +286,7 @@ func TestResolveTransition(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ScanStruct() error = %v", err)
 		}
-		rpcMethod := &rpcMethodInfo{Struct: s, SuppressHandler: true}
+		rpcMethod := &rpcMethodInfo{Struct: s, Form: fixtureForm(t, s), SuppressHandler: true}
 		err = c.resolveTransition(rpcMethod, s, annotations)
 		if err == nil || !strings.Contains(err.Error(), "generated handler") {
 			t.Errorf("resolveTransition() with a suppressed handler error = %v, want the generated-handler requirement", err)
@@ -421,7 +440,7 @@ func Test_rpcHandlerTemplate_transition(t *testing.T) {
 	t.Run("plain RPC renders no frame", func(t *testing.T) {
 		t.Parallel()
 
-		rpcMethod := &rpcMethodInfo{Struct: structs["ApproveTask"]}
+		rpcMethod := &rpcMethodInfo{Struct: structs["ApproveTask"], Form: fixtureForm(t, structs["ApproveTask"])}
 		for _, field := range rpcMethod.Struct.Fields() {
 			rpcMethod.Fields = append(rpcMethod.Fields, &rpcField{Field: field})
 		}

@@ -18,7 +18,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *IssueBulletin) Execute(_ context.Context, _ resource.ReadWriteTransaction, _ *Client) error {
 	if m.Announcement == "" {
 		return httpio.NewBadRequestMessage("announcement is required")

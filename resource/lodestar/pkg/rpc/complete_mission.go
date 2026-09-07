@@ -22,7 +22,7 @@ type (
 	}
 )
 
-// Execute implements TxnRunner.
+// Execute runs inside the handler's transaction.
 func (m *CompleteMission) Execute(ctx context.Context, txn resource.ReadWriteTransaction, _ *Client) error {
 	sortieIDs, err := returnOpenSorties(ctx, txn, m.MissionID)
 	if err != nil {
