@@ -41,7 +41,7 @@ func NewDecoder[Resource Resourcer, Request any](a *App, permissions ...accessty
 func NewRPCDecoder[Method rpc.Method, Request any](a *App, perm accesstypes.Permission) *resource.RPCDecoder[Request] {
 	var method Method
 
-	return resource.MustNewRPCDecoder[Request](a, method.Method(), perm)
+	return resource.MustNewRPCDecoder[Request](a, method.Method(), perm).WithCollection(router.Collection())
 }
 
 // NewTargetedRPCDecoder builds a decoder for a @target-bearing RPC method

@@ -56,10 +56,15 @@ func (a *App) IngestDroidReports() http.HandlerFunc {
 		defer span.End()
 
 		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
-		params, err := decoder.Decode(r, accesstypes.DomainScope(domain))
+
+		params, caller, err := decoder.DecodeCaller(r, accesstypes.DomainScope(domain))
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		// The caller the entry check ran as rides the context: a body that arms a
+		// write or a read against the caller (Enforce) evaluates the same checker,
+		// scope, and decision instant.
+		ctx = resource.WithCaller(ctx, caller)
 
 		p := sourceRequest(*params)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {

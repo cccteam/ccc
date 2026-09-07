@@ -70,6 +70,10 @@
         }
       </div>
 
+      @if (refusal(); as refusal) {
+        <p class="refusal">{{ refusal }}</p>
+      }
+
       @switch (pendingEdge()) {
         @case (methods.ClaimMission) {
           <form class="inline-form" (ngSubmit)="fire(mission, methods.ClaimMission)">

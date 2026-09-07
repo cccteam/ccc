@@ -22,8 +22,34 @@ func (Hangar) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// hangarRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; hangarReadSets holds one Set per read operation.
+type hangarRead struct {
+	ID       ccc.UUID `json:"id"       perm:"-"`
+	SectorID string   `json:"sectorId"`
+	Name     string   `json:"name"`
+	Zone     string   `json:"zone"`
+}
+
+var hangarReadSets resource.SetCache[Hangar, hangarRead]
+
+// hangarWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; hangarWriteSets holds one Set per mutation.
+type hangarWrite struct {
+	ID       ccc.UUID `json:"-"`
+	SectorID string   `json:"-"`
+	Name     string   `json:"name"`
+	Zone     string   `json:"zone"`
+}
+
+var hangarWriteSets resource.SetCache[Hangar, hangarWrite]
+
 type HangarQuery struct {
 	qSet *resource.QuerySet[Hangar]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewHangarQuery() *HangarQuery {
@@ -46,15 +72,37 @@ func (q *HangarQuery) ID() ccc.UUID {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *HangarQuery) Enforce(caller *resource.Caller) *HangarQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *HangarQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Hangar], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, hangarReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *HangarQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Hangar], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, hangarReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *HangarQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Hangar], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, hangarReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -309,6 +357,18 @@ func (p *HangarCreatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *HangarCreatePatch) Enforce(caller *resource.Caller) *HangarCreatePatch {
+	p.patchSet.Enforce(caller, hangarWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *HangarCreatePatch) registerDefaultFuncs() {
 }
 
@@ -413,6 +473,18 @@ func (p *HangarUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *HangarUpdatePatch) Enforce(caller *resource.Caller) *HangarUpdatePatch {
+	p.patchSet.Enforce(caller, hangarWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *HangarUpdatePatch) registerDefaultFuncs() {
 }
 
@@ -501,6 +573,18 @@ func (p *HangarDeletePatch) Apply(ctx context.Context, client resource.Client, e
 
 func (p *HangarDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *HangarDeletePatch) Enforce(caller *resource.Caller) *HangarDeletePatch {
+	p.patchSet.Enforce(caller, hangarWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *HangarDeletePatch) ID() ccc.UUID {

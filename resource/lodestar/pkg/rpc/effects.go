@@ -6,6 +6,7 @@ import (
 
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/httpio"
@@ -39,6 +40,38 @@ func appendMissionNote(ctx context.Context, txn resource.ReadWriteTransaction, m
 
 	return nil
 }
+
+// appendMissionNoteAs appends a line to the mission's notes AS THE CALLER: the write
+// is armed against the caller's own Update grant on Missions.notes (Enforce), so it
+// runs the pipeline the resource routes run — field gate, grant fold, live check
+// against the row inside this transaction, tenancy — instead of the trusted write
+// the frame allows a body by default. The method's Execute grant admits the caller;
+// this write is what the caller's grants decide: the Sector Marshal holds notes
+// unconditionally, the Dispatcher while the mission is live (`state NOT IN
+// ('completed', 'failed', 'stood_down')`), and a Flight Lead, who may Execute but
+// holds no Update on notes, is refused here with the grant named.
+func appendMissionNoteAs(ctx context.Context, txn resource.ReadWriteTransaction, caller *resource.Caller, missionID ccc.UUID, line string) error {
+	row, err := resources.NewMissionQuery().AddColumns(resources.NewMissionColumns().Notes()).SetID(missionID).Read(ctx, txn)
+	if err != nil {
+		return errors.Wrap(err, "resources.MissionQuery.Read()")
+	}
+	if row == nil {
+		return httpio.NewNotFoundMessagef("mission %s does not exist", missionID)
+	}
+
+	notes := line
+	if row.Data.Notes != nil && *row.Data.Notes != "" {
+		notes = *row.Data.Notes + "\n" + line
+	}
+	if err := resources.NewMissionUpdatePatch(missionID).SetNotes(&notes).Enforce(caller).Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
+		return errors.Wrap(err, "resources.MissionUpdatePatch.Buffer()")
+	}
+
+	return nil
+}
+
+// missionNotes is the field resource a caller's Update grant on the notes names.
+const missionNotes accesstypes.Resource = "Missions.notes"
 
 // returnOpenSorties stamps ReturnedAt on every sortie of the mission still in flight:
 // a mission that completes or fails brings its ships home.

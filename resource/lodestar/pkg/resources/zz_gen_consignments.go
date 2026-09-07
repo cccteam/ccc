@@ -24,8 +24,42 @@ func (Consignment) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// consignmentRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; consignmentReadSets holds one Set per read operation.
+type consignmentRead struct {
+	ID          ccc.UUID   `json:"id"          perm:"-"`
+	SectorID    string     `json:"sectorId"`
+	ClientID    ccc.UUID   `json:"clientId"`
+	BondCode    string     `json:"bondCode"`
+	Description string     `json:"description"`
+	Mass        float64    `json:"mass"`
+	ExpiresOn   civil.Date `json:"expiresOn"`
+	ReleasedAt  *time.Time `json:"releasedAt"`
+}
+
+var consignmentReadSets resource.SetCache[Consignment, consignmentRead]
+
+// consignmentWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; consignmentWriteSets holds one Set per mutation.
+type consignmentWrite struct {
+	ID          ccc.UUID   `json:"-"`
+	SectorID    string     `json:"-"`
+	ClientID    ccc.UUID   `json:"clientId"`
+	BondCode    string     `json:"bondCode"    immutable:"true"`
+	Description string     `json:"description"`
+	Mass        float64    `json:"mass"`
+	ExpiresOn   civil.Date `json:"expiresOn"`
+	ReleasedAt  *time.Time `json:"releasedAt"`
+}
+
+var consignmentWriteSets resource.SetCache[Consignment, consignmentWrite]
+
 type ConsignmentQuery struct {
 	qSet *resource.QuerySet[Consignment]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewConsignmentQuery() *ConsignmentQuery {
@@ -60,15 +94,37 @@ func (q *ConsignmentQuery) BondCode() string {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *ConsignmentQuery) Enforce(caller *resource.Caller) *ConsignmentQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *ConsignmentQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Consignment], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, consignmentReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *ConsignmentQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Consignment], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, consignmentReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *ConsignmentQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Consignment], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, consignmentReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -379,6 +435,18 @@ func (p *ConsignmentCreatePatch) Buffer(ctx context.Context, txn resource.ReadWr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *ConsignmentCreatePatch) Enforce(caller *resource.Caller) *ConsignmentCreatePatch {
+	p.patchSet.Enforce(caller, consignmentWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *ConsignmentCreatePatch) registerDefaultFuncs() {
 }
 
@@ -551,6 +619,18 @@ func (p *ConsignmentUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *ConsignmentUpdatePatch) Enforce(caller *resource.Caller) *ConsignmentUpdatePatch {
+	p.patchSet.Enforce(caller, consignmentWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *ConsignmentUpdatePatch) registerDefaultFuncs() {
 }
 
@@ -707,6 +787,18 @@ func (p *ConsignmentDeletePatch) Apply(ctx context.Context, client resource.Clie
 
 func (p *ConsignmentDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *ConsignmentDeletePatch) Enforce(caller *resource.Caller) *ConsignmentDeletePatch {
+	p.patchSet.Enforce(caller, consignmentWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *ConsignmentDeletePatch) ID() ccc.UUID {

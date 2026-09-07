@@ -22,8 +22,42 @@ func (DistressCall) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// distressCallRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; distressCallReadSets holds one Set per read operation.
+type distressCallRead struct {
+	ID            ccc.UUID `json:"id"            perm:"-"`
+	SectorID      string   `json:"sectorId"`
+	Summary       string   `json:"summary"`
+	Severity      int64    `json:"severity"`
+	CallerContact *string  `json:"callerContact" pii:"true"`
+	Transcript    *string  `json:"-"`
+	CaseNumber    string   `json:"caseNumber"`
+	FiledBy       string   `json:"filedBy"`
+}
+
+var distressCallReadSets resource.SetCache[DistressCall, distressCallRead]
+
+// distressCallWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; distressCallWriteSets holds one Set per mutation.
+type distressCallWrite struct {
+	ID            ccc.UUID `json:"-"`
+	SectorID      string   `json:"-"`
+	Summary       string   `json:"summary"`
+	Severity      int64    `json:"severity"`
+	CallerContact *string  `json:"callerContact"`
+	Transcript    *string  `json:"transcript"`
+	CaseNumber    string   `json:"-"`
+	FiledBy       string   `json:"-"`
+}
+
+var distressCallWriteSets resource.SetCache[DistressCall, distressCallWrite]
+
 type DistressCallQuery struct {
 	qSet *resource.QuerySet[DistressCall]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewDistressCallQuery() *DistressCallQuery {
@@ -58,15 +92,37 @@ func (q *DistressCallQuery) CaseNumber() string {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *DistressCallQuery) Enforce(caller *resource.Caller) *DistressCallQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *DistressCallQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[DistressCall], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, distressCallReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *DistressCallQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[DistressCall], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, distressCallReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *DistressCallQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[DistressCall], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, distressCallReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -369,6 +425,18 @@ func (p *DistressCallCreatePatch) Buffer(ctx context.Context, txn resource.ReadW
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *DistressCallCreatePatch) Enforce(caller *resource.Caller) *DistressCallCreatePatch {
+	p.patchSet.Enforce(caller, distressCallWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *DistressCallCreatePatch) registerDefaultFuncs() {
 	p.patchSet.RegisterDefaultCreateFunc("CaseNumber", defaultCaseNumber)
 	p.patchSet.RegisterDefaultCreateFunc("FiledBy", currentUser)
@@ -547,6 +615,18 @@ func (p *DistressCallUpdatePatch) Buffer(ctx context.Context, txn resource.ReadW
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *DistressCallUpdatePatch) Enforce(caller *resource.Caller) *DistressCallUpdatePatch {
+	p.patchSet.Enforce(caller, distressCallWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *DistressCallUpdatePatch) registerDefaultFuncs() {
 }
 
@@ -707,6 +787,18 @@ func (p *DistressCallDeletePatch) Apply(ctx context.Context, client resource.Cli
 
 func (p *DistressCallDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *DistressCallDeletePatch) Enforce(caller *resource.Caller) *DistressCallDeletePatch {
+	p.patchSet.Enforce(caller, distressCallWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *DistressCallDeletePatch) ID() ccc.UUID {

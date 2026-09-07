@@ -22,8 +22,32 @@ func (Squadron) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// squadronRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; squadronReadSets holds one Set per read operation.
+type squadronRead struct {
+	ID     ccc.UUID `json:"id"     perm:"-"`
+	WingID ccc.UUID `json:"wingId"`
+	Name   string   `json:"name"`
+}
+
+var squadronReadSets resource.SetCache[Squadron, squadronRead]
+
+// squadronWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; squadronWriteSets holds one Set per mutation.
+type squadronWrite struct {
+	ID     ccc.UUID `json:"-"`
+	WingID ccc.UUID `json:"wingId"`
+	Name   string   `json:"name"`
+}
+
+var squadronWriteSets resource.SetCache[Squadron, squadronWrite]
+
 type SquadronQuery struct {
 	qSet *resource.QuerySet[Squadron]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewSquadronQuery() *SquadronQuery {
@@ -46,15 +70,37 @@ func (q *SquadronQuery) ID() ccc.UUID {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *SquadronQuery) Enforce(caller *resource.Caller) *SquadronQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *SquadronQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Squadron], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, squadronReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *SquadronQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Squadron], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, squadronReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *SquadronQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Squadron], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, squadronReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -302,6 +348,18 @@ func (p *SquadronCreatePatch) Buffer(ctx context.Context, txn resource.ReadWrite
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *SquadronCreatePatch) Enforce(caller *resource.Caller) *SquadronCreatePatch {
+	p.patchSet.Enforce(caller, squadronWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *SquadronCreatePatch) registerDefaultFuncs() {
 }
 
@@ -390,6 +448,18 @@ func (p *SquadronUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWrite
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *SquadronUpdatePatch) Enforce(caller *resource.Caller) *SquadronUpdatePatch {
+	p.patchSet.Enforce(caller, squadronWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *SquadronUpdatePatch) registerDefaultFuncs() {
 }
 
@@ -462,6 +532,18 @@ func (p *SquadronDeletePatch) Apply(ctx context.Context, client resource.Client,
 
 func (p *SquadronDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *SquadronDeletePatch) Enforce(caller *resource.Caller) *SquadronDeletePatch {
+	p.patchSet.Enforce(caller, squadronWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *SquadronDeletePatch) ID() ccc.UUID {

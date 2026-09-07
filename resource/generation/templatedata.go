@@ -266,7 +266,10 @@ type decodersFileData struct {
 	HasComputedQueryDecoder bool
 	HasPatchDecoder         bool
 	HasRPCDecoder           bool
-	HasTargetedRPCDecoder   bool
+	// HasCollection marks an application that generates the permission collection,
+	// which the RPC decoder wires in so armed writes render conditional grants.
+	HasCollection         bool
+	HasTargetedRPCDecoder bool
 }
 
 type appContractData struct {

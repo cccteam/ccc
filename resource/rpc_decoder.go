@@ -15,6 +15,9 @@ type RPCDecoder[Request any] struct {
 	res                accesstypes.Resource
 	requiredPermission accesstypes.Permission
 	userPermissions    func(*http.Request) UserPermissions
+	// collection lets a body's armed writes render conditional grants into their
+	// live check; nil when the application generates no collection.
+	collection *GeneratedCollection
 }
 
 // NewRPCDecoder creates a new RPCDecoder for a given request type, method name, and required permission.
@@ -45,6 +48,15 @@ func MustNewRPCDecoder[Request any](a DecoderAccessor, methodName accesstypes.Re
 	return decoder.WithValidator(a.Validator())
 }
 
+// WithCollection wires the generated collection to the decoder, so the caller it
+// stamps can render conditional grants into the live check of a body's armed writes.
+func (s *RPCDecoder[Request]) WithCollection(collection *GeneratedCollection) *RPCDecoder[Request] {
+	decoder := *s
+	decoder.collection = collection
+
+	return &decoder
+}
+
 // WithValidator sets a validator function on the decoder.
 func (s *RPCDecoder[Request]) WithValidator(v ValidatorFunc) *RPCDecoder[Request] {
 	decoder := *s
@@ -61,22 +73,32 @@ func (s *RPCDecoder[Request]) WithValidator(v ValidatorFunc) *RPCDecoder[Request
 // is a 500-class invariant breach — an RPC method has no rows for a condition to
 // evaluate against, and MigrateRoles rejects such grants at deploy.
 func (s *RPCDecoder[Request]) Decode(request *http.Request, scope accesstypes.Scope) (*Request, error) {
+	req, _, err := s.DecodeCaller(request, scope)
+
+	return req, err
+}
+
+// DecodeCaller decodes and checks like Decode and also returns the Caller the
+// check ran as — checker, scope, and sampled environment — for the handler to stamp
+// into the context the method's body runs under.
+func (s *RPCDecoder[Request]) DecodeCaller(request *http.Request, scope accesstypes.Scope) (*Request, *Caller, error) {
 	req, err := s.d.Decode(request)
 	if err != nil {
-		return nil, errors.Wrap(err, "resource.StructDecoder.Decode()")
+		return nil, nil, errors.Wrap(err, "resource.StructDecoder.Decode()")
 	}
 
 	userPermissions := s.userPermissions(request)
-	decisions, err := userPermissions.Check(request.Context(), newRequestEnvironment(), scope, s.requiredPermission, s.res)
+	env := newRequestEnvironment()
+	decisions, err := userPermissions.Check(request.Context(), env, scope, s.requiredPermission, s.res)
 	if err != nil {
-		return nil, errors.Wrap(err, "resource.UserPermissions.Check()")
+		return nil, nil, errors.Wrap(err, "resource.UserPermissions.Check()")
 	}
 	if denied := decisions.DeniedResources(); len(denied) > 0 {
-		return nil, httpio.NewForbiddenMessagef("user %s, scope %s, does not have %s on %s", userPermissions.User(), scope, s.requiredPermission, denied)
+		return nil, nil, httpio.NewForbiddenMessagef("user %s, scope %s, does not have %s on %s", userPermissions.User(), scope, s.requiredPermission, denied)
 	}
 	if conditional := decisions.ConditionalResources(); len(conditional) > 0 {
-		return nil, errConditionalAtDecode(s.requiredPermission, conditional)
+		return nil, nil, errConditionalAtDecode(s.requiredPermission, conditional)
 	}
 
-	return req, nil
+	return req, &Caller{Permissions: userPermissions, Scope: scope, Env: env, collection: s.collection}, nil
 }

@@ -36,5 +36,8 @@ func (m *FailMission) Execute(ctx context.Context, txn resource.ReadWriteTransac
 		return err
 	}
 
+	// The trusted default: the frame's Execute grant admitted the caller, and the
+	// body writes the note as the application — no grant on the notes is consulted.
+	// HoldMission is the armed contrast.
 	return appendMissionNote(ctx, txn, m.MissionID, "Failed: "+m.ReasonID)
 }

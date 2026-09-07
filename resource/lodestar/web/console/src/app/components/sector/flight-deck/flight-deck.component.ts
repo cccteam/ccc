@@ -11,7 +11,7 @@ import { MatTableModule } from '@angular/material/table';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { FailReason, MissionKind } from '@app/service/zz_gen_enums';
 import { Missions, Sorties, SortieExpenses } from '@app/service/zz_gen_resources';
-import { Method, rowCapabilities } from '@cccteam/resource';
+import { ApiError, Method, rowCapabilities } from '@cccteam/resource';
 import { SectorService } from '../sector.service';
 import { StarChartComponent } from '../star-chart/star-chart.component';
 import { WorkflowGraphComponent } from '../workflow-graph/workflow-graph.component';
@@ -72,6 +72,10 @@ export class FlightDeckComponent {
   selectedID = signal<string | undefined>(undefined);
   selected = computed(() => this.missions.value().find((m) => m.id === this.selectedID()));
   pendingEdge = signal<Method | undefined>(undefined);
+  // A refusal from inside the method's transaction, in the grant's own words:
+  // HoldMission writes its reason as the caller, so a Flight Lead whom Execute
+  // admits is still refused the note, and the deck says which grant said no.
+  refusal = signal<string | undefined>(undefined);
 
   // Transition bodies that need input beyond the target row.
   claimSquadronId = '';
@@ -206,6 +210,19 @@ export class FlightDeckComponent {
   }
 
   async fire(mission: Missions, method: Method): Promise<void> {
+    this.refusal.set(undefined);
+    try {
+      await this.execute(mission, method);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403) {
+        this.refusal.set(e.message);
+        return;
+      }
+      throw e;
+    }
+  }
+
+  private async execute(mission: Missions, method: Method): Promise<void> {
     const api = this.sectors.sectorApi();
     switch (method) {
       case Methods.ClaimMission:

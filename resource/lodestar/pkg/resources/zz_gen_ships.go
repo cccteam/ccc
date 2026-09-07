@@ -23,8 +23,40 @@ func (Ship) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// shipRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; shipReadSets holds one Set per read operation.
+type shipRead struct {
+	ID          ccc.UUID   `json:"id"          perm:"-"`
+	HangarID    ccc.UUID   `json:"hangarId"`
+	ClassID     ccc.UUID   `json:"classId"`
+	Registry    string     `json:"registry"`
+	Name        string     `json:"name"`
+	LastRefitAt *time.Time `json:"lastRefitAt"`
+	UpdatedAt   *time.Time `json:"updatedAt"`
+}
+
+var shipReadSets resource.SetCache[Ship, shipRead]
+
+// shipWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; shipWriteSets holds one Set per mutation.
+type shipWrite struct {
+	ID          ccc.UUID   `json:"-"`
+	HangarID    ccc.UUID   `json:"hangarId"`
+	ClassID     ccc.UUID   `json:"classId"`
+	Registry    string     `json:"registry" immutable:"true"`
+	Name        string     `json:"name"`
+	LastRefitAt *time.Time `json:"-"`
+	UpdatedAt   *time.Time `json:"-"`
+}
+
+var shipWriteSets resource.SetCache[Ship, shipWrite]
+
 type ShipQuery struct {
 	qSet *resource.QuerySet[Ship]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewShipQuery() *ShipQuery {
@@ -59,15 +91,37 @@ func (q *ShipQuery) Registry() string {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *ShipQuery) Enforce(caller *resource.Caller) *ShipQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *ShipQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Ship], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, shipReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *ShipQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Ship], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, shipReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *ShipQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Ship], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, shipReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -363,6 +417,18 @@ func (p *ShipCreatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTran
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *ShipCreatePatch) Enforce(caller *resource.Caller) *ShipCreatePatch {
+	p.patchSet.Enforce(caller, shipWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *ShipCreatePatch) registerDefaultFuncs() {
 }
 
@@ -521,6 +587,18 @@ func (p *ShipUpdatePatch) Apply(ctx context.Context, client resource.Client, eve
 
 func (p *ShipUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *ShipUpdatePatch) Enforce(caller *resource.Caller) *ShipUpdatePatch {
+	p.patchSet.Enforce(caller, shipWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
 }
 
 func (p *ShipUpdatePatch) registerDefaultFuncs() {
@@ -695,6 +773,18 @@ func (p *ShipDeletePatch) Apply(ctx context.Context, client resource.Client, eve
 
 func (p *ShipDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *ShipDeletePatch) Enforce(caller *resource.Caller) *ShipDeletePatch {
+	p.patchSet.Enforce(caller, shipWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *ShipDeletePatch) ID() ccc.UUID {

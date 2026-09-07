@@ -21,8 +21,34 @@ func (Sector) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// sectorRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; sectorReadSets holds one Set per read operation.
+type sectorRead struct {
+	ID          string     `json:"id"          perm:"-"`
+	Name        string     `json:"name"`
+	Region      string     `json:"region"`
+	Established civil.Date `json:"established"`
+}
+
+var sectorReadSets resource.SetCache[Sector, sectorRead]
+
+// sectorWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; sectorWriteSets holds one Set per mutation.
+type sectorWrite struct {
+	ID          string     `json:"-"`
+	Name        string     `json:"name"`
+	Region      string     `json:"region"`
+	Established civil.Date `json:"established"`
+}
+
+var sectorWriteSets resource.SetCache[Sector, sectorWrite]
+
 type SectorQuery struct {
 	qSet *resource.QuerySet[Sector]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewSectorQuery() *SectorQuery {
@@ -57,15 +83,37 @@ func (q *SectorQuery) Name() string {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *SectorQuery) Enforce(caller *resource.Caller) *SectorQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *SectorQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Sector], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, sectorReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *SectorQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Sector], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, sectorReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *SectorQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Sector], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, sectorReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -310,6 +358,18 @@ func (p *SectorCreatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *SectorCreatePatch) Enforce(caller *resource.Caller) *SectorCreatePatch {
+	p.patchSet.Enforce(caller, sectorWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *SectorCreatePatch) registerDefaultFuncs() {
 }
 
@@ -414,6 +474,18 @@ func (p *SectorUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *SectorUpdatePatch) Enforce(caller *resource.Caller) *SectorUpdatePatch {
+	p.patchSet.Enforce(caller, sectorWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *SectorUpdatePatch) registerDefaultFuncs() {
 }
 
@@ -502,6 +574,18 @@ func (p *SectorDeletePatch) Apply(ctx context.Context, client resource.Client, e
 
 func (p *SectorDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *SectorDeletePatch) Enforce(caller *resource.Caller) *SectorDeletePatch {
+	p.patchSet.Enforce(caller, sectorWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *SectorDeletePatch) ID() string {

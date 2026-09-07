@@ -10,6 +10,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/google/go-cmp/cmp"
+	"github.com/shopspring/decimal"
 )
 
 func (FeeByKind) Resource() accesstypes.Resource {
@@ -20,8 +21,22 @@ func (FeeByKind) DefaultConfig() resource.Config {
 	return resource.Config{}
 }
 
+// feeByKindRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; feeByKindReadSets holds one Set per read operation.
+type feeByKindRead struct {
+	KindID       string          `json:"kindId"       perm:"-"`
+	MissionCount int64           `json:"missionCount"`
+	TotalFee     decimal.Decimal `json:"totalFee"`
+	TopFee       decimal.Decimal `json:"topFee"`
+}
+
+var feeByKindReadSets resource.SetCache[FeeByKind, feeByKindRead]
+
 type FeeByKindQuery struct {
 	qSet *resource.QuerySet[FeeByKind]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewFeeByKindQuery() *FeeByKindQuery {
@@ -44,15 +59,37 @@ func (q *FeeByKindQuery) KindID() string {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *FeeByKindQuery) Enforce(caller *resource.Caller) *FeeByKindQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *FeeByKindQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[FeeByKind], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, feeByKindReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *FeeByKindQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[FeeByKind], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, feeByKindReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *FeeByKindQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[FeeByKind], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, feeByKindReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 

@@ -89,11 +89,12 @@ func (s *TargetedRPCDecoder[Request]) Decode(request *http.Request, scope access
 	}
 
 	gate := &ExecuteGate{
-		method:     s.res,
-		user:       userPermissions.User(),
-		scope:      scope,
-		env:        env,
-		collection: s.collection,
+		method:          s.res,
+		user:            userPermissions.User(),
+		userPermissions: userPermissions,
+		scope:           scope,
+		env:             env,
+		collection:      s.collection,
 	}
 	if decision, ok := decisions[s.res]; ok && decision.IsConditional() {
 		expr, err := conditionalExpr(s.res, decision)
@@ -129,12 +130,20 @@ const targetKeyParamName = "zzTargetKey"
 // ExecuteGate carries one request's Execute decision to the generated frame.
 // A nil condition (the grant was unconditional) enforces nothing.
 type ExecuteGate struct {
-	method     accesstypes.Resource
-	user       accesstypes.User
-	scope      accesstypes.Scope
-	env        accesstypes.Environment
-	collection *GeneratedCollection
-	cond       condition.Expr
+	method          accesstypes.Resource
+	user            accesstypes.User
+	userPermissions UserPermissions
+	scope           accesstypes.Scope
+	env             accesstypes.Environment
+	collection      *GeneratedCollection
+	cond            condition.Expr
+}
+
+// Caller returns the caller the decode-time check ran as — checker, scope, sampled
+// environment, and the collection — for the handler to stamp into the context the
+// method's body runs under.
+func (g *ExecuteGate) Caller() *Caller {
+	return &Caller{Permissions: g.userPermissions, Scope: g.scope, Env: g.env, collection: g.collection}
 }
 
 // Enforce evaluates the carried condition against the target row inside the

@@ -26,10 +26,14 @@ func (a *App) IssueBulletin() http.HandlerFunc {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		params, err := decoder.Decode(r, accesstypes.GlobalScope())
+		params, caller, err := decoder.DecodeCaller(r, accesstypes.GlobalScope())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		// The caller the entry check ran as rides the context: a body that arms a
+		// write or a read against the caller (Enforce) evaluates the same checker,
+		// scope, and decision instant.
+		ctx = resource.WithCaller(ctx, caller)
 
 		p := (*rpc.IssueBulletin)(params)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {

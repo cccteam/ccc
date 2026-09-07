@@ -23,8 +23,40 @@ func (Sortie) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// sortieRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; sortieReadSets holds one Set per read operation.
+type sortieRead struct {
+	ID          ccc.UUID   `json:"id"          perm:"-"`
+	MissionID   ccc.UUID   `json:"missionId"`
+	ShipID      ccc.UUID   `json:"shipId"`
+	PilotUserID string     `json:"pilotUserId"`
+	LaunchedAt  time.Time  `json:"launchedAt"`
+	ReturnedAt  *time.Time `json:"returnedAt"`
+	Debrief     *string    `json:"debrief"`
+}
+
+var sortieReadSets resource.SetCache[Sortie, sortieRead]
+
+// sortieWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; sortieWriteSets holds one Set per mutation.
+type sortieWrite struct {
+	ID          ccc.UUID   `json:"-"`
+	MissionID   ccc.UUID   `json:"missionId"`
+	ShipID      ccc.UUID   `json:"shipId"`
+	PilotUserID string     `json:"pilotUserId"`
+	LaunchedAt  time.Time  `json:"launchedAt"`
+	ReturnedAt  *time.Time `json:"returnedAt"`
+	Debrief     *string    `json:"debrief"`
+}
+
+var sortieWriteSets resource.SetCache[Sortie, sortieWrite]
+
 type SortieQuery struct {
 	qSet *resource.QuerySet[Sortie]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewSortieQuery() *SortieQuery {
@@ -47,15 +79,37 @@ func (q *SortieQuery) ID() ccc.UUID {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *SortieQuery) Enforce(caller *resource.Caller) *SortieQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *SortieQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Sortie], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, sortieReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *SortieQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Sortie], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, sortieReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *SortieQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Sortie], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, sortieReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -347,6 +401,18 @@ func (p *SortieCreatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *SortieCreatePatch) Enforce(caller *resource.Caller) *SortieCreatePatch {
+	p.patchSet.Enforce(caller, sortieWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *SortieCreatePatch) registerDefaultFuncs() {
 }
 
@@ -507,6 +573,18 @@ func (p *SortieUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *SortieUpdatePatch) Enforce(caller *resource.Caller) *SortieUpdatePatch {
+	p.patchSet.Enforce(caller, sortieWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *SortieUpdatePatch) registerDefaultFuncs() {
 }
 
@@ -651,6 +729,18 @@ func (p *SortieDeletePatch) Apply(ctx context.Context, client resource.Client, e
 
 func (p *SortieDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *SortieDeletePatch) Enforce(caller *resource.Caller) *SortieDeletePatch {
+	p.patchSet.Enforce(caller, sortieWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *SortieDeletePatch) ID() ccc.UUID {

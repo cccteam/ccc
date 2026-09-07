@@ -24,8 +24,40 @@ func (Refit) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// refitRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; refitReadSets holds one Set per read operation.
+type refitRead struct {
+	ID          ccc.UUID            `json:"id"          perm:"-"`
+	ShipID      ccc.UUID            `json:"shipId"`
+	StatusID    string              `json:"statusId"`
+	Estimate    decimal.NullDecimal `json:"estimate"`
+	InspectedAt *time.Time          `json:"inspectedAt"`
+	OpenedBy    string              `json:"openedBy"`
+	Notes       *string             `json:"notes"`
+}
+
+var refitReadSets resource.SetCache[Refit, refitRead]
+
+// refitWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; refitWriteSets holds one Set per mutation.
+type refitWrite struct {
+	ID          ccc.UUID            `json:"-"`
+	ShipID      ccc.UUID            `json:"shipId"`
+	StatusID    string              `json:"-"`
+	Estimate    decimal.NullDecimal `json:"estimate"`
+	InspectedAt *time.Time          `json:"-"`
+	OpenedBy    string              `json:"-"`
+	Notes       *string             `json:"notes"`
+}
+
+var refitWriteSets resource.SetCache[Refit, refitWrite]
+
 type RefitQuery struct {
 	qSet *resource.QuerySet[Refit]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewRefitQuery() *RefitQuery {
@@ -48,15 +80,37 @@ func (q *RefitQuery) ID() ccc.UUID {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *RefitQuery) Enforce(caller *resource.Caller) *RefitQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *RefitQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Refit], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, refitReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *RefitQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Refit], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, refitReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *RefitQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Refit], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, refitReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -348,6 +402,18 @@ func (p *RefitCreatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTra
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *RefitCreatePatch) Enforce(caller *resource.Caller) *RefitCreatePatch {
+	p.patchSet.Enforce(caller, refitWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *RefitCreatePatch) registerDefaultFuncs() {
 	p.patchSet.RegisterDefaultCreateFunc("StatusID", func(context.Context, resource.ReadWriteTransaction) (any, error) {
 		return string("docked"), nil
@@ -512,6 +578,18 @@ func (p *RefitUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTra
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *RefitUpdatePatch) Enforce(caller *resource.Caller) *RefitUpdatePatch {
+	p.patchSet.Enforce(caller, refitWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *RefitUpdatePatch) registerDefaultFuncs() {
 	p.patchSet.RegisterDefaultsUpdateFunc(func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 		return new(RefitUpdateDefaults).Defaults(ctx, txn, p)
@@ -662,6 +740,18 @@ func (p *RefitDeletePatch) Apply(ctx context.Context, client resource.Client, ev
 
 func (p *RefitDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *RefitDeletePatch) Enforce(caller *resource.Caller) *RefitDeletePatch {
+	p.patchSet.Enforce(caller, refitWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *RefitDeletePatch) ID() ccc.UUID {

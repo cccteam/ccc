@@ -20,8 +20,30 @@ func (PilotCertification) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// pilotCertificationRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; pilotCertificationReadSets holds one Set per read operation.
+type pilotCertificationRead struct {
+	UserID          string `json:"userId"          perm:"-"`
+	CertificationID string `json:"certificationId" perm:"-"`
+}
+
+var pilotCertificationReadSets resource.SetCache[PilotCertification, pilotCertificationRead]
+
+// pilotCertificationWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; pilotCertificationWriteSets holds one Set per mutation.
+type pilotCertificationWrite struct {
+	UserID          string `json:"-"`
+	CertificationID string `json:"-"`
+}
+
+var pilotCertificationWriteSets resource.SetCache[PilotCertification, pilotCertificationWrite]
+
 type PilotCertificationQuery struct {
 	qSet *resource.QuerySet[PilotCertification]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewPilotCertificationQuery() *PilotCertificationQuery {
@@ -56,15 +78,37 @@ func (q *PilotCertificationQuery) CertificationID() string {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *PilotCertificationQuery) Enforce(caller *resource.Caller) *PilotCertificationQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *PilotCertificationQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[PilotCertification], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, pilotCertificationReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *PilotCertificationQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[PilotCertification], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, pilotCertificationReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *PilotCertificationQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[PilotCertification], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, pilotCertificationReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -289,6 +333,18 @@ func (p *PilotCertificationCreatePatch) Buffer(ctx context.Context, txn resource
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *PilotCertificationCreatePatch) Enforce(caller *resource.Caller) *PilotCertificationCreatePatch {
+	p.patchSet.Enforce(caller, pilotCertificationWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *PilotCertificationCreatePatch) registerDefaultFuncs() {
 }
 
@@ -353,6 +409,18 @@ func (p *PilotCertificationUpdatePatch) Buffer(ctx context.Context, txn resource
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *PilotCertificationUpdatePatch) Enforce(caller *resource.Caller) *PilotCertificationUpdatePatch {
+	p.patchSet.Enforce(caller, pilotCertificationWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *PilotCertificationUpdatePatch) registerDefaultFuncs() {
 }
 
@@ -401,6 +469,18 @@ func (p *PilotCertificationDeletePatch) Apply(ctx context.Context, client resour
 
 func (p *PilotCertificationDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *PilotCertificationDeletePatch) Enforce(caller *resource.Caller) *PilotCertificationDeletePatch {
+	p.patchSet.Enforce(caller, pilotCertificationWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *PilotCertificationDeletePatch) UserID() string {

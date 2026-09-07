@@ -6,6 +6,7 @@ package virtualresources
 import (
 	"context"
 	"iter"
+	"time"
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
@@ -21,8 +22,23 @@ func (OpenMissionsBySquadron) DefaultConfig() resource.Config {
 	return resource.Config{}
 }
 
+// openMissionsBySquadronRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; openMissionsBySquadronReadSets holds one Set per read operation.
+type openMissionsBySquadronRead struct {
+	SquadronID   ccc.UUID   `json:"squadronId"   perm:"-"`
+	SquadronName string     `json:"squadronName"`
+	SectorID     string     `json:"sectorId"     perm:"-"`
+	OpenMissions int64      `json:"openMissions"`
+	NextDeadline *time.Time `json:"nextDeadline"`
+}
+
+var openMissionsBySquadronReadSets resource.SetCache[OpenMissionsBySquadron, openMissionsBySquadronRead]
+
 type OpenMissionsBySquadronQuery struct {
 	qSet *resource.QuerySet[OpenMissionsBySquadron]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewOpenMissionsBySquadronQuery() *OpenMissionsBySquadronQuery {
@@ -33,15 +49,37 @@ func NewOpenMissionsBySquadronQueryFromQuerySet(qSet *resource.QuerySet[OpenMiss
 	return &OpenMissionsBySquadronQuery{qSet: qSet}
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *OpenMissionsBySquadronQuery) Enforce(caller *resource.Caller) *OpenMissionsBySquadronQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *OpenMissionsBySquadronQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[OpenMissionsBySquadron], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, openMissionsBySquadronReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *OpenMissionsBySquadronQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[OpenMissionsBySquadron], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, openMissionsBySquadronReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *OpenMissionsBySquadronQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[OpenMissionsBySquadron], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, openMissionsBySquadronReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 

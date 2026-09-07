@@ -1309,6 +1309,11 @@
       {
         "name": "Dispatcher",
         "permissions": {
+          "Execute": [
+            {
+              "resource": "HoldMission"
+            }
+          ],
           "List": [
             {
               "resource": "Missions",

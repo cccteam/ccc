@@ -45,8 +45,34 @@ func ({{ .Resource.Name }}) DefaultConfig() resource.Config {
 	{{- end }}
 }
 
+// {{ PrivateType .Resource.Name }}Read mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; {{ PrivateType .Resource.Name }}ReadSets holds one Set per read operation.
+type {{ PrivateType .Resource.Name }}Read struct {
+	{{- range $field := .Resource.Fields }}
+	{{ $field.Name }} {{ $field.ResolvedType }} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
+	{{- end }}
+}
+
+var {{ PrivateType .Resource.Name }}ReadSets resource.SetCache[{{ .Resource.Name }}, {{ PrivateType .Resource.Name }}Read]
+{{- if not .Resource.IsVirtual }}
+
+// {{ PrivateType .Resource.Name }}Write mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; {{ PrivateType .Resource.Name }}WriteSets holds one Set per mutation.
+type {{ PrivateType .Resource.Name }}Write struct {
+	{{- range $field := .Resource.Fields }}
+	{{ $field.Name }} {{ $field.ResolvedType }} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }}`" + `
+	{{- end }}
+}
+
+var {{ PrivateType .Resource.Name }}WriteSets resource.SetCache[{{ .Resource.Name }}, {{ PrivateType .Resource.Name }}Write]
+{{- end }}
+
 type {{ .Resource.Name }}Query struct {
 	qSet *resource.QuerySet[{{ .Resource.Name }}]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func New{{ .Resource.Name }}Query() *{{ .Resource.Name }}Query {
@@ -73,15 +99,37 @@ func (q *{{ $field.Parent.Name }}Query) {{ $field.Name }}() {{ $field.ResolvedTy
 {{ end }}
 {{ end }}
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *{{ .Resource.Name }}Query) Enforce(caller *resource.Caller) *{{ .Resource.Name }}Query {
+	q.caller = caller
+
+	return q
+}
+
 func (q *{{ .Resource.Name }}Query) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[{{ .Resource.Name }}], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, {{ PrivateType .Resource.Name }}ReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *{{ .Resource.Name }}Query) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[{{ .Resource.Name }}], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, {{ PrivateType .Resource.Name }}ReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *{{ .Resource.Name }}Query) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[{{ .Resource.Name }}], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, {{ PrivateType .Resource.Name }}ReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -357,6 +405,18 @@ func (p *{{ .Resource.Name }}CreatePatch) Buffer(ctx context.Context, txn resour
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *{{ .Resource.Name }}CreatePatch) Enforce(caller *resource.Caller) *{{ .Resource.Name }}CreatePatch {
+	p.patchSet.Enforce(caller, {{ PrivateType .Resource.Name }}WriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *{{ .Resource.Name }}CreatePatch) registerDefaultFuncs() {
 {{- range $field := .Resource.Fields }}
 {{- if $field.HasDefaultCreateFunc }}
@@ -445,6 +505,18 @@ func (p *{{ .Resource.Name }}UpdatePatch) Apply(ctx context.Context, client reso
 
 func (p *{{ .Resource.Name }}UpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *{{ .Resource.Name }}UpdatePatch) Enforce(caller *resource.Caller) *{{ .Resource.Name }}UpdatePatch {
+	p.patchSet.Enforce(caller, {{ PrivateType .Resource.Name }}WriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
 }
 
 func (p *{{ .Resource.Name }}UpdatePatch) registerDefaultFuncs() {
@@ -555,6 +627,18 @@ func (p *{{ .Resource.Name }}DeletePatch) Apply(ctx context.Context, client reso
 
 func (p *{{ .Resource.Name }}DeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *{{ .Resource.Name }}DeletePatch) Enforce(caller *resource.Caller) *{{ .Resource.Name }}DeletePatch {
+	p.patchSet.Enforce(caller, {{ PrivateType .Resource.Name }}WriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 {{ range $field := .Resource.Fields }}
@@ -743,7 +827,7 @@ func NewDecoder[Resource Resourcer, Request any]({{ .ReceiverName }} *{{ .Applic
 func NewRPCDecoder[Method {{ .RPCPackage }}.Method, Request any]({{ .ReceiverName }} *{{ .ApplicationName }}, perm accesstypes.Permission) *resource.RPCDecoder[Request] {
 	var method Method
 
-	return resource.MustNewRPCDecoder[Request]({{ .ReceiverName }}, method.Method(), perm)
+	return resource.MustNewRPCDecoder[Request]({{ .ReceiverName }}, method.Method(), perm){{ if .HasCollection }}.WithCollection({{ .RouterPackage }}.Collection()){{ end }}
 }
 {{ end }}
 {{- if .HasTargetedRPCDecoder }}
@@ -2490,10 +2574,25 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		{{ if .RPCMethod.IsDomainScoped -}}
 		` + domainParamLine + `
 		{{ end -}}
-		params, {{ if .RPCMethod.Target }}gate, {{ end }}err := decoder.Decode(r, {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
+		{{- if .RPCMethod.Target }}
+		params, gate, err := decoder.Decode(r, {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		// The caller the entry check ran as rides the context: a body that arms a
+		// write or a read against the caller (Enforce) evaluates the same checker,
+		// scope, and decision instant.
+		ctx = resource.WithCaller(ctx, gate.Caller())
+		{{- else }}
+		params, caller, err := decoder.DecodeCaller(r, {{ if .RPCMethod.IsDomainScoped }}accesstypes.DomainScope(domain){{ else }}accesstypes.GlobalScope(){{ end }})
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		// The caller the entry check ran as rides the context: a body that arms a
+		// write or a read against the caller (Enforce) evaluates the same checker,
+		// scope, and decision instant.
+		ctx = resource.WithCaller(ctx, caller)
+		{{- end }}
 
 		{{- if .RPCMethod.Request.Flat }}
 

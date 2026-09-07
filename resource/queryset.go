@@ -36,6 +36,9 @@ type QuerySet[Resource Resourcer] struct {
 	filterAst              ExpressionNode
 	filterParser           func(DBType) (ExpressionNode, error)
 
+	// armError is why Enforce could not bind the query set to a caller; it
+	// surfaces at execution so an unarmed operation never runs unchecked.
+	armError error
 	// env is the request's decision context, stamped by the decoder that built
 	// the QuerySet (a QuerySet built by hand carries the empty Environment).
 	// The permission checks fold conditions against it, and condition rendering
@@ -149,6 +152,9 @@ func (q *QuerySet[Resource]) EnableUserPermissionEnforcement(rSet *Set[Resource]
 // opted into the capability envelope, the advisory capability checks — all
 // against the same environment.
 func (q *QuerySet[Resource]) checkPermissions(ctx context.Context, dbType DBType) error {
+	if q.armError != nil {
+		return q.armError
+	}
 	if err := q.checkReadPermissions(ctx, dbType); err != nil {
 		return err
 	}

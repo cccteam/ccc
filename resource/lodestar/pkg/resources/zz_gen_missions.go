@@ -24,8 +24,56 @@ func (Mission) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// missionRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; missionReadSets holds one Set per read operation.
+type missionRead struct {
+	ID                 ccc.UUID            `json:"id"                 perm:"-"`
+	SectorID           string              `json:"sectorId"`
+	ClientID           ccc.UUID            `json:"clientId"`
+	KindID             string              `json:"kindId"`
+	Title              string              `json:"title"`
+	Brief              *string             `json:"brief"`
+	Hazard             int64               `json:"hazard"`
+	Fee                decimal.Decimal     `json:"fee"`
+	Deadline           time.Time           `json:"deadline"`
+	RequiredCertID     *string             `json:"requiredCertId"`
+	BookedBy           string              `json:"bookedBy"`
+	AssignedSquadronID ccc.NullUUID        `json:"assignedSquadronId"`
+	StatusID           string              `json:"statusId"`
+	Notes              *string             `json:"notes"`
+	Settlement         decimal.NullDecimal `json:"settlement"`
+}
+
+var missionReadSets resource.SetCache[Mission, missionRead]
+
+// missionWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; missionWriteSets holds one Set per mutation.
+type missionWrite struct {
+	ID                 ccc.UUID            `json:"-"`
+	SectorID           string              `json:"-"`
+	ClientID           ccc.UUID            `json:"clientId"`
+	KindID             string              `json:"kindId"`
+	Title              string              `json:"title"`
+	Brief              *string             `json:"brief"`
+	Hazard             int64               `json:"hazard"`
+	Fee                decimal.Decimal     `json:"fee"`
+	Deadline           time.Time           `json:"deadline"`
+	RequiredCertID     *string             `json:"requiredCertId"`
+	BookedBy           string              `json:"-"`
+	AssignedSquadronID ccc.NullUUID        `json:"assignedSquadronId"`
+	StatusID           string              `json:"-"`
+	Notes              *string             `json:"notes"`
+	Settlement         decimal.NullDecimal `json:"-"`
+}
+
+var missionWriteSets resource.SetCache[Mission, missionWrite]
+
 type MissionQuery struct {
 	qSet *resource.QuerySet[Mission]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewMissionQuery() *MissionQuery {
@@ -48,15 +96,37 @@ func (q *MissionQuery) ID() ccc.UUID {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *MissionQuery) Enforce(caller *resource.Caller) *MissionQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *MissionQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Mission], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, missionReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *MissionQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Mission], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, missionReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *MissionQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Mission], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, missionReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -452,6 +522,18 @@ func (p *MissionCreatePatch) Buffer(ctx context.Context, txn resource.ReadWriteT
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *MissionCreatePatch) Enforce(caller *resource.Caller) *MissionCreatePatch {
+	p.patchSet.Enforce(caller, missionWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *MissionCreatePatch) registerDefaultFuncs() {
 	p.patchSet.RegisterDefaultCreateFunc("BookedBy", currentUser)
 	p.patchSet.RegisterDefaultCreateFunc("StatusID", func(context.Context, resource.ReadWriteTransaction) (any, error) {
@@ -754,6 +836,18 @@ func (p *MissionUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteT
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *MissionUpdatePatch) Enforce(caller *resource.Caller) *MissionUpdatePatch {
+	p.patchSet.Enforce(caller, missionWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *MissionUpdatePatch) registerDefaultFuncs() {
 }
 
@@ -1030,6 +1124,18 @@ func (p *MissionDeletePatch) Apply(ctx context.Context, client resource.Client, 
 
 func (p *MissionDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *MissionDeletePatch) Enforce(caller *resource.Caller) *MissionDeletePatch {
+	p.patchSet.Enforce(caller, missionWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *MissionDeletePatch) ID() ccc.UUID {

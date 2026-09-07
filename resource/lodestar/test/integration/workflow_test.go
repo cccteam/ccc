@@ -23,6 +23,9 @@ func workflowGrants() grants {
 	return grants{
 		accesstypes.Create: withFields(missionsResource, "clientId", "kindId", "title", "hazard", "fee", "deadline"),
 		accesstypes.Read:   withFields(missionsResource, "statusId", "bookedBy", "title", "settlement", "assignedSquadronId"),
+		// HoldMission and CompleteMission write the notes AS THE CALLER (an armed
+		// body), so the walk needs the Update grant the routes would need.
+		accesstypes.Update: withFields(missionsResource, "notes"),
 		accesstypes.List:   withFields("Sorties", "missionId", "shipId", "pilotUserId", "returnedAt"),
 		accesstypes.Execute: {
 			"ClaimMission", "LaunchMission", "HoldMission", "ResumeMission", "CompleteMission", "FailMission", "StandDownMission",

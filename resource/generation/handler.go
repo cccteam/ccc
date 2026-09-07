@@ -257,6 +257,7 @@ func (r *resourceGenerator) generateDecoders() error {
 		HasComputedQueryDecoder: f.hasComputed,
 		HasPatchDecoder:         f.hasPatch,
 		HasRPCDecoder:           f.hasRPC,
+		HasCollection:           r.genRoutes,
 		HasTargetedRPCDecoder:   f.hasTargetedRPC,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")

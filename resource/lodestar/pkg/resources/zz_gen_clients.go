@@ -22,8 +22,36 @@ func (Client) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// clientRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; clientReadSets holds one Set per read operation.
+type clientRead struct {
+	ID           ccc.UUID `json:"id"           perm:"-"`
+	Name         string   `json:"name"`
+	ContactName  string   `json:"contactName"  pii:"true"`
+	ContactEmail string   `json:"contactEmail" pii:"true"`
+	Trusted      bool     `json:"trusted"`
+}
+
+var clientReadSets resource.SetCache[Client, clientRead]
+
+// clientWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; clientWriteSets holds one Set per mutation.
+type clientWrite struct {
+	ID           ccc.UUID `json:"-"`
+	Name         string   `json:"name"`
+	ContactName  string   `json:"contactName"`
+	ContactEmail string   `json:"contactEmail"`
+	Trusted      bool     `json:"trusted"`
+}
+
+var clientWriteSets resource.SetCache[Client, clientWrite]
+
 type ClientQuery struct {
 	qSet *resource.QuerySet[Client]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewClientQuery() *ClientQuery {
@@ -58,15 +86,37 @@ func (q *ClientQuery) Name() string {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *ClientQuery) Enforce(caller *resource.Caller) *ClientQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *ClientQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Client], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, clientReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *ClientQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Client], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, clientReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *ClientQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Client], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, clientReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -336,6 +386,18 @@ func (p *ClientCreatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *ClientCreatePatch) Enforce(caller *resource.Caller) *ClientCreatePatch {
+	p.patchSet.Enforce(caller, clientWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *ClientCreatePatch) registerDefaultFuncs() {
 }
 
@@ -456,6 +518,18 @@ func (p *ClientUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *ClientUpdatePatch) Enforce(caller *resource.Caller) *ClientUpdatePatch {
+	p.patchSet.Enforce(caller, clientWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *ClientUpdatePatch) registerDefaultFuncs() {
 }
 
@@ -560,6 +634,18 @@ func (p *ClientDeletePatch) Apply(ctx context.Context, client resource.Client, e
 
 func (p *ClientDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *ClientDeletePatch) Enforce(caller *resource.Caller) *ClientDeletePatch {
+	p.patchSet.Enforce(caller, clientWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *ClientDeletePatch) ID() ccc.UUID {

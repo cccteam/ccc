@@ -22,8 +22,32 @@ func (Wing) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// wingRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; wingReadSets holds one Set per read operation.
+type wingRead struct {
+	ID       ccc.UUID `json:"id"       perm:"-"`
+	SectorID string   `json:"sectorId"`
+	Name     string   `json:"name"`
+}
+
+var wingReadSets resource.SetCache[Wing, wingRead]
+
+// wingWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; wingWriteSets holds one Set per mutation.
+type wingWrite struct {
+	ID       ccc.UUID `json:"-"`
+	SectorID string   `json:"-"`
+	Name     string   `json:"name"`
+}
+
+var wingWriteSets resource.SetCache[Wing, wingWrite]
+
 type WingQuery struct {
 	qSet *resource.QuerySet[Wing]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewWingQuery() *WingQuery {
@@ -46,15 +70,37 @@ func (q *WingQuery) ID() ccc.UUID {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *WingQuery) Enforce(caller *resource.Caller) *WingQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *WingQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Wing], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, wingReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *WingQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Wing], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, wingReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *WingQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Wing], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, wingReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -302,6 +348,18 @@ func (p *WingCreatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTran
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *WingCreatePatch) Enforce(caller *resource.Caller) *WingCreatePatch {
+	p.patchSet.Enforce(caller, wingWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *WingCreatePatch) registerDefaultFuncs() {
 }
 
@@ -390,6 +448,18 @@ func (p *WingUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTran
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *WingUpdatePatch) Enforce(caller *resource.Caller) *WingUpdatePatch {
+	p.patchSet.Enforce(caller, wingWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *WingUpdatePatch) registerDefaultFuncs() {
 }
 
@@ -462,6 +532,18 @@ func (p *WingDeletePatch) Apply(ctx context.Context, client resource.Client, eve
 
 func (p *WingDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *WingDeletePatch) Enforce(caller *resource.Caller) *WingDeletePatch {
+	p.patchSet.Enforce(caller, wingWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *WingDeletePatch) ID() ccc.UUID {

@@ -43,9 +43,10 @@ func TestTwoHopStateChain(t *testing.T) {
 		fmt.Sprintf(`[{"op":"add","path":%q,"value":{"sortieId":%q,"category":"fuel","amount":1,"note":"while held"}}]`, opPath(anvil, "sortie-expenses"), sortieCourierID))
 	assertStatus(t, status, http.StatusForbidden, body)
 
-	// Hold the convoy: the flight lead may, and the expense goes read-only two hops
-	// down the moment the root's state changes.
-	status, body = doRequestAs(t, h, "lead", http.MethodPost, sectorPath(anvil, "hold-mission"),
+	// Hold the convoy: the marshal may (the hold records its reason as the caller,
+	// and the flight lead holds no Update on notes), and the expense goes read-only
+	// two hops down the moment the root's state changes.
+	status, body = doRequestAs(t, h, "marshal", http.MethodPost, sectorPath(anvil, "hold-mission"),
 		fmt.Sprintf(`{"missionId":%q,"reason":"debris on the lane"}`, missionConvoyID))
 	assertStatus(t, status, http.StatusOK, body)
 	status, body = doRequestAs(t, h, "quartermaster", http.MethodPatch, "/api/resources",
