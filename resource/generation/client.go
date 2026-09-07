@@ -46,6 +46,11 @@ type client struct {
 	tableMap            map[string]*tableMetadata
 	enumValues          map[string][]*enumData
 	pluralOverrides     map[string]string
+	// mappedTypes is the wire walker's leaf table: every Go type the generator maps
+	// to a TypeScript type (the built-in table plus the TypeScript targets'
+	// overrides), keyed by qualified type name. A named struct in it is a leaf; any
+	// other named struct is walked.
+	mappedTypes map[string]string
 	consolidateConfig
 	genRPCMethods          bool
 	genComputedResources   bool
@@ -136,6 +141,16 @@ func (c *client) HasNullBoolean() bool {
 	return false
 }
 
+// leafTypes is the wire walker's leaf table: the mapped types when the options
+// resolved them, the built-in table otherwise.
+func (c *client) leafTypes() map[string]string {
+	if c.mappedTypes == nil {
+		return defaultTypescriptOverrides()
+	}
+
+	return c.mappedTypes
+}
+
 // HasCustomTypesInResources checks if CustomTypes are used in any resource (including computed resources)
 func (c *client) HasCustomTypesInResources() bool {
 	for _, resource := range c.resources {
@@ -147,6 +162,9 @@ func (c *client) HasCustomTypesInResources() bool {
 	}
 
 	for _, resource := range c.computedResources {
+		if resource.Shape != nil && resource.Shape.HasCustomTypes() {
+			return true
+		}
 		for _, field := range resource.Fields {
 			if strings.HasPrefix(field.typescriptType, customTypesPrefix) {
 				return true
@@ -160,6 +178,9 @@ func (c *client) HasCustomTypesInResources() bool {
 // HasCustomTypesInMethods checks if CustomTypes are used in any RPC method
 func (c *client) HasCustomTypesInMethods() bool {
 	for _, method := range c.rpcMethods {
+		if method.Request != nil && method.Request.HasCustomTypes() {
+			return true
+		}
 		for _, field := range method.Fields {
 			if strings.HasPrefix(field.typescriptType, customTypesPrefix) {
 				return true
@@ -279,6 +300,7 @@ func (c *client) templateFuncs() map[string]any {
 		},
 		"SanitizeIdentifier":      sanitizeEnumIdentifier,
 		"TypescriptMethodImports": typescriptMethodImports,
+		"TypescriptNamespace":     typescriptNamespace,
 		"TypescriptConstImports":  typescriptConsImports,
 		"PermissionConstant":      permissionConstant,
 		"ScopeConstant":           scopeConstant,

@@ -169,19 +169,19 @@ type typeImporter interface {
 // must stay out of this list.
 func stdlibImports() map[string]string {
 	return map[string]string{
-		"bytes":   "bytes",
-		"context": "context",
-		"fmt":     "fmt",
-		"http":    "net/http",
-		"iter":    "iter",
-		"json":    "encoding/json",
-		"maps":    "maps",
-		"reflect": "reflect",
-		"slices":  "slices",
-		"strconv": "strconv",
-		"strings": "strings",
-		"time":    "time",
-		"url":     "net/url",
+		"bytes":          "bytes",
+		contextQualifier: contextQualifier,
+		"fmt":            "fmt",
+		httpQualifier:    "net/http",
+		"iter":           "iter",
+		"json":           "encoding/json",
+		"maps":           "maps",
+		"reflect":        "reflect",
+		"slices":         "slices",
+		"strconv":        "strconv",
+		"strings":        "strings",
+		"time":           "time",
+		"url":            "net/url",
 	}
 }
 

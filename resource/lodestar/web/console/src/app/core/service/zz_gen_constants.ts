@@ -298,6 +298,7 @@ export namespace Refits {
 
 export namespace SectorHazardBoards {
   export const fieldName = {
+    recent: 'recent' as FieldName,
     recordedAt: 'recordedAt' as FieldName,
     sectorId: 'sectorId' as FieldName,
     shipId: 'shipId' as FieldName,
@@ -306,6 +307,7 @@ export namespace SectorHazardBoards {
     worstReading: 'worstReading' as FieldName,
   };
   export const resourceName = {
+    recent: 'SectorHazardBoards.recent' as Resource,
     recordedAt: 'SectorHazardBoards.recordedAt' as Resource,
     sectorId: 'SectorHazardBoards.sectorId' as Resource,
     shipId: 'SectorHazardBoards.shipId' as Resource,

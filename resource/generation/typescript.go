@@ -217,7 +217,7 @@ func (t *typescriptGenerator) Generate() error {
 	if t.genComputedResources {
 		pkg := packageMap[t.computed.Package()]
 		compStructs := parser.ParsePackage(pkg).Structs
-		computedResources, err = structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+		computedResources, err = t.structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
 		if err != nil {
 			return err
 		}
@@ -545,6 +545,12 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceFie
 
 func (t *typescriptGenerator) computedFieldsTypescriptType(fields []*computedField) []*computedField {
 	for _, field := range fields {
+		// A walked field already carries its type from the shared leaf table.
+		if field.wire != nil {
+			field.typescriptType = field.wire.TypescriptDisplayType()
+
+			continue
+		}
 		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
 			field.typescriptType = override
 		} else {
@@ -561,10 +567,14 @@ func (t *typescriptGenerator) computedFieldsTypescriptType(fields []*computedFie
 
 func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []*rpcField) []*rpcField {
 	for _, field := range fields {
+		// A walked field already carries its type from the shared leaf table; the
+		// walk refused *bool at extraction.
+		if field.wire != nil {
+			field.typescriptType = field.wire.TypescriptDisplayType()
+
+			continue
+		}
 		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
-			if override == booleanStr && field.Type() == "*bool" {
-				panic("Bool pointer (*bool) not currently supported for rpc methods.")
-			}
 			field.typescriptType = override
 		} else {
 			field.typescriptType = stringGoType

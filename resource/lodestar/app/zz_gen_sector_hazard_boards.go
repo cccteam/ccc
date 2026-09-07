@@ -16,6 +16,13 @@ import (
 )
 
 func (a *App) SectorHazardBoards() http.HandlerFunc {
+	// Mirrors of the structs the row reaches, leaves first: a nested field is one
+	// opaque unit for permission, PII, and selection.
+	type reading struct {
+		Value      float64   `json:"value"`
+		RecordedAt time.Time `json:"recordedAt"`
+	}
+
 	type sectorHazardBoard struct {
 		ShipID       ccc.UUID  `json:"shipId"       perm:"-"`
 		Subsystem    string    `json:"subsystem"    perm:"-"`
@@ -23,9 +30,33 @@ func (a *App) SectorHazardBoards() http.HandlerFunc {
 		SectorID     string    `json:"sectorId"`
 		WorstReading float64   `json:"worstReading"`
 		RecordedAt   time.Time `json:"recordedAt"`
+		Recent       []reading `json:"recent"`
 	}
 
 	type response []map[string]any
+
+	// A row becomes its mirror through a pinned view of each source struct: legal
+	// now, a compile error the moment a source changes.
+	mirrorSectorHazardBoard := func(src computedresources.SectorHazardBoard) *sectorHazardBoard {
+		view := struct {
+			ShipID       ccc.UUID
+			Subsystem    string
+			ShipName     string
+			SectorID     string
+			WorstReading float64
+			RecordedAt   time.Time
+			Recent       []computedresources.Reading
+		}(src)
+		var recent []reading
+		if view.Recent != nil {
+			recent = make([]reading, 0, len(view.Recent))
+			for _, e := range view.Recent {
+				recent = append(recent, reading(e))
+			}
+		}
+
+		return &sectorHazardBoard{ShipID: view.ShipID, Subsystem: view.Subsystem, ShipName: view.ShipName, SectorID: view.SectorID, WorstReading: view.WorstReading, RecordedAt: view.RecordedAt, Recent: recent}
+	}
 
 	decoder := NewComputedQueryDecoder[computedresources.SectorHazardBoard, sectorHazardBoard](accesstypes.List)
 
@@ -44,7 +75,7 @@ func (a *App) SectorHazardBoards() http.HandlerFunc {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			rec := (*sectorHazardBoard)(row)
+			rec := mirrorSectorHazardBoard(*row)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {
@@ -60,6 +91,8 @@ func (a *App) SectorHazardBoards() http.HandlerFunc {
 					rmap["worstReading"] = rec.WorstReading
 				case "RecordedAt":
 					rmap["recordedAt"] = rec.RecordedAt
+				case "Recent":
+					rmap["recent"] = rec.Recent
 				}
 			}
 			resp = append(resp, rmap)
@@ -69,6 +102,13 @@ func (a *App) SectorHazardBoards() http.HandlerFunc {
 	})
 }
 func (a *App) SectorHazardBoard() http.HandlerFunc {
+	// Mirrors of the structs the row reaches, leaves first: a nested field is one
+	// opaque unit for permission, PII, and selection.
+	type reading struct {
+		Value      float64   `json:"value"`
+		RecordedAt time.Time `json:"recordedAt"`
+	}
+
 	type response struct {
 		ShipID       ccc.UUID  `json:"shipId"       perm:"-"`
 		Subsystem    string    `json:"subsystem"    perm:"-"`
@@ -76,6 +116,30 @@ func (a *App) SectorHazardBoard() http.HandlerFunc {
 		SectorID     string    `json:"sectorId"`
 		WorstReading float64   `json:"worstReading"`
 		RecordedAt   time.Time `json:"recordedAt"`
+		Recent       []reading `json:"recent"`
+	}
+
+	// A row becomes its mirror through a pinned view of each source struct: legal
+	// now, a compile error the moment a source changes.
+	mirrorResponse := func(src computedresources.SectorHazardBoard) *response {
+		view := struct {
+			ShipID       ccc.UUID
+			Subsystem    string
+			ShipName     string
+			SectorID     string
+			WorstReading float64
+			RecordedAt   time.Time
+			Recent       []computedresources.Reading
+		}(src)
+		var recent []reading
+		if view.Recent != nil {
+			recent = make([]reading, 0, len(view.Recent))
+			for _, e := range view.Recent {
+				recent = append(recent, reading(e))
+			}
+		}
+
+		return &response{ShipID: view.ShipID, Subsystem: view.Subsystem, ShipName: view.ShipName, SectorID: view.SectorID, WorstReading: view.WorstReading, RecordedAt: view.RecordedAt, Recent: recent}
 	}
 
 	decoder := NewComputedQueryDecoder[computedresources.SectorHazardBoard, response](accesstypes.Read)
@@ -100,7 +164,7 @@ func (a *App) SectorHazardBoard() http.HandlerFunc {
 		if row == nil {
 			return httpio.NewEncoder(w).Ok(nil)
 		}
-		rec := (*response)(row)
+		rec := mirrorResponse(*row)
 		rmap := make(map[string]any)
 		for _, field := range querySet.Fields() {
 			switch string(field) {
@@ -116,6 +180,8 @@ func (a *App) SectorHazardBoard() http.HandlerFunc {
 				rmap["worstReading"] = rec.WorstReading
 			case "RecordedAt":
 				rmap["recordedAt"] = rec.RecordedAt
+			case "Recent":
+				rmap["recent"] = rec.Recent
 			}
 		}
 

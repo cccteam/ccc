@@ -117,8 +117,15 @@ func (t *TypeInfo) UnqualifiedTypeName() string {
 // included when the type is a named type, so callers must filter out the
 // destination package when computing imports for generated code.
 func (t *TypeInfo) Imports() []Import {
+	return TypeImports(t.obj.Type())
+}
+
+// TypeImports returns the packages a type references, walking through pointers,
+// slices, arrays, maps, channels, and generic type arguments; universe types
+// contribute nothing.
+func TypeImports(t types.Type) []Import {
 	seen := make(map[string]Import)
-	collectTypeImports(t.obj.Type(), seen)
+	collectTypeImports(t, seen)
 
 	imports := make([]Import, 0, len(seen))
 	for _, imp := range seen {
@@ -444,4 +451,19 @@ func (f *Field) TypeArgs() string {
 type NamedType struct {
 	TypeInfo
 	Comments string
+}
+
+// PackageName is the name of the package the declaration belongs to.
+func (t *TypeInfo) PackageName() string {
+	if t.obj.Pkg() == nil {
+		return ""
+	}
+
+	return t.obj.Pkg().Name()
+}
+
+// GoType returns the declaration's go/types type, for callers that walk a type's
+// structure rather than read its rendered name.
+func (t *TypeInfo) GoType() types.Type {
+	return t.obj.Type()
 }

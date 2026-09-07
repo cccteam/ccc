@@ -513,14 +513,22 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
-		rpcMethod := &rpcMethodInfo{
-			Struct: s,
-			Form:   form,
-			Fields: make([]*rpcField, 0, len(s.Fields())),
+		request, err := c.walkRequest(s)
+		if err != nil {
+			errs = append(errs, err)
+
+			continue
 		}
 
-		for _, field := range s.Fields() {
-			field := rpcField{Field: field}
+		rpcMethod := &rpcMethodInfo{
+			Struct:  s,
+			Form:    form,
+			Request: request,
+			Fields:  make([]*rpcField, 0, len(s.Fields())),
+		}
+
+		for i, field := range s.Fields() {
+			field := rpcField{Field: field, wire: request.Fields[i], namespace: s.Name(), typescriptType: request.Fields[i].TypescriptDisplayType()}
 			if enumeratedResource, hasEnumeratedTag := field.LookupTag(enumeratedTagKey); hasEnumeratedTag {
 				if !c.doesResourceExist(enumeratedResource) {
 					field.AddError(fmt.Sprintf("referenced resource %q in enumerated tag does not exist", enumeratedResource))
@@ -569,7 +577,26 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 	return rpcMethods, nil
 }
 
-func structsToCompResources(structs []*parser.Struct, validators ...structValidator) ([]*computedResource, error) {
+// walkRequest reads an RPC struct's wire shape: what the handler's request mirror
+// declares and every struct it reaches, under the one vocabulary shared with
+// results and computed resources. It refuses the one leaf the RPC decoder does
+// not carry, a *bool at the top level, which the decoder cannot tell apart from
+// an absent field.
+func (c *client) walkRequest(s *parser.Struct) (*wireShape, error) {
+	request, err := newWireWalker(c.leafTypes(), s.PackageName(), c.resource.Package()).walk(s)
+	if err != nil {
+		return nil, errors.Wrap(err, "RPC request")
+	}
+	for _, f := range request.Fields {
+		if f.IsLeaf() && f.Pointer && !f.Slice && f.tsLeaf == booleanStr {
+			return nil, errors.Newf("struct %s.%s: *bool is not supported in RPC requests; use bool", s.Name(), f.Name)
+		}
+	}
+
+	return request, nil
+}
+
+func (c *client) structsToCompResources(structs []*parser.Struct, validators ...structValidator) ([]*computedResource, error) {
 	compResources := make([]*computedResource, 0, len(structs))
 	var resourceErrors []error
 	for _, s := range structs {
@@ -602,9 +629,18 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 			continue
 		}
 
+		// The row's wire shape, under the one vocabulary shared with RPC requests
+		// and results. A nested field is opaque to the resource machinery.
+		shape, err := newWireWalker(c.leafTypes(), s.PackageName()).walk(s)
+		if err != nil {
+			resourceErrors = append(resourceErrors, errors.Wrap(err, "computed resource"))
+
+			continue
+		}
+
 		res := &computedResource{
 			Struct: s,
-			Fields: make([]*computedField, 0, len(s.Fields())),
+			Shape:  shape,
 		}
 
 		if annotations.Struct.Has(suppressKeyword) {
@@ -627,20 +663,10 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 			continue
 		}
 
-		var keyCount int
-		for i, field := range s.Fields() {
-			field := &computedField{
-				Field:        field,
-				IsPrimaryKey: annotations.Fields[i].Has(primarykeyKeyword),
-			}
+		if err := c.computedFields(res, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
 
-			if annotations.Fields[i].Has(primarykeyKeyword) {
-				field.IsPrimaryKey = true
-				field.KeyOrdinalPosition = keyCount
-				keyCount++
-			}
-
-			res.Fields = append(res.Fields, field)
+			continue
 		}
 		compResources = append(compResources, res)
 	}
@@ -650,6 +676,87 @@ func structsToCompResources(structs []*parser.Struct, validators ...structValida
 	}
 
 	return compResources, nil
+}
+
+// computedFields builds the resource's fields off its walked shape and the
+// primarykey annotations, enforcing the opaque rule on every nested field.
+func (c *client) computedFields(res *computedResource, annotations genlang.StructAnnotations) error {
+	res.Fields = make([]*computedField, 0, len(res.Struct.Fields()))
+	var keyCount int
+	var errs []error
+	for i, field := range res.Struct.Fields() {
+		field := &computedField{
+			Field:          field,
+			wire:           res.Shape.Fields[i],
+			namespace:      c.pluralize(res.Name()),
+			typescriptType: res.Shape.Fields[i].TypescriptDisplayType(),
+		}
+
+		if annotations.Fields[i].Has(primarykeyKeyword) {
+			field.IsPrimaryKey = true
+			field.KeyOrdinalPosition = keyCount
+			keyCount++
+		}
+
+		if err := checkOpaqueField(res.Name(), field); err != nil {
+			errs = append(errs, err)
+		}
+
+		res.Fields = append(res.Fields, field)
+	}
+	if len(errs) > 0 {
+		return errors.Wrap(errors.Join(errs...), "computed resource fields")
+	}
+
+	return nil
+}
+
+// opaqueTagKeys are the tags that mean nothing on or inside a nested computed
+// field: the field is one unit for permission, PII, and selection, and the
+// query decoder never filters or sorts into it.
+var opaqueTagKeys = []string{allowFilterTagKey, indexTagKey, uniqueIndexTagKey}
+
+// checkOpaqueField enforces the opaque rule on a computed resource's nested field:
+// never a primary key, never filterable or indexed, and no permission, PII, or
+// filter tag on any field inside it.
+func checkOpaqueField(resource string, field *computedField) error {
+	if field.wire == nil || field.wire.IsLeaf() {
+		return nil
+	}
+	path := resource + "." + field.Name()
+	if field.IsPrimaryKey {
+		return errors.Newf("%s: a nested field cannot be a primary key", path)
+	}
+	for _, key := range opaqueTagKeys {
+		if _, ok := field.LookupTag(key); ok {
+			return errors.Newf("%s: a nested field is opaque and cannot carry the %s tag; the query decoder never filters or sorts into it", path, key)
+		}
+	}
+
+	return checkOpaqueInner(path, field.wire.Nested, map[*wireShape]bool{})
+}
+
+// checkOpaqueInner refuses permission, PII, and filter tags on the fields inside a
+// nested shape: the nested field is granted, masked, and selected whole.
+func checkOpaqueInner(path string, shape *wireShape, seen map[*wireShape]bool) error {
+	if seen[shape] {
+		return nil
+	}
+	seen[shape] = true
+	for _, f := range shape.Fields {
+		for _, key := range append([]string{permTagKey, conditionsTagKey}, opaqueTagKeys...) {
+			if _, ok := f.Tag.Lookup(key); ok {
+				return errors.Newf("%s: %s.%s carries the %s tag, which means nothing inside a nested field: the field is granted, masked, and selected whole", path, shape.Source, f.Name, key)
+			}
+		}
+		if f.Nested != nil {
+			if err := checkOpaqueInner(path, f.Nested, seen); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // reservedRowName reports whether a column or field name collides with one of

@@ -601,7 +601,35 @@ func applyResourceGeneratorDefaults(g *resourceGenerator) error {
 		seen[dir] = struct{}{}
 	}
 
+	mapped, err := mappedTypes(g.typescriptTargets)
+	if err != nil {
+		return err
+	}
+	g.mappedTypes = mapped
+
 	return nil
+}
+
+// mappedTypes folds the built-in TypeScript type table and every target's overrides
+// into the one leaf table the wire walker reads. The Go side of a shape cannot
+// depend on which browser app receives it, so two targets mapping one type
+// differently is a configuration error.
+func mappedTypes(targets []typescriptTarget) (map[string]string, error) {
+	mapped := defaultTypescriptOverrides()
+	for _, target := range targets {
+		t, err := target.resolve()
+		if err != nil {
+			return nil, err
+		}
+		for goType, tsType := range t.typescriptOverrides {
+			if existing, ok := mapped[goType]; ok && existing != tsType {
+				return nil, errors.Newf("GenerateTypescript(%q) maps %s to %s, but another target maps it to %s: every target must agree on a type's mapping", target.destination, goType, tsType, existing)
+			}
+			mapped[goType] = tsType
+		}
+	}
+
+	return mapped, nil
 }
 
 const (

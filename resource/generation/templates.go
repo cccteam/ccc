@@ -1560,7 +1560,7 @@ export interface {{ Pluralize $resource.Name }} {
   {{ Camel $field.Name }}{{ if not $field.IsPrimaryKey }}?{{ end }}: {{ $field.TypescriptDataType }};
 {{- end }}
 }
-{{ end }}
+{{ TypescriptNamespace (Pluralize $resource.Name) $resource.Shape }}{{ end }}
 {{ $consolidatedRoute := .ConsolidatedRoute -}}
 const resourceMap: ResourceMap = {
   {{- range $resource := $.Resources }}
@@ -1611,7 +1611,7 @@ const resourceMap: ResourceMap = {
       {{- range $field := $resource.Fields }}
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
-       {{- end }} displayType: '{{ Lower $field.TypescriptDataType }}', required: {{ $field.IsPrimaryKey }}, isIndex: false },
+       {{- end }} displayType: '{{ $field.TypescriptDisplayType }}', required: {{ $field.IsPrimaryKey }}, isIndex: false },
       {{- end }}
     ],
   },
@@ -1715,7 +1715,7 @@ export interface {{ $rpcMethod.Name }} {{ if $rpcMethod.Fields }}{
   {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
 {{- end }}
 }{{ else }}{}{{ end }}
-{{ end }}
+{{ TypescriptNamespace $rpcMethod.Name $rpcMethod.Request }}{{ end }}
 export interface RPCFieldMeta {
   fieldName: string;
   displayType: ValidRPCTypes;
@@ -2439,24 +2439,20 @@ import (
 )
 
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.HandlerFunc {
-	{{- range $field := .RPCMethod.Fields }}
-	{{- if $field.IsLocalType }}
-	type {{ Lower $field.UnqualifiedTypeName }} 
-	
-	{{- with $field.AsStruct }} struct {
-		{{- range $field := .Fields }}
-		{{ $field.Name }} {{ $field.Type }} ` + "`json:\"{{ Camel $field.Name }}\"`" + `
-		{{- end }}
-	}
-	{{ else }} {{ $field.Type }}
-	{{ end }}
-	{{ end -}}
-	{{ end }}
+	{{- with .RPCMethod.Request.MirrorDecls }}
+	// Mirrors of the structs the request reaches, leaves first: the wire shape
+	// lives here, in generated code.
+{{ . }}{{- end }}
 	type request struct {
 		{{- range $field := .RPCMethod.Fields }}
-		{{ $field.Name }} {{ if $field.IsLocalType }}{{ Lower $field.UnqualifiedType }}{{ else }}{{ $field.Type }}{{ end }} ` + "`{{ $field.JSONTag }}`" + `
+		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }}`" + `
 		{{- end }}
 	}
+	{{- with .RPCMethod.RequestConverters }}
+
+	// The decoded mirror becomes the method's struct through a pinned view of each
+	// source struct: legal now, a compile error the moment a source changes.
+{{ . }}{{- end }}
 
 	decoder := New{{ if .RPCMethod.Target }}Targeted{{ end }}RPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
 
@@ -2472,24 +2468,12 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		{{- if .RPCMethod.HasLocalType }}
-		p := &{{ .RPCMethod.Type }}{
-			{{- range $field := .RPCMethod.Fields }}
-			{{- if not $field.IsIterable }}
-			{{ $field.Name }}: params.{{ $field.Name }},
-			{{- end -}}
-			{{- end }}
-		}
-		{{- range $field := .RPCMethod.Fields -}}
-		{{- if $field.IsIterable }}
-		for _, e := range params.{{ $field.Name }} {
-			p.{{ $field.Name }} = append(p.{{ $field.Name }}, {{ $field.TypeName }}(e))
-		}
-		{{- end }}
-		{{- end }}
-		{{- else }}
+		{{- if .RPCMethod.Request.Flat }}
 
 		p := (*{{ .RPCMethod.Type }})(params)
+		{{- else }}
+
+		p := {{ .RPCMethod.RequestConverterName }}(*params)
 		{{- end }}
 		{{- if .RPCMethod.IsTxnForm }}
 			if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
@@ -2595,13 +2579,22 @@ import (
 
 {{- if not .Resource.SuppressListHandler }}
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
+	{{- with .Resource.Shape.MirrorDecls }}
+	// Mirrors of the structs the row reaches, leaves first: a nested field is one
+	// opaque unit for permission, PII, and selection.
+{{ . }}{{- end }}
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
 	type response []map[string]any
+	{{- with .Resource.Converters (GoCamel .Resource.Name) }}
+
+	// A row becomes its mirror through a pinned view of each source struct: legal
+	// now, a compile error the moment a source changes.
+{{ . }}{{- end }}
 
 	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](accesstypes.List)
 
@@ -2622,7 +2615,11 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
+			{{- if .Resource.Shape.Flat }}
 			rec := (*{{ GoCamel .Resource.Name }})(row)
+			{{- else }}
+			rec := {{ .Resource.ConverterName (GoCamel .Resource.Name) }}(*row)
+			{{- end }}
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
 				switch string(field) {
@@ -2642,11 +2639,20 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 
 {{- if not .Resource.SuppressReadHandler }}
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
+	{{- with .Resource.Shape.MirrorDecls }}
+	// Mirrors of the structs the row reaches, leaves first: a nested field is one
+	// opaque unit for permission, PII, and selection.
+{{ . }}{{- end }}
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
+	{{- with .Resource.Converters "response" }}
+
+	// A row becomes its mirror through a pinned view of each source struct: legal
+	// now, a compile error the moment a source changes.
+{{ . }}{{- end }}
 
 	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, response](accesstypes.Read)
 
@@ -2681,7 +2687,11 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 		if row == nil {
 			return httpio.NewEncoder(w).Ok(nil)
 		}
+		{{- if .Resource.Shape.Flat }}
 		rec := (*response)(row)
+		{{- else }}
+		rec := {{ .Resource.ConverterName "response" }}(*row)
+		{{- end }}
 		rmap := make(map[string]any)
 		for _, field := range querySet.Fields() {
 			switch string(field) {

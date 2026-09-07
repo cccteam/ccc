@@ -19,11 +19,34 @@ import (
 )
 
 func (a *App) IngestDroidReports() http.HandlerFunc {
-	type request struct {
-		ShipID     ccc.UUID  `json:"shipId"`
+	// Mirrors of the structs the request reaches, leaves first: the wire shape
+	// lives here, in generated code.
+	type droidReading struct {
 		Subsystem  string    `json:"subsystem"`
 		Reading    float64   `json:"reading"`
 		RecordedAt time.Time `json:"recordedAt"`
+	}
+
+	type request struct {
+		ShipID   ccc.UUID       `json:"shipId"`
+		Readings []droidReading `json:"readings"`
+	}
+
+	// The decoded mirror becomes the method's struct through a pinned view of each
+	// source struct: legal now, a compile error the moment a source changes.
+	sourceRequest := func(src request) *rpc.IngestDroidReports {
+		var readings []rpc.DroidReading
+		if src.Readings != nil {
+			readings = make([]rpc.DroidReading, 0, len(src.Readings))
+			for _, e := range src.Readings {
+				readings = append(readings, rpc.DroidReading(e))
+			}
+		}
+
+		return (*rpc.IngestDroidReports)(&struct {
+			ShipID   ccc.UUID
+			Readings []rpc.DroidReading
+		}{ShipID: src.ShipID, Readings: readings})
 	}
 
 	decoder := NewRPCDecoder[rpc.IngestDroidReports, request](a, accesstypes.Execute)
@@ -38,7 +61,7 @@ func (a *App) IngestDroidReports() http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		p := (*rpc.IngestDroidReports)(params)
+		p := sourceRequest(*params)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			if err := p.Execute(ctx, txn, a.RPCClient()); err != nil {
 				return errors.Wrap(err, "Transaction.Execute()")

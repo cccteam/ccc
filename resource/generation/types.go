@@ -309,7 +309,10 @@ type rpcMethodInfo struct {
 	*parser.Struct
 	outletMembership
 	// Form is how Execute runs, read off its signature at extraction.
-	Form            rpcForm
+	Form rpcForm
+	// Request is the struct's wire shape: the fields as the handler's local request
+	// mirror declares them, with every struct they reach.
+	Request         *wireShape
 	Fields          []*rpcField
 	SuppressHandler bool
 	// PermissionScope is the scope the method's registration uses
@@ -352,20 +355,40 @@ func (r *rpcMethodInfo) hasEnumeratedResource() bool {
 	return false
 }
 
-func (r *rpcMethodInfo) HasLocalType() bool {
-	for _, field := range r.Fields {
-		if field.IsLocalType() {
-			return true
-		}
-	}
-
-	return false
+// RequestConverters renders the closures the handler needs to build the method's
+// struct from the decoded request mirror; empty for a flat request, which converts
+// whole.
+func (r *rpcMethodInfo) RequestConverters() string {
+	return r.Request.Converters(toSource, requestMirror)
 }
+
+// RequestConverterName is the root request converter's name.
+func (r *rpcMethodInfo) RequestConverterName() string {
+	return r.Request.ConverterName(toSource, requestMirror)
+}
+
+// requestMirror is the name every generated RPC handler gives its request mirror.
+const requestMirror = "request"
 
 type rpcField struct {
 	*parser.Field
+	// wire is the field as the walker classified it; nil only in tests that build
+	// fields by hand.
+	wire *wireField
+	// namespace is the TypeScript namespace the method's nested interfaces
+	// declare in: the method's name.
+	namespace          string
 	typescriptType     string
 	enumeratedResource *string
+}
+
+// MirrorType is the field's type in the handler's request mirror.
+func (r *rpcField) MirrorType() string {
+	if r.wire == nil {
+		return r.Type()
+	}
+
+	return r.wire.MirrorType()
 }
 
 func (r rpcField) JSONTag() string {
@@ -376,6 +399,10 @@ func (r rpcField) JSONTag() string {
 }
 
 func (r *rpcField) TypescriptDataType() string {
+	if r.wire != nil {
+		return r.wire.TypescriptType(r.namespace)
+	}
+
 	switch r.typescriptType {
 	case uuidTSType:
 		return stringGoType
@@ -406,6 +433,9 @@ func (r *rpcField) TypescriptDisplayType() string {
 	if r.IsEnumerated() {
 		return "enumerated"
 	}
+	if r.wire != nil {
+		return r.wire.TypescriptDisplayType()
+	}
 
 	return r.typescriptType
 }
@@ -413,6 +443,10 @@ func (r *rpcField) TypescriptDisplayType() string {
 type computedResource struct {
 	*parser.Struct
 	outletMembership
+	// Shape is the struct's wire shape: the fields as the handlers' local mirrors
+	// declare them, with every struct they reach. A nested field is opaque: one
+	// field for permission, PII, and selection, never filtered or keyed.
+	Shape               *wireShape
 	Fields              []*computedField
 	SuppressReadHandler bool
 	SuppressListHandler bool
@@ -464,11 +498,48 @@ func (c *computedResource) RoutingDisabled() bool {
 	return slices.Contains(c.SuppressedRoutes, AllRoutes)
 }
 
+// Converters renders the closures a handler needs to build the named root mirror
+// from a computed row; empty for a flat resource, which converts whole.
+func (c *computedResource) Converters(rootMirror string) string {
+	return c.Shape.Converters(toMirror, rootMirror)
+}
+
+// ConverterName is the root converter's name for the named root mirror.
+func (c *computedResource) ConverterName(rootMirror string) string {
+	return c.Shape.ConverterName(toMirror, rootMirror)
+}
+
 type computedField struct {
 	*parser.Field
+	// wire is the field as the walker classified it; nil only in tests that build
+	// fields by hand.
+	wire *wireField
+	// namespace is the TypeScript namespace the resource's nested interfaces
+	// declare in: the resource's plural name.
+	namespace          string
 	typescriptType     string
 	IsPrimaryKey       bool
 	KeyOrdinalPosition int
+}
+
+// MirrorType is the field's type in the handlers' local mirrors.
+func (c *computedField) MirrorType() string {
+	if c.wire == nil {
+		return c.Type()
+	}
+
+	return c.wire.MirrorType()
+}
+
+// TypescriptDisplayType is the field's display type in generated metadata: the
+// lower-cased data type of a leaf, as the metadata has always carried it, or
+// object for a nested field.
+func (c *computedField) TypescriptDisplayType() string {
+	if c.wire != nil && !c.wire.IsLeaf() {
+		return c.wire.TypescriptDisplayType()
+	}
+
+	return strings.ToLower(c.TypescriptDataType())
 }
 
 func (c *computedField) JSONTag() string {
@@ -507,6 +578,9 @@ func (c *computedField) PermTag() string {
 }
 
 func (c *computedField) TypescriptDataType() string {
+	if c.wire != nil {
+		return c.wire.TypescriptType(c.namespace)
+	}
 	if c.typescriptType == uuidTSType {
 		return stringGoType
 	}

@@ -165,11 +165,13 @@ r=$(req cadet PATCH "$API/resources" '[{"op":"add","path":"/sectors/anvil/distre
 
 # ---- droid channel ----
 if [ -n "$KEY" ]; then
-  r=$(droid POST "$DROIDS/sectors/anvil/ingest-droid-reports" "{\"shipId\":\"$KINGFISHER\",\"subsystem\":\"hull\",\"reading\":0.95,\"recordedAt\":\"2026-09-04T12:00:00Z\"}"); check "droid posts a reading" 200 "$r"
-  r=$(droid POST "$DROIDS/sectors/anvil/ingest-droid-reports" "{\"shipId\":\"$KINGFISHER\",\"subsystem\":\"reactor\",\"reading\":0.55,\"recordedAt\":\"2026-09-04T12:01:00Z\"}"); check "droid posts a second reading (one per call)" 200 "$r"
+  r=$(droid POST "$DROIDS/sectors/anvil/ingest-droid-reports" "{\"shipId\":\"$KINGFISHER\",\"readings\":[{\"subsystem\":\"hull\",\"reading\":0.95,\"recordedAt\":\"2026-09-04T12:00:00Z\"},{\"subsystem\":\"reactor\",\"reading\":0.55,\"recordedAt\":\"2026-09-04T12:01:00Z\"}]}"); check "droid posts a batch of two readings (a nested request)" 200 "$r"
+  r=$(droid POST "$DROIDS/sectors/anvil/ingest-droid-reports" "{\"shipId\":\"$KINGFISHER\",\"readings\":[]}"); check "an empty batch is refused" 400 "$r"
   r=$(droid GET "$DROIDS/sectors/anvil/droid-reports"); check "droid lists its channel" 200 "$r"
   r=$(req marshal GET "$ANVIL/droid-reports"); check "droid reports have no human route" 404 "$r"
   r=$(req hazards GET "$ANVIL/sector-hazard-boards"); assert_py "hazard board shows the worst hull reading" "$r" "any(b['shipName']=='Kingfisher' and b['subsystem']=='hull' and b['worstReading']==0.95 for b in rows)"
+  r=$(req hazards GET "$ANVIL/sector-hazard-boards"); assert_py "hazard board carries the recent readings behind the worst, newest first" "$r" "any(b['subsystem']=='hull' and b['shipName']=='Kingfisher' and [x['value'] for x in b['recent']][:2]==[0.95, 0.61] for b in rows)"
+  r=$(req hazards GET "$ANVIL/sector-hazard-boards?columns=recent.value"); check "nothing inside the nested field is a column" 400 "$r"
   r=$(curl -s -X POST -H 'Content-Type: application/json' -d '{}' -w '\n%{http_code}' "$DROIDS/sectors/anvil/ingest-droid-reports"); check "the droid channel refuses without the key" 401 "$r"
 else
   echo "SKIP  droid channel: set LODESTAR_DROID_API_KEY on the server and here"

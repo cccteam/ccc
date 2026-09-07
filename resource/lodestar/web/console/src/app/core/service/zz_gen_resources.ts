@@ -177,6 +177,13 @@ export interface SectorHazardBoards {
   sectorId?: string;
   worstReading?: number;
   recordedAt?: Date;
+  recent?: SectorHazardBoards.Reading[];
+}
+export namespace SectorHazardBoards {
+  export interface Reading {
+    value: number;
+    recordedAt: Date;
+  }
 }
 
 export interface ServiceLedgers {
@@ -424,6 +431,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'sectorId', displayType: 'string', required: false, isIndex: false },
       { fieldName: 'worstReading', displayType: 'number', required: false, isIndex: false },
       { fieldName: 'recordedAt', displayType: 'date', required: false, isIndex: false },
+      { fieldName: 'recent', displayType: 'object[]', required: false, isIndex: false },
     ],
   },
   [Resources.ServiceLedgers]: {

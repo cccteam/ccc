@@ -267,6 +267,7 @@ func Collection() *resource.GeneratedCollection {
 				Computed:    true,
 				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 				Tags: []resource.TagData{
+					{Name: "recent", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "recordedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "sectorId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "shipId"},

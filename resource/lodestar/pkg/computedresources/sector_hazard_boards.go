@@ -3,6 +3,7 @@ package computedresources
 import (
 	"context"
 	"iter"
+	"slices"
 	"time"
 
 	"github.com/cccteam/ccc"
@@ -21,6 +22,13 @@ type (
 	// List grant carries the row-free `now < '2027-01-01T00:00:00Z'`, so the board
 	// goes dark when the certification lapses.
 	//
+	// Recent is a NESTED field: the readings behind the worst one, newest first.
+	// The generator walks Reading into a local mirror in the handler and declares
+	// its TypeScript interface beside the board's; to the resource machinery the
+	// field is one opaque unit, granted and selected whole: `columns=recent` is the
+	// only way to ask for it, and nothing inside it is a column, a filter field, or
+	// a sort key.
+	//
 	// @computed
 	// @permissionScope(domain)
 	SectorHazardBoard struct {
@@ -30,8 +38,19 @@ type (
 		SectorID     string    `spanner:"SectorId"`
 		WorstReading float64   `spanner:"WorstReading"`
 		RecordedAt   time.Time `spanner:"RecordedAt"`
+		Recent       []Reading
+	}
+
+	// Reading is one telemetry reading as the board carries it: the value and when
+	// the droid recorded it.
+	Reading struct {
+		Value      float64
+		RecordedAt time.Time
 	}
 )
+
+// recentReadings caps how many readings a board row carries behind its worst one.
+const recentReadings = 5
 
 // Resource implements resource.Resourcer; computed resources declare their resource
 // name by hand (there is no generated file to carry it).
@@ -85,8 +104,9 @@ func ReadSectorHazardBoard(ctx context.Context, shipID ccc.UUID, subsystem strin
 }
 
 // worstReadings folds droid reports down to the highest reading per (ship,
-// subsystem) in the sector, optionally narrowed to one ship and subsystem. Rows come
-// back in a stable order so list pages render deterministically.
+// subsystem) in the sector, optionally narrowed to one ship and subsystem, each row
+// carrying its most recent readings newest first. Rows come back in a stable order
+// so list pages render deterministically.
 func worstReadings(ctx context.Context, client resource.Client, domain accesstypes.Domain, shipID *ccc.UUID, subsystem string) ([]*SectorHazardBoard, error) {
 	names := make(map[ccc.UUID]string)
 	for row, err := range resources.NewShipQuery().AddColumns(resources.NewShipColumns().All()).List(ctx, client) {
@@ -115,20 +135,27 @@ func worstReadings(ctx context.Context, client resource.Client, domain accesstyp
 			continue
 		}
 		key := [2]string{row.Data.ShipID.String(), row.Data.Subsystem}
-		existing, ok := boards[key]
-		if ok && row.Data.Reading <= existing.WorstReading {
-			continue
-		}
+		board, ok := boards[key]
 		if !ok {
 			order = append(order, key)
+			board = &SectorHazardBoard{
+				ShipID:    row.Data.ShipID,
+				Subsystem: row.Data.Subsystem,
+				ShipName:  names[row.Data.ShipID],
+				SectorID:  row.Data.SectorID,
+			}
+			boards[key] = board
 		}
-		boards[key] = &SectorHazardBoard{
-			ShipID:       row.Data.ShipID,
-			Subsystem:    row.Data.Subsystem,
-			ShipName:     names[row.Data.ShipID],
-			SectorID:     row.Data.SectorID,
-			WorstReading: row.Data.Reading,
-			RecordedAt:   row.Data.RecordedAt,
+		board.Recent = append(board.Recent, Reading{Value: row.Data.Reading, RecordedAt: row.Data.RecordedAt})
+		if len(board.Recent) == 1 || row.Data.Reading > board.WorstReading {
+			board.WorstReading = row.Data.Reading
+			board.RecordedAt = row.Data.RecordedAt
+		}
+	}
+	for _, board := range boards {
+		slices.SortFunc(board.Recent, func(a, b Reading) int { return b.RecordedAt.Compare(a.RecordedAt) })
+		if len(board.Recent) > recentReadings {
+			board.Recent = board.Recent[:recentReadings]
 		}
 	}
 

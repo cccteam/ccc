@@ -138,6 +138,9 @@ func (d *computedHandlerData) typeImports() []fixerImport {
 	for _, field := range d.Resource.Fields {
 		imports = appendTypeImports(imports, field.Imports())
 	}
+	if d.Resource.Shape != nil {
+		imports = appendTypeImports(imports, d.Resource.Shape.Imports())
+	}
 
 	return imports
 }
@@ -436,6 +439,9 @@ func resourceTypeImports(dst []fixerImport, res *resourceInfo) []fixerImport {
 // field types.
 func rpcTypeImports(dst []fixerImport, method *rpcMethodInfo) []fixerImport {
 	dst = appendTypeImports(dst, method.Imports())
+	if method.Request != nil {
+		dst = appendTypeImports(dst, method.Request.Imports())
+	}
 	for _, field := range method.Fields {
 		dst = appendTypeImports(dst, field.Imports())
 	}

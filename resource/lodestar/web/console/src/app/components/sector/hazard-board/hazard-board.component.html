@@ -2,7 +2,8 @@
 <p>
   The worst reading per ship and subsystem, folded server-side from droid telemetry. The droids post readings over
   their own API-keyed channel and no login persona can address the readings directly — this computed board is the
-  human window. It goes dark when the analyst's certification lapses.
+  human window. It goes dark when the analyst's certification lapses. The recent readings behind each worst one
+  ride along as a nested field: one opaque unit the board selects whole and never filters on.
 </p>
 
 <app-star-chart></app-star-chart>
@@ -31,6 +32,16 @@
       <ng-container matColumnDef="recordedAt">
         <th mat-header-cell *matHeaderCellDef>Recorded</th>
         <td mat-cell *matCellDef="let row">{{ row.recordedAt | date: 'medium' }}</td>
+      </ng-container>
+      <ng-container matColumnDef="recent">
+        <th mat-header-cell *matHeaderCellDef>Recent readings</th>
+        <td mat-cell *matCellDef="let row" class="recent">
+          @for (reading of recent(row); track reading.recordedAt) {
+            <span class="reading" [class]="severity(reading.value)" [title]="reading.recordedAt | date: 'medium'">{{
+              reading.value
+            }}</span>
+          }
+        </td>
       </ng-container>
       <tr mat-header-row *matHeaderRowDef="columns"></tr>
       <tr mat-row *matRowDef="let row; columns: columns"></tr>
