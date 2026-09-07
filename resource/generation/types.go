@@ -981,7 +981,7 @@ func (f *resourceField) IndexTag() string {
 
 	if f.Parent.IsVirtual {
 		t, ok := f.LookupTag(indexTagKey)
-		if ok && t == "true" {
+		if ok && t == jsonTrueLiteral {
 			return indexTrue
 		}
 	}

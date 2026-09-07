@@ -323,6 +323,14 @@ type authzCase struct {
 	// as if the domain did not exist: 404 from the route guard, 400 from the
 	// consolidated dispatcher's operation-path descent.
 	DeniedStatus string
+	// Headers are request headers the case sends (the dry-run header).
+	Headers []authzHeader
+}
+
+// authzHeader is one request header a generated authorization case sends.
+type authzHeader struct {
+	Name  string
+	Value string
 }
 
 type authzTestData struct {

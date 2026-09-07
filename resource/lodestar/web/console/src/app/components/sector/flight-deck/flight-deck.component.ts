@@ -76,6 +76,11 @@ export class FlightDeckComponent {
   // HoldMission writes its reason as the caller, so a Flight Lead whom Execute
   // admits is still refused the note, and the deck says which grant said no.
   refusal = signal<string | undefined>(undefined);
+  // The hold's dry run: when a mission opens with HoldMission lit, the deck asks the
+  // server to run the whole frame and roll back. The answer says whether the hold
+  // would commit for this caller — the Flight Lead learns of the notes refusal
+  // before touching anything, the Dispatcher only once the mission has closed.
+  holdCheck = signal<{ ok: boolean; message?: string } | undefined>(undefined);
 
   // Transition bodies that need input beyond the target row.
   claimSquadronId = '';
@@ -113,6 +118,11 @@ export class FlightDeckComponent {
   select(mission: Missions): void {
     this.selectedID.set(this.selectedID() === mission.id ? undefined : mission.id);
     this.pendingEdge.set(undefined);
+    this.refusal.set(undefined);
+    this.holdCheck.set(undefined);
+    if (this.selectedID() === mission.id && this.executable(mission).includes(Methods.HoldMission)) {
+      void this.probeHold(mission);
+    }
     this.editNotes = mission.notes ?? '';
     this.editDeadline = '';
     this.editAssignedSquadronId = mission.assignedSquadronId ?? '';
@@ -126,6 +136,19 @@ export class FlightDeckComponent {
 
   executable(mission: Missions): Method[] {
     return (rowCapabilities(mission)?.Execute ?? []) as Method[];
+  }
+
+  private async probeHold(mission: Missions): Promise<void> {
+    try {
+      await this.sectors.sectorApi().holdMission.dryRun({ missionId: mission.id, reason: 'dry run' });
+      this.holdCheck.set({ ok: true });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403) {
+        this.holdCheck.set({ ok: false, message: e.message });
+        return;
+      }
+      throw e;
+    }
   }
 
   canEdit(mission: Missions, field: keyof Missions & string): boolean {

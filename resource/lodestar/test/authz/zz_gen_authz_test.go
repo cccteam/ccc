@@ -28,7 +28,8 @@ type grants map[accesstypes.Permission]bool
 // the operation's enforcement gate — buffer time for patch sets, decode time for RPC —
 // which runs before required-field validation, defaults, or row reads. Mutation
 // success paths need valid request bodies the generator does not synthesize yet and
-// are left to manual testing.
+// are left to manual testing. A transaction-form RPC method carries a second denied
+// case under X-Dry-Run: a dry run refuses exactly as the real call does.
 //
 // The suite runs on the migrated schema alone; no seed data is required, so it grows
 // with the schema on every regeneration.
@@ -52,6 +53,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 		method       string
 		target       string
 		body         string
+		headers      map[string]string
 		wantStatuses []int
 	}{
 		{
@@ -1181,10 +1183,26 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
+			name:         "BeginRefit dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/begin-refit",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
 			name:         "ClaimMission denied",
 			method:       http.MethodPost,
 			target:       "/api/sectors/testDomain/claim-mission",
 			body:         `{}`,
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "ClaimMission dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/claim-mission",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
@@ -1195,10 +1213,26 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
+			name:         "CompleteMission dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/complete-mission",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
 			name:         "FailFlightTest denied",
 			method:       http.MethodPost,
 			target:       "/api/sectors/testDomain/fail-flight-test",
 			body:         `{}`,
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "FailFlightTest dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/fail-flight-test",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
@@ -1209,10 +1243,26 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
+			name:         "FailMission dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/fail-mission",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
 			name:         "HailShip denied",
 			method:       http.MethodPost,
 			target:       "/api/sectors/testDomain/hail-ship",
 			body:         `{}`,
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "HailShip dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/hail-ship",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
@@ -1223,10 +1273,26 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
+			name:         "HoldMission dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/hold-mission",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
 			name:         "IngestDroidReports (droids) denied",
 			method:       http.MethodPost,
 			target:       "/droids/sectors/testDomain/ingest-droid-reports",
 			body:         `{}`,
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "IngestDroidReports (droids) dry run denied",
+			method:       http.MethodPost,
+			target:       "/droids/sectors/testDomain/ingest-droid-reports",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
@@ -1237,10 +1303,26 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
+			name:         "InspectShip dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/inspect-ship",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
 			name:         "IssueBulletin denied",
 			method:       http.MethodPost,
 			target:       "/api/issue-bulletin",
 			body:         `{}`,
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "IssueBulletin dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/issue-bulletin",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
@@ -1251,10 +1333,26 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
+			name:         "LaunchMission dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/launch-mission",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
 			name:         "PassFlightTest denied",
 			method:       http.MethodPost,
 			target:       "/api/sectors/testDomain/pass-flight-test",
 			body:         `{}`,
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "PassFlightTest dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/pass-flight-test",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
@@ -1265,10 +1363,26 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
+			name:         "ReleaseConsignment dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/release-consignment",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
 			name:         "ReleaseConsignment (droids) denied",
 			method:       http.MethodPost,
 			target:       "/droids/sectors/testDomain/release-consignment",
 			body:         `{}`,
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "ReleaseConsignment (droids) dry run denied",
+			method:       http.MethodPost,
+			target:       "/droids/sectors/testDomain/release-consignment",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
@@ -1279,10 +1393,26 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
+			name:         "ResumeMission dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/resume-mission",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
 			name:         "ScrapShip denied",
 			method:       http.MethodPost,
 			target:       "/api/sectors/testDomain/scrap-ship",
 			body:         `{}`,
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "ScrapShip dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/scrap-ship",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
@@ -1293,6 +1423,14 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
+			name:         "StandDownMission dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/stand-down-mission",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
 			name:         "StandDownMission (portal) denied",
 			method:       http.MethodPost,
 			target:       "/portal/sectors/testDomain/stand-down-mission",
@@ -1300,10 +1438,26 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusNotFound},
 		},
 		{
+			name:         "StandDownMission (portal) dry run denied",
+			method:       http.MethodPost,
+			target:       "/portal/sectors/testDomain/stand-down-mission",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
 			name:         "StartFlightTest denied",
 			method:       http.MethodPost,
 			target:       "/api/sectors/testDomain/start-flight-test",
 			body:         `{}`,
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "StartFlightTest dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/sectors/testDomain/start-flight-test",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},
 		},
 	}
@@ -1320,6 +1474,9 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			h := newTestHandler(t, db, tt.grants)
 
 			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.target, strings.NewReader(tt.body))
+			for name, value := range tt.headers {
+				req.Header.Set(name, value)
+			}
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, req)
 

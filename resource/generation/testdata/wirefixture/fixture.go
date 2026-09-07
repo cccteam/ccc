@@ -18,6 +18,9 @@ func (*Inspect) Execute(context.Context, resource.ReadWriteTransaction, *Client)
 	return nil, nil
 }
 
+// Execute runs outside a transaction.
+func (*Notify) Execute(context.Context, resource.Client, *Client) error { return nil }
+
 // Client stands in for the application's RPC client.
 type Client struct{}
 
@@ -50,6 +53,11 @@ type (
 
 	// Inspect is a method answering with the nested Report; its request is flat.
 	Inspect struct {
+		ID ccc.UUID
+	}
+
+	// Notify is a client-form method: it runs outside a transaction.
+	Notify struct {
 		ID ccc.UUID
 	}
 

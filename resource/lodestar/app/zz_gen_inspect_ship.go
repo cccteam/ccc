@@ -101,6 +101,10 @@ func (a *App) InspectShip() http.HandlerFunc {
 		// Captured inside the transaction, encoded after it commits: under
 		// abort-and-retry the value is the committing attempt's.
 		var result *rpc.RefitReport
+		// A dry run (X-Dry-Run: true) runs the whole frame and the body, then
+		// rolls the transaction back: every refusal answers as the real call
+		// would, and a call that would have succeeded answers 200 with no body.
+		dryRun := resource.IsDryRun(r)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			// Declared target: locate the row within the tenancy predicate
 			// before the body runs.
@@ -144,9 +148,16 @@ func (a *App) InspectShip() http.HandlerFunc {
 			if err := resources.NewRefitUpdatePatch(p.RefitID).SetStatusID("inspected").Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
 				return errors.Wrap(err, "resources.RefitUpdatePatch.Buffer()")
 			}
+			if dryRun {
+				return resource.ErrDryRun
+			}
 
 			return nil
 		}); err != nil {
+			if dryRun && resource.DryRunRolledBack(err) {
+				return httpio.NewEncoder(w).Ok(nil)
+			}
+
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 		}
 		if result == nil {

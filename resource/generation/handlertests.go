@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
@@ -297,6 +298,10 @@ func (r *resourceGenerator) consolidatedAuthzCases() (cases []authzCase, err err
 	return cases, nil
 }
 
+// emptyObjectBody is the minimal RPC body: it parses, so the request reaches the
+// permission check the case pins.
+const emptyObjectBody = "{}"
+
 // rpcAuthzCases covers the RPC method routes. The RPC decoder checks the method
 // permission after parsing the body (the parsed request is what a data-dependent rule
 // evaluates against) and before executing anything; an empty object reaches that check
@@ -317,9 +322,21 @@ func (r *resourceGenerator) rpcAuthzCases() (cases []authzCase) {
 				Name:       authzCaseName(route.HandlerFunc, outlet),
 				Method:     httpMethodConst(route.Method),
 				URL:        route.TestURL,
-				Body:       "{}",
+				Body:       emptyObjectBody,
 				DeniedOnly: true,
 			})
+			// A dry run of a transaction-form method refuses exactly as the real
+			// call does: the header changes what commits, never what is checked.
+			if rpcStruct.IsTxnForm() {
+				cases = append(cases, authzCase{
+					Name:       authzCaseName(route.HandlerFunc, outlet) + " dry run",
+					Method:     httpMethodConst(route.Method),
+					URL:        route.TestURL,
+					Body:       emptyObjectBody,
+					Headers:    []authzHeader{{Name: resource.DryRunHeader, Value: jsonTrueLiteral}},
+					DeniedOnly: true,
+				})
+			}
 		}
 	}
 
@@ -484,7 +501,7 @@ func authzParamValue(t pkParamType) (string, bool) {
 	case strings.HasPrefix(t.declared, "int") || strings.HasPrefix(t.underlying, "int"):
 		return "1", true
 	case t.declared == boolGoType || t.underlying == boolGoType:
-		return "true", true
+		return jsonTrueLiteral, true
 	case t.declared == civilDateGoType:
 		return "2000-01-01", true
 	default:

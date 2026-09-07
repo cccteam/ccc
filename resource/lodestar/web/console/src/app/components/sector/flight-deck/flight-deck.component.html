@@ -115,8 +115,15 @@
               <mat-label>Reason</mat-label>
               <input matInput name="holdReason" [(ngModel)]="holdReason" required />
             </mat-form-field>
-            <button mat-flat-button type="submit">Hold</button>
+            <button mat-flat-button type="submit" [disabled]="holdCheck()?.ok === false">Hold</button>
           </form>
+          @if (holdCheck(); as check) {
+            @if (check.ok) {
+              <p class="probe">The dry run says this hold would commit for you.</p>
+            } @else {
+              <p class="refusal">The dry run refused before you touched anything: {{ check.message }}</p>
+            }
+          }
         }
         @case (methods.FailMission) {
           <form class="inline-form" (ngSubmit)="fire(mission, methods.FailMission)">

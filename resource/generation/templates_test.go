@@ -240,6 +240,7 @@ func Test_authzTestTemplate(t *testing.T) {
 			{Name: "Widget", Method: "http.MethodGet", URL: "/api/widgets/1", Permission: "Read"},
 			{Name: "PatchWidgets delete", Method: "http.MethodPatch", URL: "/api/widgets", Body: `[{"op":"remove","path":"/1"}]`, DeniedOnly: true},
 			{Name: "LaunchWidget", Method: "http.MethodPost", URL: "/api/launch-widget", Body: "{}", DeniedOnly: true},
+			{Name: "LaunchWidget dry run", Method: "http.MethodPost", URL: "/api/launch-widget", Body: "{}", Headers: []authzHeader{{Name: "X-Dry-Run", Value: "true"}}, DeniedOnly: true},
 		},
 	})
 	if err != nil {
@@ -256,6 +257,9 @@ func Test_authzTestTemplate(t *testing.T) {
 		`name:         "PatchWidgets delete denied",`,
 		"body:         `[{\"op\":\"remove\",\"path\":\"/1\"}]`,",
 		`name:         "LaunchWidget denied",`,
+		`name:         "LaunchWidget dry run denied",`,
+		`headers:      map[string]string{"X-Dry-Run": "true"},`,
+		"for name, value := range tt.headers {",
 		"h := newTestHandler(t, db, tt.grants)",
 	} {
 		if !strings.Contains(string(out), want) {

@@ -1028,7 +1028,8 @@ type grants map[accesstypes.Permission]bool
 // the operation's enforcement gate — buffer time for patch sets, decode time for RPC —
 // which runs before required-field validation, defaults, or row reads. Mutation
 // success paths need valid request bodies the generator does not synthesize yet and
-// are left to manual testing.
+// are left to manual testing. A transaction-form RPC method carries a second denied
+// case under X-Dry-Run: a dry run refuses exactly as the real call does.
 //
 // The suite runs on the migrated schema alone; no seed data is required, so it grows
 // with the schema on every regeneration.
@@ -1052,6 +1053,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 		method       string
 		target       string
 		body         string
+		headers      map[string]string
 		wantStatuses []int
 	}{
 		{{- range .Cases }}
@@ -1061,6 +1063,9 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			target:       "{{ .URL }}",
 			{{- with .Body }}
 			body:         ` + "`{{ . }}`" + `,
+			{{- end }}
+			{{- with .Headers }}
+			headers:      map[string]string{ {{- range $i, $h := . }}{{ if $i }}, {{ end }}"{{ $h.Name }}": "{{ $h.Value }}"{{ end -}} },
 			{{- end }}
 			wantStatuses: []int{ {{- with .DeniedStatus }}{{ . }}{{ else }}http.StatusForbidden{{ end -}} },
 		},
@@ -1088,6 +1093,9 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			h := newTestHandler(t, db, tt.grants)
 
 			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.target, strings.NewReader(tt.body))
+			for name, value := range tt.headers {
+				req.Header.Set(name, value)
+			}
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, req)
 
@@ -2607,6 +2615,10 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		var result {{ .RPCMethod.ResultType }}
 		{{- end }}
 		{{- if .RPCMethod.IsTxnForm }}
+			// A dry run (X-Dry-Run: true) runs the whole frame and the body, then
+			// rolls the transaction back: every refusal answers as the real call
+			// would, and a call that would have succeeded answers 200 with no body.
+			dryRun := resource.IsDryRun(r)
 			if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 				{{- with $t := .RPCMethod.Target }}
 				// Declared target: locate the row within the tenancy predicate
@@ -2673,12 +2685,25 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 					return errors.Wrap(err, "{{ $.ResourcesPackage }}.{{ $t.RootStruct }}UpdatePatch.Buffer()")
 				}
 				{{- end }}
+				if dryRun {
+					return resource.ErrDryRun
+				}
 
 				return nil
 			}); err != nil {
+				if dryRun && resource.DryRunRolledBack(err) {
+					return httpio.NewEncoder(w).Ok(nil)
+				}
+
 				return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 			}
-		{{- else if .RPCMethod.Answers }}
+		{{- else }}
+		if resource.IsDryRun(r) {
+			// Effects outside a transaction cannot be rolled back, so there is
+			// nothing a dry run could promise here.
+			return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewBadRequestMessage("dry run is not supported: {{ .RPCMethod.Name }} runs outside a transaction"))
+		}
+		{{- if .RPCMethod.Answers }}
 		answer, err := p.Execute(ctx, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.RPCClient())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -2688,6 +2713,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		if err := p.Execute(ctx, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.RPCClient()); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
+		{{- end }}
 		{{- end }}
 		{{- if not .RPCMethod.Answers }}
 

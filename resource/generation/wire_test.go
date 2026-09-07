@@ -469,6 +469,96 @@ func Test_rpcHandlerTemplate_answer(t *testing.T) {
 	}
 }
 
+// Test_rpcHandlerTemplate_dryRun pins the dry run: a transaction-form handler reads
+// the header, returns the sentinel from its transaction function after the body,
+// and answers an empty 200 when the rollback is the only error; a client-form
+// handler refuses the header before running anything.
+func Test_rpcHandlerTemplate_dryRun(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "wirefixture"))
+	c := &client{}
+
+	tests := []struct {
+		name            string
+		method          *rpcMethodInfo
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name:   "transaction form rolls back after the body",
+			method: fixtureAnsweringMethod(t, structs, "Inspect"),
+			wantContains: []string{
+				"dryRun := resource.IsDryRun(r)",
+				"result = answer\n\t\t\tif dryRun {\n\t\t\t\treturn resource.ErrDryRun\n\t\t\t}",
+				"if dryRun && resource.DryRunRolledBack(err) {\n\t\t\t\treturn httpio.NewEncoder(w).Ok(nil)\n\t\t\t}",
+			},
+			wantNotContains: []string{"dry run is not supported"},
+		},
+		{
+			name:   "client form refuses the header",
+			method: fixtureClientMethod(t, structs, "Notify"),
+			wantContains: []string{
+				"if resource.IsDryRun(r) {",
+				`httpio.NewBadRequestMessage("dry run is not supported: Notify runs outside a transaction")`,
+				"p.Execute(ctx, a.ResourceClient(), a.RPCClient())",
+			},
+			wantNotContains: []string{"dryRun :=", "ErrDryRun"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, err := c.generateTemplateOutput("rpcHandlerTemplate", rpcHandlerTemplate, &rpcHandlerData{
+				Source:           "pkg/rpc",
+				RPCMethod:        tt.method,
+				Package:          "app",
+				ApplicationName:  "App",
+				ReceiverName:     "a",
+				ResourcesPackage: "resources",
+			})
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+			formatted, err := format.Source(out)
+			if err != nil {
+				t.Fatalf("format.Source() error = %v on:\n%s", err, out)
+			}
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(formatted), want) {
+					t.Errorf("handler missing %q:\n%s", want, formatted)
+				}
+			}
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(string(formatted), notWant) {
+					t.Errorf("handler must not contain %q:\n%s", notWant, formatted)
+				}
+			}
+		})
+	}
+}
+
+// fixtureClientMethod builds an rpcMethodInfo over a client-form wirefixture struct.
+func fixtureClientMethod(t *testing.T, structs map[string]*parser.Struct, name string) *rpcMethodInfo {
+	t.Helper()
+
+	signature, err := classifyExecute(structs[name])
+	if err != nil {
+		t.Fatalf("classifyExecute(%s) error = %v", name, err)
+	}
+	request, err := walkFixture(t, structs, name)
+	if err != nil {
+		t.Fatalf("walk(%s) error = %v", name, err)
+	}
+	m := &rpcMethodInfo{Struct: structs[name], Form: signature.form, Request: request}
+	for i, f := range structs[name].Fields() {
+		m.Fields = append(m.Fields, &rpcField{Field: f, wire: request.Fields[i], namespace: name})
+	}
+
+	return m
+}
+
 // Test_computedResourceHandlerTemplate_nested pins the computed path: a nested
 // field is one opaque mirror field, and the row reaches its mirror through the
 // converter instead of the whole-struct conversion a flat row keeps.

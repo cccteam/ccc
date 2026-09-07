@@ -36,13 +36,24 @@ func (a *App) IssueBulletin() http.HandlerFunc {
 		ctx = resource.WithCaller(ctx, caller)
 
 		p := (*rpc.IssueBulletin)(params)
+		// A dry run (X-Dry-Run: true) runs the whole frame and the body, then
+		// rolls the transaction back: every refusal answers as the real call
+		// would, and a call that would have succeeded answers 200 with no body.
+		dryRun := resource.IsDryRun(r)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			if err := p.Execute(ctx, txn, a.RPCClient()); err != nil {
 				return errors.Wrap(err, "Transaction.Execute()")
 			}
+			if dryRun {
+				return resource.ErrDryRun
+			}
 
 			return nil
 		}); err != nil {
+			if dryRun && resource.DryRunRolledBack(err) {
+				return httpio.NewEncoder(w).Ok(nil)
+			}
+
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 		}
 
