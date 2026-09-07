@@ -51,7 +51,7 @@ type (
 )
 
 func (*TxnForm) Execute(context.Context, resource.ReadWriteTransaction, *Client) error { return nil }
-func (*ClientForm) Execute(context.Context, *resource.Client, *Client) error           { return nil }
+func (*ClientForm) Execute(context.Context, resource.Client, *Client) error            { return nil }
 func (ValueReceiver) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
 	return nil
 }
@@ -60,7 +60,7 @@ func (*Variadic) Execute(context.Context, resource.ReadWriteTransaction, ...*Cli
 	return nil
 }
 func (*FirstNotContext) Execute(string, resource.ReadWriteTransaction, *Client) error { return nil }
-func (*SecondUnknown) Execute(context.Context, resource.Client, *Client) error        { return nil }
+func (*SecondUnknown) Execute(context.Context, *resource.Client, *Client) error       { return nil }
 func (*ThirdNotPointer) Execute(context.Context, resource.ReadWriteTransaction, Client) error {
 	return nil
 }

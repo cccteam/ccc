@@ -295,7 +295,7 @@ func main() {
 			name: "both forms and both result shapes pass",
 			files: map[string]string{
 				"pkg/rpc/ping_beacon.go": "package rpc\n\n// @rpc\ntype PingBeacon struct{}\n\nfunc (p *PingBeacon) Execute(ctx context.Context, txn resource.ReadWriteTransaction, client *Client) error { return nil }\n",
-				"pkg/rpc/relight.go":     "package rpc\n\ntype (\n\t// @rpc\n\tRelight struct{}\n)\n\nfunc (p Relight) Execute(ctx context.Context, client *resource.Client, rpcClient *Client) (Report, error) { return Report{}, nil }\n",
+				"pkg/rpc/relight.go":     "package rpc\n\ntype (\n\t// @rpc\n\tRelight struct{}\n)\n\nfunc (p Relight) Execute(ctx context.Context, client resource.Client, rpcClient *Client) (Report, error) { return Report{}, nil }\n",
 			},
 			want: Result{Name: rpcExecute{}.Name(), Status: Pass, Summary: "2 RPC method(s) declare a recognized Execute and 1 generated handler(s) call it"},
 		},
@@ -306,7 +306,7 @@ func main() {
 				"pkg/rpc/relight.go":     "package rpc\n\n// @rpc\ntype Relight struct{}\n",
 			},
 			want: Result{Name: rpcExecute{}.Name(), Status: Fail, Summary: "2 RPC finding(s) (regenerate and read the generator output)", Details: []string{
-				"pkg/rpc/ping_beacon.go:6: PingBeacon.Execute(context.Context, *Client) (error) is neither form the generator classifies: Execute(ctx context.Context, txn resource.ReadWriteTransaction, client *Client) error or Execute(ctx context.Context, client *resource.Client, rpcClient *Client) error",
+				"pkg/rpc/ping_beacon.go:6: PingBeacon.Execute(context.Context, *Client) (error) is neither form the generator classifies: Execute(ctx context.Context, txn resource.ReadWriteTransaction, client *Client) error or Execute(ctx context.Context, client resource.Client, rpcClient *Client) error",
 				"pkg/rpc/relight.go:4: Relight declares @rpc but no Execute method; the generator refuses it",
 			}},
 		},

@@ -268,7 +268,7 @@ func TestResolveTransition(t *testing.T) {
 	t.Run("client form is rejected", func(t *testing.T) {
 		t.Parallel()
 
-		// TransitionClientForm's Execute takes *resource.Client, so it runs
+		// TransitionClientForm's Execute takes resource.Client, so it runs
 		// outside the transaction the located-row checks need.
 		c := transitionFixtureClient(t, structs)
 		_, err := resolveFixtureTransition(t, c, structs, "TransitionClientForm")

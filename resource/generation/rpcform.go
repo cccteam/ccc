@@ -18,8 +18,9 @@ const (
 	// rpcFormTxn is Execute(ctx, txn resource.ReadWriteTransaction, client *Client):
 	// the body runs inside the generated handler's read-write transaction.
 	rpcFormTxn
-	// rpcFormClient is Execute(ctx, client *resource.Client, rpcClient *Client):
-	// the body runs outside any transaction the handler owns.
+	// rpcFormClient is Execute(ctx, client resource.Client, rpcClient *Client):
+	// the body runs outside any transaction the handler owns, against the
+	// resource.Client interface.
 	rpcFormClient
 )
 
@@ -31,7 +32,7 @@ const resourcePackagePath = "github.com/cccteam/ccc/resource"
 // write rather than only what was wrong.
 const executeForms = `an @rpc struct declares Execute in one of two forms:
 	Execute(ctx context.Context, txn resource.ReadWriteTransaction, client *Client) error   // runs inside the handler's transaction
-	Execute(ctx context.Context, client *resource.Client, rpcClient *Client) error         // runs outside one`
+	Execute(ctx context.Context, client resource.Client, rpcClient *Client) error          // runs outside one`
 
 // classifyExecute reads the struct's Execute method and returns its form. The
 // method may be declared on either receiver. Every departure from the two
@@ -53,21 +54,21 @@ func classifyExecute(s *parser.Struct) (rpcForm, error) {
 	}
 
 	if !isNamedType(params.At(0).Type(), "context", "Context") {
-		return rpcFormUnclassified, errors.Newf("struct %s: Execute's first parameter is %s, not context.Context; %s", s.Name(), typeString(params.At(0).Type()), executeForms)
+		return rpcFormUnclassified, errors.Newf("struct %s: Execute's first parameter is %s, not context.Context; %s", s.Name(), typeStringer(params.At(0).Type()), executeForms)
 	}
 
 	var form rpcForm
 	switch second := params.At(1).Type(); {
 	case isNamedType(second, resourcePackagePath, "ReadWriteTransaction"):
 		form = rpcFormTxn
-	case isPointerToNamedType(second, resourcePackagePath, "Client"):
+	case isNamedType(second, resourcePackagePath, "Client"):
 		form = rpcFormClient
 	default:
-		return rpcFormUnclassified, errors.Newf("struct %s: Execute's second parameter is %s, neither resource.ReadWriteTransaction nor *resource.Client; %s", s.Name(), typeString(second), executeForms)
+		return rpcFormUnclassified, errors.Newf("struct %s: Execute's second parameter is %s, neither resource.ReadWriteTransaction nor resource.Client; %s", s.Name(), typeStringer(second), executeForms)
 	}
 
 	if third, ok := params.At(2).Type().(*types.Pointer); !ok || !isNamed(third.Elem()) {
-		return rpcFormUnclassified, errors.Newf("struct %s: Execute's third parameter is %s, not a pointer to the application's RPC client type; %s", s.Name(), typeString(params.At(2).Type()), executeForms)
+		return rpcFormUnclassified, errors.Newf("struct %s: Execute's third parameter is %s, not a pointer to the application's RPC client type; %s", s.Name(), typeStringer(params.At(2).Type()), executeForms)
 	}
 
 	results := sig.Results()
@@ -94,19 +95,9 @@ func isNamedType(t types.Type, pkgPath, name string) bool {
 	return named.Obj().Pkg().Path() == pkgPath && named.Obj().Name() == name
 }
 
-// isPointerToNamedType reports whether t is *pkgPath.name.
-func isPointerToNamedType(t types.Type, pkgPath, name string) bool {
-	ptr, ok := t.(*types.Pointer)
-	if !ok {
-		return false
-	}
-
-	return isNamedType(ptr.Elem(), pkgPath, name)
-}
-
-// typeString renders a type the way it reads in source: package-qualified by
+// typeStringer renders a type the way it reads in source: package-qualified by
 // package name, never by import path.
-func typeString(t types.Type) string {
+func typeStringer(t types.Type) string {
 	return types.TypeString(t, func(p *types.Package) string { return p.Name() })
 }
 
@@ -122,11 +113,11 @@ func paramsString(sig *types.Signature) string {
 	for i := range params.Len() {
 		t := params.At(i).Type()
 		if slice, ok := t.(*types.Slice); ok && sig.Variadic() && i == params.Len()-1 {
-			parts[i] = "..." + typeString(slice.Elem())
+			parts[i] = "..." + typeStringer(slice.Elem())
 
 			continue
 		}
-		parts[i] = typeString(t)
+		parts[i] = typeStringer(t)
 	}
 
 	return "(" + strings.Join(parts, ", ") + ")"

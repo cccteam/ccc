@@ -23,7 +23,7 @@ func Test_classifyExecute(t *testing.T) {
 		{name: "two parameters", structName: "TwoParams", wantErr: "struct TwoParams: Execute takes (context.Context, resource.ReadWriteTransaction)"},
 		{name: "variadic", structName: "Variadic", wantErr: "struct Variadic: Execute takes (context.Context, resource.ReadWriteTransaction, ...*rpcform.Client)"},
 		{name: "first parameter not context", structName: "FirstNotContext", wantErr: "struct FirstNotContext: Execute's first parameter is string, not context.Context"},
-		{name: "second parameter neither form", structName: "SecondUnknown", wantErr: "struct SecondUnknown: Execute's second parameter is resource.Client, neither resource.ReadWriteTransaction nor *resource.Client"},
+		{name: "second parameter neither form", structName: "SecondUnknown", wantErr: "struct SecondUnknown: Execute's second parameter is *resource.Client, neither resource.ReadWriteTransaction nor resource.Client"},
 		{name: "third parameter not a pointer", structName: "ThirdNotPointer", wantErr: "struct ThirdNotPointer: Execute's third parameter is rpcform.Client, not a pointer to the application's RPC client type"},
 		{name: "no result", structName: "NoResult", wantErr: "struct NoResult: Execute returns nothing; it returns error"},
 		{name: "result not error", structName: "ResultNotError", wantErr: "struct ResultNotError: Execute returns (string); it returns error"},

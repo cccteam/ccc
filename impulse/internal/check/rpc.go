@@ -18,7 +18,7 @@ import (
 // rpcExecute verifies the agreement between an application's RPC methods and the
 // handlers generated for them. Every @rpc struct declares Execute in one of the two
 // forms the generator classifies by signature: the transaction form takes
-// resource.ReadWriteTransaction second, the client form *resource.Client. Every
+// resource.ReadWriteTransaction second, the client form resource.Client. Every
 // generated RPC handler calls Execute: a generator that could not type-check a
 // method once emitted a decode-only handler that answers requests without running
 // it, a fail-open bug that compiles cleanly. And no TxnRunner or DBRunner interface
@@ -213,7 +213,7 @@ func (p *rpcPackage) findings() []string {
 			continue
 		}
 		if !exec.recognized() {
-			out = append(out, fmt.Sprintf("%s: %s.Execute(%s) (%s) is neither form the generator classifies: Execute(ctx context.Context, txn resource.ReadWriteTransaction, client *Client) error or Execute(ctx context.Context, client *resource.Client, rpcClient *Client) error", exec.pos, m.name, strings.Join(exec.params, ", "), strings.Join(exec.results, ", ")))
+			out = append(out, fmt.Sprintf("%s: %s.Execute(%s) (%s) is neither form the generator classifies: Execute(ctx context.Context, txn resource.ReadWriteTransaction, client *Client) error or Execute(ctx context.Context, client resource.Client, rpcClient *Client) error", exec.pos, m.name, strings.Join(exec.params, ", "), strings.Join(exec.results, ", ")))
 		}
 	}
 
@@ -221,13 +221,13 @@ func (p *rpcPackage) findings() []string {
 }
 
 // recognized reports whether the declaration has the shape of either form: three
-// parameters with context first and a transaction or resource client second, a
-// pointer third, and error as the only or last result.
+// parameters with context first and a transaction or the resource.Client
+// interface second, a pointer third, and error as the only or last result.
 func (e executeDecl) recognized() bool {
 	if len(e.params) != 3 || e.params[0] != "context.Context" {
 		return false
 	}
-	if e.params[1] != "resource.ReadWriteTransaction" && e.params[1] != "*resource.Client" {
+	if e.params[1] != "resource.ReadWriteTransaction" && e.params[1] != "resource.Client" {
 		return false
 	}
 	if !strings.HasPrefix(e.params[2], "*") {

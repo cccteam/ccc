@@ -495,4 +495,4 @@ func (TransitionTargetWithArg) Execute(context.Context, resource.ReadWriteTransa
 	return nil
 }
 
-func (TransitionClientForm) Execute(context.Context, *resource.Client, *Client) error { return nil }
+func (TransitionClientForm) Execute(context.Context, resource.Client, *Client) error { return nil }

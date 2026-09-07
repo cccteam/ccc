@@ -23,6 +23,6 @@ type Cofveve struct{}
 // Durian declares Execute on the value receiver.
 type Durian struct{}
 
-func (c Durian) Execute(ctx context.Context, client *resource.Client, rpcClient *Client) error {
+func (c Durian) Execute(ctx context.Context, client resource.Client, rpcClient *Client) error {
 	return nil
 }
