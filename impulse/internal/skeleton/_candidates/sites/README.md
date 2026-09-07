@@ -32,6 +32,20 @@ concealed from logins that hold nothing there.
 - `test/integration` serves both sites over one database and drives each the way its
   browser application does.
 
+## RPC methods
+
+When a write is not a row mutation — a workflow transition, a batch, a command with an
+answer — it is an RPC method: an `@rpc` struct in an rpc package whose `Execute`
+signature says how it runs (inside the handler's transaction, or against the resource
+client outside one) and what it answers (`error`, or `(Result, error)`). The generator
+mirrors the request and the result into the handler, gates the route on `Execute`, and
+types the browser client's handle. Three conventions it cannot enforce are stated in
+the resource package's README (§7): a method answers with identifiers and outcomes,
+never rows; a method that only answers a question is a computed resource; and a
+transaction-form body keeps its effects inside the transaction, so `X-Dry-Run` tells
+the truth. Bodies are trusted by default; `Enforce(caller)` on a generated builder
+arms a write or read against the caller's own grants.
+
 ## Running it
 
     cp .envrc.template .envrc && direnv allow

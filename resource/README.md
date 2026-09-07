@@ -236,3 +236,43 @@ this package supplies the two pieces that must know about it:
   `alice impersonating bob (session id)` and `alice as role PartnerViewer (session id)`,
   unchanged (`bob (session id)`) otherwise. Every tracked data change carries evidence of
   the real person with no regeneration.
+
+## 7. RPC methods: what a method is for
+
+The generator enforces a method's shape (`@rpc`, the `Execute` forms, the wire
+vocabulary, the frame). Three conventions it cannot see are stated here, and hold
+across every application on this stack:
+
+- **A method answers with identifiers and outcomes, never rows.** `Execute` may return
+  `(Result, error)`, and the result is for what the call decided or created: the id of
+  the row it opened, the timestamp it stamped, the readings it folded. Rows are read
+  through their resource routes, where permission masking applies field by field; a
+  result that carried a row would carry it unmasked. The generator refuses a `@resource`
+  or `@computed` struct in the result position; this sentence covers the shapes it
+  cannot recognize.
+- **A method that only answers a question is a computed resource, not an RPC.** A read
+  with no write belongs on a `List`/`Read` route with a `List`/`Read` grant, where the
+  digest, the client handles, and the masking all already apply. There is no read-only
+  RPC form, by decision. A caller-scoped question ("my standing", "my current level") is
+  a computed resource whose `List` yields the caller's one row: `QuerySet.User()` names
+  the identity the permission check ran as — the viewed person under a view-as session,
+  the real actor under an act-as-role session — beside `QuerySet.Scope()`. A table row
+  that is the caller's own is a `List` grant whose condition binds the user column to
+  `subject`; nothing new is needed.
+- **A transaction-form body keeps its effects inside the transaction.** A message, a
+  webhook, a file written from inside `Execute` cannot be rolled back, so a dry run of
+  that method lies and a retried transaction repeats the effect. Write an outbox row
+  the transaction commits and let a worker deliver it; if an effect truly cannot wait,
+  the method is the client form, which the dry run refuses for exactly this reason.
+
+Two things a method deliberately cannot do. It cannot reach the response writer: no
+cookies, no session started or ended, no status code of its own. The moment a body can
+write the response, every method can start a session, and the frame's guarantee — JSON
+in, JSON out, permission-gated, transactional — stops meaning anything; sign-up flows
+that end in a login belong beside the login routes in the auth package. And it cannot
+be armed by default: inside `Execute`, typed queries and patches run trusted unless the
+body calls `Enforce(caller)`, because `@state` columns are structurally unwritable from
+the wire and the frame's own status stamp must stay privileged. The method's entry
+contract with the permission system is `Execute` on itself, its target row, its
+transition, and any row condition on the Execute grant, all visible in the collection.
+
