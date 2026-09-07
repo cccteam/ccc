@@ -26,6 +26,7 @@ export const Resources = {
   Hangars: 'Hangars' as Resource,
   Missions: 'Missions' as Resource,
   OpenMissionsBySquadrons: 'OpenMissionsBySquadrons' as Resource,
+  PilotCards: 'PilotCards' as Resource,
   PilotCertifications: 'PilotCertifications' as Resource,
   Pilots: 'Pilots' as Resource,
   RefitTasks: 'RefitTasks' as Resource,
@@ -227,6 +228,25 @@ export namespace OpenMissionsBySquadrons {
     sectorId: 'OpenMissionsBySquadrons.sectorId' as Resource,
     squadronId: 'OpenMissionsBySquadrons.squadronId' as Resource,
     squadronName: 'OpenMissionsBySquadrons.squadronName' as Resource,
+  };
+}
+
+export namespace PilotCards {
+  export const fieldName = {
+    certifications: 'certifications' as FieldName,
+    clearance: 'clearance' as FieldName,
+    displayName: 'displayName' as FieldName,
+    feeLimit: 'feeLimit' as FieldName,
+    squadrons: 'squadrons' as FieldName,
+    userId: 'userId' as FieldName,
+  };
+  export const resourceName = {
+    certifications: 'PilotCards.certifications' as Resource,
+    clearance: 'PilotCards.clearance' as Resource,
+    displayName: 'PilotCards.displayName' as Resource,
+    feeLimit: 'PilotCards.feeLimit' as Resource,
+    squadrons: 'PilotCards.squadrons' as Resource,
+    userId: 'PilotCards.userId' as Resource,
   };
 }
 

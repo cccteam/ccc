@@ -6,6 +6,7 @@ import { AuthService } from '@cccteam/ccc-lib/auth-service';
 import { IdleService } from '@cccteam/ccc-lib/ui-idle-service';
 import { tap } from 'rxjs';
 import { ImpersonationService } from '@components/sector/impersonation.service';
+import { SectorService } from '@components/sector/sector.service';
 import { TopbarComponent } from '../topbar/topbar.component';
 
 @Component({
@@ -19,6 +20,13 @@ export class HeaderComponent {
   private idle = inject(IdleService);
   auth = inject(AuthService);
   impersonation = inject(ImpersonationService);
+  private sectors = inject(SectorService);
+  // The pilot card is the caller-scoped read: a computed resource whose List yields
+  // the one row that is "mine", chosen server-side by the identity the permission
+  // check ran as — so under a view-as session the header shows the viewed person's
+  // standing, not the actor's.
+  cards = this.sectors.globalList((api) => api.pilotCards);
+  card = computed(() => this.cards.value()[0]);
 
   // The banner reads the session's impersonation record: "Viewing as Cadet Cass,
   // read-only. You are Maren Voss." — present exactly when the session was minted

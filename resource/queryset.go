@@ -125,6 +125,18 @@ func (q *QuerySet[Resource]) Scope() accesstypes.Scope {
 	return q.scope
 }
 
+// User returns the identity the permission check ran as: the session's user, the
+// viewed person under a view-as session, or the real actor under an act-as-role
+// session. A computed resource's List or Read function reads it to yield the caller's
+// own row without reaching into the session; empty when no check was bound.
+func (q *QuerySet[Resource]) User() accesstypes.User {
+	if q.userPermissions == nil {
+		return ""
+	}
+
+	return q.userPermissions.User()
+}
+
 // ReturnAccessibleFields configures the QuerySet to automatically include all fields
 // the user has access to if no specific fields are requested.
 func (q *QuerySet[Resource]) ReturnAccessibleFields(b bool) *QuerySet[Resource] {

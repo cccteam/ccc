@@ -130,6 +130,8 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/sectors/testDomain/wings", method: http.MethodPost},
 		{url: "/portal/sectors/testDomain/wings/testWingID", method: http.MethodGet},
 		{url: "/portal/sectors/testDomain/wings/testWingID", method: http.MethodPost},
+		{url: "/portal/pilot-cards", method: http.MethodGet},
+		{url: "/portal/pilot-cards", method: http.MethodPost},
 		{url: "/portal/sectors/testDomain/sector-hazard-boards", method: http.MethodGet},
 		{url: "/portal/sectors/testDomain/sector-hazard-boards", method: http.MethodPost},
 		{url: "/portal/sectors/testDomain/sector-hazard-boards/testSectorHazardBoardShipID/testSectorHazardBoardSubsystem", method: http.MethodGet},
@@ -228,6 +230,8 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/wings", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/wings/testWingID", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/wings/testWingID", method: http.MethodPost},
+		{url: "/droids/pilot-cards", method: http.MethodGet},
+		{url: "/droids/pilot-cards", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/sector-hazard-boards", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/sector-hazard-boards", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/sector-hazard-boards/testSectorHazardBoardShipID/testSectorHazardBoardSubsystem", method: http.MethodGet},
@@ -865,6 +869,16 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"sectorID": "testDomain", "wingID": "testWingID"},
 		},
 		{
+			url: "/api/pilot-cards", method: http.MethodGet,
+			handlerFunc: "PilotCards",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/pilot-cards", method: http.MethodPost,
+			handlerFunc: "PilotCards",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/api/sectors/testDomain/sector-hazard-boards", method: http.MethodGet,
 			handlerFunc: "SectorHazardBoards",
 			parameters:  map[string]string{"sectorID": "testDomain"},
@@ -1058,6 +1072,10 @@ func (s *generatedHandlersStub) Pilots() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Pilot() http.HandlerFunc {
 	return s.record("Pilot")
+}
+
+func (s *generatedHandlersStub) PilotCards() http.HandlerFunc {
+	return s.record("PilotCards")
 }
 
 func (s *generatedHandlersStub) PilotCertifications() http.HandlerFunc {

@@ -84,6 +84,9 @@ func (d *ComputedQueryDecoder[Resource, Request]) Decode(request *http.Request, 
 	// no library query for the QuerySet's own gates to guard.
 	qSet.scope = scope
 	qSet.requiredPermission = requiredPermission
+	// The checked identity rides along too (QuerySet.User), so a caller-scoped
+	// computed resource yields the row of exactly the person the check ran as.
+	qSet.userPermissions = userPermissions
 
 	decisions, err := userPermissions.Check(ctx, qSet.env, scope, requiredPermission, rSet.BaseResource())
 	if err != nil {

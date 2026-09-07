@@ -445,6 +445,20 @@ func Collection() *resource.GeneratedCollection {
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
 			},
 			{
+				Name:        "PilotCards",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Computed:    true,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags: []resource.TagData{
+					{Name: "certifications", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "clearance", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "displayName", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "feeLimit", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "squadrons", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "userId"},
+				},
+			},
+			{
 				Name:        "PilotCertifications",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},

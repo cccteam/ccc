@@ -6,6 +6,16 @@
         "permissions": {
           "List": [
             {
+              "resource": "PilotCards",
+              "fields": [
+                "displayName",
+                "clearance",
+                "feeLimit",
+                "certifications",
+                "squadrons"
+              ]
+            },
+            {
               "resource": "Sectors",
               "fields": [
                 "name",

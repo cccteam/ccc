@@ -710,6 +710,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
+			name:         "PilotCards denied",
+			method:       http.MethodGet,
+			target:       "/api/pilot-cards",
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "PilotCards granted",
+			grants:       grants{accesstypes.List: true},
+			method:       http.MethodGet,
+			target:       "/api/pilot-cards",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
 			name:         "SectorHazardBoards denied",
 			method:       http.MethodGet,
 			target:       "/api/sectors/testDomain/sector-hazard-boards",

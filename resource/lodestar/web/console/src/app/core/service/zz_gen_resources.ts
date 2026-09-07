@@ -170,6 +170,15 @@ export interface Wings {
   name?: string;
 }
 
+export interface PilotCards {
+  userId: string;
+  displayName?: string;
+  clearance?: number;
+  feeLimit?: number;
+  certifications?: string[];
+  squadrons?: string[];
+}
+
 export interface SectorHazardBoards {
   shipId: string;
   subsystem: string;
@@ -419,6 +428,21 @@ const resourceMap: ResourceMap = {
       { fieldName: 'name', displayType: 'string', required: true, isIndex: true },
     ],
   },
+  [Resources.PilotCards]: {
+    route: 'pilot-cards',
+    readDisabled: true,
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'userId', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'displayName', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'clearance', displayType: 'number', required: false, isIndex: false },
+      { fieldName: 'feeLimit', displayType: 'number', required: false, isIndex: false },
+      { fieldName: 'certifications', displayType: 'string[]', required: false, isIndex: false },
+      { fieldName: 'squadrons', displayType: 'string[]', required: false, isIndex: false },
+    ],
+  },
   [Resources.SectorHazardBoards]: {
     route: 'sectors/{sectorID}/sector-hazard-boards',
     createDisabled: true,
@@ -482,6 +506,7 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.Squadrons]: PermissionScopes.domain,
   [Resources.SquadronMemberships]: PermissionScopes.domain,
   [Resources.Wings]: PermissionScopes.domain,
+  [Resources.PilotCards]: PermissionScopes.global,
   [Resources.SectorHazardBoards]: PermissionScopes.domain,
   [Resources.ServiceLedgers]: PermissionScopes.global,
 };

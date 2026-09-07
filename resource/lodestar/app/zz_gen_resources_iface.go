@@ -18,5 +18,6 @@ type Resourcer interface {
 		resources.Pilot | resources.PilotCertification | resources.Refit | resources.RefitTask |
 		resources.Sector | resources.Ship | resources.ShipClass | resources.Sortie |
 		resources.SortieExpense | resources.Squadron | resources.SquadronMembership |
-		resources.Wing | computedresources.SectorHazardBoard | computedresources.ServiceLedger
+		resources.Wing | computedresources.PilotCard | computedresources.SectorHazardBoard |
+		computedresources.ServiceLedger
 }

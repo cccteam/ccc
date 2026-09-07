@@ -102,6 +102,8 @@ type GeneratedHandlers interface {
 	Pilots() http.HandlerFunc
 	Pilot() http.HandlerFunc
 
+	PilotCards() http.HandlerFunc
+
 	PilotCertifications() http.HandlerFunc
 	PilotCertification() http.HandlerFunc
 
@@ -248,6 +250,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	pilotHandler := h.Pilot()
 	r.Get("/api/pilots/{pilotID}", pilotHandler)
 	r.Post("/api/pilots/{pilotID}", pilotHandler)
+
+	pilotCardsHandler := h.PilotCards()
+	r.Get("/api/pilot-cards", pilotCardsHandler)
+	r.Post("/api/pilot-cards", pilotCardsHandler)
 
 	pilotCertificationsHandler := h.PilotCertifications()
 	r.Get("/api/pilot-certifications", pilotCertificationsHandler)

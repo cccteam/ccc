@@ -27,6 +27,15 @@
       font-family: 'Roboto Mono', monospace;
     }
 
+    .card {
+      padding: 2px 10px;
+      border-radius: 10px;
+      background: rgba(242, 181, 68, 0.18);
+      color: #f2b544;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+
     button {
       color: #fff;
       border-color: rgba(255, 255, 255, 0.4);

@@ -9,6 +9,14 @@
   <a class="brand" [routerLink]="['']">✦ Lodestar</a>
   <app-topbar></app-topbar>
   <div class="session">
+    @if (card(); as card) {
+      <span class="card" [title]="'Certified: ' + (card.certifications?.join(', ') || 'none')">
+        {{ card.displayName }} · clearance {{ card.clearance }}
+        @if (card.squadrons?.length) {
+          · {{ card.squadrons?.join(', ') }}
+        }
+      </span>
+    }
     <span class="username">{{ auth.sessionInfo().username }}</span>
     <button mat-stroked-button (click)="logout()">Logout</button>
   </div>
