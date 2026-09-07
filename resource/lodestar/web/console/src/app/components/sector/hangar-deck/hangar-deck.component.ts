@@ -9,6 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
+import { InspectShipResult } from '@app/service/zz_gen_methods';
 import { Workflows, RefitTasks, Refits, Ships } from '@app/service/zz_gen_resources';
 import { Method, rowCapabilities } from '@cccteam/resource';
 import { SectorService } from '../sector.service';
@@ -65,6 +66,10 @@ export class HangarDeckComponent {
   selected = computed(() => this.refits.value().find((r) => r.id === this.selectedID()));
   dragging = signal<string | undefined>(undefined);
   refusal = signal<string | undefined>(undefined);
+  // The inspection's answer: InspectShip is the method that returns a result, typed
+  // by the generated InspectShipResult, so the deck shows the report the moment the
+  // transition commits instead of re-reading anything.
+  report = signal<InspectShipResult | undefined>(undefined);
 
   editEstimate: number | null = null;
   editNotes = '';
@@ -94,6 +99,7 @@ export class HangarDeckComponent {
 
   select(refit: Refits): void {
     this.selectedID.set(this.selectedID() === refit.id ? undefined : refit.id);
+    this.report.set(undefined);
     this.editEstimate = refit.estimate ?? null;
     this.editNotes = refit.notes ?? '';
     this.newTaskInstructions = '';
@@ -130,7 +136,7 @@ export class HangarDeckComponent {
     const body = { refitId: refit.id };
     switch (method) {
       case Methods.InspectShip:
-        await api.inspectShip.execute(body);
+        this.report.set(await api.inspectShip.execute(body));
         break;
       case Methods.BeginRefit:
         await api.beginRefit.execute(body);

@@ -233,8 +233,12 @@ func (s *wireShape) Imports() []parser.Import {
 // MirrorDecls renders the nested mirror type declarations, leaves first, indented
 // for the body of the handler function. A flat shape renders nothing.
 func (s *wireShape) MirrorDecls() string {
+	return mirrorDecls(s.Nested())
+}
+
+func mirrorDecls(nested []*wireShape) string {
 	var b strings.Builder
-	for _, n := range s.Nested() {
+	for _, n := range nested {
 		fmt.Fprintf(&b, "\ttype %s struct {\n", n.Mirror)
 		for _, f := range n.Fields {
 			fmt.Fprintf(&b, "\t\t%s %s `%s:%q`\n", f.Name, f.MirrorType(), jsonTagKey, f.JSONName)
@@ -249,13 +253,19 @@ func (s *wireShape) MirrorDecls() string {
 // namespace of the given name so two roots sharing a Go struct get independent
 // types. Empty for a flat shape.
 func typescriptNamespace(name string, shape *wireShape) string {
-	if shape == nil || len(shape.nested) == 0 {
+	return typescriptNamespaceOf(name, shape.Nested())
+}
+
+// typescriptNamespaceOf renders the namespace for an explicit list of nested
+// shapes, so a method's request and result share one.
+func typescriptNamespaceOf(name string, nested []*wireShape) string {
+	if len(nested) == 0 {
 		return ""
 	}
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "export namespace %s {\n", name)
-	for i, n := range shape.nested {
+	for i, n := range nested {
 		if i > 0 {
 			b.WriteString("\n")
 		}
@@ -520,18 +530,68 @@ func (w *wireWalker) walk(root *parser.Struct) (*wireShape, error) {
 	if !ok {
 		return nil, errors.Newf("struct %s: not a named struct type", root.Name())
 	}
+
+	return w.walkNamed(named, root.Name())
+}
+
+// walkNamed walks a root named struct type. One walker may walk several roots
+// (a method's request and its result): nested structs they share keep one mirror,
+// and every name is checked against everything the walker has seen.
+func (w *wireWalker) walkNamed(named *types.Named, path string) (*wireShape, error) {
 	st, ok := named.Underlying().(*types.Struct)
 	if !ok {
-		return nil, errors.Newf("struct %s: underlying type %s is not a struct", root.Name(), named.Underlying())
+		return nil, errors.Newf("struct %s: underlying type %s is not a struct", path, named.Underlying())
 	}
 
 	shape := &wireShape{Source: typeStringer(named), named: named}
-	if err := w.fill(shape, st, root.Name(), []*types.Named{named}); err != nil {
+	if err := w.fill(shape, st, path, []*types.Named{named}); err != nil {
 		return nil, err
 	}
-	shape.nested = w.order
+	shape.nested = reachable(shape, w.order)
 
-	return shape, w.checkNames(shape, root.Name())
+	return shape, w.checkNames(shape, path)
+}
+
+// reachable returns the walked shapes a root reaches, in the walker's order
+// (leaves first), so a root declares only its own mirrors.
+func reachable(root *wireShape, order []*wireShape) []*wireShape {
+	seen := make(map[*wireShape]bool)
+	var visit func(*wireShape)
+	visit = func(sh *wireShape) {
+		for _, f := range sh.Fields {
+			if f.Nested != nil && !seen[f.Nested] {
+				seen[f.Nested] = true
+				visit(f.Nested)
+			}
+		}
+	}
+	visit(root)
+
+	var out []*wireShape
+	for _, sh := range order {
+		if seen[sh] {
+			out = append(out, sh)
+		}
+	}
+
+	return out
+}
+
+// mergeNested unions the nested shapes of several roots walked by one walker,
+// each once, leaves first, so one handler declares one mirror per struct.
+func mergeNested(roots ...*wireShape) []*wireShape {
+	seen := make(map[*wireShape]bool)
+	var out []*wireShape
+	for _, root := range roots {
+		for _, sh := range root.Nested() {
+			if !seen[sh] {
+				seen[sh] = true
+				out = append(out, sh)
+			}
+		}
+	}
+
+	return out
 }
 
 // checkNames refuses the mirror, converter, and local names that would shadow an

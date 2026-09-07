@@ -67,6 +67,24 @@ export interface InspectShipConfig {
 export interface InspectShip {
   refitId: string;
 }
+/** The answer InspectShip resolves with. */
+export interface InspectShipResult {
+  refitId: string;
+  shipId: string;
+  shipName: string;
+  subsystems: InspectShip.SubsystemReport[];
+}
+export namespace InspectShip {
+  export interface Reading {
+    value: number;
+    recordedAt: Date;
+  }
+
+  export interface SubsystemReport {
+    name: string;
+    readings: InspectShip.Reading[];
+  }
+}
 
 export interface IssueBulletinConfig {
   announcement: string | FieldPointer;
@@ -144,6 +162,8 @@ export interface MethodTransition {
 export interface MethodMeta {
   route: string;
   transition?: MethodTransition;
+  /** Set when the method answers with a result body; absent methods resolve with nothing. */
+  answers?: true;
   fields: RPCFieldMeta[];
 }
 
@@ -204,6 +224,7 @@ const methodMap: MethodMap = {
   [Methods.InspectShip]: {
     route: 'inspect-ship',
     transition: { target: Resources.Refits, from: ['docked'], to: 'inspected' },
+    answers: true,
     fields: [
       { fieldName: 'refitId', displayType: 'uuid' },
     ],

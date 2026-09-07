@@ -476,11 +476,15 @@ func (d *tsAPIData) ResourceImports() string {
 	return strings.Join(names, ", ")
 }
 
-// MethodImports lists the body types the client file imports from the methods file.
+// MethodImports lists the body and result types the client file imports from the
+// methods file.
 func (d *tsAPIData) MethodImports() string {
-	names := make([]string, 0, len(d.Methods))
+	names := make([]string, 0, len(d.Methods)*2)
 	for _, method := range d.Methods {
 		names = append(names, method.Name)
+		if method.Answers {
+			names = append(names, method.ResultName())
+		}
 	}
 
 	return strings.Join(names, ", ")
@@ -540,6 +544,14 @@ type tsAPIMethod struct {
 	Property string
 	Route    string
 	Scope    accesstypes.PermissionScope
+	// Answers marks a method whose Execute returns a result: its handle is typed
+	// with the generated <Name>Result.
+	Answers bool
+}
+
+// ResultName is the generated TypeScript result interface's name.
+func (m *tsAPIMethod) ResultName() string {
+	return m.Name + "Result"
 }
 
 // ScopeKind renders the resource's permission scope as the client descriptor spells it.

@@ -59,6 +59,26 @@
         }
       </div>
 
+      @if (report(); as report) {
+        <div class="report">
+          <h3>Inspection report for {{ report.shipName }}</h3>
+          <p class="meta">
+            The answer InspectShip returned with its transition — subsystems and the droid readings on each, newest
+            first — not a row read back.
+          </p>
+          @for (subsystem of report.subsystems; track subsystem.name) {
+            <div class="subsystem">
+              <b>{{ subsystem.name }}</b>
+              @for (reading of subsystem.readings; track reading.recordedAt) {
+                <span class="reading" [title]="reading.recordedAt | date: 'medium'">{{ reading.value }}</span>
+              }
+            </div>
+          } @empty {
+            <p class="empty">No droid telemetry on this ship yet.</p>
+          }
+        </div>
+      }
+
       @if (canEdit(refit, 'estimate') || canEdit(refit, 'notes')) {
         <form class="inline-form" (ngSubmit)="saveEdits(refit)">
           @if (canEdit(refit, 'estimate')) {

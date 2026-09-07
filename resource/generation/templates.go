@@ -1715,7 +1715,15 @@ export interface {{ $rpcMethod.Name }} {{ if $rpcMethod.Fields }}{
   {{ Camel $field.Name }}: {{ $field.TypescriptDataType }};
 {{- end }}
 }{{ else }}{}{{ end }}
-{{ TypescriptNamespace $rpcMethod.Name $rpcMethod.Request }}{{ end }}
+{{- if $rpcMethod.Answers }}
+/** The answer {{ $rpcMethod.Name }} resolves with. */
+export interface {{ $rpcMethod.Name }}Result {
+{{- range $field := $rpcMethod.ResultFields }}
+  {{ $field.JSONName }}: {{ $rpcMethod.ResultTypescriptType $field }};
+{{- end }}
+}
+{{- end }}
+{{ $rpcMethod.TypescriptNamespace }}{{ end }}
 export interface RPCFieldMeta {
   fieldName: string;
   displayType: ValidRPCTypes;
@@ -1732,6 +1740,8 @@ export interface MethodTransition {
 export interface MethodMeta {
   route: string;
   transition?: MethodTransition;
+  /** Set when the method answers with a result body; absent methods resolve with nothing. */
+  answers?: true;
   fields: RPCFieldMeta[];
 }
 
@@ -1743,6 +1753,9 @@ const methodMap: MethodMap = {
     route: '{{ Kebab ($rpcMethod.Name) }}',
     {{- with $t := $rpcMethod.Transition }}
     transition: { target: Resources.{{ $t.RootResource }}, from: [{{ range $i, $v := $t.From }}{{ if $i }}, {{ end }}'{{ $v }}'{{ end }}], to: '{{ $t.To }}' },
+    {{- end }}
+    {{- if $rpcMethod.Answers }}
+    answers: true,
     {{- end }}
     {{- if $rpcMethod.Fields }}
     fields: [
@@ -1838,7 +1851,7 @@ export const apiDescriptor: ApiDescriptor = {
   },
   methods: {
 {{- range $m := .Methods }}
-    [Methods.{{ $m.Name }}]: { method: Methods.{{ $m.Name }}, property: '{{ $m.Property }}', route: '{{ $m.Route }}', scope: '{{ $m.ScopeKind }}' },
+    [Methods.{{ $m.Name }}]: { method: Methods.{{ $m.Name }}, property: '{{ $m.Property }}', route: '{{ $m.Route }}', scope: '{{ $m.ScopeKind }}'{{ if $m.Answers }}, answers: true{{ end }} },
 {{- end }}
   },
 };
@@ -1849,7 +1862,7 @@ export interface GlobalApi {
   {{ $r.Property }}: {{ $r.HandleType }};
 {{- end }}{{ end }}
 {{- range $m := .Methods }}{{ if eq $m.ScopeKind "global" }}
-  {{ $m.Property }}: MethodHandle<{{ $m.Name }}>;
+  {{ $m.Property }}: MethodHandle<{{ $m.Name }}{{ if $m.Answers }}, {{ $m.ResultName }}{{ end }}>;
 {{- end }}{{ end }}
 }
 
@@ -1859,7 +1872,7 @@ export interface DomainApi {
   {{ $r.Property }}: {{ $r.HandleType }};
 {{- end }}{{ end }}
 {{- range $m := .Methods }}{{ if eq $m.ScopeKind "domain" }}
-  {{ $m.Property }}: MethodHandle<{{ $m.Name }}>;
+  {{ $m.Property }}: MethodHandle<{{ $m.Name }}{{ if $m.Answers }}, {{ $m.ResultName }}{{ end }}>;
 {{- end }}{{ end }}
 }
 
@@ -2439,20 +2452,34 @@ import (
 )
 
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.HandlerFunc {
-	{{- with .RPCMethod.Request.MirrorDecls }}
-	// Mirrors of the structs the request reaches, leaves first: the wire shape
-	// lives here, in generated code.
+	{{- with .RPCMethod.MirrorDecls }}
+	// Mirrors of the structs the request and the result reach, leaves first: the
+	// wire shape lives here, in generated code.
 {{ . }}{{- end }}
 	type request struct {
 		{{- range $field := .RPCMethod.Fields }}
 		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }}`" + `
 		{{- end }}
 	}
+	{{- if .RPCMethod.Answers }}
+
+	// The answer as the wire carries it: Execute's result mirrored with generated
+	// wire names, encoded after the transaction commits.
+	type response struct {
+		{{- range $field := .RPCMethod.ResultFields }}
+		{{ $field.Name }} {{ $field.MirrorType }} ` + "`json:\"{{ $field.JSONName }}\"`" + `
+		{{- end }}
+	}
+	{{- end }}
 	{{- with .RPCMethod.RequestConverters }}
 
 	// The decoded mirror becomes the method's struct through a pinned view of each
 	// source struct: legal now, a compile error the moment a source changes.
 {{ . }}{{- end }}
+	{{- if .RPCMethod.Answers }}{{ with .RPCMethod.ResultConverters }}
+
+	// The result becomes its mirror the same way.
+{{ . }}{{- end }}{{ end }}
 
 	decoder := New{{ if .RPCMethod.Target }}Targeted{{ end }}RPCDecoder[{{ .RPCMethod.Type }}, request]({{ .ReceiverName }}, accesstypes.Execute)
 
@@ -2474,6 +2501,11 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		{{- else }}
 
 		p := {{ .RPCMethod.RequestConverterName }}(*params)
+		{{- end }}
+		{{- if .RPCMethod.Answers }}
+		// Captured inside the transaction, encoded after it commits: under
+		// abort-and-retry the value is the committing attempt's.
+		var result {{ .RPCMethod.ResultType }}
 		{{- end }}
 		{{- if .RPCMethod.IsTxnForm }}
 			if err := {{ $.ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
@@ -2524,9 +2556,17 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 					return err
 				}
 				{{ end -}}
+				{{- if .RPCMethod.Answers -}}
+				answer, err := p.Execute(ctx, txn, {{ $.ReceiverName }}.RPCClient())
+				if err != nil {
+					return errors.Wrap(err, "Transaction.Execute()")
+				}
+				result = answer
+				{{- else -}}
 				if err := p.Execute(ctx, txn, {{ $.ReceiverName }}.RPCClient()); err != nil {
 					return errors.Wrap(err, "Transaction.Execute()")
 				}
+				{{- end }}
 				{{- with $t := .RPCMethod.Transition }}
 
 				// The framework stamps the declared target state as the last mutation.
@@ -2539,13 +2579,29 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 			}); err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 			}
+		{{- else if .RPCMethod.Answers }}
+		answer, err := p.Execute(ctx, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.RPCClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		result = answer
 		{{- else }}
 		if err := p.Execute(ctx, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.RPCClient()); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		{{- end }}
+		{{- if not .RPCMethod.Answers }}
 
 		return httpio.NewEncoder(w).Ok(nil)
+		{{- else }}
+		{{- if .RPCMethod.ResultPointer }}
+		if result == nil {
+			return httpio.NewEncoder(w).Ok(nil)
+		}
+		{{- end }}
+
+		return httpio.NewEncoder(w).Ok({{ if .RPCMethod.Result.Flat }}(*response)({{ if not .RPCMethod.ResultPointer }}&{{ end }}result){{ else }}{{ .RPCMethod.ResultConverterName }}({{ if .RPCMethod.ResultPointer }}*{{ end }}result){{ end }})
+		{{- end }}
 	})
 }
 `

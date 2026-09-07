@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
@@ -19,8 +20,64 @@ import (
 )
 
 func (a *App) InspectShip() http.HandlerFunc {
+	// Mirrors of the structs the request and the result reach, leaves first: the
+	// wire shape lives here, in generated code.
+	type reading struct {
+		Value      float64   `json:"value"`
+		RecordedAt time.Time `json:"recordedAt"`
+	}
+
+	type subsystemReport struct {
+		Name     string    `json:"name"`
+		Readings []reading `json:"readings"`
+	}
+
 	type request struct {
 		RefitID ccc.UUID `json:"refitId"`
+	}
+
+	// The answer as the wire carries it: Execute's result mirrored with generated
+	// wire names, encoded after the transaction commits.
+	type response struct {
+		RefitID    ccc.UUID          `json:"refitId"`
+		ShipID     ccc.UUID          `json:"shipId"`
+		ShipName   string            `json:"shipName"`
+		Subsystems []subsystemReport `json:"subsystems"`
+	}
+
+	// The result becomes its mirror the same way.
+	mirrorSubsystemReport := func(src rpc.SubsystemReport) subsystemReport {
+		view := struct {
+			Name     string
+			Readings []rpc.Reading
+		}(src)
+		var readings []reading
+		if view.Readings != nil {
+			readings = make([]reading, 0, len(view.Readings))
+			for _, e := range view.Readings {
+				readings = append(readings, reading(e))
+			}
+		}
+
+		return subsystemReport{Name: view.Name, Readings: readings}
+	}
+
+	mirrorResponse := func(src rpc.RefitReport) *response {
+		view := struct {
+			RefitID    ccc.UUID
+			ShipID     ccc.UUID
+			ShipName   string
+			Subsystems []rpc.SubsystemReport
+		}(src)
+		var subsystems []subsystemReport
+		if view.Subsystems != nil {
+			subsystems = make([]subsystemReport, 0, len(view.Subsystems))
+			for _, e := range view.Subsystems {
+				subsystems = append(subsystems, mirrorSubsystemReport(e))
+			}
+		}
+
+		return &response{RefitID: view.RefitID, ShipID: view.ShipID, ShipName: view.ShipName, Subsystems: subsystems}
 	}
 
 	decoder := NewTargetedRPCDecoder[rpc.InspectShip, request](a, accesstypes.Execute)
@@ -36,6 +93,9 @@ func (a *App) InspectShip() http.HandlerFunc {
 		}
 
 		p := (*rpc.InspectShip)(params)
+		// Captured inside the transaction, encoded after it commits: under
+		// abort-and-retry the value is the committing attempt's.
+		var result *rpc.RefitReport
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			// Declared target: locate the row within the tenancy predicate
 			// before the body runs.
@@ -69,9 +129,11 @@ func (a *App) InspectShip() http.HandlerFunc {
 			if err := gate.Enforce(ctx, txn, resource.ExecuteTarget{Resource: "Refits", Label: "Refit", PKColumn: "Id"}, p.RefitID); err != nil {
 				return err
 			}
-			if err := p.Execute(ctx, txn, a.RPCClient()); err != nil {
+			answer, err := p.Execute(ctx, txn, a.RPCClient())
+			if err != nil {
 				return errors.Wrap(err, "Transaction.Execute()")
 			}
+			result = answer
 
 			// The framework stamps the declared target state as the last mutation.
 			if err := resources.NewRefitUpdatePatch(p.RefitID).SetStatusID("inspected").Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
@@ -82,7 +144,10 @@ func (a *App) InspectShip() http.HandlerFunc {
 		}); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 		}
+		if result == nil {
+			return httpio.NewEncoder(w).Ok(nil)
+		}
 
-		return httpio.NewEncoder(w).Ok(nil)
+		return httpio.NewEncoder(w).Ok(mirrorResponse(*result))
 	})
 }

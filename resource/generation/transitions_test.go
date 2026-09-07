@@ -41,12 +41,12 @@ func fixtureForm(t *testing.T, s *parser.Struct) rpcForm {
 		return rpcFormUnclassified
 	}
 
-	form, err := classifyExecute(s)
+	signature, err := classifyExecute(s)
 	if err != nil {
 		t.Fatalf("classifyExecute(%s) error = %v", s.Name(), err)
 	}
 
-	return form
+	return signature.form
 }
 
 // transitionFixtureClient is the state fixture client with the workflow root

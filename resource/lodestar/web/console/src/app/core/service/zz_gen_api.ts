@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, ResourceHandle } from '@cccteam/resource';
 import { Methods, Resources } from './zz_gen_constants';
 import { Clients, ClientContacts, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, OpenMissionsBySquadrons, Pilots, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, Wings, SectorHazardBoards, ServiceLedgers } from './zz_gen_resources';
-import { BeginRefit, ClaimMission, CompleteMission, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ResumeMission, ScrapShip, StandDownMission, StartFlightTest } from './zz_gen_methods';
+import { BeginRefit, ClaimMission, CompleteMission, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ResumeMission, ScrapShip, StandDownMission, StartFlightTest } from './zz_gen_methods';
 
 /**
  * The fields a client may set when creating Clients. Server-owned fields are
@@ -592,7 +592,7 @@ export const apiDescriptor: ApiDescriptor = {
     [Methods.FailMission]: { method: Methods.FailMission, property: 'failMission', route: 'fail-mission', scope: 'domain' },
     [Methods.HailShip]: { method: Methods.HailShip, property: 'hailShip', route: 'hail-ship', scope: 'domain' },
     [Methods.HoldMission]: { method: Methods.HoldMission, property: 'holdMission', route: 'hold-mission', scope: 'domain' },
-    [Methods.InspectShip]: { method: Methods.InspectShip, property: 'inspectShip', route: 'inspect-ship', scope: 'domain' },
+    [Methods.InspectShip]: { method: Methods.InspectShip, property: 'inspectShip', route: 'inspect-ship', scope: 'domain', answers: true },
     [Methods.IssueBulletin]: { method: Methods.IssueBulletin, property: 'issueBulletin', route: 'issue-bulletin', scope: 'global' },
     [Methods.LaunchMission]: { method: Methods.LaunchMission, property: 'launchMission', route: 'launch-mission', scope: 'domain' },
     [Methods.PassFlightTest]: { method: Methods.PassFlightTest, property: 'passFlightTest', route: 'pass-flight-test', scope: 'domain' },
@@ -640,7 +640,7 @@ export interface DomainApi {
   failMission: MethodHandle<FailMission>;
   hailShip: MethodHandle<HailShip>;
   holdMission: MethodHandle<HoldMission>;
-  inspectShip: MethodHandle<InspectShip>;
+  inspectShip: MethodHandle<InspectShip, InspectShipResult>;
   launchMission: MethodHandle<LaunchMission>;
   passFlightTest: MethodHandle<PassFlightTest>;
   releaseConsignment: MethodHandle<ReleaseConsignment>;

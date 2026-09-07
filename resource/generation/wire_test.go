@@ -379,6 +379,96 @@ func Test_rpcHandlerTemplate_request(t *testing.T) {
 	}
 }
 
+// fixtureAnsweringMethod builds an rpcMethodInfo over a wirefixture struct whose
+// Execute answers, the way extraction does: one walker for request and result.
+func fixtureAnsweringMethod(t *testing.T, structs map[string]*parser.Struct, name string) *rpcMethodInfo {
+	t.Helper()
+
+	signature, err := classifyExecute(structs[name])
+	if err != nil {
+		t.Fatalf("classifyExecute(%s) error = %v", name, err)
+	}
+	walker := newWireWalker(defaultTypescriptOverrides(), "wirefixture", "resources")
+	request, err := walker.walk(structs[name])
+	if err != nil {
+		t.Fatalf("walk(%s) error = %v", name, err)
+	}
+	result, err := walker.walkNamed(signature.result, name+" result")
+	if err != nil {
+		t.Fatalf("walkNamed(%s result) error = %v", name, err)
+	}
+	m := &rpcMethodInfo{Struct: structs[name], Form: signature.form, Request: request, Result: result, ResultPointer: signature.resultPointer}
+	for i, f := range structs[name].Fields() {
+		m.Fields = append(m.Fields, &rpcField{Field: f, wire: request.Fields[i], namespace: name})
+	}
+
+	return m
+}
+
+// Test_rpcHandlerTemplate_answer pins the result path: the response mirror and the
+// mirrors it reaches, the result captured inside the transaction and encoded after
+// it, nil answering as an empty 200, and the method's TypeScript result type.
+func Test_rpcHandlerTemplate_answer(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "wirefixture"))
+	c := &client{}
+	m := fixtureAnsweringMethod(t, structs, "Inspect")
+
+	out, err := c.generateTemplateOutput("rpcHandlerTemplate", rpcHandlerTemplate, &rpcHandlerData{
+		Source:           "pkg/rpc",
+		RPCMethod:        m,
+		Package:          "app",
+		ApplicationName:  "App",
+		ReceiverName:     "a",
+		ResourcesPackage: "resources",
+	})
+	if err != nil {
+		t.Fatalf("generateTemplateOutput() error = %v", err)
+	}
+	formatted, err := format.Source(out)
+	if err != nil {
+		t.Fatalf("format.Source() error = %v on:\n%s", err, out)
+	}
+	for _, want := range []string{
+		"\ttype reading struct {",
+		"\ttype ship struct {",
+		"\ttype request struct {\n\t\tID ccc.UUID `json:\"id\"`\n\t}",
+		"\ttype response struct {\n\t\tID      ccc.UUID `json:\"id\"`\n\t\tShip    ship     `json:\"ship\"`\n\t\tPrimary *reading `json:\"primary\"`\n\t\tNotes   []string `json:\"notes\"`\n\t}",
+		"mirrorResponse := func(src wirefixture.Report) *response {",
+		"var result *wirefixture.Report",
+		"answer, err := p.Execute(ctx, txn, a.RPCClient())",
+		"result = answer",
+		"if result == nil {\n\t\t\treturn httpio.NewEncoder(w).Ok(nil)\n\t\t}",
+		"return httpio.NewEncoder(w).Ok(mirrorResponse(*result))",
+	} {
+		if !strings.Contains(string(formatted), want) {
+			t.Errorf("handler missing %q:\n%s", want, formatted)
+		}
+	}
+	if strings.Count(string(formatted), "type reading struct") != 1 {
+		t.Errorf("a struct the request and result share is mirrored once:\n%s", formatted)
+	}
+
+	ts, err := c.generateTemplateOutput("typescriptMethodsTemplate", typescriptMethodsTemplate, &tsMethodsData{
+		File:       &typescriptGenerator{client: c},
+		GenPrefix:  "zz_gen",
+		RPCMethods: []*rpcMethodInfo{m},
+	})
+	if err != nil {
+		t.Fatalf("generateTemplateOutput(typescriptMethodsTemplate) error = %v", err)
+	}
+	for _, want := range []string{
+		"export interface InspectResult {\n  id: string;\n  ship: Inspect.Ship;\n  primary: Inspect.Reading;\n  notes: string[];\n}",
+		"export namespace Inspect {\n  export interface Reading {",
+		"    answers: true,",
+	} {
+		if !strings.Contains(string(ts), want) {
+			t.Errorf("methods TypeScript missing %q:\n%s", want, ts)
+		}
+	}
+}
+
 // Test_computedResourceHandlerTemplate_nested pins the computed path: a nested
 // field is one opaque mirror field, and the row reaches its mirror through the
 // converter instead of the whole-struct conversion a flat row keeps.

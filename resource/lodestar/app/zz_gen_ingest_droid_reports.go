@@ -19,8 +19,8 @@ import (
 )
 
 func (a *App) IngestDroidReports() http.HandlerFunc {
-	// Mirrors of the structs the request reaches, leaves first: the wire shape
-	// lives here, in generated code.
+	// Mirrors of the structs the request and the result reach, leaves first: the
+	// wire shape lives here, in generated code.
 	type droidReading struct {
 		Subsystem  string    `json:"subsystem"`
 		Reading    float64   `json:"reading"`

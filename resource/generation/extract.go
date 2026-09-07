@@ -503,32 +503,15 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
-		// The Execute signature is the method's declaration of how it runs; a
-		// struct without a recognizable one never reaches the templates, so no
-		// handler can be generated that decodes and returns without running it.
-		form, err := classifyExecute(s)
+		rpcMethod, err := c.classifyRPCMethod(s)
 		if err != nil {
 			errs = append(errs, err)
 
 			continue
-		}
-
-		request, err := c.walkRequest(s)
-		if err != nil {
-			errs = append(errs, err)
-
-			continue
-		}
-
-		rpcMethod := &rpcMethodInfo{
-			Struct:  s,
-			Form:    form,
-			Request: request,
-			Fields:  make([]*rpcField, 0, len(s.Fields())),
 		}
 
 		for i, field := range s.Fields() {
-			field := rpcField{Field: field, wire: request.Fields[i], namespace: s.Name(), typescriptType: request.Fields[i].TypescriptDisplayType()}
+			field := rpcField{Field: field, wire: rpcMethod.Request.Fields[i], namespace: s.Name(), typescriptType: rpcMethod.Request.Fields[i].TypescriptDisplayType()}
 			if enumeratedResource, hasEnumeratedTag := field.LookupTag(enumeratedTagKey); hasEnumeratedTag {
 				if !c.doesResourceExist(enumeratedResource) {
 					field.AddError(fmt.Sprintf("referenced resource %q in enumerated tag does not exist", enumeratedResource))
@@ -577,13 +560,45 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 	return rpcMethods, nil
 }
 
+// classifyRPCMethod reads what the struct's Execute declares: how it runs, what it
+// answers, and the wire shapes of its request and result. A struct without a
+// recognizable Execute never reaches the templates, so no handler can be generated
+// that decodes and returns without running it.
+func (c *client) classifyRPCMethod(s *parser.Struct) (*rpcMethodInfo, error) {
+	signature, err := classifyExecute(s)
+	if err != nil {
+		return nil, err
+	}
+
+	// One walker for the request and the result: a struct both reach keeps one
+	// mirror in the handler, and every name is checked against the whole file.
+	walker := newWireWalker(c.leafTypes(), s.PackageName(), c.resource.Package())
+	request, err := c.walkRequest(walker, s)
+	if err != nil {
+		return nil, err
+	}
+	result, err := c.walkResult(walker, s, signature)
+	if err != nil {
+		return nil, err
+	}
+
+	return &rpcMethodInfo{
+		Struct:        s,
+		Form:          signature.form,
+		Request:       request,
+		Result:        result,
+		ResultPointer: signature.resultPointer,
+		Fields:        make([]*rpcField, 0, len(s.Fields())),
+	}, nil
+}
+
 // walkRequest reads an RPC struct's wire shape: what the handler's request mirror
 // declares and every struct it reaches, under the one vocabulary shared with
 // results and computed resources. It refuses the one leaf the RPC decoder does
 // not carry, a *bool at the top level, which the decoder cannot tell apart from
 // an absent field.
-func (c *client) walkRequest(s *parser.Struct) (*wireShape, error) {
-	request, err := newWireWalker(c.leafTypes(), s.PackageName(), c.resource.Package()).walk(s)
+func (c *client) walkRequest(walker *wireWalker, s *parser.Struct) (*wireShape, error) {
+	request, err := walker.walk(s)
 	if err != nil {
 		return nil, errors.Wrap(err, "RPC request")
 	}
@@ -594,6 +609,41 @@ func (c *client) walkRequest(s *parser.Struct) (*wireShape, error) {
 	}
 
 	return request, nil
+}
+
+// walkResult reads the wire shape of the struct Execute answers with, nil when it
+// answers with error alone. A method answers with identifiers and outcomes, never
+// rows: a @resource or @computed struct in the result position is refused, since
+// rows are read through their resource routes, where permission masking applies.
+func (c *client) walkResult(walker *wireWalker, s *parser.Struct, signature executeSignature) (*wireShape, error) {
+	if signature.result == nil {
+		return nil, nil
+	}
+	name, pkg := signature.result.Obj().Name(), ""
+	if signature.result.Obj().Pkg() != nil {
+		pkg = signature.result.Obj().Pkg().Name()
+	}
+	if pkg == c.resource.Package() {
+		for _, res := range c.resources {
+			if res.Name() == name {
+				return nil, errors.Newf("struct %s: Execute answers with the resource %s.%s; a method answers with identifiers and outcomes, and rows are read through the resource's own routes, where permission masking applies", s.Name(), pkg, name)
+			}
+		}
+	}
+	if pkg == c.computed.Package() {
+		for _, res := range c.computedResources {
+			if res.Name() == name {
+				return nil, errors.Newf("struct %s: Execute answers with the computed resource %s.%s; a method answers with identifiers and outcomes, and rows are read through the resource's own routes, where permission masking applies", s.Name(), pkg, name)
+			}
+		}
+	}
+
+	result, err := walker.walkNamed(signature.result, s.Name()+" result "+typeStringer(signature.result))
+	if err != nil {
+		return nil, errors.Wrap(err, "RPC result")
+	}
+
+	return result, nil
 }
 
 func (c *client) structsToCompResources(structs []*parser.Struct, validators ...structValidator) ([]*computedResource, error) {

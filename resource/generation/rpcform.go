@@ -32,51 +32,81 @@ const resourcePackagePath = "github.com/cccteam/ccc/resource"
 // write rather than only what was wrong.
 const executeForms = `an @rpc struct declares Execute in one of two forms:
 	Execute(ctx context.Context, txn resource.ReadWriteTransaction, client *Client) error   // runs inside the handler's transaction
-	Execute(ctx context.Context, client resource.Client, rpcClient *Client) error          // runs outside one`
+	Execute(ctx context.Context, client resource.Client, rpcClient *Client) error          // runs outside one
+either returning error alone, or (Result, error) with Result a struct type or a pointer to one`
 
-// classifyExecute reads the struct's Execute method and returns its form. The
-// method may be declared on either receiver. Every departure from the two
+// executeSignature is what classification reads off an Execute method: how it
+// runs and what it answers with.
+type executeSignature struct {
+	form rpcForm
+	// result is the named struct type a method answers with, nil for a method
+	// whose only result is error; resultPointer marks a pointer to it.
+	result        *types.Named
+	resultPointer bool
+}
+
+// classifyExecute reads the struct's Execute method and returns its signature.
+// The method may be declared on either receiver. Every departure from the two
 // forms is a generation error naming the struct.
-func classifyExecute(s *parser.Struct) (rpcForm, error) {
+func classifyExecute(s *parser.Struct) (executeSignature, error) {
+	var none executeSignature
 	fn := s.Method("Execute")
 	if fn == nil {
-		return rpcFormUnclassified, errors.Newf("struct %s has no Execute method; %s", s.Name(), executeForms)
+		return none, errors.Newf("struct %s has no Execute method; %s", s.Name(), executeForms)
 	}
 
 	sig, ok := fn.Type().(*types.Signature)
 	if !ok {
-		return rpcFormUnclassified, errors.Newf("struct %s: Execute is not a method signature (%T)", s.Name(), fn.Type())
+		return none, errors.Newf("struct %s: Execute is not a method signature (%T)", s.Name(), fn.Type())
 	}
 
 	params := sig.Params()
 	if params.Len() != 3 || sig.Variadic() {
-		return rpcFormUnclassified, errors.Newf("struct %s: Execute takes %s; %s", s.Name(), paramsString(sig), executeForms)
+		return none, errors.Newf("struct %s: Execute takes %s; %s", s.Name(), paramsString(sig), executeForms)
 	}
 
 	if !isNamedType(params.At(0).Type(), "context", "Context") {
-		return rpcFormUnclassified, errors.Newf("struct %s: Execute's first parameter is %s, not context.Context; %s", s.Name(), typeStringer(params.At(0).Type()), executeForms)
+		return none, errors.Newf("struct %s: Execute's first parameter is %s, not context.Context; %s", s.Name(), typeStringer(params.At(0).Type()), executeForms)
 	}
 
-	var form rpcForm
+	var out executeSignature
 	switch second := params.At(1).Type(); {
 	case isNamedType(second, resourcePackagePath, "ReadWriteTransaction"):
-		form = rpcFormTxn
+		out.form = rpcFormTxn
 	case isNamedType(second, resourcePackagePath, "Client"):
-		form = rpcFormClient
+		out.form = rpcFormClient
 	default:
-		return rpcFormUnclassified, errors.Newf("struct %s: Execute's second parameter is %s, neither resource.ReadWriteTransaction nor resource.Client; %s", s.Name(), typeStringer(second), executeForms)
+		return none, errors.Newf("struct %s: Execute's second parameter is %s, neither resource.ReadWriteTransaction nor resource.Client; %s", s.Name(), typeStringer(second), executeForms)
 	}
 
 	if third, ok := params.At(2).Type().(*types.Pointer); !ok || !isNamed(third.Elem()) {
-		return rpcFormUnclassified, errors.Newf("struct %s: Execute's third parameter is %s, not a pointer to the application's RPC client type; %s", s.Name(), typeStringer(params.At(2).Type()), executeForms)
+		return none, errors.Newf("struct %s: Execute's third parameter is %s, not a pointer to the application's RPC client type; %s", s.Name(), typeStringer(params.At(2).Type()), executeForms)
 	}
 
 	results := sig.Results()
-	if results.Len() != 1 || !types.Identical(results.At(0).Type(), types.Universe.Lookup("error").Type()) {
-		return rpcFormUnclassified, errors.Newf("struct %s: Execute returns %s; it returns error; %s", s.Name(), typeTupleString(results), executeForms)
-	}
+	errType := types.Universe.Lookup("error").Type()
+	switch {
+	case results.Len() == 1 && types.Identical(results.At(0).Type(), errType):
+		return out, nil
+	case results.Len() == 2 && types.Identical(results.At(1).Type(), errType):
+		result := types.Unalias(results.At(0).Type())
+		if ptr, ok := result.(*types.Pointer); ok {
+			out.resultPointer = true
+			result = types.Unalias(ptr.Elem())
+		}
+		named, ok := result.(*types.Named)
+		if !ok {
+			return none, errors.Newf("struct %s: Execute answers with %s, which is not a struct type or a pointer to one; %s", s.Name(), typeStringer(results.At(0).Type()), executeForms)
+		}
+		if _, isStruct := named.Underlying().(*types.Struct); !isStruct {
+			return none, errors.Newf("struct %s: Execute answers with %s, which is not a struct type or a pointer to one; %s", s.Name(), typeStringer(results.At(0).Type()), executeForms)
+		}
+		out.result = named
 
-	return form, nil
+		return out, nil
+	default:
+		return none, errors.Newf("struct %s: Execute returns %s; it returns error, or (Result, error); %s", s.Name(), typeTupleString(results), executeForms)
+	}
 }
 
 func isNamed(t types.Type) bool {

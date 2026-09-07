@@ -4,12 +4,19 @@
 package wirefixture
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/testdata/wirefixture/other"
 )
+
+// Execute answers with a pointer to the nested report.
+func (*Inspect) Execute(context.Context, resource.ReadWriteTransaction, *Client) (*Report, error) {
+	return nil, nil
+}
 
 // Client stands in for the application's RPC client.
 type Client struct{}
@@ -39,6 +46,11 @@ type (
 		Tags  []string
 		When  *time.Time
 		Code  Code
+	}
+
+	// Inspect is a method answering with the nested Report; its request is flat.
+	Inspect struct {
+		ID ccc.UUID
 	}
 
 	// Report nests three levels deep with every pointer and slice marker.

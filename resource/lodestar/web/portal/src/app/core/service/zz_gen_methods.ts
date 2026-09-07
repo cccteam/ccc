@@ -29,6 +29,8 @@ export interface MethodTransition {
 export interface MethodMeta {
   route: string;
   transition?: MethodTransition;
+  /** Set when the method answers with a result body; absent methods resolve with nothing. */
+  answers?: true;
   fields: RPCFieldMeta[];
 }
 

@@ -105,3 +105,24 @@ h3 {
   margin: 16px 0 6px;
   font-weight: 500;
 }
+
+.report {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+
+  .subsystem {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    margin: 4px 0;
+  }
+
+  .reading {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-family: 'Roboto Mono', monospace;
+    background: rgba(0, 0, 0, 0.06);
+  }
+}

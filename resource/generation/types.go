@@ -312,7 +312,12 @@ type rpcMethodInfo struct {
 	Form rpcForm
 	// Request is the struct's wire shape: the fields as the handler's local request
 	// mirror declares them, with every struct they reach.
-	Request         *wireShape
+	Request *wireShape
+	// Result is the wire shape of the struct Execute answers with, nil for a method
+	// that answers with an empty 200; ResultPointer marks Execute returning a
+	// pointer to it.
+	Result          *wireShape
+	ResultPointer   bool
 	Fields          []*rpcField
 	SuppressHandler bool
 	// PermissionScope is the scope the method's registration uses
@@ -367,8 +372,65 @@ func (r *rpcMethodInfo) RequestConverterName() string {
 	return r.Request.ConverterName(toSource, requestMirror)
 }
 
-// requestMirror is the name every generated RPC handler gives its request mirror.
-const requestMirror = "request"
+// requestMirror and responseMirror are the names every generated RPC handler gives
+// its request and result mirrors.
+const (
+	requestMirror  = "request"
+	responseMirror = "response"
+)
+
+// Answers reports whether Execute returns a result beside its error.
+func (r *rpcMethodInfo) Answers() bool {
+	return r.Result != nil
+}
+
+// ResultType is the type Execute returns, as the handler declares the variable
+// that captures it.
+func (r *rpcMethodInfo) ResultType() string {
+	if r.ResultPointer {
+		return "*" + r.Result.Source
+	}
+
+	return r.Result.Source
+}
+
+// MirrorDecls renders the mirrors of every struct the request and the result
+// reach, each once, leaves first.
+func (r *rpcMethodInfo) MirrorDecls() string {
+	return mirrorDecls(mergeNested(r.Request, r.Result))
+}
+
+// ResultConverters renders the closures the handler needs to build the response
+// mirror from the result; empty for a flat result, which converts whole.
+func (r *rpcMethodInfo) ResultConverters() string {
+	return r.Result.Converters(toMirror, responseMirror)
+}
+
+// ResultConverterName is the root result converter's name.
+func (r *rpcMethodInfo) ResultConverterName() string {
+	return r.Result.ConverterName(toMirror, responseMirror)
+}
+
+// ResultFields are the result's fields for the response mirror the template
+// declares and the TypeScript result interface.
+func (r *rpcMethodInfo) ResultFields() []*wireField {
+	if r.Result == nil {
+		return nil
+	}
+
+	return r.Result.Fields
+}
+
+// TypescriptNamespace renders the nested interfaces the request and result share,
+// in a namespace named for the method.
+func (r *rpcMethodInfo) TypescriptNamespace() string {
+	return typescriptNamespaceOf(r.Name(), mergeNested(r.Request, r.Result))
+}
+
+// ResultTypescriptType is a result field's TypeScript type in the method's namespace.
+func (r *rpcMethodInfo) ResultTypescriptType(f *wireField) string {
+	return f.TypescriptType(r.Name())
+}
 
 type rpcField struct {
 	*parser.Field
