@@ -150,7 +150,7 @@ func (f *FilterShape) eval(node ExpressionNode, row reflect.Value) (bool, error)
 // matchCondition evaluates one condition against a row. A NULL field (nil
 // pointer, invalid Null* wrapper) matches only isnull, as in SQL.
 func matchCondition(c *Condition, row reflect.Value) (bool, error) {
-	field := row.FieldByName(c.Field)
+	field := fieldValue(row, c.Field)
 	if !field.IsValid() {
 		return false, errors.Newf("FilterShape.Match: %s is not a field of %s", c.Field, row.Type())
 	}

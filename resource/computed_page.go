@@ -83,7 +83,7 @@ func decodeBoundary(rowType reflect.Type, order []SortField, keys []*string) ([]
 		if keys[i] == nil {
 			continue
 		}
-		field, ok := rowType.FieldByName(sf.Field)
+		field, ok := structField(rowType, sf.Field)
 		if !ok {
 			return nil, errors.Newf("resource: sort field %s is not a field of %s", sf.Field, rowType)
 		}
@@ -175,7 +175,7 @@ func (q *QuerySet[Resource]) afterBoundary(rows []*Resource) ([]*Resource, error
 // order, with the same NULL placement the ORDER BY states.
 func rowAfter(row reflect.Value, order []SortField, boundary []any) (bool, error) {
 	for i, sf := range order {
-		field := row.FieldByName(sf.Field)
+		field := fieldValue(row, sf.Field)
 		var bound reflect.Value
 		if boundary[i] != nil {
 			bound = reflect.ValueOf(boundary[i])

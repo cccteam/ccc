@@ -28,7 +28,7 @@ func SortRows[T any](rows []*T, order []SortField) error {
 		}
 		va, vb := reflect.ValueOf(a).Elem(), reflect.ValueOf(b).Elem()
 		for _, sf := range order {
-			fa, fb := va.FieldByName(sf.Field), vb.FieldByName(sf.Field)
+			fa, fb := fieldValue(va, sf.Field), fieldValue(vb, sf.Field)
 			if !fa.IsValid() {
 				sortErr = errors.Newf("resource.SortRows: %s is not a field of %s", sf.Field, va.Type())
 

@@ -114,7 +114,7 @@ func (d *QueryDecoder[Resource, Request]) WithCursorKey(key *CursorKey) *QueryDe
 // generated-code mismatch.
 func (d *QueryDecoder[Resource, Request]) WithPaging(paging Paging) *QueryDecoder[Resource, Request] {
 	for _, sf := range paging.Order {
-		field, ok := d.requestType.FieldByName(sf.Field)
+		field, ok := structField(d.requestType, sf.Field)
 		if !ok || !slices.Contains(d.requestFieldMapper.Fields(), accesstypes.Field(sf.Field)) {
 			panic(fmt.Sprintf("resource.QueryDecoder.WithPaging: order field %q is not a field of the request type", sf.Field))
 		}
@@ -391,7 +391,7 @@ func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) 
 			if !found {
 				return nil, httpio.NewBadRequestMessagef("unknown sort field: %s", jsonFieldName)
 			}
-			if field, ok := d.requestType.FieldByName(string(goFieldName)); ok && !sortableType(field.Type) {
+			if field, ok := structField(d.requestType, string(goFieldName)); ok && !sortableType(field.Type) {
 				return nil, httpio.NewBadRequestMessagef("field %s cannot be sorted by: only text, number, boolean, time, date, decimal, and UUID fields order", jsonFieldName)
 			}
 

@@ -212,7 +212,7 @@ func (q *QuerySet[Resource]) boundaryKeys(row *Resource) ([]*string, error) {
 	value := reflect.ValueOf(row).Elem()
 	keys := make([]*string, 0, len(order))
 	for _, sf := range order {
-		field := value.FieldByName(sf.Field)
+		field := fieldValue(value, sf.Field)
 		if !field.IsValid() {
 			return nil, errors.Newf("resource.Page: sort field %s is not a field of %T", sf.Field, *row)
 		}
