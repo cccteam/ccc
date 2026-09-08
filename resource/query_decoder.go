@@ -270,10 +270,17 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		if err != nil {
 			return nil, err
 		}
-		filterFields, err = d.filterFields(filterStr)
-		if err != nil {
+		// The filter is part of the request's shape, so it is validated here with
+		// the rest of it: syntax, field names, whether each field is filterable,
+		// and whether each value fits its field. The parse names conditions by Go
+		// field, which every resource has, so it decides nothing about the
+		// database; the per-database parse that renders SQL and applies the index
+		// rule still runs when the query does, and a computed resource's handler
+		// evaluates this same tree against its rows.
+		if _, err := filterParser(goFieldNames); err != nil {
 			return nil, err
 		}
+		filterFields = d.filterFields(filterStr)
 
 		delete(query, filterParam)
 	}
@@ -435,9 +442,9 @@ func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
 }
 
 // filterFields names the resource fields a filter expression touches, in first
-// appearance order without repeats. The parser has already validated the
-// expression, so an unknown field cannot reach here.
-func (d *QueryDecoder[Resource, Request]) filterFields(filterStr string) ([]accesstypes.Field, error) {
+// appearance order without repeats. parseQuery has parsed the expression before
+// asking, so every condition names a filterable field and none is skipped.
+func (d *QueryDecoder[Resource, Request]) filterFields(filterStr string) []accesstypes.Field {
 	var fields []accesstypes.Field
 	for _, fieldInfo := range d.filterConditionFields(filterStr) {
 		field := accesstypes.Field(fieldInfo.GOFieldName)
@@ -446,12 +453,13 @@ func (d *QueryDecoder[Resource, Request]) filterFields(filterStr string) ([]acce
 		}
 	}
 
-	return fields, nil
+	return fields
 }
 
 // filterConditionFields walks the filter's tokens and returns the filterable
-// field behind each condition; conditions on fields the parser would refuse
-// are skipped, since the parser's own error is the one the caller sees.
+// field behind each condition. Conditions on fields the parser would refuse are
+// skipped: the PII check walks the text before the parse runs, and the parser's
+// own refusal is the one the caller then sees.
 func (d *QueryDecoder[Resource, Request]) filterConditionFields(filterStr string) []FilterFieldInfo {
 	var infos []FilterFieldInfo
 	lexer := NewFilterLexer(filterStr)

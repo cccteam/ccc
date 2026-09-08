@@ -30,8 +30,9 @@ func (q *QuerySet[Resource]) Filter() *FilterShape {
 	if q.filterParser != nil {
 		root, err := q.filterParser(goFieldNames)
 		if err != nil {
-			// The decoder parsed the same text for SQL at decode; a failure here
-			// is a programming error surfaced by the handler's Match.
+			// The decoder parsed this same text against Go field names at decode
+			// and refused the request on any error, so a failure here is a
+			// programming error, surfaced by the handler's Match.
 			q.filterShape.parseErr = err
 		}
 		q.filterShape.root = root

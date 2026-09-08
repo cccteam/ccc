@@ -418,7 +418,9 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 
 	fieldInfo, found := p.jsonToFieldInfo[jsonFieldName(jsonFieldNameStr)]
 	if !found {
-		return nil, httpio.NewBadRequestMessagef("'%s' is not indexed but was included in condition '%s'", jsonFieldNameStr, p.current.Value)
+		// Filterable means indexed or allow_filter on a table and allow_filter on a
+		// computed resource; one word covers both, since the same parse refuses both.
+		return nil, httpio.NewBadRequestMessagef("'%s' is not filterable but was included in condition '%s'", jsonFieldNameStr, p.current.Value)
 	}
 	if fieldInfo.Indexed {
 		p.hasIndexedField = true

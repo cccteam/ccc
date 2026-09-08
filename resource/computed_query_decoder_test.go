@@ -43,9 +43,33 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		conditional     map[accesstypes.Permission][]accesstypes.Resource
 		permCheckErr    error
 		wantForbidden   bool
+		wantBadRequest  bool
 		wantErrContains string
 		wantFields      []accesstypes.Field
 	}{
+		// The filter is validated at decode, before any permission check and before
+		// the handler calls the body: a request the handler would refuse never runs.
+		{
+			name:            "filter on an unknown field is Bad Request at decode",
+			target:          "/?filter=nope:eq:x",
+			grants:          map[accesstypes.Permission][]accesstypes.Resource{},
+			wantBadRequest:  true,
+			wantErrContains: "'nope' is not filterable",
+		},
+		{
+			name:            "filter on a field without allow_filter is Bad Request at decode",
+			target:          "/?filter=id:eq:x",
+			grants:          map[accesstypes.Permission][]accesstypes.Resource{},
+			wantBadRequest:  true,
+			wantErrContains: "'id' is not filterable",
+		},
+		{
+			name:            "malformed filter is Bad Request at decode",
+			target:          "/?filter=public",
+			grants:          map[accesstypes.Permission][]accesstypes.Resource{},
+			wantBadRequest:  true,
+			wantErrContains: "must have at least field:operator",
+		},
 		{
 			name:          "missing resource-level grant is Forbidden",
 			target:        "/",
@@ -179,12 +203,15 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 
 			qSet, err := decoder.Decode(req, userPermissions, testScope)
 
-			if tt.wantForbidden || tt.wantErrContains != "" {
+			if tt.wantForbidden || tt.wantBadRequest || tt.wantErrContains != "" {
 				if err == nil {
 					t.Fatal("ComputedQueryDecoder.Decode() expected an error, got nil")
 				}
 				if httpio.HasForbidden(err) != tt.wantForbidden {
 					t.Errorf("ComputedQueryDecoder.Decode() error forbidden = %v, want %v: %v", httpio.HasForbidden(err), tt.wantForbidden, err)
+				}
+				if httpio.HasBadRequest(err) != tt.wantBadRequest {
+					t.Errorf("ComputedQueryDecoder.Decode() error bad request = %v, want %v: %v", httpio.HasBadRequest(err), tt.wantBadRequest, err)
 				}
 				if tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains) {
 					t.Errorf("ComputedQueryDecoder.Decode() error = %v, want error containing %q", err, tt.wantErrContains)

@@ -417,7 +417,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 		{
 			name:               "invalid field name - using empty map",
 			filterString:       "unknown_field:eq:value",
-			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
+			wantErrMsgContains: "'unknown_field' is not filterable but was included in condition 'unknown_field:eq:value'",
 			customMap:          map[jsonFieldName]FilterFieldInfo{},
 			isHTTPError:        true,
 		},
@@ -425,14 +425,14 @@ func TestParser_Parse_Errors(t *testing.T) {
 			name:               "invalid field name in group - using empty map",
 			filterString:       "(unknown_field:eq:value,another_unknown:eq:Test)",
 			customMap:          map[jsonFieldName]FilterFieldInfo{},
-			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
+			wantErrMsgContains: "'unknown_field' is not filterable but was included in condition 'unknown_field:eq:value'",
 			isHTTPError:        true,
 		},
 		{
 			name:               "invalid field name with pipe - using map without the specific field",
 			filterString:       "name:eq:Test|unknown_field:eq:value",
 			customMap:          map[jsonFieldName]FilterFieldInfo{"name": {dbColumnNames: map[DBType]string{SpannerDBType: "Name"}, Kind: reflect.String}},
-			wantErrMsgContains: "'unknown_field' is not indexed but was included in condition 'unknown_field:eq:value'",
+			wantErrMsgContains: "'unknown_field' is not filterable but was included in condition 'unknown_field:eq:value'",
 			isHTTPError:        true,
 		},
 		// New test cases
