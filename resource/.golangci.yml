@@ -59,6 +59,7 @@ linters:
             - $all
           allow:
             - $gostd
+            - aidanwoods.dev/go-paseto
             - cloud.google.com/go/civil
             - cloud.google.com/go/spanner
             - github.com/cccteam
@@ -75,6 +76,7 @@ linters:
             - github.com/momaek/formattag/align
             - github.com/shopspring/decimal
             - go.uber.org/mock/gomock
+            - golang.org/x/crypto/hkdf
             - go/ast
             - go/constant
             - go/format
@@ -174,6 +176,11 @@ linters:
           - funlen
         path: resourceset\.go
         text: permissionsFromTags
+      # The cursor payload's keys are one letter each on purpose: the token
+      # rides in every page URL, and its shape is the design's wire contract.
+      - linters:
+          - tagliatelle
+        path: cursor\.go
       - linters:
           - gocritic
         path: query_decoder_test\.go

@@ -100,7 +100,7 @@ func (s *sqlGenerator) generateLoweredNodeSQL(node ExpressionNode) (string, []Qu
 		if n.value {
 			sql = "TRUE"
 		} else {
-			sql = "FALSE"
+			sql = sqlFalse
 		}
 	default:
 		return "", nil, errors.Wrapf(ErrUnsupportedNodeType, "type: %T", n)

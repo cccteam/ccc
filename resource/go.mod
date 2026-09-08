@@ -5,6 +5,7 @@ go 1.26.6
 replace github.com/golang-migrate/migrate/v4 v4.19.1 => github.com/jtwatson/migrate/v4 v4.19.2-beta.0
 
 require (
+	aidanwoods.dev/go-paseto v1.6.0
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.94.0
 	github.com/cccteam/ccc v0.3.2
@@ -28,11 +29,13 @@ require (
 	github.com/momaek/formattag v0.0.10
 	github.com/shopspring/decimal v1.4.0
 	go.uber.org/mock v0.6.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/tools v0.49.0
 	google.golang.org/api v0.293.0
 )
 
 require (
+	aidanwoods.dev/go-result v0.3.1 // indirect
 	cel.dev/expr v0.25.3 // indirect
 	cloud.google.com/go/auth v0.23.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
@@ -117,7 +120,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
-	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/mod v0.39.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect

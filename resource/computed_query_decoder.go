@@ -52,6 +52,14 @@ func MustNewComputedQueryDecoder[Resource Resourcer, Request any](permissions ..
 	return decoder
 }
 
+// WithCursorKey installs the key that seals this decoder's cursors (see
+// QueryDecoder.WithCursorKey).
+func (d *ComputedQueryDecoder[Resource, Request]) WithCursorKey(key *CursorKey) *ComputedQueryDecoder[Resource, Request] {
+	d.inner.WithCursorKey(key)
+
+	return d
+}
+
 // WithPaging installs the computed resource's declared paging contract (see
 // QueryDecoder.WithPaging).
 func (d *ComputedQueryDecoder[Resource, Request]) WithPaging(paging Paging) *ComputedQueryDecoder[Resource, Request] {

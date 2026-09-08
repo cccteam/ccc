@@ -48,6 +48,9 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	// paging is the resource's declared paging contract (WithPaging); the zero
 	// value is the generator-wide default.
 	paging Paging
+	// cursorKey seals and opens the cursors of the pages this decoder builds
+	// (WithCursorKey); nil refuses paging past the first page.
+	cursorKey *CursorKey
 }
 
 // NewQueryDecoder creates a new QueryDecoder for a given Resource and Request type.
@@ -89,6 +92,16 @@ func primaryKeyFields(reqType reflect.Type) []accesstypes.Field {
 	}
 
 	return keys
+}
+
+// WithCursorKey installs the key that seals the cursors of the pages this
+// decoder builds and opens the ones requests carry. The generated wiring passes
+// the application's one key (resource.NewCursorKey over the cookie key) to
+// every decoder; without it a list serves first pages only.
+func (d *QueryDecoder[Resource, Request]) WithCursorKey(key *CursorKey) *QueryDecoder[Resource, Request] {
+	d.cursorKey = key
+
+	return d
 }
 
 // WithPaging installs the resource's declared paging contract: the default order
@@ -165,6 +178,8 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	qSet.filterFields = parsedQuery.FilterFields
 	qSet.keyFields = d.keyFields
 	qSet.defaultOrder = d.paging.Order
+	qSet.cursorKey = d.cursorKey
+	qSet.filterString = queryParams.Get(filterParam)
 	qSet.SetSortFields(parsedQuery.SortFields)
 	qSet.SetLimit(parsedQuery.Limit)
 	qSet.SetOffset(parsedQuery.Offset)

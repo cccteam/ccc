@@ -50,6 +50,16 @@ type QuerySet[Resource Resourcer] struct {
 	// defaultOrder is the resource's declared order (Paging.Order), taken when
 	// the request carries no sort.
 	defaultOrder []SortField
+	// cursor is the opened cursor the request carries, positioning the page
+	// after (or, walking back, before) its boundary row; nil on a first page.
+	// cursorKey seals the cursors the page emits; nil when the application
+	// wired none, which refuses paging past the first page.
+	cursor    *cursor
+	cursorKey *CursorKey
+	// filterString is the request's filter exactly as sent, fingerprinted into
+	// every cursor the page emits so a cursor cannot be carried to another
+	// query.
+	filterString string
 
 	// armError is why Enforce could not bind the query set to a caller; it
 	// surfaces at execution so an unarmed operation never runs unchecked.
@@ -437,12 +447,23 @@ func (q *QuerySet[Resource]) Order() []SortField {
 	return order
 }
 
-// buildOrderByClause renders the ORDER BY for the QuerySet's total order. A
+// readOrder is the order the statement reads rows in: the total order, or its
+// reverse when the request walks back to the previous page, whose rows the
+// handler reverses again before encoding.
+func (q *QuerySet[Resource]) readOrder() []SortField {
+	if q.cursor != nil && q.cursor.Direction == pagePrev {
+		return flipped(q.Order())
+	}
+
+	return q.Order()
+}
+
+// buildOrderByClause renders the ORDER BY for the QuerySet's read order. A
 // nullable column states its NULL placement — NULLS LAST ascending, NULLS FIRST
 // descending — because the two databases default differently and a page walk
 // needs one order.
 func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
-	order := q.Order()
+	order := q.readOrder()
 	orderByParts := make([]string, 0, len(order))
 	for _, sf := range order {
 		dbField, ok := q.rMeta.dbFieldMap(dbType)[accesstypes.Field(sf.Field)]
@@ -467,6 +488,50 @@ func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
 	}
 
 	return "ORDER BY " + strings.Join(orderByParts, ", "), nil
+}
+
+// cursorPredicate renders the request cursor's position as a predicate over the
+// read order: the rows strictly after the boundary row. Empty on a first page.
+func (q *QuerySet[Resource]) cursorPredicate(dbType DBType, registry *paramRegistry) (string, error) {
+	if q.cursor == nil {
+		return "", nil
+	}
+
+	order := q.readOrder()
+	if len(q.cursor.Keys) != len(order) {
+		return "", errInvalidCursor
+	}
+
+	terms := make([]cursorTerm, 0, len(order))
+	for i, sf := range order {
+		dbField, ok := q.rMeta.dbFieldMap(dbType)[accesstypes.Field(sf.Field)]
+		if !ok {
+			return "", errors.Newf("sort field '%s' not found in resource metadata for query", sf.Field)
+		}
+		var column string
+		switch dbType {
+		case SpannerDBType:
+			column = fmt.Sprintf("`%s`", dbField.ColumnName)
+		case PostgresDBType:
+			column = fmt.Sprintf(`"%s"`, dbField.ColumnName)
+		default:
+			return "", errors.Newf("unsupported dbType for paging: %s", dbType)
+		}
+		terms = append(terms, cursorTerm{
+			column:    column,
+			direction: sf.Direction,
+			nullable:  isNullableType(dbField.fieldType),
+			fieldType: dbField.fieldType,
+			boundary:  q.cursor.Keys[i],
+		})
+	}
+
+	predicate, err := renderCursorPredicate(terms, registry)
+	if err != nil {
+		return "", errors.Wrap(err, "renderCursorPredicate()")
+	}
+
+	return predicate, nil
 }
 
 // orderDirectionSQL renders one ORDER BY term's direction, with the NULL
@@ -629,7 +694,7 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*St
 // predicate fragments: the tenancy AND sits in the WHERE before the read
 // rules' row predicate (design plan §06) — checked domain == filtered domain
 // by construction.
-func (q *QuerySet[Resource]) whereWithPredicates(dbType DBType, filterAst ExpressionNode, tenancy string, rendered *renderedReadConditions) (*Statement, error) {
+func (q *QuerySet[Resource]) whereWithPredicates(dbType DBType, filterAst ExpressionNode, tenancy string, rendered *renderedReadConditions, cursorPredicate string) (*Statement, error) {
 	where, err := q.where(dbType, filterAst)
 	if err != nil {
 		return nil, errors.Wrap(err, "patcher.Where()")
@@ -639,6 +704,9 @@ func (q *QuerySet[Resource]) whereWithPredicates(dbType DBType, filterAst Expres
 	if rendered != nil && rendered.rowPredicate != "" {
 		predicates = append(predicates, rendered.rowPredicate)
 	}
+	// The cursor's position sits last: it narrows the rows the permission and
+	// filter predicates admit to the page after the boundary.
+	predicates = append(predicates, cursorPredicate)
 	for _, predicate := range predicates {
 		if predicate == "" {
 			continue
@@ -696,7 +764,12 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	where, err := q.whereWithPredicates(dbType, filterAst, tenancy, rendered)
+	cursorPredicate, err := q.cursorPredicate(dbType, registry)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.cursorPredicate()")
+	}
+
+	where, err := q.whereWithPredicates(dbType, filterAst, tenancy, rendered, cursorPredicate)
 	if err != nil {
 		return nil, err
 	}

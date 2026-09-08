@@ -21,10 +21,11 @@ import (
 // and they render only under a registry.
 
 // SQL relational operator spellings shared by the filter path and the
-// condition lowering.
+// condition lowering, and the literal an empty disjunction collapses to.
 const (
 	sqlLessEq    = "<="
 	sqlGreaterEq = ">="
+	sqlFalse     = "FALSE"
 )
 
 // Reserved named parameters the lowered SQL binds. The statement builder
@@ -231,7 +232,7 @@ func (n *truthNode) String() string {
 		return "TRUE"
 	}
 
-	return "FALSE"
+	return sqlFalse
 }
 
 // scalarSubqueryNode selects one column off an aliased table under a
