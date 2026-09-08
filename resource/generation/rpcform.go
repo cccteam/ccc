@@ -30,9 +30,10 @@ const resourcePackagePath = "github.com/cccteam/ccc/resource"
 
 // executeForms is the shape every refusal quotes, so the message says what to
 // write rather than only what was wrong.
-const executeForms = `an @rpc struct declares Execute in one of two forms:
-	Execute(ctx context.Context, txn resource.ReadWriteTransaction, client *Client) error   // runs inside the handler's transaction
-	Execute(ctx context.Context, client resource.Client, rpcClient *Client) error          // runs outside one
+const executeForms = `an @rpc struct declares Execute in one of three forms:
+	Execute(ctx context.Context, txn resource.ReadWriteTransaction, client *Client) error                       // runs inside the handler's transaction
+	Execute(ctx context.Context, client resource.Client, rpcClient *Client) error                              // runs outside one
+	Execute(ctx context.Context, txn resource.ReadWriteTransaction, files resource.Files, client *Client) error // an @upload method, inside the transaction
 either returning error alone, or (Result, error) with Result a struct type or a pointer to one`
 
 // executeSignature is what classification reads off an Execute method: how it
@@ -47,6 +48,9 @@ type executeSignature struct {
 	// either receiver: the method chooses its status per response and must
 	// declare the statuses with @answers.
 	choosesStatus bool
+	// takesFiles marks the upload form: Execute's third parameter is
+	// resource.Files, and the method must declare @upload.
+	takesFiles bool
 }
 
 // classifyExecute reads the struct's Execute method and returns its signature.
@@ -65,7 +69,7 @@ func classifyExecute(s *parser.Struct) (executeSignature, error) {
 	}
 
 	params := sig.Params()
-	if params.Len() != 3 || sig.Variadic() {
+	if (params.Len() != 3 && params.Len() != 4) || sig.Variadic() {
 		return none, errors.Newf("struct %s: Execute takes %s; %s", s.Name(), paramsString(sig), executeForms)
 	}
 
@@ -83,8 +87,21 @@ func classifyExecute(s *parser.Struct) (executeSignature, error) {
 		return none, errors.Newf("struct %s: Execute's second parameter is %s, neither resource.ReadWriteTransaction nor resource.Client; %s", s.Name(), typeStringer(second), executeForms)
 	}
 
-	if third, ok := params.At(2).Type().(*types.Pointer); !ok || !isNamed(third.Elem()) {
-		return none, errors.Newf("struct %s: Execute's third parameter is %s, not a pointer to the application's RPC client type; %s", s.Name(), typeStringer(params.At(2).Type()), executeForms)
+	clientParam := params.At(2)
+	if params.Len() == 4 {
+		// The upload form: the files come third, the client fourth, and the
+		// body runs inside the transaction, which is what claims the files.
+		if !isNamedType(params.At(2).Type(), resourcePackagePath, "Files") {
+			return none, errors.Newf("struct %s: Execute takes four parameters but the third is %s, not resource.Files; %s", s.Name(), typeStringer(params.At(2).Type()), executeForms)
+		}
+		if out.form != rpcFormTxn {
+			return none, errors.Newf("struct %s: an upload runs inside the handler's transaction, which claims the files, so Execute's second parameter is resource.ReadWriteTransaction, not %s; %s", s.Name(), typeStringer(params.At(1).Type()), executeForms)
+		}
+		out.takesFiles = true
+		clientParam = params.At(3)
+	}
+	if client, ok := clientParam.Type().(*types.Pointer); !ok || !isNamed(client.Elem()) {
+		return none, errors.Newf("struct %s: Execute's client parameter is %s, not a pointer to the application's RPC client type; %s", s.Name(), typeStringer(clientParam.Type()), executeForms)
 	}
 
 	results := sig.Results()

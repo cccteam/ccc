@@ -661,14 +661,18 @@ func (t *typescriptGenerator) apiClientData() *tsAPIData {
 		if !method.OnOutlet(outlet) || method.SuppressHandler {
 			continue
 		}
-		data.Methods = append(data.Methods, &tsAPIMethod{
+		apiMethod := &tsAPIMethod{
 			Name:     method.Name(),
 			Property: strcase.ToCamel(method.Name()),
 			Route:    strcase.ToKebab(method.Name()),
 			Scope:    method.PermissionScope,
 			Answers:  method.Answers(),
 			Statuses: method.Statuses,
-		})
+		}
+		if method.Upload != nil {
+			apiMethod.UploadMaxBytes = method.Upload.MaxBytes
+		}
+		data.Methods = append(data.Methods, apiMethod)
 	}
 
 	for _, res := range data.Resources {

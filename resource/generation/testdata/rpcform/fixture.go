@@ -115,6 +115,36 @@ type (
 	// @rpc
 	// @answers(200, teapot)
 	AnswersNotACode struct{}
+
+	// @rpc
+	// @upload(max: 5MB)
+	UploadForm struct{}
+
+	// @rpc
+	// @upload(max: 5MB)
+	UploadAnswers struct{}
+
+	// @rpc
+	UploadUndeclared struct{}
+
+	// @rpc
+	// @upload(max: 5MB)
+	UploadNoFiles struct{}
+
+	// @rpc
+	// @upload(max: 5MB)
+	UploadClientForm struct{}
+
+	// @rpc
+	// @upload(max: lots)
+	UploadBadSize struct{}
+
+	// @rpc
+	// @upload(5MB)
+	UploadNoMax struct{}
+
+	// @rpc
+	UploadFilesNotThird struct{}
 )
 
 func (Verdict) HTTPStatus() int { return 200 }
@@ -185,4 +215,29 @@ func (*AnswersNoSuccess) Execute(context.Context, resource.ReadWriteTransaction,
 }
 func (*AnswersNotACode) Execute(context.Context, resource.ReadWriteTransaction, *Client) (Verdict, error) {
 	return Verdict{}, nil
+}
+
+func (*UploadForm) Execute(context.Context, resource.ReadWriteTransaction, resource.Files, *Client) error {
+	return nil
+}
+func (*UploadAnswers) Execute(context.Context, resource.ReadWriteTransaction, resource.Files, *Client) (Report, error) {
+	return Report{}, nil
+}
+func (*UploadUndeclared) Execute(context.Context, resource.ReadWriteTransaction, resource.Files, *Client) error {
+	return nil
+}
+func (*UploadNoFiles) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (*UploadClientForm) Execute(context.Context, resource.Client, resource.Files, *Client) error {
+	return nil
+}
+func (*UploadBadSize) Execute(context.Context, resource.ReadWriteTransaction, resource.Files, *Client) error {
+	return nil
+}
+func (*UploadNoMax) Execute(context.Context, resource.ReadWriteTransaction, resource.Files, *Client) error {
+	return nil
+}
+func (*UploadFilesNotThird) Execute(context.Context, resource.ReadWriteTransaction, *Client, resource.Files) error {
+	return nil
 }

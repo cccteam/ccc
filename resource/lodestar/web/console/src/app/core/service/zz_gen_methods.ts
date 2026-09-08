@@ -186,6 +186,8 @@ export interface MethodMeta {
   answers?: true;
   /** The statuses the method declares with @answers; a listed 4xx is the method's own answer, not a refusal by the frame. */
   statuses?: number[];
+  /** Set on an @upload method: the request is multipart, and the whole body is bounded by maxBytes. */
+  upload?: { maxBytes: number };
   fields: RPCFieldMeta[];
 }
 

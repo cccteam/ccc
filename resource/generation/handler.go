@@ -190,6 +190,9 @@ type handlerFeatures struct {
 	// handler decodes through the targeted constructor, which carries a
 	// conditional Execute decision to the frame instead of refusing it.
 	hasTargetedRPC bool
+	// hasUpload reports a non-suppressed @upload method: its handler streams
+	// the files to the application's UploadStore.
+	hasUpload bool
 	// rpcPackage qualifies the generated Method union; set iff hasRPC.
 	rpcPackage string
 }
@@ -224,6 +227,9 @@ func (r *resourceGenerator) handlerFeatures() handlerFeatures {
 				f.rpcPackage = r.rpc.Package()
 				if rpcMethod.Target != nil {
 					f.hasTargetedRPC = true
+				}
+				if rpcMethod.Upload != nil {
+					f.hasUpload = true
 				}
 			}
 		}
@@ -287,6 +293,7 @@ func (r *resourceGenerator) generateAppContract() error {
 		HasValidator:        f.hasPatch || f.hasRPC,
 		HasDomainScoped:     r.hasDomainScoped(),
 		HasRPC:              f.hasRPC,
+		HasUpload:           f.hasUpload,
 		HasComputed:         f.hasComputed,
 		ConcealedDomains:    r.concealedDomains,
 	}); err != nil {

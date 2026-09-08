@@ -560,6 +560,12 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
+		if err := resolveUpload(rpcMethod, s, annotations); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
 		rpcMethods = append(rpcMethods, rpcMethod)
 	}
 
@@ -599,6 +605,7 @@ func (c *client) classifyRPCMethod(s *parser.Struct) (*rpcMethodInfo, error) {
 		Result:        result,
 		ResultPointer: signature.resultPointer,
 		choosesStatus: signature.choosesStatus,
+		takesFiles:    signature.takesFiles,
 		Fields:        make([]*rpcField, 0, len(s.Fields())),
 	}, nil
 }

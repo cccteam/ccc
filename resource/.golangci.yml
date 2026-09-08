@@ -181,6 +181,11 @@ linters:
       - linters:
           - tagliatelle
         path: cursor\.go
+      # An io.Reader passes io.EOF through unwrapped, or io.Copy never ends.
+      - linters:
+          - wrapcheck
+        path: upload\.go
+        text: 'io.Reader'
       - linters:
           - gocritic
         path: query_decoder_test\.go

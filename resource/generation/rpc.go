@@ -49,7 +49,13 @@ func (r *resourceGenerator) generateRPCHandler(rpcMethod *rpcMethodInfo) error {
 	fileName := generatedGoFileName(fileStem(rpcMethod.Name()))
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
-	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rcpHandlerTemplate:%q", rpcMethod.Name()), rpcHandlerTemplate, &rpcHandlerData{
+	template := rpcHandlerTemplate
+	if rpcMethod.Upload != nil {
+		// The multipart intake is its own frame.
+		template = rpcUploadHandlerTemplate
+	}
+
+	if err := r.writeFormattedGoFile(destinationFilePath, fmt.Sprintf("rcpHandlerTemplate:%q", rpcMethod.Name()), template, &rpcHandlerData{
 		Source:              r.rpc.Dir(),
 		LocalPackageImports: r.localPackageImports(),
 		RPCMethod:           rpcMethod,

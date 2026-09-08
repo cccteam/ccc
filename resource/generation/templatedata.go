@@ -283,6 +283,7 @@ type appContractData struct {
 	HasValidator    bool
 	HasDomainScoped bool
 	HasRPC          bool
+	HasUpload       bool
 	HasComputed     bool
 	// ConcealedDomains swaps the domain-scoped contract method from
 	// DomainExists to DomainVisible (WithConcealedDomains).
@@ -477,6 +478,18 @@ type tsAPIData struct {
 	HasDomain          bool
 }
 
+// HasUpload reports whether any method on this outlet is an @upload, so the client
+// file imports the upload handle type.
+func (d *tsAPIData) HasUpload() bool {
+	for _, method := range d.Methods {
+		if method.UploadMaxBytes > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
 // ResourceImports lists the row types the client file imports from the resources file.
 func (d *tsAPIData) ResourceImports() string {
 	names := make([]string, 0, len(d.Resources))
@@ -566,6 +579,19 @@ type tsAPIMethod struct {
 	// Statuses is the method's @answers declaration, carried on the descriptor
 	// so the client tells the method's own 4xx from the frame's.
 	Statuses []int
+	// UploadMaxBytes is the method's @upload maximum, 0 for a JSON method; the
+	// descriptor carries it so the client refuses an oversized upload locally.
+	UploadMaxBytes int64
+}
+
+// HandleType is the handle the client exposes the method under: an
+// UploadMethodHandle, which adds upload(body, files), for an @upload method.
+func (m *tsAPIMethod) HandleType() string {
+	if m.UploadMaxBytes > 0 {
+		return "UploadMethodHandle"
+	}
+
+	return "MethodHandle"
 }
 
 // ResultName is the generated TypeScript result interface's name.

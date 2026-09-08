@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 
@@ -338,6 +339,24 @@ type rpcMethodInfo struct {
 	// choosesStatus marks a result type declaring HTTPStatus() int, read off
 	// the Execute signature; @answers must accompany it.
 	choosesStatus bool
+	// Upload is the method's validated @upload declaration; nil for a JSON
+	// method. Set iff Execute takes resource.Files.
+	Upload *rpcUpload
+	// takesFiles marks an Execute whose third parameter is resource.Files,
+	// read off the signature; @upload must accompany it.
+	takesFiles bool
+}
+
+// rpcUpload is a method's @upload declaration.
+type rpcUpload struct {
+	// MaxBytes bounds the whole multipart body; the frame answers 413 naming
+	// it before a byte over the limit is read.
+	MaxBytes int64
+}
+
+// MaxBytesText renders the maximum the way the declaration wrote it.
+func (u *rpcUpload) MaxBytesText() string {
+	return resource.FormatByteSize(u.MaxBytes)
 }
 
 // IsDomainScoped reports whether the method's @permissionScope resolves to the
@@ -1259,6 +1278,7 @@ const (
 	transitionKeyword           string = "transition"           // Declares an RPC method as a workflow state transition: @transition(Root, from: a, b, to: c)
 	targetKeyword               string = "target"               // Marks the RPC field carrying the target row key; @target(Root) names the resource when no @transition does
 	answersKeyword              string = "answers"              // Declares the statuses an RPC method may answer with; its result chooses one per response through HTTPStatus()
+	uploadKeyword               string = "upload"               // Declares an RPC method as a multipart upload: @upload(max: 5MB); its Execute takes resource.Files
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -1289,6 +1309,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		transitionKeyword:           {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		targetKeyword:               {genlang.ScanField: genlang.Exclusive},
 		answersKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		uploadKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }
 
