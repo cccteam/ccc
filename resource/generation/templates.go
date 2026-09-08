@@ -163,12 +163,6 @@ func (q *{{ .Resource.Name }}Query) Limit(n uint64) *{{ .Resource.Name }}Query {
 	return q
 }
 
-func (q *{{ .Resource.Name }}Query) Offset(n uint64) *{{ .Resource.Name }}Query {
-	q.qSet.SetOffset(&n)
-
-	return q
-}
-
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (q *{{ .Resource.Name }}Query) Diff(got *{{ .Resource.Name }}Query, opts ...cmp.Option) string {
 	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)

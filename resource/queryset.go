@@ -26,7 +26,6 @@ type QuerySet[Resource Resourcer] struct {
 	fields                 []accesstypes.Field
 	sortFields             []SortField
 	limit                  *uint64
-	offset                 *uint64
 	returnAccessibleFields bool
 	requestableFields      []accesstypes.Field
 	rMeta                  *Metadata[Resource]
@@ -56,6 +55,9 @@ type QuerySet[Resource Resourcer] struct {
 	// wired none, which refuses paging past the first page.
 	cursor    *cursor
 	cursorKey *CursorKey
+	// page is the page the request asked for; nil on a hand-built QuerySet,
+	// which reads exactly its limit.
+	page *pageRequest
 	// filterString is the request's filter exactly as sent, fingerprinted into
 	// every cursor the page emits so a cursor cannot be carried to another
 	// query.
@@ -774,12 +776,10 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, err
 	}
 
-	orderByClause, err := q.buildOrderByClause(dbType)
+	orderByClause, limitClause, err := q.pageClauses(dbType)
 	if err != nil {
-		return nil, errors.Wrap(err, "QuerySet.buildOrderByClause()")
+		return nil, err
 	}
-
-	limitClause, offsetClause := q.pageClauses()
 
 	withClause, query, subqueryParams := q.query()
 	for k := range subqueryParams {
@@ -801,8 +801,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 			FROM %s
 			%s
 			%s
-			%s
-			%s`, withClause, columns, query, where.SQL, orderByClause, limitClause, offsetClause,
+			%s`, withClause, columns, query, where.SQL, orderByClause, limitClause,
 	)
 
 	resolvedSQL, err := substituteSQLParams(where.SQL, where.Params)
@@ -819,16 +818,81 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	return stmt, nil
 }
 
-// pageClauses renders the statement's LIMIT and OFFSET clauses.
-func (q *QuerySet[Resource]) pageClauses() (limitClause, offsetClause string) {
-	if q.limit != nil {
-		limitClause = fmt.Sprintf("LIMIT %d", *q.limit)
+// pageClauses renders the statement's ORDER BY and LIMIT.
+func (q *QuerySet[Resource]) pageClauses(dbType DBType) (orderByClause, limitClause string, err error) {
+	orderByClause, err = q.buildOrderByClause(dbType)
+	if err != nil {
+		return "", "", errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}
-	if q.offset != nil {
-		offsetClause = fmt.Sprintf("OFFSET %d", *q.offset)
+	limitClause, err = q.limitClause()
+	if err != nil {
+		return "", "", err
 	}
 
-	return limitClause, offsetClause
+	return orderByClause, limitClause, nil
+}
+
+// limitClause renders the statement's LIMIT: the decoded page's size, or no
+// LIMIT for limit=all; a hand-built QuerySet reads exactly the limit it set. A
+// cursor the decoder never bound to a scope fails closed here rather than
+// silently serving the first page.
+func (q *QuerySet[Resource]) limitClause() (string, error) {
+	if q.page == nil {
+		if q.limit != nil {
+			return fmt.Sprintf("LIMIT %d", *q.limit), nil
+		}
+
+		return "", nil
+	}
+	if q.page.token != "" && q.cursor == nil {
+		return "", errors.New("resource.QuerySet: the request carries a cursor that was never bound to a scope; decode with Decode, not DecodeWithoutPermissions")
+	}
+	if q.page.all {
+		return "", nil
+	}
+
+	return fmt.Sprintf("LIMIT %d", q.page.size), nil
+}
+
+// bindCursor opens the request's cursor under the decoder's key and checks its
+// fingerprint against the query being decoded: the resource, the checked scope,
+// the filter, the total order, and the page size. A first page has nothing to
+// bind. A resource with no declared order and no requested sort lists in
+// primary-key order, which carries no meaning to page through, so a cursor on
+// it is refused: paging further requires a sort.
+func (q *QuerySet[Resource]) bindCursor(scope accesstypes.Scope) error {
+	if q.page == nil || q.page.token == "" {
+		return nil
+	}
+	if q.cursorKey == nil {
+		return errors.New("resource.QuerySet: the request carries a cursor but the decoder has no cursor key; pass resource.NewCursorKey(cookieKey) to WithCursorKey")
+	}
+	if !q.issuesCursors() {
+		return httpio.NewBadRequestMessage("this resource lists in primary-key order when no sort is given; paging past the first page requires a sort")
+	}
+
+	c, err := q.cursorKey.open(q.page.token)
+	if err != nil {
+		return err
+	}
+	if c.Query != q.queryHash(scope) {
+		return errInvalidCursor
+	}
+	q.cursor = &c
+
+	return nil
+}
+
+// issuesCursors reports whether the list has an order worth walking: a
+// requested sort or a declared default. Primary-key order alone is total but
+// meaningless, so such a list serves first pages only.
+func (q *QuerySet[Resource]) issuesCursors() bool {
+	return len(q.sortFields) > 0 || len(q.defaultOrder) > 0
+}
+
+// queryHash fingerprints this query for its cursors.
+func (q *QuerySet[Resource]) queryHash(scope accesstypes.Scope) string {
+	return queryHash(q.Resource(), scope, q.filterString, q.Order(), q.page.limitString())
 }
 
 // Read executes the query and returns a single result wrapped in the Row envelope.
@@ -918,11 +982,6 @@ func (q *QuerySet[Resource]) SetSortFields(sortFields []SortField) {
 // SetLimit sets the maximum number of results to return.
 func (q *QuerySet[Resource]) SetLimit(limit *uint64) {
 	q.limit = limit
-}
-
-// SetOffset sets the starting point for returning results.
-func (q *QuerySet[Resource]) SetOffset(offset *uint64) {
-	q.offset = offset
 }
 
 func extractWithClause(query string) (withClause, remainingQuery string) {

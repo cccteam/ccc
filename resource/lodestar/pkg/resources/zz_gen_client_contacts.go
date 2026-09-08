@@ -147,12 +147,6 @@ func (q *ClientContactQuery) Limit(n uint64) *ClientContactQuery {
 	return q
 }
 
-func (q *ClientContactQuery) Offset(n uint64) *ClientContactQuery {
-	q.qSet.SetOffset(&n)
-
-	return q
-}
-
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (q *ClientContactQuery) Diff(got *ClientContactQuery, opts ...cmp.Option) string {
 	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)

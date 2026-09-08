@@ -21,8 +21,7 @@ type parsedQueryParams struct {
 	// FilterFields names the resource fields the filter expression touches, so
 	// the read checks can require an unconditional grant on each of them.
 	FilterFields []accesstypes.Field
-	Limit        *uint64
-	Offset       *uint64
+	Page         pageRequest
 	Capabilities []accesstypes.Permission
 }
 
@@ -164,6 +163,10 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 		}
 	}
 
+	// parseQuery consumes the parameters it recognizes, so the filter's text is
+	// kept first: every cursor the page issues is fingerprinted with it.
+	filterString := queryParams.Get(filterParam)
+
 	parsedQuery, err := d.parseQuery(queryParams)
 	if err != nil {
 		return nil, err
@@ -179,10 +182,9 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	qSet.keyFields = d.keyFields
 	qSet.defaultOrder = d.paging.Order
 	qSet.cursorKey = d.cursorKey
-	qSet.filterString = queryParams.Get(filterParam)
+	qSet.filterString = filterString
 	qSet.SetSortFields(parsedQuery.SortFields)
-	qSet.SetLimit(parsedQuery.Limit)
-	qSet.SetOffset(parsedQuery.Offset)
+	qSet.page = &parsedQuery.Page
 	qSet.RequestCapabilities(parsedQuery.Capabilities...)
 	if len(parsedQuery.ColumnFields) == 0 {
 		qSet.ReturnAccessibleFields(true)
@@ -210,6 +212,13 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 
 	qSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, perms[0])
 
+	// The cursor is bound here and not in DecodeWithoutPermissions because its
+	// fingerprint covers the scope: a cursor from one tenant's walk is refused
+	// in another's.
+	if err := qSet.bindCursor(scope); err != nil {
+		return nil, err
+	}
+
 	return qSet, nil
 }
 
@@ -218,8 +227,6 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 	var sortFields []SortField
 	var filterParser func(DBType) (ExpressionNode, error)
 	var filterFields []accesstypes.Field
-	var limit *uint64
-	var offset *uint64
 	var err error
 
 	if sortParamValue := query.Get(sortParam); sortParamValue != "" {
@@ -231,25 +238,9 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		delete(query, sortParam)
 	}
 
-	if limitStr := query.Get(limitParam); limitStr != "" {
-		limitVal, err := strconv.ParseUint(limitStr, 10, 64)
-		if err != nil {
-			return nil, httpio.NewBadRequestMessagef("invalid limit value: %s", limitStr)
-		}
-		limit = &limitVal
-		delete(query, limitParam)
-	} else {
-		defaultLimit := uint64(50)
-		limit = &defaultLimit
-	}
-
-	if offsetStr := query.Get(offsetParam); offsetStr != "" {
-		offsetVal, err := strconv.ParseUint(offsetStr, 10, 64)
-		if err != nil {
-			return nil, httpio.NewBadRequestMessagef("invalid offset value: %s", offsetStr)
-		}
-		offset = &offsetVal
-		delete(query, offsetParam)
+	page, err := d.parsePage(query)
+	if err != nil {
+		return nil, err
 	}
 
 	if cols := query.Get(columnsParam); cols != "" {
@@ -305,10 +296,70 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		SortFields:   sortFields,
 		FilterParser: filterParser,
 		FilterFields: filterFields,
-		Limit:        limit,
-		Offset:       offset,
+		Page:         page,
 		Capabilities: capabilities,
 	}, nil
+}
+
+// parsePage reads the paging parameters against the resource's declared
+// contract. A request without limit takes the declared default page (the
+// generator-wide DefaultPageSize when none is declared); limit=all is admitted
+// only on a resource with no declared maximum; a limit over the maximum is
+// refused naming it, never clamped; limit=0 is refused; offset is refused
+// naming the cursor as its replacement; count is admitted on a first page only.
+func (d *QueryDecoder[Resource, Request]) parsePage(query url.Values) (pageRequest, error) {
+	page := pageRequest{size: d.paging.DefaultLimit}
+	if page.size == 0 {
+		page.size = DefaultPageSize
+	}
+
+	if limitStr := query.Get(limitParam); limitStr != "" {
+		switch limitStr {
+		case allLimit:
+			if d.paging.MaxLimit != 0 {
+				return pageRequest{}, httpio.NewBadRequestMessagef("limit=all is not permitted: this resource serves at most %d rows per page; follow the Link header", d.paging.MaxLimit)
+			}
+			page.all = true
+		default:
+			size, err := strconv.ParseUint(limitStr, 10, 64)
+			if err != nil {
+				return pageRequest{}, httpio.NewBadRequestMessagef("invalid limit value: %s", limitStr)
+			}
+			if size == 0 {
+				return pageRequest{}, httpio.NewBadRequestMessage("limit must be at least 1; omit it for the default page, or ask for limit=all where the resource permits it")
+			}
+			if d.paging.MaxLimit != 0 && size > d.paging.MaxLimit {
+				return pageRequest{}, httpio.NewBadRequestMessagef("limit %d exceeds this resource's maximum page size of %d", size, d.paging.MaxLimit)
+			}
+			page.size = size
+		}
+		delete(query, limitParam)
+	}
+
+	if query.Has(offsetParam) {
+		return pageRequest{}, httpio.NewBadRequestMessage("offset is not supported: pages are positioned by the cursor the Link header carries")
+	}
+
+	if token := query.Get(cursorParam); token != "" {
+		if page.all {
+			return pageRequest{}, httpio.NewBadRequestMessage("a cursor cannot be combined with limit=all")
+		}
+		page.token = token
+		delete(query, cursorParam)
+	}
+
+	if countStr := query.Get(countParam); countStr != "" {
+		if countStr != trueStr {
+			return pageRequest{}, httpio.NewBadRequestMessagef("invalid count value: %s (only true is accepted)", countStr)
+		}
+		if page.token != "" {
+			return pageRequest{}, httpio.NewBadRequestMessage("count is answered on the first page only; it cannot be combined with a cursor")
+		}
+		page.count = true
+		delete(query, countParam)
+	}
+
+	return page, nil
 }
 
 func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) ([]SortField, error) {

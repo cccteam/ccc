@@ -40,8 +40,12 @@ const (
 	filterParam       = "filter"
 	sortParam         = "sort"
 	limitParam        = "limit"
-	offsetParam       = "offset"
+	cursorParam       = "cursor"
+	countParam        = "count"
 	capabilitiesParam = "capabilities"
+	// offsetParam is reserved so a request still carrying it is refused with a
+	// message naming the cursor as its replacement, never treated as a filter.
+	offsetParam = "offset"
 )
 
 // reservedQueryParams registers every reserved query parameter for the README.md
@@ -51,6 +55,8 @@ var reservedQueryParams = []string{
 	filterParam,
 	sortParam,
 	limitParam,
-	offsetParam,
+	cursorParam,
+	countParam,
 	capabilitiesParam,
+	offsetParam,
 }

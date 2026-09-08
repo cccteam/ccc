@@ -2,7 +2,7 @@ package integration
 
 // This suite covers the reserved query parameters over the demo world: filter syntax
 // and its indexed/allow_filter gating, PII filter placement (URL rejected, POST body
-// accepted), sort, limit, offset, and rejection of unknown parameters. Consignments
+// accepted), sort, limit, the refusal of offset, and rejection of unknown parameters. Consignments
 // carry the sector-route cases (BondCode is unique-indexed, Mass is allow_filter) and
 // Clients the PII placement cases (ContactEmail is pii + allow_filter).
 
@@ -48,9 +48,10 @@ func TestQueryParameters(t *testing.T) {
 		{name: "sort descending", target: sectorPath(anvil, "consignments?sort=expiresOn:desc"), wantStatus: http.StatusOK, wantRows: 3, wantCodes: []string{"BND-ANV-0003", "BND-ANV-0001", "BND-ANV-0002"}},
 		{name: "sort with unknown field is rejected", target: sectorPath(anvil, "consignments?sort=warpFactor"), wantStatus: http.StatusBadRequest},
 		{name: "limit caps the row count", target: sectorPath(anvil, "consignments?sort=expiresOn&limit=1"), wantStatus: http.StatusOK, wantRows: 1, wantCodes: []string{"BND-ANV-0002"}},
-		{name: "offset skips rows", target: sectorPath(anvil, "consignments?sort=expiresOn&limit=1&offset=1"), wantStatus: http.StatusOK, wantRows: 1, wantCodes: []string{"BND-ANV-0001"}},
-		{name: "non-numeric limit is rejected", target: sectorPath(anvil, "consignments?limit=all"), wantStatus: http.StatusBadRequest},
-		{name: "negative offset is rejected", target: sectorPath(anvil, "consignments?offset=-1"), wantStatus: http.StatusBadRequest},
+		{name: "offset is refused", target: sectorPath(anvil, "consignments?sort=expiresOn&limit=1&offset=1"), wantStatus: http.StatusBadRequest},
+		{name: "limit=all returns every row", target: sectorPath(anvil, "consignments?sort=expiresOn&limit=all"), wantStatus: http.StatusOK, wantRows: 3, wantCodes: []string{"BND-ANV-0002", "BND-ANV-0001", "BND-ANV-0003"}},
+		{name: "limit=0 is rejected", target: sectorPath(anvil, "consignments?limit=0"), wantStatus: http.StatusBadRequest},
+		{name: "non-numeric limit is rejected", target: sectorPath(anvil, "consignments?limit=many"), wantStatus: http.StatusBadRequest},
 		{name: "unknown query parameter is rejected", target: sectorPath(anvil, "consignments?warp=9"), wantStatus: http.StatusBadRequest},
 		{name: "filter on pii field in url is rejected", target: "/api/clients?filter=name:eq:Halvard%20Freight,contactEmail:eq:cleo@halvard.example", wantStatus: http.StatusBadRequest},
 		{name: "filter on pii field in post body is allowed", method: http.MethodPost, target: "/api/clients", body: `{"filter":"name:eq:Halvard Freight,contactEmail:eq:cleo@halvard.example"}`, wantStatus: http.StatusOK, wantRows: 1},

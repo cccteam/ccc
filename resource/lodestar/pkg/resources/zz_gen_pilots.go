@@ -150,12 +150,6 @@ func (q *PilotQuery) Limit(n uint64) *PilotQuery {
 	return q
 }
 
-func (q *PilotQuery) Offset(n uint64) *PilotQuery {
-	q.qSet.SetOffset(&n)
-
-	return q
-}
-
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (q *PilotQuery) Diff(got *PilotQuery, opts ...cmp.Option) string {
 	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)

@@ -104,6 +104,10 @@ func (d *ComputedQueryDecoder[Resource, Request]) Decode(request *http.Request, 
 	// computed resource yields the row of exactly the person the check ran as.
 	qSet.userPermissions = userPermissions
 
+	if err := qSet.bindCursor(scope); err != nil {
+		return nil, err
+	}
+
 	decisions, err := userPermissions.Check(ctx, qSet.env, scope, requiredPermission, rSet.BaseResource())
 	if err != nil {
 		return nil, errors.Wrap(err, "resource.UserPermissions.Check()")

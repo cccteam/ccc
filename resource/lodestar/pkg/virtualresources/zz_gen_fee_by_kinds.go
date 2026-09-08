@@ -122,12 +122,6 @@ func (q *FeeByKindQuery) Limit(n uint64) *FeeByKindQuery {
 	return q
 }
 
-func (q *FeeByKindQuery) Offset(n uint64) *FeeByKindQuery {
-	q.qSet.SetOffset(&n)
-
-	return q
-}
-
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (q *FeeByKindQuery) Diff(got *FeeByKindQuery, opts ...cmp.Option) string {
 	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)

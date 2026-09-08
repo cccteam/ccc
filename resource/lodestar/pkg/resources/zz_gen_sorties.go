@@ -142,12 +142,6 @@ func (q *SortieQuery) Limit(n uint64) *SortieQuery {
 	return q
 }
 
-func (q *SortieQuery) Offset(n uint64) *SortieQuery {
-	q.qSet.SetOffset(&n)
-
-	return q
-}
-
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (q *SortieQuery) Diff(got *SortieQuery, opts ...cmp.Option) string {
 	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)

@@ -154,12 +154,6 @@ func (q *ShipQuery) Limit(n uint64) *ShipQuery {
 	return q
 }
 
-func (q *ShipQuery) Offset(n uint64) *ShipQuery {
-	q.qSet.SetOffset(&n)
-
-	return q
-}
-
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (q *ShipQuery) Diff(got *ShipQuery, opts ...cmp.Option) string {
 	return resource.QuerySetDiff(opts...)(q.qSet, got.qSet)
