@@ -16,11 +16,47 @@ import (
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
+	"github.com/shopspring/decimal"
 )
 
 func (a *App) CompleteMission() http.HandlerFunc {
+	// Mirrors of the structs the request and the result reach, leaves first: the
+	// wire shape lives here, in generated code.
+	type sortieCost struct {
+		SortieID ccc.UUID        `json:"sortieId"`
+		Expenses decimal.Decimal `json:"expenses"`
+	}
+
 	type request struct {
 		MissionID ccc.UUID `json:"missionId"`
+	}
+
+	// The answer as the wire carries it: Execute's result mirrored with generated
+	// wire names, encoded after the transaction commits.
+	type response struct {
+		Fee      decimal.Decimal `json:"fee"`
+		Expenses decimal.Decimal `json:"expenses"`
+		Net      decimal.Decimal `json:"net"`
+		Sorties  []sortieCost    `json:"sorties"`
+	}
+
+	// The result becomes its mirror the same way.
+	mirrorResponse := func(src rpc.Settlement) *response {
+		view := struct {
+			Fee      decimal.Decimal
+			Expenses decimal.Decimal
+			Net      decimal.Decimal
+			Sorties  []rpc.SortieCost
+		}(src)
+		var sorties []sortieCost
+		if view.Sorties != nil {
+			sorties = make([]sortieCost, 0, len(view.Sorties))
+			for _, e := range view.Sorties {
+				sorties = append(sorties, sortieCost(e))
+			}
+		}
+
+		return &response{Fee: view.Fee, Expenses: view.Expenses, Net: view.Net, Sorties: sorties}
 	}
 
 	decoder := NewTargetedRPCDecoder[rpc.CompleteMission, request](a, accesstypes.Execute)
@@ -41,6 +77,11 @@ func (a *App) CompleteMission() http.HandlerFunc {
 		ctx = resource.WithCaller(ctx, gate.Caller())
 
 		p := (*rpc.CompleteMission)(params)
+		// Captured inside the transaction, encoded after it commits: under
+		// abort-and-retry the value is the committing attempt's.
+		var result *rpc.Settlement
+		// The status the result chose, among the declared 200, 409.
+		var status int
 		// A dry run (X-Dry-Run: true) runs the whole frame and the body, then
 		// rolls the transaction back: every refusal answers as the real call
 		// would, and a call that would have succeeded answers 200 with no body.
@@ -76,8 +117,23 @@ func (a *App) CompleteMission() http.HandlerFunc {
 			if err := gate.Enforce(ctx, txn, resource.ExecuteTarget{Resource: "Missions", Label: "Mission", PKColumn: "Id"}, p.MissionID); err != nil {
 				return err
 			}
-			if err := p.Execute(ctx, txn, a.RPCClient()); err != nil {
+			answer, err := p.Execute(ctx, txn, a.RPCClient())
+			if err != nil {
 				return errors.Wrap(err, "Transaction.Execute()")
+			}
+			result = answer
+			if result == nil {
+				status = http.StatusOK
+			} else {
+				status, err = resource.ResponseStatus("CompleteMission", result, 200, 409)
+				if err != nil {
+					return err
+				}
+			}
+			if status >= http.StatusBadRequest {
+				// The method refused: the transaction rolls back, and the
+				// frame writes the status with the typed answer.
+				return &resource.Answer{Status: status}
 			}
 
 			// The framework stamps the declared target state as the last mutation.
@@ -90,13 +146,24 @@ func (a *App) CompleteMission() http.HandlerFunc {
 
 			return nil
 		}); err != nil {
+			if refused, ok := resource.Refused(err); ok {
+				return httpio.NewEncoder(w).StatusCodeWithBody(refused, mirrorResponse(*result))
+			}
 			if dryRun && resource.DryRunRolledBack(err) {
 				return httpio.NewEncoder(w).Ok(nil)
 			}
 
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 		}
+		if status == http.StatusNoContent {
+			w.WriteHeader(http.StatusNoContent)
 
-		return httpio.NewEncoder(w).Ok(nil)
+			return nil
+		}
+		if result == nil {
+			return httpio.NewEncoder(w).Ok(nil)
+		}
+
+		return httpio.NewEncoder(w).StatusCodeWithBody(status, mirrorResponse(*result))
 	})
 }

@@ -98,36 +98,39 @@ func returnOpenSorties(ctx context.Context, txn resource.ReadWriteTransaction, m
 }
 
 // settleMission computes the mission's settlement — fee minus every expense booked
-// against its sorties — into the output_only Settlement field. CompleteMission is the
-// field's only writer.
-func settleMission(ctx context.Context, txn resource.ReadWriteTransaction, missionID ccc.UUID, sortieIDs []ccc.UUID) error {
+// against its sorties — into the output_only Settlement field, and returns the
+// figures as CompleteMission's answer. CompleteMission is the field's only writer.
+func settleMission(ctx context.Context, txn resource.ReadWriteTransaction, missionID ccc.UUID, sortieIDs []ccc.UUID) (*Settlement, error) {
 	row, err := resources.NewMissionQuery().AddColumns(resources.NewMissionColumns().Fee()).SetID(missionID).Read(ctx, txn)
 	if err != nil {
-		return errors.Wrap(err, "resources.MissionQuery.Read()")
+		return nil, errors.Wrap(err, "resources.MissionQuery.Read()")
 	}
 	if row == nil {
-		return httpio.NewNotFoundMessagef("mission %s does not exist", missionID)
+		return nil, httpio.NewNotFoundMessagef("mission %s does not exist", missionID)
 	}
 
-	expenses := decimal.Zero
+	settlement := &Settlement{Fee: row.Data.Fee, Expenses: decimal.Zero, Sorties: make([]SortieCost, 0, len(sortieIDs))}
 	for _, sortieID := range sortieIDs {
+		cost := SortieCost{SortieID: sortieID, Expenses: decimal.Zero}
 		query := resources.NewSortieExpenseQuery().
 			AddColumns(resources.NewSortieExpenseColumns().All()).
 			Where(resources.NewSortieExpenseQueryClause().SortieID().Equal(sortieID))
 		for expense, err := range query.List(ctx, txn) {
 			if err != nil {
-				return errors.Wrap(err, "resources.SortieExpenseQuery.List()")
+				return nil, errors.Wrap(err, "resources.SortieExpenseQuery.List()")
 			}
-			expenses = expenses.Add(expense.Data.Amount)
+			cost.Expenses = cost.Expenses.Add(expense.Data.Amount)
 		}
+		settlement.Expenses = settlement.Expenses.Add(cost.Expenses)
+		settlement.Sorties = append(settlement.Sorties, cost)
+	}
+	settlement.Net = settlement.Fee.Sub(settlement.Expenses)
+
+	if err := resources.NewMissionUpdatePatch(missionID).SetSettlement(decimal.NewNullDecimal(settlement.Net)).Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
+		return nil, errors.Wrap(err, "resources.MissionUpdatePatch.Buffer()")
 	}
 
-	settlement := decimal.NewNullDecimal(row.Data.Fee.Sub(expenses))
-	if err := resources.NewMissionUpdatePatch(missionID).SetSettlement(settlement).Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
-		return errors.Wrap(err, "resources.MissionUpdatePatch.Buffer()")
-	}
-
-	return nil
+	return settlement, nil
 }
 
 // stampRefitInspected writes Refit.InspectedAt with the commit timestamp — domain

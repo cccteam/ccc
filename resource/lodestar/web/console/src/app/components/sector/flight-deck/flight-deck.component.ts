@@ -290,9 +290,19 @@ export class FlightDeckComponent {
       case Methods.StandDownMission:
         await api.standDownMission.execute({ missionId: mission.id });
         break;
-      case Methods.CompleteMission:
-        await api.completeMission.execute({ missionId: mission.id });
+      case Methods.CompleteMission: {
+        // The method chooses its status: 200 completes with the settlement, 409 is
+        // its own refusal — the booked expenses exceed the fee — with the same
+        // figures as the body and the transaction rolled back.
+        const answer = await api.completeMission.execute({ missionId: mission.id });
+        if (answer.status === 409) {
+          this.refusal.set(
+            `Completion refused: expenses ${answer.result.expenses} exceed the fee ${answer.result.fee} (net ${answer.result.net}). The mission stays underway.`,
+          );
+          return;
+        }
         break;
+      }
       case Methods.FailMission:
         if (!this.failReasonId) return;
         await api.failMission.execute({ missionId: mission.id, reasonId: this.failReasonId });

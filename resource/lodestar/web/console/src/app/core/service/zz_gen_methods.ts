@@ -28,6 +28,26 @@ export interface CompleteMissionConfig {
 export interface CompleteMission {
   missionId: string;
 }
+/** The result CompleteMission answers with. */
+export interface CompleteMissionResult {
+  fee: number;
+  expenses: number;
+  net: number;
+  sorties: CompleteMission.SortieCost[];
+}
+/** The statuses CompleteMission declares; the method chooses one per response. */
+export type CompleteMissionStatus = 200 | 409;
+/** The answer CompleteMission resolves with: the status the method chose and its typed result. */
+export interface CompleteMissionAnswer {
+  status: CompleteMissionStatus;
+  result: CompleteMissionResult;
+}
+export namespace CompleteMission {
+  export interface SortieCost {
+    sortieId: string;
+    expenses: number;
+  }
+}
 
 export interface FailFlightTestConfig {
   refitId: string | FieldPointer;
@@ -190,6 +210,8 @@ const methodMap: MethodMap = {
   [Methods.CompleteMission]: {
     route: 'complete-mission',
     transition: { target: Resources.Missions, from: ['underway'], to: 'completed' },
+    answers: true,
+    statuses: [200, 409],
     fields: [
       { fieldName: 'missionId', displayType: 'uuid' },
     ],

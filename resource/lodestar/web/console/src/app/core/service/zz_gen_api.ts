@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, ResourceHandle } from '@cccteam/resource';
 import { Methods, Resources } from './zz_gen_constants';
 import { Clients, ClientContacts, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, OpenMissionsBySquadrons, Pilots, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, Wings, PilotCards, SectorHazardBoards, ServiceLedgers } from './zz_gen_resources';
-import { BeginRefit, ClaimMission, CompleteMission, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ResumeMission, ScrapShip, StandDownMission, StartFlightTest } from './zz_gen_methods';
+import { BeginRefit, ClaimMission, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ResumeMission, ScrapShip, StandDownMission, StartFlightTest } from './zz_gen_methods';
 
 /**
  * The fields a client may set when creating Clients. Server-owned fields are
@@ -622,7 +622,7 @@ export const apiDescriptor: ApiDescriptor = {
   methods: {
     [Methods.BeginRefit]: { method: Methods.BeginRefit, property: 'beginRefit', route: 'begin-refit', scope: 'domain' },
     [Methods.ClaimMission]: { method: Methods.ClaimMission, property: 'claimMission', route: 'claim-mission', scope: 'domain' },
-    [Methods.CompleteMission]: { method: Methods.CompleteMission, property: 'completeMission', route: 'complete-mission', scope: 'domain' },
+    [Methods.CompleteMission]: { method: Methods.CompleteMission, property: 'completeMission', route: 'complete-mission', scope: 'domain', answers: true, statuses: [200, 409] },
     [Methods.FailFlightTest]: { method: Methods.FailFlightTest, property: 'failFlightTest', route: 'fail-flight-test', scope: 'domain' },
     [Methods.FailMission]: { method: Methods.FailMission, property: 'failMission', route: 'fail-mission', scope: 'domain' },
     [Methods.HailShip]: { method: Methods.HailShip, property: 'hailShip', route: 'hail-ship', scope: 'domain' },
@@ -671,7 +671,7 @@ export interface DomainApi {
   sectorHazardBoards: ResourceHandle<SectorHazardBoards, SectorHazardBoardsKey, 'list' | 'read'>;
   beginRefit: MethodHandle<BeginRefit>;
   claimMission: MethodHandle<ClaimMission>;
-  completeMission: MethodHandle<CompleteMission>;
+  completeMission: MethodHandle<CompleteMission, CompleteMissionAnswer>;
   failFlightTest: MethodHandle<FailFlightTest>;
   failMission: MethodHandle<FailMission>;
   hailShip: MethodHandle<HailShip>;
