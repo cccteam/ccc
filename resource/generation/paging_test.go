@@ -125,3 +125,45 @@ func TestPagingDecl_PagingOption(t *testing.T) {
 		})
 	}
 }
+
+func TestResolvePage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		annotation  string
+		wantDefault uint64
+		wantMax     uint64
+		wantErr     string
+	}{
+		{name: "default and max", annotation: "default: 25, max: 200", wantDefault: 25, wantMax: 200},
+		{name: "default alone", annotation: "default: 10", wantDefault: 10},
+		{name: "max alone above the generator-wide default", annotation: "max: 500", wantMax: 500},
+		{name: "max alone below the generator-wide default is refused", annotation: "max: 20", wantErr: "below the generator-wide default page"},
+		{name: "default over max is refused", annotation: "default: 300, max: 200", wantErr: "cannot exceed the maximum"},
+		{name: "zero is refused", annotation: "default: 0", wantErr: "must be a positive integer"},
+		{name: "a non-number is refused", annotation: "default: many", wantErr: "must be a positive integer"},
+		{name: "an unknown key is refused", annotation: "size: 10", wantErr: "unknown argument"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			gotDefault, gotMax, err := resolvePage(genlang.Arg(tt.annotation))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("resolvePage() error = %v, want error containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolvePage() error = %v", err)
+			}
+			if gotDefault != tt.wantDefault || gotMax != tt.wantMax {
+				t.Errorf("resolvePage() = (%d, %d), want (%d, %d)", gotDefault, gotMax, tt.wantDefault, tt.wantMax)
+			}
+		})
+	}
+}

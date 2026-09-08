@@ -52,7 +52,7 @@ manifest: pick a card, sign in, switch — never more than two clicks.
 | --- | --- | --- |
 | `governor` | Governor Greer, headquarters | Every global role and Sector Marshal in all three sectors — the pruned pure-RBAC baseline. May view as anyone and act as a role. |
 | `marshal` | Marshal Maren, Anvil | Full sector authority at Anvil, nothing at Bastion or Cinder (the fail-closed border); every transition including Scrap; the row-free `now` condition on IssueBulletin. |
-| `cadet` | Cadet Cass | `hazard IN (1, 2)`; the flight deck with only Claim lit; the two-input distress-call form (create-form narrowing). |
+| `cadet` | Cadet Cass | `hazard IN (1, 2)`; the flight deck with only Claim lit; the two-input distress-call form (create-form narrowing). The flight deck is also the paging demonstration: four call sheets per page in deadline order (Mission declares `@order(Deadline asc)` and `@page(default: 25, max: 200)`), Previous and Next following the server's Link header, the total from the first page's `count=true`. |
 | `pilot` | Pilot Pax, clearance 3 | `hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)`; `hangarZone != 'quarantine'` on ships and on HailShip. |
 | `veteran` | Veteran Vela | `NOT (hazard IN (1, 2) OR fee < 5000)`. |
 | `lead` | Flight Lead Lior, Hammer | `assignedSquadron IN subject.squadrons OR bookedBy = subject`; launch, hold, resume, complete, fail; sorties only while underway. Holds Execute on HoldMission but no Update on the notes, so the armed hold refuses inside the transaction in the grant's words, and CompleteMission's decision-as-data completes without a note. |

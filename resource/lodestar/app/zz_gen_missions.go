@@ -40,7 +40,7 @@ func (a *App) Missions() http.HandlerFunc {
 	type response []map[string]any
 
 	decoder := NewQueryDecoder[resources.Mission, mission](a, accesstypes.List).
-		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "Deadline", Direction: resource.SortAscending}}})
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "Deadline", Direction: resource.SortAscending}}, DefaultLimit: 25, MaxLimit: 200})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

@@ -111,7 +111,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: ['clientId', 'kindId', 'title', 'brief', 'hazard', 'fee', 'deadline', 'requiredCertId', 'assignedSquadronId', 'notes'],
     },
   },

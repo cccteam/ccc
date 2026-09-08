@@ -14,7 +14,7 @@ import { Permissions, Resources } from '@app/service/zz_gen_constants';
 import { Api, DomainApi } from '@app/service/zz_gen_api';
 import { AuthService } from '@cccteam/ccc-lib/auth-service';
 import { storeSignal } from '@cccteam/ccc-lib/resource-client';
-import { Domain, DomainClient, Listable, ListQuery, Method, Permission, Resource, ResourceHandle } from '@cccteam/resource';
+import { Domain, DomainClient, Listable, ListQuery, Method, Page, Permission, Resource, ResourceHandle } from '@cccteam/resource';
 
 /** The generated client bound to one sector: its resources and RPC methods. */
 export type SectorApi = DomainClient<DomainApi>;
@@ -204,6 +204,24 @@ export class SectorService {
       },
       loader: ({ params }) => (params.handle ? params.handle.list(query) : Promise.resolve([])),
       defaultValue: [],
+    });
+  }
+
+  /**
+   * sectorPage is sectorList's paged form: the loader asks the server for one page
+   * with its neighbors, and the component steps through them by setting the
+   * resource to page.next() or page.prev(), so every page is the server's own
+   * answer, positioned by the cursor it issued.
+   */
+  sectorPage<Row>(select: (sector: SectorApi) => ListHandle<Row>, query?: ListQuery<Row>): ResourceRef<Page<Row> | undefined> {
+    return resource({
+      params: () => {
+        this.permissions();
+        const sector = this.sector();
+        const handle = sector ? select(sector) : undefined;
+        return { handle: handle?.can(Permissions.List) ? handle : undefined };
+      },
+      loader: ({ params }) => (params.handle ? params.handle.page(query) : Promise.resolve(undefined)),
     });
   }
 

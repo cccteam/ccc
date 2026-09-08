@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"cloud.google.com/go/civil"
+	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 )
@@ -268,6 +270,169 @@ func TestPaging_contract(t *testing.T) {
 			if got := rr.Header().Get(resource.TotalCountHeader); got != tt.wantTotal {
 				t.Errorf("Total-Count = %q, want %q", got, tt.wantTotal)
 			}
+		})
+	}
+}
+
+// TestPaging_declaredMaximum pins the Missions declaration, @page(default: 25, max:
+// 200): a page over the maximum is refused naming it, never clamped, and so is
+// limit=all; a page within it is served.
+func TestPaging_declaredMaximum(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	db, err := prepareDatabase(ctx, t, migrationsSource, demoSeedSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testApp := newTestApp(db, grants{accesstypes.List: withFields("Missions", "title", "deadline")})
+
+	tests := []struct {
+		name       string
+		target     string
+		wantStatus int
+		wantRows   int
+	}{
+		{name: "a page within the maximum", target: sectorPath(anvil, "missions?limit=200"), wantStatus: http.StatusOK, wantRows: 8},
+		{name: "a page over the maximum is refused", target: sectorPath(anvil, "missions?limit=201"), wantStatus: http.StatusBadRequest},
+		{name: "limit=all is refused where a maximum is declared", target: sectorPath(anvil, "missions?limit=all"), wantStatus: http.StatusBadRequest},
+		{name: "the declared default page", target: sectorPath(anvil, "missions"), wantStatus: http.StatusOK, wantRows: 8},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rr := doRequestRecorded(t, testApp, http.MethodGet, tt.target)
+			assertStatus(t, rr.Code, tt.wantStatus, rr.Body.Bytes())
+			if tt.wantStatus == http.StatusOK {
+				if rows := decodeRows(t, rr.Body.Bytes()); len(rows) != tt.wantRows {
+					t.Errorf("row count = %d, want %d", len(rows), tt.wantRows)
+				}
+			}
+		})
+	}
+}
+
+// TestPaging_walkSurvivesWrites pins the property offset paging lacks: a row inserted
+// before the walk's position, and one deleted before it, move nothing after the
+// position. The walk over Anvil's consignments by expiry still sees each remaining
+// row exactly once.
+func TestPaging_walkSurvivesWrites(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	db, err := prepareDatabase(ctx, t, migrationsSource, demoSeedSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testApp := newTestApp(db, grants{accesstypes.List: withFields("Consignments", "bondCode", "expiresOn")})
+
+	// Page one: BND-ANV-0002 (expires 2026-08-01).
+	first := doRequestRecorded(t, testApp, http.MethodGet, sectorPath(anvil, "consignments?sort=expiresOn&limit=1"))
+	assertStatus(t, first.Code, http.StatusOK, first.Body.Bytes())
+	if rows := decodeRows(t, first.Body.Bytes()); len(rows) != 1 || rows[0]["bondCode"] != "BND-ANV-0002" {
+		t.Fatalf("page 1 = %v", rows)
+	}
+	next := linkRelations(t, first.Header().Get(resource.LinkHeader))["next"]
+
+	// Between pages: a consignment expiring before the position arrives, and the
+	// row the position names is deleted.
+	_, err = db.Client.Apply(ctx, []*spanner.Mutation{
+		spanner.InsertMap("Consignments", map[string]any{
+			"Id":          "b0000000-0000-4000-8000-00000000000a",
+			"SectorId":    anvil,
+			"ClientId":    clientHalvardID,
+			"BondCode":    "BND-ANV-0009",
+			"Description": "Arrived between pages",
+			"Mass":        1.0,
+			"ExpiresOn":   civil.Date{Year: 2026, Month: 1, Day: 1},
+		}),
+		spanner.Delete("Consignments", spanner.Key{consignmentDronesID}),
+	})
+	if err != nil {
+		t.Fatalf("spanner.Client.Apply() error = %v", err)
+	}
+
+	// Page two is still the row after the position, not a repeat and not a skip.
+	second := doRequestRecorded(t, testApp, http.MethodGet, next)
+	assertStatus(t, second.Code, http.StatusOK, second.Body.Bytes())
+	rows := decodeRows(t, second.Body.Bytes())
+	if len(rows) != 1 || rows[0]["bondCode"] != "BND-ANV-0001" {
+		t.Fatalf("page 2 after writes = %v, want BND-ANV-0001", rows)
+	}
+	third := doRequestRecorded(t, testApp, http.MethodGet, linkRelations(t, second.Header().Get(resource.LinkHeader))["next"])
+	assertStatus(t, third.Code, http.StatusOK, third.Body.Bytes())
+	if rows := decodeRows(t, third.Body.Bytes()); len(rows) != 1 || rows[0]["bondCode"] != "BND-ANV-0003" {
+		t.Fatalf("page 3 after writes = %v, want BND-ANV-0003", rows)
+	}
+	// Walking back from page two reaches the inserted row: it sorts before the
+	// deleted one did, and the walk sees the list as it is now.
+	back := doRequestRecorded(t, testApp, http.MethodGet, linkRelations(t, second.Header().Get(resource.LinkHeader))["prev"])
+	assertStatus(t, back.Code, http.StatusOK, back.Body.Bytes())
+	if rows := decodeRows(t, back.Body.Bytes()); len(rows) != 1 || rows[0]["bondCode"] != "BND-ANV-0009" {
+		t.Errorf("walking back after writes = %v, want the inserted BND-ANV-0009", rows)
+	}
+}
+
+// TestPaging_sensitiveSortColumn pins that a PII sort column puts nothing readable
+// in the Link header: the boundary value rides inside the sealed cursor.
+func TestPaging_sensitiveSortColumn(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	db, err := prepareDatabase(ctx, t, migrationsSource, demoSeedSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testApp := newTestApp(db, grants{accesstypes.List: withFields("Clients", "name", "contactEmail")})
+
+	rr := doRequestRecorded(t, testApp, http.MethodGet, "/api/clients?sort=contactEmail&limit=1")
+	assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+	rows := decodeRows(t, rr.Body.Bytes())
+	if len(rows) != 1 {
+		t.Fatalf("rows = %v, want one", rows)
+	}
+	email, _ := rows[0]["contactEmail"].(string)
+	link := rr.Header().Get(resource.LinkHeader)
+	if link == "" {
+		t.Fatal("no Link header on a page with more rows")
+	}
+	if email == "" || strings.Contains(link, email) || strings.Contains(link, "@") || strings.Contains(link, "%40") {
+		t.Errorf("Link = %q carries the boundary e-mail %q in the clear", link, email)
+	}
+}
+
+// TestPaging_maskedFieldRefused pins the readability rule against the demo world: a
+// sort or filter field must be granted unconditionally. The archivist's fee is masked
+// until a mission completes, so a sort by fee is refused; the archivist's every other
+// Missions field rides the same conditional grant (the closed-mission rows), so the
+// rule refuses those too, and the marshal, granted unconditionally, sorts freely.
+func TestPaging_maskedFieldRefused(t *testing.T) {
+	t.Parallel()
+
+	_, h, _ := sharedWorld(t)
+
+	tests := []struct {
+		name       string
+		user       accesstypes.User
+		target     string
+		wantStatus int
+	}{
+		{name: "the archivist's masked fee is refused as a sort", user: "archivist", target: sectorPath(anvil, "missions?sort=fee"), wantStatus: http.StatusForbidden},
+		{name: "the archivist's row-conditioned title is refused as a sort", user: "archivist", target: sectorPath(anvil, "missions?sort=title"), wantStatus: http.StatusForbidden},
+		{name: "the marshal's unconditional fee sorts", user: "marshal", target: sectorPath(anvil, "missions?sort=fee"), wantStatus: http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, body := doRequestAs(t, h, tt.user, http.MethodGet, tt.target, "")
+			assertStatus(t, status, tt.wantStatus, body)
 		})
 	}
 }

@@ -172,6 +172,19 @@ if [ -n "$KEY" ]; then
   r=$(req hazards GET "$ANVIL/sector-hazard-boards"); assert_py "hazard board shows the worst hull reading" "$r" "any(b['shipName']=='Kingfisher' and b['subsystem']=='hull' and b['worstReading']==0.95 for b in rows)"
   r=$(req hazards GET "$ANVIL/sector-hazard-boards"); assert_py "hazard board carries the recent readings behind the worst, newest first" "$r" "any(b['subsystem']=='hull' and b['shipName']=='Kingfisher' and [x['value'] for x in b['recent']][:2]==[0.95, 0.61] for b in rows)"
   r=$(req hazards GET "$ANVIL/sector-hazard-boards?columns=recent.value"); check "nothing inside the nested field is a column" 400 "$r"
+  r=$(req hazards GET "$ANVIL/sector-hazard-boards?filter=shipName:eq:Kingfisher,subsystem:eq:reactor"); assert_py "the board is filtered like a table: the body takes the ship name, the handler the subsystem" "$r" "[(b['shipName'],b['subsystem']) for b in rows]==[('Kingfisher','reactor')]"
+  r=$(req hazards GET "$ANVIL/sector-hazard-boards?limit=1"); assert_py "the board pages: the worst reading first, one row" "$r" "len(rows)==1 and rows[0]['worstReading']==0.95"
+  # ---- droid channel paging: a sorted walk to the end, and all at once ----
+  page=$(curl -s -D "$S/droid.h" -H "Authorization: Bearer $KEY" "$DROIDS/sectors/anvil/droid-reports?sort=recordedAt&limit=2")
+  next=$(grep -i '^Link:' "$S/droid.h" | sed -n 's/.*<\([^>]*\)>; rel="next".*/\1/p')
+  if [ -n "$next" ]; then
+    r=$(droid GET "$B$next"); check "droid follows the Link header to the next page of its sorted report walk" 200 "$r"
+    assert_py "the second page continues after the first, no repeat" "$r" "len(rows)>=1 and rows[0]['id'] not in $(echo "$page" | py "print([x['id'] for x in rows])")"
+  else
+    echo "FAIL  droid walk: the first page of two carries no next relation"; fails=$((fails + 1))
+  fi
+  r=$(droid GET "$DROIDS/sectors/anvil/droid-reports?sort=recordedAt&limit=all"); check "droid asks for every report at once; DroidReport declares no maximum" 200 "$r"
+  r=$(droid GET "$DROIDS/sectors/anvil/droid-reports?offset=2"); check "offset is refused, the cursor is its replacement" 400 "$r"
   r=$(curl -s -X POST -H 'Content-Type: application/json' -d '{}' -w '\n%{http_code}' "$DROIDS/sectors/anvil/ingest-droid-reports"); check "the droid channel refuses without the key" 401 "$r"
 else
   echo "SKIP  droid channel: set LODESTAR_DROID_API_KEY on the server and here"
@@ -180,6 +193,9 @@ fi
 # ---- portal ----
 r=$(req client GET "$PORTAL/user-domains"); assert_py "cleo's portal lists Anvil" "$r" "rows == ['anvil']"
 r=$(req client GET "$PORTAL/sectors/anvil/missions?capabilities=Execute"); check "cleo tracks Halvard's missions" 200 "$r"
+r=$(req marshal GET "$ANVIL/missions?limit=201"); check "a page over Missions' declared maximum of 200 is refused, never clamped" 400 "$r"
+r=$(req marshal GET "$ANVIL/missions?limit=all"); check "Missions declares a maximum, so limit=all is refused" 400 "$r"
+r=$(req archivist GET "$ANVIL/missions?sort=fee"); check "the archivist cannot sort by the fee masked on open missions" 403 "$r"
 assert_py "portal width excludes assignedSquadronId/notes/settlement" "$r" "rows and all('assignedSquadronId' not in m and 'settlement' not in m for m in rows)"
 r=$(req client POST "$PORTAL/sectors/anvil/stand-down-mission" "{\"missionId\":\"$QUARANTINE\"}"); check "cleo stands down her company's claimed mission" 200 "$r"
 r=$(req client POST "$PORTAL/sectors/anvil/stand-down-mission" "{\"missionId\":\"$CORVID\"}"); check "cleo cannot stand down Meridian's mission" 403 "$r"

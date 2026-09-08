@@ -53,10 +53,18 @@ export class FlightDeckComponent {
   readonly failReasons = Object.values(FailReason);
   readonly now = signal(new Date());
 
-  missions = this.sectors.sectorList((sector) => sector.missions, {
+  // The board is paged: four call sheets at a time in deadline order (the
+  // resource's declared order, stated here so the walk is explicit), with the total
+  // asked once on the first page. Previous and next follow the server's Link
+  // relations; no page number or offset is ever assembled here.
+  missionsPage = this.sectors.sectorPage((sector) => sector.missions, {
     sort: { field: 'deadline' },
+    limit: 4,
+    count: true,
     capabilities: ['Execute', 'Create', 'Update', 'Delete'],
   });
+  missions = computed(() => this.missionsPage.value()?.rows ?? []);
+  missionTotal = computed(() => this.missionsPage.value()?.total);
   sorties = this.sectors.sectorList((sector) => sector.sorties, { capabilities: ['Create', 'Update'] });
   expenses = this.sectors.sectorList((sector) => sector.sortieExpenses, { capabilities: ['Update', 'Delete'] });
   squadrons = this.sectors.sectorList((sector) => sector.squadrons);
@@ -70,7 +78,7 @@ export class FlightDeckComponent {
   bookableFields = computed(() => this.sectors.grantedFields(Permissions.Create, Resources.Missions));
 
   selectedID = signal<string | undefined>(undefined);
-  selected = computed(() => this.missions.value().find((m) => m.id === this.selectedID()));
+  selected = computed(() => this.missions().find((m) => m.id === this.selectedID()));
   pendingEdge = signal<Method | undefined>(undefined);
   // A refusal from inside the method's transaction, in the grant's own words:
   // HoldMission writes its reason as the caller, so a Flight Lead whom Execute
@@ -132,6 +140,18 @@ export class FlightDeckComponent {
     this.launchPilotUserId = '';
     this.holdReason = '';
     this.failReasonId = '';
+  }
+
+  /** Steps to the neighboring page the server named; the total from the first page stays shown. */
+  async turnPage(direction: 'next' | 'prev'): Promise<void> {
+    const page = this.missionsPage.value();
+    const step = direction === 'next' ? page?.next : page?.prev;
+    if (!step) {
+      return;
+    }
+    const total = page?.total;
+    const turned = await step();
+    this.missionsPage.set({ ...turned, total: turned.total ?? total });
   }
 
   executable(mission: Missions): Method[] {
@@ -281,7 +301,7 @@ export class FlightDeckComponent {
         return;
     }
     this.pendingEdge.set(undefined);
-    this.missions.reload();
+    this.missionsPage.reload();
     this.sorties.reload();
   }
 
@@ -300,14 +320,14 @@ export class FlightDeckComponent {
     if (this.canEdit(mission, 'fee') && this.editFee !== null) patch['fee'] = this.editFee;
     if (Object.keys(patch).length === 0) return;
     await handle.patch(handle.keyOf(mission), patch);
-    this.missions.reload();
+    this.missionsPage.reload();
   }
 
   async remove(mission: Missions): Promise<void> {
     const handle = this.sectors.sectorApi().missions;
     await handle.remove(handle.keyOf(mission));
     this.selectedID.set(undefined);
-    this.missions.reload();
+    this.missionsPage.reload();
   }
 
   async book(): Promise<void> {
@@ -330,7 +350,7 @@ export class FlightDeckComponent {
     this.newFee = null;
     this.newDeadline = '';
     this.newNotes = '';
-    this.missions.reload();
+    this.missionsPage.reload();
   }
 
   async addSortie(mission: Missions): Promise<void> {

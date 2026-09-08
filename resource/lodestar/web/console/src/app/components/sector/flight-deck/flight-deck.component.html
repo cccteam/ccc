@@ -12,8 +12,23 @@
     <p class="empty">Your posting in {{ sector() || 'this sector' }} does not cover missions.</p>
   </mat-card>
 } @else {
+  <div class="pager">
+    <button mat-button type="button" [disabled]="!missionsPage.value()?.prev" (click)="turnPage('prev')">
+      <mat-icon>chevron_left</mat-icon> Previous
+    </button>
+    <span class="pager-total">
+      @if (missionTotal() !== undefined) {
+        {{ missions().length }} of {{ missionTotal() }} missions
+      } @else {
+        {{ missions().length }} missions
+      }
+    </span>
+    <button mat-button type="button" [disabled]="!missionsPage.value()?.next" (click)="turnPage('next')">
+      Next <mat-icon>chevron_right</mat-icon>
+    </button>
+  </div>
   <div class="sheets">
-    @for (mission of missions.value(); track mission.id) {
+    @for (mission of missions(); track mission.id) {
       <button type="button" class="sheet" [class.selected]="selected()?.id === mission.id" (click)="select(mission)">
         <div class="sheet-head">
           <span class="title">{{ mission.title }}</span>

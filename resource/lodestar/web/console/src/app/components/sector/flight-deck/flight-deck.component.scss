@@ -1,3 +1,16 @@
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+
+  .pager-total {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.8;
+  }
+}
+
 .sheets {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

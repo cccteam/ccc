@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/cccteam/ccc/resource"
@@ -103,14 +104,81 @@ func resolveOrder(arg genlang.Arg, sortable func(field string) error) ([]resourc
 	return order, nil
 }
 
+// The @page annotation's named arguments.
+const (
+	pageDefaultArgKey = "default"
+	pageMaxArgKey     = "max"
+)
+
+// resolvePage compiles a @page annotation: `default: N` and/or `max: M`, each a
+// positive integer, with the default never above the maximum. A resource that
+// declares only a maximum keeps the generator-wide default page.
+func resolvePage(arg genlang.Arg) (pageDefault, pageMax uint64, err error) {
+	invocations, err := arg.ParseInvocations(&genlang.ArgSpec{Keys: []string{pageDefaultArgKey, pageMaxArgKey}})
+	if err != nil {
+		return 0, 0, errors.Wrapf(err, "@%s", pageKeyword)
+	}
+	if len(invocations) != 1 {
+		return 0, 0, errors.Newf("@%s may be declared once", pageKeyword)
+	}
+	invocation := invocations[0]
+
+	parse := func(key string) (uint64, error) {
+		text, ok := invocation.Named(key)
+		if !ok {
+			return 0, nil
+		}
+		n, err := strconv.ParseUint(text, 10, 64)
+		if err != nil || n == 0 {
+			return 0, errors.Newf("@%s(%s: %s): must be a positive integer", pageKeyword, key, text)
+		}
+
+		return n, nil
+	}
+	if pageDefault, err = parse(pageDefaultArgKey); err != nil {
+		return 0, 0, err
+	}
+	if pageMax, err = parse(pageMaxArgKey); err != nil {
+		return 0, 0, err
+	}
+	if pageDefault == 0 && pageMax == 0 {
+		return 0, 0, errors.Newf("@%s declares neither %s nor %s", pageKeyword, pageDefaultArgKey, pageMaxArgKey)
+	}
+	if pageMax != 0 && pageDefault > pageMax {
+		return 0, 0, errors.Newf("@%s(default: %d, max: %d): the default page cannot exceed the maximum", pageKeyword, pageDefault, pageMax)
+	}
+	if pageMax != 0 && pageDefault == 0 && resource.DefaultPageSize > pageMax {
+		return 0, 0, errors.Newf("@%s(max: %d): the maximum is below the generator-wide default page of %d; declare default too", pageKeyword, pageMax, resource.DefaultPageSize)
+	}
+
+	return pageDefault, pageMax, nil
+}
+
+// resolvePaging applies the @order and @page annotations to a declaration, with
+// sortable answering whether a named order field can be ordered by.
+func (p *pagingDecl) resolvePaging(annotations genlang.StructAnnotations, sortable func(field string) error) error {
+	if annotations.Struct.Has(orderKeyword) {
+		order, err := resolveOrder(annotations.Struct.Get(orderKeyword), sortable)
+		if err != nil {
+			return err
+		}
+		p.DeclaredOrder = order
+	}
+	if annotations.Struct.Has(pageKeyword) {
+		pageDefault, pageMax, err := resolvePage(annotations.Struct.Get(pageKeyword))
+		if err != nil {
+			return err
+		}
+		p.PageDefault, p.PageMax = pageDefault, pageMax
+	}
+
+	return nil
+}
+
 // resolveResourcePaging applies the paging annotations of a table or view
 // resource. Every field of a resource is a column, so every field is sortable.
 func resolveResourcePaging(res *resourceInfo, annotations genlang.StructAnnotations) error {
-	if !annotations.Struct.Has(orderKeyword) {
-		return nil
-	}
-
-	order, err := resolveOrder(annotations.Struct.Get(orderKeyword), func(field string) error {
+	err := res.resolvePaging(annotations, func(field string) error {
 		if !slices.ContainsFunc(res.Fields, func(f *resourceField) bool { return f.Name() == field }) {
 			return errors.Newf("%s is not a field of %s", field, res.Name())
 		}
@@ -120,7 +188,6 @@ func resolveResourcePaging(res *resourceInfo, annotations genlang.StructAnnotati
 	if err != nil {
 		return errors.Wrapf(err, "on %s", res.Name())
 	}
-	res.DeclaredOrder = order
 
 	return nil
 }
@@ -128,11 +195,7 @@ func resolveResourcePaging(res *resourceInfo, annotations genlang.StructAnnotati
 // resolveComputedPaging applies the paging annotations of a computed resource. A
 // nested field is opaque and never a sort key, so only a leaf field may be named.
 func resolveComputedPaging(res *computedResource, annotations genlang.StructAnnotations) error {
-	if !annotations.Struct.Has(orderKeyword) {
-		return nil
-	}
-
-	order, err := resolveOrder(annotations.Struct.Get(orderKeyword), func(field string) error {
+	err := res.resolvePaging(annotations, func(field string) error {
 		i := slices.IndexFunc(res.Fields, func(f *computedField) bool { return f.Name() == field })
 		if i < 0 {
 			return errors.Newf("%s is not a field of %s", field, res.Name())
@@ -146,7 +209,6 @@ func resolveComputedPaging(res *computedResource, annotations genlang.StructAnno
 	if err != nil {
 		return errors.Wrapf(err, "on %s", res.Name())
 	}
-	res.DeclaredOrder = order
 
 	return nil
 }

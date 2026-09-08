@@ -31,6 +31,7 @@ type (
 	// @permissionScope(domain)
 	// @outlet(default, portal)
 	// @order(Deadline asc)
+	// @page(default: 25, max: 200)
 	// @defaultsCreateType(MissionCreateDefaults)
 	// @validateCreateType(MissionCreateValidator)
 	Mission struct {
