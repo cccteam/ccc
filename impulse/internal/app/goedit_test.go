@@ -214,19 +214,65 @@ func TestAddImport(t *testing.T) {
 	}
 }
 
-func TestAddStatementsBeforeReturn(t *testing.T) {
+func TestAddStatementsBeforeConstruction(t *testing.T) {
 	t.Parallel()
 
-	got, err := AddStatementsBeforeReturn("data.go", []byte(configSource), "NewDataConfiguration", "DataConfiguration",
-		"partnersAuth, err := partners.New(ctx)\nif err != nil {\nreturn nil, err\n}")
-	if err != nil {
-		t.Fatalf("error = %v", err)
+	const statements = "partnersAuth, err := partners.New(ctx)\nif err != nil {\nreturn nil, err\n}"
+	const inserted = "\tpartnersAuth, err := partners.New(ctx)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\n"
+	// The constructor as WrapReturn leaves it: the literal is assigned, not returned.
+	wrapped := strings.Replace(configSource, "\treturn &DataConfiguration{\n\t\tenv:           env,\n\t\tspannerClient: nil,\n\t\taccess:        nil,\n\t}, nil\n",
+		"\tconf := &DataConfiguration{\n\t\tenv:           env,\n\t\tspannerClient: nil,\n\t\taccess:        nil,\n\t}\n\tif err := conf.loadTenants(ctx); err != nil {\n\t\treturn nil, err\n\t}\n\n\treturn conf, nil\n", 1)
+
+	tests := []struct {
+		name     string
+		rel, src string
+		funcName string
+		typeName string
+		want     string
+		wantErr  error
+	}{
+		{
+			name: "before a returned literal",
+			rel:  "data.go", src: configSource, funcName: "NewDataConfiguration", typeName: "DataConfiguration",
+			want: strings.Replace(configSource, "\treturn &DataConfiguration{", inserted+"\treturn &DataConfiguration{", 1),
+		},
+		{
+			name: "before an assigned literal",
+			rel:  "data.go", src: wrapped, funcName: "NewDataConfiguration", typeName: "DataConfiguration",
+			want: strings.Replace(wrapped, "\tconf := &DataConfiguration{", inserted+"\tconf := &DataConfiguration{", 1),
+		},
+		{
+			name: "a function the file lacks",
+			rel:  "app.go", src: appSource, funcName: "NewServer", typeName: "App",
+			wantErr: ErrNoAnchor,
+		},
+		{
+			name: "a literal the function does not build",
+			rel:  "app.go", src: appSource, funcName: "New", typeName: "Server",
+			wantErr: ErrNoAnchor,
+		},
 	}
-	want := strings.Replace(configSource, "\treturn &DataConfiguration{", "\tpartnersAuth, err := partners.New(ctx)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\n\treturn &DataConfiguration{", 1)
-	if diff := cmp.Diff(want, string(got)); diff != "" {
-		t.Errorf("mismatch (-want +got):\n%s", diff)
-	}
-	if _, err := AddStatementsBeforeReturn("app.go", []byte(appSource), "New", "Server", "x := 1"); !errors.Is(err, ErrNoAnchor) {
-		t.Errorf("error = %v, want ErrNoAnchor", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := AddStatementsBeforeConstruction(tt.rel, []byte(tt.src), tt.funcName, tt.typeName, statements)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("error = %v, want %v", err, tt.wantErr)
+				}
+				if got != nil {
+					t.Errorf("an anchor miss returned %d bytes, want nil", len(got))
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

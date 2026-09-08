@@ -258,6 +258,25 @@ func TestAuthApply(t *testing.T) {
 		"\treturn &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t}, nil\n",
 		"\tpartnersAuth, err := partners.New(ctx, spannerClient, partners.Settings{CookieKey: cookieKey})\n\tif err != nil {\n\t\treturn nil, errors.Wrap(err, \"partners.New()\")\n\t}\n\n\treturn &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t\tpartners:      partnersAuth,\n\t}, nil\n", 1)
 
+	// The data level after add tenancy: WrapReturn assigned the literal and inserted the
+	// roster load, so the constructor no longer ends in "return &DataConfiguration{...}, nil".
+	tenantedConfig := strings.Replace(authConfig,
+		"\treturn &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t}, nil\n",
+		"\tconf := &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t}\n\tif err := conf.loadTenants(ctx); err != nil {\n\t\treturn nil, errors.Wrap(err, \"loadTenants()\")\n\t}\n\n\treturn conf, nil\n", 1)
+	wantTenantedConfig := strings.Replace(tenantedConfig, "\t\"example.com/acme/beacon/pkg/auth/staff\"\n", "\t\"example.com/acme/beacon/pkg/auth/partners\"\n\t\"example.com/acme/beacon/pkg/auth/staff\"\n", 1)
+	wantTenantedConfig = strings.Replace(wantTenantedConfig, "\tstaff         *staff.Auth\n}", "\tstaff         *staff.Auth\n\tpartners      *partners.Auth\n}", 1)
+	wantTenantedConfig = strings.Replace(wantTenantedConfig,
+		"\tconf := &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t}\n",
+		"\tpartnersAuth, err := partners.New(ctx, spannerClient, partners.Settings{CookieKey: cookieKey})\n\tif err != nil {\n\t\treturn nil, errors.Wrap(err, \"partners.New()\")\n\t}\n\n\tconf := &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t\tpartners:      partnersAuth,\n\t}\n", 1)
+
+	// A data level whose constructor builds no literal at all: the auth can be declared
+	// and imported, but not constructed.
+	builtElsewhereConfig := strings.Replace(authConfig,
+		"\treturn &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t}, nil\n",
+		"\treturn assemble(spannerClient, staffAuth), nil\n", 1)
+	wantBuiltElsewhereConfig := strings.Replace(builtElsewhereConfig, "\t\"example.com/acme/beacon/pkg/auth/staff\"\n", "\t\"example.com/acme/beacon/pkg/auth/partners\"\n\t\"example.com/acme/beacon/pkg/auth/staff\"\n", 1)
+	wantBuiltElsewhereConfig = strings.Replace(wantBuiltElsewhereConfig, "\tstaff         *staff.Auth\n}", "\tstaff         *staff.Auth\n\tpartners      *partners.Auth\n}", 1)
+
 	tests := []struct {
 		name        string
 		auth        Auth
@@ -266,6 +285,47 @@ func TestAuthApply(t *testing.T) {
 		wantSkipped []string
 		check       func(t *testing.T, a *app.App)
 	}{
+		{
+			name:  "a password auth added after tenancy is constructed before the assigned literal",
+			auth:  Auth{Name: "partners", Flavor: FlavorPassword},
+			extra: map[string]string{"pkg/config/data.go": tenantedConfig},
+			wantDid: []string{
+				"pkg/auth/partners: the partners auth package, a copy of staff with its names substituted (tables PartnersSessions and PartnersSessionUsers, cookie partners, store prefix Partners)",
+				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersSessionUsers, the partners auth's tables copied from the staff auth's under the Partners prefix",
+				"schema/roles/partners.json: the partners auth's role configuration, empty (the Administrator role at each scope is implicit)",
+				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
+				"ran go generate ./...",
+			},
+			wantSkipped: []string{"pkg/config/data.go: Close releases the staff auth only; release the partners auth too"},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				if diff := cmp.Diff(wantTenantedConfig, read(t, a, "pkg/config/data.go")); diff != "" {
+					t.Errorf("data.go mismatch (-want +got):\n%s", diff)
+				}
+			},
+		},
+		{
+			name:  "a constructor that builds no literal keeps the file and its earlier edits",
+			auth:  Auth{Name: "partners", Flavor: FlavorPassword},
+			extra: map[string]string{"pkg/config/data.go": builtElsewhereConfig},
+			wantDid: []string{
+				"pkg/auth/partners: the partners auth package, a copy of staff with its names substituted (tables PartnersSessions and PartnersSessionUsers, cookie partners, store prefix Partners)",
+				"schema/migrations: 000005_PartnersAccess, 000006_PartnersSessions, 000007_PartnersSessionUsers, the partners auth's tables copied from the staff auth's under the Partners prefix",
+				"schema/roles/partners.json: the partners auth's role configuration, empty (the Administrator role at each scope is implicit)",
+				"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()",
+				"ran go generate ./...",
+			},
+			wantSkipped: []string{
+				"pkg/config/data.go: NewDataConfiguration builds no &DataConfiguration{...} literal, so the partners auth is declared but not constructed; construct it beside the staff auth and set the field",
+				"pkg/config/data.go: Close releases the staff auth only; release the partners auth too",
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				if diff := cmp.Diff(wantBuiltElsewhereConfig, read(t, a, "pkg/config/data.go")); diff != "" {
+					t.Errorf("data.go mismatch (-want +got):\n%s", diff)
+				}
+			},
+		},
 		{
 			name: "an OIDC auth copied from the reference, the application its authority",
 			auth: Auth{Name: "partners", Flavor: FlavorOIDCAzure, Authority: AuthorityApplication},

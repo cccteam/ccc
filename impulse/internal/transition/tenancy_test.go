@@ -3,6 +3,7 @@ package transition
 import (
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -252,6 +253,33 @@ func TestTenancyApply(t *testing.T) {
 			}
 			if data := read(t, a, "pkg/config/data.go"); !strings.Contains(data, "\ttenants       tenantRoster\n") || !strings.Contains(data, "conf.loadTenants(ctx)") {
 				t.Errorf("data.go = %q", data)
+			}
+		},
+	})
+	// A data level whose constructor returns a configuration built elsewhere: the roster
+	// field is added, the load is an obligation, and the file keeps its contents.
+	builtElsewhere := tenancyFiles()
+	builtElsewhere["pkg/config/data.go"] = strings.Replace(beaconConfig,
+		"\treturn &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\taccess:        accessClient,\n\t}, nil\n",
+		"\treturn assemble(spannerClient, accessClient), nil\n", 1)
+	wantBuiltElsewhere := strings.Replace(builtElsewhere["pkg/config/data.go"], "\taccess        *access.Client\n}", "\taccess        *access.Client\n\ttenants       tenantRoster\n}", 1)
+	wantBuiltElsewhereDid := slices.Clone(tests[0].wantDid)
+	wantBuiltElsewhereDid[4] = strings.Replace(wantBuiltElsewhereDid[4], "gained the field and the load", "gained the field", 1)
+	tests = append(tests, struct {
+		name        string
+		files       map[string]string
+		wantDid     []string
+		wantSkipped []string
+		check       func(t *testing.T, a *app.App)
+	}{
+		name:        "a constructor without the returned literal keeps the file and gains the field",
+		files:       builtElsewhere,
+		wantDid:     wantBuiltElsewhereDid,
+		wantSkipped: []string{"pkg/config/data.go: NewDataConfiguration does not end in \"return &DataConfiguration{...}, nil\", so the roster load was not inserted; call conf.loadTenants(ctx) once the configuration is built"},
+		check: func(t *testing.T, a *app.App) {
+			t.Helper()
+			if diff := cmp.Diff(wantBuiltElsewhere, read(t, a, "pkg/config/data.go")); diff != "" {
+				t.Errorf("data.go mismatch (-want +got):\n%s", diff)
 			}
 		},
 	})

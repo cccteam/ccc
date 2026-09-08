@@ -310,9 +310,11 @@ func AddImport(rel string, src []byte, importPath string) ([]byte, error) {
 	return p.splice(rel, after, after, "\n\nimport \""+importPath+"\"")
 }
 
-// AddStatementsBeforeReturn inserts statements before the "return &Type{...}, <x>" of
-// the named function.
-func AddStatementsBeforeReturn(rel string, src []byte, funcName, typeName, statements string) ([]byte, error) {
+// AddStatementsBeforeConstruction inserts statements before the statement of the named
+// function that builds the first "&Type{...}" literal: the plain "return &Type{...}, nil"
+// of a fresh constructor, or the "v := &Type{...}" an earlier edit (WrapReturn) left in
+// its place.
+func AddStatementsBeforeConstruction(rel string, src []byte, funcName, typeName, statements string) ([]byte, error) {
 	p, err := parseSource(rel, src)
 	if err != nil {
 		return nil, err
@@ -321,11 +323,42 @@ func AddStatementsBeforeReturn(rel string, src []byte, funcName, typeName, state
 	if fd == nil {
 		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no function %s", rel, funcName)
 	}
-	ret := returnOfLiteral(fd, typeName)
-	if ret == nil {
-		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s has no \"return &%s{...}, nil\"", rel, funcName, typeName)
+	stmt := constructionOf(fd, typeName)
+	if stmt == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s builds no &%s{...}", rel, funcName, typeName)
 	}
-	at := p.offset(ret.Pos())
+	at := p.offset(stmt.Pos())
 
 	return p.splice(rel, at, at, statements+"\n\n")
+}
+
+// constructionOf finds the first top-level statement of a function's body that builds
+// an "&Type{...}" literal.
+func constructionOf(fd *ast.FuncDecl, typeName string) ast.Stmt {
+	for _, stmt := range fd.Body.List {
+		found := false
+		ast.Inspect(stmt, func(n ast.Node) bool {
+			if found {
+				return false
+			}
+			unary, ok := n.(*ast.UnaryExpr)
+			if !ok || unary.Op != token.AND {
+				return true
+			}
+			if cl, ok := unary.X.(*ast.CompositeLit); ok {
+				if id, ok := cl.Type.(*ast.Ident); ok && id.Name == typeName {
+					found = true
+
+					return false
+				}
+			}
+
+			return true
+		})
+		if found {
+			return stmt
+		}
+	}
+
+	return nil
 }

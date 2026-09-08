@@ -276,11 +276,18 @@ func (tn Tenancy) editConfig(a *app.App, ch *Change) error {
 	if ok, _ := app.HasImport(rel, src, "github.com/go-playground/errors/v5"); ok {
 		wrapErr = `errors.Wrap(err, "loadTenants()")`
 	}
-	edited, err = app.WrapReturn(rel, edited, "NewDataConfiguration", "DataConfiguration", "conf", "conf.loadTenants(ctx)", wrapErr)
-	if errors.Is(err, app.ErrNoAnchor) {
+	// An anchor miss leaves the file as edited so far: the working copy is only
+	// replaced by a result the editor produced.
+	gained := "the field and the load"
+	wrapped, err := app.WrapReturn(rel, edited, "NewDataConfiguration", "DataConfiguration", "conf", "conf.loadTenants(ctx)", wrapErr)
+	switch {
+	case errors.Is(err, app.ErrNoAnchor):
+		gained = "the field"
 		ch.skipf("%s: NewDataConfiguration does not end in \"return &DataConfiguration{...}, nil\", so the roster load was not inserted; call conf.loadTenants(ctx) once the configuration is built", rel)
-	} else if err != nil {
+	case err != nil:
 		return err
+	default:
+		edited = wrapped
 	}
 	if err := os.WriteFile(a.Abs(rel), edited, mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
@@ -289,7 +296,7 @@ func (tn Tenancy) editConfig(a *app.App, ch *Change) error {
 	if err := writeNew(a, tenancyFile, tn.configSource(pkg, spannerField, engine)); err != nil {
 		return err
 	}
-	ch.didf("%s: the tenant roster (tenantRoster, loaded from %s at startup), Domains(), and DomainVisible() on DataConfiguration; %s gained the field and the load", tenancyFile, tn.Table, rel)
+	ch.didf("%s: the tenant roster (tenantRoster, loaded from %s at startup), Domains(), and DomainVisible() on DataConfiguration; %s gained %s", tenancyFile, tn.Table, rel, gained)
 
 	return nil
 }

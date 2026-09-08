@@ -799,14 +799,16 @@ func (au Auth) editConfig(a *app.App, src *authSource, ch *Change) error {
 				return err
 			}
 		}
-		edited, err = app.AddStatementsBeforeReturn(rel, edited, "NewDataConfiguration", "DataConfiguration", statements)
+		// An anchor miss leaves the file as edited so far: the working copy is only
+		// replaced by a result the editor produced.
+		constructed, err := app.AddStatementsBeforeConstruction(rel, edited, "NewDataConfiguration", "DataConfiguration", statements)
 		switch {
 		case errors.Is(err, app.ErrNoAnchor):
-			ch.skipf("%s: NewDataConfiguration does not end in \"return &DataConfiguration{...}, nil\", so the %s auth is declared but not constructed; construct it beside the %s auth", rel, au.Name, src.Sibling)
+			ch.skipf("%s: NewDataConfiguration builds no &DataConfiguration{...} literal, so the %s auth is declared but not constructed; construct it beside the %s auth and set the field", rel, au.Name, src.Sibling)
 		case err != nil:
 			return err
 		default:
-			edited, err = app.AddLiteralElement(rel, edited, "NewDataConfiguration", "DataConfiguration", au.Name+": "+au.Name+"Auth")
+			edited, err = app.AddLiteralElement(rel, constructed, "NewDataConfiguration", "DataConfiguration", au.Name+": "+au.Name+"Auth")
 			if err != nil {
 				return err
 			}
