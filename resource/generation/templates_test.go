@@ -131,6 +131,12 @@ func Test_computedResourceHandlerTemplate_decoder(t *testing.T) {
 	if notWant := " NewQueryDecoder["; strings.Contains(computedResourceHandlerTemplate, notWant) {
 		t.Errorf("computedResourceHandlerTemplate must not construct the deferred QueryDecoder: found %q", notWant)
 	}
+	// The declared order renders as resource.Paging and resource.SortField through a
+	// template function, so the qualifier is not in the template text; the import
+	// block must still declare it, or every computed handler falls back to goimports.
+	if want := `"github.com/cccteam/ccc/resource"`; !strings.Contains(computedResourceHandlerTemplate, want) {
+		t.Errorf("computedResourceHandlerTemplate missing the import %s", want)
+	}
 }
 
 // Test_appContractTemplate_gating pins the generated app contract: the resource block

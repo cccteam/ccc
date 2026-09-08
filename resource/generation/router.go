@@ -223,6 +223,16 @@ func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo, routePrefix strin
 	}
 }
 
+// singleKeyRouteTestParam names a single-key read route's parameter after the key
+// field, as the compound case and the handler's route constant do: a resource keyed
+// by Code reads {resourceCode}, one keyed by ID reads {resourceID}.
+func singleKeyRouteTestParam(resourceName, pkName string) routeTestParam {
+	return routeTestParam{
+		Key:   strcase.ToGoCamel(resourceName + pkName),
+		Value: strcase.ToGoCamel(fmt.Sprintf("test%s%s", caser.ToPascal(resourceName), pkName)),
+	}
+}
+
 // resourceRoute builds the route for one handler type of a resource under the outlet
 // route prefix, including read-route primary-key params and, for domain-scoped
 // resources, the domain segment pair.
@@ -244,10 +254,13 @@ func (r *resourceGenerator) resourceRoute(res *resourceInfo, ht HandlerType, rou
 			}
 			route.TestParams = readRouteTestParams(res.Name(), pkNames)
 		} else {
-			route.TestParams = []routeTestParam{{
-				Key:   strcase.ToGoCamel(res.Name() + "ID"),
-				Value: strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(res.Name()))),
-			}}
+			var pkName string
+			for _, field := range res.PrimaryKeys() {
+				pkName = field.Name()
+
+				break
+			}
+			route.TestParams = []routeTestParam{singleKeyRouteTestParam(res.Name(), pkName)}
 		}
 		route.appendParamsToPaths()
 	}

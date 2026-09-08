@@ -125,3 +125,30 @@ func Test_resourceGenerator_validateAnnotatedOutlets_manualRegistrations(t *test
 		})
 	}
 }
+
+// Test_singleKeyRouteTestParam pins that a single-key read route names its parameter
+// after the key field: a resource keyed by Code reads {resourceCode}, so the generated
+// route test and the handler's route constant agree.
+func Test_singleKeyRouteTestParam(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		resourceName string
+		pkName       string
+		want         routeTestParam
+	}{
+		{name: "keyed by ID", resourceName: "Widget", pkName: "ID", want: routeTestParam{Key: "widgetID", Value: "testWidgetID"}},
+		{name: "keyed by Code", resourceName: "Country", pkName: "Code", want: routeTestParam{Key: "countryCode", Value: "testCountryCode"}},
+		{name: "keyed by a multi-word field", resourceName: "Ship", pkName: "RegistryNumber", want: routeTestParam{Key: "shipRegistryNumber", Value: "testShipRegistryNumber"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := singleKeyRouteTestParam(tt.resourceName, tt.pkName); got != tt.want {
+				t.Errorf("singleKeyRouteTestParam() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}

@@ -454,6 +454,10 @@ func rpcTypeImports(dst []fixerImport, method *rpcMethodInfo) []fixerImport {
 	if method.Request != nil {
 		dst = appendTypeImports(dst, method.Request.Imports())
 	}
+	if method.Result != nil {
+		// The response mirror declares the result's leaf types too.
+		dst = appendTypeImports(dst, method.Result.Imports())
+	}
 	for _, field := range method.Fields {
 		dst = appendTypeImports(dst, field.Imports())
 	}
