@@ -150,6 +150,9 @@ func renderFile(sub fs.FS, target *os.Root, p string, opts *Options, placeholder
 		if rename {
 			text = names.Rename(text, PlaceholderAuth, opts.Auth)
 		}
+		if path.Base(rel) == lintConfig {
+			text = dropCoveredAllowEntry(text, opts.ModulePath)
+		}
 		out = []byte(text)
 		if path.Ext(rel) == goExt {
 			formatted, err := format.Source(out)
@@ -354,4 +357,52 @@ func Reserved(candidate string) (map[string]bool, error) {
 	}
 
 	return reserved, nil
+}
+
+// lintConfig is the golangci-lint configuration the template carries.
+const lintConfig = ".golangci.yml"
+
+// dropCoveredAllowEntry removes the module's own entry from the lint config's
+// depguard allow list when another entry already covers it as a path prefix.
+// Depguard matches an import against the sorted allow list by adjacency, so a
+// module path listed beside the org prefix it lives under — github.com/cccteam/cpie
+// beside github.com/cccteam — shadows every sibling library that sorts after it
+// (httpio, logger, session) and the rendered application fails its own lint. A module
+// outside every listed prefix (example.com/acme/beacon) keeps its entry.
+func dropCoveredAllowEntry(text, modulePath string) string {
+	lines := strings.Split(text, "\n")
+	covered := false
+	for _, line := range lines {
+		entry, ok := allowEntry(line)
+		if !ok || entry == modulePath || strings.HasPrefix(entry, "$") {
+			continue
+		}
+		if strings.HasPrefix(modulePath, entry+"/") {
+			covered = true
+
+			break
+		}
+	}
+	if !covered {
+		return text
+	}
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if entry, ok := allowEntry(line); ok && entry == modulePath {
+			continue
+		}
+		kept = append(kept, line)
+	}
+
+	return strings.Join(kept, "\n")
+}
+
+// allowEntry reads one "- path" list item, as depguard's allow list writes them.
+func allowEntry(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "- ") {
+		return "", false
+	}
+
+	return strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")), true
 }

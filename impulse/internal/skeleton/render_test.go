@@ -403,3 +403,72 @@ func firstLine(b []byte) string {
 
 	return line
 }
+
+// Test_dropCoveredAllowEntry pins the depguard rule: the module's own allow entry
+// goes when an org prefix already covers it, since depguard's sorted-adjacency match
+// would let the module shadow every sibling sorting after it; a module under no
+// listed prefix keeps its entry, and nothing else moves.
+func Test_dropCoveredAllowEntry(t *testing.T) {
+	t.Parallel()
+
+	const config = `    depguard:
+      rules:
+        main:
+          allow:
+            - $gostd
+            - MODULE
+            - cloud.google.com/go/spanner
+            - github.com/cccteam
+            - github.com/go-chi/chi/v5
+`
+	tests := []struct {
+		name       string
+		modulePath string
+		wantEntry  bool
+	}{
+		{name: "a module under the org prefix loses its entry", modulePath: "github.com/cccteam/cpie", wantEntry: false},
+		{name: "the org prefix itself is not a covering of itself", modulePath: "github.com/cccteam", wantEntry: true},
+		{name: "a module under no listed prefix keeps its entry", modulePath: "example.com/acme/beacon", wantEntry: true},
+		{name: "a sibling of a listed path is not covered", modulePath: "github.com/cccteamx/app", wantEntry: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			text := strings.ReplaceAll(config, "MODULE", tt.modulePath)
+			got := dropCoveredAllowEntry(text, tt.modulePath)
+			if has := strings.Contains(got, "- "+tt.modulePath+"\n"); has != tt.wantEntry {
+				t.Errorf("entry present = %v, want %v:\n%s", has, tt.wantEntry, got)
+			}
+			for _, keep := range []string{"- $gostd", "- cloud.google.com/go/spanner", "- github.com/cccteam\n", "- github.com/go-chi/chi/v5"} {
+				if !strings.Contains(got, keep) {
+					t.Errorf("%q was dropped:\n%s", keep, got)
+				}
+			}
+			if want := strings.Count(config, "\n") - map[bool]int{true: 0, false: 1}[tt.wantEntry]; strings.Count(got, "\n") != want {
+				t.Errorf("line count = %d, want %d", strings.Count(got, "\n"), want)
+			}
+		})
+	}
+}
+
+// TestRender_lintConfigUnderOrg renders the base under the org's own prefix and reads
+// the lint config: the module's depguard entry is gone, the org prefix stands.
+func TestRender_lintConfigUnderOrg(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "cpie")
+	if _, err := Render(&Options{Candidate: "solo", Dir: dir, ModulePath: "github.com/cccteam/cpie"}); err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	config, err := os.ReadFile(filepath.Join(dir, lintConfig))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(config), "- github.com/cccteam/cpie\n") {
+		t.Errorf("the module's own depguard entry survives beside the org prefix:\n%s", config)
+	}
+	if !strings.Contains(string(config), "- github.com/cccteam\n") {
+		t.Errorf("the org prefix is missing from the depguard allow list:\n%s", config)
+	}
+}
