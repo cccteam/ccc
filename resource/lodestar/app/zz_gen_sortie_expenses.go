@@ -54,7 +54,7 @@ func (a *App) SortieExpenses() http.HandlerFunc {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			if !page.Add(&row.Data) {
+			if !page.Add(row) {
 				break
 			}
 			rec := (*sortieExpense)(&row.Data)

@@ -47,7 +47,9 @@ type (
 		// @attribute(hazard)
 		Hazard int64 `spanner:"Hazard"`
 		// @attribute(fee)
-		Fee decimal.Decimal `spanner:"Fee"`
+		// Filterable so the visible projection can be exercised: the archivist's fee
+		// is masked until a mission completes, and a masked cell matches only isnull.
+		Fee decimal.Decimal `spanner:"Fee" allow_filter:"true"`
 		// @attribute(deadline)
 		Deadline time.Time `spanner:"Deadline"`
 		// @attribute(requiredCert)

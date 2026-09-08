@@ -176,6 +176,20 @@ none of them can be used as field names in filters:
 | `offset` | Removed. A request carrying it is refused with a 400 naming `cursor` as its replacement; pages are positioned by the row the cursor names, not by a count of rows to skip. |
 | `capabilities` | Comma-separated write permissions (`Create`, `Update`, `Delete`, `Execute`) to evaluate per row — the §13 capability envelope. Each returned row gains the reserved `zzCapabilities` property: `Update` carries the positive list of editable JSON field names, `Delete` a boolean, `Execute` the positive list of `@target` methods that apply to the row — a declared `@transition` requires the row's pre-image state in its `from` set, a conditional Execute grant ANDs its condition into the same boolean (a plain `@target` method's is the condition alone; unconditional plain methods are structural, no SQL), and the user holds the method's Execute grant — and `Create` the positive list of workflow member resources the user may create beneath the row (§11): the members whose immediate `@stateRoot` hop is this resource, gated by the user's member Create grants, a conditional grant's state terms evaluated against this row's own uniform state binding while terms the parent row cannot answer count potentially-true (an unconditional member grant is structural, no SQL). Advisory hints computed from the same row image and decision instant as the read (conditions render as booleans in the same statement; pure RBAC adds no SQL; a `new.`-referencing term counts potentially-true while the rest of its condition still renders). Enforcement is unchanged. |
 
+A sort or filter runs over the projection the caller can see. A field the caller is
+denied cannot be sorted or filtered on: the request is a 403 naming the field, because
+the order or the membership of the result would leak its values. A conditionally
+granted field can be: the statement orders and filters on `CASE WHEN <condition> THEN
+column END`, so a cell the caller may not see is `NULL` for the query — it sorts in the
+`NULL` region (last ascending, first descending, the same as a genuinely `NULL` cell;
+PostgreSQL states the placement, Spanner sorts on an `IS NULL` key ahead of the column),
+matches `isnull` and nothing else, and a cursor positioned on it carries the `NULL` key.
+When the field's condition covers the whole row predicate (every returned row shows
+the field) the raw column is used instead. A `CASE` in `WHERE` or `ORDER BY` cannot use
+an index, so only such a field pays for it; `index:"true"` stays the declaration of
+which fields may be filtered. A `@computed` resource evaluates no conditions at read
+time, so its sort and filter fields still require an unconditional grant.
+
 A paged list answers with headers beside its JSON array body. `Link` (RFC 8288)
 carries a complete URL per relation that exists — `rel="next"` and `rel="prev"`, each
 the request's own URL with `cursor` set — so the first page has no `prev` and the last

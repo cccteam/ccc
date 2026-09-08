@@ -51,7 +51,7 @@ func (a *App) ClientContacts() http.HandlerFunc {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
-			if !page.Add(&row.Data) {
+			if !page.Add(row) {
 				break
 			}
 			rec := (*clientContact)(&row.Data)

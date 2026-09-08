@@ -4,12 +4,14 @@ package integration
 // Link header, a walk forward and back through cursors with the declared order and
 // with a requested sort, Total-Count on the first page, limit=all, and the refusals
 // — a cursor carried to another sector or another filter, and a sort on a field the
-// caller cannot read unconditionally. Consignments (three seeded in Anvil) walk one
-// row at a time; Missions declare @order(Deadline asc).
+// caller is denied. A sort or filter over a masked field runs over the visible
+// projection. Consignments (three seeded in Anvil) walk one row at a time; Missions
+// declare @order(Deadline asc).
 
 import (
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -406,24 +408,71 @@ func TestPaging_sensitiveSortColumn(t *testing.T) {
 	}
 }
 
-// TestPaging_maskedFieldRefused pins the readability rule against the demo world: a
-// sort or filter field must be granted unconditionally. The archivist's fee is masked
-// until a mission completes, so a sort by fee is refused; the archivist's every other
-// Missions field rides the same conditional grant (the closed-mission rows), so the
-// rule refuses those too, and the marshal, granted unconditionally, sorts freely.
-func TestPaging_maskedFieldRefused(t *testing.T) {
+// TestPaging_visibleProjection pins the visible-projection rule against the demo
+// world. The archivist lists closed missions (completed, failed, stood down) and sees
+// the fee only on a completed one, so the fee is masked on the failed and the
+// stood-down rows: a sort by fee puts them in the NULL region, last ascending and
+// first descending, and a fee filter matches them only through isnull. The
+// archivist's title rides the row condition itself, so it sorts on the raw column;
+// the cadet's every field rides one row condition and sorts freely; the
+// quartermaster, granted no fee at all, is refused.
+func TestPaging_visibleProjection(t *testing.T) {
 	t.Parallel()
 
 	_, h, _ := sharedWorld(t)
+
+	const (
+		completedPod = "80000000-0000-4000-8000-000000000005"
+		failedTow    = "80000000-0000-4000-8000-000000000006"
+		stoodDown    = "80000000-0000-4000-8000-000000000007"
+	)
 
 	tests := []struct {
 		name       string
 		user       accesstypes.User
 		target     string
 		wantStatus int
+		wantOrder  []string
+		wantIDs    []string
 	}{
-		{name: "the archivist's masked fee is refused as a sort", user: "archivist", target: sectorPath(anvil, "missions?sort=fee"), wantStatus: http.StatusForbidden},
-		{name: "the archivist's row-conditioned title is refused as a sort", user: "archivist", target: sectorPath(anvil, "missions?sort=title"), wantStatus: http.StatusForbidden},
+		{
+			name: "the archivist's masked fees sort last ascending", user: "archivist",
+			target: sectorPath(anvil, "missions?sort=fee"), wantStatus: http.StatusOK,
+			wantOrder: []string{completedPod, failedTow, stoodDown},
+		},
+		{
+			name: "and first descending", user: "archivist",
+			target: sectorPath(anvil, "missions?sort=fee:desc"), wantStatus: http.StatusOK,
+			wantOrder: []string{failedTow, stoodDown, completedPod},
+		},
+		{
+			name: "isnull on the fee returns the masked rows", user: "archivist",
+			target: sectorPath(anvil, "missions?filter=sectorId:eq:anvil,fee:isnull"), wantStatus: http.StatusOK,
+			wantIDs: []string{failedTow, stoodDown},
+		},
+		{
+			name: "isnotnull on the fee returns the visible row", user: "archivist",
+			target: sectorPath(anvil, "missions?filter=sectorId:eq:anvil,fee:isnotnull"), wantStatus: http.StatusOK,
+			wantIDs: []string{completedPod},
+		},
+		{
+			name: "a field on the row condition itself sorts on the raw column", user: "archivist",
+			target: sectorPath(anvil, "missions?sort=title"), wantStatus: http.StatusOK,
+			wantOrder: []string{stoodDown, completedPod, failedTow},
+		},
+		{
+			name: "the cadet pages the board sorted by any field", user: "cadet",
+			target: sectorPath(anvil, "missions?sort=hazard:desc,title&limit=2"), wantStatus: http.StatusOK,
+			wantOrder: []string{"80000000-0000-4000-8000-000000000008", "80000000-0000-4000-8000-000000000001"},
+		},
+		{
+			name: "the quartermaster, granted no fee, is refused as a sort", user: "quartermaster",
+			target: sectorPath(anvil, "missions?sort=fee"), wantStatus: http.StatusForbidden,
+		},
+		{
+			name: "and as a filter", user: "quartermaster",
+			target: sectorPath(anvil, "missions?filter=statusId:eq:open,fee:isnull"), wantStatus: http.StatusForbidden,
+		},
 		{name: "the marshal's unconditional fee sorts", user: "marshal", target: sectorPath(anvil, "missions?sort=fee"), wantStatus: http.StatusOK},
 	}
 
@@ -433,6 +482,29 @@ func TestPaging_maskedFieldRefused(t *testing.T) {
 
 			status, body := doRequestAs(t, h, tt.user, http.MethodGet, tt.target, "")
 			assertStatus(t, status, tt.wantStatus, body)
+			if status != http.StatusOK {
+				if !strings.Contains(string(body), "cannot sort or filter on fee") {
+					t.Errorf("body = %s, want the refusal to name the fee", body)
+				}
+
+				return
+			}
+			rows := decodeRows(t, body)
+			if tt.wantOrder != nil {
+				got := make([]string, 0, len(rows))
+				for _, row := range rows {
+					id, _ := row["id"].(string)
+					got = append(got, id)
+				}
+				if !slices.Equal(got, tt.wantOrder) {
+					t.Errorf("order = %v, want %v", got, tt.wantOrder)
+				}
+			}
+			if tt.wantIDs != nil {
+				if got := idsOf(t, rows); !slices.Equal(got, tt.wantIDs) {
+					t.Errorf("ids = %v, want %v", got, tt.wantIDs)
+				}
+			}
 		})
 	}
 }
