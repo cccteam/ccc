@@ -5,6 +5,7 @@ package app
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources"
@@ -35,11 +36,15 @@ func (a *App) ServiceLedgers() http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
+		// The handler applies whatever part of the query the List function did not
+		// take — the filter, the sort, the cursor, the page — over the rows it yields.
+		page, err := querySet.Collect(computedresources.ListServiceLedger(ctx, querySet, a.ResourceClient(), a.ComputedClient()))
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
 		resp := response{}
-		for row, err := range computedresources.ListServiceLedger(ctx, querySet, a.ResourceClient(), a.ComputedClient()) {
-			if err != nil {
-				return httpio.NewEncoder(w).ClientMessage(ctx, err)
-			}
+		for _, row := range page.Rows() {
 			rec := (*serviceLedger)(row)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
@@ -57,6 +62,12 @@ func (a *App) ServiceLedgers() http.HandlerFunc {
 				}
 			}
 			resp = append(resp, rmap)
+		}
+		if page.Reversed() {
+			slices.Reverse(resp)
+		}
+		if err := page.WriteHeaders(w, r); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
 		return httpio.NewEncoder(w).Ok(resp)

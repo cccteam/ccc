@@ -761,11 +761,48 @@ func (c *client) computedFields(res *computedResource, annotations genlang.Struc
 		if err := checkOpaqueField(res.Name(), field); err != nil {
 			errs = append(errs, err)
 		}
+		if err := checkComputedQueryTags(res.Name(), field); err != nil {
+			errs = append(errs, err)
+		}
 
 		res.Fields = append(res.Fields, field)
 	}
 	if len(errs) > 0 {
 		return errors.Wrap(errors.Join(errs...), "computed resource fields")
+	}
+
+	return nil
+}
+
+// checkComputedQueryTags enforces the query tags a computed field may carry. index
+// and uniqueindex name database indexes, which a computed resource has none of,
+// so they are refused; allow_filter declares a filterable field, whose type the
+// in-memory evaluator must be able to compare, decided here with the field named
+// rather than at request time.
+func checkComputedQueryTags(resource string, field *computedField) error {
+	path := resource + "." + field.Name()
+	for _, key := range []string{indexTagKey, uniqueIndexTagKey} {
+		if _, ok := field.LookupTag(key); ok {
+			return errors.Newf("%s: the %s tag names a database index, which a computed resource has none of; use allow_filter to make a field filterable", path, key)
+		}
+	}
+	if _, ok := field.LookupTag(allowFilterTagKey); !ok {
+		return nil
+	}
+	if field.wire == nil || field.wire.IsLeaf() {
+		base := strings.TrimPrefix(field.DerefUnqualifiedType(), "*")
+		if field.wire != nil {
+			base = strings.TrimPrefix(field.wire.SourceType, "*")
+		}
+		if field.wire != nil && field.wire.Slice {
+			return errors.Newf("%s: allow_filter on a list field; the filter evaluator compares single values", path)
+		}
+		// The evaluator compares exactly the types a grant condition compares.
+		if _, ok := goTypeToAttributeType(base); ok {
+			return nil
+		}
+
+		return errors.Newf("%s: allow_filter on a field of type %s, which the filter evaluator cannot compare (text, numbers, booleans, time, date, decimal, and UUID compare)", path, base)
 	}
 
 	return nil

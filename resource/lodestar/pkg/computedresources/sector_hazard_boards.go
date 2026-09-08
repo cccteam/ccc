@@ -2,6 +2,7 @@ package computedresources
 
 import (
 	"context"
+	"fmt"
 	"iter"
 	"slices"
 	"time"
@@ -29,12 +30,21 @@ type (
 	// only way to ask for it, and nothing inside it is a column, a filter field, or
 	// a sort key.
 	//
+	// The board is also the query demonstration for computed resources: ShipName
+	// and Subsystem are filterable (allow_filter, the same tag a table field
+	// carries), the list orders by the worst reading first when the request states
+	// no sort, and the generated handler applies whatever part of the query the
+	// List function does not take — here the ship-name filter is taken and applied
+	// to the ship roster before any report is folded, and the rest (any other
+	// condition, the sort, the page) is left to the handler.
+	//
 	// @computed
 	// @permissionScope(domain)
+	// @order(WorstReading desc)
 	SectorHazardBoard struct {
-		ShipID       ccc.UUID  `spanner:"ShipId"`    // @primarykey
-		Subsystem    string    `spanner:"Subsystem"` // @primarykey
-		ShipName     string    `spanner:"ShipName"`
+		ShipID       ccc.UUID  `spanner:"ShipId"`                         // @primarykey
+		Subsystem    string    `spanner:"Subsystem"  allow_filter:"true"` // @primarykey
+		ShipName     string    `spanner:"ShipName"   allow_filter:"true"`
 		SectorID     string    `spanner:"SectorId"`
 		WorstReading float64   `spanner:"WorstReading"`
 		RecordedAt   time.Time `spanner:"RecordedAt"`
@@ -59,7 +69,11 @@ func (SectorHazardBoard) Resource() accesstypes.Resource {
 }
 
 // ListSectorHazardBoard computes the worst reading per ship and subsystem in the
-// request's sector.
+// request's sector. It takes the ship-name conditions out of the request's filter
+// (qSet.Filter().Take) and applies them to the ship roster, so ships the caller did
+// not ask about are never folded; every other part of the query — a subsystem
+// condition, the sort, the page — is the generated handler's, applied over the
+// rows this function yields.
 func ListSectorHazardBoard(ctx context.Context, qSet *resource.QuerySet[SectorHazardBoard], client resource.Client, _ *Client) iter.Seq2[*SectorHazardBoard, error] {
 	return func(yield func(*SectorHazardBoard, error) bool) {
 		sector, err := sectorOf(qSet)
@@ -69,7 +83,22 @@ func ListSectorHazardBoard(ctx context.Context, qSet *resource.QuerySet[SectorHa
 			return
 		}
 
-		boards, err := worstReadings(ctx, client, sector, nil, "")
+		var shipNames []string
+		for _, condition := range qSet.Filter().Take("ShipName") {
+			// Only an equality narrows the Ship query; any other operator goes
+			// back to the handler by not being taken. Take is all-or-nothing per
+			// field, so the condition is re-applied here for the operators the
+			// query cannot express.
+			if condition.Operator == "eq" {
+				shipNames = append(shipNames, fmt.Sprint(condition.Value))
+			} else {
+				yield(nil, errors.Newf("ListSectorHazardBoard: shipName supports eq only, got %s", condition.Operator))
+
+				return
+			}
+		}
+
+		boards, err := worstReadings(ctx, client, sector, nil, "", shipNames)
 		if err != nil {
 			yield(nil, err)
 
@@ -92,7 +121,7 @@ func ReadSectorHazardBoard(ctx context.Context, shipID ccc.UUID, subsystem strin
 		return nil, err
 	}
 
-	boards, err := worstReadings(ctx, client, sector, &shipID, subsystem)
+	boards, err := worstReadings(ctx, client, sector, &shipID, subsystem, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -104,14 +133,19 @@ func ReadSectorHazardBoard(ctx context.Context, shipID ccc.UUID, subsystem strin
 }
 
 // worstReadings folds droid reports down to the highest reading per (ship,
-// subsystem) in the sector, optionally narrowed to one ship and subsystem, each row
-// carrying its most recent readings newest first. Rows come back in a stable order
-// so list pages render deterministically.
-func worstReadings(ctx context.Context, client resource.Client, domain accesstypes.Domain, shipID *ccc.UUID, subsystem string) ([]*SectorHazardBoard, error) {
+// subsystem) in the sector, optionally narrowed to one ship and subsystem or to
+// the named ships, each row carrying its most recent readings newest first. Rows
+// come back in a stable order; the generated handler sorts and pages them.
+func worstReadings(ctx context.Context, client resource.Client, domain accesstypes.Domain, shipID *ccc.UUID, subsystem string, shipNames []string) ([]*SectorHazardBoard, error) {
+	// The taken ship-name conditions narrow the roster before any report is
+	// folded: a ship the caller did not ask about never enters the fold.
 	names := make(map[ccc.UUID]string)
 	for row, err := range resources.NewShipQuery().AddColumns(resources.NewShipColumns().All()).List(ctx, client) {
 		if err != nil {
 			return nil, errors.Wrap(err, "resources.ShipQuery.List()")
+		}
+		if len(shipNames) > 0 && !slices.Contains(shipNames, row.Data.Name) {
+			continue
 		}
 		names[row.Data.ID] = row.Data.Name
 	}
@@ -132,6 +166,10 @@ func worstReadings(ctx context.Context, client resource.Client, domain accesstyp
 			return nil, errors.Wrap(err, "resources.DroidReportQuery.List()")
 		}
 		if shipID != nil && row.Data.Subsystem != subsystem {
+			continue
+		}
+		if _, known := names[row.Data.ShipID]; !known {
+			// A ship the name filter excluded, or one outside the roster.
 			continue
 		}
 		key := [2]string{row.Data.ShipID.String(), row.Data.Subsystem}

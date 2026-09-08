@@ -41,6 +41,9 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	// arrives).
 	collection *GeneratedCollection
 
+	// requestType is the request struct, consulted for the type behind a sort
+	// field: a nested object or a list cannot be ordered by.
+	requestType reflect.Type
 	// keyFields are the request type's primary-key fields (the perm:"-"
 	// markers), appended to every decoded order as the tiebreak.
 	keyFields []accesstypes.Field
@@ -76,6 +79,7 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 		resourceSet:        resSet,
 		filterParserFields: filterParserFields,
 		structDecoder:      structDecoder,
+		requestType:        reflect.TypeOf(req),
 		keyFields:          primaryKeyFields(reflect.TypeOf(req)),
 	}, nil
 }
@@ -110,8 +114,12 @@ func (d *QueryDecoder[Resource, Request]) WithCursorKey(key *CursorKey) *QueryDe
 // generated-code mismatch.
 func (d *QueryDecoder[Resource, Request]) WithPaging(paging Paging) *QueryDecoder[Resource, Request] {
 	for _, sf := range paging.Order {
-		if !slices.Contains(d.requestFieldMapper.Fields(), accesstypes.Field(sf.Field)) {
+		field, ok := d.requestType.FieldByName(sf.Field)
+		if !ok || !slices.Contains(d.requestFieldMapper.Fields(), accesstypes.Field(sf.Field)) {
 			panic(fmt.Sprintf("resource.QueryDecoder.WithPaging: order field %q is not a field of the request type", sf.Field))
+		}
+		if !sortableType(field.Type) {
+			panic(fmt.Sprintf("resource.QueryDecoder.WithPaging: order field %q has type %s, which cannot be ordered by", sf.Field, field.Type))
 		}
 	}
 	d.paging = paging
@@ -382,6 +390,9 @@ func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) 
 			goFieldName, found := d.requestFieldMapper.StructFieldName(jsonFieldName)
 			if !found {
 				return nil, httpio.NewBadRequestMessagef("unknown sort field: %s", jsonFieldName)
+			}
+			if field, ok := d.requestType.FieldByName(string(goFieldName)); ok && !sortableType(field.Type) {
+				return nil, httpio.NewBadRequestMessagef("field %s cannot be sorted by: only text, number, boolean, time, date, decimal, and UUID fields order", jsonFieldName)
 			}
 
 			direction := SortAscending // Default direction

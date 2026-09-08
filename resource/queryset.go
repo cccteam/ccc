@@ -58,6 +58,13 @@ type QuerySet[Resource Resourcer] struct {
 	// page is the page the request asked for; nil on a hand-built QuerySet,
 	// which reads exactly its limit.
 	page *pageRequest
+
+	// The computed-resource pushdown state: the filter over Go field names the
+	// body and handler share, and whether the body took the sort and the page
+	// (TakeSort, TakePage), leaving the handler nothing to do for them.
+	filterShape *FilterShape
+	sortTaken   bool
+	pageTaken   bool
 	// filterString is the request's filter exactly as sent, fingerprinted into
 	// every cursor the page emits so a cursor cannot be carried to another
 	// query.

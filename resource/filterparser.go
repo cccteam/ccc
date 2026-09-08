@@ -208,6 +208,20 @@ func (f FilterFieldInfo) ColumnName(dbType DBType) (string, error) {
 	return name, nil
 }
 
+// goFieldNames is the parse target that names conditions by Go field instead of
+// by database column: the tree a computed resource's handler evaluates against
+// rows in memory, and the one a body takes conditions from.
+const goFieldNames DBType = "gofields"
+
+// name returns the identifier a condition on this field carries for the parse target.
+func (f FilterFieldInfo) name(target DBType) (string, error) {
+	if target == goFieldNames {
+		return f.GOFieldName, nil
+	}
+
+	return f.ColumnName(target)
+}
+
 // FilterParser builds an AST from tokens.
 type FilterParser struct {
 	lexer           *FilterLexer
@@ -268,6 +282,12 @@ func (p *FilterParser) reset() error {
 	return nil
 }
 
+// ParseFields parses the filter with every condition named by Go field, for
+// evaluation against rows in memory rather than rendering into SQL.
+func (p *FilterParser) ParseFields() (ExpressionNode, error) {
+	return p.Parse(goFieldNames)
+}
+
 // Parse is the main entry point for parsing the filter string.
 func (p *FilterParser) Parse(dbType DBType) (ExpressionNode, error) {
 	if exp, found := p.parsedExpression[dbType]; found {
@@ -287,7 +307,10 @@ func (p *FilterParser) Parse(dbType DBType) (ExpressionNode, error) {
 		return nil, httpio.NewBadRequestMessagef("Invalid filter query. Unexpected characters '%s' (type: %s) found after the end of the query.", p.peek.Value, p.peek.Type)
 	}
 
-	if !p.hasIndexedField {
+	// A table filter must touch an indexed column so the database has a path
+	// into it; a computed resource's rows are already in memory, so any
+	// filterable field serves.
+	if !p.hasIndexedField && dbType != goFieldNames {
 		return nil, httpio.NewBadRequestMessagef("Invalid filter query. Filter must contain at least one column that is indexed for dbType %s", dbType)
 	}
 
@@ -401,7 +424,7 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 		p.hasIndexedField = true
 	}
 
-	field, err := fieldInfo.ColumnName(dbType)
+	field, err := fieldInfo.name(dbType)
 	if err != nil {
 		return nil, err
 	}

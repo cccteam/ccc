@@ -5,10 +5,12 @@ package app
 
 import (
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/tracer"
@@ -25,8 +27,8 @@ func (a *App) SectorHazardBoards() http.HandlerFunc {
 
 	type sectorHazardBoard struct {
 		ShipID       ccc.UUID  `json:"shipId"       perm:"-"`
-		Subsystem    string    `json:"subsystem"    perm:"-"`
-		ShipName     string    `json:"shipName"`
+		Subsystem    string    `json:"subsystem"    allow_filter:"true" perm:"-"`
+		ShipName     string    `json:"shipName"     allow_filter:"true"`
 		SectorID     string    `json:"sectorId"`
 		WorstReading float64   `json:"worstReading"`
 		RecordedAt   time.Time `json:"recordedAt"`
@@ -58,7 +60,8 @@ func (a *App) SectorHazardBoards() http.HandlerFunc {
 		return &sectorHazardBoard{ShipID: view.ShipID, Subsystem: view.Subsystem, ShipName: view.ShipName, SectorID: view.SectorID, WorstReading: view.WorstReading, RecordedAt: view.RecordedAt, Recent: recent}
 	}
 
-	decoder := NewComputedQueryDecoder[computedresources.SectorHazardBoard, sectorHazardBoard](a, accesstypes.List)
+	decoder := NewComputedQueryDecoder[computedresources.SectorHazardBoard, sectorHazardBoard](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "WorstReading", Direction: resource.SortDescending}}})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -70,11 +73,15 @@ func (a *App) SectorHazardBoards() http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
+		// The handler applies whatever part of the query the List function did not
+		// take — the filter, the sort, the cursor, the page — over the rows it yields.
+		page, err := querySet.Collect(computedresources.ListSectorHazardBoard(ctx, querySet, a.ResourceClient(), a.ComputedClient()))
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
 		resp := response{}
-		for row, err := range computedresources.ListSectorHazardBoard(ctx, querySet, a.ResourceClient(), a.ComputedClient()) {
-			if err != nil {
-				return httpio.NewEncoder(w).ClientMessage(ctx, err)
-			}
+		for _, row := range page.Rows() {
 			rec := mirrorSectorHazardBoard(*row)
 			rmap := make(map[string]any)
 			for _, field := range querySet.Fields() {
@@ -96,6 +103,12 @@ func (a *App) SectorHazardBoards() http.HandlerFunc {
 				}
 			}
 			resp = append(resp, rmap)
+		}
+		if page.Reversed() {
+			slices.Reverse(resp)
+		}
+		if err := page.WriteHeaders(w, r); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
 		return httpio.NewEncoder(w).Ok(resp)

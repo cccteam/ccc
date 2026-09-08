@@ -630,6 +630,17 @@ func (c *computedField) PIITag() string {
 	return ""
 }
 
+// AllowFilterTag copies the source field's allow_filter tag onto the request struct,
+// where the query decoder reads it: the same declaration a table field makes, so the
+// generated handler filters a computed list by exactly the declared fields.
+func (c *computedField) AllowFilterTag() string {
+	if _, ok := c.LookupTag(allowFilterTagKey); ok {
+		return allowFilterTagKey + `:"true"`
+	}
+
+	return ""
+}
+
 // PermTag renders the perm:"-" primary-key exemption marker on @primarykey fields; see
 // resourceField.PermTag.
 func (c *computedField) PermTag() string {

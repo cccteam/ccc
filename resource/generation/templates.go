@@ -2766,6 +2766,7 @@ package {{ .Package }}
 
 import (
 	"net/http"
+	"slices"
 
 	{{ .LocalPackageImports }}
 	"github.com/cccteam/ccc"
@@ -2782,7 +2783,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 {{ . }}{{- end }}
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
 		{{- end }}
 	}
 
@@ -2807,11 +2808,15 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
+		// The handler applies whatever part of the query the List function did not
+		// take — the filter, the sort, the cursor, the page — over the rows it yields.
+		page, err := querySet.Collect({{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()))
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
 		resp := response{}
-		for row, err := range {{ .ComputedPackage }}.List{{ .Resource.Name }}(ctx, querySet, {{ .ReceiverName }}.ResourceClient(), {{ .ReceiverName }}.ComputedClient()) {
-			if err != nil {
-				return httpio.NewEncoder(w).ClientMessage(ctx, err)
-			}
+		for _, row := range page.Rows() {
 			{{- if .Resource.Shape.Flat }}
 			rec := (*{{ GoCamel .Resource.Name }})(row)
 			{{- else }}
@@ -2827,6 +2832,12 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 				}
 			}
 			resp = append(resp, rmap)
+		}
+		if page.Reversed() {
+			slices.Reverse(resp)
+		}
+		if err := page.WriteHeaders(w, r); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
 		return httpio.NewEncoder(w).Ok(resp)

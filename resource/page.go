@@ -39,6 +39,15 @@ type Page[Resource Resourcer] struct {
 	kept  uint64
 	more  bool
 	total *int64
+	// rows holds the page's rows when the QuerySet collected them itself
+	// (Collect, for a computed resource); a table handler encodes as it adds.
+	rows []*Resource
+}
+
+// Rows returns the page's rows in read order when the QuerySet collected them
+// (Collect); the handler reverses them when Reversed reports a backward walk.
+func (p *Page[Resource]) Rows() []*Resource {
+	return p.rows
 }
 
 // Page returns the collector for the page this QuerySet was decoded to read.
