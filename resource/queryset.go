@@ -300,13 +300,13 @@ func (q *QuerySet[Resource]) queryColumns() []accesstypes.Field {
 // rendering. The exempt primary key follows the resource-level grant already
 // checked.
 func (q *QuerySet[Resource]) checkQueryFieldsReadable(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions) error {
-	decisions, names, err := q.queryFieldDecisions(ctx, rSet, userPermissions)
+	decisions, fields, err := q.queryFieldDecisions(ctx, rSet, userPermissions)
 	if err != nil {
 		return err
 	}
-	for res, field := range names {
-		if decisions[res].IsDenied() {
-			return httpio.NewForbiddenMessagef("scope (%s), user (%s) cannot sort or filter on %s: (%s) on %s is denied", q.scope, userPermissions.User(), q.jsonName(field), q.requiredPermission, res)
+	for _, qf := range fields {
+		if decisions[qf.res].IsDenied() {
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) cannot sort or filter on %s: (%s) on %s is denied", q.scope, userPermissions.User(), q.jsonName(qf.field), q.requiredPermission, qf.res)
 		}
 	}
 	q.carryConditionalDecisions(decisions)
@@ -319,30 +319,36 @@ func (q *QuerySet[Resource]) checkQueryFieldsReadable(ctx context.Context, rSet 
 // orders and filters the body's rows by the field's real values and no
 // statement renders a visible projection over them.
 func (q *QuerySet[Resource]) checkQueryFieldsGranted(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions) error {
-	decisions, names, err := q.queryFieldDecisions(ctx, rSet, userPermissions)
+	decisions, fields, err := q.queryFieldDecisions(ctx, rSet, userPermissions)
 	if err != nil {
 		return err
 	}
-	for res, field := range names {
-		if !decisions[res].IsGranted() {
-			return httpio.NewForbiddenMessagef("scope (%s), user (%s) cannot sort or filter on %s: (%s) on %s must be granted unconditionally", q.scope, userPermissions.User(), q.jsonName(field), q.requiredPermission, res)
+	for _, qf := range fields {
+		if !decisions[qf.res].IsGranted() {
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) cannot sort or filter on %s: (%s) on %s must be granted unconditionally", q.scope, userPermissions.User(), q.jsonName(qf.field), q.requiredPermission, qf.res)
 		}
 	}
 
 	return nil
 }
 
+// queryField pairs a grant-bearing sort or filter field with its resource.
+type queryField struct {
+	field accesstypes.Field
+	res   accesstypes.Resource
+}
+
 // queryFieldDecisions checks the grant-bearing sort and filter fields in one
-// call and returns the decisions with each resource's field name.
-func (q *QuerySet[Resource]) queryFieldDecisions(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions) (accesstypes.Decisions, map[accesstypes.Resource]accesstypes.Field, error) {
-	fields := q.queryFields()
-	resources := make([]accesstypes.Resource, 0, len(fields))
-	names := make(map[accesstypes.Resource]accesstypes.Field, len(fields))
-	for _, field := range fields {
+// call and returns the decisions with the fields in request order, so a
+// refusal names the first offending field.
+func (q *QuerySet[Resource]) queryFieldDecisions(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions) (accesstypes.Decisions, []queryField, error) {
+	var fields []queryField
+	var resources []accesstypes.Resource
+	for _, field := range q.queryFields() {
 		if rSet.PermissionRequired(field, q.requiredPermission) {
 			res := rSet.Resource(field)
+			fields = append(fields, queryField{field: field, res: res})
 			resources = append(resources, res)
-			names[res] = field
 		}
 	}
 	if len(resources) == 0 {
@@ -354,7 +360,7 @@ func (q *QuerySet[Resource]) queryFieldDecisions(ctx context.Context, rSet *Set[
 		return nil, nil, errors.Wrap(err, "resource.UserPermissions.Check()")
 	}
 
-	return decisions, names, nil
+	return decisions, fields, nil
 }
 
 // RequestCapabilities asks the read to evaluate per-row write affordances for
@@ -563,7 +569,7 @@ func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType, rendered *rendere
 			return "", err
 		}
 
-		orderByParts = append(orderByParts, column.sql+" "+orderDirectionSQL(sf.Direction, column.nullable))
+		orderByParts = append(orderByParts, orderTermSQL(dbType, column.sql, sf.Direction, column.nullable))
 	}
 	if len(orderByParts) == 0 {
 		return "", nil
@@ -607,22 +613,31 @@ func (q *QuerySet[Resource]) cursorPredicate(dbType DBType, registry *paramRegis
 	return predicate, nil
 }
 
-// orderDirectionSQL renders one ORDER BY term's direction, with the NULL
-// placement a nullable column needs for the order to be the same on every
-// database.
-func orderDirectionSQL(direction SortDirection, nullable bool) string {
+// orderTermSQL renders one ORDER BY term: the column with its direction, and
+// the NULL placement a nullable column needs for the order to be the same on
+// every database — NULLS LAST ascending, NULLS FIRST descending. PostgreSQL
+// states the placement; Spanner, whose emulator refuses NULLS FIRST and NULLS
+// LAST, sorts on an IS NULL key ahead of the column, which orders the same.
+func orderTermSQL(dbType DBType, column string, direction SortDirection, nullable bool) string {
+	dir := "ASC"
 	if direction == SortDescending {
-		if nullable {
-			return "DESC NULLS FIRST"
+		dir = "DESC"
+	}
+	if !nullable {
+		return column + " " + dir
+	}
+	if dbType == SpannerDBType {
+		if direction == SortDescending {
+			return column + " IS NULL DESC, " + column + " DESC"
 		}
 
-		return "DESC"
+		return column + " IS NULL, " + column + " ASC"
 	}
-	if nullable {
-		return "ASC NULLS LAST"
+	if direction == SortDescending {
+		return column + " DESC NULLS FIRST"
 	}
 
-	return "ASC"
+	return column + " ASC NULLS LAST"
 }
 
 // isNullableType reports whether a resource field's Go type can hold a database

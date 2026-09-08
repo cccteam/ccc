@@ -75,13 +75,13 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 		wantErr      string
 	}{
 		{
-			name:      "sort on an unpruned conditional field orders its CASE with NULLS LAST",
+			name:      "sort on an unpruned conditional field orders its CASE with the NULL region last",
 			target:    "/?sort=fee",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			wantSpanner: "SELECT Id, Name, CASE WHEN `projectionResources`.`Owner` = @subject THEN Fee ELSE @_c1 END AS Fee, Note, " +
 				"IF(`projectionResources`.`Owner` = @subject, ARRAY<STRING>[], ['fee']) AS zzMaskedFields " +
 				"FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
-				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC NULLS LAST, `Id` ASC LIMIT 51",
+				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id", "Name", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" ELSE @_c1 END AS "Fee", "Note", ` +
 				`ARRAY_REMOVE(ARRAY[CASE WHEN "projectionResources"."Owner" = @subject THEN NULL ELSE 'fee' END], NULL) AS "zzMaskedFields" ` +
 				`FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
@@ -93,7 +93,7 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 			target:    "/?sort=fee:desc&columns=id,name",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			wantSpanner: "SELECT Id, Name FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
-				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END DESC NULLS FIRST, `Id` ASC LIMIT 51",
+				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL DESC, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END DESC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id", "Name" FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END DESC NULLS FIRST, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain"},
@@ -148,7 +148,7 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 			cursor:    &cursor{Direction: pageNext, Keys: []*string{nil, strPtr(id)}},
 			wantSpanner: "SELECT Id FROM projectionResources " +
 				"WHERE (`projectionResources`.`Station` = @domain) AND ((CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL AND `Id` > @_c1)) " +
-				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC NULLS LAST, `Id` ASC LIMIT 51",
+				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id" FROM projectionResources ` +
 				`WHERE ("projectionResources"."Station" = @domain) AND ((CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL AND "Id" > @_c1)) ` +
 				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC NULLS LAST, "Id" ASC LIMIT 51`,
@@ -163,7 +163,7 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 				"WHERE (`projectionResources`.`Station` = @domain) AND (" +
 				"(CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END > @_c1 OR CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL) OR " +
 				"(CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END = @_c1 AND `Id` > @_c2)) " +
-				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC NULLS LAST, `Id` ASC LIMIT 51",
+				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id" FROM projectionResources ` +
 				`WHERE ("projectionResources"."Station" = @domain) AND (` +
 				`(CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END > @_c1 OR CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL) OR ` +

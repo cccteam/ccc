@@ -63,7 +63,7 @@ func TestQuerySet_Order(t *testing.T) {
 			sortFields:   []SortField{{Field: "Note", Direction: SortAscending}},
 			keyFields:    []accesstypes.Field{"ID"},
 			wantOrder:    []SortField{{Field: "Note", Direction: SortAscending}, {Field: "ID", Direction: SortAscending}},
-			wantSpanner:  "ORDER BY `Note` ASC NULLS LAST, `Id` ASC",
+			wantSpanner:  "ORDER BY `Note` IS NULL, `Note` ASC, `Id` ASC",
 			wantPostgres: `ORDER BY "Note" ASC NULLS LAST, "Id" ASC`,
 		},
 		{
@@ -71,7 +71,7 @@ func TestQuerySet_Order(t *testing.T) {
 			sortFields:   []SortField{{Field: "Note", Direction: SortDescending}, {Field: "Name", Direction: SortDescending}},
 			keyFields:    []accesstypes.Field{"ID"},
 			wantOrder:    []SortField{{Field: "Note", Direction: SortDescending}, {Field: "Name", Direction: SortDescending}, {Field: "ID", Direction: SortAscending}},
-			wantSpanner:  "ORDER BY `Note` DESC NULLS FIRST, `Name` DESC, `Id` ASC",
+			wantSpanner:  "ORDER BY `Note` IS NULL DESC, `Note` DESC, `Name` DESC, `Id` ASC",
 			wantPostgres: `ORDER BY "Note" DESC NULLS FIRST, "Name" DESC, "Id" ASC`,
 		},
 		{
