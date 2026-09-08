@@ -51,6 +51,8 @@ func Test_apiClientData(t *testing.T) {
 				"consolidated: true,",
 				"keys: ['id'],",
 				"operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],",
+				// An undeclared page is the generator-wide default with no maximum.
+				"page: { default: 50 },",
 				// The patchable list mirrors the Patch interface exactly: keys,
 				// server-owned, and immutable fields absent.
 				"patchable: ['name', 'listedName', 'secret'],",
@@ -106,11 +108,15 @@ func Test_apiClientData(t *testing.T) {
 				for _, f := range summary.Fields {
 					f.typescriptType = "string"
 				}
+				summary.PageDefault, summary.PageMax = 25, 200
 				return &typescriptGenerator{client: &client{computedResources: []*computedResource{summary}}}
 			},
 			wantContains: []string{
 				"export type SummariesKey = [id: string];",
 				"operations: ['list', 'read'],",
+				// A declared @page reaches the client: the default and the maximum,
+				// which also tells it limit=all is refused.
+				"page: { default: 25, max: 200 },",
 				"  summaries: ResourceHandle<Summaries, SummariesKey, 'list' | 'read'>;",
 			},
 			wantNotContains: []string{

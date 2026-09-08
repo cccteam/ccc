@@ -378,6 +378,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove'],
+      page: { default: 50 },
       patchable: ['name', 'contactName', 'contactEmail', 'trusted'],
     },
     [Resources.ClientContacts]: {
@@ -388,6 +389,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['userId', 'clientId', 'displayName'],
     },
     [Resources.Consignments]: {
@@ -398,6 +400,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['clientId', 'description', 'mass', 'expiresOn', 'releasedAt'],
     },
     [Resources.DistressCalls]: {
@@ -408,6 +411,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['summary', 'severity', 'callerContact', 'transcript'],
     },
     [Resources.FeeByKinds]: {
@@ -418,6 +422,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['kindId'],
       operations: ['list', 'read'],
+      page: { default: 50 },
     },
     [Resources.Hangars]: {
       resource: Resources.Hangars,
@@ -427,6 +432,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove'],
+      page: { default: 50 },
       patchable: ['name', 'zone'],
     },
     [Resources.Missions]: {
@@ -437,6 +443,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['clientId', 'kindId', 'title', 'brief', 'hazard', 'fee', 'deadline', 'requiredCertId', 'assignedSquadronId', 'notes'],
     },
     [Resources.OpenMissionsBySquadrons]: {
@@ -447,6 +454,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['squadronId', 'sectorId'],
       operations: ['list', 'read'],
+      page: { default: 50 },
     },
     [Resources.Pilots]: {
       resource: Resources.Pilots,
@@ -456,6 +464,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['userId', 'displayName', 'clearance', 'feeLimit'],
     },
     [Resources.PilotCertifications]: {
@@ -466,6 +475,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['userId', 'certificationId'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: [],
     },
     [Resources.Refits]: {
@@ -476,6 +486,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['shipId', 'estimate', 'notes'],
     },
     [Resources.RefitTasks]: {
@@ -486,6 +497,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['refitId', 'taskNumber'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['instructions', 'done', 'notes'],
     },
     [Resources.Sectors]: {
@@ -496,6 +508,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['name', 'region', 'established'],
     },
     [Resources.Ships]: {
@@ -506,6 +519,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['hangarId', 'classId', 'name'],
     },
     [Resources.ShipClasses]: {
@@ -516,6 +530,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['roleId', 'tonnage', 'hardened'],
     },
     [Resources.Sorties]: {
@@ -526,6 +541,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['missionId', 'shipId', 'pilotUserId', 'launchedAt', 'returnedAt', 'debrief'],
     },
     [Resources.SortieExpenses]: {
@@ -536,6 +552,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['sortieId', 'category', 'amount', 'note'],
     },
     [Resources.Squadrons]: {
@@ -546,6 +563,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['wingId', 'name'],
     },
     [Resources.SquadronMemberships]: {
@@ -556,6 +574,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['squadronId', 'userId'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: [],
     },
     [Resources.Wings]: {
@@ -566,6 +585,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['name'],
     },
     [Resources.PilotCards]: {
@@ -576,6 +596,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['userId'],
       operations: ['list'],
+      page: { default: 50 },
     },
     [Resources.SectorHazardBoards]: {
       resource: Resources.SectorHazardBoards,
@@ -585,6 +606,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['shipId', 'subsystem'],
       operations: ['list', 'read'],
+      page: { default: 50 },
     },
     [Resources.ServiceLedgers]: {
       resource: Resources.ServiceLedgers,
@@ -594,6 +616,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['sectorId'],
       operations: ['list'],
+      page: { default: 50 },
     },
   },
   methods: {

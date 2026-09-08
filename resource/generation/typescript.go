@@ -700,6 +700,8 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 		Route:        strcase.ToKebab(plural),
 		Scope:        res.PermissionScope,
 		Consolidated: res.IsConsolidated,
+		PageDefault:  pageDefault(res.PageDefault),
+		PageMax:      res.PageMax,
 	}
 
 	for _, field := range res.PrimaryKeys() {
@@ -754,13 +756,25 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 	return out
 }
 
+// pageDefault resolves an undeclared default page to the generator-wide size, so
+// the descriptor always states the page a limit-less request receives.
+func pageDefault(declared uint64) uint64 {
+	if declared == 0 {
+		return resource.DefaultPageSize
+	}
+
+	return declared
+}
+
 func (t *typescriptGenerator) apiComputedResource(res *computedResource) *tsAPIResource {
 	plural := t.pluralize(res.Name())
 	out := &tsAPIResource{
-		Name:     plural,
-		Property: strcase.ToCamel(plural),
-		Route:    strcase.ToKebab(plural),
-		Scope:    res.PermissionScope,
+		Name:        plural,
+		Property:    strcase.ToCamel(plural),
+		Route:       strcase.ToKebab(plural),
+		Scope:       res.PermissionScope,
+		PageDefault: pageDefault(res.PageDefault),
+		PageMax:     res.PageMax,
 	}
 	for _, field := range res.PrimaryKeys() {
 		out.Keys = append(out.Keys, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})

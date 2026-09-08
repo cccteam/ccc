@@ -89,6 +89,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['userId', 'clientId', 'displayName'],
     },
     [Resources.DistressCalls]: {
@@ -99,6 +100,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['summary', 'severity', 'callerContact', 'transcript'],
     },
     [Resources.Missions]: {
@@ -109,6 +111,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['clientId', 'kindId', 'title', 'brief', 'hazard', 'fee', 'deadline', 'requiredCertId', 'assignedSquadronId', 'notes'],
     },
   },

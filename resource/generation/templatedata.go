@@ -515,6 +515,11 @@ type tsAPIResource struct {
 	CreateFields []*tsAPIField
 	HasPatch     bool
 	PatchFields  []*tsAPIField
+	// PageDefault and PageMax are the resource's page sizes as the client
+	// descriptor carries them: the page a limit-less request receives, and
+	// the largest page it may ask for (0 = none, which also permits limit=all).
+	PageDefault uint64
+	PageMax     uint64
 }
 
 // HandleType renders the ResourceHandle instantiation for the resource: the row type,
