@@ -35,6 +35,11 @@ type QuerySet[Resource Resourcer] struct {
 	requiredPermission     accesstypes.Permission
 	filterAst              ExpressionNode
 	filterParser           func(DBType) (ExpressionNode, error)
+	// filterFields names the fields the decoded filter expression touches. With
+	// sortFields it is the set a caller must hold an unconditional grant on:
+	// ordering or filtering by a field the caller cannot read on every row is
+	// an inference channel. Empty on a hand-built QuerySet.
+	filterFields []accesstypes.Field
 
 	// armError is why Enforce could not bind the query set to a caller; it
 	// surfaces at execution so an unarmed operation never runs unchecked.
@@ -184,6 +189,10 @@ func (q *QuerySet[Resource]) checkReadPermissions(ctx context.Context, dbType DB
 			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, denied)
 		}
 		q.carryConditionalDecisions(decisions)
+
+		if err := q.checkQueryFieldsReadable(ctx, q.resourceSet, q.userPermissions); err != nil {
+			return err
+		}
 	}
 
 	fields := q.Fields()
@@ -212,6 +221,58 @@ func (q *QuerySet[Resource]) checkReadPermissions(ctx context.Context, dbType DB
 			return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", q.scope, q.userPermissions.User(), q.requiredPermission, denied)
 		}
 		q.carryConditionalDecisions(decisions)
+	}
+
+	return nil
+}
+
+// queryFields returns the fields the request orders or filters by, each once.
+func (q *QuerySet[Resource]) queryFields() []accesstypes.Field {
+	fields := make([]accesstypes.Field, 0, len(q.sortFields)+len(q.filterFields))
+	for _, sf := range q.sortFields {
+		if !slices.Contains(fields, accesstypes.Field(sf.Field)) {
+			fields = append(fields, accesstypes.Field(sf.Field))
+		}
+	}
+	for _, field := range q.filterFields {
+		if !slices.Contains(fields, field) {
+			fields = append(fields, field)
+		}
+	}
+
+	return fields
+}
+
+// checkQueryFieldsReadable refuses a sort or filter over a field the caller
+// cannot read on every row. A denied field would let the caller infer its
+// values from the order or the membership of the result, and a conditionally
+// granted field is readable on some rows and masked on others, so an ORDER BY
+// or WHERE over it would order and select masked rows by their real values.
+// Only a Granted decision admits the field; the exempt primary key follows the
+// resource-level grant already checked.
+func (q *QuerySet[Resource]) checkQueryFieldsReadable(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions) error {
+	fields := q.queryFields()
+	resources := make([]accesstypes.Resource, 0, len(fields))
+	names := make(map[accesstypes.Resource]accesstypes.Field, len(fields))
+	for _, field := range fields {
+		if rSet.PermissionRequired(field, q.requiredPermission) {
+			res := rSet.Resource(field)
+			resources = append(resources, res)
+			names[res] = field
+		}
+	}
+	if len(resources) == 0 {
+		return nil
+	}
+
+	decisions, err := userPermissions.Check(ctx, q.env, q.scope, q.requiredPermission, resources...)
+	if err != nil {
+		return errors.Wrap(err, "resource.UserPermissions.Check()")
+	}
+	for _, res := range resources {
+		if !decisions[res].IsGranted() {
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) cannot sort or filter on %s: (%s) on %s must be granted unconditionally", q.scope, userPermissions.User(), q.jsonName(names[res]), q.requiredPermission, res)
+		}
 	}
 
 	return nil

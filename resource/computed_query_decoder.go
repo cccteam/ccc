@@ -99,6 +99,12 @@ func (d *ComputedQueryDecoder[Resource, Request]) Decode(request *http.Request, 
 		return nil, errConditionalAtDecode(requiredPermission, conditional)
 	}
 
+	// A sort or filter field needs the caller's unconditional grant, exactly as
+	// on a table: the handler orders and filters the body's rows by it.
+	if err := qSet.checkQueryFieldsReadable(ctx, rSet, userPermissions); err != nil {
+		return nil, err
+	}
+
 	if len(qSet.Fields()) == 0 {
 		if err := d.addAccessibleFields(ctx, qSet, userPermissions, scope, requiredPermission); err != nil {
 			return nil, err

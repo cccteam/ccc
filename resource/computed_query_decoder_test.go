@@ -29,8 +29,8 @@ func (computedEnforcementResource) DefaultConfig() Config { return Config{} }
 
 type computedEnforcementRequest struct {
 	ID     ccc.UUID `json:"id"     perm:"-"`
-	Public string   `json:"public"`
-	Tagged string   `json:"tagged"`
+	Public string   `json:"public" allow_filter:"true"`
+	Tagged string   `json:"tagged" allow_filter:"true"`
 }
 
 func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
@@ -97,6 +97,44 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 			target:          "/",
 			permCheckErr:    errors.New("engine unavailable"),
 			wantErrContains: "engine unavailable",
+		},
+		{
+			name:   "sort on a granted field is admitted",
+			target: "/?sort=public",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
+			},
+			wantFields: []accesstypes.Field{"ID", "Public"},
+		},
+		{
+			name:   "sort on a denied field is Forbidden naming the field",
+			target: "/?sort=tagged",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
+			},
+			wantForbidden:   true,
+			wantErrContains: "sort or filter on tagged",
+		},
+		{
+			name:   "filter on a denied field is Forbidden naming the field",
+			target: "/?filter=tagged:eq:x",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
+			},
+			wantForbidden:   true,
+			wantErrContains: "sort or filter on tagged",
+		},
+		{
+			name:   "sort on a conditionally granted field is Forbidden, not an invariant breach",
+			target: "/?sort=tagged",
+			grants: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
+			},
+			conditional: map[accesstypes.Permission][]accesstypes.Resource{
+				accesstypes.List: {computedEnforcedResource + ".tagged"},
+			},
+			wantForbidden:   true,
+			wantErrContains: "must be granted unconditionally",
 		},
 		{
 			name:   "conditional resource-level grant is an invariant breach, not Forbidden",

@@ -18,6 +18,9 @@ type parsedQueryParams struct {
 	ColumnFields []accesstypes.Field
 	SortFields   []SortField
 	FilterParser func(DBType) (ExpressionNode, error)
+	// FilterFields names the resource fields the filter expression touches, so
+	// the read checks can require an unconditional grant on each of them.
+	FilterFields []accesstypes.Field
 	Limit        *uint64
 	Offset       *uint64
 	Capabilities []accesstypes.Permission
@@ -122,6 +125,7 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	qSet.collection = d.collection
 	qSet.jsonNames = d.requestFieldMapper.JSONNames()
 	qSet.SetFilterParser(parsedQuery.FilterParser)
+	qSet.filterFields = parsedQuery.FilterFields
 	qSet.SetSortFields(parsedQuery.SortFields)
 	qSet.SetLimit(parsedQuery.Limit)
 	qSet.SetOffset(parsedQuery.Offset)
@@ -159,6 +163,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 	var columnFields []accesstypes.Field
 	var sortFields []SortField
 	var filterParser func(DBType) (ExpressionNode, error)
+	var filterFields []accesstypes.Field
 	var limit *uint64
 	var offset *uint64
 	var err error
@@ -212,6 +217,10 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		if err != nil {
 			return nil, err
 		}
+		filterFields, err = d.filterFields(filterStr)
+		if err != nil {
+			return nil, err
+		}
 
 		delete(query, filterParam)
 	}
@@ -241,6 +250,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		ColumnFields: columnFields,
 		SortFields:   sortFields,
 		FilterParser: filterParser,
+		FilterFields: filterFields,
 		Limit:        limit,
 		Offset:       offset,
 		Capabilities: capabilities,
@@ -299,28 +309,49 @@ func (d *QueryDecoder[Resource, Request]) filterExpressionParser(filterStr strin
 }
 
 func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
-	lexer := NewFilterLexer(filterStr)
-	for {
-		token, err := lexer.NextToken()
-		if err != nil {
-			return errors.Wrap(err, "failed to get next token")
-		}
-
-		if token.Type == TokenEOF {
-			break
-		}
-
-		if token.Type == TokenCondition {
-			jsonFieldNameStr := strings.SplitN(token.Value, ":", 2)[0]
-			if fieldInfo, found := d.filterParserFields[jsonFieldName(jsonFieldNameStr)]; found {
-				if fieldInfo.PII {
-					return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: %s", jsonFieldNameStr)
-				}
-			}
+	for _, fieldInfo := range d.filterConditionFields(filterStr) {
+		if fieldInfo.PII {
+			return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: %s", fieldInfo.JSONFieldName)
 		}
 	}
 
 	return nil
+}
+
+// filterFields names the resource fields a filter expression touches, in first
+// appearance order without repeats. The parser has already validated the
+// expression, so an unknown field cannot reach here.
+func (d *QueryDecoder[Resource, Request]) filterFields(filterStr string) ([]accesstypes.Field, error) {
+	var fields []accesstypes.Field
+	for _, fieldInfo := range d.filterConditionFields(filterStr) {
+		field := accesstypes.Field(fieldInfo.GOFieldName)
+		if !slices.Contains(fields, field) {
+			fields = append(fields, field)
+		}
+	}
+
+	return fields, nil
+}
+
+// filterConditionFields walks the filter's tokens and returns the filterable
+// field behind each condition; conditions on fields the parser would refuse
+// are skipped, since the parser's own error is the one the caller sees.
+func (d *QueryDecoder[Resource, Request]) filterConditionFields(filterStr string) []FilterFieldInfo {
+	var infos []FilterFieldInfo
+	lexer := NewFilterLexer(filterStr)
+	for {
+		token, err := lexer.NextToken()
+		if err != nil || token.Type == TokenEOF {
+			return infos
+		}
+
+		if token.Type == TokenCondition {
+			jsonFieldNameStr, _, _ := strings.Cut(token.Value, ":")
+			if fieldInfo, found := d.filterParserFields[jsonFieldName(jsonFieldNameStr)]; found {
+				infos = append(infos, fieldInfo)
+			}
+		}
+	}
 }
 
 func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *Metadata[Resource]) (map[jsonFieldName]FilterFieldInfo, error) {
