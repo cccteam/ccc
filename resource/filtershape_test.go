@@ -294,7 +294,7 @@ func TestQuerySet_Collect(t *testing.T) {
 	seal := func(t *testing.T, qSet *QuerySet[boardRow], direction pageDirection, row *boardRow) string {
 		t.Helper()
 
-		keys, err := qSet.boundaryKeys(row)
+		keys, err := qSet.boundaryKeys(&Row[boardRow]{Data: *row})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -490,7 +490,7 @@ func TestQuerySet_TakePage_boundaryValues(t *testing.T) {
 	t.Parallel()
 
 	first := decodeBoard(t, "/?sort=worst:desc&limit=1", Paging{})
-	keys, err := first.boundaryKeys(boardRows()[0])
+	keys, err := first.boundaryKeys(&Row[boardRow]{Data: *boardRows()[0]})
 	if err != nil {
 		t.Fatal(err)
 	}

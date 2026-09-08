@@ -35,6 +35,14 @@ import (
 // condition on every column) every CASE prunes and the statement is a plain
 // SELECT with one WHERE condition. With no conditional decisions the whole
 // pass is skipped and the statement is byte-identical to RBAC.
+//
+// The visible projection (decided 2026-09-08): a sort or filter runs over the
+// columns the caller can see. A conditional column the query names renders in
+// ORDER BY, in the cursor predicate, and in the filter as
+// CASE WHEN <condition> THEN column END, whose ELSE is NULL, so a masked cell
+// sorts in the NULL region and matches only isnull; a pruned CASE uses the raw
+// column because every returned row shows the field. Only a Denied column is
+// refused, at the readability check.
 
 // maskedNamesColumnName is the read statement's one reserved output column:
 // the JSON names of the row's masked cells. Generation rejects resource
@@ -42,16 +50,20 @@ import (
 const maskedNamesColumnName = "zzMaskedFields"
 
 // readConditionPlan is the policy half of read rendering: which projected
-// fields are conditional, their condition disjuncts, and the row predicate.
+// and queried fields are conditional, their condition disjuncts, and the row
+// predicate.
 type readConditionPlan struct {
 	// rowPredicate holds the distinct disjuncts of rule 3's row predicate, in
 	// first-appearance projection order. Empty means TRUE (some projected
-	// grant-bearing column is unconditionally granted) and nothing prunes.
+	// grant-bearing column is unconditionally granted, or no projected column
+	// is conditional) and nothing prunes.
 	rowPredicate []condition.Expr
 
-	// fields maps each conditionally granted projected field to its
-	// conditions. Fields outside the map are unconditionally granted (plain
-	// columns) or permission-exempt primary keys (outside the rules).
+	// fields maps each conditionally granted field the statement names to its
+	// conditions: the projected fields, and the sort and filter fields the
+	// caller does not read back. Fields outside the map are unconditionally
+	// granted (plain columns) or permission-exempt primary keys (outside the
+	// rules).
 	fields map[accesstypes.Field]*fieldConditions
 }
 
@@ -132,24 +144,82 @@ func (q *QuerySet[Resource]) readConditionPlan() (*readConditionPlan, error) {
 		plan.fields[field] = fc
 	}
 
+	if err := q.addQueryOnlyConditions(plan); err != nil {
+		return nil, err
+	}
+
 	if len(plan.fields) == 0 {
 		// Only the base resource was conditional: it is the handler gate, and
 		// it never renders on the read path.
 		return nil, nil
 	}
 
-	if anyUnconditional {
+	if anyUnconditional || len(union) == 0 {
 		// Rule 3's predicate is TRUE: no row filter, and nothing prunes.
 		return plan, nil
 	}
 
 	plan.rowPredicate = union
 	for _, fc := range plan.fields {
-		// keys ⊆ unionKeys always, so covering every disjunct is a size test.
-		fc.pruned = len(fc.keys) == len(unionKeys)
+		// A field prunes when its condition set covers every disjunct of the
+		// row predicate: the WHERE has proven its condition on every
+		// surviving row. A projected field's keys ⊆ unionKeys by
+		// construction; a query-only field's need not be.
+		fc.pruned = covers(fc.keys, unionKeys)
 	}
 
 	return plan, nil
+}
+
+// covers reports whether every key of the row predicate is in the field's
+// condition set.
+func covers(fieldKeys, unionKeys map[string]struct{}) bool {
+	for key := range unionKeys {
+		if _, ok := fieldKeys[key]; !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
+// addQueryOnlyConditions adds the conditional columns the query names outside
+// the select list. The visible-projection rule (decided 2026-09-08): a sort or
+// filter runs over the projection the caller can see, so such a column needs
+// its condition too. It renders a query override only — no select CASE, no
+// mask term — and has no say in which rows survive.
+func (q *QuerySet[Resource]) addQueryOnlyConditions(plan *readConditionPlan) error {
+	for _, field := range q.queryColumns() {
+		if _, ok := plan.fields[field]; ok || !q.resourceSet.PermissionRequired(field, q.requiredPermission) {
+			continue
+		}
+
+		decision, ok := q.conditionalDecisions[q.resourceSet.Resource(field)]
+		if !ok {
+			continue
+		}
+
+		expr, err := conditionalExpr(q.resourceSet.Resource(field), decision)
+		if err != nil {
+			return err
+		}
+		expr = condition.WithoutPostImage(expr)
+		if t, ok := expr.(condition.Truth); ok && t.Value {
+			continue
+		}
+
+		fc := &fieldConditions{
+			disjuncts: flattenOr(expr),
+			keys:      make(map[string]struct{}),
+			jsonName:  q.jsonName(field),
+		}
+		for _, disjunct := range fc.disjuncts {
+			fc.keys[disjunct.String()] = struct{}{}
+		}
+		plan.fields[field] = fc
+	}
+
+	return nil
 }
 
 // conditionalExpr extracts the condition covering res from its Conditional
@@ -216,12 +286,30 @@ type renderedReadConditions struct {
 	// overrides replaces a projected column's select expression with its CASE.
 	overrides map[accesstypes.Field]string
 
+	// queryOverrides replaces a column the query names in ORDER BY, in the
+	// cursor predicate, or in the filter with its visible projection:
+	// CASE WHEN <condition> THEN column END, NULL where the cell is masked, so
+	// a masked row sorts in the NULL region and matches only isnull. Rendered
+	// only for unpruned conditional fields the query names, so a plain read
+	// renders byte-identical to before.
+	queryOverrides map[accesstypes.Field]string
+
 	// maskColumn is the reserved masked-names select item, "" when every CASE
 	// pruned.
 	maskColumn string
 
 	// rowPredicate is rule 3's predicate, parenthesized, "" when TRUE.
 	rowPredicate string
+}
+
+// queryOverride returns the visible-projection expression for a field the
+// query names, or "" when the raw column stands.
+func (r *renderedReadConditions) queryOverride(field accesstypes.Field) string {
+	if r == nil {
+		return ""
+	}
+
+	return r.queryOverrides[field]
 }
 
 // renderReadConditions lowers the plan's conditions and renders the CASE
@@ -241,7 +329,8 @@ func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readCondi
 	lctx := q.loweringCtx()
 
 	rendered := &renderedReadConditions{
-		overrides: make(map[accesstypes.Field]string),
+		overrides:      make(map[accesstypes.Field]string),
+		queryOverrides: make(map[accesstypes.Field]string),
 	}
 
 	if len(plan.rowPredicate) > 0 {
@@ -260,6 +349,10 @@ func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readCondi
 		return nil, err
 	}
 
+	// Each surviving field's condition lowers once; the select CASE and the
+	// query override share the rendering and its parameters.
+	conditions := &conditionRenderer{lctx: lctx, gen: gen, registry: registry, rendered: make(map[accesstypes.Field]string, len(plan.fields))}
+
 	var maskTerms []string
 	for _, fieldColumn := range fieldColumns {
 		fc, ok := plan.fields[fieldColumn.field]
@@ -267,7 +360,7 @@ func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readCondi
 			continue
 		}
 
-		condSQL, err := lowerToSQL(orOf(fc.disjuncts), lctx, gen, registry)
+		condSQL, err := conditions.sql(fieldColumn.field, fc)
 		if err != nil {
 			return nil, err
 		}
@@ -285,7 +378,60 @@ func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readCondi
 		rendered.maskColumn = maskColumn(dbType, maskTerms)
 	}
 
+	if err := q.renderQueryOverrides(dbType, plan, conditions, rendered); err != nil {
+		return nil, err
+	}
+
 	return rendered, nil
+}
+
+// renderQueryOverrides renders the visible projection of each unpruned
+// conditional column the query names: CASE WHEN <condition> THEN column END,
+// NULL where the cell is masked.
+func (q *QuerySet[Resource]) renderQueryOverrides(dbType DBType, plan *readConditionPlan, conditions *conditionRenderer, rendered *renderedReadConditions) error {
+	dbFields := q.rMeta.dbFieldMap(dbType)
+	for _, field := range q.queryColumns() {
+		fc, ok := plan.fields[field]
+		if !ok || fc.pruned {
+			continue
+		}
+		dbField, ok := dbFields[field]
+		if !ok {
+			return errors.Newf("query field %s not found in db struct", field)
+		}
+
+		condSQL, err := conditions.sql(field, fc)
+		if err != nil {
+			return err
+		}
+		rendered.queryOverrides[field] = fmt.Sprintf("CASE WHEN %s THEN %s END", condSQL, conditions.gen.quoteIdentifier(dbField.ColumnName))
+	}
+
+	return nil
+}
+
+// conditionRenderer lowers each field's condition once per statement, so the
+// select CASE, the mask term, and the query override share one rendering and
+// its parameters.
+type conditionRenderer struct {
+	lctx     *loweringContext
+	gen      *sqlGenerator
+	registry *paramRegistry
+	rendered map[accesstypes.Field]string
+}
+
+// sql returns the field's lowered condition, rendering it on first use.
+func (c *conditionRenderer) sql(field accesstypes.Field, fc *fieldConditions) (string, error) {
+	if sql, ok := c.rendered[field]; ok {
+		return sql, nil
+	}
+	sql, err := lowerToSQL(orOf(fc.disjuncts), c.lctx, c.gen, c.registry)
+	if err != nil {
+		return "", err
+	}
+	c.rendered[field] = sql
+
+	return sql, nil
 }
 
 // loweringCtx builds the read-shaped lowering context: unqualified attributes

@@ -138,7 +138,9 @@ func (q *QuerySet[Resource]) Collect(rows iter.Seq2[*Resource, error]) (*Page[Re
 	}
 
 	for _, row := range kept {
-		if !page.Add(row) {
+		// A computed row is never masked (a Conditional decision is refused at
+		// decode), so the envelope carries the data alone.
+		if !page.Add(&Row[Resource]{Data: *row}) {
 			break
 		}
 		page.rows = append(page.rows, row)

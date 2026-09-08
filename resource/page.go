@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -34,8 +35,8 @@ const (
 // from the rows it saw, before the handler encodes the body.
 type Page[Resource Resourcer] struct {
 	qSet  *QuerySet[Resource]
-	first *Resource
-	last  *Resource
+	first *Row[Resource]
+	last  *Row[Resource]
 	kept  uint64
 	more  bool
 	total *int64
@@ -74,8 +75,10 @@ func (p *Page[Resource]) Count(ctx context.Context, txn ReadOnlyTransaction) err
 
 // Add records a row the statement yielded and reports whether it belongs to the
 // page. The row past the page size is the more-exists signal: Add answers false
-// and the handler stops without encoding it.
-func (p *Page[Resource]) Add(row *Resource) bool {
+// and the handler stops without encoding it. The envelope, not the bare data,
+// because a boundary row's masked sort cell must position the cursor as NULL,
+// which is how the statement ordered it.
+func (p *Page[Resource]) Add(row *Row[Resource]) bool {
 	if pg := p.qSet.page; pg != nil && !pg.all && p.kept == pg.size {
 		p.more = true
 
@@ -178,7 +181,7 @@ func (p *Page[Resource]) hasPrev() bool {
 
 // link renders one Link relation: the request URL with the cursor for the
 // boundary row set and count removed.
-func (p *Page[Resource]) link(r *http.Request, direction pageDirection, boundary *Resource) (string, error) {
+func (p *Page[Resource]) link(r *http.Request, direction pageDirection, boundary *Row[Resource]) (string, error) {
 	if p.qSet.cursorKey == nil {
 		return "", errors.New("resource.Page: the list pages but the decoder has no cursor key; pass resource.NewCursorKey(cookieKey) to WithCursorKey")
 	}
@@ -206,15 +209,22 @@ func (p *Page[Resource]) link(r *http.Request, direction pageDirection, boundary
 }
 
 // boundaryKeys encodes a boundary row's values in the list's total order, the
-// primary key last, at full precision.
-func (q *QuerySet[Resource]) boundaryKeys(row *Resource) ([]*string, error) {
+// primary key last, at full precision. A sort cell masked on the boundary row
+// arrives as its typed filler, but the statement ordered it as NULL, so its key
+// is the NULL key.
+func (q *QuerySet[Resource]) boundaryKeys(row *Row[Resource]) ([]*string, error) {
 	order := q.Order()
-	value := reflect.ValueOf(row).Elem()
+	value := reflect.ValueOf(&row.Data).Elem()
 	keys := make([]*string, 0, len(order))
 	for _, sf := range order {
+		if row.Masked(q.jsonName(accesstypes.Field(sf.Field))) {
+			keys = append(keys, nil)
+
+			continue
+		}
 		field := fieldValue(value, sf.Field)
 		if !field.IsValid() {
-			return nil, errors.Newf("resource.Page: sort field %s is not a field of %T", sf.Field, *row)
+			return nil, errors.Newf("resource.Page: sort field %s is not a field of %T", sf.Field, row.Data)
 		}
 		text, err := cursorText(field)
 		if err != nil {

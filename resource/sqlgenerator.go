@@ -39,6 +39,12 @@ type sqlGenerator struct {
 	// allocate from; nil outside generateLowered, where such nodes are
 	// unreachable (the filter parser never produces them).
 	registry *paramRegistry
+
+	// columnExpressions replaces a condition's column, by name, with the
+	// expression the statement filters on: the visible projection of a
+	// conditionally granted column (read_rendering.go). Nil renders every
+	// column as its quoted identifier.
+	columnExpressions map[string]string
 }
 
 // newSQLGenerator creates a new SQL generator for the specified dialect.
@@ -129,8 +135,25 @@ func (s *sqlGenerator) nextPlaceholder() string {
 	return fmt.Sprintf("@_p%d", s.paramCount)
 }
 
+// setColumnExpressions installs the column expression overrides the filter
+// consults at each condition.
+func (s *sqlGenerator) setColumnExpressions(expressions map[string]string) {
+	s.columnExpressions = expressions
+}
+
+// conditionColumn renders the column a condition tests: its override when the
+// statement filters on the column's visible projection, else the quoted
+// identifier.
+func (s *sqlGenerator) conditionColumn(column string) string {
+	if expression, ok := s.columnExpressions[column]; ok {
+		return expression
+	}
+
+	return s.quoteIdentifier(column)
+}
+
 func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryParam, error) {
-	field := s.quoteIdentifier(cn.Condition.Field)
+	field := s.conditionColumn(cn.Condition.Field)
 	op := strings.ToLower(cn.Condition.Operator)
 	var params []QueryParam
 

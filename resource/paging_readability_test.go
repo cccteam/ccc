@@ -1,9 +1,10 @@
 package resource
 
 // These tests pin the readability rule for sort and filter fields: a request may
-// order or filter only by a field the caller holds an unconditional grant on. A
-// denied field is an inference channel; a conditionally granted field is masked on
-// some rows, so ordering by it would order masked rows by their real values.
+// not order or filter by a field the caller is denied, because a denied field is
+// an inference channel. A conditionally granted field is admitted: the query runs
+// over the visible projection, where a masked cell is NULL (projection_test.go
+// pins the rendering).
 
 import (
 	"iter"
@@ -60,26 +61,22 @@ func TestQuerySet_List_sortAndFilterReadability(t *testing.T) {
 			wantErrContains: "sort or filter on locked",
 		},
 		{
-			name:            "sort on a conditionally granted field is refused",
-			target:          "/?sort=public,tagged:desc",
-			wantForbidden:   true,
-			wantErrContains: "sort or filter on tagged",
+			name:   "sort on a conditionally granted field is admitted",
+			target: "/?sort=public,tagged:desc",
 		},
 		{
 			name:   "filter on a granted field is admitted",
 			target: "/?filter=public:eq:x",
 		},
 		{
-			name:            "filter on a conditionally granted field is refused",
-			target:          "/?filter=public:eq:x,tagged:eq:y",
-			wantForbidden:   true,
-			wantErrContains: "sort or filter on tagged",
+			name:   "filter on a conditionally granted field is admitted",
+			target: "/?filter=public:eq:x,tagged:eq:y",
 		},
 		{
-			name:            "sort and filter refusals name the unconditional requirement",
-			target:          "/?sort=tagged&filter=public:eq:x",
+			name:            "the refusal names the denied field and its decision",
+			target:          "/?sort=locked&filter=public:eq:x",
 			wantForbidden:   true,
-			wantErrContains: "must be granted unconditionally",
+			wantErrContains: "sort or filter on locked: (List) on enforcementResources.locked is denied",
 		},
 	}
 

@@ -27,7 +27,7 @@ func pageOver(t *testing.T, sort, defaultOrder []SortField, page pageRequest, cu
 
 	p := qSet.Page()
 	for _, id := range ids {
-		row := &cursorTestResource{ID: id, Hazard: int64(len(id))}
+		row := &Row[cursorTestResource]{Data: cursorTestResource{ID: id, Hazard: int64(len(id))}}
 		if !p.Add(row) {
 			break
 		}
@@ -318,5 +318,82 @@ func TestQuerySet_countStmt(t *testing.T) {
 	want := "SELECT COUNT(*) FROM cursorTestResources WHERE `Hazard` > @_p1"
 	if got != want {
 		t.Errorf("countStmt() SQL = %q, want %q", got, want)
+	}
+}
+
+// TestQuerySet_boundaryKeys pins the cursor keys a boundary row yields in the
+// list's total order: the cell's full-precision text, and the NULL key for a sort
+// cell masked on the row, which the statement ordered as NULL.
+func TestQuerySet_boundaryKeys(t *testing.T) {
+	t.Parallel()
+
+	note := "n"
+	tests := []struct {
+		name   string
+		sort   []SortField
+		row    *Row[cursorTestResource]
+		want   []*string
+		errsOn string
+	}{
+		{
+			name: "values in order, the key last",
+			sort: []SortField{{Field: "Hazard", Direction: SortDescending}},
+			row:  &Row[cursorTestResource]{Data: cursorTestResource{ID: "a", Hazard: 3}},
+			want: []*string{strPtr("3"), strPtr("a")},
+		},
+		{
+			name: "a nil nullable cell is the NULL key",
+			sort: []SortField{{Field: "Note", Direction: SortAscending}},
+			row:  &Row[cursorTestResource]{Data: cursorTestResource{ID: "a"}},
+			want: []*string{nil, strPtr("a")},
+		},
+		{
+			name: "a masked sort cell is the NULL key, whatever filler it carries",
+			sort: []SortField{{Field: "Hazard", Direction: SortDescending}, {Field: "Note", Direction: SortAscending}},
+			row:  &Row[cursorTestResource]{Data: cursorTestResource{ID: "a", Hazard: 0, Note: &note}, masked: []string{"hazard"}},
+			want: []*string{nil, strPtr("n"), strPtr("a")},
+		},
+		{
+			name:   "a sort field the row lacks is an error",
+			sort:   []SortField{{Field: "Missing", Direction: SortAscending}},
+			row:    &Row[cursorTestResource]{Data: cursorTestResource{ID: "a"}},
+			errsOn: "sort field Missing",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			qSet := NewQuerySet(NewMetadata[cursorTestResource]())
+			qSet.keyFields = []accesstypes.Field{"ID"}
+			qSet.jsonNames = map[accesstypes.Field]string{"ID": "id", "Hazard": "hazard", "Note": "note"}
+			qSet.SetSortFields(tt.sort)
+
+			got, err := qSet.boundaryKeys(tt.row)
+			if tt.errsOn != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.errsOn) {
+					t.Fatalf("boundaryKeys() error = %v, want containing %q", err, tt.errsOn)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("boundaryKeys() error = %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("boundaryKeys() = %d keys, want %d", len(got), len(tt.want))
+			}
+			for i := range tt.want {
+				switch {
+				case tt.want[i] == nil && got[i] != nil:
+					t.Errorf("key %d = %q, want NULL", i, *got[i])
+				case tt.want[i] != nil && got[i] == nil:
+					t.Errorf("key %d = NULL, want %q", i, *tt.want[i])
+				case tt.want[i] != nil && *got[i] != *tt.want[i]:
+					t.Errorf("key %d = %q, want %q", i, *got[i], *tt.want[i])
+				}
+			}
+		})
 	}
 }

@@ -272,14 +272,69 @@ func (q *QuerySet[Resource]) queryFields() []accesstypes.Field {
 	return fields
 }
 
+// queryColumns returns the fields whose columns the statement names outside
+// the select list: the read order (the request's sort or the declared default,
+// then the key) and the filter's fields, each once.
+func (q *QuerySet[Resource]) queryColumns() []accesstypes.Field {
+	order := q.Order()
+	fields := make([]accesstypes.Field, 0, len(order)+len(q.filterFields))
+	for _, sf := range order {
+		if !slices.Contains(fields, accesstypes.Field(sf.Field)) {
+			fields = append(fields, accesstypes.Field(sf.Field))
+		}
+	}
+	for _, field := range q.filterFields {
+		if !slices.Contains(fields, field) {
+			fields = append(fields, field)
+		}
+	}
+
+	return fields
+}
+
 // checkQueryFieldsReadable refuses a sort or filter over a field the caller
-// cannot read on every row. A denied field would let the caller infer its
-// values from the order or the membership of the result, and a conditionally
-// granted field is readable on some rows and masked on others, so an ORDER BY
-// or WHERE over it would order and select masked rows by their real values.
-// Only a Granted decision admits the field; the exempt primary key follows the
-// resource-level grant already checked.
+// cannot read at all. A denied field would let the caller infer its values
+// from the order or the membership of the result. A conditionally granted
+// field passes: the query runs over the visible projection, where a masked
+// cell is NULL (see read_rendering.go), so its decision is carried for the
+// rendering. The exempt primary key follows the resource-level grant already
+// checked.
 func (q *QuerySet[Resource]) checkQueryFieldsReadable(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions) error {
+	decisions, names, err := q.queryFieldDecisions(ctx, rSet, userPermissions)
+	if err != nil {
+		return err
+	}
+	for res, field := range names {
+		if decisions[res].IsDenied() {
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) cannot sort or filter on %s: (%s) on %s is denied", q.scope, userPermissions.User(), q.jsonName(field), q.requiredPermission, res)
+		}
+	}
+	q.carryConditionalDecisions(decisions)
+
+	return nil
+}
+
+// checkQueryFieldsGranted is the computed resource's readability rule: a sort
+// or filter field needs the caller's unconditional grant, because the handler
+// orders and filters the body's rows by the field's real values and no
+// statement renders a visible projection over them.
+func (q *QuerySet[Resource]) checkQueryFieldsGranted(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions) error {
+	decisions, names, err := q.queryFieldDecisions(ctx, rSet, userPermissions)
+	if err != nil {
+		return err
+	}
+	for res, field := range names {
+		if !decisions[res].IsGranted() {
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) cannot sort or filter on %s: (%s) on %s must be granted unconditionally", q.scope, userPermissions.User(), q.jsonName(field), q.requiredPermission, res)
+		}
+	}
+
+	return nil
+}
+
+// queryFieldDecisions checks the grant-bearing sort and filter fields in one
+// call and returns the decisions with each resource's field name.
+func (q *QuerySet[Resource]) queryFieldDecisions(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions) (accesstypes.Decisions, map[accesstypes.Resource]accesstypes.Field, error) {
 	fields := q.queryFields()
 	resources := make([]accesstypes.Resource, 0, len(fields))
 	names := make(map[accesstypes.Resource]accesstypes.Field, len(fields))
@@ -291,20 +346,15 @@ func (q *QuerySet[Resource]) checkQueryFieldsReadable(ctx context.Context, rSet 
 		}
 	}
 	if len(resources) == 0 {
-		return nil
+		return nil, nil, nil
 	}
 
 	decisions, err := userPermissions.Check(ctx, q.env, q.scope, q.requiredPermission, resources...)
 	if err != nil {
-		return errors.Wrap(err, "resource.UserPermissions.Check()")
-	}
-	for _, res := range resources {
-		if !decisions[res].IsGranted() {
-			return httpio.NewForbiddenMessagef("scope (%s), user (%s) cannot sort or filter on %s: (%s) on %s must be granted unconditionally", q.scope, userPermissions.User(), q.jsonName(names[res]), q.requiredPermission, res)
-		}
+		return nil, nil, errors.Wrap(err, "resource.UserPermissions.Check()")
 	}
 
-	return nil
+	return decisions, names, nil
 }
 
 // RequestCapabilities asks the read to evaluate per-row write affordances for
@@ -467,30 +517,53 @@ func (q *QuerySet[Resource]) readOrder() []SortField {
 	return q.Order()
 }
 
+// orderColumn is one read-order term as the statement names it: the quoted
+// column or its visible-projection override, and whether the term can be NULL.
+type orderColumn struct {
+	sql      string
+	nullable bool
+	meta     dbFieldMetadata
+}
+
+// orderColumn resolves one sort field to the expression the statement orders
+// and pages by. A conditional field with a query override sorts on the override
+// and is nullable regardless of its Go type: its masked cells are NULL.
+func (q *QuerySet[Resource]) orderColumn(dbType DBType, rendered *renderedReadConditions, sf SortField) (orderColumn, error) {
+	dbField, ok := q.rMeta.dbFieldMap(dbType)[accesstypes.Field(sf.Field)]
+	if !ok {
+		return orderColumn{}, errors.Newf("sort field '%s' not found in resource metadata for query", sf.Field)
+	}
+	if override := rendered.queryOverride(accesstypes.Field(sf.Field)); override != "" {
+		return orderColumn{sql: override, nullable: true, meta: dbField}, nil
+	}
+
+	var quoted string
+	switch dbType {
+	case SpannerDBType:
+		quoted = fmt.Sprintf("`%s`", dbField.ColumnName)
+	case PostgresDBType:
+		quoted = fmt.Sprintf(`"%s"`, dbField.ColumnName)
+	default:
+		return orderColumn{}, errors.Newf("unsupported dbType for sorting: %s", dbType)
+	}
+
+	return orderColumn{sql: quoted, nullable: isNullableType(dbField.fieldType), meta: dbField}, nil
+}
+
 // buildOrderByClause renders the ORDER BY for the QuerySet's read order. A
 // nullable column states its NULL placement — NULLS LAST ascending, NULLS FIRST
 // descending — because the two databases default differently and a page walk
 // needs one order.
-func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
+func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType, rendered *renderedReadConditions) (string, error) {
 	order := q.readOrder()
 	orderByParts := make([]string, 0, len(order))
 	for _, sf := range order {
-		dbField, ok := q.rMeta.dbFieldMap(dbType)[accesstypes.Field(sf.Field)]
-		if !ok {
-			return "", errors.Newf("sort field '%s' not found in resource metadata for query", sf.Field)
+		column, err := q.orderColumn(dbType, rendered, sf)
+		if err != nil {
+			return "", err
 		}
 
-		var quotedColumnName string
-		switch dbType {
-		case SpannerDBType:
-			quotedColumnName = fmt.Sprintf("`%s`", dbField.ColumnName)
-		case PostgresDBType:
-			quotedColumnName = fmt.Sprintf(`"%s"`, dbField.ColumnName)
-		default:
-			return "", errors.Newf("unsupported dbType for sorting: %s", dbType)
-		}
-
-		orderByParts = append(orderByParts, quotedColumnName+" "+orderDirectionSQL(sf.Direction, isNullableType(dbField.fieldType)))
+		orderByParts = append(orderByParts, column.sql+" "+orderDirectionSQL(sf.Direction, column.nullable))
 	}
 	if len(orderByParts) == 0 {
 		return "", nil
@@ -501,7 +574,7 @@ func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
 
 // cursorPredicate renders the request cursor's position as a predicate over the
 // read order: the rows strictly after the boundary row. Empty on a first page.
-func (q *QuerySet[Resource]) cursorPredicate(dbType DBType, registry *paramRegistry) (string, error) {
+func (q *QuerySet[Resource]) cursorPredicate(dbType DBType, registry *paramRegistry, rendered *renderedReadConditions) (string, error) {
 	if q.cursor == nil {
 		return "", nil
 	}
@@ -513,24 +586,15 @@ func (q *QuerySet[Resource]) cursorPredicate(dbType DBType, registry *paramRegis
 
 	terms := make([]cursorTerm, 0, len(order))
 	for i, sf := range order {
-		dbField, ok := q.rMeta.dbFieldMap(dbType)[accesstypes.Field(sf.Field)]
-		if !ok {
-			return "", errors.Newf("sort field '%s' not found in resource metadata for query", sf.Field)
-		}
-		var column string
-		switch dbType {
-		case SpannerDBType:
-			column = fmt.Sprintf("`%s`", dbField.ColumnName)
-		case PostgresDBType:
-			column = fmt.Sprintf(`"%s"`, dbField.ColumnName)
-		default:
-			return "", errors.Newf("unsupported dbType for paging: %s", dbType)
+		column, err := q.orderColumn(dbType, rendered, sf)
+		if err != nil {
+			return "", err
 		}
 		terms = append(terms, cursorTerm{
-			column:    column,
+			column:    column.sql,
 			direction: sf.Direction,
-			nullable:  isNullableType(dbField.fieldType),
-			fieldType: dbField.fieldType,
+			nullable:  column.nullable,
+			fieldType: column.meta.fieldType,
 			boundary:  q.cursor.Keys[i],
 		})
 	}
@@ -643,17 +707,51 @@ func (q *QuerySet[Resource]) columns(dbType DBType, rendered *renderedReadCondit
 	return Columns(strings.Join(columns, ", ")), nil
 }
 
-func (q *QuerySet[Resource]) astWhereClause(dbType DBType, filterAst ExpressionNode) (*Statement, error) {
+// filterColumnExpressions maps the filter's column names to their
+// visible-projection overrides, for the SQL generator to consult where it
+// renders a condition's column.
+func (q *QuerySet[Resource]) filterColumnExpressions(dbType DBType, rendered *renderedReadConditions) (map[string]string, error) {
+	if rendered == nil || len(rendered.queryOverrides) == 0 {
+		return nil, nil
+	}
+
+	dbFields := q.rMeta.dbFieldMap(dbType)
+	expressions := make(map[string]string, len(q.filterFields))
+	for _, field := range q.filterFields {
+		override := rendered.queryOverride(field)
+		if override == "" {
+			continue
+		}
+		dbField, ok := dbFields[field]
+		if !ok {
+			return nil, errors.Newf("filter field %s not found in db struct", field)
+		}
+		expressions[dbField.ColumnName] = override
+	}
+
+	return expressions, nil
+}
+
+func (q *QuerySet[Resource]) astWhereClause(dbType DBType, filterAst ExpressionNode, rendered *renderedReadConditions) (*Statement, error) {
+	expressions, err := q.filterColumnExpressions(dbType, rendered)
+	if err != nil {
+		return nil, err
+	}
+
 	switch dbType {
 	case SpannerDBType:
-		sql, params, err := NewSpannerGenerator().GenerateSQL(filterAst)
+		gen := NewSpannerGenerator()
+		gen.setColumnExpressions(expressions)
+		sql, params, err := gen.GenerateSQL(filterAst)
 		if err != nil {
 			return nil, errors.Wrap(err, "SpannerGenerator.GenerateSQL()")
 		}
 
 		return &Statement{SQL: "WHERE " + sql, Params: params}, nil
 	case PostgresDBType:
-		sql, params, err := NewPostgreSQLGenerator().GenerateSQL(filterAst)
+		gen := NewPostgreSQLGenerator()
+		gen.setColumnExpressions(expressions)
+		sql, params, err := gen.GenerateSQL(filterAst)
 		if err != nil {
 			return nil, errors.Wrap(err, "PostgreSQLGenerator.GenerateSQL()")
 		}
@@ -665,9 +763,9 @@ func (q *QuerySet[Resource]) astWhereClause(dbType DBType, filterAst ExpressionN
 }
 
 // where translates the the fields to database struct tags in databaseType when building the where clause
-func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*Statement, error) {
+func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode, rendered *renderedReadConditions) (*Statement, error) {
 	if filterAst != nil {
-		return q.astWhereClause(dbType, filterAst)
+		return q.astWhereClause(dbType, filterAst, rendered)
 	}
 
 	parts := q.KeySet().Parts()
@@ -704,7 +802,7 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode) (*St
 // rules' row predicate (design plan §06) — checked domain == filtered domain
 // by construction.
 func (q *QuerySet[Resource]) whereWithPredicates(dbType DBType, filterAst ExpressionNode, tenancy string, rendered *renderedReadConditions, cursorPredicate string) (*Statement, error) {
-	where, err := q.where(dbType, filterAst)
+	where, err := q.where(dbType, filterAst, rendered)
 	if err != nil {
 		return nil, errors.Wrap(err, "patcher.Where()")
 	}
@@ -773,7 +871,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	cursorPredicate, err := q.cursorPredicate(dbType, registry)
+	cursorPredicate, err := q.cursorPredicate(dbType, registry, rendered)
 	if err != nil {
 		return nil, errors.Wrap(err, "QuerySet.cursorPredicate()")
 	}
@@ -783,7 +881,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, err
 	}
 
-	orderByClause, limitClause, err := q.pageClauses(dbType)
+	orderByClause, limitClause, err := q.pageClauses(dbType, rendered)
 	if err != nil {
 		return nil, err
 	}
@@ -826,8 +924,8 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 }
 
 // pageClauses renders the statement's ORDER BY and LIMIT.
-func (q *QuerySet[Resource]) pageClauses(dbType DBType) (orderByClause, limitClause string, err error) {
-	orderByClause, err = q.buildOrderByClause(dbType)
+func (q *QuerySet[Resource]) pageClauses(dbType DBType, rendered *renderedReadConditions) (orderByClause, limitClause string, err error) {
+	orderByClause, err = q.buildOrderByClause(dbType, rendered)
 	if err != nil {
 		return "", "", errors.Wrap(err, "QuerySet.buildOrderByClause()")
 	}

@@ -105,7 +105,7 @@ func TestQuerySet_Order(t *testing.T) {
 				dbType DBType
 				want   string
 			}{{SpannerDBType, tt.wantSpanner}, {PostgresDBType, tt.wantPostgres}} {
-				got, err := qSet.buildOrderByClause(db.dbType)
+				got, err := qSet.buildOrderByClause(db.dbType, nil)
 				if err != nil {
 					t.Fatalf("buildOrderByClause(%s) error = %v", db.dbType, err)
 				}

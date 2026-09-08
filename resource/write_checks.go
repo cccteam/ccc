@@ -250,7 +250,7 @@ func (p *PatchSet[Resource]) writeCheckStatement(dbType DBType, groups []writeCh
 		sql = "SELECT " + strings.Join(terms, ", ")
 	} else {
 		var err error
-		where, err = q.where(dbType, nil)
+		where, err = q.where(dbType, nil, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "QuerySet.where()")
 		}
