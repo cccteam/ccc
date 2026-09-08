@@ -14,9 +14,10 @@ import (
 
 // SortTestResource is used for testing sorting functionality.
 type SortTestResource struct {
-	ID   string `spanner:"Id"   db:"Id"`
-	Name string `spanner:"Name" db:"Name"`
-	Date string `spanner:"Date" db:"Date"`
+	ID   string  `spanner:"Id"   postgres:"Id"`
+	Name string  `spanner:"Name" postgres:"Name"`
+	Date string  `spanner:"Date" postgres:"Date"`
+	Note *string `spanner:"Note" postgres:"Note"`
 }
 
 func (SortTestResource) Resource() accesstypes.Resource {

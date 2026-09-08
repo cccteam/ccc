@@ -505,6 +505,7 @@ func (r *rpcField) TypescriptDisplayType() string {
 type computedResource struct {
 	*parser.Struct
 	outletMembership
+	pagingDecl
 	// Shape is the struct's wire shape: the fields as the handlers' local mirrors
 	// declare them, with every struct they reach. A nested field is opaque: one
 	// field for permission, PII, and selection, never filtered or keyed.
@@ -656,6 +657,7 @@ func (c *computedField) TypescriptDataType() string {
 type resourceInfo struct {
 	*parser.TypeInfo
 	outletMembership
+	pagingDecl
 	Fields             []*resourceField
 	SuppressedHandlers []HandlerType
 	SuppressedRoutes   []RouteType
@@ -1184,6 +1186,7 @@ const (
 	manualAddResourceSetKeyword string = "manualAddResourceSet" // Declares that hand-written handlers register this resource's permission Sets for the given handler types
 	permissionScopeKeyword      string = "permissionScope"      // Declares the permission scope (global or domain) all of a resource's registrations use
 	outletKeyword               string = "outlet"               // Declares the router outlets a resource's routes — or a manual registration's hand-written route — are registered under
+	orderKeyword                string = "order"                // Declares the order a list takes when the request states none; the primary key is appended
 	attributeKeyword            string = "attribute"            // Declares an attribute binding on its anchor field: a column binding, or a join-path binding via a FK
 	domainKeyword               string = "domain"               // Declares the structural tenancy binding on its anchor field (bare, or via: a FK path to the tenant key)
 	subjectSetKeyword           string = "subjectSet"           // Declares subject-side set vocabulary (subject.<name>, used with IN) anchored on a user-id column
@@ -1211,6 +1214,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		manualAddResourceSetKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
 		permissionScopeKeyword:      {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		outletKeyword:               {genlang.ScanStruct: genlang.ArgsRequired, genlang.ScanConstant: genlang.ArgsRequired},
+		orderKeyword:                {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		attributeKeyword:            {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		domainKeyword:               {genlang.ScanField: genlang.Exclusive},
 		subjectSetKeyword:           {genlang.ScanField: genlang.ArgsRequired},

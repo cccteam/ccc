@@ -30,6 +30,7 @@ type (
 	// @resource
 	// @permissionScope(domain)
 	// @outlet(default, portal)
+	// @order(Deadline asc)
 	// @defaultsCreateType(MissionCreateDefaults)
 	// @validateCreateType(MissionCreateValidator)
 	Mission struct {

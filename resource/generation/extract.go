@@ -194,6 +194,10 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 		return errors.Wrapf(err, "on %s", res.Name())
 	}
 
+	if err := resolveResourcePaging(res, annotations); err != nil {
+		return err
+	}
+
 	if annotations.Struct.Has(defaultsCreateTypeKeyword) {
 		res.DefaultsCreateType = string(annotations.Struct.Get(defaultsCreateTypeKeyword))
 	}
@@ -714,6 +718,12 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 		}
 
 		if err := c.computedFields(res, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
+
+		if err := resolveComputedPaging(res, annotations); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue

@@ -52,6 +52,14 @@ func MustNewComputedQueryDecoder[Resource Resourcer, Request any](permissions ..
 	return decoder
 }
 
+// WithPaging installs the computed resource's declared paging contract (see
+// QueryDecoder.WithPaging).
+func (d *ComputedQueryDecoder[Resource, Request]) WithPaging(paging Paging) *ComputedQueryDecoder[Resource, Request] {
+	d.inner.WithPaging(paging)
+
+	return d
+}
+
 // Decode decodes an http.Request into a QuerySet and checks user permissions in the
 // given domain partition. The semantics mirror the deferred enforcement table
 // resources get at execution time: a missing resource-level grant is Forbidden, an

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iter"
 	"maps"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -40,6 +41,15 @@ type QuerySet[Resource Resourcer] struct {
 	// ordering or filtering by a field the caller cannot read on every row is
 	// an inference channel. Empty on a hand-built QuerySet.
 	filterFields []accesstypes.Field
+	// keyFields are the resource's primary-key fields, in declaration order,
+	// appended to every decoded list's order so the order is total: two rows
+	// equal on every sort column are separated by the key. Stamped by the
+	// decoder from the request type's primary-key markers; empty on a
+	// hand-built QuerySet, whose order is exactly what the caller set.
+	keyFields []accesstypes.Field
+	// defaultOrder is the resource's declared order (Paging.Order), taken when
+	// the request carries no sort.
+	defaultOrder []SortField
 
 	// armError is why Enforce could not bind the query set to a caller; it
 	// surfaces at execution so an unarmed operation never runs unchecked.
@@ -408,10 +418,33 @@ func (q *QuerySet[Resource]) KeySet() KeySet {
 	return q.keys.KeySet()
 }
 
-// buildOrderByClause builds an ORDER BY clause from the QuerySet's sort fields.
+// Order returns the total order the list is read in: the request's sort fields,
+// or the resource's declared order when the request states none, followed by the
+// primary-key fields not already named, ascending. On a hand-built QuerySet it is
+// exactly the sort the caller set.
+func (q *QuerySet[Resource]) Order() []SortField {
+	order := q.sortFields
+	if len(order) == 0 {
+		order = q.defaultOrder
+	}
+	order = slices.Clone(order)
+	for _, key := range q.keyFields {
+		if !slices.ContainsFunc(order, func(sf SortField) bool { return sf.Field == string(key) }) {
+			order = append(order, SortField{Field: string(key), Direction: SortAscending})
+		}
+	}
+
+	return order
+}
+
+// buildOrderByClause renders the ORDER BY for the QuerySet's total order. A
+// nullable column states its NULL placement — NULLS LAST ascending, NULLS FIRST
+// descending — because the two databases default differently and a page walk
+// needs one order.
 func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
-	orderByParts := make([]string, 0, len(q.sortFields))
-	for _, sf := range q.sortFields {
+	order := q.Order()
+	orderByParts := make([]string, 0, len(order))
+	for _, sf := range order {
 		dbField, ok := q.rMeta.dbFieldMap(dbType)[accesstypes.Field(sf.Field)]
 		if !ok {
 			return "", errors.Newf("sort field '%s' not found in resource metadata for query", sf.Field)
@@ -427,17 +460,50 @@ func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType) (string, error) {
 			return "", errors.Newf("unsupported dbType for sorting: %s", dbType)
 		}
 
-		directionSQL := "ASC"
-		if sf.Direction == SortDescending {
-			directionSQL = "DESC"
-		}
-		orderByParts = append(orderByParts, fmt.Sprintf("%s %s", quotedColumnName, directionSQL))
+		orderByParts = append(orderByParts, quotedColumnName+" "+orderDirectionSQL(sf.Direction, isNullableType(dbField.fieldType)))
 	}
 	if len(orderByParts) == 0 {
 		return "", nil
 	}
 
 	return "ORDER BY " + strings.Join(orderByParts, ", "), nil
+}
+
+// orderDirectionSQL renders one ORDER BY term's direction, with the NULL
+// placement a nullable column needs for the order to be the same on every
+// database.
+func orderDirectionSQL(direction SortDirection, nullable bool) string {
+	if direction == SortDescending {
+		if nullable {
+			return "DESC NULLS FIRST"
+		}
+
+		return "DESC"
+	}
+	if nullable {
+		return "ASC NULLS LAST"
+	}
+
+	return "ASC"
+}
+
+// isNullableType reports whether a resource field's Go type can hold a database
+// NULL: a pointer, or one of the Null* wrapper structs (spanner.NullString,
+// ccc.NullUUID, …), recognized by their Valid flag.
+func isNullableType(t reflect.Type) bool {
+	if t == nil {
+		return false
+	}
+	switch t.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		return true
+	case reflect.Struct:
+		valid, ok := t.FieldByName("Valid")
+
+		return ok && valid.Type.Kind() == reflect.Bool
+	default:
+		return false
+	}
 }
 
 // fieldColumnMetadata pairs a projected field with its database metadata.

@@ -41,6 +41,13 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	// builds; nil leaves conditions unrenderable (an error if one ever
 	// arrives).
 	collection *GeneratedCollection
+
+	// keyFields are the request type's primary-key fields (the perm:"-"
+	// markers), appended to every decoded order as the tiebreak.
+	keyFields []accesstypes.Field
+	// paging is the resource's declared paging contract (WithPaging); the zero
+	// value is the generator-wide default.
+	paging Paging
 }
 
 // NewQueryDecoder creates a new QueryDecoder for a given Resource and Request type.
@@ -67,7 +74,37 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 		resourceSet:        resSet,
 		filterParserFields: filterParserFields,
 		structDecoder:      structDecoder,
+		keyFields:          primaryKeyFields(reflect.TypeOf(req)),
 	}, nil
+}
+
+// primaryKeyFields returns the request type's primary-key fields, the ones the
+// generator marks perm:"-", in declaration order.
+func primaryKeyFields(reqType reflect.Type) []accesstypes.Field {
+	var keys []accesstypes.Field
+	for field := range reqType.Fields() {
+		if field.Tag.Get(permTagKey) == permTagExempt && field.Tag.Get(jsonTagKey) != "-" {
+			keys = append(keys, accesstypes.Field(field.Name))
+		}
+	}
+
+	return keys
+}
+
+// WithPaging installs the resource's declared paging contract: the default order
+// a sort-less request takes and the page sizes. The generator emits the call from
+// the @order and @page annotations. An order field the request type does not
+// carry is a programming error and panics at construction, like every other
+// generated-code mismatch.
+func (d *QueryDecoder[Resource, Request]) WithPaging(paging Paging) *QueryDecoder[Resource, Request] {
+	for _, sf := range paging.Order {
+		if !slices.Contains(d.requestFieldMapper.Fields(), accesstypes.Field(sf.Field)) {
+			panic(fmt.Sprintf("resource.QueryDecoder.WithPaging: order field %q is not a field of the request type", sf.Field))
+		}
+	}
+	d.paging = paging
+
+	return d
 }
 
 // MustNewQueryDecoder builds a query decoder for a resource and request pair,
@@ -126,6 +163,8 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	qSet.jsonNames = d.requestFieldMapper.JSONNames()
 	qSet.SetFilterParser(parsedQuery.FilterParser)
 	qSet.filterFields = parsedQuery.FilterFields
+	qSet.keyFields = d.keyFields
+	qSet.defaultOrder = d.paging.Order
 	qSet.SetSortFields(parsedQuery.SortFields)
 	qSet.SetLimit(parsedQuery.Limit)
 	qSet.SetOffset(parsedQuery.Offset)

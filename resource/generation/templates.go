@@ -1135,7 +1135,7 @@ import (
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](accesstypes.List)
+	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](accesstypes.List){{ .Resource.PagingOption }}
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -2777,7 +2777,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 	// now, a compile error the moment a source changes.
 {{ . }}{{- end }}
 
-	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](accesstypes.List)
+	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](accesstypes.List){{ .Resource.PagingOption }}
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
