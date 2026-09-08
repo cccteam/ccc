@@ -1823,12 +1823,23 @@ export interface {{ $rpcMethod.Name }} {{ if $rpcMethod.Fields }}{
 {{- end }}
 }{{ else }}{}{{ end }}
 {{- if $rpcMethod.Answers }}
-/** The answer {{ $rpcMethod.Name }} resolves with. */
+/** The result {{ $rpcMethod.Name }} answers with. */
 export interface {{ $rpcMethod.Name }}Result {
 {{- range $field := $rpcMethod.ResultFields }}
   {{ $field.JSONName }}: {{ $rpcMethod.ResultTypescriptType $field }};
 {{- end }}
 }
+{{- end }}
+{{- if $rpcMethod.Statuses }}
+/** The statuses {{ $rpcMethod.Name }} declares; the method chooses one per response. */
+export type {{ $rpcMethod.Name }}Status = {{ $rpcMethod.StatusUnion }};
+{{- if $rpcMethod.Answers }}
+/** The answer {{ $rpcMethod.Name }} resolves with: the status the method chose and its typed result. */
+export interface {{ $rpcMethod.Name }}Answer {
+  status: {{ $rpcMethod.Name }}Status;
+  result: {{ $rpcMethod.Name }}Result;
+}
+{{- end }}
 {{- end }}
 {{ $rpcMethod.TypescriptNamespace }}{{ end }}
 export interface RPCFieldMeta {
@@ -1849,6 +1860,8 @@ export interface MethodMeta {
   transition?: MethodTransition;
   /** Set when the method answers with a result body; absent methods resolve with nothing. */
   answers?: true;
+  /** The statuses the method declares with @answers; a listed 4xx is the method's own answer, not a refusal by the frame. */
+  statuses?: number[];
   fields: RPCFieldMeta[];
 }
 
@@ -1863,6 +1876,9 @@ const methodMap: MethodMap = {
     {{- end }}
     {{- if $rpcMethod.Answers }}
     answers: true,
+    {{- end }}
+    {{- if $rpcMethod.Statuses }}
+    statuses: [{{ $rpcMethod.StatusList }}],
     {{- end }}
     {{- if $rpcMethod.Fields }}
     fields: [
@@ -1959,7 +1975,7 @@ export const apiDescriptor: ApiDescriptor = {
   },
   methods: {
 {{- range $m := .Methods }}
-    [Methods.{{ $m.Name }}]: { method: Methods.{{ $m.Name }}, property: '{{ $m.Property }}', route: '{{ $m.Route }}', scope: '{{ $m.ScopeKind }}'{{ if $m.Answers }}, answers: true{{ end }} },
+    [Methods.{{ $m.Name }}]: { method: Methods.{{ $m.Name }}, property: '{{ $m.Property }}', route: '{{ $m.Route }}', scope: '{{ $m.ScopeKind }}'{{ if $m.Answers }}, answers: true{{ end }}{{ if $m.Statuses }}, statuses: {{ $m.StatusArray }}{{ end }} },
 {{- end }}
   },
 };
@@ -1970,7 +1986,7 @@ export interface GlobalApi {
   {{ $r.Property }}: {{ $r.HandleType }};
 {{- end }}{{ end }}
 {{- range $m := .Methods }}{{ if eq $m.ScopeKind "global" }}
-  {{ $m.Property }}: MethodHandle<{{ $m.Name }}{{ if $m.Answers }}, {{ $m.ResultName }}{{ end }}>;
+  {{ $m.Property }}: MethodHandle<{{ $m.Name }}{{ if $m.Answers }}, {{ $m.ResolvesWith }}{{ end }}>;
 {{- end }}{{ end }}
 }
 
@@ -1980,7 +1996,7 @@ export interface DomainApi {
   {{ $r.Property }}: {{ $r.HandleType }};
 {{- end }}{{ end }}
 {{- range $m := .Methods }}{{ if eq $m.ScopeKind "domain" }}
-  {{ $m.Property }}: MethodHandle<{{ $m.Name }}{{ if $m.Answers }}, {{ $m.ResultName }}{{ end }}>;
+  {{ $m.Property }}: MethodHandle<{{ $m.Name }}{{ if $m.Answers }}, {{ $m.ResolvesWith }}{{ end }}>;
 {{- end }}{{ end }}
 }
 
@@ -2629,6 +2645,10 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		// Captured inside the transaction, encoded after it commits: under
 		// abort-and-retry the value is the committing attempt's.
 		var result {{ .RPCMethod.ResultType }}
+		{{- if .RPCMethod.Statuses }}
+		// The status the result chose, among the declared {{ .RPCMethod.StatusList }}.
+		var status int
+		{{- end }}
 		{{- end }}
 		{{- if .RPCMethod.IsTxnForm }}
 			// A dry run (X-Dry-Run: true) runs the whole frame and the body, then
@@ -2689,6 +2709,14 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 					return errors.Wrap(err, "Transaction.Execute()")
 				}
 				result = answer
+				{{- if .RPCMethod.Statuses }}
+				{{- template "rpcChooseStatus" $ }}
+				if status >= http.StatusBadRequest {
+					// The method refused: the transaction rolls back, and the
+					// frame writes the status with the typed answer.
+					return &resource.Answer{Status: status}
+				}
+				{{- end }}
 				{{- else -}}
 				if err := p.Execute(ctx, txn, {{ $.ReceiverName }}.RPCClient()); err != nil {
 					return errors.Wrap(err, "Transaction.Execute()")
@@ -2707,6 +2735,11 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 
 				return nil
 			}); err != nil {
+				{{- if .RPCMethod.Statuses }}
+				if refused, ok := resource.Refused(err); ok {
+					return httpio.NewEncoder(w).StatusCodeWithBody(refused, {{ .RPCMethod.ResponseExpr }})
+				}
+				{{- end }}
 				if dryRun && resource.DryRunRolledBack(err) {
 					return httpio.NewEncoder(w).Ok(nil)
 				}
@@ -2725,6 +2758,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		result = answer
+		{{- if .RPCMethod.Statuses }}
+		{{- template "rpcChooseStatus" $ }}
+		{{- end }}
 		{{- else }}
 		if err := p.Execute(ctx, {{ $.ReceiverName }}.ResourceClient(), {{ $.ReceiverName }}.RPCClient()); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -2732,8 +2768,28 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		{{- end }}
 		{{- end }}
 		{{- if not .RPCMethod.Answers }}
+		{{- if .RPCMethod.DeclaresNoContent }}
+
+		w.WriteHeader(http.StatusNoContent)
+
+		return nil
+		{{- else }}
 
 		return httpio.NewEncoder(w).Ok(nil)
+		{{- end }}
+		{{- else if .RPCMethod.Statuses }}
+		if status == http.StatusNoContent {
+			w.WriteHeader(http.StatusNoContent)
+
+			return nil
+		}
+		{{- if .RPCMethod.ResultPointer }}
+		if result == nil {
+			return httpio.NewEncoder(w).Ok(nil)
+		}
+		{{- end }}
+
+		return httpio.NewEncoder(w).StatusCodeWithBody(status, {{ .RPCMethod.ResponseExpr }})
 		{{- else }}
 		{{- if .RPCMethod.ResultPointer }}
 		if result == nil {
@@ -2741,10 +2797,28 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 		}
 		{{- end }}
 
-		return httpio.NewEncoder(w).Ok({{ if .RPCMethod.Result.Flat }}(*response)({{ if not .RPCMethod.ResultPointer }}&{{ end }}result){{ else }}{{ .RPCMethod.ResultConverterName }}({{ if .RPCMethod.ResultPointer }}*{{ end }}result){{ end }})
+		return httpio.NewEncoder(w).Ok({{ .RPCMethod.ResponseExpr }})
 		{{- end }}
 	})
 }
+
+{{- define "rpcChooseStatus" }}
+		{{- if .RPCMethod.ResultPointer }}
+		if result == nil {
+			status = http.Status{{ if .RPCMethod.DeclaresNoContent }}NoContent{{ else }}OK{{ end }}
+		} else {
+			status, err = resource.ResponseStatus("{{ .RPCMethod.Name }}", result, {{ .RPCMethod.StatusList }})
+			if err != nil {
+				return {{ if .RPCMethod.IsTxnForm }}err{{ else }}httpio.NewEncoder(w).ClientMessage(ctx, err){{ end }}
+			}
+		}
+		{{- else }}
+		status, err = resource.ResponseStatus("{{ .RPCMethod.Name }}", &result, {{ .RPCMethod.StatusList }})
+		if err != nil {
+			return {{ if .RPCMethod.IsTxnForm }}err{{ else }}httpio.NewEncoder(w).ClientMessage(ctx, err){{ end }}
+		}
+		{{- end }}
+{{- end }}
 `
 
 	rpcInterfacesTemplate = `// Code generated by resourcegeneration. DO NOT EDIT.

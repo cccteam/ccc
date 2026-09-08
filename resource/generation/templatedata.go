@@ -494,7 +494,7 @@ func (d *tsAPIData) MethodImports() string {
 	for _, method := range d.Methods {
 		names = append(names, method.Name)
 		if method.Answers {
-			names = append(names, method.ResultName())
+			names = append(names, method.ResolvesWith())
 		}
 	}
 
@@ -561,13 +561,37 @@ type tsAPIMethod struct {
 	Route    string
 	Scope    accesstypes.PermissionScope
 	// Answers marks a method whose Execute returns a result: its handle is typed
-	// with the generated <Name>Result.
+	// with the generated <Name>Result, or <Name>Answer when it declares statuses.
 	Answers bool
+	// Statuses is the method's @answers declaration, carried on the descriptor
+	// so the client tells the method's own 4xx from the frame's.
+	Statuses []int
 }
 
 // ResultName is the generated TypeScript result interface's name.
 func (m *tsAPIMethod) ResultName() string {
 	return m.Name + "Result"
+}
+
+// AnswerName is the generated TypeScript answer interface's name: the status
+// the method chose with its typed result.
+func (m *tsAPIMethod) AnswerName() string {
+	return m.Name + "Answer"
+}
+
+// ResolvesWith is the type the method's handle resolves with: the answer when
+// the method declares statuses, else the result.
+func (m *tsAPIMethod) ResolvesWith() string {
+	if len(m.Statuses) > 0 {
+		return m.AnswerName()
+	}
+
+	return m.ResultName()
+}
+
+// StatusArray renders the declared statuses as a TypeScript array literal.
+func (m *tsAPIMethod) StatusArray() string {
+	return "[" + statusList(m.Statuses, ", ") + "]"
 }
 
 // ScopeKind renders the resource's permission scope as the client descriptor spells it.

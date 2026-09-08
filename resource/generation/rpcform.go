@@ -43,6 +43,10 @@ type executeSignature struct {
 	// whose only result is error; resultPointer marks a pointer to it.
 	result        *types.Named
 	resultPointer bool
+	// choosesStatus marks a result type that declares HTTPStatus() int on
+	// either receiver: the method chooses its status per response and must
+	// declare the statuses with @answers.
+	choosesStatus bool
 }
 
 // classifyExecute reads the struct's Execute method and returns its signature.
@@ -102,6 +106,7 @@ func classifyExecute(s *parser.Struct) (executeSignature, error) {
 			return none, errors.Newf("struct %s: Execute answers with %s, which is not a struct type or a pointer to one; %s", s.Name(), typeStringer(results.At(0).Type()), executeForms)
 		}
 		out.result = named
+		out.choosesStatus = choosesStatus(named)
 
 		return out, nil
 	default:
@@ -161,4 +166,23 @@ func typeTupleString(tuple *types.Tuple) string {
 	}
 
 	return types.TypeString(tuple, func(p *types.Package) string { return p.Name() })
+}
+
+// choosesStatus reports whether the result type, on either receiver, declares
+// HTTPStatus() int.
+func choosesStatus(named *types.Named) bool {
+	sel := types.NewMethodSet(types.NewPointer(named)).Lookup(named.Obj().Pkg(), "HTTPStatus")
+	if sel == nil {
+		return false
+	}
+	fn, ok := sel.Obj().(*types.Func)
+	if !ok {
+		return false
+	}
+	sig, ok := fn.Type().(*types.Signature)
+	if !ok || sig.Params().Len() != 0 || sig.Results().Len() != 1 || sig.Variadic() {
+		return false
+	}
+
+	return types.Identical(sig.Results().At(0).Type(), types.Typ[types.Int])
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -330,6 +331,13 @@ type rpcMethodInfo struct {
 	// targeted method (a transition's Target aliases its embedded rpcTarget);
 	// nil for a method with no target row.
 	Target *rpcTarget
+	// Statuses is the method's validated @answers declaration: the statuses
+	// its result may choose per response, in declaration order. Nil for a
+	// method that answers 200.
+	Statuses []int
+	// choosesStatus marks a result type declaring HTTPStatus() int, read off
+	// the Execute signature; @answers must accompany it.
+	choosesStatus bool
 }
 
 // IsDomainScoped reports whether the method's @permissionScope resolves to the
@@ -382,6 +390,49 @@ const (
 // Answers reports whether Execute returns a result beside its error.
 func (r *rpcMethodInfo) Answers() bool {
 	return r.Result != nil
+}
+
+// DeclaresNoContent reports whether @answers declares 204, the status a nil
+// result (or an answerless method) is written with.
+func (r *rpcMethodInfo) DeclaresNoContent() bool {
+	return slices.Contains(r.Statuses, http.StatusNoContent)
+}
+
+// StatusList renders the declared statuses as Go call arguments.
+func (r *rpcMethodInfo) StatusList() string {
+	return statusList(r.Statuses, ", ")
+}
+
+// StatusUnion renders the declared statuses as a TypeScript literal union.
+func (r *rpcMethodInfo) StatusUnion() string {
+	return statusList(r.Statuses, " | ")
+}
+
+// ResponseExpr renders the expression that converts the captured result into
+// the response mirror the handler encodes.
+func (r *rpcMethodInfo) ResponseExpr() string {
+	if r.Result.Flat() {
+		if r.ResultPointer {
+			return "(*" + responseMirror + ")(result)"
+		}
+
+		return "(*" + responseMirror + ")(&result)"
+	}
+	if r.ResultPointer {
+		return r.ResultConverterName() + "(*result)"
+	}
+
+	return r.ResultConverterName() + "(result)"
+}
+
+// statusList joins statuses with sep.
+func statusList(statuses []int, sep string) string {
+	parts := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		parts = append(parts, strconv.Itoa(status))
+	}
+
+	return strings.Join(parts, sep)
 }
 
 // ResultType is the type Execute returns, as the handler declares the variable
@@ -1207,6 +1258,7 @@ const (
 	stateRootKeyword            string = "stateRoot"            // Declares workflow membership on the member's anchoring FK field, naming the workflow root struct
 	transitionKeyword           string = "transition"           // Declares an RPC method as a workflow state transition: @transition(Root, from: a, b, to: c)
 	targetKeyword               string = "target"               // Marks the RPC field carrying the target row key; @target(Root) names the resource when no @transition does
+	answersKeyword              string = "answers"              // Declares the statuses an RPC method may answer with; its result chooses one per response through HTTPStatus()
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -1236,6 +1288,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		stateRootKeyword:            {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		transitionKeyword:           {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		targetKeyword:               {genlang.ScanField: genlang.Exclusive},
+		answersKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }
 

@@ -62,7 +62,62 @@ type (
 	Report struct {
 		Note string
 	}
+
+	// Verdict is a result that chooses its status: the @answers fixtures below
+	// answer with it.
+	Verdict struct {
+		Accepted bool
+	}
+
+	// @rpc
+	// @answers(200, 409)
+	AnswersDeclared struct{}
+
+	// @rpc
+	// @answers(200, 204)
+	AnswersNoContentPointer struct{}
+
+	// @rpc
+	// @answers(200, 204)
+	AnswersNoContentValue struct{}
+
+	// @rpc
+	// @answers(204)
+	AnswerlessNoContent struct{}
+
+	// @rpc
+	// @answers(200)
+	AnswerlessOther struct{}
+
+	// @rpc
+	AnswersUndeclared struct{}
+
+	// @rpc
+	// @answers(200, 409)
+	AnswersNoChooser struct{}
+
+	// @rpc
+	// @answers(200, 404)
+	AnswersFrameCode struct{}
+
+	// @rpc
+	// @answers(200, 500)
+	AnswersServerCode struct{}
+
+	// @rpc
+	// @answers(200, 409, 409)
+	AnswersDuplicate struct{}
+
+	// @rpc
+	// @answers(409)
+	AnswersNoSuccess struct{}
+
+	// @rpc
+	// @answers(200, teapot)
+	AnswersNotACode struct{}
 )
+
+func (Verdict) HTTPStatus() int { return 200 }
 
 func (*TxnForm) Execute(context.Context, resource.ReadWriteTransaction, *Client) error { return nil }
 func (*ClientForm) Execute(context.Context, resource.Client, *Client) error            { return nil }
@@ -93,4 +148,41 @@ func (*AnswersBasic) Execute(context.Context, resource.ReadWriteTransaction, *Cl
 }
 func (*ThreeResults) Execute(context.Context, resource.ReadWriteTransaction, *Client) (Report, int, error) {
 	return Report{}, 0, nil
+}
+
+func (*AnswersDeclared) Execute(context.Context, resource.ReadWriteTransaction, *Client) (Verdict, error) {
+	return Verdict{}, nil
+}
+func (*AnswersNoContentPointer) Execute(context.Context, resource.ReadWriteTransaction, *Client) (*Verdict, error) {
+	return nil, nil
+}
+func (*AnswersNoContentValue) Execute(context.Context, resource.ReadWriteTransaction, *Client) (Verdict, error) {
+	return Verdict{}, nil
+}
+func (*AnswerlessNoContent) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (*AnswerlessOther) Execute(context.Context, resource.ReadWriteTransaction, *Client) error {
+	return nil
+}
+func (*AnswersUndeclared) Execute(context.Context, resource.ReadWriteTransaction, *Client) (Verdict, error) {
+	return Verdict{}, nil
+}
+func (*AnswersNoChooser) Execute(context.Context, resource.ReadWriteTransaction, *Client) (Report, error) {
+	return Report{}, nil
+}
+func (*AnswersFrameCode) Execute(context.Context, resource.ReadWriteTransaction, *Client) (Verdict, error) {
+	return Verdict{}, nil
+}
+func (*AnswersServerCode) Execute(context.Context, resource.ReadWriteTransaction, *Client) (Verdict, error) {
+	return Verdict{}, nil
+}
+func (*AnswersDuplicate) Execute(context.Context, resource.ReadWriteTransaction, *Client) (Verdict, error) {
+	return Verdict{}, nil
+}
+func (*AnswersNoSuccess) Execute(context.Context, resource.ReadWriteTransaction, *Client) (Verdict, error) {
+	return Verdict{}, nil
+}
+func (*AnswersNotACode) Execute(context.Context, resource.ReadWriteTransaction, *Client) (Verdict, error) {
+	return Verdict{}, nil
 }

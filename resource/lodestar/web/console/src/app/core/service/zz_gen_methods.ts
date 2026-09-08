@@ -67,7 +67,7 @@ export interface InspectShipConfig {
 export interface InspectShip {
   refitId: string;
 }
-/** The answer InspectShip resolves with. */
+/** The result InspectShip answers with. */
 export interface InspectShipResult {
   refitId: string;
   shipId: string;
@@ -164,6 +164,8 @@ export interface MethodMeta {
   transition?: MethodTransition;
   /** Set when the method answers with a result body; absent methods resolve with nothing. */
   answers?: true;
+  /** The statuses the method declares with @answers; a listed 4xx is the method's own answer, not a refusal by the frame. */
+  statuses?: number[];
   fields: RPCFieldMeta[];
 }
 

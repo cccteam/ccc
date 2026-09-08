@@ -667,6 +667,7 @@ func (t *typescriptGenerator) apiClientData() *tsAPIData {
 			Route:    strcase.ToKebab(method.Name()),
 			Scope:    method.PermissionScope,
 			Answers:  method.Answers(),
+			Statuses: method.Statuses,
 		})
 	}
 
