@@ -11,7 +11,7 @@ import { provideRouter, withComponentInputBinding, withRouterConfig } from '@ang
 import { createApi } from '@app/service/zz_gen_api';
 import { methodMeta } from '@app/service/zz_gen_methods';
 import { resourceMeta } from '@app/service/zz_gen_resources';
-import { provideResourceClient } from '@cccteam/ccc-lib/resource-client';
+import { provideResourceClient } from '@cccteam/resource-angular/resource-client';
 import {
   API_URL,
   BASE_URL,
@@ -19,8 +19,8 @@ import {
   METHOD_META,
   RESOURCE_META,
   SESSION_PATH,
-} from '@cccteam/ccc-lib/types';
-import { ApiInterceptor } from '@cccteam/ccc-lib/ui-interceptor';
+} from '@cccteam/resource-angular/types';
+import { ApiInterceptor } from '@cccteam/resource-angular/ui-interceptor';
 import { environment } from '@env';
 import { routes } from './app.routes';
 

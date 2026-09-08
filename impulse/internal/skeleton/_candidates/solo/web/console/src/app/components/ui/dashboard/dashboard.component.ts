@@ -1,8 +1,8 @@
 import { Component, computed, inject } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { injectApi } from '@app/api/api';
-import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { storeSignal } from '@cccteam/ccc-lib/resource-client';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { storeSignal } from '@cccteam/resource-angular/resource-client';
 import { Permission, PermissionDigestState } from '@cccteam/resource';
 
 /** One row of the permissions card: a resource and the digest state of each permission on it. */

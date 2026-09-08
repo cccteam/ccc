@@ -226,7 +226,7 @@ inputs to render); enforcement stays with the endpoint gate, the read rules, and
 write stages. Nothing folds — no `now`, no row data — so a payload is stable for the
 life of a policy snapshot and caches cleanly per scope. An unknown or grant-free
 domain digests to `{}`, so the endpoint never confirms tenant existence under
-`WithConcealedDomains`. `@cccteam/ccc-lib/types` carries the matching `PermissionDigest` /
+`WithConcealedDomains`. `@cccteam/resource-angular/types` carries the matching `PermissionDigest` /
 `PermissionDigestState` types (and `RowCapabilities` for the capability envelope).
 
 **User domains.** The payload is the sorted list of domains where the user holds at

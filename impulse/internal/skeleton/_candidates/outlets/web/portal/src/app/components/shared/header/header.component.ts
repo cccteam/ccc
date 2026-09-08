@@ -4,8 +4,8 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { Router, RouterModule } from '@angular/router';
 import { TenantService } from '@app/tenant/tenant.service';
-import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { IdleService } from '@cccteam/ccc-lib/ui-idle-service';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 import { tap } from 'rxjs';
 import { TopbarComponent } from '../topbar/topbar.component';
 

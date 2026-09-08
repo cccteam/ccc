@@ -11,10 +11,10 @@ import { Router } from '@angular/router';
 import { injectApi } from '@app/api/api';
 import { DistressCalls as DistressCallFields, Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { DistressCalls, Missions } from '@app/service/zz_gen_resources';
-import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { storeSignal } from '@cccteam/ccc-lib/resource-client';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { storeSignal } from '@cccteam/resource-angular/resource-client';
 import { Domain, Method, rowCapabilities } from '@cccteam/resource';
-import { IdleService } from '@cccteam/ccc-lib/ui-idle-service';
+import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 import { tap } from 'rxjs';
 import { TrackerGraphComponent } from './graph/tracker-graph.component';
 

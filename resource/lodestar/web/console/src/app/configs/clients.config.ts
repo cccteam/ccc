@@ -1,5 +1,5 @@
 import { Clients, Resources } from '@app/service/zz_gen_constants';
-import { field, listViewConfig, rootConfig, section } from '@cccteam/ccc-lib/types';
+import { field, listViewConfig, rootConfig, section } from '@cccteam/resource-angular/types';
 
 // Clients demonstrates conditional row filtering on a global resource: the
 // ClientBrowser role lists trusted clients only (`trusted = true`), while

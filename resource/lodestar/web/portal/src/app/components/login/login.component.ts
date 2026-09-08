@@ -6,9 +6,9 @@ import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Router } from '@angular/router';
-import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { API_URL } from '@cccteam/ccc-lib/types';
-import { IdleService } from '@cccteam/ccc-lib/ui-idle-service';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { API_URL } from '@cccteam/resource-angular/types';
+import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 
 /** The portal's manifest lists client logins only — the same quick-fill helper, one card. */
 export const CLIENT_MANIFEST = [

@@ -1,8 +1,8 @@
 import { Component, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { Router, RouterModule } from '@angular/router';
-import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { IdleService } from '@cccteam/ccc-lib/ui-idle-service';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 import { tap } from 'rxjs';
 import { TopbarComponent } from '../topbar/topbar.component';
 

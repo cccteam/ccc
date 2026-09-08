@@ -1,7 +1,7 @@
 import { Type } from '@angular/core';
 import { Route } from '@angular/router';
 import { Permissions, Resources } from '@app/service/zz_gen_constants';
-import { generatedNavItems } from '@cccteam/ccc-lib/resource-nav';
+import { generatedNavItems } from '@cccteam/resource-angular/resource-nav';
 import { MenuItem } from '@shared/topbar/topbar.component';
 import { CallLogComponent } from './call-log/call-log.component';
 import { FlightDeckComponent } from './flight-deck/flight-deck.component';

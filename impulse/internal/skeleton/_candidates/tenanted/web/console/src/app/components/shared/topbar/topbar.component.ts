@@ -5,9 +5,9 @@ import { RouterModule } from '@angular/router';
 import { PermissionScopes } from '@app/service/zz_gen_constants';
 import { ResourceScopes } from '@app/service/zz_gen_resources';
 import { TenantService } from '@app/tenant/tenant.service';
-import { HasPermissionDirective } from '@cccteam/ccc-lib/auth-has-permission';
-import { generatedNavItems } from '@cccteam/ccc-lib/resource-nav';
-import { Domain, MenuItem, PermissionScope, Resource } from '@cccteam/ccc-lib/types';
+import { HasPermissionDirective } from '@cccteam/resource-angular/auth-has-permission';
+import { generatedNavItems } from '@cccteam/resource-angular/resource-nav';
+import { Domain, MenuItem, PermissionScope, Resource } from '@cccteam/resource-angular/types';
 
 /**
  * The navigation menu over the generated resource routes. Items carry the permission

@@ -1,5 +1,5 @@
 import { Resources, ShipClasses } from '@app/service/zz_gen_constants';
-import { field, listViewConfig, rootConfig, section } from '@cccteam/ccc-lib/types';
+import { field, listViewConfig, rootConfig, section } from '@cccteam/resource-angular/types';
 
 // ShipClasses is the hull catalog: the global table Ship's `shipRole` attribute reaches
 // through a join path. Designation is immutable.

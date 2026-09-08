@@ -340,9 +340,9 @@ The templates are therefore validated by rendering them and running the rendered
 application's build, tests, and `impulse check`, never in place. Their browser workspaces
 use bun, with `bun.lock` committed. Two yalc-era settings travel with them until
 `@cccteam/resource` is published: an `overrides` entry in package.json that points
-ccc-lib's peer dependency on the client at the yalc link, and `peer = false` in
+@cccteam/resource-angular's peer dependency on the client at the yalc link, and `peer = false` in
 bunfig.toml, because bun would otherwise install a second copy of the client beneath
-ccc-lib and TypeScript would see two declarations of every client type. Every peer an
+the Angular library and TypeScript would see two declarations of every client type. Every peer an
 application needs is therefore a direct dependency. Build products
 (`node_modules`, `.angular`, `dist`, `.ccc-cache`, `.yalc`, `go.work`) are never embedded;
 `internal/skeleton`'s tests enforce that.

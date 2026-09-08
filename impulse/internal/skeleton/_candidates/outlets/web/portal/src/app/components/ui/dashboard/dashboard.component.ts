@@ -3,7 +3,7 @@ import { MatCardModule } from '@angular/material/card';
 import { Resources } from '@app/service/zz_gen_constants';
 import { ResourceScopes } from '@app/service/zz_gen_resources';
 import { TenantService } from '@app/tenant/tenant.service';
-import { AuthService } from '@cccteam/ccc-lib/auth-service';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { Permission, PermissionDigestState, Resource } from '@cccteam/resource';
 
 /** One row of the permissions card: a resource and the digest state of each permission on it. */

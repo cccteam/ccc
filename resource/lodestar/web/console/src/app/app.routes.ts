@@ -1,7 +1,7 @@
 import { Routes } from '@angular/router';
 import { resourceMeta } from '@app/service/zz_gen_resources';
-import { LoginAuthenticationGuard } from '@cccteam/ccc-lib/auth-authentication-guard';
-import { resourceRoutes } from '@cccteam/ccc-lib/resource-route-generator';
+import { LoginAuthenticationGuard } from '@cccteam/resource-angular/auth-authentication-guard';
+import { resourceRoutes } from '@cccteam/resource-angular/resource-route-generator';
 import { sectorRoute } from '@components/sector/sector.routes';
 import { UiComponent } from '@components/ui/ui.component';
 import { clientsConfig } from './configs/clients.config';

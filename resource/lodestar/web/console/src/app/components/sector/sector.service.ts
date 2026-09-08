@@ -12,8 +12,8 @@ import {
 import { injectApi } from '@app/api/api';
 import { Permissions, Resources } from '@app/service/zz_gen_constants';
 import { Api, DomainApi } from '@app/service/zz_gen_api';
-import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { storeSignal } from '@cccteam/ccc-lib/resource-client';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { storeSignal } from '@cccteam/resource-angular/resource-client';
 import { Domain, DomainClient, Listable, ListQuery, Method, Page, Permission, Resource, ResourceHandle } from '@cccteam/resource';
 
 /** The generated client bound to one sector: its resources and RPC methods. */
@@ -43,7 +43,7 @@ export interface ShipsLogEntry {
  * permission domain for every request those decks make: `sector()` is the client
  * bound to it, so switching sectors re-scopes what each persona can see and do.
  *
- * Permissions: the client owns the digest cache — ccc-lib's AuthService, guard, and
+ * Permissions: the client owns the digest cache — @cccteam/resource-angular's AuthService, guard, and
  * directive answer from the same cache. Selecting a sector loads that sector's digest;
  * `can` answers from it reactively. Absent grant = hide the surface, never provoke a
  * 403 (waystation's rule); conditional grant = render, the server narrows per row.

@@ -1,5 +1,5 @@
 import { Methods, Resources, IssueBulletin, Sectors } from '@app/service/zz_gen_constants';
-import { field, listViewConfig, rootConfig, rpcConfig, section } from '@cccteam/ccc-lib/types';
+import { field, listViewConfig, rootConfig, rpcConfig, section } from '@cccteam/resource-angular/types';
 
 // Sectors is the tenant table itself: rows here ARE the permission domains, read at
 // bootstrap by MigrateRoles; the star chart's "chart every sector" roster comes from

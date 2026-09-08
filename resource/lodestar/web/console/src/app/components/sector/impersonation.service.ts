@@ -1,8 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { API_URL } from '@cccteam/ccc-lib/types';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { API_URL } from '@cccteam/resource-angular/types';
 import { firstValueFrom } from 'rxjs';
 
 /** The impersonation record the session endpoint reports for a minted session. */

@@ -4,9 +4,9 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { ActivatedRoute } from '@angular/router';
-import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { API_URL, BASE_URL } from '@cccteam/ccc-lib/types';
-import { IdleService } from '@cccteam/ccc-lib/ui-idle-service';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { API_URL, BASE_URL } from '@cccteam/resource-angular/types';
+import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 import { map } from 'rxjs';
 
 /**

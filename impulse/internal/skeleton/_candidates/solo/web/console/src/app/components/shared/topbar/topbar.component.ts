@@ -2,8 +2,8 @@ import { Component } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { RouterModule } from '@angular/router';
-import { HasPermissionDirective } from '@cccteam/ccc-lib/auth-has-permission';
-import { generatedNavItems } from '@cccteam/ccc-lib/resource-nav';
+import { HasPermissionDirective } from '@cccteam/resource-angular/auth-has-permission';
+import { generatedNavItems } from '@cccteam/resource-angular/resource-nav';
 
 /**
  * The navigation menu over the generated resource routes. Items carry the permission

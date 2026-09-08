@@ -1,8 +1,8 @@
 import { computed, effect, inject, Injectable, linkedSignal, untracked } from '@angular/core';
 import { injectApi } from '@app/api/api';
 import { Api } from '@app/service/zz_gen_api';
-import { AuthService } from '@cccteam/ccc-lib/auth-service';
-import { storeSignal } from '@cccteam/ccc-lib/resource-client';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { storeSignal } from '@cccteam/resource-angular/resource-client';
 import { Domain, Method, Permission, PermissionDigestState, Resource } from '@cccteam/resource';
 
 /**
@@ -10,7 +10,7 @@ import { Domain, Method, Permission, PermissionDigestState, Resource } from '@cc
  * selected tenant — and binds the generated API client to it. The tenant is the
  * permission domain for every request those pages make.
  *
- * Permissions: the client owns the digest cache — ccc-lib's AuthService, guard, and
+ * Permissions: the client owns the digest cache — @cccteam/resource-angular's AuthService, guard, and
  * directive answer from the same cache. Selecting a tenant loads that tenant's digest;
  * `can` and `state` answer from it reactively.
  */

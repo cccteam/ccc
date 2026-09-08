@@ -5,7 +5,7 @@ import { MatTableModule } from '@angular/material/table';
 import { RouterModule } from '@angular/router';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { ResourceScopes } from '@app/service/zz_gen_resources';
-import { AuthService } from '@cccteam/ccc-lib/auth-service';
+import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { Method, Permission, Resource } from '@cccteam/resource';
 import { ImpersonationService } from '@components/sector/impersonation.service';
 import { SectorService } from '@components/sector/sector.service';

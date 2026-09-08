@@ -1,10 +1,10 @@
 import { Component, inject } from '@angular/core';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { RouterOutlet } from '@angular/router';
-import { AlertComponent } from '@cccteam/ccc-lib/ui-alert';
-import { UiCoreService } from '@cccteam/ccc-lib/ui-core-service';
-import { IdleService } from '@cccteam/ccc-lib/ui-idle-service';
-import { NotificationService } from '@cccteam/ccc-lib/ui-notification-service';
+import { AlertComponent } from '@cccteam/resource-angular/ui-alert';
+import { UiCoreService } from '@cccteam/resource-angular/ui-core-service';
+import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
+import { NotificationService } from '@cccteam/resource-angular/ui-notification-service';
 
 @Component({
   selector: 'app-root',

@@ -1,5 +1,5 @@
 import { Pilots, Resources } from '@app/service/zz_gen_constants';
-import { field, listViewConfig, rootConfig, section } from '@cccteam/ccc-lib/types';
+import { field, listViewConfig, rootConfig, section } from '@cccteam/resource-angular/types';
 
 // Pilots is the personnel registry and the subject-value anchor: each pilot's
 // clearance and fee limit feed the `subject.clearance` and `subject.feeLimit`

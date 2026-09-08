@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { LoginAuthenticationGuard } from '@cccteam/ccc-lib/auth-authentication-guard';
+import { LoginAuthenticationGuard } from '@cccteam/resource-angular/auth-authentication-guard';
 
 export const routes: Routes = [
   {
