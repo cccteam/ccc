@@ -34,6 +34,9 @@ type Handlers interface {
 	// change-tracking table; its permission is registered through
 	// @manualAddResource(List, domain) and checked inside the handler.
 	ShipsLogEntries() http.HandlerFunc
+	// MissionDocumentContent streams a mission document's bytes from the document
+	// store: reading a file back is the application's own route.
+	MissionDocumentContent() http.HandlerFunc
 
 	// Impersonate is the hand-written mint route for view-as-user and act-as-role
 	// sessions, gated by the manual ViewAsUser and AssumeRole Execute registrations.
@@ -48,6 +51,10 @@ type Handlers interface {
 	PortalDeepLink(next http.Handler) http.Handler
 	PortalStaticAssets() http.HandlerFunc
 }
+
+// MissionDocumentContentRoute serves a mission document's bytes; the document
+// listing is the generated mission-documents route beside it.
+const MissionDocumentContentRoute = "/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content"
 
 // New wires the full served application: session handling and the demo login around
 // the generated API routes (the crew console's outlet at /api and the client portal's
@@ -76,6 +83,7 @@ func newRouter(h Handlers, api, portalAPI, droidsAPI func(chi.Router)) *chi.Mux 
 	// prefix is what differs, so the same session cookie is honored under either.
 	sessionGroup(r, h, "/api", func(r chi.Router) {
 		r.Get("/api/sectors/{sectorID}/ships-log-entries", h.DomainGuard()(h.ShipsLogEntries()))
+		r.Get(MissionDocumentContentRoute, h.DomainGuard()(h.MissionDocumentContent()))
 		r.Post("/api/impersonate", h.Impersonate())
 		r.Post("/api/impersonate/end", h.EndImpersonation())
 

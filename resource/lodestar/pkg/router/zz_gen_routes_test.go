@@ -138,6 +138,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/sectors/testDomain/sector-hazard-boards/testSectorHazardBoardShipID/testSectorHazardBoardSubsystem", method: http.MethodPost},
 		{url: "/portal/service-ledgers", method: http.MethodGet},
 		{url: "/portal/service-ledgers", method: http.MethodPost},
+		{url: "/portal/sectors/testDomain/attach-mission-document", method: http.MethodPost},
 		{url: "/portal/sectors/testDomain/begin-refit", method: http.MethodPost},
 		{url: "/portal/sectors/testDomain/claim-mission", method: http.MethodPost},
 		{url: "/portal/sectors/testDomain/complete-mission", method: http.MethodPost},
@@ -180,6 +181,10 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/missions", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/missions/testMissionID", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/missions/testMissionID", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/mission-documents", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/mission-documents", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/mission-documents/testMissionDocumentID", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/mission-documents/testMissionDocumentID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/open-missions-by-squadrons", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/open-missions-by-squadrons", method: http.MethodPost},
 		{url: "/droids/pilots", method: http.MethodGet},
@@ -238,6 +243,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/sector-hazard-boards/testSectorHazardBoardShipID/testSectorHazardBoardSubsystem", method: http.MethodPost},
 		{url: "/droids/service-ledgers", method: http.MethodGet},
 		{url: "/droids/service-ledgers", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/attach-mission-document", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/begin-refit", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/claim-mission", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/complete-mission", method: http.MethodPost},
@@ -356,6 +362,7 @@ func generatedRouteParameters() []string {
 		"distressCallID",
 		"hangarID",
 		"missionID",
+		"missionDocumentID",
 		"pilotID",
 		"pilotCertificationUserID",
 		"pilotCertificationCertificationID",
@@ -617,6 +624,46 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/portal/sectors/testDomain/missions/testMissionID", method: http.MethodPost,
 			handlerFunc: "Mission",
 			parameters:  map[string]string{"sectorID": "testDomain", "missionID": "testMissionID"},
+		},
+		{
+			url: "/api/sectors/testDomain/mission-documents", method: http.MethodGet,
+			handlerFunc: "MissionDocuments",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/api/sectors/testDomain/mission-documents", method: http.MethodPost,
+			handlerFunc: "MissionDocuments",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/api/sectors/testDomain/mission-documents/testMissionDocumentID", method: http.MethodGet,
+			handlerFunc: "MissionDocument",
+			parameters:  map[string]string{"sectorID": "testDomain", "missionDocumentID": "testMissionDocumentID"},
+		},
+		{
+			url: "/api/sectors/testDomain/mission-documents/testMissionDocumentID", method: http.MethodPost,
+			handlerFunc: "MissionDocument",
+			parameters:  map[string]string{"sectorID": "testDomain", "missionDocumentID": "testMissionDocumentID"},
+		},
+		{
+			url: "/portal/sectors/testDomain/mission-documents", method: http.MethodGet,
+			handlerFunc: "MissionDocuments",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/portal/sectors/testDomain/mission-documents", method: http.MethodPost,
+			handlerFunc: "MissionDocuments",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/portal/sectors/testDomain/mission-documents/testMissionDocumentID", method: http.MethodGet,
+			handlerFunc: "MissionDocument",
+			parameters:  map[string]string{"sectorID": "testDomain", "missionDocumentID": "testMissionDocumentID"},
+		},
+		{
+			url: "/portal/sectors/testDomain/mission-documents/testMissionDocumentID", method: http.MethodPost,
+			handlerFunc: "MissionDocument",
+			parameters:  map[string]string{"sectorID": "testDomain", "missionDocumentID": "testMissionDocumentID"},
 		},
 		{
 			url: "/api/sectors/testDomain/open-missions-by-squadrons", method: http.MethodGet,
@@ -958,6 +1005,10 @@ func (s *generatedHandlersStub) DomainGuard() func(http.HandlerFunc) http.Handle
 	return func(next http.HandlerFunc) http.HandlerFunc { return next }
 }
 
+func (s *generatedHandlersStub) AttachMissionDocument() http.HandlerFunc {
+	return s.record("AttachMissionDocument")
+}
+
 func (s *generatedHandlersStub) BeginRefit() http.HandlerFunc {
 	return s.record("BeginRefit")
 }
@@ -1056,6 +1107,14 @@ func (s *generatedHandlersStub) Missions() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Mission() http.HandlerFunc {
 	return s.record("Mission")
+}
+
+func (s *generatedHandlersStub) MissionDocuments() http.HandlerFunc {
+	return s.record("MissionDocuments")
+}
+
+func (s *generatedHandlersStub) MissionDocument() http.HandlerFunc {
+	return s.record("MissionDocument")
 }
 
 func (s *generatedHandlersStub) OpenMissionsBySquadrons() http.HandlerFunc {

@@ -31,7 +31,7 @@ the droid channel.
 
 The served app on :8083 also serves the built bundles (`npm run build` in `web/`): the
 console at `/` and the portal at `/client/`, paths overridable via
-`LODESTAR_CONSOLE_DIST` and `LODESTAR_PORTAL_DIST`.
+`LODESTAR_CONSOLE_DIST` and `LODESTAR_PORTAL_DIST`. Mission documents land in the directory `LODESTAR_UPLOAD_DIR` names (default `uploads/`, gitignored): uploads stream into its `pending/` subdirectory until their transaction commits, and `store.DirStore.Sweep` is the application's answer to a crash between commit and promotion.
 
 ## The world
 
@@ -51,7 +51,7 @@ manifest: pick a card, sign in, switch — never more than two clicks.
 | Login | Who | What their view proves |
 | --- | --- | --- |
 | `governor` | Governor Greer, headquarters | Every global role and Sector Marshal in all three sectors — the pruned pure-RBAC baseline. May view as anyone and act as a role. |
-| `marshal` | Marshal Maren, Anvil | Full sector authority at Anvil, nothing at Bastion or Cinder (the fail-closed border); every transition including Scrap; the row-free `now` condition on IssueBulletin. |
+| `marshal` | Marshal Maren, Anvil | Full sector authority at Anvil, nothing at Bastion or Cinder (the fail-closed border); every transition including Scrap; the row-free `now` condition on IssueBulletin. Attaches mission documents through `AttachMissionDocument`, the `@upload` method: the files stream to the document store before the body runs, the rows claim the keys inside the transaction, and the download route (`/api/sectors/{sector}/mission-documents/{id}/content`) is hand-written. |
 | `cadet` | Cadet Cass | `hazard IN (1, 2)`; the flight deck with only Claim lit; the two-input distress-call form (create-form narrowing). The flight deck is also the paging demonstration: four call sheets per page in deadline order (Mission declares `@order(Deadline asc)` and `@page(default: 25, max: 200)`), Previous and Next following the server's Link header, the total from the first page's `count=true`. |
 | `pilot` | Pilot Pax, clearance 3 | `hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)`; `hangarZone != 'quarantine'` on ships and on HailShip. |
 | `veteran` | Veteran Vela | `NOT (hazard IN (1, 2) OR fee < 5000)`. |

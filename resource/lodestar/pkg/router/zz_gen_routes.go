@@ -19,6 +19,7 @@ const (
 	DistressCallID                    httpio.ParamType = "distressCallID"
 	HangarID                          httpio.ParamType = "hangarID"
 	MissionID                         httpio.ParamType = "missionID"
+	MissionDocumentID                 httpio.ParamType = "missionDocumentID"
 	PilotID                           httpio.ParamType = "pilotID"
 	PilotCertificationUserID          httpio.ParamType = "pilotCertificationUserID"
 	PilotCertificationCertificationID httpio.ParamType = "pilotCertificationCertificationID"
@@ -52,6 +53,8 @@ type GeneratedHandlers interface {
 	// where they hold at least one grant — the tenant picker's source, on the same
 	// foothold predicate as concealed tenancy.
 	UserDomains() http.HandlerFunc
+
+	AttachMissionDocument() http.HandlerFunc
 
 	BeginRefit() http.HandlerFunc
 
@@ -94,6 +97,9 @@ type GeneratedHandlers interface {
 
 	Missions() http.HandlerFunc
 	Mission() http.HandlerFunc
+
+	MissionDocuments() http.HandlerFunc
+	MissionDocument() http.HandlerFunc
 
 	OpenMissionsBySquadrons() http.HandlerFunc
 
@@ -160,6 +166,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 
 	r.Get("/api/permission-digest", h.PermissionDigest())
 	r.Get("/api/user-domains", h.UserDomains())
+
+	r.Post("/api/sectors/{sectorID}/attach-mission-document", domainGuard(h.AttachMissionDocument()))
 
 	r.Post("/api/sectors/{sectorID}/begin-refit", domainGuard(h.BeginRefit()))
 
@@ -236,6 +244,14 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	missionHandler := domainGuard(h.Mission())
 	r.Get("/api/sectors/{sectorID}/missions/{missionID}", missionHandler)
 	r.Post("/api/sectors/{sectorID}/missions/{missionID}", missionHandler)
+
+	missionDocumentsHandler := domainGuard(h.MissionDocuments())
+	r.Get("/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
+	r.Post("/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
+
+	missionDocumentHandler := domainGuard(h.MissionDocument())
+	r.Get("/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
+	r.Post("/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
 
 	openMissionsBySquadronsHandler := domainGuard(h.OpenMissionsBySquadrons())
 	r.Get("/api/sectors/{sectorID}/open-missions-by-squadrons", openMissionsBySquadronsHandler)
@@ -394,6 +410,9 @@ type GeneratedPortalHandlers interface {
 	Missions() http.HandlerFunc
 	Mission() http.HandlerFunc
 
+	MissionDocuments() http.HandlerFunc
+	MissionDocument() http.HandlerFunc
+
 	StandDownMission() http.HandlerFunc
 
 	PatchPortalResources() http.HandlerFunc
@@ -428,6 +447,14 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	missionHandler := domainGuard(h.Mission())
 	r.Get("/portal/sectors/{sectorID}/missions/{missionID}", missionHandler)
 	r.Post("/portal/sectors/{sectorID}/missions/{missionID}", missionHandler)
+
+	missionDocumentsHandler := domainGuard(h.MissionDocuments())
+	r.Get("/portal/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
+	r.Post("/portal/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
+
+	missionDocumentHandler := domainGuard(h.MissionDocument())
+	r.Get("/portal/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
+	r.Post("/portal/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
 
 	r.Post("/portal/sectors/{sectorID}/stand-down-mission", domainGuard(h.StandDownMission()))
 

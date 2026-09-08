@@ -24,6 +24,7 @@ export const Resources = {
   DistressCalls: 'DistressCalls' as Resource,
   FeeByKinds: 'FeeByKinds' as Resource,
   Hangars: 'Hangars' as Resource,
+  MissionDocuments: 'MissionDocuments' as Resource,
   Missions: 'Missions' as Resource,
   OpenMissionsBySquadrons: 'OpenMissionsBySquadrons' as Resource,
   PilotCards: 'PilotCards' as Resource,
@@ -45,6 +46,7 @@ export const Resources = {
 };
 
 export const Methods = {
+  AttachMissionDocument: 'AttachMissionDocument' as Method,
   BeginRefit: 'BeginRefit' as Method,
   ClaimMission: 'ClaimMission' as Method,
   CompleteMission: 'CompleteMission' as Method,
@@ -174,6 +176,31 @@ export namespace Hangars {
     name: 'Hangars.name' as Resource,
     sectorId: 'Hangars.sectorId' as Resource,
     zone: 'Hangars.zone' as Resource,
+  };
+}
+
+export namespace MissionDocuments {
+  export const fieldName = {
+    contentType: 'contentType' as FieldName,
+    fileName: 'fileName' as FieldName,
+    id: 'id' as FieldName,
+    missionId: 'missionId' as FieldName,
+    size: 'size' as FieldName,
+    storeKey: 'storeKey' as FieldName,
+    title: 'title' as FieldName,
+    uploadedAt: 'uploadedAt' as FieldName,
+    uploadedBy: 'uploadedBy' as FieldName,
+  };
+  export const resourceName = {
+    contentType: 'MissionDocuments.contentType' as Resource,
+    fileName: 'MissionDocuments.fileName' as Resource,
+    id: 'MissionDocuments.id' as Resource,
+    missionId: 'MissionDocuments.missionId' as Resource,
+    size: 'MissionDocuments.size' as Resource,
+    storeKey: 'MissionDocuments.storeKey' as Resource,
+    title: 'MissionDocuments.title' as Resource,
+    uploadedAt: 'MissionDocuments.uploadedAt' as Resource,
+    uploadedBy: 'MissionDocuments.uploadedBy' as Resource,
   };
 }
 
@@ -479,6 +506,13 @@ export namespace Wings {
     id: 'Wings.id' as Resource,
     name: 'Wings.name' as Resource,
     sectorId: 'Wings.sectorId' as Resource,
+  };
+}
+
+export namespace AttachMissionDocument {
+  export const fieldName = {
+    missionId: 'missionId' as FieldName,
+    title: 'title' as FieldName,
   };
 }
 

@@ -6,6 +6,19 @@ export interface FieldPointer {
   field: FieldName;
 }
 
+export interface AttachMissionDocumentConfig {
+  missionId: string | FieldPointer;
+  title: string | FieldPointer;
+}
+export interface AttachMissionDocument {
+  missionId: string;
+  title: string;
+}
+/** The result AttachMissionDocument answers with. */
+export interface AttachMissionDocumentResult {
+  documentIDs: string[];
+}
+
 export interface BeginRefitConfig {
   refitId: string | FieldPointer;
 }
@@ -194,6 +207,15 @@ export interface MethodMeta {
 export type MethodMap = Record<Method, MethodMeta>;
 
 const methodMap: MethodMap = {
+  [Methods.AttachMissionDocument]: {
+    route: 'attach-mission-document',
+    answers: true,
+    upload: { maxBytes: 5242880 },
+    fields: [
+      { fieldName: 'missionId', displayType: 'uuid' },
+      { fieldName: 'title', displayType: 'string' },
+    ],
+  },
   [Methods.BeginRefit]: {
     route: 'begin-refit',
     transition: { target: Resources.Refits, from: ['inspected'], to: 'in_refit' },

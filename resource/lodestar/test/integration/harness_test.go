@@ -7,8 +7,10 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"cloud.google.com/go/spanner"
@@ -19,6 +21,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessioninfo"
@@ -162,6 +165,50 @@ type testConfigurer struct {
 	access        access.Controller
 	session       *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
 	domainVisible func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
+	documents     *store.DirStore
+}
+
+// Documents is the document store the upload frame streams into; a suite that
+// asserts on the files passes its own directory through newAppWithDocuments, every
+// other suite shares one temporary directory for the process.
+func (c *testConfigurer) Documents() *store.DirStore {
+	if c.documents == nil {
+		c.documents = sharedDocuments()
+	}
+
+	return c.documents
+}
+
+var (
+	sharedDocumentsOnce sync.Once
+	sharedDocumentStore *store.DirStore
+	sharedDocumentsDir  string
+)
+
+// sharedDocuments opens one document store for the suites that never look at the
+// files; TestMain removes its directory after the run.
+func sharedDocuments() *store.DirStore {
+	sharedDocumentsOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "lodestar-documents-*")
+		if err != nil {
+			panic(err)
+		}
+		sharedDocumentsDir = dir
+		sharedDocumentStore, err = store.NewDirStore(dir)
+		if err != nil {
+			panic(err)
+		}
+	})
+
+	return sharedDocumentStore
+}
+
+// closeSharedDocuments tears the shared document store down after the run.
+func closeSharedDocuments() {
+	if sharedDocumentStore != nil {
+		_ = sharedDocumentStore.Close()
+		_ = os.RemoveAll(sharedDocumentsDir)
+	}
 }
 
 // CursorKey seals the cursors the suites walk; one key per process is enough,
@@ -241,10 +288,17 @@ func newTestAppWithAccess(db *initiator.SpannerDB, controller access.Controller)
 
 // newApp assembles the App over the test database and a permission engine.
 func newApp(db *initiator.SpannerDB, controller access.Controller) *app.App {
+	return newAppWithDocuments(db, controller, nil)
+}
+
+// newAppWithDocuments assembles the App over the given document store, for the
+// suites that assert on the files the upload frame writes.
+func newAppWithDocuments(db *initiator.SpannerDB, controller access.Controller, documents *store.DirStore) *app.App {
 	return app.New(&testConfigurer{
 		db:            db,
 		access:        controller,
 		domainVisible: domainVisibleVia(controller),
+		documents:     documents,
 	})
 }
 

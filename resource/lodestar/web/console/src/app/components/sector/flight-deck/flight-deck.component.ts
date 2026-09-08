@@ -10,7 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { FailReason, MissionKind } from '@app/service/zz_gen_enums';
-import { Missions, Sorties, SortieExpenses } from '@app/service/zz_gen_resources';
+import { MissionDocuments, Missions, Sorties, SortieExpenses } from '@app/service/zz_gen_resources';
 import { ApiError, Method, rowCapabilities } from '@cccteam/resource';
 import { SectorService } from '../sector.service';
 import { StarChartComponent } from '../star-chart/star-chart.component';
@@ -67,6 +67,7 @@ export class FlightDeckComponent {
   missionTotal = computed(() => this.missionsPage.value()?.total);
   sorties = this.sectors.sectorList((sector) => sector.sorties, { capabilities: ['Create', 'Update'] });
   expenses = this.sectors.sectorList((sector) => sector.sortieExpenses, { capabilities: ['Update', 'Delete'] });
+  documents = this.sectors.sectorList((sector) => sector.missionDocuments);
   squadrons = this.sectors.sectorList((sector) => sector.squadrons);
   ships = this.sectors.sectorList((sector) => sector.ships);
   clients = this.sectors.globalList((api) => api.clients);
@@ -115,6 +116,11 @@ export class FlightDeckComponent {
 
   // Add-sortie and add-expense form state.
   newSortieShipId = '';
+  // The attachment form: a title for the batch and the files picked; the upload
+  // handle sends them as one multipart request the transaction claims.
+  attachTitle = '';
+  attachFiles: File[] = [];
+  attachRefusal = signal<string | undefined>(undefined);
   newSortiePilot = '';
   newExpenseCategory = 'fuel';
   newExpenseAmount: number | null = null;
@@ -194,6 +200,41 @@ export class FlightDeckComponent {
 
   sortiesOf(mission: Missions): Sorties[] {
     return this.sorties.value().filter((s) => s.missionId === mission.id);
+  }
+
+  documentsOf(mission: Missions): MissionDocuments[] {
+    return this.documents.value().filter((d) => d.missionId === mission.id);
+  }
+
+  canAttach(): boolean {
+    return this.sectors.sectorApi().attachMissionDocument.can();
+  }
+
+  /** The hand-written download route: reading a file back is the application's own. */
+  documentUrl(document: MissionDocuments): string {
+    return `/api/sectors/${this.sectors.sectorApi().domain}/mission-documents/${document.id}/content`;
+  }
+
+  pickFiles(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.attachFiles = Array.from(input.files ?? []);
+  }
+
+  async attach(mission: Missions): Promise<void> {
+    if (!this.attachTitle || this.attachFiles.length === 0) return;
+    this.attachRefusal.set(undefined);
+    try {
+      await this.sectors.sectorApi().attachMissionDocument.upload({ missionId: mission.id, title: this.attachTitle }, this.attachFiles);
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 403 || e.status === 413)) {
+        this.attachRefusal.set(e.message);
+        return;
+      }
+      throw e;
+    }
+    this.attachTitle = '';
+    this.attachFiles = [];
+    this.documents.reload();
   }
 
   expensesOf(sortie: Sorties): SortieExpenses[] {

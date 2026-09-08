@@ -20,6 +20,7 @@ export const PermissionScopes = {
 export const Resources = {
   ClientContacts: 'ClientContacts' as Resource,
   DistressCalls: 'DistressCalls' as Resource,
+  MissionDocuments: 'MissionDocuments' as Resource,
   Missions: 'Missions' as Resource,
 };
 
@@ -64,6 +65,31 @@ export namespace DistressCalls {
     severity: 'DistressCalls.severity' as Resource,
     summary: 'DistressCalls.summary' as Resource,
     transcript: 'DistressCalls.transcript' as Resource,
+  };
+}
+
+export namespace MissionDocuments {
+  export const fieldName = {
+    contentType: 'contentType' as FieldName,
+    fileName: 'fileName' as FieldName,
+    id: 'id' as FieldName,
+    missionId: 'missionId' as FieldName,
+    size: 'size' as FieldName,
+    storeKey: 'storeKey' as FieldName,
+    title: 'title' as FieldName,
+    uploadedAt: 'uploadedAt' as FieldName,
+    uploadedBy: 'uploadedBy' as FieldName,
+  };
+  export const resourceName = {
+    contentType: 'MissionDocuments.contentType' as Resource,
+    fileName: 'MissionDocuments.fileName' as Resource,
+    id: 'MissionDocuments.id' as Resource,
+    missionId: 'MissionDocuments.missionId' as Resource,
+    size: 'MissionDocuments.size' as Resource,
+    storeKey: 'MissionDocuments.storeKey' as Resource,
+    title: 'MissionDocuments.title' as Resource,
+    uploadedAt: 'MissionDocuments.uploadedAt' as Resource,
+    uploadedBy: 'MissionDocuments.uploadedBy' as Resource,
   };
 }
 

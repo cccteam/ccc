@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"net/http"
+	"os"
+	"sync"
 	"testing"
 
 	"github.com/cccteam/access"
@@ -12,6 +14,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessioninfo"
@@ -94,6 +97,28 @@ func (c *testConfigurer) PortalDist() string { return "" }
 // DroidAPIKey is unused by these suites: the matrix drives the bare test router,
 // which carries no outlet middleware.
 func (c *testConfigurer) DroidAPIKey() string { return "authz-droid-key" }
+
+var (
+	documentsOnce sync.Once
+	documents     *store.DirStore
+)
+
+// Documents is the document store the upload frame streams into; the matrix never
+// carries a file, so one temporary directory serves the process.
+func (c *testConfigurer) Documents() *store.DirStore {
+	documentsOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "lodestar-authz-documents-*")
+		if err != nil {
+			panic(err)
+		}
+		documents, err = store.NewDirStore(dir)
+		if err != nil {
+			panic(err)
+		}
+	})
+
+	return documents
+}
 
 // DomainVisible recognizes the generated matrix's domain value and honors the
 // scripted grants, per the generated suite's concealed-domain contract: a case

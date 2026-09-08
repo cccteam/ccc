@@ -326,6 +326,19 @@
         "permissions": {
           "List": [
             {
+              "resource": "MissionDocuments",
+              "fields": [
+                "missionId",
+                "title",
+                "fileName",
+                "contentType",
+                "size",
+                "storeKey",
+                "uploadedBy",
+                "uploadedAt"
+              ]
+            },
+            {
               "resource": "Wings",
               "fields": [
                 "sectorId",
@@ -465,6 +478,19 @@
             }
           ],
           "Read": [
+            {
+              "resource": "MissionDocuments",
+              "fields": [
+                "missionId",
+                "title",
+                "fileName",
+                "contentType",
+                "size",
+                "storeKey",
+                "uploadedBy",
+                "uploadedAt"
+              ]
+            },
             {
               "resource": "Wings",
               "fields": [
@@ -828,6 +854,9 @@
             }
           ],
           "Execute": [
+            {
+              "resource": "AttachMissionDocument"
+            },
             {
               "resource": "ClaimMission"
             },
@@ -1321,10 +1350,27 @@
         "permissions": {
           "Execute": [
             {
+              "resource": "AttachMissionDocument",
+              "condition": "state NOT IN ('completed', 'failed', 'stood_down')"
+            },
+            {
               "resource": "HoldMission"
             }
           ],
           "List": [
+            {
+              "resource": "MissionDocuments",
+              "fields": [
+                "missionId",
+                "title",
+                "fileName",
+                "contentType",
+                "size",
+                "storeKey",
+                "uploadedBy",
+                "uploadedAt"
+              ]
+            },
             {
               "resource": "Missions",
               "fields": [
@@ -1368,6 +1414,19 @@
             }
           ],
           "Read": [
+            {
+              "resource": "MissionDocuments",
+              "fields": [
+                "missionId",
+                "title",
+                "fileName",
+                "contentType",
+                "size",
+                "storeKey",
+                "uploadedBy",
+                "uploadedAt"
+              ]
+            },
             {
               "resource": "Missions",
               "fields": [
@@ -2285,6 +2344,18 @@
         "permissions": {
           "List": [
             {
+              "resource": "MissionDocuments",
+              "fields": [
+                "missionId",
+                "title",
+                "fileName",
+                "contentType",
+                "size",
+                "uploadedAt"
+              ],
+              "condition": "client = subject.client"
+            },
+            {
               "resource": "Missions",
               "fields": [
                 "title",
@@ -2309,6 +2380,18 @@
             }
           ],
           "Read": [
+            {
+              "resource": "MissionDocuments",
+              "fields": [
+                "missionId",
+                "title",
+                "fileName",
+                "contentType",
+                "size",
+                "uploadedAt"
+              ],
+              "condition": "client = subject.client"
+            },
             {
               "resource": "Missions",
               "fields": [

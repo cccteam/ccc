@@ -49,6 +49,16 @@ var _ domainScopedApp = (*App)(nil)
 // its exact signature is enforced by the Execute call in each generated RPC handler.
 var _ = (*App).RPCClient
 
+// uploadApp is the application surface an @upload method's handler draws on: the
+// store the frame streams each file part to before the body runs, promotes after
+// the transaction commits, and discards when it does not. The store is the
+// application's; the frame owns only intake and lifecycle.
+type uploadApp interface {
+	UploadStore() resource.UploadStore
+}
+
+var _ uploadApp = (*App)(nil)
+
 // The generated computed-resource handlers pass ComputedClient's result to the
 // computed package's List and Read functions. Its return type is application-owned,
 // so only the method's existence is asserted here; its exact signature is enforced

@@ -28,6 +28,7 @@ func TestMain(m *testing.M) {
 
 	exitCode := m.Run()
 	closeSharedWorld()
+	closeSharedDocuments()
 
 	if err := c.Terminate(ctx); err != nil {
 		fmt.Println(err)

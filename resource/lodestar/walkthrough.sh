@@ -39,6 +39,12 @@ req() { # req <persona> <method> <url> [body]
   fi
 }
 
+upload() { # upload <persona> <url> <json> <file>... — a multipart @upload: the request part first, a file part per file
+  local p=$1 u=$2 json=$3; shift 3
+  local parts=(); for f in "$@"; do parts+=(-F "file=@$f"); done
+  curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -H "X-XSRF-TOKEN: $(xsrf "$p")" -F "request=$json;type=application/json" "${parts[@]}" -w '\n%{http_code}' "$u"
+}
+
 droid() { # droid <method> <url> [body]
   local m=$1 u=$2 body=${3:-}
   curl -s -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -X "$m" ${body:+-d "$body"} -w '\n%{http_code}' "$u"
@@ -123,7 +129,12 @@ r=$(req quartermaster PATCH "$API/resources" "[{\"op\":\"add\",\"path\":\"/secto
 r=$(req booking POST "$ANVIL/stand-down-mission" "{\"missionId\":\"$CONVOY\"}"); check "booking cannot stand down the marshal's booking" 403 "$r"
 r=$(req marshal POST "$ANVIL/stand-down-mission" "{\"missionId\":\"$CONVOY\"}"); check "nobody stands down an underway mission (hold it first)" 403 "$r"
 r=$(req booking POST "$ANVIL/stand-down-mission" "{\"missionId\":\"$HAULER\"}"); check "booking stands down her own open booking" 200 "$r"
-r=$(req lead POST "$ANVIL/complete-mission" "{\"missionId\":\"$CONVOY\"}"); check "lead completes Hammer's convoy" 200 "$r"
+printf 'Three survey barges through the debris belt; hold formation at the belt edge.' > "$S/brief.txt"
+r=$(upload marshal "$ANVIL/attach-mission-document" "{\"missionId\":\"$CONVOY\",\"title\":\"Escort brief\"}" "$S/brief.txt"); check "marshal attaches the escort brief (a multipart @upload the transaction claims)" 200 "$r"
+r=$(req marshal GET "$ANVIL/mission-documents?filter=missionId:eq:$CONVOY"); assert_py "the brief is listed with its store key" "$r" "rows[0]['title']=='Escort brief' and rows[0]['fileName']=='brief.txt' and rows[0]['storeKey']"
+DOC=$(body "$r" | py "print(rows[0]['id'])")
+r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content"); check "the brief downloads through the application's own route" 200 "$r"
+r=$(req lead POST "$ANVIL/complete-mission" "{\"missionId\":\"$CONVOY\"}"); check "lead completes Hammer's convoy (the method answers with the settlement)" 200 "$r"
 r=$(req lead GET "$ANVIL/missions"); assert_py "settlement = fee minus expenses" "$r" "next(m for m in rows if m['id']=='$CONVOY')['statusId']=='completed'"
 
 # ---- dispatcher: the two-grant PATCH ----

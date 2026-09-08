@@ -15,6 +15,12 @@ func Collection() *resource.GeneratedCollection {
 	return resource.MustNewGeneratedCollection(resource.CollectionData{
 		Resources: []resource.CollectionResource{
 			{
+				Name:        "AttachMissionDocument",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "Missions",
+			},
+			{
 				Name:        "BeginRefit",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
@@ -146,6 +152,26 @@ func Collection() *resource.GeneratedCollection {
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
 				Transition:  &resource.TransitionData{Target: "Missions", From: []string{"claimed"}, To: "underway"},
 				Target:      "Missions",
+			},
+			{
+				Name:        "MissionDocuments",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
+				Tags: []resource.TagData{
+					{Name: "contentType", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "fileName", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "id"},
+					{Name: "missionId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "size", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "storeKey", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "title", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "uploadedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "uploadedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+				},
+				Attributes: []resource.AttributeData{
+					{Name: "client", Column: "MissionId", Type: "string", Path: []resource.BindingHop{{Table: "Missions", JoinColumn: "Id", Column: "ClientId"}}},
+				},
+				Domain: &resource.DomainBindingData{Column: "MissionId", Path: []resource.BindingHop{{Table: "Missions", JoinColumn: "Id", Column: "SectorId"}}},
 			},
 			{
 				Name:        "Missions",

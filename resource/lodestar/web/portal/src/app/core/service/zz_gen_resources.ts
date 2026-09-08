@@ -38,6 +38,18 @@ export interface Missions {
   settlement?: number;
 }
 
+export interface MissionDocuments {
+  id: string;
+  missionId?: string;
+  title?: string;
+  fileName?: string;
+  contentType?: string;
+  size?: number;
+  storeKey?: string;
+  uploadedBy?: string;
+  uploadedAt?: Date;
+}
+
 const resourceMap: ResourceMap = {
   [Resources.ClientContacts]: {
     route: 'client-contacts',
@@ -84,6 +96,23 @@ const resourceMap: ResourceMap = {
       { fieldName: 'settlement', displayType: 'number', required: false, isIndex: false, readOnly: true },
     ],
   },
+  [Resources.MissionDocuments]: {
+    route: 'sectors/{sectorID}/mission-documents',
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'missionId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Missions },
+      { fieldName: 'title', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'fileName', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'contentType', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'size', displayType: 'number', required: true, isIndex: false },
+      { fieldName: 'storeKey', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'uploadedBy', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'uploadedAt', displayType: 'date', required: true, isIndex: false },
+    ],
+  },
 };
 
 export function resourceMeta(resource: Resource): ResourceMeta {
@@ -101,6 +130,7 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.ClientContacts]: PermissionScopes.global,
   [Resources.DistressCalls]: PermissionScopes.domain,
   [Resources.Missions]: PermissionScopes.domain,
+  [Resources.MissionDocuments]: PermissionScopes.domain,
 };
 
 export type OperationType = 'add' | 'patch' | 'remove';

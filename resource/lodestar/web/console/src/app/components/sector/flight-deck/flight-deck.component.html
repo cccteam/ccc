@@ -193,6 +193,30 @@
         </form>
       }
 
+      <h3>Documents</h3>
+      @for (document of documentsOf(mission); track document.id) {
+        <div class="sortie">
+          <a [href]="documentUrl(document)" target="_blank">{{ document.title }} — {{ document.fileName }}</a>
+          ({{ document.size }} bytes, {{ document.contentType }}) uploaded by <b>{{ document.uploadedBy }}</b>
+          {{ document.uploadedAt | date: 'medium' }}
+        </div>
+      } @empty {
+        <p class="empty">No documents attached.</p>
+      }
+      @if (canAttach()) {
+        <form class="inline-form" (ngSubmit)="attach(mission)">
+          <mat-form-field appearance="outline">
+            <mat-label>Title</mat-label>
+            <input matInput name="attachTitle" [(ngModel)]="attachTitle" required />
+          </mat-form-field>
+          <input type="file" name="attachFiles" multiple (change)="pickFiles($event)" />
+          <button mat-stroked-button type="submit">Attach document</button>
+        </form>
+        @if (attachRefusal(); as refusal) {
+          <p class="refusal">{{ refusal }}</p>
+        }
+      }
+
       <h3>Sorties</h3>
       @for (sortie of sortiesOf(mission); track sortie.id) {
         <div class="sortie">

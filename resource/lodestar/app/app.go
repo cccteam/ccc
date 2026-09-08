@@ -16,6 +16,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
@@ -59,6 +60,9 @@ type Configurer interface {
 	DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
 	Domains(ctx context.Context) ([]accesstypes.Domain, error)
 	DroidAPIKey() string
+	// Documents is the store the generated upload frame streams files into
+	// (UploadStore) and MissionDocumentContent reads them back from.
+	Documents() *store.DirStore
 }
 
 // droidUser is the service identity droid-outlet requests act as once the API key
@@ -93,6 +97,7 @@ type App struct {
 	portalDist     string
 	validate       *validator.Validate
 	droidAPIKey    string
+	documents      *store.DirStore
 }
 
 // New constructs an App from its dependencies.
@@ -115,6 +120,7 @@ func New(cfg Configurer) *App {
 		portalDist:     cfg.PortalDist(),
 		validate:       cfg.Validator(),
 		droidAPIKey:    cfg.DroidAPIKey(),
+		documents:      cfg.Documents(),
 	}
 }
 
@@ -255,6 +261,13 @@ func (a *App) CursorKey() *resource.CursorKey {
 // RPCClient returns the dependencies for RPC method implementations.
 func (a *App) RPCClient() *rpc.Client {
 	return a.rpcClient
+}
+
+// UploadStore is the store the generated upload frame streams each file part to
+// before an @upload method's body runs, promotes after the transaction commits,
+// and discards when it does not.
+func (a *App) UploadStore() resource.UploadStore {
+	return a.documents
 }
 
 // ComputedClient returns the dependencies for computed-resource query logic.

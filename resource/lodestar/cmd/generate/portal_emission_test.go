@@ -98,7 +98,7 @@ func TestPortalTargetEmission(t *testing.T) {
 		}
 		names = append(names, m[1])
 	}
-	if strings.Join(names, ",") != "ClientContacts,DistressCalls,Missions" {
-		t.Errorf("portal resource interfaces = %v, want ClientContacts, DistressCalls, Missions", names)
+	if strings.Join(names, ",") != "ClientContacts,DistressCalls,Missions,MissionDocuments" {
+		t.Errorf("portal resource interfaces = %v, want ClientContacts, DistressCalls, Missions, MissionDocuments", names)
 	}
 }

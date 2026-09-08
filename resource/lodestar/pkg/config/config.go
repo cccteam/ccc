@@ -22,6 +22,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
+	docstore "github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/go-playground/errors/v5"
@@ -46,6 +47,7 @@ type Configuration struct {
 	rpcClient      *rpc.Client
 	validator      *validator.Validate
 	droidAPIKey    string
+	documents      *docstore.DirStore
 	envVars        appConfig
 }
 
@@ -111,6 +113,11 @@ func New(ctx context.Context) (*Configuration, error) {
 		return nil, err
 	}
 
+	documents, err := docstore.NewDirStore(envVars.UploadDir)
+	if err != nil {
+		return nil, errors.Wrap(err, "docstore.NewDirStore()")
+	}
+
 	conf := &Configuration{
 		spannerClient:  spannerClient,
 		resourceClient: resource.NewSpannerClient(spannerClient),
@@ -120,6 +127,7 @@ func New(ctx context.Context) (*Configuration, error) {
 		rpcClient:      rpc.NewClient(),
 		validator:      validator.New(),
 		droidAPIKey:    droidAPIKey,
+		documents:      documents,
 		envVars:        envVars,
 	}
 	if err := conf.loadDomains(ctx); err != nil {
@@ -176,6 +184,7 @@ func EphemeralCookieKey() (string, error) {
 // Close releases the resources held by the configuration.
 func (c *Configuration) Close() {
 	_ = c.access.Close() // stops background policy reloading; nothing to recover at shutdown
+	_ = c.documents.Close()
 	c.spannerClient.Close()
 }
 
@@ -232,6 +241,12 @@ func (c *Configuration) PortalDist() string {
 // machine clients against.
 func (c *Configuration) DroidAPIKey() string {
 	return c.droidAPIKey
+}
+
+// Documents returns the store the upload frame streams mission documents into and
+// the document route reads them back from.
+func (c *Configuration) Documents() *docstore.DirStore {
+	return c.documents
 }
 
 // loadDomains reads the tenancy roster from the Sectors tenant table once at
@@ -320,6 +335,10 @@ type appConfig struct {
 	// (/droids/...). When unset an ephemeral key is generated at startup, which keeps
 	// the surface fail-closed but unreachable until a key is configured.
 	DroidAPIKey string `env:"LODESTAR_DROID_API_KEY"`
+
+	// UploadDir is the directory the document store keeps mission documents in;
+	// uploads stream into its pending/ subdirectory until their transaction commits.
+	UploadDir string `env:"LODESTAR_UPLOAD_DIR,default=uploads"`
 
 	Spanner SpannerConfig
 }
