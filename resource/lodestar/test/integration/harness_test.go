@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"maps"
 	"net/http"
@@ -103,6 +104,16 @@ const (
 	callRelayID  = "d0000000-0000-4000-8000-000000000003" // bastion, filed by dispatcher
 )
 
+// testCursorKey is the one cursor key the integration suites seal and open with.
+var testCursorKey = func() *resource.CursorKey {
+	key, err := resource.NewCursorKey(base64.StdEncoding.EncodeToString([]byte("lodestar-integration-cursor-key!")))
+	if err != nil {
+		panic(err)
+	}
+
+	return key
+}()
+
 // grants is a static permission table: the set of resources granted for each permission.
 type grants map[accesstypes.Permission][]accesstypes.Resource
 
@@ -151,6 +162,12 @@ type testConfigurer struct {
 	access        access.Controller
 	session       *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
 	domainVisible func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
+}
+
+// CursorKey seals the cursors the suites walk; one key per process is enough,
+// since every suite's requests go through the same App.
+func (c *testConfigurer) CursorKey() *resource.CursorKey {
+	return testCursorKey
 }
 
 func (c *testConfigurer) ResourceClient() resource.Client {
@@ -271,6 +288,29 @@ func doRequestAs(t *testing.T, h http.Handler, user accesstypes.User, method, ta
 	h.ServeHTTP(rr, req)
 
 	return rr.Code, rr.Body.Bytes()
+}
+
+// doRequestRecorded performs a request as the suite's default user and returns the
+// full recorded response, headers included, for the suites that read the paging
+// headers.
+func doRequestRecorded(t *testing.T, h http.Handler, method, target string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	sessionID, err := ccc.NewUUID()
+	if err != nil {
+		t.Fatalf("ccc.NewUUID: %v", err)
+	}
+	ctx := context.WithValue(t.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionData{
+		SessionInfo: &sessioninfo.SessionInfo{
+			ID:       sessionID,
+			Username: "integration-test-user",
+		},
+	})
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequestWithContext(ctx, method, target, http.NoBody))
+
+	return rr
 }
 
 // decodeRows decodes a list response body into rows.

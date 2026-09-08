@@ -5,6 +5,7 @@ package app
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
@@ -24,7 +25,7 @@ func (a *App) Wings() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Wing, wing](accesstypes.List)
+	decoder := NewQueryDecoder[resources.Wing, wing](a, accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -38,10 +39,20 @@ func (a *App) Wings() http.HandlerFunc {
 
 		res := resources.NewWingQueryFromQuerySet(querySet)
 
+		// The page: a count first when asked, then the rows, one past the page size
+		// so the Link header knows whether a next page exists.
+		page := querySet.Page()
+		if err := page.Count(ctx, a.ResourceClient()); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
 		resp := response{}
 		for row, err := range res.List(ctx, a.ResourceClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
+			}
+			if !page.Add(&row.Data) {
+				break
 			}
 			rec := (*wing)(&row.Data)
 			rmap := make(map[string]any)
@@ -66,6 +77,12 @@ func (a *App) Wings() http.HandlerFunc {
 			}
 			resp = append(resp, rmap)
 		}
+		if page.Reversed() {
+			slices.Reverse(resp)
+		}
+		if err := page.WriteHeaders(w, r); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})
@@ -78,7 +95,7 @@ func (a *App) Wing() http.HandlerFunc {
 		Name     string   `json:"name"`
 	}
 
-	decoder := NewQueryDecoder[resources.Wing, response](accesstypes.Read)
+	decoder := NewQueryDecoder[resources.Wing, response](a, accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

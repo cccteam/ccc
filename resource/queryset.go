@@ -832,10 +832,12 @@ func (q *QuerySet[Resource]) pageClauses(dbType DBType) (orderByClause, limitCla
 	return orderByClause, limitClause, nil
 }
 
-// limitClause renders the statement's LIMIT: the decoded page's size, or no
-// LIMIT for limit=all; a hand-built QuerySet reads exactly the limit it set. A
-// cursor the decoder never bound to a scope fails closed here rather than
-// silently serving the first page.
+// limitClause renders the statement's LIMIT. A decoded page fetches one row
+// more than its size, so the handler learns whether a next page exists without
+// a second query (Page.Add drops the extra row); limit=all fetches everything;
+// a hand-built QuerySet reads exactly the limit it set. A cursor the decoder
+// never bound to a scope fails closed here rather than silently serving the
+// first page.
 func (q *QuerySet[Resource]) limitClause() (string, error) {
 	if q.page == nil {
 		if q.limit != nil {
@@ -851,7 +853,7 @@ func (q *QuerySet[Resource]) limitClause() (string, error) {
 		return "", nil
 	}
 
-	return fmt.Sprintf("LIMIT %d", q.page.size), nil
+	return fmt.Sprintf("LIMIT %d", q.page.size+1), nil
 }
 
 // bindCursor opens the request's cursor under the decoder's key and checks its
@@ -893,6 +895,83 @@ func (q *QuerySet[Resource]) issuesCursors() bool {
 // queryHash fingerprints this query for its cursors.
 func (q *QuerySet[Resource]) queryHash(scope accesstypes.Scope) string {
 	return queryHash(q.Resource(), scope, q.filterString, q.Order(), q.page.limitString())
+}
+
+// Count executes the query's WHERE under SELECT COUNT(*) and returns the number
+// of rows it admits: the same filter, tenancy, and read-rule predicates as List,
+// with no order, page, or cursor. The generated list handler runs it before the
+// page query when the request asks count=true.
+func (q *QuerySet[Resource]) Count(ctx context.Context, txn ReadOnlyTransaction) (int64, error) {
+	r := newReader[Resource](txn)
+	if err := q.checkPermissions(ctx, r.DBType()); err != nil {
+		return 0, err
+	}
+
+	stmt, err := q.countStmt(r.DBType())
+	if err != nil {
+		return 0, errors.Wrap(err, "QuerySet.countStmt()")
+	}
+
+	total, err := r.Count(ctx, stmt)
+	if err != nil {
+		return 0, errors.Wrapf(err, "Reader[%s].Count()", q.Resource())
+	}
+
+	return total, nil
+}
+
+// countStmt builds the COUNT(*) statement over the same WHERE as stmt.
+func (q *QuerySet[Resource]) countStmt(dbType DBType) (*Statement, error) {
+	filterAst, err := q.FilterAst(dbType)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.FilterAst()")
+	}
+
+	plan, err := q.readConditionPlan()
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.readConditionPlan()")
+	}
+
+	registry := newParamRegistry()
+
+	var rendered *renderedReadConditions
+	if plan != nil {
+		rendered, err = q.renderReadConditions(dbType, plan, registry)
+		if err != nil {
+			return nil, errors.Wrap(err, "QuerySet.renderReadConditions()")
+		}
+	}
+
+	tenancy, err := q.tenancyPredicate(dbType, registry)
+	if err != nil {
+		return nil, errors.Wrap(err, "QuerySet.tenancyPredicate()")
+	}
+
+	where, err := q.whereWithPredicates(dbType, filterAst, tenancy, rendered, "")
+	if err != nil {
+		return nil, err
+	}
+
+	withClause, query, subqueryParams := q.query()
+	for k := range subqueryParams {
+		if _, ok := where.Params[k]; ok {
+			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
+		}
+		where.Params[k] = subqueryParams[k]
+	}
+
+	if err := q.mergeRegistryParams(registry, where.Params); err != nil {
+		return nil, err
+	}
+
+	sql := fmt.Sprintf(`
+			%s
+			SELECT COUNT(*)
+			FROM %s
+			%s`, withClause, query, where.SQL,
+	)
+
+	return &Statement{SQL: sql, Params: where.Params}, nil
 }
 
 // Read executes the query and returns a single result wrapped in the Row envelope.

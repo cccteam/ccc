@@ -118,6 +118,8 @@ type Reader[Resource Resourcer] interface {
 	DBType() DBType
 	Read(ctx context.Context, stmt *Statement) (*Row[Resource], error)
 	List(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error]
+	// Count runs a statement whose single row and column is a count and returns it.
+	Count(ctx context.Context, stmt *Statement) (int64, error)
 }
 
 // PatchSetMetadata is an interface that all PatchSet types must implement to allow their mutations to be buffered

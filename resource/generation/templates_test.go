@@ -60,10 +60,10 @@ func Test_decodersTemplate_gating(t *testing.T) {
 				HasRPCDecoder:           true,
 			},
 			wantContains: []string{
-				"func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {",
-				"resource.MustNewQueryDecoder[Resource, Request](router.Collection(), permissions...)",
-				"func NewComputedQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {",
-				"resource.MustNewComputedQueryDecoder[Resource, Request](permissions...)",
+				"func NewQueryDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {",
+				"resource.MustNewQueryDecoder[Resource, Request](router.Collection(), permissions...).WithCursorKey(a.CursorKey())",
+				"func NewComputedQueryDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {",
+				"resource.MustNewComputedQueryDecoder[Resource, Request](permissions...).WithCursorKey(a.CursorKey())",
 				"func NewDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.Decoder[Resource, Request] {",
 				"resource.MustNewDecoder[Resource, Request](a, router.Collection(), permissions...)",
 				"func NewRPCDecoder[Method rpc.Method, Request any](a *App, perm accesstypes.Permission) *resource.RPCDecoder[Request] {",
@@ -160,6 +160,7 @@ func Test_appContractTemplate_gating(t *testing.T) {
 			wantContains: []string{
 				"UserPermissions(r *http.Request) resource.UserPermissions",
 				"ResourceClient() resource.Client",
+				"CursorKey() *resource.CursorKey",
 				"var _ resourceApp = (*App)(nil)",
 				"Validator() resource.ValidatorFunc",
 				"var _ validatorApp = (*App)(nil)",

@@ -47,6 +47,9 @@ const (
 // exists from the rejection shape.
 type Configurer interface {
 	ResourceClient() resource.Client
+	// CursorKey seals the cursors every paged list issues: one key per
+	// application, derived from the cookie key, so a cursor is never a cookie.
+	CursorKey() *resource.CursorKey
 	RPCClient() *rpc.Client
 	Access() access.Controller
 	Session() *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
@@ -81,6 +84,7 @@ type App struct {
 	access access.Controller
 	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
 	resourceClient resource.Client
+	cursorKey      *resource.CursorKey
 	rpcClient      *rpc.Client
 	computedClient *computedresources.Client
 	domainVisible  func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
@@ -102,6 +106,7 @@ func New(cfg Configurer) *App {
 		access:         cfg.Access(),
 		PasswordAuth:   cfg.Session(),
 		resourceClient: cfg.ResourceClient(),
+		cursorKey:      cfg.CursorKey(),
 		rpcClient:      cfg.RPCClient(),
 		computedClient: computedresources.NewClient(),
 		domainVisible:  cfg.DomainVisible,
@@ -239,6 +244,12 @@ func (a *App) DomainVisible(ctx context.Context, user accesstypes.User, domain a
 // ResourceClient returns the database client used by the resource layer.
 func (a *App) ResourceClient() resource.Client {
 	return a.resourceClient
+}
+
+// CursorKey returns the key that seals the cursors the generated list handlers
+// issue and opens the ones requests carry.
+func (a *App) CursorKey() *resource.CursorKey {
+	return a.cursorKey
 }
 
 // RPCClient returns the dependencies for RPC method implementations.

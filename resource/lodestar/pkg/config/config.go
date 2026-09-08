@@ -40,6 +40,7 @@ type Configuration struct {
 	domainSet      map[accesstypes.Domain]bool
 	spannerClient  *cloudspanner.Client
 	resourceClient *resource.SpannerClient
+	cursorKey      *resource.CursorKey
 	access         *access.Client
 	session        *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
 	rpcClient      *rpc.Client
@@ -88,6 +89,13 @@ func New(ctx context.Context) (*Configuration, error) {
 		return nil, err
 	}
 
+	// The same key material seals list cursors under its own derivation, so a
+	// rotation ends outstanding cursors as it ends sessions.
+	cursorKey, err := resource.NewCursorKey(cookieKey)
+	if err != nil {
+		return nil, errors.Wrap(err, "resource.NewCursorKey()")
+	}
+
 	droidAPIKey := envVars.DroidAPIKey
 	if droidAPIKey == "" {
 		// An ephemeral key keeps the droid outlet fail-closed: nothing knows it, so
@@ -106,6 +114,7 @@ func New(ctx context.Context) (*Configuration, error) {
 	conf := &Configuration{
 		spannerClient:  spannerClient,
 		resourceClient: resource.NewSpannerClient(spannerClient),
+		cursorKey:      cursorKey,
 		access:         accessClient,
 		session:        passwordAuth,
 		rpcClient:      rpc.NewClient(),
@@ -178,6 +187,11 @@ func (c *Configuration) Addr() string {
 }
 
 // ResourceClient returns the database client used by the resource layer.
+// CursorKey returns the key that seals list cursors.
+func (c *Configuration) CursorKey() *resource.CursorKey {
+	return c.cursorKey
+}
+
 func (c *Configuration) ResourceClient() resource.Client {
 	return c.resourceClient
 }

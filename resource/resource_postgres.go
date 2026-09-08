@@ -73,6 +73,11 @@ func (c *postgresReader[Resource]) List(_ context.Context, _ *Statement) iter.Se
 	panic("List() not implemented for PostgresReader[Resource]")
 }
 
+// Count runs a COUNT(*) statement and returns its one value.
+func (c *postgresReader[Resource]) Count(_ context.Context, _ *Statement) (int64, error) {
+	panic("Count() not implemented for PostgresReader[Resource]")
+}
+
 var _ ReadOnlyTransactionCloser = (*PostgresReadOnlyTransaction)(nil)
 
 // PostgresReadOnlyTransaction represents a database transaction that can only be used for reads.

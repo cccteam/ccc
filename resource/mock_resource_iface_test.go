@@ -41,6 +41,21 @@ func (m *MockReader[Resource]) EXPECT() *MockReaderMockRecorder[Resource] {
 	return m.recorder
 }
 
+// Count mocks base method.
+func (m *MockReader[Resource]) Count(ctx context.Context, stmt *Statement) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Count", ctx, stmt)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Count indicates an expected call of Count.
+func (mr *MockReaderMockRecorder[Resource]) Count(ctx, stmt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockReader[Resource])(nil).Count), ctx, stmt)
+}
+
 // DBType mocks base method.
 func (m *MockReader[Resource]) DBType() DBType {
 	m.ctrl.T.Helper()

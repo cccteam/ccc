@@ -25,7 +25,7 @@ func (a *App) PilotCards() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewComputedQueryDecoder[computedresources.PilotCard, pilotCard](accesstypes.List)
+	decoder := NewComputedQueryDecoder[computedresources.PilotCard, pilotCard](a, accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

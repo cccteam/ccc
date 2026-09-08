@@ -5,6 +5,7 @@ package app
 
 import (
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/cccteam/ccc"
@@ -38,7 +39,7 @@ func (a *App) Missions() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Mission, mission](accesstypes.List).
+	decoder := NewQueryDecoder[resources.Mission, mission](a, accesstypes.List).
 		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "Deadline", Direction: resource.SortAscending}}})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -53,10 +54,20 @@ func (a *App) Missions() http.HandlerFunc {
 
 		res := resources.NewMissionQueryFromQuerySet(querySet)
 
+		// The page: a count first when asked, then the rows, one past the page size
+		// so the Link header knows whether a next page exists.
+		page := querySet.Page()
+		if err := page.Count(ctx, a.ResourceClient()); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
 		resp := response{}
 		for row, err := range res.List(ctx, a.ResourceClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
+			}
+			if !page.Add(&row.Data) {
+				break
 			}
 			rec := (*mission)(&row.Data)
 			rmap := make(map[string]any)
@@ -129,6 +140,12 @@ func (a *App) Missions() http.HandlerFunc {
 			}
 			resp = append(resp, rmap)
 		}
+		if page.Reversed() {
+			slices.Reverse(resp)
+		}
+		if err := page.WriteHeaders(w, r); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})
@@ -153,7 +170,7 @@ func (a *App) Mission() http.HandlerFunc {
 		Settlement         decimal.NullDecimal `json:"settlement"`
 	}
 
-	decoder := NewQueryDecoder[resources.Mission, response](accesstypes.Read)
+	decoder := NewQueryDecoder[resources.Mission, response](a, accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

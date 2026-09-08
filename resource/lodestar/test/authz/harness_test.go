@@ -2,6 +2,7 @@ package authz
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"testing"
 
@@ -53,6 +54,17 @@ func (f *fakeAccess) CheckUserResources(_ context.Context, _ accesstypes.Environ
 type testConfigurer struct {
 	db *initiator.SpannerDB
 	g  grants
+}
+
+// CursorKey seals list cursors; the authorization matrix never pages, so any key
+// serves.
+func (c *testConfigurer) CursorKey() *resource.CursorKey {
+	key, err := resource.NewCursorKey(base64.StdEncoding.EncodeToString([]byte("lodestar-authz-cursor-key-material")))
+	if err != nil {
+		panic(err)
+	}
+
+	return key
 }
 
 func (c *testConfigurer) ResourceClient() resource.Client {

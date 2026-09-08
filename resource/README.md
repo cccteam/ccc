@@ -175,6 +175,16 @@ none of them can be used as field names in filters:
 | `offset` | Removed. A request carrying it is refused with a 400 naming `cursor` as its replacement; pages are positioned by the row the cursor names, not by a count of rows to skip. |
 | `capabilities` | Comma-separated write permissions (`Create`, `Update`, `Delete`, `Execute`) to evaluate per row — the §13 capability envelope. Each returned row gains the reserved `zzCapabilities` property: `Update` carries the positive list of editable JSON field names, `Delete` a boolean, `Execute` the positive list of `@target` methods that apply to the row — a declared `@transition` requires the row's pre-image state in its `from` set, a conditional Execute grant ANDs its condition into the same boolean (a plain `@target` method's is the condition alone; unconditional plain methods are structural, no SQL), and the user holds the method's Execute grant — and `Create` the positive list of workflow member resources the user may create beneath the row (§11): the members whose immediate `@stateRoot` hop is this resource, gated by the user's member Create grants, a conditional grant's state terms evaluated against this row's own uniform state binding while terms the parent row cannot answer count potentially-true (an unconditional member grant is structural, no SQL). Advisory hints computed from the same row image and decision instant as the read (conditions render as booleans in the same statement; pure RBAC adds no SQL; a `new.`-referencing term counts potentially-true while the rest of its condition still renders). Enforcement is unchanged. |
 
+A paged list answers with headers beside its JSON array body. `Link` (RFC 8288)
+carries a complete URL per relation that exists — `rel="next"` and `rel="prev"`, each
+the request's own URL with `cursor` set — so the first page has no `prev` and the last
+no `next`, and a client follows the URLs as given. `Total-Count` carries the total when
+the first page asked `count=true`. `Page-More: true` marks a list served in primary-key
+order (no `@order`, no `sort`) whose rows did not fit the page; it issues no cursor, so
+paging further requires a sort. `limit=all` answers with none of them. A list served
+cross-origin must add `Link`, `Total-Count`, and `Page-More` to the CORS exposed
+headers, or the browser client cannot read them.
+
 ## 5. The permission endpoints
 
 Every generated router registers two library-owned endpoints on the default outlet

@@ -24,7 +24,7 @@ func (a *App) ServiceLedgers() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewComputedQueryDecoder[computedresources.ServiceLedger, serviceLedger](accesstypes.List)
+	decoder := NewComputedQueryDecoder[computedresources.ServiceLedger, serviceLedger](a, accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

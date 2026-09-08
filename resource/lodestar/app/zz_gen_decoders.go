@@ -11,11 +11,12 @@ import (
 )
 
 // NewQueryDecoder builds a query decoder for a generated resource and request pair,
-// wired to the generated collection so conditional grants render into the query.
-// The Resourcer union keeps construction inside the generated universe: a decoder
-// over any other struct is a compile error.
-func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {
-	return resource.MustNewQueryDecoder[Resource, Request](router.Collection(), permissions...)
+// wired to the generated collection so conditional grants render into the query and
+// to the application's cursor key so its lists page. The Resourcer union keeps
+// construction inside the generated universe: a decoder over any other struct is a
+// compile error.
+func NewQueryDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {
+	return resource.MustNewQueryDecoder[Resource, Request](router.Collection(), permissions...).WithCursorKey(a.CursorKey())
 }
 
 // NewComputedQueryDecoder builds a query decoder for a generated computed resource
@@ -23,8 +24,8 @@ func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes
 // enforces permissions at decode time rather than deferring to query execution. The
 // Resourcer union keeps construction inside the generated universe: a decoder over
 // any other struct is a compile error.
-func NewComputedQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {
-	return resource.MustNewComputedQueryDecoder[Resource, Request](permissions...)
+func NewComputedQueryDecoder[Resource Resourcer, Request any](a *App, permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {
+	return resource.MustNewComputedQueryDecoder[Resource, Request](permissions...).WithCursorKey(a.CursorKey())
 }
 
 // NewDecoder builds a patch decoder for a generated resource and request pair,

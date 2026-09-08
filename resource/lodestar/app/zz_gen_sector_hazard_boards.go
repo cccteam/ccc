@@ -58,7 +58,7 @@ func (a *App) SectorHazardBoards() http.HandlerFunc {
 		return &sectorHazardBoard{ShipID: view.ShipID, Subsystem: view.Subsystem, ShipName: view.ShipName, SectorID: view.SectorID, WorstReading: view.WorstReading, RecordedAt: view.RecordedAt, Recent: recent}
 	}
 
-	decoder := NewComputedQueryDecoder[computedresources.SectorHazardBoard, sectorHazardBoard](accesstypes.List)
+	decoder := NewComputedQueryDecoder[computedresources.SectorHazardBoard, sectorHazardBoard](a, accesstypes.List)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -142,7 +142,7 @@ func (a *App) SectorHazardBoard() http.HandlerFunc {
 		return &response{ShipID: view.ShipID, Subsystem: view.Subsystem, ShipName: view.ShipName, SectorID: view.SectorID, WorstReading: view.WorstReading, RecordedAt: view.RecordedAt, Recent: recent}
 	}
 
-	decoder := NewComputedQueryDecoder[computedresources.SectorHazardBoard, response](accesstypes.Read)
+	decoder := NewComputedQueryDecoder[computedresources.SectorHazardBoard, response](a, accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

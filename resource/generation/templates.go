@@ -788,11 +788,12 @@ import (
 
 {{ if .HasQueryDecoder -}}
 // NewQueryDecoder builds a query decoder for a generated resource and request pair,
-// wired to the generated collection so conditional grants render into the query.
-// The Resourcer union keeps construction inside the generated universe: a decoder
-// over any other struct is a compile error.
-func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {
-	return resource.MustNewQueryDecoder[Resource, Request]({{ .RouterPackage }}.Collection(), permissions...)
+// wired to the generated collection so conditional grants render into the query and
+// to the application's cursor key so its lists page. The Resourcer union keeps
+// construction inside the generated universe: a decoder over any other struct is a
+// compile error.
+func NewQueryDecoder[Resource Resourcer, Request any]({{ .ReceiverName }} *{{ .ApplicationName }}, permissions ...accesstypes.Permission) *resource.QueryDecoder[Resource, Request] {
+	return resource.MustNewQueryDecoder[Resource, Request]({{ .RouterPackage }}.Collection(), permissions...).WithCursorKey({{ .ReceiverName }}.CursorKey())
 }
 {{ end }}
 {{ if .HasComputedQueryDecoder -}}
@@ -801,8 +802,8 @@ func NewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes
 // enforces permissions at decode time rather than deferring to query execution. The
 // Resourcer union keeps construction inside the generated universe: a decoder over
 // any other struct is a compile error.
-func NewComputedQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {
-	return resource.MustNewComputedQueryDecoder[Resource, Request](permissions...)
+func NewComputedQueryDecoder[Resource Resourcer, Request any]({{ .ReceiverName }} *{{ .ApplicationName }}, permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {
+	return resource.MustNewComputedQueryDecoder[Resource, Request](permissions...).WithCursorKey({{ .ReceiverName }}.CursorKey())
 }
 {{ end }}
 {{ if .HasPatchDecoder -}}
@@ -859,9 +860,12 @@ import (
 )
 
 // resourceApp is the application surface every generated resource handler draws on.
+// CursorKey is the one key that seals list cursors (resource.NewCursorKey over the
+// application's cookie key); every generated query decoder is wired with it.
 type resourceApp interface {
 	UserPermissions(r *http.Request) resource.UserPermissions
 	ResourceClient() resource.Client
+	CursorKey() *resource.CursorKey
 }
 
 var _ resourceApp = (*{{ .ApplicationName }})(nil)
@@ -1116,6 +1120,7 @@ import (
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
+	"slices"
 )
 
 {{ .Handlers }}`
@@ -1129,7 +1134,7 @@ import (
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](accesstypes.List){{ .Resource.PagingOption }}
+	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}]({{ .ReceiverName }}, accesstypes.List){{ .Resource.PagingOption }}
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -1145,10 +1150,20 @@ import (
 
 		res := {{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.New{{ .Resource.Name }}QueryFromQuerySet(querySet)
 
+		// The page: a count first when asked, then the rows, one past the page size
+		// so the Link header knows whether a next page exists.
+		page := querySet.Page()
+		if err := page.Count(ctx, {{ .ReceiverName }}.ResourceClient()); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
 		resp := response{}
 		for row, err := range res.List(ctx, {{ .ReceiverName }}.ResourceClient()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, err)
+			}
+			if !page.Add(&row.Data) {
+				break
 			}
 			rec := (*{{ GoCamel .Resource.Name }})(&row.Data)
 			rmap := make(map[string]any)
@@ -1169,6 +1184,12 @@ import (
 			}
 			resp = append(resp, rmap)
 		}
+		if page.Reversed() {
+			slices.Reverse(resp)
+		}
+		if err := page.WriteHeaders(w, r); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})
@@ -1181,7 +1202,7 @@ import (
 		{{- end }}
 	}
 
-	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, response](accesstypes.Read)
+	decoder := NewQueryDecoder[{{ if .Resource.IsVirtual }}{{ .VirtualResourcesPackage }}{{ else }}{{ .ResourcePackage }}{{ end }}.{{ .Resource.Name }}, response]({{ .ReceiverName }}, accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -2771,7 +2792,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 	// now, a compile error the moment a source changes.
 {{ . }}{{- end }}
 
-	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}](accesstypes.List){{ .Resource.PagingOption }}
+	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, {{ GoCamel .Resource.Name }}]({{ .ReceiverName }}, accesstypes.List){{ .Resource.PagingOption }}
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -2829,7 +2850,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.H
 	// now, a compile error the moment a source changes.
 {{ . }}{{- end }}
 
-	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, response](accesstypes.Read)
+	decoder := NewComputedQueryDecoder[{{ .ComputedPackage }}.{{ .Resource.Name }}, response]({{ .ReceiverName }}, accesstypes.Read)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

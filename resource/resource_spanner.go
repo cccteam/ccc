@@ -144,6 +144,23 @@ func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) ite
 	}
 }
 
+// Count runs a COUNT(*) statement and returns its one value.
+func (c *spannerReader[Resource]) Count(ctx context.Context, stmt *Statement) (int64, error) {
+	it := c.readTxn().Query(ctx, stmt.SpannerStatement())
+	defer it.Stop()
+
+	spannerRow, err := it.Next()
+	if err != nil {
+		return 0, errors.Wrap(err, "spanner.RowIterator.Next()")
+	}
+	var total int64
+	if err := spannerRow.Columns(&total); err != nil {
+		return 0, errors.Wrap(err, "spanner.Row.Columns()")
+	}
+
+	return total, nil
+}
+
 // listEnvelope iterates an envelope statement, scanning each row's data and
 // its reserved metadata columns into the Row envelope.
 func (c *spannerReader[Resource]) listEnvelope(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
