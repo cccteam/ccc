@@ -36,6 +36,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
       patchable: ['kindId', 'title', 'body'],
     },
   },

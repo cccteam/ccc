@@ -37,6 +37,9 @@ const (
 // log exporter, and where the console's built bundle lives.
 type Configurer interface {
 	ResourceClient() resource.Client
+	// CursorKey seals the cursors every paged list issues: one key per application,
+	// derived from the cookie key, so a cursor is never a cookie.
+	CursorKey() *resource.CursorKey
 	Access() access.Controller
 	// Staff returns the auth this surface binds to: the staff auth, whose session manager
 	// the App composes its login and session handlers from.
@@ -53,6 +56,7 @@ type App struct {
 	access access.Controller
 	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
 	resourceClient resource.Client
+	cursorKey      *resource.CursorKey
 	validate       *validator.Validate
 	logExporter    logger.Exporter
 	consoleDist    string
@@ -63,6 +67,7 @@ func New(cfg Configurer) *App {
 	a := &App{
 		access:         cfg.Access(),
 		resourceClient: cfg.ResourceClient(),
+		cursorKey:      cfg.CursorKey(),
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
 		consoleDist:    cfg.ConsoleDist(),
@@ -158,4 +163,9 @@ func (a *App) Validator() resource.ValidatorFunc {
 // ResourceClient returns the database client used by the resource layer.
 func (a *App) ResourceClient() resource.Client {
 	return a.resourceClient
+}
+
+// CursorKey returns the key that seals the cursors the generated list handlers issue.
+func (a *App) CursorKey() *resource.CursorKey {
+	return a.cursorKey
 }

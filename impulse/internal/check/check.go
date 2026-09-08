@@ -129,6 +129,7 @@ func All() []Check {
 		prettierIgnore{},
 		eslintIgnore{},
 		packageManager{},
+		paging{},
 		rpcExecute{},
 		multiSite{},
 		envTemplate{},

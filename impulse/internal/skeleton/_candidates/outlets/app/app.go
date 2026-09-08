@@ -47,6 +47,9 @@ const (
 // cannot confirm a tenant exists from the rejection shape.
 type Configurer interface {
 	ResourceClient() resource.Client
+	// CursorKey seals the cursors every paged list issues: one key per application,
+	// derived from the cookie key, so a cursor is never a cookie.
+	CursorKey() *resource.CursorKey
 	Access() access.Controller
 	DomainVisible(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
 	// Staff returns the auth the console binds to: the staff auth, whose session manager
@@ -78,6 +81,7 @@ type App struct {
 	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
 	portal         *session.OIDCAzure[session.NoCustomData, session.NoCustomData]
 	resourceClient resource.Client
+	cursorKey      *resource.CursorKey
 	domainVisible  func(ctx context.Context, user accesstypes.User, domain accesstypes.Domain) (bool, error)
 	validate       *validator.Validate
 	logExporter    logger.Exporter
@@ -92,6 +96,7 @@ func New(cfg Configurer) *App {
 		access:         cfg.Access(),
 		engines:        map[string]access.Controller{},
 		resourceClient: cfg.ResourceClient(),
+		cursorKey:      cfg.CursorKey(),
 		domainVisible:  cfg.DomainVisible,
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
@@ -267,4 +272,9 @@ func (a *App) Validator() resource.ValidatorFunc {
 // ResourceClient returns the database client used by the resource layer.
 func (a *App) ResourceClient() resource.Client {
 	return a.resourceClient
+}
+
+// CursorKey returns the key that seals the cursors the generated list handlers issue.
+func (a *App) CursorKey() *resource.CursorKey {
+	return a.cursorKey
 }

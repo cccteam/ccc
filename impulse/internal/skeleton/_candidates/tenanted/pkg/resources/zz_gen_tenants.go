@@ -20,8 +20,30 @@ func (Tenant) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// tenantRead mirrors the wire shape the resource routes list
+// and read, so a query armed with Enforce meets the field permissions the routes
+// enforce; tenantReadSets holds one Set per read operation.
+type tenantRead struct {
+	ID   string `json:"id"   perm:"-"`
+	Name string `json:"name"`
+}
+
+var tenantReadSets resource.SetCache[Tenant, tenantRead]
+
+// tenantWrite mirrors the wire shape the resource routes
+// accept on a mutation, so a patch armed with Enforce meets the field permissions the
+// routes enforce; tenantWriteSets holds one Set per mutation.
+type tenantWrite struct {
+	ID   string `json:"-"`
+	Name string `json:"name"`
+}
+
+var tenantWriteSets resource.SetCache[Tenant, tenantWrite]
+
 type TenantQuery struct {
 	qSet *resource.QuerySet[Tenant]
+	// caller arms Read and List against a request's caller; nil runs them trusted.
+	caller *resource.Caller
 }
 
 func NewTenantQuery() *TenantQuery {
@@ -56,15 +78,37 @@ func (q *TenantQuery) Name() string {
 	return v
 }
 
+// Enforce arms the query against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Read runs the routes' Read permission gate and List
+// the List gate — resource, then the requested fields, conditional grants riding the
+// query — before touching the database. Without it the query runs trusted.
+func (q *TenantQuery) Enforce(caller *resource.Caller) *TenantQuery {
+	q.caller = caller
+
+	return q
+}
+
 func (q *TenantQuery) Read(ctx context.Context, txn resource.ReadOnlyTransaction) (*resource.Row[Tenant], error) {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, tenantReadSets.For(accesstypes.Read), accesstypes.Read)
+	}
+
 	return q.qSet.Read(ctx, txn)
 }
 
 func (q *TenantQuery) List(ctx context.Context, txn resource.ReadOnlyTransaction) iter.Seq2[*resource.Row[Tenant], error] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, tenantReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.List(ctx, txn)
 }
 
 func (q *TenantQuery) BatchList(ctx context.Context, client resource.Client, size int) iter.Seq[iter.Seq2[*resource.Row[Tenant], error]] {
+	if q.caller != nil {
+		q.qSet.Enforce(q.caller, tenantReadSets.For(accesstypes.List), accesstypes.List)
+	}
+
 	return q.qSet.BatchList(ctx, client, size)
 }
 
@@ -93,12 +137,6 @@ func (q *TenantQuery) Sort(sort *TenantSort) *TenantQuery {
 
 func (q *TenantQuery) Limit(n uint64) *TenantQuery {
 	q.qSet.SetLimit(&n)
-
-	return q
-}
-
-func (q *TenantQuery) Offset(n uint64) *TenantQuery {
-	q.qSet.SetOffset(&n)
 
 	return q
 }
@@ -287,6 +325,18 @@ func (p *TenantCreatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Create — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *TenantCreatePatch) Enforce(caller *resource.Caller) *TenantCreatePatch {
+	p.patchSet.Enforce(caller, tenantWriteSets.For(accesstypes.Create), accesstypes.Create)
+
+	return p
+}
+
 func (p *TenantCreatePatch) registerDefaultFuncs() {
 }
 
@@ -359,6 +409,18 @@ func (p *TenantUpdatePatch) Buffer(ctx context.Context, txn resource.ReadWriteTr
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
 }
 
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Update — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *TenantUpdatePatch) Enforce(caller *resource.Caller) *TenantUpdatePatch {
+	p.patchSet.Enforce(caller, tenantWriteSets.For(accesstypes.Update), accesstypes.Update)
+
+	return p
+}
+
 func (p *TenantUpdatePatch) registerDefaultFuncs() {
 }
 
@@ -415,6 +477,18 @@ func (p *TenantDeletePatch) Apply(ctx context.Context, client resource.Client, e
 
 func (p *TenantDeletePatch) Buffer(ctx context.Context, txn resource.ReadWriteTransaction, eventSource ...string) error {
 	return p.patchSet.Buffer(ctx, txn, eventSource...)
+}
+
+// Enforce arms the mutation against the caller a generated handler stamped on the
+// context (resource.CallerFrom): Apply and Buffer run the full pipeline the resource
+// routes run for Delete — the static field gate, the fold of conditional grants,
+// the live check against the real row inside the transaction, and the tenancy
+// check — and refuse with the same Forbidden the routes answer. Without it the
+// mutation runs trusted.
+func (p *TenantDeletePatch) Enforce(caller *resource.Caller) *TenantDeletePatch {
+	p.patchSet.Enforce(caller, tenantWriteSets.For(accesstypes.Delete), accesstypes.Delete)
+
+	return p
 }
 
 func (p *TenantDeletePatch) ID() string {

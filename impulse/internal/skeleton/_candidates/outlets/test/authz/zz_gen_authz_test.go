@@ -28,7 +28,8 @@ type grants map[accesstypes.Permission]bool
 // the operation's enforcement gate — buffer time for patch sets, decode time for RPC —
 // which runs before required-field validation, defaults, or row reads. Mutation
 // success paths need valid request bodies the generator does not synthesize yet and
-// are left to manual testing.
+// are left to manual testing. A transaction-form RPC method carries a second denied
+// case under X-Dry-Run: a dry run refuses exactly as the real call does.
 //
 // The suite runs on the migrated schema alone; no seed data is required, so it grows
 // with the schema on every regeneration.
@@ -52,6 +53,7 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 		method       string
 		target       string
 		body         string
+		headers      map[string]string
 		wantStatuses []int
 	}{
 		{
@@ -256,6 +258,9 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			h := newTestHandler(t, db, tt.grants)
 
 			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.target, strings.NewReader(tt.body))
+			for name, value := range tt.headers {
+				req.Header.Set(name, value)
+			}
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, req)
 

@@ -3,6 +3,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -89,6 +90,16 @@ func (c *servedConfigurer) DomainVisible(ctx context.Context, user accesstypes.U
 
 func (c *servedConfigurer) ResourceClient() resource.Client {
 	return resource.NewSpannerClient(c.db.Client)
+}
+
+// CursorKey seals the cursors the suites' paged lists issue; any key serves a test process.
+func (c *servedConfigurer) CursorKey() *resource.CursorKey {
+	key, err := resource.NewCursorKey(base64.StdEncoding.EncodeToString([]byte("skeleton-test-cursor-key-material!!")))
+	if err != nil {
+		panic(err)
+	}
+
+	return key
 }
 
 func (c *servedConfigurer) Access() access.Controller { return c.auth.Access() }

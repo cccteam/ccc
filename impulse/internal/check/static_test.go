@@ -251,6 +251,24 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			name: "pins none", fixture: "badprogram", check: pins{},
 			wantStatus: Skip, wantSummary: "go.mod requires no github.com/cccteam/* module",
 		},
+		{
+			name: "paging offset in Go", fixture: "badprogram", check: paging{},
+			wantStatus: Warn, wantSummary: "1 offset use(s) to move to cursors",
+			wantDetails: []string{
+				"pkg/legacy/list.go:13: positions a list by offset; pages are positioned by the cursor in the Link header",
+			},
+		},
+		{
+			name: "paging offset in the browser", fixture: "singlesite", check: paging{},
+			wantStatus: Warn, wantSummary: "1 offset use(s) to move to cursors",
+			wantDetails: []string{
+				"web/console/src/app/legacy.ts:4: sends an offset parameter; follow the Link header (page() in @cccteam/resource) instead",
+			},
+		},
+		{
+			name: "paging clean", fixture: "multisite", check: paging{},
+			wantStatus: Pass, wantSummary: "no list is positioned by offset",
+		},
 	}
 
 	for _, tt := range tests {

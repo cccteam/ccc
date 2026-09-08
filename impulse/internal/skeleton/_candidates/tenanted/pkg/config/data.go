@@ -52,6 +52,7 @@ type DataConfiguration struct {
 	env            *dataConfig
 	spannerClient  *cloudspanner.Client
 	resourceClient *resource.SpannerClient
+	cursorKey      *resource.CursorKey
 	staff          *staff.Auth
 	domains        []accesstypes.Domain
 	domainSet      map[accesstypes.Domain]bool
@@ -80,6 +81,13 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, err
 	}
 
+	// The same key material seals list cursors under its own derivation, so a
+	// rotation ends outstanding cursors as it ends sessions.
+	cursorKey, err := resource.NewCursorKey(cookieKey)
+	if err != nil {
+		return nil, errors.Wrap(err, "resource.NewCursorKey()")
+	}
+
 	staffAuth, err := staff.New(ctx, spannerClient, staff.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
@@ -90,6 +98,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		env:               env,
 		spannerClient:     spannerClient,
 		resourceClient:    resource.NewSpannerClient(spannerClient),
+		cursorKey:         cursorKey,
 		staff:             staffAuth,
 	}
 	if err := conf.loadDomains(ctx); err != nil {
@@ -116,6 +125,11 @@ func (c *DataConfiguration) Spanner() SpannerSettings {
 // ResourceClient returns the database client the resource layer uses.
 func (c *DataConfiguration) ResourceClient() resource.Client {
 	return c.resourceClient
+}
+
+// CursorKey returns the key that seals list cursors.
+func (c *DataConfiguration) CursorKey() *resource.CursorKey {
+	return c.cursorKey
 }
 
 // Access returns the permission engine the handlers check against.

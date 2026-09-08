@@ -12,9 +12,12 @@ import (
 )
 
 // resourceApp is the application surface every generated resource handler draws on.
+// CursorKey is the one key that seals list cursors (resource.NewCursorKey over the
+// application's cookie key); every generated query decoder is wired with it.
 type resourceApp interface {
 	UserPermissions(r *http.Request) resource.UserPermissions
 	ResourceClient() resource.Client
+	CursorKey() *resource.CursorKey
 }
 
 var _ resourceApp = (*App)(nil)

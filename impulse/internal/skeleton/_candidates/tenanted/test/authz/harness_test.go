@@ -2,6 +2,7 @@ package authz
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"testing"
 
@@ -69,6 +70,16 @@ type testConfigurer struct {
 
 func (c *testConfigurer) ResourceClient() resource.Client {
 	return resource.NewSpannerClient(c.db.Client)
+}
+
+// CursorKey seals the cursors the suites' paged lists issue; any key serves a test process.
+func (c *testConfigurer) CursorKey() *resource.CursorKey {
+	key, err := resource.NewCursorKey(base64.StdEncoding.EncodeToString([]byte("skeleton-test-cursor-key-material!!")))
+	if err != nil {
+		panic(err)
+	}
+
+	return key
 }
 
 func (c *testConfigurer) Access() access.Controller {
