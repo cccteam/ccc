@@ -98,7 +98,7 @@ func TestRemoveSiteApply(t *testing.T) {
 		t.Errorf("sharedgenerator = %q", shared)
 	}
 	deploy := read(t, a, "pkg/deploy/deploy.go")
-	if strings.Contains(deploy, "portalrouter") || !strings.Contains(deploy, "return unionCollection{consolerouter.Collection(), kioskrouter.Collection()}") {
+	if strings.Contains(deploy, "portalrouter") || !strings.Contains(deploy, "access.UnionCollection(consolerouter.Collection(), kioskrouter.Collection())") {
 		t.Errorf("deploy.go = %q", deploy)
 	}
 	procfile := read(t, a, "Procfile")
@@ -118,7 +118,7 @@ func TestRemoveSiteApply(t *testing.T) {
 	if last := ch.Did[len(ch.Did)-1]; last != "the console site is the one left; the application stays multi-site, with the site under apps/console and the shared packages at the root" {
 		t.Errorf("last Did = %q", last)
 	}
-	if got := read(t, a, "pkg/deploy/deploy.go"); !strings.Contains(got, "return unionCollection{consolerouter.Collection()}") {
+	if got := read(t, a, "pkg/deploy/deploy.go"); !strings.Contains(got, "access.UnionCollection(consolerouter.Collection())") {
 		t.Errorf("deploy.go = %q", got)
 	}
 	p = mustDiscover(t, a.Root).Profile()

@@ -167,7 +167,7 @@ func TestSiteApplyPromotes(t *testing.T) {
 	for _, rel := range []string{
 		"apps/console/main.go", "apps/console/app/app.go", "apps/console/pkg/router/router.go", "apps/console/pkg/router/zz_gen_routes.go",
 		"apps/console/pkg/resources/doc.go", "apps/console/test/authz/harness_test.go", "apps/console/web/angular.json", "apps/console/web/console/src/main.ts",
-		"cmd/generate/consolegenerator/main.go", "pkg/config/site.go", "pkg/deploy/union.go", "pkg/sharedresources/sharedresources.go", "cmd/generate/sharedgenerator/main.go",
+		"cmd/generate/consolegenerator/main.go", "pkg/config/site.go", "pkg/sharedresources/sharedresources.go", "cmd/generate/sharedgenerator/main.go",
 	} {
 		if _, err := os.Stat(a.Abs(rel)); err != nil {
 			t.Errorf("%s: missing after the promotion", rel)
@@ -212,7 +212,7 @@ func TestSiteApplyPromotes(t *testing.T) {
 
 	// The union and the shared generator cover both sites.
 	deploy := read(t, a, "pkg/deploy/deploy.go")
-	for _, want := range []string{`consolerouter "example.com/acme/beacon/apps/console/pkg/router"`, `portalrouter "example.com/acme/beacon/apps/portal/pkg/router"`, "access.MigrateRoles(ctx, manager, Collection(), nil, domains...)", "return unionCollection{consolerouter.Collection(), portalrouter.Collection()}"} {
+	for _, want := range []string{`consolerouter "example.com/acme/beacon/apps/console/pkg/router"`, `portalrouter "example.com/acme/beacon/apps/portal/pkg/router"`, "collection, err := Collection()", "access.MigrateRoles(ctx, manager, collection, nil, domains...)", `"github.com/go-playground/errors/v5"`, "access.UnionCollection(consolerouter.Collection(), portalrouter.Collection())"} {
 		if !strings.Contains(deploy, want) {
 			t.Errorf("deploy.go lacks %q:\n%s", want, deploy)
 		}
@@ -329,7 +329,7 @@ func TestSiteApplyAddsToSites(t *testing.T) {
 	if got := read(t, promoted, "cmd/generate/generate.go"); !strings.Contains(got, "./portalgenerator\n//go:generate go run ./kioskgenerator\n//go:generate go run ./sharedgenerator\n") {
 		t.Errorf("generate.go = %q", got)
 	}
-	if got := read(t, promoted, "pkg/deploy/deploy.go"); !strings.Contains(got, "unionCollection{consolerouter.Collection(), portalrouter.Collection(), kioskrouter.Collection()}") || !strings.Contains(got, `kioskrouter "example.com/acme/beacon/apps/kiosk/pkg/router"`) {
+	if got := read(t, promoted, "pkg/deploy/deploy.go"); !strings.Contains(got, "access.UnionCollection(consolerouter.Collection(), portalrouter.Collection(), kioskrouter.Collection())") || !strings.Contains(got, `kioskrouter "example.com/acme/beacon/apps/kiosk/pkg/router"`) {
 		t.Errorf("deploy.go = %q", got)
 	}
 	if got := read(t, promoted, "cmd/generate/sharedgenerator/main.go"); !strings.Contains(got, `GenerateTypescript("apps/kiosk/web/kiosk/src/app/core/service/shared"`) {

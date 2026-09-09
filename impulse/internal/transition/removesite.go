@@ -216,14 +216,14 @@ func (r RemoveSite) removeSharedTarget(a *app.App, shared *app.Generator, siteDi
 }
 
 // leaveUnion takes the site's router collection out of the union: its aliased import and
-// its element.
+// its element of the access.UnionCollection call.
 func (r RemoveSite) leaveUnion(a *app.App, modulePath, siteDir string, ch *Change) error {
-	rel, data, mode, err := findFileCalling(a, "unionCollection{")
+	rel, data, mode, err := findFileCalling(a, unionNeedle)
 	if err != nil {
 		return err
 	}
 	if rel == "" {
-		ch.skipf("no package builds a unionCollection; take the %s site's router collection out of the roles' registry wherever it is reconciled", r.Name)
+		ch.skipf("no package calls access.UnionCollection; take the %s site's router collection out of the roles' registry wherever it is reconciled", r.Name)
 
 		return nil
 	}
@@ -238,13 +238,9 @@ func (r RemoveSite) leaveUnion(a *app.App, modulePath, siteDir string, ch *Chang
 	alias := m[1]
 	text = importRE.ReplaceAllString(text, "")
 	element := alias + ".Collection()"
-	switch {
-	case strings.Contains(text, element+", "):
-		text = strings.Replace(text, element+", ", "", 1)
-	case strings.Contains(text, ", "+element):
-		text = strings.Replace(text, ", "+element, "", 1)
-	default:
-		ch.skipf("%s: the union has no %s element in the shape the tool edits; remove the %s site's collection by hand", rel, element, r.Name)
+	text, ok := removeUnionElement(text, element)
+	if !ok {
+		ch.skipf("%s: the access.UnionCollection call has no %s element in the shape the tool edits; remove the %s site's collection by hand", rel, element, r.Name)
 	}
 	formatted, err := format.Source([]byte(text))
 	if err != nil {

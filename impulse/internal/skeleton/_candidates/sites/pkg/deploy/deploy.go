@@ -69,7 +69,12 @@ func MigrateRoles(ctx context.Context, manager access.UserManager, rolesPath str
 		return err
 	}
 
-	if err := access.MigrateRoles(ctx, manager, Collection(), roles, domains...); err != nil {
+	collection, err := Collection()
+	if err != nil {
+		return err
+	}
+
+	if err := access.MigrateRoles(ctx, manager, collection, roles, domains...); err != nil {
 		return errors.Wrap(err, "access.MigrateRoles()")
 	}
 
@@ -80,9 +85,14 @@ func MigrateRoles(ctx context.Context, manager access.UserManager, rolesPath str
 // generated collection. The sites share one policy store — a login is one identity and a
 // role is one set of powers across the application — so the roles are reconciled against
 // everything any site registers. A resource both sites serve is declared identically in
-// both and appears once.
-func Collection() access.PermissionCollection {
-	return unionCollection{consolerouter.Collection(), portalrouter.Collection()}
+// both and appears once; access.UnionCollection refuses sites that disagree on one.
+func Collection() (access.PermissionCollection, error) {
+	collection, err := access.UnionCollection(consolerouter.Collection(), portalrouter.Collection())
+	if err != nil {
+		return nil, errors.Wrap(err, "access.UnionCollection(console, portal)")
+	}
+
+	return collection, nil
 }
 
 func loadRoles(path string) (*access.RoleConfig, error) {

@@ -125,7 +125,11 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	accessClient := auth.Access()
 
 	roles := loadRoles(t)
-	if err := access.MigrateRoles(ctx, accessClient.UserManager(), deploy.Collection(), roles, north, south); err != nil {
+	collection, err := deploy.Collection()
+	if err != nil {
+		t.Fatalf("deploy.Collection() error = %v", err)
+	}
+	if err := access.MigrateRoles(ctx, accessClient.UserManager(), collection, roles, north, south); err != nil {
 		t.Fatalf("access.MigrateRoles() error = %v", err)
 	}
 

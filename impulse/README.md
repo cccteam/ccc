@@ -260,8 +260,9 @@ layout, the one non-additive transition: the existing site moves under `apps/<fi
 every import of its packages follows, its generator becomes `cmd/generate/<first>generator`,
 the served configuration level becomes the site level (`SiteConfiguration` reading `PORT`
 and `APP_DIST` per site process, set inline in the Procfile), the deployment's collection
-becomes the union of the sites' router collections (`pkg/deploy/union.go` from the
-reference), and a shared generator is laid in over an empty `pkg/sharedresources`.
+becomes the union of the sites' router collections (`access.UnionCollection`, which
+refuses sites that declare a shared resource differently), and a shared generator is laid
+in over an empty `pkg/sharedresources`.
 `--first` names what the existing site becomes and is asked when not given, never
 defaulted, since the name is the site's directory for good. Everything existing belongs to
 the first site. The new site's resources, its place in the integration suite, its browser

@@ -20,7 +20,6 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/names"
-	"github.com/cccteam/ccc/impulse/internal/skeleton"
 )
 
 // Site adds a site: a stand-alone application on a host of its own, with its own main
@@ -599,36 +598,51 @@ func (s Site) promoteEnvTemplate(a *app.App, ch *Change) {
 // unionAnchorRE is the base deploy package's use of the one router's collection.
 var unionAnchorRE = regexp.MustCompile(`\brouter\.Collection\(\)`)
 
+// unionNeedle is the call every multi-site deploy package makes: the union of the
+// sites' router collections, with one element per site.
+const unionNeedle = "access.UnionCollection("
+
+// errorsImport is the error package the generated Collection() wraps with.
+const errorsImport = "github.com/go-playground/errors/v5"
+
 // union makes the deployment's collection the union of every named site's router
-// collection: the aliased imports, Collection(), and the union type from the reference.
+// collection: the aliased import, Collection() over access.UnionCollection, and the role
+// migration reading Collection() before it reconciles.
 func (s Site) union(a *app.App, modulePath, first string, ch *Change) error {
 	rel, data, mode, err := findFileCalling(a, "access.MigrateRoles")
 	if err != nil {
 		return err
 	}
 	if rel == "" || !unionAnchorRE.Match(data) {
-		ch.skipf("no package calling access.MigrateRoles passes router.Collection(), so the collection was not made the union; reconcile the roles against the union of every site's router collection, as the reference's pkg/deploy does")
+		ch.skipf("no package calling access.MigrateRoles passes router.Collection(), so the collection was not made the union; reconcile the roles against access.UnionCollection over every site's router collection, as the reference's pkg/deploy does")
 
 		return nil
 	}
 	text := string(data)
 	firstImport := `"` + modulePath + "/" + path.Join(sitesDir, first, "pkg/router") + `"`
 	if !strings.Contains(text, firstImport) {
-		ch.skipf("%s: does not import %s, so the collection was not made the union; reconcile the roles against the union of every site's router collection", rel, firstImport)
+		ch.skipf("%s: does not import %s, so the collection was not made the union; reconcile the roles against access.UnionCollection over every site's router collection", rel, firstImport)
 
 		return nil
 	}
 	alias := first + "router"
 	text = strings.Replace(text, "\t"+firstImport, "\t"+alias+" "+firstImport, 1)
-	text = unionAnchorRE.ReplaceAllString(text, "Collection()")
+	text = readCollectionBefore(text, unionAnchorRE)
+	text, imported := ensureImport(text, errorsImport)
 	text = strings.TrimRight(text, "\n") + fmt.Sprintf(`
 
 // Collection is the application's whole permission registry: the union of every site's
 // generated collection. The sites share one policy store, so the roles are reconciled
 // against everything any site registers; a resource several sites serve is declared
-// identically in each and appears once.
-func Collection() access.PermissionCollection {
-	return unionCollection{%s.Collection()}
+// identically in each and appears once, and access.UnionCollection refuses sites that
+// disagree on one.
+func Collection() (access.PermissionCollection, error) {
+	collection, err := access.UnionCollection(%s.Collection())
+	if err != nil {
+		return nil, errors.Wrap(err, "access.UnionCollection()")
+	}
+
+	return collection, nil
 }
 `, alias)
 	formatted, err := format.Source([]byte(text))
@@ -638,35 +652,120 @@ func Collection() access.PermissionCollection {
 	if err := os.WriteFile(a.Abs(rel), formatted, mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	reference, err := skeleton.FS(SitesReference)
-	if err != nil {
-		return err
+	if !imported {
+		ch.skipf("%s: has no import block to add %q to; import it for Collection()", rel, errorsImport)
 	}
-	union, err := fs.ReadFile(reference, "pkg/deploy/union.go")
-	if err != nil {
-		return errors.Wrap(err, "fs.ReadFile()")
-	}
-	pkg, err := app.PackageName(rel, data)
-	if err != nil {
-		return err
-	}
-	unionText := strings.Replace(string(union), "package deploy", "package "+pkg, 1)
-	if err := writeNew(a, path.Join(path.Dir(rel), "union.go"), unionText); err != nil {
-		return err
-	}
-	ch.didf("%s: the roles are reconciled against Collection(), the union of every site's router collection (the %s site's to start); %s/union.go: the union type, from the reference", rel, first, path.Dir(rel))
+	ch.didf("%s: the roles are reconciled against Collection(), access.UnionCollection over every site's router collection (the %s site's to start)", rel, first)
 
 	return nil
 }
 
+// readCollectionBefore rewrites the statement using the anchored expression to read
+// Collection() first: the statement's line is preceded by the read and its error
+// check, at the same indentation, and the expression becomes the read's result.
+func readCollectionBefore(text string, anchor *regexp.Regexp) string {
+	loc := anchor.FindStringIndex(text)
+	if loc == nil {
+		return text
+	}
+	lineStart := strings.LastIndex(text[:loc[0]], "\n") + 1
+	indent := text[lineStart : lineStart+len(text[lineStart:])-len(strings.TrimLeft(text[lineStart:], "\t "))]
+	read := indent + "collection, err := Collection()\n" +
+		indent + "if err != nil {\n" +
+		indent + "\treturn err\n" +
+		indent + "}\n\n"
+	rest := anchor.ReplaceAllString(text[lineStart:], "collection")
+
+	return text[:lineStart] + read + rest
+}
+
+// ensureImport adds importPath to the file's first import block when no import of it is
+// there; ok is false when the file has no import block to add to.
+func ensureImport(text, importPath string) (edited string, ok bool) {
+	quoted := fmt.Sprintf("%q", importPath)
+	if strings.Contains(text, quoted) {
+		return text, true
+	}
+	i := strings.Index(text, "import (\n")
+	if i < 0 {
+		return text, false
+	}
+	at := i + len("import (\n")
+
+	return text[:at] + "\t" + quoted + "\n" + text[at:], true
+}
+
+// unionArguments locates the arguments of the access.UnionCollection call in text: the
+// indexes just inside its parentheses.
+func unionArguments(text string) (start, end int, ok bool) {
+	i := strings.Index(text, unionNeedle)
+	if i < 0 {
+		return 0, 0, false
+	}
+	start = i + len(unionNeedle)
+	depth := 1
+	for j := start; j < len(text); j++ {
+		switch text[j] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return start, j, true
+			}
+		}
+	}
+
+	return 0, 0, false
+}
+
+// addUnionElement appends element to the access.UnionCollection call's arguments.
+func addUnionElement(text, element string) (edited string, ok bool) {
+	start, end, ok := unionArguments(text)
+	if !ok {
+		return text, false
+	}
+	arguments := strings.TrimSpace(text[start:end])
+	if arguments != "" {
+		arguments += ", "
+	}
+
+	return text[:start] + arguments + element + text[end:], true
+}
+
+// removeUnionElement takes element out of the access.UnionCollection call's arguments;
+// ok is false when the call or the element is not there.
+func removeUnionElement(text, element string) (edited string, ok bool) {
+	start, end, ok := unionArguments(text)
+	if !ok {
+		return text, false
+	}
+	var kept []string
+	found := false
+	for _, argument := range strings.Split(text[start:end], ",") {
+		switch argument = strings.TrimSpace(argument); argument {
+		case "":
+		case element:
+			found = true
+		default:
+			kept = append(kept, argument)
+		}
+	}
+	if !found {
+		return text, false
+	}
+
+	return text[:start] + strings.Join(kept, ", ") + text[end:], true
+}
+
 // extendUnion adds a site's router collection to an existing union.
 func (s Site) extendUnion(a *app.App, modulePath string, ch *Change) error {
-	rel, data, mode, err := findFileCalling(a, "unionCollection{")
+	rel, data, mode, err := findFileCalling(a, unionNeedle)
 	if err != nil {
 		return err
 	}
 	if rel == "" {
-		ch.skipf("no package builds a unionCollection, so the %s site's router collection is not in the roles' registry; add %s/%s/pkg/router's Collection() to it", s.Name, sitesDir, s.Name)
+		ch.skipf("no package calls access.UnionCollection, so the %s site's router collection is not in the roles' registry; add %s/%s/pkg/router's Collection() to the union", s.Name, sitesDir, s.Name)
 
 		return nil
 	}
@@ -681,7 +780,12 @@ func (s Site) extendUnion(a *app.App, modulePath string, ch *Change) error {
 	}
 	last := all[len(all)-1]
 	text = text[:last[1]] + importLine + text[last[1]:]
-	text = strings.Replace(text, ".Collection()}", ".Collection(), "+alias+".Collection()}", 1)
+	text, ok := addUnionElement(text, alias+".Collection()")
+	if !ok {
+		ch.skipf("%s: the access.UnionCollection call is not in the shape the tool edits; add %s.Collection() to it by hand", rel, alias)
+
+		return nil
+	}
 	formatted, err := format.Source([]byte(text))
 	if err != nil {
 		return errors.Wrap(err, "format.Source()")

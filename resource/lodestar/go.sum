@@ -48,8 +48,8 @@ github.com/MakeNowJust/heredoc/v2 v2.0.1 h1:rlCHh70XXXv7toz95ajQWOWQnN4WNLt0TdpZ
 github.com/MakeNowJust/heredoc/v2 v2.0.1/go.mod h1:6/2Abh5s+hc3g9nbWLe9ObDIOhaRrqsyY9MWy+4JdRM=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/cccteam/access v0.9.12-0.20260909172903-b6779ba526f0 h1:IdbTT0Xe4ADJT5v2C8wUa2YfjTukJ1QYpbQDj6BU3V8=
-github.com/cccteam/access v0.9.12-0.20260909172903-b6779ba526f0/go.mod h1:EMV/w7TmFEdIQ2JkcV4PJowYRFTXZMMZzBcXIVbUEfM=
+github.com/cccteam/access v0.9.12-0.20260909195205-4a34eb2f83d8 h1:iyPFfWLgtEhPsIaBm9zs6zprsyOK1G0TN4iby6VUths=
+github.com/cccteam/access v0.9.12-0.20260909195205-4a34eb2f83d8/go.mod h1:EMV/w7TmFEdIQ2JkcV4PJowYRFTXZMMZzBcXIVbUEfM=
 github.com/cccteam/ccc v0.3.4-0.20260908043255-2adf7c91cccf h1:5ueZY/GdpNxcUnx+qkaAGF5QnHeMlHJt5aIXTTIuOTU=
 github.com/cccteam/ccc v0.3.4-0.20260908043255-2adf7c91cccf/go.mod h1:mMvs+AvedNa8vOADImamEAUqnsxhPlvnXYjFVV+/SeY=
 github.com/cccteam/ccc/accesstypes v0.5.10-0.20260908043255-2adf7c91cccf h1:FzDUVO/sdgK2rhLlbAiGfAEa6JkBtuzM2+vrIWJfXVk=
