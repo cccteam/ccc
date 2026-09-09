@@ -4,6 +4,7 @@ import { FieldName, Permission, Resource } from '@cccteam/resource';
 export const Permissions = {
   Create: 'Create' as Permission,
   Delete: 'Delete' as Permission,
+  Execute: 'Execute' as Permission,
   List: 'List' as Permission,
   Read: 'Read' as Permission,
   Update: 'Update' as Permission,

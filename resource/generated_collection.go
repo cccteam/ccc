@@ -631,16 +631,27 @@ func (g *GeneratedCollection) ResourceExists(r accesstypes.Resource) bool {
 	return false
 }
 
+// permissionVocabulary and scopeVocabulary are every permission and scope the framework
+// defines, in the sorted order the generated TypeScript constants list them. The
+// constants name the vocabulary, not the application's registrations, so the browser
+// client's references hold in an application that has registered nothing yet.
+var (
+	permissionVocabulary = []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.Execute, accesstypes.List, accesstypes.Read, accesstypes.Update}
+	scopeVocabulary      = []accesstypes.PermissionScope{accesstypes.DomainPermissionScope, accesstypes.GlobalPermissionScope}
+)
+
 // TypescriptData returns a struct containing all the data needed for TypeScript code generation.
 func (g *GeneratedCollection) TypescriptData() *TypescriptData {
 	return g.TypescriptDataExcluding()
 }
 
 // TypescriptDataExcluding returns the TypeScript generation data with every
-// registration on the named resources omitted: the resources themselves, their
-// tags, and any permission or scope no remaining registration carries. The
-// TypeScript generator passes the resources and methods that belong exclusively
-// to other router outlets, so an outlet-scoped target emits only its own members.
+// registration on the named resources omitted: the resources themselves and their
+// tags. The TypeScript generator passes the resources and methods that belong
+// exclusively to other router outlets, so an outlet-scoped target emits only its own
+// members. Permissions and scopes are the framework's whole vocabulary regardless: a
+// browser app names Permissions.Execute before the application registers a method,
+// and an all-global application still names the domain scope.
 func (g *GeneratedCollection) TypescriptDataExcluding(excluded ...accesstypes.Resource) *TypescriptData {
 	var skip map[accesstypes.Resource]struct{}
 	if len(excluded) > 0 {
@@ -651,11 +662,11 @@ func (g *GeneratedCollection) TypescriptDataExcluding(excluded ...accesstypes.Re
 	}
 
 	return &TypescriptData{
-		Permissions:      g.permissions(skip),
+		Permissions:      slices.Clone(permissionVocabulary),
 		Resources:        g.resources(skip),
 		Methods:          g.methods(skip),
 		ResourceTags:     g.tags(skip),
-		PermissionScopes: g.permissionScopes(skip),
+		PermissionScopes: slices.Clone(scopeVocabulary),
 	}
 }
 
@@ -752,31 +763,6 @@ func (g *GeneratedCollection) addResourceSet(scope accesstypes.PermissionScope, 
 	return nil
 }
 
-func (g *GeneratedCollection) permissions(skip map[accesstypes.Resource]struct{}) []accesstypes.Permission {
-	permissions := []accesstypes.Permission{}
-	for _, stores := range g.resourceStore {
-		for resource, perms := range stores {
-			if _, skipped := skip[resource]; skipped {
-				continue
-			}
-			permissions = append(permissions, perms...)
-		}
-	}
-	for _, stores := range g.tagStore {
-		for resource, tags := range stores {
-			if _, skipped := skip[resource]; skipped {
-				continue
-			}
-			for _, perms := range tags {
-				permissions = append(permissions, perms...)
-			}
-		}
-	}
-	slices.Sort(permissions)
-
-	return slices.Compact(permissions)
-}
-
 func (g *GeneratedCollection) tags(skip map[accesstypes.Resource]struct{}) map[accesstypes.Resource][]accesstypes.Tag {
 	resourcetags := make(map[accesstypes.Resource][]accesstypes.Tag)
 
@@ -793,26 +779,6 @@ func (g *GeneratedCollection) tags(skip map[accesstypes.Resource]struct{}) map[a
 	}
 
 	return resourcetags
-}
-
-// permissionScopes returns the permission scopes the collection registers resources
-// under, sorted for deterministic generated output. These are scopes (global/domain),
-// not tenant domains — the tenant universe is app-owned.
-func (g *GeneratedCollection) permissionScopes(skip map[accesstypes.Resource]struct{}) []accesstypes.PermissionScope {
-	scopes := make([]accesstypes.PermissionScope, 0, len(g.resourceStore))
-	for scope, store := range g.resourceStore {
-		for resource := range store {
-			if _, skipped := skip[resource]; skipped {
-				continue
-			}
-			scopes = append(scopes, scope)
-
-			break
-		}
-	}
-	slices.Sort(scopes)
-
-	return scopes
 }
 
 // resourceKey identifies one resource registration: its scope and name.

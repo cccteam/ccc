@@ -492,21 +492,21 @@ func TestGeneratedCollection_TypescriptDataExcluding(t *testing.T) {
 			want: g.TypescriptData(),
 		},
 		{
-			name:     "excluding the sole domain resource drops its tags, permission, and scope",
+			name:     "excluding the sole domain resource drops its tags; the permission and scope vocabulary stays whole",
 			excluded: []accesstypes.Resource{"Gadgets"},
 			want: &TypescriptData{
-				Permissions:      []accesstypes.Permission{accesstypes.Execute, accesstypes.List},
+				Permissions:      []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.Execute, accesstypes.List, accesstypes.Read, accesstypes.Update},
 				Resources:        []accesstypes.Resource{"Widgets"},
 				Methods:          []accesstypes.Resource{"DoThing"},
 				ResourceTags:     map[accesstypes.Resource][]accesstypes.Tag{"Widgets": {"id", "name"}},
-				PermissionScopes: []accesstypes.PermissionScope{accesstypes.GlobalPermissionScope},
+				PermissionScopes: []accesstypes.PermissionScope{accesstypes.DomainPermissionScope, accesstypes.GlobalPermissionScope},
 			},
 		},
 		{
-			name:     "excluding a method drops only its Execute permission",
+			name:     "excluding a method drops it from the methods; the permission vocabulary stays whole",
 			excluded: []accesstypes.Resource{"DoThing"},
 			want: &TypescriptData{
-				Permissions:      []accesstypes.Permission{accesstypes.List, accesstypes.Update},
+				Permissions:      []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.Execute, accesstypes.List, accesstypes.Read, accesstypes.Update},
 				Resources:        []accesstypes.Resource{"Gadgets", "Widgets"},
 				Methods:          []accesstypes.Resource{},
 				ResourceTags:     map[accesstypes.Resource][]accesstypes.Tag{"Widgets": {"id", "name"}, "Gadgets": {"code"}},
