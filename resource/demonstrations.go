@@ -23,7 +23,7 @@ var Demonstrations = []Demonstration{
 	{"tenancy.tenant-record", "The tenant-record pattern: a table whose rows are the permission domains, read into a roster at startup; WithDomainRoute derives the route parameter from its key."},
 	{"tenancy.concealed", "WithConcealedDomains: a domain the caller holds no grant in answers exactly like one that does not exist."},
 	{"tenancy.user-domains", "The generated user-domains endpoint: the domains where the session holds at least one grant, on the same foothold predicate as concealed tenancy."},
-	{"star-chart", "A picker drawn from user-domains, with a labelled bypass of the digest-first rule so a concealed refusal can be shown in a browser."},
+	{"star-chart", "A picker drawn from user-domains, with a labeled bypass of the digest-first rule so a concealed refusal can be shown in a browser."},
 	{"@domain", "The bare @domain column: the tenant key on the row itself, stamped from the request on create."},
 	{"@domain.join-path", "@domain(via: ...): tenancy resolved one or more hops away through foreign keys."},
 	{"fail-closed.bare-resource", "A resource carrying only the mandatory @domain: a resource-only grant exposes nothing beyond the primary key."},

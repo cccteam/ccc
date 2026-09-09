@@ -59,11 +59,8 @@ type (
 )
 
 // sectorHazardBoards is the computed resource the briefing asks about before reading
-// telemetry; missionFee is the field whose decision says whether fees may be redacted.
-const (
-	sectorHazardBoards accesstypes.Resource = "SectorHazardBoards"
-	missionFee         accesstypes.Resource = "Missions.fee"
-)
+// telemetry.
+const sectorHazardBoards accesstypes.Resource = "SectorHazardBoards"
 
 // Execute runs outside a transaction, against the client, as the caller.
 func (m *CompileBriefing) Execute(ctx context.Context, client resource.Client, _ *Client) (*Briefing, error) {
@@ -75,15 +72,8 @@ func (m *CompileBriefing) Execute(ctx context.Context, client resource.Client, _
 	now := time.Now().UTC()
 	briefing := &Briefing{Sector: string(sector), CompiledAt: now, FeesOutstanding: decimal.Zero}
 
-	// Whether the caller's fee is conditional, as data: an armed read projects a masked
-	// cell to its zero value but does not mark it on the row envelope (see the round-3
-	// build report), so under a conditional fee grant a zero fee is read as a redaction.
-	feeDecision, err := caller.Check(ctx, accesstypes.List, missionFee)
-	if err != nil {
-		return nil, errors.Wrap(err, "resource.Caller.Check()")
-	}
-	feeConditional := feeDecision[missionFee].IsConditional()
-
+	// The armed read marks a masked fee on the row envelope by its wire name, the same
+	// way the generated list handler does, so a redaction is read from the row itself.
 	missions := resources.NewMissionQuery().
 		AddColumns(resources.NewMissionColumns().ID().Hazard().Fee().Deadline().StatusID()).
 		Where(resources.NewMissionQueryClause().SectorID().Equal(string(sector))).
@@ -94,7 +84,7 @@ func (m *CompileBriefing) Execute(ctx context.Context, client resource.Client, _
 		}
 		briefing.Missions++
 		briefing.WorstHazard = max(briefing.WorstHazard, row.Data.Hazard)
-		if row.Masked("fee") || (feeConditional && row.Data.Fee.IsZero()) {
+		if row.Masked("fee") {
 			briefing.FeesRedacted++
 		} else {
 			briefing.FeesOutstanding = briefing.FeesOutstanding.Add(row.Data.Fee)

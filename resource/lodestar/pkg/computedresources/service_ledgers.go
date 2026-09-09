@@ -140,7 +140,7 @@ func ledgerCondition(c *resource.Condition, params map[string]any) (string, erro
 
 		return fmt.Sprintf("l.%s %s @%s", column, sqlOperator(c.Operator), name), nil
 	case "in", "notin":
-		params[name] = typedValues(c.Values)
+		params[name] = c.TypedValues()
 		not := ""
 		if c.Operator == "notin" {
 			not = "NOT "
@@ -170,21 +170,6 @@ func fetchLimit(fetch uint64) int64 {
 	}
 
 	return int64(fetch)
-}
-
-// typedValues converts a filter's IN list, decoded as []any, into the typed slice the
-// Spanner client binds; the filterable ledger columns are strings.
-func typedValues(values []any) any {
-	strs := make([]string, 0, len(values))
-	for _, v := range values {
-		s, ok := v.(string)
-		if !ok {
-			return values
-		}
-		strs = append(strs, s)
-	}
-
-	return strs
 }
 
 func sqlOperator(op string) string {

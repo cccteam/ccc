@@ -112,7 +112,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 - `web/`: one bun workspace, two Angular applications: `console/` (default outlet) and
   `portal/` (portal outlet), each over its own generated TypeScript client. The console's
   [`star-chart`](web/console/src/app/components/sector/sector.service.ts) carries the one
-  labelled bypass of the digest-first rule.
+  labeled bypass of the digest-first rule.
 - `test/authz`: the generated authorization matrix; `test/integration`: the suites (§9),
   including [`paging.nullable-sort`](test/integration/paging_test.go),
   [`rpc.armed-read`](test/integration/rpc_forms_test.go),

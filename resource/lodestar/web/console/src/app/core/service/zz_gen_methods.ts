@@ -111,16 +111,8 @@ export interface HailShipConfig {
 export interface HailShip {
   shipId: string;
 }
-/** The result HailShip answers with. */
-export interface HailShipResult {
-}
 /** The statuses HailShip declares; the method chooses one per response. */
 export type HailShipStatus = 204;
-/** The answer HailShip resolves with: the status the method chose and its typed result. */
-export interface HailShipAnswer {
-  status: HailShipStatus;
-  result: HailShipResult;
-}
 
 export interface HoldMissionConfig {
   missionId: string | FieldPointer;
@@ -307,7 +299,6 @@ const methodMap: MethodMap = {
   },
   [Methods.HailShip]: {
     route: 'hail-ship',
-    answers: true,
     statuses: [204],
     fields: [
       { fieldName: 'shipId', displayType: 'uuid' },
