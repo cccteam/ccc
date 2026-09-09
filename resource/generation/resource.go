@@ -224,7 +224,7 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	resourcesPkg := parser.ParsePackage(pkg)
-	r.resources, err = r.structsToResources(resourcesPkg.Structs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+	r.resources, err = r.structsToResources(resourcesPkg.Structs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
 	if err != nil {
 		return err
 	}
@@ -237,7 +237,7 @@ func (r *resourceGenerator) Generate() error {
 
 	if r.genVirtualResources {
 		virtualStructs := parser.ParsePackage(packageMap[r.virtual.Package()]).Structs
-		virtualResources, err := r.structsToVirtualResources(virtualStructs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+		virtualResources, err := r.structsToVirtualResources(virtualStructs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
 		if err != nil {
 			return err
 		}
@@ -257,7 +257,7 @@ func (r *resourceGenerator) Generate() error {
 	// needs to run before resource generation so the data can be sneakily snuck into resource generation
 	if r.genComputedResources {
 		compStructs := parser.ParsePackage(packageMap[r.computed.Package()]).Structs
-		computedResources, err := r.structsToCompResources(compStructs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+		computedResources, err := r.structsToCompResources(compStructs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
 		if err != nil {
 			return err
 		}
@@ -353,7 +353,7 @@ func (r *resourceGenerator) extractAndGenerateRPC(packageMap map[string]*package
 	}
 
 	var err error
-	r.rpcMethods, err = r.structsToRPCMethods(rpcStructs, r.validateStructNameMatchesFile(pkg, false), validateNoPermTags)
+	r.rpcMethods, err = r.structsToRPCMethods(rpcStructs, r.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags)
 	if err != nil {
 		return err
 	}

@@ -173,7 +173,7 @@ func (t *typescriptGenerator) parseResources(packageMap map[string]*packages.Pac
 	}
 	resourcesPkg := parser.ParsePackage(pkg)
 
-	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -181,7 +181,7 @@ func (t *typescriptGenerator) parseResources(packageMap map[string]*packages.Pac
 	if t.genVirtualResources {
 		pkg := packageMap[t.virtual.Package()]
 		virtualStructs := parser.ParsePackage(pkg).Structs
-		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -217,7 +217,7 @@ func (t *typescriptGenerator) Generate() error {
 	if t.genComputedResources {
 		pkg := packageMap[t.computed.Package()]
 		compStructs := parser.ParsePackage(pkg).Structs
-		computedResources, err = t.structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+		computedResources, err = t.structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
 		if err != nil {
 			return err
 		}
@@ -227,7 +227,7 @@ func (t *typescriptGenerator) Generate() error {
 	if t.genRPCMethods {
 		pkg := packageMap[t.rpc.Package()]
 		rpcStructs := parser.ParsePackage(pkg).Structs
-		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags)
+		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags)
 		if err != nil {
 			return err
 		}

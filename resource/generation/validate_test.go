@@ -49,6 +49,46 @@ func Test_validateNoPermTags(t *testing.T) {
 	}
 }
 
+// Test_validateConditionsTags pins that an unrecognized conditions value is refused
+// naming the field and the value, with the nearest recognized value suggested when one
+// is close, since every reader of the tag matches exactly and would otherwise drop it.
+func Test_validateConditionsTags(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "hygienefixture"))
+
+	tests := []struct {
+		name         string
+		structName   string
+		wantContains string
+	}{
+		{name: "a misspelling is refused with a suggestion", structName: "Misspelled", wantContains: `field Misspelled.Name: conditions tag value "immutble" is not recognized; did you mean "immutable"?`},
+		{name: "a space-padded value is refused with the trimmed value suggested", structName: "Spaced", wantContains: `conditions tag value " pii" is not recognized; did you mean "pii"?`},
+		{name: "a trailing comma's empty value is refused without a suggestion", structName: "Trailing", wantContains: `conditions tag value "" is not recognized (recognized: immutable, pii, input_only, output_only)`},
+		{name: "recognized values pass", structName: "Clean"},
+		{name: "a struct without the tag passes", structName: "OneKind"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := structs[tt.structName]
+			if s == nil {
+				t.Fatalf("struct %q not found in fixture package", tt.structName)
+			}
+
+			err := validateConditionsTags(s)
+			if (err != nil) != (tt.wantContains != "") {
+				t.Fatalf("validateConditionsTags() error = %v, wantErr %v", err, tt.wantContains != "")
+			}
+			if err != nil && !strings.Contains(err.Error(), tt.wantContains) {
+				t.Errorf("validateConditionsTags() error = %v, want it to contain %q", err, tt.wantContains)
+			}
+		})
+	}
+}
+
 // Test_rejectMultipleKinds pins that a struct carrying two kind keywords is refused
 // with both kinds named, where the per-keyword Exclusive flag alone would let every
 // extractor claim it.
