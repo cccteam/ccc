@@ -116,6 +116,7 @@ func flatSite(t *testing.T) *app.App {
 	files["web/console/src/app/core/service/zz_gen_resources.ts"] = "// generated\n"
 	files["web/console/src/main.ts"] = "// main\n"
 	files["web/.yalc/@cccteam/resource/package.json"] = "{}\n"
+	files["web/bun.lock"] = "{\n  \"workspaces\": {\n    \"\": {\n      \"name\": \"beacon-web\",\n    },\n  },\n}\n"
 
 	return beacon(t, files)
 }
@@ -256,6 +257,17 @@ func TestSiteApplyPromotes(t *testing.T) {
 	if pkg := read(t, a, "apps/portal/web/package.json"); !strings.Contains(pkg, `"start:portal": "ng serve portal --no-hmr"`) {
 		t.Errorf("portal package.json = %q", pkg)
 	}
+	// Each site's workspace is named for it, in the manifest and the lockfile alike.
+	for rel, want := range map[string]string{
+		"apps/console/web/package.json": `"name": "beacon-console-web"`,
+		"apps/console/web/bun.lock":     `"name": "beacon-console-web"`,
+		"apps/portal/web/package.json":  `"name": "beacon-portal-web"`,
+		"apps/portal/web/bun.lock":      `"name": "beacon-portal-web"`,
+	} {
+		if got := read(t, a, rel); !strings.Contains(got, want) {
+			t.Errorf("%s lacks %s:\n%s", rel, want, got)
+		}
+	}
 
 	// The processes and the environment.
 	procfile := read(t, a, "Procfile")
@@ -328,6 +340,12 @@ func TestSiteApplyAddsToSites(t *testing.T) {
 	}
 	if got := read(t, promoted, "apps/kiosk/web/angular.json"); !strings.Contains(got, `"port": 4302`) {
 		t.Errorf("kiosk angular.json lacks the next port")
+	}
+	if got := read(t, promoted, "apps/kiosk/web/package.json"); !strings.Contains(got, `"name": "beacon-kiosk-web"`) {
+		t.Errorf("kiosk package.json is not named for the site:\n%s", got)
+	}
+	if got := read(t, promoted, "apps/kiosk/web/bun.lock"); !strings.Contains(got, `"name": "beacon-kiosk-web"`) {
+		t.Errorf("kiosk bun.lock is not named for the site:\n%s", got)
 	}
 	p := (mustDiscover(t, a.Root)).Profile()
 	names := siteNames(p)

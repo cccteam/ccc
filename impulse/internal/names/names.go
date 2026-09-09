@@ -1,5 +1,5 @@
-// Package names holds the naming rules the tool applies to an auth: how a name is
-// substituted through a tree of code and prose, and what names an auth may take.
+// Package names holds the naming rules the tool applies to an auth and to the application:
+// how a name is substituted through a tree of code and prose, and what names each may take.
 package names
 
 import (

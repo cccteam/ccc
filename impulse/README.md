@@ -16,12 +16,16 @@ go install github.com/cccteam/ccc/impulse@latest
 ## impulse new
 
 `new` creates an application: the base skeleton (flat layout, one auth, nothing else on)
-rendered under your module path, with the first auth named by you.
+rendered under your module path, with the first auth named by you. The application is
+named after the module path's last segment unless `--name` says otherwise: the name is the
+web package (`<name>-web`), `APP_SERVICE_NAME`, and the development Spanner project,
+instance, and database in `.envrc.template`.
 
 ```sh
 impulse new ../beacon --module example.com/acme/beacon --auth staff
 impulse new ../harbor --module example.com/acme/harbor            # asks for the auth name
 impulse new ../harbor --module example.com/acme/harbor --auth members --dev-root ~/Development/github.com/cccteam
+impulse new ../svc --module example.com/acme/beacon.service --auth staff --name beacon   # the last segment is not a name
 ```
 
 An auth is a population that signs in one way and holds roles in its own permission
@@ -98,7 +102,8 @@ reason).
 path you name, rewriting every import and `go.mod` to it. It is the primitive `new`
 builds on and the way the templates are validated: render one, then build, test, and
 `impulse check` the result. The templates carry `staff` as their placeholder auth; `new`
-renames it, `render` keeps it.
+renames it, `render` keeps it. Both name the application after the module path's last
+segment unless `--name` says otherwise.
 
 ```sh
 impulse render solo ../beacon --module example.com/acme/beacon
@@ -336,6 +341,11 @@ tested with and renders them offline.
 While embedded they are not Go modules: each carries its `go.mod` as `go.mod.tmpl`, and
 the leading underscore keeps the tree out of `./...` so nothing compiles it in place.
 Rendering writes `go.mod` back under the target module path and rewrites every import.
+A template names its application by its own candidate name in four places only — the
+workspace name in `package.json` and `bun.lock`, the service name and development
+database ids in `.envrc.template`, and the README heading — and rendering puts the
+application's name there; everywhere else the prose says "the application", since the
+candidate names are English words.
 The templates are therefore validated by rendering them and running the rendered
 application's build, tests, and `impulse check`, never in place. Their browser workspaces
 use bun, with `bun.lock` committed. Two yalc-era settings travel with them until

@@ -41,6 +41,12 @@ type Options struct {
 	// everywhere the placeholder stands as a name or starts an identifier. Empty keeps
 	// the placeholder.
 	Auth string
+	// Name is the application's name: what the candidate's own name stands for in the
+	// template, in the web workspace's package name (<candidate>-web), the environment
+	// template's service name and development database ids (<candidate>, <candidate>-dev),
+	// and the README heading. Rendering substitutes it in those slots (names.RenameApp) and
+	// the templates name the application nowhere else. Empty keeps the candidate's name.
+	Name string
 }
 
 // PlaceholderAuth is the auth every template carries: the name render substitutes when
@@ -71,12 +77,18 @@ const frameworkPrefix = "github.com/cccteam/"
 const goExt = ".go"
 
 // Render copies an embedded template into opts.Dir under opts.ModulePath: go.mod.tmpl
-// becomes go.mod, the placeholder module path is rewritten everywhere it appears, Go
-// files are reformatted (the rewrite changes line lengths), and shell scripts regain
-// their execute bit, which embedding drops.
+// becomes go.mod, the placeholder module path is rewritten everywhere it appears, the
+// application name replaces the candidate's where the template carries it, Go files are
+// reformatted (the rewrite changes line lengths), and shell scripts regain their execute
+// bit, which embedding drops.
 func Render(opts *Options) (*Rendered, error) {
 	if err := module.CheckPath(opts.ModulePath); err != nil {
 		return nil, errors.Wrapf(err, "module path %q", opts.ModulePath)
+	}
+	if opts.Name != "" {
+		if err := names.ValidateApp(opts.Name); err != nil {
+			return nil, err
+		}
 	}
 	candidate, err := candidateByName(opts.Candidate)
 	if err != nil {
@@ -105,7 +117,7 @@ func Render(opts *Options) (*Rendered, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if err := renderFile(sub, target, p, opts, candidate.ModulePath); err != nil {
+		if err := renderFile(sub, target, p, opts, candidate); err != nil {
 			return err
 		}
 		rendered.Files++
@@ -128,8 +140,9 @@ func Render(opts *Options) (*Rendered, error) {
 // renderFile writes one template file into the target tree. The rendered tree is a
 // project a person works in, so it gets the conventional modes: 0755 directories, 0644
 // files, 0755 shell scripts. With Options.Auth, the placeholder auth is renamed in the
-// file's path and its text.
-func renderFile(sub fs.FS, target *os.Root, p string, opts *Options, placeholder string) error {
+// file's path and its text; with Options.Name, the application name replaces the
+// candidate's in the slots that carry it.
+func renderFile(sub fs.FS, target *os.Root, p string, opts *Options, candidate Candidate) error {
 	src, err := fs.ReadFile(sub, p)
 	if err != nil {
 		return errors.Wrapf(err, "fs.ReadFile(): %s", p)
@@ -146,7 +159,10 @@ func renderFile(sub fs.FS, target *os.Root, p string, opts *Options, placeholder
 
 	out := src
 	if utf8.Valid(src) {
-		text := strings.ReplaceAll(string(src), placeholder, opts.ModulePath)
+		text := strings.ReplaceAll(string(src), candidate.ModulePath, opts.ModulePath)
+		if opts.Name != "" && opts.Name != candidate.Name {
+			text = names.RenameApp(rel, text, candidate.Name, opts.Name)
+		}
 		if rename {
 			text = names.Rename(text, PlaceholderAuth, opts.Auth)
 		}

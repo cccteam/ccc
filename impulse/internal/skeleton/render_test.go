@@ -282,6 +282,14 @@ func TestRenderRefusals(t *testing.T) {
 			},
 			wantErr: "is not empty",
 		},
+		{
+			name: "an application name that is not one",
+			opts: func(t *testing.T) Options {
+				t.Helper()
+				return Options{Candidate: "solo", Dir: t.TempDir(), ModulePath: targetModule, Name: "Beacon"}
+			},
+			wantErr: `application name "Beacon"`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -470,5 +478,79 @@ func TestRender_lintConfigUnderOrg(t *testing.T) {
 	}
 	if !strings.Contains(string(config), "- github.com/cccteam\n") {
 		t.Errorf("the org prefix is missing from the depguard allow list:\n%s", config)
+	}
+}
+
+func TestRenderName(t *testing.T) {
+	t.Parallel()
+
+	// The slots every template carries its name in, with what they must say under the
+	// name beacon; the candidate name must be gone from each.
+	common := map[string][]string{
+		".envrc.template": {
+			"# Development environment for beacon.",
+			"export APP_SERVICE_NAME=beacon\n",
+			"export GOOGLE_CLOUD_SPANNER_PROJECT=beacon-dev\n",
+			"export GOOGLE_CLOUD_SPANNER_INSTANCE_ID=beacon\n",
+			"export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=beacon\n",
+		},
+	}
+	oneWorkspace := map[string][]string{
+		"web/package.json": {`"name": "beacon-web"`},
+		"web/bun.lock":     {`"name": "beacon-web"`},
+	}
+	tests := []struct {
+		name      string
+		candidate string
+		slots     map[string][]string
+	}{
+		{name: "solo", candidate: "solo", slots: oneWorkspace},
+		{name: "tenanted", candidate: "tenanted", slots: oneWorkspace},
+		{name: "outlets", candidate: "outlets", slots: oneWorkspace},
+		{name: "sites", candidate: "sites", slots: map[string][]string{
+			"apps/console/web/package.json": {`"name": "beacon-console-web"`},
+			"apps/console/web/bun.lock":     {`"name": "beacon-console-web"`},
+			"apps/portal/web/package.json":  {`"name": "beacon-portal-web"`},
+			"apps/portal/web/bun.lock":      {`"name": "beacon-portal-web"`},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := filepath.Join(t.TempDir(), "beacon")
+			if _, err := Render(&Options{Candidate: tt.candidate, Dir: dir, ModulePath: targetModule, Name: "beacon"}); err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			candidate := regexp.MustCompile(`(^|[^a-z0-9-])` + tt.candidate + `([^a-z0-9-]|$)`)
+			slots := map[string][]string{}
+			for rel, wants := range common {
+				slots[rel] = wants
+			}
+			for rel, wants := range tt.slots {
+				slots[rel] = wants
+			}
+			for rel, wants := range slots {
+				data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, want := range wants {
+					if !strings.Contains(string(data), want) {
+						t.Errorf("%s lacks %q", rel, want)
+					}
+				}
+				if m := candidate.FindString(string(data)); m != "" {
+					t.Errorf("%s still names the candidate: %q", rel, m)
+				}
+			}
+			readme, err := os.ReadFile(filepath.Join(dir, "README.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasPrefix(string(readme), "# beacon\n") {
+				t.Errorf("README.md starts %q, want the heading # beacon", firstLine(readme))
+			}
+		})
 	}
 }

@@ -1,4 +1,4 @@
-// Package generate produces all generated code for sites: one generator per site, then
+// Package generate produces all generated code for the application: one generator per site, then
 // the shared generator whose TypeScript reaches every site.
 package generate
 

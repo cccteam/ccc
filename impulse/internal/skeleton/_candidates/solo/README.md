@@ -1,9 +1,9 @@
 # solo
 
-A skeleton candidate for `impulse new`: the smallest application on the cccteam resource
-stack that a person can sign in to. One site, one browser application, no tenancy, no
-resources yet — the generated API carries only the session's permission digest, and the
-console shows who is signed in and what they hold.
+An application on the cccteam resource stack: the smallest one a person can sign in to.
+One site, one browser application, no tenancy, no resources yet — the generated API
+carries only the session's permission digest, and the console shows who is signed in and
+what they hold.
 
 ## Layout
 

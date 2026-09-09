@@ -13,12 +13,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cccteam/ccc/impulse/internal/app"
+	"github.com/cccteam/ccc/impulse/internal/names"
 	"github.com/cccteam/ccc/impulse/internal/skeleton"
 )
 
 func newRender() *cobra.Command {
 	var (
 		modulePath string
+		name       string
 		devRoot    string
 	)
 
@@ -29,6 +31,7 @@ func newRender() *cobra.Command {
 under the module path you name, rewriting every import and go.mod to it. It is the
 primitive impulse new builds on, and the way the templates are validated: render one,
 then build, test, and check the result. The placeholder auth (staff) is kept; new renames it.
+The application is named after the module path's last segment unless --name says otherwise.
 
 With --dev-root, render also writes a go.work that uses every framework module the
 application requires directly and that has a checkout under that directory (laid out by
@@ -36,7 +39,11 @@ repository: <root>/ccc/resource, <root>/session, ...), so the application builds
 local framework work instead of the pins. Do not commit that go.work.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			got, err := skeleton.Render(&skeleton.Options{Candidate: args[0], Dir: args[1], ModulePath: modulePath, DevRoot: devRoot})
+			appName, err := appName(name, modulePath)
+			if err != nil {
+				return err
+			}
+			got, err := skeleton.Render(&skeleton.Options{Candidate: args[0], Dir: args[1], ModulePath: modulePath, Name: appName, DevRoot: devRoot})
 			if err != nil {
 				return err
 			}
@@ -51,7 +58,7 @@ local framework work instead of the pins. Do not commit that go.work.`,
 				return err
 			}
 			report := renderReport{
-				candidate: args[0], dir: args[1], modulePath: modulePath, devRoot: devRoot,
+				candidate: args[0], dir: args[1], modulePath: modulePath, name: appName, devRoot: devRoot,
 				rendered: got, port: port, emulator: emulator, goProcs: goProcs, web: web,
 				styled: isTerminal(cmd.OutOrStdout()),
 			}
@@ -62,6 +69,7 @@ local framework work instead of the pins. Do not commit that go.work.`,
 	}
 
 	cmd.Flags().StringVar(&modulePath, "module", "", "module path of the rendered application (required)")
+	cmd.Flags().StringVar(&name, "name", "", "the application's name: "+nameUse+" (default: the module path's last segment)")
 	cmd.Flags().StringVar(&devRoot, "dev-root", "", "directory of cccteam checkouts to build against instead of the pins")
 	_ = cmd.MarkFlagRequired("module")
 
@@ -104,8 +112,10 @@ type renderReport struct {
 	options           bool
 
 	candidate, dir, modulePath, devRoot string
-	rendered                            *skeleton.Rendered
-	port, emulator                      string
+	// name is the application's name when the rendering set one.
+	name           string
+	rendered       *skeleton.Rendered
+	port, emulator string
 	// goProcs are the Procfile processes that run without the browser apps installed.
 	goProcs []string
 	// web lists the browser workspaces and the ng serve ports of their projects.
@@ -140,6 +150,9 @@ func (r *renderReport) write(w io.Writer) {
 		fmt.Fprintln(w, r.headline)
 	} else {
 		fmt.Fprintf(w, "Rendered %s into %s as %s (%d files).\n", r.candidate, r.dir, r.modulePath, r.rendered.Files)
+	}
+	if r.name != "" {
+		fmt.Fprintf(w, "Named %s: the web package, APP_SERVICE_NAME, and the development database carry it.\n", r.name)
 	}
 	if r.gitNote != "" {
 		fmt.Fprintln(w, r.gitNote)
@@ -278,4 +291,22 @@ func isTerminal(w io.Writer) bool {
 	}
 
 	return info.Mode()&os.ModeCharDevice != 0
+}
+
+// nameUse says what the application's name reaches, for the flag help of new and render.
+const nameUse = "the web package (<name>-web), APP_SERVICE_NAME, and the development database"
+
+// appName settles the application's name: the --name flag when given, else the module
+// path's last segment, which is what a module is named after. A derived name that is not
+// one (example.com/acme/beacon.service) asks for the flag rather than guessing.
+func appName(flag, modulePath string) (string, error) {
+	if flag != "" {
+		return flag, names.ValidateApp(flag)
+	}
+	name := names.App(modulePath)
+	if err := names.ValidateApp(name); err != nil {
+		return "", errors.Newf("the module path %s does not end in an application name (%q is not one: %s); pass --name", modulePath, name, names.AppGuidance)
+	}
+
+	return name, nil
 }

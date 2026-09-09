@@ -1,4 +1,4 @@
-// Package app contains the http handlers for outlets. Most handlers are generated; this
+// Package app contains the application's http handlers. Most handlers are generated; this
 // file provides the application plumbing the generated code depends on, plus the
 // hand-written served surface (middleware, the machines outlet's API-key
 // authentication, and static assets) router.New composes around the generated API
@@ -70,7 +70,7 @@ type Configurer interface {
 // surface goes through the same fail-closed permission checks as the browser.
 const machineUser = "machines"
 
-// App implements the http handlers for outlets, most of which are generated. It owns no
+// App implements the application's http handlers, most of which are generated. It owns no
 // router: whoever serves it composes one at the edge (main composes router.New, test
 // suites compose router.NewTestRouter).
 type App struct {

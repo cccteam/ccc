@@ -23,6 +23,7 @@ import (
 func newNew() *cobra.Command {
 	var (
 		modulePath string
+		name       string
 		authName   string
 		devRoot    string
 		skipGit    bool
@@ -40,6 +41,10 @@ auth is a package, pkg/auth/<name>, and its name is also the prefix of its table
 cookie, and the stem of its roles file, so it is asked for when --auth is not given, and
 there is no default: a default word would land in every application whose author skipped
 the question.
+
+The application is named after the module path's last segment (github.com/acme/beacon names
+beacon) unless --name says otherwise; the name is the web package (<name>-web), APP_SERVICE_NAME,
+and the development Spanner project, instance, and database in .envrc.template.
 
 The rendered tree is committed as the application's first commit (--skip-git leaves it
 uncommitted), so impulse add can start from a clean tree. With --dev-root, new also writes
@@ -69,6 +74,10 @@ one reviewable diff on top of it.`,
 			if err := names.ValidateAuth(authName, reserved); err != nil {
 				return err
 			}
+			appName, err := appName(name, modulePath)
+			if err != nil {
+				return err
+			}
 			transitions, err := opts.transitions()
 			if err != nil {
 				return err
@@ -78,7 +87,7 @@ one reviewable diff on top of it.`,
 			}
 
 			dir := args[0]
-			if err := renderBase(cmd, dir, modulePath, authName, devRoot, skipGit, len(transitions) > 0); err != nil {
+			if err := renderBase(cmd, dir, modulePath, appName, authName, devRoot, skipGit, len(transitions) > 0); err != nil {
 				return err
 			}
 			if len(transitions) == 0 {
@@ -90,6 +99,7 @@ one reviewable diff on top of it.`,
 	}
 
 	cmd.Flags().StringVar(&modulePath, "module", "", "module path of the application (required)")
+	cmd.Flags().StringVar(&name, "name", "", "the application's name: "+nameUse+" (default: the module path's last segment)")
 	cmd.Flags().StringVar(&authName, "auth", "", "the first auth's name: "+names.Guidance+" (asked when not given; no default)")
 	cmd.Flags().StringVar(&devRoot, "dev-root", "", "directory of cccteam checkouts to build against instead of the pins")
 	cmd.Flags().BoolVar(&skipGit, "skip-git", false, "do not initialize a git repository and make the first commit")
@@ -107,8 +117,8 @@ one reviewable diff on top of it.`,
 // renderBase renders the base skeleton with its first auth, makes the first commit unless
 // told not to, and writes the report. With options to compose, the commit is required,
 // since the transitions build on it.
-func renderBase(cmd *cobra.Command, dir, modulePath, authName, devRoot string, skipGit, composing bool) error {
-	got, err := skeleton.Render(&skeleton.Options{Candidate: skeleton.Base, Dir: dir, ModulePath: modulePath, DevRoot: devRoot, Auth: authName})
+func renderBase(cmd *cobra.Command, dir, modulePath, name, authName, devRoot string, skipGit, composing bool) error {
+	got, err := skeleton.Render(&skeleton.Options{Candidate: skeleton.Base, Dir: dir, ModulePath: modulePath, Name: name, DevRoot: devRoot, Auth: authName})
 	if err != nil {
 		return err
 	}
@@ -132,7 +142,7 @@ func renderBase(cmd *cobra.Command, dir, modulePath, authName, devRoot string, s
 	report := renderReport{
 		headline: fmt.Sprintf("Created %s at %s with the %s auth (%d files).", modulePath, dir, authName, got.Files),
 		gitNote:  gitNote, options: !composing,
-		candidate: skeleton.Base, dir: dir, modulePath: modulePath, devRoot: devRoot,
+		candidate: skeleton.Base, dir: dir, modulePath: modulePath, name: name, devRoot: devRoot,
 		rendered: got, port: port, emulator: emulator, goProcs: goProcs, web: web,
 		styled: isTerminal(cmd.OutOrStdout()),
 	}

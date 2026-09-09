@@ -1,14 +1,14 @@
 # outlets
 
-A skeleton candidate for `impulse new`: the tenant-scoped application with every outlet
-kind on one site. One hostname, three outlets — the console on `/api`, a second browser
+A tenant-scoped application on the cccteam resource stack with every outlet kind on one
+site. One hostname, three outlets — the console on `/api`, a second browser
 application (the portal) on `/portal/api` behind the same session handling, and a
 machine REST API on `/machines` behind an API key that binds requests to a service
 identity with roles like any user. Tenancy as data: the `Tenants` table is the domain universe, tenant-scoped routes live
 under `/api/tenants/{tenantID}/`, and tenant existence is concealed from logins that hold
 nothing there. `Announcement` is the first tenant-scoped resource — a login's tenant list
 is where it holds a grant, and a grant needs a tenant-scoped resource to land on, so the
-skeleton ships one. `Reading` is machines-only. The console and the portal each show who
+application ships one. `Reading` is machines-only. The console and the portal each show who
 is signed in, the tenants they can pick, and the digest for the selected tenant.
 
 ## Layout

@@ -1,9 +1,9 @@
 # sites
 
-A skeleton candidate for `impulse new`: the multi-site application. Two sites — the
-console and the portal — each its own server, hostname, router, browser application,
+A multi-site application on the cccteam resource stack. Two sites — the console and the
+portal — each its own server, hostname, router, browser application,
 and generator, over one database, one policy store, and one session store. Tenancy as
-data, as in the single-site candidates: the `Tenants` table is the domain universe,
+data, as in a single-site application: the `Tenants` table is the domain universe,
 tenant-scoped routes live under `/api/tenants/{tenantID}/`, and tenant existence is
 concealed from logins that hold nothing there.
 

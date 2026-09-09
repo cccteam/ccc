@@ -1,12 +1,12 @@
 # tenanted
 
-A skeleton candidate for `impulse new`: the smallest tenant-scoped application on the
-cccteam resource stack that a person can sign in to. One site, one browser application,
+A tenant-scoped application on the cccteam resource stack: the smallest one a person can
+sign in to. One site, one browser application,
 tenancy as data: the `Tenants` table is the domain universe, tenant-scoped routes live
 under `/api/tenants/{tenantID}/`, and tenant existence is concealed from logins that hold
 nothing there. `Announcement` is the first tenant-scoped resource — a login's tenant list
 is where it holds a grant, and a grant needs a tenant-scoped resource to land on, so the
-skeleton ships one. The console shows who is signed in, the tenants they can pick, and
+application ships one. The console shows who is signed in, the tenants they can pick, and
 the digest for the selected tenant.
 
 ## Layout

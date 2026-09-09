@@ -1,4 +1,4 @@
-// main serves tenanted: the generated resource API behind browser sessions, and the
+// main serves the application: the generated resource API behind browser sessions, and the
 // console's built Angular bundle for everything else.
 package main
 

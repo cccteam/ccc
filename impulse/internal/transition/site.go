@@ -2,6 +2,7 @@ package transition
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"go/format"
 	"io/fs"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/cccteam/ccc/impulse/internal/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
+	"github.com/cccteam/ccc/impulse/internal/names"
 	"github.com/cccteam/ccc/impulse/internal/skeleton"
 )
 
@@ -125,12 +127,12 @@ func (Site) promotable(a *app.App, site *app.Site) error {
 }
 
 func siteNames(p app.Profile) string {
-	names := make([]string, len(p.Sites))
+	list := make([]string, len(p.Sites))
 	for i := range p.Sites {
-		names[i] = p.Sites[i].Name
+		list[i] = p.Sites[i].Name
 	}
 
-	return strings.Join(names, ", ")
+	return strings.Join(list, ", ")
 }
 
 // Apply makes the deterministic half: the promotion when the application is flat, then
@@ -253,6 +255,7 @@ func (s Site) promote(a *app.App, site *app.Site, ch *Change) error {
 		if err := s.rewriteWebBoundary(a, modulePath, webDir, base); err != nil {
 			return err
 		}
+		s.nameWorkspace(a, path.Join(base, webDir), ch)
 	}
 
 	// The generator program becomes the site's.
@@ -1025,29 +1028,108 @@ func (s Site) copyWorkspace(a *app.App, from, to string, ch *Change) (project st
 	// The project takes the site's name: its directory, and its name in the workspace
 	// configuration (not in the sources, where the word may mean something else).
 	project = old.Name
-	if old.Name != s.Name && old.Root != "" && old.Root != "." {
-		if err := moveTree(a, path.Join(to, old.Root), path.Join(to, s.Name)); err == nil {
-			project = s.Name
-			word := regexp.MustCompile(`\b` + regexp.QuoteMeta(old.Name) + `\b`)
-			for _, name := range []string{"angular.json", "package.json", "tsconfig.json", "eslint.config.js", ".prettierignore"} {
-				rel := path.Join(to, name)
-				data, mode, err := readFile(a, rel)
-				if err != nil {
-					continue
-				}
-				edited := word.ReplaceAllString(string(data), s.Name)
-				if name == "angular.json" && old.DevPort > 0 && port > 0 {
-					edited = strings.Replace(edited, fmt.Sprintf(`"port": %d`, old.DevPort), fmt.Sprintf(`"port": %d`, port), 1)
-				}
-				if edited != string(data) {
-					_ = os.WriteFile(a.Abs(rel), []byte(edited), mode)
-				}
-			}
-		}
+	if old.Name != s.Name && old.Root != "" && old.Root != "." && s.renameProject(a, to, old, port) {
+		project = s.Name
 	}
 	ch.didf("%s: the %s site's browser workspace, a copy of %s with its project named %s on port %d; its titles and API prefix still say what the %s site's do", to, s.Name, from, project, port, old.Name)
 
 	return project, port
+}
+
+// nameWorkspace gives the promoted site's browser workspace the site's name the way the
+// sites skeleton spells it: <app>-web becomes <app>-<site>-web in package.json and bun.lock,
+// so the second site's copy takes its own name from it. A workspace named some other way,
+// or already for the site, keeps its name.
+func (s Site) nameWorkspace(a *app.App, webDir string, ch *Change) {
+	pkg, _, err := readFile(a, path.Join(webDir, "package.json"))
+	if err != nil {
+		return
+	}
+	from := workspaceName(pkg)
+	stem, ok := strings.CutSuffix(from, "-web")
+	if !ok || strings.HasSuffix(stem, "-"+s.First) {
+		return
+	}
+	to := stem + "-" + s.First + "-web"
+	renamed := renameWorkspaceFiles(a, webDir, from, to, ch)
+	if len(renamed) > 0 {
+		ch.didf("%s: the workspace is named %s (was %s)", strings.Join(renamed, ", "), to, from)
+	}
+}
+
+// renameWorkspaceFiles renames the workspace in package.json and bun.lock, returning the
+// files it changed.
+func renameWorkspaceFiles(a *app.App, webDir, from, to string, ch *Change) []string {
+	var renamed []string
+	for _, name := range []string{"package.json", "bun.lock"} {
+		rel := path.Join(webDir, name)
+		data, mode, err := readFile(a, rel)
+		if err != nil {
+			continue
+		}
+		edited := names.RenameWorkspace(string(data), from, to)
+		if edited == string(data) {
+			continue
+		}
+		if err := os.WriteFile(a.Abs(rel), []byte(edited), mode); err != nil {
+			ch.skipf("%s: not written (%v); name the workspace %s", rel, err, to)
+
+			continue
+		}
+		renamed = append(renamed, rel)
+	}
+
+	return renamed
+}
+
+// workspaceName reads the name field of a package.json, or "" when it has none.
+func workspaceName(pkg []byte) string {
+	var manifest struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(pkg, &manifest); err != nil {
+		return ""
+	}
+
+	return manifest.Name
+}
+
+// renameProject moves the copied project's directory to the site's name and renames the
+// project where the workspace configuration spells it, with the next dev port in
+// angular.json, and reports whether the move succeeded. The lockfile spells the workspace
+// name too, and only there does the word mean the workspace (a dependency named like the
+// site keeps its name), so it follows package.json's name rather than the word.
+func (s Site) renameProject(a *app.App, to string, old app.AngularProject, port int) bool {
+	if err := moveTree(a, path.Join(to, old.Root), path.Join(to, s.Name)); err != nil {
+		return false
+	}
+	pkgBefore, _, _ := readFile(a, path.Join(to, "package.json"))
+	word := regexp.MustCompile(`\b` + regexp.QuoteMeta(old.Name) + `\b`)
+	for _, name := range []string{"angular.json", "package.json", "tsconfig.json", "eslint.config.js", ".prettierignore"} {
+		rel := path.Join(to, name)
+		data, mode, err := readFile(a, rel)
+		if err != nil {
+			continue
+		}
+		edited := word.ReplaceAllString(string(data), s.Name)
+		if name == "angular.json" && old.DevPort > 0 && port > 0 {
+			edited = strings.Replace(edited, fmt.Sprintf(`"port": %d`, old.DevPort), fmt.Sprintf(`"port": %d`, port), 1)
+		}
+		if edited != string(data) {
+			_ = os.WriteFile(a.Abs(rel), []byte(edited), mode)
+		}
+	}
+	pkgAfter, _, err := readFile(a, path.Join(to, "package.json"))
+	if err != nil {
+		return true
+	}
+	if wsFrom, wsTo := workspaceName(pkgBefore), workspaceName(pkgAfter); wsFrom != "" && wsFrom != wsTo {
+		if lock, mode, err := readFile(a, path.Join(to, "bun.lock")); err == nil {
+			_ = os.WriteFile(a.Abs(path.Join(to, "bun.lock")), []byte(names.RenameWorkspace(string(lock), wsFrom, wsTo)), mode)
+		}
+	}
+
+	return true
 }
 
 // copyGenerator writes the new site's generator program as a copy of the first site's

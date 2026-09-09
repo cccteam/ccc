@@ -20,12 +20,13 @@ func TestRenderReport(t *testing.T) {
 		{
 			name: "one workspace, plain",
 			report: renderReport{
-				candidate: "solo", dir: "../beacon", modulePath: "example.com/acme/beacon",
+				candidate: "solo", dir: "../beacon", modulePath: "example.com/acme/beacon", name: "beacon",
 				rendered: &skeleton.Rendered{Files: 90}, port: "8090", emulator: "9014",
 				goProcs: []string{"spanner", "server"},
 				web:     []webWorkspace{{Dir: "web", Projects: []webProject{{Name: "console", Port: 4300}}}},
 			},
 			want: `Rendered solo into ../beacon as example.com/acme/beacon (90 files).
+Named beacon: the web package, APP_SERVICE_NAME, and the development database carry it.
 
 Ports: the server listens on :8090 and the Spanner emulator on :9014.
        Both are set in .envrc.template; change them there if either is taken.
@@ -46,7 +47,7 @@ Next steps
 		{
 			name: "two sites, dev workspace with a missing checkout, styled",
 			report: renderReport{
-				candidate: "sites", dir: "/w/harbor", modulePath: "github.com/cccteam/harbor", devRoot: "/w",
+				candidate: "sites", dir: "/w/harbor", modulePath: "github.com/cccteam/harbor", name: "harbor", devRoot: "/w",
 				rendered: &skeleton.Rendered{
 					Files: 200, Workspace: "/w/harbor/go.work",
 					DevUsed:    []string{"github.com/cccteam/ccc/resource", "github.com/cccteam/session"},
@@ -60,6 +61,7 @@ Next steps
 				},
 			},
 			want: "Rendered sites into /w/harbor as github.com/cccteam/harbor (200 files).\n" +
+				"Named harbor: the web package, APP_SERVICE_NAME, and the development database carry it.\n" +
 				"Wrote go.work using 2 local framework checkout(s) under /w.\n" +
 				"No checkout for github.com/cccteam/db-initiator; those pins stay in force.\n" +
 				"\n\x1b[1mPorts:\x1b[0m the server listens on :8094 and the Spanner emulator on :9017.\n" +
@@ -82,12 +84,13 @@ Next steps
 			report: renderReport{
 				headline: "Created example.com/acme/beacon at ../beacon with the members auth (90 files).",
 				gitNote:  "Committed the tree as the application's first commit.", options: true,
-				candidate: "solo", dir: "../beacon", modulePath: "example.com/acme/beacon",
+				candidate: "solo", dir: "../beacon", modulePath: "example.com/acme/beacon", name: "beacon",
 				rendered: &skeleton.Rendered{Files: 90}, port: "8090", emulator: "9014",
 				goProcs: []string{"spanner", "server"},
 				web:     []webWorkspace{{Dir: "web", Projects: []webProject{{Name: "console", Port: 4300}}}},
 			},
 			want: `Created example.com/acme/beacon at ../beacon with the members auth (90 files).
+Named beacon: the web package, APP_SERVICE_NAME, and the development database carry it.
 Committed the tree as the application's first commit.
 
 Ports: the server listens on :8090 and the Spanner emulator on :9014.
@@ -135,6 +138,44 @@ Next steps
 			tt.report.write(&b)
 			if diff := cmp.Diff(tt.want, b.String()); diff != "" {
 				t.Errorf("write() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestAppName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		flag       string
+		modulePath string
+		want       string
+		wantErr    string
+	}{
+		{name: "the module path's last segment", modulePath: "example.com/acme/beacon", want: "beacon"},
+		{name: "before a major version suffix", modulePath: "example.com/acme/beacon/v2", want: "beacon"},
+		{name: "the flag", flag: "harbor", modulePath: "example.com/acme/beacon", want: "harbor"},
+		{name: "a last segment that is not a name asks for the flag", modulePath: "example.com/acme/beacon.service", wantErr: "pass --name"},
+		{name: "a flag that is not a name", flag: "Beacon", modulePath: "example.com/acme/beacon", wantErr: `application name "Beacon"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := appName(tt.flag, tt.modulePath)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("appName() error = %v, want containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("appName() error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("appName() = %q, want %q", got, tt.want)
 			}
 		})
 	}
