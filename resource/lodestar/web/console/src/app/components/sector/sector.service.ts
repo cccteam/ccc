@@ -12,6 +12,7 @@ import {
 import { injectApi } from '@app/api/api';
 import { Permissions, Resources } from '@app/service/zz_gen_constants';
 import { Api, DomainApi } from '@app/service/zz_gen_api';
+import { ResourceScopes } from '@app/service/zz_gen_resources';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { storeSignal } from '@cccteam/resource-angular/resource-client';
 import {
@@ -200,18 +201,42 @@ export class SectorService {
    * digest loads or the sector changes.
    */
   can(permission: Permission, target: Resource | Method): boolean {
-    this.permissions();
-    return this.api.can(permission, target, (this.current() || undefined) as Domain | undefined);
+    return this.state(permission, target) !== undefined;
   }
 
   /** The digest state — granted, conditional, or undefined — for the service card. */
   state(permission: Permission, target: Resource | Method): 'granted' | 'conditional' | undefined {
     this.permissions();
-    const current = this.current();
-    const scope = this.api.descriptor.resources[target]?.scope ?? this.api.descriptor.methods[target]?.scope;
-    const domain = scope === 'domain' ? ((current || undefined) as Domain | undefined) : undefined;
-    if (scope === 'domain' && !domain) return undefined;
-    return this.api.permissions.state({ resource: target, permission, domain });
+    const sector = (this.current() || undefined) as Domain | undefined;
+    const scope = this.scopeOf(target);
+    if (scope === 'domain') {
+      return sector ? this.api.permissions.state({ resource: target, permission, domain: sector }) : undefined;
+    }
+    if (scope === 'global') {
+      return this.api.permissions.state({ resource: target, permission });
+    }
+    // A target the generated metadata does not place (the manual registrations:
+    // ShipsLogEntries is sector-scoped, ViewAsUser and AssumeRole are global) is asked
+    // in the selected sector's digest first and the global digest second. A grant sits
+    // in exactly one of them, and absence from both still fails closed.
+    return (
+      (sector && this.api.permissions.state({ resource: target, permission, domain: sector })) ||
+      this.api.permissions.state({ resource: target, permission })
+    );
+  }
+
+  /**
+   * The scope the generated metadata gives a target: the API descriptor places every
+   * table, virtual, and computed resource and every RPC method; the ResourceScopes map
+   * repeats the resources. Manual registrations appear in neither, so undefined means
+   * "unplaced", and state() asks both digests.
+   */
+  private scopeOf(target: Resource | Method): 'domain' | 'global' | undefined {
+    return (
+      this.api.descriptor.resources[target]?.scope ??
+      this.api.descriptor.methods[target]?.scope ??
+      ResourceScopes[target as Resource]
+    );
   }
 
   /**
