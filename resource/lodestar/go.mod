@@ -12,13 +12,13 @@ replace github.com/cccteam/ccc/resource => ../
 require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.94.0
-	github.com/cccteam/access v0.9.12-0.20260905164746-2c446d2a0025
+	github.com/cccteam/access v0.9.12-0.20260908235000-456ff7582dc3
 	github.com/cccteam/ccc v0.3.4-0.20260908043255-2adf7c91cccf
 	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260908043255-2adf7c91cccf
-	github.com/cccteam/ccc/resource v0.10.7-0.20260908043255-2adf7c91cccf
+	github.com/cccteam/ccc/resource v0.10.7-0.20260908233210-c89f4348aef3
 	github.com/cccteam/ccc/tracer v0.1.7
-	github.com/cccteam/db-initiator v0.3.13
-	github.com/cccteam/httpio v0.7.17
+	github.com/cccteam/db-initiator v0.3.14
+	github.com/cccteam/httpio v0.7.18
 	github.com/cccteam/logger v0.1.27
 	github.com/cccteam/session v0.11.2-0.20260906163135-2fdfc3b03ed3
 	github.com/cccteam/spxscan v0.0.14
@@ -31,7 +31,7 @@ require (
 	github.com/sethvargo/go-envconfig v1.4.3
 	github.com/shopspring/decimal v1.4.1-0.20260819210736-ca4740823783
 	google.golang.org/api v0.293.0
-	google.golang.org/grpc v1.83.0
+	google.golang.org/grpc v1.83.2
 )
 
 require (
