@@ -469,6 +469,76 @@ func Test_rpcHandlerTemplate_answer(t *testing.T) {
 	}
 }
 
+// Test_rpcHandlerTemplate_answerlessNoContent pins the answerless 204: a method
+// whose Execute returns error alone and declares @answers(204) generates a handler
+// that writes No Content in place of the empty 200 and never names a result, a
+// response, or a refusal it has no answer to carry, in either form.
+func Test_rpcHandlerTemplate_answerlessNoContent(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "wirefixture"))
+	c := &client{}
+
+	tests := []struct {
+		name         string
+		form         rpcForm
+		wantContains []string
+	}{
+		{
+			name:         "the transaction form writes No Content after the commit",
+			form:         rpcFormTxn,
+			wantContains: []string{"if err := p.Execute(ctx, txn, a.RPCClient()); err != nil {", "w.WriteHeader(http.StatusNoContent)"},
+		},
+		{
+			name:         "the client form writes No Content after the body",
+			form:         rpcFormClient,
+			wantContains: []string{"if err := p.Execute(ctx, a.ResourceClient(), a.RPCClient()); err != nil {", "w.WriteHeader(http.StatusNoContent)"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			walker := newWireWalker(defaultTypescriptOverrides(), "wirefixture", "resources")
+			request, err := walker.walk(structs["Notify"])
+			if err != nil {
+				t.Fatalf("walk(Notify) error = %v", err)
+			}
+			m := &rpcMethodInfo{Struct: structs["Notify"], Form: tt.form, Request: request, Statuses: []int{204}}
+			for i, f := range structs["Notify"].Fields() {
+				m.Fields = append(m.Fields, &rpcField{Field: f, wire: request.Fields[i], namespace: "Notify"})
+			}
+
+			out, err := c.generateTemplateOutput("rpcHandlerTemplate", rpcHandlerTemplate, &rpcHandlerData{
+				Source:           "pkg/rpc",
+				RPCMethod:        m,
+				Package:          "app",
+				ApplicationName:  "App",
+				ReceiverName:     "a",
+				ResourcesPackage: "resources",
+			})
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+			formatted, err := format.Source(out)
+			if err != nil {
+				t.Fatalf("format.Source() error = %v on:\n%s", err, out)
+			}
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(formatted), want) {
+					t.Errorf("handler missing %q:\n%s", want, formatted)
+				}
+			}
+			for _, notWant := range []string{"result", responseMirror, "resource.Refused", "var status"} {
+				if strings.Contains(string(formatted), notWant) {
+					t.Errorf("an answerless handler must not contain %q:\n%s", notWant, formatted)
+				}
+			}
+		})
+	}
+}
+
 // Test_rpcHandlerTemplate_dryRun pins the dry run: a transaction-form handler reads
 // the header, returns the sentinel from its transaction function after the body,
 // and answers an empty 200 when the rollback is the only error; a client-form

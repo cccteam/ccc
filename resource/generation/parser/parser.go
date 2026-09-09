@@ -317,6 +317,14 @@ func packageTypeSpecs(syntax []*ast.File) []*ast.TypeSpec {
 			if genDecl, ok := decl.(*ast.GenDecl); ok {
 				for _, spec := range genDecl.Specs {
 					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
+						if typeSpec.Doc == nil && len(genDecl.Specs) == 1 {
+							// A type declared on its own (`type X struct`) attaches its
+							// doc comment to the GenDecl, a grouped one (`type ( X struct )`)
+							// to the TypeSpec. The annotations live in either, so the
+							// declaration's doc is read from wherever go/ast put it, as
+							// go/doc does.
+							typeSpec.Doc = genDecl.Doc
+						}
 						typeSpecs = append(typeSpecs, typeSpec)
 					}
 				}

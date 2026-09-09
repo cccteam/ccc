@@ -2924,7 +2924,10 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .RPCMethod.Name }}() http.
 {{- end }}
 
 {{- define "rpcTxnFailed" }}
-				{{- if .RPCMethod.Statuses }}
+				{{- /* Only a method that answers can refuse with a typed answer; an
+				answerless method's one declarable status is 204, and it has no
+				result or response to write. */ -}}
+				{{- if and .RPCMethod.Answers .RPCMethod.Statuses }}
 				if refused, ok := resource.Refused(err); ok {
 					return httpio.NewEncoder(w).StatusCodeWithBody(refused, {{ .RPCMethod.ResponseExpr }})
 				}

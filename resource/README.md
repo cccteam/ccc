@@ -33,7 +33,10 @@ The [lodestar demo app](lodestar/) is the living example; links below point into
 Annotations are written in the doc comment of the declaration they configure. Only
 comment lines that **start with `@`** are parsed; anything after the annotation on the
 same line is treated as a comment. Arguments go in parentheses, comma-separated;
-annotations that take no arguments are written bare.
+annotations that take no arguments are written bare. The rule is positional: a prose
+line that happens to begin with an `@` word is parsed as an annotation too, and one
+that repeats a keyword is refused as used twice, so start such a line with another
+word.
 
 ```go
 // Ship is a starship registered with the port authority.
@@ -306,7 +309,10 @@ across every application on this stack:
 Two things a method deliberately cannot do. It cannot reach the response writer: no
 cookies, no session started or ended, no header of its own. Its status is chosen
 through `@answers` and the result's `HTTPStatus()`, never written directly, so a
-declared 4xx still travels as a typed body with the transaction rolled back. The
+declared 4xx still travels as a typed body with the transaction rolled back. A method
+whose `Execute` returns only an error has no result to choose with, so the one status
+it may declare is `@answers(204)`, and the frame writes No Content where the empty 200
+would go; the response encoder has no status setter to reach for. The
 moment a body can write the response, every method can start a session, and the
 frame's guarantee — JSON in, JSON out, permission-gated, transactional — stops meaning
 anything; sign-up flows that end in a login belong beside the login routes in the

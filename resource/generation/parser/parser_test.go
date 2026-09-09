@@ -217,6 +217,49 @@ func Test_ParseStructs(t *testing.T) {
 	}
 }
 
+// Test_ParsePackage_docComments pins where a declaration's doc comment is read from:
+// a type declared on its own line carries it on the GenDecl, a grouped one on the
+// TypeSpec, and the parser reads both, so a struct's annotations are never lost to
+// the declaration style.
+func Test_ParsePackage_docComments(t *testing.T) {
+	t.Parallel()
+
+	pkgMap, err := LoadPackages("../testdata/doccomments")
+	if err != nil {
+		t.Fatalf("LoadPackages() error = %v", err)
+	}
+	comments := make(map[string]string)
+	for _, s := range ParsePackage(pkgMap["doccomments"]).Structs {
+		comments[s.Name()] = s.Comments()
+	}
+
+	tests := []struct {
+		name       string
+		structName string
+		want       string
+	}{
+		{name: "a struct declared on its own line keeps its doc", structName: "Standalone", want: "Standalone is declared on its own line.\n\n@rpc\n"},
+		{name: "a struct declared in a group keeps its doc", structName: "Grouped", want: "Grouped is declared in a type group.\n\n@rpc\n"},
+		{name: "a spec in a shared group keeps its own doc", structName: "Sibling", want: "Sibling shares a group with another spec; its doc is its own.\n"},
+		{name: "the second spec of a shared group keeps its own doc", structName: "Other", want: "Other is the second spec of the group.\n"},
+		{name: "an undocumented struct has none", structName: "Undocumented", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := comments[tt.structName]
+			if !ok {
+				t.Fatalf("struct %q not parsed", tt.structName)
+			}
+			if got != tt.want {
+				t.Errorf("Struct.Comments() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_Struct_Method(t *testing.T) {
 	t.Parallel()
 

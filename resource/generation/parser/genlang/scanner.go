@@ -177,7 +177,7 @@ func (s *scanner) scan() error {
 			}
 
 			if _, ok := s.keywordArguments[key]; ok && s.isExclusive(key) {
-				return errors.New(s.error("%s used twice here", key))
+				return errors.New(s.errorPostscript(fmt.Sprintf("%s used twice here", key), "every comment line that starts with @ is read as an annotation, prose included; if this line is prose, start it with another word"))
 			}
 
 			var (
