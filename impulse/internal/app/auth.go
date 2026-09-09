@@ -72,43 +72,52 @@ func parseAuths(rel string, src []byte) ([]Auth, error) {
 	consts := fileConstStrings(f)
 
 	var auths []Auth
-	ast.Inspect(f, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
+	for _, decl := range f.Decls {
+		// The enclosing function's body is where an identifier handed to a storage option
+		// is defined; a package-level construction has none.
+		var body *ast.BlockStmt
+		if fn, ok := decl.(*ast.FuncDecl); ok {
+			body = fn.Body
 		}
-		name, ok := qualifiedName(call.Fun, pkg)
-		if !ok {
-			return true
-		}
-		spec, ok := authConstructors[name]
-		if !ok {
-			return true
-		}
-		auth := Auth{
-			File: rel, Line: fset.Position(call.Pos()).Line, Flavor: spec.flavor,
-			SessionTable: spec.sessionTable, UserTable: spec.userTable,
-			OptionsForwarded: call.Ellipsis.IsValid(),
-		}
-		oidcUsers := false
-		for _, arg := range call.Args {
-			readAuthArg(&auth, &oidcUsers, arg, pkg, storage, consts)
-		}
-		if (spec.flavor == FlavorOIDCAzure || spec.flavor == FlavorOIDCGoogle) && !oidcUsers {
-			auth.UserTable = ""
-		}
-		auths = append(auths, auth)
+		ast.Inspect(decl, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			name, ok := qualifiedName(call.Fun, pkg)
+			if !ok {
+				return true
+			}
+			spec, ok := authConstructors[name]
+			if !ok {
+				return true
+			}
+			auth := Auth{
+				File: rel, Line: fset.Position(call.Pos()).Line, Flavor: spec.flavor,
+				SessionTable: spec.sessionTable, UserTable: spec.userTable,
+				OptionsForwarded: call.Ellipsis.IsValid(),
+			}
+			oidcUsers := false
+			for _, arg := range call.Args {
+				readAuthArg(&auth, &oidcUsers, arg, pkg, storage, consts, body)
+			}
+			if (spec.flavor == FlavorOIDCAzure || spec.flavor == FlavorOIDCGoogle) && !oidcUsers {
+				auth.UserTable = ""
+			}
+			auths = append(auths, auth)
 
-		return true
-	})
+			return true
+		})
+	}
 
 	return auths, nil
 }
 
 // readAuthArg applies one constructor argument to the construction: a session option
 // naming a table or cookie, or a storage constructed with impersonation, the OIDC user
-// anchor, or custom data tables.
-func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string, consts map[string]string) {
+// anchor, or custom data tables. body is the enclosing function's body, where an
+// identifier the storage's options take is defined.
+func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string, consts map[string]string, body *ast.BlockStmt) {
 	call, ok := arg.(*ast.CallExpr)
 	if !ok {
 		return
@@ -142,7 +151,11 @@ func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string,
 	if storage == "" {
 		return
 	}
-	// A storage constructor: look inside for the options that attach tables.
+	readStorageArg(auth, oidcUsers, call, storage, consts, body)
+}
+
+// readStorageArg looks inside a storage constructor for the options that attach tables.
+func readStorageArg(auth *Auth, oidcUsers *bool, call *ast.CallExpr, storage string, consts map[string]string, body *ast.BlockStmt) {
 	ast.Inspect(call, func(n ast.Node) bool {
 		c, ok := n.(*ast.CallExpr)
 		if !ok {
@@ -152,6 +165,9 @@ func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string,
 		switch name {
 		case "WithImpersonation":
 			auth.Impersonation = true
+			if s, ok := assignedImpersonationTable(c, body, storage, consts); ok {
+				auth.ImpersonationTable = s
+			}
 		case "NewImpersonationTable":
 			if len(c.Args) == 1 {
 				if s, ok := constString(c.Args[0], consts); ok {
@@ -170,6 +186,46 @@ func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string,
 
 		return true
 	})
+}
+
+// assignedImpersonationTable reads the table name behind WithImpersonation(x) when x is an
+// identifier rather than the NewImpersonationTable call itself, the way a caller writes it
+// to check the constructor's error. The definition is the nearest assignment before the
+// use in the enclosing function body, x := NewImpersonationTable(...) or
+// x, err := NewImpersonationTable(...), and the name is its argument when that is a
+// literal or a constant of the file. A name defined any other way does not read.
+func assignedImpersonationTable(with *ast.CallExpr, body *ast.BlockStmt, storage string, consts map[string]string) (string, bool) {
+	if body == nil || len(with.Args) != 1 {
+		return "", false
+	}
+	id, ok := with.Args[0].(*ast.Ident)
+	if !ok {
+		return "", false
+	}
+	var value ast.Expr
+	ast.Inspect(body, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok || assign.Pos() >= id.Pos() || len(assign.Rhs) != 1 || (assign.Tok != token.DEFINE && assign.Tok != token.ASSIGN) {
+			return true
+		}
+		for _, lhs := range assign.Lhs {
+			if l, ok := lhs.(*ast.Ident); ok && l.Name == id.Name {
+				// Statements are visited in source order, so the last one seen is nearest.
+				value = assign.Rhs[0]
+			}
+		}
+
+		return true
+	})
+	call, ok := value.(*ast.CallExpr)
+	if !ok || len(call.Args) != 1 {
+		return "", false
+	}
+	if name, _ := qualifiedName(call.Fun, storage); name != "NewImpersonationTable" {
+		return "", false
+	}
+
+	return constString(call.Args[0], consts)
 }
 
 // qualifiedName returns the selector name of a pkg.Name call, looking through a generic

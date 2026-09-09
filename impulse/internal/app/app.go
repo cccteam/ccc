@@ -105,8 +105,10 @@ type Auth struct {
 	XSRFCookieName string
 	// Impersonation reports a storage constructed with sessionstorage.WithImpersonation.
 	Impersonation bool
-	// ImpersonationTable is the impersonation table's literal name, or empty when the
-	// name is not a literal in the call (the library default is then assumed).
+	// ImpersonationTable is the impersonation table's name when the code states it: a
+	// literal or a constant of the file, given to NewImpersonationTable inside the storage
+	// constructor or assigned to the identifier WithImpersonation takes. Empty otherwise
+	// (the library default is then assumed).
 	ImpersonationTable string
 	// OptionsForwarded reports a variadic pass-through (opts...) in the call: options
 	// the callers add are not visible here, so the tables are the defaults as far as

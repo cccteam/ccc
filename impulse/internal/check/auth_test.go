@@ -96,6 +96,34 @@ func New(ctx context.Context, db *cloudspanner.Client, key string) (*session.Pas
 }
 `
 
+// impersonationNamed constructs a password auth in an auth package whose impersonation
+// table is defined by the given statements and handed to the storage by name, the way a
+// caller writes it to check NewImpersonationTable's error.
+func impersonationNamed(definition string) string {
+	return `package crew
+
+import (
+	"context"
+
+	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/session"
+	"github.com/cccteam/session/sessionstorage"
+)
+
+const impersonationTable = "CrewSessionImpersonations"
+
+func New(ctx context.Context, db *cloudspanner.Client, key string) (*session.PasswordAuth[session.NoCustomData, session.NoCustomData], error) {
+	` + definition + `
+
+	return session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](
+		sessionstorage.NewSpannerPasswordAuth(db, sessionstorage.WithImpersonation(impersonation)), key,
+		session.WithSessionTableName("CrewSessions"),
+		session.WithUserTableName("CrewSessionUsers"),
+	)
+}
+`
+}
+
 func TestAuthWired(t *testing.T) {
 	t.Parallel()
 
@@ -176,6 +204,39 @@ func TestAuthWired(t *testing.T) {
 			wantDetails: []string{
 				"pkg/config/session.go:9: password auth reads table SessionUsers, which no migration creates (the session library's schema is under schema/spanner/migrations)",
 				"pkg/config/session.go:11: preauth auth shares sessions table Sessions with password auth; each flavor needs its own (WithSessionTableName)",
+			},
+		},
+		{
+			name: "an impersonation table assigned with its error checked and passed by name",
+			files: map[string]string{
+				"cmd/generate/main.go":                 site,
+				"pkg/auth/crew/crew.go":                impersonationNamed("impersonation, err := sessionstorage.NewImpersonationTable(\"CrewSessionImpersonations\")\n\tif err != nil {\n\t\treturn nil, err\n\t}"),
+				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionImpersonations"),
+			},
+			wantStatus:  Pass,
+			wantSummary: "1 auth(s): crew: password (CrewSessions, CrewSessionUsers, CrewSessionImpersonations)",
+		},
+		{
+			name: "an impersonation table assigned from a constant and passed by name",
+			files: map[string]string{
+				"cmd/generate/main.go":                 site,
+				"pkg/auth/crew/crew.go":                impersonationNamed("impersonation := sessionstorage.NewImpersonationTable(impersonationTable)"),
+				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionImpersonations"),
+			},
+			wantStatus:  Pass,
+			wantSummary: "1 auth(s): crew: password (CrewSessions, CrewSessionUsers, CrewSessionImpersonations)",
+		},
+		{
+			name: "an impersonation table passed by a name NewImpersonationTable did not define",
+			files: map[string]string{
+				"cmd/generate/main.go":                 site,
+				"pkg/auth/crew/crew.go":                impersonationNamed("impersonation := newImpersonation()"),
+				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionImpersonations"),
+			},
+			wantStatus:  Fail,
+			wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/auth/crew/crew.go:16: password auth reads table SessionImpersonations, which no migration creates (the session library's schema is under schema/spanner/migrations)",
 			},
 		},
 	}
