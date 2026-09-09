@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"math/big"
 	"reflect"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/httpio"
+	"github.com/google/go-cmp/cmp"
 	"github.com/shopspring/decimal"
 )
 
@@ -707,6 +709,37 @@ func TestParser_Parse_Successful(t *testing.T) {
 
 			if gotNodeStr != wantNodeStr {
 				t.Errorf("parser.Parse() for input '%s'\ngotNode = %s\nwantNode = %s", tt.filterString, gotNodeStr, wantNodeStr)
+			}
+		})
+	}
+}
+
+// TestCondition_TypedValues pins the array-parameter shape a pushed-down in or notin
+// filter binds: the values' own type, decimals as NUMERIC, and the list untouched
+// when it is empty or not uniformly typed.
+func TestCondition_TypedValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		values []any
+		want   any
+	}{
+		{name: "strings bind as a STRING array", values: []any{"a", "b"}, want: []string{"a", "b"}},
+		{name: "integers bind as an INT64 array", values: []any{int64(1), int64(2)}, want: []int64{1, 2}},
+		{name: "decimals bind as a NUMERIC array", values: []any{decimal.NewFromInt(5), decimal.RequireFromString("2.5")}, want: []*big.Rat{big.NewRat(5, 1), big.NewRat(5, 2)}},
+		{name: "an empty list is returned unchanged", values: nil, want: []any(nil)},
+		{name: "a list the parser did not type uniformly is returned unchanged", values: []any{"a", int64(1)}, want: []any{"a", int64(1)}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &Condition{Field: "Name", Operator: inStr, Values: tt.values}
+			got := c.TypedValues()
+			if diff := cmp.Diff(tt.want, got, cmp.Comparer(func(a, b *big.Rat) bool { return a.Cmp(b) == 0 })); diff != "" {
+				t.Errorf("Condition.TypedValues() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

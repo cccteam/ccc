@@ -270,11 +270,20 @@ func orOf(disjuncts []condition.Expr) condition.Expr {
 	return condition.Or{Operands: disjuncts}
 }
 
-// jsonName resolves a field's wire name. The QueryDecoder stamps the request
-// type's JSON names; a hand-built QuerySet falls back to the Go field name.
+// jsonName resolves a field's wire name, the name Row.Masked answers to. The
+// QueryDecoder stamps the request type's JSON names; a query armed with a Set
+// (Enforce, EnableUserPermissionEnforcement) takes the Set's, declared by the
+// same generated read struct the routes decode, so a body reads a masked cell
+// by the name the wire carries; a bare hand-built QuerySet falls back to the
+// Go field name.
 func (q *QuerySet[Resource]) jsonName(field accesstypes.Field) string {
 	if name, ok := q.jsonNames[field]; ok {
 		return name
+	}
+	if q.resourceSet != nil {
+		if tag, ok := q.resourceSet.fieldToTag[field]; ok && tag != "" {
+			return string(tag)
+		}
 	}
 
 	return string(field)

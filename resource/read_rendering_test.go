@@ -92,6 +92,7 @@ func TestQuerySet_stmt_readRendering(t *testing.T) {
 		fields        []accesstypes.Field
 		decisions     accesstypes.Decisions
 		noCollection  bool
+		noJSONNames   bool
 		wantSQL       string
 		wantParams    map[string]any
 		wantMaskedCol bool
@@ -114,6 +115,22 @@ func TestQuerySet_stmt_readRendering(t *testing.T) {
 				enforcedResource + ".public": conditionalOn(enforcedResource+".public", "owner = subject OR priority = 3"),
 				enforcedResource + ".tagged": conditionalOn(enforcedResource+".tagged", "owner = subject"),
 			},
+			wantSQL: "SELECT Id, Public, " +
+				"CASE WHEN `enforcementResources`.`Owner` = @subject THEN Tagged ELSE @_c2 END AS Tagged, " +
+				"IF(`enforcementResources`.`Owner` = @subject, ARRAY<STRING>[], ['tagged']) AS zzMaskedFields " +
+				"FROM enforcementResources " +
+				"WHERE (`enforcementResources`.`Station` = @domain) AND (`enforcementResources`.`Owner` = @subject OR `enforcementResources`.`Priority` = @_c1)",
+			wantParams:    map[string]any{"subject": "u1", "_c1": int64(3), "_c2": "", "domain": "testDomain"},
+			wantMaskedCol: true,
+		},
+		{
+			name:   "a query armed with a Set and no decoder masks by the Set's wire names",
+			fields: []accesstypes.Field{"ID", "Public", "Tagged"},
+			decisions: accesstypes.Decisions{
+				enforcedResource + ".public": conditionalOn(enforcedResource+".public", "owner = subject OR priority = 3"),
+				enforcedResource + ".tagged": conditionalOn(enforcedResource+".tagged", "owner = subject"),
+			},
+			noJSONNames: true,
 			wantSQL: "SELECT Id, Public, " +
 				"CASE WHEN `enforcementResources`.`Owner` = @subject THEN Tagged ELSE @_c2 END AS Tagged, " +
 				"IF(`enforcementResources`.`Owner` = @subject, ARRAY<STRING>[], ['tagged']) AS zzMaskedFields " +
@@ -167,7 +184,9 @@ func TestQuerySet_stmt_readRendering(t *testing.T) {
 
 			q := NewQuerySet(NewMetadata[enforcementResource]())
 			q.env = accesstypes.EnvironmentAt(now)
-			q.jsonNames = map[accesstypes.Field]string{"ID": "id", "Public": "public", "Tagged": "tagged"}
+			if !tt.noJSONNames {
+				q.jsonNames = map[accesstypes.Field]string{"ID": "id", "Public": "public", "Tagged": "tagged"}
+			}
 			if !tt.noCollection {
 				q.collection = renderCollection(t)
 			}

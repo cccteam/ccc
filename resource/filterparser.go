@@ -132,6 +132,34 @@ type Condition struct {
 	IsNullOp bool  // For isnull, isnotnull
 }
 
+// TypedValues returns an in or notin list as a slice of the values' own type, the
+// shape an array query parameter binds: Spanner types IN UNNEST(@p) from the slice's
+// element type and refuses []any. The parser types every value by its column, so the
+// slice is []string for a STRING column, []int64 for INT64, and []*big.Rat for
+// NUMERIC, following paramValue. A body that pushes a taken filter down to its own
+// query binds the result as it is. An empty list, or one the values do not type
+// uniformly, is returned unchanged.
+func (c *Condition) TypedValues() any {
+	if len(c.Values) == 0 {
+		return c.Values
+	}
+
+	elem := reflect.TypeOf(paramValue(c.Values[0]))
+	if elem == nil {
+		return c.Values
+	}
+	typed := reflect.MakeSlice(reflect.SliceOf(elem), 0, len(c.Values))
+	for _, v := range c.Values {
+		value := paramValue(v)
+		if reflect.TypeOf(value) != elem {
+			return c.Values
+		}
+		typed = reflect.Append(typed, reflect.ValueOf(value))
+	}
+
+	return typed.Interface()
+}
+
 // ConditionNode represents a simple condition in the AST.
 type ConditionNode struct {
 	Condition Condition
