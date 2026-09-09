@@ -47,7 +47,7 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 
-		if err := rejectTransitionAnnotations(pStruct, annotations, "resource"); err != nil {
+		if err := rejectRPCOnlyAnnotations(pStruct, annotations, "resource"); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
@@ -314,7 +314,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 
-		if err := rejectTransitionAnnotations(pStruct, annotations, "virtual resource"); err != nil {
+		if err := rejectRPCOnlyAnnotations(pStruct, annotations, "virtual resource"); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -375,6 +375,22 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 // rejectPrimaryKeyAnnotations errors when a table-backed @resource struct carries
 // @primarykey field annotations: table-backed primary keys come from the schema, and
 // the annotation is only valid on @computed and @virtual structs.
+// resolveEnumerate reads a field-scope @enumerate(Resource): the enumerated resource an
+// RPC request field draws its values from, which the TypeScript client renders as that
+// resource's picker. A table-backed field infers its enumeration from the schema's
+// foreign key; a request field has no schema, so it declares one.
+func (c *client) resolveEnumerate(arg genlang.Arg) (string, error) {
+	if arg.Count() != 1 {
+		return "", errors.Newf("@%s on a field takes one argument, the enumerated resource; got %d", enumerateKeyword, arg.Count())
+	}
+	name := string(arg)
+	if !c.doesResourceExist(name) {
+		return "", errors.Newf("@%s(%s): resource %q does not exist", enumerateKeyword, name, name)
+	}
+
+	return name, nil
+}
+
 // scanStruct scans a struct's annotations and refuses the struct when it claims more
 // than one kind, before any extractor can claim it.
 func scanStruct(pStruct *parser.Struct) (genlang.StructAnnotations, error) {
@@ -553,9 +569,10 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 
 		for i, field := range s.Fields() {
 			field := rpcField{Field: field, wire: rpcMethod.Request.Fields[i], namespace: s.Name(), typescriptType: rpcMethod.Request.Fields[i].TypescriptDisplayType()}
-			if enumeratedResource, hasEnumeratedTag := field.LookupTag(enumeratedTagKey); hasEnumeratedTag {
-				if !c.doesResourceExist(enumeratedResource) {
-					field.AddError(fmt.Sprintf("referenced resource %q in enumerated tag does not exist", enumeratedResource))
+			if annotations.Fields[i].Has(enumerateKeyword) {
+				enumeratedResource, err := c.resolveEnumerate(annotations.Fields[i].Get(enumerateKeyword))
+				if err != nil {
+					field.AddError(err.Error())
 
 					continue
 				}
@@ -722,7 +739,7 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 			continue
 		}
 
-		if err := rejectTransitionAnnotations(s, annotations, "computed resource"); err != nil {
+		if err := rejectRPCOnlyAnnotations(s, annotations, "computed resource"); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue

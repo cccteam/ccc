@@ -310,10 +310,11 @@ func targetRootKey(pStruct *parser.Struct, rootName string, root *resourceInfo, 
 	return nil, errors.Newf("struct %s: @%s(%s): the root has no primary-key field", pStruct.Name(), declKeyword, rootName)
 }
 
-// rejectTransitionAnnotations rejects @transition and @target outside @rpc
-// structs — the declaration describes a generated RPC handler's frame and
-// resolves against nothing else.
-func rejectTransitionAnnotations(pStruct *parser.Struct, annotations genlang.StructAnnotations, kind string) error {
+// rejectRPCOnlyAnnotations fails a struct of another kind that carries an annotation
+// only an @rpc struct may: @transition on the struct, and @target or a field-scope
+// @enumerate on a field. A resource declares no handler to frame, and its fields'
+// enumerations are inferred from their types and the schema rather than declared.
+func rejectRPCOnlyAnnotations(pStruct *parser.Struct, annotations genlang.StructAnnotations, kind string) error {
 	var errs []error
 	if annotations.Struct.Has(transitionKeyword) {
 		errs = append(errs, errors.Newf("struct %s: @%s is only valid on @%s structs; a %s declares no handler to frame", pStruct.Name(), transitionKeyword, rpcKeyword, kind))
@@ -322,9 +323,12 @@ func rejectTransitionAnnotations(pStruct *parser.Struct, annotations genlang.Str
 		if annotations.Fields[i].Has(targetKeyword) {
 			errs = append(errs, errors.Newf("struct %s field %s: @%s is only valid on @%s structs; a %s declares no handler to frame", pStruct.Name(), field.Name(), targetKeyword, rpcKeyword, kind))
 		}
+		if annotations.Fields[i].Has(enumerateKeyword) {
+			errs = append(errs, errors.Newf("struct %s field %s: @%s on a field is only valid on @%s structs; a %s field's enumeration is inferred from its type and the schema", pStruct.Name(), field.Name(), enumerateKeyword, rpcKeyword, kind))
+		}
 	}
 	if len(errs) > 0 {
-		return errors.Wrap(errors.Join(errs...), "transition annotation error")
+		return errors.Wrap(errors.Join(errs...), "RPC-only annotation error")
 	}
 
 	return nil

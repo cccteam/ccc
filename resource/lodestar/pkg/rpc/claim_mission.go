@@ -22,8 +22,9 @@ type (
 	// @transition(Mission, from: open, to: claimed)
 	ClaimMission struct {
 		// @target
-		MissionID  ccc.UUID
-		SquadronID ccc.UUID `enumerated:"Squadrons"`
+		MissionID ccc.UUID
+		// @enumerate(Squadrons)
+		SquadronID ccc.UUID
 	}
 )
 

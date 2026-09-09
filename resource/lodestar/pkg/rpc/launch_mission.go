@@ -21,8 +21,9 @@ type (
 	// @transition(Mission, from: claimed, to: underway)
 	LaunchMission struct {
 		// @target
-		MissionID   ccc.UUID
-		ShipID      ccc.UUID `enumerated:"Ships"`
+		MissionID ccc.UUID
+		// @enumerate(Ships)
+		ShipID      ccc.UUID
 		PilotUserID string
 	}
 )

@@ -93,7 +93,7 @@ func (t *typescriptGenerator) validateOutletMemberReferences() error {
 		}
 		for _, field := range method.Fields {
 			if field.IsEnumerated() && excluded(field.EnumeratedResource()) {
-				return errors.Newf("outlet %q: RPC method %s field %s enumerates %s, which is not on the outlet; attach %s to the outlet via @%s, or drop the enumerated tag", t.targetOutlet(), method.Name(), field.Name(), field.EnumeratedResource(), field.EnumeratedResource(), outletKeyword)
+				return errors.Newf("outlet %q: RPC method %s field %s enumerates %s, which is not on the outlet; attach %s to the outlet via @%s, or drop the @enumerate annotation", t.targetOutlet(), method.Name(), field.Name(), field.EnumeratedResource(), field.EnumeratedResource(), outletKeyword)
 			}
 		}
 	}

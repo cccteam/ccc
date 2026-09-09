@@ -1287,7 +1287,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		virtualKeyword:              {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		computedKeyword:             {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		rpcKeyword:                  {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
-		enumerateKeyword:            {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
+		enumerateKeyword:            {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		suppressKeyword:             {genlang.ScanStruct: genlang.ArgsRequired},
 		defaultsCreateTypeKeyword:   {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		defaultsUpdateTypeKeyword:   {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},

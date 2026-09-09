@@ -89,6 +89,83 @@ func Test_validateConditionsTags(t *testing.T) {
 	}
 }
 
+// Test_rejectRPCOnlyAnnotations pins that a field-scope @enumerate outside an @rpc
+// struct is refused naming the field, alongside the @transition and @target refusals.
+func Test_rejectRPCOnlyAnnotations(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "hygienefixture"))
+
+	tests := []struct {
+		name         string
+		structName   string
+		wantContains string
+	}{
+		{name: "a field-scope @enumerate is refused on a resource", structName: "EnumeratedField", wantContains: "struct EnumeratedField field WidgetID: @enumerate on a field is only valid on @rpc structs; a resource field's enumeration is inferred"},
+		{name: "a struct without RPC-only annotations passes", structName: "Clean"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := structs[tt.structName]
+			if s == nil {
+				t.Fatalf("struct %q not found in fixture package", tt.structName)
+			}
+			annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
+			if err != nil {
+				t.Fatalf("ScanStruct() error = %v", err)
+			}
+
+			err = rejectRPCOnlyAnnotations(s, annotations, "resource")
+			if (err != nil) != (tt.wantContains != "") {
+				t.Fatalf("rejectRPCOnlyAnnotations() error = %v, wantErr %v", err, tt.wantContains != "")
+			}
+			if err != nil && !strings.Contains(err.Error(), tt.wantContains) {
+				t.Errorf("rejectRPCOnlyAnnotations() error = %v, want it to contain %q", err, tt.wantContains)
+			}
+		})
+	}
+}
+
+// Test_resolveEnumerate pins the field-scope @enumerate argument: exactly one, naming
+// a resource the generator knows.
+func Test_resolveEnumerate(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+	c := &client{resources: []*resourceInfo{fixtureResource(t, structs, "Widget", nil)}}
+
+	tests := []struct {
+		name         string
+		arg          genlang.Arg
+		want         string
+		wantContains string
+	}{
+		{name: "a known resource resolves", arg: "Widgets", want: "Widgets"},
+		{name: "an unknown resource is refused", arg: "Gizmos", wantContains: `@enumerate(Gizmos): resource "Gizmos" does not exist`},
+		{name: "two arguments are refused", arg: "Widgets\x00Gizmos", wantContains: "@enumerate on a field takes one argument, the enumerated resource; got 2"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := c.resolveEnumerate(tt.arg)
+			if (err != nil) != (tt.wantContains != "") {
+				t.Fatalf("resolveEnumerate() error = %v, wantErr %v", err, tt.wantContains != "")
+			}
+			if err != nil && !strings.Contains(err.Error(), tt.wantContains) {
+				t.Errorf("resolveEnumerate() error = %v, want it to contain %q", err, tt.wantContains)
+			}
+			if got != tt.want {
+				t.Errorf("resolveEnumerate() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // Test_rejectMultipleKinds pins that a struct carrying two kind keywords is refused
 // with both kinds named, where the per-keyword Exclusive flag alone would let every
 // extractor claim it.
