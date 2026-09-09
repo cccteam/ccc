@@ -52,7 +52,13 @@ first and the sites last, and end in one check and one handoff brief carrying ev
 obligation, so the agent wires the whole shape in one sitting (`--agent` launches it). The
 first commit is the base alone, so the composed options are one reviewable diff on top of
 it; the brief's reference is the `sites` skeleton when sites are composed, `outlets` when
-an outlet is, else `tenanted`.
+an outlet or a directory flavor is, else `tenanted`.
+
+The first auth signs in with a password unless `--oidc-azure` or `--oidc-google` says its
+people sign in through the organization's directory, with `--authority` (directory or
+application, asked when not given) saying who owns role membership; the flavor is composed
+first and the auth is born in the directory's shape, its session migrations written in that
+shape rather than moved to it later.
 
 ```sh
 impulse new ./harbor --module example.com/harbor --auth staff --tenancy --outlet portal=portal/api --agent

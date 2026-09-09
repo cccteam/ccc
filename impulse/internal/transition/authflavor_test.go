@@ -3,6 +3,7 @@ package transition
 import (
 	"go/format"
 	"io/fs"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -221,6 +222,54 @@ func TestAuthFlavorApply(t *testing.T) {
 			},
 		},
 		{
+			name:   "a fresh staff auth from impulse new is born in the Google shape",
+			flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory, Fresh: true},
+			wantDid: []string{
+				"pkg/auth/staff/staff.go: rewritten as the staff auth in the oidc-google flavor (Google OpenID Connect) from the reference skeleton's members auth, role membership the directory's (session.GoogleRoleSync) (tables StaffSessions and StaffOIDCUsers, cookie staff, store prefix Staff); what the file carried beyond the base's shape is in git to re-apply",
+				"schema/migrations: 000003_StaffOIDCGoogle replaces 000003_StaffSessions, 000004_StaffSessionUsers; the staff auth is born in the oidc-google shape, StaffSessions and StaffOIDCUsers, and its role assignments stay as the base laid them",
+				"pkg/config/data.go: dataConfig reads the staff auth's directory registration from APP_STAFF_OIDC_CLIENT_ID, _CLIENT_SECRET, _REDIRECT_URL, _HOSTED_DOMAIN, _GROUP_PREFIX, _ADMIN_CREDENTIALS, and _ADMIN_SUBJECT",
+				"pkg/config/data.go: the staff auth's construction now passes the login page and the directory registration",
+				"app/app.go, pkg/router/router.go: session.PasswordAuthHandlers and *session.PasswordAuth[session.NoCustomData, session.NoCustomData] swapped for session.OIDCGoogleHandlers and *session.OIDCGoogle[session.NoCustomData, session.NoCustomData]",
+				"pkg/router/router.go: the password login route replaced by the directory's: GET /user/login (the redirect), GET /user/callback (the return)",
+				"Procfile: 2 go run command(s) build with -tags skipAuth, so the staff auth's directory is simulated in development and every staff login is APP_USERNAME",
+				".envrc.template: APP_USERNAME and APP_ROLES for the simulated directory, and the staff auth's APP_STAFF_OIDC_* registration, to fill in",
+				"ran go generate ./...",
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				for _, gone := range []string{"000003_StaffSessions", "000004_StaffSessionUsers"} {
+					for _, suffix := range []string{".up.sql", ".down.sql"} {
+						if _, err := os.Stat(a.Abs("schema/migrations/" + gone + suffix)); !os.IsNotExist(err) {
+							t.Errorf("%s%s still exists (err = %v); a fresh auth's password migrations are replaced", gone, suffix, err)
+						}
+					}
+				}
+				up := read(t, a, "schema/migrations/000003_StaffOIDCGoogle.up.sql")
+				for _, want := range []string{"signs in through Google OpenID Connect from the start", "CREATE TABLE StaffSessions (", "CREATE TABLE StaffOIDCUsers (", "CREATE UNIQUE INDEX StaffOIDCUsersBySub ON StaffOIDCUsers (Sub);"} {
+					if !strings.Contains(up, want) {
+						t.Errorf("up migration lacks %q:\n%s", want, up)
+					}
+				}
+				for _, absent := range []string{"DROP", "StaffUserRoles", "StaffSessionUsers"} {
+					if strings.Contains(up, absent) {
+						t.Errorf("up migration has %q; a fresh auth drops nothing:\n%s", absent, up)
+					}
+				}
+				down := read(t, a, "schema/migrations/000003_StaffOIDCGoogle.down.sql")
+				for _, want := range []string{"DROP TABLE StaffOIDCUsers;", "DROP TABLE StaffSessions;"} {
+					if !strings.Contains(down, want) {
+						t.Errorf("down migration lacks %q:\n%s", want, down)
+					}
+				}
+				if strings.Contains(down, "CREATE") {
+					t.Errorf("down migration recreates something; a fresh auth's down only drops:\n%s", down)
+				}
+				if got := read(t, a, "pkg/auth/staff/staff.go"); !strings.Contains(got, "session.NewOIDCGoogle[") {
+					t.Error("staff.go is not the Google auth")
+				}
+			},
+		},
+		{
 			name:   "staff moves to Google with the directory as authority",
 			flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory},
 			wantDid: []string{
@@ -352,6 +401,12 @@ func TestAuthFlavorMeaning(t *testing.T) {
 			flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory, CarryRoles: true},
 			want:   []string{"Role membership is now the directory's", "`session.OIDCGoogleHandlers`", "Role assignments are carried", "hosted domain"},
 			absent: []string{"front-channel"},
+		},
+		{
+			name:   "fresh from impulse new: born in the shape, nothing to re-sign or drop",
+			flavor: AuthFlavor{Name: "crew", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory, Fresh: true},
+			want:   []string{"The crew auth was composed into the creation in the oidc-google flavor", "Role membership is now the directory's", "No data consequence: the auth was created moments ago"},
+			absent: []string{"Data consequence: everyone", "Role assignments are dropped", "Role assignments are carried"},
 		},
 	}
 	for _, tt := range tests {

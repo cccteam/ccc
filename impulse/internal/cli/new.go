@@ -20,16 +20,41 @@ import (
 	transition_ "github.com/cccteam/ccc/impulse/internal/transition"
 )
 
+// newFlags are impulse new's own flags; the composed options ride composedOptions and the
+// handoff flags transitionFlags.
+type newFlags struct {
+	modulePath string
+	name       string
+	authName   string
+	devRoot    string
+	skipGit    bool
+	oidcAzure  bool
+	oidcGoogle bool
+	authority  string
+	opts       composedOptions
+	transition transitionFlags
+}
+
+func (nf *newFlags) bind(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&nf.modulePath, "module", "", "module path of the application (required)")
+	cmd.Flags().StringVar(&nf.name, "name", "", "the application's name: "+nameUse+" (default: the module path's last segment)")
+	cmd.Flags().StringVar(&nf.authName, "auth", "", "the first auth's name: "+names.Guidance+" (asked when not given; no default)")
+	cmd.Flags().StringVar(&nf.devRoot, "dev-root", "", "directory of cccteam checkouts to build against instead of the pins")
+	cmd.Flags().BoolVar(&nf.skipGit, "skip-git", false, "do not initialize a git repository and make the first commit")
+	cmd.Flags().BoolVar(&nf.oidcAzure, "oidc-azure", false, "the first auth's people sign in through the organization's Azure directory")
+	cmd.Flags().BoolVar(&nf.oidcGoogle, "oidc-google", false, "the first auth's people sign in through the organization's Google Workspace directory")
+	cmd.Flags().StringVar(&nf.authority, "authority", "", "who owns role membership for a directory-flavored first auth: directory (role claims synchronized at every login) or application (roles assigned in the application); asked when not given")
+	cmd.Flags().BoolVar(&nf.opts.tenancy, "tenancy", false, "compose the tenancy option: tenant-scoped resources under a tenant segment, roles per tenant")
+	cmd.Flags().StringVar(&nf.opts.tenantTable, "tenant-table", "Tenants", "the tenant-record table when --tenancy is given, PascalCase and plural")
+	cmd.Flags().StringArrayVar(&nf.opts.outlets, "outlet", nil, "compose a session outlet, <name>=<prefix> (repeatable), such as portal=portal/api")
+	cmd.Flags().StringArrayVar(&nf.opts.apiOutlets, "api-outlet", nil, "compose an API-key outlet, <name>=<prefix> (repeatable), such as machines=machines")
+	cmd.Flags().StringArrayVar(&nf.opts.sites, "site", nil, "compose the multi-site layout: two or more site names (repeatable), the first being what the base site becomes under apps/")
+	nf.transition.bindAgent(cmd)
+	_ = cmd.MarkFlagRequired("module")
+}
+
 func newNew() *cobra.Command {
-	var (
-		modulePath string
-		name       string
-		authName   string
-		devRoot    string
-		skipGit    bool
-		opts       composedOptions
-		f          transitionFlags
-	)
+	var nf newFlags
 
 	cmd := &cobra.Command{
 		Use:   "new <dir>",
@@ -58,58 +83,57 @@ machine surface), and --site <name> (two or more, the first being what the base 
 becomes under apps/) apply the same transitions to the fresh tree in order, tenancy first
 and the sites last, and end in one check and one handoff brief carrying every obligation,
 so the agent wires the whole shape in one sitting. The first commit is the base alone, so the composed options are
-one reviewable diff on top of it.`,
+one reviewable diff on top of it.
+
+The first auth signs in with a password unless --oidc-azure or --oidc-google says its people
+sign in through the organization's directory; --authority then says who owns role
+membership (directory or application) and is asked when not given, as for impulse add auth.
+The flavor is composed the same way, first, and the auth is born in the directory's shape:
+its session migrations are written in that shape rather than moved to it later.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			reserved, err := skeleton.Reserved(skeleton.Base)
 			if err != nil {
 				return err
 			}
-			if authName == "" {
-				authName, err = askAuthName(cmd)
+			if nf.authName == "" {
+				nf.authName, err = askAuthName(cmd)
 				if err != nil {
 					return err
 				}
 			}
-			if err := names.ValidateAuth(authName, reserved); err != nil {
+			if err := names.ValidateAuth(nf.authName, reserved); err != nil {
 				return err
 			}
-			appName, err := appName(name, modulePath)
+			nf.opts.authName = nf.authName
+			nf.opts.flavor, nf.opts.authority, err = firstAuthFlavor(cmd, nf.oidcAzure, nf.oidcGoogle, nf.authority)
 			if err != nil {
 				return err
 			}
-			transitions, err := opts.transitions()
+			appName, err := appName(nf.name, nf.modulePath)
 			if err != nil {
 				return err
 			}
-			if len(transitions) > 0 && skipGit {
-				return errors.New("--tenancy and --outlet need the first commit to build on; drop --skip-git, or add the options afterwards with impulse add")
+			transitions, err := nf.opts.transitions()
+			if err != nil {
+				return err
+			}
+			if len(transitions) > 0 && nf.skipGit {
+				return errors.New("composed options need the first commit to build on; drop --skip-git, or add them afterwards with impulse add (impulse swap auth for the flavor)")
 			}
 
 			dir := args[0]
-			if err := renderBase(cmd, dir, modulePath, appName, authName, devRoot, skipGit, len(transitions) > 0); err != nil {
+			if err := renderBase(cmd, dir, nf.modulePath, appName, nf.authName, nf.devRoot, nf.skipGit, len(transitions) > 0); err != nil {
 				return err
 			}
 			if len(transitions) == 0 {
 				return nil
 			}
 
-			return composeOptions(cmd, &f, dir, &opts, transitions)
+			return composeOptions(cmd, &nf.transition, dir, &nf.opts, transitions)
 		},
 	}
-
-	cmd.Flags().StringVar(&modulePath, "module", "", "module path of the application (required)")
-	cmd.Flags().StringVar(&name, "name", "", "the application's name: "+nameUse+" (default: the module path's last segment)")
-	cmd.Flags().StringVar(&authName, "auth", "", "the first auth's name: "+names.Guidance+" (asked when not given; no default)")
-	cmd.Flags().StringVar(&devRoot, "dev-root", "", "directory of cccteam checkouts to build against instead of the pins")
-	cmd.Flags().BoolVar(&skipGit, "skip-git", false, "do not initialize a git repository and make the first commit")
-	cmd.Flags().BoolVar(&opts.tenancy, "tenancy", false, "compose the tenancy option: tenant-scoped resources under a tenant segment, roles per tenant")
-	cmd.Flags().StringVar(&opts.tenantTable, "tenant-table", "Tenants", "the tenant-record table when --tenancy is given, PascalCase and plural")
-	cmd.Flags().StringArrayVar(&opts.outlets, "outlet", nil, "compose a session outlet, <name>=<prefix> (repeatable), such as portal=portal/api")
-	cmd.Flags().StringArrayVar(&opts.apiOutlets, "api-outlet", nil, "compose an API-key outlet, <name>=<prefix> (repeatable), such as machines=machines")
-	cmd.Flags().StringArrayVar(&opts.sites, "site", nil, "compose the multi-site layout: two or more site names (repeatable), the first being what the base site becomes under apps/")
-	f.bindAgent(cmd)
-	_ = cmd.MarkFlagRequired("module")
+	nf.bind(cmd)
 
 	return cmd
 }
@@ -168,8 +192,39 @@ func composeOptions(cmd *cobra.Command, f *transitionFlags, dir string, opts *co
 	return runTransitions(cmd, f, repo, transitions, opts.reference())
 }
 
+// firstAuthFlavor resolves the first auth's directory flavor from the flags: at most one
+// flavor, and for a flavor the authority, asked when not given, as impulse add auth asks
+// it. Without a flavor the base's password auth stands and --authority has no meaning.
+func firstAuthFlavor(cmd *cobra.Command, oidcAzure, oidcGoogle bool, authority string) (flavor, resolvedAuthority string, err error) {
+	switch {
+	case oidcAzure && oidcGoogle:
+		return "", "", errors.New("--oidc-azure and --oidc-google are two flavors; pick one")
+	case oidcAzure:
+		flavor = transition_.FlavorOIDCAzure
+	case oidcGoogle:
+		flavor = transition_.FlavorOIDCGoogle
+	case authority != "":
+		return "", "", errors.New("--authority goes with --oidc-azure or --oidc-google; a password auth's role membership is the application's")
+	default:
+		return "", "", nil
+	}
+	if authority == "" {
+		authority, err = askAuthority(cmd)
+		if err != nil {
+			return "", "", err
+		}
+	}
+
+	return flavor, authority, nil
+}
+
 // composedOptions are the options impulse new composes into the creation.
 type composedOptions struct {
+	// authName, flavor, and authority describe the first auth when a directory flavor is
+	// composed; flavor empty means the base's password auth stands.
+	authName    string
+	flavor      string
+	authority   string
 	tenancy     bool
 	tenantTable string
 	outlets     []string
@@ -178,10 +233,14 @@ type composedOptions struct {
 }
 
 // transitions returns the transitions the options ask for, in the order add would run
-// them: tenancy first, since an outlet's members may be tenant-scoped, then the outlets,
+// them: the first auth's flavor first, since it swaps the base's handler seams where they
+// stand, then tenancy, since an outlet's members may be tenant-scoped, then the outlets,
 // then the sites, since promotion moves what the others laid in.
 func (o *composedOptions) transitions() ([]transition, error) {
 	var ts []transition
+	if o.flavor != "" {
+		ts = append(ts, transition_.AuthFlavor{Name: o.authName, Flavor: o.flavor, Authority: o.authority, Fresh: true})
+	}
 	if o.tenancy {
 		ts = append(ts, transition_.Tenancy{Table: o.tenantTable})
 	}
@@ -218,6 +277,9 @@ func (o *composedOptions) transitions() ([]transition, error) {
 // describe names the composed options for the report.
 func (o *composedOptions) describe() string {
 	var parts []string
+	if o.flavor != "" {
+		parts = append(parts, "the "+o.flavor+" flavor for the "+o.authName+" auth, role membership the "+o.authority+"'s")
+	}
 	if o.tenancy {
 		parts = append(parts, "tenancy ("+o.tenantTable+")")
 	}
@@ -240,7 +302,8 @@ func (o *composedOptions) reference() string {
 	switch {
 	case len(o.sites) > 1:
 		return transition_.SitesReference
-	case len(o.outlets)+len(o.apiOutlets) > 0:
+	case len(o.outlets)+len(o.apiOutlets) > 0 || o.flavor != "":
+		// The outlets candidate also holds the reference directory auth.
 		return transition_.ReferenceCandidate
 	default:
 		return transition_.TenancyReferenceCandidate

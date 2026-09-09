@@ -8,6 +8,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -39,10 +40,18 @@ type AuthFlavor struct {
 	// because a role keyed by a password username outlives the person once the directory
 	// presents a different name for them.
 	CarryRoles bool
+	// Fresh says the auth was created moments ago by impulse new and nothing has run
+	// against it: its session migrations are rewritten in place so the auth is born in the
+	// new shape, no role assignment exists to drop, and nobody signs in again. impulse new
+	// sets it when a directory flavor is composed into the creation.
+	Fresh bool
 }
 
 // Command is the impulse command line for the transition.
 func (f AuthFlavor) Command() string {
+	if f.Fresh {
+		return fmt.Sprintf("impulse new --auth %s --%s --authority %s", f.Name, f.Flavor, f.Authority)
+	}
 	cmd := fmt.Sprintf("impulse swap auth %s --%s --authority %s", f.Name, f.Flavor, f.Authority)
 	if f.CarryRoles {
 		cmd += " --carry-roles"
@@ -214,6 +223,9 @@ func (f AuthFlavor) writeMigration(a *app.App, cur *app.Auth, ch *Change) error 
 	if err != nil {
 		return err
 	}
+	if f.Fresh {
+		return f.replaceMigrations(a, dir, old, create, drop, ch)
+	}
 	var up, down strings.Builder
 	fmt.Fprintf(&up, "-- The %s auth moves to %s: everyone signs in again, so its session tables are\n-- dropped and created in the new shape.\n\n", f.Name, au.directoryLabel())
 	for i := len(old) - 1; i >= 0; i-- {
@@ -255,6 +267,52 @@ func (f AuthFlavor) writeMigration(a *app.App, cur *app.Auth, ch *Change) error 
 	ch.didf("%s: %s, the %s auth's session tables (%s) dropped and created in the %s shape, %sSessions and %sOIDCUsers%s; down recreates them from %s", dir, base, f.Name, strings.Join(f.oldTables(cur), ", "), au.Flavor, au.Pascal(), au.Pascal(), assignments, strings.Join(names, ", "))
 
 	return nil
+}
+
+// replaceMigrations rewrites a fresh application's session migrations in place: the base
+// laid the auth's password tables down moments ago and nothing has run against them, so
+// the auth is born in the new shape at the same migration number instead of moving to it
+// by a later one, and the role-assignment table stays as the base laid it.
+func (f AuthFlavor) replaceMigrations(a *app.App, dir string, old []migration, create, drop string, ch *Change) error {
+	au := f.target()
+	first, err := migrationNumber(old[0].base)
+	if err != nil {
+		return err
+	}
+	names := make([]string, len(old))
+	for i, m := range old {
+		names[i] = m.base
+		for _, suffix := range []string{".up.sql", ".down.sql"} {
+			if err := os.Remove(a.Abs(path.Join(dir, m.base+suffix))); err != nil {
+				return errors.Wrapf(err, "os.Remove(): %s", m.base+suffix)
+			}
+		}
+	}
+	base := fmt.Sprintf("%06d_%s%s", first, au.Pascal(), flavorPascal(au.Flavor))
+	up := fmt.Sprintf("-- The %s auth signs in through %s from the start: its session tables are\n-- created in the directory flavor's shape.\n\n%s\n", f.Name, au.directoryLabel(), strings.TrimRight(create, "\n"))
+	if err := writeNew(a, path.Join(dir, base+".up.sql"), up); err != nil {
+		return err
+	}
+	if err := writeNew(a, path.Join(dir, base+".down.sql"), strings.TrimRight(drop, "\n")+"\n"); err != nil {
+		return err
+	}
+	ch.didf("%s: %s replaces %s; the %s auth is born in the %s shape, %sSessions and %sOIDCUsers, and its role assignments stay as the base laid them", dir, base, strings.Join(names, ", "), f.Name, au.Flavor, au.Pascal(), au.Pascal())
+
+	return nil
+}
+
+// migrationNumber reads a migration's number prefix.
+func migrationNumber(base string) (int, error) {
+	num, _, ok := strings.Cut(base, "_")
+	if !ok {
+		return 0, errors.Newf("migration %q carries no number prefix", base)
+	}
+	n, err := strconv.Atoi(num)
+	if err != nil {
+		return 0, errors.Wrapf(err, "migration %q: number prefix", base)
+	}
+
+	return n, nil
 }
 
 // flavorPascal is the flavor's PascalCase form for a migration name.
@@ -581,7 +639,11 @@ func (f AuthFlavor) logoutRouteNote() string {
 func (f AuthFlavor) Meaning() string {
 	au := f.target()
 	var b strings.Builder
-	fmt.Fprintf(&b, "The %s auth keeps its name, its permission store (tables prefixed `%s`), its roles file, and every surface bound to it; how its people sign in changed. `pkg/auth/%s` now constructs the %s session manager over `%sSessions` and `%sOIDCUsers` (the user anchor the directory's identifiers key), and its people sign in through the organization's directory over OpenID Connect (%s): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. The data level reads the directory registration from the environment.\n\n", f.Name, au.Pascal(), f.Name, f.Flavor, au.Pascal(), au.Pascal(), au.directoryLabel())
+	if f.Fresh {
+		fmt.Fprintf(&b, "The %s auth was composed into the creation in the %s flavor, so the application is born with its people signing in through the organization's directory over OpenID Connect (%s); the base's password shape was rewritten before anything ran against it. `pkg/auth/%s` constructs the %s session manager over `%sSessions` and `%sOIDCUsers` (the user anchor the directory's identifiers key): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. The data level reads the directory registration from the environment.\n\n", f.Name, f.Flavor, au.directoryLabel(), f.Name, f.Flavor, au.Pascal(), au.Pascal())
+	} else {
+		fmt.Fprintf(&b, "The %s auth keeps its name, its permission store (tables prefixed `%s`), its roles file, and every surface bound to it; how its people sign in changed. `pkg/auth/%s` now constructs the %s session manager over `%sSessions` and `%sOIDCUsers` (the user anchor the directory's identifiers key), and its people sign in through the organization's directory over OpenID Connect (%s): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. The data level reads the directory registration from the environment.\n\n", f.Name, au.Pascal(), f.Name, f.Flavor, au.Pascal(), au.Pascal(), au.directoryLabel())
+	}
 	switch f.Authority {
 	case AuthorityDirectory:
 		fmt.Fprintf(&b, "Role membership is now the directory's (`session.RoleSync`): every login reconciles the person's roles to the directory's role claims and removes any it does not name, and a login naming no known role is refused. So nothing in the application may assign roles in the %s store any more, and the bootstrap seeds none; the roles file only defines the roles and their grants. In a tenanted application, pass the tenant roster as `%s.Settings.Domains`.\n\n", f.Name, f.Name)
@@ -599,6 +661,11 @@ func (f AuthFlavor) Meaning() string {
 	}
 	for i, item := range items {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, item)
+	}
+	if f.Fresh {
+		b.WriteString("\nNo data consequence: the auth was created moments ago, so nobody signs in again and no role assignment existed to drop; the bootstrap's development identities are the only people it knows.\n")
+
+		return b.String()
 	}
 	b.WriteString("\nData consequence: everyone in the ")
 	b.WriteString(f.Name)

@@ -47,6 +47,15 @@ func TestComposedOptions(t *testing.T) {
 			wantDescribe:  "tenancy (Tenants), the sites console, portal, kiosk (the base site becomes console)",
 			wantReference: transition_.SitesReference,
 		},
+		{
+			name: "a directory flavor for the first auth composes first, fresh", opts: composedOptions{authName: "staff", flavor: transition_.FlavorOIDCGoogle, authority: transition_.AuthorityDirectory, tenancy: true, tenantTable: "Tenants"},
+			want: []transition{
+				transition_.AuthFlavor{Name: "staff", Flavor: transition_.FlavorOIDCGoogle, Authority: transition_.AuthorityDirectory, Fresh: true},
+				transition_.Tenancy{Table: "Tenants"},
+			},
+			wantDescribe:  "the oidc-google flavor for the staff auth, role membership the directory's, tenancy (Tenants)",
+			wantReference: transition_.ReferenceCandidate,
+		},
 		{name: "one site is no layout", opts: composedOptions{sites: []string{"console"}}, wantErr: "name at least two sites"},
 		{name: "an outlet without a prefix", opts: composedOptions{outlets: []string{"portal"}}, wantErr: `--outlet "portal": name the outlet and its prefix`},
 		{name: "an API outlet without a name", opts: composedOptions{apiOutlets: []string{"=machines"}}, wantErr: `--api-outlet "=machines"`},
