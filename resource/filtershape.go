@@ -216,22 +216,22 @@ func compareToLiteral(value reflect.Value, literal any) (int, error) {
 	return compareValues(value, reflect.ValueOf(other))
 }
 
-// literalText renders a parsed filter literal as text so the row type decides
-// how it is read.
+// literalText renders a parsed filter literal as text so the row type decides how it
+// is read: a string as itself, and every typed literal (a number, a boolean, a decimal,
+// a time, a date, a UUID) through the encoding a cursor boundary uses.
 func literalText(literal any) (string, error) {
-	switch v := literal.(type) {
-	case string:
-		return v, nil
-	case int, int64, float32, float64, bool:
-		s, err := cursorText(reflect.ValueOf(v))
-		if err != nil {
-			return "", err
-		}
-
-		return *s, nil
-	default:
-		return "", errors.Newf("FilterShape.Match: unsupported literal %T", literal)
+	if s, ok := literal.(string); ok {
+		return s, nil
 	}
+	text, err := cursorText(reflect.ValueOf(literal))
+	if err != nil {
+		return "", errors.Wrapf(err, "FilterShape.Match: unsupported literal %T", literal)
+	}
+	if text == nil {
+		return "", errors.Newf("FilterShape.Match: null literal %T", literal)
+	}
+
+	return *text, nil
 }
 
 // leaves lists the condition nodes of a tree in source order.

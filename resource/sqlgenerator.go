@@ -152,6 +152,9 @@ func (s *sqlGenerator) conditionColumn(column string) string {
 	return s.quoteIdentifier(column)
 }
 
+// generateConditionSQL renders one condition. Its values bind through paramValue, the
+// typing the lowered nodes use, so a decimal filter value meets a NUMERIC column as a
+// NUMERIC parameter rather than the STRING Spanner would otherwise type it as.
 func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryParam, error) {
 	field := s.conditionColumn(cn.Condition.Field)
 	op := strings.ToLower(cn.Condition.Operator)
@@ -160,7 +163,7 @@ func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryP
 	switch op {
 	case eqStr, neStr, gtStr, ltStr, gteStr, lteStr:
 		placeholder := s.nextPlaceholder()
-		params = append(params, QueryParam{Name: strings.TrimPrefix(placeholder, "@"), Value: cn.Condition.Value})
+		params = append(params, QueryParam{Name: strings.TrimPrefix(placeholder, "@"), Value: paramValue(cn.Condition.Value)})
 		sqlOp := ""
 		switch op {
 		case eqStr:
@@ -184,7 +187,7 @@ func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryP
 		for i, v := range cn.Condition.Values {
 			placeholder := s.nextPlaceholder()
 			placeholders[i] = placeholder
-			params = append(params, QueryParam{Name: strings.TrimPrefix(placeholder, "@"), Value: v})
+			params = append(params, QueryParam{Name: strings.TrimPrefix(placeholder, "@"), Value: paramValue(v)})
 		}
 		sqlOp := "IN"
 		if op == notinStr {

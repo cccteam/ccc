@@ -474,6 +474,20 @@ func TestPaging_visibleProjection(t *testing.T) {
 			target: sectorPath(anvil, "missions?filter=statusId:eq:open,fee:isnull"), wantStatus: http.StatusForbidden,
 		},
 		{name: "the marshal's unconditional fee sorts", user: "marshal", target: sectorPath(anvil, "missions?sort=fee"), wantStatus: http.StatusOK},
+		{
+			name: "a fee compares as a number: the fractional literal matches the seeded convoy fee", user: "marshal",
+			target: sectorPath(anvil, "missions?filter=sectorId:eq:anvil,fee:eq:15000.00"), wantStatus: http.StatusOK,
+			wantIDs: []string{"80000000-0000-4000-8000-000000000003"},
+		},
+		{
+			name: "and a threshold only the pod clears", user: "marshal",
+			target: sectorPath(anvil, "missions?filter=sectorId:eq:anvil,fee:gt:30000"), wantStatus: http.StatusOK,
+			wantIDs: []string{completedPod},
+		},
+		{
+			name: "a value that is not a number is refused at decode", user: "marshal",
+			target: sectorPath(anvil, "missions?filter=sectorId:eq:anvil,fee:gt:abc"), wantStatus: http.StatusBadRequest,
+		},
 	}
 
 	for _, tt := range tests {
@@ -483,8 +497,12 @@ func TestPaging_visibleProjection(t *testing.T) {
 			status, body := doRequestAs(t, h, tt.user, http.MethodGet, tt.target, "")
 			assertStatus(t, status, tt.wantStatus, body)
 			if status != http.StatusOK {
-				if !strings.Contains(string(body), "cannot sort or filter on fee") {
-					t.Errorf("body = %s, want the refusal to name the fee", body)
+				want := "cannot sort or filter on fee"
+				if status == http.StatusBadRequest {
+					want = "value 'abc' in condition 'fee:gt:abc' is not a valid decimal number"
+				}
+				if !strings.Contains(string(body), want) {
+					t.Errorf("body = %s, want it to say %q", body, want)
 				}
 
 				return

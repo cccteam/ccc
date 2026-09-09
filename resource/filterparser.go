@@ -5,9 +5,13 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
+	"cloud.google.com/go/civil"
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
+	"github.com/shopspring/decimal"
 )
 
 //go:generate go run golang.org/x/tools/cmd/stringer -type=TokenType
@@ -462,15 +466,16 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 				return nil, httpio.NewBadRequestMessagef("empty value in list for operator '%s' in condition '%s'", condition.Operator, p.current.Value)
 			}
 
-			valueKind := fieldInfo.Kind
+			valueType, valueKind := fieldInfo.FieldType, fieldInfo.Kind
 			if valueKind == reflect.Slice || valueKind == reflect.Array {
 				if fieldInfo.FieldType == nil {
 					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", field)
 				}
-				valueKind = fieldInfo.FieldType.Elem().Kind()
+				valueType = fieldInfo.FieldType.Elem()
+				valueKind = valueType.Kind()
 			}
 
-			typedValue, err := p.convertValue(trimmed, valueKind)
+			typedValue, err := p.convertValue(trimmed, valueType, valueKind)
 			if err != nil {
 				return nil, err
 			}
@@ -481,7 +486,7 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 			return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value in condition '%s'", condition.Operator, p.current.Value)
 		}
 		strValue := strings.TrimSpace(parts[2])
-		typedValue, err := p.convertValue(strValue, fieldInfo.Kind)
+		typedValue, err := p.convertValue(strValue, fieldInfo.FieldType, fieldInfo.Kind)
 		if err != nil {
 			return nil, err
 		}
@@ -493,8 +498,14 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 	return &ConditionNode{Condition: condition}, nil
 }
 
-// convertValue converts a string value to the specified reflect.Kind.
-func (p *FilterParser) convertValue(strValue string, kind reflect.Kind) (any, error) {
+// convertValue types a filter value for the field it compares against: by the field's
+// Go type when the field is a struct (a decimal, a time, a date, a UUID, or a nullable
+// wrapper), else by its kind.
+func (p *FilterParser) convertValue(strValue string, fieldType reflect.Type, kind reflect.Kind) (any, error) {
+	if kind == reflect.Struct && fieldType != nil {
+		return p.convertStructValue(strValue, fieldType)
+	}
+
 	switch kind {
 	case reflect.String, reflect.Struct:
 		return strValue, nil
@@ -524,6 +535,39 @@ func (p *FilterParser) convertValue(strValue string, kind reflect.Kind) (any, er
 		return f, nil
 	default:
 		return nil, httpio.NewBadRequestMessagef("Invalid value format. The value '%s' in condition '%s' cannot be processed due to an unsupported data type: %v.", strValue, p.current.Value, kind)
+	}
+}
+
+// convertStructValue types a filter value for a struct-typed column by the column's Go
+// type, the way a cursor's boundary values are read: a decimal, a time, a date, or a
+// UUID compares as itself, and a nullable wrapper as its base type. Spanner types a
+// query parameter from its Go value, so a value left as text would meet a NUMERIC or
+// TIMESTAMP column as a STRING and the comparison would fail in the database.
+func (p *FilterParser) convertStructValue(strValue string, fieldType reflect.Type) (any, error) {
+	value, err := cursorValue(strValue, fieldType)
+	switch {
+	case err == nil:
+		return value, nil
+	case errors.Is(err, errInvalidCursor):
+		return nil, httpio.NewBadRequestMessagef("value '%s' in condition '%s' is not a valid %s", strValue, p.current.Value, filterValueWord(nullableBaseType(fieldType)))
+	default:
+		return nil, httpio.NewBadRequestMessagef("Invalid value format. The value '%s' in condition '%s' cannot be processed due to an unsupported data type: %s.", strValue, p.current.Value, fieldType)
+	}
+}
+
+// filterValueWord names what a filter value for a column of type t must look like.
+func filterValueWord(t reflect.Type) string {
+	switch t {
+	case reflect.TypeFor[time.Time]():
+		return "RFC 3339 timestamp"
+	case reflect.TypeFor[civil.Date]():
+		return "date (YYYY-MM-DD)"
+	case reflect.TypeFor[decimal.Decimal]():
+		return "decimal number"
+	case reflect.TypeFor[ccc.UUID]():
+		return "UUID"
+	default:
+		return t.String()
 	}
 }
 
