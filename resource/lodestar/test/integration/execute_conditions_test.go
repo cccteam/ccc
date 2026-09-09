@@ -1,3 +1,4 @@
+// Demonstrates: execute-condition, @target, capability-envelope, @transition.join-path-root, @attribute.join-path.
 package integration
 
 // execute_conditions_test (design plan §9): for each conditional Execute grant in §7,
@@ -99,7 +100,7 @@ func TestExecuteConditionsOnRows(t *testing.T) {
 			// Supercargo's ReleaseConsignment grant carries releasedAt IS NULL.
 			name:   "supercargo: Release lights while in bond only",
 			user:   "supercargo",
-			target: sectorPath(anvil, "consignments?capabilities=Execute"),
+			target: sectorPath(anvil, "consignments?capabilities=Execute&limit=100"),
 			want: map[string][]any{
 				consignmentPodID:     {"ReleaseConsignment"},
 				consignmentDronesID:  {"ReleaseConsignment"},
@@ -214,12 +215,12 @@ func TestExecuteConditionsFired(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:       "pilot hails a docked ship (plain located-row form)",
+			name:       "pilot hails a docked ship (plain located-row form): a touch answers No Content",
 			user:       "pilot",
 			sector:     anvil,
 			route:      "hail-ship",
 			body:       fmt.Sprintf(`{"shipId":%q}`, shipKingfisherID),
-			wantStatus: http.StatusOK,
+			wantStatus: http.StatusNoContent,
 		},
 		{
 			name:       "pilot may not hail the quarantined Lantern",

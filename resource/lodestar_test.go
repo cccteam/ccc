@@ -29,7 +29,10 @@ func TestLodestarApp(t *testing.T) {
 	// The inner run is bounded well inside this binary's own 10-minute default, so a
 	// hang in Lodestar's suites surfaces as their goroutine dump in this test's output
 	// rather than as this binary timing out with nothing to read.
-	cmd := exec.CommandContext(t.Context(), "go", "test", "-timeout", "7m", "./...")
+	// The suites run under the session library's skipAuth tag: the portal's people sign
+	// in through a Google directory, which the tag simulates (as the Procfile does); the
+	// served suites skip without it.
+	cmd := exec.CommandContext(t.Context(), "go", "test", "-tags", "skipAuth", "-timeout", "7m", "./...")
 	cmd.Dir = "lodestar"
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go test ./... (lodestar): %v\n%s", err, out)

@@ -24,6 +24,8 @@ const pendingDir = "pending"
 // DirStore is a resource.UploadStore over one directory, confined by an os.Root so
 // no key can name a path outside it. It is Lodestar's stand-in for an object
 // store; the application reads a document back through Open.
+//
+// Demonstrates: rpc.upload-store.
 type DirStore struct {
 	root *os.Root
 }

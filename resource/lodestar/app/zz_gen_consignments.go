@@ -32,7 +32,8 @@ func (a *App) Consignments() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Consignment, consignment](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.Consignment, consignment](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "ReleasedAt", Direction: resource.SortDescending}}, DefaultLimit: 10, MaxLimit: 100})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

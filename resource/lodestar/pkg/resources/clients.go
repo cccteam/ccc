@@ -1,23 +1,25 @@
 package resources
 
-import (
-	"github.com/cccteam/ccc"
-)
+import "github.com/cccteam/ccc"
 
 type (
-	// Client is who books missions: a global resource with PII contact fields and a
-	// bool attribute. The ClientBrowser role lists clients under a `trusted = true`
-	// condition, so untrusted outfits disappear from booking pickers while
-	// headquarters (unconditional grants) still sees and manages them.
+	// Client is who books missions: a global resource with PII contact fields and a bool
+	// attribute. The ClientBrowser role lists clients under a `trusted = true` condition,
+	// so untrusted outfits disappear from booking pickers while headquarters
+	// (unconditional grants) still sees and manages them.
 	//
-	// Client is excluded from the consolidated patch handler, keeping a global
-	// standalone PATCH surface in the demo.
+	// Client is excluded from the consolidated patch handler, keeping a global standalone
+	// PATCH surface in the demo.
 	//
-	// ContactEmail is additionally allow_filter: PII fields may never be filtered
-	// through the URL (the value would land in access logs), but a POST-body filter
-	// is accepted — the query-parameter suite pins both directions.
+	// ContactEmail is additionally allow_filter: PII fields may never be filtered through
+	// the URL (the value would land in access logs), but a POST-body filter is accepted;
+	// the query-parameter suite pins both directions.
+	//
+	// Demonstrates: pii, pii.filter-placement, allow_filter, @attribute.bool, consolidation.exclusion.
 	//
 	// @resource
+	// @order(Name asc)
+	// @page(default: 25, max: 200)
 	Client struct {
 		ID           ccc.UUID `spanner:"Id"`
 		Name         string   `spanner:"Name"`

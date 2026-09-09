@@ -24,6 +24,8 @@ import { WorkflowGraphComponent } from '../workflow-graph/workflow-graph.compone
  * send a ship to the scrapyard (the multi-from edge, three chutes into one pit). Bays
  * you cannot drop into refuse the drop with the transition's name. Every affordance —
  * the estimate, the task ticks, the add-task form, the hail — is the row's own answer.
+ *
+ * Demonstrates: workflow.ts-constant, @transition.multi-from, @transition.loop, create-under-parent, capability-envelope, condition.time-of-day.
  */
 @Component({
   selector: 'app-hangar-deck',
@@ -44,7 +46,7 @@ import { WorkflowGraphComponent } from '../workflow-graph/workflow-graph.compone
   styleUrl: './hangar-deck.component.scss',
 })
 export class HangarDeckComponent {
-  private sectors = inject(SectorService);
+  sectors = inject(SectorService);
 
   readonly methods = Methods;
   readonly resources = Resources;

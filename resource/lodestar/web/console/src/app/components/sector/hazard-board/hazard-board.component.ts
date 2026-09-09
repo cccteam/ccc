@@ -14,6 +14,8 @@ import { StarChartComponent } from '../star-chart/star-chart.component';
  * board itself goes dark when the certification lapses. Each row also carries the
  * recent readings behind the worst one: a nested field the generator typed as
  * SectorHazardBoards.Reading, opaque to filtering and selected whole.
+ *
+ * Demonstrates: computed.fold, paging.limit-all, rpc.nested-shape, computed.conditional-grant, machine-identity.
  */
 @Component({
   selector: 'app-hazard-board',
@@ -22,9 +24,11 @@ import { StarChartComponent } from '../star-chart/star-chart.component';
   styleUrl: './hazard-board.component.scss',
 })
 export class HazardBoardComponent {
-  private sectors = inject(SectorService);
+  sectors = inject(SectorService);
 
-  rows = this.sectors.sectorList((sector) => sector.sectorHazardBoards);
+  // The board declares a default page but no maximum, so all() asks limit=all and the
+  // whole board arrives in one answer.
+  rows = this.sectors.sectorAll((sector) => sector.sectorHazardBoards);
   columns = ['shipName', 'subsystem', 'worstReading', 'recordedAt', 'recent'];
 
   sector = this.sectors.current;

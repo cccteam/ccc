@@ -14,6 +14,12 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
+// The principal kinds the mint route accepts and the watch desk reports.
+const (
+	kindUser = "user"
+	kindRole = "role"
+)
+
 // impersonateRequest is the mint route's body: view as a user (read-only by
 // default) or act as a role.
 type impersonateRequest struct {
@@ -28,6 +34,10 @@ type impersonateRequest struct {
 	Reason string `json:"reason"`
 }
 
+// viewAsMaxDuration is the hard cap on every minted session: two hours, however long the
+// idle timeout would otherwise let it live.
+const viewAsMaxDuration = 2 * time.Hour
+
 // impersonateResponse names the session that was minted.
 type impersonateResponse struct {
 	SessionID ccc.UUID `json:"sessionId"`
@@ -40,7 +50,10 @@ type impersonateResponse struct {
 // checked in the global scope and held by the Governor and the Marshal only; the
 // library refuses chaining (an impersonated session cannot mint another) and writes
 // the record atomically with the session. The response cookie replaces the actor's
-// session; the actor's own session is linked as the source.
+// session; the actor's own session is linked as the source. A view-as session carries
+// a two-hour hard cap (MaxDuration), which the banner counts down.
+//
+// Demonstrates: impersonation.view-as, impersonation.act-as-role, impersonation.mask, impersonation.max-duration, @manualAddResource.execute, impersonation.identity-proof, impersonation.session-permissions.
 func (a *App) Impersonate() http.HandlerFunc {
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx := r.Context()
@@ -59,12 +72,12 @@ func (a *App) Impersonate() http.HandlerFunc {
 		var principal accesstypes.Principal
 		var mask accesstypes.PermissionMask
 		switch req.Kind {
-		case "user":
+		case kindUser:
 			gate = resources.ViewAsUser
 			principal = accesstypes.UserPrincipal(accesstypes.User(req.Principal))
 			readOnly := accesstypes.MaskPermissions(accesstypes.DenyAll(), accesstypes.List, accesstypes.Read)
 			mask = accesstypes.MaskPermissions(readOnly, req.Mask...)
-		case "role":
+		case kindRole:
 			gate = resources.AssumeRole
 			principal = accesstypes.RolePrincipal(accesstypes.Role(req.Principal))
 			mask = accesstypes.MaskPermissions(accesstypes.AllowAll(), req.Mask...)
@@ -89,6 +102,7 @@ func (a *App) Impersonate() http.HandlerFunc {
 			Principal:       principal,
 			Mask:            mask,
 			Reason:          req.Reason,
+			MaxDuration:     viewAsMaxDuration,
 		})
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "session.PasswordAuthAPI.StartImpersonatedSession()"))

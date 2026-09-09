@@ -7,8 +7,8 @@ import "github.com/cccteam/ccc/accesstypes"
 
 type Method interface {
 	Method() accesstypes.Resource
-	AttachMissionDocument | BeginRefit | ClaimMission | CompleteMission | FailFlightTest |
-		FailMission | HailShip | HoldMission | IngestDroidReports | InspectShip | IssueBulletin |
-		LaunchMission | PassFlightTest | ReleaseConsignment | ResumeMission | ScrapShip |
+	AttachMissionDocument | BeginRefit | ClaimMission | CompileBriefing | CompleteMission |
+		FailFlightTest | FailMission | HailShip | HoldMission | IngestDroidReports | InspectShip |
+		IssueBulletin | LaunchMission | PassFlightTest | ReleaseConsignment | ResumeMission | ScrapShip |
 		StandDownMission | StartFlightTest
 }

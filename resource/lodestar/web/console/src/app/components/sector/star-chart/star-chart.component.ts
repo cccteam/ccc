@@ -8,9 +8,12 @@ import { SectorService } from '../sector.service';
  * The star chart is the sector picker drawn as a small constellation: lit sectors are
  * the answer from the generated user-domains endpoint, the rest are dark. The "chart
  * every sector" toggle adds the full roster from the permission-checked Sectors
- * resource so you can click a dark one and watch every deck refuse fail-closed. The
- * shift clock beside it says which of the two hangar-deck shifts is on watch now on
- * the fleet's operations clock (America/Denver), and why.
+ * resource so you can click a dark one and watch every deck refuse fail-closed: the
+ * labelled bypass of the digest-first rule (SectorService.dark). The shift clock beside
+ * it says which of the two hangar-deck shifts is on watch now on the fleet's operations
+ * clock (America/Denver), and why.
+ *
+ * Demonstrates: star-chart, tenancy.concealed, tenancy.user-domains, condition.time-of-day.
  */
 @Component({
   selector: 'app-star-chart',

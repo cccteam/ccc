@@ -1,3 +1,4 @@
+// Demonstrates: consolidation.batch, consolidation.exclusion.
 package integration
 
 // This suite pins the consolidated mutation surface's batch semantics: one PATCH

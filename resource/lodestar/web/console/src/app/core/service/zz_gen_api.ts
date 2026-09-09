@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, ResourceHandle, UploadMethodHandle } from '@cccteam/resource';
 import { Methods, Resources } from './zz_gen_constants';
 import { Clients, ClientContacts, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, Wings, PilotCards, SectorHazardBoards, ServiceLedgers } from './zz_gen_resources';
-import { AttachMissionDocument, AttachMissionDocumentResult, BeginRefit, ClaimMission, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ResumeMission, ScrapShip, StandDownMission, StartFlightTest } from './zz_gen_methods';
+import { AttachMissionDocument, AttachMissionDocumentResult, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HailShipAnswer, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ResumeMission, ScrapShip, StandDownMission, StartFlightTest } from './zz_gen_methods';
 
 /**
  * The fields a client may set when creating Clients. Server-owned fields are
@@ -119,6 +119,7 @@ export interface MissionsCreate {
   requiredCertId?: string;
   assignedSquadronId?: string;
   notes?: string;
+  settlement?: number;
 }
 /** The fields a client may change on Missions. Keys, server-owned, and immutable fields are absent. */
 export interface MissionsPatch {
@@ -132,6 +133,7 @@ export interface MissionsPatch {
   requiredCertId?: string;
   assignedSquadronId?: string;
   notes?: string;
+  settlement?: number;
 }
 /** The primary key of Missions, in route order. */
 export type MissionsKey = [id: string];
@@ -381,7 +383,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: ['name', 'contactName', 'contactEmail', 'trusted'],
     },
     [Resources.ClientContacts]: {
@@ -392,7 +394,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: ['userId', 'clientId', 'displayName'],
     },
     [Resources.Consignments]: {
@@ -403,7 +405,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 10, max: 100 },
       patchable: ['clientId', 'description', 'mass', 'expiresOn', 'releasedAt'],
     },
     [Resources.DistressCalls]: {
@@ -414,7 +416,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 10, max: 100 },
       patchable: ['summary', 'severity', 'callerContact', 'transcript'],
     },
     [Resources.FeeByKinds]: {
@@ -435,7 +437,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: ['name', 'zone'],
     },
     [Resources.Missions]: {
@@ -447,7 +449,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
-      patchable: ['clientId', 'kindId', 'title', 'brief', 'hazard', 'fee', 'deadline', 'requiredCertId', 'assignedSquadronId', 'notes'],
+      patchable: ['clientId', 'kindId', 'title', 'brief', 'hazard', 'fee', 'deadline', 'requiredCertId', 'assignedSquadronId', 'notes', 'settlement'],
     },
     [Resources.MissionDocuments]: {
       resource: Resources.MissionDocuments,
@@ -457,7 +459,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['id'],
       operations: ['list', 'read'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
     },
     [Resources.OpenMissionsBySquadrons]: {
       resource: Resources.OpenMissionsBySquadrons,
@@ -477,7 +479,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 10 },
       patchable: ['userId', 'displayName', 'clearance', 'feeLimit'],
     },
     [Resources.PilotCertifications]: {
@@ -488,7 +490,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['userId', 'certificationId'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: [],
     },
     [Resources.Refits]: {
@@ -499,7 +501,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 10, max: 100 },
       patchable: ['shipId', 'estimate', 'notes'],
     },
     [Resources.RefitTasks]: {
@@ -510,7 +512,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['refitId', 'taskNumber'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: ['instructions', 'done', 'notes'],
     },
     [Resources.Sectors]: {
@@ -521,7 +523,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: ['name', 'region', 'established'],
     },
     [Resources.Ships]: {
@@ -532,7 +534,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 10, max: 100 },
       patchable: ['hangarId', 'classId', 'name'],
     },
     [Resources.ShipClasses]: {
@@ -543,7 +545,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: ['roleId', 'tonnage', 'hardened'],
     },
     [Resources.Sorties]: {
@@ -554,7 +556,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 10, max: 100 },
       patchable: ['missionId', 'shipId', 'pilotUserId', 'launchedAt', 'returnedAt', 'debrief'],
     },
     [Resources.SortieExpenses]: {
@@ -565,7 +567,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 10, max: 100 },
       patchable: ['sortieId', 'category', 'amount', 'note'],
     },
     [Resources.Squadrons]: {
@@ -576,7 +578,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: ['wingId', 'name'],
     },
     [Resources.SquadronMemberships]: {
@@ -587,7 +589,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['squadronId', 'userId'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: [],
     },
     [Resources.Wings]: {
@@ -598,7 +600,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: ['name'],
     },
     [Resources.PilotCards]: {
@@ -609,7 +611,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['userId'],
       operations: ['list'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
     },
     [Resources.SectorHazardBoards]: {
       resource: Resources.SectorHazardBoards,
@@ -619,7 +621,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['shipId', 'subsystem'],
       operations: ['list', 'read'],
-      page: { default: 50 },
+      page: { default: 10 },
     },
     [Resources.ServiceLedgers]: {
       resource: Resources.ServiceLedgers,
@@ -629,23 +631,24 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['sectorId'],
       operations: ['list'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
     },
   },
   methods: {
     [Methods.AttachMissionDocument]: { method: Methods.AttachMissionDocument, property: 'attachMissionDocument', route: 'attach-mission-document', scope: 'domain', answers: true, upload: { maxBytes: 5242880 } },
     [Methods.BeginRefit]: { method: Methods.BeginRefit, property: 'beginRefit', route: 'begin-refit', scope: 'domain' },
     [Methods.ClaimMission]: { method: Methods.ClaimMission, property: 'claimMission', route: 'claim-mission', scope: 'domain' },
+    [Methods.CompileBriefing]: { method: Methods.CompileBriefing, property: 'compileBriefing', route: 'compile-briefing', scope: 'domain', answers: true },
     [Methods.CompleteMission]: { method: Methods.CompleteMission, property: 'completeMission', route: 'complete-mission', scope: 'domain', answers: true, statuses: [200, 409] },
     [Methods.FailFlightTest]: { method: Methods.FailFlightTest, property: 'failFlightTest', route: 'fail-flight-test', scope: 'domain' },
     [Methods.FailMission]: { method: Methods.FailMission, property: 'failMission', route: 'fail-mission', scope: 'domain' },
-    [Methods.HailShip]: { method: Methods.HailShip, property: 'hailShip', route: 'hail-ship', scope: 'domain' },
+    [Methods.HailShip]: { method: Methods.HailShip, property: 'hailShip', route: 'hail-ship', scope: 'domain', answers: true, statuses: [204] },
     [Methods.HoldMission]: { method: Methods.HoldMission, property: 'holdMission', route: 'hold-mission', scope: 'domain' },
     [Methods.InspectShip]: { method: Methods.InspectShip, property: 'inspectShip', route: 'inspect-ship', scope: 'domain', answers: true },
     [Methods.IssueBulletin]: { method: Methods.IssueBulletin, property: 'issueBulletin', route: 'issue-bulletin', scope: 'global' },
     [Methods.LaunchMission]: { method: Methods.LaunchMission, property: 'launchMission', route: 'launch-mission', scope: 'domain' },
     [Methods.PassFlightTest]: { method: Methods.PassFlightTest, property: 'passFlightTest', route: 'pass-flight-test', scope: 'domain' },
-    [Methods.ReleaseConsignment]: { method: Methods.ReleaseConsignment, property: 'releaseConsignment', route: 'release-consignment', scope: 'domain' },
+    [Methods.ReleaseConsignment]: { method: Methods.ReleaseConsignment, property: 'releaseConsignment', route: 'release-consignment', scope: 'domain', answers: true },
     [Methods.ResumeMission]: { method: Methods.ResumeMission, property: 'resumeMission', route: 'resume-mission', scope: 'domain' },
     [Methods.ScrapShip]: { method: Methods.ScrapShip, property: 'scrapShip', route: 'scrap-ship', scope: 'domain' },
     [Methods.StandDownMission]: { method: Methods.StandDownMission, property: 'standDownMission', route: 'stand-down-mission', scope: 'domain' },
@@ -687,15 +690,16 @@ export interface DomainApi {
   attachMissionDocument: UploadMethodHandle<AttachMissionDocument, AttachMissionDocumentResult>;
   beginRefit: MethodHandle<BeginRefit>;
   claimMission: MethodHandle<ClaimMission>;
+  compileBriefing: MethodHandle<CompileBriefing, CompileBriefingResult>;
   completeMission: MethodHandle<CompleteMission, CompleteMissionAnswer>;
   failFlightTest: MethodHandle<FailFlightTest>;
   failMission: MethodHandle<FailMission>;
-  hailShip: MethodHandle<HailShip>;
+  hailShip: MethodHandle<HailShip, HailShipAnswer>;
   holdMission: MethodHandle<HoldMission>;
   inspectShip: MethodHandle<InspectShip, InspectShipResult>;
   launchMission: MethodHandle<LaunchMission>;
   passFlightTest: MethodHandle<PassFlightTest>;
-  releaseConsignment: MethodHandle<ReleaseConsignment>;
+  releaseConsignment: MethodHandle<ReleaseConsignment, ReleaseConsignmentResult>;
   resumeMission: MethodHandle<ResumeMission>;
   scrapShip: MethodHandle<ScrapShip>;
   standDownMission: MethodHandle<StandDownMission>;

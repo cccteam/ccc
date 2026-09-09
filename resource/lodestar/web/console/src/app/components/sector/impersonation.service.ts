@@ -33,6 +33,8 @@ interface EndImpersonationResponse {
  * actor. The mint route is hand-written and gated by the ViewAsUser and AssumeRole
  * Execute registrations; the session endpoint reports the record back, which the
  * header renders as the persistent banner.
+ *
+ * Demonstrates: impersonation.view-as, impersonation.act-as-role, impersonation.end, impersonation.mask.
  */
 @Injectable({ providedIn: 'root' })
 export class ImpersonationService {
@@ -44,18 +46,38 @@ export class ImpersonationService {
   /** The current session's impersonation record, if the session was minted. */
   readonly record = signal<ImpersonationRecord | undefined>(undefined);
 
+  /** A clock the banner's countdown ticks on. */
+  private readonly now = signal(Date.now());
+
   readonly banner = computed(() => {
     const record = this.record();
     if (!record) return undefined;
+    const remaining = this.remaining(record.expiresAt);
     if (record.principalKind === 'Role') {
-      return { kind: 'Role' as const, text: `Acting as role ${record.principal}. You are ${record.actor}; subject still binds to you.` };
+      return {
+        kind: 'Role' as const,
+        text: `Acting as role ${record.principal}. You are ${record.actor}; subject still binds to you.`,
+        remaining,
+      };
     }
     const mask = record.mask?.length ? `${record.mask.join(', ')} only` : 'unrestricted';
-    return { kind: 'User' as const, text: `Viewing as ${record.principal}, ${mask}. You are ${record.actor}.` };
+    return { kind: 'User' as const, text: `Viewing as ${record.principal}, ${mask}. You are ${record.actor}.`, remaining };
   });
+
+  /** The time left before the session's hard cap (MaxDuration, two hours) ends it. */
+  private remaining(expiresAt: string): string {
+    const ms = new Date(expiresAt).getTime() - this.now();
+    if (Number.isNaN(ms)) return '';
+    if (ms <= 0) return 'expired';
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return h > 0 ? `${h}h ${m}m left` : `${m}m ${s}s left`;
+  }
 
   constructor() {
     void this.refresh();
+    setInterval(() => this.now.set(Date.now()), 1000);
   }
 
   /** Re-reads the session endpoint for the impersonation record. */

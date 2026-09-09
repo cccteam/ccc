@@ -1,3 +1,4 @@
+// Demonstrates: @manualAddResource, @manualAddResource.scope, hand-written-route, change-tracking.
 package integration
 
 // This suite pins the manual-resource seam end to end: ShipsLogEntries has no
@@ -49,10 +50,10 @@ func TestManualResourceShipsLog(t *testing.T) {
 	// hand-written surface serves.
 	newApp := func(g grants) http.Handler {
 		controller := &staticAccess{g: g}
-		return mountLog(app.New(&testConfigurer{db: db, access: controller, domainVisible: domainVisibleVia(controller)}))
+		return mountLog(app.New(&testConfigurer{db: db, access: controller}))
 	}
 	status, body := doRequestAs(t, newApp(logGrants), "log-actor", http.MethodPost, sectorPath(anvil, "hail-ship"), fmt.Sprintf(`{"shipId":%q}`, shipKingfisherID))
-	assertStatus(t, status, http.StatusOK, body)
+	assertStatus(t, status, http.StatusNoContent, body)
 
 	tests := []struct {
 		name       string
@@ -127,7 +128,7 @@ func TestManualResourceBootstrapParity(t *testing.T) {
 	t.Parallel()
 
 	db, _, controller := sharedWorld(t)
-	h := mountLog(newApp(db, controller))
+	h := mountLog(newApp(db, controller, nil))
 
 	tests := []struct {
 		name       string

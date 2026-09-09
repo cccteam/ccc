@@ -97,9 +97,9 @@ func returnOpenSorties(ctx context.Context, txn resource.ReadWriteTransaction, m
 	return sortieIDs, nil
 }
 
-// settleMission computes the mission's settlement — fee minus every expense booked
-// against its sorties — into the output_only Settlement field, and returns the
-// figures as CompleteMission's answer. CompleteMission is the field's only writer.
+// settleMission computes the mission's settlement (fee minus every expense booked
+// against its sorties) and returns the figures as CompleteMission's answer; writing them
+// is CompleteMission's business, through the Paymaster role.
 func settleMission(ctx context.Context, txn resource.ReadWriteTransaction, missionID ccc.UUID, sortieIDs []ccc.UUID) (*Settlement, error) {
 	row, err := resources.NewMissionQuery().AddColumns(resources.NewMissionColumns().Fee()).SetID(missionID).Read(ctx, txn)
 	if err != nil {
@@ -125,10 +125,6 @@ func settleMission(ctx context.Context, txn resource.ReadWriteTransaction, missi
 		settlement.Sorties = append(settlement.Sorties, cost)
 	}
 	settlement.Net = settlement.Fee.Sub(settlement.Expenses)
-
-	if err := resources.NewMissionUpdatePatch(missionID).SetSettlement(decimal.NewNullDecimal(settlement.Net)).Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
-		return nil, errors.Wrap(err, "resources.MissionUpdatePatch.Buffer()")
-	}
 
 	return settlement, nil
 }

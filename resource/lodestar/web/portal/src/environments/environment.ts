@@ -1,8 +1,8 @@
-// The portal's API lives under the portal outlet's prefix: its permission digest and
-// user-domains channels are served there too, so the generated client bootstraps
-// under a non-default prefix.
+// This file can be replaced during build by using the `fileReplacements` array.
+// `ng build` replaces `environment.ts` with `environment.prod.ts`.
+
 export const environment = {
   production: false,
-  baseUrl: '',
-  apiUrl: '/portal',
+  baseUrl: '/portal/',
+  apiUrl: '/portal/api',
 };

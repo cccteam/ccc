@@ -1,3 +1,4 @@
+// Demonstrates: permission-digest, create-form-narrowing.
 package integration
 
 // Bootstrap parity for the permission digest endpoint: the shipped personas fetch

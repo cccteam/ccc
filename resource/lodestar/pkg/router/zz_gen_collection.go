@@ -35,6 +35,16 @@ func Collection() *resource.GeneratedCollection {
 				Target:      "Missions",
 			},
 			{
+				Name:        "ClientStatements",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+			},
+			{
+				Name:        "CompileBriefing",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+			},
+			{
 				Name:        "CompleteMission",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
@@ -190,7 +200,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "notes", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "requiredCertId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "sectorId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
-					{Name: "settlement", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "settlement", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "statusId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "title", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 				},

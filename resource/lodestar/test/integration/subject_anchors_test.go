@@ -1,3 +1,4 @@
+// Demonstrates: @subjectSet.domain, @subjectSet.global, @subjectSet.dotted-value, @subjectValue.two-per-anchor, @subjectValue.second-anchor.
 package integration
 
 // subject_anchors_test (design plan §9): the global certification set is unfiltered

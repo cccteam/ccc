@@ -1,3 +1,4 @@
+// Demonstrates: condition.time-of-day, condition.day-of-week, condition.local-zone.
 package integration
 
 // temporal_test (design plan §9): the shipped shift personas pin fixed views only by

@@ -61,7 +61,7 @@ func (a *App) SectorHazardBoards() http.HandlerFunc {
 	}
 
 	decoder := NewComputedQueryDecoder[computedresources.SectorHazardBoard, sectorHazardBoard](a, accesstypes.List).
-		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "WorstReading", Direction: resource.SortDescending}}})
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "WorstReading", Direction: resource.SortDescending}}, DefaultLimit: 10})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

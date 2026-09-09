@@ -39,6 +39,8 @@ const shipsLogLimit = 200
 // unconditional grant can open it. The sector's rows are the missions booked in it,
 // and the refits and ships whose hangar is in it — DataChangeEvents carries no tenant
 // column, so the sector predicate joins through the tracked tables.
+//
+// Demonstrates: @manualAddResource, @manualAddResource.scope, change-tracking, event-source.
 func (a *App) ShipsLogEntries() http.HandlerFunc {
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx := r.Context()

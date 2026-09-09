@@ -18,6 +18,8 @@ import { StarChartComponent } from '../star-chart/star-chart.component';
  * session under a role with subject still bound to you. Both controls render only
  * when the digest carries the manual Execute registrations — checked by the generated
  * Methods constants, never a hand-typed string.
+ *
+ * Demonstrates: impersonation.view-as, impersonation.act-as-role, @manualAddResource.execute, paging.limit-all, @subjectSet.dotted-value.
  */
 @Component({
   selector: 'app-roster',
@@ -26,13 +28,14 @@ import { StarChartComponent } from '../star-chart/star-chart.component';
   styleUrl: './roster.component.scss',
 })
 export class RosterComponent {
-  private sectors = inject(SectorService);
+  sectors = inject(SectorService);
   impersonation = inject(ImpersonationService);
 
   wings = this.sectors.sectorList((sector) => sector.wings);
   squadrons = this.sectors.sectorList((sector) => sector.squadrons);
   memberships = this.sectors.sectorList((sector) => sector.squadronMemberships);
-  pilots = this.sectors.globalList((api) => api.pilots);
+  // The crew roster declares a default page but no maximum, so all() asks limit=all.
+  pilots = this.sectors.globalAll((api) => api.pilots);
   columns = ['name', 'wing', 'members'];
 
   sector = this.sectors.current;

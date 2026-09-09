@@ -25,7 +25,8 @@ func (a *App) Squadrons() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Squadron, squadron](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.Squadron, squadron](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "Name", Direction: resource.SortAscending}}, DefaultLimit: 25, MaxLimit: 200})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

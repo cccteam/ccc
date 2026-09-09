@@ -11,11 +11,13 @@ import (
 
 // TestPortalTargetEmission pins the second TypeScript target (design plan §5, §8): the
 // portal client, emitted by the same generator run as the console's but filtered to the
-// portal outlet, names the portal's four members and none of the console-only
-// resources, and its descriptor bootstraps under the domain route the console shares.
-// The manual registrations (@manualAddResource) carry no @outlet, so they are on the
-// default outlet only and the portal filter drops them. Needs no emulator: it reads
-// the committed output.
+// portal outlet, names the portal's members and none of the console-only resources, and
+// its descriptor bootstraps under the domain route the console shares. The manual
+// registrations without an @outlet stay on the default outlet and the portal filter drops
+// them; ClientStatements names @outlet(portal) and appears in the portal's constants
+// alone. Needs no emulator: it reads the committed output.
+//
+// Demonstrates: typescript.second-target, @manualAddResource.outlet, workflow.ts-constant, outlet.isolation.
 func TestPortalTargetEmission(t *testing.T) {
 	t.Parallel()
 
@@ -47,7 +49,7 @@ func TestPortalTargetEmission(t *testing.T) {
 		{
 			name:   "the portal's Resources constant carries its members only",
 			source: portalConstants,
-			want:   []string{"ClientContacts: 'ClientContacts'", "DistressCalls: 'DistressCalls'", "Missions: 'Missions'"},
+			want:   []string{"ClientContacts: 'ClientContacts'", "DistressCalls: 'DistressCalls'", "Missions: 'Missions'", "ClientStatements: 'ClientStatements'"},
 			absent: []string{"Refits:", "Ships:", "Squadrons:", "Pilots:", "Sorties:", "Consignments:", "SectorHazardBoards:", "Wings:", "ShipsLogEntries:"},
 		},
 		{
@@ -63,9 +65,10 @@ func TestPortalTargetEmission(t *testing.T) {
 			absent: []string{"Refits", "Squadrons", "Pilots"},
 		},
 		{
-			name:   "the console target still names everything",
+			name:   "the console target still names everything, and not the portal-only statement",
 			source: consoleConstants,
-			want:   []string{"Refits: 'Refits'", "Ships: 'Ships'", "Squadrons: 'Squadrons'", "Pilots: 'Pilots'", "Missions: 'Missions'"},
+			want:   []string{"Refits: 'Refits'", "Ships: 'Ships'", "Squadrons: 'Squadrons'", "Pilots: 'Pilots'", "Missions: 'Missions'", "ShipsLogEntries: 'ShipsLogEntries'"},
+			absent: []string{"ClientStatements:"},
 		},
 	}
 	for _, tt := range tests {

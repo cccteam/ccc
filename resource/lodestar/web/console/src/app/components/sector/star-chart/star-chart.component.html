@@ -29,6 +29,13 @@
       matTooltip="Demo affordance: chart sectors you hold no roles in, to watch every request refuse fail-closed. A real application would not offer this.">
       Chart every sector
     </mat-slide-toggle>
+    @if (sectors.dark()) {
+      <div class="dark-note">
+        <b>{{ sectors.current() }}</b> is dark for you: your digest there is empty, so every deck is issuing its request
+        without the digest's blessing, on purpose, to show the refusal the concealed-sector guard answers. This is the
+        only place in the console a request is sent that the digest already predicts will refuse.
+      </div>
+    }
     <div class="shift">
       <span class="clock">Operations clock: {{ shift().hour | number: '2.0-0' }}:00 Denver</span>
       <span>On watch: <b>{{ shift().onWatch }}</b> ({{ shift().window }})</span>

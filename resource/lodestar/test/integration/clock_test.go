@@ -1,3 +1,4 @@
+// Demonstrates: condition.now, @attribute.timestamp.
 package integration
 
 // clock_test (design plan §9): pins the environment at two instants around a

@@ -1,3 +1,4 @@
+// Demonstrates: write-grouping, condition.old-vs-new.
 package integration
 
 // grouping_test (design plan §9): the dispatcher's two-grant PATCH. Grant A covers

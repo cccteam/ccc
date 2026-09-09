@@ -22,6 +22,8 @@ import (
 // generated statement here for the engine's conditions to render into, so only an
 // unconditional grant opens the download — the console's crew have one; the client
 // portal lists documents and does not download them.
+//
+// Demonstrates: rpc.upload-store, hand-written-route.
 func (a *App) MissionDocumentContent() http.HandlerFunc {
 	missionDocuments := resources.MissionDocument{}.Resource()
 	storeKey := accesstypes.Resource(string(missionDocuments) + ".storeKey")

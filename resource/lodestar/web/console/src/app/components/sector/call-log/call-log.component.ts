@@ -16,6 +16,8 @@ import { StarChartComponent } from '../star-chart/star-chart.component';
  * field-level Create entries: the Cadet's partial-width grant covers summary and
  * severity, so their form is two inputs — the caller contact and transcript neither
  * render nor travel. The case number is server-issued; the transcript is write-only.
+ *
+ * Demonstrates: create-form-narrowing, pii, input_only, output_only.
  */
 @Component({
   selector: 'app-call-log',
@@ -24,7 +26,7 @@ import { StarChartComponent } from '../star-chart/star-chart.component';
   styleUrl: './call-log.component.scss',
 })
 export class CallLogComponent {
-  private sectors = inject(SectorService);
+  sectors = inject(SectorService);
 
   calls = this.sectors.sectorList((sector) => sector.distressCalls);
   columns = ['caseNumber', 'summary', 'severity', 'callerContact', 'filedBy'];

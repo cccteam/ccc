@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
@@ -26,7 +27,8 @@ func (a *App) PilotCards() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewComputedQueryDecoder[computedresources.PilotCard, pilotCard](a, accesstypes.List)
+	decoder := NewComputedQueryDecoder[computedresources.PilotCard, pilotCard](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "DisplayName", Direction: resource.SortAscending}}, DefaultLimit: 25, MaxLimit: 200})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

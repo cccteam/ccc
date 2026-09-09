@@ -1,30 +1,25 @@
+// Demonstrates: regen-idempotent, workflow.dot.
 package generate
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
 )
 
-// TestGeneratedCodeIsIdempotent re-runs the full generation pipeline and fails if any
-// generated file differs from the state before the run. The zz_gen files (Go,
-// TypeScript, and the workflow DOT graphs) are the golden output of the resource
-// generators: any drift here is a generator behavior change that must be either
-// intentional (keep the new output) or a regression.
+// TestGeneratedCodeIsCommitted re-runs the full generation pipeline and fails if any
+// generated file differs from the state on disk. The zz_gen files (Go, TypeScript, DOT)
+// are the golden output of the resource generators: any drift here is a generator
+// behavior change that must be either intentional (commit the new output) or a
+// regression. The comparison hashes the files before and after, so it holds whether the
+// tree is committed or still untracked.
 //
-// The comparison is a content snapshot rather than git status because Lodestar's tree
-// is untracked between build rounds (design plan §12): a git-based drift check would
-// report every generated file as new. Requires the Spanner emulator (podman/docker),
-// like the rest of this module's tests.
-func TestGeneratedCodeIsIdempotent(t *testing.T) {
+// Requires the Spanner emulator (podman/docker), like the rest of this module's tests.
+func TestGeneratedCodeIsCommitted(t *testing.T) {
 	if testing.Short() {
 		t.Skip("generation requires the Spanner emulator")
 	}
@@ -35,7 +30,7 @@ func TestGeneratedCodeIsIdempotent(t *testing.T) {
 	}
 	moduleRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
 
-	before := snapshotGenerated(t, moduleRoot)
+	before := hashGenerated(t, moduleRoot)
 
 	generate := exec.CommandContext(t.Context(), "go", "generate", "./...")
 	generate.Dir = moduleRoot
@@ -43,11 +38,11 @@ func TestGeneratedCodeIsIdempotent(t *testing.T) {
 		t.Fatalf("go generate ./...: %v\n%s", err, out)
 	}
 
-	after := snapshotGenerated(t, moduleRoot)
+	after := hashGenerated(t, moduleRoot)
 
 	var drift []string
-	for path, hash := range after {
-		if before[path] != hash {
+	for path, sum := range after {
+		if before[path] != sum {
 			drift = append(drift, path)
 		}
 	}
@@ -56,25 +51,24 @@ func TestGeneratedCodeIsIdempotent(t *testing.T) {
 			drift = append(drift, path+" (removed)")
 		}
 	}
-	slices.Sort(drift)
 	if len(drift) > 0 {
-		t.Errorf("generator output differs from the committed state; if the change is intentional, keep the regenerated files:\n%s", strings.Join(drift, "\n"))
+		t.Errorf("generator output differs from the state on disk; if the change is intentional, commit the regenerated files:\n%s", strings.Join(drift, "\n"))
 	}
 }
 
-// snapshotGenerated hashes every zz_gen file under the module root (node_modules and
-// build outputs excluded), keyed by its module-relative path.
-func snapshotGenerated(t *testing.T, moduleRoot string) map[string]string {
+// hashGenerated maps every zz_gen file under the module (the Angular workspace's
+// node_modules excluded) to its content hash.
+func hashGenerated(t *testing.T, root string) map[string][32]byte {
 	t.Helper()
 
+	sums := make(map[string][32]byte)
 	var paths []string
-	err := filepath.WalkDir(moduleRoot, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return fmt.Errorf("walking %s: %w", path, err)
+			return err
 		}
 		if d.IsDir() {
-			switch d.Name() {
-			case "node_modules", "dist", ".angular", ".ccc-cache", ".yalc":
+			if d.Name() == "node_modules" || d.Name() == ".angular" || d.Name() == "dist" {
 				return filepath.SkipDir
 			}
 
@@ -87,22 +81,20 @@ func snapshotGenerated(t *testing.T, moduleRoot string) map[string]string {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("walking %s: %v", moduleRoot, err)
+		t.Fatal(err)
 	}
 
-	hashes := make(map[string]string, len(paths))
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
+		raw, err := os.ReadFile(path)
 		if err != nil {
-			t.Fatalf("reading %s: %v", path, err)
+			t.Fatal(err)
 		}
-		sum := sha256.Sum256(data)
-		rel, err := filepath.Rel(moduleRoot, path)
+		rel, err := filepath.Rel(root, path)
 		if err != nil {
-			t.Fatalf("filepath.Rel(%s): %v", path, err)
+			t.Fatal(err)
 		}
-		hashes[rel] = hex.EncodeToString(sum[:])
+		sums[rel] = sha256.Sum256(raw)
 	}
 
-	return hashes
+	return sums
 }

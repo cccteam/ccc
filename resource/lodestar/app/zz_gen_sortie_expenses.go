@@ -28,7 +28,8 @@ func (a *App) SortieExpenses() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.SortieExpense, sortieExpense](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.SortieExpense, sortieExpense](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "Amount", Direction: resource.SortDescending}}, DefaultLimit: 10, MaxLimit: 100})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

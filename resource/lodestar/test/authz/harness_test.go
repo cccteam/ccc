@@ -1,22 +1,22 @@
+// Demonstrates: authz-matrix.
 package authz
 
 import (
 	"context"
 	"encoding/base64"
 	"net/http"
-	"os"
-	"sync"
 	"testing"
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/app"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
-	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	initiator "github.com/cccteam/db-initiator"
-	"github.com/cccteam/session"
+	"github.com/cccteam/logger"
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-playground/validator/v10"
 )
@@ -37,7 +37,19 @@ func (f *fakeAccess) ForUser(user accesstypes.User) *access.UserChecker {
 	return access.NewUserChecker(f, user)
 }
 
+func (f *fakeAccess) ForRole(role accesstypes.Role) *access.RoleChecker {
+	return access.NewRoleChecker(f, role)
+}
+
 func (f *fakeAccess) CheckUserResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.User, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
+	return f.decide(perm, resources), nil
+}
+
+func (f *fakeAccess) CheckRoleResources(_ context.Context, _ accesstypes.Environment, _ accesstypes.Role, _ accesstypes.Scope, perm accesstypes.Permission, resources ...accesstypes.Resource) (accesstypes.Decisions, error) {
+	return f.decide(perm, resources), nil
+}
+
+func (f *fakeAccess) decide(perm accesstypes.Permission, resources []accesstypes.Resource) accesstypes.Decisions {
 	decisions := make(accesstypes.Decisions, len(resources))
 	for _, res := range resources {
 		if f.g[perm] {
@@ -47,7 +59,7 @@ func (f *fakeAccess) CheckUserResources(_ context.Context, _ accesstypes.Environ
 		}
 	}
 
-	return decisions, nil
+	return decisions
 }
 
 // testConfigurer implements app.Configurer over the test dependencies, so the App is
@@ -55,14 +67,18 @@ func (f *fakeAccess) CheckUserResources(_ context.Context, _ accesstypes.Environ
 // owns no router, these suites compose the API surface through router.NewTestRouter,
 // and nothing on that path touches the session.
 type testConfigurer struct {
-	db *initiator.SpannerDB
-	g  grants
+	db        *initiator.SpannerDB
+	g         grants
+	documents *store.DirStore
 }
 
-// CursorKey seals list cursors; the authorization matrix never pages, so any key
-// serves.
+func (c *testConfigurer) ResourceClient() resource.Client {
+	return resource.NewSpannerClient(c.db.Client)
+}
+
+// CursorKey seals the cursors the suites' paged lists issue; any key serves a test process.
 func (c *testConfigurer) CursorKey() *resource.CursorKey {
-	key, err := resource.NewCursorKey(base64.StdEncoding.EncodeToString([]byte("lodestar-authz-cursor-key-material")))
+	key, err := resource.NewCursorKey(base64.StdEncoding.EncodeToString([]byte("skeleton-test-cursor-key-material!!")))
 	if err != nil {
 		panic(err)
 	}
@@ -70,68 +86,41 @@ func (c *testConfigurer) CursorKey() *resource.CursorKey {
 	return key
 }
 
-func (c *testConfigurer) ResourceClient() resource.Client {
-	return resource.NewSpannerClient(c.db.Client)
-}
-
-func (c *testConfigurer) RPCClient() *rpc.Client {
-	return rpc.NewClient()
-}
-
 func (c *testConfigurer) Access() access.Controller {
 	return &fakeAccess{g: c.g}
 }
 
-func (c *testConfigurer) Session() *session.PasswordAuth[session.NoCustomData, session.NoCustomData] {
-	return nil
-}
+func (c *testConfigurer) Crew() *crew.Auth { return nil }
+
+func (c *testConfigurer) Members() *members.Auth { return nil }
+
+func (c *testConfigurer) MembersAccess() access.Controller { return nil }
 
 func (c *testConfigurer) Validator() *validator.Validate {
 	return validator.New()
+}
+
+func (c *testConfigurer) LogExporter() logger.Exporter {
+	return logger.NewConsoleExporter()
 }
 
 func (c *testConfigurer) ConsoleDist() string { return "" }
 
 func (c *testConfigurer) PortalDist() string { return "" }
 
-// DroidAPIKey is unused by these suites: the matrix drives the bare test router,
-// which carries no outlet middleware.
-func (c *testConfigurer) DroidAPIKey() string { return "authz-droid-key" }
+// Documents is a store under the test's temporary directory.
+func (c *testConfigurer) Documents() *store.DirStore { return c.documents }
 
-var (
-	documentsOnce sync.Once
-	documents     *store.DirStore
-)
+// DroidsAPIKey is unused by these suites: the matrix drives the bare test router, which
+// carries no outlet middleware.
+func (c *testConfigurer) DroidsAPIKey() string { return "authz-droids-key" }
 
-// Documents is the document store the upload frame streams into; the matrix never
-// carries a file, so one temporary directory serves the process.
-func (c *testConfigurer) Documents() *store.DirStore {
-	documentsOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "lodestar-authz-documents-*")
-		if err != nil {
-			panic(err)
-		}
-		documents, err = store.NewDirStore(dir)
-		if err != nil {
-			panic(err)
-		}
-	})
-
-	return documents
-}
-
-// DomainVisible recognizes the generated matrix's domain value and honors the
-// scripted grants, per the generated suite's concealed-domain contract: a case
-// carrying no grants has no foothold and is answered as if the domain did not
-// exist. The empty test schema holds no sector rows, so the tenancy roster is
-// scripted rather than read from the table.
+// DomainVisible recognizes the generated matrix's domain value and honors the scripted
+// grants, per the generated suite's concealed-domain contract: a case carrying no grants
+// has no foothold and is answered as if the domain did not exist. The empty test schema
+// holds no sector rows, so the roster is scripted rather than read.
 func (c *testConfigurer) DomainVisible(_ context.Context, _ accesstypes.User, domain accesstypes.Domain) (bool, error) {
 	return domain == "testDomain" && len(c.g) > 0, nil
-}
-
-// Domains returns the scripted tenancy roster; nothing in the matrix consumes it.
-func (c *testConfigurer) Domains(_ context.Context) ([]accesstypes.Domain, error) {
-	return []accesstypes.Domain{"testDomain"}, nil
 }
 
 // newTestHandler composes the pipeline under test: the application's generated
@@ -140,12 +129,22 @@ func (c *testConfigurer) Domains(_ context.Context) ([]accesstypes.Domain, error
 func newTestHandler(t *testing.T, db *initiator.SpannerDB, g grants) http.Handler {
 	t.Helper()
 
-	return withIdentity(testUser, router.NewTestRouter(app.New(&testConfigurer{db: db, g: g})))
+	documents, err := store.NewDirStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store.NewDirStore() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := documents.Close(); err != nil {
+			t.Errorf("store.DirStore.Close() error = %v", err)
+		}
+	})
+
+	return withIdentity(testUser, router.NewTestRouter(app.New(&testConfigurer{db: db, g: g, documents: documents})))
 }
 
-// withIdentity seeds the session identity the way the session middleware would,
-// making the pipeline's identity assumption explicit: these suites test
-// authorization, never authentication.
+// withIdentity seeds the session identity the way the session middleware would, making
+// the pipeline's identity assumption explicit: these suites test authorization, never
+// authentication.
 func withIdentity(user string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionData{

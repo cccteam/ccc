@@ -19,34 +19,11 @@ import (
 )
 
 func (a *App) IngestDroidReports() http.HandlerFunc {
-	// Mirrors of the structs the request and the result reach, leaves first: the
-	// wire shape lives here, in generated code.
-	type droidReading struct {
+	type request struct {
+		ShipID     ccc.UUID  `json:"shipId"`
 		Subsystem  string    `json:"subsystem"`
 		Reading    float64   `json:"reading"`
 		RecordedAt time.Time `json:"recordedAt"`
-	}
-
-	type request struct {
-		ShipID   ccc.UUID       `json:"shipId"`
-		Readings []droidReading `json:"readings"`
-	}
-
-	// The decoded mirror becomes the method's struct through a pinned view of each
-	// source struct: legal now, a compile error the moment a source changes.
-	sourceRequest := func(src request) *rpc.IngestDroidReports {
-		var readings []rpc.DroidReading
-		if src.Readings != nil {
-			readings = make([]rpc.DroidReading, 0, len(src.Readings))
-			for _, e := range src.Readings {
-				readings = append(readings, rpc.DroidReading(e))
-			}
-		}
-
-		return (*rpc.IngestDroidReports)(&struct {
-			ShipID   ccc.UUID
-			Readings []rpc.DroidReading
-		}{ShipID: src.ShipID, Readings: readings})
 	}
 
 	decoder := NewRPCDecoder[rpc.IngestDroidReports, request](a, accesstypes.Execute)
@@ -66,7 +43,7 @@ func (a *App) IngestDroidReports() http.HandlerFunc {
 		// scope, and decision instant.
 		ctx = resource.WithCaller(ctx, caller)
 
-		p := sourceRequest(*params)
+		p := (*rpc.IngestDroidReports)(params)
 		// A dry run (X-Dry-Run: true) runs the whole frame and the body, then
 		// rolls the transaction back: every refusal answers as the real call
 		// would, and a call that would have succeeded answers 200 with no body.

@@ -1,3 +1,4 @@
+// Demonstrates: allow_filter, pii.filter-placement, paging.offset-refused, paging.limit-all.
 package integration
 
 // This suite covers the reserved query parameters over the demo world: filter syntax
@@ -25,8 +26,9 @@ func TestQueryParameters(t *testing.T) {
 
 	listGrants := grants{accesstypes.List: append(
 		withFields("Consignments", "bondCode", "mass", "expiresOn"),
-		withFields("Clients", "name", "trusted", "contactEmail")...,
+		append(withFields("Clients", "name", "trusted", "contactEmail"), withFields("Pilots", "displayName")...)...,
 	)}
+	three := "filter=bondCode:in:(BND-ANV-0001,BND-ANV-0002,BND-ANV-0003)"
 
 	tests := []struct {
 		name       string
@@ -44,12 +46,13 @@ func TestQueryParameters(t *testing.T) {
 		{name: "filter on field without index or allow_filter is rejected", target: sectorPath(anvil, "consignments?filter=description:eq:x"), wantStatus: http.StatusBadRequest},
 		{name: "filter or across conditions", target: sectorPath(anvil, "consignments?filter=bondCode:eq:BND-ANV-0001|bondCode:eq:BND-ANV-0002"), wantStatus: http.StatusOK, wantRows: 2},
 		{name: "filter cannot reach another sector's rows (row tenancy)", target: sectorPath(bastion, "consignments?filter=bondCode:eq:BND-ANV-0001"), wantStatus: http.StatusOK, wantRows: 0},
-		{name: "sort ascending on untagged field", target: sectorPath(anvil, "consignments?sort=expiresOn"), wantStatus: http.StatusOK, wantRows: 3, wantCodes: []string{"BND-ANV-0002", "BND-ANV-0001", "BND-ANV-0003"}},
-		{name: "sort descending", target: sectorPath(anvil, "consignments?sort=expiresOn:desc"), wantStatus: http.StatusOK, wantRows: 3, wantCodes: []string{"BND-ANV-0003", "BND-ANV-0001", "BND-ANV-0002"}},
+		{name: "sort ascending on untagged field", target: sectorPath(anvil, "consignments?"+three+"&sort=expiresOn"), wantStatus: http.StatusOK, wantRows: 3, wantCodes: []string{"BND-ANV-0002", "BND-ANV-0001", "BND-ANV-0003"}},
+		{name: "sort descending", target: sectorPath(anvil, "consignments?"+three+"&sort=expiresOn:desc"), wantStatus: http.StatusOK, wantRows: 3, wantCodes: []string{"BND-ANV-0003", "BND-ANV-0001", "BND-ANV-0002"}},
 		{name: "sort with unknown field is rejected", target: sectorPath(anvil, "consignments?sort=warpFactor"), wantStatus: http.StatusBadRequest},
-		{name: "limit caps the row count", target: sectorPath(anvil, "consignments?sort=expiresOn&limit=1"), wantStatus: http.StatusOK, wantRows: 1, wantCodes: []string{"BND-ANV-0002"}},
+		{name: "limit caps the row count", target: sectorPath(anvil, "consignments?"+three+"&sort=expiresOn&limit=1"), wantStatus: http.StatusOK, wantRows: 1, wantCodes: []string{"BND-ANV-0002"}},
 		{name: "offset is refused", target: sectorPath(anvil, "consignments?sort=expiresOn&limit=1&offset=1"), wantStatus: http.StatusBadRequest},
-		{name: "limit=all returns every row", target: sectorPath(anvil, "consignments?sort=expiresOn&limit=all"), wantStatus: http.StatusOK, wantRows: 3, wantCodes: []string{"BND-ANV-0002", "BND-ANV-0001", "BND-ANV-0003"}},
+		{name: "limit=all returns every row where no maximum is declared", target: "/api/pilots?sort=displayName&limit=all", wantStatus: http.StatusOK, wantRows: 17},
+		{name: "limit=all is refused where a maximum is declared", target: sectorPath(anvil, "consignments?sort=expiresOn&limit=all"), wantStatus: http.StatusBadRequest},
 		{name: "limit=0 is rejected", target: sectorPath(anvil, "consignments?limit=0"), wantStatus: http.StatusBadRequest},
 		{name: "non-numeric limit is rejected", target: sectorPath(anvil, "consignments?limit=many"), wantStatus: http.StatusBadRequest},
 		{name: "unknown query parameter is rejected", target: sectorPath(anvil, "consignments?warp=9"), wantStatus: http.StatusBadRequest},

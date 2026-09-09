@@ -15,7 +15,10 @@ type (
 	// `hazard IN (1, 2)` and the Pilot's `hazard <= subject.clearance AND
 	// (requiredCert IS NULL OR requiredCert IN subject.certifications)`, evaluated by
 	// the generated frame against the located row inside this transaction (E5). The
-	// body only records who claimed.
+	// body only records who claimed. SquadronID carries the field-scope @enumerate, so
+	// the generated TypeScript renders it as the Squadrons picker.
+	//
+	// Demonstrates: @transition, execute-condition, @enumerate, rpc.dry-run.
 	//
 	// @rpc
 	// @permissionScope(domain)

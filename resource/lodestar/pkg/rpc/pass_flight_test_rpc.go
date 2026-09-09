@@ -12,6 +12,8 @@ type (
 	// LastRefitAt with the commit timestamp — the one transition that owns that
 	// business event. (Marked file: see StartFlightTest.)
 	//
+	// Demonstrates: @transition, transition-owned-timestamp, test-suffixed-method.
+	//
 	// @rpc
 	// @permissionScope(domain)
 	// @transition(Refit, from: flight_test, to: cleared)

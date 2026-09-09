@@ -12,6 +12,8 @@ type (
 	// (inspected, in_refit, flight_test) send a ship to the scrapyard. Only the
 	// Sector Marshal holds it.
 	//
+	// Demonstrates: @transition.multi-from.
+	//
 	// @rpc
 	// @permissionScope(domain)
 	// @transition(Refit, from: inspected, in_refit, flight_test, to: scrapped)

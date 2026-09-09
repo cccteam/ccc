@@ -1,3 +1,4 @@
+// Demonstrates: condition.subject-scalar, condition.not-in, condition.prefix-not, @attribute.bool, @attribute.date, @attribute.decimal, @attribute.nullable-fk, @attribute.join-path, @subjectSet.domain, @subjectSet.global, @subjectSet.dotted-value, @subjectValue, @subjectValue.two-per-anchor, immutable, @attribute, @attribute.join-path-global, condition.now, execute-condition.
 package integration
 
 // language_test is the grammar's drift gate (design plan §9): one case per construct
@@ -13,6 +14,16 @@ import (
 
 	"github.com/cccteam/ccc/accesstypes"
 )
+
+// missionIDs names seeded missions by ordinal.
+func missionIDs(ns ...int) []string {
+	ids := make([]string, 0, len(ns))
+	for _, n := range ns {
+		ids = append(ids, missionID(n))
+	}
+
+	return ids
+}
 
 func TestConditionLanguage(t *testing.T) {
 	t.Parallel()
@@ -30,43 +41,43 @@ func TestConditionLanguage(t *testing.T) {
 			name:      "cadet: numeric IN list admits hazard 1 and 2 only",
 			construct: "hazard IN (1, 2)",
 			user:      "cadet",
-			target:    sectorPath(anvil, "missions"),
-			wantIDs:   []string{missionHaulerID, missionCourierID, missionTowID, missionQuarantineID},
+			target:    sectorPath(anvil, "missions?limit=200"),
+			wantIDs:   append([]string{missionHaulerID, missionCourierID, missionTowID, missionQuarantineID}, missionIDs(12, 13, 17, 18, 22, 23, 27, 28, 32, 33)...),
 		},
 		{
 			name:      "veteran: prefix NOT over a parenthesised OR drops routine, low-fee work",
 			construct: "NOT (hazard IN (1, 2) OR fee < 5000)",
 			user:      "veteran",
-			target:    sectorPath(anvil, "missions"),
-			wantIDs:   []string{missionCorvidID, missionConvoyID, missionPodID, missionBullionID},
+			target:    sectorPath(anvil, "missions?limit=200"),
+			wantIDs:   append([]string{missionCorvidID, missionConvoyID, missionPodID, missionBullionID}, missionIDs(14, 15, 16, 19, 24, 25, 26, 30, 31)...),
 		},
 		{
 			name:      "dispatcher: NOT IN over the terminal states",
 			construct: "state NOT IN ('completed', 'failed', 'stood_down')",
 			user:      "dispatcher",
-			target:    sectorPath(anvil, "missions"),
-			wantIDs:   []string{missionHaulerID, missionCorvidID, missionConvoyID, missionCourierID, missionQuarantineID},
+			target:    sectorPath(anvil, "missions?limit=200"),
+			wantIDs:   append([]string{missionHaulerID, missionCorvidID, missionConvoyID, missionCourierID, missionQuarantineID}, missionIDs(12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 26, 27, 28, 29, 31, 32)...),
 		},
 		{
 			name:      "overseer: now as a right-side operand — the overdue desk",
 			construct: "deadline < now AND state NOT IN (...)",
 			user:      "overseer",
-			target:    sectorPath(anvil, "missions"),
-			wantIDs:   []string{missionQuarantineID}, // the Corvid deadline is bootstrap+3m, still ahead at test time
+			target:    sectorPath(anvil, "missions?limit=200"),
+			wantIDs:   []string{missionQuarantineID}, // the Corvid deadline is bootstrap+3m, still ahead at test time; the filler's open deadlines are in October
 		},
 		{
 			name:      "booking: > over a decimal OR subject scalar",
 			construct: "fee > 10000 OR bookedBy = subject",
 			user:      "booking",
-			target:    sectorPath(anvil, "missions"),
-			wantIDs:   []string{missionHaulerID, missionCorvidID, missionConvoyID, missionCourierID, missionPodID, missionBullionID, missionQuarantineID},
+			target:    sectorPath(anvil, "missions?limit=200"),
+			wantIDs:   append([]string{missionHaulerID, missionCorvidID, missionConvoyID, missionCourierID, missionPodID, missionBullionID, missionQuarantineID}, missionIDs(12, 15, 16, 17, 18, 19, 21, 22, 24, 25, 26, 27, 28, 29, 31, 32, 33)...),
 		},
 		{
 			name:      ">= over an int",
 			construct: "hazard >= 4",
 			user:      "wingco",
-			target:    sectorPath(anvil, "missions"),
-			wantIDs:   []string{missionConvoyID, missionPodID},
+			target:    sectorPath(anvil, "missions?limit=200"),
+			wantIDs:   append([]string{missionConvoyID, missionPodID}, missionIDs(15, 16, 20, 21, 25, 26, 30, 31)...),
 		},
 		{
 			name:      "wingco: subject set with a dotted value path",
@@ -79,45 +90,46 @@ func TestConditionLanguage(t *testing.T) {
 			name:      "pilot: subject value threshold, IS NULL inside OR, global subject set",
 			construct: "hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)",
 			user:      "pilot",
-			target:    sectorPath(anvil, "missions"),
+			target:    sectorPath(anvil, "missions?limit=200"),
 			// clearance 3, certs deep_space + salvage: hauler (2, none), corvid (3, salvage), courier (1, none),
-			// tow (1, none), quarantine (2, none). Convoy (4), pod (5, hazmat), bullion (3, escort) fall out.
-			wantIDs: []string{missionHaulerID, missionCorvidID, missionCourierID, missionTowID, missionQuarantineID},
+			// tow (1, none), quarantine (2, none). Convoy (4), pod (5, hazmat), bullion (3, escort) fall out,
+			// as does every escort and every hazard 4 or 5 among the filler.
+			wantIDs: append([]string{missionHaulerID, missionCorvidID, missionCourierID, missionTowID, missionQuarantineID}, missionIDs(12, 13, 17, 19, 23, 24, 27, 28, 29, 32, 33)...),
 		},
 		{
 			name:      "pilot: != on a one-hop join-path attribute",
 			construct: "hangarZone != 'quarantine'",
 			user:      "pilot",
 			target:    sectorPath(anvil, "ships"),
-			wantIDs:   []string{shipKingfisherID, shipStubbornMuleID, shipGoodSamaritanID, shipRustyAnchorID}, // the Lantern sits in Quarantine Bay
+			wantIDs:   []string{shipKingfisherID, shipStubbornMuleID, shipGoodSamaritanID, shipRustyAnchorID, shipTinWhistleID, shipPatientHeronID, shipSecondChanceID, shipBrassCompassID}, // the Lantern and the Slow Boat sit in Quarantine Bay
 		},
 		{
 			name:      "lead: domain subject set OR subject scalar",
 			construct: "assignedSquadron IN subject.squadrons OR bookedBy = subject",
 			user:      "lead",
-			target:    sectorPath(anvil, "missions"),
-			wantIDs:   []string{missionCorvidID, missionConvoyID, missionPodID}, // Hammer's three; nothing booked by lead
+			target:    sectorPath(anvil, "missions?limit=200"),
+			wantIDs:   append([]string{missionCorvidID, missionConvoyID, missionPodID}, missionIDs(14, 18, 20, 22, 28)...), // Hammer's missions; nothing booked by lead
 		},
 		{
 			name:      "archivist: terminal-state row suppression on the root",
 			construct: "state IN ('completed', 'failed', 'stood_down')",
 			user:      "archivist",
-			target:    sectorPath(anvil, "missions"),
-			wantIDs:   []string{missionPodID, missionTowID, missionBullionID},
+			target:    sectorPath(anvil, "missions?limit=200"),
+			wantIDs:   append([]string{missionPodID, missionTowID, missionBullionID}, missionIDs(20, 25, 30, 33)...),
 		},
 		{
 			name:      "archivist: the same text one hop down on sorties",
 			construct: "state IN (...) on a member",
 			user:      "archivist",
 			target:    sectorPath(anvil, "sorties"),
-			wantIDs:   []string{sortiePodID, sortieTowID},
+			wantIDs:   []string{sortiePodID, sortieTowID, "90000000-0000-4000-8000-000000000006", "90000000-0000-4000-8000-000000000007", "90000000-0000-4000-8000-000000000008", "90000000-0000-4000-8000-000000000012"},
 		},
 		{
 			name:      "archivist: the same text two hops down on sortie expenses",
 			construct: "state IN (...) two hops deep",
 			user:      "archivist",
 			target:    sectorPath(anvil, "sortie-expenses"),
-			wantIDs:   []string{expensePodTowGearID},
+			wantIDs:   []string{expensePodTowGearID, "91000000-0000-4000-8000-000000000007", "91000000-0000-4000-8000-000000000008", "91000000-0000-4000-8000-000000000012"},
 		},
 		{
 			name:      "cadet: subject scalar on distress calls",

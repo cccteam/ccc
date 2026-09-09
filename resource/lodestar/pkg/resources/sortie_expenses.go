@@ -7,13 +7,17 @@ import (
 
 type (
 	// SortieExpense is the SECOND hop: fuel, supplies, and tow gear booked against a
-	// sortie. @stateRoot(Mission) on SortieId declares its immediate hop, and the
-	// chain resolver composes Sortie's hop to reach the root, so the Quartermaster's
-	// `state = 'underway'` grant evaluates two hops deep — through Sortie to Mission.
-	// Tenancy runs the same two hops (Sortie → Mission.SectorId).
+	// sortie. @stateRoot(Mission) on SortieId declares its immediate hop, and the chain
+	// resolver composes Sortie's hop to reach the root, so the Quartermaster's state =
+	// 'underway' grant evaluates two hops deep, through Sortie to Mission. Tenancy runs
+	// the same two hops (Sortie, Mission.SectorId).
+	//
+	// Demonstrates: @stateRoot.two-hop, @domain.join-path, create-under-parent.
 	//
 	// @resource
 	// @permissionScope(domain)
+	// @order(Amount desc)
+	// @page(default: 10, max: 100)
 	SortieExpense struct {
 		ID ccc.UUID `spanner:"Id"`
 		// @stateRoot(Mission)

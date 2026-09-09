@@ -3,15 +3,17 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
+import { MatTimepickerModule } from '@angular/material/timepicker';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { FailReason, MissionKind } from '@app/service/zz_gen_enums';
 import { MissionDocuments, Missions, Sorties, SortieExpenses } from '@app/service/zz_gen_resources';
-import { ApiError, Method, rowCapabilities } from '@cccteam/resource';
+import { ApiError, Method, MethodHandle, rowCapabilities } from '@cccteam/resource';
 import { SectorService } from '../sector.service';
 import { StarChartComponent } from '../star-chart/star-chart.component';
 import { WorkflowGraphComponent } from '../workflow-graph/workflow-graph.component';
@@ -24,6 +26,8 @@ import { WorkflowGraphComponent } from '../workflow-graph/workflow-graph.compone
  * zzCapabilities.Execute list names drawn live. Beneath it, Add sortie renders when the
  * mission row's Create list names Sorties, and a sortie's Add expense when the sortie
  * row's list names SortieExpenses. No page copies a state rule.
+ *
+ * Demonstrates: capability-envelope, create-under-parent, cell-masking, @answers, rpc.dry-run, @upload, @enumerate, paging.descriptor-sizes, workflow.ts-constant, paging.link-header, paging.total-count, condition.now.
  */
 @Component({
   selector: 'app-flight-deck',
@@ -33,11 +37,13 @@ import { WorkflowGraphComponent } from '../workflow-graph/workflow-graph.compone
     FormsModule,
     MatButtonModule,
     MatCardModule,
+    MatDatepickerModule,
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
     MatSelectModule,
     MatTableModule,
+    MatTimepickerModule,
     StarChartComponent,
     WorkflowGraphComponent,
   ],
@@ -45,7 +51,7 @@ import { WorkflowGraphComponent } from '../workflow-graph/workflow-graph.compone
   styleUrl: './flight-deck.component.scss',
 })
 export class FlightDeckComponent {
-  private sectors = inject(SectorService);
+  sectors = inject(SectorService);
 
   readonly methods = Methods;
   readonly resources = Resources;
@@ -53,13 +59,15 @@ export class FlightDeckComponent {
   readonly failReasons = Object.values(FailReason);
   readonly now = signal(new Date());
 
-  // The board is paged: four call sheets at a time in deadline order (the
-  // resource's declared order, stated here so the walk is explicit), with the total
-  // asked once on the first page. Previous and next follow the server's Link
-  // relations; no page number or offset is ever assembled here.
+  // The board is paged at the size the descriptor carries for Missions (the @page
+  // annotation's default), in deadline order (the resource's declared order, stated
+  // here so the walk is explicit), with the total asked once on the first page.
+  // Previous and next follow the server's Link relations; no page number, offset, or
+  // page-size literal is ever assembled here.
+  readonly pageSize = this.sectors.pageSize(Resources.Missions);
   missionsPage = this.sectors.sectorPage((sector) => sector.missions, {
     sort: { field: 'deadline' },
-    limit: 4,
+    limit: this.pageSize,
     count: true,
     capabilities: ['Execute', 'Create', 'Update', 'Delete'],
   });
@@ -85,11 +93,14 @@ export class FlightDeckComponent {
   // HoldMission writes its reason as the caller, so a Flight Lead whom Execute
   // admits is still refused the note, and the deck says which grant said no.
   refusal = signal<string | undefined>(undefined);
-  // The hold's dry run: when a mission opens with HoldMission lit, the deck asks the
-  // server to run the whole frame and roll back. The answer says whether the hold
-  // would commit for this caller — the Flight Lead learns of the notes refusal
-  // before touching anything, the Dispatcher only once the mission has closed.
-  holdCheck = signal<{ ok: boolean; message?: string } | undefined>(undefined);
+  // The dry runs: when a mission opens, the deck asks the server to run the whole frame
+  // of every lit transaction-form edge and roll back. Each answer says whether that edge
+  // would commit for this caller, in the words the real call would use: the Flight
+  // Lead learns of the hold's notes refusal before touching anything, the completion
+  // that would answer 409 says so with its figures. Edges that need input are probed
+  // with a placeholder body.
+  edgeChecks = signal<Record<string, { ok: boolean; message?: string }>>({});
+  holdCheck = computed(() => this.edgeChecks()[Methods.HoldMission]);
 
   // Transition bodies that need input beyond the target row.
   claimSquadronId = '';
@@ -100,9 +111,27 @@ export class FlightDeckComponent {
 
   // Edit form state (the Update envelope decides which fields render).
   editNotes = '';
-  editDeadline = '';
+  // The deadline is picked as a day and a time of day (Material's date and time pickers;
+  // the browser's native datetime-local widget was unusable), prefilled with the current
+  // deadline so a change is a nudge, not a from-scratch entry. The pickers carry no
+  // bounds: whether a deadline may move in is a matter of the persona's grant (the
+  // Dispatcher's says extend only, the Sector Marshal's says nothing), and the digest
+  // reports only that a field's grant is conditional, never the condition, so the form
+  // says that much and shows the server's verdict on save.
+  editDeadlineDate: Date | null = null;
+  editDeadlineTime: Date | null = null;
   editAssignedSquadronId = '';
   editFee: number | null = null;
+  // The server's refusal of the last call-sheet save, shown under the form.
+  editRefusal = signal<string | undefined>(undefined);
+  // The editable fields whose Update grant is conditional, named for the hint under the
+  // form; undefined when every editable field is granted outright.
+  conditionalEdits = computed(() => {
+    const fields = (['assignedSquadronId', 'deadline', 'fee', 'notes'] as const).filter(
+      (field) => this.sectors.fieldState(Permissions.Update, Resources.Missions, field) === 'conditional',
+    );
+    return fields.length ? fields.join(', ') : undefined;
+  });
 
   // Booking form state.
   newTitle = '';
@@ -111,7 +140,8 @@ export class FlightDeckComponent {
   newClientId = '';
   newHazard: number | null = null;
   newFee: number | null = null;
-  newDeadline = '';
+  newDeadlineDate: Date | null = null;
+  newDeadlineTime: Date | null = null;
   newNotes = '';
 
   // Add-sortie and add-expense form state.
@@ -133,12 +163,14 @@ export class FlightDeckComponent {
     this.selectedID.set(this.selectedID() === mission.id ? undefined : mission.id);
     this.pendingEdge.set(undefined);
     this.refusal.set(undefined);
-    this.holdCheck.set(undefined);
-    if (this.selectedID() === mission.id && this.executable(mission).includes(Methods.HoldMission)) {
-      void this.probeHold(mission);
+    this.edgeChecks.set({});
+    if (this.selectedID() === mission.id) {
+      void this.probeEdges(mission);
     }
+    this.editRefusal.set(undefined);
     this.editNotes = mission.notes ?? '';
-    this.editDeadline = '';
+    this.editDeadlineDate = this.deadlineOf(mission);
+    this.editDeadlineTime = this.deadlineOf(mission);
     this.editAssignedSquadronId = mission.assignedSquadronId ?? '';
     this.editFee = null;
     this.claimSquadronId = '';
@@ -164,17 +196,76 @@ export class FlightDeckComponent {
     return (rowCapabilities(mission)?.Execute ?? []) as Method[];
   }
 
-  private async probeHold(mission: Missions): Promise<void> {
-    try {
-      await this.sectors.sectorApi().holdMission.dryRun({ missionId: mission.id, reason: 'dry run' });
-      this.holdCheck.set({ ok: true });
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 403) {
-        this.holdCheck.set({ ok: false, message: e.message });
-        return;
-      }
-      throw e;
+  /** The placeholder body each edge's dry run carries; the target row is the mission. */
+  private probeBody(mission: Missions, method: Method): Record<string, unknown> | undefined {
+    const squadron = this.squadrons.value()[0]?.id;
+    const ship = this.ships.value()[0]?.id;
+    switch (method) {
+      case Methods.ClaimMission:
+        return squadron ? { missionId: mission.id, squadronId: squadron } : undefined;
+      case Methods.LaunchMission:
+        return ship ? { missionId: mission.id, shipId: ship, pilotUserId: 'dry-run' } : undefined;
+      case Methods.HoldMission:
+        return { missionId: mission.id, reason: 'dry run' };
+      case Methods.FailMission:
+        return { missionId: mission.id, reasonId: 'aborted' };
+      default:
+        return { missionId: mission.id };
     }
+  }
+
+  /**
+   * probeEdges dry-runs every lit edge: the frame decodes, checks, runs the body with
+   * every write it arms, and rolls back; a refusal is exactly the one the real call
+   * would give (a declared 409 included), so the deck can explain before anything is
+   * touched.
+   */
+  private async probeEdges(mission: Missions): Promise<void> {
+    const checks: Record<string, { ok: boolean; message?: string }> = {};
+    for (const method of this.executable(mission)) {
+      const handle = this.handleOf(method);
+      const body = this.probeBody(mission, method);
+      if (!handle || !body) continue;
+      try {
+        await handle.dryRun(body as never);
+        checks[method] = { ok: true };
+      } catch (e) {
+        if (e instanceof ApiError) {
+          checks[method] = { ok: false, message: `${e.status}: ${e.message}` };
+          continue;
+        }
+        throw e;
+      }
+    }
+    this.edgeChecks.set(checks);
+  }
+
+  /** The typed handle of a mission transition, by the generated method name. */
+  private handleOf(method: Method): MethodHandle<unknown, unknown> | undefined {
+    const api = this.sectors.sectorApi();
+    switch (method) {
+      case Methods.ClaimMission:
+        return api.claimMission;
+      case Methods.LaunchMission:
+        return api.launchMission;
+      case Methods.HoldMission:
+        return api.holdMission;
+      case Methods.ResumeMission:
+        return api.resumeMission;
+      case Methods.StandDownMission:
+        return api.standDownMission;
+      case Methods.CompleteMission:
+        return api.completeMission;
+      case Methods.FailMission:
+        return api.failMission;
+      default:
+        return undefined;
+    }
+  }
+
+  /** The dry run's verdict for one edge, for the edge list. */
+  check(method: Method): { ok: boolean; message?: string } | undefined {
+    return this.edgeChecks()[method];
   }
 
   canEdit(mission: Missions, field: keyof Missions & string): boolean {
@@ -224,7 +315,9 @@ export class FlightDeckComponent {
     if (!this.attachTitle || this.attachFiles.length === 0) return;
     this.attachRefusal.set(undefined);
     try {
-      await this.sectors.sectorApi().attachMissionDocument.upload({ missionId: mission.id, title: this.attachTitle }, this.attachFiles);
+      await this.sectors
+        .sectorApi()
+        .attachMissionDocument.upload({ missionId: mission.id, title: this.attachTitle }, this.attachFiles);
     } catch (e) {
       if (e instanceof ApiError && (e.status === 403 || e.status === 413)) {
         this.attachRefusal.set(e.message);
@@ -256,6 +349,11 @@ export class FlightDeckComponent {
 
   overdue(mission: Missions): boolean {
     return !!mission.deadline && new Date(mission.deadline).getTime() < this.now().getTime();
+  }
+
+  /** The mission's deadline as a Date, or null when it has none. */
+  deadlineOf(mission: Missions): Date | null {
+    return mission.deadline ? new Date(mission.deadline) : null;
   }
 
   countdown(mission: Missions): string {
@@ -360,7 +458,10 @@ export class FlightDeckComponent {
     const handle = this.sectors.sectorApi().missions;
     const patch: Record<string, unknown> = {};
     if (this.canEdit(mission, 'notes') && this.editNotes !== (mission.notes ?? '')) patch['notes'] = this.editNotes;
-    if (this.canEdit(mission, 'deadline') && this.editDeadline) patch['deadline'] = new Date(this.editDeadline);
+    const deadline = combineDateAndTime(this.editDeadlineDate, this.editDeadlineTime);
+    if (this.canEdit(mission, 'deadline') && deadline && deadline.getTime() !== this.deadlineOf(mission)?.getTime()) {
+      patch['deadline'] = deadline;
+    }
     if (
       this.canEdit(mission, 'assignedSquadronId') &&
       this.editAssignedSquadronId &&
@@ -370,7 +471,16 @@ export class FlightDeckComponent {
     }
     if (this.canEdit(mission, 'fee') && this.editFee !== null) patch['fee'] = this.editFee;
     if (Object.keys(patch).length === 0) return;
-    await handle.patch(handle.keyOf(mission), patch);
+    this.editRefusal.set(undefined);
+    try {
+      await handle.patch(handle.keyOf(mission), patch);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403) {
+        this.editRefusal.set(e.message);
+        return;
+      }
+      throw e;
+    }
     this.missionsPage.reload();
   }
 
@@ -382,7 +492,8 @@ export class FlightDeckComponent {
   }
 
   async book(): Promise<void> {
-    if (!this.newTitle || !this.newKind || !this.newClientId || !this.newDeadline) return;
+    const deadline = combineDateAndTime(this.newDeadlineDate, this.newDeadlineTime);
+    if (!this.newTitle || !this.newKind || !this.newClientId || !deadline) return;
     await this.sectors.sectorApi().missions.create({
       clientId: this.newClientId,
       kindId: this.newKind,
@@ -390,7 +501,7 @@ export class FlightDeckComponent {
       brief: this.newBrief || undefined,
       hazard: this.newHazard ?? 1,
       fee: this.newFee ?? 0,
-      deadline: new Date(this.newDeadline),
+      deadline,
       notes: this.newNotes || undefined,
     });
     this.newTitle = '';
@@ -399,7 +510,8 @@ export class FlightDeckComponent {
     this.newClientId = '';
     this.newHazard = null;
     this.newFee = null;
-    this.newDeadline = '';
+    this.newDeadlineDate = null;
+    this.newDeadlineTime = null;
     this.newNotes = '';
     this.missionsPage.reload();
   }
@@ -427,4 +539,13 @@ export class FlightDeckComponent {
     this.newExpenseAmount = null;
     this.expenses.reload();
   }
+}
+
+/**
+ * One instant from a picked day and a picked time of day: the day's date at the time's
+ * hours and minutes, in the browser's zone. Null until both are picked.
+ */
+function combineDateAndTime(day: Date | null, time: Date | null): Date | null {
+  if (!day || !time) return null;
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), time.getHours(), time.getMinutes(), 0, 0);
 }

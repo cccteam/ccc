@@ -1,3 +1,4 @@
+// Demonstrates: @upload, rpc.upload-store, hand-written-route, execute-condition.
 package integration
 
 // This suite covers the upload form against the demo world: AttachMissionDocument
@@ -259,7 +260,7 @@ func TestMissionDocument_portalAndDownload(t *testing.T) {
 
 	// The portal lists the client's documents through its own outlet, with the
 	// grant's fields: no store key, no uploader.
-	portalStatus, portalBody := doRequestAs(t, h, "client", http.MethodGet, "/portal/sectors/anvil/mission-documents", "")
+	portalStatus, portalBody := doRequestAs(t, h, "client", http.MethodGet, "/portal/api/sectors/anvil/mission-documents", "")
 	assertStatus(t, portalStatus, http.StatusOK, portalBody)
 	portalRows := decodeRows(t, portalBody)
 	if len(portalRows) != 1 {

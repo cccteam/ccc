@@ -7,7 +7,14 @@
 
 <app-star-chart></app-star-chart>
 
-@if (!canList()) {
+@if (sectors.refusalOf(missionsPage); as refusal) {
+  <mat-card appearance="outlined" class="table-card refusal-slot">
+    <p class="refusal"><b>Refused by the server:</b> {{ refusal }}</p>
+    <p class="empty">
+      The star chart's dark-sector bypass sent this request on purpose; the concealed-sector guard answered.
+    </p>
+  </mat-card>
+} @else if (!canList() && !sectors.dark()) {
   <mat-card appearance="outlined" class="table-card">
     <p class="empty">Your posting in {{ sector() || 'this sector' }} does not cover missions.</p>
   </mat-card>
@@ -18,7 +25,7 @@
     </button>
     <span class="pager-total">
       @if (missionTotal() !== undefined) {
-        {{ missions().length }} of {{ missionTotal() }} missions
+        {{ missions().length }} of {{ missionTotal() }} missions, {{ pageSize }} a page from the descriptor
       } @else {
         {{ missions().length }} missions
       }
@@ -79,7 +86,17 @@
 
       <div class="edges">
         @for (method of executable(mission); track method) {
-          <button mat-stroked-button (click)="onEdge(mission, method)">{{ method }}</button>
+          <span class="edge">
+            <button mat-stroked-button (click)="onEdge(mission, method)">{{ method }}</button>
+            @if (check(method); as verdict) {
+              <span
+                class="probe"
+                [class.refused]="!verdict.ok"
+                [title]="verdict.message ?? 'The dry run says this edge would commit for you.'">
+                {{ verdict.ok ? 'dry run: would commit' : 'dry run: ' + verdict.message }}
+              </span>
+            }
+          </span>
         } @empty {
           <span class="empty">No edges are lit for you on this mission.</span>
         }
@@ -155,7 +172,12 @@
         }
       }
 
-      @if (canEdit(mission, 'notes') || canEdit(mission, 'deadline') || canEdit(mission, 'assignedSquadronId') || canEdit(mission, 'fee')) {
+      @if (
+        canEdit(mission, 'notes') ||
+        canEdit(mission, 'deadline') ||
+        canEdit(mission, 'assignedSquadronId') ||
+        canEdit(mission, 'fee')
+      ) {
         <h3>Edit call sheet</h3>
         <form class="inline-form" (ngSubmit)="saveEdits(mission)">
           @if (canEdit(mission, 'assignedSquadronId')) {
@@ -170,8 +192,16 @@
           }
           @if (canEdit(mission, 'deadline')) {
             <mat-form-field appearance="outline">
-              <mat-label>Deadline (extend, never pull in)</mat-label>
-              <input matInput name="editDeadline" type="datetime-local" [(ngModel)]="editDeadline" />
+              <mat-label>Deadline</mat-label>
+              <input matInput name="editDeadlineDate" [matDatepicker]="editDatePicker" [(ngModel)]="editDeadlineDate" />
+              <mat-datepicker-toggle matIconSuffix [for]="editDatePicker"></mat-datepicker-toggle>
+              <mat-datepicker #editDatePicker></mat-datepicker>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="time">
+              <mat-label>Time</mat-label>
+              <input matInput name="editDeadlineTime" [matTimepicker]="editTimePicker" [(ngModel)]="editDeadlineTime" />
+              <mat-timepicker-toggle matIconSuffix [for]="editTimePicker"></mat-timepicker-toggle>
+              <mat-timepicker #editTimePicker interval="30m"></mat-timepicker>
             </mat-form-field>
           }
           @if (canEdit(mission, 'fee')) {
@@ -191,6 +221,15 @@
             <button mat-stroked-button type="button" (click)="remove(mission)">Delete</button>
           }
         </form>
+        @if (conditionalEdits(); as fields) {
+          <p class="empty">
+            Your grant on {{ fields }} is conditional: the digest says you may write it, the server judges each change
+            against the grant's condition when you save.
+          </p>
+        }
+        @if (editRefusal(); as refusal) {
+          <p class="refusal">{{ refusal }}</p>
+        }
       }
 
       <h3>Documents</h3>
@@ -228,7 +267,9 @@
           </div>
           <ul class="expenses">
             @for (expense of expensesOf(sortie); track expense.id) {
-              <li>{{ expense.category }} — {{ expense.amount }} cr {{ expense.note ? '(' + expense.note + ')' : '' }}</li>
+              <li>
+                {{ expense.category }} — {{ expense.amount }} cr {{ expense.note ? '(' + expense.note + ')' : '' }}
+              </li>
             }
           </ul>
           @if (canAddExpense(sortie)) {
@@ -329,7 +370,25 @@
         @if (canBookField('deadline')) {
           <mat-form-field appearance="outline">
             <mat-label>Deadline</mat-label>
-            <input matInput name="deadline" type="datetime-local" [(ngModel)]="newDeadline" required />
+            <input
+              matInput
+              name="deadlineDate"
+              [matDatepicker]="newDatePicker"
+              [(ngModel)]="newDeadlineDate"
+              required />
+            <mat-datepicker-toggle matIconSuffix [for]="newDatePicker"></mat-datepicker-toggle>
+            <mat-datepicker #newDatePicker></mat-datepicker>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="time">
+            <mat-label>Time</mat-label>
+            <input
+              matInput
+              name="deadlineTime"
+              [matTimepicker]="newTimePicker"
+              [(ngModel)]="newDeadlineTime"
+              required />
+            <mat-timepicker-toggle matIconSuffix [for]="newTimePicker"></mat-timepicker-toggle>
+            <mat-timepicker #newTimePicker interval="30m"></mat-timepicker>
           </mat-form-field>
         }
         @if (canBookField('brief')) {

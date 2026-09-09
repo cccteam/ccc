@@ -1,0 +1,62 @@
+<h1>Sector Briefing</h1>
+<p>
+  A method that runs outside a transaction: it reads the sector as you, so the sheet carries what your grants let you
+  see (the Archivist's counts redactions where her fee is masked), and it asks the digest before folding the hazard
+  board in. Dry-run is refused on it with a 400: there is nothing to roll back.
+</p>
+
+<app-star-chart></app-star-chart>
+
+@if (!canCompile() && !sectors.dark()) {
+  <mat-card appearance="outlined" class="table-card">
+    <p class="empty">Your posting in {{ sector() || 'this sector' }} does not include compiling a briefing.</p>
+  </mat-card>
+} @else {
+  <mat-card appearance="outlined" class="table-card">
+    <mat-card-content>
+      <div class="controls">
+        <mat-slide-toggle [checked]="includeHazards()" (change)="includeHazards.set($event.checked)">Include the hazard board</mat-slide-toggle>
+        <button mat-flat-button type="button" (click)="compile()">Compile briefing</button>
+        <button mat-stroked-button type="button" (click)="tryDryRun()" title="A client-form method refuses a dry run: there is no transaction to roll back.">
+          Dry-run (refused by design)
+        </button>
+      </div>
+      @if (refusal(); as refusal) {
+        <p class="refusal">{{ refusal }}</p>
+      }
+      @if (dryRunRefusal(); as refusal) {
+        <p class="refusal">Dry run: {{ refusal }}</p>
+      }
+      @if (sheet(); as sheet) {
+        <div class="sheet">
+          <h2>Briefing for {{ sheet.sector }}</h2>
+          <p class="stamp">compiled {{ sheet.compiledAt | date: 'medium' }}</p>
+          <dl>
+            <dt>Missions you may see</dt>
+            <dd>{{ sheet.missions }}</dd>
+            <dt>Still open</dt>
+            <dd>{{ sheet.openMissions }}</dd>
+            <dt>Worst hazard</dt>
+            <dd>{{ sheet.worstHazard }}</dd>
+            <dt>Fees you may see</dt>
+            <dd>{{ sheet.feesOutstanding | number: '1.0-0' }} cr</dd>
+            <dt>Fees redacted</dt>
+            <dd>{{ sheet.feesRedacted }}</dd>
+            <dt>Overdue</dt>
+            <dd>{{ sheet.overdue.length }} mission(s)</dd>
+          </dl>
+          @if (sheet.hazardWithheld) {
+            <p class="empty">The hazard board was withheld: your grants do not include it, and the body asked before folding it in.</p>
+          } @else if (sheet.hazardBoard.length) {
+            <h3>Hazard board</h3>
+            <ul>
+              @for (line of sheet.hazardBoard; track line.shipName + line.subsystem) {
+                <li>{{ line.shipName }} / {{ line.subsystem }}: {{ line.worstReading }}</li>
+              }
+            </ul>
+          }
+        </div>
+      }
+    </mat-card-content>
+  </mat-card>
+}

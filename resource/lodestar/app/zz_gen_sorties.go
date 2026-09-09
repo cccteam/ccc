@@ -30,7 +30,8 @@ func (a *App) Sorties() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Sortie, sortie](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.Sortie, sortie](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "LaunchedAt", Direction: resource.SortDescending}}, DefaultLimit: 10, MaxLimit: 100})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

@@ -1,3 +1,4 @@
+// Demonstrates: @domain, fail-closed.bare-resource, workflow.state-table, outlet.exclusive, outlet.shared, outlet.isolation, @suppress, @enumerate.type, @domain.join-path.
 package integration
 
 // This suite pins structural permission enforcement over the demo world: field
@@ -175,10 +176,10 @@ func TestOutletExclusivity(t *testing.T) {
 	for _, target := range []string{
 		sectorPath(anvil, "droid-reports"),
 		sectorPath(anvil, "ingest-droid-reports"),
-		"/portal/sectors/" + anvil + "/droid-reports",
-		"/portal/sectors/" + anvil + "/refits",
-		"/portal/sectors/" + anvil + "/ships",
-		"/portal/sectors/" + anvil + "/squadrons",
+		"/portal/api/sectors/" + anvil + "/droid-reports",
+		"/portal/api/sectors/" + anvil + "/refits",
+		"/portal/api/sectors/" + anvil + "/ships",
+		"/portal/api/sectors/" + anvil + "/squadrons",
 		"/droids/permission-digest",
 		"/droids/user-domains",
 	} {

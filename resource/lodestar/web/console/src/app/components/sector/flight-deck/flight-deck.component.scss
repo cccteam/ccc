@@ -103,3 +103,18 @@ h3 {
   color: #2f7a3e;
   font-size: 0.85rem;
 }
+
+.edge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  margin: 0 0.5rem 0.5rem 0;
+}
+.probe {
+  font-size: 0.78rem;
+  color: #2f7a3e;
+}
+.probe.refused {
+  color: #a5640a;
+}

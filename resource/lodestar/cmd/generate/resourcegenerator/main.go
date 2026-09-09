@@ -29,37 +29,26 @@ func run(ctx context.Context) error {
 		},
 		generation.GenerateHandlers("app"),
 		generation.GenerateRoutes("pkg/router", "api"),
-		// The portal outlet is the clients' browser app: structs annotated with
-		// @outlet naming portal are served under /portal, behind the same PasswordAuth
-		// composed around that prefix, with their own permission-digest and
-		// user-domains routes (ServesSessions) so the portal's generated client can
-		// bootstrap. Its members are Missions, DistressCalls, ClientContacts, and
-		// StandDownMission, all @outlet(default, portal).
-		generation.WithRouterOutlet("portal", "portal", generation.ServesSessions()),
 		// The droids outlet is the machine channel: structs annotated with @outlet
 		// naming droids are served under /droids, which the router composes behind
-		// API-key authentication instead of the browser session. DroidReport and
-		// IngestDroidReports are droids-ONLY; Consignment and ReleaseConsignment are
-		// shared with the default outlet.
+		// API-key authentication instead of a browser session.
 		generation.WithRouterOutlet("droids", "droids"),
-		generation.GenerateHandlerTests("test/authz"),
-		// Sector-scoped resources and RPC methods are served under the sector segment
-		// pair: /api/sectors/{sectorID}/... . The sector is the permission domain, and
-		// Sector is the tenant-record resource, so the parameter derives from its key.
+		// The portal outlet is the clients' browser app: structs annotated with @outlet
+		// naming portal are served under /portal/api behind the members auth, with their
+		// own permission-digest and user-domains routes (ServesSessions).
+		generation.WithRouterOutlet("portal", "portal/api", generation.ServesSessions()),
+		// Sector-scoped resources and methods are served under /api/sectors/{sectorID}/;
+		// a sector the caller holds no grant in answers like one that does not exist.
 		generation.WithDomainRoute("sectors"),
-		// Sector existence is concealed: a sector the caller holds no grant in answers
-		// exactly like a sector that does not exist — Cinder is dark on most charts.
 		generation.WithConcealedDomains(),
 		generation.WithRPC("pkg/rpc"),
 		generation.WithVirtualResources("pkg/virtualresources"),
 		generation.WithComputedResources("pkg/computedresources"),
-		// Client (global) and Hangar (sector-scoped) are excluded from consolidation
-		// so both standalone PATCH surfaces stay exercised alongside the consolidated
-		// /api/resources handler.
+		generation.GenerateHandlerTests("test/authz"),
+		// Client (global) and Hangar (sector-scoped) keep standalone PATCH surfaces
+		// beside the consolidated handler.
 		generation.WithConsolidatedHandlers("resources", true, "Client", "Hangar"),
 		generation.WithSpannerEmulatorVersion("1.5.56"),
-		// Two TypeScript targets in one run: the crew console on the default outlet,
-		// and the client portal filtered to the portal outlet's members.
 		generation.GenerateTypescript("web/console/src/app/core/service",
 			generation.GenerateMetadata(),
 			generation.GeneratePermissions(),

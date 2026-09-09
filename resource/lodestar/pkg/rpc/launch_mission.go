@@ -14,7 +14,10 @@ import (
 type (
 	// LaunchMission moves a mission claimed -> underway and creates its first sortie
 	// (ship and pilot) in the same transaction — a transition with a visible side
-	// effect one hop down the workflow.
+	// effect one hop down the workflow. ShipID carries the field-scope @enumerate, so the
+	// launch dialog renders it as the Ships picker.
+	//
+	// Demonstrates: @transition, @enumerate.
 	//
 	// @rpc
 	// @permissionScope(domain)

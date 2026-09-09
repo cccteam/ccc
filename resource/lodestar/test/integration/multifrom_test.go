@@ -1,3 +1,4 @@
+// Demonstrates: @transition.multi-from, @transition.loop, @transition.
 package integration
 
 // multifrom_test (design plan §9): Stand Down succeeds from open, claimed, and on_hold

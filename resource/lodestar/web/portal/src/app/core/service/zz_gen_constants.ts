@@ -19,6 +19,7 @@ export const PermissionScopes = {
 
 export const Resources = {
   ClientContacts: 'ClientContacts' as Resource,
+  ClientStatements: 'ClientStatements' as Resource,
   DistressCalls: 'DistressCalls' as Resource,
   MissionDocuments: 'MissionDocuments' as Resource,
   Missions: 'Missions' as Resource,

@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
@@ -16,8 +17,8 @@ import (
 
 func (a *App) ServiceLedgers() http.HandlerFunc {
 	type serviceLedger struct {
-		SectorID        string          `json:"sectorId"        perm:"-"`
-		Name            string          `json:"name"`
+		SectorID        string          `json:"sectorId"        allow_filter:"true" perm:"-"`
+		Name            string          `json:"name"            allow_filter:"true"`
 		OpenMissions    int64           `json:"openMissions"`
 		FeesOutstanding decimal.Decimal `json:"feesOutstanding"`
 		Settlements     decimal.Decimal `json:"settlements"`
@@ -25,7 +26,8 @@ func (a *App) ServiceLedgers() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewComputedQueryDecoder[computedresources.ServiceLedger, serviceLedger](a, accesstypes.List)
+	decoder := NewComputedQueryDecoder[computedresources.ServiceLedger, serviceLedger](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "FeesOutstanding", Direction: resource.SortDescending}}, DefaultLimit: 25, MaxLimit: 200})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

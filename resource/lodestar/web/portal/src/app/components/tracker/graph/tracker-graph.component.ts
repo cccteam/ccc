@@ -23,6 +23,8 @@ interface Edge {
  * target's own generated Workflows constant. For a client no edge is lit except Stand
  * Down, live only while the mission is open, claimed, or on hold and only on their
  * company's rows — the row's Execute envelope says so; the page never decides.
+ *
+ * Demonstrates: workflow.ts-constant, typescript.second-target.
  */
 @Component({
   selector: 'app-tracker-graph',

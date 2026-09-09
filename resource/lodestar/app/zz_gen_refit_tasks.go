@@ -27,7 +27,8 @@ func (a *App) RefitTasks() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.RefitTask, refitTask](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.RefitTask, refitTask](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "TaskNumber", Direction: resource.SortAscending}}, DefaultLimit: 25, MaxLimit: 200})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

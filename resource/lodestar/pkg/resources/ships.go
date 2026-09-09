@@ -9,20 +9,24 @@ import (
 
 type (
 	// Ship is a hull in the service's fleet. Its HangarId foreign key carries both a
-	// one-hop @domain binding (Ship → Hangar.SectorId — no denormalized tenant
-	// column, which since c2b62ab is legal on a plain @target root) and a one-hop
-	// @attribute join path (hangarZone = the hangar's zone). Its ClassId carries a
-	// SECOND join-path attribute into a GLOBAL table (shipRole = the class's role).
+	// one-hop @domain binding (Ship to Hangar.SectorId, no denormalized tenant column,
+	// which is legal on a plain @target root) and a one-hop @attribute join path
+	// (hangarZone = the hangar's zone). Its ClassId carries a SECOND join-path attribute
+	// into a GLOBAL table (shipRole = the class's role).
 	//
 	// Registry is immutable. LastRefitAt is domain data owned by the PassFlightTest
 	// transition, which stamps it with the commit timestamp as an explicit update;
-	// output_only keeps clients from writing it. UpdatedAt is the mechanical
-	// enforcement stamp — an output_only_update_fn — which also gives the resource the
-	// generated NewShipTouch that HailShip fires. Change tracking is on so a Hail
-	// lands in the ship's log with every field unchanged.
+	// output_only keeps clients from writing it. UpdatedAt is the mechanical enforcement
+	// stamp, an output_only_update_fn, which also gives the resource the generated
+	// NewShipTouch that HailShip fires. Change tracking is on so a Hail lands in the
+	// ship's log with every field unchanged.
+	//
+	// Demonstrates: @domain.join-path, @attribute.join-path, @attribute.join-path-global, immutable, output_only_update_fn, transition-owned-timestamp, change-tracking.
 	//
 	// @resource
 	// @permissionScope(domain)
+	// @order(Name asc)
+	// @page(default: 10, max: 100)
 	Ship struct {
 		ID ccc.UUID `spanner:"Id"`
 		// @domain(via: SectorID)

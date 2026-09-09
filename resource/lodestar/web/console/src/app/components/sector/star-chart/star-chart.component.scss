@@ -73,3 +73,12 @@
     color: rgba(0, 0, 0, 0.6);
   }
 }
+
+.dark-note {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #a5640a;
+  background: rgba(165, 100, 10, 0.08);
+  font-size: 0.85rem;
+  max-width: 60ch;
+}

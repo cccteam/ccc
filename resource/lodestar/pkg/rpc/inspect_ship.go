@@ -28,6 +28,8 @@ type (
 	// with the typed InspectShipResult instead of re-reading. The report carries
 	// identifiers and readings, never a row: rows are read through their routes.
 	//
+	// Demonstrates: @transition, @transition.join-path-root, transition-owned-timestamp, rpc.typed-result, rpc.nested-shape.
+	//
 	// @rpc
 	// @permissionScope(domain)
 	// @transition(Refit, from: docked, to: inspected)

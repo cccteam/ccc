@@ -1,7 +1,7 @@
-// main is the entrypoint for the Lodestar demo application: it serves the generated
-// resource API (three outlets: the crew console, the client portal, and the droid
-// channel) and both Angular applications against a bootstrapped Spanner emulator
-// database (see cmd/bootstrap).
+// main serves the application: the generated resource API behind browser sessions, and the
+// console's built Angular bundle for everything else.
+//
+// Demonstrates: impulse.bootstrapped, ci-stub.
 package main
 
 import (
@@ -27,9 +27,9 @@ func Main() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	conf, err := config.New(ctx)
+	conf, err := config.NewServerConfiguration(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed to get config")
+		return errors.Wrap(err, "config.NewServerConfiguration()")
 	}
 	defer conf.Close()
 

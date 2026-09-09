@@ -27,6 +27,8 @@ const READ_WRITE: Permission[] = [Permissions.List, Permissions.Read, Permission
  * permission digest rendered as an object in the world; every deck consults the same
  * digest before issuing a request. Under a masked "view as" session the write column
  * carries a stripe: Masked drops those permissions from the digest itself.
+ *
+ * Demonstrates: permission-digest, impersonation.mask, computed.pushdown, tenancy.user-domains.
  */
 @Component({
   selector: 'app-dashboard',

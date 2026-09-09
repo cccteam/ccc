@@ -1,26 +1,26 @@
 package resources
 
-import (
-	"cloud.google.com/go/civil"
-)
+import "cloud.google.com/go/civil"
 
 type (
 	// Sector is the tenant record: its route name equals the domain route segment, so
-	// /api/sectors lists the tenants while /api/sectors/{sectorID}/... serves the
-	// sector-scoped routes. Lodestar derives its domain universe from this table
-	// rather than a fixed in-code list — the bootstrap reads it for MigrateRoles and
-	// the DomainVisible seam queries the startup cache of it — so adding a sector is a
-	// data change, not a release.
+	// /api/sectors lists the sectors while /api/sectors/{sectorID}/... serves the
+	// sector-scoped routes. The application derives its domain universe from this table
+	// rather than a fixed in-code list: the deployment reads it for MigrateRoles and the
+	// DomainVisible seam checks it, so adding a sector is a data change, not a release.
 	//
-	// The primary key is a human-readable slug (anvil, bastion, cinder), not a UUID:
-	// tenant identifiers appear in every sector-scoped URL and in role provisioning,
-	// and the schema enforces the slug shape with a CHECK constraint. Creating a
-	// sector therefore supplies its key (no server-generated UUID).
+	// The primary key is a human-readable slug, not a UUID: sector identifiers appear in
+	// every sector-scoped URL and in role provisioning, and the schema enforces the slug
+	// shape with a CHECK constraint. Creating a sector therefore supplies its key.
 	//
-	// Sector itself is a GLOBAL resource — administering the tenant list is a
-	// headquarters concern. The star chart's "chart every sector" toggle reads it.
+	// Sector itself is a GLOBAL resource: administering the sector list is a global
+	// concern. The star chart's dark sectors are the ones a login holds no grant in.
+	//
+	// Demonstrates: tenancy.tenant-record, tenancy.concealed, @order, @page.
 	//
 	// @resource
+	// @order(Name asc)
+	// @page(default: 25, max: 200)
 	Sector struct {
 		ID          string     `spanner:"Id"`
 		Name        string     `spanner:"Name"`

@@ -12,6 +12,8 @@ type (
 	// carries `now < '2027-06-30T00:00:00Z'` — an authorization with an expiry, folded
 	// at decode time since no row exists to evaluate against.
 	//
+	// Demonstrates: rpc.row-free, condition.now.
+	//
 	// @rpc
 	IssueBulletin struct {
 		Announcement string

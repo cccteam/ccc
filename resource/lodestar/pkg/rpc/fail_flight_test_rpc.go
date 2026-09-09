@@ -12,6 +12,8 @@ type (
 	// slides back a bay and the in_refit state is entered twice. (Marked file: see
 	// StartFlightTest.)
 	//
+	// Demonstrates: @transition.loop, test-suffixed-method.
+	//
 	// @rpc
 	// @permissionScope(domain)
 	// @transition(Refit, from: flight_test, to: in_refit)

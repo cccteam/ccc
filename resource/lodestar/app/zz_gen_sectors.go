@@ -26,7 +26,8 @@ func (a *App) Sectors() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Sector, sector](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.Sector, sector](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "Name", Direction: resource.SortAscending}}, DefaultLimit: 25, MaxLimit: 200})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

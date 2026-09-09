@@ -1,3 +1,4 @@
+// Demonstrates: rpc.armed-write, rpc.decision-as-data, rpc.trusted-body.
 package integration
 
 import (

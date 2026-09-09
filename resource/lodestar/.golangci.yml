@@ -60,16 +60,17 @@ linters:
           allow:
             - $gostd
             - cloud.google.com/go/civil
+            - cloud.google.com/go/logging
             - cloud.google.com/go/spanner
             - github.com/cccteam
             - github.com/go-chi/chi/v5
             - github.com/go-playground/errors/v5
             - github.com/go-playground/validator/v10
+            - github.com/golang-migrate/migrate/v4
             - github.com/jtwatson/server
             - github.com/jtwatson/spaassets
             - github.com/sethvargo/go-envconfig
             - github.com/shopspring/decimal
-            - go.uber.org/mock/gomock
             - google.golang.org/api/iterator
             - google.golang.org/grpc/codes
     exhaustive:
@@ -145,30 +146,22 @@ linters:
           - paralleltest
           - tparallel
         path: cmd/generate/generate_test\.go
-      # The tenancy write cases share seeded rows deliberately — a later case
-      # mutates the row an earlier case proved unreachable — so the subtests
-      # are ordered and must not run in parallel. The language suite's write
-      # half walks one seeded world in order for the same reason.
+      # These suites' cases share seeded rows and run in a declared order: a write in
+      # one case is what the next case reads.
       - linters:
           - paralleltest
           - tparallel
-        path: test/integration/(tenancy|language)_test\.go
-      # The bootstrap test uses t.Setenv and t.Chdir, which forbid parallel tests.
-      - linters:
-          - paralleltest
-          - tparallel
-        path: cmd/bootstrap/main_test\.go
+        path: test/integration/(language|tenancy|impersonation_ops)_test\.go
       - linters:
           - gomoddirectives
         path: go\.mod
         text: golang-migrate
-      # lodestar is committed in the same repo/commits as the resource module it
-      # exercises, so it permanently builds against local source via this replace
-      # (rationale in go.mod); the no-local-replace rule doesn't apply to it.
+      # Lodestar is committed in the resource module's own repository, so it builds
+      # against the local source rather than a published version that cannot exist yet.
       - linters:
           - gomoddirectives
         path: go\.mod
-        text: github.com/cccteam/ccc/resource
+        text: ccc/resource
     paths:
       - third_party$
       - builtin$

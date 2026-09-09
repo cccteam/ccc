@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
@@ -21,6 +22,14 @@ import (
 func (a *App) ReleaseConsignment() http.HandlerFunc {
 	type request struct {
 		ConsignmentID ccc.UUID `json:"consignmentId"`
+	}
+
+	// The answer as the wire carries it: Execute's result mirrored with generated
+	// wire names, encoded after the transaction commits.
+	type response struct {
+		ConsignmentID ccc.UUID  `json:"consignmentId"`
+		BondCode      string    `json:"bondCode"`
+		ReleasedAt    time.Time `json:"releasedAt"`
 	}
 
 	decoder := NewTargetedRPCDecoder[rpc.ReleaseConsignment, request](a, accesstypes.Execute)
@@ -41,6 +50,9 @@ func (a *App) ReleaseConsignment() http.HandlerFunc {
 		ctx = resource.WithCaller(ctx, gate.Caller())
 
 		p := (*rpc.ReleaseConsignment)(params)
+		// Captured inside the transaction, encoded after it commits: under
+		// abort-and-retry the value is the committing attempt's.
+		var result *rpc.Released
 		// A dry run (X-Dry-Run: true) runs the whole frame and the body, then
 		// rolls the transaction back: every refusal answers as the real call
 		// would, and a call that would have succeeded answers 200 with no body.
@@ -69,9 +81,11 @@ func (a *App) ReleaseConsignment() http.HandlerFunc {
 			if err := gate.Enforce(ctx, txn, resource.ExecuteTarget{Resource: "Consignments", Label: "Consignment", PKColumn: "Id"}, p.ConsignmentID); err != nil {
 				return err
 			}
-			if err := p.Execute(ctx, txn, a.RPCClient()); err != nil {
+			answer, err := p.Execute(ctx, txn, a.RPCClient())
+			if err != nil {
 				return errors.Wrap(err, "Transaction.Execute()")
 			}
+			result = answer
 			if dryRun {
 				return resource.ErrDryRun
 			}
@@ -84,7 +98,10 @@ func (a *App) ReleaseConsignment() http.HandlerFunc {
 
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 		}
+		if result == nil {
+			return httpio.NewEncoder(w).Ok(nil)
+		}
 
-		return httpio.NewEncoder(w).Ok(nil)
+		return httpio.NewEncoder(w).Ok((*response)(result))
 	})
 }

@@ -4,18 +4,19 @@ go 1.26.6
 
 replace github.com/golang-migrate/migrate/v4 v4.19.1 => github.com/jtwatson/migrate/v4 v4.19.2-beta.0
 
-// lodestar is committed in the same repo (and same commits) as the resource
-// module it exercises, so it must build against the local source rather than
-// a published version that cannot exist yet.
+// lodestar is committed in the same repo (and same commits) as the resource module it
+// exercises, so it must build against the local source rather than a published version
+// that cannot exist yet.
 replace github.com/cccteam/ccc/resource => ../
 
 require (
 	cloud.google.com/go v0.123.0
+	cloud.google.com/go/logging v1.19.1
 	cloud.google.com/go/spanner v1.94.0
 	github.com/cccteam/access v0.9.12-0.20260909195205-4a34eb2f83d8
 	github.com/cccteam/ccc v0.3.4-0.20260908043255-2adf7c91cccf
 	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260908043255-2adf7c91cccf
-	github.com/cccteam/ccc/resource v0.10.7-0.20260908233210-c89f4348aef3
+	github.com/cccteam/ccc/resource v0.10.7-0.20260909002230-f9a4ea3e11f8
 	github.com/cccteam/ccc/tracer v0.1.7
 	github.com/cccteam/db-initiator v0.3.14
 	github.com/cccteam/httpio v0.7.18
@@ -25,13 +26,13 @@ require (
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/go-playground/validator/v10 v10.30.3
+	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/go-cmp v0.7.0
 	github.com/jtwatson/server v0.2.2
 	github.com/jtwatson/spaassets v0.0.0-20160917192555-583a733b0a63
 	github.com/sethvargo/go-envconfig v1.4.3
 	github.com/shopspring/decimal v1.4.1-0.20260819210736-ca4740823783
 	google.golang.org/api v0.293.0
-	google.golang.org/grpc v1.83.2
 )
 
 require (
@@ -42,7 +43,6 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/iam v1.13.0 // indirect
-	cloud.google.com/go/logging v1.19.1 // indirect
 	cloud.google.com/go/longrunning v1.2.0 // indirect
 	cloud.google.com/go/monitoring v1.30.0 // indirect
 	cloud.google.com/go/trace v1.16.0 // indirect
@@ -87,7 +87,6 @@ require (
 	github.com/go-playground/pkg/v5 v5.31.0 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
-	github.com/golang-migrate/migrate/v4 v4.19.1 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.21 // indirect
@@ -151,8 +150,7 @@ require (
 	google.golang.org/genproto v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260818201246-1b0934165a6f // indirect
+	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-tool go.uber.org/mock/mockgen

@@ -28,6 +28,8 @@ interface Edge {
  * every other edge is faint but present. That is the DOT file's own rule (facts drawn,
  * policy not) carried into the product: the graph is a fact about the workflow, the
  * live edges are a fact about you.
+ *
+ * Demonstrates: workflow.ts-constant, capability-envelope.
  */
 @Component({
   selector: 'app-workflow-graph',

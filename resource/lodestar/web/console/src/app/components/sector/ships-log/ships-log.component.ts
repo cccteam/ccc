@@ -14,6 +14,8 @@ import { StarChartComponent } from '../star-chart/star-chart.component';
  * @manualAddResource(List, domain). A Hail shows up as an entry with every field
  * unchanged but the timestamp — that is what a touch is. Under an assumed role the
  * source reads "greer as role Dispatcher": the actor-aware change event.
+ *
+ * Demonstrates: change-tracking, event-source, @manualAddResource, touch.
  */
 @Component({
   selector: 'app-ships-log',
@@ -22,14 +24,14 @@ import { StarChartComponent } from '../star-chart/star-chart.component';
   styleUrl: './ships-log.component.scss',
 })
 export class ShipsLogComponent {
-  private sectors = inject(SectorService);
+  sectors = inject(SectorService);
 
   sector = this.sectors.current;
   canList = computed(() => this.sectors.can(Permissions.List, Resources.ShipsLogEntries));
   columns = ['eventTime', 'tableName', 'rowId', 'eventSource', 'changeSet'];
 
   entries = resource({
-    params: () => ({ sector: this.sectors.current(), allowed: this.canList() }),
+    params: () => ({ sector: this.sectors.current(), allowed: this.canList() || this.sectors.dark() }),
     loader: ({ params }) => (params.sector && params.allowed ? this.sectors.shipsLog(params.sector).list() : Promise.resolve([])),
     defaultValue: [] as ShipsLogEntry[],
   });

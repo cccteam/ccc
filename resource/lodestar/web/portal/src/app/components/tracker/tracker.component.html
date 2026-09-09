@@ -20,8 +20,15 @@
     settled for never reach this page.
   </p>
 
+  <div class="pager">
+    <button mat-button type="button" [disabled]="!missionsPage.value()?.prev" (click)="turnPage('prev')">Previous</button>
+    <span class="pager-total">
+      {{ missions().length }}@if (missionTotal() !== undefined) { of {{ missionTotal() }}} missions, {{ pageSize }} a page from the portal's descriptor
+    </span>
+    <button mat-button type="button" [disabled]="!missionsPage.value()?.next" (click)="turnPage('next')">Next</button>
+  </div>
   <div class="sheets">
-    @for (mission of missions.value(); track mission.id) {
+    @for (mission of missions(); track mission.id) {
       <button type="button" class="sheet" [class.selected]="selected()?.id === mission.id" (click)="select(mission)">
         <div class="row">
           <span class="title">{{ mission.title }}</span>
@@ -75,6 +82,22 @@
           </li>
         } @empty {
           <li class="empty">No calls filed yet.</li>
+        }
+      </ul>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card appearance="outlined" class="table-card">
+    <mat-card-header>
+      <mat-card-title>Your company's statement</mat-card-title>
+      <mat-card-subtitle>Every change to your missions in this sector, from the change log; a manual resource served on the portal alone.</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <ul>
+        @for (line of statement.value(); track line.eventTime + line.missionId) {
+          <li><b>{{ line.title }}</b> · {{ line.eventTime | date: 'medium' }} · {{ line.eventSource }}</li>
+        } @empty {
+          <li class="empty">Nothing has changed on your missions yet.</li>
         }
       </ul>
     </mat-card-content>

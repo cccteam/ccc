@@ -36,15 +36,20 @@ type (
 	// no sort, and the generated handler applies whatever part of the query the
 	// List function does not take — here the ship-name filter is taken and applied
 	// to the ship roster before any report is folded, and the rest (any other
-	// condition, the sort, the page) is left to the handler.
+	// condition, the sort, the page) is left to the handler, which folds the rows in
+	// memory (Collect): the contrast to the ledger's SQL pushdown. The board declares a
+	// default page but no maximum, so limit=all is legal on it.
+	//
+	// Demonstrates: @computed, computed.domain, computed.compound-key, computed.conditional-grant, computed.fold, computed.take-filter, rpc.nested-shape, paging.limit-all, machine-identity.
 	//
 	// @computed
 	// @permissionScope(domain)
 	// @order(WorstReading desc)
+	// @page(default: 10)
 	SectorHazardBoard struct {
-		ShipID       ccc.UUID  `spanner:"ShipId"`                         // @primarykey
-		Subsystem    string    `spanner:"Subsystem"  allow_filter:"true"` // @primarykey
-		ShipName     string    `spanner:"ShipName"   allow_filter:"true"`
+		ShipID       ccc.UUID  `spanner:"ShipId"`                           // @primarykey
+		Subsystem    string    `spanner:"Subsystem"    allow_filter:"true"` // @primarykey
+		ShipName     string    `spanner:"ShipName"     allow_filter:"true"`
 		SectorID     string    `spanner:"SectorId"`
 		WorstReading float64   `spanner:"WorstReading"`
 		RecordedAt   time.Time `spanner:"RecordedAt"`
@@ -89,7 +94,7 @@ func ListSectorHazardBoard(ctx context.Context, qSet *resource.QuerySet[SectorHa
 			// back to the handler by not being taken. Take is all-or-nothing per
 			// field, so the condition is re-applied here for the operators the
 			// query cannot express.
-			if condition.Operator == "eq" {
+			if condition.Operator == opEqual {
 				shipNames = append(shipNames, fmt.Sprint(condition.Value))
 			} else {
 				yield(nil, errors.Newf("ListSectorHazardBoard: shipName supports eq only, got %s", condition.Operator))

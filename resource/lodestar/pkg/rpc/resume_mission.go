@@ -11,6 +11,8 @@ type (
 	// ResumeMission moves a mission on_hold -> underway: the back half of the
 	// hold/resume loop. The declared edge is the whole effect.
 	//
+	// Demonstrates: @transition.loop.
+	//
 	// @rpc
 	// @permissionScope(domain)
 	// @transition(Mission, from: on_hold, to: underway)

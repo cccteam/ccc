@@ -5,10 +5,14 @@ package integration
 // with a requested sort, Total-Count on the first page, limit=all, and the refusals
 // — a cursor carried to another sector or another filter, and a sort on a field the
 // caller is denied. A sort or filter over a masked field runs over the visible
-// projection. Consignments (three seeded in Anvil) walk one row at a time; Missions
-// declare @order(Deadline asc).
+// projection. The three hand-drawn Anvil consignments (narrowed by a bond-code filter)
+// walk one row at a time; Missions declare @order(Deadline asc); the whole hold walks
+// its nullable release date across the NULL boundary in both directions.
+//
+// Demonstrates: paging.cursor, paging.link-header, paging.total-count, paging.limit-all, paging.offset-refused, paging.readability-rule, paging.masked-sort, paging.nullable-sort, paging.survives-writes, paging.sealed-cursor, filter.typed-values, @order, @page, paging.descriptor-sizes.
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -56,7 +60,7 @@ func TestPaging_walk(t *testing.T) {
 	testApp := newTestApp(db, listGrants)
 
 	// Page one: the earliest expiry, with a next relation and no prev.
-	first := doRequestRecorded(t, testApp, http.MethodGet, sectorPath(anvil, "consignments?sort=expiresOn&limit=1&count=true"))
+	first := doRequestRecorded(t, testApp, sectorPath(anvil, "consignments?"+threeBonds+"&sort=expiresOn&limit=1&count=true"))
 	assertStatus(t, first.Code, http.StatusOK, first.Body.Bytes())
 	if got := first.Header().Get(resource.TotalCountHeader); got != "3" {
 		t.Errorf("Total-Count = %q, want 3", got)
@@ -78,7 +82,7 @@ func TestPaging_walk(t *testing.T) {
 	}
 
 	// Page two, followed exactly as given: the middle row, prev and next.
-	second := doRequestRecorded(t, testApp, http.MethodGet, next)
+	second := doRequestRecorded(t, testApp, next)
 	assertStatus(t, second.Code, http.StatusOK, second.Body.Bytes())
 	if got := second.Header().Get(resource.TotalCountHeader); got != "" {
 		t.Errorf("page 2 Total-Count = %q, want none", got)
@@ -95,7 +99,7 @@ func TestPaging_walk(t *testing.T) {
 	}
 
 	// Page three: the last row, prev only.
-	third := doRequestRecorded(t, testApp, http.MethodGet, next)
+	third := doRequestRecorded(t, testApp, next)
 	assertStatus(t, third.Code, http.StatusOK, third.Body.Bytes())
 	rows = decodeRows(t, third.Body.Bytes())
 	if len(rows) != 1 || rows[0]["bondCode"] != "BND-ANV-0003" {
@@ -111,7 +115,7 @@ func TestPaging_walk(t *testing.T) {
 
 	// Walking back from page two lands on page one, in the list's order, with a
 	// next relation and no prev.
-	back := doRequestRecorded(t, testApp, http.MethodGet, prev)
+	back := doRequestRecorded(t, testApp, prev)
 	assertStatus(t, back.Code, http.StatusOK, back.Body.Bytes())
 	rows = decodeRows(t, back.Body.Bytes())
 	if len(rows) != 1 || rows[0]["bondCode"] != "BND-ANV-0002" {
@@ -135,6 +139,9 @@ func TestPaging_walk(t *testing.T) {
 	}
 }
 
+// threeBonds narrows the hold to the three hand-drawn Anvil consignments.
+const threeBonds = "filter=bondCode:in:(BND-ANV-0001,BND-ANV-0002,BND-ANV-0003)"
+
 func TestPaging_contract(t *testing.T) {
 	t.Parallel()
 
@@ -147,12 +154,12 @@ func TestPaging_contract(t *testing.T) {
 
 	listGrants := grants{accesstypes.List: append(
 		withFields("Consignments", "bondCode", "mass", "expiresOn"),
-		withFields("Missions", "title", "deadline", "hazard")...,
+		append(withFields("Missions", "title", "deadline", "hazard"), withFields("Pilots", "displayName")...)...,
 	)}
 	testApp := newTestApp(db, listGrants)
 
 	// A genuine cursor from Anvil's walk, to present elsewhere.
-	first := doRequestRecorded(t, testApp, http.MethodGet, sectorPath(anvil, "consignments?sort=expiresOn&limit=1"))
+	first := doRequestRecorded(t, testApp, sectorPath(anvil, "consignments?sort=expiresOn&limit=1"))
 	assertStatus(t, first.Code, http.StatusOK, first.Body.Bytes())
 	anvilNext := linkRelations(t, first.Header().Get(resource.LinkHeader))["next"]
 	anvilCursor := func(t *testing.T) string {
@@ -183,23 +190,28 @@ func TestPaging_contract(t *testing.T) {
 			wantLink:   true,
 		},
 		{
-			name:       "a default page on a primary-key-only order signals more rows without a cursor",
+			name:       "the declared order pages the hold too, with a cursor",
 			target:     func(*testing.T) string { return sectorPath(anvil, "consignments?limit=2") },
 			wantStatus: http.StatusOK,
 			wantRows:   2,
-			wantMore:   "true",
+			wantLink:   true,
 		},
 		{
-			name:       "a primary-key-only order that fits the page signals nothing",
-			target:     func(*testing.T) string { return sectorPath(anvil, "consignments?limit=3") },
+			name:       "a list that fits the page signals nothing",
+			target:     func(*testing.T) string { return sectorPath(anvil, "consignments?"+threeBonds+"&limit=3") },
 			wantStatus: http.StatusOK,
 			wantRows:   3,
 		},
 		{
-			name:       "limit=all returns every row with no Link header",
+			name:       "limit=all returns every row with no Link header where no maximum is declared",
+			target:     func(*testing.T) string { return "/api/pilots?limit=all" },
+			wantStatus: http.StatusOK,
+			wantRows:   17,
+		},
+		{
+			name:       "limit=all is refused where a maximum is declared",
 			target:     func(*testing.T) string { return sectorPath(anvil, "consignments?sort=expiresOn&limit=all") },
-			wantStatus: http.StatusOK,
-			wantRows:   3,
+			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name: "count=true answers the total under the same filter",
@@ -255,7 +267,7 @@ func TestPaging_contract(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rr := doRequestRecorded(t, testApp, http.MethodGet, tt.target(t))
+			rr := doRequestRecorded(t, testApp, tt.target(t))
 			assertStatus(t, rr.Code, tt.wantStatus, rr.Body.Bytes())
 			if tt.wantStatus != http.StatusOK {
 				return
@@ -296,17 +308,17 @@ func TestPaging_declaredMaximum(t *testing.T) {
 		wantStatus int
 		wantRows   int
 	}{
-		{name: "a page within the maximum", target: sectorPath(anvil, "missions?limit=200"), wantStatus: http.StatusOK, wantRows: 8},
+		{name: "a page within the maximum", target: sectorPath(anvil, "missions?limit=200"), wantStatus: http.StatusOK, wantRows: 30},
 		{name: "a page over the maximum is refused", target: sectorPath(anvil, "missions?limit=201"), wantStatus: http.StatusBadRequest},
 		{name: "limit=all is refused where a maximum is declared", target: sectorPath(anvil, "missions?limit=all"), wantStatus: http.StatusBadRequest},
-		{name: "the declared default page", target: sectorPath(anvil, "missions"), wantStatus: http.StatusOK, wantRows: 8},
+		{name: "the declared default page", target: sectorPath(anvil, "missions"), wantStatus: http.StatusOK, wantRows: 25},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rr := doRequestRecorded(t, testApp, http.MethodGet, tt.target)
+			rr := doRequestRecorded(t, testApp, tt.target)
 			assertStatus(t, rr.Code, tt.wantStatus, rr.Body.Bytes())
 			if tt.wantStatus == http.StatusOK {
 				if rows := decodeRows(t, rr.Body.Bytes()); len(rows) != tt.wantRows {
@@ -332,8 +344,9 @@ func TestPaging_walkSurvivesWrites(t *testing.T) {
 	}
 	testApp := newTestApp(db, grants{accesstypes.List: withFields("Consignments", "bondCode", "expiresOn")})
 
-	// Page one: BND-ANV-0002 (expires 2026-08-01).
-	first := doRequestRecorded(t, testApp, http.MethodGet, sectorPath(anvil, "consignments?sort=expiresOn&limit=1"))
+	// Page one: BND-ANV-0002 (expires 2026-08-01). The filter admits the row that will
+	// arrive between pages, so the walk sees it.
+	first := doRequestRecorded(t, testApp, sectorPath(anvil, "consignments?filter=bondCode:in:(BND-ANV-0001,BND-ANV-0002,BND-ANV-0003,BND-ANV-0099)&sort=expiresOn&limit=1"))
 	assertStatus(t, first.Code, http.StatusOK, first.Body.Bytes())
 	if rows := decodeRows(t, first.Body.Bytes()); len(rows) != 1 || rows[0]["bondCode"] != "BND-ANV-0002" {
 		t.Fatalf("page 1 = %v", rows)
@@ -342,12 +355,12 @@ func TestPaging_walkSurvivesWrites(t *testing.T) {
 
 	// Between pages: a consignment expiring before the position arrives, and the
 	// row the position names is deleted.
-	_, err = db.Client.Apply(ctx, []*spanner.Mutation{
+	_, err = db.Apply(ctx, []*spanner.Mutation{
 		spanner.InsertMap("Consignments", map[string]any{
 			"Id":          "b0000000-0000-4000-8000-00000000000a",
 			"SectorId":    anvil,
 			"ClientId":    clientHalvardID,
-			"BondCode":    "BND-ANV-0009",
+			"BondCode":    "BND-ANV-0099",
 			"Description": "Arrived between pages",
 			"Mass":        1.0,
 			"ExpiresOn":   civil.Date{Year: 2026, Month: 1, Day: 1},
@@ -359,23 +372,23 @@ func TestPaging_walkSurvivesWrites(t *testing.T) {
 	}
 
 	// Page two is still the row after the position, not a repeat and not a skip.
-	second := doRequestRecorded(t, testApp, http.MethodGet, next)
+	second := doRequestRecorded(t, testApp, next)
 	assertStatus(t, second.Code, http.StatusOK, second.Body.Bytes())
 	rows := decodeRows(t, second.Body.Bytes())
 	if len(rows) != 1 || rows[0]["bondCode"] != "BND-ANV-0001" {
 		t.Fatalf("page 2 after writes = %v, want BND-ANV-0001", rows)
 	}
-	third := doRequestRecorded(t, testApp, http.MethodGet, linkRelations(t, second.Header().Get(resource.LinkHeader))["next"])
+	third := doRequestRecorded(t, testApp, linkRelations(t, second.Header().Get(resource.LinkHeader))["next"])
 	assertStatus(t, third.Code, http.StatusOK, third.Body.Bytes())
 	if rows := decodeRows(t, third.Body.Bytes()); len(rows) != 1 || rows[0]["bondCode"] != "BND-ANV-0003" {
 		t.Fatalf("page 3 after writes = %v, want BND-ANV-0003", rows)
 	}
 	// Walking back from page two reaches the inserted row: it sorts before the
 	// deleted one did, and the walk sees the list as it is now.
-	back := doRequestRecorded(t, testApp, http.MethodGet, linkRelations(t, second.Header().Get(resource.LinkHeader))["prev"])
+	back := doRequestRecorded(t, testApp, linkRelations(t, second.Header().Get(resource.LinkHeader))["prev"])
 	assertStatus(t, back.Code, http.StatusOK, back.Body.Bytes())
-	if rows := decodeRows(t, back.Body.Bytes()); len(rows) != 1 || rows[0]["bondCode"] != "BND-ANV-0009" {
-		t.Errorf("walking back after writes = %v, want the inserted BND-ANV-0009", rows)
+	if rows := decodeRows(t, back.Body.Bytes()); len(rows) != 1 || rows[0]["bondCode"] != "BND-ANV-0099" {
+		t.Errorf("walking back after writes = %v, want the inserted BND-ANV-0099", rows)
 	}
 }
 
@@ -392,7 +405,7 @@ func TestPaging_sensitiveSortColumn(t *testing.T) {
 	}
 	testApp := newTestApp(db, grants{accesstypes.List: withFields("Clients", "name", "contactEmail")})
 
-	rr := doRequestRecorded(t, testApp, http.MethodGet, "/api/clients?sort=contactEmail&limit=1")
+	rr := doRequestRecorded(t, testApp, "/api/clients?sort=contactEmail&limit=1")
 	assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
 	rows := decodeRows(t, rr.Body.Bytes())
 	if len(rows) != 1 {
@@ -421,10 +434,15 @@ func TestPaging_visibleProjection(t *testing.T) {
 
 	_, h, _ := sharedWorld(t)
 
-	const (
-		completedPod = "80000000-0000-4000-8000-000000000005"
-		failedTow    = "80000000-0000-4000-8000-000000000006"
-		stoodDown    = "80000000-0000-4000-8000-000000000007"
+	// Anvil's closed missions: three completed (fee visible) and four masked.
+	var (
+		completedPod    = missionPodID     // 40000
+		completedMiners = missionID(20)    // 1500
+		completedSpars  = missionID(33)    // 16000
+		failedTow       = missionTowID     // masked
+		stoodDown       = missionBullionID // masked
+		failedSled      = missionID(25)    // masked
+		stoodDownCore   = missionID(30)    // masked
 	)
 
 	tests := []struct {
@@ -438,32 +456,32 @@ func TestPaging_visibleProjection(t *testing.T) {
 		{
 			name: "the archivist's masked fees sort last ascending", user: "archivist",
 			target: sectorPath(anvil, "missions?sort=fee"), wantStatus: http.StatusOK,
-			wantOrder: []string{completedPod, failedTow, stoodDown},
+			wantOrder: []string{completedMiners, completedSpars, completedPod, failedTow, stoodDown, failedSled, stoodDownCore},
 		},
 		{
 			name: "and first descending", user: "archivist",
 			target: sectorPath(anvil, "missions?sort=fee:desc"), wantStatus: http.StatusOK,
-			wantOrder: []string{failedTow, stoodDown, completedPod},
+			wantOrder: []string{failedTow, stoodDown, failedSled, stoodDownCore, completedPod, completedSpars, completedMiners},
 		},
 		{
 			name: "isnull on the fee returns the masked rows", user: "archivist",
 			target: sectorPath(anvil, "missions?filter=sectorId:eq:anvil,fee:isnull"), wantStatus: http.StatusOK,
-			wantIDs: []string{failedTow, stoodDown},
+			wantIDs: []string{failedTow, stoodDown, failedSled, stoodDownCore},
 		},
 		{
-			name: "isnotnull on the fee returns the visible row", user: "archivist",
+			name: "isnotnull on the fee returns the visible rows", user: "archivist",
 			target: sectorPath(anvil, "missions?filter=sectorId:eq:anvil,fee:isnotnull"), wantStatus: http.StatusOK,
-			wantIDs: []string{completedPod},
+			wantIDs: []string{completedPod, completedMiners, completedSpars},
 		},
 		{
 			name: "a field on the row condition itself sorts on the raw column", user: "archivist",
 			target: sectorPath(anvil, "missions?sort=title"), wantStatus: http.StatusOK,
-			wantOrder: []string{stoodDown, completedPod, failedTow},
+			wantOrder: []string{stoodDown, stoodDownCore, completedPod, completedMiners, completedSpars, failedSled, failedTow},
 		},
 		{
 			name: "the cadet pages the board sorted by any field", user: "cadet",
 			target: sectorPath(anvil, "missions?sort=hazard:desc,title&limit=2"), wantStatus: http.StatusOK,
-			wantOrder: []string{"80000000-0000-4000-8000-000000000008", "80000000-0000-4000-8000-000000000001"},
+			wantOrder: []string{missionID(23), missionID(18)},
 		},
 		{
 			name: "the quartermaster, granted no fee, is refused as a sort", user: "quartermaster",
@@ -522,6 +540,86 @@ func TestPaging_visibleProjection(t *testing.T) {
 				if got := idsOf(t, rows); !slices.Equal(got, tt.wantIDs) {
 					t.Errorf("ids = %v, want %v", got, tt.wantIDs)
 				}
+			}
+		})
+	}
+}
+
+// TestPaging_nullableSort is the NULL-boundary proof: the hold is declared
+// @order(ReleasedAt desc), a nullable column, so unreleased cargo (NULL) is placed first
+// descending and last ascending, and a walk of four rows a page crosses the boundary in
+// both directions with no repeated and no skipped row. Spanner renders the placement as
+// `ReleasedAt IS NULL DESC, ReleasedAt DESC`, the emulator having no NULLS FIRST.
+func TestPaging_nullableSort(t *testing.T) {
+	t.Parallel()
+
+	_, h, _ := sharedWorld(t)
+
+	// Anvil's hold: eight consignments still in bond (NULL) and five released, in
+	// release order 011 (Sep 3), 006 (Sep 1), 003 (Aug 30), 013 (Aug 25), 009 (Aug 12).
+	bond := func(n int) string { return fmt.Sprintf("b0000000-0000-4000-8000-%012d", n) }
+	inBond := []string{bond(1), bond(2), bond(5), bond(7), bond(8), bond(10), bond(12), bond(14)}
+	released := []string{bond(11), bond(6), bond(3), bond(13), bond(9)}
+	releasedAsc := []string{bond(9), bond(13), bond(3), bond(6), bond(11)}
+
+	tests := []struct {
+		name  string
+		query string
+		want  []string
+	}{
+		{name: "the declared order: unreleased first, then newest release first", query: "consignments?limit=4", want: append(slices.Clone(inBond), released...)},
+		{name: "ascending: oldest release first, unreleased last", query: "consignments?sort=releasedAt&limit=4", want: append(slices.Clone(releasedAsc), inBond...)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Forward: follow next until it ends, collecting every row once.
+			var forward []string
+			var pages []string
+			target := sectorPath(anvil, tt.query)
+			for target != "" {
+				rr := doRequestRecordedAs(t, h, "supercargo", http.MethodGet, target, "")
+				assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+				for _, row := range decodeRows(t, rr.Body.Bytes()) {
+					id, _ := row["id"].(string)
+					forward = append(forward, id)
+				}
+				pages = append(pages, target)
+				target = linkRelations(t, rr.Header().Get(resource.LinkHeader))["next"]
+			}
+			if !slices.Equal(forward, tt.want) {
+				t.Fatalf("forward walk = %v, want %v", forward, tt.want)
+			}
+			if len(pages) != 4 {
+				t.Errorf("pages = %d, want 4 of up to four rows", len(pages))
+			}
+
+			// Backward: from the last page, follow prev to the first; the pages read in
+			// reverse are the same rows in the same order.
+			rr := doRequestRecordedAs(t, h, "supercargo", http.MethodGet, pages[len(pages)-1], "")
+			assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+			var backward [][]string
+			for {
+				var page []string
+				for _, row := range decodeRows(t, rr.Body.Bytes()) {
+					id, _ := row["id"].(string)
+					page = append(page, id)
+				}
+				backward = append([][]string{page}, backward...)
+				prev := linkRelations(t, rr.Header().Get(resource.LinkHeader))["prev"]
+				if prev == "" {
+					break
+				}
+				rr = doRequestRecordedAs(t, h, "supercargo", http.MethodGet, prev, "")
+				assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+			}
+			var joined []string
+			for _, page := range backward {
+				joined = append(joined, page...)
+			}
+			if !slices.Equal(joined, tt.want) {
+				t.Errorf("backward walk = %v, want %v", joined, tt.want)
 			}
 		})
 	}

@@ -66,3 +66,15 @@
     font-weight: 500;
   }
 }
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+.pager-total {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}

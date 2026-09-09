@@ -49,6 +49,7 @@ export const Methods = {
   AttachMissionDocument: 'AttachMissionDocument' as Method,
   BeginRefit: 'BeginRefit' as Method,
   ClaimMission: 'ClaimMission' as Method,
+  CompileBriefing: 'CompileBriefing' as Method,
   CompleteMission: 'CompleteMission' as Method,
   FailFlightTest: 'FailFlightTest' as Method,
   FailMission: 'FailMission' as Method,
@@ -526,6 +527,12 @@ export namespace ClaimMission {
   export const fieldName = {
     missionId: 'missionId' as FieldName,
     squadronId: 'squadronId' as FieldName,
+  };
+}
+
+export namespace CompileBriefing {
+  export const fieldName = {
+    includeHazards: 'includeHazards' as FieldName,
   };
 }
 

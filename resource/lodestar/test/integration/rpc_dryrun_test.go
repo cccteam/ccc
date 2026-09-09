@@ -1,3 +1,4 @@
+// Demonstrates: rpc.dry-run.
 package integration
 
 import (

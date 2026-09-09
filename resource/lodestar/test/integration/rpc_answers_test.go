@@ -1,3 +1,4 @@
+// Demonstrates: @answers, rpc.dry-run, rpc.typed-result.
 package integration
 
 // This suite covers a method that chooses its status per response: CompleteMission

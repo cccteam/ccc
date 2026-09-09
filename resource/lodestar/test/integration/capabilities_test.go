@@ -1,3 +1,4 @@
+// Demonstrates: capability-envelope, create-under-parent, execute-condition.
 package integration
 
 // Bootstrap parity for the capability envelope: per-row write affordances riding the

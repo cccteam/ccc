@@ -1,3 +1,4 @@
+// Demonstrates: workflow.dot, @transition.multi-from, @transition.loop.
 package integration
 
 // graph_test (design plan §9): reads the two committed DOT files and asserts every

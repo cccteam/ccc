@@ -1,3 +1,4 @@
+// Demonstrates: computed.user, computed.scope, @computed.
 package integration
 
 import (

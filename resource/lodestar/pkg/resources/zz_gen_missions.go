@@ -65,7 +65,7 @@ type missionWrite struct {
 	AssignedSquadronID ccc.NullUUID        `json:"assignedSquadronId"`
 	StatusID           string              `json:"-"`
 	Notes              *string             `json:"notes"`
-	Settlement         decimal.NullDecimal `json:"-"`
+	Settlement         decimal.NullDecimal `json:"settlement"`
 }
 
 var missionWriteSets resource.SetCache[Mission, missionWrite]

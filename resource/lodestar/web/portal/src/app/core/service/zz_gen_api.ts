@@ -57,6 +57,7 @@ export interface MissionsCreate {
   requiredCertId?: string;
   assignedSquadronId?: string;
   notes?: string;
+  settlement?: number;
 }
 /** The fields a client may change on Missions. Keys, server-owned, and immutable fields are absent. */
 export interface MissionsPatch {
@@ -70,6 +71,7 @@ export interface MissionsPatch {
   requiredCertId?: string;
   assignedSquadronId?: string;
   notes?: string;
+  settlement?: number;
 }
 /** The primary key of Missions, in route order. */
 export type MissionsKey = [id: string];
@@ -92,7 +94,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
       patchable: ['userId', 'clientId', 'displayName'],
     },
     [Resources.DistressCalls]: {
@@ -103,7 +105,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 50 },
+      page: { default: 10, max: 100 },
       patchable: ['summary', 'severity', 'callerContact', 'transcript'],
     },
     [Resources.Missions]: {
@@ -115,7 +117,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
-      patchable: ['clientId', 'kindId', 'title', 'brief', 'hazard', 'fee', 'deadline', 'requiredCertId', 'assignedSquadronId', 'notes'],
+      patchable: ['clientId', 'kindId', 'title', 'brief', 'hazard', 'fee', 'deadline', 'requiredCertId', 'assignedSquadronId', 'notes', 'settlement'],
     },
     [Resources.MissionDocuments]: {
       resource: Resources.MissionDocuments,
@@ -125,7 +127,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['id'],
       operations: ['list', 'read'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
     },
   },
   methods: {

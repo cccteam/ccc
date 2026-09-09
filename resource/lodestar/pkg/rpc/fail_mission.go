@@ -14,6 +14,8 @@ type (
 	// body against the FailReasons constants (enum tables are not referencable by
 	// enumerated: today — finding 4); the open sorties come home.
 	//
+	// Demonstrates: @transition, rpc.trusted-body.
+	//
 	// @rpc
 	// @permissionScope(domain)
 	// @transition(Mission, from: underway, to: failed)

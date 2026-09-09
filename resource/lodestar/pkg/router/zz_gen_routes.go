@@ -67,6 +67,8 @@ type GeneratedHandlers interface {
 	ClientContacts() http.HandlerFunc
 	ClientContact() http.HandlerFunc
 
+	CompileBriefing() http.HandlerFunc
+
 	CompleteMission() http.HandlerFunc
 
 	Consignments() http.HandlerFunc
@@ -190,6 +192,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	clientContactHandler := h.ClientContact()
 	r.Get("/api/client-contacts/{clientContactID}", clientContactHandler)
 	r.Post("/api/client-contacts/{clientContactID}", clientContactHandler)
+
+	r.Post("/api/sectors/{sectorID}/compile-briefing", domainGuard(h.CompileBriefing()))
 
 	r.Post("/api/sectors/{sectorID}/complete-mission", domainGuard(h.CompleteMission()))
 
@@ -384,83 +388,6 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Patch("/api/resources", h.PatchResources())
 }
 
-// GeneratedPortalHandlers is the portal outlet's generated
-// handler surface: the handlers of the resources attached to the outlet via @outlet.
-type GeneratedPortalHandlers interface {
-	// DomainGuard wraps every domain-scoped route below: it rejects requests for
-	// domains the application does not recognize before the handler runs.
-	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
-
-	// PermissionDigest serves the session user's per-scope permission digest:
-	// advisory grant structure for the UI (resource → permission → granted or
-	// conditional, denied targets absent), with the scope taken from the request
-	// (?domain= names a tenant partition, absent means global).
-	PermissionDigest() http.HandlerFunc
-	// UserDomains serves the session user's domain membership: the sorted domains
-	// where they hold at least one grant — the tenant picker's source, on the same
-	// foothold predicate as concealed tenancy.
-	UserDomains() http.HandlerFunc
-
-	ClientContacts() http.HandlerFunc
-	ClientContact() http.HandlerFunc
-
-	DistressCalls() http.HandlerFunc
-	DistressCall() http.HandlerFunc
-
-	Missions() http.HandlerFunc
-	Mission() http.HandlerFunc
-
-	MissionDocuments() http.HandlerFunc
-	MissionDocument() http.HandlerFunc
-
-	StandDownMission() http.HandlerFunc
-
-	PatchPortalResources() http.HandlerFunc
-}
-
-func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
-	domainGuard := h.DomainGuard()
-
-	r.Get("/portal/permission-digest", h.PermissionDigest())
-	r.Get("/portal/user-domains", h.UserDomains())
-
-	clientContactsHandler := h.ClientContacts()
-	r.Get("/portal/client-contacts", clientContactsHandler)
-	r.Post("/portal/client-contacts", clientContactsHandler)
-
-	clientContactHandler := h.ClientContact()
-	r.Get("/portal/client-contacts/{clientContactID}", clientContactHandler)
-	r.Post("/portal/client-contacts/{clientContactID}", clientContactHandler)
-
-	distressCallsHandler := domainGuard(h.DistressCalls())
-	r.Get("/portal/sectors/{sectorID}/distress-calls", distressCallsHandler)
-	r.Post("/portal/sectors/{sectorID}/distress-calls", distressCallsHandler)
-
-	distressCallHandler := domainGuard(h.DistressCall())
-	r.Get("/portal/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
-	r.Post("/portal/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
-
-	missionsHandler := domainGuard(h.Missions())
-	r.Get("/portal/sectors/{sectorID}/missions", missionsHandler)
-	r.Post("/portal/sectors/{sectorID}/missions", missionsHandler)
-
-	missionHandler := domainGuard(h.Mission())
-	r.Get("/portal/sectors/{sectorID}/missions/{missionID}", missionHandler)
-	r.Post("/portal/sectors/{sectorID}/missions/{missionID}", missionHandler)
-
-	missionDocumentsHandler := domainGuard(h.MissionDocuments())
-	r.Get("/portal/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
-	r.Post("/portal/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
-
-	missionDocumentHandler := domainGuard(h.MissionDocument())
-	r.Get("/portal/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
-	r.Post("/portal/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
-
-	r.Post("/portal/sectors/{sectorID}/stand-down-mission", domainGuard(h.StandDownMission()))
-
-	r.Patch("/portal/resources", h.PatchPortalResources())
-}
-
 // GeneratedDroidsHandlers is the droids outlet's generated
 // handler surface: the handlers of the resources attached to the outlet via @outlet.
 type GeneratedDroidsHandlers interface {
@@ -502,13 +429,90 @@ func generatedDroidsRoutes(r chi.Router, h GeneratedDroidsHandlers) {
 	r.Patch("/droids/resources", h.PatchDroidsResources())
 }
 
+// GeneratedPortalHandlers is the portal outlet's generated
+// handler surface: the handlers of the resources attached to the outlet via @outlet.
+type GeneratedPortalHandlers interface {
+	// DomainGuard wraps every domain-scoped route below: it rejects requests for
+	// domains the application does not recognize before the handler runs.
+	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
+
+	// PermissionDigest serves the session user's per-scope permission digest:
+	// advisory grant structure for the UI (resource → permission → granted or
+	// conditional, denied targets absent), with the scope taken from the request
+	// (?domain= names a tenant partition, absent means global).
+	PermissionDigest() http.HandlerFunc
+	// UserDomains serves the session user's domain membership: the sorted domains
+	// where they hold at least one grant — the tenant picker's source, on the same
+	// foothold predicate as concealed tenancy.
+	UserDomains() http.HandlerFunc
+
+	ClientContacts() http.HandlerFunc
+	ClientContact() http.HandlerFunc
+
+	DistressCalls() http.HandlerFunc
+	DistressCall() http.HandlerFunc
+
+	Missions() http.HandlerFunc
+	Mission() http.HandlerFunc
+
+	MissionDocuments() http.HandlerFunc
+	MissionDocument() http.HandlerFunc
+
+	StandDownMission() http.HandlerFunc
+
+	PatchPortalResources() http.HandlerFunc
+}
+
+func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
+	domainGuard := h.DomainGuard()
+
+	r.Get("/portal/api/permission-digest", h.PermissionDigest())
+	r.Get("/portal/api/user-domains", h.UserDomains())
+
+	clientContactsHandler := h.ClientContacts()
+	r.Get("/portal/api/client-contacts", clientContactsHandler)
+	r.Post("/portal/api/client-contacts", clientContactsHandler)
+
+	clientContactHandler := h.ClientContact()
+	r.Get("/portal/api/client-contacts/{clientContactID}", clientContactHandler)
+	r.Post("/portal/api/client-contacts/{clientContactID}", clientContactHandler)
+
+	distressCallsHandler := domainGuard(h.DistressCalls())
+	r.Get("/portal/api/sectors/{sectorID}/distress-calls", distressCallsHandler)
+	r.Post("/portal/api/sectors/{sectorID}/distress-calls", distressCallsHandler)
+
+	distressCallHandler := domainGuard(h.DistressCall())
+	r.Get("/portal/api/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
+	r.Post("/portal/api/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
+
+	missionsHandler := domainGuard(h.Missions())
+	r.Get("/portal/api/sectors/{sectorID}/missions", missionsHandler)
+	r.Post("/portal/api/sectors/{sectorID}/missions", missionsHandler)
+
+	missionHandler := domainGuard(h.Mission())
+	r.Get("/portal/api/sectors/{sectorID}/missions/{missionID}", missionHandler)
+	r.Post("/portal/api/sectors/{sectorID}/missions/{missionID}", missionHandler)
+
+	missionDocumentsHandler := domainGuard(h.MissionDocuments())
+	r.Get("/portal/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
+	r.Post("/portal/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
+
+	missionDocumentHandler := domainGuard(h.MissionDocument())
+	r.Get("/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
+	r.Post("/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
+
+	r.Post("/portal/api/sectors/{sectorID}/stand-down-mission", domainGuard(h.StandDownMission()))
+
+	r.Patch("/portal/api/resources", h.PatchPortalResources())
+}
+
 // AllGeneratedHandlers is every outlet's generated handler surface in one interface:
 // what NewTestRouter composes, and what an application embeds when one type serves
 // every outlet.
 type AllGeneratedHandlers interface {
 	GeneratedHandlers
-	GeneratedPortalHandlers
 	GeneratedDroidsHandlers
+	GeneratedPortalHandlers
 }
 
 // NewTestRouter serves every outlet's generated API routes bare, for test composition
@@ -520,8 +524,8 @@ func NewTestRouter(h AllGeneratedHandlers) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(httpio.WithParams)
 	generatedRoutes(r, h)
-	generatedPortalRoutes(r, h)
 	generatedDroidsRoutes(r, h)
+	generatedPortalRoutes(r, h)
 
 	return r
 }

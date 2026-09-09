@@ -1,3 +1,4 @@
+// Demonstrates: change-tracking, event-source.
 package integration
 
 // This suite pins change tracking: Missions, Refits, and Ships opt in

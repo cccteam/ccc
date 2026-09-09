@@ -23,6 +23,11 @@ func (a *App) HailShip() http.HandlerFunc {
 		ShipID ccc.UUID `json:"shipId"`
 	}
 
+	// The answer as the wire carries it: Execute's result mirrored with generated
+	// wire names, encoded after the transaction commits.
+	type response struct {
+	}
+
 	decoder := NewTargetedRPCDecoder[rpc.HailShip, request](a, accesstypes.Execute)
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
@@ -41,6 +46,11 @@ func (a *App) HailShip() http.HandlerFunc {
 		ctx = resource.WithCaller(ctx, gate.Caller())
 
 		p := (*rpc.HailShip)(params)
+		// Captured inside the transaction, encoded after it commits: under
+		// abort-and-retry the value is the committing attempt's.
+		var result *rpc.Hailed
+		// The status the result chose, among the declared 204.
+		var status int
 		// A dry run (X-Dry-Run: true) runs the whole frame and the body, then
 		// rolls the transaction back: every refusal answers as the real call
 		// would, and a call that would have succeeded answers 200 with no body.
@@ -71,8 +81,23 @@ func (a *App) HailShip() http.HandlerFunc {
 			if err := gate.Enforce(ctx, txn, resource.ExecuteTarget{Resource: "Ships", Label: "Ship", PKColumn: "Id"}, p.ShipID); err != nil {
 				return err
 			}
-			if err := p.Execute(ctx, txn, a.RPCClient()); err != nil {
+			answer, err := p.Execute(ctx, txn, a.RPCClient())
+			if err != nil {
 				return errors.Wrap(err, "Transaction.Execute()")
+			}
+			result = answer
+			if result == nil {
+				status = http.StatusNoContent
+			} else {
+				status, err = resource.ResponseStatus("HailShip", result, 204)
+				if err != nil {
+					return err
+				}
+			}
+			if status >= http.StatusBadRequest {
+				// The method refused: the transaction rolls back, and the
+				// frame writes the status with the typed answer.
+				return &resource.Answer{Status: status}
 			}
 			if dryRun {
 				return resource.ErrDryRun
@@ -80,13 +105,24 @@ func (a *App) HailShip() http.HandlerFunc {
 
 			return nil
 		}); err != nil {
+			if refused, ok := resource.Refused(err); ok {
+				return httpio.NewEncoder(w).StatusCodeWithBody(refused, (*response)(result))
+			}
 			if dryRun && resource.DryRunRolledBack(err) {
 				return httpio.NewEncoder(w).Ok(nil)
 			}
 
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 		}
+		if status == http.StatusNoContent {
+			w.WriteHeader(http.StatusNoContent)
 
-		return httpio.NewEncoder(w).Ok(nil)
+			return nil
+		}
+		if result == nil {
+			return httpio.NewEncoder(w).Ok(nil)
+		}
+
+		return httpio.NewEncoder(w).StatusCodeWithBody(status, (*response)(result))
 	})
 }

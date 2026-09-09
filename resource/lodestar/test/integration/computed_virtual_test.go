@@ -1,3 +1,4 @@
+// Demonstrates: @computed, computed.compound-key, computed.domain, rpc.nested-shape, @virtual, virtual.with-clause, virtual.named-param, virtual.domain, computed.fold, @suppress.
 package integration
 
 // This suite pins the read-only resource shapes over the demo world: computed
@@ -35,8 +36,8 @@ func TestComputedResources(t *testing.T) {
 		check    func(t *testing.T, respBody []byte)
 	}{
 		{
-			// Anvil has five missions still moving (open ×2, claimed, underway, on_hold)
-			// worth 8000+24000+15000+3000+6000, and one settlement of 38500.
+			// Anvil has twenty-three missions still moving worth 269000 in fees, and three
+			// settlements: 38500, 1000, and 15500.
 			name:   "the service ledger aggregates the seeded world",
 			target: "/api/service-ledgers",
 			check: func(t *testing.T, respBody []byte) {
@@ -45,21 +46,21 @@ func TestComputedResources(t *testing.T) {
 				if row == nil {
 					t.Fatalf("no anvil ledger: %s", respBody)
 				}
-				if got := row["openMissions"]; got != float64(5) {
-					t.Errorf("anvil openMissions = %v, want 5", got)
+				if got := row["openMissions"]; got != float64(23) {
+					t.Errorf("anvil openMissions = %v, want 23", got)
 				}
-				if got := row["feesOutstanding"]; got != "56000" {
-					t.Errorf("anvil feesOutstanding = %v, want 56000", got)
+				if got := row["feesOutstanding"]; got != "269000" {
+					t.Errorf("anvil feesOutstanding = %v, want 269000", got)
 				}
-				if got := row["settlements"]; got != "38500" {
-					t.Errorf("anvil settlements = %v, want 38500", got)
+				if got := row["settlements"]; got != "55000" {
+					t.Errorf("anvil settlements = %v, want 55000", got)
 				}
 			},
 		},
 		{
 			name:     "the hazard board folds readings to the worst per ship and subsystem in the sector",
-			target:   sectorPath(anvil, "sector-hazard-boards"),
-			wantRows: 3,
+			target:   sectorPath(anvil, "sector-hazard-boards?limit=all"),
+			wantRows: 32,
 		},
 		{
 			name:   "the compound-key read route addresses one ship and subsystem pair",
@@ -72,17 +73,17 @@ func TestComputedResources(t *testing.T) {
 			},
 		},
 		{
-			// Kingfisher's hull has two seeded readings, 0.42 at 10:00 and 0.61 at
-			// 11:00: the nested field carries both, newest first, through the
-			// handler's mirror of computedresources.Reading.
+			// Kingfisher's hull has four seeded readings (0.42 and 0.61 on the first, 0.17
+			// and 0.22 on the next two days): the nested field carries them newest first,
+			// through the handler's mirror of computedresources.Reading.
 			name:   "the nested recent field carries the readings behind the worst one, newest first",
 			target: sectorPath(anvil, "sector-hazard-boards/"+shipKingfisherID+"/hull?columns=recent"),
 			check: func(t *testing.T, respBody []byte) {
 				t.Helper()
 				row := decodeRow(t, respBody)
 				recent, ok := row["recent"].([]any)
-				if !ok || len(recent) != 2 {
-					t.Fatalf("recent = %v, want two readings: %s", row["recent"], respBody)
+				if !ok || len(recent) != 4 {
+					t.Fatalf("recent = %v, want four readings: %s", row["recent"], respBody)
 				}
 				values := make([]any, 0, len(recent))
 				for _, r := range recent {
@@ -92,8 +93,8 @@ func TestComputedResources(t *testing.T) {
 					}
 					values = append(values, reading["value"])
 				}
-				if values[0] != float64(0.61) || values[1] != float64(0.42) {
-					t.Errorf("recent values = %v, want [0.61 0.42]", values)
+				if values[0] != float64(0.22) || values[1] != float64(0.17) || values[2] != float64(0.61) || values[3] != float64(0.42) {
+					t.Errorf("recent values = %v, want [0.22 0.17 0.61 0.42]", values)
 				}
 			},
 		},
@@ -182,8 +183,8 @@ func TestVirtualResources(t *testing.T) {
 		check    func(t *testing.T, respBody []byte)
 	}{
 		{
-			// Four kinds; salvage (the Corvid, the pod, the tow, the sweep) sums 126000
-			// once the stood-down bullion escort is excluded by the WITH clause.
+			// Four kinds; salvage (the Corvid, the pod, the tow, the sweep, and six of the
+			// filler) sums 187500 once the stood-down escorts are excluded by the WITH clause.
 			name:     "the WITH-clause subquery folds fees by kind",
 			target:   "/api/fee-by-kinds",
 			wantRows: 4,
@@ -193,11 +194,11 @@ func TestVirtualResources(t *testing.T) {
 				if salvage == nil {
 					t.Fatalf("no salvage row: %s", respBody)
 				}
-				if got := salvage["missionCount"]; got != float64(4) {
-					t.Errorf("salvage missionCount = %v, want 4", got)
+				if got := salvage["missionCount"]; got != float64(10) {
+					t.Errorf("salvage missionCount = %v, want 10", got)
 				}
-				if got := salvage["totalFee"]; got != "126000" {
-					t.Errorf("salvage totalFee = %v, want 126000", got)
+				if got := salvage["totalFee"]; got != "187500" {
+					t.Errorf("salvage totalFee = %v, want 187500", got)
 				}
 			},
 		},

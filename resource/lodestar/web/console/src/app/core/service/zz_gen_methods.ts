@@ -35,6 +35,33 @@ export interface ClaimMission {
   squadronId: string;
 }
 
+export interface CompileBriefingConfig {
+  includeHazards: boolean | FieldPointer;
+}
+export interface CompileBriefing {
+  includeHazards: boolean;
+}
+/** The result CompileBriefing answers with. */
+export interface CompileBriefingResult {
+  sector: string;
+  compiledAt: Date;
+  missions: number;
+  openMissions: number;
+  worstHazard: number;
+  feesOutstanding: number;
+  feesRedacted: number;
+  overdue: string[];
+  hazardBoard: CompileBriefing.HazardLine[];
+  hazardWithheld: boolean;
+}
+export namespace CompileBriefing {
+  export interface HazardLine {
+    shipName: string;
+    subsystem: string;
+    worstReading: number;
+  }
+}
+
 export interface CompleteMissionConfig {
   missionId: string | FieldPointer;
 }
@@ -83,6 +110,16 @@ export interface HailShipConfig {
 }
 export interface HailShip {
   shipId: string;
+}
+/** The result HailShip answers with. */
+export interface HailShipResult {
+}
+/** The statuses HailShip declares; the method chooses one per response. */
+export type HailShipStatus = 204;
+/** The answer HailShip resolves with: the status the method chose and its typed result. */
+export interface HailShipAnswer {
+  status: HailShipStatus;
+  result: HailShipResult;
 }
 
 export interface HoldMissionConfig {
@@ -149,6 +186,12 @@ export interface ReleaseConsignmentConfig {
 }
 export interface ReleaseConsignment {
   consignmentId: string;
+}
+/** The result ReleaseConsignment answers with. */
+export interface ReleaseConsignmentResult {
+  consignmentId: string;
+  bondCode: string;
+  releasedAt: Date;
 }
 
 export interface ResumeMissionConfig {
@@ -231,6 +274,13 @@ const methodMap: MethodMap = {
       { fieldName: 'squadronId', displayType: 'enumerated', enumeratedResource: Resources.Squadrons },
     ],
   },
+  [Methods.CompileBriefing]: {
+    route: 'compile-briefing',
+    answers: true,
+    fields: [
+      { fieldName: 'includeHazards', displayType: 'boolean' },
+    ],
+  },
   [Methods.CompleteMission]: {
     route: 'complete-mission',
     transition: { target: Resources.Missions, from: ['underway'], to: 'completed' },
@@ -257,6 +307,8 @@ const methodMap: MethodMap = {
   },
   [Methods.HailShip]: {
     route: 'hail-ship',
+    answers: true,
+    statuses: [204],
     fields: [
       { fieldName: 'shipId', displayType: 'uuid' },
     ],
@@ -301,6 +353,7 @@ const methodMap: MethodMap = {
   },
   [Methods.ReleaseConsignment]: {
     route: 'release-consignment',
+    answers: true,
     fields: [
       { fieldName: 'consignmentId', displayType: 'uuid' },
     ],

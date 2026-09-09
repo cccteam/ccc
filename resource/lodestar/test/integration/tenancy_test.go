@@ -1,3 +1,4 @@
+// Demonstrates: tenancy.tenant-record, tenancy.concealed, @domain.join-path, @domain.
 package integration
 
 // This suite pins write-side structural row tenancy end to end: a mutation locates

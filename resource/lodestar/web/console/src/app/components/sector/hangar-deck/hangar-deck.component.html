@@ -7,7 +7,12 @@
 
 <app-star-chart></app-star-chart>
 
-@if (!canList()) {
+@if (sectors.refusalOf(refits); as refusal) {
+  <mat-card appearance="outlined" class="table-card refusal-slot">
+    <p class="refusal"><b>Refused by the server:</b> {{ refusal }}</p>
+    <p class="empty">The star chart's dark-sector bypass sent this request on purpose; the concealed-sector guard answered.</p>
+  </mat-card>
+} @else if (!canList() && !sectors.dark()) {
   <mat-card appearance="outlined" class="table-card">
     <p class="empty">Your posting in {{ sector() || 'this sector' }} does not cover the hangar deck right now.</p>
   </mat-card>

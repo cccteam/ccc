@@ -55,7 +55,7 @@ func (a *App) PatchPortalResources() http.HandlerFunc {
 		AssignedSquadronID ccc.NullUUID        `json:"assignedSquadronId"`
 		StatusID           string              `json:"-"`
 		Notes              *string             `json:"notes"`
-		Settlement         decimal.NullDecimal `json:"-"`
+		Settlement         decimal.NullDecimal `json:"settlement"`
 	}
 	missionDecoder := NewDecoder[resources.Mission, missionRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 

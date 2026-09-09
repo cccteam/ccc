@@ -1,3 +1,4 @@
+// Demonstrates: touch, output_only_update_fn, change-tracking, event-source, @answers.no-content.
 package integration
 
 // This suite pins the first-class Touch: HailShip fires the generated NewShipTouch,
@@ -73,7 +74,7 @@ func TestHailShipTouch(t *testing.T) {
 	}
 
 	status, body := doRequestAs(t, h, "hailer-hal", http.MethodPost, sectorPath(anvil, "hail-ship"), fmt.Sprintf(`{"shipId":%q}`, shipKingfisherID))
-	assertStatus(t, status, http.StatusOK, body)
+	assertStatus(t, status, http.StatusNoContent, body)
 
 	first := readColumn[spanner.NullTime](ctx, t, db, "Ships", spanner.Key{shipKingfisherID}, "UpdatedAt")
 	if !first.Valid {
@@ -89,7 +90,7 @@ func TestHailShipTouch(t *testing.T) {
 	}
 
 	status, body = doRequestAs(t, h, "hailer-hal", http.MethodPost, sectorPath(anvil, "hail-ship"), fmt.Sprintf(`{"shipId":%q}`, shipKingfisherID))
-	assertStatus(t, status, http.StatusOK, body)
+	assertStatus(t, status, http.StatusNoContent, body)
 	second := readColumn[spanner.NullTime](ctx, t, db, "Ships", spanner.Key{shipKingfisherID}, "UpdatedAt")
 	if !second.Valid || !second.Time.After(first.Time) {
 		t.Errorf("second touch UpdatedAt = %v, want after the first %v", second, first)

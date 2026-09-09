@@ -23,6 +23,8 @@ type (
 	// (`state NOT IN ('completed', 'failed', 'stood_down')`): documents go on live
 	// missions.
 	//
+	// Demonstrates: @upload, rpc.upload-store, execute-condition.
+	//
 	// @rpc
 	// @permissionScope(domain)
 	// @upload(max: 5MB)

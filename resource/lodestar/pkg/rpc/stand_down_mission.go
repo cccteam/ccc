@@ -15,6 +15,8 @@ type (
 	// carrying `client = subject.client`, while the Booking Agent's grant carries
 	// `bookedBy = subject`.
 	//
+	// Demonstrates: @transition.multi-from, outlet.shared, execute-condition.
+	//
 	// @rpc
 	// @permissionScope(domain)
 	// @outlet(default, portal)

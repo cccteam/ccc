@@ -11,6 +11,8 @@ type (
 	// BeginRefit moves a refit inspected -> in_refit. The declared edge is the whole
 	// effect.
 	//
+	// Demonstrates: @transition, @transition.join-path-root.
+	//
 	// @rpc
 	// @permissionScope(domain)
 	// @transition(Refit, from: inspected, to: in_refit)

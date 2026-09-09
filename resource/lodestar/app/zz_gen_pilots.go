@@ -28,7 +28,8 @@ func (a *App) Pilots() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[resources.Pilot, pilot](a, accesstypes.List)
+	decoder := NewQueryDecoder[resources.Pilot, pilot](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "DisplayName", Direction: resource.SortAscending}}, DefaultLimit: 10})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

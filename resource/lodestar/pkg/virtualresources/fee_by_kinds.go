@@ -16,7 +16,11 @@ type (
 	// headquarters view. Its subquery exercises two virtual-resource variants: a WITH
 	// clause and a named subquery parameter (@minFee, bound by Subquery's params map).
 	//
+	// Demonstrates: @virtual, virtual.with-clause, virtual.named-param.
+	//
 	// @virtual
+	// @order(TotalFee desc)
+	// @page(default: 25, max: 200)
 	FeeByKind struct {
 		KindID       string          `spanner:"KindId"       uniqueindex:"true"` // @primarykey
 		MissionCount int64           `spanner:"MissionCount"`

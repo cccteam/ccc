@@ -11,19 +11,23 @@ import (
 )
 
 type (
-	// Refit is the second workflow root — a ship's passage through the hangar bays.
-	// It carries no tenant column of its own: tenancy runs two hops through Ship and
-	// Hangar (@domain(via: HangarID.SectorID) on ShipId), so a stateful root
-	// demonstrates join-path tenancy on every one of its six transitions (c2b62ab).
+	// Refit is the second workflow root: a ship's passage through the hangar bays. It
+	// carries no tenant column of its own: tenancy runs two hops through Ship and Hangar
+	// (@domain(via: HangarID.SectorID) on ShipId), so a stateful root demonstrates
+	// join-path tenancy on every one of its six transitions.
 	//
 	// InspectedAt is domain data written explicitly by InspectShip (output_only keeps
-	// clients out); the Engineer's Update grant carries `inspectedAt IS NOT NULL`, so
-	// an estimate is only ever set after inspection. OpenedBy is server-stamped. The
-	// update path runs both a defaults type and a validator type. Change tracking is
-	// on, feeding the ship's log.
+	// clients out); the Engineer's Update grant carries inspectedAt IS NOT NULL, so an
+	// estimate is only ever set after inspection. OpenedBy is server-stamped. The update
+	// path runs both a defaults type and a validator type. Change tracking is on, feeding
+	// the ship's log.
+	//
+	// Demonstrates: @state, @domain.join-path, @transition.join-path-root, transition-owned-timestamp, @defaultsUpdateType, @validateUpdateType, change-tracking, condition.day-of-week, condition.time-of-day, condition.local-zone.
 	//
 	// @resource
 	// @permissionScope(domain)
+	// @order(StatusID asc)
+	// @page(default: 10, max: 100)
 	// @defaultsUpdateType(RefitUpdateDefaults)
 	// @validateUpdateType(RefitUpdateValidator)
 	Refit struct {
@@ -48,8 +52,10 @@ func (Refit) Config() resource.Config {
 	return defaultConfig().SetTrackChanges(true)
 }
 
-// RefitUpdateDefaults is wired in by the @defaultsUpdateType annotation; the
-// generated update patch calls Defaults inside the mutation transaction.
+// RefitUpdateDefaults is wired in by the @defaultsUpdateType annotation; the generated
+// update patch calls Defaults inside the mutation transaction.
+//
+// Demonstrates: @defaultsUpdateType.
 type RefitUpdateDefaults struct{}
 
 // Defaults rounds an estimate to whole credits: the hangar does not quote fractions.
@@ -61,8 +67,10 @@ func (d *RefitUpdateDefaults) Defaults(_ context.Context, _ resource.ReadWriteTr
 	return nil
 }
 
-// RefitUpdateValidator is wired in by the @validateUpdateType annotation; the
-// generated update patch calls Validate inside the mutation transaction.
+// RefitUpdateValidator is wired in by the @validateUpdateType annotation; the generated
+// update patch calls Validate inside the mutation transaction.
+//
+// Demonstrates: @validateUpdateType.
 type RefitUpdateValidator struct{}
 
 // Validate rejects a negative estimate.

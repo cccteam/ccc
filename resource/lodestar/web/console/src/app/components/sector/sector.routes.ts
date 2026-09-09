@@ -1,8 +1,9 @@
 import { Type } from '@angular/core';
 import { Route } from '@angular/router';
-import { Permissions, Resources } from '@app/service/zz_gen_constants';
+import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { generatedNavItems } from '@cccteam/resource-angular/resource-nav';
 import { MenuItem } from '@shared/topbar/topbar.component';
+import { BriefingComponent } from './briefing/briefing.component';
 import { CallLogComponent } from './call-log/call-log.component';
 import { FlightDeckComponent } from './flight-deck/flight-deck.component';
 import { HangarDeckComponent } from './hangar-deck/hangar-deck.component';
@@ -10,6 +11,7 @@ import { HazardBoardComponent } from './hazard-board/hazard-board.component';
 import { RosterComponent } from './roster/roster.component';
 import { SalvageHoldComponent } from './salvage-hold/salvage-hold.component';
 import { ShipsLogComponent } from './ships-log/ships-log.component';
+import { WatchDeskComponent } from './watch-desk/watch-desk.component';
 
 let cachedSectorRoute: Route | undefined;
 
@@ -35,6 +37,8 @@ export const sectorRoute = (): Route => {
     { label: 'Squadron Roster', route: ['sector/roster'], permission: { resource: Resources.Squadrons, permission: list } },
     { label: 'Hazard Board', route: ['sector/hazard-board'], permission: { resource: Resources.SectorHazardBoards, permission: list } },
     { label: "Ship's Log", route: ['sector/ships-log'], permission: { resource: Resources.ShipsLogEntries, permission: list } },
+    { label: 'Briefing', route: ['sector/briefing'], permission: { resource: Methods.CompileBriefing, permission: Permissions.Execute } },
+    { label: 'Watch Desk', route: ['sector/watch-desk'], permission: { resource: Methods.ViewAsUser, permission: Permissions.Execute } },
   ];
 
   cachedSectorRoute = {
@@ -74,6 +78,16 @@ export const sectorRoute = (): Route => {
         path: 'ships-log',
         loadComponent: (): Promise<Type<ShipsLogComponent>> =>
           import('./ships-log/ships-log.component').then((comp) => comp.ShipsLogComponent),
+      },
+      {
+        path: 'briefing',
+        loadComponent: (): Promise<Type<BriefingComponent>> =>
+          import('./briefing/briefing.component').then((comp) => comp.BriefingComponent),
+      },
+      {
+        path: 'watch-desk',
+        loadComponent: (): Promise<Type<WatchDeskComponent>> =>
+          import('./watch-desk/watch-desk.component').then((comp) => comp.WatchDeskComponent),
       },
     ],
   } satisfies Route;

@@ -1,3 +1,4 @@
+// Demonstrates: @stateRoot.two-hop, @stateRoot.
 package integration
 
 // chain_test (design plan §9): SortieExpense creates and updates flip legal → refused

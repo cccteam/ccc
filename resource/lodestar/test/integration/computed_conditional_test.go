@@ -1,3 +1,4 @@
+// Demonstrates: computed.conditional-grant, condition.now, @computed.
 package integration
 
 // computed_conditional_test (design plan §9): the hazard board answers under the
@@ -24,11 +25,11 @@ func TestComputedConditionalGrant(t *testing.T) {
 	t.Run("the board answers today", func(t *testing.T) {
 		t.Parallel()
 
-		status, body := doRequestAs(t, h, "hazards", http.MethodGet, sectorPath(anvil, "sector-hazard-boards"), "")
+		status, body := doRequestAs(t, h, "hazards", http.MethodGet, sectorPath(anvil, "sector-hazard-boards?limit=all"), "")
 		assertStatus(t, status, http.StatusOK, body)
 		rows := decodeRows(t, body)
-		if len(rows) != 3 { // Kingfisher hull + reactor, Stubborn Mule hull; the Bastion Watch reading stays at Bastion
-			t.Fatalf("rows = %d, want 3: %s", len(rows), body)
+		if len(rows) != 32 { // eight Anvil ships with readings on up to four subsystems; the Bastion Watch reading stays at Bastion
+			t.Fatalf("rows = %d, want 32: %s", len(rows), body)
 		}
 		worst := map[string]float64{}
 		for _, row := range rows {

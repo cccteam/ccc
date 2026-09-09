@@ -1,3 +1,4 @@
+// Demonstrates: @state, @transition, @transition.loop, transition-owned-timestamp, @enumerate, rpc.as-role, test-suffixed-method, workflow.state-table, client-supplied-key, compound-key, interleaved-table, @stateRoot, @domain.join-path.
 package integration
 
 // This suite pins the stateful-resource pattern's structural half with a scripted
@@ -25,7 +26,7 @@ func workflowGrants() grants {
 		accesstypes.Read:   withFields(missionsResource, "statusId", "bookedBy", "title", "settlement", "assignedSquadronId"),
 		// HoldMission and CompleteMission write the notes AS THE CALLER (an armed
 		// body), so the walk needs the Update grant the routes would need.
-		accesstypes.Update: withFields(missionsResource, "notes"),
+		accesstypes.Update: withFields(missionsResource, "notes", "settlement"),
 		accesstypes.List:   withFields("Sorties", "missionId", "shipId", "pilotUserId", "returnedAt"),
 		accesstypes.Execute: {
 			"ClaimMission", "LaunchMission", "HoldMission", "ResumeMission", "CompleteMission", "FailMission", "StandDownMission",

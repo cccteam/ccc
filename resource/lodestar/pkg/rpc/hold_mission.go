@@ -18,6 +18,8 @@ type (
 	// Dispatcher while the mission is live, the Flight Lead never, though all three
 	// may Execute the method. The web app shows the refusal in the grant's words.
 	//
+	// Demonstrates: @transition.loop, rpc.armed-write, rpc.dry-run.
+	//
 	// @rpc
 	// @permissionScope(domain)
 	// @transition(Mission, from: underway, to: on_hold)

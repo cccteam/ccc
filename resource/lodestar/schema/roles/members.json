@@ -1,0 +1,131 @@
+{
+  "roles": {
+    "global": [
+      {
+        "name": "client-account",
+        "permissions": {
+          "Read": [
+            {
+              "resource": "ClientContacts",
+              "fields": [
+                "displayName",
+                "clientId"
+              ],
+              "condition": "userId = subject"
+            }
+          ],
+          "List": [
+            {
+              "resource": "ClientContacts",
+              "fields": [
+                "displayName",
+                "clientId"
+              ],
+              "condition": "userId = subject"
+            }
+          ]
+        }
+      }
+    ],
+    "domain": [
+      {
+        "name": "client-portal",
+        "permissions": {
+          "List": [
+            {
+              "resource": "MissionDocuments",
+              "fields": [
+                "missionId",
+                "title",
+                "fileName",
+                "contentType",
+                "size",
+                "uploadedAt"
+              ],
+              "condition": "client = subject.client"
+            },
+            {
+              "resource": "Missions",
+              "fields": [
+                "title",
+                "kindId",
+                "statusId",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId"
+              ],
+              "condition": "client = subject.client"
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "caseNumber",
+                "callerContact"
+              ],
+              "condition": "filedBy = subject"
+            },
+            {
+              "resource": "ClientStatements"
+            }
+          ],
+          "Read": [
+            {
+              "resource": "MissionDocuments",
+              "fields": [
+                "missionId",
+                "title",
+                "fileName",
+                "contentType",
+                "size",
+                "uploadedAt"
+              ],
+              "condition": "client = subject.client"
+            },
+            {
+              "resource": "Missions",
+              "fields": [
+                "title",
+                "kindId",
+                "statusId",
+                "hazard",
+                "fee",
+                "deadline",
+                "requiredCertId"
+              ],
+              "condition": "client = subject.client"
+            },
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "caseNumber",
+                "callerContact"
+              ],
+              "condition": "filedBy = subject"
+            }
+          ],
+          "Create": [
+            {
+              "resource": "DistressCalls",
+              "fields": [
+                "summary",
+                "severity",
+                "callerContact"
+              ]
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "StandDownMission",
+              "condition": "client = subject.client"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -22,8 +22,12 @@ type (
 	// computed resource, not an RPC. The keyed read route is suppressed: there is no
 	// key to give but one's own.
 	//
+	// Demonstrates: computed.user, @computed, @suppress.
+	//
 	// @computed
 	// @suppress(readHandler)
+	// @order(DisplayName asc)
+	// @page(default: 25, max: 200)
 	PilotCard struct {
 		UserID         string          `spanner:"UserId"` // @primarykey
 		DisplayName    string          `spanner:"DisplayName"`

@@ -1,7 +1,6 @@
-// Package integration drives Lodestar's generated HTTP handlers against a real
-// Spanner emulator: the structural suites script the permission engine, and the
-// bootstrap-parity suites provision the shipped demo roles through the real engine, so
-// the demo product and the regression suite cannot drift apart.
+// Package integration drives the served application end to end against a real Spanner
+// emulator: the real router, the real session manager, and the real permission engine,
+// provisioned through the deployment's own steps.
 package integration
 
 import (
@@ -41,12 +40,14 @@ func TestMain(m *testing.M) {
 	os.Exit(exitCode)
 }
 
+// prepareDatabase creates a database migrated with the application schema followed by
+// any extra fixture sources, dropping it when the test completes.
 func prepareDatabase(ctx context.Context, t *testing.T, sourceURL ...string) (*initiator.SpannerDB, error) {
 	t.Helper()
 
 	db, err := container.CreateDatabase(ctx, t.Name())
 	if err != nil {
-		return nil, errors.Wrapf(err, "initiator.SpannerContainer.CreateDatabase()")
+		return nil, errors.Wrap(err, "initiator.SpannerContainer.CreateDatabase()")
 	}
 	t.Cleanup(func() {
 		if err := db.DropDatabase(context.Background()); err != nil {
@@ -58,7 +59,7 @@ func prepareDatabase(ctx context.Context, t *testing.T, sourceURL ...string) (*i
 	})
 
 	if err := db.MigrateUp(sourceURL...); err != nil {
-		return nil, errors.Wrapf(err, "initiator.SpannerDB.MigrateUp()")
+		return nil, errors.Wrap(err, "initiator.SpannerDB.MigrateUp()")
 	}
 
 	return db, nil

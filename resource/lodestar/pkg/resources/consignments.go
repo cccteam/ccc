@@ -10,17 +10,25 @@ import (
 type (
 	// Consignment is salvaged cargo held in bond until its owner claims it. Mass is
 	// filterable via allow_filter (the column is unindexed), ExpiresOn is a date-typed
-	// attribute the Supercargo's delete grant conditions on, and ReleasedAt doubles
-	// as the lifecycle marker: NULL means still in bond, and both the Supercargo's
-	// and the droid's ReleaseConsignment grants carry `releasedAt IS NULL`, so a
-	// second release is policy, not code. BondCode is immutable.
+	// attribute the Supercargo's delete grant conditions on, and ReleasedAt doubles as the
+	// lifecycle marker: NULL means still in bond, and both the Supercargo's and the
+	// droid's ReleaseConsignment grants carry releasedAt IS NULL, so a second release is
+	// policy, not code. BondCode is immutable.
 	//
-	// Served on the default and droids outlets: a droid releases a consignment by API
-	// key through the same generated surface humans use.
+	// The hold is listed by release date, a NULLABLE sort column: unreleased cargo (NULL)
+	// is placed last ascending and first descending, and the cursor walks across the NULL
+	// boundary in both directions without a repeated or a skipped row.
+	//
+	// Served on the default and droids outlets: a droid releases a consignment by API key
+	// through the same generated surface humans use.
+	//
+	// Demonstrates: allow_filter, @attribute.date, immutable, outlet.shared, paging.nullable-sort, @order, @page.
 	//
 	// @resource
 	// @permissionScope(domain)
 	// @outlet(default, droids)
+	// @order(ReleasedAt desc)
+	// @page(default: 10, max: 100)
 	Consignment struct {
 		ID ccc.UUID `spanner:"Id"`
 		// @domain

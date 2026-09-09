@@ -1,0 +1,62 @@
+# Development environment for lodestar. Copy to .envrc and run `direnv allow`.
+#
+# Variables are grouped by configuration level (pkg/config). A process reads the levels
+# it constructs and nothing above them: cmd/bootstrap and cmd/deployment/migrate read
+# core and data; the served application reads all three.
+
+# --- core: every process ---
+export APP_SERVICE_NAME=lodestar
+export APP_VERSION=dev
+# GOOGLE_CLOUD_LOGGING_PROJECT ships request logs to Cloud Logging; unset logs to the console.
+# export GOOGLE_CLOUD_LOGGING_PROJECT=
+
+# --- data: every process that opens the database ---
+export GOOGLE_CLOUD_SPANNER_PROJECT=lodestar-dev
+export GOOGLE_CLOUD_SPANNER_INSTANCE_ID=lodestar
+export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=lodestar
+# APP_DEFAULT_SESSION_TIMEOUT is the idle timeout of a browser session (default 10m).
+# export APP_DEFAULT_SESSION_TIMEOUT=10m
+# APP_COOKIE_KEY signs session cookies: Base64 of 32+ random bytes. Unset, the process
+# generates an ephemeral key and sessions end when it restarts.
+# export APP_COOKIE_KEY=
+
+# --- server: the served application ---
+export PORT=8090
+# export APP_CONSOLE_DIST=web/dist/console
+# export APP_PORTAL_DIST=web/dist/portal
+# APP_DROIDS_API_KEY is the bearer key droids present on /droids. Unset, the process
+# generates an ephemeral key nothing knows, which keeps the channel closed.
+export APP_DROIDS_API_KEY=dev-droids-key
+# APP_UPLOAD_DIR is where mission documents are stored (default uploads/, gitignored).
+# export APP_UPLOAD_DIR=uploads
+
+# --- local development only: the Spanner emulator the Procfile starts ---
+export SPANNER_EMULATOR_PORT=9014
+export SPANNER_EMULATOR_HOST=127.0.0.1:${SPANNER_EMULATOR_PORT}
+# overmind otherwise takes PORT as its base and hands every process its own (base, base+100,
+# ...), so the server would listen on PORT+100 and the console proxy would miss it.
+export OVERMIND_NO_PORT=1
+
+# --- members auth: the directory its people sign in through (pkg/auth/members) ---
+# The Procfile builds with the session library's skipAuth tag, which simulates the
+# directory: every login through it is APP_USERNAME (APP_ROLES are the role claims), and
+# only the redirect URL, the hosted domain, and the group prefix below is read. Register the application in a directory, fill the
+# rest in, and drop the tag to use one.
+export APP_USERNAME=client
+export APP_ROLES=client-portal,client-account
+# export APP_MEMBERS_OIDC_CLIENT_ID=
+# export APP_MEMBERS_OIDC_CLIENT_SECRET=
+# APP_MEMBERS_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to
+# the members auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy.
+export APP_MEMBERS_OIDC_REDIRECT_URL=http://127.0.0.1:4301/portal/api/user/callback
+# APP_MEMBERS_OIDC_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to; the
+# simulated directory presents it too, so it is set in development.
+export APP_MEMBERS_OIDC_HOSTED_DOMAIN=example.com
+# APP_MEMBERS_OIDC_GROUP_PREFIX names the Google Groups that carry roles: <prefix><role>@<domain>
+# assigns <role>. Read under the simulated directory too (APP_ROLES stand in for the groups),
+# so it is set in development.
+export APP_MEMBERS_OIDC_GROUP_PREFIX=members-
+# The Admin SDK service account that reads the groups: a key with domain-wide delegation for
+# the groups scope, and the admin it impersonates. Unread under the simulated directory.
+# export APP_MEMBERS_OIDC_ADMIN_CREDENTIALS=
+# export APP_MEMBERS_OIDC_ADMIN_SUBJECT=

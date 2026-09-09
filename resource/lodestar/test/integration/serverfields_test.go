@@ -1,3 +1,4 @@
+// Demonstrates: input_only, output_only, default_create_fn, immutable, output_only_update_fn, @defaultsCreateType, @validateCreateType, @defaultsUpdateType, @validateUpdateType.
 package integration
 
 // This suite pins the server-owned field machinery on DistressCalls: output_only +

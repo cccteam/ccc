@@ -93,7 +93,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'assignedSquadronId', displayType: 'uuid', required: false, isIndex: true },
       { fieldName: 'statusId', displayType: 'string', required: true, isIndex: true, readOnly: true },
       { fieldName: 'notes', displayType: 'string', required: false, isIndex: false },
-      { fieldName: 'settlement', displayType: 'number', required: false, isIndex: false, readOnly: true },
+      { fieldName: 'settlement', displayType: 'number', required: false, isIndex: false },
     ],
   },
   [Resources.MissionDocuments]: {
