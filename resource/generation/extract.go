@@ -24,9 +24,9 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 	resources := make([]*resourceInfo, 0, len(structs))
 	var resourceErrors []error
 	for _, pStruct := range structs {
-		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(pStruct)
+		annotations, err := scanStruct(pStruct)
 		if err != nil {
-			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
+			resourceErrors = append(resourceErrors, err)
 
 			continue
 		}
@@ -297,9 +297,9 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 	resources := make([]*resourceInfo, 0, len(structs))
 	var errs []error
 	for _, pStruct := range structs {
-		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(pStruct)
+		annotations, err := scanStruct(pStruct)
 		if err != nil {
-			errs = append(errs, errors.Wrap(err, "scanner.ScanStruct()"))
+			errs = append(errs, err)
 
 			continue
 		}
@@ -375,6 +375,43 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 // rejectPrimaryKeyAnnotations errors when a table-backed @resource struct carries
 // @primarykey field annotations: table-backed primary keys come from the schema, and
 // the annotation is only valid on @computed and @virtual structs.
+// scanStruct scans a struct's annotations and refuses the struct when it claims more
+// than one kind, before any extractor can claim it.
+func scanStruct(pStruct *parser.Struct) (genlang.StructAnnotations, error) {
+	annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(pStruct)
+	if err != nil {
+		return genlang.StructAnnotations{}, errors.Wrap(err, "scanner.ScanStruct()")
+	}
+	if err := rejectMultipleKinds(pStruct, annotations); err != nil {
+		return genlang.StructAnnotations{}, err
+	}
+
+	return annotations, nil
+}
+
+// structKindKeywords decide what a struct is to the generator. Exactly one may appear
+// on a struct (README: "Exactly one of @resource, @virtual, @computed, or @rpc may
+// appear on a struct"). The scanner's Exclusive flag only stops one keyword from
+// repeating, and every extractor scans every struct in its package and claims the ones
+// carrying its own keyword, so without this check a struct carrying two kinds would be
+// extracted twice, once as each, instead of refused.
+var structKindKeywords = []string{resourceKeyword, virtualKeyword, computedKeyword, rpcKeyword}
+
+// rejectMultipleKinds fails a struct that carries more than one kind keyword.
+func rejectMultipleKinds(pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
+	var kinds []string
+	for _, keyword := range structKindKeywords {
+		if annotations.Struct.Has(keyword) {
+			kinds = append(kinds, "@"+keyword)
+		}
+	}
+	if len(kinds) > 1 {
+		return errors.Newf("struct %s carries %s: exactly one of @%s, @%s, @%s, or @%s may appear on a struct", pStruct.Name(), strings.Join(kinds, " and "), resourceKeyword, virtualKeyword, computedKeyword, rpcKeyword)
+	}
+
+	return nil
+}
+
 func rejectPrimaryKeyAnnotations(pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
 	var errs []error
 	for i, field := range pStruct.Fields() {
@@ -486,9 +523,9 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 	rpcMethods := make([]*rpcMethodInfo, 0, len(structs))
 	var errs []error
 	for _, s := range structs {
-		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
+		annotations, err := scanStruct(s)
 		if err != nil {
-			errs = append(errs, errors.Wrap(err, "scanner.ScanStruct()"))
+			errs = append(errs, err)
 		}
 
 		if !annotations.Struct.Has(rpcKeyword) {
@@ -668,9 +705,9 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 	compResources := make([]*computedResource, 0, len(structs))
 	var resourceErrors []error
 	for _, s := range structs {
-		annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
+		annotations, err := scanStruct(s)
 		if err != nil {
-			resourceErrors = append(resourceErrors, errors.Wrap(err, "scanner.ScanStruct()"))
+			resourceErrors = append(resourceErrors, err)
 
 			continue
 		}

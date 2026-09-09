@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
+	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 )
 
 func Test_validateNoPermTags(t *testing.T) {
@@ -43,6 +44,48 @@ func Test_validateNoPermTags(t *testing.T) {
 			}
 			if tt.wantErr && !strings.Contains(err.Error(), "perm tag") {
 				t.Errorf("validateNoPermTags() error = %v, want mention of the perm tag", err)
+			}
+		})
+	}
+}
+
+// Test_rejectMultipleKinds pins that a struct carrying two kind keywords is refused
+// with both kinds named, where the per-keyword Exclusive flag alone would let every
+// extractor claim it.
+func Test_rejectMultipleKinds(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "hygienefixture"))
+
+	tests := []struct {
+		name         string
+		structName   string
+		wantContains string
+	}{
+		{name: "two kinds are refused, both named", structName: "TwoKinds", wantContains: "struct TwoKinds carries @resource and @computed: exactly one of"},
+		{name: "one kind passes", structName: "OneKind"},
+		{name: "no kind passes; the extractors skip it", structName: "Clean"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := structs[tt.structName]
+			if s == nil {
+				t.Fatalf("struct %q not found in fixture package", tt.structName)
+			}
+			annotations, err := genlang.NewScanner(resourceKeywords()).ScanStruct(s)
+			if err != nil {
+				t.Fatalf("ScanStruct() error = %v", err)
+			}
+
+			err = rejectMultipleKinds(s, annotations)
+			if (err != nil) != (tt.wantContains != "") {
+				t.Fatalf("rejectMultipleKinds() error = %v, wantErr %v", err, tt.wantContains != "")
+			}
+			if err != nil && !strings.Contains(err.Error(), tt.wantContains) {
+				t.Errorf("rejectMultipleKinds() error = %v, want it to contain %q", err, tt.wantContains)
 			}
 		})
 	}
