@@ -1,4 +1,9 @@
-// Package main implements a code generator for resource types and handlers.
+// Package main implements a code generator for resource types and handlers. The
+// program declares the served router too (GenerateRouter): each outlet says how it
+// authenticates and which browser application it serves, and the generator emits the
+// router with its middleware chain documented and proven.
+//
+// Demonstrates: GenerateRouter.
 package main
 
 import (
@@ -28,15 +33,26 @@ func run(ctx context.Context) error {
 			"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources",
 		},
 		generation.GenerateHandlers("app"),
-		generation.GenerateRoutes("pkg/router", "api"),
+		// The router is generated: the default outlet is the console, the crew auth's
+		// password sessions under /api with the console's browser application at /.
+		generation.GenerateRouter(),
+		generation.GenerateRoutes("pkg/router", "api",
+			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.Password),
+			generation.WebApp("/"),
+		),
 		// The droids outlet is the machine channel: structs annotated with @outlet
 		// naming droids are served under /droids, which the router composes behind
-		// API-key authentication instead of a browser session.
-		generation.WithRouterOutlet("droids", "droids"),
+		// API-key authentication (the App's DroidsAuth) instead of a browser session.
+		generation.WithRouterOutlet("droids", "droids", generation.APIKey()),
 		// The portal outlet is the clients' browser app: structs annotated with @outlet
-		// naming portal are served under /portal/api behind the members auth, with their
-		// own permission-digest and user-domains routes (ServesSessions).
-		generation.WithRouterOutlet("portal", "portal/api", generation.ServesSessions()),
+		// naming portal are served under /portal/api behind the members auth, whose
+		// people sign in through their company's Google directory, with their own
+		// permission-digest and user-domains routes, and the portal's browser
+		// application at /portal.
+		generation.WithRouterOutlet("portal", "portal/api",
+			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.OIDCGoogle),
+			generation.WebApp("/portal"),
+		),
 		// Sector-scoped resources and methods are served under /api/sectors/{sectorID}/;
 		// a sector the caller holds no grant in answers like one that does not exist.
 		generation.WithDomainRoute("sectors"),

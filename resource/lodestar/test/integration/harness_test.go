@@ -637,14 +637,15 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		}
 	})
 
-	server.Config.Handler = router.New(app.New(&testConfigurer{
+	a := app.New(&testConfigurer{
 		db:            db,
 		access:        crewAuth.Access(),
 		membersAccess: membersAuth.Access(),
 		crewAuth:      crewAuth,
 		membersAuth:   membersAuth,
 		documents:     documents,
-	}))
+	})
+	server.Config.Handler = router.New(a, router.AppHooks(a))
 	server.Start()
 
 	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), documents: documents, db: db}

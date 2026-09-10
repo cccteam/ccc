@@ -101,9 +101,11 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   `@page`; `pkg/rpc`: the thirteen transitions and the effect methods, including the
   client-form [`rpc.client-form`](pkg/rpc/compile_briefing.go); `pkg/computedresources`
   (the pushdown [`computed.pushdown`](pkg/computedresources/service_ledgers.go) and the
-  fold) and `pkg/virtualresources`; `pkg/router`: the router over three outlets (`/api`,
-  `/portal/api`, `/droids`); `app/`: wiring, middleware, the ship's log, the client
-  statement, the document download, the impersonation mint route, and the watch desk.
+  fold) and `pkg/virtualresources`; `pkg/router`: the generated router over three outlets
+  (`/api`, `/portal/api`, `/droids`) with its chain documented at the top of
+  `zz_gen_router.go`, and `hooks.go`, the console's and the portal's own routes composed
+  into it; `app/`: wiring, middleware, the ship's log, the client statement, the document
+  download, the impersonation mint route, and the watch desk.
 - `pkg/auth/crew` and `pkg/auth/members`: the two populations; `schema/roles/*.json`:
   every grant in §7 per auth; `cmd/bootstrap/users.json`: the personas and the droid.
 - `schema/migrations` and `schema/devseed`: the schema and the world the suites and the

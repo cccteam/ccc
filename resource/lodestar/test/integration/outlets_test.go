@@ -15,7 +15,7 @@ const portalPage = "/portal/tracker"
 // resource is not on the portal at all, and confirm the client's session is a stranger to
 // the console.
 //
-// Demonstrates: outlet.session, outlet.isolation, auth.two-populations, outlet.api-key, machine-identity.
+// Demonstrates: GenerateRouter, outlet.session, outlet.isolation, auth.two-populations, outlet.api-key, machine-identity.
 func TestPortalOutlet(t *testing.T) {
 	t.Parallel()
 
