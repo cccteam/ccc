@@ -128,6 +128,7 @@ func All() []Check {
 		emulatorVersion{},
 		prettierIgnore{},
 		eslintIgnore{},
+		resourceStyles{},
 		packageManager{},
 		paging{},
 		rpcExecute{},

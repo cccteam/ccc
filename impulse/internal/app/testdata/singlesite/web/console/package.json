@@ -3,5 +3,8 @@
   "scripts": {
     "start": "ng serve console",
     "lint": "bunx ng lint console"
+  },
+  "dependencies": {
+    "@cccteam/resource-angular": "0.0.44"
   }
 }
