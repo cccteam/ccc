@@ -13,9 +13,9 @@ require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/logging v1.19.1
 	cloud.google.com/go/spanner v1.94.0
-	github.com/cccteam/access v0.9.12-0.20260909195205-4a34eb2f83d8
+	github.com/cccteam/access v0.9.12-0.20260910182053-1f4daf3855bc
 	github.com/cccteam/ccc v0.3.4-0.20260908043255-2adf7c91cccf
-	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260908043255-2adf7c91cccf
+	github.com/cccteam/ccc/accesstypes v0.5.10-0.20260910180652-4af7f8401a32
 	github.com/cccteam/ccc/resource v0.10.7-0.20260909002230-f9a4ea3e11f8
 	github.com/cccteam/ccc/tracer v0.1.7
 	github.com/cccteam/db-initiator v0.3.14
@@ -33,6 +33,7 @@ require (
 	github.com/sethvargo/go-envconfig v1.4.3
 	github.com/shopspring/decimal v1.4.1-0.20260819210736-ca4740823783
 	google.golang.org/api v0.293.0
+	google.golang.org/grpc v1.83.2
 )
 
 require (
@@ -150,7 +151,6 @@ require (
 	google.golang.org/genproto v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260818201246-1b0934165a6f // indirect
-	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
