@@ -6,10 +6,15 @@
   z-index: 1000;
 }
 
+// Error alerts stack centered at the bottom of the viewport, clear of the header and the
+// page's controls.
 .alert-container {
   position: fixed;
-  top: 8px;
-  right: 8px;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  margin: 0 auto;
+  width: max-content;
+  max-width: min(640px, 100%);
   z-index: 1001;
-  max-width: 480px;
 }
