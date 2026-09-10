@@ -46,7 +46,7 @@ const (
 	sessionsTable = TablePrefix + "Sessions"
 	usersTable    = TablePrefix + "SessionUsers"
 	// ImpersonationsTable is spelled out in full (not TablePrefix + "SessionImpersonations")
-	// so the tool's auth-wired check, which reads the literal, finds its migration.
+	// so the tool's session-tables check, which reads the literal, finds its migration.
 	ImpersonationsTable = "CrewSessionImpersonations"
 
 	// impersonationTimeout is the configured hard cap on an impersonated session; the
@@ -86,7 +86,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings Settings) (*Auth
 
 	// The impersonation record rides beside the sessions, so StartImpersonatedSession
 	// can mint view-as and act-as-role sessions.
-	// The table name is a literal here so the tool's auth-wired check, which reads the
+	// The table name is a literal here so the tool's session-tables check, which reads the
 	// call, finds its migration.
 	impersonation, err := sessionstorage.NewImpersonationTable("CrewSessionImpersonations")
 	if err != nil {

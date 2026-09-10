@@ -27,9 +27,9 @@ func Main() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	conf, err := config.NewServerConfiguration(ctx)
+	conf, err := config.NewSiteConfiguration(ctx)
 	if err != nil {
-		return errors.Wrap(err, "config.NewServerConfiguration()")
+		return errors.Wrap(err, "config.NewSiteConfiguration()")
 	}
 	defer conf.Close()
 

@@ -2,7 +2,7 @@
 #
 # Variables are grouped by configuration level (pkg/config). A process reads the levels
 # it constructs and nothing above them: cmd/bootstrap and cmd/deployment/migrate read
-# core and data; the served application reads all three.
+# core and data; the served site reads all three.
 
 # --- core: every process ---
 export APP_SERVICE_NAME=lodestar
@@ -20,7 +20,7 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=lodestar
 # generates an ephemeral key and sessions end when it restarts.
 # export APP_COOKIE_KEY=
 
-# --- server: the served application ---
+# --- site: the served site ---
 export PORT=8090
 # export APP_CONSOLE_DIST=web/dist/console
 # export APP_PORTAL_DIST=web/dist/portal
