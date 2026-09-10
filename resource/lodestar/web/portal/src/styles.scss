@@ -1,3 +1,7 @@
+// The @cccteam/resource-angular components' cross-cutting classes and variables; the
+// portal shares the console's workspace and dependency, so it carries the same import.
+@use '@cccteam/resource-angular/styles';
+
 /* Global styles for the Lodestar client portal: smaller, calmer than the console. */
 
 html,
