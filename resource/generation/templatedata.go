@@ -494,6 +494,34 @@ func (d *tsAPIData) HasUpload() bool {
 	return false
 }
 
+// HasNullBoolean reports whether a key or write shape on this outlet is typed
+// NullBoolean, so the client file imports the type it names.
+func (d *tsAPIData) HasNullBoolean() bool {
+	return d.hasFieldType(func(fieldType string) bool { return fieldType == nullBooleanTSType })
+}
+
+// HasCustomTypes reports whether a key or write shape on this outlet is typed
+// through CustomTypes, so the client file imports the namespace it names.
+func (d *tsAPIData) HasCustomTypes() bool {
+	return d.hasFieldType(func(fieldType string) bool { return strings.HasPrefix(fieldType, customTypesPrefix) })
+}
+
+// hasFieldType reports whether any key, create, or patch field the client file
+// renders has a type the predicate accepts.
+func (d *tsAPIData) hasFieldType(accept func(fieldType string) bool) bool {
+	for _, res := range d.Resources {
+		for _, fields := range [][]*tsAPIField{res.Keys, res.CreateFields, res.PatchFields} {
+			for _, field := range fields {
+				if accept(field.Type) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
 // ResourceImports lists the row types the client file imports from the resources file.
 func (d *tsAPIData) ResourceImports() string {
 	names := make([]string, 0, len(d.Resources))

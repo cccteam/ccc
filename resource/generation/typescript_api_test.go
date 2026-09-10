@@ -141,6 +141,32 @@ func Test_apiClientData(t *testing.T) {
 			wantNotContains: []string{
 				"RelicsCreate",
 				"RelicsPatch",
+				// String-typed shapes import no value types.
+				"NullBoolean",
+				"CustomTypes",
+			},
+		},
+		{
+			name: "a NullBoolean or CustomTypes field in a write shape imports the type it names",
+			generator: func() *typescriptGenerator {
+				widget := fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
+					typed(res)
+					for _, f := range res.Fields {
+						switch f.Name() {
+						case "Secret":
+							f.typescriptType = booleanStr
+							f.IsNullable = true
+						case "Code":
+							f.typescriptType = customTypesPrefix + "Money"
+						}
+					}
+				})
+				return &typescriptGenerator{client: &client{resources: []*resourceInfo{widget}}}
+			},
+			wantContains: []string{
+				"import { ApiDescriptor, Client, ClientOptions, createClient, CustomTypes, NullBoolean, ResourceHandle } from '@cccteam/resource';",
+				"  secret?: NullBoolean;",
+				"  code: CustomTypes.Money;",
 			},
 		},
 	}

@@ -666,6 +666,9 @@ const (
 	uuidTSType      = "uuid"
 	dateTSType      = "Date"
 	civilDateTSType = "civilDate"
+	// nullBooleanTSType is the wire type of a nullable boolean, a value type the
+	// generated TypeScript imports from @cccteam/resource.
+	nullBooleanTSType = "NullBoolean"
 )
 
 func defaultTypescriptOverrides() map[string]string {

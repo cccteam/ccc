@@ -1033,7 +1033,7 @@ func (f *resourceField) TypescriptDataType() string {
 		return dateTSType
 	}
 	if f.IsNullable && f.typescriptType == booleanStr {
-		return "NullBoolean"
+		return nullBooleanTSType
 	}
 
 	return f.typescriptType
