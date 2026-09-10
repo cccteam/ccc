@@ -29,7 +29,15 @@ type (
 	// tracking is on, feeding the ship's log. The list is ordered by deadline and paged at
 	// twenty-five, the size the flight deck reads from the descriptor.
 	//
-	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global.
+	// Two fields declare which resource their picker lists (the field-scope form of
+	// the enumerate annotation). ClientID is a foreign key into Clients, and it names
+	// ClientRosters, a sector-scoped view over Clients keyed by the same id that carries
+	// the contact and mission counts a booking picker wants; the constraint stays the
+	// guard at write time. BriefingTemplateID is a plain column with no foreign key: it
+	// holds an identifier from the BriefingTemplates catalog, which lives in Go, not in
+	// the schema, so nothing but the declaration says what the picker lists.
+	//
+	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -43,11 +51,14 @@ type (
 		// @domain
 		SectorID string `spanner:"SectorId"`
 		// @attribute(client)
+		// @enumerate(ClientRosters)
 		ClientID ccc.UUID `spanner:"ClientId"`
 		// @attribute(kind)
 		KindID string  `spanner:"KindId"`
 		Title  string  `spanner:"Title"`
 		Brief  *string `spanner:"Brief"`
+		// @enumerate(BriefingTemplates)
+		BriefingTemplateID *string `spanner:"BriefingTemplateId"`
 		// @attribute(hazard)
 		Hazard int64 `spanner:"Hazard"`
 		// @attribute(fee)

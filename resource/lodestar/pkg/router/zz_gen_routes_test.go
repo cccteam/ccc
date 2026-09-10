@@ -73,6 +73,8 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/client-contacts", method: http.MethodPost},
 		{url: "/droids/client-contacts/testClientContactID", method: http.MethodGet},
 		{url: "/droids/client-contacts/testClientContactID", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/client-rosters", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/client-rosters", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/distress-calls", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/distress-calls", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/distress-calls/testDistressCallID", method: http.MethodGet},
@@ -142,6 +144,8 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/wings", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/wings/testWingID", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/wings/testWingID", method: http.MethodPost},
+		{url: "/droids/briefing-templates", method: http.MethodGet},
+		{url: "/droids/briefing-templates", method: http.MethodPost},
 		{url: "/droids/pilot-cards", method: http.MethodGet},
 		{url: "/droids/pilot-cards", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/sector-hazard-boards", method: http.MethodGet},
@@ -461,6 +465,26 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/portal/api/client-contacts/testClientContactID", method: http.MethodPost,
 			handlerFunc: "ClientContact",
 			parameters:  map[string]string{"clientContactID": "testClientContactID"},
+		},
+		{
+			url: "/api/sectors/testDomain/client-rosters", method: http.MethodGet,
+			handlerFunc: "ClientRosters",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/api/sectors/testDomain/client-rosters", method: http.MethodPost,
+			handlerFunc: "ClientRosters",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/portal/api/sectors/testDomain/client-rosters", method: http.MethodGet,
+			handlerFunc: "ClientRosters",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/portal/api/sectors/testDomain/client-rosters", method: http.MethodPost,
+			handlerFunc: "ClientRosters",
+			parameters:  map[string]string{"sectorID": "testDomain"},
 		},
 		{
 			url: "/api/sectors/testDomain/consignments", method: http.MethodGet,
@@ -918,6 +942,26 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"sectorID": "testDomain", "wingID": "testWingID"},
 		},
 		{
+			url: "/api/briefing-templates", method: http.MethodGet,
+			handlerFunc: "BriefingTemplates",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/briefing-templates", method: http.MethodPost,
+			handlerFunc: "BriefingTemplates",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/briefing-templates", method: http.MethodGet,
+			handlerFunc: "BriefingTemplates",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/briefing-templates", method: http.MethodPost,
+			handlerFunc: "BriefingTemplates",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/api/pilot-cards", method: http.MethodGet,
 			handlerFunc: "PilotCards",
 			parameters:  map[string]string{},
@@ -1015,6 +1059,10 @@ func (s *generatedHandlersStub) BeginRefit() http.HandlerFunc {
 	return s.record("BeginRefit")
 }
 
+func (s *generatedHandlersStub) BriefingTemplates() http.HandlerFunc {
+	return s.record("BriefingTemplates")
+}
+
 func (s *generatedHandlersStub) ClaimMission() http.HandlerFunc {
 	return s.record("ClaimMission")
 }
@@ -1037,6 +1085,10 @@ func (s *generatedHandlersStub) ClientContacts() http.HandlerFunc {
 
 func (s *generatedHandlersStub) ClientContact() http.HandlerFunc {
 	return s.record("ClientContact")
+}
+
+func (s *generatedHandlersStub) ClientRosters() http.HandlerFunc {
+	return s.record("ClientRosters")
 }
 
 func (s *generatedHandlersStub) CompileBriefing() http.HandlerFunc {

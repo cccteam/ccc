@@ -262,3 +262,9 @@ INSERT INTO DistressCalls (Id, SectorId, Summary, Severity, CallerContact, Trans
 INSERT INTO DistressCalls (Id, SectorId, Summary, Severity, CallerContact, Transcript, CaseNumber, FiledBy) VALUES ('d0000000-0000-4000-8000-000000000011', 'anvil', 'Reactor scram on the fuel bowser', 3, NULL, NULL, 'DC-SEED-0011', 'dispatcher');
 INSERT INTO DistressCalls (Id, SectorId, Summary, Severity, CallerContact, Transcript, CaseNumber, FiledBy) VALUES ('d0000000-0000-4000-8000-000000000012', 'anvil', 'Distress beacon from Spindle Rock', 4, NULL, NULL, 'DC-SEED-0012', 'dispatcher');
 INSERT INTO DistressCalls (Id, SectorId, Summary, Severity, CallerContact, Transcript, CaseNumber, FiledBy) VALUES ('d0000000-0000-4000-8000-000000000013', 'anvil', 'Unresponsive prospector near the Forge relay', 5, 'cleo@halvard.example', NULL, 'DC-SEED-0013', 'client');
+
+-- Briefing templates are a catalog served from Go (pkg/computedresources), so the column
+-- holds an identifier the schema knows nothing about; three Anvil missions name one.
+UPDATE Missions SET BriefingTemplateId = 'standard' WHERE Id = '80000000-0000-4000-8000-000000000001';
+UPDATE Missions SET BriefingTemplateId = 'hazard-first' WHERE Id = '80000000-0000-4000-8000-000000000003';
+UPDATE Missions SET BriefingTemplateId = 'client-facing' WHERE Id = '80000000-0000-4000-8000-000000000004';

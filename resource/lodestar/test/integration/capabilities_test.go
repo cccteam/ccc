@@ -37,8 +37,8 @@ func TestCapabilityEnvelope(t *testing.T) {
 			user:   "marshal",
 			target: sectorPath(anvil, "missions?capabilities=Update,Delete"),
 			want: map[string]wantCapability{
-				missionHaulerID: {update: []any{"clientId", "kindId", "title", "brief", "hazard", "fee", "deadline", "requiredCertId", "assignedSquadronId", "notes"}, del: true},
-				missionPodID:    {update: []any{"clientId", "kindId", "title", "brief", "hazard", "fee", "deadline", "requiredCertId", "assignedSquadronId", "notes"}, del: true},
+				missionHaulerID: {update: []any{"clientId", "kindId", "title", "brief", "briefingTemplateId", "hazard", "fee", "deadline", "requiredCertId", "assignedSquadronId", "notes"}, del: true},
+				missionPodID:    {update: []any{"clientId", "kindId", "title", "brief", "briefingTemplateId", "hazard", "fee", "deadline", "requiredCertId", "assignedSquadronId", "notes"}, del: true},
 			},
 		},
 		{

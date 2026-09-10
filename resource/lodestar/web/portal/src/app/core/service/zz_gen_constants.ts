@@ -18,7 +18,9 @@ export const PermissionScopes = {
 };
 
 export const Resources = {
+  BriefingTemplates: 'BriefingTemplates' as Resource,
   ClientContacts: 'ClientContacts' as Resource,
+  ClientRosters: 'ClientRosters' as Resource,
   ClientStatements: 'ClientStatements' as Resource,
   DistressCalls: 'DistressCalls' as Resource,
   MissionDocuments: 'MissionDocuments' as Resource,
@@ -28,6 +30,21 @@ export const Resources = {
 export const Methods = {
   StandDownMission: 'StandDownMission' as Method,
 };
+
+export namespace BriefingTemplates {
+  export const fieldName = {
+    audience: 'audience' as FieldName,
+    id: 'id' as FieldName,
+    name: 'name' as FieldName,
+    summary: 'summary' as FieldName,
+  };
+  export const resourceName = {
+    audience: 'BriefingTemplates.audience' as Resource,
+    id: 'BriefingTemplates.id' as Resource,
+    name: 'BriefingTemplates.name' as Resource,
+    summary: 'BriefingTemplates.summary' as Resource,
+  };
+}
 
 export namespace ClientContacts {
   export const fieldName = {
@@ -41,6 +58,25 @@ export namespace ClientContacts {
     displayName: 'ClientContacts.displayName' as Resource,
     id: 'ClientContacts.id' as Resource,
     userId: 'ClientContacts.userId' as Resource,
+  };
+}
+
+export namespace ClientRosters {
+  export const fieldName = {
+    contactCount: 'contactCount' as FieldName,
+    id: 'id' as FieldName,
+    name: 'name' as FieldName,
+    sectorId: 'sectorId' as FieldName,
+    sectorMissions: 'sectorMissions' as FieldName,
+    trusted: 'trusted' as FieldName,
+  };
+  export const resourceName = {
+    contactCount: 'ClientRosters.contactCount' as Resource,
+    id: 'ClientRosters.id' as Resource,
+    name: 'ClientRosters.name' as Resource,
+    sectorId: 'ClientRosters.sectorId' as Resource,
+    sectorMissions: 'ClientRosters.sectorMissions' as Resource,
+    trusted: 'ClientRosters.trusted' as Resource,
   };
 }
 
@@ -99,6 +135,7 @@ export namespace Missions {
     assignedSquadronId: 'assignedSquadronId' as FieldName,
     bookedBy: 'bookedBy' as FieldName,
     brief: 'brief' as FieldName,
+    briefingTemplateId: 'briefingTemplateId' as FieldName,
     clientId: 'clientId' as FieldName,
     deadline: 'deadline' as FieldName,
     fee: 'fee' as FieldName,
@@ -116,6 +153,7 @@ export namespace Missions {
     assignedSquadronId: 'Missions.assignedSquadronId' as Resource,
     bookedBy: 'Missions.bookedBy' as Resource,
     brief: 'Missions.brief' as Resource,
+    briefingTemplateId: 'Missions.briefingTemplateId' as Resource,
     clientId: 'Missions.clientId' as Resource,
     deadline: 'Missions.deadline' as Resource,
     fee: 'Missions.fee' as Resource,

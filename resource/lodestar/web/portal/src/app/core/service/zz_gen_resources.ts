@@ -9,6 +9,15 @@ export interface ClientContacts {
   displayName?: string;
 }
 
+export interface ClientRosters {
+  id: string;
+  sectorId?: string;
+  name?: string;
+  trusted?: boolean;
+  contactCount?: number;
+  sectorMissions?: number;
+}
+
 export interface DistressCalls {
   id: string;
   sectorId?: string;
@@ -27,6 +36,7 @@ export interface Missions {
   kindId?: string;
   title?: string;
   brief?: string;
+  briefingTemplateId?: string;
   hazard?: number;
   fee?: number;
   deadline?: Date;
@@ -50,6 +60,13 @@ export interface MissionDocuments {
   uploadedAt?: Date;
 }
 
+export interface BriefingTemplates {
+  id: string;
+  name?: string;
+  audience?: string;
+  summary?: string;
+}
+
 const resourceMap: ResourceMap = {
   [Resources.ClientContacts]: {
     route: 'client-contacts',
@@ -59,6 +76,18 @@ const resourceMap: ResourceMap = {
       { fieldName: 'userId', displayType: 'string', required: true, isIndex: true },
       { fieldName: 'clientId', displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'displayName', displayType: 'string', required: true, isIndex: false },
+    ],
+  },
+  [Resources.ClientRosters]: {
+    route: 'sectors/{sectorID}/client-rosters',
+    readDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'name', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'trusted', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'contactCount', displayType: 'number', required: true, isIndex: false },
+      { fieldName: 'sectorMissions', displayType: 'number', required: true, isIndex: false },
     ],
   },
   [Resources.DistressCalls]: {
@@ -81,10 +110,11 @@ const resourceMap: ResourceMap = {
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
       { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true, readOnly: true },
-      { fieldName: 'clientId', displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'clientId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.ClientRosters },
       { fieldName: 'kindId', displayType: 'enumerated', required: true, isIndex: true, enumeration: [{ id: "courier", display: "Courier" }, { id: "escort", display: "Escort" }, { id: "rescue", display: "Rescue" }, { id: "salvage", display: "Salvage" }] },
       { fieldName: 'title', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'brief', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'briefingTemplateId', displayType: 'enumerated', required: false, isIndex: false, enumeratedResource: Resources.BriefingTemplates },
       { fieldName: 'hazard', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'fee', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'deadline', displayType: 'date', required: true, isIndex: false },
@@ -113,6 +143,19 @@ const resourceMap: ResourceMap = {
       { fieldName: 'uploadedAt', displayType: 'date', required: true, isIndex: false },
     ],
   },
+  [Resources.BriefingTemplates]: {
+    route: 'briefing-templates',
+    readDisabled: true,
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'name', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'audience', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'summary', displayType: 'string', required: false, isIndex: false },
+    ],
+  },
 };
 
 export function resourceMeta(resource: Resource): ResourceMeta {
@@ -128,9 +171,11 @@ export const DomainRouteParam = 'sectorID';
 
 export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.ClientContacts]: PermissionScopes.global,
+  [Resources.ClientRosters]: PermissionScopes.domain,
   [Resources.DistressCalls]: PermissionScopes.domain,
   [Resources.Missions]: PermissionScopes.domain,
   [Resources.MissionDocuments]: PermissionScopes.domain,
+  [Resources.BriefingTemplates]: PermissionScopes.global,
 };
 
 export type OperationType = 'add' | 'patch' | 'remove';

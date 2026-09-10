@@ -10,11 +10,13 @@ import (
 )
 
 type (
-	// FailMission moves a mission underway -> failed. The reason is validated in the
-	// body against the FailReasons constants (enum tables are not referencable by
-	// enumerated: today — finding 4); the open sorties come home.
+	// FailMission moves a mission underway -> failed; the open sorties come home. The
+	// reason names the FailReasons enum table with a field-scope @enumerate, so the
+	// browser's picker renders the table's values from the generated metadata — no
+	// request, no List grant — and the body validates the reason it is sent against the
+	// same constants, since a picker is a convenience and never the guard.
 	//
-	// Demonstrates: @transition, rpc.trusted-body.
+	// Demonstrates: @transition, rpc.trusted-body, @enumerate.enum-table.
 	//
 	// @rpc
 	// @permissionScope(domain)
@@ -22,7 +24,8 @@ type (
 	FailMission struct {
 		// @target
 		MissionID ccc.UUID
-		ReasonID  string
+		// @enumerate(FailReasons)
+		ReasonID string
 	}
 )
 

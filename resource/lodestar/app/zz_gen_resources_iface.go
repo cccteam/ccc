@@ -12,13 +12,13 @@ import (
 
 type Resourcer interface {
 	resource.Resourcer
-	resources.Client | resources.ClientContact | resources.Consignment |
-		resources.DistressCall | resources.DroidReport | virtualresources.FeeByKind |
-		resources.Hangar | resources.Mission | resources.MissionDocument |
-		virtualresources.OpenMissionsBySquadron | resources.Pilot |
+	resources.Client | resources.ClientContact | virtualresources.ClientRoster |
+		resources.Consignment | resources.DistressCall | resources.DroidReport |
+		virtualresources.FeeByKind | resources.Hangar | resources.Mission |
+		resources.MissionDocument | virtualresources.OpenMissionsBySquadron | resources.Pilot |
 		resources.PilotCertification | resources.Refit | resources.RefitTask | resources.Sector |
 		resources.Ship | resources.ShipClass | resources.Sortie | resources.SortieExpense |
 		resources.Squadron | resources.SquadronMembership | resources.Wing |
-		computedresources.PilotCard | computedresources.SectorHazardBoard |
-		computedresources.ServiceLedger
+		computedresources.BriefingTemplate | computedresources.PilotCard |
+		computedresources.SectorHazardBoard | computedresources.ServiceLedger
 }

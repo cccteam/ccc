@@ -15,6 +15,14 @@
   <mat-card appearance="outlined" class="table-card">
     <mat-card-content>
       <div class="controls">
+        <mat-form-field appearance="outline" class="template-picker">
+          <mat-label>Template</mat-label>
+          <mat-select [value]="templateId()" (selectionChange)="templateId.set($event.value)">
+            @for (template of templates.value(); track template.id) {
+              <mat-option [value]="template.id">{{ template.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
         <mat-slide-toggle [checked]="includeHazards()" (change)="includeHazards.set($event.checked)">Include the hazard board</mat-slide-toggle>
         <button mat-flat-button type="button" (click)="compile()">Compile briefing</button>
         <button mat-stroked-button type="button" (click)="tryDryRun()" title="A client-form method refuses a dry run: there is no transaction to roll back.">
@@ -30,7 +38,7 @@
       @if (sheet(); as sheet) {
         <div class="sheet">
           <h2>Briefing for {{ sheet.sector }}</h2>
-          <p class="stamp">compiled {{ sheet.compiledAt | date: 'medium' }}</p>
+          <p class="stamp">{{ sheet.template }}, compiled {{ sheet.compiledAt | date: 'medium' }}</p>
           <dl>
             <dt>Missions you may see</dt>
             <dd>{{ sheet.missions }}</dd>

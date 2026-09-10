@@ -58,6 +58,8 @@ type GeneratedHandlers interface {
 
 	BeginRefit() http.HandlerFunc
 
+	BriefingTemplates() http.HandlerFunc
+
 	ClaimMission() http.HandlerFunc
 
 	Clients() http.HandlerFunc
@@ -66,6 +68,8 @@ type GeneratedHandlers interface {
 
 	ClientContacts() http.HandlerFunc
 	ClientContact() http.HandlerFunc
+
+	ClientRosters() http.HandlerFunc
 
 	CompileBriefing() http.HandlerFunc
 
@@ -173,6 +177,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 
 	r.Post("/api/sectors/{sectorID}/begin-refit", domainGuard(h.BeginRefit()))
 
+	briefingTemplatesHandler := h.BriefingTemplates()
+	r.Get("/api/briefing-templates", briefingTemplatesHandler)
+	r.Post("/api/briefing-templates", briefingTemplatesHandler)
+
 	r.Post("/api/sectors/{sectorID}/claim-mission", domainGuard(h.ClaimMission()))
 
 	clientsHandler := h.Clients()
@@ -192,6 +200,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	clientContactHandler := h.ClientContact()
 	r.Get("/api/client-contacts/{clientContactID}", clientContactHandler)
 	r.Post("/api/client-contacts/{clientContactID}", clientContactHandler)
+
+	clientRostersHandler := domainGuard(h.ClientRosters())
+	r.Get("/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
+	r.Post("/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
 
 	r.Post("/api/sectors/{sectorID}/compile-briefing", domainGuard(h.CompileBriefing()))
 
@@ -446,8 +458,12 @@ type GeneratedPortalHandlers interface {
 	// foothold predicate as concealed tenancy.
 	UserDomains() http.HandlerFunc
 
+	BriefingTemplates() http.HandlerFunc
+
 	ClientContacts() http.HandlerFunc
 	ClientContact() http.HandlerFunc
+
+	ClientRosters() http.HandlerFunc
 
 	DistressCalls() http.HandlerFunc
 	DistressCall() http.HandlerFunc
@@ -469,6 +485,10 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	r.Get("/portal/api/permission-digest", h.PermissionDigest())
 	r.Get("/portal/api/user-domains", h.UserDomains())
 
+	briefingTemplatesHandler := h.BriefingTemplates()
+	r.Get("/portal/api/briefing-templates", briefingTemplatesHandler)
+	r.Post("/portal/api/briefing-templates", briefingTemplatesHandler)
+
 	clientContactsHandler := h.ClientContacts()
 	r.Get("/portal/api/client-contacts", clientContactsHandler)
 	r.Post("/portal/api/client-contacts", clientContactsHandler)
@@ -476,6 +496,10 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	clientContactHandler := h.ClientContact()
 	r.Get("/portal/api/client-contacts/{clientContactID}", clientContactHandler)
 	r.Post("/portal/api/client-contacts/{clientContactID}", clientContactHandler)
+
+	clientRostersHandler := domainGuard(h.ClientRosters())
+	r.Get("/portal/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
+	r.Post("/portal/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
 
 	distressCallsHandler := domainGuard(h.DistressCalls())
 	r.Get("/portal/api/sectors/{sectorID}/distress-calls", distressCallsHandler)

@@ -5,6 +5,7 @@ import { resourceRoutes } from '@cccteam/resource-angular/resource-route-generat
 import { sectorRoute } from '@components/sector/sector.routes';
 import { UiComponent } from '@components/ui/ui.component';
 import { clientsConfig } from './configs/clients.config';
+import { missionsConfig } from './configs/missions.config';
 import { pilotsConfig } from './configs/pilots.config';
 import { sectorsConfig } from './configs/sectors.config';
 import { shipClassesConfig } from './configs/shipClasses.config';
@@ -25,11 +26,14 @@ export const routes: Routes = [
           import('./components/ui/dashboard/dashboard.component').then((comp) => comp.DashboardComponent),
       },
       // Global resources are config-driven over the generated metadata; the
-      // sector-scoped decks are hand-written (see SectorService).
+      // sector-scoped decks are hand-written (see SectorService), except the Missions
+      // page, a config-driven page in the selected sector (RESOURCE_DOMAIN) whose
+      // pickers list exactly the resources the metadata names.
       resourceRoutes(clientsConfig, resourceMeta),
       resourceRoutes(shipClassesConfig, resourceMeta),
       resourceRoutes(pilotsConfig, resourceMeta),
       resourceRoutes(sectorsConfig, resourceMeta),
+      resourceRoutes(missionsConfig, resourceMeta),
       sectorRoute(),
       { path: '**', redirectTo: 'dashboard' },
     ],

@@ -47,6 +47,7 @@ func (a *App) PatchPortalResources() http.HandlerFunc {
 		KindID             string              `json:"kindId"`
 		Title              string              `json:"title"`
 		Brief              *string             `json:"brief"`
+		BriefingTemplateID *string             `json:"briefingTemplateId"`
 		Hazard             int64               `json:"hazard"`
 		Fee                decimal.Decimal     `json:"fee"`
 		Deadline           time.Time           `json:"deadline"`

@@ -17,6 +17,15 @@ export interface ClientContacts {
   displayName?: string;
 }
 
+export interface ClientRosters {
+  id: string;
+  sectorId?: string;
+  name?: string;
+  trusted?: boolean;
+  contactCount?: number;
+  sectorMissions?: number;
+}
+
 export interface Consignments {
   id: string;
   sectorId?: string;
@@ -60,6 +69,7 @@ export interface Missions {
   kindId?: string;
   title?: string;
   brief?: string;
+  briefingTemplateId?: string;
   hazard?: number;
   fee?: number;
   deadline?: Date;
@@ -182,6 +192,13 @@ export interface Wings {
   name?: string;
 }
 
+export interface BriefingTemplates {
+  id: string;
+  name?: string;
+  audience?: string;
+  summary?: string;
+}
+
 export interface PilotCards {
   userId: string;
   displayName?: string;
@@ -236,6 +253,18 @@ const resourceMap: ResourceMap = {
       { fieldName: 'displayName', displayType: 'string', required: true, isIndex: false },
     ],
   },
+  [Resources.ClientRosters]: {
+    route: 'sectors/{sectorID}/client-rosters',
+    readDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'name', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'trusted', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'contactCount', displayType: 'number', required: true, isIndex: false },
+      { fieldName: 'sectorMissions', displayType: 'number', required: true, isIndex: false },
+    ],
+  },
   [Resources.Consignments]: {
     route: 'sectors/{sectorID}/consignments',
     consolidatedRoute: 'resources',
@@ -266,6 +295,7 @@ const resourceMap: ResourceMap = {
   },
   [Resources.FeeByKinds]: {
     route: 'fee-by-kinds',
+    readDisabled: true,
     fields: [
       { fieldName: 'kindId', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'missionCount', displayType: 'number', required: true, isIndex: false },
@@ -288,10 +318,11 @@ const resourceMap: ResourceMap = {
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
       { fieldName: 'sectorId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Sectors, readOnly: true },
-      { fieldName: 'clientId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.Clients },
+      { fieldName: 'clientId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.ClientRosters },
       { fieldName: 'kindId', displayType: 'enumerated', required: true, isIndex: true, enumeration: [{ id: "courier", display: "Courier" }, { id: "escort", display: "Escort" }, { id: "rescue", display: "Rescue" }, { id: "salvage", display: "Salvage" }] },
       { fieldName: 'title', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'brief', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'briefingTemplateId', displayType: 'enumerated', required: false, isIndex: false, enumeratedResource: Resources.BriefingTemplates },
       { fieldName: 'hazard', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'fee', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'deadline', displayType: 'date', required: true, isIndex: false },
@@ -322,6 +353,7 @@ const resourceMap: ResourceMap = {
   },
   [Resources.OpenMissionsBySquadrons]: {
     route: 'sectors/{sectorID}/open-missions-by-squadrons',
+    readDisabled: true,
     fields: [
       { fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
       { fieldName: 'squadronName', displayType: 'string', required: true, isIndex: true },
@@ -457,6 +489,19 @@ const resourceMap: ResourceMap = {
       { fieldName: 'name', displayType: 'string', required: true, isIndex: true },
     ],
   },
+  [Resources.BriefingTemplates]: {
+    route: 'briefing-templates',
+    readDisabled: true,
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'name', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'audience', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'summary', displayType: 'string', required: false, isIndex: false },
+    ],
+  },
   [Resources.PilotCards]: {
     route: 'pilot-cards',
     readDisabled: true,
@@ -517,6 +562,7 @@ export const DomainRouteParam = 'sectorID';
 export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.Clients]: PermissionScopes.global,
   [Resources.ClientContacts]: PermissionScopes.global,
+  [Resources.ClientRosters]: PermissionScopes.domain,
   [Resources.Consignments]: PermissionScopes.domain,
   [Resources.DistressCalls]: PermissionScopes.domain,
   [Resources.FeeByKinds]: PermissionScopes.global,
@@ -536,6 +582,7 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.Squadrons]: PermissionScopes.domain,
   [Resources.SquadronMemberships]: PermissionScopes.domain,
   [Resources.Wings]: PermissionScopes.domain,
+  [Resources.BriefingTemplates]: PermissionScopes.global,
   [Resources.PilotCards]: PermissionScopes.global,
   [Resources.SectorHazardBoards]: PermissionScopes.domain,
   [Resources.ServiceLedgers]: PermissionScopes.global,

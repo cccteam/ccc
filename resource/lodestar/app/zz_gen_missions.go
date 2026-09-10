@@ -26,6 +26,7 @@ func (a *App) Missions() http.HandlerFunc {
 		KindID             string              `json:"kindId"             index:"true"`
 		Title              string              `json:"title"`
 		Brief              *string             `json:"brief"`
+		BriefingTemplateID *string             `json:"briefingTemplateId"`
 		Hazard             int64               `json:"hazard"`
 		Fee                decimal.Decimal     `json:"fee"                allow_filter:"true"`
 		Deadline           time.Time           `json:"deadline"`
@@ -97,6 +98,10 @@ func (a *App) Missions() http.HandlerFunc {
 					if !row.Masked("brief") {
 						rmap["brief"] = rec.Brief
 					}
+				case "BriefingTemplateID":
+					if !row.Masked("briefingTemplateId") {
+						rmap["briefingTemplateId"] = rec.BriefingTemplateID
+					}
 				case "Hazard":
 					if !row.Masked("hazard") {
 						rmap["hazard"] = rec.Hazard
@@ -159,6 +164,7 @@ func (a *App) Mission() http.HandlerFunc {
 		KindID             string              `json:"kindId"`
 		Title              string              `json:"title"`
 		Brief              *string             `json:"brief"`
+		BriefingTemplateID *string             `json:"briefingTemplateId"`
 		Hazard             int64               `json:"hazard"`
 		Fee                decimal.Decimal     `json:"fee"`
 		Deadline           time.Time           `json:"deadline"`
@@ -217,6 +223,10 @@ func (a *App) Mission() http.HandlerFunc {
 			case "Brief":
 				if !row.Masked("brief") {
 					rmap["brief"] = rec.Brief
+				}
+			case "BriefingTemplateID":
+				if !row.Masked("briefingTemplateId") {
+					rmap["briefingTemplateId"] = rec.BriefingTemplateID
 				}
 			case "Hazard":
 				if !row.Masked("hazard") {

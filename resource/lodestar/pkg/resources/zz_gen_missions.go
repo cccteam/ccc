@@ -34,6 +34,7 @@ type missionRead struct {
 	KindID             string              `json:"kindId"`
 	Title              string              `json:"title"`
 	Brief              *string             `json:"brief"`
+	BriefingTemplateID *string             `json:"briefingTemplateId"`
 	Hazard             int64               `json:"hazard"`
 	Fee                decimal.Decimal     `json:"fee"`
 	Deadline           time.Time           `json:"deadline"`
@@ -57,6 +58,7 @@ type missionWrite struct {
 	KindID             string              `json:"kindId"`
 	Title              string              `json:"title"`
 	Brief              *string             `json:"brief"`
+	BriefingTemplateID *string             `json:"briefingTemplateId"`
 	Hazard             int64               `json:"hazard"`
 	Fee                decimal.Decimal     `json:"fee"`
 	Deadline           time.Time           `json:"deadline"`
@@ -180,6 +182,7 @@ func (c *MissionColumns) All() *MissionColumns {
 		"KindID",
 		"Title",
 		"Brief",
+		"BriefingTemplateID",
 		"Hazard",
 		"Fee",
 		"Deadline",
@@ -226,6 +229,12 @@ func (c *MissionColumns) Title() *MissionColumns {
 
 func (c *MissionColumns) Brief() *MissionColumns {
 	c.fields = append(c.fields, "Brief")
+
+	return c
+}
+
+func (c *MissionColumns) BriefingTemplateID() *MissionColumns {
+	c.fields = append(c.fields, "BriefingTemplateID")
 
 	return c
 }
@@ -416,6 +425,10 @@ func (c *missionSort) Title() *MissionSort {
 
 func (c *missionSort) Brief() *MissionSort {
 	return c.addField("Brief")
+}
+
+func (c *missionSort) BriefingTemplateID() *MissionSort {
+	return c.addField("BriefingTemplateID")
 }
 
 func (c *missionSort) Hazard() *MissionSort {
@@ -633,6 +646,26 @@ func (p *MissionCreatePatch) Brief() *string {
 
 func (p *MissionCreatePatch) BriefIsSet() bool {
 	return p.patchSet.IsSet("Brief")
+}
+
+func (p *MissionCreatePatch) SetBriefingTemplateID(v *string) *MissionCreatePatch {
+	if v != nil {
+		p.patchSet.Set("BriefingTemplateID", v)
+	} else {
+		p.patchSet.Set("BriefingTemplateID", nil)
+	}
+
+	return p
+}
+
+func (p *MissionCreatePatch) BriefingTemplateID() *string {
+	v, _ := p.patchSet.Get("BriefingTemplateID").(*string)
+
+	return v
+}
+
+func (p *MissionCreatePatch) BriefingTemplateIDIsSet() bool {
+	return p.patchSet.IsSet("BriefingTemplateID")
 }
 
 func (p *MissionCreatePatch) SetHazard(v int64) *MissionCreatePatch {
@@ -937,6 +970,26 @@ func (p *MissionUpdatePatch) Brief() *string {
 
 func (p *MissionUpdatePatch) BriefIsSet() bool {
 	return p.patchSet.IsSet("Brief")
+}
+
+func (p *MissionUpdatePatch) SetBriefingTemplateID(v *string) *MissionUpdatePatch {
+	if v != nil {
+		p.patchSet.Set("BriefingTemplateID", v)
+	} else {
+		p.patchSet.Set("BriefingTemplateID", nil)
+	}
+
+	return p
+}
+
+func (p *MissionUpdatePatch) BriefingTemplateID() *string {
+	v, _ := p.patchSet.Get("BriefingTemplateID").(*string)
+
+	return v
+}
+
+func (p *MissionUpdatePatch) BriefingTemplateIDIsSet() bool {
+	return p.patchSet.IsSet("BriefingTemplateID")
 }
 
 func (p *MissionUpdatePatch) SetHazard(v int64) *MissionUpdatePatch {

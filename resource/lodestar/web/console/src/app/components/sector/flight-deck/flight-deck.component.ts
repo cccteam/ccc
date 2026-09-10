@@ -11,9 +11,10 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { MatTimepickerModule } from '@angular/material/timepicker';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
-import { FailReason, MissionKind } from '@app/service/zz_gen_enums';
+import { MissionKind } from '@app/service/zz_gen_enums';
+import { methodMeta } from '@app/service/zz_gen_methods';
 import { MissionDocuments, Missions, Sorties, SortieExpenses } from '@app/service/zz_gen_resources';
-import { ApiError, Method, MethodHandle, rowCapabilities } from '@cccteam/resource';
+import { ApiError, Method, MethodHandle, MethodMeta, rowCapabilities } from '@cccteam/resource';
 import { SectorService } from '../sector.service';
 import { StarChartComponent } from '../star-chart/star-chart.component';
 import { WorkflowGraphComponent } from '../workflow-graph/workflow-graph.component';
@@ -27,7 +28,7 @@ import { WorkflowGraphComponent } from '../workflow-graph/workflow-graph.compone
  * mission row's Create list names Sorties, and a sortie's Add expense when the sortie
  * row's list names SortieExpenses. No page copies a state rule.
  *
- * Demonstrates: capability-envelope, create-under-parent, cell-masking, @answers, rpc.dry-run, @upload, @enumerate, paging.descriptor-sizes, workflow.ts-constant, paging.link-header, paging.total-count, condition.now.
+ * Demonstrates: capability-envelope, create-under-parent, cell-masking, @answers, rpc.dry-run, @upload, @enumerate, @enumerate.enum-table, paging.descriptor-sizes, workflow.ts-constant, paging.link-header, paging.total-count, condition.now.
  */
 @Component({
   selector: 'app-flight-deck',
@@ -56,7 +57,11 @@ export class FlightDeckComponent {
   readonly methods = Methods;
   readonly resources = Resources;
   readonly kinds = Object.values(MissionKind);
-  readonly failReasons = Object.values(FailReason);
+  // The fail reasons are the method's own metadata: FailMission.ReasonID names the
+  // FailReasons enum table with a field-scope @enumerate, so the values ride inline
+  // with their display text, and the picker issues no request and holds no grant.
+  readonly failReasons =
+    (methodMeta(Methods.FailMission) as MethodMeta).fields.find((f) => f.fieldName === 'reasonId')?.enumeration ?? [];
   readonly now = signal(new Date());
 
   // The board is paged at the size the descriptor carries for Missions (the @page

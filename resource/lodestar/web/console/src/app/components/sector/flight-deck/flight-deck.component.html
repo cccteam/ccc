@@ -162,8 +162,8 @@
             <mat-form-field appearance="outline">
               <mat-label>Reason</mat-label>
               <mat-select name="failReason" [(ngModel)]="failReasonId" required>
-                @for (reason of failReasons; track reason) {
-                  <mat-option [value]="reason">{{ reason }}</mat-option>
+                @for (reason of failReasons; track reason.id) {
+                  <mat-option [value]="reason.id">{{ reason.display }}</mat-option>
                 }
               </mat-select>
             </mat-form-field>

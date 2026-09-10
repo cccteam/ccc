@@ -30,9 +30,9 @@ type (
 	// @enumerate(Certifications)
 	Certification string
 
-	// FailReason enumerates why a mission failed; FailMission validates its reason against
-	// these constants in the body (an enum table is not an enumerated resource, so the
-	// field-scope @enumerate cannot name it).
+	// FailReason enumerates why a mission failed. FailMission.ReasonID names the table with
+	// a field-scope @enumerate, so its picker renders these values from the generated
+	// metadata with no request, and the body still validates the reason it is sent.
 	//
 	// @enumerate(FailReasons)
 	FailReason string

@@ -7,7 +7,9 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
+	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
 	"github.com/shopspring/decimal"
 )
@@ -24,13 +26,19 @@ type (
 	// roll back. The Execute grant is row-free (no @target) and held by the Sector Marshal,
 	// the Dispatcher, and the Archivist.
 	//
-	// Demonstrates: rpc.client-form, rpc.armed-read, rpc.decision-as-data, rpc.typed-result, rpc.row-free.
+	// TemplateID names the sheet to compile on, from the BriefingTemplates catalog — a
+	// computed resource served from Go — through a field-scope @enumerate, so the
+	// browser's picker lists the catalog; an empty id compiles the standard sheet.
+	//
+	// Demonstrates: rpc.client-form, rpc.armed-read, rpc.decision-as-data, rpc.typed-result, rpc.row-free, @enumerate.computed.
 	//
 	// @rpc
 	// @permissionScope(domain)
 	CompileBriefing struct {
 		// IncludeHazards asks for the hazard board's worst readings beside the missions.
 		IncludeHazards bool
+		// @enumerate(BriefingTemplates)
+		TemplateID string
 	}
 
 	// Briefing is the sheet: how many missions the caller may see and how many are still
@@ -39,6 +47,7 @@ type (
 	// asked for and the caller may read them.
 	Briefing struct {
 		Sector          string
+		Template        string
 		CompiledAt      time.Time
 		Missions        int64
 		OpenMissions    int64
@@ -69,8 +78,16 @@ func (m *CompileBriefing) Execute(ctx context.Context, client resource.Client, _
 	if !ok {
 		return nil, errors.New("CompileBriefing is sector-scoped but was checked in the global scope")
 	}
+	templateID := m.TemplateID
+	if templateID == "" {
+		templateID = computedresources.StandardBriefingTemplate
+	}
+	template, ok := computedresources.BriefingTemplateByID(templateID)
+	if !ok {
+		return nil, httpio.NewBadRequestMessagef("templateId %q is not a briefing template", m.TemplateID)
+	}
 	now := time.Now().UTC()
-	briefing := &Briefing{Sector: string(sector), CompiledAt: now, FeesOutstanding: decimal.Zero}
+	briefing := &Briefing{Sector: string(sector), Template: template.Name, CompiledAt: now, FeesOutstanding: decimal.Zero}
 
 	// The armed read marks a masked fee on the row envelope by its wire name, the same
 	// way the generated list handler does, so a redaction is read from the row itself.
@@ -100,7 +117,8 @@ func (m *CompileBriefing) Execute(ctx context.Context, client resource.Client, _
 		}
 	}
 
-	if !m.IncludeHazards {
+	// The hazard-first sheet carries the board whether or not it was asked for.
+	if !m.IncludeHazards && template.ID != "hazard-first" {
 		return briefing, nil
 	}
 	decisions, err := caller.Check(ctx, accesstypes.List, sectorHazardBoards)

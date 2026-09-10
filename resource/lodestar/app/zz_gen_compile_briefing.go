@@ -27,13 +27,15 @@ func (a *App) CompileBriefing() http.HandlerFunc {
 	}
 
 	type request struct {
-		IncludeHazards bool `json:"includeHazards"`
+		IncludeHazards bool   `json:"includeHazards"`
+		TemplateID     string `json:"templateId"`
 	}
 
 	// The answer as the wire carries it: Execute's result mirrored with generated
 	// wire names, encoded after the transaction commits.
 	type response struct {
 		Sector          string          `json:"sector"`
+		Template        string          `json:"template"`
 		CompiledAt      time.Time       `json:"compiledAt"`
 		Missions        int64           `json:"missions"`
 		OpenMissions    int64           `json:"openMissions"`
@@ -49,6 +51,7 @@ func (a *App) CompileBriefing() http.HandlerFunc {
 	mirrorResponse := func(src rpc.Briefing) *response {
 		view := struct {
 			Sector          string
+			Template        string
 			CompiledAt      time.Time
 			Missions        int64
 			OpenMissions    int64
@@ -67,7 +70,7 @@ func (a *App) CompileBriefing() http.HandlerFunc {
 			}
 		}
 
-		return &response{Sector: view.Sector, CompiledAt: view.CompiledAt, Missions: view.Missions, OpenMissions: view.OpenMissions, WorstHazard: view.WorstHazard, FeesOutstanding: view.FeesOutstanding, FeesRedacted: view.FeesRedacted, Overdue: view.Overdue, HazardBoard: hazardBoard, HazardWithheld: view.HazardWithheld}
+		return &response{Sector: view.Sector, Template: view.Template, CompiledAt: view.CompiledAt, Missions: view.Missions, OpenMissions: view.OpenMissions, WorstHazard: view.WorstHazard, FeesOutstanding: view.FeesOutstanding, FeesRedacted: view.FeesRedacted, Overdue: view.Overdue, HazardBoard: hazardBoard, HazardWithheld: view.HazardWithheld}
 	}
 
 	decoder := NewRPCDecoder[rpc.CompileBriefing, request](a, accesstypes.Execute)

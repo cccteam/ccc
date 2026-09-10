@@ -35,6 +35,20 @@ func Collection() *resource.GeneratedCollection {
 				Target:      "Missions",
 			},
 			{
+				Name:        "ClientRosters",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags: []resource.TagData{
+					{Name: "contactCount", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "id"},
+					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "sectorId", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "sectorMissions", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "trusted", Permissions: []accesstypes.Permission{accesstypes.List}},
+				},
+				Domain: &resource.DomainBindingData{Column: "SectorId"},
+			},
+			{
 				Name:        "ClientStatements",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.List},
@@ -191,6 +205,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "assignedSquadronId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "bookedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "brief", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "briefingTemplateId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "clientId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
@@ -431,6 +446,18 @@ func Collection() *resource.GeneratedCollection {
 				Name:        "AssumeRole",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
+			},
+			{
+				Name:        "BriefingTemplates",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Computed:    true,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags: []resource.TagData{
+					{Name: "audience", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "id"},
+					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "summary", Permissions: []accesstypes.Permission{accesstypes.List}},
+				},
 			},
 			{
 				Name:        "ClientContacts",
