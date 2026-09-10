@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 )
@@ -116,8 +118,29 @@ func (r *resourceGenerator) authzMatrixCases() ([]authzCase, error) {
 		return nil, err
 	}
 	cases = append(cases, consolidated...)
+	cases = append(cases, r.rpcAuthzCases()...)
 
-	return append(cases, r.rpcAuthzCases()...), nil
+	if r.concealedDomains {
+		// Concealed domains answer a caller with no grants as if the domain
+		// did not exist. The URL decides which surface answers — exactly how
+		// the request routes: a route with segments BELOW the domain value is
+		// wrapped by the DomainGuard (404), and a consolidated operation whose
+		// path descends below a domain value meets the dispatcher's descent
+		// check (400). The tenant-record resource's own routes terminate AT
+		// the domain segment's value and are global — unguarded either way.
+		guardedRoute := regexp.MustCompile("/" + regexp.QuoteMeta(r.domainRouteSegment) + "/[^/]+/")
+		guardedOp := regexp.MustCompile(`"path":"/` + regexp.QuoteMeta(r.domainRouteSegment) + `/[^/"]+/`)
+		for i := range cases {
+			switch {
+			case guardedRoute.MatchString(cases[i].URL):
+				cases[i].DeniedStatus = "http.StatusNotFound"
+			case guardedOp.MatchString(cases[i].Body):
+				cases[i].DeniedStatus = "http.StatusBadRequest"
+			}
+		}
+	}
+
+	return cases, nil
 }
 
 // queryRouteCase builds the denied/granted case for a list or read route; ok is false
@@ -275,6 +298,10 @@ func (r *resourceGenerator) consolidatedAuthzCases() (cases []authzCase, err err
 	return cases, nil
 }
 
+// emptyObjectBody is the minimal RPC body: it parses, so the request reaches the
+// permission check the case pins.
+const emptyObjectBody = "{}"
+
 // rpcAuthzCases covers the RPC method routes. The RPC decoder checks the method
 // permission after parsing the body (the parsed request is what a data-dependent rule
 // evaluates against) and before executing anything; an empty object reaches that check
@@ -295,9 +322,21 @@ func (r *resourceGenerator) rpcAuthzCases() (cases []authzCase) {
 				Name:       authzCaseName(route.HandlerFunc, outlet),
 				Method:     httpMethodConst(route.Method),
 				URL:        route.TestURL,
-				Body:       "{}",
+				Body:       emptyObjectBody,
 				DeniedOnly: true,
 			})
+			// A dry run of a transaction-form method refuses exactly as the real
+			// call does: the header changes what commits, never what is checked.
+			if rpcStruct.IsTxnForm() {
+				cases = append(cases, authzCase{
+					Name:       authzCaseName(route.HandlerFunc, outlet) + " dry run",
+					Method:     httpMethodConst(route.Method),
+					URL:        route.TestURL,
+					Body:       emptyObjectBody,
+					Headers:    []authzHeader{{Name: resource.DryRunHeader, Value: jsonTrueLiteral}},
+					DeniedOnly: true,
+				})
+			}
 		}
 	}
 
@@ -432,7 +471,7 @@ func authzJSONValue(t pkParamType) (string, bool) {
 		return "1", true
 	case declared == boolGoType || underlying == boolGoType:
 		return jsonTrueLiteral, true
-	case declared == "civil.Date":
+	case declared == civilDateGoType:
 		return `"2000-01-01"`, true
 	case declared == "time.Time":
 		return `"2000-01-01T00:00:00Z"`, true
@@ -462,8 +501,8 @@ func authzParamValue(t pkParamType) (string, bool) {
 	case strings.HasPrefix(t.declared, "int") || strings.HasPrefix(t.underlying, "int"):
 		return "1", true
 	case t.declared == boolGoType || t.underlying == boolGoType:
-		return "true", true
-	case t.declared == "civil.Date":
+		return jsonTrueLiteral, true
+	case t.declared == civilDateGoType:
 		return "2000-01-01", true
 	default:
 		return "", false

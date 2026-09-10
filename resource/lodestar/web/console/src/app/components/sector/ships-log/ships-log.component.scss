@@ -1,0 +1,20 @@
+.mono {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 12px;
+}
+
+.change {
+  font-size: 12px;
+  max-width: 420px;
+  word-break: break-all;
+}
+
+.touch {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(31, 111, 139, 0.18);
+  color: #1f6f8b;
+  font-size: 11px;
+}

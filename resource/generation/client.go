@@ -45,7 +45,17 @@ type client struct {
 	migrationSourceURLs []string
 	tableMap            map[string]*tableMetadata
 	enumValues          map[string][]*enumData
-	pluralOverrides     map[string]string
+	// enumerateTables maps an enum table's name to the named type whose @enumerate
+	// declares it (registerEnumerations). A table named here is an enumeration: its
+	// rows are the program's constants, so a struct backing it is read-only and a
+	// foreign key into it renders from the generated values, not from a resource.
+	enumerateTables map[string]string
+	pluralOverrides map[string]string
+	// mappedTypes is the wire walker's leaf table: every Go type the generator maps
+	// to a TypeScript type (the built-in table plus the TypeScript targets'
+	// overrides), keyed by qualified type name. A named struct in it is a leaf; any
+	// other named struct is walked.
+	mappedTypes map[string]string
 	consolidateConfig
 	genRPCMethods          bool
 	genComputedResources   bool
@@ -136,6 +146,16 @@ func (c *client) HasNullBoolean() bool {
 	return false
 }
 
+// leafTypes is the wire walker's leaf table: the mapped types when the options
+// resolved them, the built-in table otherwise.
+func (c *client) leafTypes() map[string]string {
+	if c.mappedTypes == nil {
+		return defaultTypescriptOverrides()
+	}
+
+	return c.mappedTypes
+}
+
 // HasCustomTypesInResources checks if CustomTypes are used in any resource (including computed resources)
 func (c *client) HasCustomTypesInResources() bool {
 	for _, resource := range c.resources {
@@ -147,6 +167,9 @@ func (c *client) HasCustomTypesInResources() bool {
 	}
 
 	for _, resource := range c.computedResources {
+		if resource.Shape != nil && resource.Shape.HasCustomTypes() {
+			return true
+		}
 		for _, field := range resource.Fields {
 			if strings.HasPrefix(field.typescriptType, customTypesPrefix) {
 				return true
@@ -160,6 +183,9 @@ func (c *client) HasCustomTypesInResources() bool {
 // HasCustomTypesInMethods checks if CustomTypes are used in any RPC method
 func (c *client) HasCustomTypesInMethods() bool {
 	for _, method := range c.rpcMethods {
+		if method.Request != nil && method.Request.HasCustomTypes() {
+			return true
+		}
 		for _, field := range method.Fields {
 			if strings.HasPrefix(field.typescriptType, customTypesPrefix) {
 				return true
@@ -182,6 +208,16 @@ func (c *client) hasRPCMethodWithEnumeratedResource() bool {
 
 func (c *client) hasRPCMethods() bool {
 	return len(c.rpcMethods) > 0
+}
+
+func (c *client) hasRPCMethodWithTransition() bool {
+	for _, rpcMethod := range c.rpcMethods {
+		if rpcMethod.Transition != nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (c *client) localPackageImports() string {
@@ -269,12 +305,35 @@ func (c *client) templateFuncs() map[string]any {
 		},
 		"SanitizeIdentifier":      sanitizeEnumIdentifier,
 		"TypescriptMethodImports": typescriptMethodImports,
+		"TypescriptNamespace":     typescriptNamespace,
 		"TypescriptConstImports":  typescriptConsImports,
 		"PermissionConstant":      permissionConstant,
 		"ScopeConstant":           scopeConstant,
+		"BindingHops":             bindingHopsLiteral,
 	}
 
 	return templateFuncs
+}
+
+// bindingHopsLiteral renders a binding path as its Path field literal, or
+// nothing for a column binding — shared by every binding kind the collection
+// template emits.
+func bindingHopsLiteral(path []resource.BindingHop) string {
+	if len(path) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(", Path: []resource.BindingHop{")
+	for i, hop := range path {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "{Table: %q, JoinColumn: %q, Column: %q}", hop.Table, hop.JoinColumn, hop.Column)
+	}
+	b.WriteString("}")
+
+	return b.String()
 }
 
 // permissionConstant renders a permission as its accesstypes constant when one exists,
@@ -340,6 +399,9 @@ func (c *client) writeFormattedGoFile(destinationPath, templateName, fileTemplat
 		return err
 	}
 
+	if err := os.MkdirAll(filepath.Dir(destinationPath), 0o750); err != nil {
+		return errors.Wrap(err, "os.MkdirAll()")
+	}
 	if err := os.WriteFile(destinationPath, formattedOutput, 0o644); err != nil {
 		return errors.Wrapf(err, "os.WriteFile(): file: %s", destinationPath)
 	}
@@ -376,13 +438,17 @@ func (c *client) formatGoBytes(destinationPath, templateName string, output []by
 	return c.GoFormatBytes(destinationPath, output)
 }
 
-func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map[string][]*enumData, error) {
+// retrieveDatabaseEnumValues resolves every @enumerate named type against the schema's
+// enum values, returning the values keyed by type name alongside each type's table
+// name (the TypeScript generator's outlet filter matches tables to resources).
+func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (values map[string][]*enumData, tables map[string]string, err error) {
 	enumMap := make(map[string][]*enumData)
+	enumTables := make(map[string]string)
 	for _, namedType := range namedTypes {
 		scanner := genlang.NewScanner(resourceKeywords())
 		annotations, err := scanner.ScanNamedType(namedType)
 		if err != nil {
-			return nil, errors.Wrap(err, "scanner.ScanNamedType()")
+			return nil, nil, errors.Wrap(err, "scanner.ScanNamedType()")
 		}
 
 		var tableName string
@@ -393,18 +459,43 @@ func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (map
 		}
 
 		if t := namedType.TypeName(); t != stringGoType {
-			return nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), stringGoType, t)
+			return nil, nil, errors.Newf("cannot enumerate type %q, underlying type must be %q, found %q", namedType.Name(), stringGoType, t)
 		}
 
 		data, ok := c.enumValues[tableName]
 		if !ok {
-			return nil, errors.Newf("cannot enumerate type %q, tableName %q has no values or does not exist", namedType.Name(), tableName)
+			return nil, nil, errors.Newf("cannot enumerate type %q, tableName %q has no values or does not exist", namedType.Name(), tableName)
 		}
 
 		enumMap[namedType.Name()] = data
+		enumTables[namedType.Name()] = tableName
 	}
 
-	return enumMap, nil
+	return enumMap, enumTables, nil
+}
+
+// registerEnumerations records which tables the package's @enumerate types name, so
+// resource extraction and TypeScript metadata can treat a foreign key into one, or a
+// struct backing one, as an enumeration. It reads the same declarations enum
+// generation does and must run before structsToResources.
+func (c *client) registerEnumerations(namedTypes []*parser.NamedType) error {
+	_, tables, err := c.retrieveDatabaseEnumValues(namedTypes)
+	if err != nil {
+		return errors.Wrap(err, "retrieveDatabaseEnumValues()")
+	}
+	c.enumerateTables = make(map[string]string, len(tables))
+	for typeName, tableName := range tables {
+		c.enumerateTables[tableName] = typeName
+	}
+
+	return nil
+}
+
+// enumerationOf returns the @enumerate type behind a table, and whether there is one.
+func (c *client) enumerationOf(tableName string) (string, bool) {
+	typeName, ok := c.enumerateTables[tableName]
+
+	return typeName, ok
 }
 
 // pluralize returns the plural form of value: an explicit override if one is
@@ -441,9 +532,15 @@ func isVowel(b byte) bool {
 	}
 }
 
+// removeGeneratedFiles sweeps the previous run's output from directory. A directory
+// that does not exist yet holds nothing to remove: the first generate into a fresh
+// target creates it when the first file is written.
 func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) error {
 	log.Printf("removing generated files in directory %q...", directory)
 	dir, err := os.Open(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		return errors.Wrap(err, "os.Open()")
 	}
@@ -459,7 +556,7 @@ func removeGeneratedFiles(directory string, method generatedFileDeleteMethod) er
 	}
 
 	for _, f := range files {
-		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") {
+		if !strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".ts") && !strings.HasSuffix(f, ".dot") {
 			continue
 		}
 
@@ -606,7 +703,7 @@ func typescriptMethodImports(t *typescriptGenerator) string {
 	if t.hasRPCMethods() {
 		pkgs = append(pkgs, "Methods")
 	}
-	if t.hasRPCMethodWithEnumeratedResource() {
+	if t.hasRPCMethodWithEnumeratedResource() || t.hasRPCMethodWithTransition() {
 		pkgs = append(pkgs, "Resources")
 	}
 

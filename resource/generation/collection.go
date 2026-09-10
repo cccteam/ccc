@@ -27,7 +27,10 @@ const accesstypesResourceType = "github.com/cccteam/ccc/accesstypes.Resource"
 // manualRegistrationsFromConstants extracts @manualAddResource annotations from the
 // resources package's accesstypes.Resource constants. The registered resource name is
 // the constant's value; the annotation supplies the permission and, optionally, the
-// scope: @manualAddResource(Execute) or @manualAddResource(Read, domain).
+// scope: @manualAddResource(Execute) or @manualAddResource(Read, domain). An @outlet
+// annotation beside it names the outlets the hand-written route is mounted under, with
+// the same meaning it has on a struct; every registration the constant declares
+// shares it.
 func manualRegistrationsFromConstants(constants []*parser.Constant) ([]ManualRegistration, error) {
 	var registrations []ManualRegistration
 	for _, c := range constants {
@@ -44,11 +47,17 @@ func manualRegistrationsFromConstants(constants []*parser.Constant) ([]ManualReg
 			continue
 		}
 
+		var outlets outletMembership
+		if err := resolveOutlets(annotations.Const, &outlets); err != nil {
+			return nil, errors.Wrapf(err, "constant %q", c.Name())
+		}
+
 		for arg := range annotations.Const.Get(manualAddResourceKeyword).Seq() {
 			registration, err := parseManualAddResourceArgs(c, arg)
 			if err != nil {
 				return nil, err
 			}
+			registration.Outlets = outlets.OutletNames
 
 			registrations = append(registrations, registration)
 		}
@@ -200,7 +209,53 @@ func (r *resourceGenerator) computeCollectionData() (resource.CollectionData, er
 		return resource.CollectionData{}, err
 	}
 
-	return b.Data(), nil
+	r.collectBindingRegistrations(b)
+	r.collectWorkflowMemberRegistrations(b)
+
+	data := b.Data()
+	if err := r.validateStateEnumTables(data); err != nil {
+		return resource.CollectionData{}, err
+	}
+
+	return data, nil
+}
+
+// collectBindingRegistrations registers every resource's compiled binding
+// vocabulary (§04 annotations). Bindings are registered independently of
+// routing and suppression: the vocabulary describes the data model, not the
+// generated handlers, and conditions may reference a resource's attributes
+// regardless of which endpoints exist.
+func (r *resourceGenerator) collectBindingRegistrations(b *resource.CollectionBuilder) {
+	for _, res := range r.resources {
+		b.SetResourceBindings(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), collectionBindings(res))
+	}
+}
+
+// collectWorkflowMemberRegistrations registers every workflow member's
+// immediate parent hop (@stateRoot). Like bindings, membership describes the
+// data model, not the generated handlers: the create-under-parent affordance
+// (design plan §11) reads it back at runtime to answer, per parent row, which
+// member resources the user may create beneath it.
+func (r *resourceGenerator) collectWorkflowMemberRegistrations(b *resource.CollectionBuilder) {
+	byTable := make(map[string]*resourceInfo, len(r.resources))
+	for _, res := range r.resources {
+		byTable[r.pluralize(res.Name())] = res
+	}
+	for _, res := range r.resources {
+		for _, field := range res.Fields {
+			if field.WorkflowRoot == "" {
+				continue
+			}
+			// Workflow validation has already resolved every hop onto a parsed
+			// resource; a missing entry here would be a generator bug, not a
+			// user error, so it is simply skipped.
+			parent, ok := byTable[field.ReferencedResource]
+			if !ok {
+				continue
+			}
+			b.SetResourceParent(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), accesstypes.Resource(r.pluralize(parent.Name())))
+		}
+	}
 }
 
 // collectResourceRegistrations registers every routed resource's endpoints, plus the
@@ -284,6 +339,7 @@ func (r *resourceGenerator) collectComputedRegistrations(b *resource.CollectionB
 			{suppressed: res.SuppressListHandler, permission: accesstypes.List},
 			{suppressed: res.SuppressReadHandler, permission: accesstypes.Read},
 		}
+		registered := false
 		for _, handler := range handlers {
 			if handler.suppressed {
 				continue
@@ -296,6 +352,13 @@ func (r *resourceGenerator) collectComputedRegistrations(b *resource.CollectionB
 			if err := b.AddResourceSet(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), set); err != nil {
 				return errors.Wrapf(err, "registering computed resource %q %s handler", res.Name(), handler.permission)
 			}
+			registered = true
+		}
+
+		// The kind marker rides only registered resources: a computed resource with
+		// every handler suppressed grants nothing, so there is nothing to validate.
+		if registered {
+			b.SetResourceComputed(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())))
 		}
 	}
 
@@ -315,6 +378,17 @@ func (r *resourceGenerator) collectRPCRegistrations(b *resource.CollectionBuilde
 
 		if err := b.AddMethodResource(scopeOrGlobal(method.PermissionScope), accesstypes.Execute, accesstypes.Resource(method.Name())); err != nil {
 			return errors.Wrapf(err, "registering RPC method %q", method.Name())
+		}
+
+		if t := method.Transition; t != nil {
+			b.SetMethodTransition(scopeOrGlobal(method.PermissionScope), accesstypes.Resource(method.Name()), resource.TransitionData{
+				Target: accesstypes.Resource(t.RootResource),
+				From:   t.From,
+				To:     t.To,
+			})
+		}
+		if t := method.Target; t != nil {
+			b.SetMethodTarget(scopeOrGlobal(method.PermissionScope), accesstypes.Resource(method.Name()), accesstypes.Resource(t.RootResource))
 		}
 	}
 

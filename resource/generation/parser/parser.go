@@ -2,7 +2,6 @@
 package parser
 
 import (
-	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/token"
@@ -23,6 +22,25 @@ import (
 // Useful for static type analysis with the [types] package instead of
 // manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
 func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, error) {
+	packMap, _, err := load(false, packagePatterns...)
+
+	return packMap, err
+}
+
+// LoadPackagesResilient loads packages like [LoadPackages], but tolerates type errors
+// positioned inside the loaded packages themselves. Those are presumed to be stale
+// generator output that the caller is about to overwrite, so refusing to load would
+// deadlock generation against its own previous run. Parse errors, list errors, and
+// type errors positioned outside the loaded packages still fail.
+//
+// The second result reports whether any errors were tolerated. When it is true the
+// caller must re-run a strict [LoadPackages] after regenerating, so genuinely broken
+// code (hand-written call sites, bad struct definitions) can never exit clean.
+func LoadPackagesResilient(packagePatterns ...string) (pkgMap map[string]*packages.Package, toleratedStaleOutput bool, err error) {
+	return load(true, packagePatterns...)
+}
+
+func load(tolerateStaleOutput bool, packagePatterns ...string) (pkgMap map[string]*packages.Package, tolerated bool, err error) {
 	log.Printf("Loading packages %v...\n", packagePatterns)
 
 	files := []string{}
@@ -39,10 +57,11 @@ func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, erro
 	packMap := make(map[string]*packages.Package, len(packagePatterns))
 
 	if len(files) > 0 {
-		pkgs, err := loadPackages(files...)
+		pkgs, skipped, err := loadPackages(tolerateStaleOutput, files...)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
+		tolerated = tolerated || skipped
 
 		for _, pkg := range pkgs {
 			packMap[pkg.Name] = pkg
@@ -50,17 +69,18 @@ func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, erro
 	}
 
 	if len(directories) > 0 {
-		pkgs, err := loadPackages(directories...)
+		pkgs, skipped, err := loadPackages(tolerateStaleOutput, directories...)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
+		tolerated = tolerated || skipped
 
 		for _, pkg := range pkgs {
 			packMap[pkg.Name] = pkg
 		}
 	}
 
-	return packMap, nil
+	return packMap, tolerated, nil
 }
 
 // LoadPackage loads and type checks a single package.
@@ -70,7 +90,7 @@ func LoadPackages(packagePatterns ...string) (map[string]*packages.Package, erro
 // Useful for static type analysis with the [types] package instead of
 // manually parsing the AST. A good explainer lives here: https://github.com/golang/example/tree/master/gotypes
 func LoadPackage(packagePattern string) (*packages.Package, error) {
-	pkgs, err := loadPackages(packagePattern)
+	pkgs, _, err := loadPackages(false, packagePattern)
 	if err != nil {
 		return nil, err
 	}
@@ -78,37 +98,94 @@ func LoadPackage(packagePattern string) (*packages.Package, error) {
 	return pkgs[0], nil
 }
 
-func loadPackages(packagePatterns ...string) ([]*packages.Package, error) {
+func loadPackages(tolerateStaleOutput bool, packagePatterns ...string) ([]*packages.Package, bool, error) {
 	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedCompiledGoFiles | packages.NeedSyntax | packages.NeedTypesInfo}
 	pkgs, err := packages.Load(cfg, packagePatterns...)
 	if err != nil {
-		return nil, errors.Wrap(err, "packages.Load()")
+		return nil, false, errors.Wrap(err, "packages.Load()")
 	}
 
 	if len(pkgs) == 0 {
-		return nil, errors.Newf("no packages loaded for pattern %v", packagePatterns)
+		return nil, false, errors.Newf("no packages loaded for pattern %v", packagePatterns)
 	}
 
+	tolerated := 0
 	for _, pkg := range pkgs {
 		if len(pkg.Errors) > 0 || len(pkg.TypeErrors) > 0 {
-			var err error
+			errs := []error{}
 			for _, e := range pkg.Errors {
-				err = errors.Join(e)
+				if tolerateStaleOutput && errorIsTolerable(e, pkg.Dir) {
+					tolerated++
+
+					continue
+				}
+				errs = append(errs, e)
 			}
 
 			for _, e := range pkg.TypeErrors {
-				err = errors.Join(e)
+				if tolerateStaleOutput && typeErrorWithinDir(e, pkg.Dir) {
+					continue // already counted via pkg.Errors, which includes type errors
+				}
+				errs = append(errs, e)
 			}
 
-			return nil, errors.Wrap(err, "packages.Load() package error(s)")
+			if len(errs) > 0 {
+				return nil, false, errors.Wrap(errors.Join(errs...), "packages.Load() package error(s)")
+			}
 		}
 
 		if len(pkg.CompiledGoFiles) == 0 || pkg.CompiledGoFiles[0] == "" {
-			return nil, errors.Newf("no files were loaded for package %q", pkg.Name)
+			return nil, false, errors.Newf("no files were loaded for package %q", pkg.Name)
 		}
 	}
 
-	return pkgs, nil
+	if tolerated > 0 {
+		log.Printf("Tolerating %d in-package type error(s) as stale generated code; a strict re-check must follow generation\n", tolerated)
+	}
+
+	return pkgs, tolerated > 0, nil
+}
+
+// errorIsTolerable reports whether a load error may be presumed to be stale generated
+// output. Type errors qualify when positioned in a file directly inside the loaded
+// package. List errors qualify unconditionally: go list reports compile failures at
+// package level with no usable position, so they cannot be attributed to a file — and
+// tolerating too much here is safe, because the strict post-generation load keeps any
+// error that regeneration did not fix fatal. Parse errors never qualify: a file whose
+// AST is broken cannot be parsed around.
+func errorIsTolerable(e packages.Error, dir string) bool {
+	switch e.Kind {
+	case packages.ListError:
+		return true
+	case packages.TypeError:
+		return errorWithinDir(e.Pos, dir)
+	default:
+		return false
+	}
+}
+
+// errorWithinDir reports whether a packages.Error is positioned in a file directly
+// inside dir. Pos is a "file:line:col" string; everything before the first colon is
+// the file path (no Windows drive letters to worry about — generation runs on the
+// platforms the toolchain runs go:generate on, and package dirs come from go list).
+func errorWithinDir(pos, dir string) bool {
+	if dir == "" || pos == "" || pos == "-" {
+		return false
+	}
+	file, _, ok := strings.Cut(pos, ":")
+	if !ok {
+		file = pos
+	}
+
+	return filepath.Dir(file) == filepath.Clean(dir)
+}
+
+func typeErrorWithinDir(e types.Error, dir string) bool {
+	if dir == "" || e.Fset == nil {
+		return false
+	}
+
+	return filepath.Dir(e.Fset.Position(e.Pos).Filename) == filepath.Clean(dir)
 }
 
 // ParsePackage parses a package's ast and type info and returns data about structs and named types
@@ -119,24 +196,10 @@ func ParsePackage(pkg *packages.Package) *Package {
 	log.Printf("Parsing structs from package %q...", pkg.Types.Name())
 
 	typeSpecs := packageTypeSpecs(pkg.Syntax)
-	interfaces := make([]*Interface, 0, 16)
 	parsedStructs := make([]*Struct, 0, 128)
 	namedTypes := make([]*NamedType, 0, 16)
 	for _, typeSpec := range typeSpecs {
 		switch astNode := typeSpec.Type.(type) {
-		case *ast.InterfaceType:
-			obj := pkg.TypesInfo.ObjectOf(typeSpec.Name)
-			named, ok := obj.Type().(*types.Named)
-			if !ok {
-				panic(fmt.Sprintf("cannot assert %q to *types.Named", typeSpec.Name.Name))
-			}
-
-			i := &Interface{Name: typeSpec.Name.Name, named: named}
-			if typeSpec.TypeParams != nil {
-				i.isGeneric = true
-			}
-
-			interfaces = append(interfaces, i)
 		case *ast.Ident:
 			namedType := &NamedType{}
 			obj := pkg.TypesInfo.ObjectOf(typeSpec.Name) // NamedType's name
@@ -179,14 +242,6 @@ func ParsePackage(pkg *packages.Package) *Package {
 			}
 
 			parsedStructs = append(parsedStructs, pStruct)
-		}
-	}
-
-	for _, pStruct := range parsedStructs {
-		for _, iface := range interfaces {
-			if implementsInterface(pStruct, iface) {
-				pStruct.setInterface(iface.Name)
-			}
 		}
 	}
 
@@ -262,6 +317,14 @@ func packageTypeSpecs(syntax []*ast.File) []*ast.TypeSpec {
 			if genDecl, ok := decl.(*ast.GenDecl); ok {
 				for _, spec := range genDecl.Specs {
 					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
+						if typeSpec.Doc == nil && len(genDecl.Specs) == 1 {
+							// A type declared on its own (`type X struct`) attaches its
+							// doc comment to the GenDecl, a grouped one (`type ( X struct )`)
+							// to the TypeSpec. The annotations live in either, so the
+							// declaration's doc is read from wherever go/ast put it, as
+							// go/doc does.
+							typeSpec.Doc = genDecl.Doc
+						}
 						typeSpecs = append(typeSpecs, typeSpec)
 					}
 				}
@@ -270,46 +333,6 @@ func packageTypeSpecs(syntax []*ast.File) []*ast.TypeSpec {
 	}
 
 	return typeSpecs
-}
-
-func implementsInterface(pStruct *Struct, iface *Interface) bool {
-	var ifaceType *types.Interface
-
-	if iface.isGeneric && iface.named.TypeParams().Len() == 1 {
-		instance, err := types.Instantiate(types.NewContext(), iface.named, []types.Type{pStruct.obj.Type()}, false)
-		if err != nil {
-			panic(err)
-		}
-
-		interfaceInstance, ok := decodeToType[*types.Interface](instance)
-		if !ok { // this is impossible but I'm including it to appease the linter
-			panic("unreachable: cannot assert instantiated interface's underlying type to *types.Interface")
-		}
-		ifaceType = interfaceInstance
-	} else {
-		interfaceInstance, ok := decodeToType[*types.Interface](iface.named)
-		if !ok { // this is impossible but I'm including it to appease the linter
-			panic("unreachable: cannot assert *types.Named to *types.Interface")
-		}
-		ifaceType = interfaceInstance
-	}
-
-	// It's necessary to check with and without a pointer because method receivers may or may not be pointer types.
-	return types.Implements(pStruct.obj.Type(), ifaceType) || types.Implements(types.NewPointer(pStruct.obj.Type()), ifaceType)
-}
-
-// FilterStructsByInterface returns a filtered slice of structs that satisfy one or more from the list of interface names.
-func FilterStructsByInterface(pStructs []*Struct, interfaceNames []string) []*Struct {
-	filteredStructs := make([]*Struct, 0, len(pStructs))
-	for _, pStruct := range pStructs {
-		for _, iface := range interfaceNames {
-			if pStruct.Implements(iface) {
-				filteredStructs = append(filteredStructs, pStruct)
-			}
-		}
-	}
-
-	return slices.Clip(filteredStructs)
 }
 
 // The [types.Type] interface can be one of 14 concrete types:

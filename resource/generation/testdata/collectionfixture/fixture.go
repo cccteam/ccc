@@ -12,7 +12,9 @@ import (
 )
 
 const (
+	// ManualThing's hand-written route is mounted on the portal outlet.
 	// @manualAddResource(Execute)
+	// @outlet(portal)
 	ManualThing accesstypes.Resource = "ManualThings"
 
 	// ScopedThing has an ordinary doc comment above its annotation.
@@ -108,5 +110,12 @@ type DoSomething struct {
 }
 
 type HiddenMethod struct {
+	Input string
+}
+
+// DrillTest is in the wrong file on purpose: its expected file carries the _rpc marker
+// (drill_test_rpc.go) because drill_test.go would be a Go test file, and the validator's
+// message must say so.
+type DrillTest struct {
 	Input string
 }

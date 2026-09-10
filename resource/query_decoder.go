@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -17,8 +18,11 @@ type parsedQueryParams struct {
 	ColumnFields []accesstypes.Field
 	SortFields   []SortField
 	FilterParser func(DBType) (ExpressionNode, error)
-	Limit        *uint64
-	Offset       *uint64
+	// FilterFields names the resource fields the filter expression touches, so
+	// the read checks can require an unconditional grant on each of them.
+	FilterFields []accesstypes.Field
+	Page         pageRequest
+	Capabilities []accesstypes.Permission
 }
 
 type filterBody struct {
@@ -31,6 +35,24 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	resourceSet        *Set[Resource]
 	filterParserFields map[jsonFieldName]FilterFieldInfo
 	structDecoder      *StructDecoder[filterBody]
+
+	// collection resolves condition rendering for the QuerySets this decoder
+	// builds; nil leaves conditions unrenderable (an error if one ever
+	// arrives).
+	collection *GeneratedCollection
+
+	// requestType is the request struct, consulted for the type behind a sort
+	// field: a nested object or a list cannot be ordered by.
+	requestType reflect.Type
+	// keyFields are the request type's primary-key fields (the perm:"-"
+	// markers), appended to every decoded order as the tiebreak.
+	keyFields []accesstypes.Field
+	// paging is the resource's declared paging contract (WithPaging); the zero
+	// value is the generator-wide default.
+	paging Paging
+	// cursorKey seals and opens the cursors of the pages this decoder builds
+	// (WithCursorKey); nil refuses paging past the first page.
+	cursorKey *CursorKey
 }
 
 // NewQueryDecoder creates a new QueryDecoder for a given Resource and Request type.
@@ -57,14 +79,60 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 		resourceSet:        resSet,
 		filterParserFields: filterParserFields,
 		structDecoder:      structDecoder,
+		requestType:        reflect.TypeOf(req),
+		keyFields:          primaryKeyFields(reflect.TypeOf(req)),
 	}, nil
 }
 
-// MustNewQueryDecoder builds a query decoder for a resource and request pair. It
-// panics on construction errors: they are programming errors (a request struct out of
-// sync with its resource), surfaced at application startup where generated handlers
-// construct their decoders.
-func MustNewQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *QueryDecoder[Resource, Request] {
+// primaryKeyFields returns the request type's primary-key fields, the ones the
+// generator marks perm:"-", in declaration order.
+func primaryKeyFields(reqType reflect.Type) []accesstypes.Field {
+	var keys []accesstypes.Field
+	for field := range reqType.Fields() {
+		if field.Tag.Get(permTagKey) == permTagExempt && field.Tag.Get(jsonTagKey) != "-" {
+			keys = append(keys, accesstypes.Field(field.Name))
+		}
+	}
+
+	return keys
+}
+
+// WithCursorKey installs the key that seals the cursors of the pages this
+// decoder builds and opens the ones requests carry. The generated wiring passes
+// the application's one key (resource.NewCursorKey over the cookie key) to
+// every decoder; without it a list serves first pages only.
+func (d *QueryDecoder[Resource, Request]) WithCursorKey(key *CursorKey) *QueryDecoder[Resource, Request] {
+	d.cursorKey = key
+
+	return d
+}
+
+// WithPaging installs the resource's declared paging contract: the default order
+// a sort-less request takes and the page sizes. The generator emits the call from
+// the @order and @page annotations. An order field the request type does not
+// carry is a programming error and panics at construction, like every other
+// generated-code mismatch.
+func (d *QueryDecoder[Resource, Request]) WithPaging(paging Paging) *QueryDecoder[Resource, Request] {
+	for _, sf := range paging.Order {
+		field, ok := structField(d.requestType, sf.Field)
+		if !ok || !slices.Contains(d.requestFieldMapper.Fields(), accesstypes.Field(sf.Field)) {
+			panic(fmt.Sprintf("resource.QueryDecoder.WithPaging: order field %q is not a field of the request type", sf.Field))
+		}
+		if !sortableType(field.Type) {
+			panic(fmt.Sprintf("resource.QueryDecoder.WithPaging: order field %q has type %s, which cannot be ordered by", sf.Field, field.Type))
+		}
+	}
+	d.paging = paging
+
+	return d
+}
+
+// MustNewQueryDecoder builds a query decoder for a resource and request pair,
+// wired to the application's generated collection so conditional grants can
+// render. It panics on construction errors: they are programming errors (a
+// request struct out of sync with its resource), surfaced at application
+// startup where generated handlers construct their decoders.
+func MustNewQueryDecoder[Resource Resourcer, Request any](collection *GeneratedCollection, permissions ...accesstypes.Permission) *QueryDecoder[Resource, Request] {
 	rSet, err := NewSet[Resource, Request](permissions...)
 	if err != nil {
 		panic(err)
@@ -74,6 +142,7 @@ func MustNewQueryDecoder[Resource Resourcer, Request any](permissions ...accesst
 	if err != nil {
 		panic(err)
 	}
+	decoder.collection = collection
 
 	return decoder
 }
@@ -102,17 +171,29 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 		}
 	}
 
+	// parseQuery consumes the parameters it recognizes, so the filter's text is
+	// kept first: every cursor the page issues is fingerprinted with it.
+	filterString := queryParams.Get(filterParam)
+
 	parsedQuery, err := d.parseQuery(queryParams)
 	if err != nil {
 		return nil, err
 	}
 
 	qSet := NewQuerySet(d.resourceSet.ResourceMetadata())
+	qSet.env = newRequestEnvironment()
 	qSet.requestableFields = d.requestFieldMapper.Fields()
+	qSet.collection = d.collection
+	qSet.jsonNames = d.requestFieldMapper.JSONNames()
 	qSet.SetFilterParser(parsedQuery.FilterParser)
+	qSet.filterFields = parsedQuery.FilterFields
+	qSet.keyFields = d.keyFields
+	qSet.defaultOrder = d.paging.Order
+	qSet.cursorKey = d.cursorKey
+	qSet.filterString = filterString
 	qSet.SetSortFields(parsedQuery.SortFields)
-	qSet.SetLimit(parsedQuery.Limit)
-	qSet.SetOffset(parsedQuery.Offset)
+	qSet.page = &parsedQuery.Page
+	qSet.RequestCapabilities(parsedQuery.Capabilities...)
 	if len(parsedQuery.ColumnFields) == 0 {
 		qSet.ReturnAccessibleFields(true)
 	} else {
@@ -139,6 +220,13 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 
 	qSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, perms[0])
 
+	// The cursor is bound here and not in DecodeWithoutPermissions because its
+	// fingerprint covers the scope: a cursor from one tenant's walk is refused
+	// in another's.
+	if err := qSet.bindCursor(scope); err != nil {
+		return nil, err
+	}
+
 	return qSet, nil
 }
 
@@ -146,8 +234,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 	var columnFields []accesstypes.Field
 	var sortFields []SortField
 	var filterParser func(DBType) (ExpressionNode, error)
-	var limit *uint64
-	var offset *uint64
+	var filterFields []accesstypes.Field
 	var err error
 
 	if sortParamValue := query.Get(sortParam); sortParamValue != "" {
@@ -159,25 +246,9 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		delete(query, sortParam)
 	}
 
-	if limitStr := query.Get(limitParam); limitStr != "" {
-		limitVal, err := strconv.ParseUint(limitStr, 10, 64)
-		if err != nil {
-			return nil, httpio.NewBadRequestMessagef("invalid limit value: %s", limitStr)
-		}
-		limit = &limitVal
-		delete(query, limitParam)
-	} else {
-		defaultLimit := uint64(50)
-		limit = &defaultLimit
-	}
-
-	if offsetStr := query.Get(offsetParam); offsetStr != "" {
-		offsetVal, err := strconv.ParseUint(offsetStr, 10, 64)
-		if err != nil {
-			return nil, httpio.NewBadRequestMessagef("invalid offset value: %s", offsetStr)
-		}
-		offset = &offsetVal
-		delete(query, offsetParam)
+	page, err := d.parsePage(query)
+	if err != nil {
+		return nil, err
 	}
 
 	if cols := query.Get(columnsParam); cols != "" {
@@ -199,8 +270,36 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		if err != nil {
 			return nil, err
 		}
+		// The filter is part of the request's shape, so it is validated here with
+		// the rest of it: syntax, field names, whether each field is filterable,
+		// and whether each value fits its field. The parse names conditions by Go
+		// field, which every resource has, so it decides nothing about the
+		// database; the per-database parse that renders SQL and applies the index
+		// rule still runs when the query does, and a computed resource's handler
+		// evaluates this same tree against its rows.
+		if _, err := filterParser(goFieldNames); err != nil {
+			return nil, err
+		}
+		filterFields = d.filterFields(filterStr)
 
 		delete(query, filterParam)
+	}
+
+	var capabilities []accesstypes.Permission
+	if capStr := query.Get(capabilitiesParam); capStr != "" {
+		// The capability envelope (README §5): a comma-separated list of the
+		// write permissions to evaluate per row.
+		for name := range strings.SplitSeq(capStr, ",") {
+			perm, err := capabilityPermission(strings.TrimSpace(name))
+			if err != nil {
+				return nil, err
+			}
+			if !slices.Contains(capabilities, perm) {
+				capabilities = append(capabilities, perm)
+			}
+		}
+
+		delete(query, capabilitiesParam)
 	}
 
 	if len(query) > 0 {
@@ -211,9 +310,71 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 		ColumnFields: columnFields,
 		SortFields:   sortFields,
 		FilterParser: filterParser,
-		Limit:        limit,
-		Offset:       offset,
+		FilterFields: filterFields,
+		Page:         page,
+		Capabilities: capabilities,
 	}, nil
+}
+
+// parsePage reads the paging parameters against the resource's declared
+// contract. A request without limit takes the declared default page (the
+// generator-wide DefaultPageSize when none is declared); limit=all is admitted
+// only on a resource with no declared maximum; a limit over the maximum is
+// refused naming it, never clamped; limit=0 is refused; offset is refused
+// naming the cursor as its replacement; count is admitted on a first page only.
+func (d *QueryDecoder[Resource, Request]) parsePage(query url.Values) (pageRequest, error) {
+	page := pageRequest{size: d.paging.DefaultLimit}
+	if page.size == 0 {
+		page.size = DefaultPageSize
+	}
+
+	if limitStr := query.Get(limitParam); limitStr != "" {
+		switch limitStr {
+		case allLimit:
+			if d.paging.MaxLimit != 0 {
+				return pageRequest{}, httpio.NewBadRequestMessagef("limit=all is not permitted: this resource serves at most %d rows per page; follow the Link header", d.paging.MaxLimit)
+			}
+			page.all = true
+		default:
+			size, err := strconv.ParseUint(limitStr, 10, 64)
+			if err != nil {
+				return pageRequest{}, httpio.NewBadRequestMessagef("invalid limit value: %s", limitStr)
+			}
+			if size == 0 {
+				return pageRequest{}, httpio.NewBadRequestMessage("limit must be at least 1; omit it for the default page, or ask for limit=all where the resource permits it")
+			}
+			if d.paging.MaxLimit != 0 && size > d.paging.MaxLimit {
+				return pageRequest{}, httpio.NewBadRequestMessagef("limit %d exceeds this resource's maximum page size of %d", size, d.paging.MaxLimit)
+			}
+			page.size = size
+		}
+		delete(query, limitParam)
+	}
+
+	if query.Has(offsetParam) {
+		return pageRequest{}, httpio.NewBadRequestMessage("offset is not supported: pages are positioned by the cursor the Link header carries")
+	}
+
+	if token := query.Get(cursorParam); token != "" {
+		if page.all {
+			return pageRequest{}, httpio.NewBadRequestMessage("a cursor cannot be combined with limit=all")
+		}
+		page.token = token
+		delete(query, cursorParam)
+	}
+
+	if countStr := query.Get(countParam); countStr != "" {
+		if countStr != trueStr {
+			return pageRequest{}, httpio.NewBadRequestMessagef("invalid count value: %s (only true is accepted)", countStr)
+		}
+		if page.token != "" {
+			return pageRequest{}, httpio.NewBadRequestMessage("count is answered on the first page only; it cannot be combined with a cursor")
+		}
+		page.count = true
+		delete(query, countParam)
+	}
+
+	return page, nil
 }
 
 func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) ([]SortField, error) {
@@ -236,6 +397,9 @@ func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string) 
 			goFieldName, found := d.requestFieldMapper.StructFieldName(jsonFieldName)
 			if !found {
 				return nil, httpio.NewBadRequestMessagef("unknown sort field: %s", jsonFieldName)
+			}
+			if field, ok := structField(d.requestType, string(goFieldName)); ok && !sortableType(field.Type) {
+				return nil, httpio.NewBadRequestMessagef("field %s cannot be sorted by: only text, number, boolean, time, date, decimal, and UUID fields order", jsonFieldName)
 			}
 
 			direction := SortAscending // Default direction
@@ -268,28 +432,50 @@ func (d *QueryDecoder[Resource, Request]) filterExpressionParser(filterStr strin
 }
 
 func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
-	lexer := NewFilterLexer(filterStr)
-	for {
-		token, err := lexer.NextToken()
-		if err != nil {
-			return errors.Wrap(err, "failed to get next token")
-		}
-
-		if token.Type == TokenEOF {
-			break
-		}
-
-		if token.Type == TokenCondition {
-			jsonFieldNameStr := strings.SplitN(token.Value, ":", 2)[0]
-			if fieldInfo, found := d.filterParserFields[jsonFieldName(jsonFieldNameStr)]; found {
-				if fieldInfo.PII {
-					return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: %s", jsonFieldNameStr)
-				}
-			}
+	for _, fieldInfo := range d.filterConditionFields(filterStr) {
+		if fieldInfo.PII {
+			return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: %s", fieldInfo.JSONFieldName)
 		}
 	}
 
 	return nil
+}
+
+// filterFields names the resource fields a filter expression touches, in first
+// appearance order without repeats. parseQuery has parsed the expression before
+// asking, so every condition names a filterable field and none is skipped.
+func (d *QueryDecoder[Resource, Request]) filterFields(filterStr string) []accesstypes.Field {
+	var fields []accesstypes.Field
+	for _, fieldInfo := range d.filterConditionFields(filterStr) {
+		field := accesstypes.Field(fieldInfo.GOFieldName)
+		if !slices.Contains(fields, field) {
+			fields = append(fields, field)
+		}
+	}
+
+	return fields
+}
+
+// filterConditionFields walks the filter's tokens and returns the filterable
+// field behind each condition. Conditions on fields the parser would refuse are
+// skipped: the PII check walks the text before the parse runs, and the parser's
+// own refusal is the one the caller then sees.
+func (d *QueryDecoder[Resource, Request]) filterConditionFields(filterStr string) []FilterFieldInfo {
+	var infos []FilterFieldInfo
+	lexer := NewFilterLexer(filterStr)
+	for {
+		token, err := lexer.NextToken()
+		if err != nil || token.Type == TokenEOF {
+			return infos
+		}
+
+		if token.Type == TokenCondition {
+			jsonFieldNameStr, _, _ := strings.Cut(token.Value, ":")
+			if fieldInfo, found := d.filterParserFields[jsonFieldName(jsonFieldNameStr)]; found {
+				infos = append(infos, fieldInfo)
+			}
+		}
+	}
 }
 
 func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMetadata *Metadata[Resource]) (map[jsonFieldName]FilterFieldInfo, error) {

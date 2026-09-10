@@ -117,8 +117,15 @@ func (t *TypeInfo) UnqualifiedTypeName() string {
 // included when the type is a named type, so callers must filter out the
 // destination package when computing imports for generated code.
 func (t *TypeInfo) Imports() []Import {
+	return TypeImports(t.obj.Type())
+}
+
+// TypeImports returns the packages a type references, walking through pointers,
+// slices, arrays, maps, channels, and generic type arguments; universe types
+// contribute nothing.
+func TypeImports(t types.Type) []Import {
 	seen := make(map[string]Import)
-	collectTypeImports(t.obj.Type(), seen)
+	collectTypeImports(t, seen)
 
 	imports := make([]Import, 0, len(seen))
 	for _, imp := range seen {
@@ -151,21 +158,13 @@ func (t *TypeInfo) IsIterable() bool {
 	}
 }
 
-// Interface is an abstraction over types.Interface
-type Interface struct {
-	Name      string
-	named     *types.Named
-	isGeneric bool
-}
-
 // Struct is an abstraction combining types.Struct and ast.StructType for simpler parsing.
 type Struct struct {
 	*TypeInfo
-	astInfo    *ast.StructType
-	fields     []*Field
-	interfaces []string
-	methodSet  map[string]struct{}
-	comments   string
+	astInfo  *ast.StructType
+	fields   []*Field
+	methods  map[string]*types.Func
+	comments string
 }
 
 func newStruct(obj types.Object) *Struct {
@@ -177,19 +176,23 @@ func newStruct(obj types.Object) *Struct {
 	}
 
 	s := &Struct{
-		TypeInfo:  &TypeInfo{obj},
-		methodSet: make(map[string]struct{}),
+		TypeInfo: &TypeInfo{obj},
+		methods:  make(map[string]*types.Func),
 	}
 
+	// The pointer method set holds both receiver forms, so a method declared on
+	// the value receiver is found alongside one declared on the pointer.
 	methodSet := types.NewMethodSet(types.NewPointer(tt))
 	for method := range methodSet.Methods() {
-		kind := method.Kind()
-		if kind != types.MethodVal {
+		if method.Kind() != types.MethodVal {
 			continue
 		}
 
-		name := method.Obj().Name()
-		s.methodSet[name] = struct{}{}
+		fn, ok := method.Obj().(*types.Func)
+		if !ok {
+			continue
+		}
+		s.methods[fn.Name()] = fn
 	}
 
 	for i := range st.NumFields() {
@@ -213,17 +216,6 @@ func (s *Struct) Comments() string {
 // Pos returns the position of the struct keyword in its fileset.
 func (s *Struct) Pos() token.Pos {
 	return s.astInfo.Struct
-}
-
-func (s *Struct) setInterface(iface string) {
-	if !slices.Contains(s.interfaces, iface) {
-		s.interfaces = append(s.interfaces, iface)
-	}
-}
-
-// Implements returns true if the interface's name matches a name in the set of interfaces the Struct satisfies.
-func (s *Struct) Implements(interfaceName string) bool {
-	return slices.Contains(s.interfaces, interfaceName)
 }
 
 func (s *Struct) String() string {
@@ -338,9 +330,17 @@ func (s *Struct) Fields() []*Field {
 
 // HasMethod returns true if the method name matches a name in the set of methods belonging to the struct.
 func (s *Struct) HasMethod(methodName string) bool {
-	_, ok := s.methodSet[methodName]
+	_, ok := s.methods[methodName]
 
 	return ok
+}
+
+// Method returns the struct's method of that name, declared on either receiver
+// form, or nil when the struct has none. The returned object carries the
+// method's signature for callers that classify a struct by what it declares
+// rather than by the interfaces it happens to satisfy.
+func (s *Struct) Method(methodName string) *types.Func {
+	return s.methods[methodName]
 }
 
 // Field is an abstraction combining types.Var and ast.Field for simpler parsing.
@@ -451,4 +451,19 @@ func (f *Field) TypeArgs() string {
 type NamedType struct {
 	TypeInfo
 	Comments string
+}
+
+// PackageName is the name of the package the declaration belongs to.
+func (t *TypeInfo) PackageName() string {
+	if t.obj.Pkg() == nil {
+		return ""
+	}
+
+	return t.obj.Pkg().Name()
+}
+
+// GoType returns the declaration's go/types type, for callers that walk a type's
+// structure rather than read its rendered name.
+func (t *TypeInfo) GoType() types.Type {
+	return t.obj.Type()
 }

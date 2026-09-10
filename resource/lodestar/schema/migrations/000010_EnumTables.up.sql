@@ -1,0 +1,29 @@
+CREATE TABLE MissionStatuses (
+  Id STRING(64) NOT NULL,
+  Description STRING(MAX) NOT NULL,
+) PRIMARY KEY (Id);
+
+CREATE TABLE RefitStatuses (
+  Id STRING(64) NOT NULL,
+  Description STRING(MAX) NOT NULL,
+) PRIMARY KEY (Id);
+
+CREATE TABLE MissionKinds (
+  Id STRING(64) NOT NULL,
+  Description STRING(MAX) NOT NULL,
+) PRIMARY KEY (Id);
+
+CREATE TABLE ShipRoles (
+  Id STRING(64) NOT NULL,
+  Description STRING(MAX) NOT NULL,
+) PRIMARY KEY (Id);
+
+CREATE TABLE Certifications (
+  Id STRING(64) NOT NULL,
+  Description STRING(MAX) NOT NULL,
+) PRIMARY KEY (Id);
+
+CREATE TABLE FailReasons (
+  Id STRING(64) NOT NULL,
+  Description STRING(MAX) NOT NULL,
+) PRIMARY KEY (Id);

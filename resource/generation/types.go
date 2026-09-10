@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 
@@ -17,6 +19,17 @@ import (
 
 const (
 	booleanStr = "boolean"
+
+	// reservedMaskedNamesColumn is the read statements' reserved output column
+	// (the masked cells' JSON names); resource columns must not collide with it.
+	reservedMaskedNamesColumn = "zzMaskedFields"
+
+	// reservedCapabilitiesProperty is the reserved per-row JSON property the
+	// capability envelope rides (resource.CapabilitiesProperty), and
+	// reservedCapabilityChecksColumn its statement's reserved boolean-array
+	// output column; resource columns must not collide with either.
+	reservedCapabilitiesProperty   = "zzCapabilities"
+	reservedCapabilityChecksColumn = "zzCapabilityChecks"
 )
 
 // Generator provides methods for generating Go or Typescript for a resource-driven web application.
@@ -182,6 +195,7 @@ const (
 	resourceInterfaceOutputName   = "resources_iface"
 	resourceEnumsFileName         = "enums"
 	domainGuardOutputName         = "domain_guard"
+	permissionsOutputName         = "permissions"
 	decodersOutputName            = "decoders"
 	appContractOutputName         = "app_contract"
 	routesOutputName              = "routes"
@@ -208,6 +222,9 @@ type informationSchemaResult struct {
 	HasDefault           bool    `spanner:"HAS_DEFAULT"`
 	IsInterleaved        bool    `spanner:"IS_INTERLEAVED"`
 }
+
+// enumeratedDisplayType is the TypeScript display type of a field rendered as a picker.
+const enumeratedDisplayType = "enumerated"
 
 type enumData struct {
 	ID          string `spanner:"id"`
@@ -296,11 +313,53 @@ type routeTestParam struct {
 type rpcMethodInfo struct {
 	*parser.Struct
 	outletMembership
+	// Form is how Execute runs, read off its signature at extraction.
+	Form rpcForm
+	// Request is the struct's wire shape: the fields as the handler's local request
+	// mirror declares them, with every struct they reach.
+	Request *wireShape
+	// Result is the wire shape of the struct Execute answers with, nil for a method
+	// that answers with an empty 200; ResultPointer marks Execute returning a
+	// pointer to it.
+	Result          *wireShape
+	ResultPointer   bool
 	Fields          []*rpcField
 	SuppressHandler bool
 	// PermissionScope is the scope the method's registration uses
 	// (@permissionScope); empty means accesstypes.GlobalPermissionScope.
 	PermissionScope accesstypes.PermissionScope
+	// Transition is the method's validated @transition declaration; nil for a
+	// plain RPC method, whose generated handler is unchanged.
+	Transition *rpcTransition
+	// Target is the method's validated @target declaration — set for every
+	// targeted method (a transition's Target aliases its embedded rpcTarget);
+	// nil for a method with no target row.
+	Target *rpcTarget
+	// Statuses is the method's validated @answers declaration: the statuses
+	// its result may choose per response, in declaration order. Nil for a
+	// method that answers 200.
+	Statuses []int
+	// choosesStatus marks a result type declaring HTTPStatus() int, read off
+	// the Execute signature; @answers must accompany it.
+	choosesStatus bool
+	// Upload is the method's validated @upload declaration; nil for a JSON
+	// method. Set iff Execute takes resource.Files.
+	Upload *rpcUpload
+	// takesFiles marks an Execute whose third parameter is resource.Files,
+	// read off the signature; @upload must accompany it.
+	takesFiles bool
+}
+
+// rpcUpload is a method's @upload declaration.
+type rpcUpload struct {
+	// MaxBytes bounds the whole multipart body; the frame answers 413 naming
+	// it before a byte over the limit is read.
+	MaxBytes int64
+}
+
+// MaxBytesText renders the maximum the way the declaration wrote it.
+func (u *rpcUpload) MaxBytesText() string {
+	return resource.FormatByteSize(u.MaxBytes)
 }
 
 // IsDomainScoped reports whether the method's @permissionScope resolves to the
@@ -309,12 +368,16 @@ func (r *rpcMethodInfo) IsDomainScoped() bool {
 	return r.PermissionScope == accesstypes.DomainPermissionScope
 }
 
-func (r *rpcMethodInfo) IsTxnRunner() bool {
-	return r.Implements("TxnRunner")
+// IsTxnForm reports whether Execute runs inside the generated handler's
+// read-write transaction (its second parameter is resource.ReadWriteTransaction).
+func (r *rpcMethodInfo) IsTxnForm() bool {
+	return r.Form == rpcFormTxn
 }
 
-func (r *rpcMethodInfo) IsDBRunner() bool {
-	return r.Implements("DBRunner")
+// IsClientForm reports whether Execute runs outside a handler-owned
+// transaction (its second parameter is *resource.Client).
+func (r *rpcMethodInfo) IsClientForm() bool {
+	return r.Form == rpcFormClient
 }
 
 func (r *rpcMethodInfo) hasEnumeratedResource() bool {
@@ -327,20 +390,140 @@ func (r *rpcMethodInfo) hasEnumeratedResource() bool {
 	return false
 }
 
-func (r *rpcMethodInfo) HasLocalType() bool {
-	for _, field := range r.Fields {
-		if field.IsLocalType() {
-			return true
+// RequestConverters renders the closures the handler needs to build the method's
+// struct from the decoded request mirror; empty for a flat request, which converts
+// whole.
+func (r *rpcMethodInfo) RequestConverters() string {
+	return r.Request.Converters(toSource, requestMirror)
+}
+
+// RequestConverterName is the root request converter's name.
+func (r *rpcMethodInfo) RequestConverterName() string {
+	return r.Request.ConverterName(toSource, requestMirror)
+}
+
+// requestMirror and responseMirror are the names every generated RPC handler gives
+// its request and result mirrors.
+const (
+	requestMirror  = "request"
+	responseMirror = "response"
+)
+
+// Answers reports whether Execute returns a result beside its error.
+func (r *rpcMethodInfo) Answers() bool {
+	return r.Result != nil
+}
+
+// DeclaresNoContent reports whether @answers declares 204, the status a nil
+// result (or an answerless method) is written with.
+func (r *rpcMethodInfo) DeclaresNoContent() bool {
+	return slices.Contains(r.Statuses, http.StatusNoContent)
+}
+
+// StatusList renders the declared statuses as Go call arguments.
+func (r *rpcMethodInfo) StatusList() string {
+	return statusList(r.Statuses, ", ")
+}
+
+// StatusUnion renders the declared statuses as a TypeScript literal union.
+func (r *rpcMethodInfo) StatusUnion() string {
+	return statusList(r.Statuses, " | ")
+}
+
+// ResponseExpr renders the expression that converts the captured result into
+// the response mirror the handler encodes.
+func (r *rpcMethodInfo) ResponseExpr() string {
+	if r.Result.Flat() {
+		if r.ResultPointer {
+			return "(*" + responseMirror + ")(result)"
 		}
+
+		return "(*" + responseMirror + ")(&result)"
+	}
+	if r.ResultPointer {
+		return r.ResultConverterName() + "(*result)"
 	}
 
-	return false
+	return r.ResultConverterName() + "(result)"
+}
+
+// statusList joins statuses with sep.
+func statusList(statuses []int, sep string) string {
+	parts := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		parts = append(parts, strconv.Itoa(status))
+	}
+
+	return strings.Join(parts, sep)
+}
+
+// ResultType is the type Execute returns, as the handler declares the variable
+// that captures it.
+func (r *rpcMethodInfo) ResultType() string {
+	if r.ResultPointer {
+		return "*" + r.Result.Source
+	}
+
+	return r.Result.Source
+}
+
+// MirrorDecls renders the mirrors of every struct the request and the result
+// reach, each once, leaves first.
+func (r *rpcMethodInfo) MirrorDecls() string {
+	return mirrorDecls(mergeNested(r.Request, r.Result))
+}
+
+// ResultConverters renders the closures the handler needs to build the response
+// mirror from the result; empty for a flat result, which converts whole.
+func (r *rpcMethodInfo) ResultConverters() string {
+	return r.Result.Converters(toMirror, responseMirror)
+}
+
+// ResultConverterName is the root result converter's name.
+func (r *rpcMethodInfo) ResultConverterName() string {
+	return r.Result.ConverterName(toMirror, responseMirror)
+}
+
+// ResultFields are the result's fields for the response mirror the template
+// declares and the TypeScript result interface.
+func (r *rpcMethodInfo) ResultFields() []*wireField {
+	if r.Result == nil {
+		return nil
+	}
+
+	return r.Result.Fields
+}
+
+// TypescriptNamespace renders the nested interfaces the request and result share,
+// in a namespace named for the method.
+func (r *rpcMethodInfo) TypescriptNamespace() string {
+	return typescriptNamespaceOf(r.Name(), mergeNested(r.Request, r.Result))
+}
+
+// ResultTypescriptType is a result field's TypeScript type in the method's namespace.
+func (r *rpcMethodInfo) ResultTypescriptType(f *wireField) string {
+	return f.TypescriptType(r.Name())
 }
 
 type rpcField struct {
 	*parser.Field
+	// wire is the field as the walker classified it; nil only in tests that build
+	// fields by hand.
+	wire *wireField
+	// namespace is the TypeScript namespace the method's nested interfaces
+	// declare in: the method's name.
+	namespace          string
 	typescriptType     string
 	enumeratedResource *string
+}
+
+// MirrorType is the field's type in the handler's request mirror.
+func (r *rpcField) MirrorType() string {
+	if r.wire == nil {
+		return r.Type()
+	}
+
+	return r.wire.MirrorType()
 }
 
 func (r rpcField) JSONTag() string {
@@ -351,6 +534,10 @@ func (r rpcField) JSONTag() string {
 }
 
 func (r *rpcField) TypescriptDataType() string {
+	if r.wire != nil {
+		return r.wire.TypescriptType(r.namespace)
+	}
+
 	switch r.typescriptType {
 	case uuidTSType:
 		return stringGoType
@@ -379,7 +566,10 @@ func (r *rpcField) EnumeratedResource() string {
 
 func (r *rpcField) TypescriptDisplayType() string {
 	if r.IsEnumerated() {
-		return "enumerated"
+		return enumeratedDisplayType
+	}
+	if r.wire != nil {
+		return r.wire.TypescriptDisplayType()
 	}
 
 	return r.typescriptType
@@ -388,6 +578,11 @@ func (r *rpcField) TypescriptDisplayType() string {
 type computedResource struct {
 	*parser.Struct
 	outletMembership
+	pagingDecl
+	// Shape is the struct's wire shape: the fields as the handlers' local mirrors
+	// declare them, with every struct they reach. A nested field is opaque: one
+	// field for permission, PII, and selection, never filtered or keyed.
+	Shape               *wireShape
 	Fields              []*computedField
 	SuppressReadHandler bool
 	SuppressListHandler bool
@@ -439,11 +634,48 @@ func (c *computedResource) RoutingDisabled() bool {
 	return slices.Contains(c.SuppressedRoutes, AllRoutes)
 }
 
+// Converters renders the closures a handler needs to build the named root mirror
+// from a computed row; empty for a flat resource, which converts whole.
+func (c *computedResource) Converters(rootMirror string) string {
+	return c.Shape.Converters(toMirror, rootMirror)
+}
+
+// ConverterName is the root converter's name for the named root mirror.
+func (c *computedResource) ConverterName(rootMirror string) string {
+	return c.Shape.ConverterName(toMirror, rootMirror)
+}
+
 type computedField struct {
 	*parser.Field
+	// wire is the field as the walker classified it; nil only in tests that build
+	// fields by hand.
+	wire *wireField
+	// namespace is the TypeScript namespace the resource's nested interfaces
+	// declare in: the resource's plural name.
+	namespace          string
 	typescriptType     string
 	IsPrimaryKey       bool
 	KeyOrdinalPosition int
+}
+
+// MirrorType is the field's type in the handlers' local mirrors.
+func (c *computedField) MirrorType() string {
+	if c.wire == nil {
+		return c.Type()
+	}
+
+	return c.wire.MirrorType()
+}
+
+// TypescriptDisplayType is the field's display type in generated metadata: the
+// lower-cased data type of a leaf, as the metadata has always carried it, or
+// object for a nested field.
+func (c *computedField) TypescriptDisplayType() string {
+	if c.wire != nil && !c.wire.IsLeaf() {
+		return c.wire.TypescriptDisplayType()
+	}
+
+	return strings.ToLower(c.TypescriptDataType())
 }
 
 func (c *computedField) JSONTag() string {
@@ -471,6 +703,17 @@ func (c *computedField) PIITag() string {
 	return ""
 }
 
+// AllowFilterTag copies the source field's allow_filter tag onto the request struct,
+// where the query decoder reads it: the same declaration a table field makes, so the
+// generated handler filters a computed list by exactly the declared fields.
+func (c *computedField) AllowFilterTag() string {
+	if _, ok := c.LookupTag(allowFilterTagKey); ok {
+		return allowFilterTagKey + `:"true"`
+	}
+
+	return ""
+}
+
 // PermTag renders the perm:"-" primary-key exemption marker on @primarykey fields; see
 // resourceField.PermTag.
 func (c *computedField) PermTag() string {
@@ -482,6 +725,9 @@ func (c *computedField) PermTag() string {
 }
 
 func (c *computedField) TypescriptDataType() string {
+	if c.wire != nil {
+		return c.wire.TypescriptType(c.namespace)
+	}
 	if c.typescriptType == uuidTSType {
 		return stringGoType
 	}
@@ -495,6 +741,7 @@ func (c *computedField) TypescriptDataType() string {
 type resourceInfo struct {
 	*parser.TypeInfo
 	outletMembership
+	pagingDecl
 	Fields             []*resourceField
 	SuppressedHandlers []HandlerType
 	SuppressedRoutes   []RouteType
@@ -513,12 +760,49 @@ type resourceInfo struct {
 	DefaultsUpdateType string
 	ValidateCreateType string
 	ValidateUpdateType string
+	// EnumerationType names the @enumerate type whose table this struct backs. Such a
+	// resource is read-only by derivation: the table's rows are the program's
+	// constants, so no mutation handler is generated and its permissions stop at
+	// List and Read (deriveEnumerationResource).
+	EnumerationType string
+
+	// The resource's compiled binding vocabulary (ABAC design plan §04):
+	// Attributes are the row attributes conditions reference (@attribute),
+	// DomainBinding resolves rows to their tenant (@domain), and SubjectSets /
+	// SubjectValues are the subject-side vocabulary anchored at user-id
+	// columns (@subjectSet / @subjectValue).
+	Attributes    []*attributeBinding
+	DomainBinding *domainBinding
+	SubjectSets   []*subjectBinding
+	SubjectValues []*subjectBinding
 }
 
 // IsDomainScoped reports whether the resource's @permissionScope resolves to the
 // domain scope (an absent annotation defaults to global).
 func (r *resourceInfo) IsDomainScoped() bool {
 	return r.PermissionScope == accesstypes.DomainPermissionScope
+}
+
+// TouchFields returns the fields a generated touch stamps: every field carrying
+// an output_only_update_fn, the mechanical enforcement stamp that fires on
+// every update — a touch included. Timestamps with domain meaning are never
+// update functions; they are explicit updates in application code.
+func (r *resourceInfo) TouchFields() []*resourceField {
+	fields := make([]*resourceField, 0, len(r.Fields))
+	for _, f := range r.Fields {
+		if f.HasOutputOnlyUpdateFunc() {
+			fields = append(fields, f)
+		}
+	}
+
+	return fields
+}
+
+// HasTouch reports whether the resource gets a generated Touch: it does exactly
+// when at least one field declares an update function, so touching a resource
+// with nothing to stamp does not compile.
+func (r *resourceInfo) HasTouch() bool {
+	return len(r.TouchFields()) > 0
 }
 
 func (r *resourceInfo) HasNullBool() bool {
@@ -593,6 +877,11 @@ func (r *resourceInfo) PrimaryKeys() iter.Seq2[int, *resourceField] {
 	}
 }
 
+// IsEnumeration reports whether the struct backs an @enumerate table (read-only by derivation).
+func (r *resourceInfo) IsEnumeration() bool {
+	return r.EnumerationType != ""
+}
+
 func (r *resourceInfo) HasCompoundPrimaryKey() bool {
 	return r.PkCount > 1
 }
@@ -608,7 +897,7 @@ func (r *resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
 				return false
 			}
 
-			return f.Type() == "ccc.UUID"
+			return f.Type() == cccUUIDGoType
 		}
 	}
 
@@ -672,8 +961,31 @@ type resourceField struct {
 	KeyOrdinalPosition int64 // Position of primary or foreign key in a compound key definition
 	IsEnumerated       bool
 	ReferencedResource string
-	ReferencedField    string
-	HasDefault         bool
+	// Enumeration names the @enumerate type a foreign key into an enum table resolves
+	// to, and EnumerationValues carries that table's rows; the TypeScript metadata
+	// emits them inline so a picker renders without a request or a List grant.
+	Enumeration       string
+	EnumerationValues []*enumData
+	ReferencedField   string
+	HasDefault        bool
+
+	// The @state marker (design plan §09): IsState derives output-only decode
+	// and the ungrantable Create/Update; StateDefault is the declared initial
+	// state, applied on the insert path.
+	IsState      bool
+	StateDefault string
+
+	// IsTenantKey marks the anchor of a bare-column @domain binding (design
+	// plan §06): the tenant column decodes output-only — the wire cannot
+	// express a tenant write, on create or update — and the framework stamps
+	// the value from the request's domain partition at decode, so the checked
+	// domain and the written domain are the same value by construction.
+	IsTenantKey bool
+
+	// WorkflowRoot is the @stateRoot argument: the workflow root's struct
+	// name, declared on the member's anchoring FK field (the field IS the
+	// hop). Empty for fields outside any workflow.
+	WorkflowRoot string
 }
 
 // When generating QueryClauses for Null-style wrapper types we want to use the underlying type
@@ -721,7 +1033,7 @@ func (f *resourceField) TypescriptDataType() string {
 		return dateTSType
 	}
 	if f.IsNullable && f.typescriptType == booleanStr {
-		return "NullBoolean"
+		return nullBooleanTSType
 	}
 
 	return f.typescriptType
@@ -729,7 +1041,7 @@ func (f *resourceField) TypescriptDataType() string {
 
 func (f *resourceField) TypescriptDisplayType() string {
 	if f.IsEnumerated {
-		return "enumerated"
+		return enumeratedDisplayType
 	}
 
 	if f.IsNullable && f.typescriptType == booleanStr {
@@ -770,7 +1082,7 @@ func (f *resourceField) IndexTag() string {
 
 	if f.Parent.IsVirtual {
 		t, ok := f.LookupTag(indexTagKey)
-		if ok && t == "true" {
+		if ok && t == jsonTrueLiteral {
 			return indexTrue
 		}
 	}
@@ -825,6 +1137,14 @@ func (f *resourceField) IsImmutable() bool {
 }
 
 func (f *resourceField) IsOutputOnly() bool {
+	// A state field decodes output-only by derivation: the wire must not be
+	// able to express a state write (transitions live in RPC bodies). A
+	// tenant-key column is the same shape: the framework stamps it from the
+	// request's domain partition, so the wire cannot write it.
+	if f.IsState || f.IsTenantKey {
+		return true
+	}
+
 	tag, ok := f.LookupTag(conditionsTagKey)
 	if !ok {
 		return f.HasOutputOnlyUpdateFunc()
@@ -931,6 +1251,24 @@ func generatedFileName(name, suffix string) string {
 	return fmt.Sprintf("%s_%s.%s", genPrefix, name, suffix)
 }
 
+// testFileMarker is appended to a file stem that would otherwise end in _test: Go
+// compiles a _test.go file only under go test, so the struct would vanish from the
+// build and its generated files with it. Only the singular kinds (RPC methods) can
+// reach it; the plural kinds' stems end in the plural.
+const testFileMarker = "_rpc"
+
+// fileStem is the file-name stem shared by every file derived from a struct: the
+// authored source file the validator expects and the zz_gen_ files generated beside
+// it. name is the struct name, already pluralized for the plural kinds.
+func fileStem(name string) string {
+	stem := strings.ToLower(caser.ToSnake(name))
+	if strings.HasSuffix(stem, "_test") {
+		stem += testFileMarker
+	}
+
+	return stem
+}
+
 const (
 	resourceKeyword             string = "resource"             // Designates a struct as a resource
 	virtualKeyword              string = "virtual"              // Designates a struct as a virtual resource
@@ -946,7 +1284,19 @@ const (
 	manualAddResourceKeyword    string = "manualAddResource"    // Declares a manual permission registration on an accesstypes.Resource constant
 	manualAddResourceSetKeyword string = "manualAddResourceSet" // Declares that hand-written handlers register this resource's permission Sets for the given handler types
 	permissionScopeKeyword      string = "permissionScope"      // Declares the permission scope (global or domain) all of a resource's registrations use
-	outletKeyword               string = "outlet"               // Declares the router outlets a resource's routes are registered under
+	outletKeyword               string = "outlet"               // Declares the router outlets a resource's routes — or a manual registration's hand-written route — are registered under
+	orderKeyword                string = "order"                // Declares the order a list takes when the request states none; the primary key is appended
+	pageKeyword                 string = "page"                 // Declares the default and maximum page size of a list
+	attributeKeyword            string = "attribute"            // Declares an attribute binding on its anchor field: a column binding, or a join-path binding via a FK
+	domainKeyword               string = "domain"               // Declares the structural tenancy binding on its anchor field (bare, or via: a FK path to the tenant key)
+	subjectSetKeyword           string = "subjectSet"           // Declares subject-side set vocabulary (subject.<name>, used with IN) anchored on a user-id column
+	subjectValueKeyword         string = "subjectValue"         // Declares subject-side scalar vocabulary (threshold comparisons) anchored on a unique user-id column
+	stateKeyword                string = "state"                // Marks a resource's state column (FK to its state enum table) and declares the initial state
+	stateRootKeyword            string = "stateRoot"            // Declares workflow membership on the member's anchoring FK field, naming the workflow root struct
+	transitionKeyword           string = "transition"           // Declares an RPC method as a workflow state transition: @transition(Root, from: a, b, to: c)
+	targetKeyword               string = "target"               // Marks the RPC field carrying the target row key; @target(Root) names the resource when no @transition does
+	answersKeyword              string = "answers"              // Declares the statuses an RPC method may answer with; its result chooses one per response through HTTPStatus()
+	uploadKeyword               string = "upload"               // Declares an RPC method as a multipart upload: @upload(max: 5MB); its Execute takes resource.Files
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -955,7 +1305,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		virtualKeyword:              {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		computedKeyword:             {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		rpcKeyword:                  {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
-		enumerateKeyword:            {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive},
+		enumerateKeyword:            {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		suppressKeyword:             {genlang.ScanStruct: genlang.ArgsRequired},
 		defaultsCreateTypeKeyword:   {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		defaultsUpdateTypeKeyword:   {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
@@ -965,7 +1315,19 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		manualAddResourceKeyword:    {genlang.ScanConstant: genlang.ArgsRequired},
 		manualAddResourceSetKeyword: {genlang.ScanStruct: genlang.ArgsRequired},
 		permissionScopeKeyword:      {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
-		outletKeyword:               {genlang.ScanStruct: genlang.ArgsRequired},
+		outletKeyword:               {genlang.ScanStruct: genlang.ArgsRequired, genlang.ScanConstant: genlang.ArgsRequired},
+		orderKeyword:                {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		pageKeyword:                 {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		attributeKeyword:            {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		domainKeyword:               {genlang.ScanField: genlang.Exclusive},
+		subjectSetKeyword:           {genlang.ScanField: genlang.ArgsRequired},
+		subjectValueKeyword:         {genlang.ScanField: genlang.ArgsRequired},
+		stateKeyword:                {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		stateRootKeyword:            {genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
+		transitionKeyword:           {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		targetKeyword:               {genlang.ScanField: genlang.Exclusive},
+		answersKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		uploadKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }
 

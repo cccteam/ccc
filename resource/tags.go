@@ -36,11 +36,16 @@ var runtimeTagKeys = []string{
 // as filterable field names. Documented in README.md alongside the struct tags —
 // register new parameters in reservedQueryParams below.
 const (
-	columnsParam = "columns"
-	filterParam  = "filter"
-	sortParam    = "sort"
-	limitParam   = "limit"
-	offsetParam  = "offset"
+	columnsParam      = "columns"
+	filterParam       = "filter"
+	sortParam         = "sort"
+	limitParam        = "limit"
+	cursorParam       = "cursor"
+	countParam        = "count"
+	capabilitiesParam = "capabilities"
+	// offsetParam is reserved so a request still carrying it is refused with a
+	// message naming the cursor as its replacement, never treated as a filter.
+	offsetParam = "offset"
 )
 
 // reservedQueryParams registers every reserved query parameter for the README.md
@@ -50,5 +55,8 @@ var reservedQueryParams = []string{
 	filterParam,
 	sortParam,
 	limitParam,
+	cursorParam,
+	countParam,
+	capabilitiesParam,
 	offsetParam,
 }

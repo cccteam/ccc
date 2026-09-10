@@ -2,7 +2,6 @@ package parser
 
 import (
 	"go/types"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -50,6 +49,11 @@ func Test_LoadPackages(t *testing.T) {
 			WantPackageNames: []string{"resources", "otherresources"},
 			wantErr:          false,
 		},
+		{
+			name:    "strict load fails on stale generated output",
+			args:    args{packagePatterns: []string{"../testdata/staleoutput"}},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -68,6 +72,65 @@ func Test_LoadPackages(t *testing.T) {
 			for _, packageName := range tt.WantPackageNames {
 				if !slices.Contains(packageNames, packageName) {
 					t.Errorf("loadPackages() = `%v`, does not contain expected package %s", packageNames, packageName)
+				}
+			}
+		})
+	}
+}
+
+func Test_LoadPackagesResilient(t *testing.T) {
+	t.Parallel()
+	type args struct {
+		packagePatterns []string
+	}
+
+	tests := []struct {
+		name             string
+		args             args
+		wantPackageNames []string
+		wantTolerated    bool
+		wantErr          bool
+	}{
+		{
+			name:             "tolerates stale generated output in the loaded package",
+			args:             args{packagePatterns: []string{"../testdata/staleoutput"}},
+			wantPackageNames: []string{"staleoutput"},
+			wantTolerated:    true,
+			wantErr:          false,
+		},
+		{
+			name:             "clean package loads with nothing tolerated",
+			args:             args{packagePatterns: []string{"../testdata/resources"}},
+			wantPackageNames: []string{"resources"},
+			wantTolerated:    false,
+			wantErr:          false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			packageMap, tolerated, err := LoadPackagesResilient(tt.args.packagePatterns...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("LoadPackagesResilient() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tolerated != tt.wantTolerated {
+				t.Errorf("LoadPackagesResilient() tolerated = %v, want %v", tolerated, tt.wantTolerated)
+			}
+
+			for _, packageName := range tt.wantPackageNames {
+				pkg, ok := packageMap[packageName]
+				if !ok {
+					t.Errorf("LoadPackagesResilient() missing expected package %s", packageName)
+
+					continue
+				}
+
+				// The tolerated package must still be parseable: generation needs its
+				// structs even while the stale generated file fails type-checking.
+				parsed := ParsePackage(pkg)
+				if len(parsed.Structs) == 0 {
+					t.Errorf("ParsePackage(%s) returned no structs", packageName)
 				}
 			}
 		})
@@ -154,46 +217,97 @@ func Test_ParseStructs(t *testing.T) {
 	}
 }
 
-func Test_FilterStructsByInterface(t *testing.T) {
+// Test_ParsePackage_docComments pins where a declaration's doc comment is read from:
+// a type declared on its own line carries it on the GenDecl, a grouped one on the
+// TypeSpec, and the parser reads both, so a struct's annotations are never lost to
+// the declaration style.
+func Test_ParsePackage_docComments(t *testing.T) {
 	t.Parallel()
-	type args struct {
-		packagePath string
-		packageName string
-		interfaces  []string
+
+	pkgMap, err := LoadPackages("../testdata/doccomments")
+	if err != nil {
+		t.Fatalf("LoadPackages() error = %v", err)
 	}
+	comments := make(map[string]string)
+	for _, s := range ParsePackage(pkgMap["doccomments"]).Structs {
+		comments[s.Name()] = s.Comments()
+	}
+
 	tests := []struct {
-		name    string
-		args    args
-		want    []string
-		wantErr bool
+		name       string
+		structName string
+		want       string
 	}{
-		{
-			name:    "returns structs that implement a given interface",
-			args:    args{packagePath: "../testdata/rpc", packageName: "rpc", interfaces: []string{"TxnRunner"}},
-			want:    []string{"Banana", "Cofveve"},
-			wantErr: false,
-		},
+		{name: "a struct declared on its own line keeps its doc", structName: "Standalone", want: "Standalone is declared on its own line.\n\n@rpc\n"},
+		{name: "a struct declared in a group keeps its doc", structName: "Grouped", want: "Grouped is declared in a type group.\n\n@rpc\n"},
+		{name: "a spec in a shared group keeps its own doc", structName: "Sibling", want: "Sibling shares a group with another spec; its doc is its own.\n"},
+		{name: "the second spec of a shared group keeps its own doc", structName: "Other", want: "Other is the second spec of the group.\n"},
+		{name: "an undocumented struct has none", structName: "Undocumented", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := comments[tt.structName]
+			if !ok {
+				t.Fatalf("struct %q not parsed", tt.structName)
+			}
+			if got != tt.want {
+				t.Errorf("Struct.Comments() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_Struct_Method(t *testing.T) {
+	t.Parallel()
+
+	pkgMap, err := LoadPackages("../testdata/rpc")
+	if err != nil {
+		t.Fatalf("LoadPackages() error = %v", err)
+	}
+	structs := make(map[string]*Struct)
+	for _, s := range ParsePackage(pkgMap["rpc"]).Structs {
+		structs[s.Name()] = s
+	}
+
+	tests := []struct {
+		name       string
+		structName string
+		method     string
+		wantParams int
+	}{
+		{name: "pointer-receiver Execute is found", structName: "Banana", method: "Execute", wantParams: 3},
+		{name: "Execute declared in another file is found", structName: "Cofveve", method: "Execute", wantParams: 3},
+		{name: "value-receiver method is found", structName: "Durian", method: "Execute", wantParams: 3},
+		{name: "a struct without the method answers nil", structName: "Apple", method: "Execute", wantParams: -1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			pkgMap, err := LoadPackages(tt.args.packagePath)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("loadPackages() error = %v, wantErr %v", err, tt.wantErr)
+
+			s := structs[tt.structName]
+			if s == nil {
+				t.Fatalf("struct %q not in fixture", tt.structName)
+			}
+			fn := s.Method(tt.method)
+			if tt.wantParams < 0 {
+				if fn != nil {
+					t.Fatalf("Method(%q) = %v, want nil", tt.method, fn)
+				}
+
 				return
 			}
-
-			rpcStructs := ParsePackage(pkgMap[tt.args.packageName]).Structs
-
-			rpcStructs = FilterStructsByInterface(rpcStructs, tt.args.interfaces)
-
-			var rpcStructNames []string
-			for _, s := range rpcStructs {
-				rpcStructNames = append(rpcStructNames, s.Name())
+			if fn == nil {
+				t.Fatalf("Method(%q) = nil, want the method", tt.method)
 			}
-
-			if !reflect.DeepEqual(rpcStructNames, tt.want) {
-				t.Errorf("extractRPCMethods() = %v, want %v", rpcStructNames, tt.want)
+			sig, ok := fn.Type().(*types.Signature)
+			if !ok {
+				t.Fatalf("Method(%q).Type() = %T, want *types.Signature", tt.method, fn.Type())
+			}
+			if got := sig.Params().Len(); got != tt.wantParams {
+				t.Errorf("Method(%q) params = %d, want %d", tt.method, got, tt.wantParams)
 			}
 		})
 	}

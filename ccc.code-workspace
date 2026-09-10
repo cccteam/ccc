@@ -36,6 +36,10 @@
       "name": "middleware",
       "path": "middleware",
     },
+    {
+      "name": "impulse",
+      "path": "impulse",
+    },
   ],
   "settings": {
     "files.exclude": {
@@ -47,6 +51,7 @@
       "securehash": true,
       "tracer": true,
       "middleware": true,
+      "impulse": true,
     },
   },
 }

@@ -1,0 +1,182 @@
+version: '2'
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bodyclose
+    - copyloopvar
+    - cyclop
+    - depguard
+    - dogsled
+    - durationcheck
+    - errcheck
+    - errorlint
+    - exhaustive
+    - forcetypeassert
+    - funlen
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godox
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - govet
+    - importas
+    - ineffassign
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    - nlreturn
+    - noctx
+    - nolintlint
+    - paralleltest
+    - prealloc
+    - predeclared
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - tagalign
+    - tagliatelle
+    - tparallel
+    - unconvert
+    - unparam
+    - wastedassign
+    - whitespace
+    - wrapcheck
+  settings:
+    cyclop:
+      max-complexity: 25
+    depguard:
+      rules:
+        main:
+          files:
+            - $all
+          allow:
+            - $gostd
+            - github.com/cccteam
+            - github.com/ettle/strcase
+            - github.com/go-playground/errors/v5
+            - github.com/google/go-cmp
+            - github.com/spf13/cobra
+            - golang.org/x/mod
+            - golang.org/x/term
+    exhaustive:
+      default-signifies-exhaustive: true
+    funlen:
+      lines: 100
+      statements: 50
+    gocognit:
+      min-complexity: 50
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+    gocyclo:
+      min-complexity: 25
+    godox:
+      keywords:
+        - TODO
+        - BUG
+    misspell:
+      locale: US
+    nestif:
+      min-complexity: 10
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+        use-field-name: true
+    wrapcheck:
+      # Errors from the tool's own packages carry their own context; wrapping them again
+      # would only prefix the user-facing message with function names.
+      ignore-package-globs:
+        - github.com/cccteam/ccc/impulse/*
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .Cause(
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      - linters:
+          - funlen
+          - gochecknoglobals
+          - gochecknoinits
+          - goconst
+          - gocyclo
+          - mnd
+          - nlreturn
+          - scopelint
+          - gocognit
+          - cyclop
+          - nestif
+          - prealloc
+        path: _test\.go
+      # --fix appends to developer-owned files (.prettierignore, .envrc.template) and
+      # creates them when absent; a new file must be readable by the tooling that
+      # consumes it, so it gets the conventional 0644, not 0600.
+      - linters:
+          - gosec
+        path: internal/check/prettier\.go
+        text: G302
+      # render writes a project tree a person works in: 0755 directories and 0644 files
+      # are the conventional modes, not a leak. Writes go through an os.Root.
+      - linters:
+          - gosec
+        path: internal/skeleton/render\.go
+        text: G30[16]
+      # A transition writes project files a person works in: 0755 directories and 0644
+      # files are the conventional modes.
+      - linters:
+          - gosec
+        path: internal/transition/.*\.go
+        text: G30[16]
+      # The agent executable is the --agent-command flag: launching what the user named is
+      # the command's purpose, and the brief goes to it on standard input.
+      - linters:
+          - gosec
+        path: internal/handoff/agent\.go
+        text: G204
+      # Tests edit copies of the fixture applications under their own temporary directory.
+      - linters:
+          - gosec
+        path: _test\.go
+        text: G703
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

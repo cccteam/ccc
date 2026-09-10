@@ -1,6 +1,9 @@
 package generation
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -477,6 +480,77 @@ func Test_client_localPackageImports(t *testing.T) {
 
 			if got := c.localPackageImports(); got != tt.want {
 				t.Errorf("localPackageImports() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_removeGeneratedFiles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		create    bool
+		files     []string
+		wantKept  []string
+		wantError bool
+	}{
+		{
+			name:     "missing directory holds nothing to remove",
+			create:   false,
+			wantKept: nil,
+		},
+		{
+			name:     "generated files go, handwritten files stay",
+			create:   true,
+			files:    []string{genPrefix + "ships.go", "ships.go", genPrefix + "api.ts", "notes.txt"},
+			wantKept: []string{"notes.txt", "ships.go"},
+		},
+		{
+			name:     "empty directory is left as is",
+			create:   true,
+			wantKept: []string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := filepath.Join(t.TempDir(), "target")
+			if tt.create {
+				if err := os.MkdirAll(dir, 0o750); err != nil {
+					t.Fatalf("os.MkdirAll() error = %v", err)
+				}
+				for _, f := range tt.files {
+					if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o600); err != nil {
+						t.Fatalf("os.WriteFile() error = %v", err)
+					}
+				}
+			}
+
+			err := removeGeneratedFiles(dir, prefix)
+			if (err != nil) != tt.wantError {
+				t.Fatalf("removeGeneratedFiles() error = %v, wantError %v", err, tt.wantError)
+			}
+
+			if !tt.create {
+				if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("removeGeneratedFiles() created %q, want it untouched", dir)
+				}
+
+				return
+			}
+
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatalf("os.ReadDir() error = %v", err)
+			}
+			kept := make([]string, 0, len(entries))
+			for _, e := range entries {
+				kept = append(kept, e.Name())
+			}
+			if diff := cmp.Diff(tt.wantKept, kept); diff != "" {
+				t.Errorf("removeGeneratedFiles() kept files mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

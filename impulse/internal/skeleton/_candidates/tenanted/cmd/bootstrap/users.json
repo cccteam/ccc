@@ -1,0 +1,33 @@
+{
+  "users": [
+    {
+      "user": "admin",
+      "password": "password",
+      "roles": {
+        "global": [
+          "Administrator"
+        ],
+        "domains": {
+          "north": [
+            "Administrator"
+          ],
+          "south": [
+            "Administrator"
+          ]
+        }
+      }
+    },
+    {
+      "user": "member",
+      "password": "password",
+      "roles": {
+        "global": [],
+        "domains": {
+          "north": [
+            "Administrator"
+          ]
+        }
+      }
+    }
+  ]
+}

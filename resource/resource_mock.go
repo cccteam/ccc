@@ -131,12 +131,13 @@ func (c *MockReadWriteTransaction) PostgresReadOnlyTransaction() any {
 	panic("MockReadWriteTransaction.PostgresReadOnlyTransaction() should never be called.")
 }
 
-// MockIterSeq2 is used for mocking iter.Seq2[Resourcer, error] type. If both err and resource are
-// provided, it will yield all elements in resource first and then err
-func MockIterSeq2[Resource Resourcer](err error, resource ...*Resource) iter.Seq2[*Resource, error] {
-	return func(yield func(*Resource, error) bool) {
+// MockIterSeq2 is used for mocking the iter.Seq2[*Row[Resource], error] type returned by List.
+// Each resource is wrapped in the Row envelope. If both err and resource are provided, it will
+// yield all elements in resource first and then err
+func MockIterSeq2[Resource Resourcer](err error, resource ...*Resource) iter.Seq2[*Row[Resource], error] {
+	return func(yield func(*Row[Resource], error) bool) {
 		for _, r := range resource {
-			if !yield(r, nil) {
+			if !yield(&Row[Resource]{Data: *r}, nil) {
 				return
 			}
 		}

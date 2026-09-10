@@ -1,0 +1,24 @@
+@if (banner(); as banner) {
+  <div class="impersonation-banner" [class.role]="banner.kind === 'Role'">
+    <mat-icon>{{ banner.kind === 'Role' ? 'badge' : 'visibility' }}</mat-icon>
+    <span>{{ banner.text }}</span>
+    <span class="cap" title="Every minted session carries a two-hour hard cap (MaxDuration)">{{ banner.remaining }}</span>
+    <button mat-stroked-button (click)="endImpersonation()">Return to yourself</button>
+  </div>
+}
+<div class="header">
+  <a class="brand" [routerLink]="['']">✦ Lodestar</a>
+  <app-topbar></app-topbar>
+  <div class="session">
+    @if (card(); as card) {
+      <span class="card" [title]="'Certified: ' + (card.certifications?.join(', ') || 'none')">
+        {{ card.displayName }} · clearance {{ card.clearance }}
+        @if (card.squadrons?.length) {
+          · {{ card.squadrons?.join(', ') }}
+        }
+      </span>
+    }
+    <span class="username">{{ auth.sessionInfo().username }}</span>
+    <button mat-stroked-button (click)="logout()">Logout</button>
+  </div>
+</div>

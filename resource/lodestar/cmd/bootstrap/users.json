@@ -1,0 +1,316 @@
+{
+  "users": [
+    {
+      "user": "governor",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "Headquarters",
+          "BulletinOfficer",
+          "ClientBrowser",
+          "CommandStaff"
+        ],
+        "domains": {
+          "anvil": [
+            "SectorMarshal"
+          ],
+          "bastion": [
+            "SectorMarshal"
+          ],
+          "cinder": [
+            "SectorMarshal"
+          ]
+        }
+      }
+    },
+    {
+      "user": "marshal",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "BulletinOfficer",
+          "ClientBrowser",
+          "CommandStaff"
+        ],
+        "domains": {
+          "anvil": [
+            "SectorMarshal"
+          ]
+        }
+      }
+    },
+    {
+      "user": "cadet",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Cadet",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "pilot",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Pilot",
+            "SectorCrew"
+          ],
+          "bastion": [
+            "Pilot",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "veteran",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Veteran",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "lead",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "FlightLead",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "dispatcher",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Dispatcher",
+            "SectorCrew"
+          ],
+          "bastion": [
+            "Dispatcher",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "overseer",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Overseer",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "booking",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "BookingAgent",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "wingco",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "WingCommander",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "engineer",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "Engineer",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "quartermaster",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "Quartermaster",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "supercargo",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Supercargo",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "archivist",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "ClientBrowser"
+        ],
+        "domains": {
+          "anvil": [
+            "Archivist"
+          ],
+          "bastion": [
+            "Archivist"
+          ],
+          "cinder": [
+            "Archivist"
+          ]
+        }
+      }
+    },
+    {
+      "user": "hazards",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "HazardAnalyst",
+            "SectorCrew"
+          ],
+          "cinder": [
+            "HazardAnalyst",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "dock",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "Dockmaster",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "watch",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "NightWatch",
+            "SectorCrew"
+          ]
+        }
+      }
+    }
+  ],
+  "serviceAccounts": [
+    {
+      "user": "droid-r7",
+      "roles": {
+        "global": [],
+        "domains": {
+          "anvil": [
+            "DroidIngest"
+          ],
+          "bastion": [
+            "DroidIngest"
+          ],
+          "cinder": [
+            "DroidIngest"
+          ]
+        }
+      }
+    }
+  ]
+}

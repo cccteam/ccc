@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/httpio"
 )
 
 type TestResource struct {
@@ -63,46 +64,70 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			queryValues: url.Values{"limit": []string{"10"}},
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
-				Limit: new(uint64(10)),
+				Page: pageRequest{size: 10},
 			},
 		},
 		{
-			name:        "offset only",
-			queryValues: url.Values{"offset": []string{"10"}},
-			wantErr:     false,
-			expectedResult: &parsedQueryParams{
-				Limit:  new(uint64(50)),
-				Offset: new(uint64(10)),
-			},
+			name:           "offset is refused naming the cursor",
+			queryValues:    url.Values{"offset": []string{"10"}},
+			wantErr:        true,
+			expectedErrMsg: "offset is not supported: pages are positioned by the cursor",
 		},
 		{
-			name:        "default limit",
+			name:        "default page",
 			queryValues: url.Values{},
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
-				Limit: new(uint64(50)),
+				Page: pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
-			name:        "limit and offset",
-			queryValues: url.Values{"limit": []string{"20"}, "offset": []string{"10"}},
+			name:        "limit=all asks for every row",
+			queryValues: url.Values{"limit": []string{"all"}},
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
-				Limit:  new(uint64(20)),
-				Offset: new(uint64(10)),
+				Page: pageRequest{size: DefaultPageSize, all: true},
 			},
 		},
 		{
-			name:           "invalid offset - negative",
-			queryValues:    url.Values{"offset": []string{"-1"}},
+			name:           "limit=0 is refused",
+			queryValues:    url.Values{"limit": []string{"0"}},
 			wantErr:        true,
-			expectedErrMsg: "invalid offset value: -1",
+			expectedErrMsg: "limit must be at least 1",
 		},
 		{
-			name:           "invalid offset - non-integer",
-			queryValues:    url.Values{"offset": []string{"abc"}},
+			name:        "cursor rides the page",
+			queryValues: url.Values{"cursor": []string{"v4.local.abc"}, "limit": []string{"4"}},
+			wantErr:     false,
+			expectedResult: &parsedQueryParams{
+				Page: pageRequest{size: 4, token: "v4.local.abc"},
+			},
+		},
+		{
+			name:           "cursor with limit=all is refused",
+			queryValues:    url.Values{"cursor": []string{"v4.local.abc"}, "limit": []string{"all"}},
 			wantErr:        true,
-			expectedErrMsg: "invalid offset value: abc",
+			expectedErrMsg: "cannot be combined with limit=all",
+		},
+		{
+			name:        "count=true asks for the total",
+			queryValues: url.Values{"count": []string{"true"}},
+			wantErr:     false,
+			expectedResult: &parsedQueryParams{
+				Page: pageRequest{size: DefaultPageSize, count: true},
+			},
+		},
+		{
+			name:           "count with any other value is refused",
+			queryValues:    url.Values{"count": []string{"yes"}},
+			wantErr:        true,
+			expectedErrMsg: "invalid count value: yes",
+		},
+		{
+			name:           "count on a later page is refused",
+			queryValues:    url.Values{"count": []string{"true"}, "cursor": []string{"v4.local.abc"}},
+			wantErr:        true,
+			expectedErrMsg: "count is answered on the first page only",
 		},
 		{
 			name:           "invalid limit - negative",
@@ -123,7 +148,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				ColumnFields: []accesstypes.Field{"Name", "Age"},
-				Limit:        new(uint64(50)),
+				Page:         pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -132,7 +157,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				ColumnFields: []accesstypes.Field{"Name"},
-				Limit:        new(uint64(50)),
+				Page:         pageRequest{size: DefaultPageSize},
 			},
 			expectedASTString: "age_sql:gt:30",
 		},
@@ -156,7 +181,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "name_sql:eq:John",
 			expectedResult: &parsedQueryParams{
-				Limit: new(uint64(50)),
+				Page: pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -174,7 +199,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			expectedASTString: "name_sql:eq:John",
 			expectedResult: &parsedQueryParams{
 				ColumnFields: []accesstypes.Field{"Name", "Age"},
-				Limit:        new(uint64(10)),
+				Page:         pageRequest{size: 10},
 			},
 		},
 
@@ -188,10 +213,10 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 
 		// Interaction and error propagation
 		{
-			name:           "invalid filter with legacy field (now unknown param)",
+			name:           "invalid filter is refused before unknown parameters are reported",
 			queryValues:    url.Values{"filter": []string{"name:badop:John"}, "legacyIndexedField": []string{"value"}},
 			wantErr:        true,
-			expectedErrMsg: "unknown query parameters",
+			expectedErrMsg: "unknown operator 'badop'",
 		},
 		{
 			name:           "valid filter with unknown parameter",
@@ -223,7 +248,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "age_sql:eq:42",
 			expectedResult: &parsedQueryParams{
-				Limit: new(uint64(50)),
+				Page: pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -232,7 +257,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "active_sql:eq:true",
 			expectedResult: &parsedQueryParams{
-				Limit: new(uint64(50)),
+				Page: pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -241,7 +266,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "active_sql:eq:false",
 			expectedResult: &parsedQueryParams{
-				Limit: new(uint64(50)),
+				Page: pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -250,7 +275,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "salary_sql:gte:5000.75",
 			expectedResult: &parsedQueryParams{
-				Limit: new(uint64(50)),
+				Page: pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -259,7 +284,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "item_ids_sql:in:(1,2,3)",
 			expectedResult: &parsedQueryParams{
-				Limit: new(uint64(50)),
+				Page: pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -268,7 +293,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "tags_sql:in:(Alice,Bob,Charlie)",
 			expectedResult: &parsedQueryParams{
-				Limit: new(uint64(50)),
+				Page: pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -277,7 +302,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "email_sql:isnull",
 			expectedResult: &parsedQueryParams{
-				Limit: new(uint64(50)),
+				Page: pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -286,14 +311,14 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:           false,
 			expectedASTString: "email_sql:isnotnull",
 			expectedResult: &parsedQueryParams{
-				Limit: new(uint64(50)),
+				Page: pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
 			name:           "index error - status is not indexed, cant filter on it",
 			queryValues:    url.Values{"filter": []string{"status:eq:active"}},
 			wantErr:        true,
-			expectedErrMsg: "'status' is not indexed but was included in condition 'status:eq:active'",
+			expectedErrMsg: "'status' is not filterable but was included in condition 'status:eq:active'",
 		},
 		{
 			name:           "conversion error - int",
@@ -321,7 +346,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}},
-				Limit:      new(uint64(50)),
+				Page:       pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -330,7 +355,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}},
-				Limit:      new(uint64(50)),
+				Page:       pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -339,7 +364,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Age", Direction: SortDescending}},
-				Limit:      new(uint64(50)),
+				Page:       pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -348,7 +373,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}, {Field: "Age", Direction: SortDescending}},
-				Limit:      new(uint64(50)),
+				Page:       pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -357,7 +382,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "Name", Direction: SortAscending}, {Field: "Age", Direction: SortDescending}},
-				Limit:      new(uint64(50)),
+				Page:       pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -372,7 +397,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			wantErr:     false,
 			expectedResult: &parsedQueryParams{
 				SortFields: []SortField{{Field: "LegacyIndexedField", Direction: SortAscending}},
-				Limit:      new(uint64(50)),
+				Page:       pageRequest{size: DefaultPageSize},
 			},
 		},
 		{
@@ -448,24 +473,8 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			}
 
 			if tt.expectedResult != nil {
-				if tt.expectedResult.Limit != nil {
-					if parsedQuery.Limit == nil {
-						t.Errorf("Expected limit %d, got nil", *tt.expectedResult.Limit)
-					} else if *tt.expectedResult.Limit != *parsedQuery.Limit {
-						t.Errorf("Expected limit %d, got %d", *tt.expectedResult.Limit, *parsedQuery.Limit)
-					}
-				} else if parsedQuery.Limit != nil {
-					t.Errorf("Expected nil limit, got %d", *parsedQuery.Limit)
-				}
-
-				if tt.expectedResult.Offset != nil {
-					if parsedQuery.Offset == nil {
-						t.Errorf("Expected offset %d, got nil", *tt.expectedResult.Offset)
-					} else if *tt.expectedResult.Offset != *parsedQuery.Offset {
-						t.Errorf("Expected offset %d, got %d", *tt.expectedResult.Offset, *parsedQuery.Offset)
-					}
-				} else if parsedQuery.Offset != nil {
-					t.Errorf("Expected nil offset, got %d", *parsedQuery.Offset)
+				if parsedQuery.Page != tt.expectedResult.Page {
+					t.Errorf("Page mismatch for test '%s':\nExpected: %+v\nActual:   %+v", tt.name, tt.expectedResult.Page, parsedQuery.Page)
 				}
 
 				if !reflect.DeepEqual(tt.expectedResult.SortFields, parsedQuery.SortFields) {
@@ -736,6 +745,94 @@ func TestQueryDecoder_UnrequestableFields(t *testing.T) {
 			}
 			if got := qSet.Fields(); !slices.Equal(got, tt.wantFields) {
 				t.Errorf("Fields() = %v, want %v", got, tt.wantFields)
+			}
+		})
+	}
+}
+
+// filterTimingRequest pairs an indexed field with one that is only allow_filter,
+// so a filter can be well formed without touching an index.
+type filterTimingRequest struct {
+	ID   string `json:"id"   index:"true"`
+	Name string `json:"name" allow_filter:"true"`
+}
+
+// TestQueryDecoder_parseQuery_filterValidationTiming pins where each filter
+// refusal fires: the request's shape at decode, the index rule at the database
+// parse that renders SQL.
+func TestQueryDecoder_parseQuery_filterValidationTiming(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		filter        string
+		wantDecodeErr string
+		wantDBErr     string
+	}{
+		{
+			name:   "indexed field parses at decode and renders for the database",
+			filter: "id:eq:a",
+		},
+		{
+			name:      "allow_filter field alone parses at decode; the index rule waits for the database parse",
+			filter:    "name:eq:a",
+			wantDBErr: "at least one column that is indexed",
+		},
+		{
+			name:          "unknown field is refused at decode",
+			filter:        "nope:eq:a",
+			wantDecodeErr: "'nope' is not filterable",
+		},
+		{
+			name:          "malformed condition is refused at decode",
+			filter:        "id",
+			wantDecodeErr: "must have at least field:operator",
+		},
+		{
+			name:          "unbalanced group is refused at decode",
+			filter:        "(id:eq:a",
+			wantDecodeErr: "expected",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			resSet, err := NewSet[hiddenFieldResource, filterTimingRequest](accesstypes.List)
+			if err != nil {
+				t.Fatalf("NewSet() error = %v", err)
+			}
+			decoder, err := NewQueryDecoder[hiddenFieldResource, filterTimingRequest](resSet)
+			if err != nil {
+				t.Fatalf("NewQueryDecoder() error = %v", err)
+			}
+
+			parsed, err := decoder.parseQuery(url.Values{"filter": []string{tt.filter}})
+			if tt.wantDecodeErr != "" {
+				if err == nil {
+					t.Fatal("parseQuery() expected an error, got nil")
+				}
+				if !httpio.HasBadRequest(err) || !strings.Contains(err.Error(), tt.wantDecodeErr) {
+					t.Fatalf("parseQuery() error = %v, want Bad Request containing %q", err, tt.wantDecodeErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseQuery() error = %v", err)
+			}
+
+			_, err = parsed.FilterParser(SpannerDBType)
+			if tt.wantDBErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantDBErr) {
+					t.Fatalf("FilterParser(Spanner) error = %v, want error containing %q", err, tt.wantDBErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("FilterParser(Spanner) error = %v", err)
 			}
 		})
 	}

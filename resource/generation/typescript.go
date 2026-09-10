@@ -11,6 +11,7 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/generation/parser"
+	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/tools/go/packages"
 )
@@ -24,11 +25,142 @@ type typescriptGenerator struct {
 	typescriptOverrides   map[string]string
 	rc                    *resource.GeneratedCollection
 	routerResources       []accesstypes.Resource
+	// manualRegistrations are the declared registrations with no generated handler;
+	// each carries its own outlet membership for the outlet filter.
+	manualRegistrations []ManualRegistration
 	// domainRouteSegment/domainRouteParam mirror the resourceGenerator's route pair so
 	// TypeScript route metadata can render the domain segment of domain-scoped routes.
 	domainRouteSegment     string
 	domainRouteParam       string
 	spannerEmulatorVersion string
+	// outletName is the router outlet this target serves (ForOutlet): every emitted
+	// file is filtered to the outlet's members. Empty means the default outlet
+	// (resolveOptions fills the name in; targetOutlet covers directly constructed
+	// generators in tests).
+	outletName string
+	// outletExcluded are the collection resource names owned exclusively by other
+	// outlets — the parsed resources, computed resources, RPC methods, and manual
+	// registrations that are not on the target outlet — which the constants output
+	// omits.
+	outletExcluded []accesstypes.Resource
+	// outletExcludedTables are the excluded resource and computed-resource names,
+	// for enum filtering: an @enumerate type whose table belongs exclusively to
+	// other outlets is not emitted.
+	outletExcludedTables map[string]struct{}
+}
+
+// targetOutlet is the router outlet this target serves (ForOutlet), defaulting to
+// the default outlet.
+func (t *typescriptGenerator) targetOutlet() string {
+	if t.outletName == "" {
+		return defaultOutletName
+	}
+
+	return t.outletName
+}
+
+// excludeFromOutlet reports whether the member is off the target outlet, recording
+// an excluded member's collection resource name — and, for table-backed kinds, its
+// table name for enum filtering — so the collection-derived outputs drop the same
+// registrations the parsed sets drop.
+func (t *typescriptGenerator) excludeFromOutlet(m *outletMembership, resourceName string, isTable bool) bool {
+	if m.OnOutlet(t.targetOutlet()) {
+		return false
+	}
+
+	t.outletExcluded = append(t.outletExcluded, accesstypes.Resource(resourceName))
+	if isTable {
+		t.outletExcludedTables[resourceName] = struct{}{}
+	}
+
+	return true
+}
+
+// validateOutletMemberReferences rejects a member RPC method that references a
+// resource excluded from the target outlet — a declared transition's root, or an
+// enumerated field's resource. The emitted metadata names such a resource through
+// the Resources constant, which the filtered constants file no longer declares;
+// silently narrowing the metadata in this client alone would misrepresent the
+// method, so the mismatch fails generation with the fix instead.
+func (t *typescriptGenerator) validateOutletMemberReferences() error {
+	excluded := func(name string) bool {
+		return slices.Contains(t.outletExcluded, accesstypes.Resource(name))
+	}
+
+	for _, method := range t.rpcMethods {
+		if tr := method.Transition; tr != nil && excluded(tr.RootResource) {
+			return errors.Newf("outlet %q: RPC method %s declares a transition on %s, which is not on the outlet; a client cannot carry a transition whose resource it does not emit — attach %s to the outlet via @%s, or move the method off it", t.targetOutlet(), method.Name(), tr.RootResource, tr.RootResource, outletKeyword)
+		}
+		for _, field := range method.Fields {
+			if field.IsEnumerated() && excluded(field.EnumeratedResource()) {
+				return errors.Newf("outlet %q: RPC method %s field %s enumerates %s, which is not on the outlet; attach %s to the outlet via @%s, or drop the @enumerate annotation", t.targetOutlet(), method.Name(), field.Name(), field.EnumeratedResource(), field.EnumeratedResource(), outletKeyword)
+			}
+		}
+	}
+
+	return nil
+}
+
+// applyOutletFilter narrows the parsed sets to the target outlet's members. Every
+// member on another outlet falls away here — resources, computed resources, and
+// RPC methods — and is recorded so the collection-derived constants drop the same
+// registrations; the surviving methods' cross-outlet references are then validated.
+// Enumerated-field references resolve against the outlet's members only, so a field
+// referencing a resource on another outlet degrades to its plain type instead of
+// referencing a Resources constant the filtered output no longer declares.
+func (t *typescriptGenerator) applyOutletFilter(resources []*resourceInfo, computedResources []*computedResource) ([]*resourceInfo, []*computedResource, error) {
+	t.outletExcludedTables = make(map[string]struct{})
+	resources = slices.DeleteFunc(resources, func(res *resourceInfo) bool {
+		return t.excludeFromOutlet(&res.outletMembership, t.pluralize(res.Name()), true)
+	})
+	computedResources = slices.DeleteFunc(computedResources, func(res *computedResource) bool {
+		return t.excludeFromOutlet(&res.outletMembership, t.pluralize(res.Name()), true)
+	})
+	t.rpcMethods = slices.DeleteFunc(t.rpcMethods, func(method *rpcMethodInfo) bool {
+		return t.excludeFromOutlet(&method.outletMembership, method.Name(), false)
+	})
+
+	if err := t.validateOutletMemberReferences(); err != nil {
+		return nil, nil, err
+	}
+
+	t.excludeManualRegistrations(resources, computedResources)
+
+	t.routerResources = slices.DeleteFunc(slices.Clone(t.routerResources), func(res accesstypes.Resource) bool {
+		return slices.Contains(t.outletExcluded, res)
+	})
+
+	return resources, computedResources, nil
+}
+
+// excludeManualRegistrations drops the manual registrations off the target outlet
+// from the collection-derived constants. Exclusion is by resource name, so a name
+// the outlet still claims — through a surviving member or a manual registration on
+// the outlet — stays even when another registration on it is off the outlet.
+func (t *typescriptGenerator) excludeManualRegistrations(resources []*resourceInfo, computedResources []*computedResource) {
+	claimed := make(map[accesstypes.Resource]struct{}, len(resources)+len(computedResources)+len(t.rpcMethods)+len(t.manualRegistrations))
+	for _, res := range resources {
+		claimed[accesstypes.Resource(t.pluralize(res.Name()))] = struct{}{}
+	}
+	for _, res := range computedResources {
+		claimed[accesstypes.Resource(t.pluralize(res.Name()))] = struct{}{}
+	}
+	for _, method := range t.rpcMethods {
+		claimed[accesstypes.Resource(method.Name())] = struct{}{}
+	}
+	for _, reg := range t.manualRegistrations {
+		m := outletMembership{OutletNames: reg.Outlets}
+		if m.OnOutlet(t.targetOutlet()) {
+			claimed[reg.Resource] = struct{}{}
+		}
+	}
+
+	for _, reg := range t.manualRegistrations {
+		if _, ok := claimed[reg.Resource]; ok || slices.Contains(t.outletExcluded, reg.Resource) {
+			continue
+		}
+		t.outletExcluded = append(t.outletExcluded, reg.Resource)
+	}
 }
 
 // parseResources parses the resource and virtual-resource packages, returning the parsed
@@ -40,8 +172,11 @@ func (t *typescriptGenerator) parseResources(packageMap map[string]*packages.Pac
 		return nil, nil, errors.Newf("no packages found in %q", t.resource.Dir())
 	}
 	resourcesPkg := parser.ParsePackage(pkg)
+	if err := t.registerEnumerations(resourcesPkg.NamedTypes); err != nil {
+		return nil, nil, err
+	}
 
-	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -49,7 +184,7 @@ func (t *typescriptGenerator) parseResources(packageMap map[string]*packages.Pac
 	if t.genVirtualResources {
 		pkg := packageMap[t.virtual.Package()]
 		virtualStructs := parser.ParsePackage(pkg).Structs
-		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -76,20 +211,40 @@ func (t *typescriptGenerator) Generate() error {
 		return err
 	}
 
+	// Every package parses against the whole application before the outlet filter
+	// runs: an RPC method's transition root, target, or enumerated field resolves by
+	// name against the parsed resources, and a method on another outlet may name a
+	// resource on another outlet. Only the members that survive the filter have
+	// references worth validating (validateOutletMemberReferences).
+	var computedResources []*computedResource
 	if t.genComputedResources {
 		pkg := packageMap[t.computed.Package()]
 		compStructs := parser.ParsePackage(pkg).Structs
-		computedResources, err := structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags)
+		computedResources, err = t.structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
 		if err != nil {
 			return err
 		}
-
-		for _, res := range computedResources {
-			res.Fields = t.computedFieldsTypescriptType(res.Fields)
-		}
-
-		t.computedResources = computedResources
 	}
+
+	t.resources = resources
+	if t.genRPCMethods {
+		pkg := packageMap[t.rpc.Package()]
+		rpcStructs := parser.ParsePackage(pkg).Structs
+		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags)
+		if err != nil {
+			return err
+		}
+	}
+
+	resources, computedResources, err = t.applyOutletFilter(resources, computedResources)
+	if err != nil {
+		return err
+	}
+
+	for _, res := range computedResources {
+		res.Fields = t.computedFieldsTypescriptType(res.Fields)
+	}
+	t.computedResources = computedResources
 
 	t.resources = make([]*resourceInfo, 0, len(resources))
 	for _, res := range resources {
@@ -99,17 +254,14 @@ func (t *typescriptGenerator) Generate() error {
 		}
 	}
 
-	if t.genRPCMethods {
-		pkg := packageMap[t.rpc.Package()]
-		rpcStructs := parser.ParsePackage(pkg).Structs
-		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags)
-		if err != nil {
-			return err
-		}
+	for _, rpcMethod := range t.rpcMethods {
+		rpcMethod.Fields = t.rpcFieldsTypescriptType(rpcMethod.Fields)
+	}
 
-		for _, rpcMethod := range t.rpcMethods {
-			rpcMethod.Fields = t.rpcFieldsTypescriptType(rpcMethod.Fields)
-		}
+	// The target directory may not exist on a first generate into a fresh
+	// application; nothing else in the pipeline creates it.
+	if err := os.MkdirAll(t.typescriptDestination, 0o750); err != nil {
+		return errors.Wrap(err, "os.MkdirAll()")
 	}
 
 	if err := t.runTypescriptMetadataGeneration(); err != nil {
@@ -160,7 +312,7 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 
 	log.Println("Starting typescript resource permission generation...")
 
-	routerData := t.rc.TypescriptData()
+	routerData := t.rc.TypescriptDataExcluding(t.outletExcluded...)
 
 	piiResourceFields := make(map[accesstypes.Resource]map[accesstypes.Tag]bool, len(t.resources)+len(t.computedResources))
 	for _, res := range t.resources {
@@ -186,10 +338,11 @@ func (t *typescriptGenerator) runTypescriptPermissionGeneration() error {
 	}
 
 	templateData := tsConstantsData{
-		File:       t,
-		Data:       routerData,
-		RPCMethods: t.rpcMethods,
-		PIIMap:     piiResourceFields,
+		File:          t,
+		Data:          routerData,
+		RPCMethods:    t.rpcMethods,
+		ManualMethods: t.manualMethods(routerData.Methods),
+		PIIMap:        piiResourceFields,
 	}
 
 	output, err := t.generateTemplateOutput(typescriptConstantsTemplate, typescriptConstantsTemplate, templateData)
@@ -241,6 +394,10 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 		return errors.Wrap(err, "generateMethodMetadata()")
 	}
 
+	if err := t.generateAPIClient(); err != nil {
+		return errors.Wrap(err, "generateAPIClient()")
+	}
+
 	log.Printf("Generated typescript metadata in %s\n", time.Since(begin))
 
 	return nil
@@ -276,6 +433,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 		DomainRouteParam:    t.domainRouteParam,
 		HasDomainScoped:     hasDomainScoped,
 		HasConsolidated:     hasConsolidated,
+		Workflows:           t.assembleWorkflows(),
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -330,9 +488,18 @@ func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) erro
 	begin := time.Now()
 	log.Println("Starting enum generation...")
 
-	enumMap, err := t.retrieveDatabaseEnumValues(namedTypes)
+	enumMap, enumTables, err := t.retrieveDatabaseEnumValues(namedTypes)
 	if err != nil {
 		return err
+	}
+
+	// An @enumerate type whose table belongs exclusively to other outlets is not
+	// this client's to enumerate; a table the generator cannot attribute to an
+	// outlet (schema-only, no parsed resource) always stays.
+	for typeName, tableName := range enumTables {
+		if _, gone := t.outletExcludedTables[tableName]; gone {
+			delete(enumMap, typeName)
+		}
 	}
 
 	output, err := t.generateTemplateOutput("typescriptEnumsTemplate", typescriptEnumsTemplate, tsEnumsData{
@@ -371,7 +538,22 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceFie
 			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
 		}
 
-		if field.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
+		if !field.IsForeignKey {
+			continue
+		}
+		// A key into an @enumerate table renders from the generated values: the set is
+		// fixed at generation time, so the picker needs neither a request nor a List
+		// grant, even when a struct also exposes the table as a read-only resource.
+		if typeName, ok := t.enumerationOf(field.ReferencedResource); ok {
+			if _, gone := t.outletExcludedTables[field.ReferencedResource]; !gone {
+				field.IsEnumerated = true
+				field.Enumeration = typeName
+				field.EnumerationValues = t.enumValues[field.ReferencedResource]
+
+				continue
+			}
+		}
+		if slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
 			field.IsEnumerated = true
 		}
 	}
@@ -381,6 +563,12 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceFie
 
 func (t *typescriptGenerator) computedFieldsTypescriptType(fields []*computedField) []*computedField {
 	for _, field := range fields {
+		// A walked field already carries its type from the shared leaf table.
+		if field.wire != nil {
+			field.typescriptType = field.wire.TypescriptDisplayType()
+
+			continue
+		}
 		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
 			field.typescriptType = override
 		} else {
@@ -397,10 +585,14 @@ func (t *typescriptGenerator) computedFieldsTypescriptType(fields []*computedFie
 
 func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []*rpcField) []*rpcField {
 	for _, field := range fields {
+		// A walked field already carries its type from the shared leaf table; the
+		// walk refused *bool at extraction.
+		if field.wire != nil {
+			field.typescriptType = field.wire.TypescriptDisplayType()
+
+			continue
+		}
 		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
-			if override == booleanStr && field.Type() == "*bool" {
-				panic("Bool pointer (*bool) not currently supported for rpc methods.")
-			}
 			field.typescriptType = override
 		} else {
 			field.typescriptType = stringGoType
@@ -412,4 +604,210 @@ func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []*rpcField) []*rpc
 	}
 
 	return fields
+}
+
+// manualMethods returns the Execute registrations the collection carries without a
+// parsed RPC struct behind them — @manualAddResource(Execute) declarations on
+// hand-written handlers — so the Methods constants name every Execute-gated
+// resource, not only the generated ones.
+func (t *typescriptGenerator) manualMethods(methods []accesstypes.Resource) []accesstypes.Resource {
+	manual := make([]accesstypes.Resource, 0, len(methods))
+	for _, method := range methods {
+		if slices.ContainsFunc(t.rpcMethods, func(m *rpcMethodInfo) bool { return m.Name() == string(method) }) {
+			continue
+		}
+		manual = append(manual, method)
+	}
+
+	return manual
+}
+
+// generateAPIClient emits zz_gen_api.ts: the typed client surface over the generated
+// API for the @cccteam/resource runtime — the descriptor (routes, scopes, keys,
+// operations), per-resource create/patch shapes and key tuples, and the Api type
+// that places global handles on the client root and domain-scoped handles under
+// domain(...).
+func (t *typescriptGenerator) generateAPIClient() error {
+	begin := time.Now()
+	log.Println("Starting API client generation...")
+
+	output, err := t.generateTemplateOutput("typescriptAPITemplate", typescriptAPITemplate, t.apiClientData())
+	if err != nil {
+		return errors.Wrap(err, "generateTemplateOutput()")
+	}
+
+	destinationFilePath := filepath.Join(t.typescriptDestination, generatedTypescriptFileName("api"))
+	file, err := os.Create(destinationFilePath)
+	if err != nil {
+		return errors.Wrap(err, "os.Create()")
+	}
+	defer file.Close()
+
+	if err := t.WriteBytesToFile(file, output); err != nil {
+		return err
+	}
+
+	log.Printf("Generated API client in %s: %s\n", time.Since(begin), file.Name())
+
+	return nil
+}
+
+// apiClientData assembles the client template's payload from the parsed resources,
+// computed resources, and RPC methods on the target outlet.
+func (t *typescriptGenerator) apiClientData() *tsAPIData {
+	data := &tsAPIData{
+		File:               t,
+		GenPrefix:          genPrefix,
+		DomainRouteSegment: t.domainRouteSegment,
+		DomainRouteParam:   t.domainRouteParam,
+	}
+
+	outlet := t.targetOutlet()
+	for _, res := range t.resources {
+		if !res.OnOutlet(outlet) || res.RoutingDisabled() {
+			continue
+		}
+		data.Resources = append(data.Resources, t.apiResource(res))
+	}
+	for _, res := range t.computedResources {
+		if !res.OnOutlet(outlet) || res.RoutingDisabled() {
+			continue
+		}
+		data.Resources = append(data.Resources, t.apiComputedResource(res))
+	}
+	for _, method := range t.rpcMethods {
+		if !method.OnOutlet(outlet) || method.SuppressHandler {
+			continue
+		}
+		apiMethod := &tsAPIMethod{
+			Name:     method.Name(),
+			Property: strcase.ToCamel(method.Name()),
+			Route:    strcase.ToKebab(method.Name()),
+			Scope:    method.PermissionScope,
+			Answers:  method.Answers(),
+			Statuses: method.Statuses,
+		}
+		if method.Upload != nil {
+			apiMethod.UploadMaxBytes = method.Upload.MaxBytes
+		}
+		data.Methods = append(data.Methods, apiMethod)
+	}
+
+	for _, res := range data.Resources {
+		if res.Consolidated {
+			data.ConsolidatedRoute = t.ConsolidatedRoute
+		}
+		data.noteScope(res.Scope)
+	}
+	for _, method := range data.Methods {
+		data.noteScope(method.Scope)
+	}
+
+	return data
+}
+
+func (d *tsAPIData) noteScope(scope accesstypes.PermissionScope) {
+	if scope == accesstypes.DomainPermissionScope {
+		d.HasDomainScoped = true
+		d.HasDomain = true
+	} else {
+		d.HasGlobal = true
+	}
+}
+
+func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
+	plural := t.pluralize(res.Name())
+	out := &tsAPIResource{
+		Name:         plural,
+		Property:     strcase.ToCamel(plural),
+		Route:        strcase.ToKebab(plural),
+		Scope:        res.PermissionScope,
+		Consolidated: res.IsConsolidated,
+		PageDefault:  pageDefault(res.PageDefault),
+		PageMax:      res.PageMax,
+	}
+
+	for _, field := range res.PrimaryKeys() {
+		out.Keys = append(out.Keys, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})
+	}
+
+	if !res.ListHandlerDisabled() {
+		out.Operations = append(out.Operations, "list")
+	}
+	if !res.ReadHandlerDisabled() {
+		out.Operations = append(out.Operations, "read")
+	}
+	// A virtual resource is a read-only view: the router registers no PATCH for it.
+	if res.IsVirtual {
+		return out
+	}
+
+	if !res.CreateHandlerDisabled() {
+		out.Operations = append(out.Operations, "create")
+		out.HasCreate = true
+		for _, field := range res.Fields {
+			switch {
+			case field.IsPrimaryKey:
+				// A server-generated key is never supplied; any other key is.
+				if !res.PrimaryKeyIsGeneratedUUID() {
+					out.CreateFields = append(out.CreateFields, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType(), Required: true})
+				}
+			case field.IsOutputOnly():
+				// Server-owned: the wire cannot write it.
+			default:
+				out.CreateFields = append(out.CreateFields, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType(), Required: field.IsRequired()})
+			}
+		}
+	}
+	if !res.UpdateHandlerDisabled() {
+		out.Operations = append(out.Operations, "patch")
+		out.HasPatch = true
+		for _, field := range res.Fields {
+			if field.IsPrimaryKey || field.IsOutputOnly() || field.IsImmutable() {
+				continue
+			}
+			out.PatchFields = append(out.PatchFields, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})
+		}
+	}
+	if !res.DeleteHandlerDisabled() {
+		out.Operations = append(out.Operations, "remove")
+	}
+	if res.IsConsolidated && (out.HasCreate || out.HasPatch || !res.DeleteHandlerDisabled()) {
+		out.Operations = append(out.Operations, "batch")
+	}
+
+	return out
+}
+
+// pageDefault resolves an undeclared default page to the generator-wide size, so
+// the descriptor always states the page a limit-less request receives.
+func pageDefault(declared uint64) uint64 {
+	if declared == 0 {
+		return resource.DefaultPageSize
+	}
+
+	return declared
+}
+
+func (t *typescriptGenerator) apiComputedResource(res *computedResource) *tsAPIResource {
+	plural := t.pluralize(res.Name())
+	out := &tsAPIResource{
+		Name:        plural,
+		Property:    strcase.ToCamel(plural),
+		Route:       strcase.ToKebab(plural),
+		Scope:       res.PermissionScope,
+		PageDefault: pageDefault(res.PageDefault),
+		PageMax:     res.PageMax,
+	}
+	for _, field := range res.PrimaryKeys() {
+		out.Keys = append(out.Keys, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})
+	}
+	if !res.SuppressListHandler {
+		out.Operations = append(out.Operations, "list")
+	}
+	if !res.SuppressReadHandler {
+		out.Operations = append(out.Operations, "read")
+	}
+
+	return out
 }

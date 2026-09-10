@@ -52,11 +52,33 @@ func MustNewComputedQueryDecoder[Resource Resourcer, Request any](permissions ..
 	return decoder
 }
 
+// WithCursorKey installs the key that seals this decoder's cursors (see
+// QueryDecoder.WithCursorKey).
+func (d *ComputedQueryDecoder[Resource, Request]) WithCursorKey(key *CursorKey) *ComputedQueryDecoder[Resource, Request] {
+	d.inner.WithCursorKey(key)
+
+	return d
+}
+
+// WithPaging installs the computed resource's declared paging contract (see
+// QueryDecoder.WithPaging).
+func (d *ComputedQueryDecoder[Resource, Request]) WithPaging(paging Paging) *ComputedQueryDecoder[Resource, Request] {
+	d.inner.WithPaging(paging)
+
+	return d
+}
+
 // Decode decodes an http.Request into a QuerySet and checks user permissions in the
 // given domain partition. The semantics mirror the deferred enforcement table
 // resources get at execution time: a missing resource-level grant is Forbidden, an
 // explicitly requested field without its grant is Forbidden, and when no fields are
 // requested the QuerySet is narrowed to the accessible fields silently.
+//
+// The checks are eager and decode-time-only (application code executes the query), so
+// every decision must resolve to Granted or Denied: a Conditional decision anywhere on
+// this path is a 500-class invariant breach — a computed resource has no library
+// execution underneath it to evaluate a condition, and MigrateRoles rejects such
+// grants at deploy.
 func (d *ComputedQueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, scope accesstypes.Scope) (*QuerySet[Resource], error) {
 	qSet, err := d.inner.DecodeWithoutPermissions(request)
 	if err != nil {
@@ -72,10 +94,36 @@ func (d *ComputedQueryDecoder[Resource, Request]) Decode(request *http.Request, 
 	ctx := request.Context()
 	rSet := d.inner.resourceSet
 
-	if missing, err := userPermissions.Check(ctx, scope, requiredPermission, rSet.BaseResource()); err != nil {
-		return nil, errors.Wrap(err, "enforcer.RequireResource()")
-	} else if len(missing) > 0 {
-		return nil, httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", scope, userPermissions.User(), requiredPermission, missing)
+	// The QuerySet carries the scope and permission the checks below run in, so the
+	// application's List and Read partition their rows on the checked scope
+	// (QuerySet.Scope). Enforcement itself stays here: a computed resource executes
+	// no library query for the QuerySet's own gates to guard.
+	qSet.scope = scope
+	qSet.requiredPermission = requiredPermission
+	// The checked identity rides along too (QuerySet.User), so a caller-scoped
+	// computed resource yields the row of exactly the person the check ran as.
+	qSet.userPermissions = userPermissions
+
+	if err := qSet.bindCursor(scope); err != nil {
+		return nil, err
+	}
+
+	decisions, err := userPermissions.Check(ctx, qSet.env, scope, requiredPermission, rSet.BaseResource())
+	if err != nil {
+		return nil, errors.Wrap(err, "resource.UserPermissions.Check()")
+	}
+	if denied := decisions.DeniedResources(); len(denied) > 0 {
+		return nil, httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", scope, userPermissions.User(), requiredPermission, denied)
+	}
+	if conditional := decisions.ConditionalResources(); len(conditional) > 0 {
+		return nil, errConditionalAtDecode(requiredPermission, conditional)
+	}
+
+	// A sort or filter field needs the caller's unconditional grant: the
+	// handler orders and filters the body's rows by it, and a computed
+	// resource renders no visible projection a masked cell could hide in.
+	if err := qSet.checkQueryFieldsGranted(ctx, rSet, userPermissions); err != nil {
+		return nil, err
 	}
 
 	if len(qSet.Fields()) == 0 {
@@ -93,10 +141,15 @@ func (d *ComputedQueryDecoder[Resource, Request]) Decode(request *http.Request, 
 		}
 	}
 
-	if missing, err := userPermissions.Check(ctx, scope, requiredPermission, resources...); err != nil {
-		return nil, errors.Wrap(err, "enforcer.RequireResource()")
-	} else if len(missing) > 0 {
-		return nil, httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", scope, userPermissions.User(), requiredPermission, missing)
+	decisions, err = userPermissions.Check(ctx, qSet.env, scope, requiredPermission, resources...)
+	if err != nil {
+		return nil, errors.Wrap(err, "resource.UserPermissions.Check()")
+	}
+	if denied := decisions.DeniedResources(); len(denied) > 0 {
+		return nil, httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", scope, userPermissions.User(), requiredPermission, denied)
+	}
+	if conditional := decisions.ConditionalResources(); len(conditional) > 0 {
+		return nil, errConditionalAtDecode(requiredPermission, conditional)
 	}
 
 	return qSet, nil
@@ -129,20 +182,20 @@ func (d *ComputedQueryDecoder[Resource, Request]) addAccessibleFields(ctx contex
 		}
 	}
 
-	denied := make(map[accesstypes.Resource]struct{})
+	var decisions accesstypes.Decisions
 	if len(resources) > 0 {
-		missing, err := userPermissions.Check(ctx, scope, requiredPermission, resources...)
+		var err error
+		decisions, err = userPermissions.Check(ctx, qSet.env, scope, requiredPermission, resources...)
 		if err != nil {
-			return errors.Wrap(err, "enforcer.RequireResource()")
+			return errors.Wrap(err, "resource.UserPermissions.Check()")
 		}
-
-		for _, res := range missing {
-			denied[res] = struct{}{}
+		if conditional := decisions.ConditionalResources(); len(conditional) > 0 {
+			return errConditionalAtDecode(requiredPermission, conditional)
 		}
 	}
 
 	for _, c := range candidates {
-		if _, deny := denied[c.res]; c.res == "" || !deny {
+		if c.res == "" || !decisions[c.res].IsDenied() {
 			qSet.AddField(c.field)
 		}
 	}

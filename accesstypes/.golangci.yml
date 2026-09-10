@@ -125,12 +125,24 @@ linters:
           - nlreturn
           - scopelint
         path: _test\.go
+      # Property tests use a seeded math/rand generator on purpose: failures
+      # must reproduce; nothing here is security-sensitive randomness.
+      - linters:
+          - gosec
+        path: _test\.go
+        text: G404
       # Scope.String's "global" display literal is not a shared constant: it is
       # documentation-defined display output, unrelated to GlobalPermissionScope's
       # value coinciding with it.
       - linters:
           - goconst
         path: scope\.go
+      # Decision.String's outcome literals are display output; the occurrences
+      # goconst counts are the test expectations, which deliberately stay
+      # literal rather than tautologically comparing a constant to itself.
+      - linters:
+          - goconst
+        path: decision\.go
     paths:
       - third_party$
       - builtin$

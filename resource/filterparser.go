@@ -5,9 +5,13 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
+	"cloud.google.com/go/civil"
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/httpio"
 	"github.com/go-playground/errors/v5"
+	"github.com/shopspring/decimal"
 )
 
 //go:generate go run golang.org/x/tools/cmd/stringer -type=TokenType
@@ -128,6 +132,34 @@ type Condition struct {
 	IsNullOp bool  // For isnull, isnotnull
 }
 
+// TypedValues returns an in or notin list as a slice of the values' own type, the
+// shape an array query parameter binds: Spanner types IN UNNEST(@p) from the slice's
+// element type and refuses []any. The parser types every value by its column, so the
+// slice is []string for a STRING column, []int64 for INT64, and []*big.Rat for
+// NUMERIC, following paramValue. A body that pushes a taken filter down to its own
+// query binds the result as it is. An empty list, or one the values do not type
+// uniformly, is returned unchanged.
+func (c *Condition) TypedValues() any {
+	if len(c.Values) == 0 {
+		return c.Values
+	}
+
+	elem := reflect.TypeOf(paramValue(c.Values[0]))
+	if elem == nil {
+		return c.Values
+	}
+	typed := reflect.MakeSlice(reflect.SliceOf(elem), 0, len(c.Values))
+	for _, v := range c.Values {
+		value := paramValue(v)
+		if reflect.TypeOf(value) != elem {
+			return c.Values
+		}
+		typed = reflect.Append(typed, reflect.ValueOf(value))
+	}
+
+	return typed.Interface()
+}
+
 // ConditionNode represents a simple condition in the AST.
 type ConditionNode struct {
 	Condition Condition
@@ -208,6 +240,20 @@ func (f FilterFieldInfo) ColumnName(dbType DBType) (string, error) {
 	return name, nil
 }
 
+// goFieldNames is the parse target that names conditions by Go field instead of
+// by database column: the tree a computed resource's handler evaluates against
+// rows in memory, and the one a body takes conditions from.
+const goFieldNames DBType = "gofields"
+
+// name returns the identifier a condition on this field carries for the parse target.
+func (f FilterFieldInfo) name(target DBType) (string, error) {
+	if target == goFieldNames {
+		return f.GOFieldName, nil
+	}
+
+	return f.ColumnName(target)
+}
+
 // FilterParser builds an AST from tokens.
 type FilterParser struct {
 	lexer           *FilterLexer
@@ -268,6 +314,12 @@ func (p *FilterParser) reset() error {
 	return nil
 }
 
+// ParseFields parses the filter with every condition named by Go field, for
+// evaluation against rows in memory rather than rendering into SQL.
+func (p *FilterParser) ParseFields() (ExpressionNode, error) {
+	return p.Parse(goFieldNames)
+}
+
 // Parse is the main entry point for parsing the filter string.
 func (p *FilterParser) Parse(dbType DBType) (ExpressionNode, error) {
 	if exp, found := p.parsedExpression[dbType]; found {
@@ -287,7 +339,10 @@ func (p *FilterParser) Parse(dbType DBType) (ExpressionNode, error) {
 		return nil, httpio.NewBadRequestMessagef("Invalid filter query. Unexpected characters '%s' (type: %s) found after the end of the query.", p.peek.Value, p.peek.Type)
 	}
 
-	if !p.hasIndexedField {
+	// A table filter must touch an indexed column so the database has a path
+	// into it; a computed resource's rows are already in memory, so any
+	// filterable field serves.
+	if !p.hasIndexedField && dbType != goFieldNames {
 		return nil, httpio.NewBadRequestMessagef("Invalid filter query. Filter must contain at least one column that is indexed for dbType %s", dbType)
 	}
 
@@ -395,13 +450,15 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 
 	fieldInfo, found := p.jsonToFieldInfo[jsonFieldName(jsonFieldNameStr)]
 	if !found {
-		return nil, httpio.NewBadRequestMessagef("'%s' is not indexed but was included in condition '%s'", jsonFieldNameStr, p.current.Value)
+		// Filterable means indexed or allow_filter on a table and allow_filter on a
+		// computed resource; one word covers both, since the same parse refuses both.
+		return nil, httpio.NewBadRequestMessagef("'%s' is not filterable but was included in condition '%s'", jsonFieldNameStr, p.current.Value)
 	}
 	if fieldInfo.Indexed {
 		p.hasIndexedField = true
 	}
 
-	field, err := fieldInfo.ColumnName(dbType)
+	field, err := fieldInfo.name(dbType)
 	if err != nil {
 		return nil, err
 	}
@@ -437,15 +494,16 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 				return nil, httpio.NewBadRequestMessagef("empty value in list for operator '%s' in condition '%s'", condition.Operator, p.current.Value)
 			}
 
-			valueKind := fieldInfo.Kind
+			valueType, valueKind := fieldInfo.FieldType, fieldInfo.Kind
 			if valueKind == reflect.Slice || valueKind == reflect.Array {
 				if fieldInfo.FieldType == nil {
 					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", field)
 				}
-				valueKind = fieldInfo.FieldType.Elem().Kind()
+				valueType = fieldInfo.FieldType.Elem()
+				valueKind = valueType.Kind()
 			}
 
-			typedValue, err := p.convertValue(trimmed, valueKind)
+			typedValue, err := p.convertValue(trimmed, valueType, valueKind)
 			if err != nil {
 				return nil, err
 			}
@@ -456,7 +514,7 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 			return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value in condition '%s'", condition.Operator, p.current.Value)
 		}
 		strValue := strings.TrimSpace(parts[2])
-		typedValue, err := p.convertValue(strValue, fieldInfo.Kind)
+		typedValue, err := p.convertValue(strValue, fieldInfo.FieldType, fieldInfo.Kind)
 		if err != nil {
 			return nil, err
 		}
@@ -468,8 +526,14 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 	return &ConditionNode{Condition: condition}, nil
 }
 
-// convertValue converts a string value to the specified reflect.Kind.
-func (p *FilterParser) convertValue(strValue string, kind reflect.Kind) (any, error) {
+// convertValue types a filter value for the field it compares against: by the field's
+// Go type when the field is a struct (a decimal, a time, a date, a UUID, or a nullable
+// wrapper), else by its kind.
+func (p *FilterParser) convertValue(strValue string, fieldType reflect.Type, kind reflect.Kind) (any, error) {
+	if kind == reflect.Struct && fieldType != nil {
+		return p.convertStructValue(strValue, fieldType)
+	}
+
 	switch kind {
 	case reflect.String, reflect.Struct:
 		return strValue, nil
@@ -499,6 +563,39 @@ func (p *FilterParser) convertValue(strValue string, kind reflect.Kind) (any, er
 		return f, nil
 	default:
 		return nil, httpio.NewBadRequestMessagef("Invalid value format. The value '%s' in condition '%s' cannot be processed due to an unsupported data type: %v.", strValue, p.current.Value, kind)
+	}
+}
+
+// convertStructValue types a filter value for a struct-typed column by the column's Go
+// type, the way a cursor's boundary values are read: a decimal, a time, a date, or a
+// UUID compares as itself, and a nullable wrapper as its base type. Spanner types a
+// query parameter from its Go value, so a value left as text would meet a NUMERIC or
+// TIMESTAMP column as a STRING and the comparison would fail in the database.
+func (p *FilterParser) convertStructValue(strValue string, fieldType reflect.Type) (any, error) {
+	value, err := cursorValue(strValue, fieldType)
+	switch {
+	case err == nil:
+		return value, nil
+	case errors.Is(err, errInvalidCursor):
+		return nil, httpio.NewBadRequestMessagef("value '%s' in condition '%s' is not a valid %s", strValue, p.current.Value, filterValueWord(nullableBaseType(fieldType)))
+	default:
+		return nil, httpio.NewBadRequestMessagef("Invalid value format. The value '%s' in condition '%s' cannot be processed due to an unsupported data type: %s.", strValue, p.current.Value, fieldType)
+	}
+}
+
+// filterValueWord names what a filter value for a column of type t must look like.
+func filterValueWord(t reflect.Type) string {
+	switch t {
+	case reflect.TypeFor[time.Time]():
+		return "RFC 3339 timestamp"
+	case reflect.TypeFor[civil.Date]():
+		return "date (YYYY-MM-DD)"
+	case reflect.TypeFor[decimal.Decimal]():
+		return "decimal number"
+	case reflect.TypeFor[ccc.UUID]():
+		return "UUID"
+	default:
+		return t.String()
 	}
 }
 

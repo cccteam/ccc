@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "projects": {
+    "console": {
+      "architect": {
+        "build": {
+          "options": {
+            "styles": [
+              "@angular/material/prebuilt-themes/azure-blue.css",
+              "src/styles.scss"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

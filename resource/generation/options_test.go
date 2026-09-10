@@ -182,6 +182,95 @@ func Test_validateOutletConfig(t *testing.T) {
 	}
 }
 
+func TestServesSessions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		options []OutletOption
+		want    bool
+	}{
+		{name: "without the option the outlet serves no sessions", options: nil, want: false},
+		{name: "the option marks the outlet session-serving", options: []OutletOption{ServesSessions()}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rg := &resourceGenerator{}
+			opt, ok := WithRouterOutlet("portal", "portal", tt.options...).(resourceOption)
+			if !ok {
+				t.Fatal("WithRouterOutlet must be a resourceOption")
+			}
+			if err := opt(rg); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := rg.extraOutlets[0].servesSessions; got != tt.want {
+				t.Errorf("servesSessions = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_validateTypescriptOutletTargets(t *testing.T) {
+	t.Parallel()
+
+	outlets := []routerOutlet{
+		{name: "portal", prefix: "portal", servesSessions: true},
+		{name: "automation", prefix: "automation"},
+	}
+
+	tests := []struct {
+		name         string
+		options      []TSOption
+		wantErr      bool
+		wantContains string
+	}{
+		{name: "a target without ForOutlet serves the default outlet"},
+		{name: "naming the default outlet explicitly passes", options: []TSOption{ForOutlet("default")}},
+		{name: "a session-serving outlet passes", options: []TSOption{ForOutlet("portal")}},
+		{
+			name: "a session-less outlet is rejected", options: []TSOption{ForOutlet("automation")},
+			wantErr: true, wantContains: "does not serve browser sessions",
+		},
+		{
+			name: "an undeclared outlet is rejected", options: []TSOption{ForOutlet("bogus")},
+			wantErr: true, wantContains: "undeclared outlet",
+		},
+		{
+			name: "an empty outlet name is rejected", options: []TSOption{ForOutlet("")},
+			wantErr: true, wantContains: "requires an outlet name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rg := &resourceGenerator{
+				routePrefix:       "api",
+				extraOutlets:      outlets,
+				typescriptTargets: []typescriptTarget{{destination: "ui/src", options: tt.options}},
+			}
+			err := rg.validateTypescriptOutletTargets()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				if !strings.Contains(err.Error(), tt.wantContains) {
+					t.Fatalf("error %q does not contain %q", err, tt.wantContains)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func Test_outletMembership_OnOutlet(t *testing.T) {
 	t.Parallel()
 

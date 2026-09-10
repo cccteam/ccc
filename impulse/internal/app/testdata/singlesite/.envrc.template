@@ -1,0 +1,4 @@
+# Lighthouse local development
+export LIGHTHOUSE_PROJECT_ID=
+export LIGHTHOUSE_SPANNER_DATABASE=
+# export LIGHTHOUSE_COOKIE_KEY=

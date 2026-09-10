@@ -32,6 +32,10 @@ func TestNewFieldMapper(t *testing.T) {
 					"field1": "Field1",
 					"field2": "Field2",
 				},
+				fieldToJSONName: map[accesstypes.Field]string{
+					"Field1": "field1",
+					"Field2": "field2",
+				},
 				fields: []accesstypes.Field{
 					"Field1",
 					"Field2",
@@ -305,7 +309,7 @@ func Test_tagToFieldMap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, gotFileds, err := tagToFieldMap(tt.args.v)
+			got, _, gotFileds, err := tagToFieldMap(tt.args.v)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("tagToFieldMap() error = %v, wantErr %v", err, tt.wantErr)
 				return

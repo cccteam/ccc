@@ -34,6 +34,17 @@ var ErrUnsupportedOperator = errors.New("unsupported operator for SQL generation
 type sqlGenerator struct {
 	dialect    SQLDialect
 	paramCount int
+
+	// registry is the statement-scoped namespace lowered condition nodes
+	// allocate from; nil outside generateLowered, where such nodes are
+	// unreachable (the filter parser never produces them).
+	registry *paramRegistry
+
+	// columnExpressions replaces a condition's column, by name, with the
+	// expression the statement filters on: the visible projection of a
+	// conditionally granted column (read_rendering.go). Nil renders every
+	// column as its quoted identifier.
+	columnExpressions map[string]string
 }
 
 // newSQLGenerator creates a new SQL generator for the specified dialect.
@@ -60,11 +71,51 @@ func (s *sqlGenerator) generateSQLRecursive(node ExpressionNode) (string, []Quer
 		return s.generateLogicalOpSQL(n)
 	case *GroupNode:
 		return s.generateGroupSQL(n)
+	case *loweredComparisonNode, *loweredInNode, *loweredNullTestNode, *notNode, *existsNode, *truthNode:
+		return s.generateLoweredNodeSQL(node)
 	case nil:
 		return "", nil, nil
 	default:
 		return "", nil, errors.Wrapf(ErrUnsupportedNodeType, "type: %T", n)
 	}
+}
+
+// generateLoweredNodeSQL dispatches the condition-lowering node types, which
+// render only under a statement registry.
+func (s *sqlGenerator) generateLoweredNodeSQL(node ExpressionNode) (string, []QueryParam, error) {
+	if s.registry == nil {
+		return "", nil, errors.Wrapf(ErrUnsupportedNodeType, "lowered node %T outside a statement registry", node)
+	}
+
+	var (
+		sql string
+		err error
+	)
+	switch n := node.(type) {
+	case *loweredComparisonNode:
+		sql, err = s.generateLoweredComparisonSQL(n)
+	case *loweredInNode:
+		sql, err = s.generateLoweredInSQL(n)
+	case *loweredNullTestNode:
+		sql, err = s.generateLoweredNullTestSQL(n)
+	case *notNode:
+		sql, err = s.generateNotSQL(n)
+	case *existsNode:
+		sql, err = s.generateExistsSQL(n)
+	case *truthNode:
+		if n.value {
+			sql = "TRUE"
+		} else {
+			sql = sqlFalse
+		}
+	default:
+		return "", nil, errors.Wrapf(ErrUnsupportedNodeType, "type: %T", n)
+	}
+	if err != nil {
+		return "", nil, err
+	}
+
+	return sql, nil, nil
 }
 
 func (s *sqlGenerator) quoteIdentifier(identifier string) string {
@@ -84,15 +135,35 @@ func (s *sqlGenerator) nextPlaceholder() string {
 	return fmt.Sprintf("@_p%d", s.paramCount)
 }
 
+// setColumnExpressions installs the column expression overrides the filter
+// consults at each condition.
+func (s *sqlGenerator) setColumnExpressions(expressions map[string]string) {
+	s.columnExpressions = expressions
+}
+
+// conditionColumn renders the column a condition tests: its override when the
+// statement filters on the column's visible projection, else the quoted
+// identifier.
+func (s *sqlGenerator) conditionColumn(column string) string {
+	if expression, ok := s.columnExpressions[column]; ok {
+		return expression
+	}
+
+	return s.quoteIdentifier(column)
+}
+
+// generateConditionSQL renders one condition. Its values bind through paramValue, the
+// typing the lowered nodes use, so a decimal filter value meets a NUMERIC column as a
+// NUMERIC parameter rather than the STRING Spanner would otherwise type it as.
 func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryParam, error) {
-	field := s.quoteIdentifier(cn.Condition.Field)
+	field := s.conditionColumn(cn.Condition.Field)
 	op := strings.ToLower(cn.Condition.Operator)
 	var params []QueryParam
 
 	switch op {
 	case eqStr, neStr, gtStr, ltStr, gteStr, lteStr:
 		placeholder := s.nextPlaceholder()
-		params = append(params, QueryParam{Name: strings.TrimPrefix(placeholder, "@"), Value: cn.Condition.Value})
+		params = append(params, QueryParam{Name: strings.TrimPrefix(placeholder, "@"), Value: paramValue(cn.Condition.Value)})
 		sqlOp := ""
 		switch op {
 		case eqStr:
@@ -104,9 +175,9 @@ func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryP
 		case ltStr:
 			sqlOp = "<"
 		case gteStr:
-			sqlOp = ">="
+			sqlOp = sqlGreaterEq
 		case lteStr:
-			sqlOp = "<="
+			sqlOp = sqlLessEq
 		}
 
 		return fmt.Sprintf("%s %s %s", field, sqlOp, placeholder), params, nil
@@ -116,7 +187,7 @@ func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryP
 		for i, v := range cn.Condition.Values {
 			placeholder := s.nextPlaceholder()
 			placeholders[i] = placeholder
-			params = append(params, QueryParam{Name: strings.TrimPrefix(placeholder, "@"), Value: v})
+			params = append(params, QueryParam{Name: strings.TrimPrefix(placeholder, "@"), Value: paramValue(v)})
 		}
 		sqlOp := "IN"
 		if op == notinStr {

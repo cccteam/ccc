@@ -1,0 +1,11 @@
+[install]
+# @cccteam/resource-angular names @cccteam/resource as a peer dependency. Left to itself bun installs a
+# second copy for it beneath the Angular library, and TypeScript then sees two declarations of every
+# client type. This application depends on the client directly (and the overrides entry in
+# package.json points the peer at the same yalc link until the client is published), so
+# peers are not auto-installed; every peer this application needs is a direct dependency.
+peer = false
+# A newly published package version is not installed until it has been public for seven
+# days, which keeps a compromised release from reaching this application before it is
+# noticed and pulled.
+minimumReleaseAge = 604800

@@ -1,0 +1,11 @@
+@if (core.isLoading()) {
+  <mat-progress-bar color="primary" mode="indeterminate" class="progress"></mat-progress-bar>
+}
+<div class="alert-container">
+  <div class="alerts">
+    @for (notification of notifications.notifications(); track notification.id) {
+      <ccc-alert [error]="notification" />
+    }
+  </div>
+</div>
+<router-outlet></router-outlet>

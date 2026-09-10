@@ -1,0 +1,6 @@
+# Semgrep path exclusions for the accesstypes module scan (the repository root's
+# .semgrepignore carries the same entry under its root-relative path).
+#
+# The property-based test draws its cases from a seeded math/rand, which is what a
+# reproducible property test needs; the crypto-randomness audit does not apply to it.
+condition/property_test.go

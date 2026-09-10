@@ -31,6 +31,8 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		outletRoutes[i] = &outletRouteData{
 			Name:                    outlet.name,
 			Suffix:                  outlet.suffix(),
+			Prefix:                  outlet.prefix,
+			ServesSessions:          outlet.servesSessions,
 			RoutesMap:               make(map[string][]*generatedRoute),
 			ConsolidatedHandlerFunc: fmt.Sprintf("Patch%sResources", outlet.suffix()),
 			ConsolidatedPath:        fmt.Sprintf("/%s/%s", outlet.prefix, r.ConsolidatedRoute),
@@ -221,6 +223,16 @@ func (r *resourceGenerator) rpcRoute(rpcStruct *rpcMethodInfo, routePrefix strin
 	}
 }
 
+// singleKeyRouteTestParam names a single-key read route's parameter after the key
+// field, as the compound case and the handler's route constant do: a resource keyed
+// by Code reads {resourceCode}, one keyed by ID reads {resourceID}.
+func singleKeyRouteTestParam(resourceName, pkName string) routeTestParam {
+	return routeTestParam{
+		Key:   strcase.ToGoCamel(resourceName + pkName),
+		Value: strcase.ToGoCamel(fmt.Sprintf("test%s%s", caser.ToPascal(resourceName), pkName)),
+	}
+}
+
 // resourceRoute builds the route for one handler type of a resource under the outlet
 // route prefix, including read-route primary-key params and, for domain-scoped
 // resources, the domain segment pair.
@@ -242,10 +254,13 @@ func (r *resourceGenerator) resourceRoute(res *resourceInfo, ht HandlerType, rou
 			}
 			route.TestParams = readRouteTestParams(res.Name(), pkNames)
 		} else {
-			route.TestParams = []routeTestParam{{
-				Key:   strcase.ToGoCamel(res.Name() + "ID"),
-				Value: strcase.ToGoCamel(fmt.Sprintf("test%sID", caser.ToPascal(res.Name()))),
-			}}
+			var pkName string
+			for _, field := range res.PrimaryKeys() {
+				pkName = field.Name()
+
+				break
+			}
+			route.TestParams = []routeTestParam{singleKeyRouteTestParam(res.Name(), pkName)}
 		}
 		route.appendParamsToPaths()
 	}
@@ -365,13 +380,21 @@ func (r *resourceGenerator) negativeRouterTests(outlets []routerOutlet) ([]negat
 }
 
 // negativeTestsForOutlet builds one outlet's isolation cases: the URLs of everything
-// routed that is NOT attached to the outlet, addressed under the outlet's prefix.
+// routed that is NOT attached to the outlet, addressed under the outlet's prefix —
+// including the permission routes for an outlet that does not serve sessions.
 func (r *resourceGenerator) negativeTestsForOutlet(outlet routerOutlet) ([]negativeRouterTest, error) {
 	var tests []negativeRouterTest
 	addRoute := func(route *generatedRoute) {
 		for _, method := range route.TestMethods() {
 			tests = append(tests, negativeRouterTest{Method: method, URL: route.TestURL})
 		}
+	}
+
+	if !outlet.servesSessions {
+		tests = append(tests,
+			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/permission-digest", outlet.prefix)},
+			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/user-domains", outlet.prefix)},
+		)
 	}
 
 	anyConsolidated, outletHasConsolidated := false, false

@@ -17,7 +17,6 @@ const (
 	allowFilterTagKey        = "allow_filter"
 	indexTagKey              = "index"
 	uniqueIndexTagKey        = "uniqueindex"
-	enumeratedTagKey         = "enumerated"
 )
 
 // sourceStructTagKeys registers every author-written struct-tag key for the
@@ -30,7 +29,6 @@ var sourceStructTagKeys = []string{
 	allowFilterTagKey,
 	indexTagKey,
 	uniqueIndexTagKey,
-	enumeratedTagKey,
 }
 
 // Values recognized inside a conditions tag's comma-separated list — register new values

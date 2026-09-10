@@ -15,3 +15,46 @@ jobs:
       golangci-lint-version: 'v2.12.2'
   semantic-titles:
     uses: cccteam/github-workflows/.github/workflows/semantic-pull-request-title.yml@7f103553e4cb3524d127299a6ac70d85156d36b3 # v7.0.0
+  impulse-skeletons:
+    # Every skeleton impulse can render is built, tested, and checked, against the
+    # framework pins the template carries and against the framework at this commit (the
+    # rendered application's go.work points at this checkout's ccc modules; libraries
+    # outside this repository stay pinned). A generator change that breaks a template, or
+    # a template that lags the generator, fails here and not in a downstream application.
+    name: impulse ${{ matrix.candidate }} (${{ matrix.framework }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        candidate: [solo, tenanted, outlets, sites]
+        framework: [pins, head]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: ccc
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ccc/impulse/go.mod
+          cache-dependency-path: ccc/impulse/go.sum
+      - name: Build impulse
+        working-directory: ccc/impulse
+        run: go build -o "$RUNNER_TEMP/impulse" .
+      - name: Render the skeleton
+        run: |
+          if [ "${{ matrix.framework }}" = head ]; then
+            "$RUNNER_TEMP/impulse" render ${{ matrix.candidate }} app --module example.com/ci/${{ matrix.candidate }} --dev-root "$GITHUB_WORKSPACE"
+          else
+            "$RUNNER_TEMP/impulse" render ${{ matrix.candidate }} app --module example.com/ci/${{ matrix.candidate }}
+          fi
+          cd app && git init -q && git add -A && git -c user.name=ci -c user.email=ci@example.com commit -qm "rendered by impulse"
+      - name: Build and vet
+        working-directory: app
+        run: go build ./... && go vet ./...
+      - name: Test (the harnesses start the Spanner emulator in a container; skipAuth simulates the directory an OIDC auth signs in through)
+        working-directory: app
+        run: go test -tags skipAuth ./... -timeout 20m
+      - name: impulse check
+        working-directory: app
+        run: |
+          "$RUNNER_TEMP/impulse" check
+
