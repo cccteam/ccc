@@ -44,9 +44,9 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 		},
 		{
 			name: "options single site", fixture: "singlesite", check: options{},
-			wantStatus: Pass, wantSummary: "flat layout, 1 site(s); not tenanted; outlets portal (sessions)",
+			wantStatus: Pass, wantSummary: "flat layout, 1 site(s); not tenanted; outlets portal (sessions); generated router",
 			wantDetails: []string{
-				"lighthouse (cmd/generate/resourcegenerator/main.go): resources pkg/resources, handlers app, routes pkg/router under /api, tests test/authz, rpc pkg/rpc, typescript web/console/src/app/core/service, typescript web/portal/src/app/core/service (outlet portal)",
+				"lighthouse (cmd/generate/resourcegenerator/main.go): resources pkg/resources, handlers app, routes pkg/router under /api (generated router), tests test/authz, rpc pkg/rpc, typescript web/console/src/app/core/service, typescript web/portal/src/app/core/service (outlet portal)",
 			},
 		},
 		{
@@ -77,11 +77,9 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no site generator",
 		},
 		{
-			name: "outlet-wired portal never mounted", fixture: "singlesite", check: outletWired{},
-			wantStatus: Fail, wantSummary: "1 outlet wiring problem(s)",
-			wantDetails: []string{
-				"cmd/generate/resourcegenerator/main.go: no file in pkg/router calls generatedPortalRoutes; the portal outlet's routes are not mounted",
-			},
+			name: "outlet-wired mounted by the generated router", fixture: "singlesite", check: outletWired{},
+			wantStatus: Pass, wantSummary: "2 outlet(s) mounted: default (/api), portal (/portal, sessions)",
+			wantDetails: []string{"outlet portal has no @outlet(portal) members yet"},
 		},
 		{
 			name: "outlet-wired no router files", fixture: "multisite", check: outletWired{},

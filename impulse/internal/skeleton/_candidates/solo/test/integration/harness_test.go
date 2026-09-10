@@ -107,7 +107,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		t.Fatalf("AddUserRoles() error = %v", err)
 	}
 
-	handler := router.New(app.New(&servedConfigurer{db: db, auth: auth}))
+	handler := router.New(app.New(&servedConfigurer{db: db, auth: auth}), router.Hooks{})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 

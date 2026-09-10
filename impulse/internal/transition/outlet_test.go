@@ -433,6 +433,66 @@ func TestOutletApply(t *testing.T) {
 	}
 }
 
+// beaconRouterProgram is beaconProgram with the generated router declared: the console
+// is the default outlet on the staff auth with its browser application at /.
+var beaconRouterProgram = strings.Replace(beaconProgram,
+	"\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\"),\n",
+	"\t\tgeneration.GenerateRouter(),\n\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n", 1)
+
+// TestOutletApplyGeneratedRouter pins the declaration add outlet writes under the
+// generated router: a session outlet binds to the console's auth and serves its browser
+// application at /<name>, an API-key outlet declares APIKey.
+func TestOutletApplyGeneratedRouter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		outlet      Outlet
+		wantDid     string
+		wantProgram []string
+	}{
+		{
+			name:    "a session outlet",
+			outlet:  Outlet{Name: "portal", Prefix: "portal/api", Sessions: true},
+			wantDid: `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.Password), generation.WebApp("/portal"))`,
+			wantProgram: []string{
+				"\t\tgeneration.GenerateRouter(),\n",
+				"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n",
+			},
+		},
+		{
+			name:        "an API-key outlet",
+			outlet:      Outlet{Name: "machines", Prefix: "machines"},
+			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("machines", "machines", generation.APIKey())`,
+			wantProgram: []string{"\t\tgeneration.WithRouterOutlet(\"machines\", \"machines\", generation.APIKey()),\n"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := beacon(t, map[string]string{"cmd/generate/resourcegenerator/main.go": beaconRouterProgram, "pkg/auth/staff/doc.go": "package staff\n"})
+			ch, err := tt.outlet.Apply(t.Context(), a, &fakeExec{})
+			if err != nil {
+				t.Fatalf("Apply() error = %v", err)
+			}
+			if len(ch.Did) == 0 || ch.Did[0] != tt.wantDid {
+				t.Errorf("Did[0] = %q, want %q", ch.Did, tt.wantDid)
+			}
+			for _, absent := range []string{"ServesSessions"} {
+				if got := read(t, a, "cmd/generate/resourcegenerator/main.go"); strings.Contains(got, absent) {
+					t.Errorf("program has %q:\n%s", absent, got)
+				}
+			}
+			for _, want := range tt.wantProgram {
+				if got := read(t, a, "cmd/generate/resourcegenerator/main.go"); !strings.Contains(got, want) {
+					t.Errorf("program lacks %q:\n%s", want, got)
+				}
+			}
+		})
+	}
+}
+
 func TestChangeText(t *testing.T) {
 	t.Parallel()
 

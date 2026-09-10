@@ -16,17 +16,19 @@ import (
 )
 
 // outletWired verifies that every router outlet a program declares is wired through the
-// application: the hand-written router mounts the outlet's generated routes (nothing
-// else makes it call generated<Outlet>Routes), a session-serving outlet has a browser
-// client generated for it, and that client's development proxy forwards the outlet's
-// prefix. The generator holds the rest: an @outlet naming an undeclared outlet fails
-// generation, and the outlets' URL spaces are proven disjoint by the generated tests.
+// application: the router mounts the outlet's generated routes (the generated router by
+// construction, a hand-written one by calling generated<Outlet>Routes, which nothing else
+// makes it do), a session-serving outlet has a browser client generated for it, and that
+// client's development proxy forwards the outlet's prefix. The generator holds the rest:
+// an @outlet naming an undeclared outlet fails generation, a generated router whose
+// outlets do not each say how they authenticate fails generation, and the outlets' URL
+// spaces are proven disjoint by the generated tests.
 type outletWired struct{}
 
 func (outletWired) Name() string { return "outlet-wired" }
 
 func (outletWired) Describe() string {
-	return "every declared outlet is mounted by the router, and a session outlet has a browser client whose proxy reaches it"
+	return "every declared outlet is mounted by the router (a hand-written one calls its generated routes), and a session outlet has a browser client whose proxy reaches it"
 }
 
 // defaultOutlet is the reserved name of the outlet GenerateRoutes declares.
@@ -58,14 +60,20 @@ func (c outletWired) Run(_ context.Context, env *Env) Result {
 		if routesDir == "" {
 			continue // the options check reports handlers without routes
 		}
-		called, err := calledFunctions(a, routesDir)
-		if err != nil {
-			return fail(c.Name(), err.Error())
+		var err error
+		// The generated router mounts every declared outlet by construction and the
+		// regeneration check holds it to the program; a hand-written router is read.
+		called := map[string]bool{}
+		if !site.GeneratedRouter {
+			called, err = calledFunctions(a, routesDir)
+			if err != nil {
+				return fail(c.Name(), err.Error())
+			}
 		}
 
 		for _, o := range outletSurfaces(site) {
 			o := &o
-			if !called[o.Mount] {
+			if !site.GeneratedRouter && !called[o.Mount] {
 				details = append(details, fmt.Sprintf("%s: no file in %s calls %s; the %s outlet's routes are not mounted", g.File, routesDir, o.Mount, o.Name))
 
 				continue
@@ -103,13 +111,9 @@ func (c outletWired) Run(_ context.Context, env *Env) Result {
 // outletSurfaces lists a site's outlets with their generated mount functions: the
 // default outlet first, then the declarations in order.
 func outletSurfaces(site *app.Site) []outletSurface {
-	prefix := ""
-	if routes, ok := site.Generator.Option("GenerateRoutes"); ok && len(routes.Args) == 2 && routes.Args[1].Kind == app.ArgString {
-		prefix = routes.Args[1].Str
-	}
 	surfaces := make([]outletSurface, 0, 1+len(site.Outlets))
 	surfaces = append(surfaces, outletSurface{
-		Outlet:  app.Outlet{Name: defaultOutlet, Prefix: prefix, ServesSessions: true},
+		Outlet:  site.Default,
 		Mount:   "generatedRoutes",
 		Default: true,
 	})

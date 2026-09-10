@@ -1,7 +1,7 @@
 // Package app contains the application's http handlers. Most handlers are generated; this
 // file provides the application plumbing the generated code depends on, plus the
 // hand-written served surface (middleware, the machines outlet's API-key
-// authentication, and static assets) router.New composes around the generated API
+// authentication, and static assets) the generated router.New composes around the generated API
 // routes.
 package app
 
@@ -181,19 +181,14 @@ func (a *App) CompressionMiddleware() func(http.Handler) http.Handler {
 	return middleware.Compress(5)
 }
 
-// WithParamsHTTP returns the middleware that captures route parameters for httpio.
-func (a *App) WithParamsHTTP() func(http.Handler) http.Handler {
-	return httpio.WithParams
-}
-
 // DeepLink rewrites the console's Angular routes to its entry point so bookmarked
 // frontend routes load the single-page application.
 func (a *App) DeepLink(next http.Handler) http.Handler {
 	return spaassets.DeepLink(next, "/")
 }
 
-// StaticAssets serves the console's built Angular application.
-func (a *App) StaticAssets() http.HandlerFunc {
+// Assets serves the console's built Angular application.
+func (a *App) Assets() http.HandlerFunc {
 	return serveSPA(http.FileServer(http.Dir(a.consoleDist)))
 }
 
@@ -208,12 +203,12 @@ func (a *App) PortalAssets() http.HandlerFunc {
 	return serveSPA(http.StripPrefix("/portal", http.FileServer(http.Dir(a.portalDist))))
 }
 
-// MachineAuth authenticates the machines outlet's clients: the request must carry the
+// MachinesAuth authenticates the machines outlet's clients: the request must carry the
 // configured API key as "Authorization: Bearer <key>". A valid key binds the request
 // to the machine service identity the way the session middleware binds a browser
 // request to its user, so the handlers behind it run the same fail-closed permission
 // checks. An empty configured key disables the surface.
-func (a *App) MachineAuth(next http.Handler) http.Handler {
+func (a *App) MachinesAuth(next http.Handler) http.Handler {
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !ok || a.machinesAPIKey == "" ||

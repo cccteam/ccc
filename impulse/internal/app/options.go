@@ -35,6 +35,9 @@ const (
 	paramComposite
 	paramTSOption
 	paramOutletOption
+	// paramFlavor is an auth flavor: one of the generation package's AuthFlavor
+	// constants, written as generation.<Flavor>.
+	paramFlavor
 )
 
 func (k paramKind) String() string {
@@ -53,6 +56,8 @@ func (k paramKind) String() string {
 		return "TSOption"
 	case paramOutletOption:
 		return "OutletOption"
+	case paramFlavor:
+		return "generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)"
 	case paramAny, paramNone:
 		return "argument"
 	default:
@@ -74,6 +79,8 @@ func (k paramKind) argKind() ArgKind {
 		return ArgComposite
 	case paramTSOption, paramOutletOption:
 		return ArgCall
+	case paramFlavor:
+		return ArgIdent
 	case paramAny, paramNone:
 		return ArgOther
 	default:
@@ -87,7 +94,7 @@ func (k paramKind) optionKind() optionKind {
 		return kindTSOption
 	case paramOutletOption:
 		return kindOutletOption
-	case paramNone, paramAny, paramString, paramBool, paramStringMap, paramBoolMap, paramComposite:
+	case paramNone, paramAny, paramString, paramBool, paramStringMap, paramBoolMap, paramComposite, paramFlavor:
 		return 0
 	default:
 		return 0
@@ -99,8 +106,40 @@ const (
 	optServesSessions     = "ServesSessions"
 	optGenerateHandlers   = "GenerateHandlers"
 	optGenerateRoutes     = "GenerateRoutes"
+	optGenerateRouter     = "GenerateRouter"
 	optGenerateTypescript = "GenerateTypescript"
+	optAuth               = "Auth"
+	optAPIKey             = "APIKey"
+	optWebApp             = "WebApp"
 )
+
+// The generation package's AuthFlavor identifiers, as a program writes them
+// (generation.Password).
+const (
+	FlavorIdentPassword   = "Password"
+	FlavorIdentOIDCGoogle = "OIDCGoogle"
+	FlavorIdentOIDCAzure  = "OIDCAzure"
+)
+
+// authFlavorIdents maps each AuthFlavor identifier to the login flavor it names (as the
+// auth scan reports it).
+var authFlavorIdents = map[string]string{
+	FlavorIdentPassword:   FlavorPassword,
+	FlavorIdentOIDCGoogle: FlavorOIDCGoogle,
+	FlavorIdentOIDCAzure:  FlavorOIDCAzure,
+}
+
+// FlavorIdent returns the generation package's AuthFlavor identifier for a login flavor,
+// or empty for a flavor the generated router does not compose (preauth).
+func FlavorIdent(flavor string) string {
+	for ident, f := range authFlavorIdents {
+		if f == flavor {
+			return ident
+		}
+	}
+
+	return ""
+}
 
 // optionSpec describes one known option constructor: what it returns and what it takes.
 type optionSpec struct {
@@ -118,7 +157,8 @@ var knownOptions = map[string]optionSpec{
 	optGenerateHandlers:          {kind: kindResourceOption, params: []paramKind{paramString}},
 	"GenerateHandlerTests":       {kind: kindResourceOption, params: []paramKind{paramString}},
 	"ApplicationName":            {kind: kindResourceOption, params: []paramKind{paramString}},
-	optGenerateRoutes:            {kind: kindResourceOption, params: []paramKind{paramString, paramString}},
+	optGenerateRoutes:            {kind: kindResourceOption, params: []paramKind{paramString, paramString}, variadic: paramOutletOption},
+	optGenerateRouter:            {kind: kindResourceOption},
 	"WithRouterOutlet":           {kind: kindResourceOption, params: []paramKind{paramString, paramString}, variadic: paramOutletOption},
 	"WithDomainRoute":            {kind: kindResourceOption, params: []paramKind{paramString}},
 	"WithConcealedDomains":       {kind: kindResourceOption},
@@ -133,6 +173,9 @@ var knownOptions = map[string]optionSpec{
 	"WithRPC":                    {kind: kindResourceOption, params: []paramKind{paramString}},
 
 	optServesSessions: {kind: kindOutletOption},
+	optAuth:           {kind: kindOutletOption, params: []paramKind{paramString, paramFlavor}},
+	optAPIKey:         {kind: kindOutletOption},
+	optWebApp:         {kind: kindOutletOption, params: []paramKind{paramString}},
 
 	"WithTypescriptOverrides": {kind: kindTSOption, params: []paramKind{paramStringMap}},
 	"ForOutlet":               {kind: kindTSOption, params: []paramKind{paramString}},

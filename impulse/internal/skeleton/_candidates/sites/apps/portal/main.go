@@ -31,7 +31,7 @@ func Main() error {
 	}
 	defer conf.Close()
 
-	if err := server.New(conf.Addr()).Start(ctx, router.New(app.New(conf))); err != nil {
+	if err := server.New(conf.Addr()).Start(ctx, router.New(app.New(conf), router.Hooks{})); err != nil {
 		return errors.Wrap(err, "server exited unexpectedly")
 	}
 

@@ -64,6 +64,20 @@ func TestParseGeneratorProblems(t *testing.T) {
 			wantProblems: []string{`WithConsolidatedHandlers argument "yes" should be a bool literal`},
 		},
 		{
+			name:    "the router options with a flavor identifier",
+			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.Password), generation.WebApp("/")), generation.WithRouterOutlet("machines", "machines", generation.APIKey()),`,
+		},
+		{
+			name:         "an auth flavor that is not one of the generation package's",
+			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.LDAP)),`,
+			wantProblems: []string{"Auth argument generation.LDAP should be a generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)"},
+		},
+		{
+			name:         "an auth flavor written as a string",
+			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", "password")),`,
+			wantProblems: []string{`Auth argument "password" should be a generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)`},
+		},
+		{
 			name:         "ts option at top level",
 			options:      `generation.GenerateEnums(),`,
 			wantProblems: []string{"GenerateEnums is a TSOption, but a ResourceOption is expected here"},

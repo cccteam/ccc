@@ -91,7 +91,7 @@ func (o Outlet) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chan
 	site := &a.Profile().Sites[0]
 	g := site.Generator
 
-	if err := o.editProgram(a, g, ch); err != nil {
+	if err := o.editProgram(a, site, ch); err != nil {
 		return nil, err
 	}
 	if o.Sessions {
@@ -118,21 +118,41 @@ func (o Outlet) clientNote() string {
 }
 
 // editProgram adds WithRouterOutlet after GenerateRoutes and, for a session outlet, a
-// GenerateTypescript target for the outlet copied from the default outlet's.
-func (o Outlet) editProgram(a *app.App, g *app.Generator, ch *Change) error {
+// GenerateTypescript target for the outlet copied from the default outlet's. Under the
+// generated router the declaration says how the outlet authenticates: a session outlet
+// binds to the console's auth (the default outlet's Auth) and serves its browser
+// application at /<name>, an API-key outlet declares APIKey; under a hand-written router
+// a session outlet declares ServesSessions.
+func (o Outlet) editProgram(a *app.App, site *app.Site, ch *Change) error {
+	g := site.Generator
 	src, mode, err := readFile(a, g.File)
 	if err != nil {
 		return err
 	}
 	option := fmt.Sprintf("generation.WithRouterOutlet(%q, %q)", o.Name, o.Prefix)
-	if o.Sessions {
+	summary := option
+	switch {
+	case site.GeneratedRouter && o.Sessions:
+		auth := site.Default.Auth
+		if auth == nil {
+			return errors.Newf("%s: the default outlet declares no Auth to bind the %s outlet to; under GenerateRouter the console's GenerateRoutes carries Auth(<package>, <flavor>)", g.File, o.Name)
+		}
+		authText := fmt.Sprintf("generation.Auth(%q, generation.%s)", auth.ImportPath, auth.Flavor)
+		webApp := fmt.Sprintf("generation.WebApp(%q)", "/"+o.Name)
+		option = fmt.Sprintf("generation.WithRouterOutlet(%q, %q,\n\t\t\t%s,\n\t\t\t%s,\n\t\t)", o.Name, o.Prefix, authText, webApp)
+		summary = fmt.Sprintf("generation.WithRouterOutlet(%q, %q, %s, %s)", o.Name, o.Prefix, authText, webApp)
+	case site.GeneratedRouter:
+		option = fmt.Sprintf("generation.WithRouterOutlet(%q, %q, generation.APIKey())", o.Name, o.Prefix)
+		summary = option
+	case o.Sessions:
 		option = fmt.Sprintf("generation.WithRouterOutlet(%q, %q, generation.ServesSessions())", o.Name, o.Prefix)
+		summary = option
 	}
 	edited, err := app.InsertOptions(g.File, src, "GenerateRoutes", []string{option})
 	if err != nil {
 		return err
 	}
-	ch.didf("%s: added %s", g.File, strings.TrimPrefix(option, "generation."))
+	ch.didf("%s: added %s", g.File, strings.TrimPrefix(summary, "generation."))
 
 	if o.Sessions {
 		target := defaultTarget(g)
@@ -233,7 +253,7 @@ func (o Outlet) cloneProject(a *app.App, g *app.Generator, ch *Change) error {
 		return errors.Newf("%s/%s already exists; the %s browser project would be copied there", w.Dir, newRoot, o.Name)
 	}
 	oldPrefix := ""
-	if routes, ok := g.Option("GenerateRoutes"); ok && len(routes.Args) == 2 {
+	if routes, ok := g.Option("GenerateRoutes"); ok && len(routes.Args) >= 2 {
 		oldPrefix = routes.Args[1].Str
 	}
 	rewrites := o.rewrites(oldPrefix, oldRoot)
@@ -450,13 +470,13 @@ func (o Outlet) Meaning() string {
 	pascal := strings.ToUpper(o.Name[:1]) + o.Name[1:]
 	upper := strings.ToUpper(o.Name)
 	var b strings.Builder
-	fmt.Fprintf(&b, "A router outlet is a second URL space on the same host. Structs annotated `@outlet(%s)` are served under `/%s` by the generated `generated%sRoutes`, which the hand-written router must mount; naming only the new outlet takes a struct off the default outlet, and `@outlet(default, %s)` keeps it on both. The generated tests prove the outlets' URL spaces are disjoint.\n\n", o.Name, o.Prefix, pascal, o.Name)
+	fmt.Fprintf(&b, "A router outlet is a second URL space on the same host. Structs annotated `@outlet(%s)` are served under `/%s` by the generated `generated%sRoutes`; naming only the new outlet takes a struct off the default outlet, and `@outlet(default, %s)` keeps it on both. The generated router (`GenerateRouter`) mounts the outlet from its declaration: its group, its not-found handler, and, for a session outlet, its login routes and its browser application, with the chain documented at the top of `zz_gen_router.go` and proven by `zz_gen_router_test.go`; an application that kept a hand-written router composes the group there instead. The generated tests prove the outlets' URL spaces are disjoint.\n\n", o.Name, o.Prefix, pascal, o.Name)
 	if o.Sessions {
-		fmt.Fprintf(&b, "This is a session outlet: a browser surface behind the same session handling as the console. In the router, compose the session group around `generated%sRoutes` under `/%s` the way the console's is composed under its prefix, give the prefix its own not-found handler, and serve the %s browser application from `/%s/` (a dist directory from configuration, `APP_%s_DIST` defaulting to `web/dist/%s`, with a deep-link and assets handler pair in the app package like the console's). Decide which resources the %s outlet serves and annotate them; then run `go generate ./...`. Extend the integration tests: sign in under `/%s/user/login` and read `user-domains` and the permission digest there, and show a resource that is not a member answers not found under the prefix. If the outlet's audience is not the console's, add its development login to the bootstrap identities.\n", pascal, o.Prefix, o.Name, o.Name, upper, o.Name, o.Name, o.Prefix)
+		fmt.Fprintf(&b, "This is a session outlet: a browser surface bound to the console's auth (the program declares it with the console's `Auth` and `WebApp(\"/%s\")`), so its people sign in under `/%s/user/login` and the generated router serves its browser application from `/%s/`. Give the App what the generated `Handlers` now requires: `%s()` returning the auth's session handlers (the console's embedded session manager satisfies its handler interface, so the method returns it), and the `%sDeepLink` and `%sAssets` pair serving a dist directory from configuration (`APP_%s_DIST` defaulting to `web/dist/%s`), like the console's. A route of the outlet's own goes in the `%s` field of the application's `Hooks`, inside the outlet's guards. Decide which resources the %s outlet serves and annotate them; then run `go generate ./...`. Extend the integration tests: sign in under `/%s/user/login` and read `user-domains` and the permission digest there, and show a resource that is not a member answers not found under the prefix. If the outlet's audience is not the console's, add an auth for it (`impulse add auth`) and point the outlet's `Auth` at it, and add its development login to the bootstrap identities.\n", o.Name, o.Prefix, o.Name, pascal, pascal, pascal, upper, o.Name, pascal, o.Name, o.Prefix)
 
 		return b.String()
 	}
-	fmt.Fprintf(&b, "This is an API-key outlet: a machine surface with no browser. In the router, compose a group around `generated%sRoutes` under `/%s` with no session handling and no XSRF guard, and an authentication middleware in the app package that requires `Authorization: Bearer <key>`, compares it in constant time against a configured key (`APP_%s_API_KEY`; when unset, generate an ephemeral key at startup so the surface stays closed), and binds the request to a service identity in the session context the way the session middleware binds a browser to its user, so the handlers behind it run the same permission checks. Seed that service identity's roles in the bootstrap identities. Decide which resources the %s outlet serves and annotate them; then run `go generate ./...`. Extend the integration tests: the right key answers, a wrong key and no key answer unauthorized, and a resource that is not a member answers not found under the prefix.\n", pascal, o.Prefix, upper, o.Name)
+	fmt.Fprintf(&b, "This is an API-key outlet: a machine surface with no browser, declared with `APIKey()`, so the generated router composes its group with no session handling and no XSRF guard: `NoCaching`, `CompressionMiddleware`, then `%sAuth`. Give the App that middleware: it requires `Authorization: Bearer <key>`, compares it in constant time against a configured key (`APP_%s_API_KEY`; when unset, generate an ephemeral key at startup so the surface stays closed), and binds the request to a service identity in the session context the way the session middleware binds a browser to its user, so the handlers behind it run the same permission checks. Seed that service identity's roles in the bootstrap identities. Decide which resources the %s outlet serves and annotate them; then run `go generate ./...`. Extend the integration tests: the right key answers, a wrong key and no key answer unauthorized, and a resource that is not a member answers not found under the prefix.\n", pascal, upper, o.Name)
 
 	return b.String()
 }

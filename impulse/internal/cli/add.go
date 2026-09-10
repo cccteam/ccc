@@ -157,16 +157,19 @@ func newAddOutlet() *cobra.Command {
 		Use:   "outlet <name>",
 		Short: "Add a router outlet: a second URL space on the same host",
 		Long: `outlet adds a router outlet to a flat application. A session outlet (--sessions) is a
-second browser surface behind the same session handling as the console: the generator
-program gains WithRouterOutlet with ServesSessions and a GenerateTypescript target for
-the outlet, and the console's browser project is copied to web/<name> with its API
-prefix, base path, and ports rewritten and registered in angular.json, the package
-scripts, and the Procfile. An API-key outlet (--api-key) is a machine surface: the
-generator program gains WithRouterOutlet alone.
+second browser surface bound to the console's auth: the generator program gains
+WithRouterOutlet with the console's Auth and WebApp("/<name>") and a GenerateTypescript
+target for the outlet, and the console's browser project is copied to web/<name> with
+its API prefix, base path, and ports rewritten and registered in angular.json, the
+package scripts, and the Procfile. An API-key outlet (--api-key) is a machine surface:
+the generator program gains WithRouterOutlet with APIKey(). (An application that kept a
+hand-written router gains ServesSessions or nothing, as before.)
 
-Either way go generate emits the outlet's routes, handlers, and client, and the router
-mount, the served assets, the configuration, the members, and the tests are handed to
-the agent with the failing checks as the obligations.`,
+Either way go generate emits the outlet's routes, handlers, and client, and the
+generated router mounts the outlet from its declaration. The App's handlers the router
+now requires (the outlet's session getter and browser-application pair, or its API-key
+middleware), the configuration, the members, and the tests are handed to the agent with
+the failing checks as the obligations.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if sessions == apiKey {

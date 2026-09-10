@@ -60,23 +60,58 @@ type Site struct {
 	DomainRoute string
 	// ConcealedDomains reports WithConcealedDomains.
 	ConcealedDomains bool
+	// GeneratedRouter reports GenerateRouter: the router is generated from the outlet
+	// declarations instead of hand-written.
+	GeneratedRouter bool
+	// Default is the outlet GenerateRoutes declares, with the outlet options it carries;
+	// its Name is the reserved default.
+	Default Outlet
 	// Outlets are the WithRouterOutlet declarations, in order. The default outlet
-	// GenerateRoutes declares is not listed.
+	// GenerateRoutes declares is Default, not listed here.
 	Outlets []Outlet
 }
 
-// Outlet is one WithRouterOutlet declaration.
+// DefaultOutletName is the reserved name of the outlet GenerateRoutes declares.
+const DefaultOutletName = "default"
+
+// Outlet is one outlet declaration: GenerateRoutes for the default outlet, a
+// WithRouterOutlet call for an additional one.
 type Outlet struct {
 	Name   string
 	Prefix string
-	// ServesSessions reports the ServesSessions outlet option.
+	// ServesSessions reports a session outlet: the ServesSessions option, a session Auth,
+	// or the default outlet.
 	ServesSessions bool
-	// Pos is the position of the WithRouterOutlet call.
+	// Auth is the outlet's Auth option under the generated router, nil when it declares
+	// none.
+	Auth *OutletAuth
+	// APIKey reports the APIKey option: a machine outlet under the generated router.
+	APIKey bool
+	// WebApp is the WebApp option's mount path, empty when the outlet serves none.
+	WebApp string
+	// Pos is the position of the declaring call.
 	Pos string
 }
 
+// OutletAuth is one Auth option: the auth package the outlet binds to and the flavor its
+// people sign in with, as the generation package names it (Password, OIDCGoogle,
+// OIDCAzure).
+type OutletAuth struct {
+	ImportPath string
+	Flavor     string
+}
+
+// LoginFlavor is the auth's flavor as the auth scan reports it (password, oidc-google,
+// oidc-azure).
+func (a OutletAuth) LoginFlavor() string { return authFlavorIdents[a.Flavor] }
+
 // Tenanted reports whether the site declares a domain route.
 func (s *Site) Tenanted() bool { return s.DomainRoute != "" }
+
+// AllOutlets lists the site's outlets, the default first.
+func (s *Site) AllOutlets() []Outlet {
+	return append([]Outlet{s.Default}, s.Outlets...)
+}
 
 // Profile reads the option set in force from the generator programs.
 func (a *App) Profile() Profile {
@@ -105,20 +140,51 @@ func (a *App) site(g *Generator) Site {
 		s.DomainRoute = c.Args[0].Str
 	}
 	_, s.ConcealedDomains = g.Option("WithConcealedDomains")
+	_, s.GeneratedRouter = g.Option(optGenerateRouter)
+	if c, ok := g.Option(optGenerateRoutes); ok {
+		s.Default = Outlet{Name: DefaultOutletName, ServesSessions: true, Pos: c.Pos}
+		if len(c.Args) >= 2 && c.Args[1].Kind == ArgString {
+			s.Default.Prefix = c.Args[1].Str
+		}
+		if len(c.Args) > 2 {
+			readOutletOptions(&s.Default, c.Args[2:])
+		}
+	}
 	for _, c := range g.OptionsNamed("WithRouterOutlet") {
 		if len(c.Args) < 2 || c.Args[0].Kind != ArgString || c.Args[1].Kind != ArgString {
 			continue
 		}
 		o := Outlet{Name: c.Args[0].Str, Prefix: c.Args[1].Str, Pos: c.Pos}
-		for _, arg := range c.Args[2:] {
-			if arg.Kind == ArgCall && arg.Call.Name == optServesSessions {
-				o.ServesSessions = true
-			}
-		}
+		readOutletOptions(&o, c.Args[2:])
 		s.Outlets = append(s.Outlets, o)
 	}
 
 	return s
+}
+
+// readOutletOptions applies the outlet options of a declaration to the outlet.
+func readOutletOptions(o *Outlet, args []Arg) {
+	for _, arg := range args {
+		if arg.Kind != ArgCall {
+			continue
+		}
+		c := arg.Call
+		switch c.Name {
+		case optServesSessions:
+			o.ServesSessions = true
+		case optAuth:
+			if len(c.Args) == 2 && c.Args[0].Kind == ArgString && c.Args[1].Kind == ArgIdent {
+				o.Auth = &OutletAuth{ImportPath: c.Args[0].Str, Flavor: c.Args[1].Str}
+				o.ServesSessions = true
+			}
+		case optAPIKey:
+			o.APIKey = true
+		case optWebApp:
+			if len(c.Args) == 1 && c.Args[0].Kind == ArgString {
+				o.WebApp = c.Args[0].Str
+			}
+		}
+	}
 }
 
 // moduleName is the module path's last element, or empty without a module directive.
@@ -157,8 +223,8 @@ func siteDir(g *Generator) string {
 // SiteNames lists the sites' names in order.
 func (p Profile) SiteNames() []string {
 	names := make([]string, 0, len(p.Sites))
-	for _, s := range p.Sites {
-		names = append(names, s.Name)
+	for i := range p.Sites {
+		names = append(names, p.Sites[i].Name)
 	}
 
 	return names
@@ -168,8 +234,8 @@ func (p Profile) SiteNames() []string {
 func (p Profile) OutletNames() []string {
 	seen := map[string]bool{}
 	var names []string
-	for _, s := range p.Sites {
-		for _, o := range s.Outlets {
+	for i := range p.Sites {
+		for _, o := range p.Sites[i].Outlets {
 			if !seen[o.Name] {
 				seen[o.Name] = true
 				names = append(names, o.Name)

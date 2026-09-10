@@ -25,7 +25,14 @@ func run(ctx context.Context) error {
 			"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/router",
 		},
 		generation.GenerateHandlers("app"),
-		generation.GenerateRoutes("pkg/router", "api"),
+		// The router is generated from the outlet declarations: the console is the default
+		// outlet, the staff auth's password sessions under /api with its browser application
+		// at /.
+		generation.GenerateRouter(),
+		generation.GenerateRoutes("pkg/router", "api",
+			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/auth/staff", generation.Password),
+			generation.WebApp("/"),
+		),
 		generation.GenerateHandlerTests("test/authz"),
 		generation.WithConsolidatedHandlers("resources", true),
 		generation.WithSpannerEmulatorVersion("1.5.56"),

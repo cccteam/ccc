@@ -57,11 +57,15 @@ const (
 	ArgBoolMap
 	ArgCall
 	ArgComposite
+	// ArgIdent is a qualified identifier of the generation package (generation.Password);
+	// Str holds the identifier.
+	ArgIdent
 )
 
 // Arg is one literal argument of an option call.
 type Arg struct {
 	Kind ArgKind
+	// Str holds a string literal's value or, for ArgIdent, the identifier.
 	Str  string
 	Bool bool
 	List []string
@@ -336,6 +340,15 @@ func (r *reader) readArg(expr ast.Expr, option string, expect paramKind) Arg {
 		if _, ok := expr.(*ast.CompositeLit); ok {
 			return Arg{Kind: ArgComposite, Text: exprText(expr)}
 		}
+	case paramFlavor:
+		if sel, ok := expr.(*ast.SelectorExpr); ok && isQualified(expr, r.pkg, sel.Sel.Name) {
+			if _, known := authFlavorIdents[sel.Sel.Name]; known {
+				return Arg{Kind: ArgIdent, Str: sel.Sel.Name}
+			}
+		}
+		r.problemf(expr, "%s argument %s should be a %s", option, exprText(expr), expect)
+
+		return Arg{Kind: ArgOther, Text: exprText(expr)}
 	case paramString, paramBool, paramStringMap, paramBoolMap, paramAny, paramNone:
 	}
 

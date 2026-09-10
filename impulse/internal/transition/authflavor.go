@@ -129,6 +129,9 @@ func (f AuthFlavor) Apply(ctx context.Context, a *app.App, exec check.Execer) (*
 	if err := f.swapSeams(a, cur, ch); err != nil {
 		return nil, err
 	}
+	if err := f.rewritePrograms(a, cur, ch); err != nil {
+		return nil, err
+	}
 	if err := au.tagProcfile(a, ch); err != nil {
 		return nil, err
 	}
@@ -318,10 +321,10 @@ func migrationNumber(base string) (int, error) {
 // flavorPascal is the flavor's PascalCase form for a migration name.
 func flavorPascal(flavor string) string {
 	if flavor == FlavorOIDCGoogle {
-		return "OIDCGoogle"
+		return app.FlavorIdentOIDCGoogle
 	}
 
-	return "OIDCAzure"
+	return app.FlavorIdentOIDCAzure
 }
 
 // oldTables lists the session tables the auth reads now.
@@ -610,8 +613,52 @@ func (f AuthFlavor) swapSeams(a *app.App, cur *app.Auth, ch *Change) error {
 	}
 	if len(routed) > 0 {
 		ch.didf("%s: the password login route replaced by the directory's: GET /user/login (the redirect), GET /user/callback (the return)%s", strings.Join(routed, ", "), f.logoutRouteNote())
-	} else {
+	} else if !generatedRouter(a) {
 		ch.skipf("the password login route (r.Post(prefix+\"/user/login\", h.Login())) was not found in the base's shape, so the directory's routes were not mounted; mount GET <prefix>/user/login, GET <prefix>/user/callback%s in the %s auth's session group", f.logoutRouteNote(), f.Name)
+	}
+
+	return nil
+}
+
+// generatedRouter reports whether some site's router is generated (GenerateRouter).
+func generatedRouter(a *app.App) bool {
+	sites := a.Profile().Sites
+	for i := range sites {
+		if sites[i].GeneratedRouter {
+			return true
+		}
+	}
+
+	return false
+}
+
+// rewritePrograms points every outlet bound to the auth at the new flavor: the Auth
+// option naming the auth's package on GenerateRoutes or a WithRouterOutlet has its flavor
+// identifier rewritten, so the regenerated router mounts the directory's routes. An
+// application whose programs declare no Auth for the package (a hand-written router, or a
+// population no outlet serves) is left as it is.
+func (f AuthFlavor) rewritePrograms(a *app.App, cur *app.Auth, ch *Change) error {
+	ident := app.FlavorIdent(f.Flavor)
+	if ident == "" || a.GoMod == nil || a.GoMod.Module == nil {
+		return nil
+	}
+	importPath := a.GoMod.Module.Mod.Path + "/" + path.Dir(cur.File)
+	for _, g := range a.Generators {
+		src, mode, err := readFile(a, g.File)
+		if err != nil {
+			return err
+		}
+		edited, n, err := app.RewriteAuthFlavor(g.File, src, importPath, ident)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			continue
+		}
+		if err := os.WriteFile(a.Abs(g.File), edited, mode); err != nil {
+			return errors.Wrap(err, "os.WriteFile()")
+		}
+		ch.didf("%s: %d outlet(s) bound to the %s auth now declare Auth(%q, generation.%s), so the regenerated router mounts the directory's routes", g.File, n, f.Name, importPath, ident)
 	}
 
 	return nil
@@ -654,7 +701,7 @@ func (f AuthFlavor) Meaning() string {
 	items := []string{
 		fmt.Sprintf("Make the bootstrap match. Its development identities for the %s auth are logins the directory presents (`APP_USERNAME` under the simulated directory) with their roles, and no passwords: drop the password fields from the identities file and the account creation (`CreateSessionUser`) from the code, as the reference's bootstrap seeds its `members`.%s", f.Name, au.identitiesNote()),
 		fmt.Sprintf("Remove password user management for the %s auth wherever it is: account creation, password changes, and their routes and pages, since the directory holds the accounts now.", f.Name),
-		fmt.Sprintf("Check the session group. The App and the router now hand out `%s`; read the %s auth's session group over against the reference's `oidcGroup` (`pkg/router/router.go`): session start and XSRF, `GET <prefix>/user/login`, `GET <prefix>/user/callback`%s, the session and logout routes, then the API behind session validation and the XSRF guard. Set `LoginURL` in the data level's construction to the surface's login page.", handlersEmbed[f.Flavor], f.Name, f.logoutRouteNote()),
+		fmt.Sprintf("Check the surface. The App now hands out `%s`. Under the generated router every outlet bound to the %s auth declares `generation.%s`, so regeneration mounted the directory's routes under its prefix: `GET <prefix>/user/login` (the redirect), `GET <prefix>/user/callback` (the return)%s, then the session and logout routes, behind session start and XSRF, with the API behind session validation and the XSRF guard; read the chain at the top of `zz_gen_router.go`. A hand-written router mounts the same routes in the auth's session group in place of the password login. Set `LoginURL` in the data level's construction to the surface's login page.", handlersEmbed[f.Flavor], f.Name, app.FlavorIdent(f.Flavor), f.logoutRouteNote()),
 		"Sign in from the browser. The surface's login page becomes a button that sends the browser to `<prefix>/user/login?returnUrl=<page>`, as the reference's portal login component does, in place of the credentials form; a refused login returns to the login page with the reason in `?message=`.",
 		fmt.Sprintf("Register it. The environment template now carries the %s auth's `APP_%s_OIDC_*` variables: set the redirect URL to the browser-facing callback of its surface (through the dev proxy in development), and fill in %s when the application is registered in a directory. Until then the Procfile builds with the session library's `skipAuth` tag, which simulates the directory: every %s login is `APP_USERNAME`.", f.Name, strings.ToUpper(f.Name), au.registrationToFill(), f.Name),
 		fmt.Sprintf("Replace the harness login helper: under `-tags skipAuth`, as the reference's `test/integration/portal_login_skipauth_test.go` does, set `APP_USERNAME` under a mutex and follow the login route to the callback, with a `!skipAuth` twin that skips with the reason, so `go test ./...` without the tag skips the %s login tests visibly and CI runs with it.", f.Name),

@@ -23,8 +23,9 @@ func TestProfile(t *testing.T) {
 			dir:        "testdata/singlesite",
 			wantLayout: LayoutFlat,
 			wantSites: []Site{{
-				Name: "lighthouse", Dir: ".",
-				Outlets: []Outlet{{Name: "portal", Prefix: "portal", ServesSessions: true, Pos: "cmd/generate/resourcegenerator/main.go:28"}},
+				Name: "lighthouse", Dir: ".", GeneratedRouter: true,
+				Default: Outlet{Name: DefaultOutletName, Prefix: "api", ServesSessions: true, Auth: &OutletAuth{ImportPath: "example.com/lighthouse/pkg/config", Flavor: "Password"}, WebApp: "/", Pos: "cmd/generate/resourcegenerator/main.go:28"},
+				Outlets: []Outlet{{Name: "portal", Prefix: "portal", ServesSessions: true, Auth: &OutletAuth{ImportPath: "example.com/lighthouse/pkg/config", Flavor: "Password"}, WebApp: "/portal", Pos: "cmd/generate/resourcegenerator/main.go:29"}},
 			}},
 			wantOutlets: []string{"portal"},
 		},
@@ -33,8 +34,8 @@ func TestProfile(t *testing.T) {
 			dir:        "testdata/multisite",
 			wantLayout: LayoutSites,
 			wantSites: []Site{
-				{Name: "pilots", Dir: "apps/pilots"},
-				{Name: "tugs", Dir: "apps/tugs"},
+				{Name: "pilots", Dir: "apps/pilots", Default: Outlet{Name: DefaultOutletName, Prefix: "api", ServesSessions: true, Pos: "cmd/generate/resourcegenerator_pilots/main.go:17"}},
+				{Name: "tugs", Dir: "apps/tugs", Default: Outlet{Name: DefaultOutletName, Prefix: "api", ServesSessions: true, Pos: "cmd/generate/resourcegenerator_tugs/main.go:19"}},
 			},
 			wantShared: []string{"cmd/generate/resourcegenerator_shared/main.go"},
 		},

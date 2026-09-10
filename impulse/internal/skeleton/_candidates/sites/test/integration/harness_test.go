@@ -161,9 +161,9 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	waitForDomains(ctx, t, accessClient, clientUser, []accesstypes.Domain{north})
 
 	conf := &servedConfigurer{db: db, auth: auth}
-	console := httptest.NewServer(consolerouter.New(consoleapp.New(conf)))
+	console := httptest.NewServer(consolerouter.New(consoleapp.New(conf), consolerouter.Hooks{}))
 	t.Cleanup(console.Close)
-	portal := httptest.NewServer(portalrouter.New(portalapp.New(conf)))
+	portal := httptest.NewServer(portalrouter.New(portalapp.New(conf), portalrouter.Hooks{}))
 	t.Cleanup(portal.Close)
 
 	return &served{console: console, portal: portal, access: accessClient}

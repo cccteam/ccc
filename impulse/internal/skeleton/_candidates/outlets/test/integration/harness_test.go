@@ -211,7 +211,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	waitForDomains(ctx, t, accessClient, machinesUser, []accesstypes.Domain{north})
 	waitForDomains(ctx, t, membersAccess, clientUser, []accesstypes.Domain{north})
 
-	server.Config.Handler = router.New(app.New(&servedConfigurer{db: db, auth: staffAuth, members: membersAuth}))
+	server.Config.Handler = router.New(app.New(&servedConfigurer{db: db, auth: staffAuth, members: membersAuth}), router.Hooks{})
 	server.Start()
 
 	return &served{server: server, access: accessClient, members: membersAccess}

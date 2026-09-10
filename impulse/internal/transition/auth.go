@@ -1004,7 +1004,7 @@ func (au Auth) Meaning() string {
 	fmt.Fprintf(&b, "An auth is a population that signs in one way and holds roles in its own permission store, and it is a package: `pkg/auth/%s` owns the %s session manager (tables `%sSessions`%s, cookie `%s`), the %s permission store (tables prefixed `%s`), and the roles file `schema/roles/%s.json`. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths.\n\n", au.Name, au.Flavor, au.Pascal(), au.userTableNote(), au.Name, au.Name, au.Pascal(), au.Name)
 	b.WriteString("Left to wire:\n\n")
 	items := []string{
-		fmt.Sprintf("Bind a surface to it. Decide which site or outlet serves the %s population and compose its session group around the %s auth's handlers (session start, XSRF, login, and logout for a password auth; the application's own proof-of-identity handler issuing the session for preauth), separate from the other auths' groups, so a %s session opens nothing bound to another auth. The surface's web app names the auth's XSRF cookie, `%s.XSRFCookie` (`%s-xsrf`), in its HttpClient configuration (`withXsrfConfiguration`), since the browser echoes that cookie in the X-XSRF-TOKEN header. If the population has no surface yet, add an outlet for it first.", au.Name, au.Name, au.Name, au.Name, au.Name),
+		au.bindItem(),
 		fmt.Sprintf("Provision its roles. Call the roles migration for the %s auth in the bootstrap and the deployment's migrate step with `%s.RolesPath` and the %s auth's user manager, across the tenants when the application is tenanted. Give the %s auth its development identities (a login and its roles) in the bootstrap identities, kept apart from the other auths' identities.", au.Name, au.Name, au.Name, au.Name),
 		fmt.Sprintf("Release it. Close the %s auth where the data level closes the others.", au.Name),
 		fmt.Sprintf("Prove the segmentation in the integration tests: a %s login is refused by every other auth's surface, another auth's session is refused by the %s surface, and a username that exists in two auths is two principals with separate roles.", au.Name, au.Name),
@@ -1020,9 +1020,9 @@ func (au Auth) Meaning() string {
 // oidcMeaning explains an auth whose people sign in through a directory.
 func (au Auth) oidcMeaning() string {
 	var b strings.Builder
-	anchor, directory, handlers, logoutRoute := "tenant and object identifiers", azureName, "session.OIDCAzureHandlers", ", `GET <prefix>/user/logout` (the directory's front-channel logout)"
+	anchor, directory, logoutRoute := "tenant and object identifiers", azureName, ", `GET <prefix>/user/logout` (the directory's front-channel logout)"
 	if au.Flavor == FlavorOIDCGoogle {
-		anchor, directory, handlers, logoutRoute = "subject identifier", "Google, restricted to the Workspace domain the registration names", "session.OIDCGoogleHandlers", " (Google has no directory-initiated logout, so there is no front-channel route: the session's own logout route ends it)"
+		anchor, directory, logoutRoute = "subject identifier", "Google, restricted to the Workspace domain the registration names", " (Google has no directory-initiated logout, so there is no front-channel route: the session's own logout route ends it)"
 	}
 	fmt.Fprintf(&b, "An auth is a population that signs in one way and holds roles in its own permission store, and it is a package: `pkg/auth/%s` owns the %s session manager (tables `%sSessions` and `%sOIDCUsers`, the user anchor keyed by the directory's immutable %s; cookie `%s`), the %s permission store (tables prefixed `%s`), and the roles file `schema/roles/%s.json`. Its people sign in through the organization's directory over OpenID Connect (%s): the login route sends the browser to the directory, the directory returns it to the callback, and the callback starts the session. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths, reading the directory registration from the environment.\n\n", au.Name, au.Flavor, au.Pascal(), au.Pascal(), anchor, au.Name, au.Name, au.Pascal(), au.Name, directory)
 	switch {
@@ -1035,7 +1035,7 @@ func (au Auth) oidcMeaning() string {
 	}
 	b.WriteString("Left to wire:\n\n")
 	items := []string{
-		fmt.Sprintf("Bind a surface to it. Decide which site or outlet serves the %s population and compose an OIDC session group around the %s auth's handlers, as the reference's `pkg/router/router.go` does for its members auth (`oidcGroup`): session start and XSRF, `GET <prefix>/user/login` (the redirect to the directory), `GET <prefix>/user/callback` (the directory's return)%s, the session and logout routes, then the API behind session validation and the XSRF guard. Give the App a method returning the %s auth's `%s` for the router. Bind the group's requests to the auth (`pkg/auth.Bind`, the reference's `BindAuth` middleware) so permission checks and tenant visibility answer from the %s store, and set `LoginURL` in the data level's construction to the surface's login page. The surface's web app names the auth's XSRF cookie, `%s.XSRFCookie` (`%s-xsrf`), in its HttpClient configuration (`withXsrfConfiguration`), as the reference's portal does. If the population has no surface yet, add an outlet for it first.", au.Name, au.Name, logoutRoute, au.Name, handlers, au.Name, au.Name, au.Name),
+		au.bindItem() + fmt.Sprintf(" The directory's routes are the flavor's: `GET <prefix>/user/login` (the redirect to the directory), `GET <prefix>/user/callback` (the directory's return)%s, and the session and logout routes; set `LoginURL` in the data level's construction to the surface's login page.", logoutRoute),
 		fmt.Sprintf("Provision its roles. Call the roles migration for the %s auth in the bootstrap and the deployment's migrate step with `%s.RolesPath` and the %s auth's user manager, across the tenants when the application is tenanted.%s", au.Name, au.Name, au.Name, au.identitiesNote()),
 		fmt.Sprintf("Register it. The environment template now carries the %s auth's `APP_%s_OIDC_*` variables: set the redirect URL to the browser-facing callback of the surface it binds to (through the dev proxy in development), and fill in %s when the application is registered in a directory. Until then the Procfile builds with the session library's `skipAuth` tag, which simulates the directory: every %s login is `APP_USERNAME`.", au.Name, strings.ToUpper(au.Name), au.registrationToFill(), au.Name),
 		"Sign in from the browser. The surface's login page becomes a button that sends the browser to `<prefix>/user/login?returnUrl=<page>`, as the reference's portal login component does; a refused login returns to the login page with the reason in `?message=`.",
@@ -1048,6 +1048,20 @@ func (au Auth) oidcMeaning() string {
 	b.WriteString("\nData consequence: none for existing people, since the new auth starts empty. If people are to move from another auth into this one, their roles are re-created here by a migration a person reviews, keyed by the username the directory will present, and the old auth keeps or deletes them by decision, never by default.\n")
 
 	return b.String()
+}
+
+// bindItem is the brief's binding obligation: which outlet the population signs in on,
+// and how the generated router learns it.
+func (au Auth) bindItem() string {
+	handlers, ok := handlersEmbed[au.Flavor]
+	if !ok {
+		handlers = "session handlers"
+	}
+	if au.Flavor == FlavorPreauth {
+		return fmt.Sprintf("Bind a surface to it. The generated router composes no preauth outlet yet, so the %s population's surface is hand-written: compose its group around the application's own proof-of-identity handler issuing the session, separate from the other auths' groups, so a %s session opens nothing bound to another auth. The surface's web app names the auth's XSRF cookie, `%s.XSRFCookie` (`%s-xsrf`), in its HttpClient configuration (`withXsrfConfiguration`), since the browser echoes that cookie in the X-XSRF-TOKEN header.", au.Name, au.Name, au.Name, au.Name)
+	}
+
+	return fmt.Sprintf("Bind a surface to it. Decide which outlet serves the %s population and point its declaration at the auth: `generation.Auth(\"<module>/pkg/auth/%s\", generation.%s)` on that outlet's `WithRouterOutlet` (or on `GenerateRoutes` for the console), adding the outlet first with `impulse add outlet` when the population has none; then run `go generate ./...`. The generated router mounts the %s auth's session group and login routes under the outlet's prefix and, with two auths declared, binds the group's requests to the auth (`BindAuth(%s.Name)`, which the App implements over `pkg/auth.Bind` as the reference's does) so permission checks and tenant visibility answer from the %s store. Give the App what the generated `Handlers` then requires: for an additional outlet a `<Outlet>()` method returning the %s auth's `%s`; the default outlet's session handlers are the App's embedded session manager. The surface's web app names the auth's XSRF cookie, `%s.XSRFCookie` (`%s-xsrf`), in its HttpClient configuration (`withXsrfConfiguration`), since the browser echoes that cookie in the X-XSRF-TOKEN header.", au.Name, au.Name, app.FlavorIdent(au.Flavor), au.Name, au.Name, au.Name, au.Name, handlers, au.Name, au.Name)
 }
 
 // registrationToFill names the registration a person fills in once the application is

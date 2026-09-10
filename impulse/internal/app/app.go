@@ -8,6 +8,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/mod/modfile"
@@ -290,6 +291,24 @@ func (a *App) Rel(abs string) string {
 	}
 
 	return filepath.ToSlash(rel)
+}
+
+// ModuleDir returns the root-relative directory an import path names inside the
+// application's module, or false for a path outside it (or when the module path is not
+// known).
+func (a *App) ModuleDir(importPath string) (string, bool) {
+	if a.GoMod == nil || a.GoMod.Module == nil {
+		return "", false
+	}
+	modulePath := a.GoMod.Module.Mod.Path
+	switch {
+	case importPath == modulePath:
+		return ".", true
+	case strings.HasPrefix(importPath, modulePath+"/"):
+		return strings.TrimPrefix(importPath, modulePath+"/"), true
+	default:
+		return "", false
+	}
 }
 
 // Abs returns the absolute path of a root-relative path.

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -14,11 +15,11 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton"
 )
 
-// skeletonFile reads one file of an embedded candidate.
-func skeletonFile(t *testing.T, candidate, rel string) string {
+// skeletonFile reads one file of the base skeleton.
+func skeletonFile(t *testing.T, rel string) string {
 	t.Helper()
 
-	sub, err := skeleton.FS(candidate)
+	sub, err := skeleton.FS(skeleton.Base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,8 +357,8 @@ func TestAuthFlavorApply(t *testing.T) {
 			files := authFiles(t)
 			// The base's access DDL, so the assignment table's interleaving and index are
 			// in play.
-			files["schema/migrations/000002_StaffAccess.up.sql"] = skeletonFile(t, "solo", "schema/migrations/000002_StaffAccess.up.sql")
-			files["schema/migrations/000002_StaffAccess.down.sql"] = skeletonFile(t, "solo", "schema/migrations/000002_StaffAccess.down.sql")
+			files["schema/migrations/000002_StaffAccess.up.sql"] = skeletonFile(t, "schema/migrations/000002_StaffAccess.up.sql")
+			files["schema/migrations/000002_StaffAccess.down.sql"] = skeletonFile(t, "schema/migrations/000002_StaffAccess.down.sql")
 			files["pkg/config/data.go"] = authConfigEnv
 			files["app/app.go"] = beaconAppEmbed
 			files["pkg/router/router.go"] = beaconRouter
@@ -378,6 +379,41 @@ func TestAuthFlavorApply(t *testing.T) {
 				tt.check(t, a)
 			}
 		})
+	}
+}
+
+// TestAuthFlavorApplyGeneratedRouter pins the swap under the generated router: every
+// outlet bound to the auth in the program is rewritten to the new flavor, and no hand
+// router is expected.
+func TestAuthFlavorApplyGeneratedRouter(t *testing.T) {
+	t.Parallel()
+
+	files := authFiles(t)
+	files["schema/migrations/000002_StaffAccess.up.sql"] = skeletonFile(t, "schema/migrations/000002_StaffAccess.up.sql")
+	files["schema/migrations/000002_StaffAccess.down.sql"] = skeletonFile(t, "schema/migrations/000002_StaffAccess.down.sql")
+	files["pkg/config/data.go"] = authConfigEnv
+	files["app/app.go"] = beaconAppEmbed
+	files[".envrc.template"] = "export PORT=8090\n"
+	files["cmd/generate/resourcegenerator/main.go"] = strings.Replace(beaconRouterProgram,
+		"\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n",
+		"\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n\t\tgeneration.WithRouterOutlet(\"kiosk\", \"kiosk/api\", generation.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password)),\n", 1)
+	a := beacon(t, files)
+	ch, err := AuthFlavor{Name: "staff", Flavor: FlavorOIDCAzure, Authority: AuthorityApplication}.Apply(t.Context(), a, &fakeExec{})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	want := `cmd/generate/resourcegenerator/main.go: 2 outlet(s) bound to the staff auth now declare Auth("example.com/acme/beacon/pkg/auth/staff", generation.OIDCAzure), so the regenerated router mounts the directory's routes`
+	if !slices.Contains(ch.Did, want) {
+		t.Errorf("Did = %q, want %q among them", ch.Did, want)
+	}
+	for _, skipped := range ch.Skipped {
+		if strings.Contains(skipped, "password login route") {
+			t.Errorf("Skipped has %q; the generated router mounts the directory's routes", skipped)
+		}
+	}
+	program := read(t, a, "cmd/generate/resourcegenerator/main.go")
+	if strings.Contains(program, "generation.Password") || strings.Count(program, "generation.OIDCAzure") != 2 {
+		t.Errorf("program = %q", program)
 	}
 }
 

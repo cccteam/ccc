@@ -230,6 +230,8 @@ func renderArg(a *app.Arg) string {
 		}
 
 		return "{" + strings.Join(pairs, ", ") + "}"
+	case app.ArgIdent:
+		return a.Str
 	case app.ArgCall:
 		return renderCall(a.Call)
 	case app.ArgComposite, app.ArgOther:

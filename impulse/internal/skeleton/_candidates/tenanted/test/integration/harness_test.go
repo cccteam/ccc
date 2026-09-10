@@ -148,7 +148,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	// visible to the engine before serving.
 	waitForDomains(ctx, t, accessClient, memberUser, []accesstypes.Domain{north})
 
-	handler := router.New(app.New(&servedConfigurer{db: db, auth: auth}))
+	handler := router.New(app.New(&servedConfigurer{db: db, auth: auth}), router.Hooks{})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 

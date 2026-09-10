@@ -182,3 +182,62 @@ func TestRemoveOptions(t *testing.T) {
 		})
 	}
 }
+
+func TestRewriteAuthFlavor(t *testing.T) {
+	t.Parallel()
+
+	src := `package main
+
+import gen "github.com/cccteam/ccc/resource/generation"
+
+func run() {
+	_, _ = gen.NewResourceGenerator(nil, "pkg/resources", nil, nil,
+		gen.GenerateRouter(),
+		gen.GenerateRoutes("pkg/router", "api", gen.Auth("example.com/acme/pkg/auth/staff", gen.Password), gen.WebApp("/")),
+		gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.OIDCGoogle)),
+		gen.WithRouterOutlet("kiosk", "kiosk", gen.Auth("example.com/acme/pkg/auth/staff", gen.Password)),
+	)
+}
+`
+	tests := []struct {
+		name        string
+		importPath  string
+		flavor      string
+		wantCount   int
+		wantContain []string
+		wantAbsent  []string
+	}{
+		{
+			name: "every outlet bound to the package", importPath: "example.com/acme/pkg/auth/staff", flavor: "OIDCAzure", wantCount: 2,
+			wantContain: []string{`gen.Auth("example.com/acme/pkg/auth/staff", gen.OIDCAzure), gen.WebApp("/")`, `gen.WithRouterOutlet("kiosk", "kiosk", gen.Auth("example.com/acme/pkg/auth/staff", gen.OIDCAzure))`, `gen.Auth("example.com/acme/pkg/auth/members", gen.OIDCGoogle)`},
+			wantAbsent:  []string{"gen.Password"},
+		},
+		{
+			name: "a package no outlet binds to", importPath: "example.com/acme/pkg/auth/partners", flavor: "OIDCAzure", wantCount: 0,
+			wantContain: []string{"gen.Password"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, n, err := RewriteAuthFlavor("main.go", []byte(src), tt.importPath, tt.flavor)
+			if err != nil {
+				t.Fatalf("RewriteAuthFlavor() error = %v", err)
+			}
+			if n != tt.wantCount {
+				t.Errorf("rewritten = %d, want %d", n, tt.wantCount)
+			}
+			for _, want := range tt.wantContain {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(string(out), absent) {
+					t.Errorf("output has %q:\n%s", absent, out)
+				}
+			}
+		})
+	}
+}

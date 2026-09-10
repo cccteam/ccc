@@ -13,7 +13,6 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
-	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5/middleware"
@@ -123,19 +122,14 @@ func (a *App) CompressionMiddleware() func(http.Handler) http.Handler {
 	return middleware.Compress(5)
 }
 
-// WithParamsHTTP returns the middleware that captures route parameters for httpio.
-func (a *App) WithParamsHTTP() func(http.Handler) http.Handler {
-	return httpio.WithParams
-}
-
 // DeepLink rewrites the site's Angular routes to its entry point so bookmarked
 // frontend routes load the single-page application.
 func (a *App) DeepLink(next http.Handler) http.Handler {
 	return spaassets.DeepLink(next, "/")
 }
 
-// StaticAssets serves the site's built Angular application.
-func (a *App) StaticAssets() http.HandlerFunc {
+// Assets serves the site's built Angular application.
+func (a *App) Assets() http.HandlerFunc {
 	return serveSPA(http.FileServer(http.Dir(a.dist)))
 }
 

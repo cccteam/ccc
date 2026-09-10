@@ -73,8 +73,9 @@ func (r RemoveOutlet) Apply(ctx context.Context, a *app.App, exec check.Execer) 
 		return nil, err
 	}
 	ch := &Change{Command: r.Command()}
-	for _, site := range r.declaring(a) {
-		g := site.Generator
+	sites := r.declaring(a)
+	for i := range sites {
+		g := sites[i].Generator
 		var targets []app.TSTarget
 		for _, t := range g.TypescriptTargets() {
 			if t.Outlet == r.Name {
@@ -396,11 +397,11 @@ func (r RemoveOutlet) Meaning() string {
 	pascal := strings.ToUpper(r.Name[:1]) + r.Name[1:]
 	upper := strings.ToUpper(r.Name)
 	var b strings.Builder
-	fmt.Fprintf(&b, "A router outlet is a second URL space on the same host, declared by `WithRouterOutlet` and mounted by the hand-written router through the generated `generated%sRoutes`. The declaration is gone, so the generator no longer emits the outlet's routes, handlers, or client, and everything that referred to them has to go with it.\n\n", pascal)
+	fmt.Fprintf(&b, "A router outlet is a second URL space on the same host, declared by `WithRouterOutlet` and mounted by the router: the generated router from the declaration itself, a hand-written one through the generated `generated%sRoutes`. The declaration is gone, so the generator no longer emits the outlet's routes, handlers, client, or its group in the generated router, and everything that referred to them has to go with it.\n\n", pascal)
 	b.WriteString("Left to unwire:\n\n")
 	items := []string{
-		fmt.Sprintf("The router: the group that mounted `generated%sRoutes` under the outlet's prefix, the prefix's not-found handler, and, for a session outlet, the routes that served its browser application (deep links and assets under `/%s/`).", pascal, r.Name),
-		fmt.Sprintf("The App: the handlers and accessors that were the outlet's (`%s()`, `%sDeepLink`, `%sAssets`, the dist field) and, for an API-key outlet, its authentication middleware and the `Handlers` interface methods only it satisfied.", pascal, pascal, pascal),
+		fmt.Sprintf("The router: under the generated router, the `%s` field of the application's `Hooks`, which no longer exists (a hook naming it fails to compile); under a hand-written router, the group that mounted `generated%sRoutes` under the outlet's prefix, the prefix's not-found handler, and, for a session outlet, the routes that served its browser application (deep links and assets under `/%s/`).", pascal, pascal, r.Name),
+		fmt.Sprintf("The App: the handlers and accessors that were the outlet's (`%s()`, `%sDeepLink`, `%sAssets`, the dist field) and, for an API-key outlet, its `%sAuth` middleware; the generated `Handlers` no longer asks for them.", pascal, pascal, pascal, pascal),
 		fmt.Sprintf("The configuration: the fields read from `APP_%s_*` (a dist directory, an API key) and their lines in the environment template and the Procfile comments.", upper),
 		fmt.Sprintf("The members: a struct still annotated `@outlet(%s)` alone fails generation. For each, decide whether it moves to the default outlet (drop the annotation, and the console's people reach it) or leaves the application with its table (a migration drops the table). Then run `go generate ./...`.", r.Name),
 		"The tests: the integration tests that signed in or presented a key under the outlet's prefix, and the bootstrap identities that existed only for it (an API-key outlet's service account).",

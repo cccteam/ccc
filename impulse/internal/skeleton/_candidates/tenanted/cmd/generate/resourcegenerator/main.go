@@ -25,7 +25,14 @@ func run(ctx context.Context) error {
 			"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/router",
 		},
 		generation.GenerateHandlers("app"),
-		generation.GenerateRoutes("pkg/router", "api"),
+		// The router is generated from the outlet declarations: the console is the default
+		// outlet, the staff auth's password sessions under /api with its browser application
+		// at /.
+		generation.GenerateRouter(),
+		generation.GenerateRoutes("pkg/router", "api",
+			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/auth/staff", generation.Password),
+			generation.WebApp("/"),
+		),
 		generation.GenerateHandlerTests("test/authz"),
 		// Tenant-scoped resources and RPC methods are served under the tenant segment
 		// pair: /api/tenants/{tenantID}/... . The tenant is the permission domain, and

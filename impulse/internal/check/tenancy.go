@@ -124,7 +124,8 @@ func tenantTables(a *app.App, p app.Profile, segment string) (tables, unread []s
 func migrationTables(a *app.App, p app.Profile) (tables map[string]string, unread []string, err error) {
 	tables = map[string]string{}
 	seen := map[string]bool{}
-	for _, s := range p.Sites {
+	for i := range p.Sites {
+		s := &p.Sites[i]
 		for _, src := range s.Generator.MigrationSources {
 			if seen[src] {
 				continue

@@ -205,3 +205,57 @@ func RemoveOptions(rel string, src []byte, name, first string) (out []byte, remo
 
 	return out, len(spans), nil
 }
+
+// RewriteAuthFlavor returns the program's source with every Auth option naming importPath
+// (on GenerateRoutes or a WithRouterOutlet) rewritten to the flavor identifier, and how
+// many were rewritten. The edit is textual, so the rest of the file's comments and layout
+// survive; the result is formatted.
+func RewriteAuthFlavor(rel string, src []byte, importPath, flavorIdent string) (out []byte, rewritten int, err error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.ParseComments)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "parser.ParseFile()")
+	}
+	pkg := generationLocalName(f)
+	if pkg == "" {
+		return nil, 0, errors.Newf("%s does not import %s", rel, generationImportPath)
+	}
+	call := findGeneratorCall(f, pkg)
+	if call == nil {
+		return nil, 0, errors.Newf("%s makes no %s.NewResourceGenerator call", rel, pkg)
+	}
+
+	type span struct{ start, end int }
+	var spans []span
+	ast.Inspect(call, func(n ast.Node) bool {
+		ce, ok := n.(*ast.CallExpr)
+		if !ok || !isQualified(ce.Fun, pkg, optAuth) || len(ce.Args) != 2 {
+			return true
+		}
+		if s, ok := stringLit(ce.Args[0]); !ok || s != importPath {
+			return true
+		}
+		spans = append(spans, span{fset.Position(ce.Args[1].Pos()).Offset, fset.Position(ce.Args[1].End()).Offset})
+
+		return true
+	})
+	if len(spans) == 0 {
+		return src, 0, nil
+	}
+
+	var b bytes.Buffer
+	at := 0
+	for _, s := range spans {
+		b.Write(src[at:s.start])
+		b.WriteString(pkg + "." + flavorIdent)
+		at = s.end
+	}
+	b.Write(src[at:])
+
+	out, err = format.Source(b.Bytes())
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "format.Source(): %s after rewriting the auth flavor", rel)
+	}
+
+	return out, len(spans), nil
+}

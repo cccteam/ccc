@@ -44,8 +44,8 @@ func TestDiscover(t *testing.T) {
 			wantSiteFiles:   []string{"cmd/generate/resourcegenerator/main.go"},
 			wantHandlersDir: "app",
 			wantTSTargets: []TSTarget{
-				{Dir: "web/console/src/app/core/service", Pos: "cmd/generate/resourcegenerator/main.go:35"},
-				{Dir: "web/portal/src/app/core/service", Outlet: "portal", Pos: "cmd/generate/resourcegenerator/main.go:40"},
+				{Dir: "web/console/src/app/core/service", Pos: "cmd/generate/resourcegenerator/main.go:36"},
+				{Dir: "web/portal/src/app/core/service", Outlet: "portal", Pos: "cmd/generate/resourcegenerator/main.go:41"},
 			},
 			wantEmulatorInGen: "1.5.56",
 		},
@@ -170,12 +170,14 @@ func TestSingleSiteGeneratorDetails(t *testing.T) {
 		{name: "routes dir", got: g.RoutesDir(), want: "pkg/router"},
 		{name: "handler tests dir", got: g.HandlerTestsDir(), want: "test/authz"},
 		{name: "rpc dir", got: g.RPCDir(), want: "pkg/rpc"},
-		{name: "option count", got: len(g.Options), want: 11},
+		{name: "option count", got: len(g.Options), want: 12},
 		{name: "plural overrides", got: mustOption(t, g, "WithPluralOverrides").Args[0].Map, want: map[string]string{"Lens": "Lenses"}},
 		{name: "initialism overrides", got: mustOption(t, g, "CaserInitialismOverrides").Args[0].Map, want: map[string]string{"GPS": "true"}},
 		{name: "consolidated bool", got: mustOption(t, g, "WithConsolidatedHandlers").Args[1].Bool, want: true},
 		{name: "consolidated variadic", got: mustOption(t, g, "WithConsolidatedHandlers").Args[2].Str, want: "Beacon"},
-		{name: "outlet option nested", got: mustOption(t, g, "WithRouterOutlet").Args[2].Call.Name, want: "ServesSessions"},
+		{name: "outlet option nested", got: mustOption(t, g, "WithRouterOutlet").Args[2].Call.Name, want: "Auth"},
+		{name: "auth flavor identifier", got: mustOption(t, g, "WithRouterOutlet").Args[2].Call.Args[1], want: Arg{Kind: ArgIdent, Str: "Password"}},
+		{name: "default outlet options ride GenerateRoutes", got: len(mustOption(t, g, "GenerateRoutes").Args), want: 4},
 	}
 
 	for _, tt := range tests {

@@ -25,16 +25,27 @@ func run(ctx context.Context) error {
 			"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router",
 		},
 		generation.GenerateHandlers("app"),
-		generation.GenerateRoutes("pkg/router", "api"),
+		// The router is generated from the outlet declarations: the console is the default
+		// outlet, the staff auth's password sessions under /api with its browser application
+		// at /.
+		generation.GenerateRouter(),
+		generation.GenerateRoutes("pkg/router", "api",
+			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff", generation.Password),
+			generation.WebApp("/"),
+		),
 		// The portal outlet is a second browser surface: structs annotated with @outlet
-		// naming portal are served under /portal/api behind the same session handling
-		// the console uses, and ServesSessions registers the permission-digest and
-		// user-domains routes there so the portal's generated client can bootstrap.
-		generation.WithRouterOutlet("portal", "portal/api", generation.ServesSessions()),
+		// naming portal are served under /portal/api behind the members auth, whose people
+		// sign in through the organization's Azure directory, with their own
+		// permission-digest and user-domains routes and the portal's browser application
+		// at /portal.
+		generation.WithRouterOutlet("portal", "portal/api",
+			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members", generation.OIDCAzure),
+			generation.WebApp("/portal"),
+		),
 		// The machines outlet is the machine REST API: structs annotated with @outlet
 		// naming machines are served under /machines, which the router composes behind
-		// API-key authentication instead of a browser session.
-		generation.WithRouterOutlet("machines", "machines"),
+		// API-key authentication (the App's MachinesAuth) instead of a browser session.
+		generation.WithRouterOutlet("machines", "machines", generation.APIKey()),
 		generation.GenerateHandlerTests("test/authz"),
 		// Tenant-scoped resources and RPC methods are served under the tenant segment
 		// pair: /api/tenants/{tenantID}/... . The tenant is the permission domain, and

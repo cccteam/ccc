@@ -82,10 +82,10 @@ impulse check --list
 | `generator-program` | Every generator program uses options this release knows, with literal arguments. A program the tool cannot read completely is one it cannot later edit or migrate. |
 | `options` | The generator programs declare one coherent option set, and the report states it: layout (flat or multi-site), sites, tenancy (`WithDomainRoute`, `WithConcealedDomains`), outlets, and targets. Handlers come with routes, `ForOutlet` names a declared session-serving outlet, the referenced directories exist, a `//go:generate` directive runs every program, the sites agree on tenancy, and a second site lives under `apps/<site>/`. |
 | `tenancy-wired` | A program with `WithDomainRoute` has a migration creating the tenant-record table the segment names, at least one struct annotated `@permissionScope(domain)`, and every `access.MigrateRoles` call outside tests passing domains. A program without it has no tenant-scoped structs and passes no domains. The compiler and the generator hold the rest of the seam. |
-| `outlet-wired` | Every outlet a program declares (the default from `GenerateRoutes` and each `WithRouterOutlet`) has its generated routes mounted by a hand-written file in the router package, a session-serving outlet has a `GenerateTypescript` target naming it, and that browser project's development proxy forwards the outlet's prefix. An outlet with no `@outlet` members yet is noted, not failed. |
+| `outlet-wired` | Every outlet a program declares (the default from `GenerateRoutes` and each `WithRouterOutlet`) has its generated routes mounted: by the generated router (`GenerateRouter`) from the declaration itself, or, in an application that kept a hand-written router, by a hand-written file in the router package calling `generated<Outlet>Routes`. A session-serving outlet has a `GenerateTypescript` target naming it, and that browser project's development proxy forwards the outlet's prefix. An outlet with no `@outlet` members yet is noted, not failed. |
 | `sites-wired` | In the multi-site layout, every site has a main package under `apps/<site>/`, a process in the Procfile or process-compose file running it on its own `PORT`, and every site's router is imported by some package calling `access.MigrateRoles`, so a role migration (the union collection, or one per auth) reconciles against the site's resources. |
 | `auth-wired` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the auths, one per distinct flavor and table set, each named by its package when it lives in one (`pkg/auth/<name>`), with its session and XSRF cookies when named, and an OIDC auth's role-membership authority (directory for `RoleSync`, application for `DisableRoleSync`). |
-| `auths-wired` | Every auth package (`pkg/auth/<name>`, constructing a session authenticator) is constructed by the data level (`<name>.New` called outside tests), provisioned from its roles file (`<name>.RolesPath` read by a file that migrates roles, and the file exists), and bound by a surface (a package outside `config` and `cmd/` takes `*<name>.Auth`). No two auth packages issue the same cookie, session or XSRF, a name left unset being the session library's default (`auth`, `XSRF-TOKEN`); the browser keeps one cookie of a name per host, so a login to one auth would overwrite the other's. An auth that hands role membership to its directory (`session.RoleSync`) has no role writer in the application reaching its store, since the directory removes those roles at the next login. Authenticators outside auth packages warn. |
+| `auths-wired` | Every auth package (`pkg/auth/<name>`, constructing a session authenticator) is constructed by the data level (`<name>.New` called outside tests), provisioned from its roles file (`<name>.RolesPath` read by a file that migrates roles, and the file exists), and bound by a surface: an outlet declaring `Auth("<module>/pkg/auth/<name>", <flavor>)` in the flavor the package constructs (the generated router mounts that flavor's login routes, so a disagreement is a finding), or a package outside `config` and `cmd/` taking `*<name>.Auth`. An outlet bound to a package that is no auth package is a finding. No two auth packages issue the same cookie, session or XSRF, a name left unset being the session library's default (`auth`, `XSRF-TOKEN`); the browser keeps one cookie of a name per host, so a login to one auth would overwrite the other's. An auth that hands role membership to its directory (`session.RoleSync`) has no role writer in the application reaching its store, since the directory removes those roles at the next login. Authenticators outside auth packages warn. |
 | `skipauth` | When an auth signs in through a directory (the OIDC flavors), the simulated directory stays in development and tests: no application code reads `APP_USERNAME` or `APP_ROLES` (only the session library's `skipAuth` build does), and no build description (Dockerfile, cloudbuild, Makefile) carries the tag, which would let a deployed build accept any name as a login. |
 | `emulator-version` | The generator option, the process files' image tags, and the test harnesses name one Spanner emulator version. |
 | `prettier-ignore` | Each browser app's `.prettierignore` excludes the generated TypeScript. Prettier reflowing generated files breaks generate idempotence. `--fix` adds the entry. |
@@ -168,15 +168,19 @@ impulse add outlet machines --prefix machines --api-key
 ```
 
 `add outlet` adds a router outlet to a flat application. For a session outlet the
-generator program gains `WithRouterOutlet(name, prefix, ServesSessions())` after
-`GenerateRoutes` and a `GenerateTypescript` target for the outlet copied from the default
-target's, and the console's browser project is copied to `web/<name>` with its API prefix,
-base path, and compiler output rewritten and registered in `angular.json` (serving under
-`/<name>` on the next port), the package scripts, and the Procfile. For an API-key outlet
-the program gains `WithRouterOutlet(name, prefix)` alone. `go generate` then emits the
-outlet's routes, handlers, and client. The router mount, the served assets, the
-configuration, the members (`@outlet`), and the tests are the agent's, and `outlet-wired`
-holds it to them.
+generator program gains `WithRouterOutlet(name, prefix, Auth(<the console's auth>),
+WebApp("/<name>"))` after `GenerateRoutes` and a `GenerateTypescript` target for the outlet
+copied from the default target's, and the console's browser project is copied to
+`web/<name>` with its API prefix, base path, and compiler output rewritten and registered
+in `angular.json` (serving under `/<name>` on the next port), the package scripts, and the
+Procfile. For an API-key outlet the program gains `WithRouterOutlet(name, prefix,
+APIKey())`. (An application that kept a hand-written router gains `ServesSessions()` or
+nothing, as before.) `go generate` then emits the outlet's routes, handlers, and client,
+and the generated router mounts the outlet from its declaration: its group, its login
+routes, its not-found handler, and its browser application. The App's handlers the
+generated `Handlers` now requires (the outlet's session getter and deep-link and assets
+pair, or its `<Outlet>Auth` middleware), the configuration, the members (`@outlet`), and
+the tests are the agent's, and the compiler and `outlet-wired` hold it to them.
 
 `add tenancy` makes a flat, untenanted application tenanted. The generator program gains
 `WithDomainRoute` (the table's kebab-case name) and `WithConcealedDomains`; the tenant
@@ -285,9 +289,12 @@ reference OIDC auth under its own name (what the file carried beyond the base's 
 git to re-apply); one migration drops its session tables and creates them in the new shape,
 with a down that recreates the old tables from their own migrations; the data level's
 construction gains the login page and the directory registration; the Procfile builds with
-`skipAuth`; and where the App and the router stand in the base's shape, the handler types
-(`session.PasswordAuthHandlers`, the embedded `*session.PasswordAuth`) and the password
-login route are swapped for the directory's. Everyone in the auth signs in again. Its role
+`skipAuth`; every outlet bound to the auth in the generator program (`Auth(<package>,
+<flavor>)`) is rewritten to the new flavor, so regeneration mounts the directory's login
+routes; and where the App (and a hand-written router) stand in the base's shape, the
+handler types (`session.PasswordAuthHandlers`, the embedded `*session.PasswordAuth`) and,
+in a hand-written router, the password login route are swapped for the directory's.
+Everyone in the auth signs in again. Its role
 assignments are dropped by recreating the assignment table, since they were keyed by
 password usernames the directory need not present; `--carry-roles` keeps them when the
 usernames were already the directory's. The bootstrap (identities without passwords, no
@@ -318,9 +325,11 @@ an `@outlet` list that names the outlet beside others drops it, so those structs
 their other outlets. A struct on the outlet alone keeps its annotation, which fails
 generation, because whether it moves to the default outlet (the console's people reach it
 then) or leaves the application with its table is a decision about who may reach it; the
-brief lists each. The router group that mounted the outlet, the App's handlers for it, its
-configuration and environment lines (the brief quotes them), and its tests are the
-agent's. The auth the outlet was bound to stays. There is no data consequence.
+brief lists each. Regeneration drops the outlet's group from the generated router along
+with its `Hooks` field, so a hook naming it fails to compile until removed; the App's
+handlers for the outlet, its configuration and environment lines (the brief quotes them),
+and its tests are the agent's (and, under a hand-written router, the group that mounted
+it). The auth the outlet was bound to stays. There is no data consequence.
 
 `remove site <name>` removes a site from a multi-site application: `apps/<name>/` is
 deleted with its generator program and directive, its TypeScript target leaves the shared

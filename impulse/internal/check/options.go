@@ -25,7 +25,7 @@ func (options) Describe() string {
 // singleOptions may be passed once per program; a repeat means the later call silently
 // overrides the earlier.
 var singleOptions = []string{
-	"GenerateHandlers", "GenerateRoutes", "GenerateHandlerTests", "WithDomainRoute", "WithConcealedDomains",
+	"GenerateHandlers", "GenerateRoutes", "GenerateRouter", "GenerateHandlerTests", "WithDomainRoute", "WithConcealedDomains",
 	"WithRPC", "ApplicationName", "WithSpannerEmulatorVersion", "WithConsolidatedHandlers",
 }
 
@@ -46,7 +46,7 @@ func (c options) Run(_ context.Context, env *Env) Result {
 		details = append(details, c.programFindings(a, g)...)
 	}
 	for i := range p.Sites {
-		details = append(details, c.siteFindings(&p.Sites[i])...)
+		details = append(details, c.siteFindings(a, &p.Sites[i])...)
 	}
 	details = append(details, c.layoutFindings(p)...)
 	details = append(details, c.tenancyFindings(p)...)
@@ -120,9 +120,11 @@ func (options) programFindings(a *app.App, g *app.Generator) []string {
 }
 
 // siteFindings checks the agreements inside one site's program: handlers and routes come
-// together, outlets need routes and distinct names, concealment needs tenancy, and every
-// ForOutlet names a declared, session-serving outlet.
-func (options) siteFindings(s *app.Site) []string {
+// together, outlets need routes and distinct names, concealment needs tenancy, every
+// ForOutlet names a declared, session-serving outlet, and the router options agree with
+// GenerateRouter: with it every outlet says how it authenticates, without it none of them
+// describe a router that is not generated.
+func (c options) siteFindings(a *app.App, s *app.Site) []string {
 	g := s.Generator
 	var details []string
 	if g.RoutesDir() == "" {
@@ -130,10 +132,14 @@ func (options) siteFindings(s *app.Site) []string {
 		if len(s.Outlets) > 0 {
 			details = append(details, fmt.Sprintf("%s: WithRouterOutlet requires GenerateRoutes", s.Outlets[0].Pos))
 		}
+		if s.GeneratedRouter {
+			details = append(details, fmt.Sprintf("%s: GenerateRouter requires GenerateRoutes; the generated router serves the generated route tables", g.File))
+		}
 	}
 	if s.ConcealedDomains && !s.Tenanted() {
 		details = append(details, fmt.Sprintf("%s: WithConcealedDomains without WithDomainRoute; there are no domains to conceal", g.File))
 	}
+	details = append(details, c.routerFindings(a, s)...)
 
 	outlets := map[string]app.Outlet{}
 	for _, o := range s.Outlets {
@@ -160,14 +166,61 @@ func (options) siteFindings(s *app.Site) []string {
 	return details
 }
 
+// routerFindings checks the outlet declarations against GenerateRouter. Without the
+// option, Auth, APIKey, and WebApp describe a router nobody generates. With it, every
+// outlet declares Auth or APIKey and not both, a machine outlet serves no browser
+// application, and an auth package the program names has its directory in the module.
+func (options) routerFindings(a *app.App, s *app.Site) []string {
+	if s.Generator.RoutesDir() == "" {
+		return nil
+	}
+	var details []string
+	for _, o := range s.AllOutlets() {
+		if !s.GeneratedRouter {
+			var declared string
+			switch {
+			case o.Auth != nil:
+				declared = "Auth"
+			case o.APIKey:
+				declared = "APIKey"
+			case o.WebApp != "":
+				declared = "WebApp"
+			default:
+				continue
+			}
+			details = append(details, fmt.Sprintf("%s: outlet %s declares %s, which describes the generated router; declare GenerateRouter, or drop the option and compose the outlet in the hand-written router", o.Pos, o.Name, declared))
+
+			continue
+		}
+		switch {
+		case o.Auth != nil && o.APIKey:
+			details = append(details, fmt.Sprintf("%s: outlet %s declares both Auth and APIKey; an outlet is a browser surface behind one auth or a machine surface behind an API key", o.Pos, o.Name))
+		case o.Auth == nil && !o.APIKey:
+			details = append(details, fmt.Sprintf("%s: outlet %s declares neither Auth nor APIKey; under GenerateRouter every outlet says how it authenticates", o.Pos, o.Name))
+		case o.APIKey && o.WebApp != "":
+			details = append(details, fmt.Sprintf("%s: outlet %s declares APIKey and WebApp(%q); a machine outlet serves no browser application", o.Pos, o.Name, o.WebApp))
+		}
+		if o.Auth == nil {
+			continue
+		}
+		if dir, ok := a.ModuleDir(o.Auth.ImportPath); ok {
+			if info, err := os.Stat(a.Abs(dir)); err != nil || !info.IsDir() {
+				details = append(details, fmt.Sprintf("%s: outlet %s binds to Auth(%q), which has no directory %s in the module", o.Pos, o.Name, o.Auth.ImportPath, dir))
+			}
+		}
+	}
+
+	return details
+}
+
 // layoutFindings checks the sites against the layout: one site at the root, or every
 // site under apps/<site>/ with a distinct name.
 func (options) layoutFindings(p app.Profile) []string {
 	var details []string
 	if p.Layout == app.LayoutFlat && len(p.Sites) > 1 {
 		files := make([]string, 0, len(p.Sites))
-		for _, s := range p.Sites {
-			files = append(files, s.Generator.File)
+		for i := range p.Sites {
+			files = append(files, p.Sites[i].Generator.File)
 		}
 
 		return []string{fmt.Sprintf("%d sites share the flat layout (%s); a second site belongs under apps/<site>/", len(p.Sites), strings.Join(files, ", "))}
@@ -176,7 +229,8 @@ func (options) layoutFindings(p app.Profile) []string {
 		return nil
 	}
 	byName := map[string]string{}
-	for _, s := range p.Sites {
+	for i := range p.Sites {
+		s := &p.Sites[i]
 		if s.Dir == "." {
 			details = append(details, fmt.Sprintf("%s: site packages are not under one apps/<site>/ directory (resources %s, handlers %s, routes %s)", s.Generator.File, s.Generator.ResourcePackageDir, s.Generator.HandlersDir(), s.Generator.RoutesDir()))
 
@@ -240,7 +294,9 @@ func profileSummary(p app.Profile) string {
 		b.WriteString("; " + tenancy(&p.Sites[0]))
 	}
 	var outlets []string
-	for _, s := range p.Sites {
+	generated := len(p.Sites) > 0
+	for i := range p.Sites {
+		s := &p.Sites[i]
 		for _, o := range s.Outlets {
 			name := o.Name
 			if o.ServesSessions {
@@ -248,11 +304,15 @@ func profileSummary(p app.Profile) string {
 			}
 			outlets = append(outlets, name)
 		}
+		generated = generated && s.GeneratedRouter
 	}
 	if len(outlets) == 0 {
 		b.WriteString("; no outlets")
 	} else {
 		b.WriteString("; outlets " + strings.Join(outlets, ", "))
+	}
+	if generated {
+		b.WriteString("; generated router")
 	}
 
 	return b.String()
@@ -261,11 +321,16 @@ func profileSummary(p app.Profile) string {
 // profileDetails lists each generator with where it writes.
 func profileDetails(p app.Profile) []string {
 	details := make([]string, 0, len(p.Sites)+len(p.Shared))
-	for _, s := range p.Sites {
+	for i := range p.Sites {
+		s := &p.Sites[i]
 		g := s.Generator
 		parts := []string{"resources " + g.ResourcePackageDir, "handlers " + g.HandlersDir()}
-		if routes, ok := g.Option("GenerateRoutes"); ok && len(routes.Args) == 2 {
-			parts = append(parts, fmt.Sprintf("routes %s under /%s", g.RoutesDir(), path.Clean(routes.Args[1].Str)))
+		if routes, ok := g.Option("GenerateRoutes"); ok && len(routes.Args) >= 2 {
+			routed := fmt.Sprintf("routes %s under /%s", g.RoutesDir(), path.Clean(routes.Args[1].Str))
+			if s.GeneratedRouter {
+				routed += " (generated router)"
+			}
+			parts = append(parts, routed)
 		}
 		if tests := g.HandlerTestsDir(); tests != "" {
 			parts = append(parts, "tests "+tests)
