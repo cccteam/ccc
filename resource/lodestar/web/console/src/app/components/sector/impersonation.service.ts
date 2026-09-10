@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
-import { API_URL } from '@cccteam/resource-angular/types';
+import { API_URL, SessionInfo } from '@cccteam/resource-angular/types';
 import { firstValueFrom } from 'rxjs';
 
 /** The impersonation record the session endpoint reports for a minted session. */
@@ -15,11 +15,8 @@ export interface ImpersonationRecord {
   expiresAt: string;
 }
 
-interface SessionResponse {
-  authenticated: boolean;
-  username: string;
-  impersonation?: ImpersonationRecord;
-}
+/** The session endpoint's answer as the crew auth writes it: the library's SessionInfo plus the record. */
+type SessionResponse = SessionInfo & { impersonation?: ImpersonationRecord };
 
 interface EndImpersonationResponse {
   /** Whether the actor's own session was still live and the browser is back in it. */
@@ -43,8 +40,18 @@ export class ImpersonationService {
   private router = inject(Router);
   private apiUrl = inject(API_URL);
 
-  /** The current session's impersonation record, if the session was minted. */
-  readonly record = signal<ImpersonationRecord | undefined>(undefined);
+  /**
+   * The current session's impersonation record, if the session was minted. It is read
+   * off the library's session signal rather than fetched on its own: checkUserSession
+   * stores the endpoint's whole answer, and login, logout, the route guard, and a
+   * rebind all run it, so the record follows the cookie. A record kept in a separate
+   * signal outlived a revoked session — the banner stayed up through the forced
+   * re-login until a hard reload.
+   */
+  readonly record = computed<ImpersonationRecord | undefined>(() => {
+    const session = this.auth.sessionInfo() as SessionResponse;
+    return session.authenticated ? session.impersonation : undefined;
+  });
 
   /** A clock the banner's countdown ticks on. */
   private readonly now = signal(Date.now());
@@ -61,7 +68,11 @@ export class ImpersonationService {
       };
     }
     const mask = record.mask?.length ? `${record.mask.join(', ')} only` : 'unrestricted';
-    return { kind: 'User' as const, text: `Viewing as ${record.principal}, ${mask}. You are ${record.actor}.`, remaining };
+    return {
+      kind: 'User' as const,
+      text: `Viewing as ${record.principal}, ${mask}. You are ${record.actor}.`,
+      remaining,
+    };
   });
 
   /** The time left before the session's hard cap (MaxDuration, two hours) ends it. */
@@ -76,18 +87,7 @@ export class ImpersonationService {
   }
 
   constructor() {
-    void this.refresh();
     setInterval(() => this.now.set(Date.now()), 1000);
-  }
-
-  /** Re-reads the session endpoint for the impersonation record. */
-  async refresh(): Promise<void> {
-    try {
-      const session = await firstValueFrom(this.http.get<SessionResponse>(`${this.apiUrl}/user/session`));
-      this.record.set(session.impersonation);
-    } catch {
-      this.record.set(undefined);
-    }
   }
 
   /** Whether the session mask removes the permission (the service card's stripe). */
@@ -118,7 +118,9 @@ export class ImpersonationService {
    * cap passed), in which case the caller sends the actor to login.
    */
   async end(): Promise<boolean> {
-    const { restored } = await firstValueFrom(this.http.post<EndImpersonationResponse>(`${this.apiUrl}/impersonate/end`, {}));
+    const { restored } = await firstValueFrom(
+      this.http.post<EndImpersonationResponse>(`${this.apiUrl}/impersonate/end`, {}),
+    );
     if (restored) {
       await this.rebind();
     }
@@ -133,7 +135,6 @@ export class ImpersonationService {
     this.auth.permissions.clear();
     await firstValueFrom(this.auth.checkUserSession());
     await this.auth.permissions.refresh();
-    await this.refresh();
     await this.router.navigateByUrl('/dashboard');
   }
 }
