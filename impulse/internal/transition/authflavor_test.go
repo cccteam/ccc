@@ -175,7 +175,7 @@ func TestAuthFlavorApply(t *testing.T) {
 					"DROP TABLE StaffSessionUsers;", "DROP INDEX StaffSessions_Expired_idx;\nDROP TABLE StaffSessions;",
 					"CREATE TABLE StaffSessions (", "OidcSid", "CREATE INDEX StaffSessionsByOidcSid ON StaffSessions (OidcSid DESC);",
 					"CREATE TABLE StaffOIDCUsers (", "CREATE UNIQUE INDEX StaffOIDCUsersByTidOid ON StaffOIDCUsers (Tid, Oid);",
-					"DROP INDEX StaffStaffUserRolesByScopeUser;\n\nDROP TABLE StaffUserRoles;\n\nCREATE TABLE StaffUserRoles (", "INTERLEAVE IN PARENT StaffRoles ON DELETE NO ACTION;\n\nCREATE INDEX StaffStaffUserRolesByScopeUser ON StaffUserRoles (IsGlobal, Domain, User);",
+					"DROP INDEX StaffStaffUserRolesByScopeUser;\n\nDROP TABLE StaffUserRoles;\n\nCREATE TABLE StaffUserRoles (", "INTERLEAVE IN PARENT StaffRoles ON DELETE NO ACTION;\n\nCREATE INDEX StaffStaffUserRolesByScopeUser ON StaffUserRoles (IsGlobal, Axis, Domain, User);",
 				} {
 					at := strings.Index(up, want)
 					if at < 0 {
