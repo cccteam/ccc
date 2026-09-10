@@ -311,9 +311,8 @@ func targetRootKey(pStruct *parser.Struct, rootName string, root *resourceInfo, 
 }
 
 // rejectRPCOnlyAnnotations fails a struct of another kind that carries an annotation
-// only an @rpc struct may: @transition on the struct, and @target or a field-scope
-// @enumerate on a field. A resource declares no handler to frame, and its fields'
-// enumerations are inferred from their types and the schema rather than declared.
+// only an @rpc struct may: @transition on the struct, and @target on a field. A
+// resource declares no handler to frame.
 func rejectRPCOnlyAnnotations(pStruct *parser.Struct, annotations genlang.StructAnnotations, kind string) error {
 	var errs []error
 	if annotations.Struct.Has(transitionKeyword) {
@@ -322,9 +321,6 @@ func rejectRPCOnlyAnnotations(pStruct *parser.Struct, annotations genlang.Struct
 	for i, field := range pStruct.Fields() {
 		if annotations.Fields[i].Has(targetKeyword) {
 			errs = append(errs, errors.Newf("struct %s field %s: @%s is only valid on @%s structs; a %s declares no handler to frame", pStruct.Name(), field.Name(), targetKeyword, rpcKeyword, kind))
-		}
-		if annotations.Fields[i].Has(enumerateKeyword) {
-			errs = append(errs, errors.Newf("struct %s field %s: @%s on a field is only valid on @%s structs; a %s field's enumeration is inferred from its type and the schema", pStruct.Name(), field.Name(), enumerateKeyword, rpcKeyword, kind))
 		}
 	}
 	if len(errs) > 0 {

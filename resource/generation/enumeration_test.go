@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 )
 
 // The enumeration rules: a struct backing an @enumerate table is read-only by
@@ -177,6 +178,21 @@ func Test_typescriptResourcesTemplate_enumeration(t *testing.T) {
 		res.EnumerationType = "WidgetKind"
 		res.SuppressedHandlers = []HandlerType{PatchHandler}
 	})
+	views := genlang.Arg("GadgetViews")
+	declared := fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
+		for _, f := range res.Fields {
+			f.typescriptType = "string"
+		}
+		res.Fields[1].IsForeignKey = true
+		res.Fields[1].ReferencedResource = "Gadgets"
+		res.Fields[1].enumerateArg = &views
+		res.Fields[1].applyEnumeration(enumerationSource{Name: "GadgetViews"})
+	})
+	computed := fixtureComputedResource(t, structs, "Gadget")
+	for _, f := range computed.Fields {
+		f.typescriptType = "string"
+	}
+	computed.Fields[1].applyEnumeration(enumerationSource{Name: "Sprockets"})
 
 	tests := []struct {
 		name            string
@@ -202,6 +218,21 @@ func Test_typescriptResourcesTemplate_enumeration(t *testing.T) {
 				"deleteDisabled: true,",
 			},
 		},
+		{
+			name: "a declared enumeration names the declared resource, not the key's target",
+			data: tsResourcesData{Resources: []*resourceInfo{declared}, GenPrefix: "zz_gen"},
+			wantContains: []string{
+				"{ fieldName: 'name', displayType: 'enumerated', required: true, isIndex: false, enumeratedResource: Resources.GadgetViews }",
+			},
+			wantNotContains: []string{"Resources.Gadgets "},
+		},
+		{
+			name: "a computed field's declared enumeration names its resource",
+			data: tsResourcesData{ComputedResources: []*computedResource{computed}, GenPrefix: "zz_gen"},
+			wantContains: []string{
+				"{ fieldName: 'name', displayType: 'enumerated', required: false, isIndex: false, enumeratedResource: Resources.Sprockets }",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -211,6 +242,73 @@ func Test_typescriptResourcesTemplate_enumeration(t *testing.T) {
 			g := &typescriptGenerator{client: &client{}}
 			tt.data.File = g
 			out, err := g.generateTemplateOutput("typescriptResourcesTemplate", typescriptResourcesTemplate, tt.data)
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("output lacks %q\n%s", want, out)
+				}
+			}
+			for _, unwanted := range tt.wantNotContains {
+				if strings.Contains(string(out), unwanted) {
+					t.Errorf("output must not contain %q", unwanted)
+				}
+			}
+		})
+	}
+}
+
+// Test_typescriptMethodsTemplate_enumeration pins the request-field metadata: a field
+// naming a resource carries enumeratedResource and pulls the Resources import, and a
+// field naming an enumeration table carries the values inline and pulls nothing.
+func Test_typescriptMethodsTemplate_enumeration(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+	kinds := []*enumData{{ID: "gear", Description: "Gear"}, {ID: "lever", Description: "Lever"}}
+	newMethod := func(src enumerationSource) *rpcMethodInfo {
+		field := &rpcField{Field: structs["DoSomething"].Fields()[0], typescriptType: "string"}
+		field.applyEnumeration(src)
+
+		return &rpcMethodInfo{Struct: structs["DoSomething"], Fields: []*rpcField{field}}
+	}
+
+	tests := []struct {
+		name            string
+		method          *rpcMethodInfo
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name:   "a field naming a resource references its constant",
+			method: newMethod(enumerationSource{Name: "Gadgets"}),
+			wantContains: []string{
+				"import { Methods, Resources } from './zz_gen_constants';",
+				"{ fieldName: 'input', displayType: 'enumerated', enumeratedResource: Resources.Gadgets }",
+			},
+		},
+		{
+			name:   "a field naming an enumeration table carries the values inline",
+			method: newMethod(enumerationSource{Name: "WidgetKinds", Enumeration: "WidgetKind", Values: kinds}),
+			wantContains: []string{
+				"import { Methods } from './zz_gen_constants';",
+				`{ fieldName: 'input', displayType: 'enumerated', enumeration: [{ id: "gear", display: "Gear" }, { id: "lever", display: "Lever" }] }`,
+			},
+			wantNotContains: []string{"Resources"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{rpcMethods: []*rpcMethodInfo{tt.method}}
+			out, err := c.generateTemplateOutput("typescriptMethodsTemplate", typescriptMethodsTemplate, tsMethodsData{
+				File:       &typescriptGenerator{client: c},
+				RPCMethods: c.rpcMethods,
+				GenPrefix:  "zz_gen",
+			})
 			if err != nil {
 				t.Fatalf("generateTemplateOutput() error = %v", err)
 			}

@@ -84,7 +84,7 @@ func (f *wireField) prefix() string {
 		b.WriteString("*")
 	}
 	if f.Slice {
-		b.WriteString("[]")
+		b.WriteString(sliceSuffix)
 	}
 	if f.ElemPointer {
 		b.WriteString("*")
@@ -111,7 +111,7 @@ func (f *wireField) TypescriptType(namespace string) string {
 		base = namespace + "." + f.Nested.TypescriptName()
 	}
 	if f.Slice {
-		base += "[]"
+		base += sliceSuffix
 	}
 
 	return base
@@ -125,7 +125,7 @@ func (f *wireField) TypescriptDisplayType() string {
 		base = objectTSType
 	}
 	if f.Slice {
-		base += "[]"
+		base += sliceSuffix
 	}
 
 	return base
@@ -143,6 +143,9 @@ func (f *wireField) hasCustomType() bool {
 
 // objectTSType is the display type of a nested field: an opaque object.
 const objectTSType = "object"
+
+// sliceSuffix marks a TypeScript array type.
+const sliceSuffix = "[]"
 
 // tsDataType maps a metadata display type to the TypeScript type an interface
 // declares for it.

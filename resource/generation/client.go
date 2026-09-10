@@ -295,6 +295,7 @@ func (c *client) templateFuncs() map[string]any {
 		"Kebab":                        strcase.ToKebab,
 		"Lower":                        strings.ToLower,
 		"Add":                          func(a, b int) int { return a + b },
+		"EnumerationLiteral":           enumerationLiteral,
 		"FormatResourceInterfaceTypes": c.formatResourceInterfaceTypes,
 		"FormatRPCInterfaceTypes":      formatRPCInterfaceTypes,
 		"PrivateType": func(s string) string {
@@ -726,16 +727,6 @@ func typescriptConsImports(t *typescriptGenerator, d *resource.TypescriptData) s
 	}
 
 	return strings.Join(pkgs, ", ")
-}
-
-func (c *client) doesResourceExist(resourceName string) bool {
-	for _, res := range c.resources {
-		if c.pluralize(res.Name()) == resourceName {
-			return true
-		}
-	}
-
-	return false
 }
 
 func startStandaloneNumber(result []byte, b byte) bool {

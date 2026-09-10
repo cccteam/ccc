@@ -279,6 +279,12 @@ func (r *resourceGenerator) Generate() error {
 		r.computedResources = computedResources
 	}
 
+	// A field-scope @enumerate may name a computed resource, so the declarations
+	// resolve only once every kind is extracted.
+	if err := r.resolveFieldEnumerations(r.resources, r.computedResources); err != nil {
+		return err
+	}
+
 	// The domain route parameter is derived from the parsed resources (tenant-record
 	// pattern), so it must resolve before anything renders a domain route.
 	r.deriveDomainRouteParam()

@@ -39,10 +39,18 @@ type (
 		Name string `conditions:"pii,"`
 	}
 
-	// EnumeratedField declares a field-scope enumeration outside an RPC struct.
+	// EnumeratedField declares a field-scope enumeration outside an RPC struct, which
+	// every kind may.
 	EnumeratedField struct {
 		ID string
 		// @enumerate(Widgets)
+		WidgetID string
+	}
+
+	// TargetedField carries @target outside an RPC struct, which only a method may.
+	TargetedField struct {
+		ID string
+		// @target
 		WidgetID string
 	}
 

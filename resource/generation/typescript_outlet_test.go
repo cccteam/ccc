@@ -6,6 +6,7 @@ import (
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/ettle/strcase"
 	"github.com/google/go-cmp/cmp"
 )
@@ -53,18 +54,31 @@ func Test_typescriptGenerator_excludeFromOutlet(t *testing.T) {
 }
 
 // Test_typescriptGenerator_validateOutletMemberReferences pins the fail-loud rule for
-// cross-outlet references: a member method whose transition root or enumerated field
-// names an excluded resource fails generation, because the emitted metadata would
-// reference a Resources constant the filtered constants file no longer declares.
+// cross-outlet references: a member whose transition root or declared enumeration
+// names an excluded resource fails generation — on a method's field, a resource's
+// field, or a computed resource's field — because the emitted metadata would
+// reference a Resources constant the filtered constants file no longer declares. A
+// key's inferred enumeration is no declaration and passes here (it degrades instead).
 func Test_typescriptGenerator_validateOutletMemberReferences(t *testing.T) {
 	t.Parallel()
 
 	structs := fixtureStructs(loadCollectionFixture(t))
-	enumerated := "Gadgets"
+	gadgets := genlang.Arg("Gadgets")
+	declaring := func(res *resourceInfo) {
+		res.Fields[1].enumerateArg = &gadgets
+		res.Fields[1].applyEnumeration(enumerationSource{Name: "Gadgets"})
+	}
+	inferring := func(res *resourceInfo) {
+		res.Fields[1].IsForeignKey = true
+		res.Fields[1].IsEnumerated = true
+		res.Fields[1].ReferencedResource = "Gadgets"
+	}
 
 	tests := []struct {
 		name         string
 		method       *rpcMethodInfo
+		resource     func(*resourceInfo)
+		computed     *computedResource
 		excluded     []accesstypes.Resource
 		wantContains string
 	}{
@@ -79,13 +93,37 @@ func Test_typescriptGenerator_validateOutletMemberReferences(t *testing.T) {
 			wantContains: "declares a transition on Gadgets, which is not on the outlet",
 		},
 		{
-			name: "an enumerated field referencing another outlet fails",
+			name: "an enumerated method field referencing another outlet fails",
 			method: &rpcMethodInfo{
 				Struct: structs["DoSomething"],
-				Fields: []*rpcField{{Field: structs["DoSomething"].Fields()[0], enumeratedResource: &enumerated}},
+				Fields: []*rpcField{{Field: structs["DoSomething"].Fields()[0], enumeratedResource: "Gadgets"}},
 			},
 			excluded:     []accesstypes.Resource{"Gadgets"},
-			wantContains: "enumerates Gadgets, which is not on the outlet",
+			wantContains: "RPC method DoSomething field Input enumerates Gadgets, which is not on the outlet",
+		},
+		{
+			name:         "a resource field declaring a resource on another outlet fails",
+			resource:     declaring,
+			excluded:     []accesstypes.Resource{"Gadgets"},
+			wantContains: "resource Widgets field Name enumerates Gadgets, which is not on the outlet",
+		},
+		{
+			name:     "a resource field declaring a resource on the outlet passes",
+			resource: declaring,
+		},
+		{
+			name:     "a key's inferred enumeration off the outlet is no declaration and passes",
+			resource: inferring,
+			excluded: []accesstypes.Resource{"Gadgets"},
+		},
+		{
+			name: "a computed field declaring a resource on another outlet fails",
+			computed: &computedResource{
+				Struct: structs["Summary"],
+				Fields: []*computedField{{Field: structs["Summary"].Fields()[1], IsEnumerated: true, enumeratedResource: "Gadgets"}},
+			},
+			excluded:     []accesstypes.Resource{"Gadgets"},
+			wantContains: "computed resource Summaries field Total enumerates Gadgets, which is not on the outlet",
 		},
 	}
 
@@ -93,13 +131,25 @@ func Test_typescriptGenerator_validateOutletMemberReferences(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			var methods []*rpcMethodInfo
+			if tt.method != nil {
+				methods = []*rpcMethodInfo{tt.method}
+			}
+			var resources []*resourceInfo
+			if tt.resource != nil {
+				resources = []*resourceInfo{fixtureResource(t, structs, "Widget", tt.resource)}
+			}
+			var computed []*computedResource
+			if tt.computed != nil {
+				computed = []*computedResource{tt.computed}
+			}
 			g := &typescriptGenerator{
 				outletName:     "portal",
 				outletExcluded: tt.excluded,
-				client:         &client{rpcMethods: []*rpcMethodInfo{tt.method}},
+				client:         &client{rpcMethods: methods},
 			}
 
-			err := g.validateOutletMemberReferences()
+			err := g.validateOutletMemberReferences(resources, computed)
 			if tt.wantContains == "" {
 				if err != nil {
 					t.Fatalf("validateOutletMemberReferences() error = %v, want nil", err)

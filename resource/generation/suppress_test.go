@@ -213,3 +213,29 @@ func Test_validComputedSuppressArgs(t *testing.T) {
 		t.Errorf("validComputedSuppressArgs() mismatch (-want +got):\n%s", diff)
 	}
 }
+
+// Test_resourceInfo_ReadHandlerDisabled pins where a resource's keyed read is absent: a
+// suppressed read handler, and every virtual resource, which lists and never reads.
+func Test_resourceInfo_ReadHandlerDisabled(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		res  resourceInfo
+		want bool
+	}{
+		{name: "a table-backed resource reads", res: resourceInfo{}},
+		{name: "a suppressed read handler is absent", res: resourceInfo{SuppressedHandlers: []HandlerType{ReadHandler}}, want: true},
+		{name: "a virtual resource never reads", res: resourceInfo{IsVirtual: true}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.res.ReadHandlerDisabled(); got != tt.want {
+				t.Errorf("ReadHandlerDisabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

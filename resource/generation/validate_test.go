@@ -6,6 +6,7 @@ import (
 
 	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
+	"github.com/google/go-cmp/cmp"
 )
 
 func Test_validateNoPermTags(t *testing.T) {
@@ -89,8 +90,8 @@ func Test_validateConditionsTags(t *testing.T) {
 	}
 }
 
-// Test_rejectRPCOnlyAnnotations pins that a field-scope @enumerate outside an @rpc
-// struct is refused naming the field, alongside the @transition and @target refusals.
+// Test_rejectRPCOnlyAnnotations pins that @target outside an @rpc struct is refused
+// naming the field, while a field-scope @enumerate, which every kind may declare, passes.
 func Test_rejectRPCOnlyAnnotations(t *testing.T) {
 	t.Parallel()
 
@@ -101,7 +102,8 @@ func Test_rejectRPCOnlyAnnotations(t *testing.T) {
 		structName   string
 		wantContains string
 	}{
-		{name: "a field-scope @enumerate is refused on a resource", structName: "EnumeratedField", wantContains: "struct EnumeratedField field WidgetID: @enumerate on a field is only valid on @rpc structs; a resource field's enumeration is inferred"},
+		{name: "a field-scope @target is refused on a resource", structName: "TargetedField", wantContains: "struct TargetedField field WidgetID: @target is only valid on @rpc structs; a resource declares no handler to frame"},
+		{name: "a field-scope @enumerate passes on a resource", structName: "EnumeratedField"},
 		{name: "a struct without RPC-only annotations passes", structName: "Clean"},
 	}
 
@@ -130,21 +132,49 @@ func Test_rejectRPCOnlyAnnotations(t *testing.T) {
 }
 
 // Test_resolveEnumerate pins the field-scope @enumerate argument: exactly one, naming
-// a resource the generator knows.
+// an enumeration table (rendered inline) or a table-backed, virtual, or computed
+// resource keyed by a single column.
 func Test_resolveEnumerate(t *testing.T) {
 	t.Parallel()
 
 	structs := fixtureStructs(loadCollectionFixture(t))
-	c := &client{resources: []*resourceInfo{fixtureResource(t, structs, "Widget", nil)}}
+	kinds := []*enumData{{ID: "gear", Description: "Gear"}}
+	c := &client{
+		resources: []*resourceInfo{
+			fixtureResource(t, structs, "Widget", nil),
+			fixtureResource(t, structs, "Gadget", func(res *resourceInfo) {
+				res.PkCount = 2
+			}),
+			fixtureResource(t, structs, "Curio", func(res *resourceInfo) {
+				res.IsVirtual = true
+			}),
+			fixtureResource(t, structs, "Relic", func(res *resourceInfo) {
+				res.IsVirtual = true
+				res.Fields[0].IsPrimaryKey = false
+			}),
+		},
+		computedResources: []*computedResource{
+			{Struct: structs["Summary"], Fields: []*computedField{{Field: structs["Summary"].Fields()[0], IsPrimaryKey: true}}},
+			{Struct: structs["Sprocket"], Fields: []*computedField{{Field: structs["Sprocket"].Fields()[0]}}},
+		},
+		enumerateTables: map[string]string{"WidgetKinds": "WidgetKind"},
+		enumValues:      map[string][]*enumData{"WidgetKinds": kinds},
+	}
 
 	tests := []struct {
 		name         string
 		arg          genlang.Arg
-		want         string
+		want         enumerationSource
 		wantContains string
 	}{
-		{name: "a known resource resolves", arg: "Widgets", want: "Widgets"},
+		{name: "a table-backed resource resolves", arg: "Widgets", want: enumerationSource{Name: "Widgets"}},
+		{name: "a virtual resource with a declared key resolves", arg: "Curios", want: enumerationSource{Name: "Curios"}},
+		{name: "a computed resource with a declared key resolves", arg: "Summaries", want: enumerationSource{Name: "Summaries"}},
+		{name: "an enumeration table resolves to its values", arg: "WidgetKinds", want: enumerationSource{Name: "WidgetKinds", Enumeration: "WidgetKind", Values: kinds}},
 		{name: "an unknown resource is refused", arg: "Gizmos", wantContains: `@enumerate(Gizmos): resource "Gizmos" does not exist`},
+		{name: "a compound-key resource is refused", arg: "Gadgets", wantContains: "@enumerate(Gadgets): the primary key of Gadgets spans 2 columns, and a picker stores one"},
+		{name: "a virtual resource without a key is refused", arg: "Relics", wantContains: "@enumerate(Relics): Relics declares no primary key, and a picker stores the one key of the resource it lists; declare the key with @primarykey"},
+		{name: "a computed resource without a key is refused", arg: "Sprockets", wantContains: "@enumerate(Sprockets): Sprockets declares no primary key"},
 		{name: "two arguments are refused", arg: "Widgets\x00Gizmos", wantContains: "@enumerate on a field takes one argument, the enumerated resource; got 2"},
 	}
 
@@ -159,8 +189,8 @@ func Test_resolveEnumerate(t *testing.T) {
 			if err != nil && !strings.Contains(err.Error(), tt.wantContains) {
 				t.Errorf("resolveEnumerate() error = %v, want it to contain %q", err, tt.wantContains)
 			}
-			if got != tt.want {
-				t.Errorf("resolveEnumerate() = %q, want %q", got, tt.want)
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(enumerationSource{})); diff != "" {
+				t.Errorf("resolveEnumerate() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

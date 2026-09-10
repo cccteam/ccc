@@ -73,6 +73,7 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 		resource.Fields = fields
+		declareFieldEnumerations(pStruct, fields, annotations)
 
 		if err := validateNullability(pStruct, table); err != nil {
 			resourceErrors = append(resourceErrors, err)
@@ -387,6 +388,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 		resource.Fields = fields
+		declareFieldEnumerations(pStruct, fields, annotations)
 
 		nullableFields, err := fieldNullability(pStruct)
 		if err != nil {
@@ -419,25 +421,6 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 	}
 
 	return resources, nil
-}
-
-// rejectPrimaryKeyAnnotations errors when a table-backed @resource struct carries
-// @primarykey field annotations: table-backed primary keys come from the schema, and
-// the annotation is only valid on @computed and @virtual structs.
-// resolveEnumerate reads a field-scope @enumerate(Resource): the enumerated resource an
-// RPC request field draws its values from, which the TypeScript client renders as that
-// resource's picker. A table-backed field infers its enumeration from the schema's
-// foreign key; a request field has no schema, so it declares one.
-func (c *client) resolveEnumerate(arg genlang.Arg) (string, error) {
-	if arg.Count() != 1 {
-		return "", errors.Newf("@%s on a field takes one argument, the enumerated resource; got %d", enumerateKeyword, arg.Count())
-	}
-	name := string(arg)
-	if !c.doesResourceExist(name) {
-		return "", errors.Newf("@%s(%s): resource %q does not exist", enumerateKeyword, name, name)
-	}
-
-	return name, nil
 }
 
 // scanStruct scans a struct's annotations and refuses the struct when it claims more
@@ -477,6 +460,9 @@ func rejectMultipleKinds(pStruct *parser.Struct, annotations genlang.StructAnnot
 	return nil
 }
 
+// rejectPrimaryKeyAnnotations errors when a table-backed @resource struct carries
+// @primarykey field annotations: table-backed primary keys come from the schema, and
+// the annotation is only valid on @computed and @virtual structs.
 func rejectPrimaryKeyAnnotations(pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
 	var errs []error
 	for i, field := range pStruct.Fields() {
@@ -619,13 +605,13 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 		for i, field := range s.Fields() {
 			field := rpcField{Field: field, wire: rpcMethod.Request.Fields[i], namespace: s.Name(), typescriptType: rpcMethod.Request.Fields[i].TypescriptDisplayType()}
 			if annotations.Fields[i].Has(enumerateKeyword) {
-				enumeratedResource, err := c.resolveEnumerate(annotations.Fields[i].Get(enumerateKeyword))
+				src, err := c.resolveEnumerate(annotations.Fields[i].Get(enumerateKeyword))
 				if err != nil {
 					field.AddError(err.Error())
 
 					continue
 				}
-				field.enumeratedResource = &enumeratedResource
+				field.applyEnumeration(src)
 			}
 
 			rpcMethod.Fields = append(rpcMethod.Fields, &field)
@@ -874,6 +860,10 @@ func (c *client) computedFields(res *computedResource, annotations genlang.Struc
 			field.KeyOrdinalPosition = keyCount
 			keyCount++
 		}
+		if annotations.Fields[i].Has(enumerateKeyword) {
+			arg := annotations.Fields[i].Get(enumerateKeyword)
+			field.enumerateArg = &arg
+		}
 
 		if err := checkOpaqueField(res.Name(), field); err != nil {
 			errs = append(errs, err)
@@ -940,6 +930,9 @@ func checkOpaqueField(resource string, field *computedField) error {
 	path := resource + "." + field.Name()
 	if field.IsPrimaryKey {
 		return errors.Newf("%s: a nested field cannot be a primary key", path)
+	}
+	if field.enumerateArg != nil {
+		return errors.Newf("%s: a nested field is opaque and cannot carry a field-scope @%s; a picker stores one value", path, enumerateKeyword)
 	}
 	for _, key := range opaqueTagKeys {
 		if _, ok := field.LookupTag(key); ok {

@@ -57,12 +57,32 @@ type (
 		ID       ccc.UUID // @primarykey
 		Readings []Reading
 	}
+
+	// EnumeratedBoard declares a picker on a leaf field.
+	//
+	// @computed
+	EnumeratedBoard struct {
+		ID      ccc.UUID // @primarykey
+		BoardID ccc.UUID // @enumerate(Boards)
+	}
+
+	// EnumeratedNestedBoard declares a picker on a nested field, which is opaque.
+	//
+	// @computed
+	EnumeratedNestedBoard struct {
+		ID       ccc.UUID  // @primarykey
+		Readings []Reading // @enumerate(Boards)
+	}
 )
 
 func (Board) Resource() accesstypes.Resource            { return "Boards" }
 func (IndexedBoard) Resource() accesstypes.Resource     { return "IndexedBoards" }
 func (ListFilterBoard) Resource() accesstypes.Resource  { return "ListFilterBoards" }
 func (NestedOrderBoard) Resource() accesstypes.Resource { return "NestedOrderBoards" }
+func (EnumeratedBoard) Resource() accesstypes.Resource  { return "EnumeratedBoards" }
+func (EnumeratedNestedBoard) Resource() accesstypes.Resource {
+	return "EnumeratedNestedBoards"
+}
 
 type Client struct{}
 
@@ -95,5 +115,21 @@ func ListNestedOrderBoard(context.Context, *resource.QuerySet[NestedOrderBoard],
 }
 
 func ReadNestedOrderBoard(context.Context, ccc.UUID, *resource.QuerySet[NestedOrderBoard], resource.Client, *Client) (*NestedOrderBoard, error) {
+	return nil, nil
+}
+
+func ListEnumeratedBoard(context.Context, *resource.QuerySet[EnumeratedBoard], resource.Client, *Client) iter.Seq2[*EnumeratedBoard, error] {
+	return nil
+}
+
+func ReadEnumeratedBoard(context.Context, ccc.UUID, *resource.QuerySet[EnumeratedBoard], resource.Client, *Client) (*EnumeratedBoard, error) {
+	return nil, nil
+}
+
+func ListEnumeratedNestedBoard(context.Context, *resource.QuerySet[EnumeratedNestedBoard], resource.Client, *Client) iter.Seq2[*EnumeratedNestedBoard, error] {
+	return nil
+}
+
+func ReadEnumeratedNestedBoard(context.Context, ccc.UUID, *resource.QuerySet[EnumeratedNestedBoard], resource.Client, *Client) (*EnumeratedNestedBoard, error) {
 	return nil, nil
 }

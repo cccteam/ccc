@@ -382,9 +382,11 @@ func (r *rpcMethodInfo) IsClientForm() bool {
 	return r.Form == rpcFormClient
 }
 
+// hasEnumeratedResource reports whether a field's picker lists a resource, which the
+// metadata names through the Resources constant; an inline enumeration names none.
 func (r *rpcMethodInfo) hasEnumeratedResource() bool {
 	for _, field := range r.Fields {
-		if field.IsEnumerated() {
+		if field.IsEnumerated() && field.Enumeration == "" {
 			return true
 		}
 	}
@@ -514,9 +516,14 @@ type rpcField struct {
 	wire *wireField
 	// namespace is the TypeScript namespace the method's nested interfaces
 	// declare in: the method's name.
-	namespace          string
-	typescriptType     string
-	enumeratedResource *string
+	namespace      string
+	typescriptType string
+	// A picker's source, from the field's @enumerate: enumeratedResource is the name as
+	// written — the resource whose rows the picker lists, or an enumeration table
+	// whose values ride inline (Enumeration names the type, EnumerationValues its rows).
+	enumeratedResource string
+	Enumeration        string
+	EnumerationValues  []*enumData
 }
 
 // MirrorType is the field's type in the handler's request mirror.
@@ -528,7 +535,7 @@ func (r *rpcField) MirrorType() string {
 	return r.wire.MirrorType()
 }
 
-func (r rpcField) JSONTag() string {
+func (r *rpcField) JSONTag() string {
 	caser := strcase.NewCaser(false, nil, nil)
 	camelCaseName := caser.ToCamel(r.Name())
 
@@ -543,27 +550,30 @@ func (r *rpcField) TypescriptDataType() string {
 	switch r.typescriptType {
 	case uuidTSType:
 		return stringGoType
-	case uuidTSType + "[]":
-		return stringGoType + "[]"
+	case uuidTSType + sliceSuffix:
+		return stringGoType + sliceSuffix
 	case civilDateTSType:
 		return dateTSType
-	case civilDateTSType + "[]":
-		return dateTSType + "[]"
+	case civilDateTSType + sliceSuffix:
+		return dateTSType + sliceSuffix
 	default:
 		return r.typescriptType
 	}
 }
 
 func (r *rpcField) IsEnumerated() bool {
-	return r.enumeratedResource != nil
+	return r.enumeratedResource != ""
 }
 
 func (r *rpcField) EnumeratedResource() string {
-	if r.enumeratedResource == nil {
-		return ""
-	}
+	return r.enumeratedResource
+}
 
-	return *r.enumeratedResource
+// applyEnumeration marks the field enumerated from its resolved @enumerate.
+func (r *rpcField) applyEnumeration(src enumerationSource) {
+	r.enumeratedResource = src.Name
+	r.Enumeration = src.Enumeration
+	r.EnumerationValues = src.Values
 }
 
 func (r *rpcField) TypescriptDisplayType() string {
@@ -658,6 +668,16 @@ type computedField struct {
 	typescriptType     string
 	IsPrimaryKey       bool
 	KeyOrdinalPosition int
+	// enumerateArg is the field-scope @enumerate argument as written, resolved once
+	// every kind is extracted (resolveFieldEnumerations); nil when none is declared.
+	enumerateArg *genlang.Arg
+	// A picker's source, from that declaration: enumeratedResource is the name as
+	// written — the resource whose rows the picker lists, or an enumeration table
+	// whose values ride inline (Enumeration names the type, EnumerationValues its rows).
+	IsEnumerated       bool
+	enumeratedResource string
+	Enumeration        string
+	EnumerationValues  []*enumData
 }
 
 // MirrorType is the field's type in the handlers' local mirrors.
@@ -669,15 +689,32 @@ func (c *computedField) MirrorType() string {
 	return c.wire.MirrorType()
 }
 
-// TypescriptDisplayType is the field's display type in generated metadata: the
-// lower-cased data type of a leaf, as the metadata has always carried it, or
-// object for a nested field.
+// TypescriptDisplayType is the field's display type in generated metadata: enumerated
+// for a declared picker, the lower-cased data type of a leaf, as the metadata has
+// always carried it, or object for a nested field.
 func (c *computedField) TypescriptDisplayType() string {
+	if c.IsEnumerated {
+		return enumeratedDisplayType
+	}
 	if c.wire != nil && !c.wire.IsLeaf() {
 		return c.wire.TypescriptDisplayType()
 	}
 
 	return strings.ToLower(c.TypescriptDataType())
+}
+
+// EnumeratedResource is the name the field's @enumerate wrote: the resource whose
+// rows a picker for the field lists.
+func (c *computedField) EnumeratedResource() string {
+	return c.enumeratedResource
+}
+
+// applyEnumeration marks the field enumerated from its resolved @enumerate.
+func (c *computedField) applyEnumeration(src enumerationSource) {
+	c.IsEnumerated = true
+	c.enumeratedResource = src.Name
+	c.Enumeration = src.Enumeration
+	c.EnumerationValues = src.Values
 }
 
 func (c *computedField) JSONTag() string {
@@ -825,8 +862,12 @@ func (r *resourceInfo) ListHandlerDisabled() bool {
 	return slices.Contains(r.SuppressedHandlers, ListHandler)
 }
 
+// ReadHandlerDisabled reports whether the resource has no keyed read: suppressed with
+// @suppress(readHandler), or a virtual resource, which lists and never reads (the
+// router registers no read route for a view, and the metadata says so, so a picker over
+// it resolves a picked row's display from the list).
 func (r *resourceInfo) ReadHandlerDisabled() bool {
-	return slices.Contains(r.SuppressedHandlers, ReadHandler)
+	return r.IsVirtual || slices.Contains(r.SuppressedHandlers, ReadHandler)
 }
 
 func (r *resourceInfo) CreateHandlerDisabled() bool {
@@ -970,6 +1011,12 @@ type resourceField struct {
 	EnumerationValues []*enumData
 	ReferencedField   string
 	HasDefault        bool
+	// enumerateArg is the field-scope @enumerate argument as written, resolved once
+	// every kind is extracted (resolveFieldEnumerations); nil when none is declared.
+	enumerateArg *genlang.Arg
+	// declaredResource is the name that declaration wrote, once resolved; empty for
+	// an inferred enumeration, whose resource is the foreign key's target.
+	declaredResource string
 
 	// The @state marker (design plan §09): IsState derives output-only decode
 	// and the ungrantable Create/Update; StateDefault is the declared initial
@@ -988,6 +1035,30 @@ type resourceField struct {
 	// name, declared on the member's anchoring FK field (the field IS the
 	// hop). Empty for fields outside any workflow.
 	WorkflowRoot string
+}
+
+// HasDeclaredEnumeration reports whether a field-scope @enumerate names the field's
+// picker source, so the schema's foreign key is not consulted for one.
+func (f *resourceField) HasDeclaredEnumeration() bool {
+	return f.enumerateArg != nil
+}
+
+// EnumeratedResource is the resource whose rows a picker for the field lists: the
+// declared one when a field-scope @enumerate names it, else the foreign key's target.
+func (f *resourceField) EnumeratedResource() string {
+	if f.declaredResource != "" {
+		return f.declaredResource
+	}
+
+	return f.ReferencedResource
+}
+
+// applyEnumeration marks the field enumerated from its resolved field-scope @enumerate.
+func (f *resourceField) applyEnumeration(src enumerationSource) {
+	f.IsEnumerated = true
+	f.declaredResource = src.Name
+	f.Enumeration = src.Enumeration
+	f.EnumerationValues = src.Values
 }
 
 // When generating QueryClauses for Null-style wrapper types we want to use the underlying type

@@ -76,15 +76,20 @@ func (t *typescriptGenerator) excludeFromOutlet(m *outletMembership, resourceNam
 	return true
 }
 
-// validateOutletMemberReferences rejects a member RPC method that references a
-// resource excluded from the target outlet — a declared transition's root, or an
-// enumerated field's resource. The emitted metadata names such a resource through
-// the Resources constant, which the filtered constants file no longer declares;
-// silently narrowing the metadata in this client alone would misrepresent the
-// method, so the mismatch fails generation with the fix instead.
-func (t *typescriptGenerator) validateOutletMemberReferences() error {
+// validateOutletMemberReferences rejects a member that references a resource excluded
+// from the target outlet — a method's declared transition root, or the resource a
+// declared @enumerate names on a method's, resource's, or computed resource's field.
+// The emitted metadata names such a resource through the Resources constant, which
+// the filtered constants file no longer declares; silently narrowing the metadata in
+// this client alone would misrepresent the member, so the mismatch fails generation
+// with the fix instead. (A key's inferred enumeration is not a declaration and
+// degrades to its plain type; see resourceFieldsTypescriptType.)
+func (t *typescriptGenerator) validateOutletMemberReferences(resources []*resourceInfo, computedResources []*computedResource) error {
 	excluded := func(name string) bool {
 		return slices.Contains(t.outletExcluded, accesstypes.Resource(name))
+	}
+	enumerates := func(kind, member, field, enumerated string) error {
+		return errors.Newf("outlet %q: %s %s field %s enumerates %s, which is not on the outlet; attach %s to the outlet via @%s, or drop the @enumerate annotation", t.targetOutlet(), kind, member, field, enumerated, enumerated, outletKeyword)
 	}
 
 	for _, method := range t.rpcMethods {
@@ -93,7 +98,21 @@ func (t *typescriptGenerator) validateOutletMemberReferences() error {
 		}
 		for _, field := range method.Fields {
 			if field.IsEnumerated() && excluded(field.EnumeratedResource()) {
-				return errors.Newf("outlet %q: RPC method %s field %s enumerates %s, which is not on the outlet; attach %s to the outlet via @%s, or drop the @enumerate annotation", t.targetOutlet(), method.Name(), field.Name(), field.EnumeratedResource(), field.EnumeratedResource(), outletKeyword)
+				return enumerates("RPC method", method.Name(), field.Name(), field.EnumeratedResource())
+			}
+		}
+	}
+	for _, res := range resources {
+		for _, field := range res.Fields {
+			if field.HasDeclaredEnumeration() && excluded(field.EnumeratedResource()) {
+				return enumerates("resource", t.pluralize(res.Name()), field.Name(), field.EnumeratedResource())
+			}
+		}
+	}
+	for _, res := range computedResources {
+		for _, field := range res.Fields {
+			if field.IsEnumerated && excluded(field.EnumeratedResource()) {
+				return enumerates("computed resource", t.pluralize(res.Name()), field.Name(), field.EnumeratedResource())
 			}
 		}
 	}
@@ -104,10 +123,11 @@ func (t *typescriptGenerator) validateOutletMemberReferences() error {
 // applyOutletFilter narrows the parsed sets to the target outlet's members. Every
 // member on another outlet falls away here — resources, computed resources, and
 // RPC methods — and is recorded so the collection-derived constants drop the same
-// registrations; the surviving methods' cross-outlet references are then validated.
-// Enumerated-field references resolve against the outlet's members only, so a field
-// referencing a resource on another outlet degrades to its plain type instead of
-// referencing a Resources constant the filtered output no longer declares.
+// registrations; the surviving members' cross-outlet references are then validated.
+// A key's inferred enumeration resolves against the outlet's members only, so a key
+// into a resource on another outlet degrades to its plain type instead of referencing
+// a Resources constant the filtered output no longer declares; a declared enumeration
+// is a statement about the field and fails generation instead.
 func (t *typescriptGenerator) applyOutletFilter(resources []*resourceInfo, computedResources []*computedResource) ([]*resourceInfo, []*computedResource, error) {
 	t.outletExcludedTables = make(map[string]struct{})
 	resources = slices.DeleteFunc(resources, func(res *resourceInfo) bool {
@@ -120,7 +140,7 @@ func (t *typescriptGenerator) applyOutletFilter(resources []*resourceInfo, compu
 		return t.excludeFromOutlet(&method.outletMembership, method.Name(), false)
 	})
 
-	if err := t.validateOutletMemberReferences(); err != nil {
+	if err := t.validateOutletMemberReferences(resources, computedResources); err != nil {
 		return nil, nil, err
 	}
 
@@ -224,6 +244,13 @@ func (t *typescriptGenerator) Generate() error {
 		if err != nil {
 			return err
 		}
+	}
+
+	// A field-scope @enumerate may name a computed resource, so the declarations
+	// resolve only now, against every kind, before the filter narrows the sets.
+	t.computedResources = computedResources
+	if err := t.resolveFieldEnumerations(resources, computedResources); err != nil {
+		return err
 	}
 
 	t.resources = resources
@@ -538,6 +565,11 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceFie
 			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
 		}
 
+		// A declared enumeration names the picker's source itself and is resolved
+		// already (resolveFieldEnumerations); the schema's foreign key adds nothing.
+		if field.HasDeclaredEnumeration() {
+			continue
+		}
 		if !field.IsForeignKey {
 			continue
 		}
