@@ -3,7 +3,7 @@
 //
 // Configuration is a chain of levels, one per kind of process, each embedding the one
 // below it: core (every process), data (every process that opens the database), and
-// server (the served application). A variable lives at the lowest level whose consumer
+// site (the served site). A variable lives at the lowest level whose consumer
 // uses it, so a process declares — through the constructor it calls — exactly the
 // environment it needs, and a deploy step supplies no more than that.
 package config

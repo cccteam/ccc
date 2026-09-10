@@ -44,7 +44,7 @@ func TestFS(t *testing.T) {
 		name    string
 		wantErr bool
 		// entry is the file that proves the layout: main.go at the root for a
-		// single-site template, the apps directory for multi-site. lockfile is the bun
+		// flat template, the apps directory for the sites layout. lockfile is the bun
 		// lockfile of the (first) browser workspace; bunfig.toml sits beside it.
 		entry, lockfile string
 	}{

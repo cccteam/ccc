@@ -39,8 +39,8 @@ launches Claude Code on it and verifies the guardrails when it returns.`,
 
 func newAddSite() *cobra.Command {
 	var (
-		f     transitionFlags
-		first string
+		f        transitionFlags
+		existing string
 	)
 
 	cmd := &cobra.Command{
@@ -53,48 +53,48 @@ program and directive; its serve and browser processes on the next ports; its Ty
 target in the shared generator; and its router collection in the union the roles are
 reconciled against.
 
-On a flat application the first site added promotes the layout, the one non-additive
-transition: the existing site moves under apps/<first>/ (every import of its packages
-changes), its generator becomes cmd/generate/<first>generator, the served configuration
-level becomes the site level (SiteConfiguration reading PORT and APP_DIST per site
-process), the deployment's collection becomes the union of the sites' router collections,
-and a shared generator is laid in over an empty pkg/sharedresources. --first names what the
-existing site becomes and is asked when not given, since the name is the site's directory
-for good. Everything existing belongs to the first site.
+On a flat application the first site added promotes the layout to sites, the one
+non-additive transition: the existing site moves under apps/<existing>/ (every import of
+its packages changes), its generator becomes cmd/generate/<existing>generator, the site
+level's bundle variable becomes APP_DIST (set per site process, in the Procfile), the
+deployment's collection becomes the union of the sites' router collections, and a shared
+generator is laid in over an empty pkg/sharedresources. --existing names what the existing
+site becomes and is asked when not given, since the name is the site's directory for good.
+Everything existing belongs to that site.
 
 The new site's resources, its place in the integration suite, its browser application's
 own titles and pages, and the deployment configuration outside the repository are handed
 to the agent.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if first == "" {
+			if existing == "" {
 				a, err := app.Discover(f.appDir)
 				if err != nil {
 					return err
 				}
 				if a.Profile().Layout == app.LayoutFlat {
-					answer, err := askFirstSite(cmd, a)
+					answer, err := askExistingSite(cmd, a)
 					if err != nil {
 						return err
 					}
-					first = answer
+					existing = answer
 				}
 			}
 
-			return runTransition(cmd, &f, transition_.Site{Name: args[0], First: first}, transition_.SitesReference)
+			return runTransition(cmd, &f, transition_.Site{Name: args[0], Existing: existing}, transition_.SitesReference)
 		},
 	}
 	f.bind(cmd)
-	cmd.Flags().StringVar(&first, "first", "", "on a flat application, the name the existing site takes under apps/ (asked when not given)")
+	cmd.Flags().StringVar(&existing, "existing", "", "on a flat application, the name the existing site takes under apps/ (asked when not given)")
 
 	return cmd
 }
 
-// askFirstSite asks what the existing site is called when a flat application grows its
-// second site and --first did not say.
-func askFirstSite(cmd *cobra.Command, a *app.App) (string, error) {
+// askExistingSite asks what the existing site is called when a flat application grows its
+// second site and --existing did not say.
+func askExistingSite(cmd *cobra.Command, a *app.App) (string, error) {
 	if !stdinIsTerminal() {
-		return "", errors.New("--first is required on a flat application: the existing site moves under apps/<first>/ and the name is its directory for good, so it is asked rather than defaulted")
+		return "", errors.New("--existing is required on a flat application: the existing site moves under apps/<existing>/ and the name is its directory for good, so it is asked rather than defaulted")
 	}
 	hint := ""
 	if len(a.WebApps) > 0 {
@@ -109,7 +109,7 @@ func askFirstSite(cmd *cobra.Command, a *app.App) (string, error) {
 	}
 	answer = strings.TrimSpace(answer)
 	if answer == "" {
-		return "", errors.New("no name given: pass --first <name>")
+		return "", errors.New("no name given: pass --existing <name>")
 	}
 
 	return answer, nil
@@ -147,23 +147,24 @@ type transition interface {
 
 func newAddOutlet() *cobra.Command {
 	var (
-		f        transitionFlags
-		prefix   string
-		sessions bool
-		apiKey   bool
+		f      transitionFlags
+		prefix string
+		auth   string
+		apiKey bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "outlet <name>",
 		Short: "Add a router outlet: a second URL space on the same host",
-		Long: `outlet adds a router outlet to a flat application. A session outlet (--sessions) is a
-second browser surface bound to the console's auth: the generator program gains
-WithRouterOutlet with the console's Auth and WebApp("/<name>") and a GenerateTypescript
-target for the outlet, and the console's browser project is copied to web/<name> with
-its API prefix, base path, and ports rewritten and registered in angular.json, the
-package scripts, and the Procfile. An API-key outlet (--api-key) is a machine surface:
-the generator program gains WithRouterOutlet with APIKey(). (An application that kept a
-hand-written router gains ServesSessions or nothing, as before.)
+		Long: `outlet adds a router outlet to a flat application. A session outlet (--auth <name>) is a
+second browser surface bound to the named auth package, pkg/auth/<name>: the generator
+program gains WithRouterOutlet with that auth's Auth and WebApp("/<name>") and a
+GenerateTypescript target for the outlet, and the console's browser project is copied to
+web/<name> with its API prefix, base path, and ports rewritten and registered in
+angular.json, the package scripts, and the Procfile. An API-key outlet (--api-key) is a
+machine surface: the generator program gains WithRouterOutlet with APIKey(). (An
+application that kept a hand-written router gains ServesSessions or nothing, as before,
+and the brief names the auth the outlet binds to.)
 
 Either way go generate emits the outlet's routes, handlers, and client, and the
 generated router mounts the outlet from its declaration. The App's handlers the router
@@ -172,16 +173,16 @@ middleware), the configuration, the members, and the tests are handed to the age
 the failing checks as the obligations.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if sessions == apiKey {
-				return errors.New("choose --sessions (a browser surface) or --api-key (a machine surface)")
+			if (auth != "") == apiKey {
+				return errors.New("choose --auth <name> (a browser surface bound to that auth) or --api-key (a machine surface)")
 			}
 
-			return runTransition(cmd, &f, transition_.Outlet{Name: args[0], Prefix: prefix, Sessions: sessions}, transition_.ReferenceCandidate)
+			return runTransition(cmd, &f, transition_.Outlet{Name: args[0], Prefix: prefix, Sessions: auth != "", Auth: auth}, transition_.ReferenceCandidate)
 		},
 	}
 	f.bind(cmd)
 	cmd.Flags().StringVar(&prefix, "prefix", "", "the outlet's URL prefix without slashes at either end, such as portal/api (required)")
-	cmd.Flags().BoolVar(&sessions, "sessions", false, "a session outlet: a browser surface behind the session handling, with its own client and browser project")
+	cmd.Flags().StringVar(&auth, "auth", "", "a session outlet: a browser surface bound to this auth package (pkg/auth/<name>), with its own client and browser project")
 	cmd.Flags().BoolVar(&apiKey, "api-key", false, "an API-key outlet: a machine surface behind an authentication the application defines")
 	_ = cmd.MarkFlagRequired("prefix")
 
@@ -215,7 +216,7 @@ failing checks as the obligations.`,
 		},
 	}
 	f.bind(cmd)
-	cmd.Flags().StringVar(&table, "table", "Tenants", "the tenant-record table, PascalCase and plural")
+	cmd.Flags().StringVar(&table, "tenant-table", "Tenants", "the tenant-record table, PascalCase and plural")
 
 	return cmd
 }

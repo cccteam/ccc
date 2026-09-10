@@ -6,7 +6,7 @@ import (
 )
 
 // newSession constructs the password authenticator over tables no migration in this
-// fixture creates, which the auth-wired check reports.
+// fixture creates, which the session-tables check reports.
 func newSession(spannerClient any, cookieKey string) (*session.PasswordAuth[session.NoCustomData, session.NoCustomData], error) {
 	return session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](
 		sessionstorage.NewSpannerPasswordAuth(spannerClient),

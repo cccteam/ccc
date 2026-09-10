@@ -48,7 +48,7 @@ func (nf *newFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&nf.opts.tenantTable, "tenant-table", "Tenants", "the tenant-record table when --tenancy is given, PascalCase and plural")
 	cmd.Flags().StringArrayVar(&nf.opts.outlets, "outlet", nil, "compose a session outlet, <name>=<prefix> (repeatable), such as portal=portal/api")
 	cmd.Flags().StringArrayVar(&nf.opts.apiOutlets, "api-outlet", nil, "compose an API-key outlet, <name>=<prefix> (repeatable), such as machines=machines")
-	cmd.Flags().StringArrayVar(&nf.opts.sites, "site", nil, "compose the multi-site layout: two or more site names (repeatable), the first being what the base site becomes under apps/")
+	cmd.Flags().StringArrayVar(&nf.opts.sites, "site", nil, "compose the sites layout: two or more site names (repeatable), the first being what the base site becomes under apps/")
 	nf.transition.bindAgent(cmd)
 	_ = cmd.MarkFlagRequired("module")
 }
@@ -266,7 +266,7 @@ func (o *composedOptions) transitions() ([]transition, error) {
 		}
 		s := transition_.Site{Name: site}
 		if i == 1 {
-			s.First = o.sites[0]
+			s.Existing = o.sites[0]
 		}
 		ts = append(ts, s)
 	}

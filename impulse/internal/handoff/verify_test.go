@@ -61,15 +61,15 @@ func copyFixture(t *testing.T, name string) *app.App {
 func TestVerify(t *testing.T) {
 	t.Parallel()
 
-	program, err := os.ReadFile(filepath.Join("..", "app", "testdata", "singlesite", singlesiteProgram))
+	program, err := os.ReadFile(filepath.Join("..", "app", "testdata", "flat", flatProgram))
 	if err != nil {
 		t.Fatal(err)
 	}
-	eslint, err := os.ReadFile(filepath.Join("..", "app", "testdata", "singlesite", "web", "console", "eslint.config.js"))
+	eslint, err := os.ReadFile(filepath.Join("..", "app", "testdata", "flat", "web", "console", "eslint.config.js"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	index := map[string]string{singlesiteProgram: string(program), "web/console/eslint.config.js": string(eslint)}
+	index := map[string]string{flatProgram: string(program), "web/console/eslint.config.js": string(eslint)}
 	same := map[string]string{"git rev-parse HEAD": "abc123def4567890\n", "git diff --cached --name-only": ""}
 
 	tests := []struct {
@@ -110,12 +110,12 @@ func TestVerify(t *testing.T) {
 			edit: func(t *testing.T, a *app.App) {
 				t.Helper()
 				edited := strings.Replace(string(program), "\t\tgeneration.WithRPC(\"pkg/rpc\"),\n", "", 1)
-				if err := os.WriteFile(a.Abs(singlesiteProgram), []byte(edited), 0o600); err != nil {
+				if err := os.WriteFile(a.Abs(flatProgram), []byte(edited), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			},
 			want: check.Result{Name: "guardrails", Status: check.Fail, Summary: "1 guardrail(s) moved during the handoff", Details: []string{
-				singlesiteProgram + `: removed WithRPC("pkg/rpc")`,
+				flatProgram + `: removed WithRPC("pkg/rpc")`,
 			}},
 		},
 		{
@@ -132,7 +132,7 @@ func TestVerify(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			a := copyFixture(t, "singlesite")
+			a := copyFixture(t, "flat")
 			if tt.edit != nil {
 				tt.edit(t, a)
 			}

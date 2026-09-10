@@ -55,12 +55,12 @@ func newRemoveSite() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "site <name>",
 		Short: "Remove a site: its tree under apps/<name>/, generator, shared target, union element, and processes",
-		Long: `site removes a site from a multi-site application: apps/<name>/ is deleted with its
-generator program and directive, its TypeScript target leaves the shared generator, its
-router collection leaves the union the roles are reconciled against, its processes leave
-the Procfile, and go generate runs. The remaining sites stay where they are: an
-application left with one site is a multi-site application of one, and nothing moves back
-to the root. The application's last site is not removed.
+		Long: `site removes a site from an application in the sites layout: apps/<name>/ is deleted
+with its generator program and directive, its TypeScript target leaves the shared
+generator, its router collection leaves the union the roles are reconciled against, its
+processes leave the Procfile, and go generate runs. The remaining sites stay where they
+are: an application left with one site keeps the sites layout, and nothing moves back to
+the root. The application's last site is not removed.
 
 The integration suite that served the site, the deployment configuration outside the
 repository, and the tables only the site's resources declared are handed to the agent.`,

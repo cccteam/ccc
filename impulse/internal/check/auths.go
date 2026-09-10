@@ -17,7 +17,7 @@ import (
 // level constructs it, a roles migration provisions its store from its roles file, and a
 // surface binds to it, either an outlet declaring it (Auth, under the generated router)
 // in the flavor the package constructs, or a hand-written surface taking its type, so a
-// population the application declares can sign in somewhere and holds roles. auth-wired
+// population the application declares can sign in somewhere and holds roles. session-tables
 // holds each authenticator to its tables; this holds each auth to the application around
 // it.
 type authsWired struct{}

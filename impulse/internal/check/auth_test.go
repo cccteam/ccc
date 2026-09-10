@@ -264,8 +264,8 @@ func TestAuthWired(t *testing.T) {
 			if err != nil {
 				t.Fatalf("app.Discover() error = %v", err)
 			}
-			got := authWired{}.Run(context.Background(), &Env{App: a})
-			want := Result{Name: authWired{}.Name(), Status: tt.wantStatus, Summary: tt.wantSummary, Details: tt.wantDetails}
+			got := sessionTables{}.Run(context.Background(), &Env{App: a})
+			want := Result{Name: sessionTables{}.Name(), Status: tt.wantStatus, Summary: tt.wantSummary, Details: tt.wantDetails}
 			if diff := cmp.Diff(want, got); diff != "" {
 				t.Errorf("Run() mismatch (-want +got):\n%s", diff)
 			}

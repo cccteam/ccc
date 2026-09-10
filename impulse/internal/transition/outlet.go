@@ -18,9 +18,9 @@ import (
 )
 
 // Outlet adds a router outlet to a flat application: a second URL space on the same
-// host, either a browser surface behind the same session handling as the console (a
-// session outlet, which gets its own generated client and browser project) or a machine
-// surface behind an authentication the application defines (an API-key outlet).
+// host, either a browser surface bound to an auth (a session outlet, which gets its own
+// generated client and browser project) or a machine surface behind an authentication the
+// application defines (an API-key outlet).
 type Outlet struct {
 	// Name is the outlet's lowerCamelCase name, as WithRouterOutlet and @outlet use it.
 	Name string
@@ -28,6 +28,10 @@ type Outlet struct {
 	Prefix string
 	// Sessions marks a session outlet.
 	Sessions bool
+	// Auth names the auth package a session outlet binds to, pkg/auth/<Auth>. Empty binds
+	// the outlet to the auth the default outlet declares: the application's only auth when
+	// impulse new composes the outlet.
+	Auth string
 }
 
 // ReferenceCandidate is the embedded skeleton with both outlet kinds wired.
@@ -39,7 +43,7 @@ var outletNameRE = regexp.MustCompile(`^[a-z][A-Za-z0-9]*$`)
 func (o Outlet) Command() string {
 	kind := "--api-key"
 	if o.Sessions {
-		kind = "--sessions"
+		kind = "--auth " + o.Auth
 	}
 
 	return fmt.Sprintf("impulse add outlet %s --prefix %s %s", o.Name, o.Prefix, kind)
@@ -58,7 +62,7 @@ func (o Outlet) Validate(a *app.App) error {
 	case len(p.Sites) == 0:
 		return errors.New("no generator program emits handlers; the application has no site to add an outlet to")
 	case len(p.Sites) > 1:
-		return errors.New("adding an outlet to a multi-site application is not supported yet")
+		return errors.New("adding an outlet to an application in the sites layout is not supported yet")
 	}
 	site := &p.Sites[0]
 	g := site.Generator
@@ -73,8 +77,78 @@ func (o Outlet) Validate(a *app.App) error {
 	if o.Sessions && defaultTarget(g) == nil {
 		return errors.Newf("%s: a session outlet's browser project is copied from the default outlet's, but no GenerateTypescript target without ForOutlet names one", g.File)
 	}
+	if o.Sessions {
+		if _, _, err := o.binding(a, site); err != nil {
+			return err
+		}
+	}
 
 	return nil
+}
+
+// binding resolves the auth a session outlet binds to: the package --auth names, in the
+// flavor its constructor declares, or the auth the default outlet declares when none is
+// named. Under a hand-written router that declares no Auth there is nothing to bind to in
+// the program, and both results are empty.
+func (o Outlet) binding(a *app.App, site *app.Site) (name string, auth *app.OutletAuth, err error) {
+	if o.Auth == "" {
+		if site.Default.Auth == nil {
+			if site.GeneratedRouter {
+				return "", nil, errors.Newf("%s: the default outlet declares no Auth to bind the %s outlet to; under GenerateRouter the console's GenerateRoutes carries Auth(<package>, <flavor>), or --auth names the auth", site.Generator.File, o.Name)
+			}
+
+			return "", nil, nil
+		}
+
+		return authName(a, site.Default.Auth.ImportPath), site.Default.Auth, nil
+	}
+	for i := range a.AuthPackages {
+		p := &a.AuthPackages[i]
+		if p.Name != o.Auth {
+			continue
+		}
+		flavor := ""
+		for j := range a.Auths {
+			if path.Dir(a.Auths[j].File) == p.Dir {
+				flavor = a.Auths[j].Flavor
+
+				break
+			}
+		}
+		ident := app.FlavorIdent(flavor)
+		if ident == "" {
+			return "", nil, errors.Newf("%s: the %s auth constructs a %s authenticator, which the generated router does not compose; an outlet binds to a password, oidc-azure, or oidc-google auth", p.Dir, o.Auth, flavor)
+		}
+
+		return p.Name, &app.OutletAuth{ImportPath: p.Path, Flavor: ident}, nil
+	}
+
+	return "", nil, errors.Newf("no auth package pkg/auth/%s to bind the %s outlet to; the auths are %s (impulse add auth adds one)", o.Auth, o.Name, authNames(a))
+}
+
+// authName is the name of the auth package at an import path: the package's directory
+// name, as the auths are named.
+func authName(a *app.App, importPath string) string {
+	for i := range a.AuthPackages {
+		if a.AuthPackages[i].Path == importPath {
+			return a.AuthPackages[i].Name
+		}
+	}
+
+	return path.Base(importPath)
+}
+
+// authNames lists the application's auths, or says there are none.
+func authNames(a *app.App) string {
+	if len(a.AuthPackages) == 0 {
+		return "none"
+	}
+	names := make([]string, 0, len(a.AuthPackages))
+	for i := range a.AuthPackages {
+		names = append(names, a.AuthPackages[i].Name)
+	}
+
+	return strings.Join(names, ", ")
 }
 
 // Apply makes the deterministic half of the transition: the generator program gains the
@@ -87,15 +161,30 @@ func (o Outlet) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chan
 	if err := o.Validate(a); err != nil {
 		return nil, err
 	}
-	ch := &Change{Command: o.Command()}
 	site := &a.Profile().Sites[0]
 	g := site.Generator
+	var (
+		name string
+		auth *app.OutletAuth
+	)
+	if o.Sessions {
+		var err error
+		if name, auth, err = o.binding(a, site); err != nil {
+			return nil, err
+		}
+		o.Auth = name
+	}
+	ch := &Change{Command: o.Command()}
 
-	if err := o.editProgram(a, site, ch); err != nil {
+	if err := o.editProgram(a, site, auth, ch); err != nil {
 		return nil, err
 	}
 	if o.Sessions {
-		if err := o.cloneProject(a, g, ch); err != nil {
+		consoleAuth := ""
+		if site.Default.Auth != nil {
+			consoleAuth = authName(a, site.Default.Auth.ImportPath)
+		}
+		if err := o.cloneProject(a, g, consoleAuth, ch); err != nil {
 			return nil, err
 		}
 	}
@@ -120,10 +209,10 @@ func (o Outlet) clientNote() string {
 // editProgram adds WithRouterOutlet after GenerateRoutes and, for a session outlet, a
 // GenerateTypescript target for the outlet copied from the default outlet's. Under the
 // generated router the declaration says how the outlet authenticates: a session outlet
-// binds to the console's auth (the default outlet's Auth) and serves its browser
-// application at /<name>, an API-key outlet declares APIKey; under a hand-written router
-// a session outlet declares ServesSessions.
-func (o Outlet) editProgram(a *app.App, site *app.Site, ch *Change) error {
+// binds to its auth (the one --auth names, else the default outlet's) and serves its
+// browser application at /<name>, an API-key outlet declares APIKey; under a hand-written
+// router a session outlet declares ServesSessions and the brief names the auth.
+func (o Outlet) editProgram(a *app.App, site *app.Site, auth *app.OutletAuth, ch *Change) error {
 	g := site.Generator
 	src, mode, err := readFile(a, g.File)
 	if err != nil {
@@ -133,10 +222,6 @@ func (o Outlet) editProgram(a *app.App, site *app.Site, ch *Change) error {
 	summary := option
 	switch {
 	case site.GeneratedRouter && o.Sessions:
-		auth := site.Default.Auth
-		if auth == nil {
-			return errors.Newf("%s: the default outlet declares no Auth to bind the %s outlet to; under GenerateRouter the console's GenerateRoutes carries Auth(<package>, <flavor>)", g.File, o.Name)
-		}
 		authText := fmt.Sprintf("generation.Auth(%q, generation.%s)", auth.ImportPath, auth.Flavor)
 		webApp := fmt.Sprintf("generation.WebApp(%q)", "/"+o.Name)
 		option = fmt.Sprintf("generation.WithRouterOutlet(%q, %q,\n\t\t\t%s,\n\t\t\t%s,\n\t\t)", o.Name, o.Prefix, authText, webApp)
@@ -152,7 +237,11 @@ func (o Outlet) editProgram(a *app.App, site *app.Site, ch *Change) error {
 	if err != nil {
 		return err
 	}
-	ch.didf("%s: added %s", g.File, strings.TrimPrefix(summary, "generation."))
+	bound := ""
+	if o.Sessions && !site.GeneratedRouter && o.Auth != "" {
+		bound = fmt.Sprintf("; the outlet binds to the %s auth, whose session group the hand-written router composes", o.Auth)
+	}
+	ch.didf("%s: added %s%s", g.File, strings.TrimPrefix(summary, "generation."), bound)
 
 	if o.Sessions {
 		target := defaultTarget(g)
@@ -226,10 +315,11 @@ func defaultTarget(g *app.Generator) *app.TSTarget {
 var skippedNames = map[string]bool{"node_modules": true, "dist": true, ".angular": true, ".yalc": true}
 
 // cloneProject copies the default outlet's browser project to the outlet's, rewrites the
-// API prefix, base path, and output paths in the copy, and registers the project in
-// angular.json, the package scripts, and the Procfile. Each registration it cannot make
-// is recorded as skipped.
-func (o Outlet) cloneProject(a *app.App, g *app.Generator, ch *Change) error {
+// API prefix, base path, and output paths in the copy (and the XSRF cookie it names, when
+// the outlet binds to an auth other than the console's, consoleAuth), and registers the
+// project in angular.json, the package scripts, and the Procfile. Each registration it
+// cannot make is recorded as skipped.
+func (o Outlet) cloneProject(a *app.App, g *app.Generator, consoleAuth string, ch *Change) error {
 	target := defaultTarget(g)
 	w, ok := a.WebAppFor(target.Dir)
 	if !ok {
@@ -257,6 +347,11 @@ func (o Outlet) cloneProject(a *app.App, g *app.Generator, ch *Change) error {
 		oldPrefix = routes.Args[1].Str
 	}
 	rewrites := o.rewrites(oldPrefix, oldRoot)
+	rebound := o.Auth != "" && consoleAuth != "" && o.Auth != consoleAuth
+	if rebound {
+		// The copy echoes the console auth's XSRF cookie; the outlet's auth issues its own.
+		rewrites = append(rewrites, rewrite{"cookieName: '" + consoleAuth + "-xsrf'", "cookieName: '" + o.Auth + "-xsrf'"})
+	}
 	if err := copyProject(a.Abs(path.Join(w.Dir, oldRoot)), a.Abs(path.Join(w.Dir, newRoot)), rewrites); err != nil {
 		return err
 	}
@@ -266,6 +361,9 @@ func (o Outlet) cloneProject(a *app.App, g *app.Generator, ch *Change) error {
 		return errors.Wrap(err, "os.MkdirAll()")
 	}
 	ch.didf("copied the %s browser project to %s/%s, rewriting its API prefix (/%s to /%s), base path (/%s/), and output paths; its titles still say %s", oldRoot, w.Dir, newRoot, oldPrefix, o.Prefix, o.Name, oldRoot)
+	if rebound {
+		ch.didf("%s/%s: its HttpClient names the %s auth's XSRF cookie (%s-xsrf) in place of the %s auth's", w.Dir, newRoot, o.Auth, o.Auth, consoleAuth)
+	}
 
 	port := 0
 	for _, p := range projects {
@@ -472,7 +570,11 @@ func (o Outlet) Meaning() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "A router outlet is a second URL space on the same host. Structs annotated `@outlet(%s)` are served under `/%s` by the generated `generated%sRoutes`; naming only the new outlet takes a struct off the default outlet, and `@outlet(default, %s)` keeps it on both. The generated router (`GenerateRouter`) mounts the outlet from its declaration: its group, its not-found handler, and, for a session outlet, its login routes and its browser application, with the chain documented at the top of `zz_gen_router.go` and proven by `zz_gen_router_test.go`; an application that kept a hand-written router composes the group there instead. The generated tests prove the outlets' URL spaces are disjoint.\n\n", o.Name, o.Prefix, pascal, o.Name)
 	if o.Sessions {
-		fmt.Fprintf(&b, "This is a session outlet: a browser surface bound to the console's auth (the program declares it with the console's `Auth` and `WebApp(\"/%s\")`), so its people sign in under `/%s/user/login` and the generated router serves its browser application from `/%s/`. Give the App what the generated `Handlers` now requires: `%s()` returning the auth's session handlers (the console's embedded session manager satisfies its handler interface, so the method returns it), and the `%sDeepLink` and `%sAssets` pair serving a dist directory from configuration (`APP_%s_DIST` defaulting to `web/dist/%s`), like the console's. A route of the outlet's own goes in the `%s` field of the application's `Hooks`, inside the outlet's guards. Decide which resources the %s outlet serves and annotate them; then run `go generate ./...`. Extend the integration tests: sign in under `/%s/user/login` and read `user-domains` and the permission digest there, and show a resource that is not a member answers not found under the prefix. If the outlet's audience is not the console's, add an auth for it (`impulse add auth`) and point the outlet's `Auth` at it, and add its development login to the bootstrap identities.\n", o.Name, o.Prefix, o.Name, pascal, pascal, pascal, upper, o.Name, pascal, o.Name, o.Prefix)
+		auth := "the auth the console uses"
+		if o.Auth != "" {
+			auth = "the " + o.Auth + " auth"
+		}
+		fmt.Fprintf(&b, "This is a session outlet: a browser surface bound to %s (the program declares it with that auth's `Auth` and `WebApp(\"/%s\")`), so its people sign in under `/%s/user/login` and the generated router serves its browser application from `/%s/`. Give the App what the generated `Handlers` now requires: `%s()` returning the auth's session handlers (an auth's embedded session manager satisfies its handler interface, so the method returns it), and the `%sDeepLink` and `%sAssets` pair serving a dist directory from configuration (`APP_%s_DIST` defaulting to `web/dist/%s`), like the console's. A route of the outlet's own goes in the `%s` field of the application's `Hooks`, inside the outlet's guards. Decide which resources the %s outlet serves and annotate them; then run `go generate ./...`. Extend the integration tests: sign in under `/%s/user/login` and read `user-domains` and the permission digest there, and show a resource that is not a member answers not found under the prefix. If the outlet's audience is another population, add an auth for it (`impulse add auth`), point the outlet's `Auth` at it, and add its development login to the bootstrap identities.\n", auth, o.Name, o.Prefix, o.Name, pascal, pascal, pascal, upper, o.Name, pascal, o.Name, o.Prefix)
 
 		return b.String()
 	}

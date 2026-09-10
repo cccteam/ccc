@@ -22,9 +22,9 @@ func fixture(t *testing.T, name string) *app.App {
 	return a
 }
 
-const singlesiteProgram = "cmd/generate/resourcegenerator/main.go"
+const flatProgram = "cmd/generate/resourcegenerator/main.go"
 
-var singlesiteLines = []string{
+var flatLines = []string{
 	`resources "pkg/resources"`,
 	`migrations ["file://schema/migrations"]`,
 	`packages ["example.com/lighthouse/pkg/resources", "example.com/lighthouse/pkg/rpc"]`,
@@ -45,7 +45,7 @@ var singlesiteLines = []string{
 func TestTake(t *testing.T) {
 	t.Parallel()
 
-	a := fixture(t, "singlesite")
+	a := fixture(t, "flat")
 	tree, err := Take(a, FromTree(a))
 	if err != nil {
 		t.Fatalf("Take(tree) error = %v", err)
@@ -64,7 +64,7 @@ func TestTake(t *testing.T) {
 			name: "the working tree",
 			read: FromTree(a),
 			want: Snapshot{
-				Programs: map[string][]string{singlesiteProgram: singlesiteLines},
+				Programs: map[string][]string{flatProgram: flatLines},
 				Configs:  map[string]string{"web/console/eslint.config.js": eslint},
 			},
 		},
@@ -76,7 +76,7 @@ func TestTake(t *testing.T) {
 		{
 			name: "a source holding another program",
 			read: func(rel string) ([]byte, error) {
-				if rel != singlesiteProgram {
+				if rel != flatProgram {
 					return nil, os.ErrNotExist
 				}
 
@@ -92,7 +92,7 @@ func run() {
 `), nil
 			},
 			want: Snapshot{
-				Programs: map[string][]string{singlesiteProgram: {
+				Programs: map[string][]string{flatProgram: {
 					`resources "pkg/resources"`, `migrations ["file://schema/migrations"]`, `packages []`, `GenerateHandlers("app")`,
 				}},
 				Configs: map[string]string{},

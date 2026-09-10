@@ -2,7 +2,7 @@
 #
 # Variables are grouped by configuration level (pkg/config). A process reads the levels
 # it constructs and nothing above them: cmd/bootstrap and cmd/deployment/migrate read
-# core and data; the served application reads all three.
+# core and data; the served site reads all three.
 
 # --- core: every process ---
 export APP_SERVICE_NAME=outlets
@@ -31,7 +31,7 @@ export APP_ROLES=
 # export APP_MEMBERS_OIDC_CLIENT_SECRET=
 export APP_MEMBERS_OIDC_REDIRECT_URL=http://127.0.0.1:4303/portal/api/user/callback
 
-# --- server: the served application ---
+# --- site: the served site ---
 export PORT=8093
 # export APP_CONSOLE_DIST=web/dist/console
 # export APP_PORTAL_DIST=web/dist/portal

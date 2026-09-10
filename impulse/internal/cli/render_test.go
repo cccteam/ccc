@@ -107,7 +107,7 @@ Next steps
      bun install. ccclib.sh expects the ccc-lib checkout beside this application; set CCC_LIB otherwise.
   5. overmind start
      Everything, with ng serve for the console at http://127.0.0.1:4300.
-  6. impulse add tenancy | impulse add outlet <name> --prefix <p> --sessions | impulse add auth <name>
+  6. impulse add tenancy | impulse add outlet <name> --prefix <p> --auth <auth> | impulse add auth <name>
      Options are added one at a time from a clean tree; each ends in a handoff brief for the
      wiring the tool cannot do and a check that says when it is done.
 `,

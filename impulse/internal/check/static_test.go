@@ -27,7 +27,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 		wantDetails []string
 	}{
 		{
-			name: "generator-program single site", fixture: "singlesite", check: generatorProgram{},
+			name: "generator-program flat", fixture: "flat", check: generatorProgram{},
 			wantStatus: Pass, wantSummary: "1 generator program(s) read completely",
 		},
 		{
@@ -43,14 +43,14 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			},
 		},
 		{
-			name: "options single site", fixture: "singlesite", check: options{},
+			name: "options flat", fixture: "flat", check: options{},
 			wantStatus: Pass, wantSummary: "flat layout, 1 site(s); not tenanted; outlets portal (sessions); generated router",
 			wantDetails: []string{
 				"lighthouse (cmd/generate/resourcegenerator/main.go): resources pkg/resources, handlers app, routes pkg/router under /api (generated router), tests test/authz, rpc pkg/rpc, typescript web/console/src/app/core/service, typescript web/portal/src/app/core/service (outlet portal)",
 			},
 		},
 		{
-			name: "options multi site", fixture: "multisite", check: options{},
+			name: "options sites", fixture: "sites", check: options{},
 			wantStatus: Fail, wantSummary: "2 option set problem(s)",
 			wantDetails: []string{
 				"cmd/generate/resourcegenerator_tugs/main.go: GenerateRoutes names apps/tugs/pkg/router, which is not a directory in the tree",
@@ -62,14 +62,14 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "a generator program could not be read completely (see generator-program)",
 		},
 		{
-			name: "tenancy-wired untenanted with a tenant-scoped struct", fixture: "singlesite", check: tenancyWired{},
+			name: "tenancy-wired untenanted with a tenant-scoped struct", fixture: "flat", check: tenancyWired{},
 			wantStatus: Fail, wantSummary: "1 tenancy wiring problem(s) in an untenanted application",
 			wantDetails: []string{
 				"pkg/resources/beacons.go:8: Beacon is @permissionScope(domain), but no WithDomainRoute names the tenant segment; it is served under the default /domain/{domain}/ pair",
 			},
 		},
 		{
-			name: "tenancy-wired untenanted multi site", fixture: "multisite", check: tenancyWired{},
+			name: "tenancy-wired untenanted sites", fixture: "sites", check: tenancyWired{},
 			wantStatus: Pass, wantSummary: "not tenanted: no tenant-scoped resources, roles provisioned globally",
 		},
 		{
@@ -77,12 +77,12 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no site generator",
 		},
 		{
-			name: "outlet-wired mounted by the generated router", fixture: "singlesite", check: outletWired{},
+			name: "outlet-wired mounted by the generated router", fixture: "flat", check: outletWired{},
 			wantStatus: Pass, wantSummary: "2 outlet(s) mounted: default (/api), portal (/portal, sessions)",
 			wantDetails: []string{"outlet portal has no @outlet(portal) members yet"},
 		},
 		{
-			name: "outlet-wired no router files", fixture: "multisite", check: outletWired{},
+			name: "outlet-wired no router files", fixture: "sites", check: outletWired{},
 			wantStatus: Fail, wantSummary: "2 outlet wiring problem(s)",
 			wantDetails: []string{
 				"cmd/generate/resourcegenerator_pilots/main.go: no file in apps/pilots/pkg/router calls generatedRoutes; the default outlet's routes are not mounted",
@@ -94,11 +94,11 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no site generator",
 		},
 		{
-			name: "sites-wired flat", fixture: "singlesite", check: sitesWired{},
+			name: "sites-wired flat", fixture: "flat", check: sitesWired{},
 			wantStatus: Skip, wantSummary: "flat layout: one site",
 		},
 		{
-			name: "sites-wired nothing serves the sites", fixture: "multisite", check: sitesWired{},
+			name: "sites-wired nothing serves the sites", fixture: "sites", check: sitesWired{},
 			wantStatus: Fail, wantSummary: "4 site wiring problem(s)",
 			wantDetails: []string{
 				"site pilots has no main package in apps/pilots; nothing serves it",
@@ -112,7 +112,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no site generator",
 		},
 		{
-			name: "auth-wired tables missing", fixture: "singlesite", check: authWired{},
+			name: "session-tables tables missing", fixture: "flat", check: sessionTables{},
 			wantStatus: Fail, wantSummary: "2 auth wiring problem(s)",
 			wantDetails: []string{
 				"pkg/config/session.go:11: password auth reads table LighthouseSessions, which no migration creates (the session library's schema is under schema/spanner/migrations)",
@@ -120,19 +120,19 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			},
 		},
 		{
-			name: "auth-wired no authenticator", fixture: "multisite", check: authWired{},
+			name: "session-tables no authenticator", fixture: "sites", check: sessionTables{},
 			wantStatus: Fail, wantSummary: "no session authenticator is constructed outside tests (session.NewPasswordAuth, NewOIDCAzure, NewOIDCGoogle, or NewPreauth)",
 		},
 		{
-			name: "auth-wired no site", fixture: "badprogram", check: authWired{},
+			name: "session-tables no site", fixture: "badprogram", check: sessionTables{},
 			wantStatus: Skip, wantSummary: "no site generator",
 		},
 		{
-			name: "emulator-version single site", fixture: "singlesite", check: emulatorVersion{},
+			name: "emulator-version flat", fixture: "flat", check: emulatorVersion{},
 			wantStatus: Pass, wantSummary: "3 reference(s) agree on 1.5.56",
 		},
 		{
-			name: "emulator-version multi site", fixture: "multisite", check: emulatorVersion{},
+			name: "emulator-version sites", fixture: "sites", check: emulatorVersion{},
 			wantStatus: Fail, wantSummary: "2 different emulator versions in use",
 			wantDetails: []string{
 				"1.5.43     process-compose.yaml:3",
@@ -146,21 +146,21 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no Spanner emulator version is named anywhere",
 		},
 		{
-			name: "prettier-ignore single site", fixture: "singlesite", check: prettierIgnore{},
+			name: "prettier-ignore flat", fixture: "flat", check: prettierIgnore{},
 			wantStatus: Fail, wantSummary: "1 TypeScript target(s) not excluded from prettier (--fix adds the entries)",
 			wantDetails: []string{
 				"web/portal/.prettierignore does not cover src/app/core/service/zz_gen_*.ts (add: src/app/core/service/zz_gen_*.ts)",
 			},
 		},
 		{
-			name: "resource-styles single site console lacks the import", fixture: "singlesite", check: resourceStyles{},
+			name: "resource-styles flat console lacks the import", fixture: "flat", check: resourceStyles{},
 			wantStatus: Fail, wantSummary: "1 browser project(s) do not import the @cccteam/resource-angular stylesheet (--fix adds the @use)",
 			wantDetails: []string{
 				"web/console: project console imports no @cccteam/resource-angular/styles (add to web/console/src/styles.scss: @use '@cccteam/resource-angular/styles';)",
 			},
 		},
 		{
-			name: "resource-styles multi site has no dependent browser app", fixture: "multisite", check: resourceStyles{},
+			name: "resource-styles sites has no dependent browser app", fixture: "sites", check: resourceStyles{},
 			wantStatus: Skip, wantSummary: "no browser app depends on @cccteam/resource-angular",
 		},
 		{
@@ -171,14 +171,14 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			},
 		},
 		{
-			name: "eslint-ignore single site", fixture: "singlesite", check: eslintIgnore{},
+			name: "eslint-ignore flat", fixture: "flat", check: eslintIgnore{},
 			wantStatus: Pass, wantSummary: "1 browser app(s) ignore the generated TypeScript",
 			wantDetails: []string{
 				"web/portal: no eslint configuration, nothing to check",
 			},
 		},
 		{
-			name: "eslint-ignore multi site", fixture: "multisite", check: eslintIgnore{},
+			name: "eslint-ignore sites", fixture: "sites", check: eslintIgnore{},
 			wantStatus: Fail, wantSummary: "2 TypeScript target(s) not ignored by eslint",
 			wantDetails: []string{
 				"apps/pilots/gui/eslint.config.js does not ignore src/app/core/service/zz_gen_*.ts (add ignores: ['**/zz_gen_*.ts'])",
@@ -191,7 +191,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no GenerateTypescript target inside a browser app",
 		},
 		{
-			name: "package-manager mixed lockfiles", fixture: "singlesite", check: packageManager{},
+			name: "package-manager mixed lockfiles", fixture: "flat", check: packageManager{},
 			wantStatus: Fail, wantSummary: "browser apps are locked by 2 different package managers",
 			wantDetails: []string{
 				"bun: web/console",
@@ -199,7 +199,7 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			},
 		},
 		{
-			name: "package-manager foreign invocations", fixture: "multisite", check: packageManager{},
+			name: "package-manager foreign invocations", fixture: "sites", check: packageManager{},
 			wantStatus: Fail, wantSummary: "2 place(s) disagree with bun, the package manager the lockfiles name",
 			wantDetails: []string{
 				"process-compose.yaml:5 runs npm",
@@ -211,45 +211,45 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no browser apps",
 		},
 		{
-			name: "rpc-execute single site", fixture: "singlesite", check: rpcExecute{},
+			name: "rpc-execute flat", fixture: "flat", check: rpcExecute{},
 			wantStatus: Fail, wantSummary: "1 RPC finding(s) (regenerate and read the generator output)",
 			wantDetails: []string{
 				"app/zz_gen_relight_beacon.go: no Execute call; the handler decodes and returns without running the method",
 			},
 		},
 		{
-			name: "rpc-execute no rpc", fixture: "multisite", check: rpcExecute{},
+			name: "rpc-execute no rpc", fixture: "sites", check: rpcExecute{},
 			wantStatus: Skip, wantSummary: "no generated RPC handlers",
 		},
 		{
-			name: "multi-site single generator", fixture: "singlesite", check: multiSite{},
+			name: "sites-generators single generator", fixture: "flat", check: sitesGenerators{},
 			wantStatus: Skip, wantSummary: "single generator",
 		},
 		{
-			name: "multi-site disagreements", fixture: "multisite", check: multiSite{},
-			wantStatus: Fail, wantSummary: "2 multi-site disagreement(s)",
+			name: "sites-generators disagreements", fixture: "sites", check: sitesGenerators{},
+			wantStatus: Fail, wantSummary: "2 generator disagreement(s)",
 			wantDetails: []string{
 				"cmd/generate/resourcegenerator_tugs/main.go reads migrations [file://apps/tugs/schema/migrations] but cmd/generate/resourcegenerator_pilots/main.go reads [file://schema/migrations]",
 				"cmd/generate/resourcegenerator_shared/main.go emits no TypeScript into apps/tugs/gui (site generator cmd/generate/resourcegenerator_tugs/main.go writes there)",
 			},
 		},
 		{
-			name: "env-template single site", fixture: "singlesite", check: envTemplate{},
+			name: "env-template flat", fixture: "flat", check: envTemplate{},
 			wantStatus: Fail, wantSummary: "1 variable(s) missing from .envrc.template (--fix adds them)",
 			wantDetails: []string{
 				"pkg/config/config.go:23: LIGHTHOUSE_BEACON_API_KEY (required) is not in .envrc.template",
 			},
 		},
 		{
-			name: "env-template no tags", fixture: "multisite", check: envTemplate{},
+			name: "env-template no tags", fixture: "sites", check: envTemplate{},
 			wantStatus: Skip, wantSummary: "no env tags declared",
 		},
 		{
-			name: "pins released", fixture: "singlesite", check: pins{},
+			name: "pins released", fixture: "flat", check: pins{},
 			wantStatus: Pass, wantSummary: "3 framework pin(s) are released versions",
 		},
 		{
-			name: "pins unreleased", fixture: "multisite", check: pins{},
+			name: "pins unreleased", fixture: "sites", check: pins{},
 			wantStatus: Warn, wantSummary: "2 framework pin(s) point at unreleased code",
 			wantDetails: []string{
 				"github.com/cccteam/session is pinned to pseudo-version v0.11.2-0.20260903182144-ffa51dacf20e",
@@ -268,14 +268,14 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			},
 		},
 		{
-			name: "paging offset in the browser", fixture: "singlesite", check: paging{},
+			name: "paging offset in the browser", fixture: "flat", check: paging{},
 			wantStatus: Warn, wantSummary: "1 offset use(s) to move to cursors",
 			wantDetails: []string{
 				"web/console/src/app/legacy.ts:4: sends an offset parameter; follow the Link header (page() in @cccteam/resource) instead",
 			},
 		},
 		{
-			name: "paging clean", fixture: "multisite", check: paging{},
+			name: "paging clean", fixture: "sites", check: paging{},
 			wantStatus: Pass, wantSummary: "no list is positioned by offset",
 		},
 	}
@@ -489,7 +489,7 @@ func TestFixes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			a := fixtureCopy(t, "singlesite")
+			a := fixtureCopy(t, "flat")
 			got := tt.check.Run(context.Background(), &Env{App: a, Fix: true})
 			if got.Status != Pass || got.Summary != tt.wantSummary {
 				t.Fatalf("Run() with Fix = %s %q, want PASS %q\n%s", got.Status, got.Summary, tt.wantSummary, strings.Join(got.Details, "\n"))

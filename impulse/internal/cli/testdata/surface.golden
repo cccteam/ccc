@@ -1,0 +1,117 @@
+impulse
+impulse add
+impulse add auth <name>
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --authority string
+  --oidc-azure bool
+  --oidc-google bool
+  --preauth bool
+  --skip-generate bool
+impulse add outlet <name>
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --api-key bool
+  --app string (default .)
+  --auth string
+  --prefix string (required)
+  --skip-generate bool
+impulse add site <name>
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --existing string
+  --skip-generate bool
+impulse add tenancy
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --skip-generate bool
+  --tenant-table string (default Tenants)
+impulse check
+  --app string (default .)
+  --fix bool
+  --list bool
+  --only stringSlice
+  --skip-generate bool
+impulse handoff
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --reference string
+  --skip-generate bool
+  --verify bool
+impulse new <dir>
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --api-outlet stringArray
+  --auth string
+  --authority string
+  --dev-root string
+  --module string (required)
+  --name string
+  --oidc-azure bool
+  --oidc-google bool
+  --outlet stringArray
+  --site stringArray
+  --skip-generate bool
+  --skip-git bool
+  --tenancy bool
+  --tenant-table string (default Tenants)
+impulse remove
+impulse remove outlet <name>
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --skip-generate bool
+impulse remove site <name>
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --skip-generate bool
+impulse render <candidate> <dir>
+  --dev-root string
+  --module string (required)
+  --name string
+impulse swap
+impulse swap auth <name>
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --authority string
+  --carry-roles bool
+  --oidc-azure bool
+  --oidc-google bool
+  --skip-generate bool
+
+checks:
+  generator-program
+  options
+  tenancy-wired
+  outlet-wired
+  sites-wired
+  session-tables
+  auths-wired
+  skipauth
+  emulator-version
+  prettier-ignore
+  eslint-ignore
+  resource-styles
+  package-manager
+  paging
+  rpc-execute
+  sites-generators
+  env-template
+  pins
+  gowork-off
+  regen

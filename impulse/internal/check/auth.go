@@ -9,22 +9,22 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/app"
 )
 
-// authWired verifies that every session authenticator the application constructs has its
-// tables in the schema (sessions, users where the flavor keeps them, impersonation and
+// sessionTables verifies that every session authenticator the application constructs has
+// its tables in the schema (sessions, users where the flavor keeps them, impersonation and
 // custom data tables where the storage attaches them), that two login flavors never share
-// a sessions table, and reports the auths that result: one per distinct flavor and
-// table set. The compiler holds
-// the handler wiring (the router's Handlers interface embeds the flavor's handler set);
-// this check holds the schema the flavor reads, which nothing compiles against.
-type authWired struct{}
+// a sessions table, and reports the auths that result: one per distinct flavor and table
+// set. The compiler holds the handler wiring (the router's Handlers interface embeds the
+// flavor's handler set); this check holds the schema the flavor reads, which nothing
+// compiles against.
+type sessionTables struct{}
 
-func (authWired) Name() string { return "auth-wired" }
+func (sessionTables) Name() string { return "session-tables" }
 
-func (authWired) Describe() string {
+func (sessionTables) Describe() string {
 	return "every session authenticator's tables exist in the schema, flavors do not share a sessions table, and the auths are reported"
 }
 
-func (c authWired) Run(_ context.Context, env *Env) Result {
+func (c sessionTables) Run(_ context.Context, env *Env) Result {
 	a := env.App
 	p := a.Profile()
 	if len(p.Sites) == 0 {

@@ -26,21 +26,21 @@ import (
 // package, handlers, router, resources, authorization suite, and browser workspace under
 // apps/<name>/, served by a process of its own and covered by the role migration through
 // the union of every site's permission collection. On a flat application the first site
-// added promotes the layout: the existing site moves under apps/<First>/ (its import paths
+// added promotes the layout: the existing site moves under apps/<existing>/ (its import paths
 // change), the generator program becomes that site's, a shared generator is laid in for
-// what every site's browser application needs in the same shape, the configuration's
-// served level becomes the site level, and the deployment's collection becomes the union.
+// what every site's browser application needs in the same shape, the site level's bundle
+// variable becomes the per-site APP_DIST, and the deployment's collection becomes the union.
 // Everything existing belongs to the first site; the shared package starts empty.
 type Site struct {
 	// Name is the new site's lowercase name and directory under apps/.
 	Name string
-	// First is the name the existing site takes under apps/ when the application is
+	// Existing is the name the existing site takes under apps/ when the application is
 	// still flat. Required then, since the name is the site's directory for good;
 	// refused once the application has sites.
-	First string
+	Existing string
 }
 
-// The sites directory and the shared resource package of a multi-site application.
+// The sites directory and the shared resource package of an application in the sites layout.
 const (
 	sitesDir       = "apps"
 	sharedPackage  = "pkg/sharedresources"
@@ -56,8 +56,8 @@ var siteNameRE = regexp.MustCompile(`^[a-z][a-z0-9]*$`)
 // Command is the impulse command line for the transition.
 func (s Site) Command() string {
 	cmd := "impulse add site " + s.Name
-	if s.First != "" {
-		cmd += " --first " + s.First
+	if s.Existing != "" {
+		cmd += " --existing " + s.Existing
 	}
 
 	return cmd
@@ -85,14 +85,14 @@ func (s Site) Validate(a *app.App) error {
 		if len(p.Sites) != 1 {
 			return errors.Newf("%d site generators in a flat layout; promotion moves one site", len(p.Sites))
 		}
-		if s.First == "" {
-			return errors.New("--first is required on a flat application: the existing site moves under apps/<first>/ and the name is its directory for good, so it is asked rather than defaulted (the console it serves is a natural answer)")
+		if s.Existing == "" {
+			return errors.New("--existing is required on a flat application: the existing site moves under apps/<existing>/ and the name is its directory for good, so it is asked rather than defaulted (the console it serves is a natural answer)")
 		}
-		if !siteNameRE.MatchString(s.First) {
-			return errors.Newf("first site name %q: name it in lowercase letters and digits", s.First)
+		if !siteNameRE.MatchString(s.Existing) {
+			return errors.Newf("existing site name %q: name it in lowercase letters and digits", s.Existing)
 		}
-		if s.First == s.Name {
-			return errors.Newf("--first %s names the new site too; the existing site and the new one are two sites", s.First)
+		if s.Existing == s.Name {
+			return errors.Newf("--existing %s names the new site too; the existing site and the new one are two sites", s.Existing)
 		}
 		if _, err := os.Stat(a.Abs(sitesDir)); err == nil {
 			return errors.Newf("%s/ already exists on a flat application; promotion creates it", sitesDir)
@@ -101,8 +101,8 @@ func (s Site) Validate(a *app.App) error {
 			return err
 		}
 	case app.LayoutSites:
-		if s.First != "" {
-			return errors.Newf("--first is for promotion, and the application already has sites (%s); the new site is copied from %s", siteNames(p), p.Sites[0].Name)
+		if s.Existing != "" {
+			return errors.Newf("--existing is for promotion, and the application already has sites (%s); the new site is copied from %s", siteNames(p), p.Sites[0].Name)
 		}
 	}
 
@@ -192,12 +192,13 @@ func rediscover(a *app.App) (*app.App, error) {
 	return fresh, nil
 }
 
-// promote moves the flat site under apps/<First>/: its packages, main package, and
+// promote moves the flat site under apps/<existing>/: its packages, main package, and
 // browser workspace, with every import following; the generator program under the site's
-// name; the served level as the site level; and the processes and environment template.
+// name; the site level's bundle variable as the per-site APP_DIST; and the processes and
+// environment template.
 func (s Site) promote(a *app.App, site *app.Site, ch *Change) error {
 	g := site.Generator
-	base := path.Join(sitesDir, s.First)
+	base := path.Join(sitesDir, s.Existing)
 	modulePath := a.GoMod.Module.Mod.Path
 
 	// The site's packages, its main package, and its browser workspace move.
@@ -230,9 +231,9 @@ func (s Site) promote(a *app.App, site *app.Site, ch *Change) error {
 		}
 	}
 	if len(mains) == 0 {
-		ch.skipf("no main package at the root to move to %s; give the %s site its main.go there", base, s.First)
+		ch.skipf("no main package at the root to move to %s; give the %s site its main.go there", base, s.Existing)
 	}
-	ch.didf("%s: the %s site, moved from the root: %s%s", base, s.First, strings.Join(moved, ", "), mainsNote(mains))
+	ch.didf("%s: the %s site, moved from the root: %s%s", base, s.Existing, strings.Join(moved, ", "), mainsNote(mains))
 
 	// Every import of a moved package follows it.
 	rewrites := []rewrite{}
@@ -261,8 +262,8 @@ func (s Site) promote(a *app.App, site *app.Site, ch *Change) error {
 	if err := s.moveGenerator(a, g, base, dirs, ch); err != nil {
 		return err
 	}
-	// The served level becomes the site level.
-	s.siteLevel(a, ch)
+	// The site level's bundle variable becomes the per-site APP_DIST.
+	s.siteDist(a, ch)
 	// The development processes and the environment template follow.
 	s.promoteProcfile(a, base, webDir, ch)
 	s.promoteEnvTemplate(a, ch)
@@ -400,10 +401,10 @@ func (Site) rewriteWebBoundary(a *app.App, modulePath, webDir, base string) erro
 // runs it under the new name.
 func (s Site) moveGenerator(a *app.App, g *app.Generator, base string, dirs []string, ch *Change) error {
 	oldDir := path.Dir(g.File)
-	newDir := path.Join(path.Dir(oldDir), s.First+"generator")
+	newDir := path.Join(path.Dir(oldDir), s.Existing+"generator")
 	if oldDir != newDir {
 		if _, err := os.Stat(a.Abs(newDir)); err == nil {
-			return errors.Newf("%s already exists; the %s site's generator would move there", newDir, s.First)
+			return errors.Newf("%s already exists; the %s site's generator would move there", newDir, s.Existing)
 		}
 		if err := moveTree(a, oldDir, newDir); err != nil {
 			return err
@@ -422,7 +423,7 @@ func (s Site) moveGenerator(a *app.App, g *app.Generator, base string, dirs []st
 	if err := os.WriteFile(a.Abs(file), []byte(text), mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	ch.didf("%s: the %s site's generator (was %s), reading and writing under %s", file, s.First, g.File, base)
+	ch.didf("%s: the %s site's generator (was %s), reading and writing under %s", file, s.Existing, g.File, base)
 
 	// The directive follows the directory.
 	if oldDir != newDir {
@@ -445,37 +446,30 @@ func (s Site) moveGenerator(a *app.App, g *app.Generator, base string, dirs []st
 	return nil
 }
 
-// The served level's names in the base and in the multi-site shape: the level is declared
-// once and every site's process supplies its own values, so nothing in it names one site.
-var siteLevelRewrites = []rewrite{
-	{"ServerConfiguration", "SiteConfiguration"},
-	{"serverConfig", "siteConfig"},
+// The site level's bundle variable in the base and in the sites layout. The level is
+// SiteConfiguration in both; the base names the console's bundle (APP_CONSOLE_DIST, with a
+// default under web/), and a site names its own (APP_DIST, required), since the level is
+// declared once and every site's process supplies its own values.
+var siteDistRewrites = []rewrite{
 	{"ConsoleDist", "Dist"},
 	{"consoleDist", "dist"},
 	{`env:"APP_CONSOLE_DIST,default=web/dist/console"`, `env:"APP_DIST,required"`},
 }
 
-// siteLevel turns the served level into the site level across the Go files, and renames
-// its file when it is the base's.
-func (Site) siteLevel(a *app.App, ch *Change) {
-	changed, err := rewriteGoFiles(a, siteLevelRewrites)
+// siteDist makes the site level's bundle variable the per-site APP_DIST across the Go files.
+func (Site) siteDist(a *app.App, ch *Change) {
+	changed, err := rewriteGoFiles(a, siteDistRewrites)
 	if err != nil {
-		ch.skipf("the served level could not be rewritten as the site level (%v); make ServerConfiguration the SiteConfiguration reading PORT and APP_DIST per site", err)
+		ch.skipf("the site level's bundle variable could not be rewritten (%v); make SiteConfiguration read the bundle from APP_DIST, required per site process, in place of APP_CONSOLE_DIST", err)
 
 		return
 	}
-	if _, err := os.Stat(a.Abs("pkg/config/server.go")); err == nil {
-		if err := moveTree(a, "pkg/config/server.go", "pkg/config/site.go"); err == nil {
-			ch.didf("pkg/config/site.go (was server.go): the site level, SiteConfiguration reading PORT and APP_DIST per site process; %d file(s) follow the rename", changed)
+	if changed == 0 {
+		ch.skipf("no file reads APP_CONSOLE_DIST; make SiteConfiguration read the bundle from APP_DIST, required per site process")
 
-			return
-		}
+		return
 	}
-	if changed > 0 {
-		ch.didf("%d file(s): the served level is the site level, SiteConfiguration reading PORT and APP_DIST per site process", changed)
-	} else {
-		ch.skipf("no file declares the base's ServerConfiguration; make the served level a site level reading PORT and APP_DIST per site process")
-	}
+	ch.didf("%d file(s): the site level reads the bundle from APP_DIST, required per site process (was APP_CONSOLE_DIST with a default under web/)", changed)
 }
 
 var (
@@ -502,7 +496,7 @@ var (
 func (s Site) promoteProcfile(a *app.App, base, webDir string, ch *Change) {
 	data, mode, err := readFile(a, "Procfile")
 	if err != nil {
-		ch.skipf("Procfile: not read (%v); run the %s site with go run ./%s and its PORT, APP_DIST, and APP_SERVICE_NAME", err, s.First, base)
+		ch.skipf("Procfile: not read (%v); run the %s site with go run ./%s and its PORT, APP_DIST, and APP_SERVICE_NAME", err, s.Existing, base)
 
 		return
 	}
@@ -512,8 +506,8 @@ func (s Site) promoteProcfile(a *app.App, base, webDir string, ch *Change) {
 	if webDir != "" {
 		dist = path.Join(base, webDir, "dist", s.webProject(a, base, webDir))
 	}
-	edited := goRunRootRE.ReplaceAllString(text, fmt.Sprintf("APP_SERVICE_NAME=%s PORT=%d APP_DIST=%s ${1}./%s${2}", s.First, port, dist, base))
-	edited = serverProcessRE.ReplaceAllString(edited, s.First+":")
+	edited := goRunRootRE.ReplaceAllString(text, fmt.Sprintf("APP_SERVICE_NAME=%s PORT=%d APP_DIST=%s ${1}./%s${2}", s.Existing, port, dist, base))
+	edited = serverProcessRE.ReplaceAllString(edited, s.Existing+":")
 	if webDir != "" {
 		edited = cdWebRE.ReplaceAllStringFunc(edited, func(m string) string {
 			sm := cdWebRE.FindStringSubmatch(m)
@@ -527,7 +521,7 @@ func (s Site) promoteProcfile(a *app.App, base, webDir string, ch *Change) {
 		edited = strings.ReplaceAll(edited, "/dev/tcp/127.0.0.1/${PORT})", fmt.Sprintf("/dev/tcp/127.0.0.1/%d)", port))
 	}
 	if edited == text {
-		ch.skipf("Procfile: no `go run .` to make the %s site's process; run go run ./%s with PORT=%d, APP_DIST=%s, and APP_SERVICE_NAME=%s", s.First, base, port, dist, s.First)
+		ch.skipf("Procfile: no `go run .` to make the %s site's process; run go run ./%s with PORT=%d, APP_DIST=%s, and APP_SERVICE_NAME=%s", s.Existing, base, port, dist, s.Existing)
 
 		return
 	}
@@ -536,7 +530,7 @@ func (s Site) promoteProcfile(a *app.App, base, webDir string, ch *Change) {
 
 		return
 	}
-	ch.didf("Procfile: the %s process runs ./%s with PORT=%d, APP_DIST=%s, and APP_SERVICE_NAME=%s inline; the browser process changes into %s", s.First, base, port, dist, s.First, path.Join(base, webDir))
+	ch.didf("Procfile: the %s process runs ./%s with PORT=%d, APP_DIST=%s, and APP_SERVICE_NAME=%s inline; the browser process changes into %s", s.Existing, base, port, dist, s.Existing, path.Join(base, webDir))
 }
 
 // templatePort reads the flat PORT from the environment template, or the base's default.
@@ -583,7 +577,7 @@ func (s Site) promoteEnvTemplate(a *app.App, ch *Change) {
 	text := string(data)
 	edited := envPortRE.ReplaceAllString(text, "# PORT and APP_DIST differ per site, so the Procfile sets them per process.\n# export PORT=\n")
 	edited = regexp.MustCompile(`(?m)^# export APP_CONSOLE_DIST=.*\n`).ReplaceAllString(edited, "# export APP_DIST=\n")
-	edited = strings.ReplaceAll(edited, "# --- server: the served application ---", "# --- site: one served site; per process, set by the Procfile ---")
+	edited = strings.ReplaceAll(edited, "# --- site: the served site ---", "# --- site: one served site; per process, set by the Procfile ---")
 	if edited == text {
 		return
 	}
@@ -598,7 +592,7 @@ func (s Site) promoteEnvTemplate(a *app.App, ch *Change) {
 // unionAnchorRE is the base deploy package's use of the one router's collection.
 var unionAnchorRE = regexp.MustCompile(`\brouter\.Collection\(\)`)
 
-// unionNeedle is the call every multi-site deploy package makes: the union of the
+// unionNeedle is the call every deploy package in the sites layout makes: the union of the
 // sites' router collections, with one element per site.
 const unionNeedle = "access.UnionCollection("
 
@@ -1151,10 +1145,10 @@ func (s Site) nameWorkspace(a *app.App, webDir string, ch *Change) {
 	}
 	from := workspaceName(pkg)
 	stem, ok := strings.CutSuffix(from, "-web")
-	if !ok || strings.HasSuffix(stem, "-"+s.First) {
+	if !ok || strings.HasSuffix(stem, "-"+s.Existing) {
 		return
 	}
-	to := stem + "-" + s.First + "-web"
+	to := stem + "-" + s.Existing + "-web"
 	renamed := renameWorkspaceFiles(a, webDir, from, to, ch)
 	if len(renamed) > 0 {
 		ch.didf("%s: the workspace is named %s (was %s)", strings.Join(renamed, ", "), to, from)
@@ -1368,9 +1362,9 @@ func processLinesOf(text string) ([]string, error) {
 // Meaning explains a site in this framework and names the wiring left to do.
 func (s Site) Meaning() string {
 	var b strings.Builder
-	b.WriteString("A site is a stand-alone application on a host of its own: its own main package, handlers, router, resources, authorization suite, and browser workspace under `apps/<site>/`, served by a process of its own (its own `PORT`, `APP_DIST`, and `APP_SERVICE_NAME` over the shared data level) and covered by the role migration through the union of every site's permission collection. Multi-site is several hosts from one repository: the sites share the schema, the configuration levels, the auths, and `pkg/sharedresources`, whose TypeScript the shared generator emits into every site's browser application so they agree on the shared vocabulary.\n\n")
-	if s.First != "" {
-		fmt.Fprintf(&b, "The application was flat, so adding the %s site promoted the layout: the existing site moved under `apps/%s/` (every import of its packages changed), its generator became `cmd/generate/%sgenerator`, the served level became the site level (`SiteConfiguration` reading `PORT` and `APP_DIST` per site process), the deployment's collection became the union, and the shared generator was laid in over an empty `pkg/sharedresources`. Everything existing belongs to the %s site.\n\n", s.Name, s.First, s.First, s.First)
+	b.WriteString("A site is a stand-alone application on a host of its own: its own main package, handlers, router, resources, authorization suite, and browser workspace under `apps/<site>/`, served by a process of its own (its own `PORT`, `APP_DIST`, and `APP_SERVICE_NAME` over the shared data level) and covered by the role migration through the union of every site's permission collection. The sites layout is several hosts from one repository: the sites share the schema, the configuration levels, the auths, and `pkg/sharedresources`, whose TypeScript the shared generator emits into every site's browser application so they agree on the shared vocabulary.\n\n")
+	if s.Existing != "" {
+		fmt.Fprintf(&b, "The application was flat, so adding the %s site promoted the layout: the existing site moved under `apps/%s/` (every import of its packages changed), its generator became `cmd/generate/%sgenerator`, the site level's bundle variable became `APP_DIST` (set per site process, as `PORT` is), the deployment's collection became the union, and the shared generator was laid in over an empty `pkg/sharedresources`. Everything existing belongs to the %s site.\n\n", s.Name, s.Existing, s.Existing, s.Existing)
 	}
 	b.WriteString("Left to wire:\n\n")
 	items := []string{
@@ -1388,9 +1382,9 @@ func (s Site) Meaning() string {
 }
 
 func (s Site) deployNote() string {
-	if s.First == "" {
+	if s.Existing == "" {
 		return ""
 	}
 
-	return fmt.Sprintf(", and what built the root now builds `apps/%s`", s.First)
+	return fmt.Sprintf(", and what built the root now builds `apps/%s`", s.Existing)
 }

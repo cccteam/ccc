@@ -13,7 +13,7 @@ the digest for the selected tenant.
 
 - `main.go` serves the API and the console's built bundle.
 - `pkg/config` is the configuration, as a chain of levels: core (every process), data
-  (every process that opens the database), server (the served application). Each process
+  (every process that opens the database), site (the served site). Each process
   constructs the level it needs — `cmd/bootstrap` and `cmd/deployment/migrate` stop at
   data — so a deploy step supplies exactly the variables its process reads.
 - `app` holds the handlers: generated resource handlers plus the hand-written middleware

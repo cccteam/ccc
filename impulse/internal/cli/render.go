@@ -218,7 +218,7 @@ func (r *renderReport) optionsStep(next, note func(format string, args ...any)) 
 	if !r.options {
 		return
 	}
-	next("impulse add tenancy | impulse add outlet <name> --prefix <p> --sessions | impulse add auth <name>")
+	next("impulse add tenancy | impulse add outlet <name> --prefix <p> --auth <auth> | impulse add auth <name>")
 	note("Options are added one at a time from a clean tree; each ends in a handoff brief for the")
 	note("wiring the tool cannot do and a check that says when it is done.")
 }

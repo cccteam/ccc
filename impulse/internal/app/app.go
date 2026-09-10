@@ -21,7 +21,7 @@ type App struct {
 	// GoMod is the parsed root go.mod.
 	GoMod *modfile.File
 	// Generators are the resource generator programs found in the tree, one per site
-	// plus the shared generator in a multi-site application.
+	// plus the shared generator in the sites layout.
 	Generators []*Generator
 	// WebApps are the browser applications: every directory holding an angular.json.
 	WebApps []WebApp
@@ -45,7 +45,7 @@ type App struct {
 	// OutletMembers are the structs the application's own code annotates @outlet: the
 	// resources attached to router outlets other than, or in addition to, the default.
 	OutletMembers []OutletMember
-	// Auths are the session authentication constructions outside tests: the user pools'
+	// Auths are the session authentication constructions outside tests: the auths'
 	// login flavors and the tables they read.
 	Auths []Auth
 	// GoGenerate are the //go:generate directives in the tree.
@@ -245,7 +245,7 @@ func (a *App) SiteGenerators() []*Generator {
 }
 
 // SharedGenerators returns the generators that emit no handlers: the shared resource
-// generators of a multi-site application.
+// generators of an application in the sites layout.
 func (a *App) SharedGenerators() []*Generator {
 	var shared []*Generator
 	for _, g := range a.Generators {

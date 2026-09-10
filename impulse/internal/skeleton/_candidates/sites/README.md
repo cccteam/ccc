@@ -1,9 +1,9 @@
 # sites
 
-A multi-site application on the cccteam resource stack. Two sites — the console and the
-portal — each its own server, hostname, router, browser application,
-and generator, over one database, one policy store, and one session store. Tenancy as
-data, as in a single-site application: the `Tenants` table is the domain universe,
+An application in the sites layout on the cccteam resource stack. Two sites — the console
+and the portal — each its own server, hostname, router, browser application, and
+generator, over one database, one policy store, and one session store. Tenancy as data, as
+in a flat application: the `Tenants` table is the domain universe,
 tenant-scoped routes live under `/api/tenants/{tenantID}/`, and tenant existence is
 concealed from logins that hold nothing there.
 
@@ -26,8 +26,8 @@ concealed from logins that hold nothing there.
   is the deploy step; `cmd/bootstrap` reuses it for the emulator and adds the development
   tenants and logins.
 - `cmd/generate` runs the three generators: console, portal, shared. `impulse check`'s
-  multi-site check fails the build when a generator reads a different schema or the shared
-  generator misses a site.
+  sites-generators check fails the build when a generator reads a different schema or the
+  shared generator misses a site.
 - `schema/migrations` is the one schema; `schema/roles/staff.json` the role configuration.
 - `test/integration` serves both sites over one database and drives each the way its
   browser application does.

@@ -196,7 +196,7 @@ func TestOptionsCoherence(t *testing.T) {
 			},
 		},
 		{
-			name: "multi-site with a straggler and a tenancy disagreement",
+			name: "sites layout with a straggler and a tenancy disagreement",
 			files: map[string]string{
 				"cmd/generate/console/main.go": program("apps/console/pkg/resources",
 					`generation.GenerateHandlers("apps/console/app"),`,
@@ -224,7 +224,7 @@ func TestOptionsCoherence(t *testing.T) {
 			},
 		},
 		{
-			name: "multi-site agreeing",
+			name: "sites layout agreeing",
 			files: map[string]string{
 				"cmd/generate/console/main.go": program("apps/console/pkg/resources",
 					`generation.GenerateHandlers("apps/console/app"),`,
@@ -244,7 +244,7 @@ func TestOptionsCoherence(t *testing.T) {
 				"pkg/sharedresources": "",
 			},
 			wantStatus:  Pass,
-			wantSummary: `multi-site layout, 2 site(s) (console, portal) + 1 shared; tenanted on "tenants"; no outlets`,
+			wantSummary: `sites layout, 2 site(s) (console, portal) + 1 shared; tenanted on "tenants"; no outlets`,
 			wantDetails: []string{
 				"console (cmd/generate/console/main.go): resources apps/console/pkg/resources, handlers apps/console/app, routes apps/console/pkg/router under /api",
 				"portal (cmd/generate/portal/main.go): resources apps/portal/pkg/resources, handlers apps/portal/app, routes apps/portal/pkg/router under /api",

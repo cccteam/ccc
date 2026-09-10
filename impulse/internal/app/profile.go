@@ -19,12 +19,18 @@ const (
 	LayoutSites
 )
 
+// The layouts' names, as the options report and the README spell them.
+const (
+	layoutFlatName  = "flat"
+	layoutSitesName = "sites"
+)
+
 func (l Layout) String() string {
 	switch l {
 	case LayoutFlat:
-		return "flat"
+		return layoutFlatName
 	case LayoutSites:
-		return "multi-site"
+		return layoutSitesName
 	default:
 		return "unknown"
 	}
@@ -42,18 +48,18 @@ type Profile struct {
 	// Sites are the generators that emit handlers, one per site, in generator order.
 	Sites []Site
 	// Shared are the generators that emit no handlers: the shared resource generators of
-	// a multi-site application.
+	// an application in the sites layout.
 	Shared []*Generator
 }
 
 // Site is one site: the generator program that emits its handlers and what that program
 // declares about it.
 type Site struct {
-	// Name is the site's directory name under apps/ in the multi-site layout, or the
+	// Name is the site's directory name under apps/ in the sites layout, or the
 	// module path's last element in the flat layout.
 	Name string
 	// Dir is the root-relative directory holding the site's packages: apps/<site> in the
-	// multi-site layout, "." in the flat layout.
+	// sites layout, "." in the flat layout.
 	Dir       string
 	Generator *Generator
 	// DomainRoute is the WithDomainRoute segment, or empty when the site is not tenanted.

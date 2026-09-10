@@ -19,8 +19,8 @@ func TestProfile(t *testing.T) {
 		wantOutlets []string
 	}{
 		{
-			name:       "single site",
-			dir:        "testdata/singlesite",
+			name:       "flat",
+			dir:        "testdata/flat",
 			wantLayout: LayoutFlat,
 			wantSites: []Site{{
 				Name: "lighthouse", Dir: ".", GeneratedRouter: true,
@@ -30,8 +30,8 @@ func TestProfile(t *testing.T) {
 			wantOutlets: []string{"portal"},
 		},
 		{
-			name:       "multi site",
-			dir:        "testdata/multisite",
+			name:       "sites",
+			dir:        "testdata/sites",
 			wantLayout: LayoutSites,
 			wantSites: []Site{
 				{Name: "pilots", Dir: "apps/pilots", Default: Outlet{Name: DefaultOutletName, Prefix: "api", ServesSessions: true, Pos: "cmd/generate/resourcegenerator_pilots/main.go:17"}},
@@ -116,7 +116,7 @@ func TestSiteDir(t *testing.T) {
 func TestTenancyScan(t *testing.T) {
 	t.Parallel()
 
-	a, err := Discover("testdata/singlesite")
+	a, err := Discover("testdata/flat")
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}

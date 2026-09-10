@@ -30,8 +30,8 @@ func TestDiscover(t *testing.T) {
 		wantEmulatorInGen string
 	}{
 		{
-			name:            "single site",
-			dir:             "testdata/singlesite",
+			name:            "flat",
+			dir:             "testdata/flat",
 			wantGenerators:  []string{"cmd/generate/resourcegenerator/main.go"},
 			wantWebApps:     []WebApp{{Dir: "web/console"}, {Dir: "web/portal"}},
 			wantImages:      []EmulatorRef{{File: "Procfile", Line: 1, Version: "1.5.56"}},
@@ -50,8 +50,8 @@ func TestDiscover(t *testing.T) {
 			wantEmulatorInGen: "1.5.56",
 		},
 		{
-			name: "multi site",
-			dir:  "testdata/multisite",
+			name: "sites",
+			dir:  "testdata/sites",
 			wantGenerators: []string{
 				"cmd/generate/resourcegenerator_pilots/main.go",
 				"cmd/generate/resourcegenerator_shared/main.go",
@@ -150,10 +150,10 @@ func TestDiscover(t *testing.T) {
 	}
 }
 
-func TestSingleSiteGeneratorDetails(t *testing.T) {
+func TestFlatGeneratorDetails(t *testing.T) {
 	t.Parallel()
 
-	a, err := Discover("testdata/singlesite")
+	a, err := Discover("testdata/flat")
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}

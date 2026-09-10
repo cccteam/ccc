@@ -17,10 +17,10 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/check"
 )
 
-// RemoveSite removes a site from a multi-site application: its tree under apps/<name>/,
-// its generator program and directive, its TypeScript target in the shared generator,
-// its router collection in the union, and its processes. The remaining sites stay where
-// they are: an application left with one site is a multi-site application of one, and
+// RemoveSite removes a site from an application in the sites layout: its tree under
+// apps/<name>/, its generator program and directive, its TypeScript target in the shared
+// generator, its router collection in the union, and its processes. The remaining sites
+// stay where they are: an application left with one site keeps the sites layout, and
 // nothing moves back to the root.
 type RemoveSite struct {
 	// Name is the site's name and directory under apps/.
@@ -118,7 +118,7 @@ func (r RemoveSite) Apply(ctx context.Context, a *app.App, exec check.Execer) (*
 		ch.skipf("the %s site's resource declarations went with it (%s); a table only they declared is still in the schema: declare the resource in the site that serves it now, or write a migration dropping the table", r.Name, strings.Join(declarations, ", "))
 	}
 	if len(remaining) == 1 {
-		ch.didf("the %s site is the one left; the application stays multi-site, with the site under %s/%s and the shared packages at the root", remaining[0], sitesDir, remaining[0])
+		ch.didf("the %s site is the one left; the application keeps the sites layout, with the site under %s/%s and the shared packages at the root", remaining[0], sitesDir, remaining[0])
 	}
 
 	return ch, nil
@@ -336,7 +336,7 @@ func (r RemoveSite) noteImports(a *app.App, modulePath, siteDir string, ch *Chan
 // Meaning explains the removal in this framework and names the unwiring left to do.
 func (r RemoveSite) Meaning() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "A site is a stand-alone application on a host of its own under `apps/<site>/`, served by a process of its own and covered by the role migration through the union of every site's permission collection. The %s site's tree, generator, directive, shared TypeScript target, union element, and processes are gone; the remaining sites stay where they are. An application left with one site is a multi-site application of one: the site stays under `apps/`, the shared generator keeps emitting into it, and the union has one element. Nothing moves back to the root.\n\n", r.Name)
+	fmt.Fprintf(&b, "A site is a stand-alone application on a host of its own under `apps/<site>/`, served by a process of its own and covered by the role migration through the union of every site's permission collection. The %s site's tree, generator, directive, shared TypeScript target, union element, and processes are gone; the remaining sites stay where they are. An application left with one site keeps the sites layout: the site stays under `apps/`, the shared generator keeps emitting into it, and the union has one element. Nothing moves back to the root.\n\n", r.Name)
 	b.WriteString("Left to unwire:\n\n")
 	items := []string{
 		fmt.Sprintf("The integration suite: `test/integration` served the %s site beside the others over the shared database; take its server, its logins, and the cross-site assertions that named it out of the harness, and any other file that still imports `apps/%s/...` (the brief lists them).", r.Name, r.Name),

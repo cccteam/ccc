@@ -41,7 +41,7 @@ func TestComposedOptions(t *testing.T) {
 			name: "sites promote the base and add the rest", opts: composedOptions{tenancy: true, tenantTable: "Tenants", sites: []string{"console", "portal", "kiosk"}},
 			want: []transition{
 				transition_.Tenancy{Table: "Tenants"},
-				transition_.Site{Name: "portal", First: "console"},
+				transition_.Site{Name: "portal", Existing: "console"},
 				transition_.Site{Name: "kiosk"},
 			},
 			wantDescribe:  "tenancy (Tenants), the sites console, portal, kiosk (the base site becomes console)",

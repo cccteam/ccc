@@ -440,29 +440,51 @@ var beaconRouterProgram = strings.Replace(beaconProgram,
 	"\t\tgeneration.GenerateRouter(),\n\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n", 1)
 
 // TestOutletApplyGeneratedRouter pins the declaration add outlet writes under the
-// generated router: a session outlet binds to the console's auth and serves its browser
-// application at /<name>, an API-key outlet declares APIKey.
+// generated router: a session outlet binds to the auth --auth names (the console's when
+// none is named) and serves its browser application at /<name>, an API-key outlet declares
+// APIKey. The fixture has the staff auth (the console's) and a members auth to bind to.
 func TestOutletApplyGeneratedRouter(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name        string
 		outlet      Outlet
+		wantErr     string
+		wantCommand string
 		wantDid     string
 		wantProgram []string
+		wantCookie  string
 	}{
 		{
-			name:    "a session outlet",
-			outlet:  Outlet{Name: "portal", Prefix: "portal/api", Sessions: true},
-			wantDid: `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.Password), generation.WebApp("/portal"))`,
+			name:        "a session outlet on the console's auth",
+			outlet:      Outlet{Name: "portal", Prefix: "portal/api", Sessions: true},
+			wantCommand: "impulse add outlet portal --prefix portal/api --auth staff",
+			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.Password), generation.WebApp("/portal"))`,
 			wantProgram: []string{
 				"\t\tgeneration.GenerateRouter(),\n",
 				"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n",
 			},
+			wantCookie: "cookieName: 'staff-xsrf'",
+		},
+		{
+			name:        "a session outlet bound to a named auth",
+			outlet:      Outlet{Name: "portal", Prefix: "portal/api", Sessions: true, Auth: "members"},
+			wantCommand: "impulse add outlet portal --prefix portal/api --auth members",
+			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/beacon/pkg/auth/members", generation.Password), generation.WebApp("/portal"))`,
+			wantProgram: []string{
+				"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/members\", generation.Password),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n",
+			},
+			wantCookie: "cookieName: 'members-xsrf'",
+		},
+		{
+			name:    "a session outlet bound to an auth the application lacks",
+			outlet:  Outlet{Name: "portal", Prefix: "portal/api", Sessions: true, Auth: "partners"},
+			wantErr: "no auth package pkg/auth/partners to bind the portal outlet to; the auths are members, staff",
 		},
 		{
 			name:        "an API-key outlet",
 			outlet:      Outlet{Name: "machines", Prefix: "machines"},
+			wantCommand: "impulse add outlet machines --prefix machines --api-key",
 			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("machines", "machines", generation.APIKey())`,
 			wantProgram: []string{"\t\tgeneration.WithRouterOutlet(\"machines\", \"machines\", generation.APIKey()),\n"},
 		},
@@ -471,13 +493,32 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			a := beacon(t, map[string]string{"cmd/generate/resourcegenerator/main.go": beaconRouterProgram, "pkg/auth/staff/doc.go": "package staff\n"})
+			files := authFiles(t)
+			files["cmd/generate/resourcegenerator/main.go"] = beaconRouterProgram
+			files["pkg/auth/members/members.go"] = strings.ReplaceAll(strings.ReplaceAll(files["pkg/auth/staff/staff.go"], "staff", "members"), "Staff", "Members")
+			files["web/console/src/app/app.config.ts"] = "provideHttpClient(withXsrfConfiguration({ cookieName: 'staff-xsrf' }));\n"
+			a := beacon(t, files)
 			ch, err := tt.outlet.Apply(t.Context(), a, &fakeExec{})
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Apply() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
 			if err != nil {
 				t.Fatalf("Apply() error = %v", err)
 			}
+			if ch.Command != tt.wantCommand {
+				t.Errorf("Command = %q, want %q", ch.Command, tt.wantCommand)
+			}
 			if len(ch.Did) == 0 || ch.Did[0] != tt.wantDid {
 				t.Errorf("Did[0] = %q, want %q", ch.Did, tt.wantDid)
+			}
+			if tt.wantCookie != "" {
+				if got := read(t, a, "web/"+tt.outlet.Name+"/src/app/app.config.ts"); !strings.Contains(got, tt.wantCookie) {
+					t.Errorf("app.config.ts = %q, want %q", got, tt.wantCookie)
+				}
 			}
 			for _, absent := range []string{"ServesSessions"} {
 				if got := read(t, a, "cmd/generate/resourcegenerator/main.go"); strings.Contains(got, absent) {
@@ -503,8 +544,8 @@ func TestChangeText(t *testing.T) {
 	}{
 		{
 			name:   "everything done",
-			change: Change{Command: "impulse add outlet portal --prefix portal/api --sessions", Did: []string{"a", "b"}},
-			want:   "`impulse add outlet portal --prefix portal/api --sessions` made these changes and staged them:\n\n- a\n- b\n",
+			change: Change{Command: "impulse add outlet portal --prefix portal/api --auth staff", Did: []string{"a", "b"}},
+			want:   "`impulse add outlet portal --prefix portal/api --auth staff` made these changes and staged them:\n\n- a\n- b\n",
 		},
 		{
 			name:   "with skips",

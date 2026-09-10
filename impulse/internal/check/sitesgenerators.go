@@ -6,18 +6,18 @@ import (
 	"slices"
 )
 
-// multiSite verifies the agreements between the generators of a multi-site application:
-// every generator reads the one schema, and the shared generator's TypeScript reaches every
-// site's browser app.
-type multiSite struct{}
+// sitesGenerators verifies the agreements between the generators of an application in
+// the sites layout: every generator reads the one schema, and the shared generator's
+// TypeScript reaches every site's browser app.
+type sitesGenerators struct{}
 
-func (multiSite) Name() string { return "multi-site" }
+func (sitesGenerators) Name() string { return "sites-generators" }
 
-func (multiSite) Describe() string {
-	return "generators share one schema and the shared TypeScript reaches every site"
+func (sitesGenerators) Describe() string {
+	return "the sites' generators share one schema and the shared TypeScript reaches every site"
 }
 
-func (c multiSite) Run(_ context.Context, env *Env) Result {
+func (c sitesGenerators) Run(_ context.Context, env *Env) Result {
 	a := env.App
 	if len(a.Generators) < 2 {
 		return skip(c.Name(), "single generator")
@@ -61,7 +61,7 @@ func (c multiSite) Run(_ context.Context, env *Env) Result {
 	}
 
 	if len(details) > 0 {
-		return fail(c.Name(), fmt.Sprintf("%d multi-site disagreement(s)", len(details)), details...)
+		return fail(c.Name(), fmt.Sprintf("%d generator disagreement(s)", len(details)), details...)
 	}
 
 	return pass(c.Name(), fmt.Sprintf("%d generators agree (%d site, %d shared)", len(a.Generators), len(a.SiteGenerators()), len(a.SharedGenerators())))

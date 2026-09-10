@@ -52,7 +52,7 @@ func TestRender(t *testing.T) {
 		{name: "outlets", candidate: "outlets", script: "web/ccclib.sh"},
 		{name: "sites", candidate: "sites", script: "apps/console/web/ccclib.sh"},
 	}
-	static := []string{"generator-program", "options", "tenancy-wired", "outlet-wired", "sites-wired", "auth-wired", "auths-wired", "emulator-version", "prettier-ignore", "eslint-ignore", "package-manager", "multi-site", "env-template"}
+	static := []string{"generator-program", "options", "tenancy-wired", "outlet-wired", "sites-wired", "session-tables", "auths-wired", "emulator-version", "prettier-ignore", "eslint-ignore", "package-manager", "sites-generators", "env-template"}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -201,7 +201,7 @@ func TestRenderAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("app.Discover() error = %v", err)
 	}
-	for _, name := range []string{"auth-wired", "auths-wired", "env-template", "options"} {
+	for _, name := range []string{"session-tables", "auths-wired", "env-template", "options"} {
 		checks, err := check.Select([]string{name})
 		if err != nil {
 			t.Fatal(err)

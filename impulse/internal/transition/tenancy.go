@@ -42,7 +42,7 @@ var tableNameRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
 
 // Command is the impulse command line for the transition.
 func (tn Tenancy) Command() string {
-	return fmt.Sprintf("impulse add tenancy --table %s", tn.Table)
+	return fmt.Sprintf("impulse add tenancy --tenant-table %s", tn.Table)
 }
 
 // Segment is the domain route segment: the table's kebab-case form.
@@ -61,7 +61,7 @@ func (tn Tenancy) Validate(a *app.App) error {
 	case len(p.Sites) == 0:
 		return errors.New("no generator program emits handlers; the application has no site to make tenanted")
 	case len(p.Sites) > 1:
-		return errors.New("making a multi-site application tenanted is not supported yet")
+		return errors.New("making an application in the sites layout tenanted is not supported yet")
 	}
 	site := &p.Sites[0]
 	if site.Tenanted() {

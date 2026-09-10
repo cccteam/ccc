@@ -18,10 +18,11 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/app"
 )
 
-// sitesWired verifies that every site of a multi-site application is served and
+// sitesWired verifies that every site of an application in the sites layout is served and
 // provisioned: a main package under its directory, a process in the process file running
-// it on a port of its own, and a role migration whose collection knows the site's router. The multi-site check holds the generators' agreements; this one
-// holds what runs them.
+// it on a port of its own, and a role migration whose collection knows the site's router.
+// The sites-generators check holds the generators' agreements; this one holds what runs
+// them.
 type sitesWired struct{}
 
 func (sitesWired) Name() string { return "sites-wired" }
@@ -92,7 +93,7 @@ func (c sitesWired) Run(_ context.Context, env *Env) Result {
 // roleCoverage checks that every site's router package is imported by some package that
 // calls access.MigrateRoles: the collection roles are reconciled against must know the
 // site's resources, and a router no migrating package imports is in none of them. One
-// migration may cover every site (the union collection) or each user pool may run its
+// migration may cover every site (the union collection) or each auth may run its
 // own over the sites it binds; either way every site is covered by one.
 func (sitesWired) roleCoverage(a *app.App, p app.Profile) ([]string, error) {
 	if len(a.RoleMigrations) == 0 {

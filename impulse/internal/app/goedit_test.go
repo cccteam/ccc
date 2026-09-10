@@ -76,7 +76,7 @@ func TestGoEdits(t *testing.T) {
 		{
 			name: "a struct the file lacks",
 			edit: func() ([]byte, error) {
-				return AddStructField("data.go", []byte(configSource), "ServerConfiguration", "x int")
+				return AddStructField("data.go", []byte(configSource), "SiteConfiguration", "x int")
 			},
 			wantErr: ErrNoAnchor,
 		},

@@ -13,7 +13,7 @@ func threeSites(t *testing.T) *app.App {
 	t.Helper()
 
 	a := flatSite(t)
-	if _, err := (Site{Name: "portal", First: "console"}).Apply(t.Context(), a, &fakeExec{}); err != nil {
+	if _, err := (Site{Name: "portal", Existing: "console"}).Apply(t.Context(), a, &fakeExec{}); err != nil {
 		t.Fatalf("promotion: %v", err)
 	}
 	if _, err := (Site{Name: "kiosk"}).Apply(t.Context(), mustDiscover(t, a.Root), &fakeExec{}); err != nil {
@@ -110,12 +110,12 @@ func TestRemoveSiteApply(t *testing.T) {
 		t.Errorf("profile = %s in the %s layout", siteNames(p), p.Layout)
 	}
 
-	// Down to one site: the application stays multi-site, and the last site is kept.
+	// Down to one site: the application keeps the sites layout, and the last site is kept.
 	ch, err = RemoveSite{Name: "kiosk"}.Apply(t.Context(), mustDiscover(t, a.Root), &fakeExec{})
 	if err != nil {
 		t.Fatalf("Apply() down to one site error = %v", err)
 	}
-	if last := ch.Did[len(ch.Did)-1]; last != "the console site is the one left; the application stays multi-site, with the site under apps/console and the shared packages at the root" {
+	if last := ch.Did[len(ch.Did)-1]; last != "the console site is the one left; the application keeps the sites layout, with the site under apps/console and the shared packages at the root" {
 		t.Errorf("last Did = %q", last)
 	}
 	if got := read(t, a, "pkg/deploy/deploy.go"); !strings.Contains(got, "access.UnionCollection(consolerouter.Collection())") {

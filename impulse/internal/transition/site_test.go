@@ -20,7 +20,7 @@ import (
 )
 
 func main() {
-	conf, _ := config.NewServerConfiguration(nil)
+	conf, _ := config.NewSiteConfiguration(nil)
 	_ = router.New(app.New(conf))
 }
 `
@@ -46,18 +46,22 @@ import "example.com/acme/beacon/app"
 
 func New(a *app.App) any { return generatedRoutes(a) }
 `
-	siteServer = `package config
+	siteLevel = `package config
 
-// ServerConfiguration is the third level: the served application.
-type ServerConfiguration struct {
-	env *serverConfig
+// SiteConfiguration is the third level: the served site.
+type SiteConfiguration struct {
+	env *siteConfig
 }
 
-func NewServerConfiguration(ctx any) (*ServerConfiguration, error) { return &ServerConfiguration{}, nil }
+func NewSiteConfiguration(ctx any) (*SiteConfiguration, error) {
+	return &SiteConfiguration{}, nil
+}
 
-func (c *ServerConfiguration) ConsoleDist() string { return c.env.ConsoleDist }
+func (c *SiteConfiguration) ConsoleDist() string {
+	return c.env.ConsoleDist
+}
 
-type serverConfig struct {
+type siteConfig struct {
 	Port        string ` + "`" + `env:"PORT,default=8080"` + "`" + `
 	ConsoleDist string ` + "`" + `env:"APP_CONSOLE_DIST,default=web/dist/console"` + "`" + `
 }
@@ -87,7 +91,7 @@ import (
 var _ = router.New
 var _ = app.New
 `
-	siteEnv = `# --- server: the served application ---
+	siteEnv = `# --- site: the served site ---
 export PORT=8090
 # export APP_CONSOLE_DIST=web/dist/console
 `
@@ -106,7 +110,7 @@ func flatSite(t *testing.T) *app.App {
 	files["app/app.go"] = siteApp
 	files["pkg/router/router.go"] = siteRouter
 	files["pkg/router/zz_gen_routes.go"] = "package router\n\nfunc generatedRoutes(any) any { return nil }\n"
-	files["pkg/config/server.go"] = siteServer
+	files["pkg/config/site.go"] = siteLevel
 	files["pkg/deploy/deploy.go"] = siteDeploy
 	files["test/authz/harness_test.go"] = siteAuthz
 	files["test/authz/zz_gen_authz_test.go"] = "package authz\n"
@@ -129,11 +133,11 @@ func TestSiteValidate(t *testing.T) {
 		site    Site
 		wantErr string
 	}{
-		{name: "promotion", site: Site{Name: "portal", First: "console"}},
-		{name: "promotion without --first", site: Site{Name: "portal"}, wantErr: "--first is required"},
-		{name: "a bad name", site: Site{Name: "Portal", First: "console"}, wantErr: `site name "Portal"`},
-		{name: "a bad first name", site: Site{Name: "portal", First: "Console"}, wantErr: `first site name "Console"`},
-		{name: "the same name twice", site: Site{Name: "portal", First: "portal"}, wantErr: "names the new site too"},
+		{name: "promotion", site: Site{Name: "portal", Existing: "console"}},
+		{name: "promotion without --existing", site: Site{Name: "portal"}, wantErr: "--existing is required"},
+		{name: "a bad name", site: Site{Name: "Portal", Existing: "console"}, wantErr: `site name "Portal"`},
+		{name: "a bad existing name", site: Site{Name: "portal", Existing: "Console"}, wantErr: `existing site name "Console"`},
+		{name: "the same name twice", site: Site{Name: "portal", Existing: "portal"}, wantErr: "names the new site too"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -155,7 +159,7 @@ func TestSiteApplyPromotes(t *testing.T) {
 
 	a := flatSite(t)
 	exec := &fakeExec{}
-	ch, err := Site{Name: "portal", First: "console"}.Apply(t.Context(), a, exec)
+	ch, err := Site{Name: "portal", Existing: "console"}.Apply(t.Context(), a, exec)
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
@@ -173,7 +177,7 @@ func TestSiteApplyPromotes(t *testing.T) {
 			t.Errorf("%s: missing after the promotion", rel)
 		}
 	}
-	for _, rel := range []string{"main.go", "app", "pkg/router", "pkg/resources", "test/authz", "web", "cmd/generate/resourcegenerator", "pkg/config/server.go"} {
+	for _, rel := range []string{"main.go", "app", "pkg/router", "pkg/resources", "test/authz", "web", "cmd/generate/resourcegenerator"} {
 		if _, err := os.Stat(a.Abs(rel)); err == nil {
 			t.Errorf("%s: still at the root after the promotion", rel)
 		}
@@ -201,7 +205,7 @@ func TestSiteApplyPromotes(t *testing.T) {
 
 	// The site level.
 	site := read(t, a, "pkg/config/site.go")
-	for _, want := range []string{"type SiteConfiguration struct", "func NewSiteConfiguration(", "func (c *SiteConfiguration) Dist() string { return c.env.Dist }", `env:"APP_DIST,required"`} {
+	for _, want := range []string{"type SiteConfiguration struct", "func NewSiteConfiguration(", "func (c *SiteConfiguration) Dist() string {\n\treturn c.env.Dist\n}", `env:"APP_DIST,required"`} {
 		if !strings.Contains(site, want) {
 			t.Errorf("site.go lacks %q:\n%s", want, site)
 		}
@@ -304,15 +308,15 @@ func TestSiteApplyAddsToSites(t *testing.T) {
 	t.Parallel()
 
 	a := flatSite(t)
-	if _, err := (Site{Name: "portal", First: "console"}).Apply(t.Context(), a, &fakeExec{}); err != nil {
+	if _, err := (Site{Name: "portal", Existing: "console"}).Apply(t.Context(), a, &fakeExec{}); err != nil {
 		t.Fatalf("promotion: %v", err)
 	}
 	promoted, err := app.Discover(a.Root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := (Site{Name: "kiosk", First: "console"}).Validate(promoted); err == nil || !strings.Contains(err.Error(), "--first is for promotion") {
-		t.Errorf("Validate() with --first on a multi-site application error = %v", err)
+	if err := (Site{Name: "kiosk", Existing: "console"}).Validate(promoted); err == nil || !strings.Contains(err.Error(), "--existing is for promotion") {
+		t.Errorf("Validate() with --existing on an application in the sites layout error = %v", err)
 	}
 	ch, err := Site{Name: "kiosk"}.Apply(t.Context(), promoted, &fakeExec{})
 	if err != nil {

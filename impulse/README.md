@@ -13,6 +13,41 @@ application already depends on: the generator program, `go.mod`, the browser app
 go install github.com/cccteam/ccc/impulse@latest
 ```
 
+## Vocabulary
+
+The words the tool uses on the command line, in check reports, in handoff briefs, and in
+the code it lays in. They are frozen: one test holds the command surface (every command,
+flag, and check name) to a golden file, and another keeps the retired words out of the
+templates, this README, and the tool's source.
+
+- **Application**: one Go module built on `ccc/resource`, with one database, one schema,
+  and one deployment. Everything below is a part of one application.
+- **Site**: a stand-alone server on a host of its own: a main package, handlers, a router,
+  resources, and a browser application. Every application has at least one site.
+- **Layout**: how the sites sit in the tree. **flat** has the one site at the root
+  (`app/`, `pkg/`, `web/`); **sites** has every site under `apps/<site>/` with the shared
+  packages at the root. An application starts flat and is promoted to sites when it grows
+  a second site, and one left with a single site keeps the sites layout. "Multi-site"
+  describes a deployment with several hosts, never a layout.
+- **Outlet**: a second URL space on the same host, declared in the generator program. A
+  session outlet is a browser surface bound to an auth; an API-key outlet is a machine
+  surface. The default outlet is the one `GenerateRoutes` declares.
+- **Auth**: a population that signs in one way and holds roles in its own permission
+  store. It is a package, `pkg/auth/<name>`, whose name prefixes its tables and cookies
+  and is the stem of its roles file.
+- **Flavor**: how an auth's people sign in: `password`, `oidc-azure`, `oidc-google`, or
+  `preauth`.
+- **Authority**: who owns an OIDC auth's role membership: `directory` (the directory's
+  role claims are synchronized at every login) or `application` (roles are assigned in the
+  application).
+- **Domain** and **tenancy**: a domain is the scope a permission is granted in. Tenancy is
+  the option that makes a table the domain universe, so tenant-scoped resources live under
+  a tenant segment and roles are provisioned per tenant.
+- **Levels**: the configuration chain in `pkg/config`, one level per kind of process, each
+  embedding the one below it: **core** (every process), **data** (every process that opens
+  the database), and **site** (one served site: its port and its built bundle). The site
+  level is `SiteConfiguration` in both layouts, since a flat application is one site.
+
 ## impulse new
 
 `new` creates an application: the base skeleton (flat layout, one auth, nothing else on)
@@ -80,11 +115,11 @@ impulse check --list
 | Check | Verifies |
 | --- | --- |
 | `generator-program` | Every generator program uses options this release knows, with literal arguments. A program the tool cannot read completely is one it cannot later edit or migrate. |
-| `options` | The generator programs declare one coherent option set, and the report states it: layout (flat or multi-site), sites, tenancy (`WithDomainRoute`, `WithConcealedDomains`), outlets, and targets. Handlers come with routes, `ForOutlet` names a declared session-serving outlet, the referenced directories exist, a `//go:generate` directive runs every program, the sites agree on tenancy, and a second site lives under `apps/<site>/`. |
+| `options` | The generator programs declare one coherent option set, and the report states it: layout (flat or sites), sites, tenancy (`WithDomainRoute`, `WithConcealedDomains`), outlets, and targets. Handlers come with routes, `ForOutlet` names a declared session-serving outlet, the referenced directories exist, a `//go:generate` directive runs every program, the sites agree on tenancy, and a second site lives under `apps/<site>/`. |
 | `tenancy-wired` | A program with `WithDomainRoute` has a migration creating the tenant-record table the segment names, at least one struct annotated `@permissionScope(domain)`, and every `access.MigrateRoles` call outside tests passing domains. A program without it has no tenant-scoped structs and passes no domains. The compiler and the generator hold the rest of the seam. |
 | `outlet-wired` | Every outlet a program declares (the default from `GenerateRoutes` and each `WithRouterOutlet`) has its generated routes mounted: by the generated router (`GenerateRouter`) from the declaration itself, or, in an application that kept a hand-written router, by a hand-written file in the router package calling `generated<Outlet>Routes`. A session-serving outlet has a `GenerateTypescript` target naming it, and that browser project's development proxy forwards the outlet's prefix. An outlet with no `@outlet` members yet is noted, not failed. |
-| `sites-wired` | In the multi-site layout, every site has a main package under `apps/<site>/`, a process in the Procfile or process-compose file running it on its own `PORT`, and every site's router is imported by some package calling `access.MigrateRoles`, so a role migration (the union collection, or one per auth) reconciles against the site's resources. |
-| `auth-wired` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the auths, one per distinct flavor and table set, each named by its package when it lives in one (`pkg/auth/<name>`), with its session and XSRF cookies when named, and an OIDC auth's role-membership authority (directory for `RoleSync`, application for `DisableRoleSync`). |
+| `sites-wired` | In the sites layout, every site has a main package under `apps/<site>/`, a process in the Procfile or process-compose file running it on its own `PORT`, and every site's router is imported by some package calling `access.MigrateRoles`, so a role migration (the union collection, or one per auth) reconciles against the site's resources. |
+| `session-tables` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the auths, one per distinct flavor and table set, each named by its package when it lives in one (`pkg/auth/<name>`), with its session and XSRF cookies when named, and an OIDC auth's role-membership authority (directory for `RoleSync`, application for `DisableRoleSync`). |
 | `auths-wired` | Every auth package (`pkg/auth/<name>`, constructing a session authenticator) is constructed by the data level (`<name>.New` called outside tests), provisioned from its roles file (`<name>.RolesPath` read by a file that migrates roles, and the file exists), and bound by a surface: an outlet declaring `Auth("<module>/pkg/auth/<name>", <flavor>)` in the flavor the package constructs (the generated router mounts that flavor's login routes, so a disagreement is a finding), or a package outside `config` and `cmd/` taking `*<name>.Auth`. An outlet bound to a package that is no auth package is a finding. No two auth packages issue the same cookie, session or XSRF, a name left unset being the session library's default (`auth`, `XSRF-TOKEN`); the browser keeps one cookie of a name per host, so a login to one auth would overwrite the other's. An auth that hands role membership to its directory (`session.RoleSync`) has no role writer in the application reaching its store, since the directory removes those roles at the next login. Authenticators outside auth packages warn. |
 | `skipauth` | When an auth signs in through a directory (the OIDC flavors), the simulated directory stays in development and tests: no application code reads `APP_USERNAME` or `APP_ROLES` (only the session library's `skipAuth` build does), and no build description (Dockerfile, cloudbuild, Makefile) carries the tag, which would let a deployed build accept any name as a login. |
 | `emulator-version` | The generator option, the process files' image tags, and the test harnesses name one Spanner emulator version. |
@@ -94,7 +129,7 @@ impulse check --list
 | `package-manager` | Every browser app carries the same kind of lockfile (bun, npm, yarn, or pnpm), and the process files and package scripts invoke that tool and no other. Two tools in one repository means two lockfiles drifting apart. |
 | `paging` | No application code positions a list by offset: the generated query builders have no `Offset`, the server refuses the `offset` parameter, and pages are positioned by the cursor the `Link` header carries. Go code calling `.Offset(` or `SetOffset(` and browser code sending an `offset` query parameter are reported, so a hand-written caller is found before the upgrade breaks it. |
 | `rpc-execute` | Every `@rpc` struct declares `Execute` in one of the three forms the generator classifies by signature (`resource.ReadWriteTransaction` second for the transaction form, `resource.Client` for the client form, `resource.ReadWriteTransaction` second and `resource.Files` third for the upload form; `error` the only or last result), and every generated RPC handler calls it. A handler an older generator could not type-check decodes and returns without running the method. A `TxnRunner` or `DBRunner` interface left in the RPC package warns: the generator reads the signature and no longer consults it, so delete it. |
-| `multi-site` | In a multi-site application, every generator reads the one schema and the shared generator's TypeScript reaches every site's browser app. |
+| `sites-generators` | In the sites layout, every generator reads the one schema and the shared generator's TypeScript reaches every site's browser app. |
 | `env-template` | Every `env` struct tag without a default appears in the development environment template (`.envrc.template`, `.env.template`, or `.env.example`). `--fix` adds the missing lines. |
 | `pins` | Framework pins in `go.mod` are released versions. Pseudo-versions and local replaces warn but do not fail. |
 | `gowork-off` | `GOWORK=off go build ./...` and `go vet ./...` succeed, so the pins in `go.mod` resolve without the workspace. |
@@ -163,17 +198,19 @@ the brief: what the tool changed (and what it could not), and what the option me
 this framework, alongside a rendered reference application with the option wired.
 
 ```sh
-impulse add outlet portal --prefix portal/api --sessions --agent
+impulse add outlet portal --prefix portal/api --auth staff --agent
+impulse add outlet kiosk --prefix kiosk/api --auth members
 impulse add outlet machines --prefix machines --api-key
 ```
 
-`add outlet` adds a router outlet to a flat application. For a session outlet the
-generator program gains `WithRouterOutlet(name, prefix, Auth(<the console's auth>),
-WebApp("/<name>"))` after `GenerateRoutes` and a `GenerateTypescript` target for the outlet
-copied from the default target's, and the console's browser project is copied to
-`web/<name>` with its API prefix, base path, and compiler output rewritten and registered
-in `angular.json` (serving under `/<name>` on the next port), the package scripts, and the
-Procfile. For an API-key outlet the program gains `WithRouterOutlet(name, prefix,
+`add outlet` adds a router outlet to a flat application. A session outlet binds to an
+auth, and `--auth <name>` says which: the generator program gains `WithRouterOutlet(name,
+prefix, Auth(<pkg/auth/name>, <its flavor>), WebApp("/<name>"))` after `GenerateRoutes`
+and a `GenerateTypescript` target for the outlet copied from the default target's, and the
+console's browser project is copied to `web/<name>` with its API prefix, base path, and
+compiler output rewritten (and its XSRF cookie, when the auth is not the console's) and
+registered in `angular.json` (serving under `/<name>` on the next port), the package
+scripts, and the Procfile. For an API-key outlet the program gains `WithRouterOutlet(name, prefix,
 APIKey())`. (An application that kept a hand-written router gains `ServesSessions()` or
 nothing, as before.) `go generate` then emits the outlet's routes, handlers, and client,
 and the generated router mounts the outlet from its declaration: its group, its login
@@ -197,7 +234,7 @@ to them.
 
 ```sh
 impulse add tenancy --agent
-impulse add tenancy --table Organizations
+impulse add tenancy --tenant-table Organizations
 ```
 
 `add auth` adds an auth: a population that signs in one way and holds roles in its own
@@ -261,22 +298,22 @@ authorization suite, and browser workspace, copied from the first site with the 
 renamed; its generator program and directive; its serve and browser processes on the next
 ports; its TypeScript target in the shared generator; and its router collection in the union
 the roles are reconciled against. On a flat application the first site added promotes the
-layout, the one non-additive transition: the existing site moves under `apps/<first>/` and
-every import of its packages follows, its generator becomes `cmd/generate/<first>generator`,
-the served configuration level becomes the site level (`SiteConfiguration` reading `PORT`
-and `APP_DIST` per site process, set inline in the Procfile), the deployment's collection
+layout to sites, the one non-additive transition: the existing site moves under
+`apps/<existing>/` and every import of its packages follows, its generator becomes
+`cmd/generate/<existing>generator`, the site level's bundle variable becomes `APP_DIST` (set
+per site process, inline in the Procfile, as `PORT` is), the deployment's collection
 becomes the union of the sites' router collections (`access.UnionCollection`, which
 refuses sites that declare a shared resource differently), and a shared generator is laid
 in over an empty `pkg/sharedresources`.
-`--first` names what the existing site becomes and is asked when not given, never
+`--existing` names what the existing site becomes and is asked when not given, never
 defaulted, since the name is the site's directory for good. Everything existing belongs to
-the first site. The new site's resources, its place in the integration suite, its browser
+that site. The new site's resources, its place in the integration suite, its browser
 application's own titles and pages, and the deployment configuration outside the repository
 (build path filters, source directories, a host) are the agent's; the reference is the
 `sites` skeleton.
 
 ```sh
-impulse add site portal --first console   # promotes a flat application, then adds portal
+impulse add site portal --existing console   # promotes a flat application, then adds portal
 impulse add site kiosk                    # a third site, copied from the first
 ```
 
@@ -331,11 +368,11 @@ handlers for the outlet, its configuration and environment lines (the brief quot
 and its tests are the agent's (and, under a hand-written router, the group that mounted
 it). The auth the outlet was bound to stays. There is no data consequence.
 
-`remove site <name>` removes a site from a multi-site application: `apps/<name>/` is
+`remove site <name>` removes a site from an application in the sites layout: `apps/<name>/` is
 deleted with its generator program and directive, its TypeScript target leaves the shared
 generator, its router collection leaves the union the roles are reconciled against, and
 its processes leave the Procfile. The remaining sites stay where they are: an application
-left with one site is a multi-site application of one, with the site under `apps/`, the
+left with one site keeps the sites layout, with the site under `apps/`, the
 shared generator emitting into it, and a union of one element; nothing moves back to the
 root. The application's last site is not removed. The integration suite that served the
 site (and any other file still importing its packages, which the brief lists), the
@@ -382,5 +419,5 @@ golangci-lint-v2 run
 ```
 
 Fixture applications for the tests live under `internal/app/testdata/`. They are
-synthetic: a lighthouse-keeping single-site app, a harbor multi-site app, and a generator
-program the tool cannot read.
+synthetic: a lighthouse-keeping flat application (`flat`), a harbor application in the sites
+layout (`sites`), and a generator program the tool cannot read (`badprogram`).

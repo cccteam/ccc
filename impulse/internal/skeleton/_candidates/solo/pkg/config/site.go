@@ -8,50 +8,51 @@ import (
 	"github.com/sethvargo/go-envconfig"
 )
 
-// ServerConfiguration is the third level: the served application.
-type ServerConfiguration struct {
+// SiteConfiguration is the third level: the served site. A flat application is one site,
+// so the level is the one the sites layout declares once and every site reads.
+type SiteConfiguration struct {
 	*DataConfiguration
-	env       *serverConfig
+	env       *siteConfig
 	validator *validator.Validate
 }
 
-// NewServerConfiguration loads every level and constructs the served application's
+// NewSiteConfiguration loads every level and constructs the served site's
 // dependencies.
-func NewServerConfiguration(ctx context.Context) (*ServerConfiguration, error) {
+func NewSiteConfiguration(ctx context.Context) (*SiteConfiguration, error) {
 	data, err := NewDataConfiguration(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	env := &serverConfig{}
+	env := &siteConfig{}
 	if err := envconfig.ProcessWith(ctx, &envconfig.Config{Target: env, Lookuper: envconfig.OsLookuper()}); err != nil {
 		return nil, errors.Wrap(err, "envconfig.ProcessWith()")
 	}
 
-	return &ServerConfiguration{
+	return &SiteConfiguration{
 		DataConfiguration: data,
 		env:               env,
 		validator:         validator.New(),
 	}, nil
 }
 
-// Addr returns the TCP address the server listens on, in the form ":port".
-func (c *ServerConfiguration) Addr() string {
+// Addr returns the TCP address the site listens on, in the form ":port".
+func (c *SiteConfiguration) Addr() string {
 	return ":" + c.env.Port
 }
 
 // Validator returns the request payload validator.
-func (c *ServerConfiguration) Validator() *validator.Validate {
+func (c *SiteConfiguration) Validator() *validator.Validate {
 	return c.validator
 }
 
 // ConsoleDist returns the directory the console's built Angular bundle is served from.
-func (c *ServerConfiguration) ConsoleDist() string {
+func (c *SiteConfiguration) ConsoleDist() string {
 	return c.env.ConsoleDist
 }
 
-// serverConfig holds the environment only the served application reads.
-type serverConfig struct {
+// siteConfig holds the environment only the served site reads.
+type siteConfig struct {
 	// Port is the TCP port the server listens on.
 	Port string `env:"PORT,default=8080"`
 

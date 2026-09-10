@@ -1,5 +1,5 @@
 // Package main is the tugs site generator (test fixture). It reads its own migrations,
-// which the multi-site check must flag, and the shared generator writes no TypeScript
+// which the sites-generators check must flag, and the shared generator writes no TypeScript
 // into its browser app.
 package main
 

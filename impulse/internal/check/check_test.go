@@ -83,9 +83,9 @@ func TestSelect(t *testing.T) {
 		wantErr string
 	}{
 		{name: "all", want: []string{
-			"generator-program", "options", "tenancy-wired", "outlet-wired", "sites-wired", "auth-wired", "auths-wired", "skipauth", "emulator-version", "prettier-ignore", "eslint-ignore",
+			"generator-program", "options", "tenancy-wired", "outlet-wired", "sites-wired", "session-tables", "auths-wired", "skipauth", "emulator-version", "prettier-ignore", "eslint-ignore",
 			"resource-styles", "package-manager",
-			"paging", "rpc-execute", "multi-site", "env-template", "pins", "gowork-off", "regen",
+			"paging", "rpc-execute", "sites-generators", "env-template", "pins", "gowork-off", "regen",
 		}},
 		{name: "subset keeps run order", only: []string{regen{}.Name(), pins{}.Name()}, want: []string{pins{}.Name(), regen{}.Name()}},
 		{name: "unknown", only: []string{"nope"}, wantErr: `unknown check "nope"`},
