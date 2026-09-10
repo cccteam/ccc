@@ -64,6 +64,11 @@ func TestScope(t *testing.T) {
 			if got := tt.scope.String(); got != tt.wantString {
 				t.Errorf("String() = %q, want %q", got, tt.wantString)
 			}
+			// Every constructible scope belongs to the default axis, whose
+			// identity is the empty string.
+			if got := tt.scope.Axis(); got != "" {
+				t.Errorf("Axis() = %q, want the default axis %q", got, "")
+			}
 		})
 	}
 }

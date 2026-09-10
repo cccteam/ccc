@@ -7,10 +7,21 @@ package accesstypes
 // scope by construction. The zero Scope is the zero Domain's tenant scope,
 // which holds no grants (fail closed), never global.
 //
+// A tenant domain belongs to an axis: the dimension its tenant list partitions
+// the application along. An application with one tenant list declares no axis
+// and its scopes belong to the default axis, whose identity is the empty
+// string — permanently, so rows stored under it stay correct if the
+// application later declares a second axis. Every constructor in this package
+// produces a default-axis scope; there is no constructor for a named axis
+// yet. The field exists now so that comparisons, map keys, and the permission
+// stores' row identity already carry the axis, and adding one later changes
+// nothing about them.
+//
 // Scope is comparable and usable as a map key. It deliberately has no parsed
 // or serialized form: configuration and wire formats express global
 // structurally (a separate field or key), never as a magic string.
 type Scope struct {
+	axis   string
 	domain Domain
 	global bool
 }
@@ -40,6 +51,13 @@ func (s Scope) Domain() (Domain, bool) {
 	}
 
 	return s.domain, true
+}
+
+// Axis returns the name of the axis the scope belongs to. The default axis is
+// the empty string, and every Scope this package constructs belongs to it; the
+// global scope carries the empty axis as well.
+func (s Scope) Axis() string {
+	return s.axis
 }
 
 // String renders the scope for display only: "global" for the global scope,
