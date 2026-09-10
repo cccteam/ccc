@@ -105,6 +105,12 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 	log.Printf("Generated router tests file in %s: %s\n", time.Since(begin), routerTestsDestination)
 
+	if r.genRouter {
+		if err := r.runServedRouterGeneration(outlets, negativeTests); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -369,7 +375,7 @@ func (r *resourceGenerator) negativeRouterTests(outlets []routerOutlet) ([]negat
 
 	var tests []negativeRouterTest
 	for _, outlet := range outlets {
-		outletTests, err := r.negativeTestsForOutlet(outlet)
+		outletTests, err := r.negativeTestsForOutlet(&outlet)
 		if err != nil {
 			return nil, err
 		}
@@ -382,7 +388,7 @@ func (r *resourceGenerator) negativeRouterTests(outlets []routerOutlet) ([]negat
 // negativeTestsForOutlet builds one outlet's isolation cases: the URLs of everything
 // routed that is NOT attached to the outlet, addressed under the outlet's prefix —
 // including the permission routes for an outlet that does not serve sessions.
-func (r *resourceGenerator) negativeTestsForOutlet(outlet routerOutlet) ([]negativeRouterTest, error) {
+func (r *resourceGenerator) negativeTestsForOutlet(outlet *routerOutlet) ([]negativeRouterTest, error) {
 	var tests []negativeRouterTest
 	addRoute := func(route *generatedRoute) {
 		for _, method := range route.TestMethods() {

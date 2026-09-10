@@ -71,7 +71,7 @@ type Ship struct { ... }
 | `@subjectValue` | user-id field of a `@resource` struct | `name, value: Field` | Declares subject-side scalar vocabulary for threshold comparisons (`amount <= subject.approvalLimit`). Same grammar — and the same tenancy rule — as `@subjectSet`, valid only where the annotated user-id column is the primary key or unique-indexed, so the database enforces exactly one row per user. |
 | `@manualAddResource` | `accesstypes.Resource` constant | `permission[, scope]` | Registers the permission on the resource in the generated Collection for a hand-written route with no generated handler. Repeatable. Scope is `global` or `domain`; omitted means the global default. An `@outlet` annotation on the same constant names the outlets the hand-written route is mounted under, so an outlet-filtered TypeScript target (`ForOutlet`) carries the registration only when it names that outlet; omitted means the default outlet. The constant's value is the resource name and must not contain `:` (reserved for access-defined markers like `accesstypes.GlobalResource`); generation rejects it. The registration reaches the TypeScript constants like a generated one: an `Execute` registration joins `Methods`, any other permission joins `Resources`. |
 | `@manualAddResourceSet` | `@resource` struct | comma list of `listHandler`, `readHandler`, `patchHandler`, or `allHandlers` | Declares that hand-written handlers register this resource's permission Sets for the given handler types; validated against the set of generated handlers. |
-| `@outlet` | `@resource`, `@virtual`, `@computed`, or `@rpc` struct; `accesstypes.Resource` constant carrying `@manualAddResource` | comma list of outlet names | Names the router outlets the struct's routes — or the constant's hand-written route — are registered under. Outlets are independent registration surfaces with their own route prefixes — the generator emits a `Generated<Name>Handlers` interface and `generated<Name>Routes` function per outlet, so the application composes different authentication and middleware around each (a browser app on one, a machine REST API on another). The default outlet is declared by `generation.GenerateRoutes` and carries the reserved name `default`; additional outlets are declared with `generation.WithRouterOutlet(name, routePrefix)`, and referencing an undeclared name is a generation error. An outlet serving browser sessions declares it (`WithRouterOutlet(name, prefix, ServesSessions())`): the generated router registers the permission-digest and user-domains routes under its prefix, and only a session-serving outlet may be the target of a `GenerateTypescript` call (`ForOutlet(name)`), which filters every emitted TypeScript file to that outlet's members — a client for a session-less outlet would have no permission channels and fail closed on every page, so it is a generation error. Without the annotation a struct is on the default outlet only; naming outlets replaces that default, so `@outlet(default, automation)` serves both while `@outlet(automation)` serves the automation outlet only. Consolidated resources get one consolidated patch dispatcher per outlet (`PatchResources`, `Patch<Name>Resources`), each bundling exactly that outlet's members. The generated router tests cover every outlet's routes and additionally prove isolation: a route's path under an outlet it is not attached to must 404. Example: [Consignment](lodestar/pkg/resources/consignments.go). |
+| `@outlet` | `@resource`, `@virtual`, `@computed`, or `@rpc` struct; `accesstypes.Resource` constant carrying `@manualAddResource` | comma list of outlet names | Names the router outlets the struct's routes — or the constant's hand-written route — are registered under. Outlets are independent registration surfaces with their own route prefixes — the generator emits a `Generated<Name>Handlers` interface and `generated<Name>Routes` function per outlet, so the application composes different authentication and middleware around each (a browser app on one, a machine REST API on another). The default outlet is declared by `generation.GenerateRoutes` and carries the reserved name `default`; additional outlets are declared with `generation.WithRouterOutlet(name, routePrefix)`, and referencing an undeclared name is a generation error. An outlet serving browser sessions declares it (`WithRouterOutlet(name, prefix, Auth(pkg, flavor))` under the generated router, `ServesSessions()` under a hand-written one; section 8): the generated route tables register the permission-digest and user-domains routes under its prefix, and only a session-serving outlet may be the target of a `GenerateTypescript` call (`ForOutlet(name)`), which filters every emitted TypeScript file to that outlet's members — a client for a session-less outlet would have no permission channels and fail closed on every page, so it is a generation error. Without the annotation a struct is on the default outlet only; naming outlets replaces that default, so `@outlet(default, automation)` serves both while `@outlet(automation)` serves the automation outlet only. Consolidated resources get one consolidated patch dispatcher per outlet (`PatchResources`, `Patch<Name>Resources`), each bundling exactly that outlet's members. The generated router tests cover every outlet's routes and additionally prove isolation: a route's path under an outlet it is not attached to must 404. Example: [Consignment](lodestar/pkg/resources/consignments.go). |
 | `@permissionScope` | `@resource`, `@virtual`, `@computed`, or `@rpc` struct | `global` or `domain` | Sets the permission scope used by all of the resource's registrations. Default: `global`. It also selects the domain the generated handlers evaluate permissions in: global-scoped handlers pass `accesstypes.GlobalDomain`, while domain-scoped handlers read it from a required `/domains/{domain}/` route segment pair between the route prefix and the resource path (pair-style, so domain values can never collide with resource or method route names). Both names are customizable via the `generation.WithDomainRoute` option, e.g. `WithDomainRoute("organizations", "organizationID")` → `/organizations/{organizationID}/`. Domain-scoped handlers validate the URL's domain against the application's `DomainExists` seam (a `Config` sibling of `UserPermissions`) and return 404 for unknown domains before decoding — the application owns its tenant list. With `generation.WithConcealedDomains()` that seam becomes `DomainVisible(ctx, user, domain)` instead: a domain where the requesting user holds zero grants answers identically to a domain that does not exist (404 on routes, 400 in consolidated op paths), so refusals never confirm a tenant; any grant in the domain restores ordinary 403s (`access.Client.UserHasGrants` answers the foothold question from the in-memory snapshot, so the seam stays legal inside the consolidated mutation transaction). Tenant identifiers must be a single URL-safe path segment and must never contain `:` — that character is reserved for access-defined markers (`accesstypes.GlobalDomain` is `access:global`), and the generated guard structurally rejects any `:`-bearing domain value before `DomainExists` is even consulted, so a misconfigured tenant list can never route a permission check into the global partition. In the consolidated patch handler, a domain-scoped resource's operations carry the domain in the path exactly as the URL grammar does (`{"op":"patch","path":"/stations/station-alpha/berths/…"}`); global operations stay domainless, an unknown domain in an operation path is a 400, and cross-domain batches are legal (each operation is checked in its own partition; the batch is one transaction). The tenant-record pattern — a global resource named like the domain segment, so `/api/stations` lists the tenants while `/api/stations/{stationID}/…` serves tenant-scoped routes — is supported with two validated requirements: the resource must have a single primary key (its operations stay at path depth ≤ 2, domain descents at depth ≥ 3), and its read-route parameter must equal the domain route parameter. Example: [Sector](lodestar/pkg/resources/sectors.go). |
 | `@page` | `@resource`, `@virtual`, or `@computed` struct | `default: N` and/or `max: M` | Declares the list's page sizes: the page a request without `limit` receives, and the largest page a request may ask for. Both are positive integers; the default never exceeds the maximum, and a maximum alone must be at least the generator-wide default of 50. Undeclared, the list serves pages of 50 with no maximum. A request over the maximum is refused with a 400 naming it, never clamped, and a resource with a maximum refuses `limit=all`. The generated TypeScript descriptor carries both numbers. Example: [Mission](lodestar/pkg/resources/missions.go). |
 | `@order` | `@resource`, `@virtual`, or `@computed` struct | comma list of `Field [asc\|desc]` | Declares the order a list takes when the request carries no `sort`, naming Go fields of the struct; the direction defaults to `asc`. The primary key is appended at runtime so the order is total, and a request's `sort` replaces the declared order for that request. A resource that declares nothing lists by primary key. On a computed resource only a leaf field may be named (a nested field is opaque). Example: [Mission](lodestar/pkg/resources/missions.go). |
@@ -216,10 +216,11 @@ GET /<prefix>/permission-digest?domain={id}  → one tenant partition's digest
 GET /<prefix>/user-domains                   → the domains the session user can see
 ```
 
-An additional outlet declared with `ServesSessions()` gets the same two routes under
-its own prefix, served by the same generated handlers behind whatever session
-middleware the application composes around that outlet; an outlet without the
-declaration gets neither (the generated router tests prove its prefix 404s them).
+An additional outlet that serves sessions (`Auth(...)` under the generated router,
+`ServesSessions()` under a hand-written one) gets the same two routes under its own
+prefix, served by the same generated handlers behind the outlet's session middleware;
+an outlet without the declaration gets neither (the generated router tests prove its
+prefix 404s them).
 
 **The digest.** The payload is the user's structural grant enumeration for the requested scope:
 resource → permission → `granted` | `conditional`, with field targets under their
@@ -323,3 +324,110 @@ the wire and the frame's own status stamp must stay privileged. The method's ent
 contract with the permission system is `Execute` on itself, its target row, its
 transition, and any row condition on the Execute grant, all visible in the collection.
 
+## 8. The generated router
+
+`GenerateRoutes` emits the route tables: one `generated<Outlet>Routes` function and
+`Generated<Outlet>Handlers` interface per outlet, plus `NewTestRouter`, which serves them
+bare for test composition. What sits in front of them in production is the router, and
+`generation.GenerateRouter()` emits that too, beside the tables in the same package:
+`zz_gen_router.go` and its proof, `zz_gen_router_test.go`. Without the option the
+contract is unchanged: generated route tables plus a hand-written router.
+
+**What the program declares.** Two facts per outlet that the generator cannot derive.
+The auth behind a session outlet, `generation.Auth(importPath, flavor)`: the auth package
+(the package exporting `Name`) and how its people sign in, `Password`, `OIDCGoogle`, or
+`OIDCAzure`. A machine outlet declares `generation.APIKey()` instead. And the browser
+application an outlet serves, when it serves one: `generation.WebApp(mountPath)`, `"/"`
+for the application at the root, `"/portal"` for one under a path. The default outlet
+declares them on `GenerateRoutes`, the others on `WithRouterOutlet`. A session `Auth`
+makes the outlet serve sessions exactly as `ServesSessions()` does; `ServesSessions()`
+stays for applications that keep a hand-written router. Lodestar's program:
+
+```go
+generation.GenerateRouter(),
+generation.GenerateRoutes("pkg/router", "api",
+	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.Password),
+	generation.WebApp("/"),
+),
+generation.WithRouterOutlet("droids", "droids", generation.APIKey()),
+generation.WithRouterOutlet("portal", "portal/api",
+	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.OIDCGoogle),
+	generation.WebApp("/portal"),
+),
+```
+
+Under `GenerateRouter` every outlet says how it authenticates, one way: an outlet with
+neither `Auth` nor `APIKey`, or with both, fails generation, as do a machine outlet with
+a `WebApp`, two outlets on one mount path, and a browser application mounted under an
+API prefix. Without the option the three declarations are refused rather than ignored.
+
+**The generated file** holds four things, in this order. The chain comment opens it as
+the package documentation: every outlet's middleware in order, outermost first, one line
+per group, each chain followed by what it stands in front of. It is the review surface:
+what sits in front of every REST handler, readable without the code beneath it.
+`Handlers` is the full surface the router needs: the generated handlers of every outlet;
+the default outlet's session handlers embedded (`session.PasswordAuthHandlers` for
+Lodestar) and each additional session outlet's through a getter named after it
+(`Portal() session.OIDCGoogleHandlers`); `BindAuth(name)` only when more than one session
+auth is declared, so a misspelled or removed auth package is a compile error at
+`BindAuth(crew.Name)`; `<Outlet>Auth(next)` per API-key outlet; `LoggerMiddleware`,
+`SecurityHeaders`, `NoCaching`, and `CompressionMiddleware`; and per `WebApp` a
+`DeepLink` and `Assets` pair, prefixed with the outlet's name for an additional outlet
+(`PortalDeepLink`, `PortalAssets`). Route-parameter capture (`httpio.WithParams`) is
+mounted by the router itself. `Hooks` is a struct, never a map, so an outlet added or
+removed surfaces as a compile error at every hook that names it:
+
+```go
+type Hooks struct {
+	// Outermost runs ahead of the logger on every request: tracing belongs here.
+	Outermost []func(http.Handler) http.Handler
+	// Root registers routes outside every outlet: health checks, webhooks, scheduler
+	// triggers. They sit behind the every-request chain and nothing else.
+	Root func(r chi.Router)
+	// One field per outlet, named after it. The hook runs inside the outlet's
+	// authenticated group (or the API-key group): r already sits behind the outlet's
+	// guards, and generated registers the outlet's generated routes. Nil registers them
+	// directly.
+	Default func(r chi.Router, generated func(chi.Router))
+	Portal  func(r chi.Router, generated func(chi.Router))
+	Droids  func(r chi.Router, generated func(chi.Router))
+}
+```
+
+Hooks compose inward only. A hook adds middleware and routes under the guards it is
+handed and chooses where inside its own group the generated routes register; it never
+sees the outer router, so no generated route can be lifted out from behind session
+validation or the XSRF guard. A hook must call `generated` exactly once; the router
+refuses one that does not, at construction. `New(h Handlers, hooks Hooks) *chi.Mux` is
+written linear and inline, the way a hand router reads: `hooks.Outermost`, the logger,
+the security headers, and parameter capture; `hooks.Root`; one group per outlet, top to
+bottom; a not-found handler per outlet prefix, so an unknown API path is 404 and never a
+browser application's entry document; then the web apps, longer mount paths first so
+`"/"` is the catch-all.
+
+A session outlet's group is `BindAuth(<pkg>.Name)` (with two session auths), `NoCaching`,
+`CompressionMiddleware`, `StartSession`, `SetXSRFToken`; the flavor's login routes under
+the prefix; then the authenticated sub-group, `ValidateSession` and `ValidateXSRFToken`
+around the hook and the generated routes. The flavor's routes: Password mounts `POST
+user/login`, `GET user/session`, `DELETE user/session`; OIDCGoogle mounts `GET
+user/login`, `GET user/callback`, and the two session routes; OIDCAzure adds `GET
+user/logout`, the directory's front-channel logout. An API-key outlet's group is
+`NoCaching`, `CompressionMiddleware`, `<Outlet>Auth`, then the hook and the routes: no
+session handling and no XSRF guard.
+
+**The generated test** drives every generated route through `New` with recording stubs
+and asserts the middleware each request passed through, in order, for its outlet; that
+each flavor's session routes answer behind the group and before the guards; that under
+every prefix an unknown path is 404 and nothing under one outlet's prefix reaches another
+outlet's group; that each browser application answers at its mount path through its
+deep-link rewrite; and that the hooks sit where the chain comment says. The chain
+comment is proven, not stated. `NewTestRouter` and the route tests are unchanged, and the
+application's own hooks are the application's suite's to exercise.
+
+**Adopting it.** Lodestar keeps one hand file in its router package, `hooks.go`: an
+`AppHandlers` interface (the generated `Handlers` plus its own routes) and an
+`AppHooks(h AppHandlers) Hooks` function, and `main` calls `router.New(app,
+router.AppHooks(app))`. An application whose router is exactly the base passes
+`router.Hooks{}`. The escape hatch stays: an application that needs something the shape
+cannot carry removes the option and hand-writes its router on the generated route
+tables, losing only the boilerplate and the generated chain test.

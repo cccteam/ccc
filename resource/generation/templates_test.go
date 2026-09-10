@@ -22,6 +22,8 @@ func fileTemplates() map[string]string {
 		"collectionTemplate":              collectionTemplate,
 		"routesTemplate":                  routesTemplate,
 		"routerTestTemplate":              routerTestTemplate,
+		"servedRouterTemplate":            servedRouterTemplate,
+		"servedRouterTestTemplate":        servedRouterTestTemplate,
 		"rpcFileTemplate":                 rpcFileTemplate,
 		"rpcHandlerTemplate":              rpcHandlerTemplate,
 		"rpcInterfacesTemplate":           rpcInterfacesTemplate,

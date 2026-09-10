@@ -82,7 +82,7 @@ func Test_negativeTestsForOutlet_sessionRoutes(t *testing.T) {
 			t.Parallel()
 
 			rg := &resourceGenerator{client: &client{}}
-			got, err := rg.negativeTestsForOutlet(tt.outlet)
+			got, err := rg.negativeTestsForOutlet(&tt.outlet)
 			if err != nil {
 				t.Fatalf("negativeTestsForOutlet() error = %v", err)
 			}

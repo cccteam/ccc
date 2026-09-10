@@ -200,6 +200,8 @@ const (
 	appContractOutputName         = "app_contract"
 	routesOutputName              = "routes"
 	routerTestOutputName          = "routes_test"
+	servedRouterOutputName        = "router"
+	servedRouterTestOutputName    = "router_test"
 	consolidatedHandlerOutputName = "consolidated_handler"
 	collectionOutputName          = "collection"
 )

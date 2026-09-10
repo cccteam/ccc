@@ -168,6 +168,12 @@ linters:
           - paralleltest
         path: options_test\.go
         text: TestApplicationName
+      # The served-router template cases format their output the way the generator does,
+      # through the process-global aligner, so they run sequentially.
+      - linters:
+          - paralleltest
+        path: servedrouter_test\.go
+        text: Test_servedRouterTemplates
       - linters:
           - gomoddirectives
         path: go\.mod

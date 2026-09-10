@@ -94,12 +94,43 @@ func ApplicationName(name string) ResourceOption {
 	})
 }
 
-// GenerateRoutes enables generating a router file containing routes for all handlers and RPC methods.
-func GenerateRoutes(targetDir, routePrefix string) ResourceOption {
+// GenerateRoutes enables generating a router file containing routes for all handlers and
+// RPC methods, registered under routePrefix on the default outlet. Outlet options refine
+// the default outlet's declaration for the generated router (GenerateRouter): Auth names
+// the auth its browser sessions come from, or APIKey makes it a machine surface, and
+// WebApp names the browser application it serves.
+func GenerateRoutes(targetDir, routePrefix string, options ...OutletOption) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genRoutes = true
 		r.router = packageDir(targetDir)
 		r.routePrefix = routePrefix
+
+		outlet := routerOutlet{name: defaultOutletName, prefix: routePrefix, servesSessions: true}
+		for _, opt := range options {
+			if err := opt.applyToOutlet(&outlet); err != nil {
+				return errors.Wrapf(err, "GenerateRoutes(%q, %q)", targetDir, routePrefix)
+			}
+		}
+		r.defaultOutlet = outlet
+
+		return nil
+	})
+}
+
+// GenerateRouter emits the application's router beside the route tables GenerateRoutes
+// emits, in the same package: zz_gen_router.go holds the Handlers interface (the full
+// surface the router needs), the Hooks struct (the application's additions: one field per
+// outlet and two for the edges), and New(h Handlers, hooks Hooks) *chi.Mux, written linear
+// and inline with the middleware chain documented at the top of the file; and
+// zz_gen_router_test.go proves that chain by driving every route through New.
+//
+// Every outlet then declares how it authenticates, Auth or APIKey, and a session outlet
+// that serves a browser application declares WebApp. Requires GenerateRoutes. Without the
+// option the contract is unchanged, generated route tables plus a hand-written router,
+// and Auth, APIKey, and WebApp are not accepted.
+func GenerateRouter() ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		r.genRouter = true
 
 		return nil
 	})
@@ -118,15 +149,39 @@ type routerOutlet struct {
 	prefix string
 	// servesSessions declares the outlet a browser-session surface: the generated
 	// router registers the permission-digest and user-domains routes under its
-	// prefix. Always true for the default outlet; opt-in via ServesSessions() for
-	// additional outlets.
+	// prefix. Always true for the default outlet; opt-in via ServesSessions() or a
+	// session Auth for additional outlets.
 	servesSessions bool
+	// auth is the auth the generated router binds the outlet's browser sessions to
+	// (Auth); nil for an API-key outlet and for an outlet under a hand-written router.
+	auth *outletAuth
+	// apiKey marks a machine outlet for the generated router (APIKey): no session
+	// handling and no XSRF guard, the application's <Outlet>Auth middleware in front.
+	apiKey bool
+	// webApp is the mount path of the browser application the outlet serves (WebApp),
+	// empty when it serves none.
+	webApp string
+	// declaredSessions records an explicit ServesSessions(), which contradicts APIKey.
+	declaredSessions bool
+}
+
+// outletAuth is one Auth declaration: the auth package a session outlet binds to and the
+// flavor its people sign in with.
+type outletAuth struct {
+	importPath string
+	flavor     AuthFlavor
+}
+
+// packageName is the auth package's name as the generated router imports it, assumed
+// from the import path the way goimports does.
+func (a outletAuth) packageName() string {
+	return assumedPackageName(a.importPath)
 }
 
 // suffix returns the outlet's contribution to generated identifiers
 // (Generated<suffix>Handlers, generated<suffix>Routes, Patch<suffix>Resources);
 // empty for the default outlet, whose identifiers carry no outlet name.
-func (o routerOutlet) suffix() string {
+func (o *routerOutlet) suffix() string {
 	if o.name == defaultOutletName {
 		return ""
 	}
@@ -164,7 +219,9 @@ func WithRouterOutlet(name, routePrefix string, options ...OutletOption) Resourc
 
 		outlet := routerOutlet{name: name, prefix: routePrefix}
 		for _, opt := range options {
-			opt.applyToOutlet(&outlet)
+			if err := opt.applyToOutlet(&outlet); err != nil {
+				return errors.Wrapf(err, "WithRouterOutlet(%q, %q)", name, routePrefix)
+			}
 		}
 		r.extraOutlets = append(r.extraOutlets, outlet)
 
@@ -172,15 +229,16 @@ func WithRouterOutlet(name, routePrefix string, options ...OutletOption) Resourc
 	})
 }
 
-// OutletOption refines one WithRouterOutlet declaration.
+// OutletOption refines one outlet declaration: the default outlet's on GenerateRoutes,
+// an additional outlet's on WithRouterOutlet.
 type OutletOption interface {
-	applyToOutlet(*routerOutlet)
+	applyToOutlet(*routerOutlet) error
 }
 
 // outletOption adapts a function to OutletOption.
-type outletOption func(*routerOutlet)
+type outletOption func(*routerOutlet) error
 
-func (f outletOption) applyToOutlet(o *routerOutlet) { f(o) }
+func (f outletOption) applyToOutlet(o *routerOutlet) error { return f(o) }
 
 // ServesSessions declares that the outlet serves browser sessions: the generated
 // router registers the permission-digest and user-domains routes under the outlet's
@@ -189,8 +247,97 @@ func (f outletOption) applyToOutlet(o *routerOutlet) { f(o) }
 // PermissionDigest and UserDomains handlers serve them. The default outlet always
 // serves sessions; an outlet without the declaration gets no permission routes, and
 // a GenerateTypescript target may only name a session-serving outlet (ForOutlet).
+// Under GenerateRouter a session Auth declares the same, so ServesSessions is for
+// applications that keep a hand-written router.
 func ServesSessions() OutletOption {
-	return outletOption(func(o *routerOutlet) { o.servesSessions = true })
+	return outletOption(func(o *routerOutlet) error {
+		o.servesSessions = true
+		o.declaredSessions = true
+
+		return nil
+	})
+}
+
+// AuthFlavor is how a session outlet's people sign in: the session library flavor whose
+// handlers the generated router mounts under the outlet's prefix.
+type AuthFlavor string
+
+// The auth flavors the generated router composes.
+const (
+	// Password signs in with a username and password (session.PasswordAuthHandlers):
+	// POST user/login, then GET and DELETE user/session.
+	Password AuthFlavor = "password"
+	// OIDCGoogle signs in through a Google Workspace directory
+	// (session.OIDCGoogleHandlers): GET user/login sends the browser to the directory,
+	// GET user/callback receives it back, then GET and DELETE user/session.
+	OIDCGoogle AuthFlavor = "oidc-google"
+	// OIDCAzure signs in through an Azure directory (session.OIDCAzureHandlers):
+	// Google's routes plus GET user/logout, the directory's front-channel logout.
+	OIDCAzure AuthFlavor = "oidc-azure"
+)
+
+// Auth declares the auth a session outlet binds to, for the generated router
+// (GenerateRouter). importPath is the auth package: the package exporting Name whose
+// session handlers serve the outlet (the default outlet's are embedded in Handlers,
+// an additional outlet's come from a getter named after it), and flavor is how its
+// people sign in, which decides the login routes the router mounts under the outlet's
+// prefix. The default outlet declares it on GenerateRoutes, an additional outlet on
+// WithRouterOutlet. A session flavor makes the outlet serve sessions exactly as
+// ServesSessions does.
+//
+// When more than one session auth is declared the generated router binds every request
+// in the outlet's group to its auth, BindAuth(<pkg>.Name), so a misspelled or removed
+// auth package is a compile error; with one session auth the package is not imported.
+func Auth(importPath string, flavor AuthFlavor) OutletOption {
+	return outletOption(func(o *routerOutlet) error {
+		if importPath == "" || strings.ContainsAny(importPath, " \t\n\"") || strings.Trim(importPath, "/") != importPath {
+			return errors.Newf("Auth(%q) requires an import path: the auth package, such as \"github.com/acme/beacon/pkg/auth/staff\"", importPath)
+		}
+		if _, ok := authFlavors[flavor]; !ok {
+			return errors.Newf("Auth(%q, %q) names an unknown flavor; the flavors are Password, OIDCGoogle, and OIDCAzure", importPath, flavor)
+		}
+		if o.auth != nil {
+			return errors.Newf("Auth(%q, %q) redeclares the outlet's auth (%q, %q): an outlet binds to one auth", importPath, flavor, o.auth.importPath, o.auth.flavor)
+		}
+		o.auth = &outletAuth{importPath: importPath, flavor: flavor}
+		o.servesSessions = true
+
+		return nil
+	})
+}
+
+// APIKey declares a machine outlet for the generated router (GenerateRouter): its group
+// carries no session handling and no XSRF guard; NoCaching, CompressionMiddleware, and
+// the application's <Outlet>Auth middleware run in front of the outlet's routes, and
+// <Outlet>Auth binds each request to a service identity the way the session middleware
+// binds a browser request to its user. An API-key outlet serves no sessions.
+func APIKey() OutletOption {
+	return outletOption(func(o *routerOutlet) error {
+		o.apiKey = true
+
+		return nil
+	})
+}
+
+// WebApp declares the browser application a session outlet serves, for the generated
+// router (GenerateRouter): mountPath is where it is mounted ("/" for the application
+// at the root, "/portal" for one under a path), and the application supplies its
+// DeepLink and Assets handlers, prefixed with the outlet's name for an additional
+// outlet (PortalDeepLink, PortalAssets). The router mounts every web app after the
+// outlets, longer paths first, so "/" is the catch-all; an outlet without the
+// declaration mounts no assets.
+func WebApp(mountPath string) OutletOption {
+	return outletOption(func(o *routerOutlet) error {
+		if mountPath == "" || !strings.HasPrefix(mountPath, "/") || strings.ContainsAny(mountPath, "{}* \t\n\"") || (mountPath != "/" && strings.HasSuffix(mountPath, "/")) {
+			return errors.Newf("WebApp(%q) requires a mount path starting with '/' and without a trailing '/', such as \"/\" or \"/portal\"", mountPath)
+		}
+		if o.webApp != "" {
+			return errors.Newf("WebApp(%q) redeclares the outlet's browser application (%q): an outlet serves one", mountPath, o.webApp)
+		}
+		o.webApp = mountPath
+
+		return nil
+	})
 }
 
 // outletNamePattern constrains outlet names to lowerCamelCase identifiers so the
@@ -585,6 +732,9 @@ func applyResourceGeneratorDefaults(g *resourceGenerator) error {
 	}
 	if g.genHandlerTests && (!g.genHandlers || !g.genRoutes) {
 		return errors.New("GenerateHandlerTests requires GenerateHandlers and GenerateRoutes: the generated suite drives the generated handlers through the generated test router")
+	}
+	if g.genRouter && !g.genRoutes {
+		return errors.New("GenerateRouter requires GenerateRoutes: the generated router serves the generated route tables")
 	}
 	if g.domainRouteParam == "" {
 		g.domainRouteParam = defaultDomainRouteParam

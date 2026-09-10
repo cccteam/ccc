@@ -77,7 +77,7 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		if len(members) == 0 {
 			continue
 		}
-		if err := r.generateConsolidatedPatchHandler(outlet, members); err != nil {
+		if err := r.generateConsolidatedPatchHandler(&outlet, members); err != nil {
 			return errors.Wrap(err, "generateConsolidatedPatchHandler()")
 		}
 	}
@@ -360,7 +360,7 @@ func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {
 	return nil
 }
 
-func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet routerOutlet, resources []*resourceInfo) error {
+func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet *routerOutlet, resources []*resourceInfo) error {
 	begin := time.Now()
 	outputName := consolidatedHandlerOutputName
 	if outlet.name != defaultOutletName {

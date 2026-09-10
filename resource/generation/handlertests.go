@@ -187,7 +187,7 @@ func queryRouteCase(route *generatedRoute, pkTypes []pkParamType) (c authzCase, 
 // authzCaseName qualifies a case name with the serving outlet, so the same handler
 // reached through two outlets stays two distinct matrix cases. Default-outlet names
 // are unqualified.
-func authzCaseName(base string, outlet routerOutlet) string {
+func authzCaseName(base string, outlet *routerOutlet) string {
 	if outlet.name == defaultOutletName {
 		return base
 	}
@@ -210,7 +210,7 @@ func (r *resourceGenerator) resourceAuthzCases() (cases []authzCase, err error) 
 					return nil, err
 				}
 				if ht == PatchHandler {
-					opCases, err := patchOpCases(authzCaseName(route.HandlerFunc, outlet), route.TestURL, "", res, pkTypes)
+					opCases, err := patchOpCases(authzCaseName(route.HandlerFunc, &outlet), route.TestURL, "", res, pkTypes)
 					if err != nil {
 						return nil, err
 					}
@@ -223,7 +223,7 @@ func (r *resourceGenerator) resourceAuthzCases() (cases []authzCase, err error) 
 					return nil, err
 				}
 				if ok {
-					c.Name = authzCaseName(c.Name, outlet)
+					c.Name = authzCaseName(c.Name, &outlet)
 					cases = append(cases, c)
 				}
 			}
@@ -254,7 +254,7 @@ func (r *resourceGenerator) computedAuthzCases() (cases []authzCase, err error) 
 					return nil, err
 				}
 				if ok {
-					c.Name = authzCaseName(c.Name, outlet)
+					c.Name = authzCaseName(c.Name, &outlet)
 					cases = append(cases, c)
 				}
 			}
@@ -319,7 +319,7 @@ func (r *resourceGenerator) rpcAuthzCases() (cases []authzCase) {
 		for _, outlet := range r.memberOutlets(&rpcStruct.outletMembership) {
 			route := r.rpcRoute(rpcStruct, outlet.prefix)
 			cases = append(cases, authzCase{
-				Name:       authzCaseName(route.HandlerFunc, outlet),
+				Name:       authzCaseName(route.HandlerFunc, &outlet),
 				Method:     httpMethodConst(route.Method),
 				URL:        route.TestURL,
 				Body:       emptyObjectBody,
@@ -329,7 +329,7 @@ func (r *resourceGenerator) rpcAuthzCases() (cases []authzCase) {
 			// call does: the header changes what commits, never what is checked.
 			if rpcStruct.IsTxnForm() {
 				cases = append(cases, authzCase{
-					Name:       authzCaseName(route.HandlerFunc, outlet) + " dry run",
+					Name:       authzCaseName(route.HandlerFunc, &outlet) + " dry run",
 					Method:     httpMethodConst(route.Method),
 					URL:        route.TestURL,
 					Body:       emptyObjectBody,

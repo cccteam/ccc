@@ -20,6 +20,7 @@ type resourceGenerator struct {
 	*client
 	genHandlers     bool
 	genRoutes       bool
+	genRouter       bool
 	genHandlerTests bool
 	handler         packageDir
 	router          packageDir
@@ -38,6 +39,10 @@ type resourceGenerator struct {
 	// does the caller hold any grant in it — instead of DomainExists, so a
 	// prober cannot confirm a tenant exists from the rejection shape.
 	concealedDomains bool
+	// defaultOutlet is the outlet GenerateRoutes declares, with the outlet options it
+	// carries for the generated router; every resource is on it unless @outlet says
+	// otherwise.
+	defaultOutlet routerOutlet
 	// extraOutlets are the router outlets declared by WithRouterOutlet, beyond the
 	// default outlet GenerateRoutes declares. Resources join them via @outlet.
 	extraOutlets        []routerOutlet
@@ -50,7 +55,9 @@ type resourceGenerator struct {
 // outlet always serves browser sessions; extra outlets opt in (ServesSessions).
 func (r *resourceGenerator) allOutlets() []routerOutlet {
 	outlets := make([]routerOutlet, 0, len(r.extraOutlets)+1)
-	outlets = append(outlets, routerOutlet{name: defaultOutletName, prefix: r.routePrefix, servesSessions: true})
+	defaultOutlet := r.defaultOutlet
+	defaultOutlet.name, defaultOutlet.prefix, defaultOutlet.servesSessions = defaultOutletName, r.routePrefix, true
+	outlets = append(outlets, defaultOutlet)
 
 	return append(outlets, r.extraOutlets...)
 }
@@ -165,6 +172,10 @@ func NewResourceGenerator(ctx context.Context, resourcePackageDir string, migrat
 	}
 
 	if err := r.validateOutletConfig(); err != nil {
+		return nil, err
+	}
+
+	if err := r.validateRouterConfig(); err != nil {
 		return nil, err
 	}
 
