@@ -1707,7 +1707,8 @@ const resourceMap: ResourceMap = {
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
        {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex -}}
-      {{- if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }}{{ if $field.IsOutputOnly }}, readOnly: true{{ end }} },
+      {{- if $field.Enumeration }}, enumeration: [{{ range $i, $v := $field.EnumerationValues }}{{ if $i }}, {{ end }}{ id: {{ printf "%q" $v.ID }}, display: {{ printf "%q" $v.Description }} }{{ end }}]
+      {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.ReferencedResource }}{{ end }}{{ if or $field.IsOutputOnly $resource.IsEnumeration }}, readOnly: true{{ end }} },
       {{- end }}
     ],
   },

@@ -224,6 +224,9 @@ func (r *resourceGenerator) Generate() error {
 	}
 
 	resourcesPkg := parser.ParsePackage(pkg)
+	if err := r.registerEnumerations(resourcesPkg.NamedTypes); err != nil {
+		return err
+	}
 	r.resources, err = r.structsToResources(resourcesPkg.Structs, r.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
 	if err != nil {
 		return err

@@ -45,7 +45,12 @@ type client struct {
 	migrationSourceURLs []string
 	tableMap            map[string]*tableMetadata
 	enumValues          map[string][]*enumData
-	pluralOverrides     map[string]string
+	// enumerateTables maps an enum table's name to the named type whose @enumerate
+	// declares it (registerEnumerations). A table named here is an enumeration: its
+	// rows are the program's constants, so a struct backing it is read-only and a
+	// foreign key into it renders from the generated values, not from a resource.
+	enumerateTables map[string]string
+	pluralOverrides map[string]string
 	// mappedTypes is the wire walker's leaf table: every Go type the generator maps
 	// to a TypeScript type (the built-in table plus the TypeScript targets'
 	// overrides), keyed by qualified type name. A named struct in it is a leaf; any
@@ -467,6 +472,30 @@ func (c *client) retrieveDatabaseEnumValues(namedTypes []*parser.NamedType) (val
 	}
 
 	return enumMap, enumTables, nil
+}
+
+// registerEnumerations records which tables the package's @enumerate types name, so
+// resource extraction and TypeScript metadata can treat a foreign key into one, or a
+// struct backing one, as an enumeration. It reads the same declarations enum
+// generation does and must run before structsToResources.
+func (c *client) registerEnumerations(namedTypes []*parser.NamedType) error {
+	_, tables, err := c.retrieveDatabaseEnumValues(namedTypes)
+	if err != nil {
+		return errors.Wrap(err, "retrieveDatabaseEnumValues()")
+	}
+	c.enumerateTables = make(map[string]string, len(tables))
+	for typeName, tableName := range tables {
+		c.enumerateTables[tableName] = typeName
+	}
+
+	return nil
+}
+
+// enumerationOf returns the @enumerate type behind a table, and whether there is one.
+func (c *client) enumerationOf(tableName string) (string, bool) {
+	typeName, ok := c.enumerateTables[tableName]
+
+	return typeName, ok
 }
 
 // pluralize returns the plural form of value: an explicit override if one is

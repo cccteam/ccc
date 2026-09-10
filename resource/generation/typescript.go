@@ -172,6 +172,9 @@ func (t *typescriptGenerator) parseResources(packageMap map[string]*packages.Pac
 		return nil, nil, errors.Newf("no packages found in %q", t.resource.Dir())
 	}
 	resourcesPkg := parser.ParsePackage(pkg)
+	if err := t.registerEnumerations(resourcesPkg.NamedTypes); err != nil {
+		return nil, nil, err
+	}
 
 	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
 	if err != nil {
@@ -535,7 +538,22 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceFie
 			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
 		}
 
-		if field.IsForeignKey && slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
+		if !field.IsForeignKey {
+			continue
+		}
+		// A key into an @enumerate table renders from the generated values: the set is
+		// fixed at generation time, so the picker needs neither a request nor a List
+		// grant, even when a struct also exposes the table as a read-only resource.
+		if typeName, ok := t.enumerationOf(field.ReferencedResource); ok {
+			if _, gone := t.outletExcludedTables[field.ReferencedResource]; !gone {
+				field.IsEnumerated = true
+				field.Enumeration = typeName
+				field.EnumerationValues = t.enumValues[field.ReferencedResource]
+
+				continue
+			}
+		}
+		if slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
 			field.IsEnumerated = true
 		}
 	}

@@ -80,7 +80,7 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 
-		if err := resolveResourceAnnotations(resource, annotations); err != nil {
+		if err := c.resolveStructAnnotations(resource, pStruct, annotations); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
@@ -210,6 +210,55 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 	if annotations.Struct.Has(validateUpdateTypeKeyword) {
 		res.ValidateUpdateType = string(annotations.Struct.Get(validateUpdateTypeKeyword))
 	}
+
+	return nil
+}
+
+// resolveStructAnnotations applies a table-backed struct's annotations and then the
+// derivation the schema imposes on it: a struct backing an @enumerate table is
+// read-only (deriveEnumerationResource).
+func (c *client) resolveStructAnnotations(res *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
+	if err := resolveResourceAnnotations(res, annotations); err != nil {
+		return err
+	}
+	if typeName, ok := c.enumerationOf(c.pluralize(pStruct.Name())); ok {
+		return deriveEnumerationResource(res, typeName)
+	}
+
+	return nil
+}
+
+// deriveEnumerationResource makes a struct that backs an @enumerate table read-only:
+// the table's rows are the program's constants (generated as Go constants and a
+// TypeScript enum), so a mutation handler would let the rows drift from the code
+// generated from them. The patch handler is suppressed as if @suppress(PatchHandler)
+// were written, which also drops Create, Update, and Delete from the collection and
+// the consolidated handler. Anything on the struct that only a mutable table needs is
+// a contradiction and fails generation, rather than being dropped quietly.
+func deriveEnumerationResource(res *resourceInfo, typeName string) error {
+	var conflicts []string
+	for _, c := range []struct{ keyword, value string }{
+		{defaultsCreateTypeKeyword, res.DefaultsCreateType},
+		{defaultsUpdateTypeKeyword, res.DefaultsUpdateType},
+		{validateCreateTypeKeyword, res.ValidateCreateType},
+		{validateUpdateTypeKeyword, res.ValidateUpdateType},
+	} {
+		if c.value != "" {
+			conflicts = append(conflicts, "@"+c.keyword)
+		}
+	}
+	if slices.Contains(res.ManualAddResourceSets, PatchHandler) {
+		conflicts = append(conflicts, fmt.Sprintf("@%s(%s)", manualAddResourceSetKeyword, PatchHandler))
+	}
+	if len(conflicts) > 0 {
+		return errors.Newf("struct %s backs the enumeration table %s (@%s on type %s), so it is read-only: its rows are the program's constants; remove %s", res.Name(), typeName, enumerateKeyword, typeName, strings.Join(conflicts, ", "))
+	}
+
+	res.EnumerationType = typeName
+	if !slices.Contains(res.SuppressedHandlers, PatchHandler) {
+		res.SuppressedHandlers = append(res.SuppressedHandlers, PatchHandler)
+	}
+	res.IsConsolidated = false
 
 	return nil
 }

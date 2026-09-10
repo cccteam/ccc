@@ -223,6 +223,9 @@ type informationSchemaResult struct {
 	IsInterleaved        bool    `spanner:"IS_INTERLEAVED"`
 }
 
+// enumeratedDisplayType is the TypeScript display type of a field rendered as a picker.
+const enumeratedDisplayType = "enumerated"
+
 type enumData struct {
 	ID          string `spanner:"id"`
 	Description string `spanner:"description"`
@@ -563,7 +566,7 @@ func (r *rpcField) EnumeratedResource() string {
 
 func (r *rpcField) TypescriptDisplayType() string {
 	if r.IsEnumerated() {
-		return "enumerated"
+		return enumeratedDisplayType
 	}
 	if r.wire != nil {
 		return r.wire.TypescriptDisplayType()
@@ -757,6 +760,11 @@ type resourceInfo struct {
 	DefaultsUpdateType string
 	ValidateCreateType string
 	ValidateUpdateType string
+	// EnumerationType names the @enumerate type whose table this struct backs. Such a
+	// resource is read-only by derivation: the table's rows are the program's
+	// constants, so no mutation handler is generated and its permissions stop at
+	// List and Read (deriveEnumerationResource).
+	EnumerationType string
 
 	// The resource's compiled binding vocabulary (ABAC design plan §04):
 	// Attributes are the row attributes conditions reference (@attribute),
@@ -869,6 +877,11 @@ func (r *resourceInfo) PrimaryKeys() iter.Seq2[int, *resourceField] {
 	}
 }
 
+// IsEnumeration reports whether the struct backs an @enumerate table (read-only by derivation).
+func (r *resourceInfo) IsEnumeration() bool {
+	return r.EnumerationType != ""
+}
+
 func (r *resourceInfo) HasCompoundPrimaryKey() bool {
 	return r.PkCount > 1
 }
@@ -948,8 +961,13 @@ type resourceField struct {
 	KeyOrdinalPosition int64 // Position of primary or foreign key in a compound key definition
 	IsEnumerated       bool
 	ReferencedResource string
-	ReferencedField    string
-	HasDefault         bool
+	// Enumeration names the @enumerate type a foreign key into an enum table resolves
+	// to, and EnumerationValues carries that table's rows; the TypeScript metadata
+	// emits them inline so a picker renders without a request or a List grant.
+	Enumeration       string
+	EnumerationValues []*enumData
+	ReferencedField   string
+	HasDefault        bool
 
 	// The @state marker (design plan §09): IsState derives output-only decode
 	// and the ungrantable Create/Update; StateDefault is the declared initial
@@ -1023,7 +1041,7 @@ func (f *resourceField) TypescriptDataType() string {
 
 func (f *resourceField) TypescriptDisplayType() string {
 	if f.IsEnumerated {
-		return "enumerated"
+		return enumeratedDisplayType
 	}
 
 	if f.IsNullable && f.typescriptType == booleanStr {
