@@ -1,88 +1,54 @@
 package resource
 
-// Property tests over the compiler → lowering → SQL renderer pair (design
-// plan §11): for randomly generated conditions across the fixture vocabulary,
-// lowering plus rendering never fails, renders deterministically, allocates
-// each bound parameter exactly once and references it from the SQL, and
-// references no named parameter outside the reserved set. The generator is
-// seeded, so a failure reproduces; each failing case prints its source text.
+// Property tests over the compiler → fold → lowering → SQL renderer pipeline
+// (design plan §11): for randomly generated conditions across the lowering
+// fixture's vocabulary, the residue the engine's fold leaves lowers and
+// renders without failing, renders deterministically, allocates each bound
+// parameter exactly once and references it from the SQL, and references no
+// named parameter outside the reserved set. The conditions come from the
+// shared conditiontest generator, so a grammar addition reaches the lowering
+// through the same source as every other property; the generator is seeded,
+// so a failure reproduces and each failing case prints its source text.
 
 import (
 	"fmt"
 	"math/rand/v2"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/accesstypes/condition"
+	"github.com/cccteam/ccc/accesstypes/condition/conditiontest"
 )
 
-// genRenderableCondition builds a random condition source over the lowering
-// fixture's vocabulary: column and join-path attributes, the crews subject
-// set, the approvalLimit subject value, facts, and the post-write overlay
-// (the property renders in an update context, so new. is always legal).
-func genRenderableCondition(rng *rand.Rand, depth int) string {
-	if depth <= 0 {
-		return genRenderableLeaf(rng)
-	}
-	switch rng.IntN(6) {
-	case 0:
-		return fmt.Sprintf("(%s AND %s)", genRenderableCondition(rng, depth-1), genRenderableCondition(rng, depth-1))
-	case 1:
-		return fmt.Sprintf("(%s OR %s)", genRenderableCondition(rng, depth-1), genRenderableCondition(rng, depth-1))
-	case 2:
-		return fmt.Sprintf("NOT (%s)", genRenderableCondition(rng, depth-1))
-	default:
-		return genRenderableLeaf(rng)
-	}
-}
-
-func genRenderableLeaf(rng *rand.Rand) string {
-	attrs := []string{"crew", "state", "estimatedCost", "shipClass", "sector", "assignee"}
-	columnAttrs := []string{"crew", "state", "estimatedCost", "assignee"}
-	ops := []string{"=", "!=", "<", "<=", ">", ">="}
-
-	attr := attrs[rng.IntN(len(attrs))]
-	op := ops[rng.IntN(len(ops))]
-
-	switch rng.IntN(8) {
-	case 0:
-		return fmt.Sprintf("%s %s '%s'", attr, op, []string{"open", "it''s", "x y"}[rng.IntN(3)])
-	case 1:
-		return fmt.Sprintf("%s %s %s", attr, op, []string{"0", "42", "10.5", "-3"}[rng.IntN(4)])
-	case 2:
-		return attr + " = subject"
-	case 3:
-		return fmt.Sprintf("%s %s subject.approvalLimit", attr, op)
-	case 4:
-		return fmt.Sprintf("%s IN ('a', 'b', %d)", columnAttrs[rng.IntN(len(columnAttrs))], rng.IntN(100))
-	case 5:
-		negate := ""
-		if rng.IntN(2) == 0 {
-			negate = "NOT "
-		}
-
-		return fmt.Sprintf("%s %sIN subject.crews", columnAttrs[rng.IntN(len(columnAttrs))], negate)
-	case 6:
-		null := "IS NULL"
-		if rng.IntN(2) == 0 {
-			null = "IS NOT NULL"
-		}
-
-		return fmt.Sprintf("%s %s", columnAttrs[rng.IntN(len(columnAttrs))], null)
-	default:
-		return fmt.Sprintf("new.%s %s '%s'", columnAttrs[rng.IntN(len(columnAttrs))], op, "v")
-	}
-}
-
-// renderOnce lowers and renders one condition with a fresh registry.
-func renderOnce(t *testing.T, source string, collection *GeneratedCollection, proposed map[string]any) (sql string, bound []QueryParam, named []string) {
+// loweringFixtureVocabulary is the fixture's vocabulary as the generator sees
+// it: MaintenanceTasks' column and join-path attributes with their types, the
+// subject sets and values the anchors declare, and the post-write overlay
+// (the property renders in an update context, so new. is legal).
+func loweringFixtureVocabulary(t *testing.T, collection *GeneratedCollection) conditiontest.Vocabulary {
 	t.Helper()
 
-	expr, err := condition.Parse(source)
-	if err != nil {
-		t.Fatalf("condition.Parse(%q) error = %v", source, err)
+	bindings, ok := collection.Bindings(accesstypes.DomainPermissionScope, "MaintenanceTasks")
+	if !ok {
+		t.Fatal("fixture bindings missing")
 	}
+
+	vocab := conditiontest.Vocabulary{
+		SubjectSets:   []string{"crews", "wings"},
+		SubjectValues: []string{"approvalLimit", "homeSector"},
+		PostImage:     true,
+	}
+	for _, attr := range bindings.Attributes {
+		vocab.Attributes = append(vocab.Attributes, conditiontest.Attribute{Name: attr.Name, Type: attr.Type, JoinPath: len(attr.Path) > 0})
+	}
+
+	return vocab
+}
+
+// renderOnce lowers and renders one folded condition with a fresh registry.
+func renderOnce(t *testing.T, expr condition.Expr, collection *GeneratedCollection, proposed map[string]any) (sql string, bound []QueryParam, named []string) {
+	t.Helper()
 
 	bindings, ok := collection.Bindings(accesstypes.DomainPermissionScope, "MaintenanceTasks")
 	if !ok {
@@ -98,9 +64,9 @@ func renderOnce(t *testing.T, source string, collection *GeneratedCollection, pr
 	}
 	registry := newParamRegistry()
 
-	sql, err = lowerToSQL(expr, lctx, newSQLGenerator(Spanner), registry)
+	sql, err := lowerToSQL(expr, lctx, newSQLGenerator(Spanner), registry)
 	if err != nil {
-		t.Fatalf("lowering %q error = %v", source, err)
+		t.Fatalf("lowering %q error = %v", expr.String(), err)
 	}
 
 	return sql, registry.boundParams(), registry.referencedNames()
@@ -113,12 +79,26 @@ func TestLowering_renderProperty(t *testing.T) {
 	proposed := map[string]any{"CrewId": "c1", "State": "open", "EstimatedCost": 12.5, "Assignee": "u2"}
 	reserved := map[string]struct{}{subjectParamName: {}, nowParamName: {}, domainParamName: {}}
 
-	rng := rand.New(rand.NewPCG(20260901, 5))
-	for i := range 1000 {
-		source := genRenderableCondition(rng, 3)
+	// The engine folds the environment facts before the residue reaches the
+	// resource layer: temporal terms and now-vs-literal comparisons settle
+	// here, and only what the database must evaluate lowers.
+	facts := condition.NewFacts().
+		WithNow(time.Date(2026, 9, 11, 15, 0, 0, 0, time.UTC)).
+		WithZone(time.UTC)
 
-		sql, params, named := renderOnce(t, source, collection, proposed)
-		sql2, params2, named2 := renderOnce(t, source, collection, proposed)
+	vocab := loweringFixtureVocabulary(t, collection)
+	gen := conditiontest.New(rand.New(rand.NewPCG(20260901, 5)), &vocab)
+	for i := range 1000 {
+		expr := gen.Expr(3)
+		source := expr.String()
+
+		residue, err := condition.Fold(expr, facts)
+		if err != nil {
+			t.Fatalf("case %d (%s): Fold() error = %v", i, source, err)
+		}
+
+		sql, params, named := renderOnce(t, residue, collection, proposed)
+		sql2, params2, named2 := renderOnce(t, residue, collection, proposed)
 
 		// Rendering is deterministic: same SQL, same parameters, same
 		// referenced names, across independent registries.
