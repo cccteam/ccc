@@ -1,0 +1,16 @@
+# large-indexed capture, 2026-09-11, regional-us-central1 at 100 processing units; perf/summarize.sh output
+shape                                        elapsed       cpu   rows  scanned  scans | joins
+s1b_missions_filtered_list                 88.79msecs 28.88msecs    201     1240  MissionsBySectorDeadline×1(IndexScan) Missions×1(TableScan) | Cross Apply×1 Distributed Cross Apply×1 Filter Scan×2 
+s1c_consignments_cursor_page               51.08msecs 27.73msecs      5       14  Consignments×1(TableScan) | Filter Scan×1 Sort Limit×1 
+s1_missions_bare_tenancy_list              16.59msecs 15.63msecs     26       52  MissionsBySectorDeadline×1(IndexScan) Missions×1(TableScan) | Cross Apply×1 Distributed Cross Apply×1 Filter Scan×2 
+s2_ships_joinpath_list                     95.85msecs 108.62msecs     11    20822  IDX_Hangars_SectorId_83FEC73DD3580633×1(IndexScan) Ships×1(TableScan) | Filter Scan×1 Semi Apply×1 Sort Limit×1 
+s3b_sorties_via_mission_list               847.24msecs 555.38msecs     11   104024  IDX_Missions_SectorId_C9CC0B5B9F7FFF95×1(IndexScan) Sorties×1(TableScan) | Filter Scan×1 Semi Apply×1 Sort Limit×1 
+s3_squadron_memberships_twohop_list        20.06msecs 13.05msecs     26       82  IDX_Wings_SectorId_0FBD1CF2CD10407F×1(IndexScan) SquadronMembershipsByUserId×1(IndexScan) Squadrons×1(TableScan) | Filter Scan×2 Semi Apply×2 
+s4b_missions_subject_set_capabilities      168.86msecs 167.53msecs     26    20216  IDX_Wings_SectorId_0FBD1CF2CD10407F×2(IndexScan) MissionsBySectorDeadline×1(IndexScan) Missions×1(TableScan) SquadronMemberships×2(TableScan) Squadrons×2(TableScan) | Cross Apply×3 Distributed Cross Apply×1 Filter Scan×8 Semi Apply×4 
+s4_missions_subject_set_list               163.12msecs 111.48msecs     26    20138  IDX_Wings_SectorId_0FBD1CF2CD10407F×1(IndexScan) MissionsBySectorDeadline×1(IndexScan) Missions×1(TableScan) SquadronMemberships×1(TableScan) Squadrons×1(TableScan) | Cross Apply×2 Distributed Cross Apply×1 Filter Scan×5 Semi Apply×2 
+s5_missions_subject_value_list             113.84msecs 86.11msecs     26    20088  IDX_Missions_SectorId_C9CC0B5B9F7FFF95×1(IndexScan) Missions×1(TableScan) PilotCertifications×1(TableScan) PilotsByUserId×1(IndexScan) Pilots×1(TableScan) | Cross Apply×4 Distributed Cross Apply×1 Filter Scan×5 Sort×1 
+s6b_missions_masked_fee_sort               61.73msecs 63.45msecs     26    20060  IDX_Missions_SectorId_C9CC0B5B9F7FFF95×1(IndexScan) Missions×1(TableScan) | Cross Apply×1 Distributed Cross Apply×1 Filter Scan×2 Sort Limit×2 
+s6_missions_visible_projection_sort        55.19msecs 55.42msecs     26    20060  IDX_Missions_SectorId_C9CC0B5B9F7FFF95×1(IndexScan) Missions×1(TableScan) | Cross Apply×1 Distributed Cross Apply×1 Filter Scan×2 Sort Limit×2 
+s7b_insert_check_tenancy                   25.67msecs 10.87msecs      1        4  IDX_Missions_SectorId_C9CC0B5B9F7FFF95×1(IndexScan) IDX_Missions_StatusId_6C5B4E962B675F96×1(IndexScan) Sorties×2(TableScan) | Cross Apply×1 Filter Scan×4 Semi Apply×2 
+s7_write_check_missions                    15.41msecs 14.1msecs      1        4  IDX_Wings_SectorId_0FBD1CF2CD10407F×1(IndexScan) Missions×1(TableScan) SquadronMemberships×1(TableScan) Squadrons×1(TableScan) | Cross Apply×1 Filter Scan×4 Semi Apply×2 
+

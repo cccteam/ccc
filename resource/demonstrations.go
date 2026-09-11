@@ -195,6 +195,7 @@ var Demonstrations = []Demonstration{
 	{"walkthrough", "Every persona's proof by curl against a fresh stack."},
 	{"bootstrap.target", "The bootstrap picks the emulator or a real instance from the environment alone: the instance is created on the emulator only, the database wherever it is missing, the same steps after."},
 	{"bootstrap.reset", "A data-only reset: every table the schema migrations do not populate emptied, children before parents, and the world seeded again, no DDL."},
+	{"bootstrap.volume", "Synthetic volume over the seeded world, batched insert mutations in foreign-key order from deterministic identifiers, for reading real query plans."},
 	{"authz-matrix", "GenerateHandlerTests: the generated authorization matrix over a fake engine."},
 	{"regen-idempotent", "go generate reproduces the generated files byte for byte."},
 	{"ci-stub", "The resource module's test stub that runs the application's suite in CI."},

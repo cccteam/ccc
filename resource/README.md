@@ -432,3 +432,30 @@ router.AppHooks(app))`. An application whose router is exactly the base passes
 `router.Hooks{}`. The escape hatch stays: an application that needs something the shape
 cannot carry removes the option and hand-writes its router on the generated route
 tables, losing only the boilerplate and the generated chain test.
+
+## 9. Indexes for the shapes the package injects
+
+Tenancy, grant conditions, subject sets and values, the visible projection, and the write
+checks all land inside the application's queries. Measured on a real Spanner instance at
+half a million rows ([lodestar/perf/REPORT.md](lodestar/perf/REPORT.md)), they need this
+much from the schema:
+
+- A resource with a bare `@domain` column that is listed at volume wants an index on the
+  tenant key followed by its `@order` columns. Spanner's foreign-key backing index on the
+  tenant column alone drives the list, but every page then sorts the whole partition; the
+  composite index reads the page's rows and nothing else (52 rows against 20,060 at
+  10,000 rows per tenant).
+- A resource with join-path tenancy, `@domain(via: ...)`, is scanned whole when listed:
+  every row of the table, all tenants, with a lookup per row up the path. No index on the
+  child changes that, because no column on the child names the tenant. Join paths suit
+  writes and small or parent-scoped tables; a table listed at volume carries its tenant key
+  on the row.
+- Subject-set conditions are key lookups per row against the anchor (its key leads with
+  the compared column and the user), so their cost is the partition's size per page, not
+  the anchor's. Subject values are one row through the unique index generation requires.
+- A sort on a conditionally visible column runs over `CASE WHEN <condition> THEN column
+  END`, which no index serves: the page sorts the partition. Lists that page at volume
+  sort on unconditionally visible columns.
+- Write and insert checks are point lookups at any volume.
+- After a bulk load, `ANALYZE`; Spanner otherwise refreshes statistics about every three
+  days, and a plan can flip with them.

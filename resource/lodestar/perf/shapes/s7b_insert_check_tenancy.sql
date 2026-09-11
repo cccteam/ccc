@@ -1,0 +1,2 @@
+-- Insert check: a sortie expense's condition and its two-hop tenancy proof, no target row.
+SELECT (EXISTS (SELECT 1 FROM `Sorties` `ca1` WHERE `ca1`.`Id` = '90000000-0000-4000-8000-000000000001' AND EXISTS (SELECT 1 FROM `Missions` `ca2` WHERE `ca2`.`Id` = `ca1`.`MissionId` AND `ca2`.`StatusId` = 'underway'))) AS g1, (EXISTS (SELECT 1 FROM `Sorties` `ca3` WHERE `ca3`.`Id` = '90000000-0000-4000-8000-000000000001' AND EXISTS (SELECT 1 FROM `Missions` `ca4` WHERE `ca4`.`Id` = `ca3`.`MissionId` AND `ca4`.`SectorId` = 'anvil'))) AS zzTenancy
