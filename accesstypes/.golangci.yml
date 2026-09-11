@@ -131,6 +131,12 @@ linters:
           - gosec
         path: _test\.go
         text: G404
+      # conditiontest is test support: the expression generator draws from the
+      # seeded math/rand source its callers hand it, for the same reason.
+      - linters:
+          - gosec
+        path: condition/conditiontest/
+        text: G404
       # Scope.String's "global" display literal is not a shared constant: it is
       # documentation-defined display output, unrelated to GlobalPermissionScope's
       # value coinciding with it.
