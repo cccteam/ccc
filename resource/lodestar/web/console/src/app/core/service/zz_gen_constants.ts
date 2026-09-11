@@ -26,9 +26,11 @@ export const Resources = {
   DistressCalls: 'DistressCalls' as Resource,
   FeeByKinds: 'FeeByKinds' as Resource,
   Hangars: 'Hangars' as Resource,
+  MissionBoards: 'MissionBoards' as Resource,
   MissionDocuments: 'MissionDocuments' as Resource,
   Missions: 'Missions' as Resource,
   OpenMissionsBySquadrons: 'OpenMissionsBySquadrons' as Resource,
+  PilotAssignments: 'PilotAssignments' as Resource,
   PilotCards: 'PilotCards' as Resource,
   PilotCertifications: 'PilotCertifications' as Resource,
   Pilots: 'Pilots' as Resource,
@@ -43,6 +45,7 @@ export const Resources = {
   SortieExpenses: 'SortieExpenses' as Resource,
   Sorties: 'Sorties' as Resource,
   SquadronMemberships: 'SquadronMemberships' as Resource,
+  SquadronRosters: 'SquadronRosters' as Resource,
   Squadrons: 'Squadrons' as Resource,
   Wings: 'Wings' as Resource,
 };
@@ -216,6 +219,31 @@ export namespace Hangars {
   };
 }
 
+export namespace MissionBoards {
+  export const fieldName = {
+    clientName: 'clientName' as FieldName,
+    daysLeft: 'daysLeft' as FieldName,
+    deadline: 'deadline' as FieldName,
+    id: 'id' as FieldName,
+    kindId: 'kindId' as FieldName,
+    sectorId: 'sectorId' as FieldName,
+    squadronName: 'squadronName' as FieldName,
+    statusId: 'statusId' as FieldName,
+    title: 'title' as FieldName,
+  };
+  export const resourceName = {
+    clientName: 'MissionBoards.clientName' as Resource,
+    daysLeft: 'MissionBoards.daysLeft' as Resource,
+    deadline: 'MissionBoards.deadline' as Resource,
+    id: 'MissionBoards.id' as Resource,
+    kindId: 'MissionBoards.kindId' as Resource,
+    sectorId: 'MissionBoards.sectorId' as Resource,
+    squadronName: 'MissionBoards.squadronName' as Resource,
+    statusId: 'MissionBoards.statusId' as Resource,
+    title: 'MissionBoards.title' as Resource,
+  };
+}
+
 export namespace MissionDocuments {
   export const fieldName = {
     contentType: 'contentType' as FieldName,
@@ -294,6 +322,23 @@ export namespace OpenMissionsBySquadrons {
     sectorId: 'OpenMissionsBySquadrons.sectorId' as Resource,
     squadronId: 'OpenMissionsBySquadrons.squadronId' as Resource,
     squadronName: 'OpenMissionsBySquadrons.squadronName' as Resource,
+  };
+}
+
+export namespace PilotAssignments {
+  export const fieldName = {
+    sectorId: 'sectorId' as FieldName,
+    squadronId: 'squadronId' as FieldName,
+    squadronName: 'squadronName' as FieldName,
+    userId: 'userId' as FieldName,
+    wingName: 'wingName' as FieldName,
+  };
+  export const resourceName = {
+    sectorId: 'PilotAssignments.sectorId' as Resource,
+    squadronId: 'PilotAssignments.squadronId' as Resource,
+    squadronName: 'PilotAssignments.squadronName' as Resource,
+    userId: 'PilotAssignments.userId' as Resource,
+    wingName: 'PilotAssignments.wingName' as Resource,
   };
 }
 
@@ -519,6 +564,25 @@ export namespace SquadronMemberships {
   export const resourceName = {
     squadronId: 'SquadronMemberships.squadronId' as Resource,
     userId: 'SquadronMemberships.userId' as Resource,
+  };
+}
+
+export namespace SquadronRosters {
+  export const fieldName = {
+    pilotId: 'pilotId' as FieldName,
+    pilotName: 'pilotName' as FieldName,
+    sectorId: 'sectorId' as FieldName,
+    squadronId: 'squadronId' as FieldName,
+    squadronName: 'squadronName' as FieldName,
+    userId: 'userId' as FieldName,
+  };
+  export const resourceName = {
+    pilotId: 'SquadronRosters.pilotId' as Resource,
+    pilotName: 'SquadronRosters.pilotName' as Resource,
+    sectorId: 'SquadronRosters.sectorId' as Resource,
+    squadronId: 'SquadronRosters.squadronId' as Resource,
+    squadronName: 'SquadronRosters.squadronName' as Resource,
+    userId: 'SquadronRosters.userId' as Resource,
   };
 }
 

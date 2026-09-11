@@ -411,6 +411,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
+			name:         "MissionBoards denied",
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/mission-boards",
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "MissionBoards granted",
+			grants:       grants{accesstypes.List: true},
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/mission-boards",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
 			name:         "MissionDocuments denied",
 			method:       http.MethodGet,
 			target:       "/api/sectors/testDomain/mission-documents",
@@ -499,6 +512,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			grants:       grants{accesstypes.Read: true},
 			method:       http.MethodGet,
 			target:       "/api/pilots/00000000-0000-0000-0000-000000000001",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
+			name:         "PilotAssignments denied",
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/pilot-assignments",
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "PilotAssignments granted",
+			grants:       grants{accesstypes.List: true},
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/pilot-assignments",
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
@@ -759,6 +785,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			grants:       grants{accesstypes.Read: true},
 			method:       http.MethodGet,
 			target:       "/api/sectors/testDomain/squadron-memberships/00000000-0000-0000-0000-000000000001/authz-test-key",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
+			name:         "SquadronRosters denied",
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/squadron-rosters",
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "SquadronRosters granted",
+			grants:       grants{accesstypes.List: true},
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/squadron-rosters",
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{

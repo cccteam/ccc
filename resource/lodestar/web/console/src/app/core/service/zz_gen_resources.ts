@@ -81,6 +81,18 @@ export interface Missions {
   settlement?: number;
 }
 
+export interface MissionBoards {
+  id: string;
+  sectorId?: string;
+  title?: string;
+  clientName?: string;
+  squadronName?: string;
+  kindId?: string;
+  statusId?: string;
+  deadline?: Date;
+  daysLeft?: number;
+}
+
 export interface MissionDocuments {
   id: string;
   missionId?: string;
@@ -107,6 +119,14 @@ export interface Pilots {
   displayName?: string;
   clearance?: number;
   feeLimit?: number;
+}
+
+export interface PilotAssignments {
+  squadronId: string;
+  userId: string;
+  sectorId?: string;
+  squadronName?: string;
+  wingName?: string;
 }
 
 export interface PilotCertifications {
@@ -184,6 +204,15 @@ export interface Squadrons {
 export interface SquadronMemberships {
   squadronId: string;
   userId: string;
+}
+
+export interface SquadronRosters {
+  squadronId: string;
+  userId: string;
+  sectorId?: string;
+  squadronName?: string;
+  pilotName?: string;
+  pilotId?: string;
 }
 
 export interface Wings {
@@ -334,6 +363,22 @@ const resourceMap: ResourceMap = {
       { fieldName: 'settlement', displayType: 'number', required: false, isIndex: false },
     ],
   },
+  [Resources.MissionBoards]: {
+    route: 'sectors/{sectorID}/mission-boards',
+    rowsOf: Resources.Missions,
+    readDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'title', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'clientName', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'squadronName', displayType: 'string', required: false, isIndex: true },
+      { fieldName: 'kindId', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'statusId', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'deadline', displayType: 'date', required: true, isIndex: true },
+      { fieldName: 'daysLeft', displayType: 'number', required: true, isIndex: false },
+    ],
+  },
   [Resources.MissionDocuments]: {
     route: 'sectors/{sectorID}/mission-documents',
     createDisabled: true,
@@ -371,6 +416,18 @@ const resourceMap: ResourceMap = {
       { fieldName: 'displayName', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'clearance', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'feeLimit', displayType: 'number', required: true, isIndex: false },
+    ],
+  },
+  [Resources.PilotAssignments]: {
+    route: 'sectors/{sectorID}/pilot-assignments',
+    rowsOf: Resources.SquadronMemberships,
+    readDisabled: true,
+    fields: [
+      { fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'enumerated', required: false, isIndex: true, enumeratedResource: Resources.Squadrons },
+      { fieldName: 'userId', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'squadronName', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'wingName', displayType: 'string', required: true, isIndex: true },
     ],
   },
   [Resources.PilotCertifications]: {
@@ -480,6 +537,19 @@ const resourceMap: ResourceMap = {
       { fieldName: 'userId', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
     ],
   },
+  [Resources.SquadronRosters]: {
+    route: 'sectors/{sectorID}/squadron-rosters',
+    rowsOf: Resources.SquadronMemberships,
+    readDisabled: true,
+    fields: [
+      { fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },
+      { fieldName: 'userId', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'squadronName', displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'pilotName', displayType: 'string', required: false, isIndex: true },
+      { fieldName: 'pilotId', displayType: 'enumerated', required: false, isIndex: false, enumeratedResource: Resources.Pilots },
+    ],
+  },
   [Resources.Wings]: {
     route: 'sectors/{sectorID}/wings',
     consolidatedRoute: 'resources',
@@ -568,9 +638,11 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.FeeByKinds]: PermissionScopes.global,
   [Resources.Hangars]: PermissionScopes.domain,
   [Resources.Missions]: PermissionScopes.domain,
+  [Resources.MissionBoards]: PermissionScopes.domain,
   [Resources.MissionDocuments]: PermissionScopes.domain,
   [Resources.OpenMissionsBySquadrons]: PermissionScopes.domain,
   [Resources.Pilots]: PermissionScopes.global,
+  [Resources.PilotAssignments]: PermissionScopes.domain,
   [Resources.PilotCertifications]: PermissionScopes.global,
   [Resources.Refits]: PermissionScopes.domain,
   [Resources.RefitTasks]: PermissionScopes.domain,
@@ -581,6 +653,7 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.SortieExpenses]: PermissionScopes.domain,
   [Resources.Squadrons]: PermissionScopes.domain,
   [Resources.SquadronMemberships]: PermissionScopes.domain,
+  [Resources.SquadronRosters]: PermissionScopes.domain,
   [Resources.Wings]: PermissionScopes.domain,
   [Resources.BriefingTemplates]: PermissionScopes.global,
   [Resources.PilotCards]: PermissionScopes.global,

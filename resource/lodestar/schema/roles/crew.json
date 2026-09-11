@@ -476,6 +476,33 @@
                 "contactCount",
                 "sectorMissions"
               ]
+            },
+            {
+              "resource": "MissionBoards",
+              "fields": [
+                "title",
+                "clientName",
+                "squadronName",
+                "kindId",
+                "statusId",
+                "deadline",
+                "daysLeft"
+              ]
+            },
+            {
+              "resource": "SquadronRosters",
+              "fields": [
+                "squadronName",
+                "pilotName",
+                "pilotId"
+              ]
+            },
+            {
+              "resource": "PilotAssignments",
+              "fields": [
+                "squadronName",
+                "wingName"
+              ]
             }
           ],
           "Read": [
@@ -1432,6 +1459,33 @@
                 "contactCount",
                 "sectorMissions"
               ]
+            },
+            {
+              "resource": "MissionBoards",
+              "fields": [
+                "title",
+                "clientName",
+                "squadronName",
+                "kindId",
+                "statusId",
+                "deadline",
+                "daysLeft"
+              ]
+            },
+            {
+              "resource": "SquadronRosters",
+              "fields": [
+                "squadronName",
+                "pilotName",
+                "pilotId"
+              ]
+            },
+            {
+              "resource": "PilotAssignments",
+              "fields": [
+                "squadronName",
+                "wingName"
+              ]
             }
           ],
           "Read": [
@@ -1548,6 +1602,18 @@
                 "contactCount",
                 "sectorMissions"
               ]
+            },
+            {
+              "resource": "MissionBoards",
+              "fields": [
+                "title",
+                "clientName",
+                "squadronName",
+                "kindId",
+                "statusId",
+                "deadline",
+                "daysLeft"
+              ]
             }
           ],
           "Read": [
@@ -1626,6 +1692,18 @@
                 "trusted",
                 "contactCount",
                 "sectorMissions"
+              ]
+            },
+            {
+              "resource": "MissionBoards",
+              "fields": [
+                "title",
+                "clientName",
+                "squadronName",
+                "kindId",
+                "statusId",
+                "deadline",
+                "daysLeft"
               ]
             }
           ],

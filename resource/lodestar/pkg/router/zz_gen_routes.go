@@ -104,6 +104,8 @@ type GeneratedHandlers interface {
 	Missions() http.HandlerFunc
 	Mission() http.HandlerFunc
 
+	MissionBoards() http.HandlerFunc
+
 	MissionDocuments() http.HandlerFunc
 	MissionDocument() http.HandlerFunc
 
@@ -113,6 +115,8 @@ type GeneratedHandlers interface {
 
 	Pilots() http.HandlerFunc
 	Pilot() http.HandlerFunc
+
+	PilotAssignments() http.HandlerFunc
 
 	PilotCards() http.HandlerFunc
 
@@ -156,6 +160,8 @@ type GeneratedHandlers interface {
 
 	SquadronMemberships() http.HandlerFunc
 	SquadronMembership() http.HandlerFunc
+
+	SquadronRosters() http.HandlerFunc
 
 	StandDownMission() http.HandlerFunc
 
@@ -261,6 +267,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/api/sectors/{sectorID}/missions/{missionID}", missionHandler)
 	r.Post("/api/sectors/{sectorID}/missions/{missionID}", missionHandler)
 
+	missionBoardsHandler := domainGuard(h.MissionBoards())
+	r.Get("/api/sectors/{sectorID}/mission-boards", missionBoardsHandler)
+	r.Post("/api/sectors/{sectorID}/mission-boards", missionBoardsHandler)
+
 	missionDocumentsHandler := domainGuard(h.MissionDocuments())
 	r.Get("/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
 	r.Post("/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
@@ -282,6 +292,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	pilotHandler := h.Pilot()
 	r.Get("/api/pilots/{pilotID}", pilotHandler)
 	r.Post("/api/pilots/{pilotID}", pilotHandler)
+
+	pilotAssignmentsHandler := domainGuard(h.PilotAssignments())
+	r.Get("/api/sectors/{sectorID}/pilot-assignments", pilotAssignmentsHandler)
+	r.Post("/api/sectors/{sectorID}/pilot-assignments", pilotAssignmentsHandler)
 
 	pilotCardsHandler := h.PilotCards()
 	r.Get("/api/pilot-cards", pilotCardsHandler)
@@ -384,6 +398,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	squadronMembershipHandler := domainGuard(h.SquadronMembership())
 	r.Get("/api/sectors/{sectorID}/squadron-memberships/{squadronMembershipSquadronID}/{squadronMembershipUserID}", squadronMembershipHandler)
 	r.Post("/api/sectors/{sectorID}/squadron-memberships/{squadronMembershipSquadronID}/{squadronMembershipUserID}", squadronMembershipHandler)
+
+	squadronRostersHandler := domainGuard(h.SquadronRosters())
+	r.Get("/api/sectors/{sectorID}/squadron-rosters", squadronRostersHandler)
+	r.Post("/api/sectors/{sectorID}/squadron-rosters", squadronRostersHandler)
 
 	r.Post("/api/sectors/{sectorID}/stand-down-mission", domainGuard(h.StandDownMission()))
 

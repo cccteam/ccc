@@ -6,6 +6,7 @@ import { sectorRoute } from '@components/sector/sector.routes';
 import { UiComponent } from '@components/ui/ui.component';
 import { clientsConfig } from './configs/clients.config';
 import { missionsConfig } from './configs/missions.config';
+import { squadronsConfig } from './configs/squadrons.config';
 import { pilotsConfig } from './configs/pilots.config';
 import { sectorsConfig } from './configs/sectors.config';
 import { shipClassesConfig } from './configs/shipClasses.config';
@@ -34,6 +35,7 @@ export const routes: Routes = [
       resourceRoutes(pilotsConfig, resourceMeta),
       resourceRoutes(sectorsConfig, resourceMeta),
       resourceRoutes(missionsConfig, resourceMeta),
+      resourceRoutes(squadronsConfig, resourceMeta),
       sectorRoute(),
       { path: '**', redirectTo: 'dashboard' },
     ],

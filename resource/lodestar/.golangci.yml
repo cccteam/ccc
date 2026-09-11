@@ -151,7 +151,7 @@ linters:
       - linters:
           - paralleltest
           - tparallel
-        path: test/integration/(language|tenancy|impersonation_ops)_test\.go
+        path: test/integration/(language|tenancy|impersonation_ops|rows_of)_test\.go
       - linters:
           - gomoddirectives
         path: go\.mod

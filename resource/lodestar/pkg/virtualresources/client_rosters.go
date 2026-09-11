@@ -28,8 +28,8 @@ type (
 		// @primarykey
 		ID ccc.UUID `spanner:"Id" index:"true"`
 		// @domain
-		SectorID       string `spanner:"SectorId" index:"true"`
-		Name           string `spanner:"Name"     index:"true"`
+		SectorID       string `spanner:"SectorId"       index:"true"`
+		Name           string `spanner:"Name"           index:"true"`
 		Trusted        bool   `spanner:"Trusted"`
 		ContactCount   int64  `spanner:"ContactCount"`
 		SectorMissions int64  `spanner:"SectorMissions"`

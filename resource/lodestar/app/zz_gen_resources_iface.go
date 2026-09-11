@@ -15,10 +15,12 @@ type Resourcer interface {
 	resources.Client | resources.ClientContact | virtualresources.ClientRoster |
 		resources.Consignment | resources.DistressCall | resources.DroidReport |
 		virtualresources.FeeByKind | resources.Hangar | resources.Mission |
-		resources.MissionDocument | virtualresources.OpenMissionsBySquadron | resources.Pilot |
-		resources.PilotCertification | resources.Refit | resources.RefitTask | resources.Sector |
-		resources.Ship | resources.ShipClass | resources.Sortie | resources.SortieExpense |
-		resources.Squadron | resources.SquadronMembership | resources.Wing |
+		virtualresources.MissionBoard | resources.MissionDocument |
+		virtualresources.OpenMissionsBySquadron | resources.Pilot |
+		virtualresources.PilotAssignment | resources.PilotCertification | resources.Refit |
+		resources.RefitTask | resources.Sector | resources.Ship | resources.ShipClass |
+		resources.Sortie | resources.SortieExpense | resources.Squadron |
+		resources.SquadronMembership | virtualresources.SquadronRoster | resources.Wing |
 		computedresources.BriefingTemplate | computedresources.PilotCard |
 		computedresources.SectorHazardBoard | computedresources.ServiceLedger
 }
