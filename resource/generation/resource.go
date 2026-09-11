@@ -285,6 +285,12 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
+	// A view's @rowsOf names a table-backed resource and is refused a view of either
+	// kind, so it too resolves only once every kind is extracted.
+	if err := r.resolveRowsOf(r.resources, r.computedResources); err != nil {
+		return err
+	}
+
 	// The domain route parameter is derived from the parsed resources (tenant-record
 	// pattern), so it must resolve before anything renders a domain route.
 	r.deriveDomainRouteParam()

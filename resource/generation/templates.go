@@ -1687,6 +1687,9 @@ const resourceMap: ResourceMap = {
     {{- if $resource.IsConsolidated }}
     consolidatedRoute: '{{ $consolidatedRoute }}',
     {{- end }}
+    {{- if $resource.HasRowsOf }}
+    rowsOf: Resources.{{ $resource.RowsOf }},
+    {{- end }}
 	{{- if $resource.ListHandlerDisabled }}
     listDisabled: true,
     {{- end }}
@@ -1717,6 +1720,9 @@ const resourceMap: ResourceMap = {
   {{- range $resource := $.ComputedResources }}
   [Resources.{{ Pluralize $resource.Name }}]: {
     route: '{{ if $resource.IsDomainScoped }}{{ $.DomainRoutePrefix }}/{{ end }}{{ Kebab (Pluralize $resource.Name) }}',
+    {{- if $resource.HasRowsOf }}
+    rowsOf: Resources.{{ $resource.RowsOf }},
+    {{- end }}
 	{{- if $resource.SuppressListHandler }}
     listDisabled: true,
     {{- end }}

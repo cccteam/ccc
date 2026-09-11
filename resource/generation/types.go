@@ -591,6 +591,7 @@ type computedResource struct {
 	*parser.Struct
 	outletMembership
 	pagingDecl
+	rowsOfDecl
 	// Shape is the struct's wire shape: the fields as the handlers' local mirrors
 	// declare them, with every struct they reach. A nested field is opaque: one
 	// field for permission, PII, and selection, never filtered or keyed.
@@ -781,6 +782,7 @@ type resourceInfo struct {
 	*parser.TypeInfo
 	outletMembership
 	pagingDecl
+	rowsOfDecl
 	Fields             []*resourceField
 	SuppressedHandlers []HandlerType
 	SuppressedRoutes   []RouteType
@@ -1370,6 +1372,7 @@ const (
 	targetKeyword               string = "target"               // Marks the RPC field carrying the target row key; @target(Root) names the resource when no @transition does
 	answersKeyword              string = "answers"              // Declares the statuses an RPC method may answer with; its result chooses one per response through HTTPStatus()
 	uploadKeyword               string = "upload"               // Declares an RPC method as a multipart upload: @upload(max: 5MB); its Execute takes resource.Files
+	rowsOfKeyword               string = "rowsOf"               // Declares the table resource whose rows a virtual or computed view carries, one to one under the same key: @rowsOf(Missions)
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -1401,6 +1404,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		targetKeyword:               {genlang.ScanField: genlang.Exclusive},
 		answersKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		uploadKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		rowsOfKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }
 

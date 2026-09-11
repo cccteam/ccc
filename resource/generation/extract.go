@@ -47,7 +47,8 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 
-		if err := rejectRPCOnlyAnnotations(pStruct, annotations, "resource"); err != nil {
+		// The annotations other kinds own: a method's frame, and a view's table.
+		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "resource"), rejectRowsOf(pStruct, annotations, "table-backed resource")); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
@@ -389,6 +390,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 		}
 		resource.Fields = fields
 		declareFieldEnumerations(pStruct, fields, annotations)
+		declareRowsOf(annotations, &resource.rowsOfDecl)
 
 		nullableFields, err := fieldNullability(pStruct)
 		if err != nil {
@@ -583,7 +585,8 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
-		if err := rejectBindingAnnotations(s, annotations, "RPC method"); err != nil {
+		// The annotations other kinds own: a resource's bindings, and a view's table.
+		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method")); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -799,6 +802,7 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 			Struct: s,
 			Shape:  shape,
 		}
+		declareRowsOf(annotations, &res.rowsOfDecl)
 
 		if annotations.Struct.Has(suppressKeyword) {
 			if err := applyComputedSuppressDirectives(res, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {
