@@ -10,8 +10,9 @@
 # the simulated directory's answer). Single-shot: several checks move workflow state, so
 # a rerun needs a fresh bootstrap: a new emulator, or `go run -tags skipAuth
 # ./cmd/bootstrap -reset` against a database that already carries the schema (the real
-# instance case; README, "Running against a real Spanner instance"). The overdue flip
-# waits for the seeded three-minute mission unless LODESTAR_SKIP_FLIP=1.
+# instance case; README, "Running against a real Spanner instance"), run with the server
+# stopped and the server started again after it. The overdue flip waits for the seeded
+# three-minute mission unless LODESTAR_SKIP_FLIP=1.
 #
 # Demonstrates: walkthrough.
 set -u

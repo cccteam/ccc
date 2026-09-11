@@ -70,14 +70,19 @@ project the application credentials reach.
    `GOOGLE_CLOUD_SPANNER_DATABASE_NAME` at the instance.
 3. `go run -tags skipAuth ./cmd/bootstrap` creates the database, applies the schema, seeds
    the world, provisions both auths' roles, and creates the personas. Schema changes on a
-   real instance are slow and counted against its limits, so this runs once per database;
-   every later session starts with `go run -tags skipAuth ./cmd/bootstrap -reset`, which
-   empties the data and seeds it again with no schema change.
+   real instance are slow and counted against its limits (about six minutes for the
+   thirty migrations, measured 2026-09-11), so this runs once per database; every later
+   session starts with `go run -tags skipAuth ./cmd/bootstrap -reset`, which empties the
+   data and seeds it again with no schema change, in about two minutes.
 4. `go run -tags skipAuth .` serves the application on `PORT` against the real database,
    and `overmind start -l console,portal` runs the browser apps against it.
 5. `./walkthrough.sh` runs every persona's proof; it moves workflow state, so reset before
    running it again. Then use the console and the portal by hand.
-6. Anything that behaves differently from the emulator is a finding: record it as an
+6. Reset with the server stopped, and start it again after. A running server's permission
+   engine re-reads its store every minute; a reload that lands while the reset has the
+   role tables empty answers every domain as unknown until the next reload after the
+   reseed, and the reset ends every session anyway.
+7. Anything that behaves differently from the emulator is a finding: record it as an
    issue. When done, drop the database or keep it for next time; the instance is the
    running cost.
 
