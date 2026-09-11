@@ -355,6 +355,9 @@ func newApp(db *initiator.SpannerDB, controller access.Controller, documents *st
 // portal user's request under an app built over the parity engines answers from the
 // members store; a scripted engine pairs with nothing.
 func membersEngineFor(controller access.Controller) access.Controller {
+	sharedMu.RLock()
+	defer sharedMu.RUnlock()
+
 	if sharedCrew != nil && controller == access.Controller(sharedCrew) {
 		return sharedMembers
 	}

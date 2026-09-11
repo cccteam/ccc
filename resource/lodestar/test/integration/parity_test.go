@@ -229,6 +229,9 @@ func demoWorld(t *testing.T) (context.Context, *initiator.SpannerDB, http.Handle
 	}
 	sharedWorld(t)
 
+	sharedMu.RLock()
+	defer sharedMu.RUnlock()
+
 	return ctx, db, newTestAppWithEngines(db, sharedCrew, sharedMembers)
 }
 
@@ -242,6 +245,9 @@ var (
 	sharedMembers *access.Client
 	sharedApp     http.Handler
 	sharedErr     error
+	// sharedMu guards the published engines: membersEngineFor reads them from tests that
+	// never enter sharedWorld, concurrently with the once-guarded write.
+	sharedMu sync.RWMutex
 )
 
 // sharedWorld returns the shared seeded database, its application over the real engines,
@@ -263,26 +269,36 @@ func sharedWorld(t *testing.T) (*initiator.SpannerDB, http.Handler, *access.Clie
 
 			return
 		}
-		if sharedCrew, err = openEngine(db, crew.TablePrefix); err != nil {
+		crewEngine, err := openEngine(db, crew.TablePrefix)
+		if err != nil {
 			sharedErr = err
 
 			return
 		}
-		if sharedMembers, err = openEngine(db, members.TablePrefix); err != nil {
+		membersEngine, err := openEngine(db, members.TablePrefix)
+		if err != nil {
 			sharedErr = err
 
 			return
 		}
-		if err := provisionDemoAccess(ctx, sharedCrew, sharedMembers); err != nil {
+		if err := provisionDemoAccess(ctx, crewEngine, membersEngine); err != nil {
 			sharedErr = err
 
 			return
 		}
-		sharedApp = newTestAppWithEngines(db, sharedCrew, sharedMembers)
+		handler := newTestAppWithEngines(db, crewEngine, membersEngine)
+
+		// Published together, under the lock membersEngineFor reads them with.
+		sharedMu.Lock()
+		sharedCrew, sharedMembers, sharedApp = crewEngine, membersEngine, handler
+		sharedMu.Unlock()
 	})
 	if sharedErr != nil {
 		t.Fatalf("shared demo world: %v", sharedErr)
 	}
+
+	sharedMu.RLock()
+	defer sharedMu.RUnlock()
 
 	return sharedDB, sharedApp, sharedCrew
 }
