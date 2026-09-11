@@ -15,8 +15,9 @@ and the deploy split come from the tool; the plan's domain sits on top. Every st
 method, test, component, and persona that proves a framework capability says so in a
 `Demonstrates:` paragraph, and [DEMONSTRATIONS.md](DEMONSTRATIONS.md) is the generated
 table of what proves what. Everything here is synthetic. The crew personas' plaintext
-passwords are committed deliberately; the application only ever runs against a local
-Spanner emulator.
+passwords are committed deliberately: the application runs against a local Spanner
+emulator by default, or against a private test instance ([below](#running-against-a-real-spanner-instance)),
+and is never published.
 
 ## Running it
 
@@ -29,8 +30,9 @@ overmind start
 ```
 
 That starts a fresh emulator, bootstraps it (schema, the demo world, both auths' roles,
-the personas, the droid account; the bootstrap requires a fresh emulator and is not
-idempotent), serves the application on :8090, and runs `ng serve` for both browser apps:
+the personas, the droid account; a database that already holds data is refused unless
+the bootstrap runs with `-reset`, which empties the data and seeds it again without
+touching the schema), serves the application on :8090, and runs `ng serve` for both browser apps:
 the crew console on :4300 (`/api` proxied) and the client portal on :4301 (`/portal/api`
 proxied). Browse http://127.0.0.1:4300 and sign in as any persona on the crew manifest;
 browse http://127.0.0.1:4301/portal/ and sign in through the simulated directory as
@@ -45,6 +47,39 @@ console at `/` and the portal at `/portal/`, paths overridable through
 `APP_UPLOAD_DIR` names (default `uploads/`, gitignored): uploads stream into its
 `pending/` subdirectory until their transaction commits, and `store.DirStore.Sweep` is the
 application's answer to a crash between commit and promotion.
+
+## Running against a real Spanner instance
+
+The emulator answers every test, but it returns no query plans, does not promise the
+service's execution plans, and has behavior of its own (it refuses `NULLS FIRST` and
+`NULLS LAST`; its error texts differ). Once in a while Lodestar runs against a real,
+private Cloud Spanner instance to catch emulator-specific behavior and to read real plans.
+A real database here is a private test target, not a published application: the committed
+personas and their passwords are as valid there as on the emulator, and the login page's
+persona cards stay.
+
+The bootstrap picks its target from the environment alone, the way the Spanner client
+library does: with `SPANNER_EMULATOR_HOST` set it talks to the emulator, without it to the
+project the application credentials reach.
+
+1. Have an instance. The bootstrap creates the database when it is missing but never the
+   instance; the credentials need the Cloud Spanner Database Admin role on it.
+2. In a shell with `.envrc` loaded: unset `SPANNER_EMULATOR_HOST`, set
+   `GOOGLE_APPLICATION_CREDENTIALS` to the credentials file, and point
+   `GOOGLE_CLOUD_SPANNER_PROJECT`, `GOOGLE_CLOUD_SPANNER_INSTANCE_ID`, and
+   `GOOGLE_CLOUD_SPANNER_DATABASE_NAME` at the instance.
+3. `go run -tags skipAuth ./cmd/bootstrap` creates the database, applies the schema, seeds
+   the world, provisions both auths' roles, and creates the personas. Schema changes on a
+   real instance are slow and counted against its limits, so this runs once per database;
+   every later session starts with `go run -tags skipAuth ./cmd/bootstrap -reset`, which
+   empties the data and seeds it again with no schema change.
+4. `go run -tags skipAuth .` serves the application on `PORT` against the real database,
+   and `overmind start -l console,portal` runs the browser apps against it.
+5. `./walkthrough.sh` runs every persona's proof; it moves workflow state, so reset before
+   running it again. Then use the console and the portal by hand.
+6. Anything that behaves differently from the emulator is a finding: record it as an
+   issue. When done, drop the database or keep it for next time; the instance is the
+   running cost.
 
 ## The world
 
@@ -123,7 +158,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   directory: `go test -tags skipAuth ./...`, as the CI stub and the Procfile do.
 - `demonstrations_test.go` and `DEMONSTRATIONS.md`: the demonstration index, and
   `walkthrough.sh`, the proof by hand. Demonstrates: demonstration-index, walkthrough.
-- `walkthrough.sh`: every persona's proof by curl against a fresh stack, including the
+- `walkthrough.sh`: every persona's proof by curl against a freshly bootstrapped or reset stack, including the
   droid channel, the portal through the simulated directory, the dry runs, the watch desk,
   both impersonation moments, and the three-minute wait for the overdue flip
   (`LODESTAR_SKIP_FLIP=1` to skip). Export the `.envrc` variables before running it.

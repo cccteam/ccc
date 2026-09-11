@@ -8,8 +8,10 @@
 # server commands, both under -tags skipAuth) with the .envrc variables exported here
 # too (APP_DROIDS_API_KEY opens the droid channel; APP_USERNAME=client and APP_ROLES name
 # the simulated directory's answer). Single-shot: several checks move workflow state, so
-# a rerun needs a fresh bootstrap. The overdue flip waits for the seeded three-minute
-# mission unless LODESTAR_SKIP_FLIP=1.
+# a rerun needs a fresh bootstrap: a new emulator, or `go run -tags skipAuth
+# ./cmd/bootstrap -reset` against a database that already carries the schema (the real
+# instance case; README, "Running against a real Spanner instance"). The overdue flip
+# waits for the seeded three-minute mission unless LODESTAR_SKIP_FLIP=1.
 #
 # Demonstrates: walkthrough.
 set -u

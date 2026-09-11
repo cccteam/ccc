@@ -193,6 +193,8 @@ var Demonstrations = []Demonstration{
 	// The application as a whole.
 	{"login-manifest", "A login page listing every persona with what its view proves; two clicks to switch."},
 	{"walkthrough", "Every persona's proof by curl against a fresh stack."},
+	{"bootstrap.target", "The bootstrap picks the emulator or a real instance from the environment alone: the instance is created on the emulator only, the database wherever it is missing, the same steps after."},
+	{"bootstrap.reset", "A data-only reset: every table the schema migrations do not populate emptied, children before parents, and the world seeded again, no DDL."},
 	{"authz-matrix", "GenerateHandlerTests: the generated authorization matrix over a fake engine."},
 	{"regen-idempotent", "go generate reproduces the generated files byte for byte."},
 	{"ci-stub", "The resource module's test stub that runs the application's suite in CI."},

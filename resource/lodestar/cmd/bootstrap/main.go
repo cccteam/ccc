@@ -1,16 +1,23 @@
-// Package main bootstraps the Lodestar demo database in a Spanner emulator: it creates
-// the instance and database, runs the deployment's migration steps (schema, roles), seeds
-// the demo world, and creates the demo personas. It refuses to run against anything but
-// an emulator.
+// Package main bootstraps the Lodestar demo database: it creates the database where it is
+// missing, runs the deployment's migration steps (schema, roles), seeds the demo world, and
+// creates the demo personas. The target is the environment's, as it is for the Spanner
+// client library: with SPANNER_EMULATOR_HOST set it is the emulator the Procfile starts,
+// whose instance the bootstrap also creates; without it, the project the application
+// credentials reach, whose instance must already exist. A database that already exists is
+// refused unless -reset is given, which empties its data and seeds it again without
+// touching the schema.
 //
 // The order matters: the demo world is seeded before the roles because the domain
 // universe MigrateRoles reconciles across is read from the Sectors table. Tenancy is data,
 // not a compiled-in list.
+//
+// Demonstrates: bootstrap.target, bootstrap.reset.
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"maps"
@@ -18,6 +25,11 @@ import (
 	"os/signal"
 	"slices"
 
+	"cloud.google.com/go/spanner"
+	databaseadmin "cloud.google.com/go/spanner/admin/database/apiv1"
+	"cloud.google.com/go/spanner/admin/database/apiv1/databasepb"
+	instanceadmin "cloud.google.com/go/spanner/admin/instance/apiv1"
+	"cloud.google.com/go/spanner/admin/instance/apiv1/instancepb"
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
@@ -27,13 +39,23 @@ import (
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/session"
 	"github.com/go-playground/errors/v5"
+	"google.golang.org/grpc/codes"
 )
 
 // usersPath is the committed demo cast: the crew personas with plaintext passwords and
 // their role assignments, and the service accounts the droids outlet's API key binds
 // requests to. The plaintext passwords are deliberate: these are fictional demo
-// credentials for an emulator-only application, and the README says so.
+// credentials for an application that is never published, whether its database is the
+// emulator or a private test instance, and the README says so.
 const usersPath = "cmd/bootstrap/users.json"
+
+// target is where the bootstrap's database lives.
+type target string
+
+const (
+	emulatorTarget target = "the Spanner emulator"
+	projectTarget  target = "the project the application credentials reach"
+)
 
 // devIdentities is the file's shape.
 type devIdentities struct {
@@ -66,43 +88,52 @@ type devServiceAccount struct {
 }
 
 func main() {
-	if err := run(context.Background()); err != nil {
+	reset := flag.Bool("reset", false, "empty the existing database's data and seed it again; the schema stays")
+	flag.Parse()
+
+	if err := run(context.Background(), *reset); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(ctx context.Context) error {
+func run(ctx context.Context, reset bool) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
-
-	if os.Getenv("SPANNER_EMULATOR_HOST") == "" {
-		return errors.New("SPANNER_EMULATOR_HOST must be set: the bootstrap only targets a Spanner emulator")
-	}
 
 	settings, err := config.LoadSpannerSettings(ctx)
 	if err != nil {
 		return errors.Wrap(err, "config.LoadSpannerSettings()")
 	}
 
-	if err := initiator.NewSpannerInstance(ctx, settings.ProjectID, settings.InstanceID); err != nil {
-		return errors.Wrapf(err, "initiator.NewSpannerInstance(): %s", settings.InstanceID)
-	}
-	fmt.Printf("Created instance %s\n", settings.InstanceID)
+	where := targetOf(os.Getenv("SPANNER_EMULATOR_HOST"))
+	fmt.Printf("Bootstrapping %s in %s\n", settings.DatabasePath(), where)
 
-	db, err := initiator.NewSpannerDatabase(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)
+	if where == emulatorTarget {
+		if err := ensureInstance(ctx, settings); err != nil {
+			return err
+		}
+	}
+
+	existed, err := ensureDatabase(ctx, settings)
 	if err != nil {
-		return errors.Wrapf(err, "initiator.NewSpannerDatabase(): %s", settings.DatabaseName)
+		return err
 	}
-	if err := db.Close(); err != nil {
-		return errors.Wrap(err, "initiator.SpannerDB.Close()")
+	if existed && !reset {
+		return errors.Newf("database %s already exists: run with -reset to empty its data and seed it again, or drop it first", settings.DatabasePath())
 	}
-	fmt.Printf("Created database %s\n", settings.DatabaseName)
 
 	// From here the bootstrap runs the deployment's own steps.
 	if err := deploy.MigrateSchema(ctx, settings); err != nil {
 		return errors.Wrap(err, "deploy.MigrateSchema()")
 	}
 	fmt.Println("Applied the schema migrations")
+
+	if existed {
+		if err := resetData(ctx, settings); err != nil {
+			return err
+		}
+		fmt.Println("Emptied the database's data; the schema stays")
+	}
 
 	if err := deploy.SeedDevelopmentData(ctx, settings); err != nil {
 		return errors.Wrap(err, "deploy.SeedDevelopmentData()")
@@ -134,6 +165,92 @@ func run(ctx context.Context) error {
 
 	if err := seedIdentities(ctx, data); err != nil {
 		return errors.Wrap(err, "seedIdentities()")
+	}
+
+	return nil
+}
+
+// targetOf picks the target the way the Spanner client library does: an emulator host in
+// the environment means the emulator, none means the real project.
+func targetOf(emulatorHost string) target {
+	if emulatorHost != "" {
+		return emulatorTarget
+	}
+
+	return projectTarget
+}
+
+// ensureInstance creates the emulator's instance when it is missing. A real instance is
+// never created here: db-initiator's instance call carries no configuration or size, and
+// a real one is provisioned by whoever owns the project.
+func ensureInstance(ctx context.Context, settings config.SpannerSettings) error {
+	admin, err := instanceadmin.NewInstanceAdminClient(ctx)
+	if err != nil {
+		return errors.Wrap(err, "instance.NewInstanceAdminClient()")
+	}
+	defer admin.Close()
+
+	name := fmt.Sprintf("projects/%s/instances/%s", settings.ProjectID, settings.InstanceID)
+	_, err = admin.GetInstance(ctx, &instancepb.GetInstanceRequest{Name: name})
+	switch {
+	case err == nil:
+		fmt.Printf("Instance %s exists\n", settings.InstanceID)
+
+		return nil
+	case spanner.ErrCode(err) != codes.NotFound:
+		return errors.Wrapf(err, "instance.InstanceAdminClient.GetInstance(): %s", name)
+	}
+
+	if err := initiator.NewSpannerInstance(ctx, settings.ProjectID, settings.InstanceID); err != nil {
+		return errors.Wrapf(err, "initiator.NewSpannerInstance(): %s", settings.InstanceID)
+	}
+	fmt.Printf("Created instance %s\n", settings.InstanceID)
+
+	return nil
+}
+
+// ensureDatabase creates the database when it is missing and reports whether it already
+// existed.
+func ensureDatabase(ctx context.Context, settings config.SpannerSettings) (bool, error) {
+	admin, err := databaseadmin.NewDatabaseAdminClient(ctx)
+	if err != nil {
+		return false, errors.Wrap(err, "database.NewDatabaseAdminClient()")
+	}
+	defer admin.Close()
+
+	_, err = admin.GetDatabase(ctx, &databasepb.GetDatabaseRequest{Name: settings.DatabasePath()})
+	switch {
+	case err == nil:
+		fmt.Printf("Database %s exists\n", settings.DatabaseName)
+
+		return true, nil
+	case spanner.ErrCode(err) != codes.NotFound:
+		return false, errors.Wrapf(err, "database.DatabaseAdminClient.GetDatabase(): %s", settings.DatabasePath())
+	}
+
+	db, err := initiator.NewSpannerDatabase(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)
+	if err != nil {
+		return false, errors.Wrapf(err, "initiator.NewSpannerDatabase(): %s", settings.DatabaseName)
+	}
+	if err := db.Close(); err != nil {
+		return false, errors.Wrap(err, "initiator.SpannerDB.Close()")
+	}
+	fmt.Printf("Created database %s\n", settings.DatabaseName)
+
+	return false, nil
+}
+
+// resetData empties the existing database's data through the deploy package, over a
+// client of its own: the data level's clients are not open yet.
+func resetData(ctx context.Context, settings config.SpannerSettings) error {
+	client, err := spanner.NewClient(ctx, settings.DatabasePath())
+	if err != nil {
+		return errors.Wrap(err, "spanner.NewClient()")
+	}
+	defer client.Close()
+
+	if err := deploy.ResetDevelopmentData(ctx, client, deploy.MigrationsSource); err != nil {
+		return errors.Wrap(err, "deploy.ResetDevelopmentData()")
 	}
 
 	return nil
