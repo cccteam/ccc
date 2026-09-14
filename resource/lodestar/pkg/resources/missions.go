@@ -41,7 +41,14 @@ type (
 	// withIndexed — the browser offers a fee filter only beside one on an indexed
 	// column, the same rule the database parse enforces.
 	//
-	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view, metadata.filterable.
+	// Deadline, the default order, is declared masking:"positional": a deadline's rank
+	// is not sensitive, so the archivist's every page orders on the real column and
+	// comes off the index, while a masked deadline cell would still arrive hidden. Fee
+	// stays concealing — where a fee falls among the others is what the mask protects —
+	// so the archivist's fee filter runs over the visible projection, and the deploy
+	// warns that her pages filtered by fee sort the partition (pkg/deploy).
+	//
+	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, masking.positional, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view, metadata.filterable.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -70,7 +77,7 @@ type (
 		// masked until a mission completes, and a masked cell matches only isnull.
 		Fee decimal.Decimal `spanner:"Fee" allow_filter:"true"`
 		// @attribute(deadline)
-		Deadline time.Time `spanner:"Deadline"`
+		Deadline time.Time `spanner:"Deadline" masking:"positional"`
 		// @attribute(requiredCert)
 		RequiredCertID *string `spanner:"RequiredCertId"`
 		// @attribute(bookedBy)

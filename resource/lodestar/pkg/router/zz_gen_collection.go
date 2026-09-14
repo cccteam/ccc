@@ -46,7 +46,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "sectorMissions", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "trusted", Permissions: []accesstypes.Permission{accesstypes.List}},
 				},
-				Domain: &resource.DomainBindingData{Column: "SectorId"},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"name"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "name"},
 			},
 			{
 				Name:        "ClientStatements",
@@ -84,7 +86,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "expiresOn", Column: "ExpiresOn", Type: "date"},
 					{Name: "releasedAt", Column: "ReleasedAt", Type: "timestamp"},
 				},
-				Domain: &resource.DomainBindingData{Column: "SectorId"},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"releasedAt"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "clientId", "bondCode", "mass"},
 			},
 			{
 				Name:        "DistressCalls",
@@ -103,7 +107,9 @@ func Collection() *resource.GeneratedCollection {
 				Attributes: []resource.AttributeData{
 					{Name: "filedBy", Column: "FiledBy", Type: "string"},
 				},
-				Domain: &resource.DomainBindingData{Column: "SectorId"},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"severity"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "caseNumber"},
 			},
 			{
 				Name:        "DroidReports",
@@ -117,7 +123,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "shipId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Update}},
 					{Name: "subsystem", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Update}},
 				},
-				Domain: &resource.DomainBindingData{Column: "SectorId"},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"recordedAt"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "shipId"},
 			},
 			{
 				Name:        "FailFlightTest",
@@ -149,7 +157,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "sectorId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "zone", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 				},
-				Domain: &resource.DomainBindingData{Column: "SectorId"},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"name"},
+				QueryKeys: []accesstypes.Tag{"sectorId"},
 			},
 			{
 				Name:        "HoldMission",
@@ -192,7 +202,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "statusId", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "title", Permissions: []accesstypes.Permission{accesstypes.List}},
 				},
-				Domain: &resource.DomainBindingData{Column: "SectorId"},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"deadline"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "title", "clientName", "squadronName", "kindId", "statusId", "deadline", "daysLeft"},
 			},
 			{
 				Name:        "MissionDocuments",
@@ -212,7 +224,9 @@ func Collection() *resource.GeneratedCollection {
 				Attributes: []resource.AttributeData{
 					{Name: "client", Column: "MissionId", Type: "string", Path: []resource.BindingHop{{Table: "Missions", JoinColumn: "Id", Column: "ClientId"}}},
 				},
-				Domain: &resource.DomainBindingData{Column: "MissionId", Path: []resource.BindingHop{{Table: "Missions", JoinColumn: "Id", Column: "SectorId"}}},
+				Domain:    &resource.DomainBindingData{Column: "MissionId", Path: []resource.BindingHop{{Table: "Missions", JoinColumn: "Id", Column: "SectorId"}}},
+				Order:     []accesstypes.Tag{"uploadedAt"},
+				QueryKeys: []accesstypes.Tag{"missionId"},
 			},
 			{
 				Name:        "Missions",
@@ -224,7 +238,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "brief", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "briefingTemplateId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "clientId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
-					{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}, Masking: resource.MaskingPositional},
 					{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "hazard", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "id"},
@@ -249,7 +263,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "settlement", Column: "Settlement", Type: "number"},
 					{Name: "state", Column: "StatusId", Type: "string"},
 				},
-				Domain: &resource.DomainBindingData{Column: "SectorId"},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"deadline"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "clientId", "kindId", "fee", "requiredCertId", "assignedSquadronId", "statusId"},
 			},
 			{
 				Name:        "OpenMissionsBySquadrons",
@@ -262,7 +278,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "squadronId"},
 					{Name: "squadronName", Permissions: []accesstypes.Permission{accesstypes.List}},
 				},
-				Domain: &resource.DomainBindingData{Column: "SectorId"},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"openMissions"},
+				QueryKeys: []accesstypes.Tag{"squadronName"},
 			},
 			{
 				Name:        "PassFlightTest",
@@ -282,7 +300,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "userId"},
 					{Name: "wingName", Permissions: []accesstypes.Permission{accesstypes.List}},
 				},
-				Domain: &resource.DomainBindingData{Column: "SectorId"},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"squadronName"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "squadronName", "wingName"},
 			},
 			{
 				Name:        "RefitTasks",
@@ -300,6 +320,7 @@ func Collection() *resource.GeneratedCollection {
 				},
 				Domain: &resource.DomainBindingData{Column: "Id", Path: []resource.BindingHop{{Table: "Refits", JoinColumn: "Id", Column: "ShipId"}, {Table: "Ships", JoinColumn: "Id", Column: "HangarId"}, {Table: "Hangars", JoinColumn: "Id", Column: "SectorId"}}},
 				Parent: "Refits",
+				Order:  []accesstypes.Tag{"taskNumber"},
 			},
 			{
 				Name:        "Refits",
@@ -320,7 +341,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "openedBy", Column: "OpenedBy", Type: "string"},
 					{Name: "state", Column: "StatusId", Type: "string"},
 				},
-				Domain: &resource.DomainBindingData{Column: "ShipId", Path: []resource.BindingHop{{Table: "Ships", JoinColumn: "Id", Column: "HangarId"}, {Table: "Hangars", JoinColumn: "Id", Column: "SectorId"}}},
+				Domain:    &resource.DomainBindingData{Column: "ShipId", Path: []resource.BindingHop{{Table: "Ships", JoinColumn: "Id", Column: "HangarId"}, {Table: "Hangars", JoinColumn: "Id", Column: "SectorId"}}},
+				Order:     []accesstypes.Tag{"statusId"},
+				QueryKeys: []accesstypes.Tag{"shipId", "statusId"},
 			},
 			{
 				Name:        "ReleaseConsignment",
@@ -375,7 +398,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "hangarZone", Column: "HangarId", Type: "string", Path: []resource.BindingHop{{Table: "Hangars", JoinColumn: "Id", Column: "Zone"}}},
 					{Name: "shipRole", Column: "ClassId", Type: "string", Path: []resource.BindingHop{{Table: "ShipClasses", JoinColumn: "Id", Column: "RoleId"}}},
 				},
-				Domain: &resource.DomainBindingData{Column: "HangarId", Path: []resource.BindingHop{{Table: "Hangars", JoinColumn: "Id", Column: "SectorId"}}},
+				Domain:    &resource.DomainBindingData{Column: "HangarId", Path: []resource.BindingHop{{Table: "Hangars", JoinColumn: "Id", Column: "SectorId"}}},
+				Order:     []accesstypes.Tag{"name"},
+				QueryKeys: []accesstypes.Tag{"hangarId", "classId", "registry"},
 			},
 			{
 				Name:        "ShipsLogEntries",
@@ -397,8 +422,10 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "amount", Column: "Amount", Type: "number"},
 					{Name: "state", Column: "SortieId", Type: "string", Path: []resource.BindingHop{{Table: "Sorties", JoinColumn: "Id", Column: "MissionId"}, {Table: "Missions", JoinColumn: "Id", Column: "StatusId"}}},
 				},
-				Domain: &resource.DomainBindingData{Column: "SortieId", Path: []resource.BindingHop{{Table: "Sorties", JoinColumn: "Id", Column: "MissionId"}, {Table: "Missions", JoinColumn: "Id", Column: "SectorId"}}},
-				Parent: "Sorties",
+				Domain:    &resource.DomainBindingData{Column: "SortieId", Path: []resource.BindingHop{{Table: "Sorties", JoinColumn: "Id", Column: "MissionId"}, {Table: "Missions", JoinColumn: "Id", Column: "SectorId"}}},
+				Parent:    "Sorties",
+				Order:     []accesstypes.Tag{"amount"},
+				QueryKeys: []accesstypes.Tag{"sortieId"},
 			},
 			{
 				Name:        "Sorties",
@@ -416,8 +443,10 @@ func Collection() *resource.GeneratedCollection {
 				Attributes: []resource.AttributeData{
 					{Name: "state", Column: "MissionId", Type: "string", Path: []resource.BindingHop{{Table: "Missions", JoinColumn: "Id", Column: "StatusId"}}},
 				},
-				Domain: &resource.DomainBindingData{Column: "MissionId", Path: []resource.BindingHop{{Table: "Missions", JoinColumn: "Id", Column: "SectorId"}}},
-				Parent: "Missions",
+				Domain:    &resource.DomainBindingData{Column: "MissionId", Path: []resource.BindingHop{{Table: "Missions", JoinColumn: "Id", Column: "SectorId"}}},
+				Parent:    "Missions",
+				Order:     []accesstypes.Tag{"launchedAt"},
+				QueryKeys: []accesstypes.Tag{"missionId", "shipId"},
 			},
 			{
 				Name:        "SquadronMemberships",
@@ -432,6 +461,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "squadrons", UserColumn: "UserId", Column: "SquadronId"},
 					{Name: "wings", UserColumn: "UserId", Column: "SquadronId", Path: []resource.BindingHop{{Table: "Squadrons", JoinColumn: "Id", Column: "WingId"}}},
 				},
+				Order: []accesstypes.Tag{"userId"},
 			},
 			{
 				Name:        "SquadronRosters",
@@ -445,7 +475,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "squadronName", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "userId"},
 				},
-				Domain: &resource.DomainBindingData{Column: "SectorId"},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"pilotName"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "squadronName", "pilotName"},
 			},
 			{
 				Name:        "Squadrons",
@@ -459,7 +491,9 @@ func Collection() *resource.GeneratedCollection {
 				Attributes: []resource.AttributeData{
 					{Name: "wing", Column: "WingId", Type: "string"},
 				},
-				Domain: &resource.DomainBindingData{Column: "WingId", Path: []resource.BindingHop{{Table: "Wings", JoinColumn: "Id", Column: "SectorId"}}},
+				Domain:    &resource.DomainBindingData{Column: "WingId", Path: []resource.BindingHop{{Table: "Wings", JoinColumn: "Id", Column: "SectorId"}}},
+				Order:     []accesstypes.Tag{"name"},
+				QueryKeys: []accesstypes.Tag{"wingId", "name"},
 			},
 			{
 				Name:        "StandDownMission",
@@ -484,7 +518,9 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "sectorId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 				},
-				Domain: &resource.DomainBindingData{Column: "SectorId"},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"name"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "name"},
 			},
 			{
 				Name:        "AssumeRole",
@@ -519,6 +555,8 @@ func Collection() *resource.GeneratedCollection {
 				SubjectValues: []resource.SubjectBindingData{
 					{Name: "client", UserColumn: "UserId", Column: "ClientId"},
 				},
+				Order:     []accesstypes.Tag{"displayName"},
+				QueryKeys: []accesstypes.Tag{"userId", "clientId"},
 			},
 			{
 				Name:        "Clients",
@@ -534,6 +572,8 @@ func Collection() *resource.GeneratedCollection {
 				Attributes: []resource.AttributeData{
 					{Name: "trusted", Column: "Trusted", Type: "bool"},
 				},
+				Order:     []accesstypes.Tag{"name"},
+				QueryKeys: []accesstypes.Tag{"name", "contactEmail"},
 			},
 			{
 				Name:        "FeeByKinds",
@@ -545,6 +585,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "topFee", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "totalFee", Permissions: []accesstypes.Permission{accesstypes.List}},
 				},
+				Order: []accesstypes.Tag{"totalFee"},
 			},
 			{
 				Name:        "IssueBulletin",
@@ -576,6 +617,7 @@ func Collection() *resource.GeneratedCollection {
 				SubjectSets: []resource.SubjectBindingData{
 					{Name: "certifications", UserColumn: "UserId", Column: "CertificationId"},
 				},
+				Order: []accesstypes.Tag{"userId"},
 			},
 			{
 				Name:        "Pilots",
@@ -592,6 +634,8 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "clearance", UserColumn: "UserId", Column: "Clearance"},
 					{Name: "feeLimit", UserColumn: "UserId", Column: "FeeLimit"},
 				},
+				Order:     []accesstypes.Tag{"displayName"},
+				QueryKeys: []accesstypes.Tag{"userId"},
 			},
 			{
 				Name:        "Sectors",
@@ -603,6 +647,8 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "region", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 				},
+				Order:     []accesstypes.Tag{"name"},
+				QueryKeys: []accesstypes.Tag{"name"},
 			},
 			{
 				Name:        "ServiceLedgers",
@@ -629,6 +675,8 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "tonnage", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 				},
 				ImmutableTags: []accesstypes.Tag{"designation"},
+				Order:         []accesstypes.Tag{"designation"},
+				QueryKeys:     []accesstypes.Tag{"designation", "roleId"},
 			},
 			{
 				Name:        "ViewAsUser",

@@ -354,7 +354,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'briefingTemplateId', displayType: 'enumerated', required: false, isIndex: false, enumeratedResource: Resources.BriefingTemplates },
       { fieldName: 'hazard', displayType: 'number', required: true, isIndex: false },
       { fieldName: 'fee', displayType: 'number', required: true, isIndex: false, filterable: 'withIndexed' },
-      { fieldName: 'deadline', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'deadline', displayType: 'date', required: true, isIndex: false, masking: 'positional' },
       { fieldName: 'requiredCertId', displayType: 'enumerated', required: false, isIndex: true, filterable: 'always', enumeration: [{ id: "deep_space", display: "Deep space" }, { id: "escort", display: "Escort" }, { id: "hazmat", display: "Hazardous materials" }, { id: "salvage", display: "Salvage" }] },
       { fieldName: 'bookedBy', displayType: 'string', required: false, isIndex: false, readOnly: true },
       { fieldName: 'assignedSquadronId', displayType: 'enumerated', required: false, isIndex: true, filterable: 'always', enumeratedResource: Resources.Squadrons },
