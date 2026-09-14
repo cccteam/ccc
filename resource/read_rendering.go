@@ -43,6 +43,14 @@ import (
 // sorts in the NULL region and matches only isnull; a pruned CASE uses the raw
 // column because every returned row shows the field. Only a Denied column is
 // refused, at the readability check.
+//
+// Positional masking (decided 2026-09-11): a field declared masking:"positional"
+// keeps its select CASE and its mask term — the cell is still hidden — but
+// renders no query override, so ORDER BY, the cursor predicate, and the filter
+// run on the raw column: the index serves the page and the field's rank is
+// disclosed. A positional sort key's raw value is selected a second time under
+// a reserved alias for the cursor, so a hidden boundary value leaves the server
+// only inside the sealed token.
 
 // maskedNamesColumnName is the read statement's one reserved output column:
 // the JSON names of the row's masked cells. Generation rejects resource
@@ -71,9 +79,6 @@ type readConditionPlan struct {
 type fieldConditions struct {
 	// disjuncts is the field's covering condition, flattened over OR.
 	disjuncts []condition.Expr
-
-	// keys is the canonical form of each disjunct, for the pruning set test.
-	keys map[string]struct{}
 
 	// pruned marks a CASE the row predicate makes tautological.
 	pruned bool
@@ -129,13 +134,11 @@ func (q *QuerySet[Resource]) readConditionPlan() (*readConditionPlan, error) {
 		}
 
 		fc := &fieldConditions{
-			disjuncts: flattenOr(expr),
-			keys:      make(map[string]struct{}),
+			disjuncts: condition.Disjuncts(expr),
 			jsonName:  q.jsonName(field),
 		}
 		for _, disjunct := range fc.disjuncts {
 			key := disjunct.String()
-			fc.keys[key] = struct{}{}
 			if _, seen := unionKeys[key]; !seen {
 				unionKeys[key] = struct{}{}
 				union = append(union, disjunct)
@@ -163,24 +166,14 @@ func (q *QuerySet[Resource]) readConditionPlan() (*readConditionPlan, error) {
 	for _, fc := range plan.fields {
 		// A field prunes when its condition set covers every disjunct of the
 		// row predicate: the WHERE has proven its condition on every
-		// surviving row. A projected field's keys ⊆ unionKeys by
-		// construction; a query-only field's need not be.
-		fc.pruned = covers(fc.keys, unionKeys)
+		// surviving row. A projected field's disjuncts ⊆ union by
+		// construction; a query-only field's need not be. The test is the
+		// condition package's, shared with the deploy-time role validation so
+		// a CASE kept here is exactly a CASE warned about there.
+		fc.pruned = condition.Covers(fc.disjuncts, plan.rowPredicate)
 	}
 
 	return plan, nil
-}
-
-// covers reports whether every key of the row predicate is in the field's
-// condition set.
-func covers(fieldKeys, unionKeys map[string]struct{}) bool {
-	for key := range unionKeys {
-		if _, ok := fieldKeys[key]; !ok {
-			return false
-		}
-	}
-
-	return true
 }
 
 // addQueryOnlyConditions adds the conditional columns the query names outside
@@ -208,15 +201,10 @@ func (q *QuerySet[Resource]) addQueryOnlyConditions(plan *readConditionPlan) err
 			continue
 		}
 
-		fc := &fieldConditions{
-			disjuncts: flattenOr(expr),
-			keys:      make(map[string]struct{}),
+		plan.fields[field] = &fieldConditions{
+			disjuncts: condition.Disjuncts(expr),
 			jsonName:  q.jsonName(field),
 		}
-		for _, disjunct := range fc.disjuncts {
-			fc.keys[disjunct.String()] = struct{}{}
-		}
-		plan.fields[field] = fc
 	}
 
 	return nil
@@ -243,22 +231,6 @@ func conditionalExpr(res accesstypes.Resource, decision accesstypes.Decision) (c
 	}
 
 	return group.Condition.Expr(), nil
-}
-
-// flattenOr flattens an any-of tree into its disjuncts; OR is associative, so
-// finer granularity only sharpens the pruning test, never changes semantics.
-func flattenOr(expr condition.Expr) []condition.Expr {
-	or, ok := expr.(condition.Or)
-	if !ok {
-		return []condition.Expr{expr}
-	}
-
-	var out []condition.Expr
-	for _, operand := range or.Operands {
-		out = append(out, flattenOr(operand)...)
-	}
-
-	return out
 }
 
 // orOf rebuilds one expression from disjuncts.
@@ -396,12 +368,13 @@ func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readCondi
 
 // renderQueryOverrides renders the visible projection of each unpruned
 // conditional column the query names: CASE WHEN <condition> THEN column END,
-// NULL where the cell is masked.
+// NULL where the cell is masked. A positional field renders none: its sort
+// and filter run on the raw column by declaration.
 func (q *QuerySet[Resource]) renderQueryOverrides(dbType DBType, plan *readConditionPlan, conditions *conditionRenderer, rendered *renderedReadConditions) error {
 	dbFields := q.rMeta.dbFieldMap(dbType)
 	for _, field := range q.queryColumns() {
 		fc, ok := plan.fields[field]
-		if !ok || fc.pruned {
+		if !ok || fc.pruned || q.resourceSet.Positional(field) {
 			continue
 		}
 		dbField, ok := dbFields[field]

@@ -156,6 +156,8 @@ var Demonstrations = []Demonstration{
 	{"paging.offset-refused", "The offset parameter is refused."},
 	{"paging.readability-rule", "A sort or filter on a field the caller is denied is refused naming the field."},
 	{"paging.masked-sort", "A sort or filter on a conditionally granted field runs over the visible projection: masked cells are NULL."},
+	{"masking.positional", "masking:\"positional\" on a field: its masked cells stay hidden, but the list orders, filters, and pages on the real column, so the page comes off the index and the field's rank is disclosed."},
+	{"warning.concealing-key", "MigrateRoles and ValidateRoles warn where a role's conditional grant lands on a concealing field the resource orders by or admits as a sort or filter key, and the role's other grants leave the CASE in the query: that role's pages sort the partition."},
 	{"paging.nullable-sort", "A nullable sort column walked across the NULL boundary in both directions."},
 	{"paging.survives-writes", "A walk that sees each row once across inserts and deletes before its position."},
 	{"paging.sealed-cursor", "The cursor is a sealed token carrying nothing readable."},

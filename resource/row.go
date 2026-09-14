@@ -2,6 +2,7 @@ package resource
 
 import (
 	"encoding/json"
+	"reflect"
 	"slices"
 
 	"github.com/cccteam/ccc/accesstypes"
@@ -20,6 +21,12 @@ type Row[Resource Resourcer] struct {
 
 	// masked holds the JSON names of this row's masked cells.
 	masked []string
+
+	// positional holds the raw values of the positional sort keys the
+	// statement selected for the cursor, by field: what the statement ordered
+	// by where Data carries the masked cell's filler. Never encoded; read only
+	// by the cursor.
+	positional map[accesstypes.Field]reflect.Value
 
 	// capabilities holds this row's assembled capability answers when the
 	// request opted into the capability envelope, nil otherwise.

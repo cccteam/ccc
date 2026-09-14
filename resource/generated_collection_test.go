@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -33,8 +34,34 @@ func TestNewSetData(t *testing.T) {
 					"id":   {accesstypes.NullPermission},
 					"name": {accesstypes.List},
 				},
-				ImmutableFields: map[accesstypes.Tag]struct{}{},
+				ImmutableFields:  map[accesstypes.Tag]struct{}{},
+				PositionalFields: map[accesstypes.Tag]struct{}{},
 			},
+		},
+		{
+			name: "a positional field is recorded by its tag",
+			fields: []FieldTags{
+				{Field: "ID", JSON: "id", Perm: "-"},
+				{Field: "Fee", JSON: "fee", Masking: "positional"},
+			},
+			permissions: []accesstypes.Permission{accesstypes.List},
+			want: SetData{
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				TagPermissions: accesstypes.TagPermissions{
+					"id":  {accesstypes.NullPermission},
+					"fee": {accesstypes.List},
+				},
+				ImmutableFields:  map[accesstypes.Tag]struct{}{},
+				PositionalFields: map[accesstypes.Tag]struct{}{"fee": {}},
+			},
+		},
+		{
+			name: "a masking value the generator never writes is rejected",
+			fields: []FieldTags{
+				{Field: "Fee", JSON: "fee", Masking: "sideways"},
+			},
+			permissions: []accesstypes.Permission{accesstypes.List},
+			wantErr:     true,
 		},
 		{
 			name: "patch request struct strips Update from the immutable tag",
@@ -49,7 +76,8 @@ func TestNewSetData(t *testing.T) {
 					"name": {accesstypes.Create, accesstypes.Update},
 					"code": {accesstypes.Create},
 				},
-				ImmutableFields: map[accesstypes.Tag]struct{}{"code": {}},
+				ImmutableFields:  map[accesstypes.Tag]struct{}{"code": {}},
+				PositionalFields: map[accesstypes.Tag]struct{}{},
 			},
 		},
 		{
@@ -264,6 +292,58 @@ func TestNewGeneratedCollection_validation(t *testing.T) {
 			}}},
 		},
 		{
+			name: "positional masking on a registered tag",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:        "Widgets",
+				Scope:       scope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags:        []TagData{{Name: "id"}, {Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: MaskingPositional}},
+				Order:       []accesstypes.Tag{"fee"},
+				QueryKeys:   []accesstypes.Tag{"fee"},
+			}}},
+		},
+		{
+			name: "concealing spelled out is the default",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:        "Widgets",
+				Scope:       scope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags:        []TagData{{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: MaskingConcealing}},
+			}}},
+		},
+		{
+			name: "an unknown masking behavior",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:        "Widgets",
+				Scope:       scope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags:        []TagData{{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: "sideways"}},
+			}}},
+			wantErr: true,
+		},
+		{
+			name: "an order naming a tag the resource lacks",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:        "Widgets",
+				Scope:       scope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags:        []TagData{{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}}},
+				Order:       []accesstypes.Tag{"deadline"},
+			}}},
+			wantErr: true,
+		},
+		{
+			name: "a query key naming a tag the resource lacks",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:        "Widgets",
+				Scope:       scope,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags:        []TagData{{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}}},
+				QueryKeys:   []accesstypes.Tag{"deadline"},
+			}}},
+			wantErr: true,
+		},
+		{
 			name:    "empty resource name",
 			data:    CollectionData{Resources: []CollectionResource{{Scope: scope}}},
 			wantErr: true,
@@ -343,6 +423,19 @@ func TestGeneratedCollection_roundTrip(t *testing.T) {
 		t.Fatalf("AddMethodResource() error = %v", err)
 	}
 	b.SetMethodTransition(accesstypes.GlobalPermissionScope, "ShipWidget", TransitionData{Target: "Widgets", From: []string{"packed", "labeled"}, To: "shipped"})
+	listed, err := NewSetData([]FieldTags{
+		{Field: "ID", JSON: "id", Perm: "-"},
+		{Field: "Name", JSON: "name"},
+		{Field: "Fee", JSON: "fee", Masking: "positional"},
+		{Field: "Deadline", JSON: "deadline"},
+	}, accesstypes.List)
+	if err != nil {
+		t.Fatalf("NewSetData() error = %v", err)
+	}
+	if err := b.AddResourceSet(accesstypes.DomainPermissionScope, "Missions", listed); err != nil {
+		t.Fatalf("AddResourceSet() error = %v", err)
+	}
+	b.SetResourceQueryKeys(accesstypes.DomainPermissionScope, "Missions", []accesstypes.Tag{"deadline"}, []accesstypes.Tag{"fee", "name"})
 
 	data := b.Data()
 	g, err := NewGeneratedCollection(data)
@@ -352,6 +445,40 @@ func TestGeneratedCollection_roundTrip(t *testing.T) {
 
 	if diff := cmp.Diff(data, g.Data()); diff != "" {
 		t.Errorf("GeneratedCollection.Data() round trip mismatch (-want +got):\n%s", diff)
+	}
+
+	missions := data.Resources[slices.IndexFunc(data.Resources, func(r CollectionResource) bool { return r.Name == "Missions" })]
+	wantMissions := CollectionResource{
+		Name:        "Missions",
+		Scope:       accesstypes.DomainPermissionScope,
+		Permissions: []accesstypes.Permission{accesstypes.List},
+		Tags: []TagData{
+			{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.List}},
+			{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: MaskingPositional},
+			{Name: "id"},
+			{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
+		},
+		Order:     []accesstypes.Tag{"deadline"},
+		QueryKeys: []accesstypes.Tag{"fee", "name"},
+	}
+	if diff := cmp.Diff(wantMissions, missions); diff != "" {
+		t.Errorf("Missions collection data mismatch (-want +got):\n%s", diff)
+	}
+	order, keys := g.ConcealingKeys(accesstypes.DomainPermissionScope, "Missions")
+	if diff := cmp.Diff([]accesstypes.Tag{"deadline"}, order); diff != "" {
+		t.Errorf("ConcealingKeys(Missions) order mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]accesstypes.Tag{"name"}, keys); diff != "" {
+		t.Errorf("ConcealingKeys(Missions) keys mismatch (-want +got):\n%s", diff)
+	}
+	if order, keys := g.ConcealingKeys(accesstypes.GlobalPermissionScope, "Widgets"); order != nil || keys != nil {
+		t.Errorf("ConcealingKeys(Widgets) = %v, %v, want none for a resource declaring no keys", order, keys)
+	}
+	if got := g.FieldMasking(accesstypes.DomainPermissionScope, "Missions", "fee"); got != MaskingPositional {
+		t.Errorf("FieldMasking(fee) = %q, want positional", got)
+	}
+	if got := g.FieldMasking(accesstypes.DomainPermissionScope, "Missions", "deadline"); got != MaskingConcealing {
+		t.Errorf("FieldMasking(deadline) = %q, want concealing", got)
 	}
 
 	wantTransitions := []TransitionMethod{{Method: "ShipWidget", Transition: TransitionData{Target: "Widgets", From: []string{"packed", "labeled"}, To: "shipped"}}}

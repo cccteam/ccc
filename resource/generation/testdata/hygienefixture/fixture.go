@@ -59,4 +59,18 @@ type (
 		ID   string
 		Name string `conditions:"immutable,pii"`
 	}
+
+	// MaskingMisspelled carries a masking value one letter off a recognized one.
+	MaskingMisspelled struct {
+		ID  string
+		Fee int64 `masking:"positonal"`
+	}
+
+	// MaskingClean carries both recognized masking values.
+	MaskingClean struct {
+		ID       string
+		Fee      int64  `masking:"positional"`
+		Title    string `masking:"concealing"`
+		Deadline string
+	}
 )

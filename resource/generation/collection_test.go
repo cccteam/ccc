@@ -176,6 +176,14 @@ func collectionFixtureGenerator(t *testing.T) *resourceGenerator {
 			}
 		}),
 		fixtureResource(t, structs, "Widget", nil),
+		fixtureResource(t, structs, "Beacon", func(res *resourceInfo) {
+			res.DeclaredOrder = []resource.SortField{{Field: "Deadline", Direction: resource.SortAscending}}
+			for _, f := range res.Fields {
+				if f.Name() == "Name" {
+					f.IsIndex = true
+				}
+			}
+		}),
 	}
 	r.computedResources = []*computedResource{
 		fixtureComputedResource(t, structs, "Summary"),
@@ -240,6 +248,20 @@ func Test_computeCollectionData(t *testing.T) {
 					},
 					Domain:        &resource.DomainBindingData{Column: "Id"},
 					SubjectValues: []resource.SubjectBindingData{{Name: "vaultLimit", UserColumn: "Id", Column: "Name"}},
+				},
+				{
+					// A listed resource carries its list's order and query keys, and a
+					// positional field's masking rides its tag.
+					Name:        "Beacons",
+					Scope:       accesstypes.GlobalPermissionScope,
+					Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
+					Tags: []resource.TagData{
+						{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}, Masking: resource.MaskingPositional},
+						{Name: "id"},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					},
+					Order:     []accesstypes.Tag{"deadline"},
+					QueryKeys: []accesstypes.Tag{"name"},
 				},
 				{
 					// Consolidated and routing-disabled: no list/read routes, but the shared
@@ -402,6 +424,18 @@ func Test_collectionTemplate(t *testing.T) {
 			Scope:       accesstypes.DomainPermissionScope,
 			Permissions: []accesstypes.Permission{accesstypes.Execute},
 		},
+		{
+			Name:        "Missions",
+			Scope:       accesstypes.DomainPermissionScope,
+			Permissions: []accesstypes.Permission{accesstypes.List},
+			Tags: []resource.TagData{
+				{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: resource.MaskingPositional},
+				{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}},
+				{Name: "id"},
+			},
+			Order:     []accesstypes.Tag{"deadline"},
+			QueryKeys: []accesstypes.Tag{"fee", "id"},
+		},
 	}}
 
 	r := &resourceGenerator{client: &client{}}
@@ -438,6 +472,10 @@ func Test_collectionTemplate(t *testing.T) {
 		`Domain: &resource.DomainBindingData{Column: "StationId"},`,
 		`SubjectSets: []resource.SubjectBindingData{ {Name: "crews", UserColumn: "UserId", Column: "CrewId"}, },`,
 		`SubjectValues: []resource.SubjectBindingData{ {Name: "approvalLimit", UserColumn: "UserId", Column: "Limit"}, },`,
+		`{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: resource.MaskingPositional},`,
+		`{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}},`,
+		`Order: []accesstypes.Tag{"deadline"},`,
+		`QueryKeys: []accesstypes.Tag{"fee", "id"},`,
 	} {
 		if !strings.Contains(normalized, want) {
 			t.Errorf("rendered collection file missing %q:\n%s", want, formatted)

@@ -41,6 +41,14 @@ type Gadget struct {
 	Name string   `spanner:"Name"`
 }
 
+// Beacon carries a positional field; the collection tests give it an order and an
+// index, so its list's query keys and the field's masking reach the collection.
+type Beacon struct {
+	ID       ccc.UUID `spanner:"Id"`
+	Name     string   `spanner:"Name"`
+	Deadline string   `spanner:"Deadline" masking:"positional"`
+}
+
 type Sprocket struct {
 	ID   ccc.UUID `spanner:"Id"`
 	Name string   `spanner:"Name"`

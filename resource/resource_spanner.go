@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"reflect"
 
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
@@ -76,7 +77,7 @@ func (c *spannerReader[Resource]) DBType() DBType {
 // columns (masked names, capability checks) or an assembly plan, requiring
 // the lenient per-row scan instead of the plain spxscan path.
 func envelopeScan(stmt *Statement) bool {
-	return stmt.maskedNamesColumn != "" || stmt.capabilityPlan != nil
+	return stmt.maskedNamesColumn != "" || stmt.capabilityPlan != nil || len(stmt.positionalKeys) > 0
 }
 
 // Read reads a single resource from the database.
@@ -205,6 +206,18 @@ func scanEnvelopeRow[Resource Resourcer](spannerRow *spanner.Row, stmt *Statemen
 		if err := spannerRow.ColumnByName(stmt.maskedNamesColumn, &row.masked); err != nil {
 			return nil, errors.Wrap(err, "spanner.Row.ColumnByName()")
 		}
+	}
+	for _, key := range stmt.positionalKeys {
+		// The raw value scans into a fresh value of the field's own type, so
+		// the cursor encodes it exactly as it would the unmasked cell.
+		dest := reflect.New(key.fieldType)
+		if err := spannerRow.ColumnByName(key.alias, dest.Interface()); err != nil {
+			return nil, errors.Wrapf(err, "spanner.Row.ColumnByName(%s)", key.alias)
+		}
+		if row.positional == nil {
+			row.positional = make(map[accesstypes.Field]reflect.Value, len(stmt.positionalKeys))
+		}
+		row.positional[key.field] = dest.Elem()
 	}
 	if plan := stmt.capabilityPlan; plan != nil {
 		var checks []bool

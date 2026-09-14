@@ -5,6 +5,7 @@ import (
 	"iter"
 	"net/http"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +31,12 @@ const (
 	// output column; resource columns must not collide with either.
 	reservedCapabilitiesProperty   = "zzCapabilities"
 	reservedCapabilityChecksColumn = "zzCapabilityChecks"
+
+	// reservedPositionalKeyPrefix begins the reserved output columns a paged
+	// read statement selects a positional sort key's raw value under
+	// (zzPositional followed by the column name); resource columns must not
+	// begin with it.
+	reservedPositionalKeyPrefix = "zzPositional"
 )
 
 // Generator provides methods for generating Go or Typescript for a resource-driven web application.
@@ -1189,6 +1196,37 @@ func (f *resourceField) PIITag() string {
 	}
 
 	return ""
+}
+
+// IsPositional reports whether the field declared masking:"positional": its masked
+// cells stay hidden, but a list orders and filters on the real column, so the page
+// comes off the index and a reader can tell where the hidden values fall. Every
+// other field conceals.
+func (f *resourceField) IsPositional() bool {
+	value, ok := f.LookupTag(maskingTagKey)
+
+	return ok && value == maskingPositional
+}
+
+// MaskingTag renders the masking tag the generated list and read request structs
+// carry: masking:"positional" for a positional field, nothing for a concealing one.
+func (f *resourceField) MaskingTag() string {
+	if f.IsPositional() {
+		return maskingOutTagKey + `:"` + maskingPositional + `"`
+	}
+
+	return ""
+}
+
+// WireName is the field's JSON name on the wire, the tag its permissions register
+// under; "" for a field the read structs hide (input-only).
+func (f *resourceField) WireName() string {
+	name := reflect.StructTag(f.JSONTag()).Get(jsonTagKey)
+	if name == "-" {
+		return ""
+	}
+
+	return name
 }
 
 func (f *resourceField) UniqueIndexTag() string {

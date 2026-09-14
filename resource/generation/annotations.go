@@ -17,6 +17,7 @@ const (
 	allowFilterTagKey        = "allow_filter"
 	indexTagKey              = "index"
 	uniqueIndexTagKey        = "uniqueindex"
+	maskingTagKey            = "masking"
 )
 
 // sourceStructTagKeys registers every author-written struct-tag key for the
@@ -29,7 +30,21 @@ var sourceStructTagKeys = []string{
 	allowFilterTagKey,
 	indexTagKey,
 	uniqueIndexTagKey,
+	maskingTagKey,
 }
+
+// Values recognized in a masking tag: how a field's masked cells meet a sort or a
+// filter. concealing is the default and says so; positional opts the field into
+// sorting and filtering on the real column while the cell stays hidden — register new
+// values in maskingValues below.
+const (
+	maskingPositional = "positional"
+	maskingConcealing = "concealing"
+)
+
+// maskingValues registers every recognized masking value, for the refusal's
+// suggestion and the README completeness test.
+var maskingValues = []string{maskingPositional, maskingConcealing}
 
 // Values recognized inside a conditions tag's comma-separated list — register new values
 // in conditionValues below.
@@ -55,4 +70,5 @@ const (
 	jsonTagKey         = "json"
 	immutableOutTagKey = "immutable"
 	piiOutTagKey       = "pii"
+	maskingOutTagKey   = "masking"
 )

@@ -200,6 +200,12 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 		return err
 	}
 
+	// With the order known, a positional declaration can be checked against
+	// what a list of the resource sorts and filters by.
+	if err := checkMaskingDeclarations(res); err != nil {
+		return err
+	}
+
 	if annotations.Struct.Has(defaultsCreateTypeKeyword) {
 		res.DefaultsCreateType = string(annotations.Struct.Get(defaultsCreateTypeKeyword))
 	}
@@ -400,6 +406,12 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 
+		if err := checkMaskingDeclarations(resource); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
 		nullableFields, err := fieldNullability(pStruct)
 		if err != nil {
 			errs = append(errs, err)
@@ -593,8 +605,9 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
-		// The annotations other kinds own: a resource's bindings, and a view's table.
-		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method")); err != nil {
+		// The annotations other kinds own: a resource's bindings, and a view's table;
+		// and the masking tag, which a method's request never carries.
+		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method")); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -905,6 +918,9 @@ func checkComputedQueryTags(resource string, field *computedField) error {
 			return errors.Newf("%s: the %s tag names a database index, which a computed resource has none of; use allow_filter to make a field filterable", path, key)
 		}
 	}
+	if _, ok := field.LookupTag(maskingTagKey); ok {
+		return errors.Newf("%s: the %s tag says how a masked cell meets a sort or a filter, and a computed resource never masks: its permission checks run at decode time, where conditional grants are refused", path, maskingTagKey)
+	}
 	if _, ok := field.LookupTag(allowFilterTagKey); !ok {
 		return nil
 	}
@@ -984,6 +1000,11 @@ func reservedRowName(spannerTag, fieldName string) (string, bool) {
 	for _, reserved := range []string{reservedMaskedNamesColumn, reservedCapabilitiesProperty, reservedCapabilityChecksColumn} {
 		if strings.EqualFold(spannerTag, reserved) || strings.EqualFold(fieldName, reserved) {
 			return reserved, true
+		}
+	}
+	for _, name := range []string{spannerTag, fieldName} {
+		if len(name) >= len(reservedPositionalKeyPrefix) && strings.EqualFold(name[:len(reservedPositionalKeyPrefix)], reservedPositionalKeyPrefix) {
+			return reservedPositionalKeyPrefix + "…", true
 		}
 	}
 
@@ -1077,4 +1098,49 @@ func fieldNullability(pStruct *parser.Struct) (map[string]bool, error) {
 	}
 
 	return nullableFields, nil
+}
+
+// rejectMaskingTags refuses the masking tag on a kind that never masks: a
+// method's request is neither listed nor masked, so the tag has nothing to say.
+func rejectMaskingTags(s *parser.Struct, kind string) error {
+	var errs []error
+	for _, field := range s.Fields() {
+		if _, ok := field.LookupTag(maskingTagKey); ok {
+			errs = append(errs, errors.Newf("field %s.%s carries the %s tag, which says how a masked cell meets a sort or a filter; an %s is never listed or masked", s.Name(), field.Name(), maskingTagKey, kind))
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Wrap(errors.Join(errs...), "masking tag error")
+	}
+
+	return nil
+}
+
+// checkMaskingDeclarations refuses a masking:"positional" declaration the field
+// cannot honor. On a primary key nothing is ever masked: keys are exempt from the
+// visibility rules, so there is no hidden cell to order positionally. On a field no
+// list orders or filters by with an index behind it — neither indexed, nor
+// allow_filter, nor named in @order — there is no index for the declaration to
+// restore, and it would disclose the field's rank for nothing.
+func checkMaskingDeclarations(res *resourceInfo) error {
+	var errs []error
+	for _, field := range res.Fields {
+		if !field.IsPositional() {
+			continue
+		}
+		path := res.Name() + "." + field.Name()
+		switch {
+		case field.IsPrimaryKey:
+			errs = append(errs, errors.Newf("%s: masking:%q on a primary key: keys are exempt from masking, so no cell of it is ever hidden and there is nothing to order positionally", path, maskingPositional))
+		case !field.IsQueryClauseEligible() && !res.declaresOrderOn(field.Name()):
+			errs = append(errs, errors.Newf("%s: masking:%q on a field no list orders or filters by with an index behind it (neither indexed, nor %s, nor named in @%s): there is no index to restore, and the declaration would disclose the field's rank for nothing", path, maskingPositional, allowFilterTagKey, orderKeyword))
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Wrap(errors.Join(errs...), "masking declarations")
+	}
+
+	return nil
 }

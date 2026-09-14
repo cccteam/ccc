@@ -228,6 +228,9 @@ type FilterFieldInfo struct {
 	FieldType     reflect.Type
 	Indexed       bool
 	PII           bool
+	// Positional marks a field declared masking:"positional": a filter on it
+	// compares the raw column even where the caller's grant is conditional.
+	Positional bool
 }
 
 // ColumnName returns the column name for the given DBType.

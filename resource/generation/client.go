@@ -310,6 +310,7 @@ func (c *client) templateFuncs() map[string]any {
 		"TypescriptConstImports":  typescriptConsImports,
 		"PermissionConstant":      permissionConstant,
 		"ScopeConstant":           scopeConstant,
+		"MaskingConstant":         maskingConstant,
 		"BindingHops":             bindingHopsLiteral,
 	}
 
@@ -361,6 +362,19 @@ func permissionConstant(p accesstypes.Permission) string {
 }
 
 // scopeConstant renders a permission scope as its accesstypes constant when one exists.
+// maskingConstant renders a masking behavior as the resource package constant
+// that names it.
+func maskingConstant(m resource.Masking) string {
+	switch m {
+	case resource.MaskingPositional:
+		return "resource.MaskingPositional"
+	case resource.MaskingConcealing:
+		return "resource.MaskingConcealing"
+	default:
+		return fmt.Sprintf("resource.Masking(%q)", string(m))
+	}
+}
+
 func scopeConstant(s accesstypes.PermissionScope) string {
 	switch s {
 	case accesstypes.GlobalPermissionScope:

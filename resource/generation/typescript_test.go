@@ -155,6 +155,21 @@ func Test_typescriptResourcesTemplate_filterable(t *testing.T) {
 			wantNotContains: []string{"filterable: 'always'"},
 		},
 		{
+			name: "a positional field says so in its metadata, a concealing one says nothing",
+			data: func() tsResourcesData {
+				beacon := fixtureResource(t, collection, "Beacon", func(res *resourceInfo) {
+					stringTyped(res.Fields)
+				})
+
+				return tsResourcesData{Resources: []*resourceInfo{beacon}, GenPrefix: "zz_gen"}
+			},
+			wantContains: []string{
+				"{ fieldName: 'deadline', displayType: 'string', required: true, isIndex: false, masking: 'positional' }",
+				"{ fieldName: 'name', displayType: 'string', required: true, isIndex: false }",
+			},
+			wantNotContains: []string{"masking: 'concealing'"},
+		},
+		{
 			name: "a computed resource's allow_filter field stands alone, its other fields carry nothing",
 			data: func() tsResourcesData {
 				board := fixtureComputedResource(t, paging, "Board")

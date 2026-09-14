@@ -105,9 +105,41 @@ func validateConditionsTags(s *parser.Struct) error {
 // be: the value itself once padding is removed (a short word shifted by a space is too
 // far for the similarity measure), else the nearest by the scanner's own measure.
 func suggestCondition(value string) (string, bool) {
-	if trimmed := strings.TrimSpace(value); trimmed != value && slices.Contains(conditionValues, trimmed) {
+	return suggestValue(value, conditionValues)
+}
+
+// suggestValue is suggestCondition over any recognized value list.
+func suggestValue(value string, recognized []string) (string, bool) {
+	if trimmed := strings.TrimSpace(value); trimmed != value && slices.Contains(recognized, trimmed) {
 		return trimmed, true
 	}
 
-	return genlang.Suggest(value, conditionValues)
+	return genlang.Suggest(value, recognized)
+}
+
+// validateMaskingTags rejects a masking tag value the generator does not recognize,
+// naming the field and the value and suggesting the nearest recognized one. The
+// contradictions a recognized value can carry (a primary key, a field no list orders or
+// filters by with an index behind it, a kind that never masks) are checked where the
+// field's shape is known: checkMaskingDeclarations, checkComputedQueryTags, and the RPC
+// extraction.
+func validateMaskingTags(s *parser.Struct) error {
+	var errs []error
+	for _, field := range s.Fields() {
+		value, ok := field.LookupTag(maskingTagKey)
+		if !ok || slices.Contains(maskingValues, value) {
+			continue
+		}
+		hint := ""
+		if suggestion, ok := suggestValue(value, maskingValues); ok {
+			hint = "; did you mean \"" + suggestion + "\"?"
+		}
+		errs = append(errs, errors.Newf("field %s.%s: masking tag value %q is not recognized%s (recognized: %s)", s.Name(), field.Name(), value, hint, strings.Join(maskingValues, ", ")))
+	}
+
+	if len(errs) != 0 {
+		return errors.Wrap(errors.Join(errs...), "masking tag error")
+	}
+
+	return nil
 }

@@ -15,7 +15,16 @@ const (
 	indexTagKey       = "index"
 	allowFilterTagKey = "allow_filter"
 	piiTagKey         = "pii"
+	// maskingTagKey's only legal value at runtime is maskingPositional: the
+	// generator writes it onto a field the source declared masking:"positional",
+	// and leaves it off a concealing field. Any other value is rejected at Set
+	// construction, like a stale perm value.
+	maskingTagKey = "masking"
 )
+
+// maskingPositional is the masking tag value the generator writes for a
+// positional field.
+const maskingPositional = "positional"
 
 // permTagExempt marks a primary-key field as exempt from field-level enforcement; its
 // readability follows the resource-level grant.
@@ -30,6 +39,7 @@ var runtimeTagKeys = []string{
 	indexTagKey,
 	allowFilterTagKey,
 	piiTagKey,
+	maskingTagKey,
 }
 
 // Reserved query-string parameter names consumed by QueryDecoder; they can never be used

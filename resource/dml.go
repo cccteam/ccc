@@ -38,6 +38,11 @@ type Statement struct {
 	// into the Row envelope instead of the destination struct.
 	maskedNamesColumn string
 
+	// positionalKeys are the positional sort keys the statement selects raw
+	// under reserved aliases for the cursor (see positionalKeyItems); empty
+	// otherwise. The readers scan them into the Row envelope.
+	positionalKeys []positionalKey
+
 	SQL    string
 	Params map[string]any
 }

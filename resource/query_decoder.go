@@ -518,6 +518,7 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 			FieldType:     fieldType,
 			Indexed:       structField.Tag.Get(indexTagKey) == trueStr,
 			PII:           structField.Tag.Get(piiTagKey) == trueStr,
+			Positional:    structField.Tag.Get(maskingTagKey) == maskingPositional,
 		}
 	}
 

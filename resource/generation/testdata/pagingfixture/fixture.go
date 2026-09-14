@@ -61,6 +61,61 @@ type (
 		Title string   `spanner:"Title"`
 	}
 
+	// PositionalDeck declares positional masking on its indexed order column, and
+	// spells the default on another field.
+	//
+	// @virtual
+	// @order(Deadline asc)
+	PositionalDeck struct {
+		ID       ccc.UUID  `spanner:"Id" index:"true"` // @primarykey
+		Title    string    `spanner:"Title" masking:"concealing"`
+		Deadline time.Time `spanner:"Deadline" index:"true" masking:"positional"`
+	}
+
+	// PositionalOrderedDeck declares positional masking on an unindexed field that the
+	// order names: every page sorts by it.
+	//
+	// @virtual
+	// @order(Title asc)
+	PositionalOrderedDeck struct {
+		ID    ccc.UUID `spanner:"Id" index:"true"` // @primarykey
+		Title string   `spanner:"Title" masking:"positional"`
+	}
+
+	// PositionalFilterDeck declares positional masking on an allow_filter field.
+	//
+	// @virtual
+	PositionalFilterDeck struct {
+		ID    ccc.UUID `spanner:"Id" index:"true"` // @primarykey
+		Title string   `spanner:"Title" allow_filter:"true" masking:"positional"`
+	}
+
+	// PositionalKeyDeck declares positional masking on its primary key, which is
+	// exempt from masking.
+	//
+	// @virtual
+	PositionalKeyDeck struct {
+		ID    ccc.UUID `spanner:"Id" index:"true" masking:"positional"` // @primarykey
+		Title string   `spanner:"Title"`
+	}
+
+	// PositionalPlainDeck declares positional masking on a field no list orders or
+	// filters by with an index behind it.
+	//
+	// @virtual
+	PositionalPlainDeck struct {
+		ID    ccc.UUID `spanner:"Id" index:"true"` // @primarykey
+		Title string   `spanner:"Title" masking:"positional"`
+	}
+
+	// PositionalBoard declares masking on a computed resource, which never masks.
+	//
+	// @computed
+	PositionalBoard struct {
+		ID   ccc.UUID // @primarykey
+		Name string `allow_filter:"true" masking:"positional"`
+	}
+
 	// IndexedBoard names a database index, which a computed resource has none of.
 	//
 	// @computed
@@ -104,6 +159,7 @@ type (
 )
 
 func (Board) Resource() accesstypes.Resource            { return "Boards" }
+func (PositionalBoard) Resource() accesstypes.Resource  { return "PositionalBoards" }
 func (IndexedBoard) Resource() accesstypes.Resource     { return "IndexedBoards" }
 func (ListFilterBoard) Resource() accesstypes.Resource  { return "ListFilterBoards" }
 func (NestedOrderBoard) Resource() accesstypes.Resource { return "NestedOrderBoards" }
@@ -159,5 +215,13 @@ func ListEnumeratedNestedBoard(context.Context, *resource.QuerySet[EnumeratedNes
 }
 
 func ReadEnumeratedNestedBoard(context.Context, ccc.UUID, *resource.QuerySet[EnumeratedNestedBoard], resource.Client, *Client) (*EnumeratedNestedBoard, error) {
+	return nil, nil
+}
+
+func ListPositionalBoard(context.Context, *resource.QuerySet[PositionalBoard], resource.Client, *Client) iter.Seq2[*PositionalBoard, error] {
+	return nil
+}
+
+func ReadPositionalBoard(context.Context, ccc.UUID, *resource.QuerySet[PositionalBoard], resource.Client, *Client) (*PositionalBoard, error) {
 	return nil, nil
 }

@@ -218,7 +218,21 @@ func (q *QuerySet[Resource]) boundaryKeys(row *Row[Resource]) ([]*string, error)
 	keys := make([]*string, 0, len(order))
 	for _, sf := range order {
 		if row.Masked(q.jsonName(accesstypes.Field(sf.Field))) {
-			keys = append(keys, nil)
+			// A concealing key sorted as NULL, and the cursor says so. A
+			// positional key sorted on the raw column, which the statement
+			// selected for exactly this; the value rides only inside the sealed
+			// token.
+			raw, positional := row.positional[accesstypes.Field(sf.Field)]
+			if !positional {
+				keys = append(keys, nil)
+
+				continue
+			}
+			text, err := cursorText(raw)
+			if err != nil {
+				return nil, errors.Wrapf(err, "positional sort field %s", sf.Field)
+			}
+			keys = append(keys, text)
 
 			continue
 		}

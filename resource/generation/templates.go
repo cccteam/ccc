@@ -1150,7 +1150,7 @@ import (
 	listTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }}`" + `
 		{{- end }}
 	}
 
@@ -1220,7 +1220,7 @@ import (
 	readTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.PermTag }} {{ $field.PIITag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }}`" + `
 		{{- end }}
 	}
 
@@ -1720,7 +1720,7 @@ const resourceMap: ResourceMap = {
       {{- range $field := $resource.Fields }}
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
-       {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex }}{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end -}}
+       {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex }}{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}{{ if $field.IsPositional }}, masking: 'positional'{{ end -}}
       {{- if $field.Enumeration }}, enumeration: {{ EnumerationLiteral $field.EnumerationValues }}
       {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }}{{ if or $field.IsOutputOnly $resource.IsEnumeration }}, readOnly: true{{ end }} },
       {{- end }}
@@ -2092,7 +2092,7 @@ func Collection() *resource.GeneratedCollection {
 				{{- with .Tags }}
 				Tags: []resource.TagData{
 					{{- range . }}
-					{Name: "{{ .Name }}"{{ with .Permissions }}, Permissions: []accesstypes.Permission{ {{- range $i, $p := . }}{{ if $i }}, {{ end }}{{ PermissionConstant $p }}{{ end -}} }{{ end }}},
+					{Name: "{{ .Name }}"{{ with .Permissions }}, Permissions: []accesstypes.Permission{ {{- range $i, $p := . }}{{ if $i }}, {{ end }}{{ PermissionConstant $p }}{{ end -}} }{{ end }}{{ with .Masking }}, Masking: {{ MaskingConstant . }}{{ end }}},
 					{{- end }}
 				},
 				{{- end }}
@@ -2131,6 +2131,12 @@ func Collection() *resource.GeneratedCollection {
 				{{- end }}
 				{{- with .Parent }}
 				Parent: "{{ . }}",
+				{{- end }}
+				{{- with .Order }}
+				Order: []accesstypes.Tag{ {{- range $i, $t := . }}{{ if $i }}, {{ end }}"{{ $t }}"{{ end -}} },
+				{{- end }}
+				{{- with .QueryKeys }}
+				QueryKeys: []accesstypes.Tag{ {{- range $i, $t := . }}{{ if $i }}, {{ end }}"{{ $t }}"{{ end -}} },
 				{{- end }}
 			},
 			{{- end }}

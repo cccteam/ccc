@@ -61,6 +61,13 @@ func (p *pagingDecl) PagingOption() string {
 	return b.String()
 }
 
+// declaresOrderOn reports whether the @order names the field.
+func (p *pagingDecl) declaresOrderOn(field string) bool {
+	return slices.ContainsFunc(p.DeclaredOrder, func(sf resource.SortField) bool {
+		return sf.Field == field
+	})
+}
+
 // resolveOrder compiles an @order annotation: a comma list of `Field [asc|desc]`
 // entries naming Go fields of the struct, ascending when the direction is
 // omitted. sortable answers whether a named field can be ordered by (a flat

@@ -18,6 +18,7 @@ type FieldTags struct {
 	JSON      string // json tag name (first comma-separated part); "" or "-" is unregistered
 	Perm      string // raw perm tag value; "" (enforced) or "-" (primary-key exemption) are the only legal values
 	Immutable bool   // immutable:"true"
+	Masking   string // raw masking tag value; "" (concealing) or "positional" are the only legal values
 }
 
 // FieldTagsFromStructTag extracts the registration-relevant values from a struct tag: the
@@ -34,8 +35,31 @@ func FieldTagsFromStructTag(field accesstypes.Field, tag reflect.StructTag) Fiel
 		JSON:      jsonTag,
 		Perm:      tag.Get(permTagKey),
 		Immutable: immutableTag == trueStr,
+		Masking:   tag.Get(maskingTagKey),
 	}
 }
+
+// Masking is how a field's masked cells meet a sort or a filter. A
+// conditionally granted field is masked on the rows its condition does not
+// select; the question is what the query sees there.
+type Masking string
+
+const (
+	// MaskingConcealing is the default: the query runs over the visible
+	// projection, CASE WHEN <condition> THEN column END, so a masked cell is
+	// NULL wherever the query looks at it and nothing about a hidden value
+	// leaks through order or match. No index serves the expression, so a page
+	// sorted or filtered by the field sorts the tenant's partition. The empty
+	// Masking means the same.
+	MaskingConcealing Masking = "concealing"
+
+	// MaskingPositional is the field-level opt-in (struct tag
+	// masking:"positional"): the cell stays hidden in the output, but ordering
+	// and filtering run on the real column, so the index serves the page and
+	// the field's rank is disclosed — a reader who sees some values can tell
+	// where the hidden ones fall between them.
+	MaskingPositional Masking = "positional"
+)
 
 // SetData describes what registering a resource.Set built from a request struct adds to
 // a GeneratedCollection: the resource-level permissions, the tag-to-permission mappings
@@ -44,6 +68,8 @@ type SetData struct {
 	Permissions     []accesstypes.Permission
 	TagPermissions  accesstypes.TagPermissions
 	ImmutableFields map[accesstypes.Tag]struct{}
+	// PositionalFields are the tags declared masking:"positional".
+	PositionalFields map[accesstypes.Tag]struct{}
 }
 
 // NewSetData computes the registration data for a request struct described by fields,
@@ -57,21 +83,22 @@ type SetData struct {
 // grantable, while the runtime Set keeps requiring it (defense-in-depth behind the
 // decoder's 400-on-update).
 func NewSetData(fields []FieldTags, permissions ...accesstypes.Permission) (SetData, error) {
-	tagPermissions, _, perms, immutableFields, err := permissionsFromFieldTags(fields, permissions, true)
+	reg, err := permissionsFromFieldTags(fields, permissions, true)
 	if err != nil {
 		return SetData{}, errors.Wrap(err, "permissionsFromFieldTags()")
 	}
 
-	for tag := range immutableFields {
-		tagPermissions[tag] = slices.DeleteFunc(tagPermissions[tag], func(p accesstypes.Permission) bool {
+	for tag := range reg.immutableFields {
+		reg.tags[tag] = slices.DeleteFunc(reg.tags[tag], func(p accesstypes.Permission) bool {
 			return p == accesstypes.Update
 		})
 	}
 
 	return SetData{
-		Permissions:     perms,
-		TagPermissions:  tagPermissions,
-		ImmutableFields: immutableFields,
+		Permissions:      reg.permissions,
+		TagPermissions:   reg.tags,
+		ImmutableFields:  reg.immutableFields,
+		PositionalFields: reg.positionalFields,
 	}, nil
 }
 
@@ -142,6 +169,17 @@ type CollectionResource struct {
 	// (design plan §11) rides it: capabilities=Create on the parent's read
 	// answers, per row, which member resources the user may create beneath it.
 	Parent accesstypes.Resource
+
+	// How a list of the resource is ordered and narrowed, for a listed table
+	// or view resource. Order is the declared default order (@order), the
+	// fields every page sorts by when the request carries no sort; QueryKeys
+	// are the fields a request may name in a filter and sort by with an index
+	// behind it — the indexed and allow_filter fields — primary keys aside,
+	// which are exempt from masking. Deploy-time role validation
+	// (access.MigrateRoles) reads them with each tag's Masking to warn where a
+	// conditional grant puts a CASE in the ORDER BY or the WHERE.
+	Order     []accesstypes.Tag
+	QueryKeys []accesstypes.Tag
 }
 
 // TransitionData records a declared state transition on an RPC method
@@ -158,6 +196,9 @@ type TransitionData struct {
 type TagData struct {
 	Name        accesstypes.Tag
 	Permissions []accesstypes.Permission
+	// Masking is how the field's masked cells meet a sort or a filter; empty
+	// is MaskingConcealing, the default.
+	Masking Masking
 }
 
 // CollectionBuilder assembles CollectionData by replaying the registration semantics a
@@ -174,7 +215,21 @@ func NewCollectionBuilder() *CollectionBuilder {
 
 // AddResourceSet registers a request struct's SetData under scope.
 func (b *CollectionBuilder) AddResourceSet(scope accesstypes.PermissionScope, res accesstypes.Resource, set SetData) error {
-	return b.g.addResourceSet(scope, res, set.Permissions, set.TagPermissions, set.ImmutableFields)
+	if err := b.g.addResourceSet(scope, res, set.Permissions, set.TagPermissions, set.ImmutableFields); err != nil {
+		return err
+	}
+	for tag := range set.PositionalFields {
+		b.g.setTagMasking(scope, res, tag, MaskingPositional)
+	}
+
+	return nil
+}
+
+// SetResourceQueryKeys records how a list of res is ordered and narrowed within
+// scope: its declared default order and the fields a request may filter and
+// sort by with an index behind it (see CollectionResource).
+func (b *CollectionBuilder) SetResourceQueryKeys(scope accesstypes.PermissionScope, res accesstypes.Resource, order, queryKeys []accesstypes.Tag) {
+	b.g.setResourceQueryKeys(scope, res, order, queryKeys)
 }
 
 // AddResource registers a single resource permission, allowing duplicate registrations
@@ -238,7 +293,15 @@ type (
 	tagStore          map[accesstypes.Resource]map[accesstypes.Tag][]accesstypes.Permission
 	resourceStore     map[accesstypes.Resource][]accesstypes.Permission
 	immutableFieldMap map[accesstypes.Resource]map[accesstypes.Tag]struct{}
+	maskingMap        map[accesstypes.Resource]map[accesstypes.Tag]Masking
 )
+
+// queryKeys is how a list of one resource is ordered and narrowed: the declared
+// default order and the request-time filter and sort keys, as tags.
+type queryKeys struct {
+	order []accesstypes.Tag
+	keys  []accesstypes.Tag
+}
 
 // GeneratedCollection is a read-only permission collection constructed from generated
 // CollectionData. It is immutable after construction: nothing in its API mutates it once
@@ -252,6 +315,8 @@ type GeneratedCollection struct {
 	transitions     map[accesstypes.PermissionScope]map[accesstypes.Resource]TransitionData
 	targets         map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource
 	parents         map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource
+	masking         map[accesstypes.PermissionScope]maskingMap
+	queryKeys       map[accesstypes.PermissionScope]map[accesstypes.Resource]queryKeys
 }
 
 // newGeneratedCollection creates an empty, populatable GeneratedCollection.
@@ -265,6 +330,8 @@ func newGeneratedCollection() *GeneratedCollection {
 		transitions:     make(map[accesstypes.PermissionScope]map[accesstypes.Resource]TransitionData, 2),
 		targets:         make(map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource, 2),
 		parents:         make(map[accesstypes.PermissionScope]map[accesstypes.Resource]accesstypes.Resource, 2),
+		masking:         make(map[accesstypes.PermissionScope]maskingMap, 2),
+		queryKeys:       make(map[accesstypes.PermissionScope]map[accesstypes.Resource]queryKeys, 2),
 	}
 }
 
@@ -329,30 +396,50 @@ func NewGeneratedCollection(data CollectionData) (*GeneratedCollection, error) {
 			SubjectValues: res.SubjectValues,
 		})
 
-		if res.Computed {
-			g.setResourceComputed(res.Scope, res.Name)
-		}
-
-		if res.Transition != nil {
-			if res.Transition.Target == "" || len(res.Transition.From) == 0 || res.Transition.To == "" {
-				return nil, errors.Newf("method resource %q declares an incomplete transition", res.Name)
-			}
-			if res.Target != "" && res.Target != res.Transition.Target {
-				return nil, errors.Newf("method resource %q declares target %q but its transition targets %q", res.Name, res.Target, res.Transition.Target)
-			}
-			g.setMethodTransition(res.Scope, res.Name, *res.Transition)
-		}
-
-		if res.Target != "" {
-			g.setMethodTarget(res.Scope, res.Name, res.Target)
-		}
-
-		if res.Parent != "" {
-			g.setResourceParent(res.Scope, res.Name, res.Parent)
+		if err := g.addResourceDeclarations(res); err != nil {
+			return nil, err
 		}
 	}
 
 	return g, nil
+}
+
+// addResourceDeclarations stores what one CollectionResource declares beyond
+// its registrations: the computed marker, a method's transition and target, a
+// member's parent, and how a list of it is ordered and narrowed.
+func (g *GeneratedCollection) addResourceDeclarations(res *CollectionResource) error {
+	if res.Computed {
+		g.setResourceComputed(res.Scope, res.Name)
+	}
+
+	if res.Transition != nil {
+		if res.Transition.Target == "" || len(res.Transition.From) == 0 || res.Transition.To == "" {
+			return errors.Newf("method resource %q declares an incomplete transition", res.Name)
+		}
+		if res.Target != "" && res.Target != res.Transition.Target {
+			return errors.Newf("method resource %q declares target %q but its transition targets %q", res.Name, res.Target, res.Transition.Target)
+		}
+		g.setMethodTransition(res.Scope, res.Name, *res.Transition)
+	}
+
+	if res.Target != "" {
+		g.setMethodTarget(res.Scope, res.Name, res.Target)
+	}
+
+	if res.Parent != "" {
+		g.setResourceParent(res.Scope, res.Name, res.Parent)
+	}
+
+	if len(res.Order) > 0 || len(res.QueryKeys) > 0 {
+		for _, tag := range slices.Concat(res.Order, res.QueryKeys) {
+			if _, ok := g.tagStore[res.Scope][res.Name][tag]; !ok {
+				return errors.Newf("resource %q orders or filters by %q, which is not one of its tags", res.Name, tag)
+			}
+		}
+		g.setResourceQueryKeys(res.Scope, res.Name, res.Order, res.QueryKeys)
+	}
+
+	return nil
 }
 
 // addResourceTags validates and stores one CollectionResource's tag registrations:
@@ -383,9 +470,74 @@ func (g *GeneratedCollection) addResourceTags(res *CollectionResource) error {
 			permissions = append(permissions, perm)
 		}
 		g.tagStore[res.Scope][res.Name][tag.Name] = permissions
+
+		switch tag.Masking {
+		case "", MaskingConcealing:
+		case MaskingPositional:
+			g.setTagMasking(res.Scope, res.Name, tag.Name, MaskingPositional)
+		default:
+			return errors.Newf("tag %q under resource %q declares masking %q; %q and %q are the behaviors", tag.Name, res.Name, tag.Masking, MaskingConcealing, MaskingPositional)
+		}
 	}
 
 	return nil
+}
+
+// setTagMasking records a field's masking behavior within scope; only the
+// non-default behavior is stored.
+func (g *GeneratedCollection) setTagMasking(scope accesstypes.PermissionScope, res accesstypes.Resource, tag accesstypes.Tag, masking Masking) {
+	if g.masking[scope] == nil {
+		g.masking[scope] = make(maskingMap)
+	}
+	if g.masking[scope][res] == nil {
+		g.masking[scope][res] = make(map[accesstypes.Tag]Masking)
+	}
+	g.masking[scope][res][tag] = masking
+}
+
+// setResourceQueryKeys records how a list of res is ordered and narrowed
+// within scope.
+func (g *GeneratedCollection) setResourceQueryKeys(scope accesstypes.PermissionScope, res accesstypes.Resource, order, keys []accesstypes.Tag) {
+	if g.queryKeys[scope] == nil {
+		g.queryKeys[scope] = make(map[accesstypes.Resource]queryKeys)
+	}
+	g.queryKeys[scope][res] = queryKeys{order: slices.Clone(order), keys: slices.Clone(keys)}
+}
+
+// FieldMasking reports how the field's masked cells meet a sort or a filter
+// within scope: MaskingPositional where the field declared it, else
+// MaskingConcealing, the default for every field.
+func (g *GeneratedCollection) FieldMasking(scope accesstypes.PermissionScope, res accesstypes.Resource, tag accesstypes.Tag) Masking {
+	if masking, ok := g.masking[scope][res][tag]; ok {
+		return masking
+	}
+
+	return MaskingConcealing
+}
+
+// ConcealingKeys reports the fields a list of res orders or filters on whose
+// masked cells conceal: the declared default order, and the request-time
+// filter and sort keys, each less the positional fields. Deploy-time role
+// validation (access.MigrateRoles) warns where a conditional grant lands on
+// one of these and the row filter does not prove its condition, because the
+// CASE then stands in the ORDER BY or the WHERE and no index serves it.
+func (g *GeneratedCollection) ConcealingKeys(scope accesstypes.PermissionScope, res accesstypes.Resource) (order, keys []accesstypes.Tag) {
+	qk, ok := g.queryKeys[scope][res]
+	if !ok {
+		return nil, nil
+	}
+	concealing := func(tags []accesstypes.Tag) []accesstypes.Tag {
+		var out []accesstypes.Tag
+		for _, tag := range tags {
+			if g.FieldMasking(scope, res, tag) == MaskingConcealing {
+				out = append(out, tag)
+			}
+		}
+
+		return out
+	}
+
+	return concealing(qk.order), concealing(qk.keys)
 }
 
 // MustNewGeneratedCollection is NewGeneratedCollection panicking on invalid data, for
@@ -885,7 +1037,7 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 				if len(tagPerms) == 0 {
 					tagPerms = nil
 				}
-				res.Tags = append(res.Tags, TagData{Name: tag, Permissions: tagPerms})
+				res.Tags = append(res.Tags, TagData{Name: tag, Permissions: tagPerms, Masking: g.masking[key.scope][key.name][tag]})
 			}
 		}
 
@@ -913,6 +1065,11 @@ func collectionDataFrom(g *GeneratedCollection) CollectionData {
 
 		if parent, ok := g.parents[key.scope][key.name]; ok {
 			res.Parent = parent
+		}
+
+		if qk, ok := g.queryKeys[key.scope][key.name]; ok {
+			res.Order = slices.Clone(qk.order)
+			res.QueryKeys = slices.Clone(qk.keys)
 		}
 
 		data.Resources = append(data.Resources, res)

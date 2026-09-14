@@ -291,10 +291,43 @@ func (r *resourceGenerator) collectResourceRegistrations(b *resource.CollectionB
 			if err := b.AddResourceSet(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), set); err != nil {
 				return false, errors.Wrapf(err, "registering resource %q %s handler", res.Name(), handlerType)
 			}
+
+			// A listed resource says how its list is ordered and narrowed, so
+			// deploy-time role validation can tell which conditional grants put a
+			// CASE in the ORDER BY or the WHERE.
+			if handlerType == ListHandler {
+				order, keys := listQueryKeys(res)
+				b.SetResourceQueryKeys(scopeOrGlobal(res.PermissionScope), accesstypes.Resource(r.pluralize(res.Name())), order, keys)
+			}
 		}
 	}
 
 	return consolidatedRouteWired, nil
+}
+
+// listQueryKeys names, as wire tags, the fields a list of res sorts and filters
+// by: the declared @order, and the fields a request may filter and sort by with
+// an index behind it (indexed and allow_filter), primary keys aside — keys are
+// exempt from masking, so they never carry a CASE. Fields the read structs hide
+// are skipped.
+func listQueryKeys(res *resourceInfo) (order, keys []accesstypes.Tag) {
+	byName := make(map[string]*resourceField, len(res.Fields))
+	for _, field := range res.Fields {
+		byName[field.Name()] = field
+	}
+	for _, sf := range res.DeclaredOrder {
+		if field, ok := byName[sf.Field]; ok && field.WireName() != "" {
+			order = append(order, accesstypes.Tag(field.WireName()))
+		}
+	}
+	for _, field := range res.Fields {
+		if field.IsPrimaryKey || !field.IsQueryClauseEligible() || field.WireName() == "" {
+			continue
+		}
+		keys = append(keys, accesstypes.Tag(field.WireName()))
+	}
+
+	return order, keys
 }
 
 // collectConsolidatedRegistrations registers the patch permissions of ALL consolidated
@@ -423,13 +456,13 @@ func handlerSetData(res *resourceInfo, handlerType HandlerType) (resource.SetDat
 		permissions = []accesstypes.Permission{accesstypes.List}
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTag(), field.IndexTag(), field.AllowFilterTag(), field.PermTag(), field.PIITag()))
+				field.JSONTag(), field.IndexTag(), field.AllowFilterTag(), field.PermTag(), field.PIITag(), field.MaskingTag()))
 		}
 	case ReadHandler:
 		permissions = []accesstypes.Permission{accesstypes.Read}
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTag(), field.UniqueIndexTag(), field.PermTag(), field.PIITag()))
+				field.JSONTag(), field.UniqueIndexTag(), field.PermTag(), field.PIITag(), field.MaskingTag()))
 		}
 	case PatchHandler:
 		permissions = []accesstypes.Permission{accesstypes.Create, accesstypes.Update, accesstypes.Delete}

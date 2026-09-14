@@ -196,7 +196,7 @@ func (t *typescriptGenerator) parseResources(packageMap map[string]*packages.Pac
 		return nil, nil, err
 	}
 
-	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
+	resources, err := t.structsToResources(resourcesPkg.Structs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -204,7 +204,7 @@ func (t *typescriptGenerator) parseResources(packageMap map[string]*packages.Pac
 	if t.genVirtualResources {
 		pkg := packageMap[t.virtual.Package()]
 		virtualStructs := parser.ParsePackage(pkg).Structs
-		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
+		virtualResources, err := t.structsToVirtualResources(virtualStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -240,7 +240,7 @@ func (t *typescriptGenerator) Generate() error {
 	if t.genComputedResources {
 		pkg := packageMap[t.computed.Package()]
 		compStructs := parser.ParsePackage(pkg).Structs
-		computedResources, err = t.structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags)
+		computedResources, err = t.structsToCompResources(compStructs, t.validateStructNameMatchesFile(pkg, true), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 		if err != nil {
 			return err
 		}
@@ -263,7 +263,7 @@ func (t *typescriptGenerator) Generate() error {
 	if t.genRPCMethods {
 		pkg := packageMap[t.rpc.Package()]
 		rpcStructs := parser.ParsePackage(pkg).Structs
-		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags)
+		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 		if err != nil {
 			return err
 		}

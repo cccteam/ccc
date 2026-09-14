@@ -97,6 +97,7 @@ error, and a stale one in a generated request struct fails Set construction at s
 | `allow_filter:"true"` | resource fields | Permits `filter` expressions on a field that isn't indexed (indexed fields are filterable automatically). Copied through to the generated request structs. On a table or view the filter must also touch an indexed field, which the database parse enforces: once one index has narrowed the rows a second is rarely used, and indexes are a scarce commodity on Spanner, so `allow_filter` conserves them. The TypeScript field metadata says so: `filterable: 'withIndexed'` on a table or view field, `'always'` on a computed resource's, whose List function filters in memory. |
 | `index:"true"` | `@virtual` struct fields only | Declares the field indexed (filterable/sortable). Rejected on table-backed resources, which get index information from the schema. |
 | `uniqueindex:"true"` | `@virtual` struct fields only | As `index`, and marks the index unique. |
+| `masking:"positional"` | `@resource` and `@virtual` struct fields | The field's masked cells stay hidden on the wire, but a list orders and filters on the real column, so the page comes off the index and a reader can tell where the hidden values fall. Every untagged field conceals: a sort or filter on it runs over `CASE WHEN <condition> THEN column END` (section 4), which hides where the masked values fall and which no index serves, so a page sorted or filtered by it sorts the tenant's whole partition. Declare `positional` on a field whose rank is not sensitive (a deadline; a fee's rank is) and that a list pays for: named in `@order`, indexed, or `allow_filter`. `masking:"concealing"` is accepted and says the default; another value is refused with the nearest one suggested. Refused as a contradiction on a primary key (keys are exempt from masking), on a field no query sorts or filters by with an index behind it (neither indexed, nor `allow_filter`, nor named in `@order`: there is no index to restore and the rank would be disclosed for nothing), and on `@computed` and `@rpc` structs (conditions are refused at decode there, nothing is ever masked). Copied through to the generated list and read request structs and surfaced in the TypeScript field metadata as `masking: 'positional'`. Deploy-time role validation (`access.MigrateRoles`, `access.ValidateRoles`) warns where a role's conditional grant lands on a concealing field the resource orders by or admits as a sort or filter key and the role's other grants leave the `CASE` standing; the warning names the field, the cost, and the three ways out (grant the field unconditionally, tag it positional, accept the cost for a table that never pages at volume). Example: [Mission.Deadline](lodestar/pkg/resources/missions.go). |
 
 Values recognized in a `conditions` tag:
 
@@ -165,6 +166,7 @@ Read back at runtime by the `resource` package; listed here for reading generate
 | `index:"true"` | From the schema's indexes (or `index`/`uniqueindex` tags on virtual resources); makes the field filterable and sortable. |
 | `allow_filter:"true"` | Copied from the source struct; makes an unindexed field filterable. |
 | `pii:"true"` | From `conditions:"pii"`; the field is rejected in URL filter expressions. |
+| `masking:"positional"` | Copied from the source struct; a sort, filter, or cursor on the field runs on the real column while the cell stays masked in the output. Absent on a concealing field. `positional` is the only value written; any other value in a request struct is a startup error (the stale-struct guard). |
 
 ## 4. Reserved query parameters
 
@@ -192,7 +194,13 @@ PostgreSQL states the placement, Spanner sorts on an `IS NULL` key ahead of the 
 matches `isnull` and nothing else, and a cursor positioned on it carries the `NULL` key.
 When the field's condition covers the whole row predicate (every returned row shows
 the field) the raw column is used instead. A `CASE` in `WHERE` or `ORDER BY` cannot use
-an index, so only such a field pays for it; `index:"true"` stays the declaration of
+an index, so only such a field pays for it, and it pays on every page: the partition
+sorts whole ([finding 5](lodestar/perf/REPORT.md)). That is the concealing behavior,
+and it is the default for every field. A field declared `masking:"positional"` (section
+2) keeps its cell hidden but sorts, filters, and pages on the real column: the index
+serves the page, and the field's rank is disclosed. Its cursor still carries the
+boundary row's real value, selected under a reserved `zzPositional…` column that never
+reaches the wire, sealed inside the token. `index:"true"` stays the declaration of
 which fields may be filtered. A `@computed` resource evaluates no conditions at read
 time, so its sort and filter fields still require an unconditional grant.
 
@@ -467,8 +475,12 @@ much from the schema:
   the compared column and the user), so their cost is the partition's size per page, not
   the anchor's. Subject values are one row through the unique index generation requires.
 - A sort on a conditionally visible column runs over `CASE WHEN <condition> THEN column
-  END`, which no index serves: the page sorts the partition. Lists that page at volume
-  sort on unconditionally visible columns.
+  END`, which no index serves: the page sorts the partition. The `CASE` is dropped when
+  the field's condition covers the whole row predicate (a role whose every grant on the
+  resource carries the one condition), and a field declared `masking:"positional"` never
+  renders one; `access.MigrateRoles` warns, per role, where a concealing sort or filter
+  key keeps its `CASE`. Lists that page at volume sort on unconditionally visible
+  columns, on positional ones, or on columns whose condition the row filter proves.
 - Write and insert checks are point lookups at any volume.
 - After a bulk load, `ANALYZE`; Spanner otherwise refreshes statistics about every three
   days, and a plan can flip with them.
