@@ -20,15 +20,18 @@ import (
 
 const (
 	// cspPolicy allows the console's own assets plus the Google Fonts hosts
-	// index.html links for the Roboto and Material Icons faces.
+	// index.html links for the Roboto and Material Icons faces, and lets no page frame
+	// the application (frame-ancestors 'none'; X-Frame-Options DENY says the same to
+	// browsers that predate it), so its pages cannot be overlaid or clickjacked.
 	cspPolicy = "default-src 'self'; worker-src 'self'; connect-src 'self'; " +
 		"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-		"font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:"
+		"font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; " +
+		"frame-ancestors 'none'"
 
 	hstsPolicy          = "max-age=31536000; includeSubDomains"
 	referrerPolicy      = "no-referrer"
 	xContentTypeOptions = "nosniff"
-	xFrameOptions       = "SAMEORIGIN"
+	xFrameOptions       = "DENY"
 )
 
 // Configurer carries the dependencies for an App: the database client, the permission
