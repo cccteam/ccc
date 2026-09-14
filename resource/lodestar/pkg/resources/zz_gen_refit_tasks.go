@@ -219,10 +219,6 @@ func (p RefitTaskQueryPartialClause) RefitID() RefitTaskQueryIdent[ccc.UUID] {
 	return RefitTaskQueryIdent[ccc.UUID]{Ident: resource.NewIdent[ccc.UUID]("RefitID", p.partialClause, true)}
 }
 
-func (p RefitTaskQueryPartialClause) TaskNumber() RefitTaskQueryIdent[int64] {
-	return RefitTaskQueryIdent[int64]{Ident: resource.NewIdent[int64]("TaskNumber", p.partialClause, true)}
-}
-
 type RefitTaskQueryClause struct {
 	clause resource.QueryClause
 }

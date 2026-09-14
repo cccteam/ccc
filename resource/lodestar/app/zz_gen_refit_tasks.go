@@ -19,7 +19,7 @@ import (
 func (a *App) RefitTasks() http.HandlerFunc {
 	type refitTask struct {
 		RefitID      ccc.UUID `json:"refitId"      index:"true" perm:"-"`
-		TaskNumber   int64    `json:"taskNumber"   index:"true" perm:"-"`
+		TaskNumber   int64    `json:"taskNumber"   perm:"-"`
 		Instructions string   `json:"instructions"`
 		Done         bool     `json:"done"`
 		Notes        *string  `json:"notes"`

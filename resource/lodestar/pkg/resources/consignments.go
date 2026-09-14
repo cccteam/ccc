@@ -23,7 +23,11 @@ type (
 	// Served on the default and droids outlets: a droid releases a consignment by API key
 	// through the same generated surface humans use.
 	//
-	// Demonstrates: allow_filter, @attribute.date, immutable, outlet.shared, paging.nullable-sort, @order, @page.
+	// ReleasedAt sits directly after SectorId in the ConsignmentsBySectorIdReleasedAt
+	// index (migration 000032): the list binds the sector by equality, so a filter on
+	// ReleasedAt alone seeks that index, and its metadata says filterable: always.
+	//
+	// Demonstrates: allow_filter, @attribute.date, immutable, outlet.shared, paging.nullable-sort, @order, @page, index.tenant-second.
 	//
 	// @resource
 	// @permissionScope(domain)

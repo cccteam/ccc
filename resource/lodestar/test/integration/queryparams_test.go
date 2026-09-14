@@ -1,11 +1,16 @@
-// Demonstrates: allow_filter, pii.filter-placement, paging.offset-refused, paging.limit-all.
+// Demonstrates: allow_filter, pii.filter-placement, paging.offset-refused, paging.limit-all, index.tenant-second, index.trailing-key.
 package integration
 
 // This suite covers the reserved query parameters over the demo world: filter syntax
 // and its indexed/allow_filter gating, PII filter placement (URL rejected, POST body
 // accepted), sort, limit, the refusal of offset, and rejection of unknown parameters. Consignments
 // carry the sector-route cases (BondCode is unique-indexed, Mass is allow_filter) and
-// Clients the PII placement cases (ContactEmail is pii + allow_filter).
+// Clients the PII placement cases (ContactEmail is pii + allow_filter). Consignments also
+// carry the index reading: ReleasedAt sits directly after SectorId in the
+// ConsignmentsBySectorIdReleasedAt index, so with the sector bound a filter on it alone
+// seeks that index and is accepted. RefitTasks carry the refusal: TaskNumber trails the
+// parent key with nothing bound before it, so a filter naming it alone is refused, while
+// the leading key column RefitId filters alone.
 
 import (
 	"net/http"
@@ -24,10 +29,11 @@ func TestQueryParameters(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	listGrants := grants{accesstypes.List: append(
-		withFields("Consignments", "bondCode", "mass", "expiresOn"),
-		append(withFields("Clients", "name", "trusted", "contactEmail"), withFields("Pilots", "displayName")...)...,
-	)}
+	listFields := withFields("Consignments", "bondCode", "mass", "expiresOn", "releasedAt")
+	listFields = append(listFields, withFields("Clients", "name", "trusted", "contactEmail")...)
+	listFields = append(listFields, withFields("Pilots", "displayName")...)
+	listFields = append(listFields, withFields("RefitTasks", "instructions", "done")...)
+	listGrants := grants{accesstypes.List: listFields}
 	three := "filter=bondCode:in:(BND-ANV-0001,BND-ANV-0002,BND-ANV-0003)"
 
 	tests := []struct {
@@ -44,6 +50,9 @@ func TestQueryParameters(t *testing.T) {
 		{name: "filter allow_filter field combined with indexed field", target: sectorPath(anvil, "consignments?filter=bondCode:in:(BND-ANV-0001,BND-ANV-0002,BND-ANV-0003),mass:gt:100"), wantStatus: http.StatusOK, wantRows: 2},
 		{name: "filter with only allow_filter fields is rejected", target: sectorPath(anvil, "consignments?filter=mass:gt:100"), wantStatus: http.StatusBadRequest},
 		{name: "filter on field without index or allow_filter is rejected", target: sectorPath(anvil, "consignments?filter=description:eq:x"), wantStatus: http.StatusBadRequest},
+		{name: "filter on the column after the tenant column alone is accepted: the sector is bound, so the composite index seeks", target: sectorPath(anvil, "consignments?filter=releasedAt:isnotnull"), wantStatus: http.StatusOK, wantRows: 5},
+		{name: "filter on a leading key column alone is accepted", target: sectorPath(anvil, "refit-tasks?filter=refitId:eq:"+refitSamaritanID), wantStatus: http.StatusOK, wantRows: 2},
+		{name: "filter on a trailing key column alone is refused: nothing is bound before it", target: sectorPath(anvil, "refit-tasks?filter=taskNumber:eq:1"), wantStatus: http.StatusBadRequest},
 		{name: "filter or across conditions", target: sectorPath(anvil, "consignments?filter=bondCode:eq:BND-ANV-0001|bondCode:eq:BND-ANV-0002"), wantStatus: http.StatusOK, wantRows: 2},
 		{name: "filter cannot reach another sector's rows (row tenancy)", target: sectorPath(bastion, "consignments?filter=bondCode:eq:BND-ANV-0001"), wantStatus: http.StatusOK, wantRows: 0},
 		{name: "sort ascending on untagged field", target: sectorPath(anvil, "consignments?"+three+"&sort=expiresOn"), wantStatus: http.StatusOK, wantRows: 3, wantCodes: []string{"BND-ANV-0002", "BND-ANV-0001", "BND-ANV-0003"}},

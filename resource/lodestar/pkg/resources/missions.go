@@ -39,7 +39,11 @@ type (
 	//
 	// Fee is allow_filter on an unindexed column, so its metadata says filterable:
 	// withIndexed — the browser offers a fee filter only beside one on an indexed
-	// column, the same rule the database parse enforces.
+	// column, the same rule the database parse enforces. Deadline is that indexed
+	// column without leading any index: it sits directly after SectorId in
+	// MissionsBySectorIdDeadline (migration 000032), and the list binds the sector by
+	// equality, so a deadline filter alone seeks that index; the generated list struct
+	// tags Deadline index:"true" and its metadata says filterable: always.
 	//
 	// Deadline, the default order, is declared masking:"positional": a deadline's rank
 	// is not sensitive, so the archivist's every page orders on the real column and
@@ -48,7 +52,7 @@ type (
 	// so the archivist's fee filter runs over the visible projection, and the deploy
 	// warns that her pages filtered by fee sort the partition (pkg/deploy).
 	//
-	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, masking.positional, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view, metadata.filterable.
+	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, masking.positional, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view, metadata.filterable, index.tenant-second.
 	//
 	// @resource
 	// @permissionScope(domain)

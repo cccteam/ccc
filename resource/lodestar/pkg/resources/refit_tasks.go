@@ -8,7 +8,12 @@ type (
 	// the anchoring foreign key makes it a member of the Refit workflow one hop from the
 	// root, and its tenancy is THREE hops away: Refit, Ship, Hangar, SectorId.
 	//
-	// Demonstrates: interleaved-table, compound-key, client-supplied-key, @stateRoot, @domain.join-path, create-under-parent.
+	// TaskNumber trails the parent key in the compound key with nothing bound before it
+	// (the tenancy is a join path, so no column on the row is bound by equality): it is
+	// not indexed, so the generated list struct carries no index tag on it, its metadata
+	// says nothing about filtering, and a filter naming it alone is refused.
+	//
+	// Demonstrates: interleaved-table, compound-key, client-supplied-key, @stateRoot, @domain.join-path, create-under-parent, index.trailing-key.
 	//
 	// @resource
 	// @permissionScope(domain)
