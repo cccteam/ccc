@@ -392,6 +392,14 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 		declareFieldEnumerations(pStruct, fields, annotations)
 		declareRowsOf(annotations, &resource.rowsOfDecl)
 
+		// A view declares its order and page sizes as a table does, and its list handler
+		// and descriptor carry them the same way.
+		if err := resolveResourcePaging(resource, annotations); err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+
 		nullableFields, err := fieldNullability(pStruct)
 		if err != nil {
 			errs = append(errs, err)

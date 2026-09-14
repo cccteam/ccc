@@ -33,6 +33,34 @@ type (
 		Value float64
 	}
 
+	// Deck is a view declaring its order and page sizes, as a table may.
+	//
+	// @virtual
+	// @order(Deadline asc)
+	// @page(default: 25, max: 200)
+	Deck struct {
+		ID       ccc.UUID  `spanner:"Id" index:"true"` // @primarykey
+		Title    string    `spanner:"Title"`
+		Deadline time.Time `spanner:"Deadline" index:"true"`
+	}
+
+	// UnorderedDeck is a view declaring nothing: it lists by primary key.
+	//
+	// @virtual
+	UnorderedDeck struct {
+		ID    ccc.UUID `spanner:"Id" index:"true"` // @primarykey
+		Title string   `spanner:"Title"`
+	}
+
+	// MisorderedDeck names a field it does not have.
+	//
+	// @virtual
+	// @order(Fee desc)
+	MisorderedDeck struct {
+		ID    ccc.UUID `spanner:"Id" index:"true"` // @primarykey
+		Title string   `spanner:"Title"`
+	}
+
 	// IndexedBoard names a database index, which a computed resource has none of.
 	//
 	// @computed

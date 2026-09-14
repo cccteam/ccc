@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/generation/parser"
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
@@ -163,6 +164,71 @@ func TestResolvePage(t *testing.T) {
 			}
 			if gotDefault != tt.wantDefault || gotMax != tt.wantMax {
 				t.Errorf("resolvePage() = (%d, %d), want (%d, %d)", gotDefault, gotMax, tt.wantDefault, tt.wantMax)
+			}
+		})
+	}
+}
+
+// TestVirtualResourcePaging pins that a view's @order and @page reach its declaration
+// exactly as a table's do: the list handler pages by the declared order at the declared
+// sizes and the descriptor carries them, a view declaring nothing lists by primary key,
+// and an order naming a field the view lacks is refused naming it.
+func TestVirtualResourcePaging(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadFixture(t, "pagingfixture"))
+
+	tests := []struct {
+		name        string
+		fixture     string
+		wantOrder   []resource.SortField
+		wantDefault uint64
+		wantMax     uint64
+		wantErr     string
+	}{
+		{
+			name:        "a declaring view carries its order and page sizes",
+			fixture:     "Deck",
+			wantOrder:   []resource.SortField{{Field: "Deadline", Direction: resource.SortAscending}},
+			wantDefault: 25,
+			wantMax:     200,
+		},
+		{
+			name:    "a view declaring nothing lists by primary key",
+			fixture: "UnorderedDeck",
+		},
+		{
+			name:    "an order naming a field the view lacks is refused",
+			fixture: "MisorderedDeck",
+			wantErr: "Fee is not a field of MisorderedDeck",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			resources, err := c.structsToVirtualResources([]*parser.Struct{structs[tt.fixture]})
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("structsToVirtualResources() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("structsToVirtualResources() error = %v", err)
+			}
+			if len(resources) != 1 {
+				t.Fatalf("resources = %d, want 1", len(resources))
+			}
+			res := resources[0]
+			if diff := cmp.Diff(tt.wantOrder, res.DeclaredOrder); diff != "" {
+				t.Errorf("DeclaredOrder mismatch (-want +got):\n%s", diff)
+			}
+			if res.PageDefault != tt.wantDefault || res.PageMax != tt.wantMax {
+				t.Errorf("page = (%d, %d), want (%d, %d)", res.PageDefault, res.PageMax, tt.wantDefault, tt.wantMax)
 			}
 		})
 	}
