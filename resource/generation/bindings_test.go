@@ -14,7 +14,15 @@ import (
 // structs: the FK, primary-key, and unique-index metadata the resolver
 // validates paths and anchors against.
 func bindingFixtureTables() map[string]*tableMetadata {
-	pk := columnMeta{IsPrimaryKey: true}
+	// A single-column primary key is the whole key of the PRIMARY_KEY index, so the
+	// schema read marks it indexed and row-identifying; one column of a composite key
+	// is indexed and nothing more (deriveIndexFlags).
+	pk := columnMeta{IsPrimaryKey: true, IsIndex: true, IsUniqueIndex: true}
+	compositeKey := columnMeta{IsPrimaryKey: true, IsIndex: true}
+	// A column of a composite unique index is indexed and nothing more; a single-column
+	// unique index, null-filtered or not, identifies a row.
+	compositeUnique := columnMeta{IsIndex: true}
+	uniqueAnchor := columnMeta{IsIndex: true, IsUniqueIndex: true}
 	plain := columnMeta{}
 	fk := func(table string) columnMeta {
 		return columnMeta{IsForeignKey: true, ReferencedTable: table, ReferencedColumn: "Id"}
@@ -44,6 +52,15 @@ func bindingFixtureTables() map[string]*tableMetadata {
 		"PathThroughNonFKs": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "ShipId": fk("Ships")}},
 		"ScalarOnNonUniques": {PkCount: 1, Columns: map[string]columnMeta{
 			"Id": pk, "UserId": plain, "ApprovalLimit": plain,
+		}},
+		"ScalarOnCompositeKeys": {PkCount: 2, Columns: map[string]columnMeta{
+			"GroupId": compositeKey, "UserId": compositeKey, "Seat": plain,
+		}},
+		"ScalarOnCompositeUniques": {PkCount: 1, Columns: map[string]columnMeta{
+			"Id": pk, "UserId": compositeUnique, "GroupId": compositeUnique, "Seat": plain,
+		}},
+		"NullFilteredAnchors": {PkCount: 1, Columns: map[string]columnMeta{
+			"Id": pk, "UserId": uniqueAnchor, "ApprovalLimit": plain,
 		}},
 		"UnknownValueFields": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "UserId": plain}},
 		"PartitionBlindAnchors": {PkCount: 1, Columns: map[string]columnMeta{
@@ -177,6 +194,18 @@ func TestResolveBindingAnnotations(t *testing.T) {
 		}
 	})
 
+	t.Run("subject value on a null-filtered unique anchor", func(t *testing.T) {
+		t.Parallel()
+
+		res, err := resolveFixtureBindings(t, c, structs, "NullFilteredAnchor")
+		if err != nil {
+			t.Fatalf("resolveBindingAnnotations() error = %v", err)
+		}
+		if len(res.SubjectValues) != 1 || res.SubjectValues[0].Name != "approvalLimit" || !res.SubjectValues[0].Scalar {
+			t.Fatalf("SubjectValues = %v, want one scalar approvalLimit: a null-filtered single-column unique index still enforces one row per non-null user", res.SubjectValues)
+		}
+	})
+
 	t.Run("subject value on a unique anchor", func(t *testing.T) {
 		t.Parallel()
 
@@ -242,7 +271,17 @@ func TestResolveBindingAnnotations_rejections(t *testing.T) {
 		{
 			name:        "subject value on a non-unique anchor",
 			structName:  "ScalarOnNonUnique",
-			wantContain: "primary key or unique-indexed",
+			wantContain: "alone to identify a row",
+		},
+		{
+			name:        "subject value on one column of a composite key",
+			structName:  "ScalarOnCompositeKey",
+			wantContain: "a column of a composite key or composite unique index does not",
+		},
+		{
+			name:        "subject value on one column of a composite unique index",
+			structName:  "ScalarOnCompositeUnique",
+			wantContain: "a column of a composite key or composite unique index does not",
 		},
 		{
 			name:        "subject set with an unknown value field",

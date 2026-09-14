@@ -267,11 +267,74 @@ func (t *tableMetadata) addSchemaResult(result *informationSchemaResult) {
 	}
 
 	column.IsNullable = result.IsNullable
-	column.IsIndex = result.IsIndex
-	column.IsUniqueIndex = result.IsUniqueIndex
 	column.HasDefault = result.HasDefault
 
 	t.Columns[result.ColumnName] = column
+}
+
+// addIndexResult folds one row of the index query into the table's index list: rows
+// arrive grouped by index, key columns in ordinal order, and a row with no ordinal
+// position is a stored column.
+func (t *tableMetadata) addIndexResult(result *indexSchemaResult) {
+	if len(t.Indexes) == 0 || t.Indexes[len(t.Indexes)-1].Name != result.IndexName {
+		t.Indexes = append(t.Indexes, indexMeta{
+			Name:         result.IndexName,
+			PrimaryKey:   result.IndexType == primaryKeyIndexType,
+			Unique:       result.IsUnique,
+			NullFiltered: result.IsNullFiltered,
+			Managed:      result.IsManaged,
+		})
+	}
+
+	index := &t.Indexes[len(t.Indexes)-1]
+	if result.OrdinalPosition == nil {
+		index.Storing = append(index.Storing, result.ColumnName)
+
+		return
+	}
+
+	index.Key = append(index.Key, indexColumn{
+		Column:     result.ColumnName,
+		Descending: result.ColumnOrdering != nil && *result.ColumnOrdering == descendingOrdering,
+	})
+}
+
+// deriveIndexFlags sets the per-column index flags from the index composition: a
+// column any index keys or stores is indexed, and a column that is the whole key of a
+// unique index, the primary key included, identifies a row on its own. Null filtering
+// does not disqualify: such an index still enforces one row per non-null value, and
+// the subject subquery compares by equality, which never matches NULL. The index list
+// is the fact the schema read
+// records and the cache keeps; the flags are derived from it on every read and every
+// cache load, never trusted from storage, so a cache an earlier generator wrote cannot
+// carry a flag this one no longer derives.
+func (t *tableMetadata) deriveIndexFlags() {
+	for name, column := range t.Columns {
+		column.IsIndex, column.IsUniqueIndex = false, false
+		t.Columns[name] = column
+	}
+
+	for _, index := range t.Indexes {
+		for _, key := range index.Key {
+			column, ok := t.Columns[key.Column]
+			if !ok {
+				continue
+			}
+			column.IsIndex = true
+			if index.Unique && len(index.Key) == 1 {
+				column.IsUniqueIndex = true
+			}
+			t.Columns[key.Column] = column
+		}
+		for _, stored := range index.Storing {
+			column, ok := t.Columns[stored]
+			if !ok {
+				continue
+			}
+			column.IsIndex = true
+			t.Columns[stored] = column
+		}
+	}
 }
 
 func (c *client) tableMetadataFor(resourceName string) (*tableMetadata, error) {

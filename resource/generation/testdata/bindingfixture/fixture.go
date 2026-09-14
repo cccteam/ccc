@@ -137,6 +137,44 @@ type ScalarOnNonUnique struct {
 	ApprovalLimit int64 `spanner:"ApprovalLimit"`
 }
 
+// ScalarOnCompositeKey anchors a @subjectValue on one column of a composite primary
+// key: the PRIMARY_KEY index is unique over (GroupId, UserId), so a user may hold a
+// row per group and the anchor is refused.
+type ScalarOnCompositeKey struct {
+	GroupID ccc.UUID `spanner:"GroupId"`
+
+	// @subjectValue(seat, value: Seat)
+	UserID ccc.UUID `spanner:"UserId"`
+
+	Seat int64 `spanner:"Seat"`
+}
+
+// ScalarOnCompositeUnique anchors a @subjectValue on one column of a composite unique
+// index over (UserId, GroupId): the same one-row-per-group shape under a secondary
+// index, refused for the same reason.
+type ScalarOnCompositeUnique struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @subjectValue(seat, value: Seat)
+	UserID ccc.UUID `spanner:"UserId"`
+
+	GroupID ccc.UUID `spanner:"GroupId"`
+
+	Seat int64 `spanner:"Seat"`
+}
+
+// NullFilteredAnchor anchors a @subjectValue on a nullable user column under a
+// null-filtered single-column unique index: accepted, since the index still enforces
+// one row per non-null user and the subject subquery compares by equality.
+type NullFilteredAnchor struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @subjectValue(approvalLimit, value: ApprovalLimit)
+	UserID *ccc.UUID `spanner:"UserId"`
+
+	ApprovalLimit int64 `spanner:"ApprovalLimit"`
+}
+
 type UnknownValueField struct {
 	ID ccc.UUID `spanner:"Id"`
 

@@ -48,6 +48,14 @@ type resourceGenerator struct {
 	extraOutlets        []routerOutlet
 	typescriptTargets   []typescriptTarget
 	manualRegistrations []ManualRegistration
+	// warnings are the schema findings the last Generate raised (Warnings).
+	warnings []Warning
+}
+
+// Warnings reports the schema findings the last Generate raised: informational, never
+// a refusal. Nil before Generate runs.
+func (r *resourceGenerator) Warnings() []Warning {
+	return r.warnings
 }
 
 // allOutlets returns every declared router outlet: the default outlet first,
@@ -220,6 +228,7 @@ func (r *resourceGenerator) Generate() error {
 	log.Println("Starting ResourceGenerator Generation")
 
 	begin := time.Now()
+	r.warnings = nil
 
 	// Resilient load: stale generated output from a previous run must not stop the
 	// run that would overwrite it. Anything tolerated here is re-checked strictly
@@ -294,6 +303,10 @@ func (r *resourceGenerator) Generate() error {
 	// The domain route parameter is derived from the parsed resources (tenant-record
 	// pattern), so it must resolve before anything renders a domain route.
 	r.deriveDomainRouteParam()
+
+	// The schema findings read the extracted resources against the table map, so they
+	// are known before anything renders and survive a failure further down.
+	r.warnings = r.schemaWarnings(r.resources)
 
 	if err := r.runResourcesGeneration(); err != nil {
 		return err

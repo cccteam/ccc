@@ -42,6 +42,10 @@ const (
 // Generator provides methods for generating Go or Typescript for a resource-driven web application.
 type Generator interface {
 	Generate() error
+	// Warnings reports the schema findings the last Generate raised: informational,
+	// never a refusal, a performance matter the application decides (see Warning).
+	// Nil before Generate runs.
+	Warnings() []Warning
 	Close() error
 }
 
@@ -223,8 +227,6 @@ type informationSchemaResult struct {
 	ReferencedColumn     *string `spanner:"REFERENCED_COLUMN"`
 	SpannerType          string  `spanner:"SPANNER_TYPE"`
 	IsNullable           bool    `spanner:"IS_NULLABLE"`
-	IsIndex              bool    `spanner:"IS_INDEX"`
-	IsUniqueIndex        bool    `spanner:"IS_UNIQUE_INDEX"`
 	GenerationExpression *string `spanner:"GENERATION_EXPRESSION"`
 	OrdinalPosition      int64   `spanner:"ORDINAL_POSITION"`
 	KeyOrdinalPosition   int64   `spanner:"KEY_ORDINAL_POSITION"`
@@ -240,17 +242,63 @@ type enumData struct {
 	Description string `spanner:"description"`
 }
 
+// indexSchemaResult is one row of the index query: one column of one index, the
+// primary key included as its PRIMARY_KEY index.
+type indexSchemaResult struct {
+	TableName       string  `spanner:"TABLE_NAME"`
+	IndexName       string  `spanner:"INDEX_NAME"`
+	IndexType       string  `spanner:"INDEX_TYPE"`
+	IsUnique        bool    `spanner:"IS_UNIQUE"`
+	IsNullFiltered  bool    `spanner:"IS_NULL_FILTERED"`
+	IsManaged       bool    `spanner:"SPANNER_IS_MANAGED"`
+	ColumnName      string  `spanner:"COLUMN_NAME"`
+	OrdinalPosition *int64  `spanner:"ORDINAL_POSITION"`
+	ColumnOrdering  *string `spanner:"COLUMN_ORDERING"`
+}
+
 type tableMetadata struct {
 	Columns       map[string]columnMeta
 	PkCount       int
 	IsInterleaved bool
+	// Indexes is the table's index composition as the information schema reports it:
+	// the primary key (PRIMARY_KEY), every declared index, and the indexes Spanner
+	// manages for foreign keys. The per-column index flags derive from it
+	// (deriveIndexFlags), and the generation-time index warning reads it.
+	Indexes []indexMeta
+}
+
+// indexMeta is one index of a table: its key in order, with each column's
+// direction, and the columns it stores.
+type indexMeta struct {
+	Name string
+	// PrimaryKey marks the table's PRIMARY_KEY index.
+	PrimaryKey bool
+	Unique     bool
+	// NullFiltered indexes skip rows with a NULL key column, so they serve no order
+	// over every row.
+	NullFiltered bool
+	// Managed marks an index Spanner created to back a foreign key.
+	Managed bool
+	Key     []indexColumn
+	Storing []string
+}
+
+// indexColumn is one key column of an index and its direction.
+type indexColumn struct {
+	Column     string
+	Descending bool
 }
 
 type columnMeta struct {
-	IsPrimaryKey       bool
-	IsForeignKey       bool
-	IsNullable         bool
-	IsIndex            bool
+	IsPrimaryKey bool
+	IsForeignKey bool
+	IsNullable   bool
+	// IsIndex marks a column some index of the table keys or stores.
+	IsIndex bool
+	// IsUniqueIndex marks a column that alone identifies a row: some unique index,
+	// the PRIMARY_KEY index included, has exactly this column as its key. A column of
+	// a composite key or composite unique index is not one; the database enforces
+	// nothing per value of it.
 	IsUniqueIndex      bool
 	OrdinalPosition    int64
 	KeyOrdinalPosition int64
@@ -1229,8 +1277,21 @@ func (f *resourceField) WireName() string {
 	return name
 }
 
+// AddressesRow reports whether the field is a row address: a primary-key column, every
+// part of a composite key included, or a column a single-column unique index covers.
+// The generated query type carries a key accessor (Set<Field>, <Field>) for exactly
+// these fields, and the generated read handler sets every primary-key part through
+// them; a column of a composite unique index is not one, whatever its index enforces
+// with the key's other columns. On a view the uniqueindex tag is authored and stands
+// as declared.
+func (f *resourceField) AddressesRow() bool {
+	return f.IsUniqueIndex || (f.IsPrimaryKey && !f.Parent.IsVirtual)
+}
+
+// UniqueIndexTag renders index:"true" on the fields a keyed read addresses a row by
+// (AddressesRow).
 func (f *resourceField) UniqueIndexTag() string {
-	if f.IsUniqueIndex {
+	if f.AddressesRow() {
 		return indexTrue
 	}
 

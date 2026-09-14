@@ -85,8 +85,35 @@ func createTableMapUsingQuery(ctx context.Context, db *spanner.Client) (map[stri
 		schemaMetadata[results[i].TableName] = table
 	}
 
+	indexResults, err := queryIndexSchema(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range indexResults {
+		// An index on a table the column query did not report (a view, a system
+		// table) has no metadata to join.
+		table, ok := schemaMetadata[indexResults[i].TableName]
+		if !ok {
+			continue
+		}
+		table.addIndexResult(&indexResults[i])
+	}
+
+	for _, table := range schemaMetadata {
+		table.deriveIndexFlags()
+	}
+
 	return schemaMetadata, nil
 }
+
+const (
+	// primaryKeyIndexType is INFORMATION_SCHEMA.INDEXES.INDEX_TYPE for a table's key.
+	primaryKeyIndexType = "PRIMARY_KEY"
+	// descendingOrdering is INFORMATION_SCHEMA.INDEX_COLUMNS.COLUMN_ORDERING for a key
+	// column declared DESC.
+	descendingOrdering = "DESC"
+)
 
 const tableMapQuery string = `WITH DEPENDENCIES AS (
 		SELECT
@@ -137,8 +164,6 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 		(d.IS_FOREIGN_KEY > 0 and d.IS_FOREIGN_KEY IS NOT NULL) as IS_FOREIGN_KEY,
 		d.REFERENCED_TABLE,
 		d.REFERENCED_COLUMN,
-		ic.INDEX_NAME IS NOT NULL AS IS_INDEX,
-		MAX(COALESCE(i.IS_UNIQUE, false)) AS IS_UNIQUE_INDEX,
 		c.GENERATION_EXPRESSION,
 		c.ORDINAL_POSITION,
 		COALESCE(d.KEY_ORDINAL_POSITION, 1) AS KEY_ORDINAL_POSITION,
@@ -150,22 +175,48 @@ const tableMapQuery string = `WITH DEPENDENCIES AS (
 		LEFT JOIN INFORMATION_SCHEMA.VIEWS v ON c.TABLE_NAME = v.TABLE_NAME
 		LEFT JOIN DEPENDENCIES d ON c.TABLE_NAME = d.TABLE_NAME
 			AND c.COLUMN_NAME = d.COLUMN_NAME
-		LEFT JOIN INFORMATION_SCHEMA.INDEX_COLUMNS ic ON c.COLUMN_NAME = ic.COLUMN_NAME
-			AND c.TABLE_NAME = ic.TABLE_NAME
-		LEFT JOIN INFORMATION_SCHEMA.INDEXES i ON ic.INDEX_NAME = i.INDEX_NAME 
 	WHERE 
 		c.TABLE_SCHEMA != 'INFORMATION_SCHEMA'
 		AND c.COLUMN_NAME NOT LIKE '%_HIDDEN'
 		AND v.TABLE_NAME IS NULL
-	GROUP BY c.TABLE_NAME, c.COLUMN_NAME, IS_NULLABLE, c.SPANNER_TYPE,
-	d.IS_PRIMARY_KEY, d.IS_FOREIGN_KEY, d.REFERENCED_COLUMN, d.REFERENCED_TABLE,
-	IS_INDEX, c.GENERATION_EXPRESSION, c.ORDINAL_POSITION, d.KEY_ORDINAL_POSITION, c.COLUMN_DEFAULT, t.PARENT_TABLE_NAME
 	ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`
+
+// indexMapQuery reads every index's composition: one row per index column, the
+// primary key included as its PRIMARY_KEY index, keyed on table and index name (an
+// index name is unique per database but PRIMARY_KEY is every table's). Key columns
+// carry an ordinal position and ordering; a stored column carries neither.
+const indexMapQuery string = `SELECT
+		i.TABLE_NAME,
+		i.INDEX_NAME,
+		i.INDEX_TYPE,
+		i.IS_UNIQUE,
+		i.IS_NULL_FILTERED,
+		i.SPANNER_IS_MANAGED,
+		ic.COLUMN_NAME,
+		ic.ORDINAL_POSITION,
+		ic.COLUMN_ORDERING
+	FROM INFORMATION_SCHEMA.INDEXES i
+		JOIN INFORMATION_SCHEMA.INDEX_COLUMNS ic ON ic.TABLE_NAME = i.TABLE_NAME
+			AND ic.INDEX_NAME = i.INDEX_NAME
+	WHERE
+		i.TABLE_SCHEMA != 'INFORMATION_SCHEMA'
+	ORDER BY i.TABLE_NAME, i.INDEX_NAME, ic.ORDINAL_POSITION`
 
 func queryInformationSchema(ctx context.Context, db *spanner.Client) ([]informationSchemaResult, error) {
 	stmt := spanner.Statement{SQL: tableMapQuery}
 
 	var result []informationSchemaResult
+	if err := spxscan.Select(ctx, db.Single(), &result, stmt); err != nil {
+		return nil, errors.Wrap(err, "spxscan.Select()")
+	}
+
+	return result, nil
+}
+
+func queryIndexSchema(ctx context.Context, db *spanner.Client) ([]indexSchemaResult, error) {
+	stmt := spanner.Statement{SQL: indexMapQuery}
+
+	var result []indexSchemaResult
 	if err := spxscan.Select(ctx, db.Single(), &result, stmt); err != nil {
 		return nil, errors.Wrap(err, "spxscan.Select()")
 	}

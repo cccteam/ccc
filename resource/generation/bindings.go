@@ -267,9 +267,12 @@ func (c *client) resolveDomain(anchor *resourceField, arg genlang.Arg, structsBy
 // set or value yields, dotted to continue through remote hops.
 func (c *client) resolveSubjectBindings(res *resourceInfo, anchor *resourceField, keyword string, arg genlang.Arg, structsByTable map[string]*parser.Struct) ([]*subjectBinding, error) {
 	scalar := keyword == subjectValueKeyword
-	uniqueAnchor := anchor.IsUniqueIndex || (anchor.IsPrimaryKey && res.PkCount == 1)
-	if scalar && !uniqueAnchor {
-		return nil, errors.Newf("@%s requires its anchor column to be the primary key or unique-indexed, so the database enforces exactly one row per user", subjectValueKeyword)
+	// A unique anchor is a column that alone identifies a row (columnMeta.IsUniqueIndex):
+	// a single-column primary key, or a unique index on exactly that column. One column
+	// of a composite key or composite unique index is not one, whatever the key's other
+	// columns enforce, so a scalar subquery on it could answer several rows.
+	if scalar && !anchor.IsUniqueIndex {
+		return nil, errors.Newf("@%s requires its anchor column alone to identify a row, as a single-column primary key or a unique index on exactly that column, so the database enforces one row per user; a column of a composite key or composite unique index does not", subjectValueKeyword)
 	}
 
 	invocations, err := arg.ParseInvocations(&genlang.ArgSpec{Positional: 1, Keys: []string{"value"}, Required: []string{"value"}})

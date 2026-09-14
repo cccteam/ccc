@@ -15,7 +15,9 @@ import (
 const (
 	genCacheDir    string = "."
 	genCacheSuffix string = ".gen"
-	tableMapCache  string = "tablemap" + genCacheSuffix
+	// tableMapCache is versioned: the table map gained its index composition, and a
+	// cache an earlier generator wrote would load without it under the same schema hash.
+	tableMapCache  string = "tablemap-v2" + genCacheSuffix
 	enumValueCache string = "enumvalues" + genCacheSuffix
 )
 
@@ -177,6 +179,9 @@ func (c *client) loadAllCachedData() (bool, error) {
 		return false, errors.Wrapf(err, "cache.Cache.Load() for %q", tableMapCache)
 	} else if !ok {
 		return false, nil
+	}
+	for _, table := range c.tableMap {
+		table.deriveIndexFlags()
 	}
 
 	c.enumValues = make(map[string][]*enumData)
