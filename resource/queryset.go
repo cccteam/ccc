@@ -556,10 +556,11 @@ func (q *QuerySet[Resource]) orderColumn(dbType DBType, rendered *renderedReadCo
 	return orderColumn{sql: quoted, nullable: isNullableType(dbField.fieldType), meta: dbField}, nil
 }
 
-// buildOrderByClause renders the ORDER BY for the QuerySet's read order. A
-// nullable column states its NULL placement — NULLS LAST ascending, NULLS FIRST
-// descending — because the two databases default differently and a page walk
-// needs one order.
+// buildOrderByClause renders the ORDER BY for the QuerySet's read order: each
+// term is the column with its direction and nothing else. A nullable column
+// takes the database's own NULL placement — Spanner sorts NULL first ascending
+// and last descending, PostgreSQL the reverse — so an index on the column serves
+// the sort; the cursor predicate follows the same placement (nullsFirst).
 func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType, rendered *renderedReadConditions) (string, error) {
 	order := q.readOrder()
 	orderByParts := make([]string, 0, len(order))
@@ -569,7 +570,7 @@ func (q *QuerySet[Resource]) buildOrderByClause(dbType DBType, rendered *rendere
 			return "", err
 		}
 
-		orderByParts = append(orderByParts, orderTermSQL(dbType, column.sql, sf.Direction, column.nullable))
+		orderByParts = append(orderByParts, orderTermSQL(column.sql, sf.Direction))
 	}
 	if len(orderByParts) == 0 {
 		return "", nil
@@ -597,11 +598,12 @@ func (q *QuerySet[Resource]) cursorPredicate(dbType DBType, registry *paramRegis
 			return "", err
 		}
 		terms = append(terms, cursorTerm{
-			column:    column.sql,
-			direction: sf.Direction,
-			nullable:  column.nullable,
-			fieldType: column.meta.fieldType,
-			boundary:  q.cursor.Keys[i],
+			column:     column.sql,
+			direction:  sf.Direction,
+			nullable:   column.nullable,
+			nullsFirst: nullsFirst(dbType, sf.Direction),
+			fieldType:  column.meta.fieldType,
+			boundary:   q.cursor.Keys[i],
 		})
 	}
 
@@ -613,31 +615,15 @@ func (q *QuerySet[Resource]) cursorPredicate(dbType DBType, registry *paramRegis
 	return predicate, nil
 }
 
-// orderTermSQL renders one ORDER BY term: the column with its direction, and
-// the NULL placement a nullable column needs for the order to be the same on
-// every database — NULLS LAST ascending, NULLS FIRST descending. PostgreSQL
-// states the placement; Spanner, whose emulator refuses NULLS FIRST and NULLS
-// LAST, sorts on an IS NULL key ahead of the column, which orders the same.
-func orderTermSQL(dbType DBType, column string, direction SortDirection, nullable bool) string {
-	dir := "ASC"
+// orderTermSQL renders one ORDER BY term: the column with its direction. No
+// NULL placement is stated, so a nullable column sorts where its database puts
+// NULL by default and an index on the column can serve the order.
+func orderTermSQL(column string, direction SortDirection) string {
 	if direction == SortDescending {
-		dir = "DESC"
-	}
-	if !nullable {
-		return column + " " + dir
-	}
-	if dbType == SpannerDBType {
-		if direction == SortDescending {
-			return column + " IS NULL DESC, " + column + " DESC"
-		}
-
-		return column + " IS NULL, " + column + " ASC"
-	}
-	if direction == SortDescending {
-		return column + " DESC NULLS FIRST"
+		return column + " DESC"
 	}
 
-	return column + " ASC NULLS LAST"
+	return column + " ASC"
 }
 
 // isNullableType reports whether a resource field's Go type can hold a database

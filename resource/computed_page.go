@@ -174,7 +174,7 @@ func (q *QuerySet[Resource]) afterBoundary(rows []*Resource) ([]*Resource, error
 }
 
 // rowAfter reports whether a row sorts strictly after the boundary values in the
-// order, with the same NULL placement the ORDER BY states.
+// order, with the NULL placement SortRows uses (NULLS LAST ascending).
 func rowAfter(row reflect.Value, order []SortField, boundary []any) (bool, error) {
 	for i, sf := range order {
 		field := fieldValue(row, sf.Field)

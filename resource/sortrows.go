@@ -12,11 +12,12 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// SortRows orders rows in memory by the given fields, the way the database orders
-// a table: each field by its type, ascending with NULLs last or descending with
-// NULLs first, stably so equal rows keep their yielded order. A computed
-// resource's generated handler sorts the body's rows with it; a body that takes
-// the sort (QuerySet.TakeSort) orders its own query instead.
+// SortRows orders rows in memory by the given fields: each field by its type,
+// ascending with NULLs last or descending with NULLs first (a computed resource
+// has no database whose placement to follow, so it keeps this one), stably so
+// equal rows keep their yielded order. A computed resource's generated handler
+// sorts the body's rows with it; a body that takes the sort (QuerySet.TakeSort)
+// orders its own query instead.
 func SortRows[T any](rows []*T, order []SortField) error {
 	if len(order) == 0 {
 		return nil
@@ -52,7 +53,7 @@ func SortRows[T any](rows []*T, order []SortField) error {
 }
 
 // compareOrdered compares two field values under a sort direction with the NULL
-// placement the ORDER BY states: ascending NULLS LAST, descending NULLS FIRST.
+// placement computed rows use: ascending NULLS LAST, descending NULLS FIRST.
 func compareOrdered(a, b reflect.Value, direction SortDirection) (int, error) {
 	va, aNull := derefNullable(a)
 	vb, bNull := derefNullable(b)

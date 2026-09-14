@@ -8,17 +8,34 @@ import (
 )
 
 // cursorTerm is one column of the walk's total order as the predicate renderer
-// sees it: quoted for the database, with its direction, nullability, and the
-// boundary row's value (nil in the NULL region).
+// sees it: quoted for the database, with its direction, nullability, where the
+// database places NULL in that direction, and the boundary row's value (nil in
+// the NULL region).
 type cursorTerm struct {
 	column    string
 	direction SortDirection
 	nullable  bool
-	fieldType reflect.Type
-	boundary  *string
+	// nullsFirst is the database's NULL placement for this direction: true when
+	// the NULL region precedes every value, false when it follows them.
+	nullsFirst bool
+	fieldType  reflect.Type
+	boundary   *string
 	// param is the placeholder the boundary value is bound under, allocated on
 	// first use so every disjunct that names the value shares one parameter.
 	param string
+}
+
+// nullsFirst reports where the database places NULL in an ORDER BY term with
+// no stated placement: Spanner sorts NULL as the smallest value (first
+// ascending, last descending), PostgreSQL as the largest (last ascending, first
+// descending). The ORDER BY states nothing, so the cursor predicate takes the
+// placement from here.
+func nullsFirst(dbType DBType, direction SortDirection) bool {
+	if dbType == SpannerDBType {
+		return direction == SortAscending
+	}
+
+	return direction == SortDescending
 }
 
 // renderCursorPredicate renders the rows strictly after the boundary row in the
@@ -26,13 +43,14 @@ type cursorTerm struct {
 //
 //	c0 > @k0 OR (c0 = @k0 AND c1 > @k1) OR (c0 = @k0 AND c1 = @k1 AND c2 > @k2)
 //
-// Each column takes the comparison matching its direction. A nullable column
-// orders with NULLS LAST ascending and NULLS FIRST descending, so after a
-// non-null value the ascending disjunct also admits the NULL region, and after a
-// NULL boundary the ascending disjunct is empty while the descending one admits
-// every non-null row; the equality term on a NULL boundary is IS NULL. The
-// rendering is the same on Spanner and PostgreSQL apart from quoting. The
-// previous page is the same rendering over the flipped order.
+// Each column takes the comparison matching its direction. A nullable column's
+// NULL region sits where its database puts it (nullsFirst): when the region
+// follows the values, the disjunct after a non-null boundary also admits it and
+// the disjunct after a NULL boundary is empty; when the region precedes the
+// values, the disjunct after a non-null boundary is the comparison alone and
+// the disjunct after a NULL boundary admits every non-null row. The equality
+// term on a NULL boundary is IS NULL. The previous page is the same rendering
+// over the flipped order, whose placement flips with it.
 func renderCursorPredicate(terms []cursorTerm, registry *paramRegistry) (string, error) {
 	var disjuncts []string
 	var equalities []string
@@ -66,13 +84,13 @@ func renderCursorPredicate(terms []cursorTerm, registry *paramRegistry) (string,
 }
 
 // strictlyAfter renders the rows after the boundary on this column alone, or
-// "" when no row can follow it (a NULL boundary on an ascending column).
+// "" when no row can follow it (a NULL boundary with the NULL region last).
 func (t *cursorTerm) strictlyAfter(registry *paramRegistry) (string, error) {
 	if t.boundary == nil {
 		if !t.nullable {
 			return "", errInvalidCursor
 		}
-		if t.direction == SortDescending {
+		if t.nullsFirst {
 			return t.column + " IS NOT NULL", nil
 		}
 
@@ -83,14 +101,15 @@ func (t *cursorTerm) strictlyAfter(registry *paramRegistry) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	comparison := t.column + " > " + param
 	if t.direction == SortDescending {
-		return t.column + " < " + param, nil
+		comparison = t.column + " < " + param
 	}
-	if t.nullable {
-		return "(" + t.column + " > " + param + " OR " + t.column + " IS NULL)", nil
+	if t.nullable && !t.nullsFirst {
+		return "(" + comparison + " OR " + t.column + " IS NULL)", nil
 	}
 
-	return t.column + " > " + param, nil
+	return comparison, nil
 }
 
 // equality renders the rows equal to the boundary on this column.

@@ -106,10 +106,9 @@ func TestQuerySet_stmt_positionalMasking(t *testing.T) {
 			target:    "/?sort=fee,note&columns=id",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner, projectedResource + ".note": noteOwner},
 			wantSpanner: "SELECT Id FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
-				"ORDER BY `Fee` ASC, CASE WHEN (`projectionResources`.`Owner` = @subject OR `projectionResources`.`Priority` = @_c1) THEN `Note` END IS NULL, " +
-				"CASE WHEN (`projectionResources`.`Owner` = @subject OR `projectionResources`.`Priority` = @_c1) THEN `Note` END ASC, `Id` ASC LIMIT 51",
+				"ORDER BY `Fee` ASC, CASE WHEN (`projectionResources`.`Owner` = @subject OR `projectionResources`.`Priority` = @_c1) THEN `Note` END ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id" FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
-				`ORDER BY "Fee" ASC, CASE WHEN ("projectionResources"."Owner" = @subject OR "projectionResources"."Priority" = @_c1) THEN "Note" END ASC NULLS LAST, "Id" ASC LIMIT 51`,
+				`ORDER BY "Fee" ASC, CASE WHEN ("projectionResources"."Owner" = @subject OR "projectionResources"."Priority" = @_c1) THEN "Note" END ASC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_c1": int64(3)},
 		},
 		{

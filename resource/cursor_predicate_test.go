@@ -2,7 +2,6 @@ package resource
 
 import (
 	"math/big"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -30,7 +29,10 @@ func (cursorTestResource) DefaultConfig() Config { return Config{} }
 // TestQuerySet_stmt_cursorPredicate is the two-database matrix for the cursor
 // predicate: one, two, and three sort columns, mixed directions, a nullable column
 // at each position with a value and in the NULL region, the previous-page flip,
-// and the refusals. The Spanner and PostgreSQL renderings differ only in quoting.
+// and the refusals. The Spanner and PostgreSQL renderings differ only in quoting
+// except on a nullable column, whose NULL region sits at opposite ends on the two
+// databases (Spanner first ascending, PostgreSQL last ascending), so those cases
+// state both.
 func TestQuerySet_stmt_cursorPredicate(t *testing.T) {
 	t.Parallel()
 
@@ -41,12 +43,13 @@ func TestQuerySet_stmt_cursorPredicate(t *testing.T) {
 	stamp := time.Date(2027, 1, 15, 9, 0, 0, 0, time.UTC)
 
 	tests := []struct {
-		name        string
-		sort        []SortField
-		cursor      *cursor
-		wantSpanner string // WHERE … ORDER BY …, Spanner quoting; postgresRendering derives the PostgreSQL rendering
-		wantParams  map[string]any
-		wantErr     string
+		name         string
+		sort         []SortField
+		cursor       *cursor
+		wantSpanner  string // WHERE … ORDER BY …, Spanner quoting
+		wantPostgres string // the PostgreSQL rendering when it differs beyond quoting; otherwise derived by postgresRendering
+		wantParams   map[string]any
+		wantErr      string
 	}{
 		{
 			name:        "key only",
@@ -77,39 +80,45 @@ func TestQuerySet_stmt_cursorPredicate(t *testing.T) {
 			wantParams:  map[string]any{"_c1": new(big.Rat).SetFrac64(24000125, 1000), "_c2": id},
 		},
 		{
-			name:        "nullable ascending after a value admits the NULL region",
-			sort:        []SortField{{Field: "Note", Direction: SortAscending}},
-			cursor:      &cursor{Direction: pageNext, Keys: []*string{strPtr("m"), strPtr(id)}},
-			wantSpanner: "WHERE ((`Note` > @_c1 OR `Note` IS NULL) OR (`Note` = @_c1 AND `Id` > @_c2)) ORDER BY `Note` IS NULL, `Note` ASC, `Id` ASC",
-			wantParams:  map[string]any{"_c1": "m", "_c2": id},
+			name:         "nullable ascending after a value: Spanner has passed the NULL region, PostgreSQL still admits it",
+			sort:         []SortField{{Field: "Note", Direction: SortAscending}},
+			cursor:       &cursor{Direction: pageNext, Keys: []*string{strPtr("m"), strPtr(id)}},
+			wantSpanner:  "WHERE (`Note` > @_c1 OR (`Note` = @_c1 AND `Id` > @_c2)) ORDER BY `Note` ASC, `Id` ASC",
+			wantPostgres: `WHERE (("Note" > @_c1 OR "Note" IS NULL) OR ("Note" = @_c1 AND "Id" > @_c2)) ORDER BY "Note" ASC, "Id" ASC`,
+			wantParams:   map[string]any{"_c1": "m", "_c2": id},
 		},
 		{
-			name:        "nullable ascending in the NULL region: only the key advances",
-			sort:        []SortField{{Field: "Note", Direction: SortAscending}},
-			cursor:      &cursor{Direction: pageNext, Keys: []*string{nil, strPtr(id)}},
-			wantSpanner: "WHERE ((`Note` IS NULL AND `Id` > @_c1)) ORDER BY `Note` IS NULL, `Note` ASC, `Id` ASC",
-			wantParams:  map[string]any{"_c1": id},
+			name:         "nullable ascending in the NULL region: Spanner admits every value after it, PostgreSQL only advances the key",
+			sort:         []SortField{{Field: "Note", Direction: SortAscending}},
+			cursor:       &cursor{Direction: pageNext, Keys: []*string{nil, strPtr(id)}},
+			wantSpanner:  "WHERE (`Note` IS NOT NULL OR (`Note` IS NULL AND `Id` > @_c1)) ORDER BY `Note` ASC, `Id` ASC",
+			wantPostgres: `WHERE (("Note" IS NULL AND "Id" > @_c1)) ORDER BY "Note" ASC, "Id" ASC`,
+			wantParams:   map[string]any{"_c1": id},
 		},
 		{
-			name:        "nullable descending after a value",
-			sort:        []SortField{{Field: "Note", Direction: SortDescending}},
-			cursor:      &cursor{Direction: pageNext, Keys: []*string{strPtr("m"), strPtr(id)}},
-			wantSpanner: "WHERE (`Note` < @_c1 OR (`Note` = @_c1 AND `Id` > @_c2)) ORDER BY `Note` IS NULL DESC, `Note` DESC, `Id` ASC",
-			wantParams:  map[string]any{"_c1": "m", "_c2": id},
+			name:         "nullable descending after a value: Spanner still admits the NULL region, PostgreSQL has passed it",
+			sort:         []SortField{{Field: "Note", Direction: SortDescending}},
+			cursor:       &cursor{Direction: pageNext, Keys: []*string{strPtr("m"), strPtr(id)}},
+			wantSpanner:  "WHERE ((`Note` < @_c1 OR `Note` IS NULL) OR (`Note` = @_c1 AND `Id` > @_c2)) ORDER BY `Note` DESC, `Id` ASC",
+			wantPostgres: `WHERE ("Note" < @_c1 OR ("Note" = @_c1 AND "Id" > @_c2)) ORDER BY "Note" DESC, "Id" ASC`,
+			wantParams:   map[string]any{"_c1": "m", "_c2": id},
 		},
 		{
-			name:        "nullable descending in the NULL region admits every value",
-			sort:        []SortField{{Field: "Note", Direction: SortDescending}},
-			cursor:      &cursor{Direction: pageNext, Keys: []*string{nil, strPtr(id)}},
-			wantSpanner: "WHERE (`Note` IS NOT NULL OR (`Note` IS NULL AND `Id` > @_c1)) ORDER BY `Note` IS NULL DESC, `Note` DESC, `Id` ASC",
-			wantParams:  map[string]any{"_c1": id},
+			name:         "nullable descending in the NULL region: Spanner only advances the key, PostgreSQL admits every value after it",
+			sort:         []SortField{{Field: "Note", Direction: SortDescending}},
+			cursor:       &cursor{Direction: pageNext, Keys: []*string{nil, strPtr(id)}},
+			wantSpanner:  "WHERE ((`Note` IS NULL AND `Id` > @_c1)) ORDER BY `Note` DESC, `Id` ASC",
+			wantPostgres: `WHERE ("Note" IS NOT NULL OR ("Note" IS NULL AND "Id" > @_c1)) ORDER BY "Note" DESC, "Id" ASC`,
+			wantParams:   map[string]any{"_c1": id},
 		},
 		{
 			name:   "nullable in the middle position, in the NULL region",
 			sort:   []SortField{{Field: "Hazard", Direction: SortDescending}, {Field: "Note", Direction: SortAscending}},
 			cursor: &cursor{Direction: pageNext, Keys: []*string{strPtr("3"), nil, strPtr(id)}},
-			wantSpanner: "WHERE (`Hazard` < @_c1 OR (`Hazard` = @_c1 AND `Note` IS NULL AND `Id` > @_c2)) " +
-				"ORDER BY `Hazard` DESC, `Note` IS NULL, `Note` ASC, `Id` ASC",
+			wantSpanner: "WHERE (`Hazard` < @_c1 OR (`Hazard` = @_c1 AND `Note` IS NOT NULL) OR (`Hazard` = @_c1 AND `Note` IS NULL AND `Id` > @_c2)) " +
+				"ORDER BY `Hazard` DESC, `Note` ASC, `Id` ASC",
+			wantPostgres: `WHERE ("Hazard" < @_c1 OR ("Hazard" = @_c1 AND "Note" IS NULL AND "Id" > @_c2)) ` +
+				`ORDER BY "Hazard" DESC, "Note" ASC, "Id" ASC`,
 			wantParams: map[string]any{"_c1": int64(3), "_c2": id},
 		},
 		{
@@ -120,11 +129,12 @@ func TestQuerySet_stmt_cursorPredicate(t *testing.T) {
 			wantParams:  map[string]any{"_c1": int64(3), "_c2": id},
 		},
 		{
-			name:        "the previous page of a nullable ascending column reads the NULL region first",
-			sort:        []SortField{{Field: "Note", Direction: SortAscending}},
-			cursor:      &cursor{Direction: pagePrev, Keys: []*string{strPtr("m"), strPtr(id)}},
-			wantSpanner: "WHERE (`Note` < @_c1 OR (`Note` = @_c1 AND `Id` < @_c2)) ORDER BY `Note` IS NULL DESC, `Note` DESC, `Id` DESC",
-			wantParams:  map[string]any{"_c1": "m", "_c2": id},
+			name:         "the previous page of a nullable ascending column: Spanner reads back into the NULL region, PostgreSQL does not",
+			sort:         []SortField{{Field: "Note", Direction: SortAscending}},
+			cursor:       &cursor{Direction: pagePrev, Keys: []*string{strPtr("m"), strPtr(id)}},
+			wantSpanner:  "WHERE ((`Note` < @_c1 OR `Note` IS NULL) OR (`Note` = @_c1 AND `Id` < @_c2)) ORDER BY `Note` DESC, `Id` DESC",
+			wantPostgres: `WHERE ("Note" < @_c1 OR ("Note" = @_c1 AND "Id" < @_c2)) ORDER BY "Note" DESC, "Id" DESC`,
+			wantParams:   map[string]any{"_c1": "m", "_c2": id},
 		},
 		{
 			name:    "a cursor with the wrong number of values is refused",
@@ -174,7 +184,10 @@ func TestQuerySet_stmt_cursorPredicate(t *testing.T) {
 
 				want := tt.wantSpanner
 				if dbType == PostgresDBType {
-					want = postgresRendering(want)
+					want = tt.wantPostgres
+					if want == "" {
+						want = postgresRendering(tt.wantSpanner)
+					}
 				}
 				got := collapseWhitespace.ReplaceAllString(stmt.SQL, " ")
 				if i := strings.Index(got, "WHERE"); i >= 0 {
@@ -191,18 +204,8 @@ func TestQuerySet_stmt_cursorPredicate(t *testing.T) {
 	}
 }
 
-var (
-	spannerNullsLast  = regexp.MustCompile(`(\S+) IS NULL, (\S+) ASC`)
-	spannerNullsFirst = regexp.MustCompile(`(\S+) IS NULL DESC, (\S+) DESC`)
-)
-
 // postgresRendering derives the PostgreSQL statement from the Spanner one: double
-// quotes for backticks, and the stated NULL placement for Spanner's IS NULL sort
-// key.
+// quotes for backticks.
 func postgresRendering(spanner string) string {
-	pg := strings.ReplaceAll(spanner, "`", `"`)
-	pg = spannerNullsLast.ReplaceAllString(pg, "$2 ASC NULLS LAST")
-	pg = spannerNullsFirst.ReplaceAllString(pg, "$2 DESC NULLS FIRST")
-
-	return pg
+	return strings.ReplaceAll(spanner, "`", `"`)
 }

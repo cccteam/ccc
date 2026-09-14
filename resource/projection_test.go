@@ -75,27 +75,27 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 		wantErr      string
 	}{
 		{
-			name:      "sort on an unpruned conditional field orders its CASE with the NULL region last",
+			name:      "sort on an unpruned conditional field orders its CASE, the masked rows in the database's NULL region",
 			target:    "/?sort=fee",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			wantSpanner: "SELECT Id, Name, CASE WHEN `projectionResources`.`Owner` = @subject THEN Fee ELSE @_c1 END AS Fee, Note, " +
 				"IF(`projectionResources`.`Owner` = @subject, ARRAY<STRING>[], ['fee']) AS zzMaskedFields " +
 				"FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
-				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
+				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id", "Name", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" ELSE @_c1 END AS "Fee", "Note", ` +
 				`ARRAY_REMOVE(ARRAY[CASE WHEN "projectionResources"."Owner" = @subject THEN NULL ELSE 'fee' END], NULL) AS "zzMaskedFields" ` +
 				`FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
-				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC NULLS LAST, "Id" ASC LIMIT 51`,
+				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_c1": int64(0)},
 		},
 		{
-			name:      "descending puts the masked rows first",
+			name:      "descending orders the CASE descending: the masked rows last on Spanner, first on PostgreSQL",
 			target:    "/?sort=fee:desc&columns=id,name",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			wantSpanner: "SELECT Id, Name FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
-				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL DESC, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END DESC, `Id` ASC LIMIT 51",
+				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END DESC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id", "Name" FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
-				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END DESC NULLS FIRST, "Id" ASC LIMIT 51`,
+				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END DESC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain"},
 		},
 		{
@@ -142,33 +142,33 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain"},
 		},
 		{
-			name:      "a NULL boundary key on the masked sort column positions the cursor in the NULL region",
+			name:      "a NULL boundary key on the masked sort column: Spanner then reads every visible row, PostgreSQL only advances the key",
 			target:    "/?sort=fee&columns=id",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			cursor:    &cursor{Direction: pageNext, Keys: []*string{nil, strPtr(id)}},
 			wantSpanner: "SELECT Id FROM projectionResources " +
-				"WHERE (`projectionResources`.`Station` = @domain) AND ((CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL AND `Id` > @_c1)) " +
-				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
+				"WHERE (`projectionResources`.`Station` = @domain) AND (CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NOT NULL OR (CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL AND `Id` > @_c1)) " +
+				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id" FROM projectionResources ` +
 				`WHERE ("projectionResources"."Station" = @domain) AND ((CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL AND "Id" > @_c1)) ` +
-				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC NULLS LAST, "Id" ASC LIMIT 51`,
+				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_c1": id},
 		},
 		{
-			name:      "a value boundary on the masked sort column admits the NULL region after it",
+			name:      "a value boundary on the masked sort column: PostgreSQL admits the NULL region after it, Spanner has passed it",
 			target:    "/?sort=fee&columns=id",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			cursor:    &cursor{Direction: pageNext, Keys: []*string{strPtr("7"), strPtr(id)}},
 			wantSpanner: "SELECT Id FROM projectionResources " +
 				"WHERE (`projectionResources`.`Station` = @domain) AND (" +
-				"(CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END > @_c1 OR CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL) OR " +
+				"CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END > @_c1 OR " +
 				"(CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END = @_c1 AND `Id` > @_c2)) " +
-				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
+				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
 			wantPostgres: `SELECT "Id" FROM projectionResources ` +
 				`WHERE ("projectionResources"."Station" = @domain) AND (` +
 				`(CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END > @_c1 OR CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL) OR ` +
 				`(CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END = @_c1 AND "Id" > @_c2)) ` +
-				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC NULLS LAST, "Id" ASC LIMIT 51`,
+				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_c1": int64(7), "_c2": id},
 		},
 		{
