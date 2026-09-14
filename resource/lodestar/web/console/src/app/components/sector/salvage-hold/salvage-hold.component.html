@@ -22,7 +22,7 @@
         <button mat-button type="button" [disabled]="!consignmentsPage.value()?.prev" (click)="turnPage('prev')">Previous</button>
         <span class="pager-total">
           {{ consignments().length }}@if (total() !== undefined) { of {{ total() }}} consignments, {{ pageSize }} a page from the descriptor,
-          by release date {{ direction() === 'desc' ? 'newest first, unreleased first' : 'oldest first, unreleased last' }}
+          by release date {{ direction() === 'desc' ? 'newest first, unreleased last' : 'unreleased first, then oldest first' }}
         </span>
         <button mat-button type="button" [disabled]="!consignmentsPage.value()?.next" (click)="turnPage('next')">Next</button>
         <button mat-stroked-button type="button" (click)="flip()">Flip the walk</button>

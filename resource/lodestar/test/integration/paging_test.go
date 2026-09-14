@@ -424,8 +424,9 @@ func TestPaging_sensitiveSortColumn(t *testing.T) {
 // TestPaging_visibleProjection pins the visible-projection rule against the demo
 // world. The archivist lists closed missions (completed, failed, stood down) and sees
 // the fee only on a completed one, so the fee is masked on the failed and the
-// stood-down rows: a sort by fee puts them in the NULL region, last ascending and
-// first descending, and a fee filter matches them only through isnull. The
+// stood-down rows: a sort by fee puts them in the NULL region, which Spanner places
+// first ascending and last descending, and a fee filter matches them only through
+// isnull. The
 // archivist's title rides the row condition itself, so it sorts on the raw column;
 // the cadet's every field rides one row condition and sorts freely; the
 // quartermaster, granted no fee at all, is refused.
@@ -454,14 +455,14 @@ func TestPaging_visibleProjection(t *testing.T) {
 		wantIDs    []string
 	}{
 		{
-			name: "the archivist's masked fees sort last ascending", user: "archivist",
+			name: "the archivist's masked fees sort first ascending, Spanner's NULL placement", user: "archivist",
 			target: sectorPath(anvil, "missions?sort=fee"), wantStatus: http.StatusOK,
-			wantOrder: []string{completedMiners, completedSpars, completedPod, failedTow, stoodDown, failedSled, stoodDownCore},
+			wantOrder: []string{failedTow, stoodDown, failedSled, stoodDownCore, completedMiners, completedSpars, completedPod},
 		},
 		{
-			name: "and first descending", user: "archivist",
+			name: "and last descending", user: "archivist",
 			target: sectorPath(anvil, "missions?sort=fee:desc"), wantStatus: http.StatusOK,
-			wantOrder: []string{failedTow, stoodDown, failedSled, stoodDownCore, completedPod, completedSpars, completedMiners},
+			wantOrder: []string{completedPod, completedSpars, completedMiners, failedTow, stoodDown, failedSled, stoodDownCore},
 		},
 		{
 			name: "isnull on the fee returns the masked rows", user: "archivist",
@@ -546,10 +547,11 @@ func TestPaging_visibleProjection(t *testing.T) {
 }
 
 // TestPaging_nullableSort is the NULL-boundary proof: the hold is declared
-// @order(ReleasedAt desc), a nullable column, so unreleased cargo (NULL) is placed first
-// descending and last ascending, and a walk of four rows a page crosses the boundary in
-// both directions with no repeated and no skipped row. Spanner renders the placement as
-// `ReleasedAt IS NULL DESC, ReleasedAt DESC`, the emulator having no NULLS FIRST.
+// @order(ReleasedAt desc), a nullable column, and Spanner places NULL as the smallest
+// value, so unreleased cargo (NULL) comes last descending and first ascending. The ORDER
+// BY is the plain `ReleasedAt DESC` (no IS NULL key, no NULLS clause), so an index on the
+// column can serve it, and a walk of four rows a page crosses the boundary in both
+// directions with no repeated and no skipped row.
 func TestPaging_nullableSort(t *testing.T) {
 	t.Parallel()
 
@@ -567,8 +569,8 @@ func TestPaging_nullableSort(t *testing.T) {
 		query string
 		want  []string
 	}{
-		{name: "the declared order: unreleased first, then newest release first", query: "consignments?limit=4", want: append(slices.Clone(inBond), released...)},
-		{name: "ascending: oldest release first, unreleased last", query: "consignments?sort=releasedAt&limit=4", want: append(slices.Clone(releasedAsc), inBond...)},
+		{name: "the declared order: newest release first, unreleased last", query: "consignments?limit=4", want: append(slices.Clone(released), inBond...)},
+		{name: "ascending: unreleased first, then oldest release first", query: "consignments?sort=releasedAt&limit=4", want: append(slices.Clone(inBond), releasedAsc...)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

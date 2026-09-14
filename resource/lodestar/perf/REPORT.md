@@ -89,10 +89,14 @@ the one taken.
 Deadline END` cannot use an index on `Deadline`. With the composite index, the plain list
 read 52 rows; the same list sorted on the conditionally visible column read 20,060 and
 sorted them, 55 to 73 ms against 17. That is the price of the visible-projection rule
-whenever the sort column is conditionally granted, and it is paid per page. The renderer's
-`IS NULL` sort key, added because the emulator refuses `NULLS FIRST` and `NULLS LAST`, is
-a second expression an index cannot serve; whether the service would take the index with
-`NULLS LAST` instead was not measured.
+whenever the sort column is conditionally granted, and it is paid per page. When these
+plans were captured the renderer also sorted on an `IS NULL` key ahead of every nullable
+column (added because the emulator refuses `NULLS FIRST` and `NULLS LAST`), a second
+expression an index cannot serve. That key is gone: a nullable column now renders as the
+plain direction and sorts in Spanner's own `NULL` placement (first ascending, last
+descending), so the composite index of finding 1 serves a nullable `@order` column too.
+The shapes in `shapes/` carry the current text; s1c with `Consignments(SectorId,
+ReleasedAt DESC)` present has not yet been re-measured.
 
 **6. Write and insert checks are constant.** One to four rows scanned at every volume, 10
 to 30 ms dominated by the round trip. The check-SELECT locates its row by primary key and

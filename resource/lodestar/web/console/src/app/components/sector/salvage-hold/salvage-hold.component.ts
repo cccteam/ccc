@@ -31,10 +31,10 @@ export class SalvageHoldComponent {
 
   readonly methods = Methods;
 
-  // The hold walks its declared order, releasedAt desc, a NULLABLE sort column: cargo
-  // still in bond (NULL) comes first descending and last ascending, and the cursor
-  // crosses the boundary in both directions without a repeat or a skip. The page size is
-  // the descriptor's.
+  // The hold walks its declared order, releasedAt desc, a NULLABLE sort column in
+  // Spanner's own NULL placement: cargo still in bond (NULL) comes last descending and
+  // first ascending, and the cursor crosses the boundary in both directions without a
+  // repeat or a skip. The page size is the descriptor's.
   readonly pageSize = this.sectors.pageSize(Resources.Consignments);
   direction = signal<'asc' | 'desc'>('desc');
   consignmentsPage = this.sectors.sectorPage((sector) => sector.consignments, {
@@ -80,7 +80,7 @@ export class SalvageHoldComponent {
     this.consignmentsPage.set({ ...turned, total: turned.total ?? total });
   }
 
-  /** Flips the walk: ascending puts unreleased cargo last, the NULL region at the other end. */
+  /** Flips the walk: ascending puts unreleased cargo first, the NULL region at the other end. */
   async flip(): Promise<void> {
     this.direction.set(this.direction() === 'desc' ? 'asc' : 'desc');
     const handle = this.sectors.sectorApi().consignments;

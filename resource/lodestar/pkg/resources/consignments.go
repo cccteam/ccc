@@ -15,9 +15,10 @@ type (
 	// droid's ReleaseConsignment grants carry releasedAt IS NULL, so a second release is
 	// policy, not code. BondCode is immutable.
 	//
-	// The hold is listed by release date, a NULLABLE sort column: unreleased cargo (NULL)
-	// is placed last ascending and first descending, and the cursor walks across the NULL
-	// boundary in both directions without a repeated or a skipped row.
+	// The hold is listed by release date, a NULLABLE sort column, in Spanner's own NULL
+	// placement: unreleased cargo (NULL) is placed first ascending and last descending, the
+	// ORDER BY is the plain direction so an index can serve it, and the cursor walks across
+	// the NULL boundary in both directions without a repeated or a skipped row.
 	//
 	// Served on the default and droids outlets: a droid releases a consignment by API key
 	// through the same generated surface humans use.
