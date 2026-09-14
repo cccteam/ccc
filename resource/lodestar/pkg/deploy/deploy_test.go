@@ -15,25 +15,25 @@ import (
 )
 
 // The archivist's Missions grants: the row fields on every closed state, the money
-// fields on completed only. The renderer cannot see that the second implies the
-// first, so every concealing key under either grant keeps its CASE.
+// fields on completed only. Completed is one of the closed states, so the renderer
+// proves the second grant implies the first (condition.Implies) and every key the
+// closed-states grant covers prunes its CASE; the fee, granted on the narrower
+// condition, is the genuine case and keeps its own.
 const (
 	closedStates = "state IN ('completed', 'failed', 'stood_down')"
 	completed    = "state = 'completed'"
 )
 
-// archivistKey is the warning the deploy prints for one of the archivist's Missions
-// keys: a key the closed-states grant covers is left uncovered by the completed
-// grant, and the fee the other way round.
-func archivistKey(field accesstypes.Tag, under, uncovered string) access.ConcealingKeyWarning {
-	return access.ConcealingKeyWarning{
-		Role:       "Archivist",
-		Scope:      accesstypes.DomainPermissionScope,
-		Resource:   "Missions",
-		Field:      field,
-		Conditions: []string{under},
-		Uncovered:  []string{uncovered},
-	}
+// archivistFee is the one warning the deploy prints: the fee is a filter key of
+// Missions the archivist lists under completed, and the closed-states rows she also
+// lists are not all completed, so the row filter does not prove the fee's condition.
+var archivistFee = access.ConcealingKeyWarning{
+	Role:       "Archivist",
+	Scope:      accesstypes.DomainPermissionScope,
+	Resource:   "Missions",
+	Field:      "fee",
+	Conditions: []string{completed},
+	Uncovered:  []string{closedStates},
 }
 
 // TestRoles_validateAgainstTheCollection runs each auth's committed role file
@@ -42,12 +42,12 @@ func archivistKey(field accesstypes.Tag, under, uncovered string) access.Conceal
 // collection, and the warnings the deploy would print are exactly the ones
 // pinned here. No role holds a conditional write on a row it can neither Read
 // nor List. The archivist's Missions grants raise the concealing-key warning on
-// every indexed key and on the fee filter key: her two conditions differ, so a
-// page she sorts or filters by one of them sorts the partition. Deadline, the
-// default order, is declared positional and raises nothing: her every page
-// orders on the real column. The six indexed keys warn only because the
-// covering test is syntactic (the completed grant implies the closed-states
-// grant); the fee is the genuine case, its condition being the narrower one.
+// the fee filter key alone: her completed grant implies her closed-states
+// grant, so the six indexed keys granted on the closed states are covered by
+// implication and prune their CASE, while the fee's condition is the narrower
+// one and a page she sorts or filters by fee sorts the partition. Deadline,
+// the default order, is declared positional and raises nothing: her every
+// page orders on the real column.
 //
 // Demonstrates: warning.concealing-key, masking.positional.
 func TestRoles_validateAgainstTheCollection(t *testing.T) {
@@ -58,19 +58,7 @@ func TestRoles_validateAgainstTheCollection(t *testing.T) {
 		rolesPath    string
 		wantWarnings []access.Warning
 	}{
-		{
-			name:      "crew",
-			rolesPath: crew.RolesPath,
-			wantWarnings: []access.Warning{
-				archivistKey("assignedSquadronId", closedStates, completed),
-				archivistKey("clientId", closedStates, completed),
-				archivistKey("fee", completed, closedStates),
-				archivistKey("kindId", closedStates, completed),
-				archivistKey("requiredCertId", closedStates, completed),
-				archivistKey("sectorId", closedStates, completed),
-				archivistKey("statusId", closedStates, completed),
-			},
-		},
+		{name: "crew", rolesPath: crew.RolesPath, wantWarnings: []access.Warning{archivistFee}},
 		{name: "members", rolesPath: members.RolesPath},
 	}
 	for _, tt := range tests {
