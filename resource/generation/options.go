@@ -65,15 +65,21 @@ func GenerateHandlers(targetDir string) ResourceOption {
 // GenerateHandlerTests enables generation of the handler test suite in targetDir: the
 // Spanner-emulator bootstrap (TestMain + prepareDatabase over the application's
 // schema migrations) and the authorization-matrix tests, which drive every generated
-// global list/read route through the generated test router — without the required
-// permission the pipeline must fail closed with 403; with exactly that permission the
-// request must reach data access (200, or 404 on the empty schema). The target
-// package hand-writes exactly one function the generated suite calls:
+// route — list and read on every outlet, domain-scoped or global, and every mutation
+// arm — through the generated test router. Without the required permission the
+// pipeline must fail closed with 403 (404 or 400 under concealed domains); with
+// exactly that permission a list or read must reach data access (200, or 404 on the
+// empty schema). Mutation arms are denied-only. The target package hand-writes exactly
+// one function the generated suite calls:
 //
 //	newTestHandler(t *testing.T, db *initiator.SpannerDB, g grants) http.Handler
 //
 // where the application constructs its App around the test database with the scripted
-// grants and composes it through router.NewTestRouter. Requires GenerateHandlers and
+// grants and composes it through router.NewTestRouter. The scripted grants are
+// unconditional, so the matrix pins the endpoint gate alone: a granted case proves the
+// request passed the gate and reached data access, never that a row is visible.
+// Conditional grants are proven by the application's own integration suites over
+// seeded rows and the real permission engine. Requires GenerateHandlers and
 // GenerateRoutes.
 func GenerateHandlerTests(targetDir string) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {

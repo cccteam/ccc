@@ -1023,7 +1023,10 @@ import (
 )
 
 // grants scripts the permission table for one test: the permissions the test user
-// holds on every resource. Permissions not present are denied.
+// holds on every resource. Permissions not present are denied. Every scripted
+// permission is an unconditional grant: the type has no place for a condition, and the
+// engine newTestHandler wires must answer each check Granted or Denied, never
+// Conditional.
 type grants map[accesstypes.Permission]bool
 
 // TestGeneratedAuthorizationMatrix drives every generated route through the generated
@@ -1042,6 +1045,14 @@ type grants map[accesstypes.Permission]bool
 //
 // The suite runs on the migrated schema alone; no seed data is required, so it grows
 // with the schema on every regeneration.
+//
+// Conditional grants are outside this suite. The matrix pins the endpoint gate, which
+// rejects only a Denied decision: a granted case proves the request passed the gate
+// and reached data access, never that a row is visible, and a conditional grant would
+// pass the gate exactly as an unconditional one does. The schema is empty, so no
+// condition could be evaluated against a row anyway. What a condition admits or
+// refuses is proven by the application's integration suites over seeded rows and the
+// real permission engine, provisioned from its role files.
 //
 // The package must define
 //

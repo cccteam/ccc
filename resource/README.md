@@ -433,6 +433,19 @@ router.AppHooks(app))`. An application whose router is exactly the base passes
 cannot carry removes the option and hand-writes its router on the generated route
 tables, losing only the boilerplate and the generated chain test.
 
+**The generated authorization matrix.** `GenerateHandlerTests(dir)` emits, beside the
+emulator bootstrap, a test that drives every generated route through `NewTestRouter`:
+without the required permission each must fail closed, and with exactly that permission a
+list or read must reach data access. The application hand-writes one function,
+`newTestHandler`, wiring its App to the scripted grants; Lodestar's is
+[test/authz/harness_test.go](lodestar/test/authz/harness_test.go). The scripted grants
+are unconditional and the schema is empty, so the matrix pins the endpoint gate alone: a
+granted case means the request passed the gate, never that a row is visible, and a
+conditional grant would pass the gate exactly as an unconditional one does. What a
+condition admits or refuses is proven by the application's integration suites over seeded
+rows and the real permission engine provisioned from its role files, as Lodestar's
+[test/integration](lodestar/test/integration) suites do.
+
 ## 9. Indexes for the shapes the package injects
 
 Tenancy, grant conditions, subject sets and values, the visible projection, and the write
