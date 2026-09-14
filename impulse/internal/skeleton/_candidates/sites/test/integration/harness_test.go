@@ -39,8 +39,9 @@ const (
 	north = "north"
 	south = "south"
 
-	// The development logins the served suites sign in as: admin holds Administrator
-	// everywhere, member and the portal's client only in north.
+	// The development logins the served suites sign in as: admin holds
+	// Administrator_Global and Administrator_Domain in every tenant, member and the
+	// portal's client hold Administrator_Domain in north only.
 	adminUser     = "admin"
 	memberUser    = "member"
 	clientUser    = "client"
@@ -143,15 +144,16 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	assignments := []struct {
 		user  accesstypes.User
 		scope accesstypes.Scope
+		role  accesstypes.Role
 	}{
-		{adminUser, accesstypes.GlobalScope()},
-		{adminUser, accesstypes.DomainScope(north)},
-		{adminUser, accesstypes.DomainScope(south)},
-		{memberUser, accesstypes.DomainScope(north)},
-		{clientUser, accesstypes.DomainScope(north)},
+		{adminUser, accesstypes.GlobalScope(), "Administrator_Global"},
+		{adminUser, accesstypes.DomainScope(north), "Administrator_Domain"},
+		{adminUser, accesstypes.DomainScope(south), "Administrator_Domain"},
+		{memberUser, accesstypes.DomainScope(north), "Administrator_Domain"},
+		{clientUser, accesstypes.DomainScope(north), "Administrator_Domain"},
 	}
 	for _, a := range assignments {
-		if err := accessClient.UserManager().AddUserRoles(ctx, a.scope, a.user, "Administrator"); err != nil {
+		if err := accessClient.UserManager().AddUserRoles(ctx, a.scope, a.user, a.role); err != nil {
 			t.Fatalf("AddUserRoles(%s, %v) error = %v", a.user, a.scope, err)
 		}
 	}

@@ -16,7 +16,9 @@ what they hold.
   and static-asset surface. `pkg/router` composes them behind the session.
 - `pkg/resources` holds the resource structs the generator reads; `schema/migrations`
   the tables they describe; `schema/roles/staff.json` the role configuration the deployment
-  reconciles (the Administrator role at each scope is implicit).
+  reconciles. It authors `Administrator_Global`, the development login's role, with no
+  grants yet: a new resource stays invisible to every login until a role in this file is
+  granted it.
 - `pkg/deploy` holds the database steps a deployment runs: schema migrations, then
   roles. `cmd/deployment/migrate` is the deploy step; `cmd/bootstrap` reuses it to stand
   up an emulator database and adds the development logins from `cmd/bootstrap/users.json`.

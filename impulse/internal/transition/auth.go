@@ -757,7 +757,7 @@ func (au Auth) writeRoles(a *app.App, src *authSource, ch *Change) error {
 	if err := writeNew(a, rel, "{\n  \"roles\": {\n    \"global\": [],\n    \"domain\": []\n  }\n}\n"); err != nil {
 		return err
 	}
-	ch.didf("%s: the %s auth's role configuration, empty (the Administrator role at each scope is implicit)", rel, au.Name)
+	ch.didf("%s: the %s auth's role configuration, empty: author its roles when its surfaces are bound", rel, au.Name)
 
 	return nil
 }

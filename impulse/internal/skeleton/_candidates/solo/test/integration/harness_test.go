@@ -103,7 +103,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	if _, err := passwordAuth.API().CreateSessionUser(ctx, &session.CreateUserRequest{Username: adminUser, Password: &password}); err != nil {
 		t.Fatalf("CreateSessionUser() error = %v", err)
 	}
-	if err := accessClient.UserManager().AddUserRoles(ctx, accesstypes.GlobalScope(), adminUser, "Administrator"); err != nil {
+	if err := accessClient.UserManager().AddUserRoles(ctx, accesstypes.GlobalScope(), adminUser, "Administrator_Global"); err != nil {
 		t.Fatalf("AddUserRoles() error = %v", err)
 	}
 

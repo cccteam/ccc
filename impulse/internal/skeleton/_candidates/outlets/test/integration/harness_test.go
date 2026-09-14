@@ -41,10 +41,11 @@ const (
 	south = "south"
 
 	// The development identities the served suites act as: the staff logins admin
-	// (Administrator everywhere) and member (north only); the portal's client, a member
-	// of the members auth who signs in through the simulated directory and holds
-	// Administrator in north; and the machines service account — no login, bound by the
-	// API key — in north.
+	// (Administrator_Global, and Administrator_Domain in every tenant) and member
+	// (Administrator_Domain in north only); the portal's client, a member of the members
+	// auth who signs in through the simulated directory and holds Administrator_Domain in
+	// north; and the machines service account — no login, bound by the API key — holding
+	// Machines_Domain in north.
 	adminUser     = "admin"
 	memberUser    = "member"
 	clientUser    = "client"
@@ -179,7 +180,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	}
 	// The portal's client is a member: no login to create, since the directory presents
 	// the name; only roles, in the members store.
-	if err := membersAccess.UserManager().AddUserRoles(ctx, accesstypes.DomainScope(north), clientUser, "Administrator"); err != nil {
+	if err := membersAccess.UserManager().AddUserRoles(ctx, accesstypes.DomainScope(north), clientUser, "Administrator_Domain"); err != nil {
 		t.Fatalf("AddUserRoles(%s, north) error = %v", clientUser, err)
 	}
 
@@ -193,15 +194,16 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	assignments := []struct {
 		user  accesstypes.User
 		scope accesstypes.Scope
+		role  accesstypes.Role
 	}{
-		{adminUser, accesstypes.GlobalScope()},
-		{adminUser, accesstypes.DomainScope(north)},
-		{adminUser, accesstypes.DomainScope(south)},
-		{memberUser, accesstypes.DomainScope(north)},
-		{machinesUser, accesstypes.DomainScope(north)},
+		{adminUser, accesstypes.GlobalScope(), "Administrator_Global"},
+		{adminUser, accesstypes.DomainScope(north), "Administrator_Domain"},
+		{adminUser, accesstypes.DomainScope(south), "Administrator_Domain"},
+		{memberUser, accesstypes.DomainScope(north), "Administrator_Domain"},
+		{machinesUser, accesstypes.DomainScope(north), "Machines_Domain"},
 	}
 	for _, a := range assignments {
-		if err := accessClient.UserManager().AddUserRoles(ctx, a.scope, a.user, "Administrator"); err != nil {
+		if err := accessClient.UserManager().AddUserRoles(ctx, a.scope, a.user, a.role); err != nil {
 			t.Fatalf("AddUserRoles(%s, %v) error = %v", a.user, a.scope, err)
 		}
 	}

@@ -195,7 +195,7 @@ func run(ctx context.Context, data *config.DataConfiguration, roles *access.Role
 		return err
 	}
 
-	return data.Members().Access().UserManager().AddUserRoles(ctx, nil, "client", "Administrator")
+	return data.Members().Access().UserManager().AddUserRoles(ctx, nil, "client", "Administrator_Domain")
 }
 `
 	membersApp = `package app

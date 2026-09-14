@@ -19,6 +19,7 @@ import (
 var retiredWords = []string{
 	"single-site", "multi-site", "ServerConfiguration", "serverConfig", "server level",
 	"user pool", "--sessions", "--first", "--table", "auth-wired",
+	"Administrator role at each scope",
 }
 
 // Lockfiles and binary assets are not prose. The candidates on disk are the embedded ones,

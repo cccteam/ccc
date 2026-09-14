@@ -1,6 +1,55 @@
 {
   "roles": {
     "global": [],
-    "domain": []
+    "domain": [
+      {
+        "name": "Administrator_Domain",
+        "permissions": {
+          "Create": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "title"
+              ]
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "Announcements"
+            }
+          ],
+          "List": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "tenantId",
+                "title"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "tenantId",
+                "title"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "title"
+              ]
+            }
+          ]
+        }
+      }
+    ]
   }
 }

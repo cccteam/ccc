@@ -35,8 +35,12 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
   record, a global resource), `Announcement` (tenant-scoped, on the console and the
   portal), and `Reading` (tenant-scoped, machines-only). `schema/migrations` holds the tables they describe; `schema/devseed` the
   development tenants; `schema/roles/staff.json` and `schema/roles/members.json` the role
-  configuration the deployment reconciles into each auth's store across the tenant roster
-  (the Administrator role at each scope is implicit).
+  configuration the deployment reconciles into each auth's store across the tenant roster.
+  The staff file authors `Administrator_Global` over the tenant record, `Administrator_Domain`
+  over the console's announcements, and `Machines_Domain`, the service account's role, over
+  the readings; the members file authors `Administrator_Domain` over the portal's
+  announcements. A new resource stays invisible until a role in its auth's file is granted
+  it.
 - `pkg/deploy` holds the database steps a deployment runs: schema migrations, then
   roles across the tenants read from the table. `cmd/deployment/migrate` is the deploy
   step; `cmd/bootstrap` reuses it to stand up an emulator database, seeds the development

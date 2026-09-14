@@ -34,8 +34,8 @@ const (
 	XSRFCookie = Name + "-xsrf"
 
 	// RolesPath is the committed role configuration MigrateRoles reconciles into this
-	// auth's store, relative to the module root. The Administrator role at each scope is
-	// implicit: it carries every permission registered there.
+	// auth's store, relative to the module root. The file is the complete statement of
+	// the auth's roles: a login holds only what it declares.
 	RolesPath = "schema/roles/" + Name + ".json"
 
 	// The auth's tables, which schema/migrations creates.

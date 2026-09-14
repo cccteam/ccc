@@ -5,14 +5,14 @@
       "password": "password",
       "roles": {
         "global": [
-          "Administrator"
+          "Administrator_Global"
         ],
         "domains": {
           "north": [
-            "Administrator"
+            "Administrator_Domain"
           ],
           "south": [
-            "Administrator"
+            "Administrator_Domain"
           ]
         }
       }
@@ -24,7 +24,7 @@
         "global": [],
         "domains": {
           "north": [
-            "Administrator"
+            "Administrator_Domain"
           ]
         }
       }

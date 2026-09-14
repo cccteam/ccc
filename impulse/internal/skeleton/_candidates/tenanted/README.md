@@ -22,7 +22,10 @@ the digest for the selected tenant.
   record, a global resource) and `Announcement` (tenant-scoped, `@domain` on its
   TenantId). `schema/migrations` holds the tables they describe; `schema/devseed` the
   development tenants; `schema/roles/staff.json` the role configuration the deployment
-  reconciles across the tenant roster (the Administrator role at each scope is implicit).
+  reconciles across the tenant roster. It authors the development logins' roles,
+  `Administrator_Global` over the tenant record and `Administrator_Domain` over every
+  tenant-scoped resource; a new resource stays invisible to every login until a role in
+  this file is granted it.
 - `pkg/deploy` holds the database steps a deployment runs: schema migrations, then
   roles across the tenants read from the table. `cmd/deployment/migrate` is the deploy
   step; `cmd/bootstrap` reuses it to stand up an emulator database, seeds the development

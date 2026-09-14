@@ -1,6 +1,98 @@
 {
   "roles": {
-    "global": [],
-    "domain": []
+    "global": [
+      {
+        "name": "Administrator_Global",
+        "permissions": {
+          "Create": [
+            {
+              "resource": "Tenants",
+              "fields": [
+                "name"
+              ]
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "Tenants"
+            }
+          ],
+          "List": [
+            {
+              "resource": "Tenants",
+              "fields": [
+                "name"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Tenants",
+              "fields": [
+                "name"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Tenants",
+              "fields": [
+                "name"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "domain": [
+      {
+        "name": "Administrator_Domain",
+        "permissions": {
+          "Create": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "title"
+              ]
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "Announcements"
+            }
+          ],
+          "List": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "tenantId",
+                "title"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "tenantId",
+                "title"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "Announcements",
+              "fields": [
+                "body",
+                "title"
+              ]
+            }
+          ]
+        }
+      }
+    ]
   }
 }

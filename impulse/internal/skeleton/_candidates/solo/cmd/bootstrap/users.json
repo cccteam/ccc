@@ -5,7 +5,7 @@
       "password": "password",
       "roles": {
         "global": [
-          "Administrator"
+          "Administrator_Global"
         ],
         "domains": {}
       }

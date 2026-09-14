@@ -1,6 +1,11 @@
 {
   "roles": {
-    "global": [],
+    "global": [
+      {
+        "name": "Administrator_Global",
+        "permissions": {}
+      }
+    ],
     "domain": []
   }
 }
