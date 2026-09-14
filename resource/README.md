@@ -490,3 +490,32 @@ much from the schema:
 - Write and insert checks are point lookups at any volume.
 - After a bulk load, `ANALYZE`; Spanner otherwise refreshes statistics about every three
   days, and a plan can flip with them.
+
+## 10. Refused commits
+
+Spanner checks foreign keys, interleaved parents, and `NOT NULL` for buffered mutations when
+the transaction commits, so a write the schema refuses for a referential reason surfaces
+from the commit, not from the patch that caused it. `SpannerClient.ExecuteFunc` answers such
+a commit with **409 Conflict** and a message the library composes itself. It covers a delete
+of a row other rows still reference through a foreign key without `ON DELETE CASCADE` or as
+an interleaved parent under `ON DELETE NO ACTION`, a create or update whose foreign key names
+a referenced row that does not exist, and a required column left empty at commit.
+
+The translation keys on the gRPC code alone (`FailedPrecondition`), never on the message
+text, which differs between the emulator and the service and is not documented. The message
+names only the resources whose patches the transaction buffered, in the order they were
+buffered, and never the referencing table, the constraint, the key, or a count:
+
+| The transaction buffered | Message |
+| --- | --- |
+| Deletes on one resource | `Hangars: this record cannot be deleted while other records still reference it.` |
+| Deletes on several resources | `Hangars, Ships: a record cannot be deleted while other records still reference it.` |
+| Creates or updates only | `Ships: a referenced record does not exist.` |
+| Deletes and writes together, or nothing buffered through the transaction wrapper | `The request could not be applied: a deleted record is still referenced, or a referenced record does not exist.` |
+
+A tracked resource's change-event rows do not count among the buffered patches. The tenancy
+check's 404 for a referenced row outside the request's partition is unchanged; it runs before
+the commit. A request that deletes children and their parent in one transaction still
+succeeds in either order, because nothing is checked before the commit. An error the
+transaction function itself returns, and a commit refused with any other code (a duplicate
+key, a violated `CHECK`), pass through unchanged and answer as they did before.

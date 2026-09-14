@@ -34,17 +34,35 @@ func (c *SpannerClient) SpannerReadOnlyTransaction() spxapi.Querier {
 	return c.spanner.Single()
 }
 
-// ExecuteFunc executes a function within a read-write transaction.
+// ExecuteFunc executes a function within a read-write transaction. A commit Spanner
+// refuses for a referential reason answers as a 409 conflict whose message is composed
+// from the patches the transaction buffered (see translateCommitError); an error the
+// function itself returns, and a commit refused with any other code, pass through
+// unchanged.
 func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
+	var (
+		buffered   = newBufferedPatches()
+		funcFailed bool
+	)
 	_, err := c.spanner.ReadWriteTransaction(ctx, func(ctx context.Context, txn *spanner.ReadWriteTransaction) error {
-		if err := f(ctx, NewSpannerReadWriteTransaction(txn)); err != nil {
+		// A retried transaction runs f again; the record belongs to the attempt that commits.
+		buffered = newBufferedPatches()
+		funcFailed = false
+		if err := f(ctx, newSpannerReadWriteTransaction(txn, buffered)); err != nil {
+			funcFailed = true
+
 			return errors.Wrap(err, "f()")
 		}
 
 		return nil
 	})
 	if err != nil {
-		return errors.Wrap(err, "c.db.ReadWriteTransaction()")
+		err = errors.Wrap(err, "c.db.ReadWriteTransaction()")
+		if funcFailed {
+			return err
+		}
+
+		return translateCommitError(err, buffered)
 	}
 
 	return nil
@@ -274,16 +292,26 @@ func (c *SpannerReadOnlyTransaction) PostgresReadOnlyTransaction() any {
 var _ ReadWriteTransaction = (*SpannerReadWriteTransaction)(nil)
 
 // SpannerReadWriteTransaction represents a database transaction that can be used for both reads and writes.
+// It records the resource and patch type of every patch it buffers, so a commit Spanner
+// refuses can be answered in terms of what the transaction was asked to do.
 type SpannerReadWriteTransaction struct {
 	txn              *spanner.ReadWriteTransaction
 	resourceRowIndex map[string]int
+	buffered         *bufferedPatches
 }
 
 // NewSpannerReadWriteTransaction creates a new SpannerReadWriteTransaction from a spanner.ReadWriteTransaction
 func NewSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction) ReadWriteTransaction {
+	return newSpannerReadWriteTransaction(txn, newBufferedPatches())
+}
+
+// newSpannerReadWriteTransaction wraps a transaction over the record its buffered
+// patches are noted in; ExecuteFunc holds the same record when the commit comes back.
+func newSpannerReadWriteTransaction(txn *spanner.ReadWriteTransaction, buffered *bufferedPatches) *SpannerReadWriteTransaction {
 	return &SpannerReadWriteTransaction{
 		txn:              txn,
 		resourceRowIndex: make(map[string]int),
+		buffered:         buffered,
 	}
 }
 
@@ -325,6 +353,7 @@ func (c *SpannerReadWriteTransaction) BufferMap(r PatchSetMetadata, patch map[st
 	if err := c.txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
 		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
 	}
+	c.buffered.record(r)
 
 	return nil
 }
@@ -357,6 +386,7 @@ func (c *SpannerReadWriteTransaction) BufferStruct(patch PatchSetMetadata) error
 	if err := c.txn.BufferWrite([]*spanner.Mutation{m}); err != nil {
 		return errors.Wrap(err, "spanner.ReadWriteTransaction.BufferWrite()")
 	}
+	c.buffered.record(patch)
 
 	return nil
 }

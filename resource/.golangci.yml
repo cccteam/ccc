@@ -86,6 +86,8 @@ linters:
             - golang.org/x/tools/go/packages
             - golang.org/x/tools/imports
             - google.golang.org/api/iterator
+            - google.golang.org/grpc/codes
+            - google.golang.org/grpc/status
     dupl:
       threshold: 100
     exhaustive:
