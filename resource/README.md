@@ -193,7 +193,12 @@ column END`, so a cell the caller may not see is `NULL` for the query — it sor
 PostgreSQL states the placement, Spanner sorts on an `IS NULL` key ahead of the column),
 matches `isnull` and nothing else, and a cursor positioned on it carries the `NULL` key.
 When the field's condition covers the whole row predicate (every returned row shows
-the field) the raw column is used instead. A `CASE` in `WHERE` or `ORDER BY` cannot use
+the field) the raw column is used instead. A grant whose condition implies the field's
+counts as covered, under a closed set of same-attribute rules: an equality or `IN` list
+whose values sit inside the field's `IN` list, a `!=` or `NOT IN` naming every value the
+field's does, and a conjunction one of whose terms does; anything else must spell the
+field's condition the same way ([`condition.Implies`](../accesstypes/condition/cover.go)).
+A `CASE` in `WHERE` or `ORDER BY` cannot use
 an index, so only such a field pays for it, and it pays on every page: the partition
 sorts whole ([finding 5](lodestar/perf/REPORT.md)). That is the concealing behavior,
 and it is the default for every field. A field declared `masking:"positional"` (section
@@ -477,7 +482,8 @@ much from the schema:
 - A sort on a conditionally visible column runs over `CASE WHEN <condition> THEN column
   END`, which no index serves: the page sorts the partition. The `CASE` is dropped when
   the field's condition covers the whole row predicate (a role whose every grant on the
-  resource carries the one condition), and a field declared `masking:"positional"` never
+  resource carries the one condition, or a condition that implies it: an equality inside
+  the field's `IN` list prunes too), and a field declared `masking:"positional"` never
   renders one; `access.MigrateRoles` warns, per role, where a concealing sort or filter
   key keeps its `CASE`. Lists that page at volume sort on unconditionally visible
   columns, on positional ones, or on columns whose condition the row filter proves.

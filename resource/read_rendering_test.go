@@ -124,6 +124,38 @@ func TestQuerySet_stmt_readRendering(t *testing.T) {
 			wantMaskedCol: true,
 		},
 		{
+			// The archivist's Missions shape: the row fields on every closed state,
+			// the money fields on completed only. The completed grant implies the
+			// closed states, so Public (the deadline) prunes; the closed states do
+			// not imply completed, so Tagged (the fee) keeps its CASE and mask term.
+			name:   "an equality inside a sibling's IN list prunes the wider column and keeps the narrower one's CASE",
+			fields: []accesstypes.Field{"ID", "Public", "Tagged"},
+			decisions: accesstypes.Decisions{
+				enforcedResource + ".public": conditionalOn(enforcedResource+".public", "owner IN ('completed', 'failed', 'stood_down')"),
+				enforcedResource + ".tagged": conditionalOn(enforcedResource+".tagged", "owner = 'completed'"),
+			},
+			wantSQL: "SELECT Id, Public, " +
+				"CASE WHEN `enforcementResources`.`Owner` = @_c5 THEN Tagged ELSE @_c6 END AS Tagged, " +
+				"IF(`enforcementResources`.`Owner` = @_c5, ARRAY<STRING>[], ['tagged']) AS zzMaskedFields " +
+				"FROM enforcementResources " +
+				"WHERE (`enforcementResources`.`Station` = @domain) AND (`enforcementResources`.`Owner` IN (@_c1, @_c2, @_c3) OR `enforcementResources`.`Owner` = @_c4)",
+			wantParams:    map[string]any{"_c1": "completed", "_c2": "failed", "_c3": "stood_down", "_c4": "completed", "_c5": "completed", "_c6": "", "domain": "testDomain"},
+			wantMaskedCol: true,
+		},
+		{
+			// The field's equalities merge into one literal set before the
+			// sibling's IN list is tested against it.
+			name:   "a column granted under two equalities prunes against a sibling's IN list of the same values",
+			fields: []accesstypes.Field{"ID", "Public", "Tagged"},
+			decisions: accesstypes.Decisions{
+				enforcedResource + ".public": conditionalOn(enforcedResource+".public", "owner = 'failed' OR owner = 'stood_down'"),
+				enforcedResource + ".tagged": conditionalOn(enforcedResource+".tagged", "owner IN ('failed', 'stood_down')"),
+			},
+			wantSQL: "SELECT Id, Public, Tagged FROM enforcementResources " +
+				"WHERE (`enforcementResources`.`Station` = @domain) AND (`enforcementResources`.`Owner` = @_c1 OR `enforcementResources`.`Owner` = @_c2 OR `enforcementResources`.`Owner` IN (@_c3, @_c4))",
+			wantParams: map[string]any{"_c1": "failed", "_c2": "stood_down", "_c3": "failed", "_c4": "stood_down", "domain": "testDomain"},
+		},
+		{
 			name:   "a query armed with a Set and no decoder masks by the Set's wire names",
 			fields: []accesstypes.Field{"ID", "Public", "Tagged"},
 			decisions: accesstypes.Decisions{
