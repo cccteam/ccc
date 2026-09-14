@@ -86,6 +86,8 @@ var Demonstrations = []Demonstration{
 	{"@defaultsUpdateType", "A defaults type run inside the update transaction."},
 	{"@validateUpdateType", "A validator type run inside the update transaction."},
 	{"allow_filter", "An unindexed column made filterable."},
+	{"index.tenant-second", "A column directly after the tenant column in an index key is indexed on a bare @domain resource: the list binds the tenant by equality, so a filter on the column alone seeks the index, and the column carries index:\"true\" and filterable: 'always'."},
+	{"index.trailing-key", "A trailing key column with nothing bound before it is not indexed: a filter on it alone would scan the index, so the column carries no index tag and no filterable metadata, and a filter naming it alone is refused."},
 	{"filter.typed-values", "A filter value typed by its column: a decimal binds as NUMERIC, a non-number is a 400."},
 	{"filter.validated-at-decode", "A filter validated with the rest of the request, before permission checks and before any body runs."},
 	{"create-form-narrowing", "The digest's field-level Create entries decide which inputs a form renders."},

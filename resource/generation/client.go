@@ -299,15 +299,20 @@ func (t *tableMetadata) addIndexResult(result *indexSchemaResult) {
 	})
 }
 
-// deriveIndexFlags sets the per-column index flags from the index composition: a
-// column any index keys or stores is indexed, and a column that is the whole key of a
-// unique index, the primary key included, identifies a row on its own. Null filtering
-// does not disqualify: such an index still enforces one row per non-null value, and
-// the subject subquery compares by equality, which never matches NULL. The index list
-// is the fact the schema read
-// records and the cache keeps; the flags are derived from it on every read and every
-// cache load, never trusted from storage, so a cache an earlier generator wrote cannot
-// carry a flag this one no longer derives.
+// deriveIndexFlags sets the per-column index flags from the index composition. A
+// column that leads some index, the PRIMARY_KEY index and Spanner's managed
+// foreign-key indexes included, is indexed: a filter on it alone has a seek path, a
+// read of the index from a known key prefix. A trailing key column and a stored column
+// are not: a predicate on either alone scans the index, so the tag they would carry
+// would promise a path the schema does not give. Whether a trailing column has one
+// with the tenant bound before it is a resource-level fact (deriveTenantIndexFlags).
+// A column that is the whole key of a unique index, the primary key included,
+// identifies a row on its own. Null filtering does not disqualify: such an index still
+// enforces one row per non-null value, and the subject subquery compares by equality,
+// which never matches NULL. The index list is the fact the schema read records and the
+// cache keeps; the flags are derived from it on every read and every cache load, never
+// trusted from storage, so a cache an earlier generator wrote cannot carry a flag this
+// one no longer derives.
 func (t *tableMetadata) deriveIndexFlags() {
 	for name, column := range t.Columns {
 		column.IsIndex, column.IsUniqueIndex = false, false
@@ -315,25 +320,19 @@ func (t *tableMetadata) deriveIndexFlags() {
 	}
 
 	for _, index := range t.Indexes {
-		for _, key := range index.Key {
-			column, ok := t.Columns[key.Column]
-			if !ok {
-				continue
-			}
-			column.IsIndex = true
-			if index.Unique && len(index.Key) == 1 {
-				column.IsUniqueIndex = true
-			}
-			t.Columns[key.Column] = column
+		if len(index.Key) == 0 {
+			continue
 		}
-		for _, stored := range index.Storing {
-			column, ok := t.Columns[stored]
-			if !ok {
-				continue
-			}
-			column.IsIndex = true
-			t.Columns[stored] = column
+		leading := index.Key[0].Column
+		column, ok := t.Columns[leading]
+		if !ok {
+			continue
 		}
+		column.IsIndex = true
+		if index.Unique && len(index.Key) == 1 {
+			column.IsUniqueIndex = true
+		}
+		t.Columns[leading] = column
 	}
 }
 

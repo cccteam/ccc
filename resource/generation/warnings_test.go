@@ -11,35 +11,38 @@ import (
 // indexFixtureTables is the synthetic schema behind the indexfixture structs: every
 // table carries its PRIMARY_KEY index and the foreign key's managed backing index on
 // the tenant column, as the schema read reports them, plus the index shape the struct's
-// doc comment names.
+// doc comment names. The per-column flags derive from the index list the way the schema
+// read derives them, so the fixture cannot drift from the derivation.
 func indexFixtureTables() map[string]*tableMetadata {
-	pk := columnMeta{IsPrimaryKey: true, IsIndex: true, IsUniqueIndex: true}
-	tenant := columnMeta{IsForeignKey: true, IsIndex: true, ReferencedTable: "Tenants", ReferencedColumn: "Id"}
+	pk := columnMeta{IsPrimaryKey: true}
+	tenant := columnMeta{IsForeignKey: true, ReferencedTable: "Tenants", ReferencedColumn: "Id"}
 	plain := columnMeta{}
+	nullable := columnMeta{IsNullable: true}
 	primaryKey := indexMeta{Name: "PRIMARY_KEY", PrimaryKey: true, Unique: true, Key: []indexColumn{{Column: "Id"}}}
 	backing := func(table string) indexMeta {
 		return indexMeta{Name: "IDX_" + table + "_TenantId", Managed: true, Key: []indexColumn{{Column: "TenantId"}}}
 	}
 
-	return map[string]*tableMetadata{
+	tables := map[string]*tableMetadata{
 		"Tenants": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk}, Indexes: []indexMeta{primaryKey}},
 		"Serveds": {PkCount: 1, Columns: map[string]columnMeta{
-			"Id": pk, "TenantId": tenant, "PlacedAt": {IsIndex: true}, "Priority": {IsIndex: true},
+			"Id": pk, "TenantId": tenant, "PlacedAt": plain, "Priority": plain, "Note": nullable,
 		}, Indexes: []indexMeta{primaryKey, backing("Serveds"), {
-			Name: "ServedsByTenantIdPlacedAtPriority",
-			Key:  []indexColumn{{Column: "TenantId"}, {Column: "PlacedAt", Descending: true}, {Column: "Priority"}},
+			Name:    "ServedsByTenantIdPlacedAtPriority",
+			Key:     []indexColumn{{Column: "TenantId"}, {Column: "PlacedAt", Descending: true}, {Column: "Priority"}},
+			Storing: []string{"Note"},
 		}}},
 		"Unserveds": {PkCount: 1, Columns: map[string]columnMeta{
 			"Id": pk, "TenantId": tenant, "PlacedAt": plain, "Priority": plain,
 		}, Indexes: []indexMeta{primaryKey, backing("Unserveds")}},
 		"Misdirecteds": {PkCount: 1, Columns: map[string]columnMeta{
-			"Id": pk, "TenantId": tenant, "PlacedAt": {IsIndex: true},
+			"Id": pk, "TenantId": tenant, "PlacedAt": plain,
 		}, Indexes: []indexMeta{primaryKey, backing("Misdirecteds"), {
 			Name: "MisdirectedsByTenantIdPlacedAt",
 			Key:  []indexColumn{{Column: "TenantId"}, {Column: "PlacedAt"}},
 		}}},
 		"NullFiltereds": {PkCount: 1, Columns: map[string]columnMeta{
-			"Id": pk, "TenantId": tenant, "PlacedAt": {IsIndex: true, IsNullable: true},
+			"Id": pk, "TenantId": tenant, "PlacedAt": nullable,
 		}, Indexes: []indexMeta{primaryKey, backing("NullFiltereds"), {
 			Name:         "NullFilteredsByTenantIdPlacedAt",
 			NullFiltered: true,
@@ -52,18 +55,33 @@ func indexFixtureTables() map[string]*tableMetadata {
 			"Id": pk, "TenantId": tenant, "Name": plain,
 		}, Indexes: []indexMeta{primaryKey, backing("Unordereds")}},
 		"Keyeds": {PkCount: 2, Columns: map[string]columnMeta{
-			"TenantId": {IsPrimaryKey: true, IsForeignKey: true, IsIndex: true, ReferencedTable: "Tenants", ReferencedColumn: "Id"},
-			"Sequence": {IsPrimaryKey: true, IsIndex: true, KeyOrdinalPosition: 1},
+			"TenantId": {IsPrimaryKey: true, IsForeignKey: true, ReferencedTable: "Tenants", ReferencedColumn: "Id"},
+			"Sequence": {IsPrimaryKey: true, KeyOrdinalPosition: 1},
 			"Name":     plain,
 		}, Indexes: []indexMeta{
 			{Name: "PRIMARY_KEY", PrimaryKey: true, Unique: true, Key: []indexColumn{{Column: "TenantId"}, {Column: "Sequence"}}},
 			backing("Keyeds"),
 		}},
+		"Positionals": {PkCount: 1, Columns: map[string]columnMeta{
+			"Id": pk, "TenantId": tenant, "PlacedAt": plain,
+		}, Indexes: []indexMeta{primaryKey, backing("Positionals"), {
+			Name: "PositionalsByTenantIdPlacedAt",
+			Key:  []indexColumn{{Column: "TenantId"}, {Column: "PlacedAt"}},
+		}}},
+		// The composite index leads with the foreign key, so Spanner manages no backing
+		// index for it.
 		"Routeds": {PkCount: 1, Columns: map[string]columnMeta{
-			"Id": pk, "UnservedId": {IsForeignKey: true, IsIndex: true, ReferencedTable: "Unserveds", ReferencedColumn: "Id"}, "Name": plain,
-		}, Indexes: []indexMeta{primaryKey, {Name: "IDX_Routeds_UnservedId", Managed: true, Key: []indexColumn{{Column: "UnservedId"}}}}},
-		"Globals": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Name": plain}, Indexes: []indexMeta{primaryKey}},
+			"Id": pk, "UnservedId": {IsForeignKey: true, ReferencedTable: "Unserveds", ReferencedColumn: "Id"}, "Name": plain,
+		}, Indexes: []indexMeta{primaryKey, {Name: "RoutedsByUnservedIdName", Key: []indexColumn{{Column: "UnservedId"}, {Column: "Name"}}}}},
+		"Globals": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "OwnerId": plain, "Name": plain}, Indexes: []indexMeta{
+			primaryKey, {Name: "GlobalsByOwnerIdName", Key: []indexColumn{{Column: "OwnerId"}, {Column: "Name"}}},
+		}},
 	}
+	for _, table := range tables {
+		table.deriveIndexFlags()
+	}
+
+	return tables
 }
 
 // TestSchemaWarnings pins the two generation-time schema warnings over the
@@ -200,8 +218,9 @@ func TestWarning_String(t *testing.T) {
 }
 
 // Test_tableMetadata_deriveIndexFlags pins the per-column flags the index composition
-// yields: keyed or stored is indexed; the whole key of a unique index identifies a row,
-// one column of a composite key or composite unique index does not.
+// yields: the leading column of any index is indexed, a trailing key column and a
+// stored column are not; the whole key of a unique index identifies a row, one column
+// of a composite key or composite unique index does not.
 func Test_tableMetadata_deriveIndexFlags(t *testing.T) {
 	t.Parallel()
 
@@ -216,14 +235,14 @@ func Test_tableMetadata_deriveIndexFlags(t *testing.T) {
 			want:    map[string]columnMeta{"Id": {IsIndex: true, IsUniqueIndex: true}, "UserId": {}, "Note": {}},
 		},
 		{
-			name:    "a composite primary key indexes its columns and identifies nothing by one",
+			name:    "a composite primary key indexes its leading column only and identifies nothing by one",
 			indexes: []indexMeta{{Name: "PRIMARY_KEY", PrimaryKey: true, Unique: true, Key: []indexColumn{{Column: "Id"}, {Column: "UserId"}}}},
-			want:    map[string]columnMeta{"Id": {IsIndex: true}, "UserId": {IsIndex: true}, "Note": {}},
+			want:    map[string]columnMeta{"Id": {IsIndex: true}, "UserId": {}, "Note": {}},
 		},
 		{
-			name:    "a composite unique index indexes its columns and identifies nothing by one",
+			name:    "a composite unique index indexes its leading column only and identifies nothing by one",
 			indexes: []indexMeta{{Name: "ByUserIdNote", Unique: true, Key: []indexColumn{{Column: "UserId"}, {Column: "Note"}}}},
-			want:    map[string]columnMeta{"Id": {}, "UserId": {IsIndex: true}, "Note": {IsIndex: true}},
+			want:    map[string]columnMeta{"Id": {}, "UserId": {IsIndex: true}, "Note": {}},
 		},
 		{
 			name:    "a non-unique single-column index identifies nothing",
@@ -236,9 +255,14 @@ func Test_tableMetadata_deriveIndexFlags(t *testing.T) {
 			want:    map[string]columnMeta{"Id": {}, "UserId": {IsIndex: true, IsUniqueIndex: true}, "Note": {}},
 		},
 		{
-			name:    "a stored column is indexed and never a key",
+			name:    "a stored column is not indexed",
 			indexes: []indexMeta{{Name: "ByUserId", Unique: true, Key: []indexColumn{{Column: "UserId"}}, Storing: []string{"Note"}}},
-			want:    map[string]columnMeta{"Id": {}, "UserId": {IsIndex: true, IsUniqueIndex: true}, "Note": {IsIndex: true}},
+			want:    map[string]columnMeta{"Id": {}, "UserId": {IsIndex: true, IsUniqueIndex: true}, "Note": {}},
+		},
+		{
+			name:    "a trailing column leads its own index too",
+			indexes: []indexMeta{{Name: "ByUserIdNote", Key: []indexColumn{{Column: "UserId"}, {Column: "Note"}}}, {Name: "ByNote", Key: []indexColumn{{Column: "Note"}}}},
+			want:    map[string]columnMeta{"Id": {}, "UserId": {IsIndex: true}, "Note": {IsIndex: true}},
 		},
 		{
 			name:    "a column the table does not report is skipped",
@@ -255,6 +279,77 @@ func Test_tableMetadata_deriveIndexFlags(t *testing.T) {
 			table.deriveIndexFlags()
 			if diff := cmp.Diff(tt.want, table.Columns); diff != "" {
 				t.Errorf("deriveIndexFlags() columns mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestResourceIndexFlags pins the per-field index flag over the indexfixture resources:
+// a leading column is indexed for every resource; the column directly after the tenant
+// column is indexed only for a resource whose bare @domain binds that column, whatever
+// the index's direction or null filtering; a later trailing column, a stored column, and
+// a trailing column behind a join path or on a global resource are not; a view's flag is
+// its tag.
+func TestResourceIndexFlags(t *testing.T) {
+	t.Parallel()
+
+	c := &client{tableMap: indexFixtureTables()}
+	pkg := loadFixture(t, "indexfixture")
+
+	tables, err := c.structsToResources(pkg.Structs)
+	if err != nil {
+		t.Fatalf("structsToResources() error = %v", err)
+	}
+	views, err := c.structsToVirtualResources([]*parser.Struct{fixtureStructs(pkg)["Projected"]})
+	if err != nil {
+		t.Fatalf("structsToVirtualResources() error = %v", err)
+	}
+	flags := make(map[string]map[string]bool)
+	for _, res := range append(tables, views...) {
+		flags[res.Name()] = make(map[string]bool, len(res.Fields))
+		for _, field := range res.Fields {
+			flags[res.Name()][field.Name()] = field.IsIndex
+		}
+	}
+
+	tests := []struct {
+		name     string
+		resource string
+		field    string
+		want     bool
+	}{
+		{name: "the tenant column leads its backing index", resource: "Served", field: "TenantID", want: true},
+		{name: "the column after the tenant column seeks with the tenant bound", resource: "Served", field: "PlacedAt", want: true},
+		{name: "the third key column has nothing bound before it", resource: "Served", field: "Priority", want: false},
+		{name: "a stored column scans the index", resource: "Served", field: "Note", want: false},
+		{name: "the second column's direction does not matter for a seek", resource: "Misdirected", field: "PlacedAt", want: true},
+		{name: "null filtering leaves the reading as for a leading column", resource: "NullFiltered", field: "PlacedAt", want: true},
+		{name: "a column no index keys after the tenant is not indexed", resource: "Unserved", field: "PlacedAt", want: false},
+		{name: "the second column of a tenant-leading primary key is indexed", resource: "Keyed", field: "Sequence", want: true},
+		{name: "a positional declaration on the tenant-second column is accepted, since the flag is known before the check", resource: "Positional", field: "PlacedAt", want: true},
+		{name: "a column outside every key is not indexed", resource: "Keyed", field: "Name", want: false},
+		{name: "a join-path resource's foreign key leads its index", resource: "Routed", field: "UnservedID", want: true},
+		{name: "a join path binds nothing on the row, so the column after the foreign key is not indexed", resource: "Routed", field: "Name", want: false},
+		{name: "a global resource's leading column is indexed", resource: "Global", field: "OwnerID", want: true},
+		{name: "a global resource binds nothing, so a trailing column is not indexed", resource: "Global", field: "Name", want: false},
+		{name: "a view's flag is its uniqueindex tag", resource: "Projected", field: "ID", want: true},
+		{name: "a view's untagged column is not indexed", resource: "Projected", field: "PlacedAt", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fields, ok := flags[tt.resource]
+			if !ok {
+				t.Fatalf("resource %s not extracted", tt.resource)
+			}
+			got, ok := fields[tt.field]
+			if !ok {
+				t.Fatalf("field %s.%s not extracted", tt.resource, tt.field)
+			}
+			if got != tt.want {
+				t.Errorf("%s.%s IsIndex = %v, want %v", tt.resource, tt.field, got, tt.want)
 			}
 		})
 	}

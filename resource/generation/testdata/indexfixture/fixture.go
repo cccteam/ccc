@@ -1,6 +1,7 @@
 // Package indexfixture provides parsed-struct fixtures for the generation-time schema
-// warnings: listed tenant-scoped resources whose table map (indexFixtureTables in the
-// tests) carries the index shapes the rule reads, one struct per outcome.
+// warnings and the per-field index flags: listed tenant-scoped resources whose table
+// map (indexFixtureTables in the tests) carries the index shapes the rules read, one
+// struct per outcome.
 package indexfixture
 
 import (
@@ -13,7 +14,9 @@ import (
 // in grouped type blocks like real project sources do.
 type (
 	// Served has the index it wants, with an extra trailing key column and the DESC
-	// direction matched: silent.
+	// direction matched: silent. The index stores Note. PlacedAt is indexed, since the
+	// list binds the tenant before it; Priority, third in the key, and Note, stored, are
+	// not.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -24,6 +27,7 @@ type (
 		TenantID string    `spanner:"TenantId"`
 		PlacedAt time.Time `spanner:"PlacedAt"`
 		Priority int64     `spanner:"Priority"`
+		Note     *string   `spanner:"Note"`
 	}
 
 	// Unserved has only the foreign key's backing index on the tenant column: warns,
@@ -103,8 +107,23 @@ type (
 		Name     string `spanner:"Name"`
 	}
 
+	// Positional declares masking:"positional" on the column after the tenant column in
+	// its composite index, with no @order and no allow_filter: accepted, since that
+	// column is indexed once the tenant anchor is known, which is why the declaration
+	// is checked only after the bindings resolve. No @order, so silent.
+	//
+	// @resource
+	// @permissionScope(domain)
+	Positional struct {
+		ID ccc.UUID `spanner:"Id"`
+		// @domain
+		TenantID string    `spanner:"TenantId"`
+		PlacedAt time.Time `spanner:"PlacedAt" masking:"positional"`
+	}
+
 	// Routed resolves its tenant through a join path: warns that its lists scan the
-	// table, whatever its indexes.
+	// table, whatever its indexes. Its composite index leads with the foreign key then
+	// Name; the join path binds nothing on the row, so Name is not indexed.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -116,13 +135,15 @@ type (
 		Name       string   `spanner:"Name"`
 	}
 
-	// Global has no tenant at all: silent.
+	// Global has no tenant at all: silent. Its composite index leads with OwnerId then
+	// Name; nothing binds OwnerId in its lists, so OwnerId is indexed and Name is not.
 	//
 	// @resource
 	// @order(Name asc)
 	Global struct {
-		ID   ccc.UUID `spanner:"Id"`
-		Name string   `spanner:"Name"`
+		ID      ccc.UUID `spanner:"Id"`
+		OwnerID ccc.UUID `spanner:"OwnerId"`
+		Name    string   `spanner:"Name"`
 	}
 
 	// Projected is a view with a bare @domain and no index behind its order: silent,

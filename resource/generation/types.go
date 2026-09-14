@@ -293,7 +293,11 @@ type columnMeta struct {
 	IsPrimaryKey bool
 	IsForeignKey bool
 	IsNullable   bool
-	// IsIndex marks a column some index of the table keys or stores.
+	// IsIndex marks a column that leads some index of the table, the PRIMARY_KEY index
+	// and Spanner's managed foreign-key indexes included: a filter on it alone has a
+	// seek path. A trailing key column and a stored column are not marked; a predicate
+	// on either alone scans the index. Whether a trailing column seeks with the tenant
+	// bound before it is a resource-level fact (resourceInfo.deriveTenantIndexFlags).
 	IsIndex bool
 	// IsUniqueIndex marks a column that alone identifies a row: some unique index,
 	// the PRIMARY_KEY index included, has exactly this column as its key. A column of
@@ -1064,8 +1068,13 @@ type resourceField struct {
 	Parent         *resourceInfo
 	typescriptType string
 	// Spanner stuff
-	IsPrimaryKey       bool
-	IsForeignKey       bool
+	IsPrimaryKey bool
+	IsForeignKey bool
+	// IsIndex says a filter on this field alone has a seek path, so the generated list
+	// struct tags it index:"true" and the metadata says filterable: 'always'. On a
+	// table-backed resource it is the column's table flag (leads some index) or, on a
+	// resource with a bare @domain column, the column directly after the tenant column
+	// in an index key (deriveTenantIndexFlags). On a view it is the authored tag.
 	IsIndex            bool
 	IsUniqueIndex      bool
 	IsNullable         bool

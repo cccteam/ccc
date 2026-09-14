@@ -76,25 +76,7 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 		resource.Fields = fields
 		declareFieldEnumerations(pStruct, fields, annotations)
 
-		if err := validateNullability(pStruct, table); err != nil {
-			resourceErrors = append(resourceErrors, err)
-
-			continue
-		}
-
-		if err := c.resolveStructAnnotations(resource, pStruct, annotations); err != nil {
-			resourceErrors = append(resourceErrors, err)
-
-			continue
-		}
-
-		if err := c.resolveBindingAnnotations(resource, pStruct, annotations, structsByTable); err != nil {
-			resourceErrors = append(resourceErrors, err)
-
-			continue
-		}
-
-		if err := c.resolveStateAnnotations(resource, pStruct, annotations); err != nil {
+		if err := c.resolveResource(resource, pStruct, annotations, structsByTable, table); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
@@ -114,6 +96,36 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 	}
 
 	return resources, nil
+}
+
+// resolveResource applies everything a table-backed resource declares beyond its
+// fields, in dependency order: nullability against the table, the struct annotations,
+// the bindings, the per-field index flags the tenant anchor decides, the positional
+// masking check that reads those flags, and the state annotations.
+func (c *client) resolveResource(resource *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations, structsByTable map[string]*parser.Struct, table *tableMetadata) error {
+	if err := validateNullability(pStruct, table); err != nil {
+		return err
+	}
+
+	if err := c.resolveStructAnnotations(resource, pStruct, annotations); err != nil {
+		return err
+	}
+
+	if err := c.resolveBindingAnnotations(resource, pStruct, annotations, structsByTable); err != nil {
+		return err
+	}
+
+	// The tenant anchor is known only now, and the field flag for the column after it
+	// in an index key depends on it.
+	resource.deriveTenantIndexFlags(table)
+
+	// With the order and the index flags known, a positional declaration can be
+	// checked against what a list of the resource sorts and filters by.
+	if err := checkMaskingDeclarations(resource); err != nil {
+		return err
+	}
+
+	return c.resolveStateAnnotations(resource, pStruct, annotations)
 }
 
 // resolveVirtualAnnotations applies a virtual resource's struct- and
@@ -197,12 +209,6 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 	}
 
 	if err := resolveResourcePaging(res, annotations); err != nil {
-		return err
-	}
-
-	// With the order known, a positional declaration can be checked against
-	// what a list of the resource sorts and filters by.
-	if err := checkMaskingDeclarations(res); err != nil {
 		return err
 	}
 
@@ -553,6 +559,39 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 	}
 
 	return fields, nil
+}
+
+// deriveTenantIndexFlags marks the fields a filter seeks with the tenant bound. The
+// generated list of a resource with a bare @domain column always binds that column by
+// equality (the partition filter), so the column directly after it in any index key
+// has a seek path of its own: an equality on the prefix, then a range on the column.
+// The table-level flag (deriveIndexFlags) knows no tenant and marks leading columns
+// only; this pass adds the tenant-second columns for exactly the resources whose lists
+// bind the tenant on the row. A join-path resource compares its foreign key to the
+// parent row, not to a parameter, and a global resource binds nothing, so both keep the
+// table flags alone. Direction does not matter for a seek, and null filtering leaves
+// the reading as it is for a leading column. A global request carries no partition
+// predicate, so for it the seek is an index scan, the same cost class as its ordered
+// list, which already sorts the whole table.
+func (r *resourceInfo) deriveTenantIndexFlags(table *tableMetadata) {
+	if r.DomainBinding == nil || len(r.DomainBinding.Path) > 0 {
+		return
+	}
+	anchor := fieldColumn(r.DomainBinding.Anchor)
+
+	byColumn := make(map[string]*resourceField, len(r.Fields))
+	for _, field := range r.Fields {
+		byColumn[fieldColumn(field)] = field
+	}
+
+	for _, index := range table.Indexes {
+		if len(index.Key) < 2 || index.Key[0].Column != anchor {
+			continue
+		}
+		if field, ok := byColumn[index.Key[1].Column]; ok {
+			field.IsIndex = true
+		}
+	}
 }
 
 func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) ([]*resourceField, error) {

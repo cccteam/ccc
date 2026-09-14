@@ -80,15 +80,19 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 				{Name: "OrdersByTenantIdPlacedAt", Key: []indexColumn{{Column: "TenantId"}, {Column: "PlacedAt", Descending: true}}, Storing: []string{"Note"}},
 				{Name: "PRIMARY_KEY", PrimaryKey: true, Unique: true, Key: []indexColumn{{Column: "Id"}}},
 			},
+			// PlacedAt trails TenantId in the composite index and leads nothing, so it is
+			// not indexed at table level. Note is stored by that index, which alone would
+			// not index it, but it leads OrdersByNote.
 			wantFlags: map[string][2]bool{
-				"Id": {true, true}, "TenantId": {true, false}, "PlacedAt": {true, false},
+				"Id": {true, true}, "TenantId": {true, false}, "PlacedAt": {false, false},
 				"Reference": {true, true}, "ExternalRef": {true, true}, "Note": {true, false},
 			},
 		},
 		{
 			// The foreign key on OrderId needs no backing index: the primary key leads
 			// with it, so Spanner manages none. Neither the composite key nor the
-			// composite unique index identifies a row by one column.
+			// composite unique index identifies a row by one column, and their trailing
+			// columns UserId and Row lead nothing, so they are not indexed.
 			name:  "a composite key and a composite unique index identify a row by no single column",
 			table: "Seats",
 			wantIndexes: []indexMeta{
@@ -96,7 +100,7 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 				{Name: "SeatsByNote", Key: []indexColumn{{Column: "Note"}}},
 				{Name: "SeatsByOrderIdRow", Unique: true, Key: []indexColumn{{Column: "OrderId"}, {Column: "Row"}}},
 			},
-			wantFlags: map[string][2]bool{"OrderId": {true, false}, "UserId": {true, false}, "Row": {true, false}, "Note": {true, false}},
+			wantFlags: map[string][2]bool{"OrderId": {true, false}, "UserId": {false, false}, "Row": {false, false}, "Note": {true, false}},
 		},
 	}
 
