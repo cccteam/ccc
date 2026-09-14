@@ -565,6 +565,17 @@ type tsAPIResource struct {
 	// the largest page it may ask for (0 = none, which also permits limit=all).
 	PageDefault uint64
 	PageMax     uint64
+	// Order is the declared @order as the descriptor carries it, each entry a JSON
+	// field name and direction, so a client knows a request without a sort is already
+	// ordered and issues cursors; empty when the resource declares none and lists by
+	// primary key.
+	Order []*tsAPISort
+}
+
+// tsAPISort is one entry of a descriptor's declared order.
+type tsAPISort struct {
+	Field     string
+	Direction string
 }
 
 // HandleType renders the ResourceHandle instantiation for the resource: the row type,

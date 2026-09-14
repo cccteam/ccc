@@ -763,6 +763,7 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 		Consolidated: res.IsConsolidated,
 		PageDefault:  pageDefault(res.PageDefault),
 		PageMax:      res.PageMax,
+		Order:        apiOrder(res.DeclaredOrder),
 	}
 
 	for _, field := range res.PrimaryKeys() {
@@ -817,6 +818,25 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 	return out
 }
 
+// apiOrder renders a declared @order for the descriptor: the JSON name of each field
+// and its direction, in the declared sequence; nil when nothing is declared.
+func apiOrder(declared []resource.SortField) []*tsAPISort {
+	if len(declared) == 0 {
+		return nil
+	}
+
+	order := make([]*tsAPISort, 0, len(declared))
+	for _, sf := range declared {
+		direction := "asc"
+		if sf.Direction == resource.SortDescending {
+			direction = "desc"
+		}
+		order = append(order, &tsAPISort{Field: strcase.ToCamel(sf.Field), Direction: direction})
+	}
+
+	return order
+}
+
 // pageDefault resolves an undeclared default page to the generator-wide size, so
 // the descriptor always states the page a limit-less request receives.
 func pageDefault(declared uint64) uint64 {
@@ -836,6 +856,7 @@ func (t *typescriptGenerator) apiComputedResource(res *computedResource) *tsAPIR
 		Scope:       res.PermissionScope,
 		PageDefault: pageDefault(res.PageDefault),
 		PageMax:     res.PageMax,
+		Order:       apiOrder(res.DeclaredOrder),
 	}
 	for _, field := range res.PrimaryKeys() {
 		out.Keys = append(out.Keys, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})

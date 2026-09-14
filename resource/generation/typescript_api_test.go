@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 )
 
 // Test_apiClientData pins how the generator derives the client surface from a
@@ -67,6 +68,23 @@ func Test_apiClientData(t *testing.T) {
 				"domainRoute:",     // no domain-scoped targets
 				"MethodHandle",     // no methods
 				"import { Methods", // ...so no method constants
+				"order:",           // no declared order: the list is in primary-key order
+			},
+		},
+		{
+			name: "a declared order reaches the descriptor as JSON names and directions",
+			generator: func() *typescriptGenerator {
+				widget := fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
+					typed(res)
+					res.DeclaredOrder = []resource.SortField{
+						{Field: "ListedName", Direction: resource.SortDescending},
+						{Field: "Name", Direction: resource.SortAscending},
+					}
+				})
+				return &typescriptGenerator{client: &client{resources: []*resourceInfo{widget}}}
+			},
+			wantContains: []string{
+				"page: { default: 50 },\n      order: [{ field: 'listedName', direction: 'desc' }, { field: 'name', direction: 'asc' }],",
 			},
 		},
 		{

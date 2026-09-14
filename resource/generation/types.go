@@ -754,6 +754,18 @@ func (c *computedField) AllowFilterTag() string {
 	return ""
 }
 
+// TypescriptFilterable is the filterable value the TypeScript field metadata carries
+// for a computed field: 'always' for an allow_filter field, since a computed resource
+// filters in its List function and needs no indexed companion in the filter, and
+// nothing otherwise; see resourceField.TypescriptFilterable.
+func (c *computedField) TypescriptFilterable() string {
+	if _, ok := c.LookupTag(allowFilterTagKey); ok {
+		return tsFilterableAlways
+	}
+
+	return ""
+}
+
 // PermTag renders the perm:"-" primary-key exemption marker on @primarykey fields; see
 // resourceField.PermTag.
 func (c *computedField) PermTag() string {
@@ -1150,6 +1162,12 @@ func (f *resourceField) JSONTagForPatch() string {
 
 const indexTrue string = indexTagKey + `:"true"`
 
+// The FieldMeta.filterable values of the TypeScript metadata.
+const (
+	tsFilterableAlways      = "always"
+	tsFilterableWithIndexed = "withIndexed"
+)
+
 func (f *resourceField) IndexTag() string {
 	if f.IsIndex {
 		return indexTrue
@@ -1312,6 +1330,24 @@ func (f *resourceField) IsQueryClauseEligible() bool {
 	}
 
 	return f.HasTag(allowFilterTagKey)
+}
+
+// TypescriptFilterable is the filterable value the TypeScript field metadata carries:
+// the same eligibility the query decoder applies, so the browser knows which columns
+// the server will filter. An indexed or unique-indexed field is 'always'. An
+// allow_filter field is 'withIndexed': the database parse accepts the filter only when
+// it also touches an indexed field, since once one index has narrowed the rows a second
+// is rarely used and indexes are a scarce commodity, so allow_filter conserves them.
+// Any other field carries nothing, and a filter naming it is refused.
+func (f *resourceField) TypescriptFilterable() string {
+	if f.IsIndex || f.IsUniqueIndex {
+		return tsFilterableAlways
+	}
+	if f.HasTag(allowFilterTagKey) {
+		return tsFilterableWithIndexed
+	}
+
+	return ""
 }
 
 func generatedGoFileName(name string) string {
