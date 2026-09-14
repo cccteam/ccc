@@ -10,7 +10,10 @@ type (
 	// Zone is the attribute Ship reaches through a one-hop join path (hangarZone !=
 	// 'quarantine').
 	//
-	// Demonstrates: @domain, consolidation.exclusion.
+	// Ships reference their hangar with no cascade, so deleting a hangar that still holds
+	// ships is refused at commit; the refusal answers 409 naming Hangars, never the ships.
+	//
+	// Demonstrates: @domain, consolidation.exclusion, commit.referential-refusal.
 	//
 	// @resource
 	// @permissionScope(domain)
