@@ -179,7 +179,7 @@ func TestEnumeratedMetadata(t *testing.T) {
 		{
 			name: "a foreign key names the view over its target, not the target",
 			file: "zz_gen_resources.ts",
-			want: "{ fieldName: 'clientId', displayType: 'enumerated', required: true, isIndex: true, enumeratedResource: Resources.ClientRosters }",
+			want: "{ fieldName: 'clientId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.ClientRosters }",
 		},
 		{
 			name: "a request field naming an enum table carries the values inline",

@@ -17,7 +17,11 @@ type (
 	// name, so a row opens the mission's page, an edit patches Missions, and a delete
 	// removes the mission; the view's other columns are its own and never written.
 	//
-	// Demonstrates: @rowsOf, @rowsOf.same-row, @virtual, virtual.domain.
+	// DaysLeft is computed in the SQL and indexed by nothing, so it is allow_filter:
+	// its metadata says filterable: withIndexed, and the browser offers a days-left
+	// filter only beside one on an indexed column, the rule the database parse enforces.
+	//
+	// Demonstrates: @rowsOf, @rowsOf.same-row, @virtual, virtual.domain, metadata.filterable.
 	//
 	// @virtual
 	// @rowsOf(Missions)
@@ -35,7 +39,7 @@ type (
 		KindID       string    `spanner:"KindId"       index:"true"`
 		StatusID     string    `spanner:"StatusId"     index:"true"`
 		Deadline     time.Time `spanner:"Deadline"     index:"true"`
-		DaysLeft     int64     `spanner:"DaysLeft"`
+		DaysLeft     int64     `spanner:"DaysLeft"     allow_filter:"true"`
 	}
 )
 

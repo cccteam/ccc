@@ -229,8 +229,8 @@ func TestRowsOfMetadata(t *testing.T) {
 		{name: "the assignments name SquadronMemberships too", want: "[Resources.PilotAssignments]: {\n    route: 'sectors/{sectorID}/pilot-assignments',\n    rowsOf: Resources.SquadronMemberships,"},
 		{name: "an undeclared view names nothing and stays a read-only list", want: "[Resources.OpenMissionsBySquadrons]: {\n    route: 'sectors/{sectorID}/open-missions-by-squadrons',\n    readDisabled: true,"},
 		{name: "the roster's pilot id names Pilots, the row route's target", want: "{ fieldName: 'pilotId', displayType: 'enumerated', required: false, isIndex: false, enumeratedResource: Resources.Pilots }"},
-		{name: "the assignments' squadron key names Squadrons, the row route's target", want: "{ fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'enumerated', required: false, isIndex: true, enumeratedResource: Resources.Squadrons }"},
-		{name: "the roster carries the table's compound key", want: "{ fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true },\n      { fieldName: 'userId', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },"},
+		{name: "the assignments' squadron key names Squadrons, the row route's target", want: "{ fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'enumerated', required: false, isIndex: true, filterable: 'always', enumeratedResource: Resources.Squadrons }"},
+		{name: "the roster carries the table's compound key", want: "{ fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },\n      { fieldName: 'userId', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },"},
 		{name: "the table names no view", want: "rowsOf: Resources.SquadronRosters", absence: true},
 	}
 

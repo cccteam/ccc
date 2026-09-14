@@ -19,7 +19,7 @@ import (
 
 func (a *App) MissionBoards() http.HandlerFunc {
 	type missionBoard struct {
-		ID           ccc.UUID  `json:"id"           index:"true" perm:"-"`
+		ID           ccc.UUID  `json:"id"           index:"true"        perm:"-"`
 		SectorID     string    `json:"sectorId"     index:"true"`
 		Title        string    `json:"title"        index:"true"`
 		ClientName   string    `json:"clientName"   index:"true"`
@@ -27,12 +27,13 @@ func (a *App) MissionBoards() http.HandlerFunc {
 		KindID       string    `json:"kindId"       index:"true"`
 		StatusID     string    `json:"statusId"     index:"true"`
 		Deadline     time.Time `json:"deadline"     index:"true"`
-		DaysLeft     int64     `json:"daysLeft"`
+		DaysLeft     int64     `json:"daysLeft"     allow_filter:"true"`
 	}
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[virtualresources.MissionBoard, missionBoard](a, accesstypes.List)
+	decoder := NewQueryDecoder[virtualresources.MissionBoard, missionBoard](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "Deadline", Direction: resource.SortAscending}}, DefaultLimit: 25, MaxLimit: 200})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())

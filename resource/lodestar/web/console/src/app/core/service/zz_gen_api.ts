@@ -401,6 +401,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'name', direction: 'asc' }],
       patchable: ['name', 'contactName', 'contactEmail', 'trusted'],
     },
     [Resources.ClientContacts]: {
@@ -412,6 +413,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'displayName', direction: 'asc' }],
       patchable: ['userId', 'clientId', 'displayName'],
     },
     [Resources.ClientRosters]: {
@@ -422,7 +424,8 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['id'],
       operations: ['list'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
+      order: [{ field: 'name', direction: 'asc' }],
     },
     [Resources.Consignments]: {
       resource: Resources.Consignments,
@@ -433,6 +436,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 10, max: 100 },
+      order: [{ field: 'releasedAt', direction: 'desc' }],
       patchable: ['clientId', 'description', 'mass', 'expiresOn', 'releasedAt'],
     },
     [Resources.DistressCalls]: {
@@ -444,6 +448,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 10, max: 100 },
+      order: [{ field: 'severity', direction: 'desc' }],
       patchable: ['summary', 'severity', 'callerContact', 'transcript'],
     },
     [Resources.FeeByKinds]: {
@@ -454,7 +459,8 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['kindId'],
       operations: ['list'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
+      order: [{ field: 'totalFee', direction: 'desc' }],
     },
     [Resources.Hangars]: {
       resource: Resources.Hangars,
@@ -465,6 +471,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'name', direction: 'asc' }],
       patchable: ['name', 'zone'],
     },
     [Resources.Missions]: {
@@ -476,6 +483,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'deadline', direction: 'asc' }],
       patchable: ['clientId', 'kindId', 'title', 'brief', 'briefingTemplateId', 'hazard', 'fee', 'deadline', 'requiredCertId', 'assignedSquadronId', 'notes', 'settlement'],
     },
     [Resources.MissionBoards]: {
@@ -486,7 +494,8 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['id'],
       operations: ['list'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
+      order: [{ field: 'deadline', direction: 'asc' }],
     },
     [Resources.MissionDocuments]: {
       resource: Resources.MissionDocuments,
@@ -497,6 +506,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'uploadedAt', direction: 'desc' }],
     },
     [Resources.OpenMissionsBySquadrons]: {
       resource: Resources.OpenMissionsBySquadrons,
@@ -506,7 +516,8 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['squadronId', 'sectorId'],
       operations: ['list'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
+      order: [{ field: 'openMissions', direction: 'desc' }],
     },
     [Resources.Pilots]: {
       resource: Resources.Pilots,
@@ -517,6 +528,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 10 },
+      order: [{ field: 'displayName', direction: 'asc' }],
       patchable: ['userId', 'displayName', 'clearance', 'feeLimit'],
     },
     [Resources.PilotAssignments]: {
@@ -527,7 +539,8 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['squadronId', 'userId'],
       operations: ['list'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
+      order: [{ field: 'squadronName', direction: 'asc' }],
     },
     [Resources.PilotCertifications]: {
       resource: Resources.PilotCertifications,
@@ -538,6 +551,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['userId', 'certificationId'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'userId', direction: 'asc' }],
       patchable: [],
     },
     [Resources.Refits]: {
@@ -549,6 +563,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 10, max: 100 },
+      order: [{ field: 'statusId', direction: 'asc' }],
       patchable: ['shipId', 'estimate', 'notes'],
     },
     [Resources.RefitTasks]: {
@@ -560,6 +575,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['refitId', 'taskNumber'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'taskNumber', direction: 'asc' }],
       patchable: ['instructions', 'done', 'notes'],
     },
     [Resources.Sectors]: {
@@ -571,6 +587,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'name', direction: 'asc' }],
       patchable: ['name', 'region', 'established'],
     },
     [Resources.Ships]: {
@@ -582,6 +599,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 10, max: 100 },
+      order: [{ field: 'name', direction: 'asc' }],
       patchable: ['hangarId', 'classId', 'name'],
     },
     [Resources.ShipClasses]: {
@@ -593,6 +611,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'designation', direction: 'asc' }],
       patchable: ['roleId', 'tonnage', 'hardened'],
     },
     [Resources.Sorties]: {
@@ -604,6 +623,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 10, max: 100 },
+      order: [{ field: 'launchedAt', direction: 'desc' }],
       patchable: ['missionId', 'shipId', 'pilotUserId', 'launchedAt', 'returnedAt', 'debrief'],
     },
     [Resources.SortieExpenses]: {
@@ -615,6 +635,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 10, max: 100 },
+      order: [{ field: 'amount', direction: 'desc' }],
       patchable: ['sortieId', 'category', 'amount', 'note'],
     },
     [Resources.Squadrons]: {
@@ -626,6 +647,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'name', direction: 'asc' }],
       patchable: ['wingId', 'name'],
     },
     [Resources.SquadronMemberships]: {
@@ -637,6 +659,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['squadronId', 'userId'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'userId', direction: 'asc' }],
       patchable: [],
     },
     [Resources.SquadronRosters]: {
@@ -647,7 +670,8 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['squadronId', 'userId'],
       operations: ['list'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
+      order: [{ field: 'pilotName', direction: 'asc' }],
     },
     [Resources.Wings]: {
       resource: Resources.Wings,
@@ -658,6 +682,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'name', direction: 'asc' }],
       patchable: ['name'],
     },
     [Resources.BriefingTemplates]: {
@@ -669,6 +694,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list'],
       page: { default: 50 },
+      order: [{ field: 'name', direction: 'asc' }],
     },
     [Resources.PilotCards]: {
       resource: Resources.PilotCards,
@@ -679,6 +705,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['userId'],
       operations: ['list'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'displayName', direction: 'asc' }],
     },
     [Resources.SectorHazardBoards]: {
       resource: Resources.SectorHazardBoards,
@@ -689,6 +716,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['shipId', 'subsystem'],
       operations: ['list', 'read'],
       page: { default: 10 },
+      order: [{ field: 'worstReading', direction: 'desc' }],
     },
     [Resources.ServiceLedgers]: {
       resource: Resources.ServiceLedgers,
@@ -699,6 +727,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['sectorId'],
       operations: ['list'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'feesOutstanding', direction: 'desc' }],
     },
   },
   methods: {

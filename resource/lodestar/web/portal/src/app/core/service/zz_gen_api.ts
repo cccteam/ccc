@@ -103,6 +103,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'displayName', direction: 'asc' }],
       patchable: ['userId', 'clientId', 'displayName'],
     },
     [Resources.ClientRosters]: {
@@ -113,7 +114,8 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: false,
       keys: ['id'],
       operations: ['list'],
-      page: { default: 50 },
+      page: { default: 25, max: 200 },
+      order: [{ field: 'name', direction: 'asc' }],
     },
     [Resources.DistressCalls]: {
       resource: Resources.DistressCalls,
@@ -124,6 +126,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 10, max: 100 },
+      order: [{ field: 'severity', direction: 'desc' }],
       patchable: ['summary', 'severity', 'callerContact', 'transcript'],
     },
     [Resources.Missions]: {
@@ -135,6 +138,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'deadline', direction: 'asc' }],
       patchable: ['clientId', 'kindId', 'title', 'brief', 'briefingTemplateId', 'hazard', 'fee', 'deadline', 'requiredCertId', 'assignedSquadronId', 'notes', 'settlement'],
     },
     [Resources.MissionDocuments]: {
@@ -146,6 +150,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list', 'read'],
       page: { default: 25, max: 200 },
+      order: [{ field: 'uploadedAt', direction: 'desc' }],
     },
     [Resources.BriefingTemplates]: {
       resource: Resources.BriefingTemplates,
@@ -156,6 +161,7 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list'],
       page: { default: 50 },
+      order: [{ field: 'name', direction: 'asc' }],
     },
   },
   methods: {

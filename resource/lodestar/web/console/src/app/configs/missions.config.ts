@@ -18,7 +18,19 @@ import { enumeratedConfig, field, listViewConfig, rootConfig, section } from '@c
 // persona without List on the view, or on a picker's resource, sees that request
 // refused, never a substitute resource.
 //
-// Demonstrates: picker.config-driven, @enumerate.plain-column, @enumerate.key-view, picker.read-disabled, @rowsOf.same-row.
+// The list is paged by the server, and only there: the page asks for one page of the
+// board at the size the view's descriptor declares (no pageSize here, so the @page
+// default applies), the grid shows it with First, Previous, and Next following the
+// server's cursors and the first page's total kept while turning, and a header click or
+// a column filter is a request parameter, so the server orders and narrows every row of
+// the board. The filter controls follow the generated metadata: the indexed columns
+// (title, client, squadron, status, deadline) filter always, and days left, computed in
+// the SQL and indexed by nothing but declared allow_filter, filters only beside one of
+// them — its control waits, with a hint, until an indexed filter is in the request, and
+// clearing the last indexed filter clears it too. A page size over the view's maximum,
+// or a filter the server refuses, is shown in the server's words.
+//
+// Demonstrates: picker.config-driven, @enumerate.plain-column, @enumerate.key-view, picker.read-disabled, @rowsOf.same-row, list.server-paged, metadata.filterable.
 export const missionsConfig = rootConfig({
   nav: { navItem: { label: 'Missions (config page)' }, group: 'Sector Ops' },
   routeData: { route: 'sector/missions' },

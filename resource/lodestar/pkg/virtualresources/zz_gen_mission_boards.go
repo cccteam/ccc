@@ -243,6 +243,10 @@ func (p MissionBoardQueryPartialClause) Deadline() MissionBoardQueryIdent[time.T
 	return MissionBoardQueryIdent[time.Time]{Ident: resource.NewIdent[time.Time]("Deadline", p.partialClause, true)}
 }
 
+func (p MissionBoardQueryPartialClause) DaysLeft() MissionBoardQueryIdent[int64] {
+	return MissionBoardQueryIdent[int64]{Ident: resource.NewIdent[int64]("DaysLeft", p.partialClause, false)}
+}
+
 type MissionBoardQueryClause struct {
 	clause resource.QueryClause
 }

@@ -154,7 +154,13 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 - `web/`: one bun workspace, two Angular applications: `console/` (default outlet) and
   `portal/` (portal outlet), each over its own generated TypeScript client. The console's
   [`star-chart`](web/console/src/app/components/sector/sector.service.ts) carries the one
-  labeled bypass of the digest-first rule.
+  labeled bypass of the digest-first rule. Two consumers page on the server: the
+  hand-written flight deck, and the library's config-driven list on the
+  [Missions page](web/console/src/app/configs/missions.config.ts)
+  ([`list.server-paged`](web/console/src/app/configs/missions.config.ts)), which asks for
+  one page of the mission board at the descriptor's size, turns it by the server's cursors,
+  and draws a filter control only on the columns the generated metadata marks filterable
+  ([`metadata.filterable`](pkg/resources/missions.go)).
 - `test/authz`: the generated authorization matrix; `test/integration`: the suites (§9),
   including [`paging.nullable-sort`](test/integration/paging_test.go),
   [`rpc.armed-read`](test/integration/rpc_forms_test.go),

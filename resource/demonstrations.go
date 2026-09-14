@@ -160,6 +160,8 @@ var Demonstrations = []Demonstration{
 	{"paging.survives-writes", "A walk that sees each row once across inserts and deletes before its position."},
 	{"paging.sealed-cursor", "The cursor is a sealed token carrying nothing readable."},
 	{"paging.descriptor-sizes", "The browser reads page sizes from the generated descriptor, never a literal."},
+	{"list.server-paged", "The library's config-driven list is a server-paged consumer: one page at the descriptor's size, First, Previous, and Next by the server's cursors, the first page's total kept while turning, sort and filter as request parameters, and a refused filter or page size shown in the server's words."},
+	{"metadata.filterable", "FieldMeta.filterable: the browser learns which columns the server filters from the generated metadata — always for an indexed field and a computed resource's allow_filter field, withIndexed for a table or view allow_filter field, which the server accepts only beside an indexed one — and draws a filter control nowhere else."},
 	{"permission-digest", "The permission digest: advisory grant structure the browser gates every request on."},
 
 	// RPC.

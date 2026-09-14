@@ -37,7 +37,11 @@ type (
 	// holds an identifier from the BriefingTemplates catalog, which lives in Go, not in
 	// the schema, so nothing but the declaration says what the picker lists.
 	//
-	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view.
+	// Fee is allow_filter on an unindexed column, so its metadata says filterable:
+	// withIndexed — the browser offers a fee filter only beside one on an indexed
+	// column, the same rule the database parse enforces.
+	//
+	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view, metadata.filterable.
 	//
 	// @resource
 	// @permissionScope(domain)

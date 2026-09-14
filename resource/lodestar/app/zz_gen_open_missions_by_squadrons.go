@@ -28,7 +28,8 @@ func (a *App) OpenMissionsBySquadrons() http.HandlerFunc {
 
 	type response []map[string]any
 
-	decoder := NewQueryDecoder[virtualresources.OpenMissionsBySquadron, openMissionsBySquadron](a, accesstypes.List)
+	decoder := NewQueryDecoder[virtualresources.OpenMissionsBySquadron, openMissionsBySquadron](a, accesstypes.List).
+		WithPaging(resource.Paging{Order: []resource.SortField{{Field: "OpenMissions", Direction: resource.SortDescending}}, DefaultLimit: 25, MaxLimit: 200})
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
