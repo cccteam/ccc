@@ -27,7 +27,7 @@ func (a *App) Consignments() http.HandlerFunc {
 		Description string     `json:"description"`
 		Mass        float64    `json:"mass"        allow_filter:"true"`
 		ExpiresOn   civil.Date `json:"expiresOn"`
-		ReleasedAt  *time.Time `json:"releasedAt"`
+		ReleasedAt  *time.Time `json:"releasedAt"  index:"true"`
 	}
 
 	type response []map[string]any

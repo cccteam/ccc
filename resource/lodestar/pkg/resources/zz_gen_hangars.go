@@ -203,6 +203,10 @@ func (p HangarQueryPartialClause) SectorID() HangarQueryIdent[string] {
 	return HangarQueryIdent[string]{Ident: resource.NewIdent[string]("SectorID", p.partialClause, true)}
 }
 
+func (p HangarQueryPartialClause) Name() HangarQueryIdent[string] {
+	return HangarQueryIdent[string]{Ident: resource.NewIdent[string]("Name", p.partialClause, true)}
+}
+
 type HangarQueryClause struct {
 	clause resource.QueryClause
 }

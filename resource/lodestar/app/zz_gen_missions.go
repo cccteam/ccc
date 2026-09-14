@@ -20,7 +20,7 @@ import (
 
 func (a *App) Missions() http.HandlerFunc {
 	type mission struct {
-		ID                 ccc.UUID            `json:"id"                 index:"true"         perm:"-"`
+		ID                 ccc.UUID            `json:"id"                 index:"true"        perm:"-"`
 		SectorID           string              `json:"sectorId"           index:"true"`
 		ClientID           ccc.UUID            `json:"clientId"           index:"true"`
 		KindID             string              `json:"kindId"             index:"true"`
@@ -29,7 +29,7 @@ func (a *App) Missions() http.HandlerFunc {
 		BriefingTemplateID *string             `json:"briefingTemplateId"`
 		Hazard             int64               `json:"hazard"`
 		Fee                decimal.Decimal     `json:"fee"                allow_filter:"true"`
-		Deadline           time.Time           `json:"deadline"           masking:"positional"`
+		Deadline           time.Time           `json:"deadline"           index:"true"        masking:"positional"`
 		RequiredCertID     *string             `json:"requiredCertId"     index:"true"`
 		BookedBy           string              `json:"bookedBy"`
 		AssignedSquadronID ccc.NullUUID        `json:"assignedSquadronId" index:"true"`

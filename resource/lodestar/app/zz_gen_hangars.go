@@ -22,7 +22,7 @@ func (a *App) Hangars() http.HandlerFunc {
 	type hangar struct {
 		ID       ccc.UUID `json:"id"       index:"true" perm:"-"`
 		SectorID string   `json:"sectorId" index:"true"`
-		Name     string   `json:"name"`
+		Name     string   `json:"name"     index:"true"`
 		Zone     string   `json:"zone"`
 	}
 

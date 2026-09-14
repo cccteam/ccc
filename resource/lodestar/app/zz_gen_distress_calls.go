@@ -21,7 +21,7 @@ func (a *App) DistressCalls() http.HandlerFunc {
 		ID            ccc.UUID `json:"id"            index:"true" perm:"-"`
 		SectorID      string   `json:"sectorId"      index:"true"`
 		Summary       string   `json:"summary"`
-		Severity      int64    `json:"severity"`
+		Severity      int64    `json:"severity"      index:"true"`
 		CallerContact *string  `json:"callerContact" pii:"true"`
 		Transcript    *string  `json:"-"`
 		CaseNumber    string   `json:"caseNumber"    index:"true"`

@@ -251,6 +251,10 @@ func (p DistressCallQueryPartialClause) SectorID() DistressCallQueryIdent[string
 	return DistressCallQueryIdent[string]{Ident: resource.NewIdent[string]("SectorID", p.partialClause, true)}
 }
 
+func (p DistressCallQueryPartialClause) Severity() DistressCallQueryIdent[int64] {
+	return DistressCallQueryIdent[int64]{Ident: resource.NewIdent[int64]("Severity", p.partialClause, true)}
+}
+
 func (p DistressCallQueryPartialClause) CaseNumber() DistressCallQueryIdent[string] {
 	return DistressCallQueryIdent[string]{Ident: resource.NewIdent[string]("CaseNumber", p.partialClause, true)}
 }

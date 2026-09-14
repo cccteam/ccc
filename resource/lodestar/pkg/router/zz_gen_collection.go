@@ -88,7 +88,7 @@ func Collection() *resource.GeneratedCollection {
 				},
 				Domain:    &resource.DomainBindingData{Column: "SectorId"},
 				Order:     []accesstypes.Tag{"releasedAt"},
-				QueryKeys: []accesstypes.Tag{"sectorId", "clientId", "bondCode", "mass"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "clientId", "bondCode", "mass", "releasedAt"},
 			},
 			{
 				Name:        "DistressCalls",
@@ -109,7 +109,7 @@ func Collection() *resource.GeneratedCollection {
 				},
 				Domain:    &resource.DomainBindingData{Column: "SectorId"},
 				Order:     []accesstypes.Tag{"severity"},
-				QueryKeys: []accesstypes.Tag{"sectorId", "caseNumber"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "severity", "caseNumber"},
 			},
 			{
 				Name:        "DroidReports",
@@ -159,7 +159,7 @@ func Collection() *resource.GeneratedCollection {
 				},
 				Domain:    &resource.DomainBindingData{Column: "SectorId"},
 				Order:     []accesstypes.Tag{"name"},
-				QueryKeys: []accesstypes.Tag{"sectorId"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "name"},
 			},
 			{
 				Name:        "HoldMission",
@@ -265,7 +265,7 @@ func Collection() *resource.GeneratedCollection {
 				},
 				Domain:    &resource.DomainBindingData{Column: "SectorId"},
 				Order:     []accesstypes.Tag{"deadline"},
-				QueryKeys: []accesstypes.Tag{"sectorId", "clientId", "kindId", "fee", "requiredCertId", "assignedSquadronId", "statusId"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "clientId", "kindId", "fee", "deadline", "requiredCertId", "assignedSquadronId", "statusId"},
 			},
 			{
 				Name:        "OpenMissionsBySquadrons",

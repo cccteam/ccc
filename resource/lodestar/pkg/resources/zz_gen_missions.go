@@ -325,6 +325,10 @@ func (p MissionQueryPartialClause) Fee() MissionQueryIdent[decimal.Decimal] {
 	return MissionQueryIdent[decimal.Decimal]{Ident: resource.NewIdent[decimal.Decimal]("Fee", p.partialClause, false)}
 }
 
+func (p MissionQueryPartialClause) Deadline() MissionQueryIdent[time.Time] {
+	return MissionQueryIdent[time.Time]{Ident: resource.NewIdent[time.Time]("Deadline", p.partialClause, true)}
+}
+
 func (p MissionQueryPartialClause) RequiredCertID() MissionQueryIdent[string] {
 	return MissionQueryIdent[string]{Ident: resource.NewIdent[string]("RequiredCertID", p.partialClause, true)}
 }

@@ -22,7 +22,12 @@ type (
 	// ship's log with every field unchanged, and so a refused delete of a ship under
 	// refit proves the change event buffered beside it is not named in the 409.
 	//
-	// Demonstrates: @domain.join-path, @attribute.join-path, @attribute.join-path-global, immutable, output_only_update_fn, transition-owned-timestamp, change-tracking, commit.referential-refusal.
+	// No column on a ship names its sector, so a list of ships scans the whole table,
+	// every sector, and no index on Ships changes that; the generator says so at every
+	// generate, for this and every other join-path resource. The fleet is small and
+	// parent-scoped, which is what a join path suits.
+	//
+	// Demonstrates: @domain.join-path, @attribute.join-path, @attribute.join-path-global, immutable, output_only_update_fn, transition-owned-timestamp, change-tracking, commit.referential-refusal, warning.join-path-list.
 	//
 	// @resource
 	// @permissionScope(domain)

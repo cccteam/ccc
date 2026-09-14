@@ -16,7 +16,12 @@ type (
 	// The tenant column is stamped by IngestDroidReports from the ship's hangar; the
 	// payload never asserts its own tenancy.
 	//
-	// Demonstrates: outlet.exclusive, @suppress, machine-identity.
+	// The table has no index leading with SectorId then RecordedAt on purpose: the
+	// resource is the registered demonstration of the generator's index warning, which
+	// names the CREATE INDEX the list wants at every generate. Every other bare-tenant
+	// resource that lists in a declared order carries that index (migration 000032).
+	//
+	// Demonstrates: outlet.exclusive, @suppress, machine-identity, warning.tenant-index.
 	//
 	// @resource
 	// @permissionScope(domain)
