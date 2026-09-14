@@ -16,7 +16,7 @@
 // names carries its name. The same name in this auth and in another is two unrelated
 // principals.
 //
-// Demonstrates: auth.directory-roles, auth.two-populations, auth.skipauth-directory.
+// Demonstrates: auth.directory-roles, auth.two-populations, auth.skipauth-directory, auth.login-refusal-code.
 package members
 
 import (
@@ -63,8 +63,9 @@ type Settings struct {
 	CookieKey string
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration
-	// LoginURL is the browser page a refused login returns to, with the reason in the
-	// query (?message=): the login page of the surface that binds to this auth.
+	// LoginURL is the browser page a refused login returns to, with the reason as a code
+	// in the query (?code=, a sessioninfo.LoginRefusalCode, never text): the login page of
+	// the surface that binds to this auth, which holds the sentence for each code.
 	LoginURL string
 	// Directory identifies the application to the directory that verifies its logins.
 	Directory Directory

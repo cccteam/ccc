@@ -9,6 +9,10 @@ import (
 // portalPage is the browser page a portal login returns to.
 const portalPage = "/portal/tracker"
 
+// portalLogin is the portal's login page: where a refused login returns, with the reason as
+// a code in the query and nothing else.
+const portalLogin = "/portal/login"
+
 // TestPortalOutlet drives the portal the way its browser application does: sign in
 // through the directory under the portal prefix as a client whose groups name the
 // client-portal role, read the portal's sector list and digest, confirm a console-only
@@ -67,11 +71,13 @@ func TestPortalOutlet(t *testing.T) {
 	}
 }
 
-// TestPortalLoginNeedsARole proves the directory's authority: a login whose groups name no
-// role the members store knows is refused and returned to the portal's login page with
-// the reason.
+// TestPortalLoginNeedsARole proves the directory's authority and the shape of a refusal: a
+// login whose groups name no role the members store knows is refused and returned to the
+// portal's login page, and the Location is the login page with a query of exactly
+// code=no_roles: the reason is a code the page maps to its own sentence, never text, so
+// nothing a page could render arrives in the URL.
 //
-// Demonstrates: auth.directory-roles.
+// Demonstrates: auth.directory-roles, auth.login-refusal-code.
 func TestPortalLoginNeedsARole(t *testing.T) {
 	t.Parallel()
 
@@ -80,8 +86,8 @@ func TestPortalLoginNeedsARole(t *testing.T) {
 	b := newBrowser(t, s, portalAPI)
 
 	status, location := b.loginPortal(ctx, "stranger", "not-a-role")
-	if status != http.StatusFound || location == portalPage {
-		t.Fatalf("portal login with no known role: status %d to %q, want a redirect back to the login page", status, location)
+	if want := portalLogin + "?code=no_roles"; status != http.StatusFound || location != want {
+		t.Fatalf("portal login with no known role: status %d to %q, want %d to %q", status, location, http.StatusFound, want)
 	}
 	if status, body := b.do(ctx, http.MethodGet, portalAPI+"/user-domains", nil); status != http.StatusUnauthorized {
 		t.Errorf("GET user-domains after a refused login: status %d, want 401: %s", status, body)

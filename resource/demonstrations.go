@@ -145,6 +145,7 @@ var Demonstrations = []Demonstration{
 	{"auth.two-populations", "Two auth packages, each with its own tables, cookies, and permission store, each outlet bound to one."},
 	{"auth.directory-roles", "An OIDC auth whose role membership is the directory's (RoleSync), with no role writer in the application."},
 	{"auth.skipauth-directory", "The session library's skipAuth build simulating the directory from APP_USERNAME and APP_ROLES."},
+	{"auth.login-refusal-code", "A refused login returns to the login page with a code in ?code=, never text: the page holds the sentence for each code and shows nothing for one it does not know."},
 
 	// Paging.
 	{"@order", "@order(Field asc|desc): a list's declared total order."},
