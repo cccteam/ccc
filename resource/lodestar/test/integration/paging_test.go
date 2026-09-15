@@ -7,12 +7,15 @@ package integration
 // caller is denied. A sort or filter over a masked field runs over the visible
 // projection. The three hand-drawn Anvil consignments (narrowed by a bond-code filter)
 // walk one row at a time; Missions declare @order(Deadline asc); the whole hold walks
-// its nullable release date across the NULL boundary in both directions.
+// its nullable release date across the NULL boundary in both directions; the archivist
+// walks her closed missions sorted by a fee, a deadline, and a primary key her request
+// did not select.
 //
-// Demonstrates: paging.cursor, paging.link-header, paging.total-count, paging.limit-all, paging.offset-refused, paging.readability-rule, paging.masked-sort, paging.nullable-sort, paging.survives-writes, paging.sealed-cursor, filter.typed-values, @order, @page, paging.descriptor-sizes.
+// Demonstrates: paging.cursor, paging.link-header, paging.total-count, paging.limit-all, paging.offset-refused, paging.readability-rule, paging.masked-sort, paging.unselected-sort-key, paging.nullable-sort, paging.survives-writes, paging.sealed-cursor, filter.typed-values, @order, @page, paging.descriptor-sizes.
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -622,6 +625,139 @@ func TestPaging_nullableSort(t *testing.T) {
 			}
 			if !slices.Equal(joined, tt.want) {
 				t.Errorf("backward walk = %v, want %v", joined, tt.want)
+			}
+		})
+	}
+}
+
+// TestPaging_unselectedSortKey pins the cursor's copy of a sort key the request did not
+// select. The archivist walks Anvil's seven closed missions two rows a page, sorted by a
+// fee her columns= list leaves out: the fee is concealing and masked on the four rows
+// that never completed, so the copy is the visible projection and those rows walk
+// through the NULL region, Spanner's first ascending. Sorted by the deadline, the
+// positional key, the copy is the raw column. With the primary key left out of columns=
+// too, its copy positions the walk. Every walk sees each row exactly once forward and
+// back, and the rows carry exactly the columns asked for: the projection is not
+// widened by the key.
+//
+// Demonstrates: paging.unselected-sort-key.
+func TestPaging_unselectedSortKey(t *testing.T) {
+	t.Parallel()
+
+	_, h, _ := sharedWorld(t)
+
+	// Anvil's closed missions by fee: the four masked rows first in key order, then
+	// 1500 (miners), 16000 (spars), 40000 (pod); by deadline: Aug 13 (spars), Aug 15
+	// (tow), Aug 18 (miners), Aug 23 (sled), Aug 28 (pod), Sep 18 (bullion), Oct 10
+	// (core).
+	var (
+		pod     = missionPodID
+		miners  = missionID(20)
+		spars   = missionID(33)
+		tow     = missionTowID
+		bullion = missionBullionID
+		sled    = missionID(25)
+		core    = missionID(30)
+	)
+	titles := map[string]string{
+		pod:     "Recover the Lantern cargo pod",
+		miners:  "Rescue three miners off Spindle Rock",
+		spars:   "Salvage the Kestrel wreck spars",
+		tow:     "Tow the stalled tug Mule Two",
+		bullion: "Escort the bullion transfer",
+		sled:    "Salvage the lost cargo sled",
+		core:    "Escort the reactor core transport",
+	}
+	byFee := []string{tow, bullion, sled, core, miners, spars, pod}
+	byDeadline := []string{spars, tow, miners, sled, pod, bullion, core}
+	titlesByFee := make([]string, 0, len(byFee))
+	for _, id := range byFee {
+		titlesByFee = append(titlesByFee, titles[id])
+	}
+
+	tests := []struct {
+		name     string
+		query    string
+		key      string
+		wantCols []string
+		want     []string
+	}{
+		{
+			name:     "a concealing key outside the projection: the masked fees walk the NULL region",
+			query:    "missions?columns=id,title&sort=fee&limit=2",
+			key:      "id",
+			wantCols: []string{"id", "title"},
+			want:     byFee,
+		},
+		{
+			name:     "a positional key outside the projection: the raw deadline",
+			query:    "missions?columns=id,title&sort=deadline&limit=2",
+			key:      "id",
+			wantCols: []string{"id", "title"},
+			want:     byDeadline,
+		},
+		{
+			name:     "the primary key outside the projection too",
+			query:    "missions?columns=title&sort=fee&limit=2",
+			key:      "title",
+			wantCols: []string{"title"},
+			want:     titlesByFee,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			keysOf := func(t *testing.T, body []byte) []string {
+				t.Helper()
+
+				var keys []string
+				for _, row := range decodeRows(t, body) {
+					cols := slices.Sorted(maps.Keys(row))
+					if !slices.Equal(cols, tt.wantCols) {
+						t.Errorf("row columns = %v, want exactly %v", cols, tt.wantCols)
+					}
+					key, _ := row[tt.key].(string)
+					keys = append(keys, key)
+				}
+
+				return keys
+			}
+
+			// Forward: follow next until it ends, collecting every row once.
+			var forward []string
+			var pages []string
+			target := sectorPath(anvil, tt.query)
+			for target != "" {
+				rr := doRequestRecordedAs(t, h, "archivist", http.MethodGet, target, "")
+				assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+				forward = append(forward, keysOf(t, rr.Body.Bytes())...)
+				pages = append(pages, target)
+				target = linkRelations(t, rr.Header().Get(resource.LinkHeader))["next"]
+			}
+			if !slices.Equal(forward, tt.want) {
+				t.Fatalf("forward walk = %v, want %v", forward, tt.want)
+			}
+			if len(pages) != 4 {
+				t.Errorf("pages = %d, want 4 of up to two rows", len(pages))
+			}
+
+			// Backward: from the last page, follow prev to the first; the pages read in
+			// reverse are the same rows in the same order.
+			rr := doRequestRecordedAs(t, h, "archivist", http.MethodGet, pages[len(pages)-1], "")
+			assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+			var backward []string
+			for {
+				backward = append(keysOf(t, rr.Body.Bytes()), backward...)
+				prev := linkRelations(t, rr.Header().Get(resource.LinkHeader))["prev"]
+				if prev == "" {
+					break
+				}
+				rr = doRequestRecordedAs(t, h, "archivist", http.MethodGet, prev, "")
+				assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+			}
+			if !slices.Equal(backward, tt.want) {
+				t.Errorf("backward walk = %v, want %v", backward, tt.want)
 			}
 		})
 	}

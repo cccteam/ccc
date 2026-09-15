@@ -315,7 +315,7 @@ func (a *App) ResourceClient() resource.Client {
 // one key per application, derived from the cookie key, so a cursor carries nothing
 // readable and never survives a rotation the sessions do not.
 //
-// Demonstrates: paging.cursor, paging.sealed-cursor, paging.link-header, paging.total-count, paging.offset-refused, paging.readability-rule, paging.survives-writes, paging.limit-all.
+// Demonstrates: paging.cursor, paging.sealed-cursor, paging.link-header, paging.total-count, paging.offset-refused, paging.readability-rule, paging.survives-writes, paging.limit-all, paging.unselected-sort-key.
 func (a *App) CursorKey() *resource.CursorKey {
 	return a.cursorKey
 }
