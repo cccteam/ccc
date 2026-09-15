@@ -2,6 +2,8 @@
 // on its own line and on one declared in a type group.
 package doccomments
 
+import "encoding/json"
+
 // Standalone is declared on its own line.
 //
 // @rpc
@@ -26,3 +28,12 @@ type (
 )
 
 type Undocumented struct{}
+
+// Selector is a named type over another package's type, which ParsePackage records
+// as neither a struct nor a named type; its doc is read through TypeDocs.
+//
+// @typescript(Point, from: "geojson")
+type Selector json.RawMessage
+
+// Basic is a named basic type. // Basic has a line comment too.
+type Basic string

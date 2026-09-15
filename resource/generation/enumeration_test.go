@@ -99,7 +99,6 @@ func TestResourceFieldsTypescriptType_enumeration(t *testing.T) {
 				enumerateTables: map[string]string{"WidgetKinds": "WidgetKind"},
 				enumValues:      map[string][]*enumData{"WidgetKinds": kinds},
 			},
-			typescriptOverrides:  map[string]string{},
 			routerResources:      []accesstypes.Resource{"WidgetKinds", "Suppliers"},
 			outletExcludedTables: map[string]struct{}{},
 		}
@@ -135,8 +134,10 @@ func TestResourceFieldsTypescriptType_enumeration(t *testing.T) {
 				res.Fields[1].IsForeignKey = tt.foreignKey
 				res.Fields[1].ReferencedResource = tt.referenced
 			})
-			fields := newGenerator(tt.excluded).resourceFieldsTypescriptType(res.Fields)
-			got := fields[1]
+			if err := newGenerator(tt.excluded).resourceFieldsTypescriptType(res); err != nil {
+				t.Fatalf("resourceFieldsTypescriptType() error = %v", err)
+			}
+			got := res.Fields[1]
 			if got.IsEnumerated != tt.wantEnumerated {
 				t.Errorf("IsEnumerated = %v, want %v", got.IsEnumerated, tt.wantEnumerated)
 			}

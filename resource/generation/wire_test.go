@@ -17,7 +17,7 @@ func walkFixture(t *testing.T, structs map[string]*parser.Struct, name string) (
 		t.Fatalf("struct %q not in fixture", name)
 	}
 
-	return newWireWalker(defaultTypescriptOverrides(), "wirefixture", "resources").walk(s)
+	return newWireWalker(newLeafResolver(nil), "wirefixture", "resources").walk(s)
 }
 
 func Test_wireWalker(t *testing.T) {
@@ -388,7 +388,7 @@ func fixtureAnsweringMethod(t *testing.T, structs map[string]*parser.Struct, nam
 	if err != nil {
 		t.Fatalf("classifyExecute(%s) error = %v", name, err)
 	}
-	walker := newWireWalker(defaultTypescriptOverrides(), "wirefixture", "resources")
+	walker := newWireWalker(newLeafResolver(nil), "wirefixture", "resources")
 	request, err := walker.walk(structs[name])
 	if err != nil {
 		t.Fatalf("walk(%s) error = %v", name, err)
@@ -500,7 +500,7 @@ func Test_rpcHandlerTemplate_answerlessNoContent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			walker := newWireWalker(defaultTypescriptOverrides(), "wirefixture", "resources")
+			walker := newWireWalker(newLeafResolver(nil), "wirefixture", "resources")
 			request, err := walker.walk(structs["Notify"])
 			if err != nil {
 				t.Fatalf("walk(Notify) error = %v", err)

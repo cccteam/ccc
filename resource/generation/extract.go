@@ -47,8 +47,9 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 
-		// The annotations other kinds own: a method's frame, and a view's table.
-		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "resource"), rejectRowsOf(pStruct, annotations, "table-backed resource")); err != nil {
+		// The annotations other kinds own: a method's frame, a view's table, and a
+		// field type's TypeScript type.
+		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "resource"), rejectRowsOf(pStruct, annotations, "table-backed resource"), rejectTypescriptAnnotation(pStruct, annotations, "table-backed resource")); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
@@ -377,7 +378,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 
-		if err := rejectRPCOnlyAnnotations(pStruct, annotations, "virtual resource"); err != nil {
+		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "virtual resource"), rejectTypescriptAnnotation(pStruct, annotations, "virtual resource")); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -645,9 +646,10 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 			continue
 		}
 
-		// The annotations other kinds own: a resource's bindings, and a view's table;
-		// and the masking tag, which a method's request never carries.
-		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method")); err != nil {
+		// The annotations other kinds own: a resource's bindings, a view's table, and a
+		// field type's TypeScript type; and the masking tag, which a method's request
+		// never carries.
+		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectTypescriptAnnotation(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method")); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -741,7 +743,7 @@ func (c *client) classifyRPCMethod(s *parser.Struct) (*rpcMethodInfo, error) {
 
 	// One walker for the request and the result: a struct both reach keeps one
 	// mirror in the handler, and every name is checked against the whole file.
-	walker := newWireWalker(c.leafTypes(), s.PackageName(), c.resource.Package())
+	walker := newWireWalker(c.leaves(), s.PackageName(), c.resource.Package())
 	request, err := c.walkRequest(walker, s)
 	if err != nil {
 		return nil, err
@@ -838,7 +840,7 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 			continue
 		}
 
-		if err := rejectRPCOnlyAnnotations(s, annotations, "computed resource"); err != nil {
+		if err := errors.Join(rejectRPCOnlyAnnotations(s, annotations, "computed resource"), rejectTypescriptAnnotation(s, annotations, "computed resource")); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
@@ -852,7 +854,7 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 
 		// The row's wire shape, under the one vocabulary shared with RPC requests
 		// and results. A nested field is opaque to the resource machinery.
-		shape, err := newWireWalker(c.leafTypes(), s.PackageName()).walk(s)
+		shape, err := newWireWalker(c.leaves(), s.PackageName()).walk(s)
 		if err != nil {
 			resourceErrors = append(resourceErrors, errors.Wrap(err, "computed resource"))
 

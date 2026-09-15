@@ -22,7 +22,6 @@ type typescriptGenerator struct {
 	genMetadata           bool
 	genEnums              bool
 	typescriptDestination string
-	typescriptOverrides   map[string]string
 	rc                    *resource.GeneratedCollection
 	routerResources       []accesstypes.Resource
 	// manualRegistrations are the declared registrations with no generated handler;
@@ -225,6 +224,7 @@ func (t *typescriptGenerator) Generate() error {
 	if err != nil {
 		return errors.Wrap(err, "parser.LoadPackages()")
 	}
+	t.notePackages(packageMap)
 
 	resources, resourcesPkg, err := t.parseResources(packageMap)
 	if err != nil {
@@ -274,21 +274,8 @@ func (t *typescriptGenerator) Generate() error {
 		return err
 	}
 
-	for _, res := range computedResources {
-		res.Fields = t.computedFieldsTypescriptType(res.Fields)
-	}
-	t.computedResources = computedResources
-
-	t.resources = make([]*resourceInfo, 0, len(resources))
-	for _, res := range resources {
-		if t.rc.ResourceExists(accesstypes.Resource(t.pluralize(res.Name()))) {
-			res.Fields = t.resourceFieldsTypescriptType(res.Fields)
-			t.resources = append(t.resources, res)
-		}
-	}
-
-	for _, rpcMethod := range t.rpcMethods {
-		rpcMethod.Fields = t.rpcFieldsTypescriptType(rpcMethod.Fields)
+	if err := t.resolveTypescriptTypes(resources, computedResources); err != nil {
+		return err
 	}
 
 	// The target directory may not exist on a first generate into a fresh
@@ -559,89 +546,143 @@ func (t *typescriptGenerator) generateEnums(namedTypes []*parser.NamedType) erro
 	return nil
 }
 
-func (t *typescriptGenerator) resourceFieldsTypescriptType(fields []*resourceField) []*resourceField {
-	for _, field := range fields {
-		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
-			field.typescriptType = override
-		} else {
-			field.typescriptType = stringGoType
+// resolveTypescriptTypes types every field the target renders before anything does:
+// computed and RPC fields from their walked wire types, table and view fields on the
+// column path, keeping the resources the collection registers. Every field that
+// resolves to no type is reported in one run.
+func (t *typescriptGenerator) resolveTypescriptTypes(resources []*resourceInfo, computedResources []*computedResource) error {
+	var errs []error
+	for _, res := range computedResources {
+		if err := computedFieldsTypescriptType(res); err != nil {
+			errs = append(errs, err)
 		}
+	}
+	t.computedResources = computedResources
 
-		if field.IsIterable() {
-			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
+	t.resources = make([]*resourceInfo, 0, len(resources))
+	for _, res := range resources {
+		if t.rc.ResourceExists(accesstypes.Resource(t.pluralize(res.Name()))) {
+			if err := t.resourceFieldsTypescriptType(res); err != nil {
+				errs = append(errs, err)
+			}
+			t.resources = append(t.resources, res)
 		}
+	}
 
-		// A declared enumeration names the picker's source itself and is resolved
-		// already (resolveFieldEnumerations); the schema's foreign key adds nothing.
-		if field.HasDeclaredEnumeration() {
+	for _, rpcMethod := range t.rpcMethods {
+		if err := rpcFieldsTypescriptType(rpcMethod); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Wrapf(errors.Join(errs...), "encountered %d TypeScript type errors", len(errs))
+	}
+
+	return nil
+}
+
+// resourceFieldsTypescriptType resolves a table or view resource's field types on the
+// column path: the leaf a field's Go type reaches (the built-in table, a @typescript
+// declaration, a NullEnum's argument, a named basic type), or the interface derived
+// from the struct it holds, rendered in the resource's namespace. A field that reaches
+// neither fails generation naming the field, the type, and the fix; every such field
+// in the resource is reported together. A key's picker resolves afterwards, on the
+// resolved type, as before.
+func (t *typescriptGenerator) resourceFieldsTypescriptType(res *resourceInfo) error {
+	plural := t.pluralize(res.Name())
+	// One walker per resource: a struct two of its columns hold is one interface.
+	walker := newColumnWalker(t.leaves())
+	var errs []error
+	for _, field := range res.Fields {
+		path := plural + "." + field.Name()
+		class, err := t.leaves().classifyColumn(field.GoType())
+		if err != nil {
+			errs = append(errs, columnTypeRefusal(path, err))
+
 			continue
 		}
-		if !field.IsForeignKey {
-			continue
-		}
-		// A key into an @enumerate table renders from the generated values: the set is
-		// fixed at generation time, so the picker needs neither a request nor a List
-		// grant, even when a struct also exposes the table as a read-only resource.
-		if typeName, ok := t.enumerationOf(field.ReferencedResource); ok {
-			if _, gone := t.outletExcludedTables[field.ReferencedResource]; !gone {
-				field.IsEnumerated = true
-				field.Enumeration = typeName
-				field.EnumerationValues = t.enumValues[field.ReferencedResource]
+		switch {
+		case class.Derive != nil:
+			shape, err := walker.walkColumn(class.Derive, path)
+			if err != nil {
+				errs = append(errs, err)
 
 				continue
 			}
+			field.setColumnType(plural+"."+shape.TypescriptName(), objectTSType, nil, class.Slice)
+		default:
+			field.setColumnType(class.Leaf.TS, class.Leaf.DisplayType(), class.Leaf.Import, class.Slice)
 		}
-		if slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
+
+		t.resolveKeyEnumeration(field)
+	}
+	res.ColumnShapes = walker.Shapes()
+
+	if len(errs) > 0 {
+		return errors.Wrapf(errors.Join(errs...), "resource %s", plural)
+	}
+
+	return nil
+}
+
+// columnTypeRefusal is the message for a column type that reaches no TypeScript type:
+// the field's path, the classifier's finding, and the fix.
+func columnTypeRefusal(path string, cause error) error {
+	return errors.Newf("%s: %s; declare the type's TypeScript form with @%s(Name, from: %q) on its declaration, or use a struct for a derived interface", path, errors.Cause(cause).Error(), typescriptKeyword, "module")
+}
+
+// resolveKeyEnumeration marks a key's picker source on a resolved field.
+func (t *typescriptGenerator) resolveKeyEnumeration(field *resourceField) {
+	// A declared enumeration names the picker's source itself and is resolved
+	// already (resolveFieldEnumerations); the schema's foreign key adds nothing.
+	if field.HasDeclaredEnumeration() {
+		return
+	}
+	if !field.IsForeignKey {
+		return
+	}
+	// A key into an @enumerate table renders from the generated values: the set is
+	// fixed at generation time, so the picker needs neither a request nor a List
+	// grant, even when a struct also exposes the table as a read-only resource.
+	if typeName, ok := t.enumerationOf(field.ReferencedResource); ok {
+		if _, gone := t.outletExcludedTables[field.ReferencedResource]; !gone {
 			field.IsEnumerated = true
+			field.Enumeration = typeName
+			field.EnumerationValues = t.enumValues[field.ReferencedResource]
+
+			return
 		}
 	}
-
-	return fields
+	if slices.Contains(t.routerResources, accesstypes.Resource(field.ReferencedResource)) {
+		field.IsEnumerated = true
+	}
 }
 
-func (t *typescriptGenerator) computedFieldsTypescriptType(fields []*computedField) []*computedField {
-	for _, field := range fields {
-		// A walked field already carries its type from the shared leaf table.
-		if field.wire != nil {
-			field.typescriptType = field.wire.TypescriptDisplayType()
-
-			continue
+// computedFieldsTypescriptType types a computed resource's fields from their walked
+// wire types. Every field carries one: the walk ran at extraction and refused what it
+// could not type, so a field without one is a construction error.
+func computedFieldsTypescriptType(res *computedResource) error {
+	for _, field := range res.Fields {
+		if field.wire == nil {
+			return errors.Newf("computed resource %s field %s: no wire type; the field was not walked", res.Name(), field.Name())
 		}
-		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
-			field.typescriptType = override
-		} else {
-			field.typescriptType = stringGoType
-		}
-
-		if field.IsIterable() {
-			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
-		}
+		field.typescriptType = field.wire.TypescriptDisplayType()
 	}
 
-	return fields
+	return nil
 }
 
-func (t *typescriptGenerator) rpcFieldsTypescriptType(fields []*rpcField) []*rpcField {
-	for _, field := range fields {
-		// A walked field already carries its type from the shared leaf table; the
-		// walk refused *bool at extraction.
-		if field.wire != nil {
-			field.typescriptType = field.wire.TypescriptDisplayType()
-
-			continue
+// rpcFieldsTypescriptType types an RPC method's request fields from their walked wire
+// types; see computedFieldsTypescriptType.
+func rpcFieldsTypescriptType(method *rpcMethodInfo) error {
+	for _, field := range method.Fields {
+		if field.wire == nil {
+			return errors.Newf("RPC method %s field %s: no wire type; the field was not walked", method.Name(), field.Name())
 		}
-		if override, ok := t.typescriptOverrides[field.TypeName()]; ok {
-			field.typescriptType = override
-		} else {
-			field.typescriptType = stringGoType
-		}
-
-		if field.IsIterable() {
-			field.typescriptType = fmt.Sprintf("%s[]", field.typescriptType)
-		}
+		field.typescriptType = field.wire.TypescriptDisplayType()
 	}
 
-	return fields
+	return nil
 }
 
 // manualMethods returns the Execute registrations the collection carries without a
@@ -767,7 +808,7 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 	}
 
 	for _, field := range res.PrimaryKeys() {
-		out.Keys = append(out.Keys, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})
+		out.Keys = append(out.Keys, newTSAPIField(field, false))
 	}
 
 	if !res.ListHandlerDisabled() {
@@ -789,12 +830,12 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 			case field.IsPrimaryKey:
 				// A server-generated key is never supplied; any other key is.
 				if !res.PrimaryKeyIsGeneratedUUID() {
-					out.CreateFields = append(out.CreateFields, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType(), Required: true})
+					out.CreateFields = append(out.CreateFields, newTSAPIField(field, true))
 				}
 			case field.IsOutputOnly():
 				// Server-owned: the wire cannot write it.
 			default:
-				out.CreateFields = append(out.CreateFields, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType(), Required: field.IsRequired()})
+				out.CreateFields = append(out.CreateFields, newTSAPIField(field, field.IsRequired()))
 			}
 		}
 	}
@@ -805,7 +846,7 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 			if field.IsPrimaryKey || field.IsOutputOnly() || field.IsImmutable() {
 				continue
 			}
-			out.PatchFields = append(out.PatchFields, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})
+			out.PatchFields = append(out.PatchFields, newTSAPIField(field, false))
 		}
 	}
 	if !res.DeleteHandlerDisabled() {
@@ -816,6 +857,11 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 	}
 
 	return out
+}
+
+// newTSAPIField renders a resource field for the client file.
+func newTSAPIField(field *resourceField, required bool) *tsAPIField {
+	return &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType(), Required: required, Import: field.tsImport}
 }
 
 // apiOrder renders a declared @order for the descriptor: the JSON name of each field

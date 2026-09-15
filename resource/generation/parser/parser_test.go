@@ -260,6 +260,42 @@ func Test_ParsePackage_docComments(t *testing.T) {
 	}
 }
 
+func Test_TypeDocs(t *testing.T) {
+	t.Parallel()
+
+	pkgMap, err := LoadPackages("../testdata/doccomments")
+	if err != nil {
+		t.Fatalf("LoadPackages() error = %v", err)
+	}
+	docs := TypeDocs(pkgMap["doccomments"])
+
+	tests := []struct {
+		name     string
+		typeName string
+		want     string
+	}{
+		{name: "a struct declared on its own line", typeName: "Standalone", want: "Standalone is declared on its own line.\n\n@rpc\n"},
+		{name: "a struct declared in a group", typeName: "Grouped", want: "Grouped is declared in a type group.\n\n@rpc\n"},
+		{name: "a named type over another package's type", typeName: "Selector", want: "Selector is a named type over another package's type, which ParsePackage records\nas neither a struct nor a named type; its doc is read through TypeDocs.\n\n@typescript(Point, from: \"geojson\")\n"},
+		{name: "a named basic type with a line comment", typeName: "Basic", want: "Basic is a named basic type. // Basic has a line comment too.\n"},
+		{name: "an undocumented type has none", typeName: "Undocumented", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := docs[tt.typeName]
+			if !ok {
+				t.Fatalf("type %q not in TypeDocs()", tt.typeName)
+			}
+			if got != tt.want {
+				t.Errorf("TypeDocs()[%s] = %q, want %q", tt.typeName, got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_Struct_Method(t *testing.T) {
 	t.Parallel()
 

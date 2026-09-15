@@ -55,6 +55,15 @@ type resourceEnumsData struct {
 	EnumMap    map[string][]*enumData
 }
 
+// storageFileData feeds the storage-methods file of one package: the types declared
+// there that a JSON column holds and that implement no Spanner methods of their own.
+type storageFileData struct {
+	Source  string
+	Package string
+	// Types are the unqualified type names, sorted.
+	Types []string
+}
+
 type handlersFileData struct {
 	Source              string
 	LocalPackageImports string
@@ -500,10 +509,19 @@ func (d *tsAPIData) HasNullBoolean() bool {
 	return d.hasFieldType(func(fieldType string) bool { return fieldType == nullBooleanTSType })
 }
 
-// HasCustomTypes reports whether a key or write shape on this outlet is typed
-// through CustomTypes, so the client file imports the namespace it names.
-func (d *tsAPIData) HasCustomTypes() bool {
-	return d.hasFieldType(func(fieldType string) bool { return strings.HasPrefix(fieldType, customTypesPrefix) })
+// TypeImports lists the imports the client file needs: the @typescript declarations
+// behind every key, create, and patch field it renders, grouped per module.
+func (d *tsAPIData) TypeImports() []tsImportGroup {
+	var imports []*tsImport
+	for _, res := range d.Resources {
+		for _, fields := range [][]*tsAPIField{res.Keys, res.CreateFields, res.PatchFields} {
+			for _, field := range fields {
+				imports = append(imports, field.Import)
+			}
+		}
+	}
+
+	return groupImports(imports)
 }
 
 // hasFieldType reports whether any key, create, or patch field the client file
@@ -609,6 +627,9 @@ type tsAPIField struct {
 	Name     string
 	Type     string
 	Required bool
+	// Import is the @typescript declaration behind the field's type, nil for a
+	// built-in row or a derived interface.
+	Import *tsImport
 }
 
 type tsAPIMethod struct {

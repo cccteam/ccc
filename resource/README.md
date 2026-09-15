@@ -60,6 +60,7 @@ type Ship struct { ... }
 | `@validateUpdateType` | `@resource` struct | type name | As above, for updates. |
 | `@primarykey` | field of a `@computed` or `@virtual` struct | none | Marks the field as (part of) the resource's primary key; multiple annotated fields form a compound key in declaration order. Primary-key fields are exempt from field-level permission enforcement (their readability follows the resource-level grant). Rejected on table-backed `@resource` structs, whose keys come from the schema. Compound example: [SectorHazardBoard](lodestar/pkg/computedresources/sector_hazard_boards.go). |
 | `@rowsOf` | `@virtual` or `@computed` struct | table resource name | The view declares its backing table, a create goes into the table, and the new row shows up in the view on the next list because the view's SQL reads that table. The declaration states row identity, not columns: every row of the view is one row of the named table under the same key, and the view's other columns are its own — joined from other tables, aggregated, or computed in the projection; the generator compares none of them to the table. It checks, each refusal naming the fix: the named resource exists and is a table-backed `@resource` (a `@virtual` or `@computed` target is refused, since a view cannot back a view, and an `@enumerate` table — with or without a struct over it — is refused as a contradiction, since its rows are the program's constants and a create button for them would be policy about nothing); the view declares `@primarykey` fields matching the table's key in count, order, Go field name, and Go type, nullability included, and on a `@virtual` the `spanner` columns as well, the message naming the first mismatch and the table's key; the two share a `@permissionScope`; the table is served on every outlet the view is served on (fail loud, never a silent degrade); and the view does not name itself. Refused on `@resource` and `@rpc` structs. Several views may name one table. The view's TypeScript metadata carries `rowsOf: Resources.X`, so a page listing the view sends its create, edit, and delete to the table and opens a row on the table's page; a view without the declaration is what it is today, a read-only list. One backing table only: two tables sharing one key (a table and its one-to-one extension) is the door left open and not built, and a parent joined to its children is never one to one with anything and stays a read-only list or an RPC. Examples: [MissionBoard](lodestar/pkg/virtualresources/mission_boards.go), a same-row view over Missions; [SquadronRoster](lodestar/pkg/virtualresources/squadron_rosters.go) and [PilotAssignment](lodestar/pkg/virtualresources/pilot_assignments.go), two association views over SquadronMemberships whose compound key is edited and deleted from the list. [OpenMissionsBySquadron](lodestar/pkg/virtualresources/open_missions_by_squadrons.go) and [FeeByKind](lodestar/pkg/virtualresources/fee_by_kinds.go) declare nothing and stay read-only lists. |
+| `@typescript` | the declaration of a type used as a field: a struct, or a named type over another type (`type Position json.RawMessage`) | `Name`, or `Name, from: "module"` | Declares the TypeScript type of a Go type whose shape lives outside Go, once, on the type's declaration, and every generated file that carries the type imports `Name` from `module`, spelled verbatim. A table column, a computed field, or an RPC field typed by it is `Name` in its interface, with display type `object` in the metadata. Without `from:`, `Name` must be a TypeScript built-in (`string`, `number`, `boolean`, `unknown`). A plain struct needs no declaration: its interface is derived from its fields (section 12). A type that writes its own JSON (`MarshalJSON` or `UnmarshalJSON`) must declare, since its fields say nothing about the wire, and is refused without it. A slice comes from the field (`[]Position` is `Position[]`), never from the declaration; the declaration is read wherever the type is declared, in the application or in a dependency. Two declarations importing one `Name` from different modules are refused, as is `from:` on a built-in and a non-built-in without it. Not valid on a `@resource`, `@virtual`, `@computed`, or `@rpc` struct, which are typed field by field. Example: [Position](lodestar/pkg/resources/distress_calls.go). |
 | `@attribute` | field of a `@resource` struct | `name[, via: Remote.Segments]` | Declares an attribute binding: the vocabulary name grant conditions reference for this row attribute (ABAC). Bare, the annotated column itself carries the attribute; with `via:`, the binding is a join path leaving through the annotated foreign key — `via:` carries only the remote segments, Go field names on each successive struct, dotted for multi-hop (`via: StationId.Sector`), and every hop must resolve many-to-one through a real foreign key or generation fails. Names follow the condition language's identifier rules (`[A-Za-z_][A-Za-z0-9_]*`); `subject`, `now`, and `new` are reserved; a name is declared once per resource. |
 | `@domain` | field of a `@resource` struct (bare form also on a `@virtual` struct) | none, or `via: Remote.Segments` | Declares the structural tenancy binding: how every row of a domain-scoped resource resolves to its tenant. Bare on the tenant-key column itself, or `via:` a foreign-key path to it (same grammar as `@attribute`). **Mandatory on every domain-scoped table-backed or virtual resource** — missing is a generation error, and so is declaring it on a resource that is not domain-scoped: global scope is the explicit opt-out (design plan §06). On a virtual resource only the bare form is valid, naming a column the view's projection carries. A bare `@domain` derives the tenant column's runtime behavior — never stated twice: the column decodes output-only (create and update closed, so the wire cannot express a tenant write or re-tenant a row) and the framework stamps it from the request's domain partition on create, so the checked domain and the written domain are the same value by construction; restating behavior through `conditions` or `default_create_fn` tags is rejected, and Create/Update on the column are ungrantable while reads stay grantable. Deliberately not an `@attribute` — it is consumed by tenancy injection and never referencable from grant conditions. At most one per resource. It also tenant-filters the subject subqueries anchored on the resource (see the subject rows). The `via:` path is resolved through foreign-key metadata, not through the remote resource's own bindings — a domain-scoped parent table does **not** transitively supply tenancy to resources referencing it; each resource declares its own `@domain`. Generation warns at every run for a listed table-backed resource whose lists the schema does not serve under this binding: a bare `@domain` with an `@order` and no index leading with the tenant column and then the order columns, where the warning names the index wanted, or a `via:` path, whose lists scan the whole table (section 9). |
 | `@state` | field of a `@resource` struct | `default: <value>` | Marks the resource's state column (ABAC design plan §09). The column must be a foreign key to its state enum table (the ordinary Id/Description convention — the FK identifies the table, nothing is declared on it), and the declared default must be one of that table's values. The marker derives the field's behavior — never stated twice: the field decodes output-only (create and update closed, so the wire cannot express a state write; transitions happen inside RPC bodies), Create/Update on it are ungrantable, reads stay grantable, and the generated create patch applies the declared initial state on insert (never a database DEFAULT). State values change only by migration: a mutation permission registered against the state enum table is a generation error, while Read stays grantable. |
@@ -641,3 +642,98 @@ string in UTF-16 units, so a form refuses a little early on astral characters an
 accepts what the server refuses. The framework-neutral client does not pre-check a string:
 the server stays the single authority. Example: [Ship.Registry](lodestar/pkg/resources/ships.go)
 on `STRING(16)`, and [Mission.Fee](lodestar/pkg/resources/missions.go) on `NUMERIC`.
+
+## 12. TypeScript types for columns
+
+A field's TypeScript type comes from its Go type alone, and a field whose type reaches
+no TypeScript type fails generation naming the resource, the field, the Go type, and the
+fix. Nothing falls back to `string`. The same rule types a table column, a view column, a
+computed field, and an RPC field, so one Go type is one TypeScript type wherever it
+appears.
+
+**How a type resolves.** After aliases are read through (`type NullKindID =
+ccc.NullEnum[KindID]` is read as the `NullEnum`), and one pointer is read through (a
+pointer column is nullable, as before), the generator tries, in order:
+
+1. the built-in table, by the type's qualified name;
+2. a generic row, by the type's origin: `ccc.NullEnum[T]` is `T`'s type;
+3. a `@typescript` declaration on the type's declaration (section 1);
+4. a basic type, or a named type over one, by the basic type's row (`type KindID string`
+   is `string`).
+
+A field that resolves here is a leaf. A field that does not is read once more as a list:
+one slice level is stripped from a `[]T`, an array, or a named slice type (`type
+Attachments []Attachment` is `Attachment[]`), and the element resolves by the same steps.
+An element that is a struct with no declaration is **derived** (below). Anything else is
+refused:
+
+- `Ships.Manifest: resources.Manifest has no TypeScript type; declare the type's
+  TypeScript form with @typescript(Name, from: "module") on its declaration, or use a
+  struct for a derived interface`
+
+Every offending field in a run is reported together.
+
+**The built-in table.** `string`, `bool`, and the numeric types by their names;
+`ccc.UUID` and `ccc.NullUUID` (`uuid`, a `string` in the interface); `decimal.Decimal` and
+`decimal.NullDecimal` (`number`); `time.Time` (`Date`); `civil.Date` (`civilDate`, a
+`Date` in the interface); the Spanner Null wrappers (`spanner.NullString` is `string`,
+`NullInt64`, `NullFloat32`, `NullFloat64`, and `NullNumeric` are `number`, `NullBool` is
+`boolean`, `NullTime` is `Date`, `NullDate` is `civilDate`); the `database/sql` Null
+wrappers likewise (`NullString`, `NullInt16`, `NullInt32`, `NullInt64`, `NullByte`,
+`NullFloat64`, `NullBool`, `NullTime`); `securehash.Hash` (`string`, its text form); and
+`spanner.NullJSON` (`unknown`, a value with no fixed shape, display type `object`).
+Nullability keeps coming from the schema, so a nullable `spanner.NullBool` column renders
+`nullboolean` exactly as `*bool` does.
+
+**Derived structs.** A struct a column holds is its own TypeScript interface, derived
+from its fields with no annotation and no option, declared in the resource's namespace
+(`MissionDocuments.Provenance`) exactly as a computed resource's nested structs are, and
+the field is typed `MissionDocuments.Provenance` with display type `object`. The runtime
+marshals the column value as declared, so the struct's `json` tags are its wire names:
+every field carries one (a missing tag is refused naming the field), `json:"-"` leaves the
+field out of the interface, and `omitempty` makes it optional. The walk keeps the wire
+rules (exported fields, no embedded fields, no map, interface, array, or recursion), and
+the fields inside the struct resolve as leaves by the same steps, so a nested struct is a
+second interface in the same namespace and a nested declared type is the same imported
+type. Permissions are unchanged: the object is one field, granted, masked, and selected
+whole.
+
+A struct that writes its own JSON (`MarshalJSON` or `UnmarshalJSON`) is refused on the
+column path unless it declares its type, since its fields do not describe the wire:
+
+- `MissionDocuments.Seal: resources.Seal writes its own JSON (MarshalJSON or
+  UnmarshalJSON), so its fields do not describe the wire; add @typescript(...) to its
+  declaration`
+
+RPC and computed shapes are unchanged: their mirrors carry generated camel-case tags, and
+the mirror is the wire, so a nested struct's own `MarshalJSON` never runs there and
+derivation by fields stays consistent. A `@typescript` declaration on a plain struct wins
+over derivation, so an application can give a struct a richer TypeScript type when it
+wants one.
+
+**Storage.** A struct, a named slice of structs, or a declared type over anything but a
+basic type, held by a `JSON` column and implementing no Spanner methods of its own, gets
+`EncodeSpanner` (value receiver, `spanner.NullJSON{Value: v, Valid: true}`, so a type's
+own `MarshalJSON` is honoured for storage too) and `DecodeSpanner` (pointer receiver,
+reading the column's JSON text back, a NULL cell the zero value) generated into
+`zz_gen_storage.go` in the package that declares the type. An application writes no
+encoder. A type with hand-written Spanner methods keeps them, whatever column it handles;
+one method without the other is refused. Such a type on a column that is not `JSON`, on
+an unnamed slice (`[]Provenance` has nothing for a method to attach to), or declared in
+a package the generator does not write into (only the resources package and the virtual
+resources package) is refused naming the fixes:
+
+- `MissionDocuments.Provenance: resources.Provenance is stored by generated JSON methods,
+  but column Provenance is STRING(MAX); declare the column JSON, or implement
+  EncodeSpanner and DecodeSpanner on the type`
+
+**Imports.** The names every `@typescript` declaration imports are grouped per module
+into one import line each, placed after the `@cccteam/resource` import of the file that
+carries them (`zz_gen_resources.ts` for table, view, and computed fields;
+`zz_gen_methods.ts` for request and result fields; `zz_gen_api.ts` for the key, create,
+and patch shapes). The client library exports no application types.
+
+Examples: [MissionDocument.Provenance](lodestar/pkg/resources/mission_documents.go), a
+plain struct on a `JSON` column, derived and stored by generated methods, and
+[DistressCall.Position](lodestar/pkg/resources/distress_calls.go), a GeoJSON `Point`
+declared with `@typescript(Point, from: "geojson")`.

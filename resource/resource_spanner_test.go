@@ -154,3 +154,61 @@ func TestScanEnvelopeRow_capabilities(t *testing.T) {
 		})
 	}
 }
+
+// jsonCell stands in for a generated column type: EncodeSpanner on the value receiver,
+// which a nil pointer cannot carry a call to.
+type jsonCell struct {
+	V string
+}
+
+func (c jsonCell) EncodeSpanner() (any, error) {
+	return spanner.NullJSON{Value: c, Valid: true}, nil
+}
+
+// TestNullifyNilPointers pins the NULL cell of a nullable column typed by a pointer: a
+// typed nil pointer, whatever it points to, becomes the untyped nil the Spanner client
+// encodes as NULL, and every other value is left as it is.
+func TestNullifyNilPointers(t *testing.T) {
+	t.Parallel()
+
+	text := "kept"
+	cell := jsonCell{V: "kept"}
+
+	tests := []struct {
+		name  string
+		patch map[string]any
+		want  map[string]any
+	}{
+		{
+			name:  "a nil pointer to an encoder type becomes NULL",
+			patch: map[string]any{"Cell": (*jsonCell)(nil)},
+			want:  map[string]any{"Cell": nil},
+		},
+		{
+			name:  "a nil pointer to a basic type becomes NULL",
+			patch: map[string]any{"Note": (*string)(nil)},
+			want:  map[string]any{"Note": nil},
+		},
+		{
+			name:  "a set pointer, a value, and an untyped nil are untouched",
+			patch: map[string]any{"Note": &text, "Cell": &cell, "Plain": cell, "Count": int64(1), "Gone": nil},
+			want:  map[string]any{"Note": &text, "Cell": &cell, "Plain": cell, "Count": int64(1), "Gone": nil},
+		},
+		{
+			name:  "an empty patch stays empty",
+			patch: map[string]any{},
+			want:  map[string]any{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			nullifyNilPointers(tt.patch)
+			if diff := cmp.Diff(tt.want, tt.patch); diff != "" {
+				t.Errorf("nullifyNilPointers() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

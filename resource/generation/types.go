@@ -859,7 +859,10 @@ type resourceInfo struct {
 	outletMembership
 	pagingDecl
 	rowsOfDecl
-	Fields             []*resourceField
+	Fields []*resourceField
+	// ColumnShapes are the structs the resource's columns hold, leaves first, each
+	// once: the interfaces the resource's TypeScript namespace declares.
+	ColumnShapes       []*wireShape
 	SuppressedHandlers []HandlerType
 	SuppressedRoutes   []RouteType
 	// ManualAddResourceSets lists the handler types whose permission Sets are
@@ -1070,8 +1073,15 @@ func (r *resourceInfo) IsQueryClauseEligible() bool {
 
 type resourceField struct {
 	*parser.Field
-	Parent         *resourceInfo
-	typescriptType string
+	Parent *resourceInfo
+	// typescriptType is the field's TypeScript type as the built-in table spells it
+	// (uuid, civilDate, boolean, ...) with [] for a list; TypescriptDataType maps it
+	// onto the interface's type. A derived struct or a declared type carries its final
+	// interface type here (Missions.Provenance, Point) and its display type in
+	// typescriptDisplay, and a declared type its import in tsImport.
+	typescriptType    string
+	typescriptDisplay string
+	tsImport          *tsImport
 	// Spanner stuff
 	IsPrimaryKey bool
 	IsForeignKey bool
@@ -1184,20 +1194,29 @@ func (f *resourceField) UnwrappedNullType() *string {
 	return nil
 }
 
+// TypescriptDataType is the field's type in the generated interface: the table row's
+// interface type (uuid is a string, civilDate a Date, a nullable boolean the
+// NullBoolean value type), with [] for a list, or the final type a derived struct or
+// a declared type carries.
 func (f *resourceField) TypescriptDataType() string {
-	if f.typescriptType == uuidTSType {
-		return stringGoType
-	}
-	if f.typescriptType == civilDateTSType {
-		return dateTSType
+	if f.typescriptDisplay != "" {
+		return f.typescriptType
 	}
 	if f.IsNullable && f.typescriptType == booleanStr {
 		return nullBooleanTSType
 	}
+	base, slice := strings.CutSuffix(f.typescriptType, sliceSuffix)
+	base = tsDataType(base)
+	if slice {
+		return base + sliceSuffix
+	}
 
-	return f.typescriptType
+	return base
 }
 
+// TypescriptDisplayType is the field's display type in generated metadata: enumerated
+// for a picker, nullboolean for a nullable boolean, object for a derived struct or an
+// imported type, and the table row's type otherwise.
 func (f *resourceField) TypescriptDisplayType() string {
 	if f.IsEnumerated {
 		return enumeratedDisplayType
@@ -1206,8 +1225,25 @@ func (f *resourceField) TypescriptDisplayType() string {
 	if f.IsNullable && f.typescriptType == booleanStr {
 		return "nullboolean"
 	}
+	if f.typescriptDisplay != "" {
+		return f.typescriptDisplay
+	}
 
 	return f.typescriptType
+}
+
+// setColumnType records a column's resolved TypeScript type: the leaf's table type, or
+// a derived struct's interface in the resource's namespace, with [] for a list.
+func (f *resourceField) setColumnType(dataType, displayType string, imported *tsImport, slice bool) {
+	if slice {
+		dataType += sliceSuffix
+		displayType += sliceSuffix
+	}
+	f.typescriptType = dataType
+	f.tsImport = imported
+	if displayType != dataType {
+		f.typescriptDisplay = displayType
+	}
 }
 
 func (f *resourceField) JSONTag() string {
@@ -1559,6 +1595,7 @@ const (
 	answersKeyword              string = "answers"              // Declares the statuses an RPC method may answer with; its result chooses one per response through HTTPStatus()
 	uploadKeyword               string = "upload"               // Declares an RPC method as a multipart upload: @upload(max: 5MB); its Execute takes resource.Files
 	rowsOfKeyword               string = "rowsOf"               // Declares the table resource whose rows a virtual or computed view carries, one to one under the same key: @rowsOf(Missions)
+	typescriptKeyword           string = "typescript"           // Declares the TypeScript type of a type used as a field, on the type's declaration: @typescript(Name, from: "module")
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -1591,6 +1628,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		answersKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		uploadKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		rowsOfKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		typescriptKeyword:           {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	}
 }
 

@@ -254,6 +254,27 @@ func ParsePackage(pkg *packages.Package) *Package {
 	return &Package{Structs: slices.Clip(parsedStructs), NamedTypes: slices.Clip(namedTypes), Constants: packageConstants(pkg)}
 }
 
+// TypeDocs returns the doc and line comments of every type declaration in the package,
+// by type name, whatever the declaration's right-hand side: a struct, a named basic type,
+// or a named type over another package's type (`type Position json.RawMessage`), which
+// ParsePackage records as neither a Struct nor a NamedType. An annotation that belongs
+// on a type's declaration (@typescript) is read through this, wherever the type is.
+func TypeDocs(pkg *packages.Package) map[string]string {
+	docs := make(map[string]string)
+	for _, typeSpec := range packageTypeSpecs(pkg.Syntax) {
+		var doc string
+		if typeSpec.Doc != nil {
+			doc = typeSpec.Doc.Text()
+		}
+		if typeSpec.Comment != nil {
+			doc += typeSpec.Comment.Text()
+		}
+		docs[typeSpec.Name.Name] = doc
+	}
+
+	return docs
+}
+
 // packageConstants returns every package-level constant with its comments, so godoc
 // annotations on constants (e.g. @manualAddResource) can be scanned.
 func packageConstants(pkg *packages.Package) []*Constant {

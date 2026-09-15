@@ -161,11 +161,11 @@ func Test_apiClientData(t *testing.T) {
 				"RelicsPatch",
 				// String-typed shapes import no value types.
 				"NullBoolean",
-				"CustomTypes",
+				"from 'money-types'",
 			},
 		},
 		{
-			name: "a NullBoolean or CustomTypes field in a write shape imports the type it names",
+			name: "a NullBoolean field in a write shape imports the value type, and a declared type its module",
 			generator: func() *typescriptGenerator {
 				widget := fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
 					typed(res)
@@ -175,16 +175,22 @@ func Test_apiClientData(t *testing.T) {
 							f.typescriptType = booleanStr
 							f.IsNullable = true
 						case "Code":
-							f.typescriptType = customTypesPrefix + "Money"
+							f.setColumnType("Money", objectTSType, &tsImport{Name: "Money", From: "money-types"}, false)
+						case "Name":
+							f.setColumnType("Price", objectTSType, &tsImport{Name: "Price", From: "money-types"}, true)
+						case "ListedName":
+							f.setColumnType("Point", objectTSType, &tsImport{Name: "Point", From: "geojson"}, false)
 						}
 					}
 				})
 				return &typescriptGenerator{client: &client{resources: []*resourceInfo{widget}}}
 			},
 			wantContains: []string{
-				"import { ApiDescriptor, Client, ClientOptions, createClient, CustomTypes, NullBoolean, ResourceHandle } from '@cccteam/resource';",
+				"import { ApiDescriptor, Client, ClientOptions, createClient, NullBoolean, ResourceHandle } from '@cccteam/resource';\nimport { Point } from 'geojson';\nimport { Money, Price } from 'money-types';\n",
 				"  secret?: NullBoolean;",
-				"  code: CustomTypes.Money;",
+				"  code: Money;",
+				"  name: Price[];",
+				"  listedName: Point;",
 			},
 		},
 	}

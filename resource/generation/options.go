@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"database/sql"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -10,8 +11,10 @@ import (
 	"time"
 
 	"cloud.google.com/go/civil"
+	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/securehash"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 	"github.com/shopspring/decimal"
@@ -415,7 +418,7 @@ func WithConcealedDomains() ResourceOption {
 // into every consuming application this way. Target directories must be distinct.
 //
 // It accepts only TypeScript-specific options: GenerateMetadata, GeneratePermissions,
-// GenerateEnums, and WithTypescriptOverrides. Everything else — package locations
+// GenerateEnums, and ForOutlet. Everything else — package locations
 // (WithVirtualResources, WithComputedResources, WithRPC), the Spanner emulator version,
 // plural overrides, and consolidated handlers — is a ResourceOption inherited from the
 // enclosing NewResourceGenerator options, so nesting one here fails to compile.
@@ -423,6 +426,11 @@ func WithConcealedDomains() ResourceOption {
 // they additionally require GenerateRoutes or manual declarations (@manualAddResource,
 // @manualAddResourceSet, WithManualResources); enum output reads only the schema and
 // carries no such requirement.
+//
+// A field's TypeScript type comes from its Go type alone: the generator's built-in
+// table for the basic and library types, a derived interface for a struct, and the
+// @typescript declaration on a type whose shape lives outside Go (README, "TypeScript
+// types for columns"). There is no per-target type option.
 func GenerateTypescript(targetDir string, options ...TSOption) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.typescriptTargets = append(r.typescriptTargets, typescriptTarget{destination: targetDir, options: options})
@@ -471,17 +479,6 @@ func WithManualResources(registrations ...ManualRegistration) ResourceOption {
 		}
 
 		r.manualRegistrations = append(r.manualRegistrations, registrations...)
-
-		return nil
-	})
-}
-
-// WithTypescriptOverrides sets the Typescript type for a given Go type.
-func WithTypescriptOverrides(overrides map[string]string) TSOption {
-	return tsOption(func(t *typescriptGenerator) error {
-		tempMap := defaultTypescriptOverrides()
-		maps.Copy(tempMap, overrides)
-		t.typescriptOverrides = tempMap
 
 		return nil
 	})
@@ -704,9 +701,6 @@ func resolveOptions(generator any, options []option) error {
 		}
 
 	case *typescriptGenerator:
-		if g.typescriptOverrides == nil {
-			g.typescriptOverrides = defaultTypescriptOverrides()
-		}
 		if g.spannerEmulatorVersion == "" {
 			g.spannerEmulatorVersion = "latest"
 		}
@@ -754,37 +748,13 @@ func applyResourceGeneratorDefaults(g *resourceGenerator) error {
 			return errors.Newf("GenerateTypescript(%q) is declared more than once: each call must name a distinct target directory", target.destination)
 		}
 		seen[dir] = struct{}{}
+		// The target's options are checked now, so a bad one fails construction.
+		if _, err := target.resolve(); err != nil {
+			return err
+		}
 	}
-
-	mapped, err := mappedTypes(g.typescriptTargets)
-	if err != nil {
-		return err
-	}
-	g.mappedTypes = mapped
 
 	return nil
-}
-
-// mappedTypes folds the built-in TypeScript type table and every target's overrides
-// into the one leaf table the wire walker reads. The Go side of a shape cannot
-// depend on which browser app receives it, so two targets mapping one type
-// differently is a configuration error.
-func mappedTypes(targets []typescriptTarget) (map[string]string, error) {
-	mapped := defaultTypescriptOverrides()
-	for _, target := range targets {
-		t, err := target.resolve()
-		if err != nil {
-			return nil, err
-		}
-		for goType, tsType := range t.typescriptOverrides {
-			if existing, ok := mapped[goType]; ok && existing != tsType {
-				return nil, errors.Newf("GenerateTypescript(%q) maps %s to %s, but another target maps it to %s: every target must agree on a type's mapping", target.destination, goType, tsType, existing)
-			}
-			mapped[goType] = tsType
-		}
-	}
-
-	return mapped, nil
 }
 
 const (
@@ -825,6 +795,14 @@ const (
 	nullBooleanTSType = "NullBoolean"
 )
 
+// defaultTypescriptOverrides is the generator's built-in TypeScript type table, keyed
+// by qualified Go type name: the basic types, the library types a column or a wire
+// field may carry (UUIDs, decimals, times, dates), the Spanner and database/sql Null
+// wrappers (nullability comes from the schema, so a nullable spanner.NullBool column
+// renders nullboolean exactly as *bool does), securehash.Hash as its text form, and
+// spanner.NullJSON as unknown, a value with no fixed shape. ccc.NullEnum[T] resolves
+// to its type argument's row (leaf.go). Everything else is a struct the generator
+// derives an interface for, a type carrying a @typescript declaration, or a refusal.
 func defaultTypescriptOverrides() map[string]string {
 	return map[string]string{
 		reflect.TypeFor[ccc.UUID]().String():            uuidTSType,
@@ -833,22 +811,40 @@ func defaultTypescriptOverrides() map[string]string {
 		reflect.TypeFor[decimal.NullDecimal]().String(): numberTSType,
 		reflect.TypeFor[time.Time]().String():           dateTSType,
 		reflect.TypeFor[civil.Date]().String():          civilDateTSType,
-		boolGoType:                                      booleanStr,
-		stringGoType:                                    stringTSType,
-		intGoType:                                       numberTSType,
-		int8GoType:                                      numberTSType,
-		int16GoType:                                     numberTSType,
-		int32GoType:                                     numberTSType,
-		int64GoType:                                     numberTSType,
-		uintGoType:                                      numberTSType,
-		uint8GoType:                                     numberTSType,
-		uint16GoType:                                    numberTSType,
-		uint32GoType:                                    numberTSType,
-		uint64GoType:                                    numberTSType,
-		uintptrGoType:                                   numberTSType,
-		float32GoType:                                   numberTSType,
-		float64GoType:                                   numberTSType,
-		complex64GoType:                                 numberTSType,
-		complex128GoType:                                numberTSType,
+		reflect.TypeFor[spanner.NullString]().String():  stringTSType,
+		reflect.TypeFor[spanner.NullInt64]().String():   numberTSType,
+		reflect.TypeFor[spanner.NullFloat32]().String(): numberTSType,
+		reflect.TypeFor[spanner.NullFloat64]().String(): numberTSType,
+		reflect.TypeFor[spanner.NullNumeric]().String(): numberTSType,
+		reflect.TypeFor[spanner.NullBool]().String():    booleanStr,
+		reflect.TypeFor[spanner.NullTime]().String():    dateTSType,
+		reflect.TypeFor[spanner.NullDate]().String():    civilDateTSType,
+		reflect.TypeFor[spanner.NullJSON]().String():    unknownTSType,
+		reflect.TypeFor[sql.NullString]().String():      stringTSType,
+		reflect.TypeFor[sql.NullInt16]().String():       numberTSType,
+		reflect.TypeFor[sql.NullInt32]().String():       numberTSType,
+		reflect.TypeFor[sql.NullInt64]().String():       numberTSType,
+		reflect.TypeFor[sql.NullByte]().String():        numberTSType,
+		reflect.TypeFor[sql.NullFloat64]().String():     numberTSType,
+		reflect.TypeFor[sql.NullBool]().String():        booleanStr,
+		reflect.TypeFor[sql.NullTime]().String():        dateTSType,
+		reflect.TypeFor[securehash.Hash]().String():     stringTSType,
+		boolGoType:       booleanStr,
+		stringGoType:     stringTSType,
+		intGoType:        numberTSType,
+		int8GoType:       numberTSType,
+		int16GoType:      numberTSType,
+		int32GoType:      numberTSType,
+		int64GoType:      numberTSType,
+		uintGoType:       numberTSType,
+		uint8GoType:      numberTSType,
+		uint16GoType:     numberTSType,
+		uint32GoType:     numberTSType,
+		uint64GoType:     numberTSType,
+		uintptrGoType:    numberTSType,
+		float32GoType:    numberTSType,
+		float64GoType:    numberTSType,
+		complex64GoType:  numberTSType,
+		complex128GoType: numberTSType,
 	}
 }

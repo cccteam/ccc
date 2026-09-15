@@ -2,6 +2,7 @@ package genlang
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -72,27 +73,36 @@ func (a Arg) ParseInvocations(spec *ArgSpec) ([]NamedArgs, error) {
 func parseInvocation(invocation string, spec *ArgSpec) (NamedArgs, error) {
 	args := NamedArgs{named: make(map[string][]string)}
 
+	parts, err := splitArguments(invocation)
+	if err != nil {
+		return NamedArgs{}, err
+	}
+
 	var lastKey string
-	for part := range strings.SplitSeq(invocation, ",") {
+	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			return NamedArgs{}, errors.Newf("empty argument in %q", invocation)
 		}
 
-		key, value, isNamed := strings.Cut(part, ":")
+		key, value, isNamed := cutNamed(part)
 		if !isNamed {
+			value, err := unquote(part, invocation)
+			if err != nil {
+				return NamedArgs{}, err
+			}
 			if len(args.named) > 0 {
 				// A bare value after a named argument continues the preceding
 				// key's list when that key is multi-valued.
 				if lastKey != "" && slices.Contains(spec.Multi, lastKey) {
-					args.named[lastKey] = append(args.named[lastKey], part)
+					args.named[lastKey] = append(args.named[lastKey], value)
 
 					continue
 				}
 
 				return NamedArgs{}, errors.Newf("positional argument %q after a named argument in %q", part, invocation)
 			}
-			args.Positional = append(args.Positional, part)
+			args.Positional = append(args.Positional, value)
 
 			continue
 		}
@@ -110,6 +120,10 @@ func parseInvocation(invocation string, spec *ArgSpec) (NamedArgs, error) {
 		if _, dup := args.named[key]; dup {
 			return NamedArgs{}, errors.Newf("argument %q given twice in %q", key, invocation)
 		}
+		value, err := unquote(value, invocation)
+		if err != nil {
+			return NamedArgs{}, err
+		}
 		args.named[key] = []string{value}
 		lastKey = key
 	}
@@ -124,4 +138,55 @@ func parseInvocation(invocation string, spec *ArgSpec) (NamedArgs, error) {
 	}
 
 	return args, nil
+}
+
+// splitArguments splits an invocation on the commas outside double quotes, so a
+// quoted value may carry a comma (`from: "a,b"`). An unclosed quote is an error.
+func splitArguments(invocation string) ([]string, error) {
+	var (
+		parts  []string
+		start  int
+		quoted bool
+	)
+	for i := range len(invocation) {
+		switch invocation[i] {
+		case '"':
+			quoted = !quoted
+		case ',':
+			if !quoted {
+				parts = append(parts, invocation[start:i])
+				start = i + 1
+			}
+		}
+	}
+	if quoted {
+		return nil, errors.Newf("unclosed quote in %q", invocation)
+	}
+
+	return append(parts, invocation[start:]), nil
+}
+
+// cutNamed splits a `key: value` argument at its first colon. A part that opens with a
+// quote is a quoted positional value, whatever it contains.
+func cutNamed(part string) (key, value string, isNamed bool) {
+	if strings.HasPrefix(part, `"`) {
+		return "", "", false
+	}
+
+	return strings.Cut(part, ":")
+}
+
+// unquote reads a value written in double quotes (`"geojson"`, `"@scope/pkg"`) as the
+// string inside them, so a value may carry characters the bare syntax would read as
+// structure; a bare value is returned as written.
+func unquote(value, invocation string) (string, error) {
+	if !strings.HasPrefix(value, `"`) {
+		return value, nil
+	}
+	unquoted, err := strconv.Unquote(value)
+	if err != nil {
+		return "", errors.Newf("malformed quoted value %s in %q: %v", value, invocation, err)
+	}
+
+	return unquoted, nil
 }

@@ -330,6 +330,20 @@ func (c *SpannerReadWriteTransaction) DBType() DBType {
 	return SpannerDBType
 }
 
+// nullifyNilPointers reads every typed nil pointer in the patch as the untyped nil the
+// Spanner client encodes as NULL. A nullable column typed by a pointer to a type with
+// Spanner methods (a struct on a JSON column, whose EncodeSpanner the generator writes
+// on the value receiver so the type's own MarshalJSON is honored) would otherwise reach
+// the client as a nil pointer that satisfies spanner.Encoder, and the client calls the
+// value method through it.
+func nullifyNilPointers(patch map[string]any) {
+	for column, value := range patch {
+		if rv := reflect.ValueOf(value); rv.Kind() == reflect.Pointer && rv.IsNil() {
+			patch[column] = nil
+		}
+	}
+}
+
 // DataChangeEventIndex provides a sequence number for data change events on the same Resource inside the same transaction.
 func (c *SpannerReadWriteTransaction) DataChangeEventIndex(res accesstypes.Resource, rowID string) int {
 	indexID := fmt.Sprintf("%s_%s", res, rowID)
@@ -345,6 +359,8 @@ func (c *SpannerReadWriteTransaction) SpannerReadOnlyTransaction() spxapi.Querie
 
 // BufferMap buffers a map of changes to be applied to the database.
 func (c *SpannerReadWriteTransaction) BufferMap(r PatchSetMetadata, patch map[string]any) error {
+	nullifyNilPointers(patch)
+
 	var m *spanner.Mutation
 
 	switch r.PatchType() {

@@ -16,16 +16,18 @@ import (
 
 // The wire vocabulary is one set of rules for every struct the generator carries
 // across the wire by value: RPC requests, RPC results, and computed resource rows.
-// Table-backed resources are rows and rows are flat; they do not pass through here.
+// Table-backed resources are rows and rows are flat; a row's struct-typed column is
+// the one place the same walk runs on the column path (see below).
 //
 // Allowed: basic types; named non-struct types as leaves, typed by their underlying
-// basic type; named struct types the generator maps (time.Time, UUIDs, dates, and
-// the application's TypeScript overrides) as leaves; every other named struct type is
-// walked wherever it is declared; a pointer to any of those; one slice level per
-// field, of any of those. Refused, each naming the field path: a struct that reaches
-// itself, maps, interfaces, channels, functions, anonymous structs, arrays, a slice
-// of slices or a pointer to a slice, embedded and unexported fields, and a named
-// type whose underlying type is none of the above. There is no depth limit.
+// basic type; named types the generator's built-in table maps (time.Time, UUIDs,
+// dates, decimals) and types carrying a @typescript declaration as leaves; every other
+// named struct type is walked wherever it is declared; a pointer to any of those; one
+// slice level per field, of any of those. Refused, each naming the field path: a
+// struct that reaches itself, maps, interfaces, channels, functions, anonymous
+// structs, arrays, a slice of slices or a pointer to a slice, embedded and unexported
+// fields, and a named type whose underlying type is none of the above. There is no
+// depth limit.
 //
 // Each walked struct gets a local mirror type in the handler file with generated
 // camel-case JSON tags, so the wire shape lives entirely in generated code. Data
@@ -35,6 +37,13 @@ import (
 // before the literal reads it. The view is legal now and stops compiling the moment
 // the source gains, loses, or retypes a field, so a stale handler is a compile error
 // until the generator runs again.
+//
+// The column path (newColumnWalker) derives the TypeScript interface of a struct a
+// table or view column holds. No mirror is generated there: the runtime marshals the
+// column value as declared, so the struct's json tags are its wire names (every field
+// needs one, "-" leaves the field out, omitempty makes it optional), and a struct that
+// writes its own JSON is refused unless it declares its TypeScript type, since its
+// fields say nothing about the wire.
 
 // wireShape is one struct crossing the wire: its source type and the local mirror.
 type wireShape struct {
@@ -62,10 +71,15 @@ type wireField struct {
 	ElemPointer bool
 	// Nested is the walked struct behind the field, nil for a leaf.
 	Nested *wireShape
+	// Optional marks a column-path field tagged omitempty: the interface declares it
+	// optional, as the runtime leaves it out of the JSON when it is empty.
+	Optional bool
 	// SourceType is the field's type as declared, qualified by package name.
 	SourceType string
-	// tsLeaf is a leaf's TypeScript type before any [] suffix.
-	tsLeaf string
+	// tsLeaf is a leaf's TypeScript type before any [] suffix, and tsImport the
+	// @typescript declaration behind it, nil for a built-in row.
+	tsLeaf   string
+	tsImport *tsImport
 	// Tag carries the source field's struct tag for the call sites that read one.
 	Tag reflect.StructTag
 	// Imports are the packages the field's type reaches.
@@ -118,9 +132,10 @@ func (f *wireField) TypescriptType(namespace string) string {
 }
 
 // TypescriptDisplayType is the field's display type in generated metadata: the
-// leaf's type, or object for a nested field, with [] for a slice.
+// leaf's type, or object for a nested field, an imported type, or unknown, with []
+// for a slice.
 func (f *wireField) TypescriptDisplayType() string {
-	base := f.tsLeaf
+	base := leafDisplayType(f.tsLeaf, f.tsImport)
 	if !f.IsLeaf() {
 		base = objectTSType
 	}
@@ -129,16 +144,6 @@ func (f *wireField) TypescriptDisplayType() string {
 	}
 
 	return base
-}
-
-// hasCustomType reports whether the field or anything behind it maps to a
-// CustomTypes TypeScript type.
-func (f *wireField) hasCustomType() bool {
-	if f.IsLeaf() {
-		return strings.HasPrefix(f.tsLeaf, customTypesPrefix)
-	}
-
-	return f.Nested.HasCustomTypes()
 }
 
 // objectTSType is the display type of a nested field: an opaque object.
@@ -189,19 +194,32 @@ func (s *wireShape) TypescriptName() string {
 	return strcase.ToPascal(s.Mirror)
 }
 
-// HasCustomTypes reports whether any leaf under the shape maps to a CustomTypes
-// TypeScript type.
-func (s *wireShape) HasCustomTypes() bool {
+// TypescriptImports lists the @typescript declarations every leaf under the shape
+// carries, so the file declaring the shape's interfaces imports them.
+func (s *wireShape) TypescriptImports() []*tsImport {
 	if s == nil {
-		return false
+		return nil
 	}
-	for _, f := range s.Fields {
-		if f.hasCustomType() {
-			return true
+	var imports []*tsImport
+	seen := make(map[*wireShape]bool)
+	var visit func(*wireShape)
+	visit = func(sh *wireShape) {
+		if seen[sh] {
+			return
+		}
+		seen[sh] = true
+		for _, f := range sh.Fields {
+			if f.tsImport != nil {
+				imports = append(imports, f.tsImport)
+			}
+			if f.Nested != nil {
+				visit(f.Nested)
+			}
 		}
 	}
+	visit(s)
 
-	return false
+	return imports
 }
 
 // Imports lists the packages every leaf type under the shape reaches, so the
@@ -274,7 +292,11 @@ func typescriptNamespaceOf(name string, nested []*wireShape) string {
 		}
 		fmt.Fprintf(&b, "  export interface %s {\n", n.TypescriptName())
 		for _, f := range n.Fields {
-			fmt.Fprintf(&b, "    %s: %s;\n", f.JSONName, f.TypescriptType(name))
+			optional := ""
+			if f.Optional {
+				optional = "?"
+			}
+			fmt.Fprintf(&b, "    %s%s: %s;\n", f.JSONName, optional, f.TypescriptType(name))
 		}
 		b.WriteString("  }\n")
 	}
@@ -469,8 +491,12 @@ func (f *wireField) writeLocal(b *strings.Builder, direction wireDirection, from
 // wireWalker walks structs under the wire rules, sharing nested mirrors across
 // the fields that reach them and refusing the names that would collide.
 type wireWalker struct {
-	// mapped is the generator's leaf table: qualified type name to TypeScript type.
-	mapped map[string]string
+	// leaves resolves the generator's leaf types: the built-in table and the
+	// @typescript declarations.
+	leaves *leafResolver
+	// columns marks the column path: wire names come from json tags, a struct with
+	// its own JSON methods is refused, and no mirror is generated.
+	columns bool
 	// qualifiers are the package names the handler file imports: the fixed set
 	// every handler imports, the packages the caller names, and every package a
 	// leaf type reaches. A mirror, converter, or local named like one would shadow
@@ -507,12 +533,12 @@ const (
 	routerQualifier  = "router"
 )
 
-// newWireWalker builds a walker over the mapped leaf table. qualifiers names the
+// newWireWalker builds a walker over the leaf resolver. qualifiers names the
 // packages the handler file imports beyond the fixed set: the source package and
 // the application packages the template references.
-func newWireWalker(mapped map[string]string, qualifiers ...string) *wireWalker {
+func newWireWalker(leaves *leafResolver, qualifiers ...string) *wireWalker {
 	w := &wireWalker{
-		mapped:     mapped,
+		leaves:     leaves,
 		qualifiers: make(map[string]struct{}, len(handlerQualifiers)+len(qualifiers)),
 		shapes:     make(map[*types.Named]*wireShape),
 		names:      make(map[string]*types.Named),
@@ -525,6 +551,46 @@ func newWireWalker(mapped map[string]string, qualifiers ...string) *wireWalker {
 	}
 
 	return w
+}
+
+// newColumnWalker builds a walker for the column path: it derives the interfaces of
+// the structs one resource's columns hold, each struct once, under the column rules.
+func newColumnWalker(leaves *leafResolver) *wireWalker {
+	w := newWireWalker(leaves)
+	w.columns = true
+
+	return w
+}
+
+// walkColumn walks the struct a column holds, returning its shape as a nested
+// interface: the struct is its own TypeScript interface in the resource's namespace,
+// and everything it reaches precedes it in Shapes.
+func (w *wireWalker) walkColumn(named *types.Named, path string) (*wireShape, error) {
+	st, ok := named.Underlying().(*types.Struct)
+	if !ok {
+		return nil, errors.Newf("%s: %s is not a struct", path, typeStringer(named))
+	}
+	if err := w.guardJSONMethods(named, path); err != nil {
+		return nil, err
+	}
+
+	return w.nestedShape(named, st, path, nil)
+}
+
+// Shapes lists every struct the walker mirrored, leaves first, each once.
+func (w *wireWalker) Shapes() []*wireShape {
+	return w.order
+}
+
+// guardJSONMethods refuses, on the column path, a struct that writes or reads its own
+// JSON and declares no TypeScript type: the runtime marshals the column value as
+// declared, so the struct's fields do not describe the wire.
+func (w *wireWalker) guardJSONMethods(named *types.Named, path string) error {
+	if !w.columns || !hasJSONMethods(named) {
+		return nil
+	}
+
+	return errors.Newf("%s: %s writes its own JSON (MarshalJSON or UnmarshalJSON), so its fields do not describe the wire; add @%s(...) to its declaration", path, typeStringer(named), typescriptKeyword)
 }
 
 // walk walks a root struct, returning its shape with every nested struct behind it.
@@ -664,6 +730,15 @@ func (w *wireWalker) fill(shape *wireShape, st *types.Struct, path string, stack
 			Tag:        reflect.StructTag(st.Tag(i)),
 			Imports:    parser.TypeImports(v.Type()),
 		}
+		if w.columns {
+			keep, err := f.readJSONTag(fieldPath)
+			if err != nil {
+				return err
+			}
+			if !keep {
+				continue
+			}
+		}
 		if err := w.classify(f, v.Type(), fieldPath, stack); err != nil {
 			return err
 		}
@@ -671,6 +746,28 @@ func (w *wireWalker) fill(shape *wireShape, st *types.Struct, path string, stack
 	}
 
 	return nil
+}
+
+// readJSONTag reads a column-path field's wire name from its json tag: the runtime
+// marshals the column value as declared, so the tag is the name. Every field needs
+// one; "-" leaves the field out of the interface (keep is false); omitempty makes it
+// optional.
+func (f *wireField) readJSONTag(path string) (keep bool, err error) {
+	tag, ok := f.Tag.Lookup(jsonTagKey)
+	if !ok {
+		return false, errors.Newf("%s: no json tag; a struct held by a column is marshaled as declared, so every field names its wire name in a json tag", path)
+	}
+	name, options, _ := strings.Cut(tag, ",")
+	switch name {
+	case "-":
+		return false, nil
+	case "":
+		return false, errors.Newf("%s: the json tag names no field; a struct held by a column is marshaled as declared, so every field names its wire name in a json tag", path)
+	}
+	f.JSONName = name
+	f.Optional = slices.Contains(strings.Split(options, ","), "omitempty")
+
+	return true, nil
 }
 
 // classify reads the field's type into its markers and leaf or nested shape.
@@ -700,11 +797,14 @@ func (w *wireWalker) classify(f *wireField, t types.Type, path string, stack []*
 
 	switch u := t.(type) {
 	case *types.Basic:
-		ts, ok := w.mapped[u.String()]
+		leaf, ok, err := w.leaves.resolve(u)
+		if err != nil {
+			return errors.Wrap(err, path)
+		}
 		if !ok {
 			return errors.Newf("%s: %s has no TypeScript type", path, u)
 		}
-		f.tsLeaf = ts
+		f.tsLeaf = leaf.TS
 
 		return nil
 	case *types.Named:
@@ -722,27 +822,30 @@ func (w *wireWalker) classify(f *wireField, t types.Type, path string, stack []*
 	}
 }
 
-// classifyNamed resolves a named type: mapped by the generator (leaf), a struct
-// (walked), or a named basic type (leaf typed by its underlying type).
+// classifyNamed resolves a named type: a leaf (a @typescript declaration, a row of the
+// built-in table, or a named basic type typed by its underlying type), or a struct,
+// which is walked.
 func (w *wireWalker) classifyNamed(f *wireField, named *types.Named, path string, stack []*types.Named) error {
-	if ts, ok := w.mapped[typeStringer(named)]; ok {
-		f.tsLeaf = ts
+	leaf, ok, err := w.leaves.resolveNamed(named)
+	if err != nil {
+		return errors.Wrap(err, path)
+	}
+	if ok {
+		f.tsLeaf = leaf.TS
+		f.tsImport = leaf.Import
 
 		return nil
 	}
 
 	switch u := named.Underlying().(type) {
 	case *types.Basic:
-		ts, ok := w.mapped[u.String()]
-		if !ok {
-			return errors.Newf("%s: %s has no TypeScript type", path, typeStringer(named))
-		}
-		f.tsLeaf = ts
-
-		return nil
+		return errors.Newf("%s: %s has no TypeScript type", path, typeStringer(named))
 	case *types.Struct:
 		if slices.Contains(stack, named) {
 			return errors.Newf("%s: %s reaches itself; a struct that crosses the wire cannot be recursive", path, typeStringer(named))
+		}
+		if err := w.guardJSONMethods(named, path); err != nil {
+			return err
 		}
 		nested, err := w.nestedShape(named, u, path, stack)
 		if err != nil {
@@ -766,6 +869,10 @@ func (w *wireWalker) nestedShape(named *types.Named, st *types.Struct, path stri
 
 	mirror := lowerFirst(named.Obj().Name())
 	if other, taken := w.names[mirror]; taken && other != named {
+		if w.columns {
+			return nil, errors.Newf("%s: %s and %s would both be the interface %s; rename one", path, typeStringer(named), typeStringer(other), strcase.ToPascal(mirror))
+		}
+
 		return nil, errors.Newf("%s: %s and %s would both mirror as %q; rename one", path, typeStringer(named), typeStringer(other), mirror)
 	}
 

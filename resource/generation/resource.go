@@ -237,6 +237,7 @@ func (r *resourceGenerator) Generate() error {
 	if err != nil {
 		return errors.Wrap(err, "parser.LoadPackagesResilient()")
 	}
+	r.notePackages(packageMap)
 
 	pkg := packageMap[r.resource.Package()]
 	if pkg == nil {
@@ -525,7 +526,17 @@ func (r *resourceGenerator) validateTypescriptTargets() error {
 	return nil
 }
 
+// runResourcesGeneration renders the resources package: the query builders and patch
+// types of every resource, then the storage methods of the column types that need them.
+// Storage resolves first, refused where a column is not JSON or a type is declared
+// where the generator does not write, so nothing renders for a resource that cannot be
+// stored.
 func (r *resourceGenerator) runResourcesGeneration() error {
+	storage, err := r.resolveColumnStorage()
+	if err != nil {
+		return err
+	}
+
 	if err := removeGeneratedFiles(r.resource.Dir(), prefix); err != nil {
 		return err
 	}
@@ -542,7 +553,7 @@ func (r *resourceGenerator) runResourcesGeneration() error {
 		}
 	}
 
-	return nil
+	return r.generateStorageFiles(storage)
 }
 
 func (r *resourceGenerator) generateResourceInterfaces() error {

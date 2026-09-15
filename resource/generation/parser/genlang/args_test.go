@@ -13,6 +13,7 @@ func TestArg_ParseInvocations(t *testing.T) {
 	bindingSpec := &ArgSpec{Positional: 1, Keys: []string{"via"}}
 	subjectSpec := &ArgSpec{Positional: 1, Keys: []string{"value"}, Required: []string{"value"}}
 	transitionSpec := &ArgSpec{Positional: 1, Keys: []string{"from", "to"}, Required: []string{"from", "to"}, Multi: []string{"from"}}
+	typescriptSpec := &ArgSpec{Positional: 1, Keys: []string{"from"}}
 
 	tests := []struct {
 		name        string
@@ -119,6 +120,42 @@ func TestArg_ParseInvocations(t *testing.T) {
 			arg:         Arg("crew,,via: Class"),
 			spec:        bindingSpec,
 			wantContain: "empty argument",
+		},
+		{
+			name: "a quoted named value reads as the string inside the quotes",
+			arg:  Arg(`Point, from: "geojson"`),
+			spec: typescriptSpec,
+			want: []NamedArgs{{Positional: []string{"Point"}, named: map[string][]string{"from": {"geojson"}}}},
+		},
+		{
+			name: "a quoted value carries a scoped module specifier verbatim",
+			arg:  Arg(`Document, from: "@contentful/rich-text-types"`),
+			spec: typescriptSpec,
+			want: []NamedArgs{{Positional: []string{"Document"}, named: map[string][]string{"from": {"@contentful/rich-text-types"}}}},
+		},
+		{
+			name: "a quoted value may carry a comma and a colon",
+			arg:  Arg(`Point, from: "a,b:c"`),
+			spec: typescriptSpec,
+			want: []NamedArgs{{Positional: []string{"Point"}, named: map[string][]string{"from": {"a,b:c"}}}},
+		},
+		{
+			name: "a quoted positional value is unquoted too",
+			arg:  Arg(`"Point"`),
+			spec: typescriptSpec,
+			want: []NamedArgs{{Positional: []string{"Point"}, named: map[string][]string{}}},
+		},
+		{
+			name:        "an unclosed quote is refused",
+			arg:         Arg(`Point, from: "geojson`),
+			spec:        typescriptSpec,
+			wantContain: "unclosed quote",
+		},
+		{
+			name:        "a malformed quoted value is refused",
+			arg:         Arg(`Point, from: "geo"json"`),
+			spec:        typescriptSpec,
+			wantContain: "unclosed quote",
 		},
 	}
 

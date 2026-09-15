@@ -1,0 +1,311 @@
+package generation
+
+import (
+	"go/types"
+	"slices"
+	"strings"
+
+	"github.com/go-playground/errors/v5"
+)
+
+// One leaf resolution serves every path that carries a Go type to the browser: the
+// wire walker, which types RPC requests, RPC results, and computed rows, and the
+// column classifier, which types table and view fields. A type resolves, after
+// aliases are read through, in this order: the built-in table by qualified name; a
+// generic row by origin (ccc.NullEnum, resolved to its type argument); a @typescript
+// declaration on the type; a basic type, or a named type over one, by the basic type's
+// row. A type that reaches none of these is no leaf: the walker mirrors it when it is
+// a struct and refuses it otherwise, and the column path derives a struct's interface
+// and refuses everything else, naming the fix. Nothing falls back to string.
+
+// tsImport is a TypeScript type a @typescript declaration names: the identifier the
+// generated file imports and the module it comes from, or a TypeScript built-in when
+// From is empty.
+type tsImport struct {
+	Name string
+	From string
+}
+
+// IsBuiltin reports whether the declaration names a TypeScript built-in (string,
+// number, boolean, unknown), which no file imports.
+func (i *tsImport) IsBuiltin() bool {
+	return i.From == ""
+}
+
+// unknownTSType is the TypeScript type of a value with no fixed shape: spanner.NullJSON,
+// and a @typescript(unknown) declaration. Its display type is object.
+const unknownTSType = "unknown"
+
+// builtinTypescriptNames are the TypeScript types @typescript may name without from:.
+var builtinTypescriptNames = []string{stringTSType, numberTSType, booleanStr, unknownTSType}
+
+// tsLeaf is a resolved leaf: the type the built-in table or the declaration names, and
+// the declaration when one supplied it.
+type tsLeaf struct {
+	// TS is the leaf's TypeScript type as the table spells it (uuid, civilDate, Date,
+	// string, ...) or as the declaration names it (Point, unknown).
+	TS string
+	// Import is the @typescript declaration behind the leaf; nil for a table row.
+	Import *tsImport
+}
+
+// DisplayType is the leaf's display type in generated metadata: an imported type and
+// unknown are one opaque object; every other leaf displays as its own type.
+func (l tsLeaf) DisplayType() string {
+	return leafDisplayType(l.TS, l.Import)
+}
+
+// leafDisplayType is DisplayType over the parts a wireField keeps.
+func leafDisplayType(ts string, imported *tsImport) string {
+	if ts == unknownTSType || (imported != nil && !imported.IsBuiltin()) {
+		return objectTSType
+	}
+
+	return ts
+}
+
+// nullEnumOrigin is the one generic row of the built-in table: ccc.NullEnum[T] resolves
+// to its type argument's leaf, as its JSON is the value's JSON or null.
+const nullEnumOrigin = "ccc.NullEnum"
+
+// leafResolver resolves Go types to TypeScript leaves over the built-in table and the
+// @typescript declarations a reader supplies.
+type leafResolver struct {
+	mapped map[string]string
+	// declFor reads a type's @typescript declaration, nil when it has none; a nil
+	// reader (tests over the table alone) declares nothing.
+	declFor func(*types.Named) (*tsImport, error)
+}
+
+// newLeafResolver builds a resolver over the built-in table and the declaration reader.
+func newLeafResolver(declFor func(*types.Named) (*tsImport, error)) *leafResolver {
+	return &leafResolver{mapped: defaultTypescriptOverrides(), declFor: declFor}
+}
+
+// resolve resolves t, with no pointer or slice around it, to a leaf. ok is false when
+// t reaches no row and no declaration; err reports a malformed declaration.
+func (r *leafResolver) resolve(t types.Type) (leaf tsLeaf, ok bool, err error) {
+	t = types.Unalias(t)
+	switch u := t.(type) {
+	case *types.Basic:
+		ts, ok := r.mapped[basicName(u)]
+
+		return tsLeaf{TS: ts}, ok, nil
+	case *types.Named:
+		return r.resolveNamed(u)
+	default:
+		return tsLeaf{}, false, nil
+	}
+}
+
+// resolveNamed resolves a named type: the table by name, then a generic row by origin,
+// then its declaration, then its underlying basic type. The table comes first so the
+// library types it maps are never read for a declaration they cannot carry; the
+// declaration comes before the basic row so a named string may still declare a type.
+func (r *leafResolver) resolveNamed(named *types.Named) (tsLeaf, bool, error) {
+	if ts, ok := r.mapped[typeStringer(named)]; ok {
+		return tsLeaf{TS: ts}, true, nil
+	}
+	if origin := named.Origin(); origin != named && originName(origin) == nullEnumOrigin && named.TypeArgs().Len() == 1 {
+		return r.resolve(named.TypeArgs().At(0))
+	}
+	if r.declFor != nil {
+		decl, err := r.declFor(named)
+		if err != nil {
+			return tsLeaf{}, false, err
+		}
+		if decl != nil {
+			return tsLeaf{TS: decl.Name, Import: decl}, true, nil
+		}
+	}
+	if basic, ok := named.Underlying().(*types.Basic); ok {
+		ts, ok := r.mapped[basicName(basic)]
+
+		return tsLeaf{TS: ts}, ok, nil
+	}
+
+	return tsLeaf{}, false, nil
+}
+
+// originName is a generic type's qualified name without its type parameters.
+func originName(origin *types.Named) string {
+	obj := origin.Obj()
+	if obj.Pkg() == nil {
+		return obj.Name()
+	}
+
+	return obj.Pkg().Name() + "." + obj.Name()
+}
+
+// basicName is a basic type's table key: byte and rune are read as the kinds they
+// alias, so a []byte column and a uint8 column share one row.
+func basicName(b *types.Basic) string {
+	if kind := b.Kind(); kind >= 0 && int(kind) < len(types.Typ) && types.Typ[kind] != nil {
+		return types.Typ[kind].Name()
+	}
+
+	return b.Name()
+}
+
+// columnClass is a table or view field's Go type as the column classifier reads it.
+type columnClass struct {
+	// Leaf is the field's leaf, when the type reaches one.
+	Leaf tsLeaf
+	// Slice marks a field carrying a list: a []T, an array, or a named slice type.
+	Slice bool
+	// Derive is the named struct the field carries when its type reaches no leaf; the
+	// column path derives its interface. Nil when Leaf is set.
+	Derive *types.Named
+	// Carrier is the named type a generated storage method attaches to: the field's
+	// type once the pointer is read through, when that type is named (a struct, a
+	// named slice, a declared type). Nil for an unnamed slice or a basic type.
+	Carrier *types.Named
+}
+
+// classifyColumn reads a field's type on the column path: through the alias and one
+// pointer, then the named type as a whole (a declaration or a table row wins before
+// any slice is stripped, so a named type over []byte stays what it declares), then one
+// slice level, then the element's leaf. A struct that reaches no leaf is returned for
+// derivation; anything else that reaches none is refused with the message the walker
+// uses, and the caller adds the field's path and the fix.
+func (r *leafResolver) classifyColumn(t types.Type) (columnClass, error) {
+	var class columnClass
+	t = types.Unalias(t)
+	if p, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(p.Elem())
+		if _, ok := t.(*types.Pointer); ok {
+			return columnClass{}, errors.New("a pointer to a pointer has no TypeScript type")
+		}
+	}
+
+	if named, ok := t.(*types.Named); ok {
+		class.Carrier = named
+		leaf, ok, err := r.resolveNamed(named)
+		if err != nil {
+			return columnClass{}, err
+		}
+		if ok {
+			class.Leaf = leaf
+
+			return class, nil
+		}
+		// The runtime marshals the column value as declared, so a named type that
+		// writes its own JSON has no shape to read off it, whatever it wraps.
+		if hasJSONMethods(named) {
+			return columnClass{}, errors.Newf("%s writes its own JSON (MarshalJSON or UnmarshalJSON), so its fields do not describe the wire; add @%s(...) to its declaration", typeStringer(named), typescriptKeyword)
+		}
+	}
+
+	elem, isSlice := sliceElem(t)
+	if isSlice {
+		class.Slice = true
+		t = types.Unalias(elem)
+		if p, ok := t.(*types.Pointer); ok {
+			t = types.Unalias(p.Elem())
+		}
+	}
+
+	// The element as a whole first, as above: a declared type over a slice is what it
+	// declares, and a named type writing its own JSON is refused before its shape is
+	// read.
+	if named, ok := t.(*types.Named); ok {
+		leaf, ok, err := r.resolveNamed(named)
+		if err != nil {
+			return columnClass{}, err
+		}
+		if ok {
+			class.Leaf = leaf
+
+			return class, nil
+		}
+		if hasJSONMethods(named) {
+			return columnClass{}, errors.Newf("%s writes its own JSON (MarshalJSON or UnmarshalJSON), so its fields do not describe the wire; add @%s(...) to its declaration", typeStringer(named), typescriptKeyword)
+		}
+		if _, isStruct := named.Underlying().(*types.Struct); isStruct {
+			class.Derive = named
+
+			return class, nil
+		}
+	}
+	if _, nested := sliceElem(t); nested && isSlice {
+		return columnClass{}, errors.New("a slice of slices has no TypeScript type; declare a struct for the inner element")
+	}
+
+	leaf, ok, err := r.resolve(t)
+	if err != nil {
+		return columnClass{}, err
+	}
+	if ok {
+		class.Leaf = leaf
+
+		return class, nil
+	}
+
+	return columnClass{}, errors.Newf("%s has no TypeScript type", typeStringer(t))
+}
+
+// sliceElem reads one slice level off t: a slice, an array, or a named type whose
+// underlying type is one of those.
+func sliceElem(t types.Type) (elem types.Type, ok bool) {
+	switch u := t.Underlying().(type) {
+	case *types.Slice:
+		return u.Elem(), true
+	case *types.Array:
+		return u.Elem(), true
+	default:
+		return nil, false
+	}
+}
+
+// hasJSONMethods reports whether the type writes or reads its own JSON: it declares
+// MarshalJSON or UnmarshalJSON on either receiver, so its fields say nothing about the
+// wire form.
+func hasJSONMethods(named *types.Named) bool {
+	return hasMethod(named, "MarshalJSON") || hasMethod(named, "UnmarshalJSON")
+}
+
+// hasMethod reports whether the type declares the method on either receiver, itself or
+// through an embedded field.
+func hasMethod(named *types.Named, name string) bool {
+	obj, _, _ := types.LookupFieldOrMethod(types.NewPointer(named), true, named.Obj().Pkg(), name)
+	_, ok := obj.(*types.Func)
+
+	return ok
+}
+
+// tsImportGroup is one import line of a generated TypeScript file: the names imported
+// from one module, sorted.
+type tsImportGroup struct {
+	From  string
+	Names []string
+}
+
+// NameList renders the group's names for an import clause.
+func (g tsImportGroup) NameList() string {
+	return strings.Join(g.Names, ", ")
+}
+
+// groupImports folds the imported types a file renders into one line per module,
+// modules and names sorted, built-ins left out.
+func groupImports(imports []*tsImport) []tsImportGroup {
+	byModule := make(map[string][]string)
+	for _, imp := range imports {
+		if imp == nil || imp.IsBuiltin() {
+			continue
+		}
+		if !slices.Contains(byModule[imp.From], imp.Name) {
+			byModule[imp.From] = append(byModule[imp.From], imp.Name)
+		}
+	}
+
+	groups := make([]tsImportGroup, 0, len(byModule))
+	for from, names := range byModule {
+		slices.Sort(names)
+		groups = append(groups, tsImportGroup{From: from, Names: names})
+	}
+	slices.SortFunc(groups, func(a, b tsImportGroup) int {
+		return strings.Compare(a.From, b.From)
+	})
+
+	return groups
+}

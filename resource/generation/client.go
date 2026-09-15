@@ -26,9 +26,8 @@ import (
 	"github.com/cccteam/ccc/resource/generation/parser/genlang"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
+	"golang.org/x/tools/go/packages"
 )
-
-const customTypesPrefix = "CustomTypes."
 
 var caser = strcase.NewCaser(false, nil, nil)
 
@@ -51,11 +50,13 @@ type client struct {
 	// foreign key into it renders from the generated values, not from a resource.
 	enumerateTables map[string]string
 	pluralOverrides map[string]string
-	// mappedTypes is the wire walker's leaf table: every Go type the generator maps
-	// to a TypeScript type (the built-in table plus the TypeScript targets'
-	// overrides), keyed by qualified type name. A named struct in it is a leaf; any
-	// other named struct is walked.
-	mappedTypes map[string]string
+	// loadedPackages are the packages the run loaded, by package name, so the
+	// @typescript reader finds a type's declaration without loading its package again.
+	loadedPackages map[string]*packages.Package
+	// leafResolver resolves Go types to TypeScript leaves for every path: the built-in
+	// table and the @typescript declarations read through tsDecls. Built on first use.
+	leafResolver *leafResolver
+	tsDecls      *typescriptDecls
 	consolidateConfig
 	genRPCMethods          bool
 	genComputedResources   bool
@@ -146,54 +147,58 @@ func (c *client) HasNullBoolean() bool {
 	return false
 }
 
-// leafTypes is the wire walker's leaf table: the mapped types when the options
-// resolved them, the built-in table otherwise.
-func (c *client) leafTypes() map[string]string {
-	if c.mappedTypes == nil {
-		return defaultTypescriptOverrides()
-	}
-
-	return c.mappedTypes
+// notePackages records the packages a run loaded, for the @typescript reader.
+func (c *client) notePackages(packageMap map[string]*packages.Package) {
+	c.loadedPackages = packageMap
+	c.tsDecls = nil
+	c.leafResolver = nil
 }
 
-// HasCustomTypesInResources checks if CustomTypes are used in any resource (including computed resources)
-func (c *client) HasCustomTypesInResources() bool {
-	for _, resource := range c.resources {
-		for _, field := range resource.Fields {
-			if strings.HasPrefix(field.typescriptType, customTypesPrefix) {
-				return true
-			}
+// leaves is the run's leaf resolver: the built-in table and the @typescript
+// declarations, read from the loaded packages and, for a type declared elsewhere, from
+// its package on first sight.
+func (c *client) leaves() *leafResolver {
+	if c.leafResolver == nil {
+		if c.tsDecls == nil {
+			c.tsDecls = newTypescriptDecls(c.loadedPackages)
 		}
+		c.leafResolver = newLeafResolver(c.tsDecls.declFor)
 	}
 
-	for _, resource := range c.computedResources {
-		if resource.Shape != nil && resource.Shape.HasCustomTypes() {
-			return true
-		}
-		for _, field := range resource.Fields {
-			if strings.HasPrefix(field.typescriptType, customTypesPrefix) {
-				return true
-			}
-		}
-	}
-
-	return false
+	return c.leafResolver
 }
 
-// HasCustomTypesInMethods checks if CustomTypes are used in any RPC method
-func (c *client) HasCustomTypesInMethods() bool {
+// ResourceTypeImports lists the imports the resources file needs: the @typescript
+// declarations behind every table, view, and computed field on this outlet, grouped
+// per module.
+func (c *client) ResourceTypeImports() []tsImportGroup {
+	var imports []*tsImport
+	for _, res := range c.resources {
+		for _, field := range res.Fields {
+			imports = append(imports, field.tsImport)
+		}
+		for _, shape := range res.ColumnShapes {
+			imports = append(imports, shape.TypescriptImports()...)
+		}
+	}
+	for _, res := range c.computedResources {
+		imports = append(imports, res.Shape.TypescriptImports()...)
+	}
+
+	return groupImports(imports)
+}
+
+// MethodTypeImports lists the imports the methods file needs: the @typescript
+// declarations behind every request and result field on this outlet, grouped per
+// module.
+func (c *client) MethodTypeImports() []tsImportGroup {
+	var imports []*tsImport
 	for _, method := range c.rpcMethods {
-		if method.Request != nil && method.Request.HasCustomTypes() {
-			return true
-		}
-		for _, field := range method.Fields {
-			if strings.HasPrefix(field.typescriptType, customTypesPrefix) {
-				return true
-			}
-		}
+		imports = append(imports, method.Request.TypescriptImports()...)
+		imports = append(imports, method.Result.TypescriptImports()...)
 	}
 
-	return false
+	return groupImports(imports)
 }
 
 func (c *client) hasRPCMethodWithEnumeratedResource() bool {
@@ -370,6 +375,7 @@ func (c *client) templateFuncs() map[string]any {
 		"SanitizeIdentifier":      sanitizeEnumIdentifier,
 		"TypescriptMethodImports": typescriptMethodImports,
 		"TypescriptNamespace":     typescriptNamespace,
+		"TypescriptNamespaceOf":   typescriptNamespaceOf,
 		"TypescriptConstImports":  typescriptConsImports,
 		"PermissionConstant":      permissionConstant,
 		"ScopeConstant":           scopeConstant,
