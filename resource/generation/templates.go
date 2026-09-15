@@ -62,7 +62,7 @@ var {{ PrivateType .Resource.Name }}ReadSets resource.SetCache[{{ .Resource.Name
 // routes enforce; {{ PrivateType .Resource.Name }}WriteSets holds one Set per mutation.
 type {{ PrivateType .Resource.Name }}Write struct {
 	{{- range $field := .Resource.Fields }}
-	{{ $field.Name }} {{ $field.ResolvedType }} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }}`" + `
+	{{ $field.Name }} {{ $field.ResolvedType }} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.SqltypeTag }}`" + `
 	{{- end }}
 }
 
@@ -1280,7 +1280,7 @@ import (
 	patchTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) Patch{{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type request struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.SqltypeTag }}`" + `
 		{{- end }}
 	}
 	
@@ -1416,7 +1416,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 	{{- range $resource := .Resources }}
 	type {{ GoCamel $resource.Name }}Request struct {
 		{{- range $field := .Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTagForPatch }} {{ $field.ImmutableTag }} {{ $field.SqltypeTag }}`" + `
 		{{- end }}
 	}
 	{{ GoCamel $resource.Name}}Decoder := NewDecoder[{{ $resourcePackage }}.{{ $resource.Name }}, {{ GoCamel $resource.Name }}Request]({{ $.ReceiverName }}, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
@@ -1720,7 +1720,7 @@ const resourceMap: ResourceMap = {
       {{- range $field := $resource.Fields }}
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
-       {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex }}{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}{{ if $field.IsPositional }}, masking: 'positional'{{ end -}}
+       {{- end }} displayType: '{{ Lower $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex }}{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}{{ if $field.IsPositional }}, masking: 'positional'{{ end }}{{ if $field.TypescriptMaxLength }}, maxLength: {{ $field.TypescriptMaxLength }}{{ end -}}
       {{- if $field.Enumeration }}, enumeration: {{ EnumerationLiteral $field.EnumerationValues }}
       {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }}{{ if or $field.IsOutputOnly $resource.IsEnumeration }}, readOnly: true{{ end }} },
       {{- end }}

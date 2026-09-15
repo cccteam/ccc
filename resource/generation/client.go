@@ -268,6 +268,7 @@ func (t *tableMetadata) addSchemaResult(result *informationSchemaResult) {
 
 	column.IsNullable = result.IsNullable
 	column.HasDefault = result.HasDefault
+	column.SpannerType = result.SpannerType
 
 	t.Columns[result.ColumnName] = column
 }

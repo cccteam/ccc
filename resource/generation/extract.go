@@ -551,6 +551,7 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 			ReferencedResource: tableColumn.ReferencedTable,
 			ReferencedField:    tableColumn.ReferencedColumn,
 			HasDefault:         tableColumn.HasDefault,
+			SpannerType:        tableColumn.SpannerType,
 		})
 	}
 

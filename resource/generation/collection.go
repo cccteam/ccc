@@ -468,7 +468,7 @@ func handlerSetData(res *resourceInfo, handlerType HandlerType) (resource.SetDat
 		permissions = []accesstypes.Permission{accesstypes.Create, accesstypes.Update, accesstypes.Delete}
 		for _, field := range res.Fields {
 			fields = append(fields, fieldTagsFromTemplateTags(field.Name(),
-				field.JSONTagForPatch(), field.ImmutableTag()))
+				field.JSONTagForPatch(), field.ImmutableTag(), field.SqltypeTag()))
 		}
 	case AllHandlers:
 		return resource.SetData{}, errors.Newf("handlerSetData(): unsupported handler type: %s", handlerType)

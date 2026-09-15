@@ -20,6 +20,12 @@ const (
 	// and leaves it off a concealing field. Any other value is rejected at Set
 	// construction, like a stale perm value.
 	maskingTagKey = "masking"
+	// sqltypeTagKey carries the column's declared Spanner type onto a patch request
+	// struct field whose value the decoder sizes before anything is buffered (see
+	// value_limits.go). The generator writes it only where the field's Go type and the
+	// column type together have a rule; a value the runtime cannot pair with the field
+	// is rejected at Set construction, like a stale perm value.
+	sqltypeTagKey = "sqltype"
 )
 
 // maskingPositional is the masking tag value the generator writes for a
@@ -40,6 +46,7 @@ var runtimeTagKeys = []string{
 	allowFilterTagKey,
 	piiTagKey,
 	maskingTagKey,
+	sqltypeTagKey,
 }
 
 // Reserved query-string parameter names consumed by QueryDecoder; they can never be used

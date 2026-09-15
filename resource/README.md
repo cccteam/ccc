@@ -167,6 +167,7 @@ Read back at runtime by the `resource` package; listed here for reading generate
 | `allow_filter:"true"` | Copied from the source struct; makes an unindexed field filterable. |
 | `pii:"true"` | From `conditions:"pii"`; the field is rejected in URL filter expressions. |
 | `masking:"positional"` | Copied from the source struct; a sort, filter, or cursor on the field runs on the real column while the cell stays masked in the output. Absent on a concealing field. `positional` is the only value written; any other value in a request struct is a startup error (the stale-struct guard). |
+| `sqltype:"STRING(64)"` | The column's declared type, verbatim from the schema, on a patch request-struct field whose value the decoder sizes before anything is buffered (section 11): a string-kinded field on `STRING(n)`, `[]byte` on `BYTES(n)`, a decimal on `NUMERIC`, and a slice of one of those on the matching `ARRAY<…>`. Absent on `MAX` columns, on keys and output-only fields (hidden from the patch wire), and on every other type. A value the runtime cannot pair with the field's type is a startup error (the stale-struct guard). |
 
 ## 4. Reserved query parameters
 
@@ -568,7 +569,12 @@ two creates sharing a value in one batch would pass such a check and fail at com
 and concurrent requests would race past it; the commit translation is needed regardless.
 The application's validators (`@validateCreateType`, `@validateUpdateType`) are where a rule
 is answered as 400 naming the field before anything is buffered; the commit translation is
-the backstop for what they do not cover.
+the backstop for what they do not cover. A value the decoder can size never reaches the
+commit through the API: a string longer than its `STRING(n)` column, a byte slice longer
+than its `BYTES(n)` column, and a decimal beyond `NUMERIC`'s digits answer 400 naming the
+field at decode (section 11). The 409 for a too-long string remains for `STRING(MAX)`,
+whose ceiling the decoder does not check, and for application code that drives the patch
+layer directly.
 
 Two consequences to know:
 
@@ -585,3 +591,53 @@ a tenanted or tracked update answers when its row is missing, are unchanged; the
 the commit, so the same request answers 404 whatever the resource's shape. A request that
 deletes children and their parent in one transaction still succeeds in either order,
 because nothing is checked before the commit.
+
+## 11. Value limits from the schema
+
+A value the column cannot hold answers 400 naming the field when the request is decoded,
+before anything is buffered and before any permission check. The generator carries each
+sized column's declared type onto the patch request structs as `sqltype:"…"` (section 3),
+the runtime derives the rule from it when the handler's Set is constructed, and the
+decoder applies it after the per-field refusals (an unknown field, an immutable field on
+update, a null into a non-nullable field) and before the application validator. A limit is
+a fact about the wire value alone, the same class as `cannot be null`; naming it before the
+permission check discloses schema shape the metadata already publishes, nothing about rows.
+
+The tag is written exactly where the field's Go type and the column type together have a
+rule:
+
+| Go type | Column type | Rule |
+| --- | --- | --- |
+| `string`, a named string type, `*string`, `spanner.NullString` | `STRING(n)` | at most `n` code points (`utf8.RuneCountInString`); Spanner counts code points, so a combining mark counts and a CJK character counts once |
+| `[]byte` | `BYTES(n)` | at most `n` bytes |
+| `decimal.Decimal`, `*decimal.Decimal`, `decimal.NullDecimal`, `spanner.NullNumeric` | `NUMERIC` | trailing zeros trimmed, then at most 29 digits before the decimal point and 9 after (GoogleSQL `NUMERIC` is 38 digits of precision with 9 of scale); `1.1234567890` is accepted, `1.1234567891` is not |
+| a slice of a checked type | `ARRAY<…>` of the matching type | each element by its rule |
+
+No tag, and no check, on `STRING(MAX)` and `BYTES(MAX)` (Spanner's ceiling of 2,621,440
+characters stays a 409 at commit, section 10); on `ccc.UUID` and `ccc.NullUUID`, whose
+unmarshal fixes the shape; on `INT64`, `FLOAT64`, `BOOL`, `DATE`, `TIMESTAMP`, and `JSON`
+columns; on keys and output-only fields, which the patch wire never carries; on `@virtual`
+fields (a view has no schema types; an `@rowsOf` write lands on the table resource, which is
+tagged); and on `@computed` and `@rpc` structs, which have no schema. A null in a nullable
+wrapper passes: there is nothing to size. Application code that drives `PatchSet.Set`
+directly is trusted and keeps the commit backstop.
+
+One message names **every** offending field the request carried, in struct-field order,
+joined with `; `, so a form fixes everything in one round trip. Field names are the JSON
+names:
+
+- `name is limited to 64 characters`
+- `codes: each value is limited to 4 characters`
+- `blob is limited to 4 bytes`
+- `fee is limited to 29 digits before the decimal point and 9 after`
+
+A `PATCH` checks only the fields it carries. The consolidated handler decodes each
+operation through the same function.
+
+The TypeScript field metadata carries the character limit as `maxLength` for the
+string-kinded pairs (`STRING(n)`, and per element for `ARRAY<STRING(n)>`), so a form control
+refuses before sending; nothing is emitted for bytes or `NUMERIC`. JavaScript measures a
+string in UTF-16 units, so a form refuses a little early on astral characters and never
+accepts what the server refuses. The framework-neutral client does not pre-check a string:
+the server stays the single authority. Example: [Ship.Registry](lodestar/pkg/resources/ships.go)
+on `STRING(16)`, and [Mission.Fee](lodestar/pkg/resources/missions.go) on `NUMERIC`.

@@ -56,7 +56,10 @@ type Set[Resource Resourcer] struct {
 	fieldToTag       map[accesstypes.Field]accesstypes.Tag
 	immutableFields  map[accesstypes.Tag]struct{}
 	positionalFields map[accesstypes.Tag]struct{}
-	rMeta            *Metadata[Resource]
+	// valueLimits are the fields whose values the decoder sizes against their columns'
+	// declared types, from the generated sqltype tags (value_limits.go).
+	valueLimits map[accesstypes.Field]valueLimit
+	rMeta       *Metadata[Resource]
 }
 
 // NewSet creates a new Set for a given Resource and Request type. Field-level
@@ -80,6 +83,7 @@ func NewSet[Resource Resourcer, Request any](permissions ...accesstypes.Permissi
 		fieldToTag:       reg.fieldToTag,
 		immutableFields:  reg.immutableFields,
 		positionalFields: reg.positionalFields,
+		valueLimits:      reg.valueLimits,
 		rMeta:            NewMetadata[Resource](),
 	}, nil
 }
@@ -101,10 +105,16 @@ func newUnenforcedSet[Resource Resourcer, Request any]() (*Set[Resource], error)
 		}
 	}
 
+	valueLimits, err := valueLimitsOf(t)
+	if err != nil {
+		return nil, errors.Wrap(err, "valueLimitsOf()")
+	}
+
 	return &Set[Resource]{
 		requiredTagPerm: make(accesstypes.TagPermissions),
 		fieldToTag:      make(map[accesstypes.Field]accesstypes.Tag),
 		immutableFields: immutableFields,
+		valueLimits:     valueLimits,
 		rMeta:           NewMetadata[Resource](),
 	}, nil
 }
@@ -158,14 +168,16 @@ func (r *Set[Resource]) TagPermissions() accesstypes.TagPermissions {
 }
 
 // setRegistration is what a request struct's tags register: the tag-to-permission
-// mappings, the field-to-tag mapping, the permissions, and the tags carrying the
-// immutable and positional declarations.
+// mappings, the field-to-tag mapping, the permissions, the tags carrying the
+// immutable and positional declarations, and the value limits the runtime path reads
+// from the sqltype tags (the static path has no field types to pair them with).
 type setRegistration struct {
 	tags             accesstypes.TagPermissions
 	fieldToTag       map[accesstypes.Field]accesstypes.Tag
 	permissions      []accesstypes.Permission
 	immutableFields  map[accesstypes.Tag]struct{}
 	positionalFields map[accesstypes.Tag]struct{}
+	valueLimits      map[accesstypes.Field]valueLimit
 }
 
 func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (*setRegistration, error) {
@@ -184,13 +196,25 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (*setRe
 	// client-addressable (json:"-"): PermissionRequired/Resource only ever query a field
 	// after finding a real permission requirement for it, so an unregistered field and
 	// one registered with only NullPermission are indistinguishable to every caller.
-	return permissionsFromFieldTags(fields, perms, false)
+	reg, err := permissionsFromFieldTags(fields, perms, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// The sqltype tags pair with the fields' Go types, which only this reflecting path
+	// has; a tag the runtime cannot pair is the stale-struct guard, like a stale perm.
+	reg.valueLimits, err = valueLimitsOf(t)
+	if err != nil {
+		return nil, errors.Wrap(err, "valueLimitsOf()")
+	}
+
+	return reg, nil
 }
 
 // recordMasking reads a field's masking tag: a positional field is recorded by
 // its wire tag, a concealing field carries no tag, and any other value is the
 // stale-struct guard.
-func (r *setRegistration) recordMasking(field FieldTags) error {
+func (r *setRegistration) recordMasking(field *FieldTags) error {
 	switch field.Masking {
 	case "":
 	case maskingPositional:
@@ -278,7 +302,7 @@ func permissionsFromFieldTags(fields []FieldTags, perms []accesstypes.Permission
 			reg.immutableFields[accesstypes.Tag(jsonTag)] = struct{}{}
 		}
 
-		if err := reg.recordMasking(field); err != nil {
+		if err := reg.recordMasking(&field); err != nil {
 			return nil, err
 		}
 

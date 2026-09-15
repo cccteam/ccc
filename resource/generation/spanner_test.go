@@ -62,12 +62,14 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 		table       string
 		wantIndexes []indexMeta
 		wantFlags   map[string][2]bool // column -> IsIndex, IsUniqueIndex
+		wantTypes   map[string]string  // column -> SpannerType, as the information schema spells it
 	}{
 		{
 			name:        "a table with only its primary key, sharing the key column name with Orders",
 			table:       "Tenants",
 			wantIndexes: []indexMeta{{Name: "PRIMARY_KEY", PrimaryKey: true, Unique: true, Key: []indexColumn{{Column: "Id"}}}},
 			wantFlags:   map[string][2]bool{"Id": {true, true}},
+			wantTypes:   map[string]string{"Id": "STRING(36)"},
 		},
 		{
 			name:  "a table with composite, unique, null-filtered unique, null-filtered, and backing indexes",
@@ -87,6 +89,7 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 				"Id": {true, true}, "TenantId": {true, false}, "PlacedAt": {false, false},
 				"Reference": {true, true}, "ExternalRef": {true, true}, "Note": {true, false},
 			},
+			wantTypes: map[string]string{"TenantId": "STRING(36)", "PlacedAt": "TIMESTAMP", "Reference": "STRING(MAX)"},
 		},
 		{
 			// The foreign key on OrderId needs no backing index: the primary key leads
@@ -101,6 +104,7 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 				{Name: "SeatsByOrderIdRow", Unique: true, Key: []indexColumn{{Column: "OrderId"}, {Column: "Row"}}},
 			},
 			wantFlags: map[string][2]bool{"OrderId": {true, false}, "UserId": {false, false}, "Row": {false, false}, "Note": {true, false}},
+			wantTypes: map[string]string{"Row": "INT64", "Note": "STRING(MAX)"},
 		},
 	}
 
@@ -127,6 +131,11 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 				}
 				if got := [2]bool{meta.IsIndex, meta.IsUniqueIndex}; got != want {
 					t.Errorf("%s.%s flags (IsIndex, IsUniqueIndex) = %v, want %v", tt.table, column, got, want)
+				}
+			}
+			for column, want := range tt.wantTypes {
+				if got := table.Columns[column].SpannerType; got != want {
+					t.Errorf("%s.%s SpannerType = %q, want %q", tt.table, column, got, want)
 				}
 			}
 		})

@@ -15,9 +15,10 @@ import (
 const (
 	genCacheDir    string = "."
 	genCacheSuffix string = ".gen"
-	// tableMapCache is versioned: the table map gained its index composition, and a
-	// cache an earlier generator wrote would load without it under the same schema hash.
-	tableMapCache  string = "tablemap-v2" + genCacheSuffix
+	// tableMapCache is versioned: the table map gained its index composition (v2) and
+	// each column's declared type (v3), and a cache an earlier generator wrote would load
+	// without them under the same schema hash.
+	tableMapCache  string = "tablemap-v3" + genCacheSuffix
 	enumValueCache string = "enumvalues" + genCacheSuffix
 )
 

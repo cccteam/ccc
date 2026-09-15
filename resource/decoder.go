@@ -215,6 +215,13 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMa
 		changes[fieldName] = value
 	}
 
+	// A value the column cannot hold is refused here, naming every such field, before
+	// the validator runs and before any permission is checked: the limit is a fact about
+	// the wire value alone, like a null into a non-nullable field.
+	if err := checkValueLimits(rSet.valueLimits, vValue.Type(), changes); err != nil {
+		return nil, nil, err
+	}
+
 	patchSet := NewPatchSet(rSet.ResourceMetadata())
 	patchSet.querySet.env = newRequestEnvironment()
 	// Add to patchset in order of struct fields

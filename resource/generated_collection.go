@@ -19,6 +19,7 @@ type FieldTags struct {
 	Perm      string // raw perm tag value; "" (enforced) or "-" (primary-key exemption) are the only legal values
 	Immutable bool   // immutable:"true"
 	Masking   string // raw masking tag value; "" (concealing) or "positional" are the only legal values
+	SQLType   string // raw sqltype tag value, the column's declared Spanner type; "" where the decoder sizes nothing
 }
 
 // FieldTagsFromStructTag extracts the registration-relevant values from a struct tag: the
@@ -36,6 +37,7 @@ func FieldTagsFromStructTag(field accesstypes.Field, tag reflect.StructTag) Fiel
 		Perm:      tag.Get(permTagKey),
 		Immutable: immutableTag == trueStr,
 		Masking:   tag.Get(maskingTagKey),
+		SQLType:   tag.Get(sqltypeTagKey),
 	}
 }
 

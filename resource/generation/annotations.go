@@ -71,4 +71,7 @@ const (
 	immutableOutTagKey = "immutable"
 	piiOutTagKey       = "pii"
 	maskingOutTagKey   = "masking"
+	// sqltypeOutTagKey carries a column's declared Spanner type onto a patch request
+	// struct field the decoder sizes (resourceField.SqltypeTag).
+	sqltypeOutTagKey = "sqltype"
 )

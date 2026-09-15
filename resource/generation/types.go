@@ -294,6 +294,10 @@ type columnMeta struct {
 	IsPrimaryKey bool
 	IsForeignKey bool
 	IsNullable   bool
+	// SpannerType is the column's declared type as INFORMATION_SCHEMA.COLUMNS spells
+	// it: STRING(64), STRING(MAX), NUMERIC, ARRAY<STRING(4)>. The patch request structs
+	// carry it as sqltype where the decoder sizes the field's value against it.
+	SpannerType string
 	// IsIndex marks a column that leads some index of the table, the PRIMARY_KEY index
 	// and Spanner's managed foreign-key indexes included: a filter on it alone has a
 	// seek path. A trailing key column and a stored column are not marked; a predicate
@@ -1090,6 +1094,9 @@ type resourceField struct {
 	EnumerationValues []*enumData
 	ReferencedField   string
 	HasDefault        bool
+	// SpannerType is the backing column's declared type (columnMeta.SpannerType);
+	// empty on a view, whose fields have no schema type.
+	SpannerType string
 	// enumerateArg is the field-scope @enumerate argument as written, resolved once
 	// every kind is extracted (resolveFieldEnumerations); nil when none is declared.
 	enumerateArg *genlang.Arg
@@ -1411,6 +1418,40 @@ func (f *resourceField) ImmutableTag() string {
 	}
 
 	return ""
+}
+
+// SqltypeTag renders sqltype:"<column type>" onto a patch request-struct field whose
+// value the decoder sizes against its column's declared type (resource.HasValueLimit): a
+// string-kinded field on STRING(n), []byte on BYTES(n), a decimal on NUMERIC, and a
+// slice of one of those on the matching ARRAY. A field hidden from the patch wire (a
+// key, an output-only field), a view's field, and every other pair carry no tag, so the
+// structs stay quiet where nothing is checked.
+func (f *resourceField) SqltypeTag() string {
+	if f.IsPrimaryKey || f.IsOutputOnly() {
+		return ""
+	}
+
+	kind, slice := valueKindOf(f.GoType())
+	if !resource.HasValueLimit(f.SpannerType, kind, slice) {
+		return ""
+	}
+
+	return fmt.Sprintf("%s:%q", sqltypeOutTagKey, f.SpannerType)
+}
+
+// TypescriptMaxLength is the character limit the field's TypeScript metadata carries:
+// the declared length of the STRING(n) column, or of the ARRAY<STRING(n)>'s element,
+// behind a string-kinded field the patch decoder sizes. Zero where the metadata says
+// nothing: a bytes or decimal rule has no per-character form a form control applies.
+func (f *resourceField) TypescriptMaxLength() int {
+	if f.SqltypeTag() == "" {
+		return 0
+	}
+	if kind, _ := valueKindOf(f.GoType()); kind != resource.ValueKindString {
+		return 0
+	}
+
+	return resource.DeclaredLength(f.SpannerType)
 }
 
 func (f *resourceField) IsView() bool {

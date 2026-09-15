@@ -170,6 +170,32 @@ func Test_typescriptResourcesTemplate_filterable(t *testing.T) {
 			wantNotContains: []string{"masking: 'concealing'"},
 		},
 		{
+			name: "a sized string field carries its character limit, an unbounded one nothing",
+			data: func() tsResourcesData {
+				widget := fixtureResource(t, collection, "Widget", func(res *resourceInfo) {
+					stringTyped(res.Fields)
+					for _, f := range res.Fields {
+						switch f.Name() {
+						case "Name":
+							f.SpannerType = "STRING(64)"
+						case "ListedName":
+							f.SpannerType = "STRING(MAX)"
+						case "Code":
+							f.SpannerType = "STRING(16)"
+						}
+					}
+				})
+
+				return tsResourcesData{Resources: []*resourceInfo{widget}, GenPrefix: "zz_gen"}
+			},
+			wantContains: []string{
+				"{ fieldName: 'name', displayType: 'string', required: true, isIndex: false, maxLength: 64 }",
+				"{ fieldName: 'listedName', displayType: 'string', required: true, isIndex: false }",
+				"{ fieldName: 'code', displayType: 'string', required: true, isIndex: false, maxLength: 16 }",
+			},
+			wantNotContains: []string{"maxLength: 0"},
+		},
+		{
 			name: "a computed resource's allow_filter field stands alone, its other fields carry nothing",
 			data: func() tsResourcesData {
 				board := fixtureComputedResource(t, paging, "Board")
