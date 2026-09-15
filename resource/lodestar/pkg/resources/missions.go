@@ -55,7 +55,9 @@ type (
 	// Hazard is guarded at two points. The create validator answers a hazard outside 1..5
 	// as 400 naming the field before anything is buffered; the update path has no
 	// validator, so the schema's CK_Missions_Hazard (migration 000033) refuses the same
-	// value at commit, and the library answers that as 400 naming Missions.
+	// value at commit, and the library answers that as 400 naming Missions. Its type is
+	// HazardLevel, a named variant of INT64, the column type the assessor's paging
+	// demonstration rides (see the type).
 	//
 	// Fee is NUMERIC, so its create and update requests carry sqltype:"NUMERIC": a fee
 	// with ten decimals answers 400 naming the field at decode, on a create and on a
@@ -85,7 +87,7 @@ type (
 		// @enumerate(BriefingTemplates)
 		BriefingTemplateID *string `spanner:"BriefingTemplateId"`
 		// @attribute(hazard)
-		Hazard int64 `spanner:"Hazard"`
+		Hazard HazardLevel `spanner:"Hazard"`
 		// @attribute(fee)
 		// Filterable so the visible projection can be exercised: the archivist's fee is
 		// masked until a mission completes, and a masked cell matches only isnull.
@@ -105,6 +107,20 @@ type (
 		// @attribute(settlement)
 		Settlement decimal.NullDecimal `spanner:"Settlement"`
 	}
+
+	// HazardLevel is the hazard scale, 1 to 5, as a named variant of INT64: the
+	// named-variant column the paging demonstration rides. The Assessor role is granted
+	// the hazard only while a mission is open, so a grid of hers that sorts by hazard
+	// without displaying it pages on the cursor's copy of the visible hazard, NULL where
+	// the mission is no longer open, and the reader decodes that copy into this type,
+	// where the Spanner client refuses a pointer to a pointer to it
+	// (test/integration/paging_test.go). The validator's bounds and the grants'
+	// vocabulary (hazard IN (1, 2), hazard <= subject.clearance) are unchanged: the
+	// attribute keeps the number type through the underlying INT64, and the TypeScript
+	// field stays a number.
+	//
+	// Demonstrates: paging.named-variant-key.
+	HazardLevel int64
 )
 
 // Config enables change tracking: Mission mutations write DataChangeEvents rows in the

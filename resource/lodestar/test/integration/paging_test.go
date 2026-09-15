@@ -9,9 +9,10 @@ package integration
 // walk one row at a time; Missions declare @order(Deadline asc); the whole hold walks
 // its nullable release date across the NULL boundary in both directions; the archivist
 // walks her closed missions sorted by a fee, a deadline, and a primary key her request
-// did not select.
+// did not select; the assessor walks every Anvil mission sorted by a hazard of a named
+// variant type she is granted only while a mission is open.
 //
-// Demonstrates: paging.cursor, paging.link-header, paging.total-count, paging.limit-all, paging.offset-refused, paging.readability-rule, paging.masked-sort, paging.unselected-sort-key, paging.nullable-sort, paging.survives-writes, paging.sealed-cursor, filter.typed-values, @order, @page, paging.descriptor-sizes.
+// Demonstrates: paging.cursor, paging.link-header, paging.total-count, paging.limit-all, paging.offset-refused, paging.readability-rule, paging.masked-sort, paging.unselected-sort-key, paging.named-variant-key, paging.nullable-sort, paging.survives-writes, paging.sealed-cursor, filter.typed-values, @order, @page, paging.descriptor-sizes.
 
 import (
 	"fmt"
@@ -708,57 +709,132 @@ func TestPaging_unselectedSortKey(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			keysOf := func(t *testing.T, body []byte) []string {
-				t.Helper()
-
-				var keys []string
-				for _, row := range decodeRows(t, body) {
-					cols := slices.Sorted(maps.Keys(row))
-					if !slices.Equal(cols, tt.wantCols) {
-						t.Errorf("row columns = %v, want exactly %v", cols, tt.wantCols)
-					}
-					key, _ := row[tt.key].(string)
-					keys = append(keys, key)
-				}
-
-				return keys
-			}
-
-			// Forward: follow next until it ends, collecting every row once.
-			var forward []string
-			var pages []string
-			target := sectorPath(anvil, tt.query)
-			for target != "" {
-				rr := doRequestRecordedAs(t, h, "archivist", http.MethodGet, target, "")
-				assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
-				forward = append(forward, keysOf(t, rr.Body.Bytes())...)
-				pages = append(pages, target)
-				target = linkRelations(t, rr.Header().Get(resource.LinkHeader))["next"]
-			}
+			forward, backward, pages := walkBothWays(t, h, "archivist", sectorPath(anvil, tt.query), projectedKeys(tt.key, tt.wantCols))
 			if !slices.Equal(forward, tt.want) {
 				t.Fatalf("forward walk = %v, want %v", forward, tt.want)
 			}
-			if len(pages) != 4 {
-				t.Errorf("pages = %d, want 4 of up to two rows", len(pages))
-			}
-
-			// Backward: from the last page, follow prev to the first; the pages read in
-			// reverse are the same rows in the same order.
-			rr := doRequestRecordedAs(t, h, "archivist", http.MethodGet, pages[len(pages)-1], "")
-			assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
-			var backward []string
-			for {
-				backward = append(keysOf(t, rr.Body.Bytes()), backward...)
-				prev := linkRelations(t, rr.Header().Get(resource.LinkHeader))["prev"]
-				if prev == "" {
-					break
-				}
-				rr = doRequestRecordedAs(t, h, "archivist", http.MethodGet, prev, "")
-				assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+			if pages != 4 {
+				t.Errorf("pages = %d, want 4 of up to two rows", pages)
 			}
 			if !slices.Equal(backward, tt.want) {
 				t.Errorf("backward walk = %v, want %v", backward, tt.want)
 			}
 		})
 	}
+}
+
+// TestPaging_namedVariantKey pins the cursor's copy of a sort key whose Go type is a
+// named variant of a base kind. The assessor walks Anvil's thirty missions two rows a
+// page, sorted by a hazard her columns= list leaves out: Missions.Hazard is a
+// HazardLevel (type HazardLevel int64), concealing, and hers only while a mission is
+// open, so the copy is the visible projection and the sixteen missions no longer open
+// walk through the NULL region, first ascending and last descending, Spanner's
+// placement. The reader decodes the copy into the field's own type, where the client
+// refuses a pointer to a pointer to a named variant, so every page turns; every walk
+// sees each row exactly once forward and back, and the rows carry exactly the columns
+// asked for.
+//
+// Demonstrates: paging.named-variant-key.
+func TestPaging_namedVariantKey(t *testing.T) {
+	t.Parallel()
+
+	_, h, _ := sharedWorld(t)
+
+	// From the seed: Anvil's open missions grouped by hazard, the primary key breaking
+	// ties within a group, and the sixteen missions in every other state, whose hazard
+	// the assessor is not granted, in key order.
+	byHazard := [][]string{
+		missionIDs(12, 27, 32),     // hazard 1
+		missionIDs(1, 8, 13, 23),   // hazard 2
+		missionIDs(19, 24, 29),     // hazard 3
+		missionIDs(16, 21, 26, 31), // hazard 5; no open mission is hazard 4
+	}
+	notOpen := missionIDs(2, 3, 4, 5, 6, 7, 14, 15, 17, 18, 20, 22, 25, 28, 30, 33)
+	ascending := slices.Concat(byHazard...)
+	descending := slices.Concat(byHazard[3], byHazard[2], byHazard[1], byHazard[0])
+
+	tests := []struct {
+		name  string
+		query string
+		want  []string
+	}{
+		{
+			name:  "ascending: the masked hazards walk the NULL region first, then the open missions by hazard",
+			query: "missions?columns=id,title&sort=hazard&limit=2",
+			want:  slices.Concat(notOpen, ascending),
+		},
+		{
+			name:  "descending: the open missions by hazard, the NULL region last",
+			query: "missions?columns=id,title&sort=hazard:desc&limit=2",
+			want:  slices.Concat(descending, notOpen),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			forward, backward, pages := walkBothWays(t, h, "assessor", sectorPath(anvil, tt.query), projectedKeys("id", []string{"id", "title"}))
+			if !slices.Equal(forward, tt.want) {
+				t.Fatalf("forward walk = %v, want %v", forward, tt.want)
+			}
+			if pages != 15 {
+				t.Errorf("pages = %d, want 15 of two rows", pages)
+			}
+			if !slices.Equal(backward, tt.want) {
+				t.Errorf("backward walk = %v, want %v", backward, tt.want)
+			}
+		})
+	}
+}
+
+// projectedKeys reads the given key from every row of a page, checking that each row
+// carries exactly the columns asked for: the projection is never widened by a sort key.
+func projectedKeys(key string, wantCols []string) func(t *testing.T, body []byte) []string {
+	return func(t *testing.T, body []byte) []string {
+		t.Helper()
+
+		var keys []string
+		for _, row := range decodeRows(t, body) {
+			cols := slices.Sorted(maps.Keys(row))
+			if !slices.Equal(cols, wantCols) {
+				t.Errorf("row columns = %v, want exactly %v", cols, wantCols)
+			}
+			k, _ := row[key].(string)
+			keys = append(keys, k)
+		}
+
+		return keys
+	}
+}
+
+// walkBothWays follows a paged list as the given user: forward from its first page by
+// the Link header's next relation until it ends, then back from the last page by prev
+// to the first. It returns the keys keysOf reads from each page, the forward walk in
+// walk order and the backward walk re-ordered first to last, and the number of pages
+// the forward walk turned.
+func walkBothWays(t *testing.T, h http.Handler, user accesstypes.User, target string, keysOf func(t *testing.T, body []byte) []string) (forward, backward []string, pages int) {
+	t.Helper()
+
+	var visited []string
+	for target != "" {
+		rr := doRequestRecordedAs(t, h, user, http.MethodGet, target, "")
+		assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+		forward = append(forward, keysOf(t, rr.Body.Bytes())...)
+		visited = append(visited, target)
+		target = linkRelations(t, rr.Header().Get(resource.LinkHeader))["next"]
+	}
+
+	rr := doRequestRecordedAs(t, h, user, http.MethodGet, visited[len(visited)-1], "")
+	assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+	for {
+		backward = append(keysOf(t, rr.Body.Bytes()), backward...)
+		prev := linkRelations(t, rr.Header().Get(resource.LinkHeader))["prev"]
+		if prev == "" {
+			break
+		}
+		rr = doRequestRecordedAs(t, h, user, http.MethodGet, prev, "")
+		assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+	}
+
+	return forward, backward, len(visited)
 }

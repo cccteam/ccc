@@ -2303,6 +2303,26 @@
         }
       },
       {
+        "name": "Assessor",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Missions",
+              "fields": [
+                "title"
+              ]
+            },
+            {
+              "resource": "Missions",
+              "fields": [
+                "hazard"
+              ],
+              "condition": "state = 'open'"
+            }
+          ]
+        }
+      },
+      {
         "name": "HazardAnalyst",
         "permissions": {
           "List": [

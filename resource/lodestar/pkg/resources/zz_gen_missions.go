@@ -35,7 +35,7 @@ type missionRead struct {
 	Title              string              `json:"title"`
 	Brief              *string             `json:"brief"`
 	BriefingTemplateID *string             `json:"briefingTemplateId"`
-	Hazard             int64               `json:"hazard"`
+	Hazard             HazardLevel         `json:"hazard"`
 	Fee                decimal.Decimal     `json:"fee"`
 	Deadline           time.Time           `json:"deadline"`
 	RequiredCertID     *string             `json:"requiredCertId"`
@@ -59,7 +59,7 @@ type missionWrite struct {
 	Title              string              `json:"title"`
 	Brief              *string             `json:"brief"`
 	BriefingTemplateID *string             `json:"briefingTemplateId" sqltype:"STRING(64)"`
-	Hazard             int64               `json:"hazard"`
+	Hazard             HazardLevel         `json:"hazard"`
 	Fee                decimal.Decimal     `json:"fee"                sqltype:"NUMERIC"`
 	Deadline           time.Time           `json:"deadline"`
 	RequiredCertID     *string             `json:"requiredCertId"     sqltype:"STRING(64)"`
@@ -672,14 +672,14 @@ func (p *MissionCreatePatch) BriefingTemplateIDIsSet() bool {
 	return p.patchSet.IsSet("BriefingTemplateID")
 }
 
-func (p *MissionCreatePatch) SetHazard(v int64) *MissionCreatePatch {
+func (p *MissionCreatePatch) SetHazard(v HazardLevel) *MissionCreatePatch {
 	p.patchSet.Set("Hazard", v)
 
 	return p
 }
 
-func (p *MissionCreatePatch) Hazard() int64 {
-	v, _ := p.patchSet.Get("Hazard").(int64)
+func (p *MissionCreatePatch) Hazard() HazardLevel {
+	v, _ := p.patchSet.Get("Hazard").(HazardLevel)
 
 	return v
 }
@@ -996,14 +996,14 @@ func (p *MissionUpdatePatch) BriefingTemplateIDIsSet() bool {
 	return p.patchSet.IsSet("BriefingTemplateID")
 }
 
-func (p *MissionUpdatePatch) SetHazard(v int64) *MissionUpdatePatch {
+func (p *MissionUpdatePatch) SetHazard(v HazardLevel) *MissionUpdatePatch {
 	p.patchSet.Set("Hazard", v)
 
 	return p
 }
 
-func (p *MissionUpdatePatch) Hazard() int64 {
-	v, _ := p.patchSet.Get("Hazard").(int64)
+func (p *MissionUpdatePatch) Hazard() HazardLevel {
+	v, _ := p.patchSet.Get("Hazard").(HazardLevel)
 
 	return v
 }

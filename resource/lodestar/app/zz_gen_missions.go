@@ -20,22 +20,22 @@ import (
 
 func (a *App) Missions() http.HandlerFunc {
 	type mission struct {
-		ID                 ccc.UUID            `json:"id"                 index:"true"        perm:"-"`
-		SectorID           string              `json:"sectorId"           index:"true"`
-		ClientID           ccc.UUID            `json:"clientId"           index:"true"`
-		KindID             string              `json:"kindId"             index:"true"`
-		Title              string              `json:"title"`
-		Brief              *string             `json:"brief"`
-		BriefingTemplateID *string             `json:"briefingTemplateId"`
-		Hazard             int64               `json:"hazard"`
-		Fee                decimal.Decimal     `json:"fee"                allow_filter:"true"`
-		Deadline           time.Time           `json:"deadline"           index:"true"        masking:"positional"`
-		RequiredCertID     *string             `json:"requiredCertId"     index:"true"`
-		BookedBy           string              `json:"bookedBy"`
-		AssignedSquadronID ccc.NullUUID        `json:"assignedSquadronId" index:"true"`
-		StatusID           string              `json:"statusId"           index:"true"`
-		Notes              *string             `json:"notes"`
-		Settlement         decimal.NullDecimal `json:"settlement"`
+		ID                 ccc.UUID              `json:"id"                 index:"true"        perm:"-"`
+		SectorID           string                `json:"sectorId"           index:"true"`
+		ClientID           ccc.UUID              `json:"clientId"           index:"true"`
+		KindID             string                `json:"kindId"             index:"true"`
+		Title              string                `json:"title"`
+		Brief              *string               `json:"brief"`
+		BriefingTemplateID *string               `json:"briefingTemplateId"`
+		Hazard             resources.HazardLevel `json:"hazard"`
+		Fee                decimal.Decimal       `json:"fee"                allow_filter:"true"`
+		Deadline           time.Time             `json:"deadline"           index:"true"        masking:"positional"`
+		RequiredCertID     *string               `json:"requiredCertId"     index:"true"`
+		BookedBy           string                `json:"bookedBy"`
+		AssignedSquadronID ccc.NullUUID          `json:"assignedSquadronId" index:"true"`
+		StatusID           string                `json:"statusId"           index:"true"`
+		Notes              *string               `json:"notes"`
+		Settlement         decimal.NullDecimal   `json:"settlement"`
 	}
 
 	type response []map[string]any
@@ -158,22 +158,22 @@ func (a *App) Missions() http.HandlerFunc {
 
 func (a *App) Mission() http.HandlerFunc {
 	type response struct {
-		ID                 ccc.UUID            `json:"id"                 index:"true"         perm:"-"`
-		SectorID           string              `json:"sectorId"`
-		ClientID           ccc.UUID            `json:"clientId"`
-		KindID             string              `json:"kindId"`
-		Title              string              `json:"title"`
-		Brief              *string             `json:"brief"`
-		BriefingTemplateID *string             `json:"briefingTemplateId"`
-		Hazard             int64               `json:"hazard"`
-		Fee                decimal.Decimal     `json:"fee"`
-		Deadline           time.Time           `json:"deadline"           masking:"positional"`
-		RequiredCertID     *string             `json:"requiredCertId"`
-		BookedBy           string              `json:"bookedBy"`
-		AssignedSquadronID ccc.NullUUID        `json:"assignedSquadronId"`
-		StatusID           string              `json:"statusId"`
-		Notes              *string             `json:"notes"`
-		Settlement         decimal.NullDecimal `json:"settlement"`
+		ID                 ccc.UUID              `json:"id"                 index:"true"         perm:"-"`
+		SectorID           string                `json:"sectorId"`
+		ClientID           ccc.UUID              `json:"clientId"`
+		KindID             string                `json:"kindId"`
+		Title              string                `json:"title"`
+		Brief              *string               `json:"brief"`
+		BriefingTemplateID *string               `json:"briefingTemplateId"`
+		Hazard             resources.HazardLevel `json:"hazard"`
+		Fee                decimal.Decimal       `json:"fee"`
+		Deadline           time.Time             `json:"deadline"           masking:"positional"`
+		RequiredCertID     *string               `json:"requiredCertId"`
+		BookedBy           string                `json:"bookedBy"`
+		AssignedSquadronID ccc.NullUUID          `json:"assignedSquadronId"`
+		StatusID           string                `json:"statusId"`
+		Notes              *string               `json:"notes"`
+		Settlement         decimal.NullDecimal   `json:"settlement"`
 	}
 
 	decoder := NewQueryDecoder[resources.Mission, response](a, accesstypes.Read)

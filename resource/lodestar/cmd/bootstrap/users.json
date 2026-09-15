@@ -265,6 +265,20 @@
       }
     },
     {
+      "user": "assessor",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "Assessor"
+          ]
+        }
+      }
+    },
+    {
       "user": "hazards",
       "password": "lodestar",
       "roles": {

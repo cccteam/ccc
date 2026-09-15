@@ -100,7 +100,7 @@ func (m *CompileBriefing) Execute(ctx context.Context, client resource.Client, _
 			return nil, errors.Wrap(err, "resources.MissionQuery.List()")
 		}
 		briefing.Missions++
-		briefing.WorstHazard = max(briefing.WorstHazard, row.Data.Hazard)
+		briefing.WorstHazard = max(briefing.WorstHazard, int64(row.Data.Hazard))
 		if row.Masked("fee") {
 			briefing.FeesRedacted++
 		} else {

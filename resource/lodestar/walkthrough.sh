@@ -121,7 +121,7 @@ MERIDIAN=10000000-0000-4000-8000-000000000002
 BASTION_RELAY=10000000-0000-4000-8000-000000000003
 CONVOY_SORTIE=90000000-0000-4000-8000-000000000001
 
-for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor archivist hazards dock watch; do
+for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor archivist assessor hazards dock watch; do
   login "$p"
 done
 login_portal client
@@ -153,6 +153,21 @@ r=$(req archivist GET "$ANVIL/missions?limit=200"); assert_py "archivist: fee re
 r=$(req archivist GET "$ANVIL/missions?sort=fee"); check "the archivist sorts by fee: the masked cells run over the visible projection" 200 "$r"
 assert_py "masked fees fall to the NULL region, last ascending" "$r" "[('fee' in m) for m in rows] == [True,True,True,False,False,False,False]"
 r=$(req archivist GET "$ANVIL/missions?filter=sectorId:eq:anvil,fee:isnull"); assert_py "fee isnull matches exactly the redacted rows" "$r" "len(rows)==4 and all('fee' not in m for m in rows)"
+# The assessor's grid sorts by a hazard it does not display. The key is a named variant
+# of INT64 (HazardLevel), concealing, hers only while a mission is open, and left out of
+# columns=, so every page turns on the cursor's copy decoded into the field's own type,
+# and the missions no longer open walk the NULL region, first in Spanner's placement.
+r=$(req assessor GET "$ANVIL/missions?columns=id&limit=200"); every=$(body "$r" | py "print(','.join(sorted(m['id'] for m in rows)))")
+page=$(curl -s -D "$S/hazard.h" -L -b "$S/assessor.jar" -H "X-XSRF-TOKEN: $(xsrf assessor)" "$ANVIL/missions?columns=id,title&sort=hazard&limit=2")
+seen=$(echo "$page" | py "print(','.join(m['id'] for m in rows))"); shape=$(echo "$page" | py "print(all(sorted(m)==['id','title'] for m in rows))")
+next=$(grep -i '^Link:' "$S/hazard.h" | sed -n 's/.*<\([^>]*\)>; rel="next".*/\1/p')
+while [ -n "$next" ]; do
+  page=$(curl -s -D "$S/hazard.h" -L -b "$S/assessor.jar" -H "X-XSRF-TOKEN: $(xsrf assessor)" "$B$next")
+  seen="$seen,$(echo "$page" | py "print(','.join(m['id'] for m in rows))")"
+  [ "$(echo "$page" | py "print(all(sorted(m)==['id','title'] for m in rows))")" = True ] || shape=False
+  next=$(grep -i '^Link:' "$S/hazard.h" | sed -n 's/.*<\([^>]*\)>; rel="next".*/\1/p')
+done
+if [ "$(echo "$seen" | tr ',' '\n' | sort | paste -sd,)" = "$every" ] && [ "$shape" = True ]; then echo "PASS  the assessor's hazard sort, a named-variant key outside the projection, pages every Anvil mission once, rows carrying id and title alone"; else echo "FAIL  assessor hazard walk: seen=$seen shape=$shape"; fails=$((fails+1)); fi
 r=$(req quartermaster GET "$ANVIL/missions?sort=fee"); check "the quartermaster, granted no fee, is refused the sort naming the field" 403 "$r"
 r=$(req marshal GET "$ANVIL/missions?capabilities=Execute&limit=200"); assert_py "marshal: every legal edge lit on the underway convoy" "$r" "{'CompleteMission','FailMission','HoldMission'} <= set(next(m for m in rows if m['id']=='$CONVOY')['zzCapabilities']['Execute'])"
 r=$(req marshal GET "$ANVIL/missions?limit=201"); check "a page over Missions' declared maximum of 200 is refused, never clamped" 400 "$r"
