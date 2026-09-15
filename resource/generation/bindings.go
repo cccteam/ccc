@@ -83,6 +83,12 @@ type subjectBinding struct {
 	ValueField *resourceField
 	Path       []bindingHop
 
+	// Type is the comparison type of the column the set or value yields (the
+	// terminal of a dotted value), derived from its Go type exactly as an
+	// attribute's is; deploy validation admits the entry only beside an
+	// attribute of the same type.
+	Type string
+
 	// Scalar marks a @subjectValue (threshold comparisons, unique-anchored);
 	// false is a @subjectSet (IN membership, no cardinality claim).
 	Scalar bool
@@ -264,7 +270,9 @@ func (c *client) resolveDomain(anchor *resourceField, arg genlang.Arg, structsBy
 
 // resolveSubjectBindings compiles the (repeatable) @subjectSet / @subjectValue
 // annotations on one user-id anchor. value: names the sibling Go field the
-// set or value yields, dotted to continue through remote hops.
+// set or value yields, dotted to continue through remote hops; the yielded
+// column's Go type must map onto the comparison-type vocabulary, since an
+// entry no attribute could ever compare against has no use.
 func (c *client) resolveSubjectBindings(res *resourceInfo, anchor *resourceField, keyword string, arg genlang.Arg, structsByTable map[string]*parser.Struct) ([]*subjectBinding, error) {
 	scalar := keyword == subjectValueKeyword
 	// A unique anchor is a column that alone identifies a row (columnMeta.IsUniqueIndex):
@@ -301,11 +309,16 @@ func (c *client) resolveSubjectBindings(res *resourceInfo, anchor *resourceField
 			ValueField: local,
 			Scalar:     scalar,
 		}
+		terminal := &local.TypeInfo
 		if len(segments) > 1 {
-			binding.Path, _, err = c.resolveRemotePath(local, segments[1:], structsByTable)
+			binding.Path, terminal, err = c.resolveRemotePath(local, segments[1:], structsByTable)
 			if err != nil {
 				return nil, errors.Wrapf(err, "@%s(%s)", keyword, binding.Name)
 			}
+		}
+		binding.Type, err = attributeTypeFor(terminal)
+		if err != nil {
+			return nil, errors.Wrapf(err, "@%s(%s)", keyword, binding.Name)
 		}
 		bindings = append(bindings, binding)
 	}
@@ -529,6 +542,7 @@ func collectionSubjectBinding(subject *subjectBinding) resource.SubjectBindingDa
 		Name:       subject.Name,
 		UserColumn: fieldColumn(subject.Anchor),
 		Column:     fieldColumn(subject.ValueField),
+		Type:       resource.AttributeType(subject.Type),
 		Path:       collectionHops(subject.Path),
 	}
 }

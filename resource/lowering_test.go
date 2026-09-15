@@ -13,7 +13,10 @@ import (
 // §02): MaintenanceTasks with column and join-path attributes and a domain
 // binding; CrewMembers anchoring the crews subject set (domain-scoped, so its
 // subquery derives a tenancy filter); UserProfiles anchoring the
-// approvalLimit subject value (global — no filter).
+// approvalLimit subject value (global — no filter), the dotted homeSector, and
+// the timestamp-typed clearedUntil now can compare against. Every subject entry
+// carries the comparison type of the column it yields, as generation derives
+// it.
 func loweringFixtureCollection(t *testing.T) *GeneratedCollection {
 	t.Helper()
 
@@ -39,8 +42,8 @@ func loweringFixtureCollection(t *testing.T) *GeneratedCollection {
 			Name:  "CrewMembers",
 			Scope: accesstypes.DomainPermissionScope,
 			SubjectSets: []SubjectBindingData{
-				{Name: "crews", UserColumn: "UserId", Column: "CrewId"},
-				{Name: "wings", UserColumn: "UserId", Column: "CrewId", Path: []BindingHop{{Table: "Crews", JoinColumn: "Id", Column: "WingId"}}},
+				{Name: "crews", UserColumn: "UserId", Column: "CrewId", Type: AttributeTypeString},
+				{Name: "wings", UserColumn: "UserId", Column: "CrewId", Type: AttributeTypeString, Path: []BindingHop{{Table: "Crews", JoinColumn: "Id", Column: "WingId"}}},
 			},
 			Domain: &DomainBindingData{Column: "StationId"},
 		},
@@ -48,8 +51,9 @@ func loweringFixtureCollection(t *testing.T) *GeneratedCollection {
 			Name:  "UserProfiles",
 			Scope: accesstypes.GlobalPermissionScope,
 			SubjectValues: []SubjectBindingData{
-				{Name: "approvalLimit", UserColumn: "UserId", Column: "ApprovalLimit"},
-				{Name: "homeSector", UserColumn: "UserId", Column: "StationId", Path: []BindingHop{{Table: "Stations", JoinColumn: "Id", Column: "Sector"}}},
+				{Name: "approvalLimit", UserColumn: "UserId", Column: "ApprovalLimit", Type: AttributeTypeNumber},
+				{Name: "homeSector", UserColumn: "UserId", Column: "StationId", Type: AttributeTypeString, Path: []BindingHop{{Table: "Stations", JoinColumn: "Id", Column: "Sector"}}},
+				{Name: "clearedUntil", UserColumn: "UserId", Column: "ClearedUntil", Type: AttributeTypeTimestamp},
 			},
 		},
 	}})
@@ -157,7 +161,7 @@ func TestLowerCondition_rendering(t *testing.T) {
 		},
 		{
 			name:      "residual environment fact binds the reserved parameter",
-			source:    "now < subject.approvalLimit",
+			source:    "now < subject.clearedUntil",
 			wantSQL:   "@now < ",
 			wantNamed: []string{"now", "subject"},
 		},

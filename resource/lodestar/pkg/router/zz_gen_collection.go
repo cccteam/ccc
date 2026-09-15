@@ -458,8 +458,8 @@ func Collection() *resource.GeneratedCollection {
 				},
 				Domain: &resource.DomainBindingData{Column: "SquadronId", Path: []resource.BindingHop{{Table: "Squadrons", JoinColumn: "Id", Column: "WingId"}, {Table: "Wings", JoinColumn: "Id", Column: "SectorId"}}},
 				SubjectSets: []resource.SubjectBindingData{
-					{Name: "squadrons", UserColumn: "UserId", Column: "SquadronId"},
-					{Name: "wings", UserColumn: "UserId", Column: "SquadronId", Path: []resource.BindingHop{{Table: "Squadrons", JoinColumn: "Id", Column: "WingId"}}},
+					{Name: "squadrons", UserColumn: "UserId", Column: "SquadronId", Type: "string"},
+					{Name: "wings", UserColumn: "UserId", Column: "SquadronId", Type: "string", Path: []resource.BindingHop{{Table: "Squadrons", JoinColumn: "Id", Column: "WingId"}}},
 				},
 				Order: []accesstypes.Tag{"userId"},
 			},
@@ -553,7 +553,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "userId", Column: "UserId", Type: "string"},
 				},
 				SubjectValues: []resource.SubjectBindingData{
-					{Name: "client", UserColumn: "UserId", Column: "ClientId"},
+					{Name: "client", UserColumn: "UserId", Column: "ClientId", Type: "string"},
 				},
 				Order:     []accesstypes.Tag{"displayName"},
 				QueryKeys: []accesstypes.Tag{"userId", "clientId"},
@@ -615,7 +615,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "userId"},
 				},
 				SubjectSets: []resource.SubjectBindingData{
-					{Name: "certifications", UserColumn: "UserId", Column: "CertificationId"},
+					{Name: "certifications", UserColumn: "UserId", Column: "CertificationId", Type: "string"},
 				},
 				Order: []accesstypes.Tag{"userId"},
 			},
@@ -631,8 +631,8 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "userId", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 				},
 				SubjectValues: []resource.SubjectBindingData{
-					{Name: "clearance", UserColumn: "UserId", Column: "Clearance"},
-					{Name: "feeLimit", UserColumn: "UserId", Column: "FeeLimit"},
+					{Name: "clearance", UserColumn: "UserId", Column: "Clearance", Type: "number"},
+					{Name: "feeLimit", UserColumn: "UserId", Column: "FeeLimit", Type: "number"},
 				},
 				Order:     []accesstypes.Tag{"displayName"},
 				QueryKeys: []accesstypes.Tag{"userId"},

@@ -71,11 +71,16 @@ type DomainBindingData struct {
 // (subject.<name>), anchored on the declaring resource's user-id column.
 // UserColumn correlates rows to the requester; Column is the local column the
 // set or value yields — the terminal when Path is empty, or the foreign key a
-// dotted value: continues through.
+// dotted value: continues through. Type is the comparison type of the column
+// the set or value yields (the terminal of a dotted value), derived by
+// generation from that column's Go type exactly as an attribute's is; deploy
+// validation admits a grant only where it compares or tests the entry against
+// an attribute of the same type.
 type SubjectBindingData struct {
 	Name       string
 	UserColumn string
 	Column     string
+	Type       AttributeType
 	Path       []BindingHop
 }
 
@@ -164,20 +169,28 @@ func (g *GeneratedCollection) AttributeIsColumn(scope accesstypes.PermissionScop
 	return ok && len(attr.Path) == 0
 }
 
-// DeclaresSubjectSet reports whether the application declares subject.<name>
-// as a set.
-func (g *GeneratedCollection) DeclaresSubjectSet(name string) bool {
-	_, ok := g.SubjectSet(name)
+// SubjectSetComparisonType resolves the comparison type of the column a
+// declared subject set (subject.<name>) yields; ok is false when the
+// application declares no such set.
+func (g *GeneratedCollection) SubjectSetComparisonType(name string) (accesstypes.AttributeType, bool) {
+	anchor, ok := g.SubjectSet(name)
+	if !ok {
+		return "", false
+	}
 
-	return ok
+	return anchor.Binding.Type, true
 }
 
-// DeclaresSubjectValue reports whether the application declares
-// subject.<name> as a scalar value.
-func (g *GeneratedCollection) DeclaresSubjectValue(name string) bool {
-	_, ok := g.SubjectValue(name)
+// SubjectValueComparisonType resolves the comparison type of the column a
+// declared scalar subject value (subject.<name>) yields; ok is false when the
+// application declares no such value.
+func (g *GeneratedCollection) SubjectValueComparisonType(name string) (accesstypes.AttributeType, bool) {
+	anchor, ok := g.SubjectValue(name)
+	if !ok {
+		return "", false
+	}
 
-	return ok
+	return anchor.Binding.Type, true
 }
 
 func (g *GeneratedCollection) attributeData(scope accesstypes.PermissionScope, res accesstypes.Resource, name string) (AttributeData, bool) {
@@ -195,10 +208,11 @@ func (g *GeneratedCollection) attributeData(scope accesstypes.PermissionScope, r
 }
 
 // validateCollectionBindings enforces the vocabulary rules the runtime can
-// check without a schema: names unique within one resource's vocabulary, and
-// subject names unique across the whole collection — subject.<name> is one
-// application-wide namespace, so two resources anchoring the same name would
-// make a condition ambiguous.
+// check without a schema: names unique within one resource's vocabulary,
+// every attribute and subject entry carrying a comparison type from the
+// vocabulary, and subject names unique across the whole collection —
+// subject.<name> is one application-wide namespace, so two resources
+// anchoring the same name would make a condition ambiguous.
 func validateCollectionBindings(resources []CollectionResource) error {
 	type subjectClaim struct {
 		resource accesstypes.Resource
@@ -232,6 +246,9 @@ func validateCollectionBindings(resources []CollectionResource) error {
 		for _, subject := range slices.Concat(res.SubjectSets, res.SubjectValues) {
 			if err := claimLocal(subject.Name); err != nil {
 				return err
+			}
+			if !accesstypes.ValidAttributeType(subject.Type) {
+				return errors.Newf("resource %q subject binding %q carries comparison type %q, which is not in the vocabulary — regenerate the collection", res.Name, subject.Name, subject.Type)
 			}
 			if prev, taken := subjectNames[subject.Name]; taken {
 				return errors.Newf("subject vocabulary name %q is declared by both %q (scope %q) and %q (scope %q); subject.<name> is one application-wide namespace", subject.Name, prev.resource, prev.scope, res.Name, res.Scope)

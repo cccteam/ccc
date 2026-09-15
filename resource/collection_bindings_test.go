@@ -34,9 +34,9 @@ func TestGeneratedCollection_bindings(t *testing.T) {
 			// resource with no permission registrations still carries it.
 			Name:        "UserProfiles",
 			Scope:       accesstypes.GlobalPermissionScope,
-			SubjectSets: []SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "CrewId"}},
+			SubjectSets: []SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "CrewId", Type: AttributeTypeString}},
 			SubjectValues: []SubjectBindingData{
-				{Name: "approvalLimit", UserColumn: "UserId", Column: "Limit"},
+				{Name: "approvalLimit", UserColumn: "UserId", Column: "Limit", Type: AttributeTypeNumber},
 			},
 		},
 	}}
@@ -74,9 +74,56 @@ func TestGeneratedCollection_bindings(t *testing.T) {
 	}
 }
 
+// TestGeneratedCollection_subjectComparisonTypes pins the typed subject
+// accessors deploy validation reads: the comparison type of the column a set
+// or value yields, and ok false for a name the collection does not declare in
+// that form.
+func TestGeneratedCollection_subjectComparisonTypes(t *testing.T) {
+	t.Parallel()
+
+	g, err := NewGeneratedCollection(CollectionData{Resources: []CollectionResource{{
+		Name:        "UserProfiles",
+		Scope:       accesstypes.GlobalPermissionScope,
+		SubjectSets: []SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "CrewId", Type: AttributeTypeString}},
+		SubjectValues: []SubjectBindingData{
+			{Name: "approvalLimit", UserColumn: "UserId", Column: "Limit", Type: AttributeTypeNumber},
+			{Name: "homeSector", UserColumn: "UserId", Column: "StationId", Type: AttributeTypeString, Path: []BindingHop{{Table: "Stations", JoinColumn: "Id", Column: "Sector"}}},
+		},
+	}}})
+	if err != nil {
+		t.Fatalf("NewGeneratedCollection() error = %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		lookup   func(string) (accesstypes.AttributeType, bool)
+		arg      string
+		wantType accesstypes.AttributeType
+		wantOK   bool
+	}{
+		{name: "set carries its column's type", lookup: g.SubjectSetComparisonType, arg: "crews", wantType: AttributeTypeString, wantOK: true},
+		{name: "value carries its column's type", lookup: g.SubjectValueComparisonType, arg: "approvalLimit", wantType: AttributeTypeNumber, wantOK: true},
+		{name: "dotted value carries its terminal's type", lookup: g.SubjectValueComparisonType, arg: "homeSector", wantType: AttributeTypeString, wantOK: true},
+		{name: "undeclared set", lookup: g.SubjectSetComparisonType, arg: "ghosts"},
+		{name: "a value is not a set", lookup: g.SubjectSetComparisonType, arg: "approvalLimit"},
+		{name: "a set is not a value", lookup: g.SubjectValueComparisonType, arg: "crews"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			typ, ok := tt.lookup(tt.arg)
+			if typ != tt.wantType || ok != tt.wantOK {
+				t.Errorf("lookup(%q) = (%q, %v), want (%q, %v)", tt.arg, typ, ok, tt.wantType, tt.wantOK)
+			}
+		})
+	}
+}
+
 // TestNewGeneratedCollection_bindingValidation pins the runtime vocabulary
 // rules: names unique within one resource, subject names unique across the
-// whole collection.
+// whole collection, and every attribute and subject entry typed from the
+// vocabulary.
 func TestNewGeneratedCollection_bindingValidation(t *testing.T) {
 	t.Parallel()
 
@@ -103,7 +150,7 @@ func TestNewGeneratedCollection_bindingValidation(t *testing.T) {
 				Name:        "Widgets",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Attributes:  []AttributeData{{Name: "crew", Column: "CrewId", Type: AttributeTypeString}},
-				SubjectSets: []SubjectBindingData{{Name: "crew", UserColumn: "UserId", Column: "CrewId"}},
+				SubjectSets: []SubjectBindingData{{Name: "crew", UserColumn: "UserId", Column: "CrewId", Type: AttributeTypeString}},
 			}}},
 			wantContain: `binding name "crew" twice`,
 		},
@@ -113,15 +160,42 @@ func TestNewGeneratedCollection_bindingValidation(t *testing.T) {
 				{
 					Name:        "CrewMembers",
 					Scope:       accesstypes.GlobalPermissionScope,
-					SubjectSets: []SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "CrewId"}},
+					SubjectSets: []SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "CrewId", Type: AttributeTypeString}},
 				},
 				{
 					Name:        "TeamMembers",
 					Scope:       accesstypes.DomainPermissionScope,
-					SubjectSets: []SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "TeamId"}},
+					SubjectSets: []SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "TeamId", Type: AttributeTypeString}},
 				},
 			}},
 			wantContain: "application-wide namespace",
+		},
+		{
+			name: "attribute with a type outside the vocabulary",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:       "Widgets",
+				Scope:      accesstypes.GlobalPermissionScope,
+				Attributes: []AttributeData{{Name: "crew", Column: "CrewId", Type: "uuid"}},
+			}}},
+			wantContain: `attribute "crew" carries comparison type "uuid"`,
+		},
+		{
+			name: "subject set without a type",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:        "CrewMembers",
+				Scope:       accesstypes.GlobalPermissionScope,
+				SubjectSets: []SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "CrewId"}},
+			}}},
+			wantContain: `subject binding "crews" carries comparison type ""`,
+		},
+		{
+			name: "subject value with a type outside the vocabulary",
+			data: CollectionData{Resources: []CollectionResource{{
+				Name:          "UserProfiles",
+				Scope:         accesstypes.GlobalPermissionScope,
+				SubjectValues: []SubjectBindingData{{Name: "approvalLimit", UserColumn: "UserId", Column: "Limit", Type: "bytes"}},
+			}}},
+			wantContain: `subject binding "approvalLimit" carries comparison type "bytes"`,
 		},
 		{
 			name: "empty binding name",

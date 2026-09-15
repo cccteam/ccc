@@ -158,7 +158,7 @@ func collectionFixtureGenerator(t *testing.T) *resourceGenerator {
 			}
 			res.DomainBinding = &domainBinding{Anchor: fields["ID"]}
 			res.SubjectValues = []*subjectBinding{
-				{Name: "vaultLimit", Anchor: fields["ID"], ValueField: fields["Name"], Scalar: true},
+				{Name: "vaultLimit", Anchor: fields["ID"], ValueField: fields["Name"], Type: "string", Scalar: true},
 			}
 		}),
 		fixtureResource(t, structs, "Sprocket", func(res *resourceInfo) {
@@ -172,7 +172,7 @@ func collectionFixtureGenerator(t *testing.T) *resourceGenerator {
 				{Name: "linkedGadget", Anchor: fields["ID"], Path: []bindingHop{{Table: "Gadgets", JoinColumn: "Id", Column: "Name"}}},
 			}
 			res.SubjectSets = []*subjectBinding{
-				{Name: "ownedSprockets", Anchor: fields["ID"], ValueField: fields["Name"]},
+				{Name: "ownedSprockets", Anchor: fields["ID"], ValueField: fields["Name"], Type: "string"},
 			}
 		}),
 		fixtureResource(t, structs, "Widget", nil),
@@ -247,7 +247,7 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
 					Domain:        &resource.DomainBindingData{Column: "Id"},
-					SubjectValues: []resource.SubjectBindingData{{Name: "vaultLimit", UserColumn: "Id", Column: "Name"}},
+					SubjectValues: []resource.SubjectBindingData{{Name: "vaultLimit", UserColumn: "Id", Column: "Name", Type: resource.AttributeTypeString}},
 				},
 				{
 					// A listed resource carries its list's order and query keys, and a
@@ -296,7 +296,7 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "linkedGadget", Column: "Id", Path: []resource.BindingHop{{Table: "Gadgets", JoinColumn: "Id", Column: "Name"}}},
 						{Name: "sprocketName", Column: "Name"},
 					},
-					SubjectSets: []resource.SubjectBindingData{{Name: "ownedSprockets", UserColumn: "Id", Column: "Name"}},
+					SubjectSets: []resource.SubjectBindingData{{Name: "ownedSprockets", UserColumn: "Id", Column: "Name", Type: resource.AttributeTypeString}},
 				},
 				{
 					Name:        "Summaries",
@@ -346,7 +346,7 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					},
 					Domain:        &resource.DomainBindingData{Column: "Id"},
-					SubjectValues: []resource.SubjectBindingData{{Name: "vaultLimit", UserColumn: "Id", Column: "Name"}},
+					SubjectValues: []resource.SubjectBindingData{{Name: "vaultLimit", UserColumn: "Id", Column: "Name", Type: resource.AttributeTypeString}},
 				},
 				{
 					Name:        "Ledgers",
@@ -366,7 +366,7 @@ func Test_computeCollectionData(t *testing.T) {
 						{Name: "linkedGadget", Column: "Id", Path: []resource.BindingHop{{Table: "Gadgets", JoinColumn: "Id", Column: "Name"}}},
 						{Name: "sprocketName", Column: "Name"},
 					},
-					SubjectSets: []resource.SubjectBindingData{{Name: "ownedSprockets", UserColumn: "Id", Column: "Name"}},
+					SubjectSets: []resource.SubjectBindingData{{Name: "ownedSprockets", UserColumn: "Id", Column: "Name", Type: resource.AttributeTypeString}},
 				},
 				{
 					Name:        "UploadThings",
@@ -415,9 +415,12 @@ func Test_collectionTemplate(t *testing.T) {
 				{Name: "owner", Column: "OwnerId", Type: resource.AttributeTypeString},
 				{Name: "shipClass", Column: "ShipId", Type: resource.AttributeTypeString, Path: []resource.BindingHop{{Table: "Ships", JoinColumn: "Id", Column: "Class"}}},
 			},
-			Domain:        &resource.DomainBindingData{Column: "StationId"},
-			SubjectSets:   []resource.SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "CrewId"}},
-			SubjectValues: []resource.SubjectBindingData{{Name: "approvalLimit", UserColumn: "UserId", Column: "Limit"}},
+			Domain:      &resource.DomainBindingData{Column: "StationId"},
+			SubjectSets: []resource.SubjectBindingData{{Name: "crews", UserColumn: "UserId", Column: "CrewId", Type: resource.AttributeTypeString}},
+			SubjectValues: []resource.SubjectBindingData{
+				{Name: "approvalLimit", UserColumn: "UserId", Column: "Limit", Type: resource.AttributeTypeNumber},
+				{Name: "homeSector", UserColumn: "UserId", Column: "StationId", Type: resource.AttributeTypeString, Path: []resource.BindingHop{{Table: "Stations", JoinColumn: "Id", Column: "Sector"}}},
+			},
 		},
 		{
 			Name:        "DoSomething",
@@ -470,8 +473,8 @@ func Test_collectionTemplate(t *testing.T) {
 		`{Name: "owner", Column: "OwnerId", Type: "string"},`,
 		`{Name: "shipClass", Column: "ShipId", Type: "string", Path: []resource.BindingHop{{Table: "Ships", JoinColumn: "Id", Column: "Class"}}},`,
 		`Domain: &resource.DomainBindingData{Column: "StationId"},`,
-		`SubjectSets: []resource.SubjectBindingData{ {Name: "crews", UserColumn: "UserId", Column: "CrewId"}, },`,
-		`SubjectValues: []resource.SubjectBindingData{ {Name: "approvalLimit", UserColumn: "UserId", Column: "Limit"}, },`,
+		`SubjectSets: []resource.SubjectBindingData{ {Name: "crews", UserColumn: "UserId", Column: "CrewId", Type: "string"}, },`,
+		`SubjectValues: []resource.SubjectBindingData{ {Name: "approvalLimit", UserColumn: "UserId", Column: "Limit", Type: "number"}, {Name: "homeSector", UserColumn: "UserId", Column: "StationId", Type: "string", Path: []resource.BindingHop{{Table: "Stations", JoinColumn: "Id", Column: "Sector"}}}, },`,
 		`{Name: "deadline", Permissions: []accesstypes.Permission{accesstypes.List}, Masking: resource.MaskingPositional},`,
 		`{Name: "fee", Permissions: []accesstypes.Permission{accesstypes.List}},`,
 		`Order: []accesstypes.Tag{"deadline"},`,

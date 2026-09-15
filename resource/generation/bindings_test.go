@@ -44,6 +44,12 @@ func bindingFixtureTables() map[string]*tableMetadata {
 		"UserProfiles": {PkCount: 1, Columns: map[string]columnMeta{
 			"UserId": pk, "ApprovalLimit": plain,
 		}},
+		"HomeProfiles": {PkCount: 1, Columns: map[string]columnMeta{
+			"UserId": pk, "StationId": fk("Stations"),
+		}},
+		"UnsupportedValueTypes": {PkCount: 1, Columns: map[string]columnMeta{
+			"Id": pk, "UserId": plain, "Payload": plain,
+		}},
 		"ReservedNames":     {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "CrewId": plain}},
 		"BadCharsets":       {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "CrewId": plain}},
 		"DuplicateNames":    {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "CrewId": plain, "UserId": plain}},
@@ -186,8 +192,8 @@ func TestResolveBindingAnnotations(t *testing.T) {
 			t.Fatalf("SubjectSets = %d entries, want 1", len(res.SubjectSets))
 		}
 		set := res.SubjectSets[0]
-		if set.Name != "crews" || set.Anchor.Name() != "UserID" || set.ValueField.Name() != "CrewID" || set.Scalar || len(set.Path) != 0 {
-			t.Errorf("SubjectSets[0] = {Name:%s Anchor:%s Value:%s Scalar:%v Path:%v}, want crews anchored on UserID yielding CrewID", set.Name, set.Anchor.Name(), set.ValueField.Name(), set.Scalar, set.Path)
+		if set.Name != "crews" || set.Anchor.Name() != "UserID" || set.ValueField.Name() != "CrewID" || set.Scalar || len(set.Path) != 0 || set.Type != "string" {
+			t.Errorf("SubjectSets[0] = {Name:%s Anchor:%s Value:%s Scalar:%v Path:%v Type:%s}, want crews anchored on UserID yielding CrewID as a string", set.Name, set.Anchor.Name(), set.ValueField.Name(), set.Scalar, set.Path, set.Type)
 		}
 		if res.DomainBinding == nil || res.DomainBinding.Anchor.Name() != "StationID" {
 			t.Errorf("DomainBinding = %+v, want bare binding anchored on StationID", res.DomainBinding)
@@ -217,8 +223,25 @@ func TestResolveBindingAnnotations(t *testing.T) {
 			t.Fatalf("SubjectValues = %d entries, want 1", len(res.SubjectValues))
 		}
 		value := res.SubjectValues[0]
-		if value.Name != "approvalLimit" || value.Anchor.Name() != "UserID" || value.ValueField.Name() != "ApprovalLimit" || !value.Scalar {
-			t.Errorf("SubjectValues[0] = {Name:%s Anchor:%s Value:%s Scalar:%v}, want approvalLimit anchored on UserID yielding ApprovalLimit", value.Name, value.Anchor.Name(), value.ValueField.Name(), value.Scalar)
+		if value.Name != "approvalLimit" || value.Anchor.Name() != "UserID" || value.ValueField.Name() != "ApprovalLimit" || !value.Scalar || value.Type != "number" {
+			t.Errorf("SubjectValues[0] = {Name:%s Anchor:%s Value:%s Scalar:%v Type:%s}, want approvalLimit anchored on UserID yielding ApprovalLimit as a number", value.Name, value.Anchor.Name(), value.ValueField.Name(), value.Scalar, value.Type)
+		}
+	})
+
+	t.Run("dotted subject value takes its terminal column's type", func(t *testing.T) {
+		t.Parallel()
+
+		res, err := resolveFixtureBindings(t, c, structs, "HomeProfile")
+		if err != nil {
+			t.Fatalf("resolveBindingAnnotations() error = %v", err)
+		}
+		if len(res.SubjectValues) != 1 {
+			t.Fatalf("SubjectValues = %d entries, want 1", len(res.SubjectValues))
+		}
+		value := res.SubjectValues[0]
+		wantPath := []bindingHop{{Table: "Stations", JoinColumn: "Id", Column: "Sector"}}
+		if value.Name != "homeSector" || value.ValueField.Name() != "StationID" || value.Type != "string" || !cmp.Equal(value.Path, wantPath) {
+			t.Errorf("SubjectValues[0] = {Name:%s Value:%s Type:%s Path:%v}, want homeSector through StationID to Stations.Sector as a string", value.Name, value.ValueField.Name(), value.Type, value.Path)
 		}
 	})
 }
@@ -226,7 +249,8 @@ func TestResolveBindingAnnotations(t *testing.T) {
 // TestResolveBindingAnnotations_rejections pins the resolver's validations:
 // reserved and malformed names, duplicate names across the resource's
 // vocabulary, paths that do not follow real foreign keys, non-unique scalar
-// anchors, unknown value fields, and a second domain binding.
+// anchors, unknown value fields, value columns outside the comparison-type
+// vocabulary, and a second domain binding.
 func TestResolveBindingAnnotations_rejections(t *testing.T) {
 	t.Parallel()
 
@@ -287,6 +311,11 @@ func TestResolveBindingAnnotations_rejections(t *testing.T) {
 			name:        "subject set with an unknown value field",
 			structName:  "UnknownValueField",
 			wantContain: "not found on the resource",
+		},
+		{
+			name:        "subject set yielding a column outside the comparison-type vocabulary",
+			structName:  "UnsupportedValueType",
+			wantContain: "not a supported attribute comparison type",
 		},
 		{
 			name:        "second domain binding",

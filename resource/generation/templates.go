@@ -2112,14 +2112,14 @@ func Collection() *resource.GeneratedCollection {
 				{{- with .SubjectSets }}
 				SubjectSets: []resource.SubjectBindingData{
 					{{- range . }}
-					{Name: "{{ .Name }}", UserColumn: "{{ .UserColumn }}", Column: "{{ .Column }}"{{ BindingHops .Path }}},
+					{Name: "{{ .Name }}", UserColumn: "{{ .UserColumn }}", Column: "{{ .Column }}", Type: "{{ .Type }}"{{ BindingHops .Path }}},
 					{{- end }}
 				},
 				{{- end }}
 				{{- with .SubjectValues }}
 				SubjectValues: []resource.SubjectBindingData{
 					{{- range . }}
-					{Name: "{{ .Name }}", UserColumn: "{{ .UserColumn }}", Column: "{{ .Column }}"{{ BindingHops .Path }}},
+					{Name: "{{ .Name }}", UserColumn: "{{ .UserColumn }}", Column: "{{ .Column }}", Type: "{{ .Type }}"{{ BindingHops .Path }}},
 					{{- end }}
 				},
 				{{- end }}

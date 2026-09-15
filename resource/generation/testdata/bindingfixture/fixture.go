@@ -81,6 +81,27 @@ type UserProfile struct {
 	ApprovalLimit int64 `spanner:"ApprovalLimit"`
 }
 
+// HomeProfile anchors a dotted scalar: homeSector continues through the
+// StationID foreign key to Stations.Sector, whose type the value takes.
+type HomeProfile struct {
+	// @subjectValue(homeSector, value: StationID.Sector)
+	UserID ccc.UUID `spanner:"UserId"`
+
+	StationID ccc.UUID `spanner:"StationId"`
+}
+
+// UnsupportedValueType yields a column outside the comparison-type
+// vocabulary: no attribute could ever compare against it, so it is refused as
+// an @attribute on such a column is.
+type UnsupportedValueType struct {
+	ID ccc.UUID `spanner:"Id"`
+
+	// @subjectSet(payloads, value: Payload)
+	UserID ccc.UUID `spanner:"UserId"`
+
+	Payload []byte `spanner:"Payload"`
+}
+
 // The rejection shapes, one struct each.
 
 type ReservedName struct {

@@ -24,8 +24,10 @@ import (
 
 // loweringFixtureVocabulary is the fixture's vocabulary as the generator sees
 // it: MaintenanceTasks' column and join-path attributes with their types, the
-// subject sets and values the anchors declare, and the post-write overlay
-// (the property renders in an update context, so new. is legal).
+// subject sets and values the anchors declare with the types of the columns
+// they yield (read from the collection, so the generator pairs exactly what
+// deploy validation admits), and the post-write overlay (the property renders
+// in an update context, so new. is legal).
 func loweringFixtureVocabulary(t *testing.T, collection *GeneratedCollection) conditiontest.Vocabulary {
 	t.Helper()
 
@@ -34,13 +36,22 @@ func loweringFixtureVocabulary(t *testing.T, collection *GeneratedCollection) co
 		t.Fatal("fixture bindings missing")
 	}
 
-	vocab := conditiontest.Vocabulary{
-		SubjectSets:   []string{"crews", "wings"},
-		SubjectValues: []string{"approvalLimit", "homeSector"},
-		PostImage:     true,
-	}
+	vocab := conditiontest.Vocabulary{PostImage: true}
 	for _, attr := range bindings.Attributes {
 		vocab.Attributes = append(vocab.Attributes, conditiontest.Attribute{Name: attr.Name, Type: attr.Type, JoinPath: len(attr.Path) > 0})
+	}
+	data := collection.Data()
+	for i := range data.Resources {
+		res := &data.Resources[i]
+		for _, set := range res.SubjectSets {
+			vocab.SubjectSets = append(vocab.SubjectSets, conditiontest.SubjectBinding{Name: set.Name, Type: set.Type})
+		}
+		for _, value := range res.SubjectValues {
+			vocab.SubjectValues = append(vocab.SubjectValues, conditiontest.SubjectBinding{Name: value.Name, Type: value.Type})
+		}
+	}
+	if len(vocab.SubjectSets) == 0 || len(vocab.SubjectValues) == 0 {
+		t.Fatal("fixture declares no subject vocabulary")
 	}
 
 	return vocab
