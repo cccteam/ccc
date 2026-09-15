@@ -661,6 +661,7 @@ func Collection() *resource.GeneratedCollection {
 				Permissions: []accesstypes.Permission{accesstypes.List},
 				Tags: []resource.TagData{
 					{Name: "feesOutstanding", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "lastReturnAt", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "openMissions", Permissions: []accesstypes.Permission{accesstypes.List}},
 					{Name: "sectorId"},

@@ -7,9 +7,11 @@ package integration
 // allow_filter on shipName and subsystem; the demo seed holds thirty-two boards in Anvil,
 // the Stubborn Mule's hull (0.90) the worst. The ledger is the pushdown contrast: its
 // List function takes the filter, the sort, and the page into its own SQL, and the wire
-// cannot tell the two apart.
+// cannot tell the two apart. Sorted by its nullable column the ledger crosses the NULL
+// boundary in Spanner's placement, whether the body pages itself or a filter it leaves
+// to the handler makes the handler page over the body's order.
 //
-// Demonstrates: computed.fold, computed.pushdown, computed.take-filter, computed.take-sort, computed.take-page, filter.validated-at-decode.
+// Demonstrates: computed.fold, computed.pushdown, computed.take-filter, computed.take-sort, computed.take-page, computed.null-placement, filter.validated-at-decode.
 
 import (
 	"fmt"
@@ -189,7 +191,7 @@ func TestLedgerPushdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	testApp := newTestApp(db, grants{accesstypes.List: withFields("ServiceLedgers", "name", "openMissions", "feesOutstanding", "settlements")})
+	testApp := newTestApp(db, grants{accesstypes.List: withFields("ServiceLedgers", "name", "openMissions", "feesOutstanding", "settlements", "lastReturnAt")})
 
 	sectorsOf := func(rows []map[string]any) []string {
 		out := make([]string, 0, len(rows))
@@ -213,8 +215,14 @@ func TestLedgerPushdown(t *testing.T) {
 		{name: "a filter on a filterable column, pushed down", target: "/api/service-ledgers?filter=name:eq:Bastion", wantStatus: http.StatusOK, wantSectors: []string{bastion}},
 		{name: "an IN filter, pushed down", target: "/api/service-ledgers?filter=sectorId:in:(anvil,cinder)&sort=sectorId", wantStatus: http.StatusOK, wantSectors: []string{anvil, cinder}},
 		{name: "a page with a count degrades to the fold and still counts", target: "/api/service-ledgers?limit=1&count=true", wantStatus: http.StatusOK, wantSectors: []string{anvil}, wantTotal: "3", wantLink: true},
-		{name: "a filter on a column without allow_filter is refused at decode", target: "/api/service-ledgers?filter=openMissions:gt:1", wantStatus: http.StatusBadRequest},
+		{name: "a filter on a column without allow_filter is refused at decode", target: "/api/service-ledgers?filter=settlements:gt:1", wantStatus: http.StatusBadRequest},
 		{name: "a malformed filter is refused at decode", target: "/api/service-ledgers?filter=name:between:a", wantStatus: http.StatusBadRequest},
+		// LastReturnAt: Anvil's last sortie came home on Aug 30; Bastion and Cinder have
+		// flown none, so both are NULL, and Spanner places NULL first ascending.
+		{name: "sorted by the nullable column ascending: the sectors with no return first, Spanner's placement", target: "/api/service-ledgers?sort=lastReturnAt", wantStatus: http.StatusOK, wantSectors: []string{bastion, cinder, anvil}},
+		{name: "sorted by the nullable column descending: the sectors with no return last", target: "/api/service-ledgers?sort=lastReturnAt:desc", wantStatus: http.StatusOK, wantSectors: []string{anvil, bastion, cinder}},
+		{name: "a count over the nullable sort: the handler takes the first page from the body's order", target: "/api/service-ledgers?sort=lastReturnAt&limit=1&count=true", wantStatus: http.StatusOK, wantSectors: []string{bastion}, wantTotal: "3", wantLink: true},
+		{name: "a filter the body leaves to the handler, applied over the body's order", target: "/api/service-ledgers?sort=lastReturnAt&filter=openMissions:gt:0", wantStatus: http.StatusOK, wantSectors: []string{bastion, anvil}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -266,4 +274,59 @@ func TestLedgerPushdown(t *testing.T) {
 			t.Errorf("walking back = %v, want anvil", got)
 		}
 	})
+
+	// The NULL-boundary walks, one sector a page, forward to the end and back to the
+	// start, in both directions. Without a residual filter the body pages itself: its
+	// plain ORDER BY and its cursor predicate place NULL where Spanner does. With the
+	// filter on OpenMissions, which the body leaves to the handler, TakePage answers
+	// false and the handler pages over the rows the body yielded in that same order,
+	// judging the boundary in the same placement; Cinder, with nothing open, drops out.
+	walks := []struct {
+		name  string
+		query string
+		want  []string
+	}{
+		{name: "ascending, the body paging itself: the NULL region first", query: "/api/service-ledgers?sort=lastReturnAt&limit=1", want: []string{bastion, cinder, anvil}},
+		{name: "descending, the body paging itself: the NULL region last", query: "/api/service-ledgers?sort=lastReturnAt:desc&limit=1", want: []string{anvil, bastion, cinder}},
+		{name: "ascending, the handler paging over the body's order", query: "/api/service-ledgers?sort=lastReturnAt&filter=openMissions:gt:0&limit=1", want: []string{bastion, anvil}},
+		{name: "descending, the handler paging over the body's order", query: "/api/service-ledgers?sort=lastReturnAt:desc&filter=openMissions:gt:0&limit=1", want: []string{anvil, bastion}},
+	}
+	for _, tt := range walks {
+		t.Run("a walk across the NULL boundary, "+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var forward []string
+			var pages []string
+			target := tt.query
+			for target != "" {
+				rr := doRequestRecorded(t, testApp, target)
+				assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+				forward = append(forward, sectorsOf(decodeRows(t, rr.Body.Bytes()))...)
+				pages = append(pages, target)
+				target = linkRelations(t, rr.Header().Get(resource.LinkHeader))["next"]
+			}
+			if !equalStrings(forward, tt.want) {
+				t.Fatalf("forward walk = %v, want %v", forward, tt.want)
+			}
+			if len(pages) != len(tt.want) {
+				t.Errorf("pages = %d, want %d of one sector each", len(pages), len(tt.want))
+			}
+
+			rr := doRequestRecorded(t, testApp, pages[len(pages)-1])
+			assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+			var backward []string
+			for {
+				backward = append(sectorsOf(decodeRows(t, rr.Body.Bytes())), backward...)
+				prev := linkRelations(t, rr.Header().Get(resource.LinkHeader))["prev"]
+				if prev == "" {
+					break
+				}
+				rr = doRequestRecorded(t, testApp, prev)
+				assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+			}
+			if !equalStrings(backward, tt.want) {
+				t.Errorf("backward walk = %v, want %v", backward, tt.want)
+			}
+		})
+	}
 }

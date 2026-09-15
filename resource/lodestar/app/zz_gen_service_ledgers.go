@@ -6,6 +6,7 @@ package app
 import (
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
@@ -19,9 +20,10 @@ func (a *App) ServiceLedgers() http.HandlerFunc {
 	type serviceLedger struct {
 		SectorID        string          `json:"sectorId"        allow_filter:"true" perm:"-"`
 		Name            string          `json:"name"            allow_filter:"true"`
-		OpenMissions    int64           `json:"openMissions"`
+		OpenMissions    int64           `json:"openMissions"    allow_filter:"true"`
 		FeesOutstanding decimal.Decimal `json:"feesOutstanding"`
 		Settlements     decimal.Decimal `json:"settlements"`
+		LastReturnAt    *time.Time      `json:"lastReturnAt"`
 	}
 
 	type response []map[string]any
@@ -61,6 +63,8 @@ func (a *App) ServiceLedgers() http.HandlerFunc {
 					rmap["feesOutstanding"] = rec.FeesOutstanding
 				case "Settlements":
 					rmap["settlements"] = rec.Settlements
+				case "LastReturnAt":
+					rmap["lastReturnAt"] = rec.LastReturnAt
 				}
 			}
 			resp = append(resp, rmap)

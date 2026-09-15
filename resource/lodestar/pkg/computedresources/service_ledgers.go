@@ -6,7 +6,9 @@ import (
 	"iter"
 	"math"
 	"math/big"
+	"slices"
 	"strings"
+	"time"
 
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
@@ -21,13 +23,22 @@ type (
 	// them, and settlements made. It is list-only (the read handler is suppressed) and
 	// global: the ledger is a headquarters concern.
 	//
-	// It is the PUSHDOWN computed resource: the body takes the request's filter on its
-	// filterable columns (Filter().Take), the total order (TakeSort), and the page bounds
+	// It is the PUSHDOWN computed resource: the body takes the request's filter on the
+	// key and the name (Filter().Take), the total order (TakeSort), and the page bounds
 	// (TakePage) into one SQL statement, so a fleet with ten thousand sectors pages as
-	// cheaply as one with three. The hazard board keeps the in-memory fold as the
-	// contrast; the wire cannot tell which is which.
+	// cheaply as one with three. A filter on OpenMissions is left to the handler on
+	// purpose: the sort stays the body's, the page does not (TakePage answers false), and
+	// the handler pages over the rows the body yielded in its own order. The hazard board
+	// keeps the in-memory fold as the contrast; the wire cannot tell which is which.
 	//
-	// Demonstrates: @computed, computed.pushdown, computed.take-sort, computed.take-page, computed.take-filter, @suppress, @order, @page, filter.validated-at-decode.
+	// LastReturnAt, the return of the sector's most recent sortie, is NULL where no sortie
+	// has come home. Sorted by it, the ledger crosses the NULL boundary in Spanner's
+	// placement (NULL first ascending, last descending) whether the body pages itself or
+	// the handler pages over its order: the body's plain ORDER BY, its cursor predicate,
+	// and the handler's boundary test all place NULL where the application's database
+	// does, the same end as the tables beside it.
+	//
+	// Demonstrates: @computed, computed.pushdown, computed.take-sort, computed.take-page, computed.take-filter, computed.null-placement, @suppress, @order, @page, filter.validated-at-decode.
 	//
 	// @computed
 	// @suppress(readHandler)
@@ -36,9 +47,10 @@ type (
 	ServiceLedger struct {
 		SectorID        string          `spanner:"SectorId"        allow_filter:"true"` // @primarykey
 		Name            string          `spanner:"Name"            allow_filter:"true"`
-		OpenMissions    int64           `spanner:"OpenMissions"`
+		OpenMissions    int64           `spanner:"OpenMissions"    allow_filter:"true"`
 		FeesOutstanding decimal.Decimal `spanner:"FeesOutstanding"`
 		Settlements     decimal.Decimal `spanner:"Settlements"`
+		LastReturnAt    *time.Time      `spanner:"LastReturnAt"`
 	}
 )
 
@@ -56,21 +68,38 @@ var ledgerColumns = map[string]string{
 	"OpenMissions":    "OpenMissions",
 	"FeesOutstanding": "FeesOutstanding",
 	"Settlements":     "Settlements",
+	lastReturnAt:      lastReturnAt,
+}
+
+// lastReturnAt is the ledger's one nullable field; its Go name and its column coincide.
+const lastReturnAt = "LastReturnAt"
+
+// ledgerNullable names the ledger columns that can be NULL. Their NULL region sits where
+// Spanner puts it, first ascending and last descending: the placement the plain ORDER BY
+// below produces, the cursor predicate admits, and the generated handler's own sort and
+// boundary test use for this application.
+var ledgerNullable = map[string]bool{
+	lastReturnAt: true,
 }
 
 // ledgerSQL rolls the missions up per sector. Open missions are those not finished; the
-// settlements are the completed missions' net.
+// settlements are the completed missions' net; the last return is the latest sortie home
+// on any of the sector's missions, NULL where none has returned. The sorties are rolled
+// up per mission first, so a mission with several sorties still counts once.
 const ledgerSQL = `SELECT s.Id AS SectorId, s.Name AS Name,
        COUNTIF(m.StatusId NOT IN ('completed', 'failed', 'stood_down')) AS OpenMissions,
        COALESCE(SUM(IF(m.StatusId NOT IN ('completed', 'failed', 'stood_down'), m.Fee, NUMERIC '0')), NUMERIC '0') AS FeesOutstanding,
-       COALESCE(SUM(IF(m.StatusId = 'completed', m.Settlement, NUMERIC '0')), NUMERIC '0') AS Settlements
-  FROM Sectors s LEFT JOIN Missions m ON m.SectorId = s.Id
+       COALESCE(SUM(IF(m.StatusId = 'completed', m.Settlement, NUMERIC '0')), NUMERIC '0') AS Settlements,
+       MAX(so.ReturnedAt) AS LastReturnAt
+  FROM Sectors s
+  LEFT JOIN Missions m ON m.SectorId = s.Id
+  LEFT JOIN (SELECT MissionId, MAX(ReturnedAt) AS ReturnedAt FROM Sorties GROUP BY MissionId) so ON so.MissionId = m.Id
  GROUP BY s.Id, s.Name`
 
 // ListServiceLedger computes one ledger row per sector in SQL, taking the filter on
 // SectorId and Name, the sort, and the page into the statement. Whatever it does not
-// take (a filter on a column it does not push down, a request for every row, a count)
-// the generated handler applies over the rows it yields.
+// take (a filter on OpenMissions, a request for every row, a count) the generated
+// handler applies over the rows it yields, in the order the body gave them.
 func ListServiceLedger(ctx context.Context, qSet *resource.QuerySet[ServiceLedger], client resource.Client, _ *Client) iter.Seq2[*ServiceLedger, error] {
 	return func(yield func(*ServiceLedger, error) bool) {
 		params := map[string]any{}
@@ -189,8 +218,10 @@ func sqlOperator(op string) string {
 	}
 }
 
-// orderBy renders the taken total order. Every ledger column is NOT NULL, so no NULL
-// placement is needed.
+// orderBy renders the taken total order as the plain direction per column. A nullable
+// column (LastReturnAt) sorts in Spanner's own placement, NULL first ascending and last
+// descending: the placement TakeSort promises, so the handler's sort and boundary test
+// agree with these rows whenever they still run.
 func orderBy(order []resource.SortField) string {
 	parts := make([]string, 0, len(order))
 	for _, sf := range order {
@@ -206,26 +237,51 @@ func orderBy(order []resource.SortField) string {
 
 // cursorPredicate renders "strictly after the boundary row in the read order" as the
 // row-value comparison a keyset cursor needs: (a > b0) OR (a = b0 AND b > b1) ...,
-// with each field's comparator following its direction.
+// with each field's comparator following its direction. A nullable field admits the
+// NULL region on Spanner's side of its direction: ascending, NULL comes first, so every
+// non-null row follows a NULL boundary (a nil entry) and no NULL row follows a value;
+// descending, NULL comes last, so the NULL rows follow a value and nothing follows a
+// NULL boundary. Equality on a NULL boundary is IS NULL.
 func cursorPredicate(order []resource.SortField, boundary []any, params map[string]any) (string, error) {
 	if len(order) != len(boundary) {
 		return "", errors.New("ListServiceLedger: the cursor does not match the order")
 	}
 	var disjuncts []string
+	var equalities []string
 	for i, sf := range order {
-		var conjuncts []string
-		for j := range i {
-			conjuncts = append(conjuncts, fmt.Sprintf("l.%s = @c%d", ledgerColumns[order[j].Field], j))
+		column := "l." + ledgerColumns[sf.Field]
+		param := fmt.Sprintf("@c%d", i)
+		nullable := ledgerNullable[sf.Field]
+		var after, equal string
+		switch {
+		case boundary[i] == nil && !nullable:
+			return "", errors.Newf("ListServiceLedger: the cursor holds a NULL for %s, which is never NULL", sf.Field)
+		case boundary[i] == nil:
+			equal = column + " IS NULL"
+			if sf.Direction == resource.SortAscending {
+				after = column + " IS NOT NULL"
+			}
+		case sf.Direction == resource.SortAscending:
+			params[param[1:]] = spannerValue(boundary[i])
+			equal = column + " = " + param
+			after = column + " > " + param
+		default:
+			params[param[1:]] = spannerValue(boundary[i])
+			equal = column + " = " + param
+			after = column + " < " + param
+			if nullable {
+				after = "(" + after + " OR " + column + " IS NULL)"
+			}
 		}
-		comparator := ">"
-		if sf.Direction == resource.SortDescending {
-			comparator = "<"
+		if after != "" {
+			conjuncts := append(slices.Clone(equalities), after)
+			disjuncts = append(disjuncts, "("+strings.Join(conjuncts, " AND ")+")")
 		}
-		conjuncts = append(conjuncts, fmt.Sprintf("l.%s %s @c%d", ledgerColumns[sf.Field], comparator, i))
-		disjuncts = append(disjuncts, "("+strings.Join(conjuncts, " AND ")+")")
+		equalities = append(equalities, equal)
 	}
-	for i, value := range boundary {
-		params[fmt.Sprintf("c%d", i)] = spannerValue(value)
+	if len(disjuncts) == 0 {
+		// A NULL boundary at the NULL region's end: nothing follows it.
+		return "FALSE", nil
 	}
 
 	return "(" + strings.Join(disjuncts, " OR ") + ")", nil

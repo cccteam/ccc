@@ -108,7 +108,8 @@
                 "name",
                 "openMissions",
                 "feesOutstanding",
-                "settlements"
+                "settlements",
+                "lastReturnAt"
               ]
             },
             {

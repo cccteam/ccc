@@ -472,6 +472,7 @@ export namespace Sectors {
 export namespace ServiceLedgers {
   export const fieldName = {
     feesOutstanding: 'feesOutstanding' as FieldName,
+    lastReturnAt: 'lastReturnAt' as FieldName,
     name: 'name' as FieldName,
     openMissions: 'openMissions' as FieldName,
     sectorId: 'sectorId' as FieldName,
@@ -479,6 +480,7 @@ export namespace ServiceLedgers {
   };
   export const resourceName = {
     feesOutstanding: 'ServiceLedgers.feesOutstanding' as Resource,
+    lastReturnAt: 'ServiceLedgers.lastReturnAt' as Resource,
     name: 'ServiceLedgers.name' as Resource,
     openMissions: 'ServiceLedgers.openMissions' as Resource,
     sectorId: 'ServiceLedgers.sectorId' as Resource,

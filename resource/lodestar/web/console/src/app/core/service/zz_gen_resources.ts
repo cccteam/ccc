@@ -270,6 +270,7 @@ export interface ServiceLedgers {
   openMissions?: number;
   feesOutstanding?: number;
   settlements?: number;
+  lastReturnAt?: Date;
 }
 
 const resourceMap: ResourceMap = {
@@ -625,9 +626,10 @@ const resourceMap: ResourceMap = {
     fields: [
       { fieldName: 'sectorId', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: false, filterable: 'always' },
       { fieldName: 'name', displayType: 'string', required: false, isIndex: false, filterable: 'always' },
-      { fieldName: 'openMissions', displayType: 'number', required: false, isIndex: false },
+      { fieldName: 'openMissions', displayType: 'number', required: false, isIndex: false, filterable: 'always' },
       { fieldName: 'feesOutstanding', displayType: 'number', required: false, isIndex: false },
       { fieldName: 'settlements', displayType: 'number', required: false, isIndex: false },
+      { fieldName: 'lastReturnAt', displayType: 'date', required: false, isIndex: false },
     ],
   },
 };
