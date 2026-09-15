@@ -92,6 +92,72 @@ func Test_typescriptResourcesTemplate_optionalFields(t *testing.T) {
 	}
 }
 
+// Test_typescriptResourcesTemplate_bytes pins how a byte slice renders: the interface
+// declares the field a string, since the wire carries base64, and the metadata carries
+// the bytes display type, on a table field and on a computed field alike.
+func Test_typescriptResourcesTemplate_bytes(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+
+	widget := fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
+		for _, f := range res.Fields {
+			f.typescriptType = "string"
+			if f.Name() == "Name" {
+				f.typescriptType = bytesTSType
+			}
+		}
+	})
+	gadget := fixtureComputedResource(t, structs, "Gadget")
+	for _, f := range gadget.Fields {
+		f.typescriptType = "string"
+		if f.Name() == "Name" {
+			f.typescriptType = bytesTSType
+		}
+	}
+
+	tests := []struct {
+		name         string
+		data         tsResourcesData
+		wantContains []string
+	}{
+		{
+			name: "a table field of bytes is a string with the bytes display type",
+			data: tsResourcesData{Resources: []*resourceInfo{widget}, GenPrefix: "zz_gen"},
+			wantContains: []string{
+				"  name?: string;",
+				"{ fieldName: 'name', displayType: 'bytes', required: true, isIndex: false }",
+			},
+		},
+		{
+			name: "a computed field of bytes is a string, its display type the lower-cased data type until the computed path adopts the leaf's name",
+			data: tsResourcesData{ComputedResources: []*computedResource{gadget}, GenPrefix: "zz_gen"},
+			wantContains: []string{
+				"  name?: string;",
+				"{ fieldName: 'name', displayType: 'string', required: false, isIndex: false }",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{}
+			tt.data.File = &typescriptGenerator{client: c}
+			out, err := c.generateTemplateOutput("typescriptResourcesTemplate", typescriptResourcesTemplate, tt.data)
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+			for _, want := range tt.wantContains {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("typescriptResourcesTemplate output missing %q:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
 // Test_typescriptResourcesTemplate_filterable pins FieldMeta.filterable: the metadata
 // marks a column the server will filter by the eligibility the query decoder applies —
 // an indexed or unique-indexed table or view field 'always', an allow_filter table or

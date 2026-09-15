@@ -659,7 +659,9 @@ pointer column is nullable, as before), the generator tries, in order:
 2. a generic row, by the type's origin: `ccc.NullEnum[T]` is `T`'s type;
 3. a `@typescript` declaration on the type's declaration (section 1);
 4. a basic type, or a named type over one, by the basic type's row (`type KindID string`
-   is `string`).
+   is `string`);
+5. a byte slice: an unnamed `[]byte`, or a named slice over `byte` with no JSON methods,
+   is the `bytes` leaf (below).
 
 A field that resolves here is a leaf. A field that does not is read once more as a list:
 one slice level is stripped from a `[]T`, an array, or a named slice type (`type
@@ -684,6 +686,23 @@ wrappers likewise (`NullString`, `NullInt16`, `NullInt32`, `NullInt64`, `NullByt
 `spanner.NullJSON` (`unknown`, a value with no fixed shape, display type `object`).
 Nullability keeps coming from the schema, so a nullable `spanner.NullBool` column renders
 `nullboolean` exactly as `*bool` does.
+
+**Byte slices.** A `[]byte` is one leaf, never a list of numbers, because that is what the
+wire carries: `encoding/json` writes a byte slice as a base64 string and a nil one as
+`null`, and reads a base64 string back. The field is `string` in the interface and
+`bytes` in the metadata, on every path (a table or view column, a computed field, an RPC
+request or result field), so a browser knows the value is not text: a grid shows its size
+or offers a download rather than the base64, and a form draws no free-text control for it
+(a typed word fails the server's base64 decode with a 400). The line is the one the value
+limits draw (section 11): an unnamed `[]byte`, a named slice type over `byte` (`type Digest
+[]byte`) with no JSON methods, and a pointer to either; a `[][]byte` (an `ARRAY<BYTES>`
+column) is `string[]` with display type `bytes[]`. Not on it: a byte array (`[N]byte` stays
+`number[]`, since `encoding/json` writes an array as an array), a named type carrying
+`@typescript` (it keeps what it declares), and one writing its own JSON
+(`json.RawMessage` is refused as before, since it writes JSON, not base64). `maxLength`
+is never emitted for bytes (section 11); a byte limit can ride the `bytes` type later. A
+computed field's metadata carries the lower-cased data type, `string`, until the computed
+path adopts the leaf's own display name (cccteam/backlog#89).
 
 **Derived structs.** A struct a column holds is its own TypeScript interface, derived
 from its fields with no annotation and no option, declared in the resource's namespace
@@ -734,6 +753,9 @@ carries them (`zz_gen_resources.ts` for table, view, and computed fields;
 and patch shapes). The client library exports no application types.
 
 Examples: [MissionDocument.Provenance](lodestar/pkg/resources/mission_documents.go), a
-plain struct on a `JSON` column, derived and stored by generated methods, and
+plain struct on a `JSON` column, derived and stored by generated methods;
 [DistressCall.Position](lodestar/pkg/resources/distress_calls.go), a GeoJSON `Point`
-declared with `@typescript(Point, from: "geojson")`.
+declared with `@typescript(Point, from: "geojson")`; and
+[MissionDocument.Digest](lodestar/pkg/resources/mission_documents.go), the SHA-256 of an
+uploaded document on a `BYTES(32)` column, a `string` in both clients' interfaces with
+display type `bytes`.

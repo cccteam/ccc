@@ -612,10 +612,10 @@ func (r *rpcField) TypescriptDataType() string {
 	}
 
 	switch r.typescriptType {
-	case uuidTSType:
-		return stringGoType
-	case uuidTSType + sliceSuffix:
-		return stringGoType + sliceSuffix
+	case uuidTSType, bytesTSType:
+		return stringTSType
+	case uuidTSType + sliceSuffix, bytesTSType + sliceSuffix:
+		return stringTSType + sliceSuffix
 	case civilDateTSType:
 		return dateTSType
 	case civilDateTSType + sliceSuffix:
@@ -844,8 +844,8 @@ func (c *computedField) TypescriptDataType() string {
 	if c.wire != nil {
 		return c.wire.TypescriptType(c.namespace)
 	}
-	if c.typescriptType == uuidTSType {
-		return stringGoType
+	if c.typescriptType == uuidTSType || c.typescriptType == bytesTSType {
+		return stringTSType
 	}
 	if c.typescriptType == civilDateTSType {
 		return dateTSType

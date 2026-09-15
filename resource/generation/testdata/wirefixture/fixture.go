@@ -5,6 +5,7 @@ package wirefixture
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -29,6 +30,9 @@ type Code string
 
 // UUIDs is a named slice type, which the walker refuses.
 type UUIDs []ccc.UUID
+
+// Blob is a named slice of bytes with no JSON methods: the bytes leaf.
+type Blob []byte
 
 // Time is a struct whose mirror name would shadow the time package.
 type Time struct {
@@ -108,6 +112,19 @@ type (
 	}
 	SliceOfSlices struct {
 		S [][]string
+	}
+	// Bytes carries a byte slice in every shape the wire accepts: each is the bytes
+	// leaf, a base64 string, or a list of them, never a list of numbers.
+	Bytes struct {
+		Raw       []byte
+		Named     Blob
+		Ptr       *[]byte
+		Many      [][]byte
+		ManyNamed []Blob
+	}
+	// RawJSON carries a named byte slice that writes its own JSON, which is no leaf.
+	RawJSON struct {
+		Raw json.RawMessage
 	}
 	PointerToSlice struct {
 		P *[]string

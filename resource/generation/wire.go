@@ -21,13 +21,15 @@ import (
 //
 // Allowed: basic types; named non-struct types as leaves, typed by their underlying
 // basic type; named types the generator's built-in table maps (time.Time, UUIDs,
-// dates, decimals) and types carrying a @typescript declaration as leaves; every other
+// dates, decimals) and types carrying a @typescript declaration as leaves; a byte
+// slice, unnamed or a named slice over byte with no JSON methods, as one leaf (bytes:
+// a base64 string on the wire, never a list of numbers; see leaf.go); every other
 // named struct type is walked wherever it is declared; a pointer to any of those; one
 // slice level per field, of any of those. Refused, each naming the field path: a
 // struct that reaches itself, maps, interfaces, channels, functions, anonymous
-// structs, arrays, a slice of slices or a pointer to a slice, embedded and unexported
-// fields, and a named type whose underlying type is none of the above. There is no
-// depth limit.
+// structs, arrays, a slice of slices or a pointer to a slice (a byte slice being a
+// leaf, not a slice, here), embedded and unexported fields, and a named type whose
+// underlying type is none of the above. There is no depth limit.
 //
 // Each walked struct gets a local mirror type in the handler file with generated
 // camel-case JSON tags, so the wire shape lives entirely in generated code. Data
@@ -153,11 +155,11 @@ const objectTSType = "object"
 const sliceSuffix = "[]"
 
 // tsDataType maps a metadata display type to the TypeScript type an interface
-// declares for it.
+// declares for it: a uuid and a byte slice (base64) are strings, a civil date a Date.
 func tsDataType(displayType string) string {
 	switch displayType {
-	case uuidTSType:
-		return stringGoType
+	case uuidTSType, bytesTSType:
+		return stringTSType
 	case civilDateTSType:
 		return dateTSType
 	default:
@@ -526,6 +528,7 @@ var handlerQualifiers = []string{contextQualifier, httpQualifier, cccQualifier, 
 
 // The qualifiers the import fixer and the handler templates both name.
 const (
+	bytesQualifier   = "bytes"
 	contextQualifier = "context"
 	httpQualifier    = "http"
 	cccQualifier     = "ccc"
@@ -780,6 +783,13 @@ func (w *wireWalker) classify(f *wireField, t types.Type, path string, stack []*
 			return errors.Newf("%s: a pointer to a pointer does not cross the wire", path)
 		}
 	}
+	// A byte slice is one leaf, before the slice markers are read: encoding/json carries
+	// it as a base64 string, so *[]byte is a pointer to a leaf and [][]byte a list of it.
+	if isByteSlice(t) {
+		f.tsLeaf = bytesTSType
+
+		return nil
+	}
 	if sl, ok := t.(*types.Slice); ok {
 		if f.Pointer {
 			return errors.Newf("%s: a pointer to a slice does not cross the wire; use the slice", path)
@@ -789,6 +799,11 @@ func (w *wireWalker) classify(f *wireField, t types.Type, path string, stack []*
 		if p, ok := t.(*types.Pointer); ok {
 			f.ElemPointer = true
 			t = types.Unalias(p.Elem())
+		}
+		if isByteSlice(t) {
+			f.tsLeaf = bytesTSType
+
+			return nil
 		}
 		if _, ok := t.(*types.Slice); ok {
 			return errors.Newf("%s: a slice of slices does not cross the wire; declare a struct for the inner element", path)

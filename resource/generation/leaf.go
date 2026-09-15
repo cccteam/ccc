@@ -14,9 +14,19 @@ import (
 // aliases are read through, in this order: the built-in table by qualified name; a
 // generic row by origin (ccc.NullEnum, resolved to its type argument); a @typescript
 // declaration on the type; a basic type, or a named type over one, by the basic type's
-// row. A type that reaches none of these is no leaf: the walker mirrors it when it is
-// a struct and refuses it otherwise, and the column path derives a struct's interface
-// and refuses everything else, naming the fix. Nothing falls back to string.
+// row; a byte slice, unnamed or a named slice over byte with no JSON methods, as the
+// bytes leaf. A type that reaches none of these is no leaf: the walker mirrors it when
+// it is a struct and refuses it otherwise, and the column path derives a struct's
+// interface and refuses everything else, naming the fix. Nothing falls back to string.
+//
+// A byte slice is one leaf, never a list of numbers, because that is what the wire
+// carries: encoding/json writes a []byte as a base64 string and a nil one as null, and
+// reads a base64 string back. The leaf is bytes in the metadata and string in the
+// interface (tsDataType). The line is the one valueKindOf draws for the value limits:
+// an unnamed slice of byte (uint8 or an alias of it), a named slice type over it, and a
+// pointer to either. A byte array ([N]byte) is not on it, since encoding/json writes an
+// array as an array; a named type carrying @typescript keeps what it declares, and one
+// writing its own JSON (json.RawMessage) describes nothing and is refused as before.
 
 // tsImport is a TypeScript type a @typescript declaration names: the identifier the
 // generated file imports and the module it comes from, or a TypeScript built-in when
@@ -82,8 +92,9 @@ func newLeafResolver(declFor func(*types.Named) (*tsImport, error)) *leafResolve
 	return &leafResolver{mapped: defaultTypescriptOverrides(), declFor: declFor}
 }
 
-// resolve resolves t, with no pointer or slice around it, to a leaf. ok is false when
-// t reaches no row and no declaration; err reports a malformed declaration.
+// resolve resolves t, with no pointer around it and no slice but a byte slice, to a
+// leaf. ok is false when t reaches no row and no declaration; err reports a malformed
+// declaration.
 func (r *leafResolver) resolve(t types.Type) (leaf tsLeaf, ok bool, err error) {
 	t = types.Unalias(t)
 	switch u := t.(type) {
@@ -93,15 +104,22 @@ func (r *leafResolver) resolve(t types.Type) (leaf tsLeaf, ok bool, err error) {
 		return tsLeaf{TS: ts}, ok, nil
 	case *types.Named:
 		return r.resolveNamed(u)
+	case *types.Slice:
+		if isByte(u.Elem()) {
+			return tsLeaf{TS: bytesTSType}, true, nil
+		}
+
+		return tsLeaf{}, false, nil
 	default:
 		return tsLeaf{}, false, nil
 	}
 }
 
 // resolveNamed resolves a named type: the table by name, then a generic row by origin,
-// then its declaration, then its underlying basic type. The table comes first so the
-// library types it maps are never read for a declaration they cannot carry; the
-// declaration comes before the basic row so a named string may still declare a type.
+// then its declaration, then its underlying basic type, then a byte slice with no JSON
+// methods. The table comes first so the library types it maps are never read for a
+// declaration they cannot carry; the declaration comes before the basic row so a named
+// string may still declare a type, and before the byte slice so a named []byte may too.
 func (r *leafResolver) resolveNamed(named *types.Named) (tsLeaf, bool, error) {
 	if ts, ok := r.mapped[typeStringer(named)]; ok {
 		return tsLeaf{TS: ts}, true, nil
@@ -123,6 +141,11 @@ func (r *leafResolver) resolveNamed(named *types.Named) (tsLeaf, bool, error) {
 
 		return tsLeaf{TS: ts}, ok, nil
 	}
+	// A named slice over byte is the bytes leaf when encoding/json writes it as one: a
+	// type with its own JSON methods (json.RawMessage) writes something else.
+	if isByteSlice(named.Underlying()) && !hasJSONMethods(named) {
+		return tsLeaf{TS: bytesTSType}, true, nil
+	}
 
 	return tsLeaf{}, false, nil
 }
@@ -138,7 +161,7 @@ func originName(origin *types.Named) string {
 }
 
 // basicName is a basic type's table key: byte and rune are read as the kinds they
-// alias, so a []byte column and a uint8 column share one row.
+// alias, so a byte column and a uint8 column share one row.
 func basicName(b *types.Basic) string {
 	if kind := b.Kind(); kind >= 0 && int(kind) < len(types.Typ) && types.Typ[kind] != nil {
 		return types.Typ[kind].Name()
@@ -164,10 +187,11 @@ type columnClass struct {
 
 // classifyColumn reads a field's type on the column path: through the alias and one
 // pointer, then the named type as a whole (a declaration or a table row wins before
-// any slice is stripped, so a named type over []byte stays what it declares), then one
-// slice level, then the element's leaf. A struct that reaches no leaf is returned for
-// derivation; anything else that reaches none is refused with the message the walker
-// uses, and the caller adds the field's path and the fix.
+// any slice is stripped, so a named type over []byte stays what it declares, and a
+// named byte slice with neither is the bytes leaf), then a byte slice as one leaf, then
+// one slice level, then the element's leaf. A struct that reaches no leaf is returned
+// for derivation; anything else that reaches none is refused with the message the
+// walker uses, and the caller adds the field's path and the fix.
 func (r *leafResolver) classifyColumn(t types.Type) (columnClass, error) {
 	var class columnClass
 	t = types.Unalias(t)
@@ -194,6 +218,14 @@ func (r *leafResolver) classifyColumn(t types.Type) (columnClass, error) {
 		if hasJSONMethods(named) {
 			return columnClass{}, errors.Newf("%s writes its own JSON (MarshalJSON or UnmarshalJSON), so its fields do not describe the wire; add @%s(...) to its declaration", typeStringer(named), typescriptKeyword)
 		}
+	}
+
+	// A byte slice is one leaf, before any slice is stripped: the wire carries it as a
+	// base64 string, never as a list.
+	if isByteSlice(t) {
+		class.Leaf = tsLeaf{TS: bytesTSType}
+
+		return class, nil
 	}
 
 	elem, isSlice := sliceElem(t)
@@ -227,7 +259,9 @@ func (r *leafResolver) classifyColumn(t types.Type) (columnClass, error) {
 			return class, nil
 		}
 	}
-	if _, nested := sliceElem(t); nested && isSlice {
+	// The element as a byte slice ([][]byte, an ARRAY<BYTES> column) is a list of the
+	// bytes leaf; any other inner slice has no interface to name.
+	if _, nested := sliceElem(t); nested && isSlice && !isByteSlice(t) {
 		return columnClass{}, errors.New("a slice of slices has no TypeScript type; declare a struct for the inner element")
 	}
 
@@ -255,6 +289,16 @@ func sliceElem(t types.Type) (elem types.Type, ok bool) {
 	default:
 		return nil, false
 	}
+}
+
+// isByteSlice reports whether t, aliases read through, is an unnamed slice of byte
+// (uint8 or an alias of it): the shape encoding/json writes as a base64 string. A
+// named slice type is read through its underlying type by the caller, which also
+// checks the type's JSON methods.
+func isByteSlice(t types.Type) bool {
+	s, ok := types.Unalias(t).(*types.Slice)
+
+	return ok && isByte(s.Elem())
 }
 
 // hasJSONMethods reports whether the type writes or reads its own JSON: it declares

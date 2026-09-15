@@ -25,6 +25,10 @@ type NullKind = ccc.NullEnum[Kind]
 // Rank is a named int64.
 type Rank int64
 
+// Digest is a named slice of bytes with no JSON methods: the bytes leaf, as an unnamed
+// []byte is, since encoding/json writes both as one base64 string.
+type Digest []byte
+
 // NullRank is the generic row over a number.
 type NullRank = ccc.NullEnum[Rank]
 
@@ -158,6 +162,10 @@ type Row struct {
 	Blob        spanner.NullJSON   `spanner:"Blob"`
 	When        *time.Time         `spanner:"When"`
 	Tags        []string           `spanner:"Tags"`
+	Seal        []byte             `spanner:"Seal"`
+	Digest      *Digest            `spanner:"Digest"`
+	Chunks      [][]byte           `spanner:"Chunks"`
+	Checksum    [4]byte            `spanner:"Checksum"`
 	Provenance  *Provenance        `spanner:"Provenance"`
 	Attachments Attachments        `spanner:"Attachments"`
 	Manifests   Manifests          `spanner:"Manifests"`
@@ -189,10 +197,15 @@ type Clashing struct {
 }
 
 // Request is an RPC-shaped struct reaching declared types, so the walker's leaf is
-// the same imported type.
+// the same imported type, and byte slices in every shape the wire carries as base64.
 type Request struct {
-	ID    ccc.UUID
-	Where Position
-	Marks []shapes.Tag
-	Doc   Doc
+	ID     ccc.UUID
+	Where  Position
+	Marks  []shapes.Tag
+	Doc    Doc
+	Seal   []byte
+	Digest Digest
+	Sealed *[]byte
+	Chunks [][]byte
+	Hashes []Digest
 }

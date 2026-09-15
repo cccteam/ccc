@@ -790,6 +790,9 @@ const (
 	uuidTSType      = "uuid"
 	dateTSType      = "Date"
 	civilDateTSType = "civilDate"
+	// bytesTSType is the display type of a byte slice: a string in the interface, since
+	// encoding/json carries a []byte as a base64 string and a nil one as null.
+	bytesTSType = "bytes"
 	// nullBooleanTSType is the wire type of a nullable boolean, a value type the
 	// generated TypeScript imports from @cccteam/resource.
 	nullBooleanTSType = "NullBoolean"

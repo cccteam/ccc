@@ -54,6 +54,12 @@ func Test_wireWalker(t *testing.T) {
 			wantMirror: map[string]string{"First": "reading", "Second": "[]reading"},
 			wantTS:     map[string]string{"First": "Root.Reading", "Second": "Root.Reading[]"},
 		},
+		{
+			name: "byte slices are one leaf each, carried as declared", structName: "Bytes", wantFlat: true,
+			wantMirror: map[string]string{"Raw": "[]byte", "Named": "wirefixture.Blob", "Ptr": "*[]byte", "Many": "[][]byte", "ManyNamed": "[]wirefixture.Blob"},
+			wantTS:     map[string]string{"Raw": "string", "Named": "string", "Ptr": "string", "Many": "string[]", "ManyNamed": "string[]"},
+		},
+		{name: "a named byte slice writing its own JSON is no leaf", structName: "RawJSON", wantErr: "RawJSON.Raw: json.RawMessage is a named []byte; only named basic types and structs cross the wire"},
 		{name: "recursion", structName: "Recursive", wantErr: "Recursive.Child: wirefixture.Recursive reaches itself"},
 		{name: "mutual recursion", structName: "Mutual", wantErr: "Mutual.Other.Back: wirefixture.Mutual reaches itself"},
 		{name: "map", structName: "WithMap", wantErr: "WithMap.M: a map does not cross the wire"},

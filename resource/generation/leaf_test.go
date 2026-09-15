@@ -30,9 +30,10 @@ func columnFixtureGenerator(c *client) *typescriptGenerator {
 
 // Test_resourceFieldsTypescriptType_columns pins the column path over every shape the
 // classifier resolves or derives: the built-in rows and the generic row through an
-// alias, a pointer read through, a list, a plain struct derived into the resource's
-// namespace, a named slice of structs, a declared type, a declared type in a package
-// the generator did not load, and a built-in declaration.
+// alias, a pointer read through, a list, the byte slices (one bytes leaf each, a list of
+// them, and the byte array that stays a list of numbers), a plain struct derived into
+// the resource's namespace, a named slice of structs, a declared type, a declared type
+// in a package the generator did not load, and a built-in declaration.
 func Test_resourceFieldsTypescriptType_columns(t *testing.T) {
 	t.Parallel()
 
@@ -61,6 +62,10 @@ func Test_resourceFieldsTypescriptType_columns(t *testing.T) {
 		{name: "spanner.NullJSON is unknown, one opaque object", field: "Blob", wantData: "unknown", wantDisplay: "object"},
 		{name: "a pointer to a mapped type is the mapped type", field: "When", wantData: "Date", wantDisplay: "Date"},
 		{name: "a slice of a basic type is a list", field: "Tags", wantData: "string[]", wantDisplay: "string[]"},
+		{name: "a byte slice is one bytes leaf, a string in the interface", field: "Seal", wantData: "string", wantDisplay: "bytes"},
+		{name: "a pointer to a named byte slice is the bytes leaf", field: "Digest", wantData: "string", wantDisplay: "bytes"},
+		{name: "a slice of byte slices is a list of the bytes leaf", field: "Chunks", wantData: "string[]", wantDisplay: "bytes[]"},
+		{name: "a byte array is a list of numbers, as encoding/json writes it", field: "Checksum", wantData: "number[]", wantDisplay: "number[]"},
 		{name: "a plain struct is derived into the resource's namespace", field: "Provenance", wantData: "Rows.Provenance", wantDisplay: "object"},
 		{name: "a named slice of structs with its own storage is a list of the derived interface", field: "Attachments", wantData: "Rows.Attachment[]", wantDisplay: "object[]"},
 		{name: "a named slice of structs is a list of the derived interface", field: "Manifests", wantData: "Rows.Manifest[]", wantDisplay: "object[]"},
@@ -201,7 +206,7 @@ func Test_typescriptDecls_collision(t *testing.T) {
 // Test_wireWalker_declaredLeaves pins the declaration on the wire path: a declared type
 // in an RPC request is the same imported leaf, a slice of one a list of it, and a struct
 // reaching declared types mirrors them as imported leaves, so the methods file imports
-// every module once.
+// every module once; and the byte slices, one bytes leaf in every shape.
 func Test_wireWalker_declaredLeaves(t *testing.T) {
 	t.Parallel()
 
@@ -224,6 +229,11 @@ func Test_wireWalker_declaredLeaves(t *testing.T) {
 		{name: "a declared type is the imported name", field: "Where", wantTS: "Point", wantDisplay: "object"},
 		{name: "a slice of a declared type in another package is a list of it", field: "Marks", wantTS: "Tag[]", wantDisplay: "object[]"},
 		{name: "a struct reaching declared types is mirrored", field: "Doc", wantTS: "Request.Doc", wantDisplay: "object"},
+		{name: "a byte slice is one bytes leaf, a string in the interface", field: "Seal", wantTS: "string", wantDisplay: "bytes"},
+		{name: "a named byte slice is the bytes leaf", field: "Digest", wantTS: "string", wantDisplay: "bytes"},
+		{name: "a pointer to a byte slice is a pointer to the leaf", field: "Sealed", wantTS: "string", wantDisplay: "bytes"},
+		{name: "a slice of byte slices is a list of the leaf", field: "Chunks", wantTS: "string[]", wantDisplay: "bytes[]"},
+		{name: "a slice of named byte slices is a list of the leaf", field: "Hashes", wantTS: "string[]", wantDisplay: "bytes[]"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

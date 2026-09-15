@@ -169,7 +169,7 @@ type typeImporter interface {
 // must stay out of this list.
 func stdlibImports() map[string]string {
 	return map[string]string{
-		"bytes":          "bytes",
+		bytesQualifier:   bytesQualifier,
 		contextQualifier: contextQualifier,
 		"fmt":            "fmt",
 		httpQualifier:    "net/http",
