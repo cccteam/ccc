@@ -26,6 +26,7 @@ func (a *App) Ships() http.HandlerFunc {
 		Name        string     `json:"name"`
 		LastRefitAt *time.Time `json:"lastRefitAt"`
 		UpdatedAt   *time.Time `json:"updatedAt"`
+		CargoBays   []int64    `json:"cargoBays"`
 	}
 
 	type response []map[string]any
@@ -92,6 +93,10 @@ func (a *App) Ships() http.HandlerFunc {
 					if !row.Masked("updatedAt") {
 						rmap["updatedAt"] = rec.UpdatedAt
 					}
+				case "CargoBays":
+					if !row.Masked("cargoBays") {
+						rmap["cargoBays"] = rec.CargoBays
+					}
 				}
 			}
 			if capabilities := row.Capabilities(); capabilities != nil {
@@ -119,6 +124,7 @@ func (a *App) Ship() http.HandlerFunc {
 		Name        string     `json:"name"`
 		LastRefitAt *time.Time `json:"lastRefitAt"`
 		UpdatedAt   *time.Time `json:"updatedAt"`
+		CargoBays   []int64    `json:"cargoBays"`
 	}
 
 	decoder := NewQueryDecoder[resources.Ship, response](a, accesstypes.Read)
@@ -172,6 +178,10 @@ func (a *App) Ship() http.HandlerFunc {
 			case "UpdatedAt":
 				if !row.Masked("updatedAt") {
 					rmap["updatedAt"] = rec.UpdatedAt
+				}
+			case "CargoBays":
+				if !row.Masked("cargoBays") {
+					rmap["cargoBays"] = rec.CargoBays
 				}
 			}
 		}

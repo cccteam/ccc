@@ -239,6 +239,9 @@ r=$(req marshal POST "$ANVIL/scrap-ship" "{\"refitId\":\"$MULE_REFIT\"}"); check
 r=$(req marshal POST "$ANVIL/scrap-ship" "{\"refitId\":\"$SAMARITAN_REFIT\"}"); check "marshal scraps from in_refit (three chutes into one pit)" 200 "$r"
 r=$(req pilot POST "$ANVIL/hail-ship" "{\"shipId\":\"$KINGFISHER\"}"); check "pilot hails a docked ship (the Touch answers No Content)" 204 "$r"
 r=$(req pilot POST "$ANVIL/hail-ship" "{\"shipId\":\"$LANTERN\"}"); check "pilot cannot hail the quarantined Lantern" 403 "$r"
+# The ARRAY<INT64> column rides as a JSON array of numbers (the generated interface says number[]); a ship with no bays carries [].
+r=$(req marshal GET "$ANVIL/ships?limit=all"); assert_py "the Stubborn Mule's cargo bays are a JSON array of numbers and the Kingfisher's an empty array" "$r" "next(s for s in rows if s['registry']=='LS-202')['cargoBays']==[60,60,30] and next(s for s in rows if s['registry']=='LS-101')['cargoBays']==[]"
+r=$(req marshal GET "$ANVIL/ships?sort=cargoBays:asc"); check "a sort naming the array column answers 400" 400 "$r"
 r=$(req dock GET "$ANVIL/refits"); d=${r##*$'\n'}
 r=$(req watch GET "$ANVIL/refits"); n=${r##*$'\n'}
 if { [ "$d" = 200 ] && [ "$n" = 403 ]; } || { [ "$d" = 403 ] && [ "$n" = 200 ]; }; then echo "PASS  exactly one shift sees the hangar deck (dara=$d nadia=$n)"; else echo "FAIL  shift pair: dara=$d nadia=$n"; fails=$((fails+1)); fi

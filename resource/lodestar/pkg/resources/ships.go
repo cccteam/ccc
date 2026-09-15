@@ -36,7 +36,15 @@ type (
 	// form refuses it first from the metadata's maxLength. Registry is immutable, so the
 	// create is the only path.
 	//
-	// Demonstrates: @domain.join-path, @attribute.join-path, @attribute.join-path-global, immutable, output_only_update_fn, transition-owned-timestamp, change-tracking, commit.referential-refusal, commit.constraint-refusal, warning.join-path-list, decode.value-limit.
+	// CargoBays is the tonnage each cargo bay takes, in order: an ARRAY<INT64> column typed
+	// []int64, number[] in the console's interface and in its metadata, one member of the
+	// display-type vocabulary the client's union lists, so the console builds against what
+	// the generator emits. NOT NULL with an empty array as the column's default, so a ship
+	// with no bays carries [] and a create that says nothing about bays gets none. It
+	// carries no allow_filter: a filter compares single values and Spanner cannot index an
+	// array, so the generator would refuse the tag; a sort naming it answers 400.
+	//
+	// Demonstrates: @domain.join-path, @attribute.join-path, @attribute.join-path-global, immutable, output_only_update_fn, transition-owned-timestamp, change-tracking, commit.referential-refusal, commit.constraint-refusal, warning.join-path-list, decode.value-limit, typescript.array-column.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -53,6 +61,7 @@ type (
 		Name        string     `spanner:"Name"`
 		LastRefitAt *time.Time `spanner:"LastRefitAt" conditions:"output_only"`
 		UpdatedAt   *time.Time `spanner:"UpdatedAt"   output_only_update_fn:"resource.CommitTimestampPtr"`
+		CargoBays   []int64    `spanner:"CargoBays"`
 	}
 )
 

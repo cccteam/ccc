@@ -152,6 +152,7 @@ var Demonstrations = []Demonstration{
 	{"typescript.derived-object", "A plain struct on a JSON column: the generator derives its TypeScript interface from the struct's json tags into the resource's namespace, types the field object, and writes the Spanner methods that store it, so the application declares the shape once and no client library carries it."},
 	{"typescript.imported-type", "@typescript(Name, from: \"module\") on a type whose shape lives outside Go: every generated file that carries the type imports Name from the module, in both clients, and the column is typed Name with display type object."},
 	{"typescript.byte-slice", "A []byte column: one leaf to the generator, a string in both clients' interfaces (encoding/json carries it as base64) with display type bytes, never a number[]; the upload method records each document's SHA-256 in it."},
+	{"typescript.array-column", "An ARRAY<INT64> column typed []int64: number[] in the generated interface and in the metadata, one member of the display-type vocabulary the client's union lists, so the console builds against what the generator emits; the column takes no filter or index tag, a sort naming it answers 400, and a patch writes the array whole."},
 	{"auth.password", "A PasswordAuth population whose roles the application owns."},
 	{"auth.two-populations", "Two auth packages, each with its own tables, cookies, and permission store, each outlet bound to one."},
 	{"auth.directory-roles", "An OIDC auth whose role membership is the directory's (RoleSync), with no role writer in the application."},

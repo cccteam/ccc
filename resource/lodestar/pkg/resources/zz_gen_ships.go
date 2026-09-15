@@ -34,6 +34,7 @@ type shipRead struct {
 	Name        string     `json:"name"`
 	LastRefitAt *time.Time `json:"lastRefitAt"`
 	UpdatedAt   *time.Time `json:"updatedAt"`
+	CargoBays   []int64    `json:"cargoBays"`
 }
 
 var shipReadSets resource.SetCache[Ship, shipRead]
@@ -45,10 +46,11 @@ type shipWrite struct {
 	ID          ccc.UUID   `json:"-"`
 	HangarID    ccc.UUID   `json:"hangarId"`
 	ClassID     ccc.UUID   `json:"classId"`
-	Registry    string     `json:"registry" immutable:"true" sqltype:"STRING(16)"`
+	Registry    string     `json:"registry"  immutable:"true" sqltype:"STRING(16)"`
 	Name        string     `json:"name"`
 	LastRefitAt *time.Time `json:"-"`
 	UpdatedAt   *time.Time `json:"-"`
+	CargoBays   []int64    `json:"cargoBays"`
 }
 
 var shipWriteSets resource.SetCache[Ship, shipWrite]
@@ -176,6 +178,7 @@ func (c *ShipColumns) All() *ShipColumns {
 		"Name",
 		"LastRefitAt",
 		"UpdatedAt",
+		"CargoBays",
 	}
 
 	return c
@@ -219,6 +222,12 @@ func (c *ShipColumns) LastRefitAt() *ShipColumns {
 
 func (c *ShipColumns) UpdatedAt() *ShipColumns {
 	c.fields = append(c.fields, "UpdatedAt")
+
+	return c
+}
+
+func (c *ShipColumns) CargoBays() *ShipColumns {
+	c.fields = append(c.fields, "CargoBays")
 
 	return c
 }
@@ -343,6 +352,10 @@ func (c *shipSort) LastRefitAt() *ShipSort {
 
 func (c *shipSort) UpdatedAt() *ShipSort {
 	return c.addField("UpdatedAt")
+}
+
+func (c *shipSort) CargoBays() *ShipSort {
+	return c.addField("CargoBays")
 }
 
 type ShipSort struct {
@@ -536,6 +549,22 @@ func (p *ShipCreatePatch) UpdatedAtIsSet() bool {
 	return p.patchSet.IsSet("UpdatedAt")
 }
 
+func (p *ShipCreatePatch) SetCargoBays(v []int64) *ShipCreatePatch {
+	p.patchSet.Set("CargoBays", v)
+
+	return p
+}
+
+func (p *ShipCreatePatch) CargoBays() []int64 {
+	v, _ := p.patchSet.Get("CargoBays").([]int64)
+
+	return v
+}
+
+func (p *ShipCreatePatch) CargoBaysIsSet() bool {
+	return p.patchSet.IsSet("CargoBays")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *ShipCreatePatch) Diff(got *ShipCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -707,6 +736,22 @@ func (p *ShipUpdatePatch) UpdatedAt() *time.Time {
 
 func (p *ShipUpdatePatch) UpdatedAtIsSet() bool {
 	return p.patchSet.IsSet("UpdatedAt")
+}
+
+func (p *ShipUpdatePatch) SetCargoBays(v []int64) *ShipUpdatePatch {
+	p.patchSet.Set("CargoBays", v)
+
+	return p
+}
+
+func (p *ShipUpdatePatch) CargoBays() []int64 {
+	v, _ := p.patchSet.Get("CargoBays").([]int64)
+
+	return v
+}
+
+func (p *ShipUpdatePatch) CargoBaysIsSet() bool {
+	return p.patchSet.IsSet("CargoBays")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

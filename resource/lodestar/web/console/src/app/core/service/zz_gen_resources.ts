@@ -179,6 +179,7 @@ export interface Ships {
   name?: string;
   lastRefitAt?: Date;
   updatedAt?: Date;
+  cargoBays?: number[];
 }
 
 export interface ShipClasses {
@@ -500,6 +501,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'name', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'lastRefitAt', displayType: 'date', required: false, isIndex: false, readOnly: true },
       { fieldName: 'updatedAt', displayType: 'date', required: false, isIndex: false, readOnly: true },
+      { fieldName: 'cargoBays', displayType: 'number[]', required: false, isIndex: false },
     ],
   },
   [Resources.ShipClasses]: {
@@ -610,7 +612,7 @@ const resourceMap: ResourceMap = {
     updateDisabled: true,
     deleteDisabled: true,
     fields: [
-      { fieldName: 'shipId', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'shipId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: true, isIndex: false },
       { fieldName: 'subsystem', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: false, filterable: 'always' },
       { fieldName: 'shipName', displayType: 'string', required: false, isIndex: false, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'string', required: false, isIndex: false },

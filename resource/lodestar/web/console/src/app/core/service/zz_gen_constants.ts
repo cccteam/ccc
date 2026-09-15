@@ -509,6 +509,7 @@ export namespace ShipClasses {
 
 export namespace Ships {
   export const fieldName = {
+    cargoBays: 'cargoBays' as FieldName,
     classId: 'classId' as FieldName,
     hangarId: 'hangarId' as FieldName,
     id: 'id' as FieldName,
@@ -518,6 +519,7 @@ export namespace Ships {
     updatedAt: 'updatedAt' as FieldName,
   };
   export const resourceName = {
+    cargoBays: 'Ships.cargoBays' as Resource,
     classId: 'Ships.classId' as Resource,
     hangarId: 'Ships.hangarId' as Resource,
     id: 'Ships.id' as Resource,

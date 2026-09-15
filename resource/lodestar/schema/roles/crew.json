@@ -385,7 +385,8 @@
                 "registry",
                 "name",
                 "lastRefitAt",
-                "updatedAt"
+                "updatedAt",
+                "cargoBays"
               ]
             },
             {
@@ -579,7 +580,8 @@
                 "registry",
                 "name",
                 "lastRefitAt",
-                "updatedAt"
+                "updatedAt",
+                "cargoBays"
               ]
             },
             {
@@ -806,7 +808,8 @@
               "fields": [
                 "hangarId",
                 "classId",
-                "name"
+                "name",
+                "cargoBays"
               ]
             },
             {
@@ -1886,7 +1889,8 @@
                 "registry",
                 "name",
                 "lastRefitAt",
-                "updatedAt"
+                "updatedAt",
+                "cargoBays"
               ]
             },
             {
@@ -1918,7 +1922,8 @@
                 "registry",
                 "name",
                 "lastRefitAt",
-                "updatedAt"
+                "updatedAt",
+                "cargoBays"
               ]
             },
             {

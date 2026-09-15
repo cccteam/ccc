@@ -1,15 +1,20 @@
-// Demonstrates: typescript.derived-object, typescript.imported-type, typescript.byte-slice.
+// Demonstrates: typescript.derived-object, typescript.imported-type, typescript.byte-slice, typescript.array-column.
 package integration
 
-// column_types_test: the columns typed by application types and by a byte slice.
-// DistressCalls.Position is a GeoJSON Point whose TypeScript type the Go type declares
-// with @typescript; the marshal files a call with a point, reads it back as the JSON it
-// sent, and clears it with a null, while the seed's voice-relayed call carries none.
-// MissionDocuments.Provenance is a plain struct: the upload records the origin, the
-// generated Spanner methods store it, and the console and the portal both list it as
+// column_types_test: the columns typed by application types, by a byte slice, and by a
+// slice. DistressCalls.Position is a GeoJSON Point whose TypeScript type the Go type
+// declares with @typescript; the marshal files a call with a point, reads it back as the
+// JSON it sent, and clears it with a null, while the seed's voice-relayed call carries
+// none. MissionDocuments.Provenance is a plain struct: the upload records the origin,
+// the generated Spanner methods store it, and the console and the portal both list it as
 // one object under the field their grants name. MissionDocuments.Digest is a BYTES
 // column: the upload records the file's SHA-256, and the row carries it as one base64
 // string, the string the generated interface promises, never an array of numbers.
+// Ships.CargoBays is an ARRAY<INT64> column: the row carries it as a JSON array of
+// numbers, the number[] the generated interface promises, a ship the seed says nothing
+// about carries the column's default, an empty array, a patch writes the array whole,
+// and a sort or a filter naming it answers 400, since a list is one value to the query
+// surface.
 
 import (
 	"crypto/sha256"
@@ -186,5 +191,88 @@ func TestMissionDocumentDigest_byteSlice(t *testing.T) {
 	}
 	if !reflect.DeepEqual(typed.Digest, sum[:]) {
 		t.Errorf("Digest = %x, want %x", typed.Digest, sum[:])
+	}
+}
+
+// TestShipCargoBays_arrayColumn pins the ARRAY column on the wire: the seeded hauler's
+// bays arrive as one JSON array of numbers, and a ship the seed says nothing about
+// carries the column's default, an empty array, never a null.
+func TestShipCargoBays_arrayColumn(t *testing.T) {
+	t.Parallel()
+
+	_, h, _ := sharedWorld(t)
+
+	tests := []struct {
+		name string
+		ship string
+		want []any
+	}{
+		{name: "the Stubborn Mule carries its three seeded bays", ship: shipStubbornMuleID, want: []any{60.0, 60.0, 30.0}},
+		{name: "the Kingfisher carries the column's default, an empty array", ship: shipKingfisherID, want: []any{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, body := doRequestAs(t, h, "marshal", http.MethodGet, sectorPath(anvil, "ships/"+tt.ship), "")
+			assertStatus(t, status, http.StatusOK, body)
+			got, ok := decodeRow(t, body)["cargoBays"].([]any)
+			if !ok {
+				t.Fatalf("cargoBays = %v (%T), want a JSON array", decodeRow(t, body)["cargoBays"], decodeRow(t, body)["cargoBays"])
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("cargoBays = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestShipCargoBays_patchWritesWhole pins the write path: the marshal, granted the field,
+// refits the Kingfisher's hold with a PATCH carrying the array, the column reads back as
+// the []int64 the struct declares, and the row reads back as the array sent.
+//
+// Deliberately not a table: each step depends on the state the previous one left behind.
+func TestShipCargoBays_patchWritesWhole(t *testing.T) {
+	t.Parallel()
+
+	ctx, db, h := demoWorld(t)
+
+	status, body := doRequestAs(t, h, "marshal", http.MethodPatch, "/api/resources",
+		fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"cargoBays":[12,8]}}]`, opPath(anvil, "ships/"+shipKingfisherID)))
+	assertStatus(t, status, http.StatusOK, body)
+
+	if stored := readColumn[[]int64](ctx, t, db, "Ships", spanner.Key{shipKingfisherID}, "CargoBays"); !reflect.DeepEqual(stored, []int64{12, 8}) {
+		t.Errorf("CargoBays column = %v, want [12 8]", stored)
+	}
+	status, body = doRequestAs(t, h, "marshal", http.MethodGet, sectorPath(anvil, "ships/"+shipKingfisherID), "")
+	assertStatus(t, status, http.StatusOK, body)
+	if got := decodeRow(t, body)["cargoBays"]; !reflect.DeepEqual(got, []any{12.0, 8.0}) {
+		t.Errorf("cargoBays after the patch = %v, want [12 8]", got)
+	}
+}
+
+// TestShipCargoBays_queryRefused pins that a list is one value to the query surface: a
+// sort naming the array column answers 400 (the runtime orders single values only), and
+// so does a filter, since the field carries no allow_filter (the generator would refuse
+// the tag on a list) and leads no index (Spanner cannot index an ARRAY column).
+func TestShipCargoBays_queryRefused(t *testing.T) {
+	t.Parallel()
+
+	_, h, _ := sharedWorld(t)
+
+	tests := []struct {
+		name   string
+		target string
+	}{
+		{name: "a sort naming the array column", target: sectorPath(anvil, "ships?sort=cargoBays:asc")},
+		{name: "a filter naming the array column", target: sectorPath(anvil, "ships?filter=cargoBays:eq:60")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, body := doRequestAs(t, h, "marshal", http.MethodGet, tt.target, "")
+			assertStatus(t, status, http.StatusBadRequest, body)
+		})
 	}
 }

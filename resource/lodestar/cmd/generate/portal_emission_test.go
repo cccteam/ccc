@@ -18,10 +18,12 @@ import (
 // alone. Both targets carry the two application-typed columns the same way: the
 // resources file imports Point from geojson for DistressCalls.Position and declares
 // MissionDocuments.Provenance in the resource's namespace; and both type the BYTES column
-// MissionDocuments.Digest a string with display type bytes. Needs no emulator: it reads
-// the committed output.
+// MissionDocuments.Digest a string with display type bytes. The console alone carries
+// Ships, whose ARRAY<INT64> column CargoBays is number[] in the interface and in the
+// metadata, a member of the client's display-type union. Needs no emulator: it reads the
+// committed output.
 //
-// Demonstrates: typescript.second-target, @manualAddResource.outlet, workflow.ts-constant, outlet.isolation, typescript.imported-type, typescript.derived-object, typescript.byte-slice.
+// Demonstrates: typescript.second-target, @manualAddResource.outlet, workflow.ts-constant, outlet.isolation, typescript.imported-type, typescript.derived-object, typescript.byte-slice, typescript.array-column.
 func TestPortalTargetEmission(t *testing.T) {
 	t.Parallel()
 
@@ -94,6 +96,14 @@ func TestPortalTargetEmission(t *testing.T) {
 			source: consoleResources,
 			want:   columnTypes,
 			absent: []string{"CustomTypes"},
+		},
+		{
+			name:   "the console types the ARRAY column a list of numbers in the interface and the metadata",
+			source: consoleResources,
+			want: []string{
+				"  cargoBays?: number[];",
+				"{ fieldName: 'cargoBays', displayType: 'number[]', required: false, isIndex: false }",
+			},
 		},
 		{
 			name:   "the portal resources file carries the same two column types",
