@@ -32,11 +32,12 @@ const (
 	reservedCapabilitiesProperty   = "zzCapabilities"
 	reservedCapabilityChecksColumn = "zzCapabilityChecks"
 
-	// reservedPositionalKeyPrefix begins the reserved output columns a paged
-	// read statement selects a positional sort key's raw value under
-	// (zzPositional followed by the column name); resource columns must not
-	// begin with it.
-	reservedPositionalKeyPrefix = "zzPositional"
+	// reservedCursorColumnPrefix begins the reserved output columns a paged
+	// read statement selects the cursor's copy of a sort key under (zzCursor
+	// followed by the column name): a key outside the columns projection, or
+	// a positional key whose cell is masked; resource columns must not begin
+	// with it.
+	reservedCursorColumnPrefix = "zzCursor"
 )
 
 // Generator provides methods for generating Go or Typescript for a resource-driven web application.

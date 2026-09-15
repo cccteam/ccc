@@ -22,11 +22,12 @@ type Row[Resource Resourcer] struct {
 	// masked holds the JSON names of this row's masked cells.
 	masked []string
 
-	// positional holds the raw values of the positional sort keys the
-	// statement selected for the cursor, by field: what the statement ordered
-	// by where Data carries the masked cell's filler. Never encoded; read only
-	// by the cursor.
-	positional map[accesstypes.Field]reflect.Value
+	// cursorValues holds the values of the sort keys the statement selected a
+	// second time for the cursor, by field: what the statement ordered by
+	// where Data carries no cell for the key, or the masked cell's filler. A
+	// concealing key's copy is a pointer, nil where the cell is masked. Never
+	// encoded; read only by the cursor.
+	cursorValues map[accesstypes.Field]reflect.Value
 
 	// capabilities holds this row's assembled capability answers when the
 	// request opted into the capability envelope, nil otherwise.

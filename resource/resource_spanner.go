@@ -92,10 +92,11 @@ func (c *spannerReader[Resource]) DBType() DBType {
 }
 
 // envelopeScan reports whether the statement carries reserved metadata
-// columns (masked names, capability checks) or an assembly plan, requiring
-// the lenient per-row scan instead of the plain spxscan path.
+// columns (masked names, capability checks, the cursor's sort-key copies) or
+// an assembly plan, requiring the lenient per-row scan instead of the plain
+// spxscan path.
 func envelopeScan(stmt *Statement) bool {
-	return stmt.maskedNamesColumn != "" || stmt.capabilityPlan != nil || len(stmt.positionalKeys) > 0
+	return stmt.maskedNamesColumn != "" || stmt.capabilityPlan != nil || len(stmt.cursorColumns) > 0
 }
 
 // Read reads a single resource from the database.
@@ -212,9 +213,10 @@ func (c *spannerReader[Resource]) listEnvelope(ctx context.Context, stmt *Statem
 
 // scanEnvelopeRow scans one envelope-statement row: the resource columns into
 // the envelope's data (leniently, so the reserved columns are skipped), the
-// reserved masked-names column into the mask list, and the reserved
-// capability-checks column through the plan into the capability answers. A
-// NULL check boolean reads as false — a condition permits only on TRUE.
+// reserved masked-names column into the mask list, the reserved cursor
+// columns into the cursor values, and the reserved capability-checks column
+// through the plan into the capability answers. A NULL check boolean reads as
+// false — a condition permits only on TRUE.
 func scanEnvelopeRow[Resource Resourcer](spannerRow *spanner.Row, stmt *Statement) (*Row[Resource], error) {
 	row := new(Row[Resource])
 	if err := spannerRow.ToStructLenient(&row.Data); err != nil {
@@ -225,17 +227,24 @@ func scanEnvelopeRow[Resource Resourcer](spannerRow *spanner.Row, stmt *Statemen
 			return nil, errors.Wrap(err, "spanner.Row.ColumnByName()")
 		}
 	}
-	for _, key := range stmt.positionalKeys {
-		// The raw value scans into a fresh value of the field's own type, so
-		// the cursor encodes it exactly as it would the unmasked cell.
-		dest := reflect.New(key.fieldType)
-		if err := spannerRow.ColumnByName(key.alias, dest.Interface()); err != nil {
-			return nil, errors.Wrapf(err, "spanner.Row.ColumnByName(%s)", key.alias)
+	for _, column := range stmt.cursorColumns {
+		// The copy scans into a fresh value of the field's own type, so the
+		// cursor encodes it exactly as it would the cell. A copy that can be
+		// NULL where the type cannot (a concealing key's CASE) scans into a
+		// pointer to the type instead, nil for NULL, which the cursor writes
+		// as the NULL key.
+		destType := column.fieldType
+		if column.nullable && !isNullableType(destType) {
+			destType = reflect.PointerTo(destType)
 		}
-		if row.positional == nil {
-			row.positional = make(map[accesstypes.Field]reflect.Value, len(stmt.positionalKeys))
+		dest := reflect.New(destType)
+		if err := spannerRow.ColumnByName(column.alias, dest.Interface()); err != nil {
+			return nil, errors.Wrapf(err, "spanner.Row.ColumnByName(%s)", column.alias)
 		}
-		row.positional[key.field] = dest.Elem()
+		if row.cursorValues == nil {
+			row.cursorValues = make(map[accesstypes.Field]reflect.Value, len(stmt.cursorColumns))
+		}
+		row.cursorValues[column.field] = dest.Elem()
 	}
 	if plan := stmt.capabilityPlan; plan != nil {
 		var checks []bool

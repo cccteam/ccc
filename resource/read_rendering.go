@@ -50,9 +50,15 @@ import (
 // keeps its select CASE and its mask term — the cell is still hidden — but
 // renders no query override, so ORDER BY, the cursor predicate, and the filter
 // run on the raw column: the index serves the page and the field's rank is
-// disclosed. A positional sort key's raw value is selected a second time under
-// a reserved alias for the cursor, so a hidden boundary value leaves the server
-// only inside the sealed token.
+// disclosed.
+//
+// The cursor's copy (decided 2026-09-15): the cursor reads its boundary keys
+// from the row the statement yields, and Row.Data carries exactly what the
+// request selected. So every sort key outside the projection — the primary key
+// included — and every positional key whose select item is a CASE is selected
+// a second time under a reserved alias: its visible projection where the query
+// renders one, the raw column otherwise. A hidden boundary value leaves the
+// server only inside the sealed token, and the projection is never widened.
 
 // maskedNamesColumnName is the read statement's one reserved output column:
 // the JSON names of the row's masked cells. Generation rejects resource

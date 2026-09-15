@@ -358,11 +358,44 @@ func TestQuerySet_boundaryKeys(t *testing.T) {
 			name: "a masked positional sort cell takes the raw value the statement selected for it",
 			sort: []SortField{{Field: "Hazard", Direction: SortDescending}},
 			row: &Row[cursorTestResource]{
-				Data:       cursorTestResource{ID: "a", Hazard: 0},
-				masked:     []string{"hazard"},
-				positional: map[accesstypes.Field]reflect.Value{"Hazard": reflect.ValueOf(int64(7))},
+				Data:         cursorTestResource{ID: "a", Hazard: 0},
+				masked:       []string{"hazard"},
+				cursorValues: map[accesstypes.Field]reflect.Value{"Hazard": reflect.ValueOf(int64(7))},
 			},
 			want: []*string{strPtr("7"), strPtr("a")},
+		},
+		{
+			name: "an unselected sort key takes the copy the statement selected, over the zero cell",
+			sort: []SortField{{Field: "Hazard", Direction: SortDescending}},
+			row: &Row[cursorTestResource]{
+				Data:         cursorTestResource{ID: "a"},
+				cursorValues: map[accesstypes.Field]reflect.Value{"Hazard": reflect.ValueOf(int64(7))},
+			},
+			want: []*string{strPtr("7"), strPtr("a")},
+		},
+		{
+			name: "a nil copy of a concealing key is the NULL key",
+			sort: []SortField{{Field: "Hazard", Direction: SortDescending}},
+			row: &Row[cursorTestResource]{
+				Data:         cursorTestResource{ID: "a"},
+				cursorValues: map[accesstypes.Field]reflect.Value{"Hazard": reflect.ValueOf((*int64)(nil))},
+			},
+			want: []*string{nil, strPtr("a")},
+		},
+		{
+			name: "a masked concealing key with no copy stays the NULL key",
+			sort: []SortField{{Field: "Hazard", Direction: SortDescending}},
+			row:  &Row[cursorTestResource]{Data: cursorTestResource{ID: "a", Hazard: 5}, masked: []string{"hazard"}},
+			want: []*string{nil, strPtr("a")},
+		},
+		{
+			name: "the primary key outside the projection takes its copy",
+			sort: []SortField{{Field: "Hazard", Direction: SortDescending}},
+			row: &Row[cursorTestResource]{
+				Data:         cursorTestResource{Hazard: 3},
+				cursorValues: map[accesstypes.Field]reflect.Value{"ID": reflect.ValueOf("k")},
+			},
+			want: []*string{strPtr("3"), strPtr("k")},
 		},
 		{
 			name:   "a sort field the row lacks is an error",

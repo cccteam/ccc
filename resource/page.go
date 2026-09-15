@@ -209,38 +209,38 @@ func (p *Page[Resource]) link(r *http.Request, direction pageDirection, boundary
 }
 
 // boundaryKeys encodes a boundary row's values in the list's total order, the
-// primary key last, at full precision. A sort cell masked on the boundary row
-// arrives as its typed filler, but the statement ordered it as NULL, so its key
-// is the NULL key.
+// primary key last, at full precision. A key the statement selected a second
+// time for the cursor — outside the projection, or a positional key under a
+// CASE — is read from that copy, so the token carries the value the statement
+// ordered by; the value rides only inside the sealed token. A concealing key
+// masked on the boundary row arrives as its typed filler, but the statement
+// ordered it as NULL, so its key is the NULL key. Every other key is read from
+// the row data.
 func (q *QuerySet[Resource]) boundaryKeys(row *Row[Resource]) ([]*string, error) {
 	order := q.Order()
 	value := reflect.ValueOf(&row.Data).Elem()
 	keys := make([]*string, 0, len(order))
 	for _, sf := range order {
-		if row.Masked(q.jsonName(accesstypes.Field(sf.Field))) {
-			// A concealing key sorted as NULL, and the cursor says so. A
-			// positional key sorted on the raw column, which the statement
-			// selected for exactly this; the value rides only inside the sealed
-			// token.
-			raw, positional := row.positional[accesstypes.Field(sf.Field)]
-			if !positional {
-				keys = append(keys, nil)
-
-				continue
-			}
-			text, err := cursorText(raw)
+		field := accesstypes.Field(sf.Field)
+		if copied, ok := row.cursorValues[field]; ok {
+			text, err := cursorText(copied)
 			if err != nil {
-				return nil, errors.Wrapf(err, "positional sort field %s", sf.Field)
+				return nil, errors.Wrapf(err, "sort field %s", sf.Field)
 			}
 			keys = append(keys, text)
 
 			continue
 		}
-		field := fieldValue(value, sf.Field)
-		if !field.IsValid() {
+		if row.Masked(q.jsonName(field)) {
+			keys = append(keys, nil)
+
+			continue
+		}
+		cell := fieldValue(value, sf.Field)
+		if !cell.IsValid() {
 			return nil, errors.Newf("resource.Page: sort field %s is not a field of %T", sf.Field, row.Data)
 		}
-		text, err := cursorText(field)
+		text, err := cursorText(cell)
 		if err != nil {
 			return nil, errors.Wrapf(err, "sort field %s", sf.Field)
 		}

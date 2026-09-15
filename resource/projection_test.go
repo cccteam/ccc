@@ -89,12 +89,14 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_c1": int64(0)},
 		},
 		{
-			name:      "descending orders the CASE descending: the masked rows last on Spanner, first on PostgreSQL",
+			name:      "descending orders the CASE descending: the masked rows last on Spanner, first on PostgreSQL; the unselected key's copy rides for the cursor",
 			target:    "/?sort=fee:desc&columns=id,name",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
-			wantSpanner: "SELECT Id, Name FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
+			wantSpanner: "SELECT Id, Name, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END AS zzCursorFee " +
+				"FROM projectionResources WHERE (`projectionResources`.`Station` = @domain) " +
 				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END DESC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id", "Name" FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
+			wantPostgres: `SELECT "Id", "Name", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END AS "zzCursorFee" ` +
+				`FROM projectionResources WHERE ("projectionResources"."Station" = @domain) ` +
 				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END DESC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain"},
 		},
@@ -146,10 +148,10 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 			target:    "/?sort=fee&columns=id",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			cursor:    &cursor{Direction: pageNext, Keys: []*string{nil, strPtr(id)}},
-			wantSpanner: "SELECT Id FROM projectionResources " +
+			wantSpanner: "SELECT Id, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END AS zzCursorFee FROM projectionResources " +
 				"WHERE (`projectionResources`.`Station` = @domain) AND (CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NOT NULL OR (CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL AND `Id` > @_c1)) " +
 				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id" FROM projectionResources ` +
+			wantPostgres: `SELECT "Id", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END AS "zzCursorFee" FROM projectionResources ` +
 				`WHERE ("projectionResources"."Station" = @domain) AND ((CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL AND "Id" > @_c1)) ` +
 				`ORDER BY CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END ASC, "Id" ASC LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_c1": id},
@@ -159,12 +161,12 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 			target:    "/?sort=fee&columns=id",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			cursor:    &cursor{Direction: pageNext, Keys: []*string{strPtr("7"), strPtr(id)}},
-			wantSpanner: "SELECT Id FROM projectionResources " +
+			wantSpanner: "SELECT Id, CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END AS zzCursorFee FROM projectionResources " +
 				"WHERE (`projectionResources`.`Station` = @domain) AND (" +
 				"CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END > @_c1 OR " +
 				"(CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END = @_c1 AND `Id` > @_c2)) " +
 				"ORDER BY CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END ASC, `Id` ASC LIMIT 51",
-			wantPostgres: `SELECT "Id" FROM projectionResources ` +
+			wantPostgres: `SELECT "Id", CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END AS "zzCursorFee" FROM projectionResources ` +
 				`WHERE ("projectionResources"."Station" = @domain) AND (` +
 				`(CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END > @_c1 OR CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL) OR ` +
 				`(CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END = @_c1 AND "Id" > @_c2)) ` +

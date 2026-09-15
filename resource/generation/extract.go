@@ -1042,8 +1042,8 @@ func reservedRowName(spannerTag, fieldName string) (string, bool) {
 		}
 	}
 	for _, name := range []string{spannerTag, fieldName} {
-		if len(name) >= len(reservedPositionalKeyPrefix) && strings.EqualFold(name[:len(reservedPositionalKeyPrefix)], reservedPositionalKeyPrefix) {
-			return reservedPositionalKeyPrefix + "…", true
+		if len(name) >= len(reservedCursorColumnPrefix) && strings.EqualFold(name[:len(reservedCursorColumnPrefix)], reservedCursorColumnPrefix) {
+			return reservedCursorColumnPrefix + "…", true
 		}
 	}
 

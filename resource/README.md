@@ -175,7 +175,7 @@ none of them can be used as field names in filters:
 
 | Parameter | Meaning |
 | --- | --- |
-| `columns` | Comma-separated JSON field names to return; omitted means all accessible fields. |
+| `columns` | Comma-separated JSON field names to return; omitted means all accessible fields. Leaving out a sort field or the primary key changes nothing about paging: the cursor reads those keys from the statement, not from the returned row. |
 | `filter` | Filter expression over indexed/`allow_filter` fields, e.g. `name:eq:Vanta`. Operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `in`, `notin`, `isnull`, `isnotnull`. On POST query routes the filter may be sent in the body as `{"filter": "…"}` instead (required for `pii` fields), but not in both places. The expression is validated when the request is decoded, with the rest of the request's shape: a field that is unknown or not filterable, a malformed condition, or a value that does not fit its field is a 400 before any permission check runs, any query executes, or a computed resource's List function is called. A table filter must also touch at least one indexed field, which the database parse enforces; an indexed field is one whose column leads an index or, on a bare-`@domain` resource, follows the tenant column in one (section 3), and the tenant predicate itself does not count. The generated field metadata states the same eligibility, so a browser draws a filter control only where the server will answer: `filterable: 'always'` on an indexed table or view field and on a computed resource's `allow_filter` field, `'withIndexed'` on a table or view `allow_filter` field, and nothing on a field a filter may not name. |
 | `sort` | Comma-separated `field[:direction]` entries, e.g. `name:asc,rank:desc`; direction is `asc` (default) or `desc`. |
 | `limit` | The page size: rows returned per request. Omitted, the resource's declared default applies (`@page`, generator-wide default 50). A value over the resource's declared maximum is refused with a 400 naming the maximum, never clamped; `0` is refused. `limit=all` returns every row with no `Link` header, and is permitted only on a resource that declares no maximum. |
@@ -217,9 +217,13 @@ sorts whole ([finding 5](lodestar/perf/REPORT.md)). That is the concealing behav
 and it is the default for every field. A field declared `masking:"positional"` (section
 2) keeps its cell hidden but sorts, filters, and pages on the real column: the index
 serves the page, and the field's rank is disclosed. Its cursor still carries the
-boundary row's real value, selected under a reserved `zzPositional…` column that never
-reaches the wire, sealed inside the token. `index:"true"` stays the declaration of
-which fields may be filtered. A `@computed` resource evaluates no conditions at read
+boundary row's real value: the statement selects it a second time under a reserved
+`zzCursor…` column that never reaches the wire, and the token carries it sealed. Every
+sort key the request did not select rides the same column — a `columns=` list that
+leaves out the sort field or the primary key, or an `@order` field the grid does not
+show — so the cursor carries what the statement ordered by (a concealing key's visible
+projection, `NULL` where the cell is masked) and the row data stays exactly what was
+selected. `index:"true"` stays the declaration of which fields may be filtered. A `@computed` resource evaluates no conditions at read
 time, so its sort and filter fields still require an unconditional grant.
 
 A paged list answers with headers beside its JSON array body. `Link` (RFC 8288)

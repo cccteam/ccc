@@ -670,34 +670,34 @@ func (q *QuerySet[Resource]) orderedDBFields(dbType DBType) ([]fieldColumnMetada
 	return fieldColumns, nil
 }
 
-// selectList renders the statement's select list and reports the positional
-// sort keys it selects raw for the cursor.
-func (q *QuerySet[Resource]) selectList(dbType DBType, rendered *renderedReadConditions, capChecksItem string) (Columns, []positionalKey, error) {
-	positionalItems, positionalKeys, err := q.positionalKeyItems(dbType, rendered)
+// selectList renders the statement's select list and reports the sort keys it
+// selects a second time for the cursor.
+func (q *QuerySet[Resource]) selectList(dbType DBType, rendered *renderedReadConditions, capChecksItem string) (Columns, []cursorColumn, error) {
+	cursorItems, cursorColumns, err := q.cursorColumnItems(dbType, rendered)
 	if err != nil {
-		return "", nil, errors.Wrap(err, "QuerySet.positionalKeyItems()")
+		return "", nil, errors.Wrap(err, "QuerySet.cursorColumnItems()")
 	}
 
-	columns, err := q.columns(dbType, rendered, capChecksItem, positionalItems)
+	columns, err := q.columns(dbType, rendered, capChecksItem, cursorItems)
 	if err != nil {
 		return "", nil, errors.Wrap(err, "QuerySet.Columns()")
 	}
 
-	return columns, positionalKeys, nil
+	return columns, cursorColumns, nil
 }
 
 // columns returns the select list for the fields the user has access to view.
 // With no rendered conditions it is the plain column list; conditionally
 // granted columns render as their CASE, and the reserved masked-names column
 // is appended when any CASE survives pruning, then the capability checks and
-// the positional sort keys' raw values.
-func (q *QuerySet[Resource]) columns(dbType DBType, rendered *renderedReadConditions, capChecksItem string, positionalItems []string) (Columns, error) {
+// the cursor's copies of the sort keys the row data will not carry.
+func (q *QuerySet[Resource]) columns(dbType DBType, rendered *renderedReadConditions, capChecksItem string, cursorItems []string) (Columns, error) {
 	fieldColumns, err := q.orderedDBFields(dbType)
 	if err != nil {
 		return "", err
 	}
 
-	columns := make([]string, 0, len(fieldColumns)+2+len(positionalItems))
+	columns := make([]string, 0, len(fieldColumns)+2+len(cursorItems))
 	for _, fieldColumn := range fieldColumns {
 		if rendered != nil {
 			if override, ok := rendered.overrides[fieldColumn.field]; ok {
@@ -721,63 +721,99 @@ func (q *QuerySet[Resource]) columns(dbType DBType, rendered *renderedReadCondit
 	if capChecksItem != "" {
 		columns = append(columns, capChecksItem)
 	}
-	columns = append(columns, positionalItems...)
+	columns = append(columns, cursorItems...)
 
 	return Columns(strings.Join(columns, ", ")), nil
 }
 
-// positionalKeyColumnPrefix begins the reserved alias a positional sort key's
-// raw value is selected under, followed by the column name: a masked boundary
-// cell arrives as its filler in the row data, and the cursor needs the value
-// the statement ordered by. Generation rejects resource columns that would
-// collide with the prefix. The readers scan the alias into the Row envelope,
-// never into the data, and the wire encoder never sees it.
-const positionalKeyColumnPrefix = "zzPositional"
+// cursorColumnPrefix begins the reserved alias a sort key's cursor copy is
+// selected under, followed by the column name. The cursor reads its boundary
+// keys from the row the statement yields, and Row.Data carries exactly what
+// the request selected: a sort key outside the columns projection (the primary
+// key included) is not in it at all, and a positional key's masked cell
+// arrives as its filler. Each such key is selected a second time under the
+// alias, so the cursor carries the value the statement ordered by. Generation
+// rejects resource columns that would collide with the prefix. The readers
+// scan the alias into the Row envelope, never into the data, and the wire
+// encoder never sees it.
+const cursorColumnPrefix = "zzCursor"
 
-// positionalKey is one positional sort key the statement selects raw for the
-// cursor: the field, the alias its value arrives under, and the Go type the
-// reader scans it into.
-type positionalKey struct {
+// cursorColumn is one sort key the statement selects a second time for the
+// cursor: the field, the alias its value arrives under, the Go type the reader
+// scans it into, and whether the item can yield NULL where the type cannot
+// (the visible-projection CASE of a concealing key).
+type cursorColumn struct {
 	field     accesstypes.Field
 	alias     string
 	fieldType reflect.Type
+	nullable  bool
 }
 
-// positionalKeyItems renders the hidden select items a paged statement needs
-// for its cursor: the raw column of each positional sort key whose select
-// item is a CASE, under the reserved alias. A statement that does not page
-// issues no cursor and selects nothing extra; a key whose CASE pruned shows
-// its value in the row data already.
-func (q *QuerySet[Resource]) positionalKeyItems(dbType DBType, rendered *renderedReadConditions) ([]string, []positionalKey, error) {
-	if q.page == nil || rendered == nil || q.resourceSet == nil {
+// cursorColumnItems renders the hidden select items a paged statement needs
+// for its cursor, one per sort key whose value the row data will not carry:
+// every key outside the projection, and a positional key whose select item is
+// a CASE (its cell arrives as the filler). The item is the key's visible
+// projection where the query renders one — the concealing CASE, NULL where the
+// cell is masked — and the raw column otherwise; a positional key renders no
+// override by declaration, so it selects raw. A statement that does not page
+// issues no cursor and selects nothing extra; a key the projection shows
+// unmasked, or whose CASE pruned, is read from the row data.
+func (q *QuerySet[Resource]) cursorColumnItems(dbType DBType, rendered *renderedReadConditions) ([]string, []cursorColumn, error) {
+	if q.page == nil {
 		return nil, nil, nil
 	}
 
 	dbFields := q.rMeta.dbFieldMap(dbType)
 	var items []string
-	var keys []positionalKey
+	var columns []cursorColumn
+	seen := make(map[accesstypes.Field]struct{})
 	for _, sf := range q.Order() {
 		field := accesstypes.Field(sf.Field)
-		if _, masked := rendered.overrides[field]; !masked || !q.resourceSet.Positional(field) {
+		if _, dup := seen[field]; dup {
+			continue
+		}
+		seen[field] = struct{}{}
+		if slices.Contains(q.Fields(), field) && !q.positionalCase(field, rendered) {
 			continue
 		}
 		dbField, ok := dbFields[field]
 		if !ok {
 			return nil, nil, errors.Newf("sort field %s not found in db struct", field)
 		}
-		alias := positionalKeyColumnPrefix + dbField.ColumnName
+		expr := rendered.queryOverride(field)
+		nullable := expr != ""
+		alias := cursorColumnPrefix + dbField.ColumnName
 		switch dbType {
 		case SpannerDBType:
-			items = append(items, fmt.Sprintf("%s AS %s", dbField.ColumnName, alias))
+			if expr == "" {
+				expr = dbField.ColumnName
+			}
+			items = append(items, fmt.Sprintf("%s AS %s", expr, alias))
 		case PostgresDBType:
-			items = append(items, fmt.Sprintf(`"%s" AS "%s"`, dbField.ColumnName, alias))
+			if expr == "" {
+				expr = fmt.Sprintf(`"%s"`, dbField.ColumnName)
+			}
+			items = append(items, fmt.Sprintf(`%s AS "%s"`, expr, alias))
 		default:
 			return nil, nil, errors.Newf("unsupported dbType: %s", dbType)
 		}
-		keys = append(keys, positionalKey{field: field, alias: alias, fieldType: dbField.fieldType})
+		columns = append(columns, cursorColumn{field: field, alias: alias, fieldType: dbField.fieldType, nullable: nullable})
 	}
 
-	return items, keys, nil
+	return items, columns, nil
+}
+
+// positionalCase reports whether a projected sort key is a positional field
+// whose select item is a CASE: its cell arrives as the filler where masked
+// while the statement ordered by the raw column, so the cursor needs the raw
+// value selected beside it.
+func (q *QuerySet[Resource]) positionalCase(field accesstypes.Field, rendered *renderedReadConditions) bool {
+	if rendered == nil || q.resourceSet == nil {
+		return false
+	}
+	_, cased := rendered.overrides[field]
+
+	return cased && q.resourceSet.Positional(field)
 }
 
 // filterColumnExpressions maps the filter's column names to their
@@ -939,7 +975,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.renderCapabilities()")
 	}
 
-	columns, positionalKeys, err := q.selectList(dbType, rendered, capChecksItem)
+	columns, cursorColumns, err := q.selectList(dbType, rendered, capChecksItem)
 	if err != nil {
 		return nil, err
 	}
@@ -992,7 +1028,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		stmt.maskedNamesColumn = maskedNamesColumnName
 	}
 	stmt.capabilityPlan = capPlan
-	stmt.positionalKeys = positionalKeys
+	stmt.cursorColumns = cursorColumns
 
 	return stmt, nil
 }

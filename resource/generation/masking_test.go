@@ -196,7 +196,7 @@ func Test_maskingTags(t *testing.T) {
 }
 
 // Test_reservedRowName pins the reserved names a resource column may not take: the
-// three fixed envelope names, case-insensitively, and the positional alias prefix.
+// three fixed envelope names, case-insensitively, and the cursor alias prefix.
 func Test_reservedRowName(t *testing.T) {
 	t.Parallel()
 
@@ -210,10 +210,10 @@ func Test_reservedRowName(t *testing.T) {
 		{name: "an ordinary column", column: "Fee", field: "Fee"},
 		{name: "the masked-names column", column: "zzMaskedFields", field: "Masked", wantHit: true, wantNaming: "zzMaskedFields"},
 		{name: "the capability property by field name, any case", column: "Caps", field: "ZZCAPABILITIES", wantHit: true, wantNaming: "zzCapabilities"},
-		{name: "a column beginning with the positional prefix", column: "zzPositionalFee", field: "Fee", wantHit: true, wantNaming: "zzPositional"},
-		{name: "a field beginning with the positional prefix, any case", column: "Fee", field: "ZzPositionalKey", wantHit: true, wantNaming: "zzPositional"},
-		{name: "the prefix alone is reserved too", column: "zzPositional", field: "Fee", wantHit: true, wantNaming: "zzPositional"},
-		{name: "a column merely containing the prefix is not", column: "MyzzPositional", field: "Fee"},
+		{name: "a column beginning with the cursor prefix", column: "zzCursorFee", field: "Fee", wantHit: true, wantNaming: "zzCursor"},
+		{name: "a field beginning with the cursor prefix, any case", column: "Fee", field: "ZzCursorKey", wantHit: true, wantNaming: "zzCursor"},
+		{name: "the prefix alone is reserved too", column: "zzCursor", field: "Fee", wantHit: true, wantNaming: "zzCursor"},
+		{name: "a column merely containing the prefix is not", column: "MyzzCursor", field: "Fee"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
