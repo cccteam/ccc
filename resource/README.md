@@ -530,29 +530,58 @@ much from the schema:
 
 ## 10. Refused commits
 
-Spanner checks foreign keys, interleaved parents, and `NOT NULL` for buffered mutations when
-the transaction commits, so a write the schema refuses for a referential reason surfaces
-from the commit, not from the patch that caused it. `SpannerClient.ExecuteFunc` answers such
-a commit with **409 Conflict** and a message the library composes itself. It covers a delete
-of a row other rows still reference through a foreign key without `ON DELETE CASCADE` or as
-an interleaved parent under `ON DELETE NO ACTION`, a create or update whose foreign key names
-a referenced row that does not exist, and a required column left empty at commit.
-
-The translation keys on the gRPC code alone (`FailedPrecondition`), never on the message
-text, which differs between the emulator and the service and is not documented. The message
+Spanner checks foreign keys, interleaved parents, `NOT NULL`, column lengths, primary and
+unique keys, and `CHECK` constraints for buffered mutations when the transaction commits,
+so a write the schema refuses surfaces from the commit, not from the patch that caused it.
+`SpannerClient.ExecuteFunc` answers such a commit with a 4xx and a message the library
+composes itself. The translation keys on the gRPC code alone, never on the message text,
+which differs between the emulator and the service and is not documented. The message
 names only the resources whose patches the transaction buffered, in the order they were
-buffered, and never the referencing table, the constraint, the key, or a count:
+buffered, and never the referencing table, the constraint, the index, the key, the value,
+or a count:
 
-| The transaction buffered | Message |
-| --- | --- |
-| Deletes on one resource | `Hangars: this record cannot be deleted while other records still reference it.` |
-| Deletes on several resources | `Hangars, Ships: a record cannot be deleted while other records still reference it.` |
-| Creates or updates only | `Ships: a referenced record does not exist.` |
-| Deletes and writes together, or nothing buffered through the transaction wrapper | `The request could not be applied: a deleted record is still referenced, or a referenced record does not exist.` |
+| gRPC code | The transaction buffered | Status | Message |
+| --- | --- | --- | --- |
+| `FailedPrecondition` (a delete of a row other rows still reference through a foreign key without `ON DELETE CASCADE` or as an interleaved parent under `ON DELETE NO ACTION`; a write whose foreign key names a row that does not exist; a required column left empty; a string longer than its column's declared length) | Deletes on one resource | 409 | `Hangars: this record cannot be deleted while other records still reference it.` |
+| | Deletes on several resources | 409 | `Hangars, Ships: a record cannot be deleted while other records still reference it.` |
+| | Creates or updates only | 409 | `Ships: a referenced record does not exist, or a value is too long for its field.` |
+| | Deletes and writes together, or nothing buffered through the transaction wrapper | 409 | `The request could not be applied: a deleted record is still referenced, or a referenced record does not exist.` |
+| `AlreadyExists` (a duplicate primary key; a duplicate unique-index value) | Any create | 409 | `Ships: a record with this key or a unique value already exists.` |
+| | Updates only | 409 | `Clients: a unique value already exists on another record.` |
+| | Nothing buffered | 409 | `The request could not be applied: a record with this key or a unique value already exists.` |
+| `OutOfRange` (a violated `CHECK` constraint) | Any write | 400 | `Missions: a value is outside the range the record allows.` |
+| | Nothing buffered | 400 | `The request could not be applied: a value is outside the range the record allows.` |
+| `NotFound` (an update of a row that does not exist; an interleaved child whose parent does not exist) | Updates only | 404 | `Clients: this record does not exist.` |
+| | Any create | 409 | `RefitTasks: a referenced record does not exist.` |
+| | Nothing buffered | 409 | `The request could not be applied: a record to update does not exist, or a referenced record does not exist.` |
+| anything else (`InvalidArgument`, `Internal`, `Aborted`, …) | | 500 | passes through unchanged |
 
-A tracked resource's change-event rows do not count among the buffered patches. The tenancy
-check's 404 for a referenced row outside the request's partition is unchanged; it runs before
-the commit. A request that deletes children and their parent in one transaction still
-succeeds in either order, because nothing is checked before the commit. An error the
-transaction function itself returns, and a commit refused with any other code (a duplicate
-key, a violated `CHECK`), pass through unchanged and answer as they did before.
+"Create" is a create or a create-or-update; a touch is an update. Deletes cannot cause any
+code but `FailedPrecondition`, so deletes buffered beside writes do not change the other
+codes' sentences. A tracked resource's change-event rows do not count among the buffered
+patches. An error the transaction function itself returns passes through unchanged, whatever
+its code.
+
+What the library does not do: it reads nothing before buffering to name the offending
+field. A read inside the transaction does not see the transaction's own buffered writes, so
+two creates sharing a value in one batch would pass such a check and fail at commit anyway,
+and concurrent requests would race past it; the commit translation is needed regardless.
+The application's validators (`@validateCreateType`, `@validateUpdateType`) are where a rule
+is answered as 400 naming the field before anything is buffered; the commit translation is
+the backstop for what they do not cover.
+
+Two consequences to know:
+
+- A unique index is global across tenants. The 409 for a duplicate unique value confirms
+  that the value exists somewhere, in any tenant; that is the schema's choice in declaring
+  the index, not the message's, which names no tenant, row, or value.
+- `NotFound` is also Spanner's code for an unknown column or table. A deployment whose
+  schema disagrees with the generated code answers 404 or 409 with Spanner's text in the
+  server log instead of 500. A schema mismatch fails every write that touches the column,
+  so it does not hide behind one request.
+
+The tenancy check's 404 for a referenced row outside the request's partition, and the 404
+a tenanted or tracked update answers when its row is missing, are unchanged; they run before
+the commit, so the same request answers 404 whatever the resource's shape. A request that
+deletes children and their parent in one transaction still succeeds in either order,
+because nothing is checked before the commit.

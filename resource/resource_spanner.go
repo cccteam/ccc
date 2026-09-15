@@ -35,10 +35,11 @@ func (c *SpannerClient) SpannerReadOnlyTransaction() spxapi.Querier {
 }
 
 // ExecuteFunc executes a function within a read-write transaction. A commit Spanner
-// refuses for a referential reason answers as a 409 conflict whose message is composed
-// from the patches the transaction buffered (see translateCommitError); an error the
-// function itself returns, and a commit refused with any other code, pass through
-// unchanged.
+// refuses for a reason the caller can act on (a referential refusal, a duplicate key or
+// unique value, a violated CHECK constraint, an update of a row that does not exist)
+// answers as a 4xx whose message is composed from the patches the transaction buffered
+// (see translateCommitError); an error the function itself returns, and a commit refused
+// with any other code, pass through unchanged.
 func (c *SpannerClient) ExecuteFunc(ctx context.Context, f func(ctx context.Context, txn ReadWriteTransaction) error) error {
 	var (
 		buffered   = newBufferedPatches()
