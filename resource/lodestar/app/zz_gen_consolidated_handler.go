@@ -23,7 +23,7 @@ import (
 func (a *App) PatchResources() http.HandlerFunc {
 	type clientContactRequest struct {
 		ID          ccc.UUID `json:"-"`
-		UserID      string   `json:"userId"`
+		UserID      string   `json:"userId"      sqltype:"STRING(320)"`
 		ClientID    ccc.UUID `json:"clientId"`
 		DisplayName string   `json:"displayName"`
 	}
@@ -57,28 +57,28 @@ func (a *App) PatchResources() http.HandlerFunc {
 		ID                 ccc.UUID            `json:"-"`
 		SectorID           string              `json:"-"`
 		ClientID           ccc.UUID            `json:"clientId"`
-		KindID             string              `json:"kindId"`
+		KindID             string              `json:"kindId"             sqltype:"STRING(64)"`
 		Title              string              `json:"title"`
 		Brief              *string             `json:"brief"`
-		BriefingTemplateID *string             `json:"briefingTemplateId"`
+		BriefingTemplateID *string             `json:"briefingTemplateId" sqltype:"STRING(64)"`
 		Hazard             int64               `json:"hazard"`
-		Fee                decimal.Decimal     `json:"fee"`
+		Fee                decimal.Decimal     `json:"fee"                sqltype:"NUMERIC"`
 		Deadline           time.Time           `json:"deadline"`
-		RequiredCertID     *string             `json:"requiredCertId"`
+		RequiredCertID     *string             `json:"requiredCertId"     sqltype:"STRING(64)"`
 		BookedBy           string              `json:"-"`
 		AssignedSquadronID ccc.NullUUID        `json:"assignedSquadronId"`
 		StatusID           string              `json:"-"`
 		Notes              *string             `json:"notes"`
-		Settlement         decimal.NullDecimal `json:"settlement"`
+		Settlement         decimal.NullDecimal `json:"settlement"         sqltype:"NUMERIC"`
 	}
 	missionDecoder := NewDecoder[resources.Mission, missionRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type pilotRequest struct {
 		ID          ccc.UUID        `json:"-"`
-		UserID      string          `json:"userId"`
+		UserID      string          `json:"userId"      sqltype:"STRING(320)"`
 		DisplayName string          `json:"displayName"`
 		Clearance   int64           `json:"clearance"`
-		FeeLimit    decimal.Decimal `json:"feeLimit"`
+		FeeLimit    decimal.Decimal `json:"feeLimit"    sqltype:"NUMERIC"`
 	}
 	pilotDecoder := NewDecoder[resources.Pilot, pilotRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
@@ -92,7 +92,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		ID          ccc.UUID            `json:"-"`
 		ShipID      ccc.UUID            `json:"shipId"`
 		StatusID    string              `json:"-"`
-		Estimate    decimal.NullDecimal `json:"estimate"`
+		Estimate    decimal.NullDecimal `json:"estimate" sqltype:"NUMERIC"`
 		InspectedAt *time.Time          `json:"-"`
 		OpenedBy    string              `json:"-"`
 		Notes       *string             `json:"notes"`
@@ -120,7 +120,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		ID          ccc.UUID   `json:"-"`
 		HangarID    ccc.UUID   `json:"hangarId"`
 		ClassID     ccc.UUID   `json:"classId"`
-		Registry    string     `json:"registry" immutable:"true"`
+		Registry    string     `json:"registry" immutable:"true" sqltype:"STRING(16)"`
 		Name        string     `json:"name"`
 		LastRefitAt *time.Time `json:"-"`
 		UpdatedAt   *time.Time `json:"-"`
@@ -130,7 +130,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 	type shipClassRequest struct {
 		ID          ccc.UUID `json:"-"`
 		Designation string   `json:"designation" immutable:"true"`
-		RoleID      string   `json:"roleId"`
+		RoleID      string   `json:"roleId"      sqltype:"STRING(64)"`
 		Tonnage     int64    `json:"tonnage"`
 		Hardened    bool     `json:"hardened"`
 	}
@@ -140,7 +140,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		ID          ccc.UUID   `json:"-"`
 		MissionID   ccc.UUID   `json:"missionId"`
 		ShipID      ccc.UUID   `json:"shipId"`
-		PilotUserID string     `json:"pilotUserId"`
+		PilotUserID string     `json:"pilotUserId" sqltype:"STRING(320)"`
 		LaunchedAt  time.Time  `json:"launchedAt"`
 		ReturnedAt  *time.Time `json:"returnedAt"`
 		Debrief     *string    `json:"debrief"`
@@ -151,7 +151,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		ID       ccc.UUID        `json:"-"`
 		SortieID ccc.UUID        `json:"sortieId"`
 		Category string          `json:"category"`
-		Amount   decimal.Decimal `json:"amount"`
+		Amount   decimal.Decimal `json:"amount"   sqltype:"NUMERIC"`
 		Note     *string         `json:"note"`
 	}
 	sortieExpenseDecoder := NewDecoder[resources.SortieExpense, sortieExpenseRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)

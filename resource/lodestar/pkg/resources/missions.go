@@ -57,7 +57,12 @@ type (
 	// validator, so the schema's CK_Missions_Hazard (migration 000033) refuses the same
 	// value at commit, and the library answers that as 400 naming Missions.
 	//
-	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, masking.positional, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view, metadata.filterable, index.tenant-second, commit.constraint-refusal.
+	// Fee is NUMERIC, so its create and update requests carry sqltype:"NUMERIC": a fee
+	// with ten decimals answers 400 naming the field at decode, on a create and on a
+	// PATCH, while nine decimals are accepted; the schema's InvalidArgument at commit is
+	// never reached from a request.
+	//
+	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, masking.positional, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view, metadata.filterable, index.tenant-second, commit.constraint-refusal, decode.value-limit.
 	//
 	// @resource
 	// @permissionScope(domain)

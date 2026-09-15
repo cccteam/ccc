@@ -30,7 +30,13 @@ type (
 	// Registry is also unique across every ship (ShipsByRegistry): a create that reuses a
 	// seeded registry reaches the commit and is refused there as a duplicate unique value.
 	//
-	// Demonstrates: @domain.join-path, @attribute.join-path, @attribute.join-path-global, immutable, output_only_update_fn, transition-owned-timestamp, change-tracking, commit.referential-refusal, commit.constraint-refusal, warning.join-path-list.
+	// Registry is STRING(16), the fleet's only sized text column: the generated create
+	// request carries sqltype:"STRING(16)", so a seventeen-character registry answers 400
+	// naming the field at decode, before anything is buffered, and the console's create
+	// form refuses it first from the metadata's maxLength. Registry is immutable, so the
+	// create is the only path.
+	//
+	// Demonstrates: @domain.join-path, @attribute.join-path, @attribute.join-path-global, immutable, output_only_update_fn, transition-owned-timestamp, change-tracking, commit.referential-refusal, commit.constraint-refusal, warning.join-path-list, decode.value-limit.
 	//
 	// @resource
 	// @permissionScope(domain)

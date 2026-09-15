@@ -174,7 +174,7 @@ func TestEnumeratedMetadata(t *testing.T) {
 		{
 			name: "a plain column names the computed catalog its picker lists",
 			file: "zz_gen_resources.ts",
-			want: "{ fieldName: 'briefingTemplateId', displayType: 'enumerated', required: false, isIndex: false, enumeratedResource: Resources.BriefingTemplates }",
+			want: "{ fieldName: 'briefingTemplateId', displayType: 'enumerated', required: false, isIndex: false, maxLength: 64, enumeratedResource: Resources.BriefingTemplates }",
 		},
 		{
 			name: "a foreign key names the view over its target, not the target",

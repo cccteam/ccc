@@ -22,7 +22,7 @@ import (
 func (a *App) PatchPortalResources() http.HandlerFunc {
 	type clientContactRequest struct {
 		ID          ccc.UUID `json:"-"`
-		UserID      string   `json:"userId"`
+		UserID      string   `json:"userId"      sqltype:"STRING(320)"`
 		ClientID    ccc.UUID `json:"clientId"`
 		DisplayName string   `json:"displayName"`
 	}
@@ -44,19 +44,19 @@ func (a *App) PatchPortalResources() http.HandlerFunc {
 		ID                 ccc.UUID            `json:"-"`
 		SectorID           string              `json:"-"`
 		ClientID           ccc.UUID            `json:"clientId"`
-		KindID             string              `json:"kindId"`
+		KindID             string              `json:"kindId"             sqltype:"STRING(64)"`
 		Title              string              `json:"title"`
 		Brief              *string             `json:"brief"`
-		BriefingTemplateID *string             `json:"briefingTemplateId"`
+		BriefingTemplateID *string             `json:"briefingTemplateId" sqltype:"STRING(64)"`
 		Hazard             int64               `json:"hazard"`
-		Fee                decimal.Decimal     `json:"fee"`
+		Fee                decimal.Decimal     `json:"fee"                sqltype:"NUMERIC"`
 		Deadline           time.Time           `json:"deadline"`
-		RequiredCertID     *string             `json:"requiredCertId"`
+		RequiredCertID     *string             `json:"requiredCertId"     sqltype:"STRING(64)"`
 		BookedBy           string              `json:"-"`
 		AssignedSquadronID ccc.NullUUID        `json:"assignedSquadronId"`
 		StatusID           string              `json:"-"`
 		Notes              *string             `json:"notes"`
-		Settlement         decimal.NullDecimal `json:"settlement"`
+		Settlement         decimal.NullDecimal `json:"settlement"         sqltype:"NUMERIC"`
 	}
 	missionDecoder := NewDecoder[resources.Mission, missionRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 

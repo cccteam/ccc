@@ -2,7 +2,7 @@ CREATE TABLE Ships (
   Id STRING(36) NOT NULL,
   HangarId STRING(36) NOT NULL,
   ClassId STRING(36) NOT NULL,
-  Registry STRING(MAX) NOT NULL,
+  Registry STRING(16) NOT NULL,
   Name STRING(MAX) NOT NULL,
   LastRefitAt TIMESTAMP OPTIONS (allow_commit_timestamp = true),
   UpdatedAt TIMESTAMP OPTIONS (allow_commit_timestamp = true),

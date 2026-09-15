@@ -46,7 +46,7 @@ type refitWrite struct {
 	ID          ccc.UUID            `json:"-"`
 	ShipID      ccc.UUID            `json:"shipId"`
 	StatusID    string              `json:"-"`
-	Estimate    decimal.NullDecimal `json:"estimate"`
+	Estimate    decimal.NullDecimal `json:"estimate" sqltype:"NUMERIC"`
 	InspectedAt *time.Time          `json:"-"`
 	OpenedBy    string              `json:"-"`
 	Notes       *string             `json:"notes"`

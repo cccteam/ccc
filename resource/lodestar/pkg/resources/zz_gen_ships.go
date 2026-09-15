@@ -45,7 +45,7 @@ type shipWrite struct {
 	ID          ccc.UUID   `json:"-"`
 	HangarID    ccc.UUID   `json:"hangarId"`
 	ClassID     ccc.UUID   `json:"classId"`
-	Registry    string     `json:"registry" immutable:"true"`
+	Registry    string     `json:"registry" immutable:"true" sqltype:"STRING(16)"`
 	Name        string     `json:"name"`
 	LastRefitAt *time.Time `json:"-"`
 	UpdatedAt   *time.Time `json:"-"`

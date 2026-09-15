@@ -41,7 +41,7 @@ var shipClassReadSets resource.SetCache[ShipClass, shipClassRead]
 type shipClassWrite struct {
 	ID          ccc.UUID `json:"-"`
 	Designation string   `json:"designation" immutable:"true"`
-	RoleID      string   `json:"roleId"`
+	RoleID      string   `json:"roleId"      sqltype:"STRING(64)"`
 	Tonnage     int64    `json:"tonnage"`
 	Hardened    bool     `json:"hardened"`
 }

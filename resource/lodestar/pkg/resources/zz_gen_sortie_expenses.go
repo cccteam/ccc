@@ -43,7 +43,7 @@ type sortieExpenseWrite struct {
 	ID       ccc.UUID        `json:"-"`
 	SortieID ccc.UUID        `json:"sortieId"`
 	Category string          `json:"category"`
-	Amount   decimal.Decimal `json:"amount"`
+	Amount   decimal.Decimal `json:"amount"   sqltype:"NUMERIC"`
 	Note     *string         `json:"note"`
 }
 

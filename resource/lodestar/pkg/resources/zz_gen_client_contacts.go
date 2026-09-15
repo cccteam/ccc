@@ -39,7 +39,7 @@ var clientContactReadSets resource.SetCache[ClientContact, clientContactRead]
 // routes enforce; clientContactWriteSets holds one Set per mutation.
 type clientContactWrite struct {
 	ID          ccc.UUID `json:"-"`
-	UserID      string   `json:"userId"`
+	UserID      string   `json:"userId"      sqltype:"STRING(320)"`
 	ClientID    ccc.UUID `json:"clientId"`
 	DisplayName string   `json:"displayName"`
 }

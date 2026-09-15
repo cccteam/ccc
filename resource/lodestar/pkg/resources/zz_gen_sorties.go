@@ -45,7 +45,7 @@ type sortieWrite struct {
 	ID          ccc.UUID   `json:"-"`
 	MissionID   ccc.UUID   `json:"missionId"`
 	ShipID      ccc.UUID   `json:"shipId"`
-	PilotUserID string     `json:"pilotUserId"`
+	PilotUserID string     `json:"pilotUserId" sqltype:"STRING(320)"`
 	LaunchedAt  time.Time  `json:"launchedAt"`
 	ReturnedAt  *time.Time `json:"returnedAt"`
 	Debrief     *string    `json:"debrief"`
