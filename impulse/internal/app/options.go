@@ -177,9 +177,8 @@ var knownOptions = map[string]optionSpec{
 	optAPIKey:         {kind: kindOutletOption},
 	optWebApp:         {kind: kindOutletOption, params: []paramKind{paramString}},
 
-	"WithTypescriptOverrides": {kind: kindTSOption, params: []paramKind{paramStringMap}},
-	"ForOutlet":               {kind: kindTSOption, params: []paramKind{paramString}},
-	"GeneratePermissions":     {kind: kindTSOption},
-	"GenerateMetadata":        {kind: kindTSOption},
-	"GenerateEnums":           {kind: kindTSOption},
+	"ForOutlet":           {kind: kindTSOption, params: []paramKind{paramString}},
+	"GeneratePermissions": {kind: kindTSOption},
+	"GenerateMetadata":    {kind: kindTSOption},
+	"GenerateEnums":       {kind: kindTSOption},
 }
