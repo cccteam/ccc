@@ -12,7 +12,6 @@ import (
 	"cloud.google.com/go/civil"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/ccc/resource"
 	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 	"github.com/shopspring/decimal"
@@ -817,7 +816,6 @@ const jsonTrueLiteral = "true"
 // TypeScript type names emitted by the generator.
 const (
 	stringTSType    = "string"
-	linkTSType      = "Link"
 	numberTSType    = "number"
 	uuidTSType      = "uuid"
 	dateTSType      = "Date"
@@ -831,8 +829,6 @@ func defaultTypescriptOverrides() map[string]string {
 	return map[string]string{
 		reflect.TypeFor[ccc.UUID]().String():            uuidTSType,
 		reflect.TypeFor[ccc.NullUUID]().String():        uuidTSType,
-		reflect.TypeFor[resource.Link]().String():       linkTSType,
-		reflect.TypeFor[resource.NullLink]().String():   linkTSType,
 		reflect.TypeFor[decimal.Decimal]().String():     numberTSType,
 		reflect.TypeFor[decimal.NullDecimal]().String(): numberTSType,
 		reflect.TypeFor[time.Time]().String():           dateTSType,
