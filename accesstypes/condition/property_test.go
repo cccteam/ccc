@@ -31,9 +31,16 @@ var roundTripVocabulary = conditiontest.Vocabulary{
 		{Name: "startsOn", Type: accesstypes.AttributeTypeDate},
 		{Name: "shipClass", Type: accesstypes.AttributeTypeString, JoinPath: true},
 	},
-	SubjectSets:   []string{"crews", "wings"},
-	SubjectValues: []string{"approvalLimit", "homeSector"},
-	PostImage:     true,
+	SubjectSets: []conditiontest.SubjectBinding{
+		{Name: "crews", Type: accesstypes.AttributeTypeString},
+		{Name: "wings", Type: accesstypes.AttributeTypeString},
+	},
+	SubjectValues: []conditiontest.SubjectBinding{
+		{Name: "approvalLimit", Type: accesstypes.AttributeTypeNumber},
+		{Name: "homeSector", Type: accesstypes.AttributeTypeString},
+		{Name: "clearedUntil", Type: accesstypes.AttributeTypeTimestamp},
+	},
+	PostImage: true,
 }
 
 // TestParse_stringRoundTripProperty: Parse(expr.String()).String() ==
@@ -89,8 +96,8 @@ var implicationVocabulary = conditiontest.Vocabulary{
 		{Name: "owner", Type: accesstypes.AttributeTypeString},
 		{Name: "hazard", Type: accesstypes.AttributeTypeNumber},
 	},
-	SubjectSets:   []string{"crews"},
-	SubjectValues: []string{"homeSector"},
+	SubjectSets:   []conditiontest.SubjectBinding{{Name: "crews", Type: accesstypes.AttributeTypeString}},
+	SubjectValues: []conditiontest.SubjectBinding{{Name: "homeSector", Type: accesstypes.AttributeTypeString}},
 }
 
 // leafRef is the reference a generated leaf tests: its left side's canonical

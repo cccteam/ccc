@@ -5,11 +5,13 @@
 // slip past one of them unexercised.
 //
 // The generator is parameterized by a Vocabulary: the attribute names with
-// their comparison types, the subject-set and subject-value names, and
-// whether the post-image (new.) is legal. It emits condition.Expr values the
-// parser accepts and that deploy validation (access.MigrateRoles) admits for
-// that vocabulary — literals typed to their attribute, subject against string
-// attributes, now against timestamps, new. and the old-vs-new right side over
+// their comparison types, the subject-set and subject-value names with
+// theirs, and whether the post-image (new.) is legal. It emits condition.Expr
+// values the parser accepts and that deploy validation (access.MigrateRoles)
+// admits for that vocabulary — literals typed to their attribute, subject
+// against string attributes, now against timestamps, a subject value or set
+// only beside an attribute of its own type, now only against a
+// timestamp-typed subject value, new. and the old-vs-new right side over
 // column attributes only — and it covers every node type, operand type,
 // comparison operator, temporal function, and IN form the grammar has.
 //
@@ -32,17 +34,28 @@ type Vocabulary struct {
 	// comparison types. At least one is required.
 	Attributes []Attribute
 
-	// SubjectSets are the @subjectSet names legal after IN subject. — none
-	// leaves the form out.
-	SubjectSets []string
+	// SubjectSets are the @subjectSet entries legal after IN subject., each
+	// with the comparison type of the column the set yields. A set is drawn
+	// only beside an attribute of its type; none pairable leaves the form
+	// out.
+	SubjectSets []SubjectBinding
 
-	// SubjectValues are the scalar @subjectValue names legal as operands
-	// (subject.name) — none leaves the form out.
-	SubjectValues []string
+	// SubjectValues are the scalar @subjectValue entries legal as operands
+	// (subject.name), each with the comparison type of the column the value
+	// yields. A value is drawn only beside an attribute of its type, and
+	// after now only when timestamp-typed; none pairable leaves the form out.
+	SubjectValues []SubjectBinding
 
 	// PostImage reports whether new. is legal: a create or update context
 	// proposes values; a read context does not.
 	PostImage bool
+}
+
+// SubjectBinding is one subject-side name (a set or a value) with the
+// comparison type of the column it yields.
+type SubjectBinding struct {
+	Name string
+	Type accesstypes.AttributeType
 }
 
 // Attribute is one binding name with its comparison type.
@@ -64,6 +77,13 @@ type Generator struct {
 	columns []Attribute
 	byType  map[accesstypes.AttributeType][]Attribute
 	leaves  []func() condition.Expr
+
+	// The subject entries the vocabulary can pair: sets and values with at
+	// least one attribute of their type, and the timestamp-typed values now
+	// may compare against.
+	pairableSets    []SubjectBinding
+	pairableValues  []SubjectBinding
+	timestampValues []SubjectBinding
 }
 
 // New returns a generator over a copy of the vocabulary, drawing from rng.
@@ -94,11 +114,20 @@ func New(rng *rand.Rand, vocab *Vocabulary) *Generator {
 			g.columns = append(g.columns, attr)
 		}
 	}
-	for _, name := range vocab.SubjectSets {
-		checkName(name, "subject set")
+	for _, set := range vocab.SubjectSets {
+		checkSubject(set, "subject set")
+		if len(g.byType[set.Type]) > 0 {
+			g.pairableSets = append(g.pairableSets, set)
+		}
 	}
-	for _, name := range vocab.SubjectValues {
-		checkName(name, "subject value")
+	for _, value := range vocab.SubjectValues {
+		checkSubject(value, "subject value")
+		if len(g.byType[value.Type]) > 0 {
+			g.pairableValues = append(g.pairableValues, value)
+		}
+		if value.Type == accesstypes.AttributeTypeTimestamp {
+			g.timestampValues = append(g.timestampValues, value)
+		}
 	}
 
 	g.leaves = g.leafProductions()
@@ -125,10 +154,10 @@ func (g *Generator) leafProductions() []func() condition.Expr {
 	if len(g.byType[accesstypes.AttributeTypeTimestamp]) > 0 {
 		leaves = append(leaves, g.nowOperandComparison)
 	}
-	if len(g.vocab.SubjectValues) > 0 {
+	if len(g.pairableValues) > 0 {
 		leaves = append(leaves, g.subjectValueComparison)
 	}
-	if len(g.vocab.SubjectSets) > 0 {
+	if len(g.pairableSets) > 0 {
 		leaves = append(leaves, g.subjectSetIn)
 	}
 	if g.vocab.PostImage && len(g.columns) > 0 {
@@ -192,23 +221,26 @@ func (g *Generator) nowOperandComparison() condition.Expr {
 	return condition.Comparison{Left: g.ref(attr), Op: g.op(), Right: condition.Now{}}
 }
 
-// subjectValueComparison is attr <op> subject.name: the value's type is the
-// anchor table's business, so any attribute pairs with any subject value.
+// subjectValueComparison is attr <op> subject.name over an attribute of the
+// value's comparison type: a subject value, like an attribute, carries the
+// type of the column it yields, and deploy validation pairs like with like.
 func (g *Generator) subjectValueComparison() condition.Expr {
-	attr := g.attribute()
+	value := pick(g.rng, g.pairableValues)
+	attr := pick(g.rng, g.byType[value.Type])
 
-	return condition.Comparison{Left: g.ref(attr), Op: g.op(), Right: condition.SubjectValue{Name: pick(g.rng, g.vocab.SubjectValues)}}
+	return condition.Comparison{Left: g.ref(attr), Op: g.op(), Right: condition.SubjectValue{Name: value.Name}}
 }
 
 // nowComparison is now <op> operand, the operand an RFC 3339 instant, now
-// itself, or a subject value — the forms folding and rendering accept.
+// itself, or a timestamp-typed subject value — the forms deploy validation,
+// folding, and rendering accept.
 func (g *Generator) nowComparison() condition.Expr {
 	var right condition.Operand = g.literal(accesstypes.AttributeTypeTimestamp)
 	switch form := g.rng.IntN(3); {
 	case form == 0:
 		right = condition.Now{}
-	case form == 1 && len(g.vocab.SubjectValues) > 0:
-		right = condition.SubjectValue{Name: pick(g.rng, g.vocab.SubjectValues)}
+	case form == 1 && len(g.timestampValues) > 0:
+		right = condition.SubjectValue{Name: pick(g.rng, g.timestampValues).Name}
 	}
 
 	return condition.Comparison{Left: condition.Ref{Name: nowName}, Op: g.op(), Right: right}
@@ -242,9 +274,13 @@ func (g *Generator) literalIn() condition.Expr {
 	return condition.In{Left: g.ref(attr), Negated: g.coin(), Literals: literals}
 }
 
-// subjectSetIn is attr [NOT] IN subject.name.
+// subjectSetIn is attr [NOT] IN subject.name over an attribute of the set's
+// comparison type.
 func (g *Generator) subjectSetIn() condition.Expr {
-	return condition.In{Left: g.ref(g.attribute()), Negated: g.coin(), SubjectSet: pick(g.rng, g.vocab.SubjectSets)}
+	set := pick(g.rng, g.pairableSets)
+	attr := pick(g.rng, g.byType[set.Type])
+
+	return condition.In{Left: g.ref(attr), Negated: g.coin(), SubjectSet: set.Name}
 }
 
 // nullTest is attr IS [NOT] NULL.
@@ -354,6 +390,15 @@ var (
 	keywords      = []string{"AND", "OR", "NOT", "IN", "IS", "NULL", "TRUE", "FALSE"}
 	reservedWords = []string{"subject", nowName, "new"}
 )
+
+// checkSubject panics unless the subject entry's name is an identifier the
+// language admits in the role and its type is a comparison type.
+func checkSubject(entry SubjectBinding, role string) {
+	checkName(entry.Name, role)
+	if !accesstypes.ValidAttributeType(entry.Type) {
+		panic(fmt.Sprintf("conditiontest.New: %s %q has type %q, which is not a comparison type", role, entry.Name, entry.Type))
+	}
+}
 
 // checkName panics unless name is an identifier the language admits in the
 // role.

@@ -18,7 +18,9 @@ import (
 )
 
 // fullVocabulary declares every type and every subject form, with a join-path
-// attribute among the columns, in a write context.
+// attribute among the columns and subject entries of several types (a
+// timestamp-typed value among them, so now has a subject value to compare
+// against), in a write context.
 func fullVocabulary() conditiontest.Vocabulary {
 	return conditiontest.Vocabulary{
 		Attributes: []conditiontest.Attribute{
@@ -31,9 +33,17 @@ func fullVocabulary() conditiontest.Vocabulary {
 			{Name: "startsOn", Type: accesstypes.AttributeTypeDate},
 			{Name: "shipClass", Type: accesstypes.AttributeTypeString, JoinPath: true},
 		},
-		SubjectSets:   []string{"crews", "wings"},
-		SubjectValues: []string{"approvalLimit", "homeSector"},
-		PostImage:     true,
+		SubjectSets: []conditiontest.SubjectBinding{
+			{Name: "crews", Type: accesstypes.AttributeTypeString},
+			{Name: "wings", Type: accesstypes.AttributeTypeString},
+			{Name: "hazardBands", Type: accesstypes.AttributeTypeNumber},
+		},
+		SubjectValues: []conditiontest.SubjectBinding{
+			{Name: "approvalLimit", Type: accesstypes.AttributeTypeNumber},
+			{Name: "homeSector", Type: accesstypes.AttributeTypeString},
+			{Name: "clearedUntil", Type: accesstypes.AttributeTypeTimestamp},
+		},
+		PostImage: true,
 	}
 }
 
@@ -170,6 +180,12 @@ func TestGenerator_coversGrammar(t *testing.T) {
 		{name: "subject operand", seen: operandOf[condition.Subject]()},
 		{name: "now operand", seen: operandOf[condition.Now]()},
 		{name: "subject value operand", seen: operandOf[condition.SubjectValue]()},
+		{name: "now against a subject value", seen: comparisonWith(func(c condition.Comparison) bool {
+			_, ok := c.Right.(condition.SubjectValue)
+
+			return ok && c.Left.IsNow()
+		})},
+		{name: "subject set over a number attribute", seen: inWith(func(in condition.In) bool { return in.SubjectSet == "hazardBands" })},
 		{name: "old-vs-new attribute operand", seen: operandOf[condition.Ref]()},
 		{name: "operator =", seen: operatorOf(condition.Eq)},
 		{name: "operator !=", seen: operatorOf(condition.NotEq)},
@@ -232,6 +248,11 @@ func TestGenerator_staysInVocabulary(t *testing.T) {
 		{name: "one boolean attribute", vocab: conditiontest.Vocabulary{
 			Attributes: []conditiontest.Attribute{{Name: "archived", Type: accesstypes.AttributeTypeBool}},
 		}},
+		{name: "subject vocabulary no attribute can pair with", vocab: conditiontest.Vocabulary{
+			Attributes:    []conditiontest.Attribute{{Name: "archived", Type: accesstypes.AttributeTypeBool}},
+			SubjectSets:   []conditiontest.SubjectBinding{{Name: "crews", Type: accesstypes.AttributeTypeString}},
+			SubjectValues: []conditiontest.SubjectBinding{{Name: "approvalLimit", Type: accesstypes.AttributeTypeNumber}},
+		}},
 	}
 
 	facts := condition.NewFacts().
@@ -252,15 +273,124 @@ func TestGenerator_staysInVocabulary(t *testing.T) {
 	}
 }
 
+// TestGenerator_pairsSubjectTypes pins the subject-side typing over the full
+// vocabulary: every subject value comparison and every subject set membership
+// pairs an attribute of the entry's comparison type, and every now-against-value
+// comparison names a timestamp-typed value — and each of the three forms is
+// actually drawn, so the property is not vacuous.
+func TestGenerator_pairsSubjectTypes(t *testing.T) {
+	t.Parallel()
+
+	full := fullVocabulary()
+	v := indexVocabulary(&full)
+
+	tests := []struct {
+		name  string
+		match func(condition.Expr) (subject, attribute string, ok bool)
+		want  func(subject, attribute string) bool
+	}{
+		{
+			name: "attribute against a subject value",
+			match: func(e condition.Expr) (string, string, bool) {
+				c, ok := e.(condition.Comparison)
+				if !ok || c.Left.IsNow() {
+					return "", "", false
+				}
+				value, ok := c.Right.(condition.SubjectValue)
+
+				return value.Name, c.Left.Name, ok
+			},
+			want: func(subject, attribute string) bool {
+				return v.values[subject] == v.types[attribute]
+			},
+		},
+		{
+			name: "attribute in a subject set",
+			match: func(e condition.Expr) (string, string, bool) {
+				in, ok := e.(condition.In)
+
+				return in.SubjectSet, in.Left.Name, ok && in.SubjectSet != ""
+			},
+			want: func(subject, attribute string) bool {
+				return v.sets[subject] == v.types[attribute]
+			},
+		},
+		{
+			name: "now against a subject value",
+			match: func(e condition.Expr) (string, string, bool) {
+				c, ok := e.(condition.Comparison)
+				if !ok || !c.Left.IsNow() {
+					return "", "", false
+				}
+				value, ok := c.Right.(condition.SubjectValue)
+
+				return value.Name, "now", ok
+			},
+			want: func(subject, _ string) bool {
+				return v.values[subject] == accesstypes.AttributeTypeTimestamp
+			},
+		},
+	}
+
+	exprs := generate(&full, 3000, 4)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			drawn := 0
+			for _, expr := range exprs {
+				walk(expr, func(node condition.Expr) {
+					subject, attribute, ok := tt.match(node)
+					if !ok {
+						return
+					}
+					drawn++
+					if !tt.want(subject, attribute) {
+						t.Errorf("%s pairs subject.%s with %s across comparison types", node.String(), subject, attribute)
+					}
+				})
+			}
+			if drawn == 0 {
+				t.Errorf("no generated expression draws the form in %d samples", len(exprs))
+			}
+		})
+	}
+}
+
+// vocabularyTypes is a vocabulary indexed for the typing checks: attribute
+// types, which attributes are columns, and the subject set and value types.
+type vocabularyTypes struct {
+	types   map[string]accesstypes.AttributeType
+	columns map[string]bool
+	sets    map[string]accesstypes.AttributeType
+	values  map[string]accesstypes.AttributeType
+}
+
+func indexVocabulary(vocab *conditiontest.Vocabulary) *vocabularyTypes {
+	v := &vocabularyTypes{
+		types:   make(map[string]accesstypes.AttributeType, len(vocab.Attributes)),
+		columns: make(map[string]bool, len(vocab.Attributes)),
+		sets:    make(map[string]accesstypes.AttributeType, len(vocab.SubjectSets)),
+		values:  make(map[string]accesstypes.AttributeType, len(vocab.SubjectValues)),
+	}
+	for _, attr := range vocab.Attributes {
+		v.types[attr.Name] = attr.Type
+		v.columns[attr.Name] = !attr.JoinPath
+	}
+	for _, set := range vocab.SubjectSets {
+		v.sets[set.Name] = set.Type
+	}
+	for _, value := range vocab.SubjectValues {
+		v.values[value.Name] = value.Type
+	}
+
+	return v
+}
+
 // checkEmission applies the generator's contract to one expression and
 // returns the first violation, or "" when it holds.
 func checkEmission(expr condition.Expr, vocab *conditiontest.Vocabulary, facts condition.Facts) string {
-	types := make(map[string]accesstypes.AttributeType, len(vocab.Attributes))
-	columns := make(map[string]bool, len(vocab.Attributes))
-	for _, attr := range vocab.Attributes {
-		types[attr.Name] = attr.Type
-		columns[attr.Name] = !attr.JoinPath
-	}
+	v := indexVocabulary(vocab)
 
 	source := expr.String()
 	reparsed, err := condition.Parse(source)
@@ -272,17 +402,17 @@ func checkEmission(expr condition.Expr, vocab *conditiontest.Vocabulary, facts c
 	}
 
 	for _, name := range condition.Bindings(expr) {
-		if _, ok := types[name]; !ok {
+		if _, ok := v.types[name]; !ok {
 			return "references " + name + " outside the vocabulary"
 		}
 	}
 	for _, name := range condition.SubjectSets(expr) {
-		if !slices.Contains(vocab.SubjectSets, name) {
+		if _, ok := v.sets[name]; !ok {
 			return "references subject set " + name + " outside the vocabulary"
 		}
 	}
 	for _, name := range condition.SubjectValues(expr) {
-		if !slices.Contains(vocab.SubjectValues, name) {
+		if _, ok := v.values[name]; !ok {
 			return "references subject value " + name + " outside the vocabulary"
 		}
 	}
@@ -293,7 +423,7 @@ func checkEmission(expr condition.Expr, vocab *conditiontest.Vocabulary, facts c
 	violation := ""
 	walk(expr, func(node condition.Expr) {
 		if violation == "" {
-			violation = checkTyping(node, types, columns)
+			violation = checkTyping(node, v)
 		}
 	})
 	if violation != "" {
@@ -309,17 +439,22 @@ func checkEmission(expr condition.Expr, vocab *conditiontest.Vocabulary, facts c
 
 // checkTyping applies the deploy-time typing rules to one node: post-image
 // and old-vs-new right sides over columns only, literals of the attribute's
-// type, subject against strings, now against timestamps.
-func checkTyping(node condition.Expr, types map[string]accesstypes.AttributeType, columns map[string]bool) string {
+// type, subject against strings, now against timestamps, and a subject value
+// or set only beside an attribute of its own type (now only against a
+// timestamp-typed value).
+func checkTyping(node condition.Expr, v *vocabularyTypes) string {
 	switch n := node.(type) {
 	case condition.Comparison:
-		if n.Left.IsTemporal() || n.Left.IsNow() {
+		if n.Left.IsTemporal() {
 			return ""
 		}
-		if n.Left.PostImage && !columns[n.Left.Name] {
+		if n.Left.IsNow() {
+			return nowFits(&n, v)
+		}
+		if n.Left.PostImage && !v.columns[n.Left.Name] {
 			return "new." + n.Left.Name + " reads a join-path attribute"
 		}
-		attrType := types[n.Left.Name]
+		attrType := v.types[n.Left.Name]
 		switch right := n.Right.(type) {
 		case condition.Literal:
 			return literalFits(attrType, n.Left.Name, right)
@@ -331,32 +466,58 @@ func checkTyping(node condition.Expr, types map[string]accesstypes.AttributeType
 			if attrType != accesstypes.AttributeTypeTimestamp {
 				return n.Left.Name + " compares against now but is not a timestamp"
 			}
+		case condition.SubjectValue:
+			if v.values[right.Name] != attrType {
+				return "subject value across types: " + n.String()
+			}
 		case condition.Ref:
 			if !n.Left.PostImage || right.PostImage {
 				return "old-vs-new form with the wrong images: " + n.String()
 			}
-			if !columns[right.Name] {
+			if !v.columns[right.Name] {
 				return right.Name + " is a join-path attribute on the right of old-vs-new"
 			}
-			if types[right.Name] != attrType {
+			if v.types[right.Name] != attrType {
 				return "old-vs-new across types: " + n.String()
 			}
 		}
 	case condition.In:
-		if n.Left.IsTemporal() {
-			return ""
-		}
-		if n.Left.PostImage && !columns[n.Left.Name] {
-			return "new." + n.Left.Name + " reads a join-path attribute"
-		}
-		for _, literal := range n.Literals {
-			if msg := literalFits(types[n.Left.Name], n.Left.Name, literal); msg != "" {
-				return msg
-			}
-		}
+		return inFits(&n, v)
 	case condition.NullTest:
-		if n.Left.PostImage && !columns[n.Left.Name] {
+		if n.Left.PostImage && !v.columns[n.Left.Name] {
 			return "new." + n.Left.Name + " reads a join-path attribute"
+		}
+	}
+
+	return ""
+}
+
+// nowFits checks a comparison with now on the left: the operand is a
+// timestamp literal, now, or a timestamp-typed subject value.
+func nowFits(n *condition.Comparison, v *vocabularyTypes) string {
+	if value, ok := n.Right.(condition.SubjectValue); ok && v.values[value.Name] != accesstypes.AttributeTypeTimestamp {
+		return "now against a subject value that is not a timestamp: " + n.String()
+	}
+
+	return ""
+}
+
+// inFits checks an IN node: literals of the attribute's type, or a subject set
+// of the attribute's type.
+func inFits(n *condition.In, v *vocabularyTypes) string {
+	if n.Left.IsTemporal() {
+		return ""
+	}
+	if n.Left.PostImage && !v.columns[n.Left.Name] {
+		return "new." + n.Left.Name + " reads a join-path attribute"
+	}
+	attrType := v.types[n.Left.Name]
+	if n.SubjectSet != "" && v.sets[n.SubjectSet] != attrType {
+		return "subject set across types: " + n.String()
+	}
+	for _, literal := range n.Literals {
+		if msg := literalFits(attrType, n.Left.Name, literal); msg != "" {
+			return msg
 		}
 	}
 
@@ -426,7 +587,7 @@ func TestNew_rejectsVocabulary(t *testing.T) {
 	}{
 		{
 			name:      "no attributes",
-			vocab:     conditiontest.Vocabulary{SubjectSets: []string{"crews"}},
+			vocab:     conditiontest.Vocabulary{SubjectSets: []conditiontest.SubjectBinding{{Name: "crews", Type: accesstypes.AttributeTypeString}}},
 			wantPanic: "declares no attributes",
 		},
 		{
@@ -453,9 +614,17 @@ func TestNew_rejectsVocabulary(t *testing.T) {
 			name: "subject set named after a reserved word",
 			vocab: conditiontest.Vocabulary{
 				Attributes:  []conditiontest.Attribute{{Name: "owner", Type: accesstypes.AttributeTypeString}},
-				SubjectSets: []string{"new"},
+				SubjectSets: []conditiontest.SubjectBinding{{Name: "new", Type: accesstypes.AttributeTypeString}},
 			},
 			wantPanic: "reserved word",
+		},
+		{
+			name: "subject value of an unknown type",
+			vocab: conditiontest.Vocabulary{
+				Attributes:    []conditiontest.Attribute{{Name: "owner", Type: accesstypes.AttributeTypeString}},
+				SubjectValues: []conditiontest.SubjectBinding{{Name: "approvalLimit", Type: "uuid"}},
+			},
+			wantPanic: "not a comparison type",
 		},
 	}
 
