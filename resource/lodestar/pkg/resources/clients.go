@@ -26,9 +26,11 @@ type (
 	// Clients page. The column is nullable and the field a pointer, so the row scans NULL;
 	// the generated TypeScript types the field NullBoolean, its metadata says nullboolean,
 	// the console renders the three-way picker beside Trusted's two-state checkbox, and a
-	// null in a PATCH body writes the column back to NULL.
+	// null in a PATCH body writes the column back to NULL. It is also the attribute the
+	// SalvageDesk role lists clients under, `insured IS NULL OR insured = true`: the
+	// salvage desk sees covered and undecided outfits, never refused ones.
 	//
-	// Demonstrates: pii, pii.filter-placement, allow_filter, @attribute.bool, consolidation.exclusion, commit.constraint-refusal, nullboolean.
+	// Demonstrates: pii, pii.filter-placement, allow_filter, @attribute.bool, @attribute.nullable-bool, consolidation.exclusion, commit.constraint-refusal, nullboolean.
 	//
 	// @resource
 	// @order(Name asc)
@@ -39,7 +41,8 @@ type (
 		ContactName  string   `spanner:"ContactName"  conditions:"pii"`
 		ContactEmail string   `spanner:"ContactEmail" allow_filter:"true" conditions:"pii"`
 		// @attribute(trusted)
-		Trusted bool  `spanner:"Trusted"`
+		Trusted bool `spanner:"Trusted"`
+		// @attribute(insured)
 		Insured *bool `spanner:"Insured"`
 	}
 )

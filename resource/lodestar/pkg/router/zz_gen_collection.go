@@ -571,6 +571,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "trusted", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 				},
 				Attributes: []resource.AttributeData{
+					{Name: "insured", Column: "Insured", Type: "bool"},
 					{Name: "trusted", Column: "Trusted", Type: "bool"},
 				},
 				Order:     []accesstypes.Tag{"name"},

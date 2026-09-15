@@ -117,9 +117,11 @@ POD_BOND=b0000000-0000-4000-8000-000000000001
 DRONES_BOND=b0000000-0000-4000-8000-000000000002
 BULLION_BOND=b0000000-0000-4000-8000-000000000003
 HALVARD=10000000-0000-4000-8000-000000000001
+MERIDIAN=10000000-0000-4000-8000-000000000002
+BASTION_RELAY=10000000-0000-4000-8000-000000000003
 CONVOY_SORTIE=90000000-0000-4000-8000-000000000001
 
-for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo archivist hazards dock watch; do
+for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor archivist hazards dock watch; do
   login "$p"
 done
 login_portal client
@@ -243,6 +245,7 @@ assert_py "the receipt names the bond" "$r" "rows['bondCode']=='BND-ANV-0001' an
 r=$(req supercargo POST "$ANVIL/release-consignment" "{\"consignmentId\":\"$POD_BOND\"}"); check "second release is the frame's uniform Forbidden" 403 "$r"
 r=$(req supercargo PATCH "$API/resources" "[{\"op\":\"remove\",\"path\":\"/sectors/anvil/consignments/$DRONES_BOND\"}]"); check "supercargo disposes of expired bond" 200 "$r"
 r=$(req supercargo PATCH "$API/resources" "[{\"op\":\"remove\",\"path\":\"/sectors/anvil/consignments/$BULLION_BOND\"}]"); check "live bond cannot be disposed of" 403 "$r"
+r=$(req salvor GET "$API/clients"); assert_py "salvor's roster is the covered and undecided outfits (Halvard, Meridian, Bastion Relay), never Vellum's refused cover" "$r" "sorted(c['id'] for c in rows) == sorted(['$HALVARD','$MERIDIAN','$BASTION_RELAY']) and all('insured' in c for c in rows)"
 
 # ---- call log: create-form narrowing ----
 r=$(req cadet GET "$API/permission-digest?domain=anvil"); assert_py "cadet's digest narrows the call form to summary and severity" "$r" "'DistressCalls.summary' in rows and 'DistressCalls.callerContact' not in rows"

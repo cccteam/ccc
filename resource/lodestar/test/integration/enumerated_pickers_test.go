@@ -19,8 +19,6 @@ import (
 	"github.com/cccteam/ccc/accesstypes"
 )
 
-const clientBastionRelayID = "10000000-0000-4000-8000-000000000003"
-
 // TestEnumeratedPickerResources lists the picker resources as the personas the console
 // walk uses: the marshal holds List on both, the cadet on neither.
 func TestEnumeratedPickerResources(t *testing.T) {

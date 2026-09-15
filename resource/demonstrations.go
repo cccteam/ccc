@@ -37,6 +37,7 @@ var Demonstrations = []Demonstration{
 	{"@attribute.decimal", "A decimal attribute compared against numbers and subject values."},
 	{"@attribute.timestamp", "A timestamp attribute compared against now."},
 	{"@attribute.nullable-fk", "A nullable foreign-key attribute tested with IS NULL inside an OR."},
+	{"@attribute.nullable-bool", "A nullable BOOL attribute: IS NULL is the only test that admits the undecided row, and = true and = false each exclude it, so 'not refused' is written insured IS NULL OR insured = true; insured != false would drop the undecided outfits."},
 	{"@subjectSet.domain", "@subjectSet on a tenant-scoped anchor: the subject's set is partitioned per tenant."},
 	{"@subjectSet.global", "@subjectSet on a global anchor: earned once, valid in every tenant, deliberately unfiltered."},
 	{"@subjectSet.dotted-value", "@subjectSet(name, value: A.B): a set whose value continues through the anchor's foreign key."},

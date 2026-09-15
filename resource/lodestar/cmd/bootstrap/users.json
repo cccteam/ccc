@@ -229,6 +229,21 @@
       }
     },
     {
+      "user": "salvor",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "SalvageDesk"
+        ],
+        "domains": {
+          "anvil": [
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
       "user": "archivist",
       "password": "lodestar",
       "roles": {

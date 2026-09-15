@@ -43,6 +43,7 @@ export const CREW_MANIFEST: Persona[] = [
   { login: 'engineer', name: 'Engineer Ezra', deck: 'Hangar deck', proves: 'Inspect, begin, flight-test, pass or fail; estimates after inspection; hails ships.' },
   { login: 'quartermaster', name: 'Quartermaster Quill', deck: 'Hangar deck', proves: 'Books sortie expenses only while the mission is underway (two hops deep).' },
   { login: 'supercargo', name: 'Supercargo Sol', deck: 'Salvage hold', proves: 'Releases bonded cargo once; disposes of expired bond.' },
+  { login: 'salvor', name: 'Salvor Sable', deck: 'Salvage hold', proves: 'Recovers wrecks for outfits whose salvage cover is not refused; undecided outfits still qualify.' },
   { login: 'archivist', name: 'Archivist Ada', deck: 'Archive', proves: 'Finished missions everywhere; fees redacted until completed; the ship’s log.' },
   { login: 'hazards', name: 'Hazard Analyst Hale', deck: 'Hazard board', proves: 'The hazard board under a certification that expires.' },
   { login: 'dock', name: 'Dockmaster Dara', deck: 'Hangar deck', proves: 'The hangar deck on the day shift, 06:00 to 18:00 headquarters time.' },

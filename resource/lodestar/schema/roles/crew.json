@@ -287,6 +287,21 @@
         }
       },
       {
+        "name": "SalvageDesk",
+        "permissions": {
+          "List": [
+            {
+              "resource": "Clients",
+              "fields": [
+                "name",
+                "insured"
+              ],
+              "condition": "insured IS NULL OR insured = true"
+            }
+          ]
+        }
+      },
+      {
         "name": "CommandStaff",
         "permissions": {
           "Execute": [

@@ -1,4 +1,4 @@
-// Demonstrates: condition.subject-scalar, condition.not-in, condition.prefix-not, @attribute.bool, @attribute.date, @attribute.decimal, @attribute.nullable-fk, @attribute.join-path, @subjectSet.domain, @subjectSet.global, @subjectSet.dotted-value, @subjectValue, @subjectValue.two-per-anchor, immutable, @attribute, @attribute.join-path-global, condition.now, execute-condition.
+// Demonstrates: condition.subject-scalar, condition.not-in, condition.prefix-not, @attribute.bool, @attribute.nullable-bool, @attribute.date, @attribute.decimal, @attribute.nullable-fk, @attribute.join-path, @subjectSet.domain, @subjectSet.global, @subjectSet.dotted-value, @subjectValue, @subjectValue.two-per-anchor, immutable, @attribute, @attribute.join-path-global, condition.now, execute-condition.
 package integration
 
 // language_test is the grammar's drift gate (design plan §9): one case per construct
@@ -151,6 +151,13 @@ func TestConditionLanguage(t *testing.T) {
 			user:      "booking",
 			target:    "/api/clients",
 			wantIDs:   []string{clientHalvardID, clientMeridianID, clientVellumID},
+		},
+		{
+			name:      "salvor: IS NULL OR = true on a nullable bool admits the undecided outfits",
+			construct: "insured IS NULL OR insured = true",
+			user:      "salvor",
+			target:    "/api/clients",
+			wantIDs:   []string{clientHalvardID, clientMeridianID, clientBastionRelayID}, // Vellum's cover is refused (false); Bastion Relay is untrusted but undecided
 		},
 	}
 
