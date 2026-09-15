@@ -151,7 +151,7 @@ r=$(req lead GET "$ANVIL/missions?capabilities=Execute,Create&limit=200"); asser
 assert_py "lead: Add sortie lights on the underway convoy only" "$r" "all((m['zzCapabilities']['Create']==['Sorties']) == (m['statusId']=='underway') for m in rows)"
 r=$(req archivist GET "$ANVIL/missions?limit=200"); assert_py "archivist: fee redacted until completed" "$r" "rows and all(('fee' in m) == (m['statusId']=='completed') for m in rows)"
 r=$(req archivist GET "$ANVIL/missions?sort=fee"); check "the archivist sorts by fee: the masked cells run over the visible projection" 200 "$r"
-assert_py "masked fees fall to the NULL region, last ascending" "$r" "[('fee' in m) for m in rows] == [True,True,True,False,False,False,False]"
+assert_py "masked fees fall to the NULL region, first ascending in Spanner's placement" "$r" "[('fee' in m) for m in rows] == [False,False,False,False,True,True,True]"
 r=$(req archivist GET "$ANVIL/missions?filter=sectorId:eq:anvil,fee:isnull"); assert_py "fee isnull matches exactly the redacted rows" "$r" "len(rows)==4 and all('fee' not in m for m in rows)"
 # The assessor's grid sorts by a hazard it does not display. The key is a named variant
 # of INT64 (HazardLevel), concealing, hers only while a mission is open, and left out of
@@ -243,7 +243,7 @@ if { [ "$d" = 200 ] && [ "$n" = 403 ]; } || { [ "$d" = 403 ] && [ "$n" = 200 ]; 
 
 # ---- salvage hold: the nullable walk, the receipt ----
 page=$(curl -s -D "$S/hold.h" -L -b "$S/supercargo.jar" -H "X-XSRF-TOKEN: $(xsrf supercargo)" "$ANVIL/consignments?limit=4")
-echo "$page" | py "sys.exit(0 if all(c['releasedAt'] is None for c in rows) and len(rows)==4 else 1)" && echo "PASS  the hold's first page, releasedAt desc: unreleased cargo (NULL) first" || { echo "FAIL  hold page 1: $(echo "$page" | head -c 200)"; fails=$((fails+1)); }
+echo "$page" | py "sys.exit(0 if all(c['releasedAt'] is not None for c in rows) and len(rows)==4 else 1)" && echo "PASS  the hold's first page, releasedAt desc: released cargo first, unreleased (NULL) last in Spanner's placement" || { echo "FAIL  hold page 1: $(echo "$page" | head -c 200)"; fails=$((fails+1)); }
 next=$(grep -i '^Link:' "$S/hold.h" | sed -n 's/.*<\([^>]*\)>; rel="next".*/\1/p')
 seen=$(echo "$page" | py "print(','.join(c['id'] for c in rows))")
 count=4
@@ -254,7 +254,7 @@ while [ -n "$next" ]; do
   next=$(grep -i '^Link:' "$S/hold.h" | sed -n 's/.*<\([^>]*\)>; rel="next".*/\1/p')
 done
 if [ "$count" = 13 ] && [ "$(echo "$seen" | tr ',' '\n' | sort -u | wc -l)" = 13 ]; then echo "PASS  the walk crosses the NULL boundary: thirteen rows, each once"; else echo "FAIL  hold walk: $count rows, $(echo "$seen" | tr ',' '\n' | sort -u | wc -l) distinct"; fails=$((fails+1)); fi
-r=$(req supercargo GET "$ANVIL/consignments?sort=releasedAt&limit=5"); assert_py "ascending puts the released cargo first, unreleased last" "$r" "all(c['releasedAt'] for c in rows)"
+r=$(req supercargo GET "$ANVIL/consignments?sort=releasedAt&limit=5"); assert_py "ascending puts the unreleased cargo (NULL) first in Spanner's placement, five of them on this page" "$r" "len(rows)==5 and all(c['releasedAt'] is None for c in rows)"
 r=$(req supercargo POST "$ANVIL/release-consignment" "{\"consignmentId\":\"$POD_BOND\"}"); check "supercargo releases a consignment (the armed manifest read, a typed receipt)" 200 "$r"
 assert_py "the receipt names the bond" "$r" "rows['bondCode']=='BND-ANV-0001' and rows['releasedAt']"
 r=$(req supercargo POST "$ANVIL/release-consignment" "{\"consignmentId\":\"$POD_BOND\"}"); check "second release is the frame's uniform Forbidden" 403 "$r"
