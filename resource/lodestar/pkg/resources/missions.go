@@ -52,7 +52,12 @@ type (
 	// so the archivist's fee filter runs over the visible projection, and the deploy
 	// warns that her pages filtered by fee sort the partition (pkg/deploy).
 	//
-	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, masking.positional, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view, metadata.filterable, index.tenant-second.
+	// Hazard is guarded at two points. The create validator answers a hazard outside 1..5
+	// as 400 naming the field before anything is buffered; the update path has no
+	// validator, so the schema's CK_Missions_Hazard (migration 000033) refuses the same
+	// value at commit, and the library answers that as 400 naming Missions.
+	//
+	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, masking.positional, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view, metadata.filterable, index.tenant-second, commit.constraint-refusal.
 	//
 	// @resource
 	// @permissionScope(domain)

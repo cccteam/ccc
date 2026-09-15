@@ -27,7 +27,10 @@ type (
 	// generate, for this and every other join-path resource. The fleet is small and
 	// parent-scoped, which is what a join path suits.
 	//
-	// Demonstrates: @domain.join-path, @attribute.join-path, @attribute.join-path-global, immutable, output_only_update_fn, transition-owned-timestamp, change-tracking, commit.referential-refusal, warning.join-path-list.
+	// Registry is also unique across every ship (ShipsByRegistry): a create that reuses a
+	// seeded registry reaches the commit and is refused there as a duplicate unique value.
+	//
+	// Demonstrates: @domain.join-path, @attribute.join-path, @attribute.join-path-global, immutable, output_only_update_fn, transition-owned-timestamp, change-tracking, commit.referential-refusal, commit.constraint-refusal, warning.join-path-list.
 	//
 	// @resource
 	// @permissionScope(domain)

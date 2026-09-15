@@ -15,7 +15,13 @@ type (
 	// the URL (the value would land in access logs), but a POST-body filter is accepted;
 	// the query-parameter suite pins both directions.
 	//
-	// Demonstrates: pii, pii.filter-placement, allow_filter, @attribute.bool, consolidation.exclusion.
+	// Name is unique across every client (ClientsByName). Client is global, untracked,
+	// and updated under unconditional grants, so an update reads nothing before the
+	// commit: renaming one client to another's name is refused there as a duplicate
+	// unique value (409), and an update under an id that does not exist is refused there
+	// as a missing row (404), both in the resource's name.
+	//
+	// Demonstrates: pii, pii.filter-placement, allow_filter, @attribute.bool, consolidation.exclusion, commit.constraint-refusal.
 	//
 	// @resource
 	// @order(Name asc)

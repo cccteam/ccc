@@ -13,7 +13,10 @@ type (
 	// not indexed, so the generated list struct carries no index tag on it, its metadata
 	// says nothing about filtering, and a filter naming it alone is refused.
 	//
-	// Demonstrates: interleaved-table, compound-key, client-supplied-key, @stateRoot, @domain.join-path, create-under-parent, index.trailing-key.
+	// A create that supplies a task number the refit already holds reaches the commit,
+	// where Spanner refuses the duplicate key; the library answers 409 naming RefitTasks.
+	//
+	// Demonstrates: interleaved-table, compound-key, client-supplied-key, @stateRoot, @domain.join-path, create-under-parent, index.trailing-key, commit.constraint-refusal.
 	//
 	// @resource
 	// @permissionScope(domain)
