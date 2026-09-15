@@ -29,6 +29,11 @@ func NewSpannerClient(db *spanner.Client) *SpannerClient {
 	}
 }
 
+// DBType returns the database type.
+func (c *SpannerClient) DBType() DBType {
+	return SpannerDBType
+}
+
 // SpannerReadOnlyTransaction returns a read-only transaction for the Spanner client.
 func (c *SpannerClient) SpannerReadOnlyTransaction() spxapi.Querier {
 	return c.spanner.Single()

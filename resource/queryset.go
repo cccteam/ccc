@@ -65,6 +65,11 @@ type QuerySet[Resource Resourcer] struct {
 	filterShape *FilterShape
 	sortTaken   bool
 	pageTaken   bool
+	// dbType is the application database's type, stamped by the computed
+	// decoder: the NULL placement the handler's in-memory sort and page
+	// boundary follow, the one the tables beside the resource list in and a
+	// body's plain ORDER BY produces. Empty on a hand-built QuerySet.
+	dbType DBType
 	// filterString is the request's filter exactly as sent, fingerprinted into
 	// every cursor the page emits so a cursor cannot be carried to another
 	// query.

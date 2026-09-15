@@ -131,6 +131,7 @@ var Demonstrations = []Demonstration{
 	{"computed.take-filter", "Filter().Take on a computed resource's filterable columns."},
 	{"computed.take-sort", "TakeSort: the body yields rows in the total order."},
 	{"computed.take-page", "TakePage: the body pages itself from the cursor's boundary."},
+	{"computed.null-placement", "A computed list sorts and pages NULL where the application's database does: a pushdown body's plain ORDER BY, its own cursor predicate, and the handler's in-memory sort and boundary test agree across the NULL boundary, whether the body pages itself or the handler pages over its order."},
 	{"computed.user", "QuerySet.User(): the identity the check ran as, for a caller-scoped computed read."},
 	{"computed.scope", "QuerySet.Scope(): the partition the check ran in."},
 	{"@manualAddResource", "A permission registered by hand for a hand-written route."},

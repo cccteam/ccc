@@ -77,6 +77,9 @@ type RolePermissions interface {
 // Client is an interface for the supported database Client's to implement. It is not intended
 // for mocking since each database requires an implementation in this package.
 type Client interface {
+	// DBType is the application database's type: the placement its lists sort NULL
+	// in, which a computed resource's handler follows (NewComputedQueryDecoder).
+	DBType() DBType
 	ReadOnlyTransaction() ReadOnlyTransactionCloser
 	ReadOnlyTransaction
 	Executor

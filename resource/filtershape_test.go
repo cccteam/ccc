@@ -67,6 +67,9 @@ func decodeBoard(t *testing.T, target string, paging Paging) *QuerySet[boardRow]
 		t.Fatalf("DecodeWithoutPermissions(%s) error = %v", target, err)
 	}
 	qSet.scope = testScope
+	// The fixture's application database is Spanner unless a case says otherwise:
+	// the type the computed decoder would have stamped.
+	qSet.dbType = SpannerDBType
 
 	return qSet
 }
@@ -242,22 +245,31 @@ func TestFilterShape_Take(t *testing.T) {
 	}
 }
 
+// TestSortRows pins the in-memory sort: each type by its own comparison, and a
+// NULL placed where the application's database places it, so a computed list
+// puts NULL at the same end as the tables beside it.
 func TestSortRows(t *testing.T) {
 	t.Parallel()
 
+	noteAsc := []SortField{{Field: "Note", Direction: SortAscending}}
+	noteDesc := []SortField{{Field: "Note", Direction: SortDescending}}
+
 	tests := []struct {
-		name  string
-		order []SortField
-		want  []string
+		name   string
+		dbType DBType
+		order  []SortField
+		want   []string
 	}{
-		{name: "text ascending, key tiebreak", order: []SortField{{Field: "ShipName", Direction: SortAscending}, {Field: "ID", Direction: SortAscending}}, want: []string{"Kingfisher/hull", "Kingfisher/reactor", "Lantern/hull"}},
-		{name: "float descending", order: []SortField{{Field: "Worst", Direction: SortDescending}}, want: []string{"Kingfisher/hull", "Kingfisher/reactor", "Lantern/hull"}},
-		{name: "integer ascending", order: []SortField{{Field: "Count", Direction: SortAscending}}, want: []string{"Kingfisher/reactor", "Kingfisher/hull", "Lantern/hull"}},
-		{name: "timestamp ascending", order: []SortField{{Field: "RecordedAt", Direction: SortAscending}}, want: []string{"Lantern/hull", "Kingfisher/reactor", "Kingfisher/hull"}},
-		{name: "decimal by value, then key", order: []SortField{{Field: "Fee", Direction: SortDescending}, {Field: "ID", Direction: SortAscending}}, want: []string{"Kingfisher/hull", "Lantern/hull", "Kingfisher/reactor"}},
-		{name: "nullable ascending puts NULL last", order: []SortField{{Field: "Note", Direction: SortAscending}}, want: []string{"Lantern/hull", "Kingfisher/hull", "Kingfisher/reactor"}},
-		{name: "nullable descending puts NULL first", order: []SortField{{Field: "Note", Direction: SortDescending}}, want: []string{"Kingfisher/reactor", "Kingfisher/hull", "Lantern/hull"}},
-		{name: "no order keeps the yielded order", want: []string{"Kingfisher/hull", "Kingfisher/reactor", "Lantern/hull"}},
+		{name: "text ascending, key tiebreak", dbType: SpannerDBType, order: []SortField{{Field: "ShipName", Direction: SortAscending}, {Field: "ID", Direction: SortAscending}}, want: []string{"Kingfisher/hull", "Kingfisher/reactor", "Lantern/hull"}},
+		{name: "float descending", dbType: SpannerDBType, order: []SortField{{Field: "Worst", Direction: SortDescending}}, want: []string{"Kingfisher/hull", "Kingfisher/reactor", "Lantern/hull"}},
+		{name: "integer ascending", dbType: SpannerDBType, order: []SortField{{Field: "Count", Direction: SortAscending}}, want: []string{"Kingfisher/reactor", "Kingfisher/hull", "Lantern/hull"}},
+		{name: "timestamp ascending", dbType: SpannerDBType, order: []SortField{{Field: "RecordedAt", Direction: SortAscending}}, want: []string{"Lantern/hull", "Kingfisher/reactor", "Kingfisher/hull"}},
+		{name: "decimal by value, then key", dbType: SpannerDBType, order: []SortField{{Field: "Fee", Direction: SortDescending}, {Field: "ID", Direction: SortAscending}}, want: []string{"Kingfisher/hull", "Lantern/hull", "Kingfisher/reactor"}},
+		{name: "nullable ascending on Spanner puts NULL first", dbType: SpannerDBType, order: noteAsc, want: []string{"Kingfisher/reactor", "Lantern/hull", "Kingfisher/hull"}},
+		{name: "nullable descending on Spanner puts NULL last", dbType: SpannerDBType, order: noteDesc, want: []string{"Kingfisher/hull", "Lantern/hull", "Kingfisher/reactor"}},
+		{name: "nullable ascending on PostgreSQL puts NULL last", dbType: PostgresDBType, order: noteAsc, want: []string{"Lantern/hull", "Kingfisher/hull", "Kingfisher/reactor"}},
+		{name: "nullable descending on PostgreSQL puts NULL first", dbType: PostgresDBType, order: noteDesc, want: []string{"Kingfisher/reactor", "Kingfisher/hull", "Lantern/hull"}},
+		{name: "no order keeps the yielded order", dbType: SpannerDBType, want: []string{"Kingfisher/hull", "Kingfisher/reactor", "Lantern/hull"}},
 	}
 
 	for _, tt := range tests {
@@ -265,7 +277,7 @@ func TestSortRows(t *testing.T) {
 			t.Parallel()
 
 			rows := boardRows()
-			if err := SortRows(rows, tt.order); err != nil {
+			if err := SortRows(rows, tt.order, tt.dbType); err != nil {
 				t.Fatalf("SortRows() error = %v", err)
 			}
 			if got := shipNames(rows); !slices.Equal(got, tt.want) {
@@ -275,22 +287,49 @@ func TestSortRows(t *testing.T) {
 	}
 }
 
-func TestSortRows_unorderableField(t *testing.T) {
+// TestSortRows_refusals pins the two refusals: a field no comparison orders, and
+// a database type whose NULL placement the package does not know.
+func TestSortRows_refusals(t *testing.T) {
 	t.Parallel()
 
-	err := SortRows(boardRows(), []SortField{{Field: "Recent", Direction: SortAscending}})
-	if err == nil || !strings.Contains(err.Error(), "cannot be ordered") {
-		t.Errorf("SortRows() error = %v, want the unorderable refusal", err)
+	tests := []struct {
+		name    string
+		order   []SortField
+		dbType  DBType
+		wantErr string
+	}{
+		{name: "an unorderable field", order: []SortField{{Field: "Recent", Direction: SortAscending}}, dbType: SpannerDBType, wantErr: "cannot be ordered"},
+		{name: "no database type", order: []SortField{{Field: "Note", Direction: SortAscending}}, dbType: "", wantErr: "unsupported dbType"},
+		{name: "the mock database type has no placement", order: []SortField{{Field: "Note", Direction: SortAscending}}, dbType: MockDBType, wantErr: "unsupported dbType"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := SortRows(boardRows(), tt.order, tt.dbType)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("SortRows() error = %v, want %q", err, tt.wantErr)
+			}
+		})
 	}
 }
 
 // TestQuerySet_Collect pins the handler's application of the query over a body's
 // rows: filter, then count, then sort, then the cursor position, then the page,
-// with the same headers a table page writes.
+// with the same headers a table page writes. The sort and the cursor position
+// place NULL where the query set's database does: the Note cases walk the NULL
+// boundary under both types, forward and back, once over the fixture's rows and
+// once over rows a body yielded in the database's own order after taking the
+// sort while the handler still pages (a count asked for).
 func TestQuerySet_Collect(t *testing.T) {
 	t.Parallel()
 
 	byWorst := []SortField{{Field: "Worst", Direction: SortDescending}}
+	// The fixture's Note column: Kingfisher/hull "watch", Kingfisher/reactor NULL,
+	// Lantern/hull "ok". Ascending, Spanner reads reactor, Lantern, hull and
+	// PostgreSQL reads Lantern, hull, reactor.
+	hull, reactor, lantern := boardRows()[0], boardRows()[1], boardRows()[2]
 	seal := func(t *testing.T, qSet *QuerySet[boardRow], direction pageDirection, row *boardRow) string {
 		t.Helper()
 
@@ -307,10 +346,15 @@ func TestQuerySet_Collect(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		target     func(t *testing.T) string
-		paging     Paging
-		takeSort   bool
+		name     string
+		target   func(t *testing.T) string
+		paging   Paging
+		dbType   DBType
+		takeSort bool
+		// bodySorted yields the rows in the taken order under the case's database
+		// type, as a pushdown body's plain ORDER BY would; otherwise the body
+		// yields the fixture's order.
+		bodySorted bool
 		takeFilter []string
 		wantRows   []string
 		wantMore   bool
@@ -379,6 +423,109 @@ func TestQuerySet_Collect(t *testing.T) {
 			takeFilter: []string{"ShipName"},
 			wantRows:   []string{"Kingfisher/reactor", "Lantern/hull"},
 		},
+		{
+			name: "Spanner, ascending: after a NULL boundary come the values",
+			target: func(t *testing.T) string {
+				return "/?sort=note&limit=1&cursor=" + seal(t, decodeBoard(t, "/?sort=note&limit=1", Paging{}), pageNext, reactor)
+			},
+			dbType:   SpannerDBType,
+			wantRows: []string{"Lantern/hull"},
+			wantMore: true,
+			wantRels: []string{"next", "prev"},
+		},
+		{
+			name: "PostgreSQL, ascending: after a NULL boundary nothing follows",
+			target: func(t *testing.T) string {
+				return "/?sort=note&limit=1&cursor=" + seal(t, decodeBoard(t, "/?sort=note&limit=1", Paging{}), pageNext, reactor)
+			},
+			dbType:   PostgresDBType,
+			wantRows: []string{},
+		},
+		{
+			name: "Spanner, ascending: after the last value nothing follows; the NULL region came first",
+			target: func(t *testing.T) string {
+				return "/?sort=note&limit=1&cursor=" + seal(t, decodeBoard(t, "/?sort=note&limit=1", Paging{}), pageNext, hull)
+			},
+			dbType:   SpannerDBType,
+			wantRows: []string{},
+		},
+		{
+			name: "PostgreSQL, ascending: after the last value comes the NULL region",
+			target: func(t *testing.T) string {
+				return "/?sort=note&limit=1&cursor=" + seal(t, decodeBoard(t, "/?sort=note&limit=1", Paging{}), pageNext, hull)
+			},
+			dbType:   PostgresDBType,
+			wantRows: []string{"Kingfisher/reactor"},
+			wantRels: []string{"prev"},
+		},
+		{
+			name: "Spanner, descending: after the last value comes the NULL region",
+			target: func(t *testing.T) string {
+				return "/?sort=note:desc&limit=1&cursor=" + seal(t, decodeBoard(t, "/?sort=note:desc&limit=1", Paging{}), pageNext, lantern)
+			},
+			dbType:   SpannerDBType,
+			wantRows: []string{"Kingfisher/reactor"},
+			wantRels: []string{"prev"},
+		},
+		{
+			name: "PostgreSQL, descending: after the last value nothing follows; the NULL region came first",
+			target: func(t *testing.T) string {
+				return "/?sort=note:desc&limit=1&cursor=" + seal(t, decodeBoard(t, "/?sort=note:desc&limit=1", Paging{}), pageNext, lantern)
+			},
+			dbType:   PostgresDBType,
+			wantRows: []string{},
+		},
+		{
+			name: "Spanner, walking back from the first value: the NULL region is the page before it",
+			target: func(t *testing.T) string {
+				return "/?sort=note&limit=1&cursor=" + seal(t, decodeBoard(t, "/?sort=note&limit=1", Paging{}), pagePrev, lantern)
+			},
+			dbType:   SpannerDBType,
+			wantRows: []string{"Kingfisher/reactor"},
+			wantRels: []string{"next"},
+		},
+		{
+			name: "PostgreSQL, walking back from the first value: no page before it",
+			target: func(t *testing.T) string {
+				return "/?sort=note&limit=1&cursor=" + seal(t, decodeBoard(t, "/?sort=note&limit=1", Paging{}), pagePrev, lantern)
+			},
+			dbType:   PostgresDBType,
+			wantRows: []string{},
+		},
+		{
+			name: "Spanner: the body took the sort and yielded its order; a condition left to the handler makes it page, across the NULL boundary",
+			target: func(t *testing.T) string {
+				return "/?sort=note&filter=worst:gt:0.1&limit=1&cursor=" + seal(t, decodeBoard(t, "/?sort=note&filter=worst:gt:0.1&limit=1", Paging{}), pageNext, reactor)
+			},
+			dbType:     SpannerDBType,
+			takeSort:   true,
+			bodySorted: true,
+			wantRows:   []string{"Lantern/hull"},
+			wantMore:   true,
+			wantRels:   []string{"next", "prev"},
+		},
+		{
+			name: "PostgreSQL: the body took the sort and yielded its order; a condition left to the handler makes it page, into the NULL region",
+			target: func(t *testing.T) string {
+				return "/?sort=note&filter=worst:gt:0.1&limit=1&cursor=" + seal(t, decodeBoard(t, "/?sort=note&filter=worst:gt:0.1&limit=1", Paging{}), pageNext, hull)
+			},
+			dbType:     PostgresDBType,
+			takeSort:   true,
+			bodySorted: true,
+			wantRows:   []string{"Kingfisher/reactor"},
+			wantRels:   []string{"prev"},
+		},
+		{
+			name:       "Spanner: the body took the sort and yielded its order; a count makes the handler take the first page from it, the NULL region",
+			target:     func(*testing.T) string { return "/?sort=note&limit=1&count=true" },
+			dbType:     SpannerDBType,
+			takeSort:   true,
+			bodySorted: true,
+			wantRows:   []string{"Kingfisher/reactor"},
+			wantMore:   true,
+			wantTotal:  new(int64(3)),
+			wantRels:   []string{"next"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -386,18 +533,27 @@ func TestQuerySet_Collect(t *testing.T) {
 			t.Parallel()
 
 			qSet := decodeBoard(t, tt.target(t), tt.paging)
+			if tt.dbType != "" {
+				qSet.dbType = tt.dbType
+			}
 			if err := qSet.bindCursor(testScope); err != nil {
 				t.Fatalf("bindCursor() error = %v", err)
 			}
+			rows := boardRows()
 			if tt.takeSort {
-				qSet.TakeSort()
+				order := qSet.TakeSort()
+				if tt.bodySorted {
+					if err := SortRows(rows, order, qSet.dbType); err != nil {
+						t.Fatalf("SortRows() error = %v", err)
+					}
+				}
 			}
 			if len(tt.takeFilter) > 0 {
 				qSet.Filter().Take(tt.takeFilter...)
 			}
 
 			page, err := qSet.Collect(func(yield func(*boardRow, error) bool) {
-				for _, row := range boardRows() {
+				for _, row := range rows {
 					if !yield(row, nil) {
 						return
 					}
@@ -406,13 +562,13 @@ func TestQuerySet_Collect(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Collect() error = %v", err)
 			}
-			rows := page.Rows()
+			got := page.Rows()
 			if page.Reversed() {
-				rows = slices.Clone(rows)
-				slices.Reverse(rows)
+				got = slices.Clone(got)
+				slices.Reverse(got)
 			}
-			if got := shipNames(rows); !slices.Equal(got, tt.wantRows) {
-				t.Errorf("Collect() rows = %v, want %v", got, tt.wantRows)
+			if names := shipNames(got); !slices.Equal(names, tt.wantRows) {
+				t.Errorf("Collect() rows = %v, want %v", names, tt.wantRows)
 			}
 			if page.more != tt.wantMore {
 				t.Errorf("more = %v, want %v", page.more, tt.wantMore)
@@ -531,5 +687,24 @@ func TestQueryDecoder_refusesUnsortableField(t *testing.T) {
 	_, err = decoder.DecodeWithoutPermissions(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/?sort=recent", http.NoBody))
 	if err == nil || !strings.Contains(err.Error(), "cannot be sorted by") {
 		t.Errorf("DecodeWithoutPermissions() error = %v, want the unsortable refusal naming the field", err)
+	}
+}
+
+// TestQuerySet_Collect_noDatabaseType pins the refusal of a query set no computed
+// decoder stamped: the handler cannot place NULL without knowing the database.
+func TestQuerySet_Collect_noDatabaseType(t *testing.T) {
+	t.Parallel()
+
+	qSet := decodeBoard(t, "/?sort=note", Paging{})
+	qSet.dbType = ""
+	_, err := qSet.Collect(func(yield func(*boardRow, error) bool) {
+		for _, row := range boardRows() {
+			if !yield(row, nil) {
+				return
+			}
+		}
+	})
+	if err == nil || !strings.Contains(err.Error(), "no database type") {
+		t.Errorf("Collect() error = %v, want the missing database type refusal", err)
 	}
 }

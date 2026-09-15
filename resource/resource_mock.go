@@ -38,6 +38,11 @@ func NewMockClient(txnMock ReadWriteTransaction, readOnlyMocks, txnReadMocks []a
 	}
 }
 
+// DBType returns the database type the mock stands in for.
+func (c *MockClient) DBType() DBType {
+	return c.dbType
+}
+
 // Close closes the database connection.
 func (c *MockClient) Close() {
 }

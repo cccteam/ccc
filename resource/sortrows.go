@@ -13,12 +13,17 @@ import (
 )
 
 // SortRows orders rows in memory by the given fields: each field by its type,
-// ascending with NULLs last or descending with NULLs first (a computed resource
-// has no database whose placement to follow, so it keeps this one), stably so
-// equal rows keep their yielded order. A computed resource's generated handler
-// sorts the body's rows with it; a body that takes the sort (QuerySet.TakeSort)
-// orders its own query instead.
-func SortRows[T any](rows []*T, order []SortField) error {
+// with NULL placed where the application's database (dbType) places it — Spanner
+// first ascending and last descending, PostgreSQL last ascending and first
+// descending — stably so equal rows keep their yielded order. A computed
+// resource's generated handler sorts the body's rows with it, so a computed list
+// places NULL at the same end as the tables beside it; a body that takes the
+// sort (QuerySet.TakeSort) orders its own query instead, and a plain ORDER BY
+// there produces the same placement. An unsupported dbType is an error.
+func SortRows[T any](rows []*T, order []SortField, dbType DBType) error {
+	if !slices.Contains(dbTypes(), dbType) {
+		return errors.Newf("resource.SortRows: unsupported dbType %q", dbType)
+	}
 	if len(order) == 0 {
 		return nil
 	}
@@ -35,7 +40,7 @@ func SortRows[T any](rows []*T, order []SortField) error {
 
 				return 0
 			}
-			cmp, err := compareOrdered(fa, fb, sf.Direction)
+			cmp, err := compareOrdered(fa, fb, sf.Direction, nullsFirst(dbType, sf.Direction))
 			if err != nil {
 				sortErr = err
 
@@ -52,22 +57,23 @@ func SortRows[T any](rows []*T, order []SortField) error {
 	return sortErr
 }
 
-// compareOrdered compares two field values under a sort direction with the NULL
-// placement computed rows use: ascending NULLS LAST, descending NULLS FIRST.
-func compareOrdered(a, b reflect.Value, direction SortDirection) (int, error) {
+// compareOrdered compares two field values under a sort direction, placing the
+// NULL region before every value when nullsFirst is set and after them
+// otherwise (the database's placement for the direction, from nullsFirst).
+func compareOrdered(a, b reflect.Value, direction SortDirection, nullsFirst bool) (int, error) {
 	va, aNull := derefNullable(a)
 	vb, bNull := derefNullable(b)
 	switch {
 	case aNull && bNull:
 		return 0, nil
 	case aNull:
-		if direction == SortDescending {
+		if nullsFirst {
 			return -1, nil
 		}
 
 		return 1, nil
 	case bNull:
-		if direction == SortDescending {
+		if nullsFirst {
 			return 1, nil
 		}
 

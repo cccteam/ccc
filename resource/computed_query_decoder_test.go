@@ -196,7 +196,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			decoder := MustNewComputedQueryDecoder[computedEnforcementResource, computedEnforcementRequest](accesstypes.List)
+			decoder := MustNewComputedQueryDecoder[computedEnforcementResource, computedEnforcementRequest](SpannerDBType, accesstypes.List)
 
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, http.NoBody)
 			userPermissions := &fakeUserPermissions{granted: tt.grants, conditional: tt.conditional, err: tt.permCheckErr}
@@ -242,6 +242,49 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 				if scope != testScope {
 					t.Errorf("Check() scope = %v, want %v", scope, testScope)
 				}
+			}
+		})
+	}
+}
+
+// TestNewComputedQueryDecoder_databaseType pins the constructor's database-type
+// argument: the placement a computed list sorts and pages NULL in comes from it,
+// so a type the package knows no placement for is refused at construction.
+func TestNewComputedQueryDecoder_databaseType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		dbType  DBType
+		wantErr string
+	}{
+		{name: "Spanner", dbType: SpannerDBType},
+		{name: "PostgreSQL", dbType: PostgresDBType},
+		{name: "none", dbType: "", wantErr: "unsupported dbType"},
+		{name: "the mock type has no placement", dbType: MockDBType, wantErr: "unsupported dbType"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rSet, err := NewSet[computedEnforcementResource, computedEnforcementRequest](accesstypes.List)
+			if err != nil {
+				t.Fatalf("NewSet() error = %v", err)
+			}
+			decoder, err := NewComputedQueryDecoder[computedEnforcementResource, computedEnforcementRequest](rSet, tt.dbType)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("NewComputedQueryDecoder() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewComputedQueryDecoder() error = %v", err)
+			}
+			if decoder.dbType != tt.dbType {
+				t.Errorf("dbType = %q, want %q", decoder.dbType, tt.dbType)
 			}
 		})
 	}

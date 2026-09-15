@@ -19,7 +19,11 @@ import (
 // TakeSort returns the list's total order (the request's sort or the declared
 // default, then the primary key) and marks it as the body's: the handler will
 // not sort. A body that takes the sort must yield its rows in exactly this
-// order, or its pages are wrong.
+// order, or its pages are wrong. The order's NULL placement is the application
+// database's own — Spanner first ascending and last descending, PostgreSQL the
+// reverse — so a plain ORDER BY in the body's query produces it with no NULL
+// handling of its own, and the handler's sort and page boundary follow the same
+// placement whenever they still run.
 func (q *QuerySet[Resource]) TakeSort() []SortField {
 	q.sortTaken = true
 
@@ -32,7 +36,11 @@ func (q *QuerySet[Resource]) TakeSort() []SortField {
 // the row the page starts after, one per order field, nil on a first page. The
 // body yields the rows strictly after the boundary in that order, up to Fetch
 // of them: the page and one more, which tells the handler a next page exists and
-// is never encoded.
+// is never encoded. A nullable order field's NULL region sits where the
+// application's database places it (the side a plain ORDER BY puts it on), so a
+// body that renders its own cursor predicate admits the NULL region on that
+// side: after a non-null boundary when the region follows the values, and every
+// non-null row after a NULL boundary (a nil entry) when the region precedes them.
 type PageBounds struct {
 	order    []SortField
 	boundary []any
@@ -101,8 +109,14 @@ func decodeBoundary(rowType reflect.Type, order []SortField, keys []*string) ([]
 // the body did not take — the residual filter, the sort, the cursor position,
 // and the page — and returns the page the handler encodes, with the headers it
 // writes. The order inside is fixed: filter, then count, then sort, then page,
-// because any other order gives a different answer.
+// because any other order gives a different answer. The sort and the cursor
+// position place NULL where the application's database does (the type the
+// computed decoder stamped), so they agree with the rows a body's plain ORDER BY
+// yields; a QuerySet no computed decoder produced is refused.
 func (q *QuerySet[Resource]) Collect(rows iter.Seq2[*Resource, error]) (*Page[Resource], error) {
+	if q.dbType == "" {
+		return nil, errors.New("resource.QuerySet.Collect: the query set carries no database type; a computed query set comes from a ComputedQueryDecoder, which stamps it")
+	}
 	filter := q.Filter()
 	var kept []*Resource
 	for row, err := range rows {
@@ -125,7 +139,7 @@ func (q *QuerySet[Resource]) Collect(rows iter.Seq2[*Resource, error]) (*Page[Re
 	}
 
 	if !q.sortTaken {
-		if err := SortRows(kept, q.readOrder()); err != nil {
+		if err := SortRows(kept, q.readOrder(), q.dbType); err != nil {
 			return nil, err
 		}
 	}
@@ -161,7 +175,7 @@ func (q *QuerySet[Resource]) afterBoundary(rows []*Resource) ([]*Resource, error
 
 	kept := make([]*Resource, 0, len(rows))
 	for _, row := range rows {
-		after, err := rowAfter(reflect.ValueOf(row).Elem(), order, boundary)
+		after, err := rowAfter(reflect.ValueOf(row).Elem(), order, boundary, q.dbType)
 		if err != nil {
 			return nil, err
 		}
@@ -174,8 +188,10 @@ func (q *QuerySet[Resource]) afterBoundary(rows []*Resource) ([]*Resource, error
 }
 
 // rowAfter reports whether a row sorts strictly after the boundary values in the
-// order, with the NULL placement SortRows uses (NULLS LAST ascending).
-func rowAfter(row reflect.Value, order []SortField, boundary []any) (bool, error) {
+// order, with the application database's NULL placement (dbType): the one
+// SortRows uses and a plain ORDER BY in a pushdown body produces, so the rows a
+// body yielded in its own order and the rows the handler sorted page alike.
+func rowAfter(row reflect.Value, order []SortField, boundary []any, dbType DBType) (bool, error) {
 	for i, sf := range order {
 		field := fieldValue(row, sf.Field)
 		var bound reflect.Value
@@ -184,7 +200,7 @@ func rowAfter(row reflect.Value, order []SortField, boundary []any) (bool, error
 		} else {
 			bound = reflect.Zero(reflect.PointerTo(field.Type()))
 		}
-		cmp, err := compareOrdered(field, bound, sf.Direction)
+		cmp, err := compareOrdered(field, bound, sf.Direction, nullsFirst(dbType, sf.Direction))
 		if err != nil {
 			return false, err
 		}

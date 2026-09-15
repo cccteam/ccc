@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
@@ -20,31 +21,39 @@ import (
 // computed path; this decoder checks eagerly instead, and the QuerySet it returns is a
 // pure request carrier — checks already passed, fields already materialized.
 type ComputedQueryDecoder[Resource Resourcer, Request any] struct {
-	inner *QueryDecoder[Resource, Request]
+	inner  *QueryDecoder[Resource, Request]
+	dbType DBType
 }
 
 // NewComputedQueryDecoder creates a new ComputedQueryDecoder for a given Resource and
-// Request type.
-func NewComputedQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*ComputedQueryDecoder[Resource, Request], error) {
+// Request type. dbType is the application database's type: a computed list sorts and
+// pages NULL where that database does, the same end as the tables beside it, so the
+// decoder carries the placement even though no library query runs underneath it. An
+// unsupported type is a construction error.
+func NewComputedQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource], dbType DBType) (*ComputedQueryDecoder[Resource, Request], error) {
+	if !slices.Contains(dbTypes(), dbType) {
+		return nil, errors.Newf("resource.NewComputedQueryDecoder: unsupported dbType %q", dbType)
+	}
 	inner, err := NewQueryDecoder[Resource, Request](resSet)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewQueryDecoder()")
 	}
 
-	return &ComputedQueryDecoder[Resource, Request]{inner: inner}, nil
+	return &ComputedQueryDecoder[Resource, Request]{inner: inner, dbType: dbType}, nil
 }
 
 // MustNewComputedQueryDecoder builds a query decoder for a computed resource and
-// request pair. It panics on construction errors: they are programming errors (a
-// request struct out of sync with its resource), surfaced at application startup where
-// generated handlers construct their decoders.
-func MustNewComputedQueryDecoder[Resource Resourcer, Request any](permissions ...accesstypes.Permission) *ComputedQueryDecoder[Resource, Request] {
+// request pair over the application database's type (see NewComputedQueryDecoder). It
+// panics on construction errors: they are programming errors (a request struct out of
+// sync with its resource, a database type the package does not know), surfaced at
+// application startup where generated handlers construct their decoders.
+func MustNewComputedQueryDecoder[Resource Resourcer, Request any](dbType DBType, permissions ...accesstypes.Permission) *ComputedQueryDecoder[Resource, Request] {
 	rSet, err := NewSet[Resource, Request](permissions...)
 	if err != nil {
 		panic(err)
 	}
 
-	decoder, err := NewComputedQueryDecoder[Resource, Request](rSet)
+	decoder, err := NewComputedQueryDecoder[Resource, Request](rSet, dbType)
 	if err != nil {
 		panic(err)
 	}
@@ -103,6 +112,9 @@ func (d *ComputedQueryDecoder[Resource, Request]) Decode(request *http.Request, 
 	// The checked identity rides along too (QuerySet.User), so a caller-scoped
 	// computed resource yields the row of exactly the person the check ran as.
 	qSet.userPermissions = userPermissions
+	// And the application database's type (QuerySet.Collect), so the handler's
+	// in-memory sort and page boundary place NULL where a body's plain ORDER BY does.
+	qSet.dbType = d.dbType
 
 	if err := qSet.bindCursor(scope); err != nil {
 		return nil, err

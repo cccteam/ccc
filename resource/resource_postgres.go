@@ -24,6 +24,11 @@ func NewPostgresClient(db *pgxpool.Pool) *PostgresClient {
 	}
 }
 
+// DBType returns the database type.
+func (c *PostgresClient) DBType() DBType {
+	return PostgresDBType
+}
+
 // Close closes the database connection.
 func (c *PostgresClient) Close() {
 	c.postgres.Close()

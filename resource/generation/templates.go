@@ -799,11 +799,12 @@ func NewQueryDecoder[Resource Resourcer, Request any]({{ .ReceiverName }} *{{ .A
 {{ if .HasComputedQueryDecoder -}}
 // NewComputedQueryDecoder builds a query decoder for a generated computed resource
 // and request pair. Computed resources execute application code, so the decoder
-// enforces permissions at decode time rather than deferring to query execution. The
-// Resourcer union keeps construction inside the generated universe: a decoder over
-// any other struct is a compile error.
+// enforces permissions at decode time rather than deferring to query execution, and
+// it carries the application database's type so a computed list sorts and pages NULL
+// where the tables beside it do. The Resourcer union keeps construction inside the
+// generated universe: a decoder over any other struct is a compile error.
 func NewComputedQueryDecoder[Resource Resourcer, Request any]({{ .ReceiverName }} *{{ .ApplicationName }}, permissions ...accesstypes.Permission) *resource.ComputedQueryDecoder[Resource, Request] {
-	return resource.MustNewComputedQueryDecoder[Resource, Request](permissions...).WithCursorKey({{ .ReceiverName }}.CursorKey())
+	return resource.MustNewComputedQueryDecoder[Resource, Request]({{ .ReceiverName }}.ResourceClient().DBType(), permissions...).WithCursorKey({{ .ReceiverName }}.CursorKey())
 }
 {{ end }}
 {{ if .HasPatchDecoder -}}
