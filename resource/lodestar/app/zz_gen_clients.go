@@ -25,6 +25,7 @@ func (a *App) Clients() http.HandlerFunc {
 		ContactName  string   `json:"contactName"  pii:"true"`
 		ContactEmail string   `json:"contactEmail" allow_filter:"true" pii:"true"`
 		Trusted      bool     `json:"trusted"`
+		Insured      *bool    `json:"insured"`
 	}
 
 	type response []map[string]any
@@ -82,6 +83,10 @@ func (a *App) Clients() http.HandlerFunc {
 					if !row.Masked("trusted") {
 						rmap["trusted"] = rec.Trusted
 					}
+				case "Insured":
+					if !row.Masked("insured") {
+						rmap["insured"] = rec.Insured
+					}
 				}
 			}
 			if capabilities := row.Capabilities(); capabilities != nil {
@@ -107,6 +112,7 @@ func (a *App) Client() http.HandlerFunc {
 		ContactName  string   `json:"contactName"  pii:"true"`
 		ContactEmail string   `json:"contactEmail" pii:"true"`
 		Trusted      bool     `json:"trusted"`
+		Insured      *bool    `json:"insured"`
 	}
 
 	decoder := NewQueryDecoder[resources.Client, response](a, accesstypes.Read)
@@ -152,6 +158,10 @@ func (a *App) Client() http.HandlerFunc {
 				if !row.Masked("trusted") {
 					rmap["trusted"] = rec.Trusted
 				}
+			case "Insured":
+				if !row.Masked("insured") {
+					rmap["insured"] = rec.Insured
+				}
 			}
 		}
 		if capabilities := row.Capabilities(); capabilities != nil {
@@ -169,6 +179,7 @@ func (a *App) PatchClients() http.HandlerFunc {
 		ContactName  string   `json:"contactName"`
 		ContactEmail string   `json:"contactEmail"`
 		Trusted      bool     `json:"trusted"`
+		Insured      *bool    `json:"insured"`
 	}
 
 	type response struct {

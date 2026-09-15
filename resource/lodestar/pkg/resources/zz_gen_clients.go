@@ -31,6 +31,7 @@ type clientRead struct {
 	ContactName  string   `json:"contactName"  pii:"true"`
 	ContactEmail string   `json:"contactEmail" pii:"true"`
 	Trusted      bool     `json:"trusted"`
+	Insured      *bool    `json:"insured"`
 }
 
 var clientReadSets resource.SetCache[Client, clientRead]
@@ -44,6 +45,7 @@ type clientWrite struct {
 	ContactName  string   `json:"contactName"`
 	ContactEmail string   `json:"contactEmail"`
 	Trusted      bool     `json:"trusted"`
+	Insured      *bool    `json:"insured"`
 }
 
 var clientWriteSets resource.SetCache[Client, clientWrite]
@@ -169,6 +171,7 @@ func (c *ClientColumns) All() *ClientColumns {
 		"ContactName",
 		"ContactEmail",
 		"Trusted",
+		"Insured",
 	}
 
 	return c
@@ -200,6 +203,12 @@ func (c *ClientColumns) ContactEmail() *ClientColumns {
 
 func (c *ClientColumns) Trusted() *ClientColumns {
 	c.fields = append(c.fields, "Trusted")
+
+	return c
+}
+
+func (c *ClientColumns) Insured() *ClientColumns {
+	c.fields = append(c.fields, "Insured")
 
 	return c
 }
@@ -312,6 +321,10 @@ func (c *clientSort) ContactEmail() *ClientSort {
 
 func (c *clientSort) Trusted() *ClientSort {
 	return c.addField("Trusted")
+}
+
+func (c *clientSort) Insured() *ClientSort {
+	return c.addField("Insured")
 }
 
 type ClientSort struct {
@@ -465,6 +478,26 @@ func (p *ClientCreatePatch) TrustedIsSet() bool {
 	return p.patchSet.IsSet("Trusted")
 }
 
+func (p *ClientCreatePatch) SetInsured(v *bool) *ClientCreatePatch {
+	if v != nil {
+		p.patchSet.Set("Insured", v)
+	} else {
+		p.patchSet.Set("Insured", nil)
+	}
+
+	return p
+}
+
+func (p *ClientCreatePatch) Insured() *bool {
+	v, _ := p.patchSet.Get("Insured").(*bool)
+
+	return v
+}
+
+func (p *ClientCreatePatch) InsuredIsSet() bool {
+	return p.patchSet.IsSet("Insured")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *ClientCreatePatch) Diff(got *ClientCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -595,6 +628,26 @@ func (p *ClientUpdatePatch) Trusted() bool {
 
 func (p *ClientUpdatePatch) TrustedIsSet() bool {
 	return p.patchSet.IsSet("Trusted")
+}
+
+func (p *ClientUpdatePatch) SetInsured(v *bool) *ClientUpdatePatch {
+	if v != nil {
+		p.patchSet.Set("Insured", v)
+	} else {
+		p.patchSet.Set("Insured", nil)
+	}
+
+	return p
+}
+
+func (p *ClientUpdatePatch) Insured() *bool {
+	v, _ := p.patchSet.Get("Insured").(*bool)
+
+	return v
+}
+
+func (p *ClientUpdatePatch) InsuredIsSet() bool {
+	return p.patchSet.IsSet("Insured")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

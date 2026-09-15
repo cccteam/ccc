@@ -125,6 +125,7 @@ export namespace ClientRosters {
 export namespace Clients {
   export const fieldName = {
     id: 'id' as FieldName,
+    insured: 'insured' as FieldName,
     name: 'name' as FieldName,
     trusted: 'trusted' as FieldName,
   };
@@ -136,6 +137,7 @@ export namespace Clients {
     contactEmail: 'Clients.contactEmail' as Resource,
     contactName: 'Clients.contactName' as Resource,
     id: 'Clients.id' as Resource,
+    insured: 'Clients.insured' as Resource,
     name: 'Clients.name' as Resource,
     trusted: 'Clients.trusted' as Resource,
   };

@@ -3,10 +3,12 @@
 -- and every paged list is deeper than its default page. Names avoid apostrophes: Spanner DML
 -- does not accept a doubled quote inside a string literal.
 
-INSERT INTO Clients (Id, Name, ContactName, ContactEmail, Trusted) VALUES ('10000000-0000-4000-8000-000000000001', 'Halvard Freight', 'Cleo Halvard', 'cleo@halvard.example', TRUE);
-INSERT INTO Clients (Id, Name, ContactName, ContactEmail, Trusted) VALUES ('10000000-0000-4000-8000-000000000002', 'Meridian Survey Office', 'Ines Marrow', 'ines@meridian.example', TRUE);
-INSERT INTO Clients (Id, Name, ContactName, ContactEmail, Trusted) VALUES ('10000000-0000-4000-8000-000000000003', 'Bastion Relay Station', 'Relay Desk', 'desk@bastion-relay.example', FALSE);
-INSERT INTO Clients (Id, Name, ContactName, ContactEmail, Trusted) VALUES ('10000000-0000-4000-8000-000000000004', 'Vellum Medical Cooperative', 'Dr. Sato Vellum', 'sato@vellum.example', TRUE);
+-- Insured (salvage cover) takes all three states across the four clients: Halvard
+-- confirmed, Meridian and Bastion Relay still unknown, Vellum declined.
+INSERT INTO Clients (Id, Name, ContactName, ContactEmail, Trusted, Insured) VALUES ('10000000-0000-4000-8000-000000000001', 'Halvard Freight', 'Cleo Halvard', 'cleo@halvard.example', TRUE, TRUE);
+INSERT INTO Clients (Id, Name, ContactName, ContactEmail, Trusted, Insured) VALUES ('10000000-0000-4000-8000-000000000002', 'Meridian Survey Office', 'Ines Marrow', 'ines@meridian.example', TRUE, NULL);
+INSERT INTO Clients (Id, Name, ContactName, ContactEmail, Trusted, Insured) VALUES ('10000000-0000-4000-8000-000000000003', 'Bastion Relay Station', 'Relay Desk', 'desk@bastion-relay.example', FALSE, NULL);
+INSERT INTO Clients (Id, Name, ContactName, ContactEmail, Trusted, Insured) VALUES ('10000000-0000-4000-8000-000000000004', 'Vellum Medical Cooperative', 'Dr. Sato Vellum', 'sato@vellum.example', TRUE, FALSE);
 
 INSERT INTO ShipClasses (Id, Designation, RoleId, Tonnage, Hardened) VALUES ('20000000-0000-4000-8000-000000000001', 'Kestrel', 'cutter', 900, FALSE);
 INSERT INTO ShipClasses (Id, Designation, RoleId, Tonnage, Hardened) VALUES ('20000000-0000-4000-8000-000000000002', 'Ox', 'tug', 4200, TRUE);

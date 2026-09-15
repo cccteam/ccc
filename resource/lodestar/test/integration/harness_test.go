@@ -73,10 +73,10 @@ const (
 	bastion = "bastion"
 	cinder  = "cinder"
 
-	clientHalvardID  = "10000000-0000-4000-8000-000000000001" // trusted; Cleo's company
-	clientMeridianID = "10000000-0000-4000-8000-000000000002" // trusted
-	clientBastionID  = "10000000-0000-4000-8000-000000000003" // NOT trusted
-	clientVellumID   = "10000000-0000-4000-8000-000000000004" // trusted
+	clientHalvardID  = "10000000-0000-4000-8000-000000000001" // trusted, insured; Cleo's company
+	clientMeridianID = "10000000-0000-4000-8000-000000000002" // trusted, cover unknown (Insured NULL)
+	clientBastionID  = "10000000-0000-4000-8000-000000000003" // NOT trusted, cover unknown (Insured NULL)
+	clientVellumID   = "10000000-0000-4000-8000-000000000004" // trusted, NOT insured
 
 	shipClassKestrelID = "20000000-0000-4000-8000-000000000001"
 

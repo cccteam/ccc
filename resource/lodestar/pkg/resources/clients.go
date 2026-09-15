@@ -21,7 +21,14 @@ type (
 	// unique value (409), and an update under an id that does not exist is refused there
 	// as a missing row (404), both in the resource's name.
 	//
-	// Demonstrates: pii, pii.filter-placement, allow_filter, @attribute.bool, consolidation.exclusion, commit.constraint-refusal.
+	// Insured records whether the outfit carries salvage cover: unknown until the booking
+	// desk hears from the underwriter, then yes or no, recorded by headquarters from the
+	// Clients page. The column is nullable and the field a pointer, so the row scans NULL;
+	// the generated TypeScript types the field NullBoolean, its metadata says nullboolean,
+	// the console renders the three-way picker beside Trusted's two-state checkbox, and a
+	// null in a PATCH body writes the column back to NULL.
+	//
+	// Demonstrates: pii, pii.filter-placement, allow_filter, @attribute.bool, consolidation.exclusion, commit.constraint-refusal, nullboolean.
 	//
 	// @resource
 	// @order(Name asc)
@@ -32,6 +39,7 @@ type (
 		ContactName  string   `spanner:"ContactName"  conditions:"pii"`
 		ContactEmail string   `spanner:"ContactEmail" allow_filter:"true" conditions:"pii"`
 		// @attribute(trusted)
-		Trusted bool `spanner:"Trusted"`
+		Trusted bool  `spanner:"Trusted"`
+		Insured *bool `spanner:"Insured"`
 	}
 )
