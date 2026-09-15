@@ -18,14 +18,15 @@ import (
 
 func (a *App) DistressCalls() http.HandlerFunc {
 	type distressCall struct {
-		ID            ccc.UUID `json:"id"            index:"true" perm:"-"`
-		SectorID      string   `json:"sectorId"      index:"true"`
-		Summary       string   `json:"summary"`
-		Severity      int64    `json:"severity"      index:"true"`
-		CallerContact *string  `json:"callerContact" pii:"true"`
-		Transcript    *string  `json:"-"`
-		CaseNumber    string   `json:"caseNumber"    index:"true"`
-		FiledBy       string   `json:"filedBy"`
+		ID            ccc.UUID            `json:"id"            index:"true" perm:"-"`
+		SectorID      string              `json:"sectorId"      index:"true"`
+		Summary       string              `json:"summary"`
+		Severity      int64               `json:"severity"      index:"true"`
+		CallerContact *string             `json:"callerContact" pii:"true"`
+		Transcript    *string             `json:"-"`
+		CaseNumber    string              `json:"caseNumber"    index:"true"`
+		FiledBy       string              `json:"filedBy"`
+		Position      *resources.Position `json:"position"`
 	}
 
 	type response []map[string]any
@@ -92,6 +93,10 @@ func (a *App) DistressCalls() http.HandlerFunc {
 					if !row.Masked("filedBy") {
 						rmap["filedBy"] = rec.FiledBy
 					}
+				case "Position":
+					if !row.Masked("position") {
+						rmap["position"] = rec.Position
+					}
 				}
 			}
 			if capabilities := row.Capabilities(); capabilities != nil {
@@ -112,14 +117,15 @@ func (a *App) DistressCalls() http.HandlerFunc {
 
 func (a *App) DistressCall() http.HandlerFunc {
 	type response struct {
-		ID            ccc.UUID `json:"id"            index:"true" perm:"-"`
-		SectorID      string   `json:"sectorId"`
-		Summary       string   `json:"summary"`
-		Severity      int64    `json:"severity"`
-		CallerContact *string  `json:"callerContact" pii:"true"`
-		Transcript    *string  `json:"-"`
-		CaseNumber    string   `json:"caseNumber"    index:"true"`
-		FiledBy       string   `json:"filedBy"`
+		ID            ccc.UUID            `json:"id"            index:"true" perm:"-"`
+		SectorID      string              `json:"sectorId"`
+		Summary       string              `json:"summary"`
+		Severity      int64               `json:"severity"`
+		CallerContact *string             `json:"callerContact" pii:"true"`
+		Transcript    *string             `json:"-"`
+		CaseNumber    string              `json:"caseNumber"    index:"true"`
+		FiledBy       string              `json:"filedBy"`
+		Position      *resources.Position `json:"position"`
 	}
 
 	decoder := NewQueryDecoder[resources.DistressCall, response](a, accesstypes.Read)
@@ -173,6 +179,10 @@ func (a *App) DistressCall() http.HandlerFunc {
 			case "FiledBy":
 				if !row.Masked("filedBy") {
 					rmap["filedBy"] = rec.FiledBy
+				}
+			case "Position":
+				if !row.Masked("position") {
+					rmap["position"] = rec.Position
 				}
 			}
 		}

@@ -42,14 +42,15 @@ func (a *App) PatchResources() http.HandlerFunc {
 	consignmentDecoder := NewDecoder[resources.Consignment, consignmentRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type distressCallRequest struct {
-		ID            ccc.UUID `json:"-"`
-		SectorID      string   `json:"-"`
-		Summary       string   `json:"summary"`
-		Severity      int64    `json:"severity"`
-		CallerContact *string  `json:"callerContact"`
-		Transcript    *string  `json:"transcript"`
-		CaseNumber    string   `json:"-"`
-		FiledBy       string   `json:"-"`
+		ID            ccc.UUID            `json:"-"`
+		SectorID      string              `json:"-"`
+		Summary       string              `json:"summary"`
+		Severity      int64               `json:"severity"`
+		CallerContact *string             `json:"callerContact"`
+		Transcript    *string             `json:"transcript"`
+		CaseNumber    string              `json:"-"`
+		FiledBy       string              `json:"-"`
+		Position      *resources.Position `json:"position"`
 	}
 	distressCallDecoder := NewDecoder[resources.DistressCall, distressCallRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 

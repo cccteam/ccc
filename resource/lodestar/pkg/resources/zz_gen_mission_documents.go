@@ -27,15 +27,16 @@ func (MissionDocument) DefaultConfig() resource.Config {
 // and read, so a query armed with Enforce meets the field permissions the routes
 // enforce; missionDocumentReadSets holds one Set per read operation.
 type missionDocumentRead struct {
-	ID          ccc.UUID  `json:"id"          perm:"-"`
-	MissionID   ccc.UUID  `json:"missionId"`
-	Title       string    `json:"title"`
-	FileName    string    `json:"fileName"`
-	ContentType string    `json:"contentType"`
-	Size        int64     `json:"size"`
-	StoreKey    string    `json:"storeKey"`
-	UploadedBy  string    `json:"uploadedBy"`
-	UploadedAt  time.Time `json:"uploadedAt"`
+	ID          ccc.UUID    `json:"id"          perm:"-"`
+	MissionID   ccc.UUID    `json:"missionId"`
+	Title       string      `json:"title"`
+	FileName    string      `json:"fileName"`
+	ContentType string      `json:"contentType"`
+	Size        int64       `json:"size"`
+	StoreKey    string      `json:"storeKey"`
+	UploadedBy  string      `json:"uploadedBy"`
+	UploadedAt  time.Time   `json:"uploadedAt"`
+	Provenance  *Provenance `json:"provenance"`
 }
 
 var missionDocumentReadSets resource.SetCache[MissionDocument, missionDocumentRead]
@@ -44,15 +45,16 @@ var missionDocumentReadSets resource.SetCache[MissionDocument, missionDocumentRe
 // accept on a mutation, so a patch armed with Enforce meets the field permissions the
 // routes enforce; missionDocumentWriteSets holds one Set per mutation.
 type missionDocumentWrite struct {
-	ID          ccc.UUID  `json:"-"`
-	MissionID   ccc.UUID  `json:"missionId"`
-	Title       string    `json:"title"`
-	FileName    string    `json:"fileName"`
-	ContentType string    `json:"contentType"`
-	Size        int64     `json:"size"`
-	StoreKey    string    `json:"storeKey"    sqltype:"STRING(36)"`
-	UploadedBy  string    `json:"uploadedBy"`
-	UploadedAt  time.Time `json:"uploadedAt"`
+	ID          ccc.UUID    `json:"-"`
+	MissionID   ccc.UUID    `json:"missionId"`
+	Title       string      `json:"title"`
+	FileName    string      `json:"fileName"`
+	ContentType string      `json:"contentType"`
+	Size        int64       `json:"size"`
+	StoreKey    string      `json:"storeKey"    sqltype:"STRING(36)"`
+	UploadedBy  string      `json:"uploadedBy"`
+	UploadedAt  time.Time   `json:"uploadedAt"`
+	Provenance  *Provenance `json:"provenance"`
 }
 
 var missionDocumentWriteSets resource.SetCache[MissionDocument, missionDocumentWrite]
@@ -170,6 +172,7 @@ func (c *MissionDocumentColumns) All() *MissionDocumentColumns {
 		"StoreKey",
 		"UploadedBy",
 		"UploadedAt",
+		"Provenance",
 	}
 
 	return c
@@ -225,6 +228,12 @@ func (c *MissionDocumentColumns) UploadedBy() *MissionDocumentColumns {
 
 func (c *MissionDocumentColumns) UploadedAt() *MissionDocumentColumns {
 	c.fields = append(c.fields, "UploadedAt")
+
+	return c
+}
+
+func (c *MissionDocumentColumns) Provenance() *MissionDocumentColumns {
+	c.fields = append(c.fields, "Provenance")
 
 	return c
 }
@@ -349,6 +358,10 @@ func (c *missionDocumentSort) UploadedBy() *MissionDocumentSort {
 
 func (c *missionDocumentSort) UploadedAt() *MissionDocumentSort {
 	return c.addField("UploadedAt")
+}
+
+func (c *missionDocumentSort) Provenance() *MissionDocumentSort {
+	return c.addField("Provenance")
 }
 
 type MissionDocumentSort struct {
@@ -566,6 +579,26 @@ func (p *MissionDocumentCreatePatch) UploadedAtIsSet() bool {
 	return p.patchSet.IsSet("UploadedAt")
 }
 
+func (p *MissionDocumentCreatePatch) SetProvenance(v *Provenance) *MissionDocumentCreatePatch {
+	if v != nil {
+		p.patchSet.Set("Provenance", v)
+	} else {
+		p.patchSet.Set("Provenance", nil)
+	}
+
+	return p
+}
+
+func (p *MissionDocumentCreatePatch) Provenance() *Provenance {
+	v, _ := p.patchSet.Get("Provenance").(*Provenance)
+
+	return v
+}
+
+func (p *MissionDocumentCreatePatch) ProvenanceIsSet() bool {
+	return p.patchSet.IsSet("Provenance")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *MissionDocumentCreatePatch) Diff(got *MissionDocumentCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -760,6 +793,26 @@ func (p *MissionDocumentUpdatePatch) UploadedAt() time.Time {
 
 func (p *MissionDocumentUpdatePatch) UploadedAtIsSet() bool {
 	return p.patchSet.IsSet("UploadedAt")
+}
+
+func (p *MissionDocumentUpdatePatch) SetProvenance(v *Provenance) *MissionDocumentUpdatePatch {
+	if v != nil {
+		p.patchSet.Set("Provenance", v)
+	} else {
+		p.patchSet.Set("Provenance", nil)
+	}
+
+	return p
+}
+
+func (p *MissionDocumentUpdatePatch) Provenance() *Provenance {
+	v, _ := p.patchSet.Get("Provenance").(*Provenance)
+
+	return v
+}
+
+func (p *MissionDocumentUpdatePatch) ProvenanceIsSet() bool {
+	return p.patchSet.IsSet("Provenance")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

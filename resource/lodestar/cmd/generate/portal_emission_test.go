@@ -15,9 +15,12 @@ import (
 // its descriptor bootstraps under the domain route the console shares. The manual
 // registrations without an @outlet stay on the default outlet and the portal filter drops
 // them; ClientStatements names @outlet(portal) and appears in the portal's constants
-// alone. Needs no emulator: it reads the committed output.
+// alone. Both targets carry the two application-typed columns the same way: the
+// resources file imports Point from geojson for DistressCalls.Position and declares
+// MissionDocuments.Provenance in the resource's namespace. Needs no emulator: it reads
+// the committed output.
 //
-// Demonstrates: typescript.second-target, @manualAddResource.outlet, workflow.ts-constant, outlet.isolation.
+// Demonstrates: typescript.second-target, @manualAddResource.outlet, workflow.ts-constant, outlet.isolation, typescript.imported-type, typescript.derived-object.
 func TestPortalTargetEmission(t *testing.T) {
 	t.Parallel()
 
@@ -39,6 +42,19 @@ func TestPortalTargetEmission(t *testing.T) {
 	portalConstants := read("web/portal/src/app/core/service/zz_gen_constants.ts")
 	consoleConstants := read("web/console/src/app/core/service/zz_gen_constants.ts")
 	portalAPI := read("web/portal/src/app/core/service/zz_gen_api.ts")
+	portalResources := read("web/portal/src/app/core/service/zz_gen_resources.ts")
+	consoleResources := read("web/console/src/app/core/service/zz_gen_resources.ts")
+	consoleAPI := read("web/console/src/app/core/service/zz_gen_api.ts")
+
+	// The two column types, as both targets render them.
+	columnTypes := []string{
+		"import { Point } from 'geojson';",
+		"  position?: Point;",
+		"{ fieldName: 'position', displayType: 'object', required: false, isIndex: false }",
+		"  provenance?: MissionDocuments.Provenance;",
+		"export namespace MissionDocuments {\n  export interface Provenance {\n    system: string;\n    reference?: string;\n    receivedAt: Date;\n  }\n}",
+		"{ fieldName: 'provenance', displayType: 'object', required: false, isIndex: false }",
+	}
 
 	tests := []struct {
 		name   string
@@ -69,6 +85,24 @@ func TestPortalTargetEmission(t *testing.T) {
 			source: consoleConstants,
 			want:   []string{"Refits: 'Refits'", "Ships: 'Ships'", "Squadrons: 'Squadrons'", "Pilots: 'Pilots'", "Missions: 'Missions'", "ShipsLogEntries: 'ShipsLogEntries'"},
 			absent: []string{"ClientStatements:"},
+		},
+		{
+			name:   "the console resources file imports the declared type and derives the struct",
+			source: consoleResources,
+			want:   columnTypes,
+			absent: []string{"CustomTypes"},
+		},
+		{
+			name:   "the portal resources file carries the same two column types",
+			source: portalResources,
+			want:   columnTypes,
+			absent: []string{"CustomTypes"},
+		},
+		{
+			name:   "the console client imports Point for the create and patch shapes, and types provenance through the row type",
+			source: consoleAPI,
+			want:   []string{"import { Point } from 'geojson';", "  position?: Point;"},
+			absent: []string{"CustomTypes"},
 		},
 	}
 	for _, tt := range tests {

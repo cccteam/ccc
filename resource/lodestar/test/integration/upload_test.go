@@ -256,7 +256,7 @@ func TestMissionDocument_portalAndDownload(t *testing.T) {
 		t.Fatalf("rows = %v, want one", rows)
 	}
 	id, _ := rows[0]["id"].(string)
-	assertKeys(t, rows[0], []string{"id", "missionId", "title", "fileName", "contentType", "size", "storeKey", "uploadedBy", "uploadedAt"})
+	assertKeys(t, rows[0], []string{"id", "missionId", "title", "fileName", "contentType", "size", "storeKey", "uploadedBy", "uploadedAt", "provenance"})
 
 	// The portal lists the client's documents through its own outlet, with the
 	// grant's fields: no store key, no uploader.
@@ -266,7 +266,7 @@ func TestMissionDocument_portalAndDownload(t *testing.T) {
 	if len(portalRows) != 1 {
 		t.Fatalf("portal rows = %v, want one", portalRows)
 	}
-	assertKeys(t, portalRows[0], []string{"id", "missionId", "title", "fileName", "contentType", "size", "uploadedAt"})
+	assertKeys(t, portalRows[0], []string{"id", "missionId", "title", "fileName", "contentType", "size", "uploadedAt", "provenance"})
 
 	// The download route serves the bytes to the crew, and refuses the client, whose
 	// Read is conditional and holds no storeKey.

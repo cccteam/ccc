@@ -40,7 +40,8 @@
                 "fileName",
                 "contentType",
                 "size",
-                "uploadedAt"
+                "uploadedAt",
+                "provenance"
               ],
               "condition": "client = subject.client"
             },
@@ -63,7 +64,8 @@
                 "summary",
                 "severity",
                 "caseNumber",
-                "callerContact"
+                "callerContact",
+                "position"
               ],
               "condition": "filedBy = subject"
             },
@@ -80,7 +82,8 @@
                 "fileName",
                 "contentType",
                 "size",
-                "uploadedAt"
+                "uploadedAt",
+                "provenance"
               ],
               "condition": "client = subject.client"
             },
@@ -103,7 +106,8 @@
                 "summary",
                 "severity",
                 "caseNumber",
-                "callerContact"
+                "callerContact",
+                "position"
               ],
               "condition": "filedBy = subject"
             }

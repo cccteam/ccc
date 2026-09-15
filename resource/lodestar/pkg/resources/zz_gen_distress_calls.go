@@ -26,14 +26,15 @@ func (DistressCall) DefaultConfig() resource.Config {
 // and read, so a query armed with Enforce meets the field permissions the routes
 // enforce; distressCallReadSets holds one Set per read operation.
 type distressCallRead struct {
-	ID            ccc.UUID `json:"id"            perm:"-"`
-	SectorID      string   `json:"sectorId"`
-	Summary       string   `json:"summary"`
-	Severity      int64    `json:"severity"`
-	CallerContact *string  `json:"callerContact" pii:"true"`
-	Transcript    *string  `json:"-"`
-	CaseNumber    string   `json:"caseNumber"`
-	FiledBy       string   `json:"filedBy"`
+	ID            ccc.UUID  `json:"id"            perm:"-"`
+	SectorID      string    `json:"sectorId"`
+	Summary       string    `json:"summary"`
+	Severity      int64     `json:"severity"`
+	CallerContact *string   `json:"callerContact" pii:"true"`
+	Transcript    *string   `json:"-"`
+	CaseNumber    string    `json:"caseNumber"`
+	FiledBy       string    `json:"filedBy"`
+	Position      *Position `json:"position"`
 }
 
 var distressCallReadSets resource.SetCache[DistressCall, distressCallRead]
@@ -42,14 +43,15 @@ var distressCallReadSets resource.SetCache[DistressCall, distressCallRead]
 // accept on a mutation, so a patch armed with Enforce meets the field permissions the
 // routes enforce; distressCallWriteSets holds one Set per mutation.
 type distressCallWrite struct {
-	ID            ccc.UUID `json:"-"`
-	SectorID      string   `json:"-"`
-	Summary       string   `json:"summary"`
-	Severity      int64    `json:"severity"`
-	CallerContact *string  `json:"callerContact"`
-	Transcript    *string  `json:"transcript"`
-	CaseNumber    string   `json:"-"`
-	FiledBy       string   `json:"-"`
+	ID            ccc.UUID  `json:"-"`
+	SectorID      string    `json:"-"`
+	Summary       string    `json:"summary"`
+	Severity      int64     `json:"severity"`
+	CallerContact *string   `json:"callerContact"`
+	Transcript    *string   `json:"transcript"`
+	CaseNumber    string    `json:"-"`
+	FiledBy       string    `json:"-"`
+	Position      *Position `json:"position"`
 }
 
 var distressCallWriteSets resource.SetCache[DistressCall, distressCallWrite]
@@ -178,6 +180,7 @@ func (c *DistressCallColumns) All() *DistressCallColumns {
 		"Transcript",
 		"CaseNumber",
 		"FiledBy",
+		"Position",
 	}
 
 	return c
@@ -227,6 +230,12 @@ func (c *DistressCallColumns) CaseNumber() *DistressCallColumns {
 
 func (c *DistressCallColumns) FiledBy() *DistressCallColumns {
 	c.fields = append(c.fields, "FiledBy")
+
+	return c
+}
+
+func (c *DistressCallColumns) Position() *DistressCallColumns {
+	c.fields = append(c.fields, "Position")
 
 	return c
 }
@@ -355,6 +364,10 @@ func (c *distressCallSort) CaseNumber() *DistressCallSort {
 
 func (c *distressCallSort) FiledBy() *DistressCallSort {
 	return c.addField("FiledBy")
+}
+
+func (c *distressCallSort) Position() *DistressCallSort {
+	return c.addField("Position")
 }
 
 type DistressCallSort struct {
@@ -566,6 +579,26 @@ func (p *DistressCallCreatePatch) FiledByIsSet() bool {
 	return p.patchSet.IsSet("FiledBy")
 }
 
+func (p *DistressCallCreatePatch) SetPosition(v *Position) *DistressCallCreatePatch {
+	if v != nil {
+		p.patchSet.Set("Position", v)
+	} else {
+		p.patchSet.Set("Position", nil)
+	}
+
+	return p
+}
+
+func (p *DistressCallCreatePatch) Position() *Position {
+	v, _ := p.patchSet.Get("Position").(*Position)
+
+	return v
+}
+
+func (p *DistressCallCreatePatch) PositionIsSet() bool {
+	return p.patchSet.IsSet("Position")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *DistressCallCreatePatch) Diff(got *DistressCallCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -752,6 +785,26 @@ func (p *DistressCallUpdatePatch) FiledBy() string {
 
 func (p *DistressCallUpdatePatch) FiledByIsSet() bool {
 	return p.patchSet.IsSet("FiledBy")
+}
+
+func (p *DistressCallUpdatePatch) SetPosition(v *Position) *DistressCallUpdatePatch {
+	if v != nil {
+		p.patchSet.Set("Position", v)
+	} else {
+		p.patchSet.Set("Position", nil)
+	}
+
+	return p
+}
+
+func (p *DistressCallUpdatePatch) Position() *Position {
+	v, _ := p.patchSet.Get("Position").(*Position)
+
+	return v
+}
+
+func (p *DistressCallUpdatePatch) PositionIsSet() bool {
+	return p.patchSet.IsSet("Position")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

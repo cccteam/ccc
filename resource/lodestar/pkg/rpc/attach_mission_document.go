@@ -21,9 +21,10 @@ type (
 	// commit the frame promotes the keys; if anything before commit fails, it
 	// discards them. The Dispatcher's Execute grant carries the mission's state
 	// (`state NOT IN ('completed', 'failed', 'stood_down')`): documents go on live
-	// missions.
+	// missions. Each row records its origin as a Provenance, one JSON column typed by a
+	// plain struct.
 	//
-	// Demonstrates: @upload, rpc.upload-store, execute-condition.
+	// Demonstrates: @upload, rpc.upload-store, execute-condition, typescript.derived-object.
 	//
 	// @rpc
 	// @permissionScope(domain)
@@ -59,7 +60,10 @@ func (m *AttachMissionDocument) Execute(ctx context.Context, txn resource.ReadWr
 			SetSize(file.Size).
 			SetStoreKey(file.Key).
 			SetUploadedBy(uploadedBy).
-			SetUploadedAt(now)
+			SetUploadedAt(now).
+			// The origin rides as one JSON column: the struct is stored by its
+			// generated Spanner methods and read back as the derived interface.
+			SetProvenance(&resources.Provenance{System: "console-upload", Reference: file.Name, ReceivedAt: now})
 		if err := patch.Buffer(ctx, txn, resource.UserEvent(ctx)); err != nil {
 			return nil, errors.Wrap(err, "resources.MissionDocumentCreatePatch.Buffer()")
 		}

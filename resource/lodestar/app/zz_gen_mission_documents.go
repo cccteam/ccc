@@ -19,15 +19,16 @@ import (
 
 func (a *App) MissionDocuments() http.HandlerFunc {
 	type missionDocument struct {
-		ID          ccc.UUID  `json:"id"          index:"true" perm:"-"`
-		MissionID   ccc.UUID  `json:"missionId"   index:"true"`
-		Title       string    `json:"title"`
-		FileName    string    `json:"fileName"`
-		ContentType string    `json:"contentType"`
-		Size        int64     `json:"size"`
-		StoreKey    string    `json:"storeKey"`
-		UploadedBy  string    `json:"uploadedBy"`
-		UploadedAt  time.Time `json:"uploadedAt"`
+		ID          ccc.UUID              `json:"id"          index:"true" perm:"-"`
+		MissionID   ccc.UUID              `json:"missionId"   index:"true"`
+		Title       string                `json:"title"`
+		FileName    string                `json:"fileName"`
+		ContentType string                `json:"contentType"`
+		Size        int64                 `json:"size"`
+		StoreKey    string                `json:"storeKey"`
+		UploadedBy  string                `json:"uploadedBy"`
+		UploadedAt  time.Time             `json:"uploadedAt"`
+		Provenance  *resources.Provenance `json:"provenance"`
 	}
 
 	type response []map[string]any
@@ -102,6 +103,10 @@ func (a *App) MissionDocuments() http.HandlerFunc {
 					if !row.Masked("uploadedAt") {
 						rmap["uploadedAt"] = rec.UploadedAt
 					}
+				case "Provenance":
+					if !row.Masked("provenance") {
+						rmap["provenance"] = rec.Provenance
+					}
 				}
 			}
 			if capabilities := row.Capabilities(); capabilities != nil {
@@ -122,15 +127,16 @@ func (a *App) MissionDocuments() http.HandlerFunc {
 
 func (a *App) MissionDocument() http.HandlerFunc {
 	type response struct {
-		ID          ccc.UUID  `json:"id"          index:"true" perm:"-"`
-		MissionID   ccc.UUID  `json:"missionId"`
-		Title       string    `json:"title"`
-		FileName    string    `json:"fileName"`
-		ContentType string    `json:"contentType"`
-		Size        int64     `json:"size"`
-		StoreKey    string    `json:"storeKey"`
-		UploadedBy  string    `json:"uploadedBy"`
-		UploadedAt  time.Time `json:"uploadedAt"`
+		ID          ccc.UUID              `json:"id"          index:"true" perm:"-"`
+		MissionID   ccc.UUID              `json:"missionId"`
+		Title       string                `json:"title"`
+		FileName    string                `json:"fileName"`
+		ContentType string                `json:"contentType"`
+		Size        int64                 `json:"size"`
+		StoreKey    string                `json:"storeKey"`
+		UploadedBy  string                `json:"uploadedBy"`
+		UploadedAt  time.Time             `json:"uploadedAt"`
+		Provenance  *resources.Provenance `json:"provenance"`
 	}
 
 	decoder := NewQueryDecoder[resources.MissionDocument, response](a, accesstypes.Read)
@@ -192,6 +198,10 @@ func (a *App) MissionDocument() http.HandlerFunc {
 			case "UploadedAt":
 				if !row.Masked("uploadedAt") {
 					rmap["uploadedAt"] = rec.UploadedAt
+				}
+			case "Provenance":
+				if !row.Masked("provenance") {
+					rmap["provenance"] = rec.Provenance
 				}
 			}
 		}
