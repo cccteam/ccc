@@ -110,6 +110,7 @@ export namespace DistressCalls {
 export namespace MissionDocuments {
   export const fieldName = {
     contentType: 'contentType' as FieldName,
+    digest: 'digest' as FieldName,
     fileName: 'fileName' as FieldName,
     id: 'id' as FieldName,
     missionId: 'missionId' as FieldName,
@@ -122,6 +123,7 @@ export namespace MissionDocuments {
   };
   export const resourceName = {
     contentType: 'MissionDocuments.contentType' as Resource,
+    digest: 'MissionDocuments.digest' as Resource,
     fileName: 'MissionDocuments.fileName' as Resource,
     id: 'MissionDocuments.id' as Resource,
     missionId: 'MissionDocuments.missionId' as Resource,

@@ -27,9 +27,13 @@ type (
 	// frame promotes it after commit. Reading the bytes back is the application's own
 	// route (MissionDocumentContent); the resource serves the listing, on the console and
 	// on the client portal, whose grant leaves storeKey and uploadedBy out. Provenance is
-	// the document's origin as one JSON column typed by a plain struct.
+	// the document's origin as one JSON column typed by a plain struct. Digest is the
+	// SHA-256 of the stored bytes, a BYTES(32) column the method computes from the file
+	// the frame streamed: a []byte is one leaf to the generator, a string in both clients'
+	// interfaces (encoding/json carries it as base64) with display type bytes, never a
+	// number[].
 	//
-	// Demonstrates: @upload, outlet.shared, @suppress, typescript.derived-object.
+	// Demonstrates: @upload, outlet.shared, @suppress, typescript.derived-object, typescript.byte-slice.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -51,5 +55,6 @@ type (
 		UploadedAt  time.Time `spanner:"UploadedAt"`
 		// Provenance is nullable: a document filed before the origin was recorded has none.
 		Provenance *Provenance `spanner:"Provenance"`
+		Digest     []byte      `spanner:"Digest"`
 	}
 )

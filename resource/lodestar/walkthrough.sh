@@ -192,6 +192,8 @@ r=$(req booking POST "$ANVIL/stand-down-mission" "{\"missionId\":\"$HAULER\"}");
 printf 'Three survey barges through the debris belt; hold formation at the belt edge.' > "$S/brief.txt"
 r=$(upload marshal "$ANVIL/attach-mission-document" "{\"missionId\":\"$CONVOY\",\"title\":\"Escort brief\"}" "$S/brief.txt"); check "marshal attaches the escort brief (a multipart @upload the transaction claims)" 200 "$r"
 r=$(req marshal GET "$ANVIL/mission-documents?filter=missionId:eq:$CONVOY"); assert_py "the brief is listed with its store key" "$r" "rows[0]['title']=='Escort brief' and rows[0]['fileName']=='brief.txt' and rows[0]['storeKey']"
+# The BYTES column rides as one base64 string (the generated interface says string, display type bytes), the SHA-256 of the file.
+assert_py "the brief's digest is the SHA-256 of its bytes, one base64 string on the wire" "$r" "__import__('base64').b64decode(rows[0]['digest'])==__import__('hashlib').sha256(open('$S/brief.txt','rb').read()).digest()"
 DOC=$(body "$r" | py "print(rows[0]['id'])")
 r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content"); check "the brief downloads through the application's own route" 200 "$r"
 r=$(dryrun lead POST "$ANVIL/complete-mission" "{\"missionId\":\"$CONVOY\"}"); check "lead's dry run of Complete would commit (the Paymaster's checker posts the settlement)" 200 "$r"

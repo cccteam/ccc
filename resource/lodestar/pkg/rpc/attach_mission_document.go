@@ -2,6 +2,8 @@ package rpc
 
 import (
 	"context"
+	"crypto/sha256"
+	"io"
 	"time"
 
 	"github.com/cccteam/ccc"
@@ -22,9 +24,11 @@ type (
 	// discards them. The Dispatcher's Execute grant carries the mission's state
 	// (`state NOT IN ('completed', 'failed', 'stood_down')`): documents go on live
 	// missions. Each row records its origin as a Provenance, one JSON column typed by a
-	// plain struct.
+	// plain struct, and the SHA-256 of its bytes as Digest, a BYTES column the body
+	// computes from the pending object the frame streamed (a dry run streams nothing and
+	// records no digest).
 	//
-	// Demonstrates: @upload, rpc.upload-store, execute-condition, typescript.derived-object.
+	// Demonstrates: @upload, rpc.upload-store, execute-condition, typescript.derived-object, typescript.byte-slice.
 	//
 	// @rpc
 	// @permissionScope(domain)
@@ -43,7 +47,7 @@ type (
 )
 
 // Execute runs inside the handler's transaction with the streamed files.
-func (m *AttachMissionDocument) Execute(ctx context.Context, txn resource.ReadWriteTransaction, files resource.Files, _ *Client) (*Attached, error) {
+func (m *AttachMissionDocument) Execute(ctx context.Context, txn resource.ReadWriteTransaction, files resource.Files, client *Client) (*Attached, error) {
 	uploadedBy := string(resource.CallerFrom(ctx).Permissions.User())
 	now := time.Now().UTC()
 
@@ -52,6 +56,15 @@ func (m *AttachMissionDocument) Execute(ctx context.Context, txn resource.ReadWr
 		patch, err := resources.NewMissionDocumentCreatePatch()
 		if err != nil {
 			return nil, errors.Wrap(err, "resources.NewMissionDocumentCreatePatch()")
+		}
+		// The digest is read off the pending object; a dry run minted no key and
+		// streamed nothing, and writes no row, so there is nothing to digest.
+		if file.Key != "" {
+			digest, err := client.digest(file.Key)
+			if err != nil {
+				return nil, err
+			}
+			patch.SetDigest(digest)
 		}
 		patch.SetMissionID(m.MissionID).
 			SetTitle(m.Title).
@@ -71,4 +84,21 @@ func (m *AttachMissionDocument) Execute(ctx context.Context, txn resource.ReadWr
 	}
 
 	return attached, nil
+}
+
+// digest is the SHA-256 of the object the frame streamed under key, read back from the
+// store while it is still pending.
+func (c *Client) digest(key string) ([]byte, error) {
+	f, err := c.documents.OpenPending(key)
+	if err != nil {
+		return nil, errors.Wrap(err, "store.DirStore.OpenPending()")
+	}
+	defer f.Close()
+
+	sum := sha256.New()
+	if _, err := io.Copy(sum, f); err != nil {
+		return nil, errors.Wrap(err, "io.Copy()")
+	}
+
+	return sum.Sum(nil), nil
 }

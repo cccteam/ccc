@@ -107,6 +107,7 @@ export interface MissionDocuments {
   uploadedBy?: string;
   uploadedAt?: Date;
   provenance?: MissionDocuments.Provenance;
+  digest?: string;
 }
 export namespace MissionDocuments {
   export interface Provenance {
@@ -409,6 +410,7 @@ const resourceMap: ResourceMap = {
       { fieldName: 'uploadedBy', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'uploadedAt', displayType: 'date', required: true, isIndex: false },
       { fieldName: 'provenance', displayType: 'object', required: false, isIndex: false },
+      { fieldName: 'digest', displayType: 'bytes', required: true, isIndex: false },
     ],
   },
   [Resources.OpenMissionsBySquadrons]: {

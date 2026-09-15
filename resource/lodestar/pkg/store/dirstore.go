@@ -94,6 +94,20 @@ func (s *DirStore) Discard(_ context.Context, keys []string) error {
 	return nil
 }
 
+// OpenPending opens an object whose transaction has not committed: the body of an
+// @upload method reads back the file the frame streamed, to record what it holds.
+func (s *DirStore) OpenPending(key string) (*os.File, error) {
+	if err := checkKey(key); err != nil {
+		return nil, err
+	}
+	f, err := s.root.Open(pendingPath(key))
+	if err != nil {
+		return nil, perrors.Wrap(err, "os.Root.Open()")
+	}
+
+	return f, nil
+}
+
 // Open opens a promoted object for reading.
 func (s *DirStore) Open(key string) (*os.File, error) {
 	if err := checkKey(key); err != nil {

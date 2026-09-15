@@ -213,6 +213,7 @@ func Collection() *resource.GeneratedCollection {
 				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 				Tags: []resource.TagData{
 					{Name: "contentType", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "digest", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "fileName", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "id"},
 					{Name: "missionId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},

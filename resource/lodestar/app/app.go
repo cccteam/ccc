@@ -130,6 +130,7 @@ func New(cfg Configurer) *App {
 	resource.SetLocalZone(operationsClock)
 
 	engine := cfg.Access()
+	documents := cfg.Documents()
 	a := &App{
 		access:         engine,
 		engines:        map[string]access.Controller{},
@@ -141,9 +142,9 @@ func New(cfg Configurer) *App {
 		portalDist:     cfg.PortalDist(),
 		droidsAPIKey:   cfg.DroidsAPIKey(),
 		domainVisible:  cfg.DomainVisible,
-		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }),
+		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, documents),
 		computedClient: computedresources.NewClient(),
-		documents:      cfg.Documents(),
+		documents:      documents,
 	}
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.

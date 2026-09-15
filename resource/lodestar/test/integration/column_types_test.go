@@ -1,15 +1,19 @@
-// Demonstrates: typescript.derived-object, typescript.imported-type.
+// Demonstrates: typescript.derived-object, typescript.imported-type, typescript.byte-slice.
 package integration
 
-// column_types_test: the two JSON columns typed by application types. DistressCalls.
-// Position is a GeoJSON Point whose TypeScript type the Go type declares with
-// @typescript; the marshal files a call with a point, reads it back as the JSON it sent,
-// and clears it with a null, while the seed's voice-relayed call carries none.
+// column_types_test: the columns typed by application types and by a byte slice.
+// DistressCalls.Position is a GeoJSON Point whose TypeScript type the Go type declares
+// with @typescript; the marshal files a call with a point, reads it back as the JSON it
+// sent, and clears it with a null, while the seed's voice-relayed call carries none.
 // MissionDocuments.Provenance is a plain struct: the upload records the origin, the
 // generated Spanner methods store it, and the console and the portal both list it as
-// one object under the field their grants name.
+// one object under the field their grants name. MissionDocuments.Digest is a BYTES
+// column: the upload records the file's SHA-256, and the row carries it as one base64
+// string, the string the generated interface promises, never an array of numbers.
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -139,4 +143,48 @@ func TestMissionDocumentProvenance_derivedObject(t *testing.T) {
 		t.Fatalf("portal rows = %v, want one", portalRows)
 	}
 	wantOrigin(t, portalRows[0], "client")
+}
+
+func TestMissionDocumentDigest_byteSlice(t *testing.T) {
+	t.Parallel()
+
+	h, _, _ := documentWorld(t)
+
+	// The marshal attaches a manifest to Halvard's stranded hauler: the body reads the
+	// pending object back and records its SHA-256 in the BYTES column.
+	const haulerID = "80000000-0000-4000-8000-000000000001"
+	content := []byte("Halvard hauler: crew of four, one injured; hold formation at the belt edge.")
+	body, contentType := multipartBody(t, fmt.Sprintf(`{"missionId":%q,"title":"Hauler manifest"}`, haulerID),
+		uploadFile{name: "manifest.txt", contentType: "text/plain", content: content})
+	status, respBody := doUploadAs(t, h, "marshal", sectorPath(anvil, "attach-mission-document"), body, contentType, false)
+	assertStatus(t, status, http.StatusOK, respBody)
+
+	rows := readRows(t, h, "marshal", sectorPath(anvil, "mission-documents"))
+	if len(rows) != 1 {
+		t.Fatalf("rows = %v, want one", rows)
+	}
+
+	// The wire carries the digest as one base64 string, as encoding/json writes a
+	// []byte, and the generated interface types it string: never an array of numbers.
+	sum := sha256.Sum256(content)
+	digest, ok := rows[0]["digest"].(string)
+	if !ok {
+		t.Fatalf("digest = %v (%T), want one base64 string", rows[0]["digest"], rows[0]["digest"])
+	}
+	if want := base64.StdEncoding.EncodeToString(sum[:]); digest != want {
+		t.Errorf("digest = %q, want %q, the SHA-256 of the uploaded bytes", digest, want)
+	}
+
+	// The same string reads back into the resource struct's []byte as the sum itself.
+	raw, err := json.Marshal(rows[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var typed resources.MissionDocument
+	if err := json.Unmarshal(raw, &typed); err != nil {
+		t.Fatalf("row does not read back as resources.MissionDocument: %v", err)
+	}
+	if !reflect.DeepEqual(typed.Digest, sum[:]) {
+		t.Errorf("Digest = %x, want %x", typed.Digest, sum[:])
+	}
 }

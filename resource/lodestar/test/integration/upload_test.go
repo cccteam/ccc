@@ -256,7 +256,7 @@ func TestMissionDocument_portalAndDownload(t *testing.T) {
 		t.Fatalf("rows = %v, want one", rows)
 	}
 	id, _ := rows[0]["id"].(string)
-	assertKeys(t, rows[0], []string{"id", "missionId", "title", "fileName", "contentType", "size", "storeKey", "uploadedBy", "uploadedAt", "provenance"})
+	assertKeys(t, rows[0], []string{"id", "missionId", "title", "fileName", "contentType", "size", "storeKey", "uploadedBy", "uploadedAt", "provenance", "digest"})
 
 	// The portal lists the client's documents through its own outlet, with the
 	// grant's fields: no store key, no uploader.

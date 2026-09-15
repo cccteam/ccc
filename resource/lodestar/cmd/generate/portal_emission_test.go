@@ -17,10 +17,11 @@ import (
 // them; ClientStatements names @outlet(portal) and appears in the portal's constants
 // alone. Both targets carry the two application-typed columns the same way: the
 // resources file imports Point from geojson for DistressCalls.Position and declares
-// MissionDocuments.Provenance in the resource's namespace. Needs no emulator: it reads
+// MissionDocuments.Provenance in the resource's namespace; and both type the BYTES column
+// MissionDocuments.Digest a string with display type bytes. Needs no emulator: it reads
 // the committed output.
 //
-// Demonstrates: typescript.second-target, @manualAddResource.outlet, workflow.ts-constant, outlet.isolation, typescript.imported-type, typescript.derived-object.
+// Demonstrates: typescript.second-target, @manualAddResource.outlet, workflow.ts-constant, outlet.isolation, typescript.imported-type, typescript.derived-object, typescript.byte-slice.
 func TestPortalTargetEmission(t *testing.T) {
 	t.Parallel()
 
@@ -54,6 +55,8 @@ func TestPortalTargetEmission(t *testing.T) {
 		"  provenance?: MissionDocuments.Provenance;",
 		"export namespace MissionDocuments {\n  export interface Provenance {\n    system: string;\n    reference?: string;\n    receivedAt: Date;\n  }\n}",
 		"{ fieldName: 'provenance', displayType: 'object', required: false, isIndex: false }",
+		"  digest?: string;",
+		"{ fieldName: 'digest', displayType: 'bytes', required: true, isIndex: false }",
 	}
 
 	tests := []struct {

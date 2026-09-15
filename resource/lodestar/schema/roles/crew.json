@@ -347,7 +347,8 @@
                 "storeKey",
                 "uploadedBy",
                 "uploadedAt",
-                "provenance"
+                "provenance",
+                "digest"
               ]
             },
             {
@@ -540,7 +541,8 @@
                 "storeKey",
                 "uploadedBy",
                 "uploadedAt",
-                "provenance"
+                "provenance",
+                "digest"
               ]
             },
             {
@@ -1434,7 +1436,8 @@
                 "storeKey",
                 "uploadedBy",
                 "uploadedAt",
-                "provenance"
+                "provenance",
+                "digest"
               ]
             },
             {
@@ -1529,7 +1532,8 @@
                 "storeKey",
                 "uploadedBy",
                 "uploadedAt",
-                "provenance"
+                "provenance",
+                "digest"
               ]
             },
             {

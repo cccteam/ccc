@@ -37,6 +37,7 @@ type missionDocumentRead struct {
 	UploadedBy  string      `json:"uploadedBy"`
 	UploadedAt  time.Time   `json:"uploadedAt"`
 	Provenance  *Provenance `json:"provenance"`
+	Digest      []byte      `json:"digest"`
 }
 
 var missionDocumentReadSets resource.SetCache[MissionDocument, missionDocumentRead]
@@ -55,6 +56,7 @@ type missionDocumentWrite struct {
 	UploadedBy  string      `json:"uploadedBy"`
 	UploadedAt  time.Time   `json:"uploadedAt"`
 	Provenance  *Provenance `json:"provenance"`
+	Digest      []byte      `json:"digest"      sqltype:"BYTES(32)"`
 }
 
 var missionDocumentWriteSets resource.SetCache[MissionDocument, missionDocumentWrite]
@@ -173,6 +175,7 @@ func (c *MissionDocumentColumns) All() *MissionDocumentColumns {
 		"UploadedBy",
 		"UploadedAt",
 		"Provenance",
+		"Digest",
 	}
 
 	return c
@@ -234,6 +237,12 @@ func (c *MissionDocumentColumns) UploadedAt() *MissionDocumentColumns {
 
 func (c *MissionDocumentColumns) Provenance() *MissionDocumentColumns {
 	c.fields = append(c.fields, "Provenance")
+
+	return c
+}
+
+func (c *MissionDocumentColumns) Digest() *MissionDocumentColumns {
+	c.fields = append(c.fields, "Digest")
 
 	return c
 }
@@ -362,6 +371,10 @@ func (c *missionDocumentSort) UploadedAt() *MissionDocumentSort {
 
 func (c *missionDocumentSort) Provenance() *MissionDocumentSort {
 	return c.addField("Provenance")
+}
+
+func (c *missionDocumentSort) Digest() *MissionDocumentSort {
+	return c.addField("Digest")
 }
 
 type MissionDocumentSort struct {
@@ -599,6 +612,22 @@ func (p *MissionDocumentCreatePatch) ProvenanceIsSet() bool {
 	return p.patchSet.IsSet("Provenance")
 }
 
+func (p *MissionDocumentCreatePatch) SetDigest(v []byte) *MissionDocumentCreatePatch {
+	p.patchSet.Set("Digest", v)
+
+	return p
+}
+
+func (p *MissionDocumentCreatePatch) Digest() []byte {
+	v, _ := p.patchSet.Get("Digest").([]byte)
+
+	return v
+}
+
+func (p *MissionDocumentCreatePatch) DigestIsSet() bool {
+	return p.patchSet.IsSet("Digest")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *MissionDocumentCreatePatch) Diff(got *MissionDocumentCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -813,6 +842,22 @@ func (p *MissionDocumentUpdatePatch) Provenance() *Provenance {
 
 func (p *MissionDocumentUpdatePatch) ProvenanceIsSet() bool {
 	return p.patchSet.IsSet("Provenance")
+}
+
+func (p *MissionDocumentUpdatePatch) SetDigest(v []byte) *MissionDocumentUpdatePatch {
+	p.patchSet.Set("Digest", v)
+
+	return p
+}
+
+func (p *MissionDocumentUpdatePatch) Digest() []byte {
+	v, _ := p.patchSet.Get("Digest").([]byte)
+
+	return v
+}
+
+func (p *MissionDocumentUpdatePatch) DigestIsSet() bool {
+	return p.patchSet.IsSet("Digest")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

@@ -29,6 +29,7 @@ func (a *App) MissionDocuments() http.HandlerFunc {
 		UploadedBy  string                `json:"uploadedBy"`
 		UploadedAt  time.Time             `json:"uploadedAt"`
 		Provenance  *resources.Provenance `json:"provenance"`
+		Digest      []byte                `json:"digest"`
 	}
 
 	type response []map[string]any
@@ -107,6 +108,10 @@ func (a *App) MissionDocuments() http.HandlerFunc {
 					if !row.Masked("provenance") {
 						rmap["provenance"] = rec.Provenance
 					}
+				case "Digest":
+					if !row.Masked("digest") {
+						rmap["digest"] = rec.Digest
+					}
 				}
 			}
 			if capabilities := row.Capabilities(); capabilities != nil {
@@ -137,6 +142,7 @@ func (a *App) MissionDocument() http.HandlerFunc {
 		UploadedBy  string                `json:"uploadedBy"`
 		UploadedAt  time.Time             `json:"uploadedAt"`
 		Provenance  *resources.Provenance `json:"provenance"`
+		Digest      []byte                `json:"digest"`
 	}
 
 	decoder := NewQueryDecoder[resources.MissionDocument, response](a, accesstypes.Read)
@@ -202,6 +208,10 @@ func (a *App) MissionDocument() http.HandlerFunc {
 			case "Provenance":
 				if !row.Masked("provenance") {
 					rmap["provenance"] = rec.Provenance
+				}
+			case "Digest":
+				if !row.Masked("digest") {
+					rmap["digest"] = rec.Digest
 				}
 			}
 		}
