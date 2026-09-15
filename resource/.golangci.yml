@@ -88,6 +88,7 @@ linters:
             - google.golang.org/api/iterator
             - google.golang.org/grpc/codes
             - google.golang.org/grpc/status
+            - google.golang.org/protobuf/types/known/structpb
     dupl:
       threshold: 100
     exhaustive:

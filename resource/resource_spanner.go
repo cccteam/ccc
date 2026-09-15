@@ -13,6 +13,7 @@ import (
 	"github.com/cccteam/spxscan/spxapi"
 	"github.com/go-playground/errors/v5"
 	"google.golang.org/api/iterator"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var _ Client = (*SpannerClient)(nil)
@@ -234,23 +235,14 @@ func scanEnvelopeRow[Resource Resourcer](spannerRow *spanner.Row, stmt *Statemen
 		}
 	}
 	for _, column := range stmt.cursorColumns {
-		// The copy scans into a fresh value of the field's own type, so the
-		// cursor encodes it exactly as it would the cell. A copy that can be
-		// NULL where the type cannot (a concealing key's CASE) scans into a
-		// pointer to the type instead, nil for NULL, which the cursor writes
-		// as the NULL key.
-		destType := column.fieldType
-		if column.nullable && !isNullableType(destType) {
-			destType = reflect.PointerTo(destType)
-		}
-		dest := reflect.New(destType)
-		if err := spannerRow.ColumnByName(column.alias, dest.Interface()); err != nil {
-			return nil, errors.Wrapf(err, "spanner.Row.ColumnByName(%s)", column.alias)
+		copied, err := scanCursorColumn(spannerRow, column)
+		if err != nil {
+			return nil, err
 		}
 		if row.cursorValues == nil {
 			row.cursorValues = make(map[accesstypes.Field]reflect.Value, len(stmt.cursorColumns))
 		}
-		row.cursorValues[column.field] = dest.Elem()
+		row.cursorValues[column.field] = copied
 	}
 	if plan := stmt.capabilityPlan; plan != nil {
 		var checks []bool
@@ -271,6 +263,41 @@ func scanEnvelopeRow[Resource Resourcer](spannerRow *spanner.Row, stmt *Statemen
 	}
 
 	return row, nil
+}
+
+// scanCursorColumn reads one cursor copy off the row. The copy arrives as a
+// fresh value of the field's own type, so the cursor encodes it exactly as it
+// would the cell; a copy that can be NULL where the type cannot (a concealing
+// key's CASE) arrives as a pointer to the type, nil for NULL, which the cursor
+// writes as the NULL key.
+//
+// The copy is not scanned into a pointer to a pointer to the field's type. The
+// client decodes a pointer to a pointer for the base kinds, for its own value
+// types, and for a Decoder, and refuses it for a named variant of a base kind
+// (type HazardLevel int64), the type a resource column may well declare. So
+// the copy is read as a generic column value: NULL is seen on the wire and
+// never decoded, and a value decodes into a single pointer to the field's type,
+// the client's own definition of decoding into that type, which admits every
+// kind the sortable rule admits, named variants included. A type the client
+// cannot decode at all still fails with the client's error, naming the alias.
+func scanCursorColumn(spannerRow *spanner.Row, column cursorColumn) (reflect.Value, error) {
+	var generic spanner.GenericColumnValue
+	if err := spannerRow.ColumnByName(column.alias, &generic); err != nil {
+		return reflect.Value{}, errors.Wrapf(err, "spanner.Row.ColumnByName(%s)", column.alias)
+	}
+	pointerCopy := column.nullable && !isNullableType(column.fieldType)
+	if _, isNull := generic.Value.GetKind().(*structpb.Value_NullValue); isNull && pointerCopy {
+		return reflect.Zero(reflect.PointerTo(column.fieldType)), nil
+	}
+	dest := reflect.New(column.fieldType)
+	if err := generic.Decode(dest.Interface()); err != nil {
+		return reflect.Value{}, errors.Wrapf(err, "spanner.GenericColumnValue.Decode(%s)", column.alias)
+	}
+	if pointerCopy {
+		return dest, nil
+	}
+
+	return dest.Elem(), nil
 }
 
 var _ ReadOnlyTransactionCloser = (*SpannerReadOnlyTransaction)(nil)

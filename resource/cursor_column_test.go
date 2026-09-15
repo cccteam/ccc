@@ -470,9 +470,14 @@ func TestScanEnvelopeRow_cursorColumns(t *testing.T) {
 	}
 }
 
-// feeCents is a named variant of a base kind, the shape a resource may declare
-// for a column; the scan matrix covers it beside the base kinds.
-type feeCents int64
+// feeCents, code, and ratio are named variants of base kinds, the shapes a
+// resource may declare for a column (type HazardLevel int64, type Status
+// string); the scan matrix covers them beside the base kinds.
+type (
+	feeCents int64
+	code     string
+	ratio    float64
+)
 
 // TestScanEnvelopeRow_nullableCursorColumn pins the scan of a concealing key's
 // copy — the visible-projection CASE, which is NULL where the cell is masked —
@@ -480,11 +485,12 @@ type feeCents int64
 // behind a pointer, NULL arrives as a nil pointer, and the cursor writes the
 // NULL key for it. A field type that is nullable itself scans as it is.
 //
-// The Spanner client (v1.94.0) decodes into a pointer to a base kind, to a
-// Decoder, and to its own value types, but not into a pointer to a named
-// variant of a base kind: such a copy fails the scan, and the row is refused
-// with the client's error. Pinned here as the finding reported on backlog #65,
-// never worked around in the reader.
+// The copy is read as a generic column value and decoded into the field's own
+// type, so a named variant of a base kind (feeCents, code, ratio) arrives typed
+// as the field and encodes exactly as its cell would, where a scan into a
+// pointer to a pointer to it is refused by the client
+// (TestSpannerClient_pointerToNamedVariantGap). A type the client cannot
+// decode at all still fails the scan with the client's error.
 func TestScanEnvelopeRow_nullableCursorColumn(t *testing.T) {
 	t.Parallel()
 
@@ -510,7 +516,10 @@ func TestScanEnvelopeRow_nullableCursorColumn(t *testing.T) {
 		{name: "date", fieldType: reflect.TypeFor[civil.Date](), value: civil.Date{Year: 2026, Month: time.September, Day: 15}, null: spanner.NullDate{}, wantText: "2026-09-15"},
 		{name: "decimal", fieldType: reflect.TypeFor[decimal.Decimal](), value: big.NewRat(3, 2), null: spanner.NullNumeric{}, wantText: "1.5"},
 		{name: "UUID", fieldType: reflect.TypeFor[ccc.UUID](), value: uid.String(), null: spanner.NullString{}, wantText: uid.String()},
-		{name: "a named variant of an integer is refused by the client", fieldType: reflect.TypeFor[feeCents](), value: int64(7), null: spanner.NullInt64{}, wantErr: "type **resource.feeCents cannot be used for decoding INT64"},
+		{name: "a named variant of an integer decodes into the field's type", fieldType: reflect.TypeFor[feeCents](), value: int64(7), null: spanner.NullInt64{}, wantText: "7"},
+		{name: "a named variant of a text decodes into the field's type", fieldType: reflect.TypeFor[code](), value: "x", null: spanner.NullString{}, wantText: "x"},
+		{name: "a named variant of a float decodes into the field's type", fieldType: reflect.TypeFor[ratio](), value: 1.5, null: spanner.NullFloat64{}, wantText: "1.5"},
+		{name: "a type the client cannot decode at all fails with the client's error", fieldType: reflect.TypeFor[struct{ A int }](), value: int64(7), null: spanner.NullInt64{}, wantErr: "type *struct { A int } cannot be used for decoding INT64"},
 		{name: "a field type nullable already scans as it is", fieldType: reflect.TypeFor[*string](), value: "x", null: spanner.NullString{}, wantText: "x"},
 	}
 	for _, tt := range tests {
@@ -564,6 +573,46 @@ func TestScanEnvelopeRow_nullableCursorColumn(t *testing.T) {
 			}
 			if text != nil {
 				t.Errorf("cursor key for NULL = %q, want the NULL key", *text)
+			}
+		})
+	}
+}
+
+// TestSpannerClient_pointerToNamedVariantGap pins the client gap the generic
+// read routes around: spanner.Row.ColumnByName decodes an INT64 into a pointer
+// to a pointer to the base kind and refuses the same shape over a named variant
+// of it. The reader never asks the client for that shape; this test only keeps
+// the reason on record. When its refusal row fails, the client has learned the
+// shape, and the generic read is a choice rather than a necessity.
+func TestSpannerClient_pointerToNamedVariantGap(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		dest    any
+		wantErr string
+	}{
+		{name: "a pointer to a pointer to the base kind decodes", dest: new(*int64)},
+		{name: "a pointer to a pointer to a named variant is refused", dest: new(*feeCents), wantErr: "type **resource.feeCents cannot be used for decoding INT64"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			spannerRow, err := spanner.NewRow([]string{cursorColumnPrefix + "Fee"}, []any{int64(7)})
+			if err != nil {
+				t.Fatalf("spanner.NewRow() error = %v", err)
+			}
+			err = spannerRow.ColumnByName(cursorColumnPrefix+"Fee", tt.dest)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("spanner.Row.ColumnByName(%T) error = %v", tt.dest, err)
+				}
+
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("spanner.Row.ColumnByName(%T) error = %v, want containing %q", tt.dest, err, tt.wantErr)
 			}
 		})
 	}

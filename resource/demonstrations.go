@@ -168,6 +168,7 @@ var Demonstrations = []Demonstration{
 	{"paging.readability-rule", "A sort or filter on a field the caller is denied is refused naming the field."},
 	{"paging.masked-sort", "A sort or filter on a conditionally granted field runs over the visible projection: masked cells are NULL."},
 	{"paging.unselected-sort-key", "A sort key outside the columns projection, the primary key included, pages on the cursor's copy of the value: the statement selects it a second time under a reserved column, and the row data carries nothing extra."},
+	{"paging.named-variant-key", "A sort key of a named variant type (type HazardLevel int64), concealing and conditionally granted, left out of columns=: the cursor's copy decodes into the field's own type, and masked cells walk through the NULL region."},
 	{"masking.positional", "masking:\"positional\" on a field: its masked cells stay hidden, but the list orders, filters, and pages on the real column, so the page comes off the index and the field's rank is disclosed."},
 	{"warning.concealing-key", "MigrateRoles and ValidateRoles warn where a role's conditional grant lands on a concealing field the resource orders by or admits as a sort or filter key, and the role's other grants leave the CASE in the query: that role's pages sort the partition."},
 	{"warning.tenant-index", "Generation warns, naming the CREATE INDEX it wants, where a listed resource with a bare @domain and an @order has no index leading with the tenant column and then the order columns: every page would sort the tenant's partition."},
