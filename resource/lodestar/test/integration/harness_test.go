@@ -489,6 +489,24 @@ func idsOf(t *testing.T, rows []map[string]any) []string {
 	return ids
 }
 
+// cell reads one cell of a list row as T. A missing key or a value of another type
+// is fatal, naming the key, the value and the row: it means the wire shape changed,
+// and every later row would fail the same way, so the first message is the useful one.
+func cell[T any](t *testing.T, row map[string]any, key string) T {
+	t.Helper()
+
+	raw, ok := row[key]
+	if !ok {
+		t.Fatalf("cell %q is missing from row %v", key, row)
+	}
+	value, ok := raw.(T)
+	if !ok {
+		t.Fatalf("cell %q = %v (%T), want %T, in row %v", key, raw, raw, value, row)
+	}
+
+	return value
+}
+
 // assertKeys asserts that a row contains exactly the wanted JSON keys.
 func assertKeys(t *testing.T, row map[string]any, wantKeys []string) {
 	t.Helper()

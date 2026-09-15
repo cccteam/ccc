@@ -46,7 +46,7 @@ func TestListPage_serverPaged(t *testing.T) {
 		t.Errorf("Total-Count = %q, want 30, every Anvil mission", got)
 	}
 	for i := 1; i < len(rows); i++ {
-		if rows[i-1]["deadline"].(string) > rows[i]["deadline"].(string) {
+		if cell[string](t, rows[i-1], "deadline") > cell[string](t, rows[i], "deadline") {
 			t.Fatalf("first page is not in the declared deadline order at row %d: %v > %v", i, rows[i-1]["deadline"], rows[i]["deadline"])
 		}
 	}
@@ -93,7 +93,7 @@ func TestListPage_serverPaged(t *testing.T) {
 			check: func(t *testing.T, _ http.Header, rows []map[string]any) {
 				t.Helper()
 				for i := 1; i < len(rows); i++ {
-					if rows[i-1]["title"].(string) > rows[i]["title"].(string) {
+					if cell[string](t, rows[i-1], "title") > cell[string](t, rows[i], "title") {
 						t.Errorf("rows are not in title order at %d: %v > %v", i, rows[i-1]["title"], rows[i]["title"])
 					}
 				}
@@ -134,7 +134,7 @@ func TestListPage_serverPaged(t *testing.T) {
 			check: func(t *testing.T, _ http.Header, rows []map[string]any) {
 				t.Helper()
 				for _, row := range rows {
-					if row["statusId"] != "open" || row["daysLeft"].(float64) <= 1 {
+					if row["statusId"] != "open" || cell[float64](t, row, "daysLeft") <= 1 {
 						t.Errorf("row %v (%v, %v days) is outside the filter", row["title"], row["statusId"], row["daysLeft"])
 					}
 				}
