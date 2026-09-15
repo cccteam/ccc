@@ -27,7 +27,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/momaek/formattag v0.0.10
-	github.com/shopspring/decimal v1.4.0
+	github.com/shopspring/decimal v1.4.1-0.20260819210736-ca4740823783
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.56.0
 	golang.org/x/tools v0.49.0

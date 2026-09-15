@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"math/big"
 	"strings"
 	"testing"
 
@@ -64,11 +65,18 @@ func loweringFixtureCollection(t *testing.T) *GeneratedCollection {
 	return g
 }
 
+// ratComparer compares bound NUMERIC parameters by value: big.Rat carries no
+// Equal method and hides its fields from cmp.
+var ratComparer = cmp.Comparer(func(a, b *big.Rat) bool {
+	return a.Cmp(b) == 0
+})
+
 // TestLowerCondition_rendering pins the §05 rendering shapes over the running
-// example: column comparisons bind literals as parameters, join paths render
-// nested correlated EXISTS, subject sets render the anchor-table EXISTS with
-// the derived tenancy filter, subject values render scalar subqueries, facts
-// bind as the reserved named parameters, and the post-write overlay reads the
+// example: column comparisons bind literals as parameters (a decimal as
+// NUMERIC), join paths render one scalar subquery per hop, subject sets
+// render the anchor-table EXISTS under the attribute's null guard with the
+// derived tenancy filter, subject values render scalar subqueries, facts bind
+// as the reserved named parameters, and the post-write overlay reads the
 // proposed value's parameter for touched columns and the existing column
 // otherwise.
 func TestLowerCondition_rendering(t *testing.T) {
@@ -94,14 +102,14 @@ func TestLowerCondition_rendering(t *testing.T) {
 			name:        "the shared write group: subject set OR state",
 			source:      "crew IN subject.crews OR state = 'open'",
 			partitioned: true,
-			wantSQL:     "(EXISTS (SELECT 1 FROM `CrewMembers` `ca1` WHERE `ca1`.`UserId` = @subject AND `ca1`.`CrewId` = `t`.`CrewId` AND `ca1`.`StationId` = @domain) OR `t`.`State` = @_c1)",
+			wantSQL:     "(CASE WHEN `t`.`CrewId` IS NULL THEN NULL ELSE EXISTS (SELECT 1 FROM `CrewMembers` `ca1` WHERE `ca1`.`UserId` = @subject AND `ca1`.`CrewId` = `t`.`CrewId` AND `ca1`.`StationId` = @domain) END OR `t`.`State` = @_c1)",
 			wantParams:  []QueryParam{{Name: "_c1", Value: "open"}},
 			wantNamed:   []string{"domain", "subject"},
 		},
 		{
 			name:    "global request derives no tenancy filter",
 			source:  "crew IN subject.crews",
-			wantSQL: "EXISTS (SELECT 1 FROM `CrewMembers` `ca1` WHERE `ca1`.`UserId` = @subject AND `ca1`.`CrewId` = `t`.`CrewId`)",
+			wantSQL: "CASE WHEN `t`.`CrewId` IS NULL THEN NULL ELSE EXISTS (SELECT 1 FROM `CrewMembers` `ca1` WHERE `ca1`.`UserId` = @subject AND `ca1`.`CrewId` = `t`.`CrewId`) END",
 
 			wantNamed: []string{"subject"},
 		},
@@ -109,7 +117,7 @@ func TestLowerCondition_rendering(t *testing.T) {
 			name:        "dotted subject set continues through the anchor's join path",
 			source:      "wing IN subject.wings",
 			partitioned: true,
-			wantSQL:     "EXISTS (SELECT 1 FROM `CrewMembers` `ca1` WHERE `ca1`.`UserId` = @subject AND EXISTS (SELECT 1 FROM `Crews` `ca2` WHERE `ca2`.`Id` = `ca1`.`CrewId` AND `ca2`.`WingId` = `t`.`WingId`) AND `ca1`.`StationId` = @domain)",
+			wantSQL:     "CASE WHEN `t`.`WingId` IS NULL THEN NULL ELSE EXISTS (SELECT 1 FROM `CrewMembers` `ca1` WHERE `ca1`.`UserId` = @subject AND EXISTS (SELECT 1 FROM `Crews` `ca2` WHERE `ca2`.`Id` = `ca1`.`CrewId` AND `ca2`.`WingId` = `t`.`WingId`) AND `ca1`.`StationId` = @domain) END",
 			wantNamed:   []string{"domain", "subject"},
 		},
 		{
@@ -119,16 +127,32 @@ func TestLowerCondition_rendering(t *testing.T) {
 			wantNamed: []string{"subject"},
 		},
 		{
-			name:       "join-path attribute renders a correlated EXISTS",
+			name:       "join-path attribute reads the related row's column as a scalar subquery",
 			source:     "shipClass = 'Freighter'",
-			wantSQL:    "EXISTS (SELECT 1 FROM `Ships` `ca1` WHERE `ca1`.`Id` = `t`.`ShipId` AND `ca1`.`Class` = @_c1)",
+			wantSQL:    "(SELECT `ca1`.`Class` FROM `Ships` `ca1` WHERE `ca1`.`Id` = `t`.`ShipId`) = @_c1",
 			wantParams: []QueryParam{{Name: "_c1", Value: "Freighter"}},
 		},
 		{
-			name:       "two-hop path nests EXISTS per hop",
+			name:       "two-hop path nests one scalar subquery per hop",
 			source:     "sector = 'Kepler'",
-			wantSQL:    "EXISTS (SELECT 1 FROM `Berths` `ca1` WHERE `ca1`.`Id` = `t`.`BerthId` AND EXISTS (SELECT 1 FROM `Stations` `ca2` WHERE `ca2`.`Id` = `ca1`.`StationId` AND `ca2`.`Sector` = @_c1))",
+			wantSQL:    "(SELECT `ca2`.`Sector` FROM `Stations` `ca2` WHERE `ca2`.`Id` = (SELECT `ca1`.`StationId` FROM `Berths` `ca1` WHERE `ca1`.`Id` = `t`.`BerthId`)) = @_c1",
 			wantParams: []QueryParam{{Name: "_c1", Value: "Kepler"}},
+		},
+		{
+			// A NULL foreign key or a NULL terminal makes the scalar NULL, so
+			// the null test and the negated comparison read as SQL's UNKNOWN
+			// on a missing value, never as TRUE.
+			name:    "join-path null test reads the scalar",
+			source:  "shipClass IS NULL OR NOT (shipClass = 'Freighter')",
+			wantSQL: "((SELECT `ca1`.`Class` FROM `Ships` `ca1` WHERE `ca1`.`Id` = `t`.`ShipId`) IS NULL OR NOT ((SELECT `ca2`.`Class` FROM `Ships` `ca2` WHERE `ca2`.`Id` = `t`.`ShipId`) = @_c1))",
+
+			wantParams: []QueryParam{{Name: "_c1", Value: "Freighter"}},
+		},
+		{
+			name:       "join-path attribute in a literal list",
+			source:     "shipClass IN ('Freighter', 'Tug')",
+			wantSQL:    "(SELECT `ca1`.`Class` FROM `Ships` `ca1` WHERE `ca1`.`Id` = `t`.`ShipId`) IN (@_c1, @_c2)",
+			wantParams: []QueryParam{{Name: "_c1", Value: "Freighter"}, {Name: "_c2", Value: "Tug"}},
 		},
 		{
 			name:       "threshold: proposed value against a subject value",
@@ -154,10 +178,13 @@ func TestLowerCondition_rendering(t *testing.T) {
 			wantNamed:  []string{"_c1", "subject"},
 		},
 		{
+			// A decimal literal binds as NUMERIC, the exact value it spells, so
+			// a NUMERIC column is never compared through a double; an integer
+			// literal stays INT64.
 			name:       "literal list membership binds typed values",
-			source:     "state IN ('open', 'approved') AND estimatedCost < 10.5",
-			wantSQL:    "(`t`.`State` IN (@_c1, @_c2) AND `t`.`EstimatedCost` < @_c3)",
-			wantParams: []QueryParam{{Name: "_c1", Value: "open"}, {Name: "_c2", Value: "approved"}, {Name: "_c3", Value: 10.5}},
+			source:     "state IN ('open', 'approved') AND estimatedCost < 10.5 AND estimatedCost > 3",
+			wantSQL:    "(`t`.`State` IN (@_c1, @_c2) AND `t`.`EstimatedCost` < @_c3 AND `t`.`EstimatedCost` > @_c4)",
+			wantParams: []QueryParam{{Name: "_c1", Value: "open"}, {Name: "_c2", Value: "approved"}, {Name: "_c3", Value: big.NewRat(21, 2)}, {Name: "_c4", Value: int64(3)}},
 		},
 		{
 			name:      "residual environment fact binds the reserved parameter",
@@ -166,9 +193,11 @@ func TestLowerCondition_rendering(t *testing.T) {
 			wantNamed: []string{"now", "subject"},
 		},
 		{
+			// The guard makes the membership test UNKNOWN on a NULL attribute,
+			// where the bare NOT EXISTS would be TRUE.
 			name:    "negated subject set",
 			source:  "crew NOT IN subject.crews",
-			wantSQL: "NOT (EXISTS (SELECT 1 FROM `CrewMembers` `ca1` WHERE `ca1`.`UserId` = @subject AND `ca1`.`CrewId` = `t`.`CrewId`))",
+			wantSQL: "CASE WHEN `t`.`CrewId` IS NULL THEN NULL ELSE NOT (EXISTS (SELECT 1 FROM `CrewMembers` `ca1` WHERE `ca1`.`UserId` = @subject AND `ca1`.`CrewId` = `t`.`CrewId`)) END",
 
 			wantNamed: []string{"subject"},
 		},
@@ -237,7 +266,7 @@ func TestLowerCondition_rendering(t *testing.T) {
 				t.Errorf("SQL mismatch:\n got %q\nwant %q", sql, tt.wantSQL)
 			}
 
-			if diff := cmp.Diff(tt.wantParams, registry.boundParams()); diff != "" {
+			if diff := cmp.Diff(tt.wantParams, registry.boundParams(), ratComparer); diff != "" {
 				t.Errorf("bound params mismatch (-want +got):\n%s", diff)
 			}
 			if diff := cmp.Diff(tt.wantNamed, registry.referencedNames()); diff != "" {
@@ -289,7 +318,7 @@ func TestLowerCondition_statementScope(t *testing.T) {
 	if want := "`t`.`State` = @_c1"; firstSQL != want {
 		t.Errorf("first fragment = %q, want %q", firstSQL, want)
 	}
-	if want := "EXISTS (SELECT 1 FROM `Ships` `ca1` WHERE `ca1`.`Id` = `t`.`ShipId` AND `ca1`.`Class` = @_c2)"; secondSQL != want {
+	if want := "(SELECT `ca1`.`Class` FROM `Ships` `ca1` WHERE `ca1`.`Id` = `t`.`ShipId`) = @_c2"; secondSQL != want {
 		t.Errorf("second fragment = %q, want %q", secondSQL, want)
 	}
 	want := []QueryParam{{Name: "_c1", Value: "open"}, {Name: "_c2", Value: "Freighter"}}

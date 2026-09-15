@@ -261,10 +261,7 @@ func (g *ExecuteGate) tenancyStatement(target ExecuteTarget, pkValue any) (*Stat
 		predicate = &loweredComparisonNode{left: tenantColumn, op: "=", right: namedComparand(domainParamName)}
 	} else {
 		lctx := &loweringContext{outer: outer, bindings: bindings, collection: g.collection, partitioned: true}
-		terminal, wrap, err := lctx.pathTarget(&tenantColumn, bindings.Domain.Path, registry)
-		if err != nil {
-			return nil, err
-		}
+		terminal, wrap := lctx.pathTarget(&tenantColumn, bindings.Domain.Path, registry)
 		predicate = wrap(&loweredComparisonNode{left: terminal, op: "=", right: namedComparand(domainParamName)})
 	}
 

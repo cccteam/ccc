@@ -1,9 +1,12 @@
 package resource
 
 import (
+	"math/big"
 	"strconv"
 	"strings"
+	"time"
 
+	"cloud.google.com/go/civil"
 	"github.com/cccteam/ccc/accesstypes/condition"
 	"github.com/go-playground/errors/v5"
 )
@@ -102,33 +105,39 @@ func lowerLogicChain(operands []condition.Expr, op LogicalOperator, ctx *lowerin
 }
 
 func lowerComparison(cmp *condition.Comparison, ctx *loweringContext, registry *paramRegistry) (ExpressionNode, error) {
-	right, err := lowerOperand(cmp.Right, ctx, registry)
-	if err != nil {
-		return nil, err
-	}
 	op, err := sqlCompareOp(cmp.Op)
 	if err != nil {
 		return nil, err
 	}
 
 	if cmp.Left.IsNow() {
+		right, err := lowerOperand(cmp.Right, AttributeTypeTimestamp, ctx, registry)
+		if err != nil {
+			return nil, err
+		}
+
 		return &loweredComparisonNode{left: namedComparand(nowParamName), op: op, right: right}, nil
 	}
 
-	target, wrap, err := ctx.resolveRef(cmp.Left, registry)
+	target, err := ctx.resolveRef(cmp.Left, registry)
+	if err != nil {
+		return nil, err
+	}
+	binding, _ := ctx.attribute(cmp.Left.Name)
+	right, err := lowerOperand(cmp.Right, binding.Type, ctx, registry)
 	if err != nil {
 		return nil, err
 	}
 
-	return wrap(&loweredComparisonNode{left: target, op: op, right: right}), nil
+	return &loweredComparisonNode{left: target, op: op, right: right}, nil
 }
 
 func lowerIn(in *condition.In, ctx *loweringContext, registry *paramRegistry) (ExpressionNode, error) {
-	target, wrap, err := ctx.resolveRef(in.Left, registry)
+	target, err := ctx.resolveRef(in.Left, registry)
 	if err != nil {
 		return nil, err
 	}
-	if target.kind != comparandColumn && target.kind != comparandNamed {
+	if target.kind == comparandValue {
 		return nil, errors.Newf("condition lowering: IN requires an attribute value")
 	}
 
@@ -137,41 +146,53 @@ func lowerIn(in *condition.In, ctx *loweringContext, registry *paramRegistry) (E
 		if err != nil {
 			return nil, err
 		}
+		membership := exists
 		if in.Negated {
-			return wrap(&notNode{expr: exists}), nil
+			membership = &notNode{expr: exists}
 		}
 
-		return wrap(exists), nil
+		// An EXISTS is never UNKNOWN, but a membership test against no value
+		// is (design plan §05): the attribute's nullness decides before the
+		// anchor is consulted, so NOT IN over a NULL attribute cannot permit.
+		return &nullGuardNode{value: target, expr: membership}, nil
 	}
 
+	binding, _ := ctx.attribute(in.Left.Name)
 	values := make([]any, 0, len(in.Literals))
 	for _, literal := range in.Literals {
-		values = append(values, literalValue(literal))
+		value, err := literalValue(literal, binding.Type)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
 	}
 
-	return wrap(&loweredInNode{left: target, negated: in.Negated, values: values}), nil
+	return &loweredInNode{left: target, negated: in.Negated, values: values}, nil
 }
 
 func lowerNullTest(test condition.NullTest, ctx *loweringContext, registry *paramRegistry) (ExpressionNode, error) {
-	target, wrap, err := ctx.resolveRef(test.Left, registry)
+	target, err := ctx.resolveRef(test.Left, registry)
 	if err != nil {
 		return nil, err
 	}
-	if target.kind != comparandColumn && target.kind != comparandNamed {
+	if target.kind == comparandValue {
 		return nil, errors.Newf("condition lowering: IS NULL requires an attribute value")
 	}
 
-	return wrap(&loweredNullTestNode{left: target, negated: test.Negated}), nil
+	return &loweredNullTestNode{left: target, negated: test.Negated}, nil
 }
 
-func lowerOperand(operand condition.Operand, ctx *loweringContext, registry *paramRegistry) (comparand, error) {
+// lowerOperand lowers a comparison's right side; typ is the left side's
+// comparison type, which a literal binds as (see literalValue).
+func lowerOperand(operand condition.Operand, typ AttributeType, ctx *loweringContext, registry *paramRegistry) (comparand, error) {
 	switch o := operand.(type) {
-	case condition.StringLiteral:
-		return valueComparand(o.Value), nil
-	case condition.NumberLiteral:
-		return valueComparand(numberValue(o.Text)), nil
-	case condition.BoolLiteral:
-		return valueComparand(o.Value), nil
+	case condition.Literal:
+		value, err := literalValue(o, typ)
+		if err != nil {
+			return comparand{}, err
+		}
+
+		return valueComparand(value), nil
 	case condition.Subject:
 		return namedComparand(subjectParamName), nil
 	case condition.Now:
@@ -195,7 +216,7 @@ func lowerOperand(operand condition.Operand, ctx *loweringContext, registry *par
 		if len(binding.Path) > 0 {
 			return comparand{}, errors.Newf("condition lowering: %s is a join-path attribute and cannot stand on the right side of an old-vs-new comparison", o.Name)
 		}
-		target, _, err := ctx.resolveRef(o, registry)
+		target, err := ctx.resolveRef(o, registry)
 		if err != nil {
 			return comparand{}, err
 		}
@@ -206,63 +227,92 @@ func lowerOperand(operand condition.Operand, ctx *loweringContext, registry *par
 	}
 }
 
-// resolveRef resolves an attribute reference to its comparand plus a wrap
-// that encloses the leaf predicate in the reference's join-path EXISTS
-// chain (identity for column bindings). A post-write reference resolves to
-// the proposed value's parameter where the mutation touches the column, and
-// to the existing column where it doesn't — the overlay semantics. In an
-// insert's check context there is one image, written unqualified: every
-// local column is its proposed parameter, and a join path leaves through the
-// proposed foreign-key value.
-func (ctx *loweringContext) resolveRef(ref condition.Ref, registry *paramRegistry) (comparand, func(ExpressionNode) ExpressionNode, error) {
-	identity := func(node ExpressionNode) ExpressionNode { return node }
-
+// resolveRef resolves an attribute reference to its comparand. A column
+// binding is the checked row's column; a join-path binding is a scalar
+// subquery per hop that reads the related row's column, or NULL where the
+// departure key is NULL, a hop reaches no row, or the terminal column is
+// NULL — the attribute is then "no value", and every comparison, membership
+// test, and null test over it takes SQL's own three-valued reading (design
+// plan §05). Generation validates each hop many-to-one, so a hop yields at
+// most one row. A post-write reference resolves to the proposed value's
+// parameter where the mutation touches the column, and to the existing
+// column where it doesn't — the overlay semantics. In an insert's check
+// context there is one image, written unqualified: every local column is
+// its proposed parameter, and a join path leaves through the proposed
+// foreign-key value.
+func (ctx *loweringContext) resolveRef(ref condition.Ref, registry *paramRegistry) (comparand, error) {
 	if ref.IsTemporal() {
 		// Temporal terms are environment facts: the engine folds them at check
 		// time, so a decision's residue never carries one — SQL never renders
 		// timezone arithmetic (design plan §05). Reaching this is an invariant
 		// breach, never a rendering request.
-		return comparand{}, nil, errors.Newf("condition lowering: invariant breach: %s reached SQL rendering — temporal terms fold at check time", ref.String())
+		return comparand{}, errors.Newf("condition lowering: invariant breach: %s reached SQL rendering — temporal terms fold at check time", ref.String())
 	}
 
 	binding, ok := ctx.attribute(ref.Name)
 	if !ok {
-		return comparand{}, nil, errors.Newf("condition lowering: %q is not an attribute of the checked resource", ref.Name)
+		return comparand{}, errors.Newf("condition lowering: %q is not an attribute of the checked resource", ref.Name)
 	}
 
 	if ctx.insertImage {
 		start, err := ctx.proposedValue(ref.Name, binding.Column, registry)
 		if err != nil {
-			return comparand{}, nil, err
+			return comparand{}, err
 		}
 		if len(binding.Path) == 0 {
-			return start, identity, nil
+			return start, nil
 		}
 
-		return ctx.pathTarget(&start, binding.Path, registry)
+		return pathScalar(&start, binding.Path, registry), nil
 	}
 
 	if ref.PostImage {
 		if ctx.proposed == nil {
-			return comparand{}, nil, errors.Newf("condition lowering: new.%s outside a write context", ref.Name)
+			return comparand{}, errors.Newf("condition lowering: new.%s outside a write context", ref.Name)
 		}
 		if len(binding.Path) > 0 {
-			return comparand{}, nil, errors.Newf("condition lowering: new.%s reads a join-path attribute, which has no proposed value", ref.Name)
+			return comparand{}, errors.Newf("condition lowering: new.%s reads a join-path attribute, which has no proposed value", ref.Name)
 		}
 		if param, touched := ctx.proposed.param(binding.Column, registry); touched {
-			return namedComparand(param), identity, nil
+			return namedComparand(param), nil
 		}
 
-		return columnComparand(ctx.outer, binding.Column), identity, nil
-	}
-
-	if len(binding.Path) == 0 {
-		return columnComparand(ctx.outer, binding.Column), identity, nil
+		return columnComparand(ctx.outer, binding.Column), nil
 	}
 
 	outerColumn := columnComparand(ctx.outer, binding.Column)
+	if len(binding.Path) == 0 {
+		return outerColumn, nil
+	}
 
-	return ctx.pathTarget(&outerColumn, binding.Path, registry)
+	return pathScalar(&outerColumn, binding.Path, registry), nil
+}
+
+// pathScalar renders a join path as the value it reaches: one scalar subquery
+// per hop, each selecting its column from the row whose join column matches
+// the previous hop's value, leaving through start — the departure column on
+// the checked row, or its proposed value in an insert's check context. Where
+// a key is NULL or no row matches, the subquery is NULL: the attribute reads
+// as no value.
+func pathScalar(start *comparand, path []BindingHop, registry *paramRegistry) comparand {
+	previous := *start
+	var subquery *scalarSubqueryNode
+	for _, hop := range path {
+		alias := registry.alias()
+		subquery = &scalarSubqueryNode{
+			table:  hop.Table,
+			alias:  alias,
+			column: hop.Column,
+			where: &loweredComparisonNode{
+				left:  columnComparand(alias, hop.JoinColumn),
+				op:    "=",
+				right: previous,
+			},
+		}
+		previous = subqueryComparand(subquery)
+	}
+
+	return previous
 }
 
 // proposedValue resolves a column to its proposed parameter in an insert's
@@ -303,12 +353,14 @@ func (o *proposedOverlay) param(column string, registry *paramRegistry) (string,
 	return param, true
 }
 
-// pathTarget builds the EXISTS chain for a join path leaving through start —
-// the departure column on the checked row, or its proposed value in an
-// insert's check context. The returned comparand is the terminal column
-// inside the innermost EXISTS, and wrap encloses a leaf predicate in the
-// chain.
-func (ctx *loweringContext) pathTarget(start *comparand, path []BindingHop, registry *paramRegistry) (comparand, func(ExpressionNode) ExpressionNode, error) {
+// pathTarget builds the EXISTS chain for a join path leaving through start:
+// the shape the structural predicates take — a subject set's dotted value
+// matched inside the anchor's EXISTS, an anchor's dotted tenancy filter, and
+// a partitioned insert's tenancy proof — where a NULL key rightly matches
+// nothing. The returned comparand is the terminal column inside the innermost
+// EXISTS, and wrap encloses a leaf predicate in the chain. Attributes render
+// through pathScalar instead, so a missing value stays NULL.
+func (ctx *loweringContext) pathTarget(start *comparand, path []BindingHop, registry *paramRegistry) (target comparand, wrap func(ExpressionNode) ExpressionNode) {
 	type frame struct {
 		hop   BindingHop
 		alias string
@@ -319,9 +371,9 @@ func (ctx *loweringContext) pathTarget(start *comparand, path []BindingHop, regi
 	}
 
 	terminal := frames[len(frames)-1]
-	target := columnComparand(terminal.alias, terminal.hop.Column)
+	target = columnComparand(terminal.alias, terminal.hop.Column)
 
-	wrap := func(leaf ExpressionNode) ExpressionNode {
+	wrap = func(leaf ExpressionNode) ExpressionNode {
 		node := leaf
 		for i := len(frames) - 1; i >= 0; i-- {
 			f := frames[i]
@@ -344,7 +396,7 @@ func (ctx *loweringContext) pathTarget(start *comparand, path []BindingHop, regi
 		return node
 	}
 
-	return target, wrap, nil
+	return target, wrap
 }
 
 // subjectSetExists renders `attr IN subject.<name>`: a correlated EXISTS over
@@ -373,17 +425,11 @@ func (ctx *loweringContext) subjectSetExists(name string, attr *comparand, regis
 		match = &loweredComparisonNode{left: columnComparand(alias, anchor.Binding.Column), op: "=", right: *attr}
 	} else {
 		anchorColumn := columnComparand(alias, anchor.Binding.Column)
-		target, wrap, err := ctx.pathTarget(&anchorColumn, anchor.Binding.Path, registry)
-		if err != nil {
-			return nil, err
-		}
+		target, wrap := ctx.pathTarget(&anchorColumn, anchor.Binding.Path, registry)
 		match = wrap(&loweredComparisonNode{left: target, op: "=", right: *attr})
 	}
 
-	where, err := ctx.withAnchorTenancy(andChain(requester, match), &anchor, alias, registry)
-	if err != nil {
-		return nil, err
-	}
+	where := ctx.withAnchorTenancy(andChain(requester, match), &anchor, alias, registry)
 
 	return &existsNode{table: string(anchor.Resource), alias: alias, where: where}, nil
 }
@@ -407,10 +453,7 @@ func (ctx *loweringContext) subjectValueSubquery(name string, registry *paramReg
 		op:    "=",
 		right: namedComparand(subjectParamName),
 	}
-	where, err := ctx.withAnchorTenancy(where, &anchor, alias, registry)
-	if err != nil {
-		return nil, err
-	}
+	where = ctx.withAnchorTenancy(where, &anchor, alias, registry)
 
 	subquery := &scalarSubqueryNode{table: string(anchor.Resource), alias: alias, column: anchor.Binding.Column, where: where}
 	for _, hop := range anchor.Binding.Path {
@@ -435,9 +478,9 @@ func (ctx *loweringContext) subjectValueSubquery(name string, registry *paramReg
 // domain binding — a membership in another tenant can never satisfy a
 // condition in this one. A global request, or a global anchor table, adds
 // nothing (§07's policy-shared pattern is deliberate).
-func (ctx *loweringContext) withAnchorTenancy(where ExpressionNode, anchor *SubjectAnchor, alias string, registry *paramRegistry) (ExpressionNode, error) {
+func (ctx *loweringContext) withAnchorTenancy(where ExpressionNode, anchor *SubjectAnchor, alias string, registry *paramRegistry) ExpressionNode {
 	if !ctx.partitioned || anchor.Domain == nil {
-		return where, nil
+		return where
 	}
 
 	var filter ExpressionNode
@@ -449,14 +492,11 @@ func (ctx *loweringContext) withAnchorTenancy(where ExpressionNode, anchor *Subj
 		}
 	} else {
 		anchorColumn := columnComparand(alias, anchor.Domain.Column)
-		target, wrap, err := ctx.pathTarget(&anchorColumn, anchor.Domain.Path, registry)
-		if err != nil {
-			return nil, err
-		}
+		target, wrap := ctx.pathTarget(&anchorColumn, anchor.Domain.Path, registry)
 		filter = wrap(&loweredComparisonNode{left: target, op: "=", right: namedComparand(domainParamName)})
 	}
 
-	return andChain(where, filter), nil
+	return andChain(where, filter)
 }
 
 // attribute resolves a binding name on the checked resource.
@@ -500,31 +540,61 @@ func sqlCompareOp(op condition.CompareOp) (string, error) {
 	}
 }
 
-// numberValue types a verbatim numeric literal by shape: integers bind as
-// int64, decimals as float64. Finer typing is the database's business — the
-// one comparison engine — and MigrateRoles validates literals against
-// attribute types at deploy.
+// numberValue types a verbatim numeric literal by shape: an integer binds as
+// INT64, a decimal as NUMERIC (*big.Rat), the exact value the text spells.
+// The database widens each to the attribute's storage type — exact against
+// INT64 and NUMERIC, the nearest double against FLOAT64 (design plan §05) —
+// so a NUMERIC column is never compared through a double. MigrateRoles
+// validates literals against attribute types at deploy.
 func numberValue(text string) any {
 	if !strings.Contains(text, ".") {
 		if i, err := strconv.ParseInt(text, 10, 64); err == nil {
 			return i
 		}
 	}
+	if r, ok := new(big.Rat).SetString(text); ok {
+		return r
+	}
 	f, _ := strconv.ParseFloat(text, 64)
 
 	return f
 }
 
-// literalValue converts a condition literal to its bound Go value.
-func literalValue(literal condition.Literal) any {
+// literalValue converts a condition literal to the Go value it binds as,
+// typed by the attribute it compares against (design plan §05: a literal
+// takes the attribute's type). A string literal against a timestamp
+// attribute binds as the instant it spells and against a date attribute as
+// the date, so the parameter carries the column's own type: the database
+// coerces a STRING parameter beside a column, but not beside another
+// parameter — the proposed value in an insert or update check — where the
+// comparison would be refused. MigrateRoles validates the literal's form at
+// deploy; a malformed one here is the runtime backstop.
+func literalValue(literal condition.Literal, typ AttributeType) (any, error) {
 	switch l := literal.(type) {
 	case condition.StringLiteral:
-		return l.Value
+		switch typ {
+		case AttributeTypeTimestamp:
+			instant, err := time.Parse(time.RFC3339, l.Value)
+			if err != nil {
+				return nil, errors.Newf("condition lowering: %q is not an RFC 3339 timestamp", l.Value)
+			}
+
+			return instant.UTC(), nil
+		case AttributeTypeDate:
+			date, err := civil.ParseDate(l.Value)
+			if err != nil {
+				return nil, errors.Newf("condition lowering: %q is not a YYYY-MM-DD date", l.Value)
+			}
+
+			return date, nil
+		default:
+			return l.Value, nil
+		}
 	case condition.NumberLiteral:
-		return numberValue(l.Text)
+		return numberValue(l.Text), nil
 	case condition.BoolLiteral:
-		return l.Value
+		return l.Value, nil
 	default:
-		return nil
+		return nil, errors.Newf("condition lowering: unsupported literal %T", literal)
 	}
 }

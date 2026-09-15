@@ -57,10 +57,7 @@ func insertTenancyTerm(t *mutationTenancy, lctx *loweringContext, gen *sqlGenera
 		return "", errors.Newf("a partitioned create must set %s — the tenant path's anchor column", t.binding.Column)
 	}
 	start := namedComparand(param)
-	target, wrap, err := lctx.pathTarget(&start, t.binding.Path, registry)
-	if err != nil {
-		return "", err
-	}
+	target, wrap := lctx.pathTarget(&start, t.binding.Path, registry)
 	node := wrap(&loweredComparisonNode{left: target, op: "=", right: namedComparand(domainParamName)})
 
 	return gen.generateLowered(node, registry)
@@ -185,10 +182,7 @@ func (q *QuerySet[Resource]) tenancyPredicate(dbType DBType, registry *paramRegi
 	} else {
 		lctx := &loweringContext{outer: outer, bindings: bindings, collection: q.collection, partitioned: true}
 		anchorColumn := columnComparand(outer, bindings.Domain.Column)
-		target, wrap, err := lctx.pathTarget(&anchorColumn, bindings.Domain.Path, registry)
-		if err != nil {
-			return "", err
-		}
+		target, wrap := lctx.pathTarget(&anchorColumn, bindings.Domain.Path, registry)
 		node = wrap(&loweredComparisonNode{left: target, op: "=", right: namedComparand(domainParamName)})
 	}
 

@@ -15,8 +15,8 @@ import (
 // when conditional grants render into the query.
 type Row[Resource Resourcer] struct {
 	// Data is the row itself, exactly as scanned from the database. A masked cell
-	// holds its type's zero value; Masked is what distinguishes it from a genuine
-	// zero.
+	// holds its type's zero value (a date cell the earliest date, 0001-01-01);
+	// Masked is what distinguishes it from a genuine zero.
 	Data Resource
 
 	// masked holds the JSON names of this row's masked cells.

@@ -5,7 +5,9 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
+	"cloud.google.com/go/civil"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/accesstypes/condition"
 	"github.com/go-playground/errors/v5"
@@ -346,7 +348,7 @@ func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readCondi
 			return nil, err
 		}
 
-		filler := registry.bind(reflect.Zero(fieldColumn.meta.fieldType).Interface())
+		filler := registry.bind(maskFiller(fieldColumn.meta.fieldType))
 		column := fieldColumn.meta.ColumnName
 		if dbType == PostgresDBType {
 			column = gen.quoteIdentifier(column)
@@ -445,6 +447,20 @@ func lowerToSQL(expr condition.Expr, lctx *loweringContext, gen *sqlGenerator, r
 	}
 
 	return sql, nil
+}
+
+// maskFiller is the value a masked cell's CASE yields: the field type's zero
+// value, which Row.Masked distinguishes from a genuine one. A date field
+// takes the earliest date instead, 0001-01-01: the zero civil.Date spells
+// 0000-00-00, which the database refuses, and the zero time.Time a timestamp
+// field yields is the same instant. Handlers omit masked cells from the wire,
+// so the filler is never encoded.
+func maskFiller(fieldType reflect.Type) any {
+	if fieldType == reflect.TypeFor[civil.Date]() {
+		return civil.Date{Year: 1, Month: time.January, Day: 1}
+	}
+
+	return reflect.Zero(fieldType).Interface()
 }
 
 // maskTerm renders one masked field's contribution to the reserved column:

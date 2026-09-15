@@ -12,8 +12,8 @@ import (
 )
 
 // This file extends the module's single SQL emitter with the node shapes the
-// condition lowering produces (ABAC design plan §05): NOT, EXISTS,
-// named-parameter and column comparands, scalar subqueries, and a
+// condition lowering produces (ABAC design plan §05): NOT, EXISTS, the null
+// guard, named-parameter and column comparands, scalar subqueries, and a
 // statement-scoped parameter registry so every fragment of one statement —
 // row-visibility WHERE, per-column CASE, check-SELECT booleans — allocates
 // from one namespace. The new node types are unexported and constructor-fed
@@ -221,6 +221,19 @@ func (n *existsNode) String() string {
 	return fmt.Sprintf("EXISTS(%s %s: %s)", n.table, n.alias, n.where.String())
 }
 
+// nullGuardNode makes a predicate UNKNOWN where a value is NULL: CASE WHEN
+// value IS NULL THEN NULL ELSE expr END. It guards the EXISTS a subject set
+// renders, which is TRUE or FALSE on its own, so a membership test against no
+// value reads as SQL's UNKNOWN the way a comparison does.
+type nullGuardNode struct {
+	value comparand
+	expr  ExpressionNode
+}
+
+func (n *nullGuardNode) String() string {
+	return fmt.Sprintf("guard(%v is null: %s)", n.value, n.expr.String())
+}
+
 // truthNode is a constant boolean predicate; residual trees are usually
 // fact-folded before lowering, so it renders only defensively.
 type truthNode struct {
@@ -344,6 +357,19 @@ func (s *sqlGenerator) generateNotSQL(n *notNode) (string, error) {
 	}
 
 	return fmt.Sprintf("NOT (%s)", inner), nil
+}
+
+func (s *sqlGenerator) generateNullGuardSQL(n *nullGuardNode) (string, error) {
+	value, err := s.renderComparand(&n.value)
+	if err != nil {
+		return "", err
+	}
+	inner, _, err := s.generateSQLRecursive(n.expr)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE %s END", value, inner), nil
 }
 
 func (s *sqlGenerator) generateExistsSQL(n *existsNode) (string, error) {

@@ -192,6 +192,19 @@ column END`, so a cell the caller may not see is `NULL` for the query — it sor
 `NULL` region where the database places it (Spanner first ascending and last descending,
 PostgreSQL the reverse, the same as a genuinely `NULL` cell), matches `isnull` and
 nothing else, and a cursor positioned on it carries the `NULL` key.
+A condition permits only when it is TRUE, and evaluation is three-valued as in SQL: a
+comparison against a missing value (a `NULL` column, a `NULL` foreign key or a join path
+that reaches no row, a subject value whose requester has no anchor row) is UNKNOWN,
+`IN` and `NOT IN` against a missing value are UNKNOWN whether the list is literals or a
+subject set, `IS NULL` is TRUE and `IS NOT NULL` FALSE; UNKNOWN refuses exactly as FALSE
+does — the row is filtered, the cell masked, the write refused, the capability withheld.
+A number literal takes the attribute's storage type: exact against an `INT64` or a
+`NUMERIC` column, a double against a `FLOAT64` one. A join-path attribute renders as one
+scalar subquery per hop, a subject set as an `EXISTS` guarded by the attribute's nullness,
+so the database's own three-valued logic gives these readings; the reference evaluator in
+[`conditiontest`](../accesstypes/condition/conditiontest) states them in Go and the
+semantic differential in this package's tests compares the rendered SQL against it on the
+emulator over random conditions and rows.
 When the field's condition covers the whole row predicate (every returned row shows
 the field) the raw column is used instead. A grant whose condition implies the field's
 counts as covered, under a closed set of same-attribute rules: an equality or `IN` list
