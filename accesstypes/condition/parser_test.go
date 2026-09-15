@@ -144,6 +144,16 @@ func TestParse_canonical(t *testing.T) {
 			want:   "contractEnd > now",
 		},
 		{
+			name:   "now against now",
+			source: "now < now",
+			want:   "now < now",
+		},
+		{
+			name:   "now against a subject value",
+			source: "now < subject.clearedUntil",
+			want:   "now < subject.clearedUntil",
+		},
+		{
 			name:   "whitespace is free",
 			source: "  a\t=\n1  ",
 			want:   "a = 1",
@@ -212,6 +222,21 @@ func TestParse_errors(t *testing.T) {
 			name:        "now has no null test",
 			source:      "now IS NULL",
 			wantContain: "only relational comparison",
+		},
+		{
+			name:        "now against a number",
+			source:      "now = 5",
+			wantContain: "\"5\" cannot stand against now",
+		},
+		{
+			name:        "now against a boolean",
+			source:      "now = true",
+			wantContain: "\"true\" cannot stand against now",
+		},
+		{
+			name:        "now against bare subject",
+			source:      "now < subject",
+			wantContain: "\"subject\" cannot stand against now",
 		},
 		{
 			name:        "attribute-to-attribute needs a new.-qualified left side",

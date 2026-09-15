@@ -25,6 +25,13 @@
 // never takes its own new. qualifier (two post-image sides would compare the
 // proposed row with itself).
 //
+// With now on the left, the operand is a quoted string (an RFC 3339 instant),
+// now itself, or subject.identifier; a number, a boolean, or bare subject is
+// refused at parse, as now IN and now IS NULL are. The parser owns that rule,
+// so deploy validation and the snapshot load refuse such a condition through
+// the parse they already do, and the fold refuses a hand-built tree that
+// bypassed the parser.
+//
 // The temporal functions (§05, decided 2026-09-03) read the environment's
 // instant through a zone's wall clock: timeOfDay(now, zone) compares against
 // 24-hour 'HH:MM' literals with the relational operators, and

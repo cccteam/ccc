@@ -250,7 +250,8 @@ func (r Ref) String() string {
 
 // Operand is a comparison's right side: a literal, the reserved facts subject
 // and now, a @subjectValue attribute, or — against a `new.`-qualified left
-// side only — a pre-image attribute Ref (the old-vs-new form).
+// side only — a pre-image attribute Ref (the old-vs-new form). Against now on
+// the left, the parser admits only a string literal, now, or a SubjectValue.
 type Operand interface {
 	String() string
 

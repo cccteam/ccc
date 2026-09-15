@@ -180,9 +180,13 @@ func (p *parser) parseComparison() (Expr, error) {
 		if err := p.advance(); err != nil {
 			return nil, err
 		}
+		pos := p.tok.pos
 		right, err := p.parseOperand(left)
 		if err != nil {
 			return nil, err
+		}
+		if left.IsNow() && !isNowOperand(right) {
+			return nil, fmt.Errorf("condition: %q cannot stand against now at position %d — now compares against a quoted string, now, or a subject value", right.String(), pos)
 		}
 
 		return Comparison{Left: left, Op: op, Right: right}, nil
@@ -238,6 +242,21 @@ func (p *parser) parseComparison() (Expr, error) {
 
 	default:
 		return nil, fmt.Errorf("condition: expected a comparison operator, IN, or IS after %q at position %d", left.String(), p.tok.pos)
+	}
+}
+
+// isNowOperand reports whether an operand may stand against now: a quoted
+// string (an RFC 3339 instant, which the deploy validator and the fold check),
+// now itself (the comparison folds to a constant), or a subject value (the
+// database compares it). A number, a boolean, and bare subject are refused at
+// parse beside now IN and now IS NULL, so a grant carrying one never deploys;
+// the fold's refusing branch stays the net for a tree no parser produced.
+func isNowOperand(right Operand) bool {
+	switch right.(type) {
+	case StringLiteral, Now, SubjectValue:
+		return true
+	default:
+		return false
 	}
 }
 

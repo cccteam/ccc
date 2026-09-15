@@ -135,9 +135,13 @@ func TestFold(t *testing.T) {
 func TestFold_errors(t *testing.T) {
 	t.Parallel()
 
+	// A row sets source for a condition the parser admits, or expr for a
+	// hand-built tree the parser refuses — the fold is the net for a tree
+	// that never passed through it.
 	tests := []struct {
 		name        string
 		source      string
+		expr        Expr
 		facts       Facts
 		wantContain string
 	}{
@@ -155,13 +159,19 @@ func TestFold_errors(t *testing.T) {
 		},
 		{
 			name:        "now against a number fails loud",
-			source:      "now < 5",
+			expr:        Comparison{Left: Ref{Name: nowName}, Op: Less, Right: NumberLiteral{Text: "5"}},
+			facts:       NewFacts().WithNow(time.Now()),
+			wantContain: "cannot be compared",
+		},
+		{
+			name:        "now against a boolean fails loud",
+			expr:        Comparison{Left: Ref{Name: nowName}, Op: Eq, Right: BoolLiteral{Value: true}},
 			facts:       NewFacts().WithNow(time.Now()),
 			wantContain: "cannot be compared",
 		},
 		{
 			name:        "now against subject fails loud",
-			source:      "now = subject",
+			expr:        Comparison{Left: Ref{Name: nowName}, Op: Eq, Right: Subject{}},
 			facts:       NewFacts().WithNow(time.Now()).WithSubject("dana"),
 			wantContain: "cannot be compared",
 		},
@@ -171,15 +181,21 @@ func TestFold_errors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			expr, err := Parse(tt.source)
-			if err != nil {
-				t.Fatalf("Parse(%q) error = %v", tt.source, err)
+			expr, source := tt.expr, tt.source
+			if expr == nil {
+				var err error
+				expr, err = Parse(tt.source)
+				if err != nil {
+					t.Fatalf("Parse(%q) error = %v", tt.source, err)
+				}
+			} else {
+				source = expr.String()
 			}
 
 			if _, err := Fold(expr, tt.facts); err == nil {
-				t.Fatalf("Fold(%q) expected an error containing %q, got nil", tt.source, tt.wantContain)
+				t.Fatalf("Fold(%q) expected an error containing %q, got nil", source, tt.wantContain)
 			} else if !strings.Contains(err.Error(), tt.wantContain) {
-				t.Errorf("Fold(%q) error = %q, want containing %q", tt.source, err, tt.wantContain)
+				t.Errorf("Fold(%q) error = %q, want containing %q", source, err, tt.wantContain)
 			}
 		})
 	}
