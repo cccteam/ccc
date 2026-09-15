@@ -1,7 +1,6 @@
 package generation
 
 import (
-	"database/sql"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -800,9 +799,9 @@ const (
 
 // defaultTypescriptOverrides is the generator's built-in TypeScript type table, keyed
 // by qualified Go type name: the basic types, the library types a column or a wire
-// field may carry (UUIDs, decimals, times, dates), the Spanner and database/sql Null
-// wrappers (nullability comes from the schema, so a nullable spanner.NullBool column
-// renders nullboolean exactly as *bool does), securehash.Hash as its text form, and
+// field may carry (UUIDs, decimals, times, dates), the Spanner Null wrappers
+// (nullability comes from the schema, so a nullable spanner.NullBool column renders
+// nullboolean exactly as *bool does), securehash.Hash as its text form, and
 // spanner.NullJSON as unknown, a value with no fixed shape. ccc.NullEnum[T] resolves
 // to its type argument's row (leaf.go). Everything else is a struct the generator
 // derives an interface for, a type carrying a @typescript declaration, or a refusal.
@@ -823,14 +822,6 @@ func defaultTypescriptOverrides() map[string]string {
 		reflect.TypeFor[spanner.NullTime]().String():    dateTSType,
 		reflect.TypeFor[spanner.NullDate]().String():    civilDateTSType,
 		reflect.TypeFor[spanner.NullJSON]().String():    unknownTSType,
-		reflect.TypeFor[sql.NullString]().String():      stringTSType,
-		reflect.TypeFor[sql.NullInt16]().String():       numberTSType,
-		reflect.TypeFor[sql.NullInt32]().String():       numberTSType,
-		reflect.TypeFor[sql.NullInt64]().String():       numberTSType,
-		reflect.TypeFor[sql.NullByte]().String():        numberTSType,
-		reflect.TypeFor[sql.NullFloat64]().String():     numberTSType,
-		reflect.TypeFor[sql.NullBool]().String():        booleanStr,
-		reflect.TypeFor[sql.NullTime]().String():        dateTSType,
 		reflect.TypeFor[securehash.Hash]().String():     stringTSType,
 		boolGoType:       booleanStr,
 		stringGoType:     stringTSType,

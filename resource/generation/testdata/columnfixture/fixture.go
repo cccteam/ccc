@@ -158,7 +158,6 @@ type Row struct {
 	Kind        NullKind           `spanner:"Kind"`
 	Rank        NullRank           `spanner:"Rank"`
 	Note        spanner.NullString `spanner:"Note"`
-	Count       sql.NullInt64      `spanner:"Count"`
 	Blob        spanner.NullJSON   `spanner:"Blob"`
 	When        *time.Time         `spanner:"When"`
 	Tags        []string           `spanner:"Tags"`
@@ -180,6 +179,7 @@ type Row struct {
 // Bad carries one column per shape the classifier refuses.
 type Bad struct {
 	ID       ccc.UUID        `spanner:"Id"`
+	Count    sql.NullInt64   `spanner:"Count"`
 	Untagged Untagged        `spanner:"Untagged"`
 	Sealed   Sealed          `spanner:"Sealed"`
 	Matrix   [][]string      `spanner:"Matrix"`

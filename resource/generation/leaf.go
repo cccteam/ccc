@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"fmt"
 	"go/types"
 	"slices"
 	"strings"
@@ -11,13 +12,15 @@ import (
 // One leaf resolution serves every path that carries a Go type to the browser: the
 // wire walker, which types RPC requests, RPC results, and computed rows, and the
 // column classifier, which types table and view fields. A type resolves, after
-// aliases are read through, in this order: the built-in table by qualified name; a
-// generic row by origin (ccc.NullEnum, resolved to its type argument); a @typescript
-// declaration on the type; a basic type, or a named type over one, by the basic type's
-// row; a byte slice, unnamed or a named slice over byte with no JSON methods, as the
-// bytes leaf. A type that reaches none of these is no leaf: the walker mirrors it when
-// it is a struct and refuses it otherwise, and the column path derives a struct's
-// interface and refuses everything else, naming the fix. Nothing falls back to string.
+// aliases are read through, in this order: a database/sql Null wrapper is refused
+// outright, naming the pointer to write instead; then the built-in table by qualified
+// name; a generic row by origin (ccc.NullEnum, resolved to its type argument); a
+// @typescript declaration on the type; a basic type, or a named type over one, by the
+// basic type's row; a byte slice, unnamed or a named slice over byte with no JSON
+// methods, as the bytes leaf. A type that reaches none of these is no leaf: the walker
+// mirrors it when it is a struct and refuses it otherwise, and the column path derives
+// a struct's interface and refuses everything else, naming the fix. Nothing falls back
+// to string.
 //
 // A byte slice is one leaf, never a list of numbers, because that is what the wire
 // carries: encoding/json writes a []byte as a base64 string and a nil one as null, and
@@ -78,6 +81,71 @@ func leafDisplayType(ts string, imported *tsImport) string {
 // to its type argument's leaf, as its JSON is the value's JSON or null.
 const nullEnumOrigin = "ccc.NullEnum"
 
+// databaseSQLPath is the package whose Null wrappers are refused: every named type it
+// declares with the Null prefix, so a wrapper Go adds later is refused without a table
+// edit. sql.RawBytes carries no prefix and is a byte slice, the bytes leaf.
+const databaseSQLPath = "database/sql"
+
+// sqlNullPrefix is the prefix of the refused database/sql types: the eight NullX
+// wrappers and the generic Null[T].
+const sqlNullPrefix = "Null"
+
+// validField is the flag field every database/sql Null wrapper carries beside its
+// value; the value field is the other one, and names the pointer the refusal offers.
+const validField = "Valid"
+
+// ownFixRefusal is a leaf refusal that names the only fix there is, so the column path
+// reports it as it stands instead of adding its @typescript clause: the type is
+// declared where an application cannot annotate it.
+type ownFixRefusal struct {
+	msg string
+}
+
+// Error is the refusal's message, path-free; the callers add the field's path.
+func (e *ownFixRefusal) Error() string {
+	return e.msg
+}
+
+// refuseSQLNull refuses a database/sql Null wrapper on every path, the callers having
+// read one pointer through already: the eight NullX types and the generic Null[T].
+// None writes its own JSON, so encoding/json carries the wrapper as {X, Valid}, refuses
+// a bare value into it, and reads null as the zero value silently; the field lies in
+// both directions where the pointer to the value carries null on the wire and through
+// the patch decoder. The pointer is read off the wrapper's value field, the one that is
+// not Valid (Int64 on NullInt64, Time on NullTime, V on Null[T] as instantiated). A
+// standard-library type cannot carry a @typescript declaration, so the message offers
+// none. Returns nil for every other type.
+func refuseSQLNull(named *types.Named) error {
+	obj := named.Obj()
+	if obj.Pkg() == nil || obj.Pkg().Path() != databaseSQLPath || !strings.HasPrefix(obj.Name(), sqlNullPrefix) {
+		return nil
+	}
+	msg := fmt.Sprintf("%s has no JSON form of its own", typeStringer(named))
+	value, ok := sqlNullValueField(named)
+	if !ok {
+		return &ownFixRefusal{msg: msg + "; type a nullable column with a pointer to the value"}
+	}
+
+	return &ownFixRefusal{msg: fmt.Sprintf("%s (encoding/json writes it as {%s, %s}); type a nullable column with the pointer *%s", msg, value.Name(), validField, typeStringer(value.Type()))}
+}
+
+// sqlNullValueField is the value field of a database/sql Null wrapper: the first field
+// of its struct that is not Valid, with the type arguments applied. ok is false when
+// the type is no struct or carries no such field.
+func sqlNullValueField(named *types.Named) (value *types.Var, ok bool) {
+	st, isStruct := named.Underlying().(*types.Struct)
+	if !isStruct {
+		return nil, false
+	}
+	for i := range st.NumFields() {
+		if field := st.Field(i); field.Name() != validField {
+			return field, true
+		}
+	}
+
+	return nil, false
+}
+
 // leafResolver resolves Go types to TypeScript leaves over the built-in table and the
 // @typescript declarations a reader supplies.
 type leafResolver struct {
@@ -115,12 +183,18 @@ func (r *leafResolver) resolve(t types.Type) (leaf tsLeaf, ok bool, err error) {
 	}
 }
 
-// resolveNamed resolves a named type: the table by name, then a generic row by origin,
-// then its declaration, then its underlying basic type, then a byte slice with no JSON
-// methods. The table comes first so the library types it maps are never read for a
-// declaration they cannot carry; the declaration comes before the basic row so a named
-// string may still declare a type, and before the byte slice so a named []byte may too.
+// resolveNamed resolves a named type: a database/sql Null wrapper is refused first,
+// then the table by name, then a generic row by origin, then its declaration, then its
+// underlying basic type, then a byte slice with no JSON methods. The refusal comes
+// before everything so the wrapper never falls through to struct derivation and a
+// missing-json-tag message; the table comes next so the library types it maps are
+// never read for a declaration they cannot carry; the declaration comes before the
+// basic row so a named string may still declare a type, and before the byte slice so a
+// named []byte may too.
 func (r *leafResolver) resolveNamed(named *types.Named) (tsLeaf, bool, error) {
+	if err := refuseSQLNull(named); err != nil {
+		return tsLeaf{}, false, err
+	}
 	if ts, ok := r.mapped[typeStringer(named)]; ok {
 		return tsLeaf{TS: ts}, true, nil
 	}

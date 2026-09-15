@@ -626,8 +626,15 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(res *resourceInfo) er
 }
 
 // columnTypeRefusal is the message for a column type that reaches no TypeScript type:
-// the field's path, the classifier's finding, and the fix.
+// the field's path, the classifier's finding, and the fix. A refusal that names its
+// own fix (a database/sql Null wrapper, which no application can annotate) is reported
+// as it stands.
 func columnTypeRefusal(path string, cause error) error {
+	var own *ownFixRefusal
+	if errors.As(cause, &own) {
+		return errors.Newf("%s: %s", path, own.Error())
+	}
+
 	return errors.Newf("%s: %s; declare the type's TypeScript form with @%s(Name, from: %q) on its declaration, or use a struct for a derived interface", path, errors.Cause(cause).Error(), typescriptKeyword, "module")
 }
 

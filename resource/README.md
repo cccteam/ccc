@@ -680,12 +680,27 @@ Every offending field in a run is reported together.
 `decimal.NullDecimal` (`number`); `time.Time` (`Date`); `civil.Date` (`civilDate`, a
 `Date` in the interface); the Spanner Null wrappers (`spanner.NullString` is `string`,
 `NullInt64`, `NullFloat32`, `NullFloat64`, and `NullNumeric` are `number`, `NullBool` is
-`boolean`, `NullTime` is `Date`, `NullDate` is `civilDate`); the `database/sql` Null
-wrappers likewise (`NullString`, `NullInt16`, `NullInt32`, `NullInt64`, `NullByte`,
-`NullFloat64`, `NullBool`, `NullTime`); `securehash.Hash` (`string`, its text form); and
-`spanner.NullJSON` (`unknown`, a value with no fixed shape, display type `object`).
-Nullability keeps coming from the schema, so a nullable `spanner.NullBool` column renders
-`nullboolean` exactly as `*bool` does.
+`boolean`, `NullTime` is `Date`, `NullDate` is `civilDate`); `securehash.Hash` (`string`,
+its text form); and `spanner.NullJSON` (`unknown`, a value with no fixed shape, display
+type `object`). Nullability keeps coming from the schema, so a nullable `spanner.NullBool`
+column renders `nullboolean` exactly as `*bool` does.
+
+**The `database/sql` Null wrappers are refused.** A field typed `sql.NullString`,
+`sql.NullInt64`, any of their six siblings, the generic `sql.Null[T]`, or a pointer to
+one fails generation on every path (a table or view column, a computed field, an RPC
+request or result field). None of them writes its own JSON, so `encoding/json` carries
+the wrapper as `{"Int64":7,"Valid":true}` where the interface would promise `number`,
+refuses a bare `7` into it, and reads `null` as the zero value silently; the field lies
+in both directions. The pointer to the value (`*int64`) carries `null` on the wire and
+through the patch decoder, and is what every adopter writes, so the refusal names it.
+The rule is keyed on the package and the `Null` prefix, so a wrapper Go adds later is
+refused too; the Spanner wrappers, `ccc.NullUUID`, `ccc.NullEnum[T]`, and
+`decimal.NullDecimal` keep their rows, since each writes the value or `null` through its
+own JSON methods. A standard-library type cannot carry a `@typescript` declaration, so
+the message offers none:
+
+- `Ships.Count: sql.NullInt64 has no JSON form of its own (encoding/json writes it as
+  {Int64, Valid}); type a nullable column with the pointer *int64`
 
 **Byte slices.** A `[]byte` is one leaf, never a list of numbers, because that is what the
 wire carries: `encoding/json` writes a byte slice as a base64 string and a nil one as

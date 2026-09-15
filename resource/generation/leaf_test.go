@@ -58,7 +58,6 @@ func Test_resourceFieldsTypescriptType_columns(t *testing.T) {
 		{name: "an alias of NullEnum over a named string is a string", field: "Kind", wantData: "string", wantDisplay: "string"},
 		{name: "an alias of NullEnum over a named int64 is a number", field: "Rank", wantData: "number", wantDisplay: "number"},
 		{name: "a Spanner Null wrapper maps by its row", field: "Note", wantData: "string", wantDisplay: "string"},
-		{name: "a database/sql Null wrapper maps by its row", field: "Count", wantData: "number", wantDisplay: "number"},
 		{name: "spanner.NullJSON is unknown, one opaque object", field: "Blob", wantData: "unknown", wantDisplay: "object"},
 		{name: "a pointer to a mapped type is the mapped type", field: "When", wantData: "Date", wantDisplay: "Date"},
 		{name: "a slice of a basic type is a list", field: "Tags", wantData: "string[]", wantDisplay: "string[]"},
@@ -151,7 +150,9 @@ func Test_resourceFieldsTypescriptType_namespace(t *testing.T) {
 }
 
 // Test_resourceFieldsTypescriptType_refusals pins what the column path refuses, every
-// offending field of a resource in one error: a struct field with no json tag, a struct
+// offending field of a resource in one error: a database/sql Null wrapper, refused
+// naming the pointer and nothing else (no @typescript clause, since an application
+// cannot annotate a standard-library type), a struct field with no json tag, a struct
 // or a named type writing its own JSON without a declaration, a slice of slices, an
 // interface, and the two malformed declarations. Nothing degrades to string.
 func Test_resourceFieldsTypescriptType_refusals(t *testing.T) {
@@ -168,7 +169,14 @@ func Test_resourceFieldsTypescriptType_refusals(t *testing.T) {
 	tests := []struct {
 		name string
 		want string
+		// absent is text the error must not carry, when the refusal stands alone.
+		absent string
 	}{
+		{
+			name:   "a database/sql Null wrapper is refused naming the pointer, with no declaration clause",
+			want:   "Bads.Count: sql.NullInt64 has no JSON form of its own (encoding/json writes it as {Int64, Valid}); type a nullable column with the pointer *int64",
+			absent: "*int64; declare the type's TypeScript form",
+		},
 		{name: "a struct field with no json tag names the field", want: "Bads.Untagged.Name: no json tag"},
 		{name: "a struct writing its own JSON names the fix", want: "Bads.Sealed: columnfixture.Sealed writes its own JSON (MarshalJSON or UnmarshalJSON), so its fields do not describe the wire; add @typescript(...) to its declaration"},
 		{name: "a slice of slices is refused with the fix clause", want: "Bads.Matrix: a slice of slices has no TypeScript type; declare a struct for the inner element; declare the type's TypeScript form with @typescript(Name, from: \"module\") on its declaration, or use a struct for a derived interface"},
@@ -184,6 +192,9 @@ func Test_resourceFieldsTypescriptType_refusals(t *testing.T) {
 
 			if !strings.Contains(got, tt.want) {
 				t.Errorf("error is missing %q:\n%s", tt.want, got)
+			}
+			if tt.absent != "" && strings.Contains(got, tt.absent) {
+				t.Errorf("error carries %q, which the refusal must leave out:\n%s", tt.absent, got)
 			}
 		})
 	}

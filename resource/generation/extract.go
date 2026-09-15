@@ -1105,7 +1105,6 @@ func fieldNullability(pStruct *parser.Struct) (map[string]bool, error) {
 			"*time.Time",
 			"*interface {}",
 			"ccc.NullUUID",
-			"sql.NullBool", "sql.NullByte", "sql.NullFloat64", "sql.NullInt16", "sql.NullInt32", "sql.NullInt64", "sql.NullString", "sql.NullTime",
 			"spanner.NullBool", "spanner.NullDate", "spanner.NullFloat32", "spanner.NullFloat64", "spanner.NullInt64", "spanner.NullJSON", "spanner.NullNumeric", "spanner.NullString", "spanner.NullTime",
 			"*civil.Date",
 		}, field.Type()) {

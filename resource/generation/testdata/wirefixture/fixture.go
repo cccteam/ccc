@@ -5,6 +5,7 @@ package wirefixture
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -125,6 +126,20 @@ type (
 	// RawJSON carries a named byte slice that writes its own JSON, which is no leaf.
 	RawJSON struct {
 		Raw json.RawMessage
+	}
+	// SQLNullString carries a database/sql Null wrapper, refused naming the pointer:
+	// encoding/json writes it as {String, Valid}, not as the string or null.
+	SQLNullString struct {
+		Name sql.NullString
+	}
+	// SQLNullGeneric carries the generic wrapper, refused naming the pointer to its
+	// type argument.
+	SQLNullGeneric struct {
+		Count sql.Null[int64]
+	}
+	// SQLNullPointer carries a pointer to a wrapper, refused through the pointer.
+	SQLNullPointer struct {
+		At *sql.NullTime
 	}
 	PointerToSlice struct {
 		P *[]string
