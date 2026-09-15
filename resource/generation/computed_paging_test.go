@@ -37,7 +37,7 @@ func TestComputedQueryRules(t *testing.T) {
 		{
 			name:       "allow_filter on a list field is refused",
 			structName: "ListFilterBoard",
-			wantErr:    "ListFilterBoard.Tags: allow_filter on a list field",
+			wantErr:    "ListFilterBoard.Tags: allow_filter on a list field; a filter compares single values",
 		},
 		{
 			name:       "an order on a nested field is refused",

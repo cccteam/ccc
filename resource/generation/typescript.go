@@ -609,7 +609,7 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(res *resourceInfo) er
 
 				continue
 			}
-			field.setColumnType(plural+"."+shape.TypescriptName(), objectTSType, nil, class.Slice)
+			field.setColumnType(plural+"."+shape.TypescriptName(), objectDisplayType, nil, class.Slice)
 		default:
 			field.setColumnType(class.Leaf.TS, class.Leaf.DisplayType(), class.Leaf.Import, class.Slice)
 		}

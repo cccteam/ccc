@@ -235,9 +235,6 @@ type informationSchemaResult struct {
 	IsInterleaved        bool    `spanner:"IS_INTERLEAVED"`
 }
 
-// enumeratedDisplayType is the TypeScript display type of a field rendered as a picker.
-const enumeratedDisplayType = "enumerated"
-
 type enumData struct {
 	ID          string `spanner:"id"`
 	Description string `spanner:"description"`
@@ -606,23 +603,15 @@ func (r *rpcField) JSONTag() string {
 	return fmt.Sprintf("%s:%q", jsonTagKey, camelCaseName)
 }
 
+// TypescriptDataType is the field's type in the generated interface: the walked wire
+// type, or, for a field built without a walk, the leaf's interface type (tsDataType)
+// with [] for a list.
 func (r *rpcField) TypescriptDataType() string {
 	if r.wire != nil {
 		return r.wire.TypescriptType(r.namespace)
 	}
 
-	switch r.typescriptType {
-	case uuidTSType, bytesTSType:
-		return stringTSType
-	case uuidTSType + sliceSuffix, bytesTSType + sliceSuffix:
-		return stringTSType + sliceSuffix
-	case civilDateTSType:
-		return dateTSType
-	case civilDateTSType + sliceSuffix:
-		return dateTSType + sliceSuffix
-	default:
-		return r.typescriptType
-	}
+	return leafDataType(r.typescriptType)
 }
 
 func (r *rpcField) IsEnumerated() bool {
@@ -755,17 +744,18 @@ func (c *computedField) MirrorType() string {
 }
 
 // TypescriptDisplayType is the field's display type in generated metadata: enumerated
-// for a declared picker, the lower-cased data type of a leaf, as the metadata has
-// always carried it, or object for a nested field.
+// for a declared picker, and otherwise the leaf's own display name (uuid, civilDate,
+// bytes), object for a nested field, with [] for a slice, exactly as the column and RPC
+// paths carry it; see rpcField.TypescriptDisplayType.
 func (c *computedField) TypescriptDisplayType() string {
 	if c.IsEnumerated {
 		return enumeratedDisplayType
 	}
-	if c.wire != nil && !c.wire.IsLeaf() {
+	if c.wire != nil {
 		return c.wire.TypescriptDisplayType()
 	}
 
-	return strings.ToLower(c.TypescriptDataType())
+	return c.typescriptType
 }
 
 // EnumeratedResource is the name the field's @enumerate wrote: the resource whose
@@ -840,18 +830,15 @@ func (c *computedField) PermTag() string {
 	return ""
 }
 
+// TypescriptDataType is the field's type in the generated interface: the walked wire
+// type, or, for a field built without a walk, the leaf's interface type (tsDataType)
+// with [] for a list.
 func (c *computedField) TypescriptDataType() string {
 	if c.wire != nil {
 		return c.wire.TypescriptType(c.namespace)
 	}
-	if c.typescriptType == uuidTSType || c.typescriptType == bytesTSType {
-		return stringTSType
-	}
-	if c.typescriptType == civilDateTSType {
-		return dateTSType
-	}
 
-	return c.typescriptType
+	return leafDataType(c.typescriptType)
 }
 
 type resourceInfo struct {
@@ -1205,13 +1192,8 @@ func (f *resourceField) TypescriptDataType() string {
 	if f.IsNullable && f.typescriptType == booleanStr {
 		return nullBooleanTSType
 	}
-	base, slice := strings.CutSuffix(f.typescriptType, sliceSuffix)
-	base = tsDataType(base)
-	if slice {
-		return base + sliceSuffix
-	}
 
-	return base
+	return leafDataType(f.typescriptType)
 }
 
 // TypescriptDisplayType is the field's display type in generated metadata: enumerated
@@ -1223,7 +1205,7 @@ func (f *resourceField) TypescriptDisplayType() string {
 	}
 
 	if f.IsNullable && f.typescriptType == booleanStr {
-		return "nullboolean"
+		return nullBooleanDisplayType
 	}
 	if f.typescriptDisplay != "" {
 		return f.typescriptDisplay

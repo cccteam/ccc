@@ -175,11 +175,11 @@ func Test_apiClientData(t *testing.T) {
 							f.typescriptType = booleanStr
 							f.IsNullable = true
 						case "Code":
-							f.setColumnType("Money", objectTSType, &tsImport{Name: "Money", From: "money-types"}, false)
+							f.setColumnType("Money", objectDisplayType, &tsImport{Name: "Money", From: "money-types"}, false)
 						case "Name":
-							f.setColumnType("Price", objectTSType, &tsImport{Name: "Price", From: "money-types"}, true)
+							f.setColumnType("Price", objectDisplayType, &tsImport{Name: "Price", From: "money-types"}, true)
 						case "ListedName":
-							f.setColumnType("Point", objectTSType, &tsImport{Name: "Point", From: "geojson"}, false)
+							f.setColumnType("Point", objectDisplayType, &tsImport{Name: "Point", From: "geojson"}, false)
 						}
 					}
 				})

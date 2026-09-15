@@ -361,7 +361,7 @@ func (c *client) templateFuncs() map[string]any {
 		"Camel":                        strcase.ToCamel,
 		"Pascal":                       strcase.ToPascal,
 		"Kebab":                        strcase.ToKebab,
-		"Lower":                        strings.ToLower,
+		"DisplayType":                  renderDisplayType,
 		"Add":                          func(a, b int) int { return a + b },
 		"EnumerationLiteral":           enumerationLiteral,
 		"FormatResourceInterfaceTypes": c.formatResourceInterfaceTypes,

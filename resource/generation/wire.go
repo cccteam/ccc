@@ -135,11 +135,12 @@ func (f *wireField) TypescriptType(namespace string) string {
 
 // TypescriptDisplayType is the field's display type in generated metadata: the
 // leaf's type, or object for a nested field, an imported type, or unknown, with []
-// for a slice.
+// for a slice. The templates render it through renderDisplayType, which lower-cases it
+// and refuses anything outside the vocabulary (displaytype.go).
 func (f *wireField) TypescriptDisplayType() string {
 	base := leafDisplayType(f.tsLeaf, f.tsImport)
 	if !f.IsLeaf() {
-		base = objectTSType
+		base = objectDisplayType
 	}
 	if f.Slice {
 		base += sliceSuffix
@@ -148,11 +149,20 @@ func (f *wireField) TypescriptDisplayType() string {
 	return base
 }
 
-// objectTSType is the display type of a nested field: an opaque object.
-const objectTSType = "object"
-
 // sliceSuffix marks a TypeScript array type.
 const sliceSuffix = "[]"
+
+// leafDataType is tsDataType over a leaf that may carry the [] suffix: the element's
+// interface type, with the suffix kept.
+func leafDataType(leaf string) string {
+	base, slice := strings.CutSuffix(leaf, sliceSuffix)
+	base = tsDataType(base)
+	if slice {
+		return base + sliceSuffix
+	}
+
+	return base
+}
 
 // tsDataType maps a metadata display type to the TypeScript type an interface
 // declares for it: a uuid and a byte slice (base64) are strings, a civil date a Date.

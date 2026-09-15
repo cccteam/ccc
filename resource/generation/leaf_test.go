@@ -30,15 +30,24 @@ func columnFixtureGenerator(c *client) *typescriptGenerator {
 
 // Test_resourceFieldsTypescriptType_columns pins the column path over every shape the
 // classifier resolves or derives: the built-in rows and the generic row through an
-// alias, a pointer read through, a list, the byte slices (one bytes leaf each, a list of
-// them, and the byte array that stays a list of numbers), a plain struct derived into
-// the resource's namespace, a named slice of structs, a declared type, a declared type
-// in a package the generator did not load, and a built-in declaration.
+// alias, a pointer read through, a list of every leaf (element pointers read through,
+// and a nullable list of booleans staying boolean[], since the tri-state rule is for one
+// BOOL column), the byte slices (one bytes leaf each, a list of them, and the byte array
+// that stays a list of numbers), a plain struct derived into the resource's namespace, a
+// named slice of structs, a declared type, a declared type in a package the generator
+// did not load, and a built-in declaration; and that every display type renders into
+// the metadata as its lower-cased self.
 func Test_resourceFieldsTypescriptType_columns(t *testing.T) {
 	t.Parallel()
 
 	c, structs := columnFixtureClient(t)
-	res := fixtureResource(t, structs, "Row", nil)
+	res := fixtureResource(t, structs, "Row", func(res *resourceInfo) {
+		for _, f := range res.Fields {
+			if f.Name() == "Toggles" {
+				f.IsNullable = true
+			}
+		}
+	})
 	if err := columnFixtureGenerator(c).resourceFieldsTypescriptType(res); err != nil {
 		t.Fatalf("resourceFieldsTypescriptType() error = %v", err)
 	}
@@ -61,6 +70,13 @@ func Test_resourceFieldsTypescriptType_columns(t *testing.T) {
 		{name: "spanner.NullJSON is unknown, one opaque object", field: "Blob", wantData: "unknown", wantDisplay: "object"},
 		{name: "a pointer to a mapped type is the mapped type", field: "When", wantData: "Date", wantDisplay: "Date"},
 		{name: "a slice of a basic type is a list", field: "Tags", wantData: "string[]", wantDisplay: "string[]"},
+		{name: "a slice of int64 is a list of numbers", field: "Counts", wantData: "number[]", wantDisplay: "number[]"},
+		{name: "a slice of bool is a list of booleans", field: "Flags", wantData: "boolean[]", wantDisplay: "boolean[]"},
+		{name: "a slice of time.Time is a list of dates", field: "Stamps", wantData: "Date[]", wantDisplay: "Date[]"},
+		{name: "a slice of civil.Date is a list of Dates with the civildate display type", field: "Days", wantData: "Date[]", wantDisplay: "civilDate[]"},
+		{name: "a slice of UUIDs is a list of strings with the uuid display type", field: "IDs", wantData: "string[]", wantDisplay: "uuid[]"},
+		{name: "a slice of pointers is a list of the element", field: "Ranks", wantData: "number[]", wantDisplay: "number[]"},
+		{name: "a nullable slice of bool pointers is boolean[], never nullboolean[]", field: "Toggles", wantData: "boolean[]", wantDisplay: "boolean[]"},
 		{name: "a byte slice is one bytes leaf, a string in the interface", field: "Seal", wantData: "string", wantDisplay: "bytes"},
 		{name: "a pointer to a named byte slice is the bytes leaf", field: "Digest", wantData: "string", wantDisplay: "bytes"},
 		{name: "a slice of byte slices is a list of the bytes leaf", field: "Chunks", wantData: "string[]", wantDisplay: "bytes[]"},
@@ -89,6 +105,13 @@ func Test_resourceFieldsTypescriptType_columns(t *testing.T) {
 			}
 			if got := f.TypescriptDisplayType(); got != tt.wantDisplay {
 				t.Errorf("TypescriptDisplayType() = %q, want %q", got, tt.wantDisplay)
+			}
+			rendered, err := renderDisplayType(f.TypescriptDisplayType())
+			if err != nil {
+				t.Errorf("renderDisplayType(%q) error = %v", f.TypescriptDisplayType(), err)
+			}
+			if want := strings.ToLower(tt.wantDisplay); rendered != want {
+				t.Errorf("renderDisplayType(%q) = %q, want %q", f.TypescriptDisplayType(), rendered, want)
 			}
 			if diff := cmp.Diff(tt.wantImport, f.tsImport); diff != "" {
 				t.Errorf("tsImport mismatch (-want +got):\n%s", diff)
@@ -217,7 +240,8 @@ func Test_typescriptDecls_collision(t *testing.T) {
 // Test_wireWalker_declaredLeaves pins the declaration on the wire path: a declared type
 // in an RPC request is the same imported leaf, a slice of one a list of it, and a struct
 // reaching declared types mirrors them as imported leaves, so the methods file imports
-// every module once; and the byte slices, one bytes leaf in every shape.
+// every module once; the byte slices, one bytes leaf in every shape; and the lists of
+// the leaves whose display name is not their interface type.
 func Test_wireWalker_declaredLeaves(t *testing.T) {
 	t.Parallel()
 
@@ -245,6 +269,9 @@ func Test_wireWalker_declaredLeaves(t *testing.T) {
 		{name: "a pointer to a byte slice is a pointer to the leaf", field: "Sealed", wantTS: "string", wantDisplay: "bytes"},
 		{name: "a slice of byte slices is a list of the leaf", field: "Chunks", wantTS: "string[]", wantDisplay: "bytes[]"},
 		{name: "a slice of named byte slices is a list of the leaf", field: "Hashes", wantTS: "string[]", wantDisplay: "bytes[]"},
+		{name: "a slice of int64 is a list of numbers", field: "Counts", wantTS: "number[]", wantDisplay: "number[]"},
+		{name: "a slice of civil.Date is a list of Dates with the civildate display type", field: "Days", wantTS: "Date[]", wantDisplay: "civilDate[]"},
+		{name: "a slice of UUIDs is a list of strings with the uuid display type", field: "IDs", wantTS: "string[]", wantDisplay: "uuid[]"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

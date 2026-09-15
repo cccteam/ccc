@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"cloud.google.com/go/civil"
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/resource/generation/testdata/columnfixture/shapes"
@@ -152,7 +153,8 @@ type Loose struct {
 	Amount string `json:"amount"`
 }
 
-// Row carries one column per shape the classifier resolves or derives.
+// Row carries one column per shape the classifier resolves or derives, the ARRAY
+// columns of every leaf among them.
 type Row struct {
 	ID          ccc.UUID           `spanner:"Id"`
 	Kind        NullKind           `spanner:"Kind"`
@@ -161,6 +163,13 @@ type Row struct {
 	Blob        spanner.NullJSON   `spanner:"Blob"`
 	When        *time.Time         `spanner:"When"`
 	Tags        []string           `spanner:"Tags"`
+	Counts      []int64            `spanner:"Counts"`
+	Flags       []bool             `spanner:"Flags"`
+	Stamps      []time.Time        `spanner:"Stamps"`
+	Days        []civil.Date       `spanner:"Days"`
+	IDs         []ccc.UUID         `spanner:"Ids"`
+	Ranks       []*int64           `spanner:"Ranks"`
+	Toggles     []*bool            `spanner:"Toggles"`
 	Seal        []byte             `spanner:"Seal"`
 	Digest      *Digest            `spanner:"Digest"`
 	Chunks      [][]byte           `spanner:"Chunks"`
@@ -197,7 +206,8 @@ type Clashing struct {
 }
 
 // Request is an RPC-shaped struct reaching declared types, so the walker's leaf is
-// the same imported type, and byte slices in every shape the wire carries as base64.
+// the same imported type, byte slices in every shape the wire carries as base64, and
+// lists of the leaves whose display name is not their interface type.
 type Request struct {
 	ID     ccc.UUID
 	Where  Position
@@ -208,4 +218,7 @@ type Request struct {
 	Sealed *[]byte
 	Chunks [][]byte
 	Hashes []Digest
+	Counts []int64
+	Days   []civil.Date
+	IDs    []ccc.UUID
 }

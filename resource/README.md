@@ -95,9 +95,9 @@ error, and a stale one in a generated request struct fails Set construction at s
 | `conditions:"…"` | resource fields | Comma-separated list of field conditions, see below. Values match exactly (no spaces); a value the generator does not recognize is refused, with the nearest recognized one suggested. |
 | `default_create_fn:"pkg.Func"` | resource fields | The generated create path calls the referenced function to populate the field when the request doesn't supply it. A field with a default function is not treated as required. |
 | `output_only_update_fn:"pkg.Func"` | resource fields | The generated update path sets the field by calling the referenced function on **every** update; implies output-only. This is the *mechanical enforcement stamp* — a field whose meaning is "this row was updated", like `UpdatedAt`. A timestamp with domain meaning (a "last serviced" written by one business transition) is not an update function: it is an explicit update in the code that owns the business event — see [Ship.LastRefitAt](lodestar/pkg/resources/ships.go). Declaring an update function on any field also gives the resource a generated `New<Resource>Touch(keys…)`: an update carried entirely by the update functions, running the full update pipeline (permission check, stamps, write conditions, change events) with no caller-set fields — the only way to express "bump the row" (an update patch with no fields set is a silent no-op). Example: [Ship.UpdatedAt](lodestar/pkg/resources/ships.go) using `resource.CommitTimestampPtr`. |
-| `allow_filter:"true"` | resource fields | Permits `filter` expressions on a field that isn't indexed (indexed fields are filterable automatically). Copied through to the generated request structs. On a table or view the filter must also touch an indexed field, which the database parse enforces: once one index has narrowed the rows a second is rarely used, and indexes are a scarce commodity on Spanner, so `allow_filter` conserves them. On a resource with a bare `@domain` column the tenant predicate is not that indexed field: it is the baseline every unfiltered page pays, and the rule asks the filter to narrow below it. The TypeScript field metadata says so: `filterable: 'withIndexed'` on a table or view field, `'always'` on a computed resource's, whose List function filters in memory. |
-| `index:"true"` | `@virtual` struct fields only | Declares the field indexed (filterable/sortable). Rejected on table-backed resources, which get index information from the schema. |
-| `uniqueindex:"true"` | `@virtual` struct fields only | As `index`, and marks the index unique. |
+| `allow_filter:"true"` | resource fields | Permits `filter` expressions on a field that isn't indexed (indexed fields are filterable automatically). Copied through to the generated request structs. On a table or view the filter must also touch an indexed field, which the database parse enforces: once one index has narrowed the rows a second is rarely used, and indexes are a scarce commodity on Spanner, so `allow_filter` conserves them. On a resource with a bare `@domain` column the tenant predicate is not that indexed field: it is the baseline every unfiltered page pays, and the rule asks the filter to narrow below it. The TypeScript field metadata says so: `filterable: 'withIndexed'` on a table or view field, `'always'` on a computed resource's, whose List function filters in memory. Refused on a list field (a slice, an array, or a named type over one; a byte slice is one value) on every kind of struct, since Spanner has no array equality and a computed resource's evaluator compares single values: `Ship.CargoBays: allow_filter on a list field; a filter compares single values`. |
+| `index:"true"` | `@virtual` struct fields only | Declares the field indexed (filterable/sortable). Rejected on table-backed resources, which get index information from the schema. Refused on a list field: no index serves an `ARRAY` column. |
+| `uniqueindex:"true"` | `@virtual` struct fields only | As `index`, and marks the index unique. Refused on a list field, as `index` is. |
 | `masking:"positional"` | `@resource` and `@virtual` struct fields | The field's masked cells stay hidden on the wire, but a list orders and filters on the real column, so the page comes off the index and a reader can tell where the hidden values fall. Every untagged field conceals: a sort or filter on it runs over `CASE WHEN <condition> THEN column END` (section 4), which hides where the masked values fall and which no index serves, so a page sorted or filtered by it sorts the tenant's whole partition. Declare `positional` on a field whose rank is not sensitive (a deadline; a fee's rank is) and that a list pays for: named in `@order`, indexed, or `allow_filter`. `masking:"concealing"` is accepted and says the default; another value is refused with the nearest one suggested. Refused as a contradiction on a primary key (keys are exempt from masking), on a field no query sorts or filters by with an index behind it (neither indexed, nor `allow_filter`, nor named in `@order`: there is no index to restore and the rank would be disclosed for nothing), and on `@computed` and `@rpc` structs (conditions are refused at decode there, nothing is ever masked). Copied through to the generated list and read request structs and surfaced in the TypeScript field metadata as `masking: 'positional'`. Deploy-time role validation (`access.MigrateRoles`, `access.ValidateRoles`) warns where a role's conditional grant lands on a concealing field the resource orders by or admits as a sort or filter key and the role's other grants leave the `CASE` standing; the warning names the field, the cost, and the three ways out (grant the field unconditionally, tag it positional, accept the cost for a table that never pages at volume). Example: [Mission.Deadline](lodestar/pkg/resources/missions.go). |
 
 Values recognized in a `conditions` tag:
@@ -715,9 +715,40 @@ column) is `string[]` with display type `bytes[]`. Not on it: a byte array (`[N]
 `number[]`, since `encoding/json` writes an array as an array), a named type carrying
 `@typescript` (it keeps what it declares), and one writing its own JSON
 (`json.RawMessage` is refused as before, since it writes JSON, not base64). `maxLength`
-is never emitted for bytes (section 11); a byte limit can ride the `bytes` type later. A
-computed field's metadata carries the lower-cased data type, `string`, until the computed
-path adopts the leaf's own display name (cccteam/backlog#89).
+is never emitted for bytes (section 11); a byte limit can ride the `bytes` type later.
+
+**The display-type vocabulary.** Beside its interface type, every field carries a display
+type in the generated metadata (`FieldMeta.displayType`, `RPCFieldMeta.displayType`): the
+name a browser chooses a control and a cell renderer by. The vocabulary is one closed
+set for a table column, a view column, a computed field, and an RPC field, and a leaf's
+display type is its own name on every path, so a computed `ccc.UUID` field is `uuid` as a
+column of the same type is, and a computed `civil.Date` field `civildate`. The generator
+holds the set as typed constants (`resource/generation/displaytype.go`), renders every
+display type through one function that refuses anything outside it, and a unit test
+asserts that what the three paths emit is exactly this list; `@cccteam/resource` lists
+the same members in `ValidDisplayTypes`, spelled the same, so an adopter's build passes
+by construction and never checks the generator's output.
+
+| Display type | In the interface | Emitted for |
+| --- | --- | --- |
+| `string` | `string` | text columns and fields, named string types, `securehash.Hash` |
+| `number` | `number` | integers, floats, and decimals |
+| `boolean` | `boolean` | a `bool` column that is `NOT NULL`, and every `bool` field on the other paths |
+| `nullboolean` | `NullBoolean` | a nullable `BOOL` column (`*bool`, `spanner.NullBool`); the tri-state rule for one column |
+| `date` | `Date` | `time.Time`, `spanner.NullTime` |
+| `civildate` | `Date` | `civil.Date`, `spanner.NullDate` |
+| `uuid` | `string` | `ccc.UUID`, `ccc.NullUUID` |
+| `enumerated` | the key's type | a declared or inferred picker (`@enumerate`, a key into a resource or an enumeration table) |
+| `object` | the derived or imported interface, or `unknown` | a struct, a `@typescript` type, `spanner.NullJSON` |
+| `bytes` | `string` | a byte slice, base64 on the wire |
+| `string[]`, `number[]`, `boolean[]`, `date[]`, `civildate[]`, `uuid[]`, `object[]`, `bytes[]` | the element's interface type with `[]` | a slice, an array, or a named slice type of the leaf (an `ARRAY<...>` column); element pointers are read through, so `[]*int64` is `number[]` and a nullable `[]*bool` is `boolean[]` |
+
+Never `nullboolean[]` (the tri-state rule is for one nullable `BOOL` column) and never
+`enumerated[]` (a picker stores one key). A list is one value to the query surface:
+`allow_filter`, `index`, and `uniqueindex` on a list field are refused at generation
+(section 2), and a sort naming one answers 400, since Spanner has no array equality and
+cannot index an `ARRAY` column. The Angular library renders the scalars; an array falls
+to its text control until it gains a list renderer.
 
 **Derived structs.** A struct a column holds is its own TypeScript interface, derived
 from its fields with no annotation and no option, declared in the resource's namespace
@@ -773,4 +804,6 @@ plain struct on a `JSON` column, derived and stored by generated methods;
 declared with `@typescript(Point, from: "geojson")`; and
 [MissionDocument.Digest](lodestar/pkg/resources/mission_documents.go), the SHA-256 of an
 uploaded document on a `BYTES(32)` column, a `string` in both clients' interfaces with
-display type `bytes`.
+display type `bytes`; and [Ship.CargoBays](lodestar/pkg/resources/ships.go), an
+`ARRAY<INT64>` column typed `[]int64`, `number[]` in the console's interface and its
+metadata.

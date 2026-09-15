@@ -81,6 +81,11 @@ func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 			res := fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
 				res.PermissionScope = tt.scope
 				res.IsConsolidated = tt.consolidated
+				// The metadata renders only the display-type vocabulary, so every field
+				// carries a type, as a run resolves before rendering.
+				for _, f := range res.Fields {
+					f.typescriptType = "string"
+				}
 			})
 
 			c := &client{}

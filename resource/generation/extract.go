@@ -538,6 +538,11 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 
 			continue
 		}
+		if refusal, ok := listColumnTagRefusal(field); ok {
+			field.AddError(refusal)
+
+			continue
+		}
 
 		fields = append(fields, &resourceField{
 			Field:              field,
@@ -596,6 +601,34 @@ func (r *resourceInfo) deriveTenantIndexFlags(table *tableMetadata) {
 	}
 }
 
+// The refusals a list field's query tags meet, on every path that reads one. Spanner
+// has no array equality and cannot index an ARRAY column, and a computed resource's
+// evaluator compares single values, so a filter or an index on a list is refused at
+// generation naming the field, with one sentence shape wherever it is met.
+const (
+	listFieldFilterRefusal = allowFilterTagKey + " on a list field; a filter compares single values"
+	listFieldIndexRefusal  = " on a list field; no index serves an ARRAY column"
+)
+
+// listColumnTagRefusal is the refusal a table or view field earns for a query tag on a
+// list: allow_filter, index, or uniqueindex on a field whose type is a slice, an array,
+// or a named type over one (isListColumn). ok is false for every other field.
+func listColumnTagRefusal(field *parser.Field) (refusal string, ok bool) {
+	if !isListColumn(field.GoType()) {
+		return "", false
+	}
+	for _, key := range []string{indexTagKey, uniqueIndexTagKey} {
+		if field.HasTag(key) {
+			return key + listFieldIndexRefusal, true
+		}
+	}
+	if field.HasTag(allowFilterTagKey) {
+		return listFieldFilterRefusal, true
+	}
+
+	return "", false
+}
+
 func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) ([]*resourceField, error) {
 	if !parent.IsVirtual {
 		panic("newVirtualFields cannot be used with concrete resources")
@@ -606,6 +639,11 @@ func newVirtualFields(parent *resourceInfo, pStruct *parser.Struct, annotations 
 		_, ok := field.LookupTag(spannerTagKey)
 		if !ok {
 			field.AddError("missing spanner tag")
+
+			continue
+		}
+		if refusal, ok := listColumnTagRefusal(field); ok {
+			field.AddError(refusal)
 
 			continue
 		}
@@ -972,7 +1010,7 @@ func checkComputedQueryTags(resource string, field *computedField) error {
 			base = strings.TrimPrefix(field.wire.SourceType, "*")
 		}
 		if field.wire != nil && field.wire.Slice {
-			return errors.Newf("%s: allow_filter on a list field; the filter evaluator compares single values", path)
+			return errors.Newf("%s: %s", path, listFieldFilterRefusal)
 		}
 		// The evaluator compares exactly the types a grant condition compares.
 		if _, ok := goTypeToAttributeType(base); ok {

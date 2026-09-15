@@ -71,7 +71,7 @@ func (l tsLeaf) DisplayType() string {
 // leafDisplayType is DisplayType over the parts a wireField keeps.
 func leafDisplayType(ts string, imported *tsImport) string {
 	if ts == unknownTSType || (imported != nil && !imported.IsBuiltin()) {
-		return objectTSType
+		return objectDisplayType
 	}
 
 	return ts
@@ -363,6 +363,27 @@ func sliceElem(t types.Type) (elem types.Type, ok bool) {
 	default:
 		return nil, false
 	}
+}
+
+// isListColumn reports whether a table or view field carries a list: its type, aliases
+// and one pointer read through, is a slice, an array, or a named type over one, other
+// than a byte slice, which is one value (the bytes leaf, whatever it is named). It is
+// the column classifier's Slice reading without the leaf resolution, for the tag checks
+// that run at extraction, before any TypeScript type is resolved. The one reading the
+// two make differently is a named slice type declaring its TypeScript type: one
+// declared value to the classifier, a list here, and an ARRAY column either way, which
+// is what the tag checks ask about.
+func isListColumn(t types.Type) bool {
+	t = types.Unalias(t)
+	if p, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(p.Elem())
+	}
+	if isByteSlice(t.Underlying()) {
+		return false
+	}
+	_, isList := sliceElem(t)
+
+	return isList
 }
 
 // isByteSlice reports whether t, aliases read through, is an unnamed slice of byte
