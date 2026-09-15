@@ -360,6 +360,35 @@ func (g *Generator) literal(t accesstypes.AttributeType) condition.Literal {
 	}
 }
 
+// LiteralPool returns the literals the generator draws for a comparison type,
+// so a row generator can draw stored values from the same pool and make equal,
+// less, greater, and absent all occur against the conditions it emits.
+func LiteralPool(t accesstypes.AttributeType) []condition.Literal {
+	var out []condition.Literal
+	switch t {
+	case accesstypes.AttributeTypeNumber:
+		for _, text := range numberTexts {
+			out = append(out, condition.NumberLiteral{Text: text})
+		}
+	case accesstypes.AttributeTypeBool:
+		out = append(out, condition.BoolLiteral{Value: false}, condition.BoolLiteral{Value: true})
+	case accesstypes.AttributeTypeTimestamp:
+		for _, text := range timestamps {
+			out = append(out, condition.StringLiteral{Value: text})
+		}
+	case accesstypes.AttributeTypeDate:
+		for _, text := range dates {
+			out = append(out, condition.StringLiteral{Value: text})
+		}
+	default:
+		for _, text := range stringValues {
+			out = append(out, condition.StringLiteral{Value: text})
+		}
+	}
+
+	return out
+}
+
 func pick[T any](rng *rand.Rand, values []T) T {
 	return values[rng.IntN(len(values))]
 }
@@ -374,12 +403,14 @@ var compareOps = []condition.CompareOp{condition.Eq, condition.NotEq, condition.
 // survive rendering as data.
 var (
 	stringValues = []string{"open", "it's", "''", "", "AND", "subject", "new", "now", "local", "2026-01-02T15:04:05Z", "a b c"}
-	numberTexts  = []string{"0", "42", "10.5", "-3", "-0.25", "1000000"}
-	timestamps   = []string{"2026-01-02T15:04:05Z", "1999-12-31T23:59:59Z", "2026-06-30T08:00:00+02:00"}
-	dates        = []string{"2026-01-02", "1999-12-31"}
-	timesOfDay   = []string{"00:00", "06:30", "17:00", "23:59"}
-	dayNames     = []string{"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
-	zoneNames    = []string{"America/Denver", "Europe/London", "Asia/Tokyo", "UTC"}
+	// The last number spells more digits than a double carries, so a NUMERIC
+	// or INT64 neighbor compared through FLOAT64 would wrongly equal it.
+	numberTexts = []string{"0", "42", "10.5", "-3", "-0.25", "1000000", "1234567890123456789.5"}
+	timestamps  = []string{"2026-01-02T15:04:05Z", "1999-12-31T23:59:59Z", "2026-06-30T08:00:00+02:00"}
+	dates       = []string{"2026-01-02", "1999-12-31"}
+	timesOfDay  = []string{"00:00", "06:30", "17:00", "23:59"}
+	dayNames    = []string{"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+	zoneNames   = []string{"America/Denver", "Europe/London", "Asia/Tokyo", "UTC"}
 )
 
 var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

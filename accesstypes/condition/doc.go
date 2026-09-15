@@ -42,6 +42,38 @@
 // kept verbatim; a string escapes a quote by writing it twice. Parse enforces
 // generous fixed limits: 4 KB of source, nesting depth 32.
 //
+// # Evaluation
+//
+// A condition permits only when it is TRUE. Evaluation is three-valued, as in
+// SQL: a comparison is TRUE, FALSE, or UNKNOWN; AND, OR, and NOT combine the
+// three as SQL does (FALSE absorbs through AND, TRUE through OR, NOT leaves
+// UNKNOWN as it is); and at the top only TRUE permits — a row survives a read,
+// a cell shows, a write check passes, a capability holds, only when the
+// condition is TRUE on that row. FALSE and UNKNOWN both refuse.
+//
+// A missing value is unknown in every form. A NULL column, a NULL foreign key
+// on a join path, a join path that reaches no row, and a subject value whose
+// requester has no anchor row are all "no value". Against no value a
+// comparison is UNKNOWN, IN and NOT IN are UNKNOWN whether the list is
+// literals or a subject set, IS NULL is TRUE, and IS NOT NULL is FALSE.
+//
+// A join-path attribute reads as the related row's column, or as no value. A
+// subject value reads as the requester's anchor row's column, or as no value.
+// A subject set is the non-null values the requester's anchor rows yield
+// through the anchor's path, restricted to the request's partition when the
+// request is partitioned and the anchor is domain-bound; a present value is
+// IN an empty set FALSE and NOT IN it TRUE.
+//
+// A literal takes the attribute's type. A number literal compares exactly
+// against an INT64 or a NUMERIC attribute and as a double against a FLOAT64
+// attribute, whose stored value is already the nearest double; two stored
+// numbers compare exactly unless either is a double. Timestamps compare as
+// instants (RFC 3339 literals and now), dates as calendar days, strings
+// bytewise in code-point order, booleans with FALSE before TRUE. The reference
+// evaluator in conditiontest implements these rules over a row image; the
+// resource package's semantic differential compares the SQL it renders against
+// that evaluator on the Spanner emulator.
+//
 // The package owns the vocabulary only. Leaves are binding names, subject and
 // subject attributes, now, and literals — no schema facts: the engine
 // validates and folds (Fold, over Facts), the resource layer lowers binding
