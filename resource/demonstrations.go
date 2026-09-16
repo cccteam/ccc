@@ -93,6 +93,7 @@ var Demonstrations = []Demonstration{
 	{"filter.typed-values", "A filter value typed by its column: a decimal binds as NUMERIC, a non-number is a 400."},
 	{"filter.validated-at-decode", "A filter validated with the rest of the request, before permission checks and before any body runs."},
 	{"decode.value-limit", "A value the column cannot hold answers 400 naming the field at decode, before anything is buffered and before any permission check: a string over its STRING(n) length by code point, a decimal beyond NUMERIC's 29 integer digits or 9 decimals; the generated sqltype tag carries the column type, and the TypeScript metadata carries maxLength so a form refuses first."},
+	{"decode.nullable-slice", "A nullable BYTES or ARRAY column typed by the plain slice: nullability follows the column, a null is accepted at decode where the column allows it and refused with cannot be null where it does not, and the metadata carries required accordingly."},
 	{"create-form-narrowing", "The digest's field-level Create entries decide which inputs a form renders."},
 
 	// Structure.

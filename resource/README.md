@@ -91,7 +91,7 @@ error, and a stale one in a generated request struct fails Set construction at s
 
 | Tag | Where | Effect |
 | --- | --- | --- |
-| `spanner:"ColumnName"` | every field of `@resource`/`@virtual` structs | Maps the field to its Spanner column. Required — a missing tag or unknown column is a generation error, and field nullability must match the column's. |
+| `spanner:"ColumnName"` | every field of `@resource`/`@virtual` structs | Maps the field to its Spanner column. Required — a missing tag or unknown column is a generation error, and field nullability must match the column's: a pointer or a Null wrapper on a nullable column, a plain value on a NOT NULL one. A slice-typed field follows the column's nullability, since a Go slice has one form: the Spanner client reads NULL into a nil slice and writes nil as NULL, so `[]byte` types a nullable `BYTES` column and a NOT NULL one alike, as `[]T` does an `ARRAY<T>` (section 12, nullable slices). A pointer to a slice is refused. |
 | `conditions:"…"` | resource fields | Comma-separated list of field conditions, see below. Values match exactly (no spaces); a value the generator does not recognize is refused, with the nearest recognized one suggested. |
 | `default_create_fn:"pkg.Func"` | resource fields | The generated create path calls the referenced function to populate the field when the request doesn't supply it. A field with a default function is not treated as required. |
 | `output_only_update_fn:"pkg.Func"` | resource fields | The generated update path sets the field by calling the referenced function on **every** update; implies output-only. This is the *mechanical enforcement stamp* — a field whose meaning is "this row was updated", like `UpdatedAt`. A timestamp with domain meaning (a "last serviced" written by one business transition) is not an update function: it is an explicit update in the code that owns the business event — see [Ship.LastRefitAt](lodestar/pkg/resources/ships.go). Declaring an update function on any field also gives the resource a generated `New<Resource>Touch(keys…)`: an update carried entirely by the update functions, running the full update pipeline (permission check, stamps, write conditions, change events) with no caller-set fields — the only way to express "bump the row" (an update patch with no fields set is a silent no-op). Example: [Ship.UpdatedAt](lodestar/pkg/resources/ships.go) using `resource.CommitTimestampPtr`. |
@@ -169,6 +169,7 @@ Read back at runtime by the `resource` package; listed here for reading generate
 | `pii:"true"` | From `conditions:"pii"`; the field is rejected in URL filter expressions. |
 | `masking:"positional"` | Copied from the source struct; a sort, filter, or cursor on the field runs on the real column while the cell stays masked in the output. Absent on a concealing field. `positional` is the only value written; any other value in a request struct is a startup error (the stale-struct guard). |
 | `sqltype:"STRING(64)"` | The column's declared type, verbatim from the schema, on a patch request-struct field whose value the decoder sizes before anything is buffered (section 11): a string-kinded field on `STRING(n)`, `[]byte` on `BYTES(n)`, a decimal on `NUMERIC`, and a slice of one of those on the matching `ARRAY<…>`. Absent on `MAX` columns, on keys and output-only fields (hidden from the patch wire), and on every other type. A value the runtime cannot pair with the field's type is a startup error (the stale-struct guard). |
+| `nullable:"true"` | On a patch request-struct field typed by a slice whose column allows NULL, and nowhere else: a Go slice has one form, so the decoder cannot read the fact off the field's type as it does off a pointer or a Null wrapper. The decoder accepts a JSON `null` for the field and stores the nil slice, which the Spanner client writes as NULL (section 12, nullable slices); a slice field without the tag refuses `null` with `<field> cannot be null`, since its column is NOT NULL. `true` is the only value written; any other value, or the tag on a field that is not a slice, is a startup error (the stale-struct guard). |
 
 ## 4. Reserved query parameters
 
@@ -600,7 +601,8 @@ before anything is buffered and before any permission check. The generator carri
 sized column's declared type onto the patch request structs as `sqltype:"…"` (section 3),
 the runtime derives the rule from it when the handler's Set is constructed, and the
 decoder applies it after the per-field refusals (an unknown field, an immutable field on
-update, a null into a non-nullable field) and before the application validator. A limit is
+update, a null into a field whose column is NOT NULL: a value with no null form, or a slice
+without the `nullable:"true"` tag) and before the application validator. A limit is
 a fact about the wire value alone, the same class as `cannot be null`; naming it before the
 permission check discloses schema shape the metadata already publishes, nothing about rows.
 
@@ -620,7 +622,7 @@ unmarshal fixes the shape; on `INT64`, `FLOAT64`, `BOOL`, `DATE`, `TIMESTAMP`, a
 columns; on keys and output-only fields, which the patch wire never carries; on `@virtual`
 fields (a view has no schema types; an `@rowsOf` write lands on the table resource, which is
 tagged); and on `@computed` and `@rpc` structs, which have no schema. A null in a nullable
-wrapper passes: there is nothing to size. Application code that drives `PatchSet.Set`
+wrapper, or in a slice whose column allows NULL, passes: there is nothing to size. Application code that drives `PatchSet.Set`
 directly is trusted and keeps the commit backstop.
 
 One message names **every** offending field the request carried, in struct-field order,
@@ -653,7 +655,8 @@ appears.
 
 **How a type resolves.** After aliases are read through (`type NullKindID =
 ccc.NullEnum[KindID]` is read as the `NullEnum`), and one pointer is read through (a
-pointer column is nullable, as before), the generator tries, in order:
+pointer column is nullable, as before; a pointer to a slice is refused, below), the
+generator tries, in order:
 
 1. the built-in table, by the type's qualified name;
 2. a generic row, by the type's origin: `ccc.NullEnum[T]` is `T`'s type;
@@ -710,12 +713,36 @@ request or result field), so a browser knows the value is not text: a grid shows
 or offers a download rather than the base64, and a form draws no free-text control for it
 (a typed word fails the server's base64 decode with a 400). The line is the one the value
 limits draw (section 11): an unnamed `[]byte`, a named slice type over `byte` (`type Digest
-[]byte`) with no JSON methods, and a pointer to either; a `[][]byte` (an `ARRAY<BYTES>`
-column) is `string[]` with display type `bytes[]`. Not on it: a byte array (`[N]byte` stays
+[]byte`) with no JSON methods, and, on an RPC or computed field, a pointer to either (on a
+table or view column a pointer to a slice is refused, below); a `[][]byte` (an
+`ARRAY<BYTES>` column) is `string[]` with display type `bytes[]`. Not on it: a byte array (`[N]byte` stays
 `number[]`, since `encoding/json` writes an array as an array), a named type carrying
 `@typescript` (it keeps what it declares), and one writing its own JSON
 (`json.RawMessage` is refused as before, since it writes JSON, not base64). `maxLength`
 is never emitted for bytes (section 11); a byte limit can ride the `bytes` type later.
+
+**Nullable slices.** A slice-typed column takes its nullability from the schema, since a
+Go slice has one form: the Spanner client reads a NULL `BYTES` or `ARRAY<T>` column into a
+nil slice and writes a nil slice as NULL, and `encoding/json` carries nil as `null`. So
+`[]byte` types a nullable `BYTES(n)` column and a NOT NULL one alike, `[]int64` an
+`ARRAY<INT64>` either way, and the nullability check (section 2) leaves slice fields out.
+The generated metadata says `required: false` for the nullable column and `required: true`
+for the NOT NULL one without a default; the patch request struct carries `nullable:"true"`
+on the nullable one (section 3), so a `null` in a PATCH clears the column, while a `null`
+into the NOT NULL one answers `cannot be null` at decode. A pointer to a slice is refused
+on a table or view column, naming the plain slice: the client decodes through one pointer
+and no more, so `*[]string` fails on the column's first read, NULL or not, and the message
+quotes the client's own words for the column's type (a view has no schema type, so there
+the quote is left out):
+
+- `Squadrons.Callsigns: *[]string cannot be read by the Spanner client (type **[]string
+  cannot be used for decoding ARRAY[STRING]); type the column with the plain slice
+  []string, which reads NULL as nil`
+
+Element nullability is not carried: an `ARRAY<INT64>` row holding a NULL element fails at
+read into a `[]int64`. Example: [Squadron.Callsigns](lodestar/pkg/resources/squadrons.go),
+an `ARRAY<STRING(16)>` column that is NULL until the marshal files the squadron's callsigns
+and `[]` for a squadron that flies silent.
 
 **The display-type vocabulary.** Beside its interface type, every field carries a display
 type in the generated metadata (`FieldMeta.displayType`, `RPCFieldMeta.displayType`): the

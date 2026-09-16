@@ -1091,6 +1091,14 @@ func reservedRowName(spannerTag, fieldName string) (string, bool) {
 	return "", false
 }
 
+// validateNullability checks every field's nillability against its column's
+// nullability and reports the mismatches in one table. A slice-typed field is left out:
+// a Go slice has one form, which the Spanner client reads NULL into as nil and writes as
+// NULL when nil, so the plain slice fits a nullable column and a NOT NULL one alike, and
+// the column alone decides (resourceField.IsNullable, carried onto the patch request
+// struct by NullableTag). A pointer to a slice is no alternative on either column, since
+// the client cannot decode into it; the column typing refuses it naming the plain slice
+// (refusePointerToSlice).
 func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 	nullableFields, err := fieldNullability(pStruct)
 	if err != nil {
@@ -1099,6 +1107,9 @@ func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 
 	var errRows []string
 	for _, field := range pStruct.Fields() {
+		if field.IsSlice() {
+			continue
+		}
 		spannerTag, _ := field.LookupTag(spannerTagKey)
 		if nullableFields[spannerTag] != table.Columns[spannerTag].IsNullable {
 			errRow := fmt.Sprintf("| %-32s | %13t | %15t |", spannerTag, nullableFields[spannerTag], table.Columns[spannerTag].IsNullable)
@@ -1125,6 +1136,11 @@ func validateNullability(pStruct *parser.Struct, table *tableMetadata) error {
 	return nil
 }
 
+// fieldNullability reads which fields can carry NULL off their Go types alone: a
+// pointer, one of the listed Null wrappers, or a type named Null-something. A slice is
+// recorded under neither reading: its nullability is its column's (validateNullability),
+// so a slice-typed field is absent from the map, and a named slice type's Null prefix
+// says nothing.
 func fieldNullability(pStruct *parser.Struct) (map[string]bool, error) {
 	nullableFields := make(map[string]bool)
 	var missingTags []string
@@ -1132,6 +1148,10 @@ func fieldNullability(pStruct *parser.Struct) (map[string]bool, error) {
 		spannerTag, ok := field.LookupTag(spannerTagKey)
 		if !ok {
 			missingTags = append(missingTags, field.Name())
+		}
+
+		if field.IsSlice() {
+			continue
 		}
 
 		if slices.Contains([]string{

@@ -1472,6 +1472,25 @@ func (f *resourceField) TypescriptMaxLength() int {
 	return resource.DeclaredLength(f.SpannerType)
 }
 
+// NullableTag renders nullable:"true" onto a patch request-struct field typed by a slice
+// whose column allows NULL. A Go slice has one form, so the nullability check reads a
+// slice field's nullability from the column (validateNullability) and the decoder, which
+// reads nullability off a pointer or a Null wrapper, needs the column's answer carried
+// to it to accept a null for the field (decodeToPatch). Every other field carries
+// nothing: a pointer or wrapper says so by its type, a slice on a NOT NULL column refuses
+// null as before, a view's field has no schema, and a key or an output-only field is
+// hidden from the patch wire.
+func (f *resourceField) NullableTag() string {
+	if f.IsPrimaryKey || f.IsOutputOnly() {
+		return ""
+	}
+	if !f.IsNullable || !f.IsSlice() {
+		return ""
+	}
+
+	return nullableOutTagKey + `:"true"`
+}
+
 func (f *resourceField) IsView() bool {
 	return f.Parent.IsVirtual
 }

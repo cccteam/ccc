@@ -151,6 +151,33 @@ func (d *Decoder[Resource, Request]) DecodeOperation(oper *Operation, userPermis
 	return patchSet, nil
 }
 
+// acceptsNull reports whether a JSON null may land in the request field: a pointer, one
+// of the Spanner client's Null wrappers, or a slice the generator marked nullable
+// because its column allows NULL (nullable_fields.go). The value stored is then the
+// field's zero, a nil pointer, an invalid wrapper, or a nil slice, each of which the
+// client writes as NULL. An unmarked slice refuses null like every other field whose
+// type has no null form: the column behind it is NOT NULL.
+func acceptsNull(nullableFields map[accesstypes.Field]struct{}, fieldName accesstypes.Field, field reflect.Value) bool {
+	if field.Kind() == reflect.Pointer {
+		return true
+	}
+	switch field.Interface().(type) {
+	// Taken from cloud.google.com/go/spanner@v1.83.0/value.go
+	// these types are handled by the driver
+	case spanner.NullInt64, spanner.NullFloat64, spanner.NullFloat32, spanner.NullBool,
+		spanner.NullString, spanner.NullTime, spanner.NullDate, spanner.NullNumeric,
+		spanner.NullProtoEnum, spanner.NullUUID, guid.NullUUID, spanner.Encoder:
+		return true
+	default:
+	}
+	if field.Kind() != reflect.Slice {
+		return false
+	}
+	_, nullable := nullableFields[fieldName]
+
+	return nullable
+}
+
 func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMapper *RequestFieldMapper, req *http.Request, validate ValidatorFunc, operationPerm accesstypes.Permission) (*PatchSet[Resource], *Request, error) {
 	request := new(Request)
 	pr, pw := io.Pipe()
@@ -199,18 +226,8 @@ func decodeToPatch[Resource Resourcer, Request any](rSet *Set[Resource], fieldMa
 
 		field := vValue.FieldByName(string(fieldName))
 		value := field.Interface()
-		if jsonValue == nil {
-			if field.Kind() != reflect.Pointer {
-				switch value.(type) {
-				// Taken from cloud.google.com/go/spanner@v1.83.0/value.go
-				// these types are handled by the driver
-				case spanner.NullInt64, spanner.NullFloat64, spanner.NullFloat32, spanner.NullBool,
-					spanner.NullString, spanner.NullTime, spanner.NullDate, spanner.NullNumeric,
-					spanner.NullProtoEnum, spanner.NullUUID, guid.NullUUID, spanner.Encoder:
-				default:
-					return nil, nil, httpio.NewBadRequestMessagef(`%s cannot be null`, jsonField)
-				}
-			}
+		if jsonValue == nil && !acceptsNull(rSet.nullableFields, fieldName, field) {
+			return nil, nil, httpio.NewBadRequestMessagef(`%s cannot be null`, jsonField)
 		}
 		changes[fieldName] = value
 	}

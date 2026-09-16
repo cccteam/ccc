@@ -59,7 +59,10 @@ type Set[Resource Resourcer] struct {
 	// valueLimits are the fields whose values the decoder sizes against their columns'
 	// declared types, from the generated sqltype tags (value_limits.go).
 	valueLimits map[accesstypes.Field]valueLimit
-	rMeta       *Metadata[Resource]
+	// nullableFields are the slice-typed fields whose columns allow NULL, from the
+	// generated nullable tags (nullable_fields.go); the decoder accepts a null for them.
+	nullableFields map[accesstypes.Field]struct{}
+	rMeta          *Metadata[Resource]
 }
 
 // NewSet creates a new Set for a given Resource and Request type. Field-level
@@ -84,6 +87,7 @@ func NewSet[Resource Resourcer, Request any](permissions ...accesstypes.Permissi
 		immutableFields:  reg.immutableFields,
 		positionalFields: reg.positionalFields,
 		valueLimits:      reg.valueLimits,
+		nullableFields:   reg.nullableFields,
 		rMeta:            NewMetadata[Resource](),
 	}, nil
 }
@@ -110,11 +114,17 @@ func newUnenforcedSet[Resource Resourcer, Request any]() (*Set[Resource], error)
 		return nil, errors.Wrap(err, "valueLimitsOf()")
 	}
 
+	nullableFields, err := nullableFieldsOf(t)
+	if err != nil {
+		return nil, errors.Wrap(err, "nullableFieldsOf()")
+	}
+
 	return &Set[Resource]{
 		requiredTagPerm: make(accesstypes.TagPermissions),
 		fieldToTag:      make(map[accesstypes.Field]accesstypes.Tag),
 		immutableFields: immutableFields,
 		valueLimits:     valueLimits,
+		nullableFields:  nullableFields,
 		rMeta:           NewMetadata[Resource](),
 	}, nil
 }
@@ -169,8 +179,9 @@ func (r *Set[Resource]) TagPermissions() accesstypes.TagPermissions {
 
 // setRegistration is what a request struct's tags register: the tag-to-permission
 // mappings, the field-to-tag mapping, the permissions, the tags carrying the
-// immutable and positional declarations, and the value limits the runtime path reads
-// from the sqltype tags (the static path has no field types to pair them with).
+// immutable and positional declarations, and what the runtime path alone reads, since
+// the static path has no field types to pair them with: the value limits from the
+// sqltype tags and the nullable slice fields from the nullable tags.
 type setRegistration struct {
 	tags             accesstypes.TagPermissions
 	fieldToTag       map[accesstypes.Field]accesstypes.Tag
@@ -178,6 +189,7 @@ type setRegistration struct {
 	immutableFields  map[accesstypes.Tag]struct{}
 	positionalFields map[accesstypes.Tag]struct{}
 	valueLimits      map[accesstypes.Field]valueLimit
+	nullableFields   map[accesstypes.Field]struct{}
 }
 
 func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (*setRegistration, error) {
@@ -206,6 +218,12 @@ func permissionsFromTags(t reflect.Type, perms []accesstypes.Permission) (*setRe
 	reg.valueLimits, err = valueLimitsOf(t)
 	if err != nil {
 		return nil, errors.Wrap(err, "valueLimitsOf()")
+	}
+
+	// The nullable tags pair with slice-typed fields the same way.
+	reg.nullableFields, err = nullableFieldsOf(t)
+	if err != nil {
+		return nil, errors.Wrap(err, "nullableFieldsOf()")
 	}
 
 	return reg, nil

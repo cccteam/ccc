@@ -171,7 +171,7 @@ type Row struct {
 	Ranks       []*int64           `spanner:"Ranks"`
 	Toggles     []*bool            `spanner:"Toggles"`
 	Seal        []byte             `spanner:"Seal"`
-	Digest      *Digest            `spanner:"Digest"`
+	Digest      Digest             `spanner:"Digest"`
 	Chunks      [][]byte           `spanner:"Chunks"`
 	Checksum    [4]byte            `spanner:"Checksum"`
 	Provenance  *Provenance        `spanner:"Provenance"`

@@ -78,7 +78,7 @@ func Test_resourceFieldsTypescriptType_columns(t *testing.T) {
 		{name: "a slice of pointers is a list of the element", field: "Ranks", wantData: "number[]", wantDisplay: "number[]"},
 		{name: "a nullable slice of bool pointers is boolean[], never nullboolean[]", field: "Toggles", wantData: "boolean[]", wantDisplay: "boolean[]"},
 		{name: "a byte slice is one bytes leaf, a string in the interface", field: "Seal", wantData: "string", wantDisplay: "bytes"},
-		{name: "a pointer to a named byte slice is the bytes leaf", field: "Digest", wantData: "string", wantDisplay: "bytes"},
+		{name: "a named byte slice is the bytes leaf", field: "Digest", wantData: "string", wantDisplay: "bytes"},
 		{name: "a slice of byte slices is a list of the bytes leaf", field: "Chunks", wantData: "string[]", wantDisplay: "bytes[]"},
 		{name: "a byte array is a list of numbers, as encoding/json writes it", field: "Checksum", wantData: "number[]", wantDisplay: "number[]"},
 		{name: "a plain struct is derived into the resource's namespace", field: "Provenance", wantData: "Rows.Provenance", wantDisplay: "object"},

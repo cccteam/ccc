@@ -26,6 +26,13 @@ const (
 	// column type together have a rule; a value the runtime cannot pair with the field
 	// is rejected at Set construction, like a stale perm value.
 	sqltypeTagKey = "sqltype"
+	// nullableTagKey marks a slice-typed patch request struct field whose column allows
+	// NULL: a Go slice has one form, so the decoder cannot read the fact off the field's
+	// type as it does off a pointer or a Null wrapper, and the generator writes it where
+	// the schema says so (see nullable_fields.go). true is the only value written; a tag
+	// the runtime cannot pair with a slice field is rejected at Set construction, like a
+	// stale perm value.
+	nullableTagKey = "nullable"
 )
 
 // maskingPositional is the masking tag value the generator writes for a
@@ -47,6 +54,7 @@ var runtimeTagKeys = []string{
 	piiTagKey,
 	maskingTagKey,
 	sqltypeTagKey,
+	nullableTagKey,
 }
 
 // Reserved query-string parameter names consumed by QueryDecoder; they can never be used

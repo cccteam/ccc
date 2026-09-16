@@ -74,4 +74,8 @@ const (
 	// sqltypeOutTagKey carries a column's declared Spanner type onto a patch request
 	// struct field the decoder sizes (resourceField.SqltypeTag).
 	sqltypeOutTagKey = "sqltype"
+	// nullableOutTagKey marks a slice-typed patch request struct field whose column
+	// allows NULL, the one nullability fact the decoder cannot read off the field's
+	// type (resourceField.NullableTag).
+	nullableOutTagKey = "nullable"
 )

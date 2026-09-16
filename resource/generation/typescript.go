@@ -601,6 +601,14 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(res *resourceInfo) er
 
 			continue
 		}
+		// The classifier read one pointer through; a pointer to a slice the client
+		// would decode natively is refused, since the client cannot, on either
+		// nullability.
+		if err := refusePointerToSlice(field.GoType(), field.SpannerType, class); err != nil {
+			errs = append(errs, columnTypeRefusal(path, err))
+
+			continue
+		}
 		switch {
 		case class.Derive != nil:
 			shape, err := walker.walkColumn(class.Derive, path)
@@ -627,8 +635,8 @@ func (t *typescriptGenerator) resourceFieldsTypescriptType(res *resourceInfo) er
 
 // columnTypeRefusal is the message for a column type that reaches no TypeScript type:
 // the field's path, the classifier's finding, and the fix. A refusal that names its
-// own fix (a database/sql Null wrapper, which no application can annotate) is reported
-// as it stands.
+// own fix (a database/sql Null wrapper, which no application can annotate; a pointer to
+// a slice, which the client cannot read) is reported as it stands.
 func columnTypeRefusal(path string, cause error) error {
 	var own *ownFixRefusal
 	if errors.As(cause, &own) {

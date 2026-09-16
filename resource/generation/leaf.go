@@ -26,8 +26,9 @@ import (
 // carries: encoding/json writes a []byte as a base64 string and a nil one as null, and
 // reads a base64 string back. The leaf is bytes in the metadata and string in the
 // interface (tsDataType). The line is the one valueKindOf draws for the value limits:
-// an unnamed slice of byte (uint8 or an alias of it), a named slice type over it, and a
-// pointer to either. A byte array ([N]byte) is not on it, since encoding/json writes an
+// an unnamed slice of byte (uint8 or an alias of it), a named slice type over it, and,
+// on the wire paths, a pointer to either (on a column a pointer to a slice is refused,
+// refusePointerToSlice). A byte array ([N]byte) is not on it, since encoding/json writes an
 // array as an array; a named type carrying @typescript keeps what it declares, and one
 // writing its own JSON (json.RawMessage) describes nothing and is refused as before.
 
@@ -144,6 +145,67 @@ func sqlNullValueField(named *types.Named) (value *types.Var, ok bool) {
 	}
 
 	return nil, false
+}
+
+// refusePointerToSlice refuses a pointer to a slice on the column path: *[]byte, *[]T,
+// and a pointer to a named slice type that reaches a built-in leaf. The Spanner client
+// decodes a column into a struct field through one pointer and no more (its decode
+// switch lists the base kinds behind **T, and its reflective path strips one pointer
+// level), so the first read of the column fails with "type **[]int64 cannot be used for
+// decoding ARRAY[INT64]", NULL or not, and its encoder has no case for the pointer
+// either. The plain slice carries NULL already: the client reads NULL as nil and writes
+// nil as NULL, and encoding/json carries nil as null, so the refusal names it. A type
+// the storage methods carry is left alone, whatever it wraps: a derived struct's slice,
+// a type declaring its TypeScript form, or one with its own DecodeSpanner, since the
+// client reads a **T whose *T is a Decoder through the method (storage.go emits the
+// pair for the first two). columnType is the column's declared type where the schema
+// knows it (a table), and the message then quotes the client's own words; a view has no
+// schema type and the quote is left out. Returns nil for every other type.
+func refusePointerToSlice(t types.Type, columnType string, class columnClass) error {
+	p, ok := types.Unalias(t).(*types.Pointer)
+	if !ok {
+		return nil
+	}
+	elem := types.Unalias(p.Elem())
+	if _, isSlice := elem.Underlying().(*types.Slice); !isSlice {
+		return nil
+	}
+	if class.Derive != nil || class.Leaf.Import != nil {
+		return nil
+	}
+	if named, ok := elem.(*types.Named); ok && hasMethod(named, "DecodeSpanner") {
+		return nil
+	}
+	msg := typeStringer(t) + " cannot be read by the Spanner client"
+	if columnType != "" {
+		msg = fmt.Sprintf("%s (type **%s cannot be used for decoding %s)", msg, reflectSpelling(elem), spannerDecodeSpelling(columnType))
+	}
+
+	return &ownFixRefusal{msg: fmt.Sprintf("%s; type the column with the plain slice %s, which reads NULL as nil", msg, typeStringer(elem))}
+}
+
+// reflectSpelling is a slice type as the client's error prints it with %T: an unnamed
+// byte slice is []uint8 there, the kind byte aliases; every other type reads as Go
+// spells it.
+func reflectSpelling(t types.Type) string {
+	if isByteSlice(t) {
+		return "[]uint8"
+	}
+
+	return typeStringer(t)
+}
+
+// spannerDecodeSpelling is a column's declared type as the client's decode error spells
+// it: the base type without its length (BYTES(32) is BYTES), and an array as
+// ARRAY[element] (ARRAY<STRING(16)> is ARRAY[STRING]).
+func spannerDecodeSpelling(columnType string) string {
+	base, array := strings.CutPrefix(columnType, "ARRAY<")
+	base, _, _ = strings.Cut(strings.TrimSuffix(base, ">"), "(")
+	if array {
+		return "ARRAY[" + base + "]"
+	}
+
+	return base
 }
 
 // leafResolver resolves Go types to TypeScript leaves over the built-in table and the

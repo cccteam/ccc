@@ -158,6 +158,16 @@ func (t *TypeInfo) IsIterable() bool {
 	}
 }
 
+// IsSlice reports whether the declaration's type is a slice: a []T, or a named type
+// whose underlying type is one. An array ([N]T) is not, and neither is a pointer to a
+// slice. A nil slice is what the Spanner client reads NULL into and what encoding/json
+// writes as null, so a slice-typed field takes its nullability from its column.
+func (t *TypeInfo) IsSlice() bool {
+	_, ok := types.Unalias(t.obj.Type()).Underlying().(*types.Slice)
+
+	return ok
+}
+
 // Struct is an abstraction combining types.Struct and ast.StructType for simpler parsing.
 type Struct struct {
 	*TypeInfo
