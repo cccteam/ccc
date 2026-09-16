@@ -33,7 +33,9 @@ func Test_declareFieldEnumerations(t *testing.T) {
 	for _, f := range pStruct.Fields() {
 		fields = append(fields, &resourceField{Field: f})
 	}
-	declareFieldEnumerations(pStruct, fields, annotations)
+	if err := declareFieldEnumerations(pStruct, fields, annotations); err != nil {
+		t.Fatalf("declareFieldEnumerations() error = %v", err)
+	}
 
 	tests := []struct {
 		name  string

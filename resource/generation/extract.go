@@ -75,7 +75,11 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 			continue
 		}
 		resource.Fields = fields
-		declareFieldEnumerations(pStruct, fields, annotations)
+		if err := declareFieldEnumerations(pStruct, fields, annotations); err != nil {
+			resourceErrors = append(resourceErrors, err)
+
+			continue
+		}
 
 		if err := c.resolveResource(resource, pStruct, annotations, structsByTable, table); err != nil {
 			resourceErrors = append(resourceErrors, err)
@@ -402,12 +406,11 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 		resource.Fields = fields
-		declareFieldEnumerations(pStruct, fields, annotations)
 		declareRowsOf(annotations, &resource.rowsOfDecl)
 
-		// A view declares its order and page sizes as a table does, and its list handler
-		// and descriptor carry them the same way.
-		if err := resolveResourcePaging(resource, annotations); err != nil {
+		// A view declares the pickers its fields list and its order and page sizes as a
+		// table does, and its list handler and descriptor carry them the same way.
+		if err := errors.Join(declareFieldEnumerations(pStruct, fields, annotations), resolveResourcePaging(resource, annotations)); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -601,13 +604,17 @@ func (r *resourceInfo) deriveTenantIndexFlags(table *tableMetadata) {
 	}
 }
 
-// The refusals a list field's query tags meet, on every path that reads one. Spanner
-// has no array equality and cannot index an ARRAY column, and a computed resource's
-// evaluator compares single values, so a filter or an index on a list is refused at
-// generation naming the field, with one sentence shape wherever it is met.
+// The refusals a list field's query tags and picker declaration meet, on every path
+// that reads one. Spanner has no array equality and cannot index an ARRAY column, and a
+// computed resource's evaluator compares single values, so a filter or an index on a
+// list is refused at generation naming the field, with one sentence shape wherever it
+// is met. A picker stores one key, so a field-scope @enumerate on a list is refused the
+// same way, where the argument is captured and before it is read: the list field hears
+// this sentence and never a second one about the resource it names.
 const (
-	listFieldFilterRefusal = allowFilterTagKey + " on a list field; a filter compares single values"
-	listFieldIndexRefusal  = " on a list field; no index serves an ARRAY column"
+	listFieldFilterRefusal    = allowFilterTagKey + " on a list field; a filter compares single values"
+	listFieldIndexRefusal     = " on a list field; no index serves an ARRAY column"
+	listFieldEnumerateRefusal = "@" + enumerateKeyword + " on a list field; a picker stores one key"
 )
 
 // listColumnTagRefusal is the refusal a table or view field earns for a query tag on a
@@ -708,16 +715,7 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 
 		for i, field := range s.Fields() {
 			field := rpcField{Field: field, wire: rpcMethod.Request.Fields[i], namespace: s.Name(), typescriptType: rpcMethod.Request.Fields[i].TypescriptDisplayType()}
-			if annotations.Fields[i].Has(enumerateKeyword) {
-				src, err := c.resolveEnumerate(annotations.Fields[i].Get(enumerateKeyword))
-				if err != nil {
-					field.AddError(err.Error())
-
-					continue
-				}
-				field.applyEnumeration(src)
-			}
-
+			c.declareRPCEnumeration(&field, annotations.Fields[i])
 			rpcMethod.Fields = append(rpcMethod.Fields, &field)
 		}
 
@@ -966,8 +964,15 @@ func (c *client) computedFields(res *computedResource, annotations genlang.Struc
 			keyCount++
 		}
 		if annotations.Fields[i].Has(enumerateKeyword) {
-			arg := annotations.Fields[i].Get(enumerateKeyword)
-			field.enumerateArg = &arg
+			if field.wire.IsLeaf() && isListColumn(field.GoType()) {
+				// Refused before the argument is read, so the resolution says nothing
+				// more about it; a nested field, list or not, meets the opaque refusal
+				// below instead.
+				errs = append(errs, errors.Newf("struct %s field %s: %s", res.Name(), field.Name(), listFieldEnumerateRefusal))
+			} else {
+				arg := annotations.Fields[i].Get(enumerateKeyword)
+				field.enumerateArg = &arg
+			}
 		}
 
 		if err := checkOpaqueField(res.Name(), field); err != nil {

@@ -48,6 +48,28 @@ func (c *client) resolveEnumerate(arg genlang.Arg) (enumerationSource, error) {
 	return src, nil
 }
 
+// declareRPCEnumeration resolves the field-scope @enumerate a request field carries,
+// if any, and marks the field enumerated. A refusal is recorded on the field, where the
+// struct's error print names it; a list field is refused before the argument is read,
+// since a picker stores one key.
+func (c *client) declareRPCEnumeration(field *rpcField, annotations genlang.ArgMap) {
+	if !annotations.Has(enumerateKeyword) {
+		return
+	}
+	if isListColumn(field.GoType()) {
+		field.AddError(listFieldEnumerateRefusal)
+
+		return
+	}
+	src, err := c.resolveEnumerate(annotations.Get(enumerateKeyword))
+	if err != nil {
+		field.AddError(err.Error())
+
+		return
+	}
+	field.applyEnumeration(src)
+}
+
 // enumerationSourceOf is resolveEnumerate with the refusal as text, so a caller can
 // prefix the struct and field it concerns in one message.
 func (c *client) enumerationSourceOf(arg genlang.Arg) (src enumerationSource, problem string) {
@@ -107,10 +129,19 @@ func (c *client) doesResourceExist(resourceName string) bool {
 
 // declareFieldEnumerations records each field's field-scope @enumerate argument for
 // resolveFieldEnumerations, which runs once every kind is extracted: a declaration
-// may name a computed resource, and those are parsed last.
-func declareFieldEnumerations(pStruct *parser.Struct, fields []*resourceField, annotations genlang.StructAnnotations) {
+// may name a computed resource, and those are parsed last. A declaration on a list
+// field (isListColumn: a slice, an array, or a named type over one, never a byte
+// slice) is refused here, before the argument is read, naming the struct and field:
+// a picker stores one key, and the column stores many.
+func declareFieldEnumerations(pStruct *parser.Struct, fields []*resourceField, annotations genlang.StructAnnotations) error {
+	var errs []error
 	for i, structField := range pStruct.Fields() {
 		if !annotations.Fields[i].Has(enumerateKeyword) {
+			continue
+		}
+		if isListColumn(structField.GoType()) {
+			errs = append(errs, errors.Newf("struct %s field %s: %s", pStruct.Name(), structField.Name(), listFieldEnumerateRefusal))
+
 			continue
 		}
 		arg := annotations.Fields[i].Get(enumerateKeyword)
@@ -120,6 +151,11 @@ func declareFieldEnumerations(pStruct *parser.Struct, fields []*resourceField, a
 			}
 		}
 	}
+	if len(errs) > 0 {
+		return errors.Wrapf(errors.Join(errs...), "field-scope @%s", enumerateKeyword)
+	}
+
+	return nil
 }
 
 // resolveFieldEnumerations resolves every field-scope @enumerate declared on a
