@@ -163,6 +163,7 @@ var Demonstrations = []Demonstration{
 	// Paging.
 	{"@order", "@order(Field asc|desc): a list's declared total order."},
 	{"@page", "@page(default: N, max: M): a list's page sizes, carried into the descriptor."},
+	{"order.none", "A list with no @order and no request sort is not sorted: a table statement carries no ORDER BY and its rows arrive in the database's own order, a computed list keeps the order its body yielded, and no cursor is issued, Page-More marking a first page that did not fit until a sort is asked."},
 	{"paging.cursor", "A keyset cursor: pages positioned by the row the last page ended on."},
 	{"paging.link-header", "The Link header's next and prev relations, followed exactly as issued."},
 	{"paging.total-count", "count=true on a first page answers Total-Count."},

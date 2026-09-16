@@ -500,12 +500,19 @@ func (q *QuerySet[Resource]) KeySet() KeySet {
 
 // Order returns the total order the list is read in: the request's sort fields,
 // or the resource's declared order when the request states none, followed by the
-// primary-key fields not already named, ascending. On a hand-built QuerySet it is
-// exactly the sort the caller set.
+// primary-key fields not already named, ascending, so a keyset cursor walks a
+// total order. With neither a sort nor a declared order the list is not sorted:
+// Order answers nothing, the statement carries no ORDER BY and its rows arrive in
+// the database's own order, a computed list keeps the order its body yielded, and
+// no cursor is issued (issuesCursors). On a hand-built QuerySet it is exactly the
+// sort the caller set.
 func (q *QuerySet[Resource]) Order() []SortField {
 	order := q.sortFields
 	if len(order) == 0 {
 		order = q.defaultOrder
+	}
+	if len(order) == 0 {
+		return nil
 	}
 	order = slices.Clone(order)
 	for _, key := range q.keyFields {
@@ -1079,9 +1086,9 @@ func (q *QuerySet[Resource]) limitClause() (string, error) {
 // bindCursor opens the request's cursor under the decoder's key and checks its
 // fingerprint against the query being decoded: the resource, the checked scope,
 // the filter, the total order, and the page size. A first page has nothing to
-// bind. A resource with no declared order and no requested sort lists in
-// primary-key order, which carries no meaning to page through, so a cursor on
-// it is refused: paging further requires a sort.
+// bind. A resource with no declared order and no requested sort lists with no
+// order, and a cursor names a position in an order, so a cursor on it is
+// refused: paging further requires a sort.
 func (q *QuerySet[Resource]) bindCursor(scope accesstypes.Scope) error {
 	if q.page == nil || q.page.token == "" {
 		return nil
@@ -1090,7 +1097,7 @@ func (q *QuerySet[Resource]) bindCursor(scope accesstypes.Scope) error {
 		return errors.New("resource.QuerySet: the request carries a cursor but the decoder has no cursor key; pass resource.NewCursorKey(cookieKey) to WithCursorKey")
 	}
 	if !q.issuesCursors() {
-		return httpio.NewBadRequestMessage("this resource lists in primary-key order when no sort is given; paging past the first page requires a sort")
+		return httpio.NewBadRequestMessage("this resource lists with no order when no sort is given; paging past the first page requires a sort")
 	}
 
 	c, err := q.cursorKey.open(q.page.token)
@@ -1105,9 +1112,9 @@ func (q *QuerySet[Resource]) bindCursor(scope accesstypes.Scope) error {
 	return nil
 }
 
-// issuesCursors reports whether the list has an order worth walking: a
-// requested sort or a declared default. Primary-key order alone is total but
-// meaningless, so such a list serves first pages only.
+// issuesCursors reports whether the list has an order to walk: a requested sort
+// or a declared default. With neither the list is not sorted, so it serves first
+// pages only, Page-More marking a page its rows did not fit.
 func (q *QuerySet[Resource]) issuesCursors() bool {
 	return len(q.sortFields) > 0 || len(q.defaultOrder) > 0
 }

@@ -82,8 +82,8 @@ type (
 		PlacedAt time.Time `spanner:"PlacedAt"`
 	}
 
-	// Unordered has a bare @domain and no @order: silent, since its list is in
-	// primary-key order and the backing index on the tenant column serves it.
+	// Unordered has a bare @domain and no @order: silent, since its sort-less list
+	// is not sorted and the backing index on the tenant column serves it.
 	//
 	// @resource
 	// @permissionScope(domain)

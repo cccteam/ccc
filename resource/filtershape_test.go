@@ -317,7 +317,9 @@ func TestSortRows_refusals(t *testing.T) {
 
 // TestQuerySet_Collect pins the handler's application of the query over a body's
 // rows: filter, then count, then sort, then the cursor position, then the page,
-// with the same headers a table page writes. The sort and the cursor position
+// with the same headers a table page writes. With no sort asked and no order
+// declared the rows keep the order the body yielded them in and no cursor is
+// issued, whether or not the body took the (empty) sort. The sort and the cursor position
 // place NULL where the query set's database does: the Note cases walk the NULL
 // boundary under both types, forward and back, once over the fixture's rows and
 // once over rows a body yielded in the database's own order after taking the
@@ -353,8 +355,9 @@ func TestQuerySet_Collect(t *testing.T) {
 		takeSort bool
 		// bodySorted yields the rows in the taken order under the case's database
 		// type, as a pushdown body's plain ORDER BY would; otherwise the body
-		// yields the fixture's order.
+		// yields the fixture's order, last row first when reversed is set.
 		bodySorted bool
+		reversed   bool
 		takeFilter []string
 		wantRows   []string
 		wantMore   bool
@@ -362,9 +365,24 @@ func TestQuerySet_Collect(t *testing.T) {
 		wantRels   []string
 	}{
 		{
-			name:     "no query: every row in primary-key order",
+			name:     "no query: every row in the order the body yielded, not the key's",
 			target:   func(*testing.T) string { return "/" },
-			wantRows: []string{"Kingfisher/hull", "Kingfisher/reactor", "Lantern/hull"},
+			reversed: true,
+			wantRows: []string{"Lantern/hull", "Kingfisher/reactor", "Kingfisher/hull"},
+		},
+		{
+			name:     "no query, the body took the empty sort: its own order stands",
+			target:   func(*testing.T) string { return "/" },
+			takeSort: true,
+			reversed: true,
+			wantRows: []string{"Lantern/hull", "Kingfisher/reactor", "Kingfisher/hull"},
+		},
+		{
+			name:     "no sort, no declaration, a page: the first yielded rows, the more signal, no cursor",
+			target:   func(*testing.T) string { return "/?limit=2" },
+			reversed: true,
+			wantRows: []string{"Lantern/hull", "Kingfisher/reactor"},
+			wantMore: true,
 		},
 		{
 			name:     "filter then sort then page",
@@ -540,6 +558,9 @@ func TestQuerySet_Collect(t *testing.T) {
 				t.Fatalf("bindCursor() error = %v", err)
 			}
 			rows := boardRows()
+			if tt.reversed {
+				slices.Reverse(rows)
+			}
 			if tt.takeSort {
 				order := qSet.TakeSort()
 				if tt.bodySorted {

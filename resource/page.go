@@ -14,8 +14,9 @@ import (
 
 // Response headers a paged list carries. Link (RFC 8288) positions the walk with a
 // complete URL per relation that exists; Total-Count answers count=true on a
-// first page; Page-More marks a list served in primary-key order whose rows did
-// not fit the page, where no cursor is issued and paging further requires a sort.
+// first page; Page-More marks a list served with no order (no sort asked, none
+// declared) whose rows did not fit the page, where no cursor is issued and paging
+// further requires a sort.
 const (
 	LinkHeader       = "Link"
 	TotalCountHeader = "Total-Count"
@@ -103,8 +104,8 @@ func (p *Page[Resource]) Reversed() bool {
 // Total-Count when a count was asked for, and Link with a complete URL per
 // relation that exists — the first page has no prev, the last page no next.
 // The URLs carry the request's own query with the cursor set and count removed,
-// so a client follows them as given and never assembles one. A list in
-// primary-key order with no sort issues no cursor; Page-More marks its
+// so a client follows them as given and never assembles one. A list with no
+// order (no sort, no declared order) issues no cursor; Page-More marks its
 // truncation instead. A hand-built QuerySet and limit=all write nothing.
 func (p *Page[Resource]) WriteHeaders(w http.ResponseWriter, r *http.Request) error {
 	pg := p.qSet.page

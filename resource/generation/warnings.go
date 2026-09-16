@@ -70,8 +70,9 @@ func (w JoinPathWarning) String() string {
 // the two shapes the perf study measured (README section 9): a listed bare-tenant
 // resource whose declared order no index serves, and a listed join-path resource. A
 // virtual resource is out (its index facts are tags, not schema), so is a resource whose
-// list handler is suppressed, and so is a bare-tenant resource with no @order, whose list
-// is in primary-key order and served by the tenant column's foreign-key backing index.
+// list handler is suppressed, and so is a bare-tenant resource with no @order, whose
+// sort-less list is not sorted and is served by the tenant column's foreign-key backing
+// index.
 // Warnings come in resource-name order.
 func (c *client) schemaWarnings(resources []*resourceInfo) []Warning {
 	sorted := slices.Clone(resources)

@@ -44,7 +44,7 @@ type (
 		Deadline time.Time `spanner:"Deadline" index:"true"`
 	}
 
-	// UnorderedDeck is a view declaring nothing: it lists by primary key.
+	// UnorderedDeck is a view declaring nothing: its sort-less list is not sorted.
 	//
 	// @virtual
 	UnorderedDeck struct {

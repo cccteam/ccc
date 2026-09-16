@@ -12,8 +12,9 @@ import (
 
 // TestQuerySet_Order pins the total order a list is read in: the request's sort,
 // or the declared default when the request states none, then the primary key
-// ascending unless the caller already named it; a hand-built QuerySet with no
-// keys keeps exactly the sort it was given.
+// ascending unless the caller already named it; with neither a sort nor a
+// declaration the list is not sorted and the statement carries no ORDER BY; a
+// hand-built QuerySet with no keys keeps exactly the sort it was given.
 func TestQuerySet_Order(t *testing.T) {
 	t.Parallel()
 
@@ -27,11 +28,9 @@ func TestQuerySet_Order(t *testing.T) {
 		wantPostgres string
 	}{
 		{
-			name:         "no sort, no declaration: primary-key order",
-			keyFields:    []accesstypes.Field{"ID"},
-			wantOrder:    []SortField{{Field: "ID", Direction: SortAscending}},
-			wantSpanner:  "ORDER BY `Id` ASC",
-			wantPostgres: `ORDER BY "Id" ASC`,
+			name:      "no sort, no declaration: no order, no ORDER BY",
+			keyFields: []accesstypes.Field{"ID"},
+			wantOrder: []SortField{},
 		},
 		{
 			name:         "no sort: the declared order, then the key",
@@ -130,9 +129,9 @@ func TestQueryDecoder_stampsOrder(t *testing.T) {
 		wantOrder []SortField
 	}{
 		{
-			name:      "no sort, no declaration: the primary key alone",
+			name:      "no sort, no declaration: no order",
 			target:    "/",
-			wantOrder: []SortField{{Field: "ID", Direction: SortAscending}},
+			wantOrder: []SortField{},
 		},
 		{
 			name:      "no sort: the declared order, then the key",

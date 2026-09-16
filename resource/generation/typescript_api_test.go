@@ -68,7 +68,7 @@ func Test_apiClientData(t *testing.T) {
 				"domainRoute:",     // no domain-scoped targets
 				"MethodHandle",     // no methods
 				"import { Methods", // ...so no method constants
-				"order:",           // no declared order: the list is in primary-key order
+				"order:",           // no declared order: a sort-less list is not sorted
 			},
 		},
 		{

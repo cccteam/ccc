@@ -39,7 +39,7 @@ func pageOver(t *testing.T, sort, defaultOrder []SortField, page pageRequest, cu
 
 // TestPage_headers pins the headers a page writes from the rows it saw: the
 // more-exists row past the page size, the prev and next relations by direction,
-// Total-Count on request, Page-More on a primary-key-only order, and nothing for
+// Total-Count on request, Page-More on a list with no order, and nothing for
 // limit=all.
 func TestPage_headers(t *testing.T) {
 	t.Parallel()
@@ -121,7 +121,7 @@ func TestPage_headers(t *testing.T) {
 			wantRels:     []string{"next"},
 		},
 		{
-			name:       "primary-key order issues no cursor, only the more signal",
+			name:       "no sort and no declared order issues no cursor, only the more signal",
 			page:       pageRequest{size: 2},
 			ids:        []string{"a", "bb", "ccc"},
 			wantKept:   2,
@@ -129,7 +129,7 @@ func TestPage_headers(t *testing.T) {
 			wantMore:   "true",
 		},
 		{
-			name:       "primary-key order that fits: nothing",
+			name:       "no sort and no declared order that fits: nothing",
 			page:       pageRequest{size: 3},
 			ids:        []string{"a", "bb"},
 			wantKept:   2,

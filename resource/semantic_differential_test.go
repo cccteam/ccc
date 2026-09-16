@@ -995,6 +995,15 @@ func (h *semanticHarness) checkRead(t *testing.T, c *semanticCase) {
 	}
 
 	expected := h.expectRead(t, c, shape)
+	if !shape.sort {
+		// A read with no sort is not sorted: the statement carries no ORDER BY,
+		// so the rows arrive in the emulator's own order. The evaluator's key
+		// order stands in for the comparison, since the set is what a filter
+		// shape proves.
+		slices.SortStableFunc(rows, func(a, b *Row[semanticParcel]) int {
+			return strings.Compare(a.Data.ID.String(), b.Data.ID.String())
+		})
+	}
 	gotIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
 		gotIDs = append(gotIDs, row.Data.ID.String())

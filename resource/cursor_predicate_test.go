@@ -52,7 +52,8 @@ func TestQuerySet_stmt_cursorPredicate(t *testing.T) {
 		wantErr      string
 	}{
 		{
-			name:        "key only",
+			name:        "the key alone, named by the caller",
+			sort:        []SortField{{Field: "ID", Direction: SortAscending}},
 			cursor:      &cursor{Direction: pageNext, Keys: []*string{strPtr(id)}},
 			wantSpanner: "WHERE (`Id` > @_c1) ORDER BY `Id` ASC",
 			wantParams:  map[string]any{"_c1": id},

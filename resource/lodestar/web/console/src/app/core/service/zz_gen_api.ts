@@ -619,8 +619,7 @@ export const apiDescriptor: ApiDescriptor = {
       consolidated: true,
       keys: ['id'],
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
-      page: { default: 25, max: 200 },
-      order: [{ field: 'designation', direction: 'asc' }],
+      page: { default: 25 },
       patchable: ['roleId', 'tonnage', 'hardened'],
     },
     [Resources.Sorties]: {
@@ -703,7 +702,6 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list'],
       page: { default: 50 },
-      order: [{ field: 'name', direction: 'asc' }],
     },
     [Resources.PilotCards]: {
       resource: Resources.PilotCards,

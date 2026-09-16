@@ -214,10 +214,10 @@ func TestQueryDecoder_bindCursor(t *testing.T) {
 			wantBadReq: true,
 		},
 		{
-			name: "a cursor on a primary-key-only order is refused: paging further requires a sort",
+			name: "a cursor on a list with no sort and no declared order is refused: paging further requires a sort",
 			key:  key,
 			target: func(t *testing.T) string {
-				return "/?cursor=" + seal(t, key, testScope, "", []SortField{{Field: "ID", Direction: SortAscending}}, "50")
+				return "/?cursor=" + seal(t, key, testScope, "", nil, "50")
 			},
 			wantErr:    "paging past the first page requires a sort",
 			wantBadReq: true,

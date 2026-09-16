@@ -683,7 +683,6 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "tonnage", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 				},
 				ImmutableTags: []accesstypes.Tag{"designation"},
-				Order:         []accesstypes.Tag{"designation"},
 				QueryKeys:     []accesstypes.Tag{"designation", "roleId"},
 			},
 			{

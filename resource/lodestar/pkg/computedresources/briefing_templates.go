@@ -19,12 +19,16 @@ type (
 	// outlet too, and a declared enumeration must be on every outlet its field is, so
 	// the catalog is as well.
 	//
-	// Demonstrates: @enumerate.plain-column, picker.read-disabled, @computed, @suppress, outlet.shared.
+	// The catalog declares no @order: it keeps its sheets in the sequence a template
+	// service would rank them, the standard sheet first, and a list with no sort passes
+	// that order through untouched, neither by name nor by key; a request sort still
+	// sorts them, and a page that does not fit them is marked Page-More with no cursor.
+	//
+	// Demonstrates: @enumerate.plain-column, picker.read-disabled, @computed, @suppress, outlet.shared, order.none.
 	//
 	// @computed
 	// @suppress(readHandler)
 	// @outlet(default, portal)
-	// @order(Name asc)
 	BriefingTemplate struct {
 		ID       string `spanner:"Id"` // @primarykey
 		Name     string `spanner:"Name"`
@@ -42,7 +46,8 @@ func (BriefingTemplate) Resource() accesstypes.Resource {
 const StandardBriefingTemplate = "standard"
 
 // briefingTemplates is the fixed catalog: identifiers the program reasons about only by
-// listing them, never as constants.
+// listing them, never as constants. Its sequence is the catalog's own ranking, the order
+// a sort-less list serves.
 var briefingTemplates = []BriefingTemplate{
 	{ID: StandardBriefingTemplate, Name: "Standard sheet", Audience: "sector crew", Summary: "Mission counts, the fees the caller may see, and the overdue list."},
 	{ID: "hazard-first", Name: "Hazard-first sheet", Audience: "flight leads", Summary: "The hazard board folded in ahead of the mission counts."},

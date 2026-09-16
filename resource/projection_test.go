@@ -123,12 +123,11 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 				projectedResource + ".fee":  feeOwner,
 				projectedResource + ".note": conditionalOn(projectedResource+".note", "owner = subject OR priority = 3"),
 			},
+			// No sort and no declared order: the statement carries no ORDER BY.
 			wantSpanner: "SELECT Id, Name FROM projectionResources " +
-				"WHERE CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END > @_p1 AND (`projectionResources`.`Station` = @domain) " +
-				"ORDER BY `Id` ASC LIMIT 51",
+				"WHERE CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END > @_p1 AND (`projectionResources`.`Station` = @domain) LIMIT 51",
 			wantPostgres: `SELECT "Id", "Name" FROM projectionResources ` +
-				`WHERE CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END > @_p1 AND ("projectionResources"."Station" = @domain) ` +
-				`ORDER BY "Id" ASC LIMIT 51`,
+				`WHERE CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END > @_p1 AND ("projectionResources"."Station" = @domain) LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_p1": 5},
 		},
 		{
@@ -136,11 +135,9 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 			target:    "/?filter=fee:isnull&columns=id",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			wantSpanner: "SELECT Id FROM projectionResources " +
-				"WHERE CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL AND (`projectionResources`.`Station` = @domain) " +
-				"ORDER BY `Id` ASC LIMIT 51",
+				"WHERE CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL AND (`projectionResources`.`Station` = @domain) LIMIT 51",
 			wantPostgres: `SELECT "Id" FROM projectionResources ` +
-				`WHERE CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL AND ("projectionResources"."Station" = @domain) ` +
-				`ORDER BY "Id" ASC LIMIT 51`,
+				`WHERE CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL AND ("projectionResources"."Station" = @domain) LIMIT 51`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain"},
 		},
 		{

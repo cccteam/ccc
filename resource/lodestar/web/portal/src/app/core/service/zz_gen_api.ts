@@ -164,7 +164,6 @@ export const apiDescriptor: ApiDescriptor = {
       keys: ['id'],
       operations: ['list'],
       page: { default: 50 },
-      order: [{ field: 'name', direction: 'asc' }],
     },
   },
   methods: {

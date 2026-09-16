@@ -19,11 +19,14 @@ import (
 // TakeSort returns the list's total order (the request's sort or the declared
 // default, then the primary key) and marks it as the body's: the handler will
 // not sort. A body that takes the sort must yield its rows in exactly this
-// order, or its pages are wrong. The order's NULL placement is the application
-// database's own — Spanner first ascending and last descending, PostgreSQL the
-// reverse — so a plain ORDER BY in the body's query produces it with no NULL
-// handling of its own, and the handler's sort and page boundary follow the same
-// placement whenever they still run.
+// order, or its pages are wrong. An empty order means the list is not sorted, no
+// sort asked and none declared, and the body's own yielded order is the list's;
+// the handler leaves that order alone whether or not the body takes it. The
+// order's NULL placement is the application database's own — Spanner first
+// ascending and last descending, PostgreSQL the reverse — so a plain ORDER BY in
+// the body's query produces it with no NULL handling of its own, and the
+// handler's sort and page boundary follow the same placement whenever they still
+// run.
 func (q *QuerySet[Resource]) TakeSort() []SortField {
 	q.sortTaken = true
 
@@ -109,7 +112,9 @@ func decodeBoundary(rowType reflect.Type, order []SortField, keys []*string) ([]
 // the body did not take — the residual filter, the sort, the cursor position,
 // and the page — and returns the page the handler encodes, with the headers it
 // writes. The order inside is fixed: filter, then count, then sort, then page,
-// because any other order gives a different answer. The sort and the cursor
+// because any other order gives a different answer. A list with no sort asked
+// and no order declared is not sorted: the rows keep the order the body yielded
+// them in, after the filter, and the page issues no cursor. The sort and the cursor
 // position place NULL where the application's database does (the type the
 // computed decoder stamped), so they agree with the rows a body's plain ORDER BY
 // yields; a QuerySet no computed decoder produced is refused.
@@ -138,8 +143,8 @@ func (q *QuerySet[Resource]) Collect(rows iter.Seq2[*Resource, error]) (*Page[Re
 		page.total = &total
 	}
 
-	if !q.sortTaken {
-		if err := SortRows(kept, q.readOrder(), q.dbType); err != nil {
+	if order := q.readOrder(); !q.sortTaken && len(order) > 0 {
+		if err := SortRows(kept, order, q.dbType); err != nil {
 			return nil, err
 		}
 	}

@@ -171,7 +171,7 @@ func TestResolvePage(t *testing.T) {
 
 // TestVirtualResourcePaging pins that a view's @order and @page reach its declaration
 // exactly as a table's do: the list handler pages by the declared order at the declared
-// sizes and the descriptor carries them, a view declaring nothing lists by primary key,
+// sizes and the descriptor carries them, a view declaring nothing carries no order,
 // and an order naming a field the view lacks is refused naming it.
 func TestVirtualResourcePaging(t *testing.T) {
 	t.Parallel()
@@ -194,7 +194,7 @@ func TestVirtualResourcePaging(t *testing.T) {
 			wantMax:     200,
 		},
 		{
-			name:    "a view declaring nothing lists by primary key",
+			name:    "a view declaring nothing carries no order",
 			fixture: "UnorderedDeck",
 		},
 		{
