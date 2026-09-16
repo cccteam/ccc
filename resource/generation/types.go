@@ -1441,9 +1441,11 @@ func (f *resourceField) ImmutableTag() string {
 // SqltypeTag renders sqltype:"<column type>" onto a patch request-struct field whose
 // value the decoder sizes against its column's declared type (resource.HasValueLimit): a
 // string-kinded field on STRING(n), []byte on BYTES(n), a decimal on NUMERIC, and a
-// slice of one of those on the matching ARRAY. A field hidden from the patch wire (a
-// key, an output-only field), a view's field, and every other pair carry no tag, so the
-// structs stay quiet where nothing is checked.
+// slice of one of those, named or not, on the matching ARRAY. The tag consults the Go
+// type and the column alone: a @typescript declaration on the type changes the
+// interface, never the limit. A field hidden from the patch wire (a key, an output-only
+// field), a view's field, and every other pair carry no tag, so the structs stay quiet
+// where nothing is checked.
 func (f *resourceField) SqltypeTag() string {
 	if f.IsPrimaryKey || f.IsOutputOnly() {
 		return ""
@@ -1459,13 +1461,21 @@ func (f *resourceField) SqltypeTag() string {
 
 // TypescriptMaxLength is the character limit the field's TypeScript metadata carries:
 // the declared length of the STRING(n) column, or of the ARRAY<STRING(n)>'s element,
-// behind a string-kinded field the patch decoder sizes. Zero where the metadata says
-// nothing: a bytes or decimal rule has no per-character form a form control applies.
+// behind a string-kinded field the patch decoder sizes, where the field's display type
+// is one the client reads the limit on (maxLengthDisplayTypes: string, string[], and
+// enumerated, whose key is a string the picker selects). Zero where the metadata says
+// nothing: a bytes or decimal rule has no per-character form a form control applies,
+// and a field a @typescript declaration types object carries the tag, since the limit
+// is the column's, and no maxLength, since the interface type is not a string and a
+// form would count the wrong thing. Read after the TypeScript types are resolved.
 func (f *resourceField) TypescriptMaxLength() int {
 	if f.SqltypeTag() == "" {
 		return 0
 	}
 	if kind, _ := valueKindOf(f.GoType()); kind != resource.ValueKindString {
+		return 0
+	}
+	if !slices.Contains(maxLengthDisplayTypes, displayType(strings.ToLower(f.TypescriptDisplayType()))) {
 		return 0
 	}
 

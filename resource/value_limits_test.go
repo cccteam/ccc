@@ -25,6 +25,7 @@ type limitResource struct {
 	ID     ccc.UUID        `spanner:"Id"`
 	Name   string          `spanner:"Name"`
 	Codes  []string        `spanner:"Codes"`
+	Labels namedMarks      `spanner:"Labels"`
 	Blob   []byte          `spanner:"Blob"`
 	Fee    decimal.Decimal `spanner:"Fee"`
 	Note   *string         `spanner:"Note"`
@@ -41,10 +42,12 @@ func (limitResource) DefaultConfig() Config {
 }
 
 // limitRequest mirrors a generated patch request struct: one sqltype tag per rule the
-// decoder applies, an untagged integer, and an immutable sized field.
+// decoder applies, a named slice beside the unnamed one, an untagged integer, and an
+// immutable sized field.
 type limitRequest struct {
 	Name   string          `json:"name"   sqltype:"STRING(4)"`
 	Codes  []string        `json:"codes"  sqltype:"ARRAY<STRING(4)>"`
+	Labels namedMarks      `json:"labels" sqltype:"ARRAY<STRING(4)>"`
 	Blob   []byte          `json:"blob"   sqltype:"BYTES(4)"`
 	Fee    decimal.Decimal `json:"fee"    sqltype:"NUMERIC"`
 	Note   *string         `json:"note"   sqltype:"STRING(4)"`
@@ -54,6 +57,9 @@ type limitRequest struct {
 
 // namedCode is a named string type: string-kinded, sized like a string.
 type namedCode string
+
+// namedMarks is a named slice of strings: a slice, whatever its name, sized per element.
+type namedMarks []string
 
 func mustDecimal(s string) decimal.Decimal {
 	return decimal.RequireFromString(s)
@@ -187,6 +193,8 @@ func Test_valueKindOf(t *testing.T) {
 		{name: "a byte slice is bytes, not a slice", typ: reflect.TypeFor[[]byte](), wantKind: ValueKindBytes},
 		{name: "a slice of byte slices", typ: reflect.TypeFor[[][]byte](), wantKind: ValueKindBytes, wantSlice: true},
 		{name: "a string slice", typ: reflect.TypeFor[[]string](), wantKind: ValueKindString, wantSlice: true},
+		{name: "a named slice of strings", typ: reflect.TypeFor[namedMarks](), wantKind: ValueKindString, wantSlice: true},
+		{name: "a slice of a named string type", typ: reflect.TypeFor[[]namedCode](), wantKind: ValueKindString, wantSlice: true},
 		{name: "a slice of string pointers", typ: reflect.TypeFor[[]*string](), wantKind: ValueKindString, wantSlice: true},
 		{name: "a slice of NullString", typ: reflect.TypeFor[[]spanner.NullString](), wantKind: ValueKindString, wantSlice: true},
 		{name: "decimal.Decimal", typ: reflect.TypeFor[decimal.Decimal](), wantKind: ValueKindDecimal},
@@ -327,6 +335,7 @@ func Test_valueLimitsOf(t *testing.T) {
 	want := map[accesstypes.Field]valueLimit{
 		"Name":   {kind: ValueKindString, max: 4, jsonField: "name"},
 		"Codes":  {kind: ValueKindString, max: 4, perElement: true, jsonField: "codes"},
+		"Labels": {kind: ValueKindString, max: 4, perElement: true, jsonField: "labels"},
 		"Blob":   {kind: ValueKindBytes, max: 4, jsonField: "blob"},
 		"Fee":    {kind: ValueKindDecimal, jsonField: "fee"},
 		"Note":   {kind: ValueKindString, max: 4, jsonField: "note"},
@@ -483,11 +492,12 @@ func TestDecodeToPatch_valueLimits(t *testing.T) {
 	}
 
 	const (
-		nameLimit  = "name is limited to 4 characters"
-		codesLimit = "codes: each value is limited to 4 characters"
-		blobLimit  = "blob is limited to 4 bytes"
-		feeLimit   = "fee is limited to 29 digits before the decimal point and 9 after"
-		noteLimit  = "note is limited to 4 characters"
+		nameLimit   = "name is limited to 4 characters"
+		codesLimit  = "codes: each value is limited to 4 characters"
+		labelsLimit = "labels: each value is limited to 4 characters"
+		blobLimit   = "blob is limited to 4 bytes"
+		feeLimit    = "fee is limited to 29 digits before the decimal point and 9 after"
+		noteLimit   = "note is limited to 4 characters"
 	)
 
 	tests := []struct {
@@ -526,6 +536,20 @@ func TestDecodeToPatch_valueLimits(t *testing.T) {
 			perm:        accesstypes.Create,
 			body:        `{"blob":"QUJDREU="}`,
 			wantMessage: blobLimit,
+		},
+		{
+			name:        "a named slice is sized per element like the unnamed one",
+			method:      http.MethodPost,
+			perm:        accesstypes.Create,
+			body:        `{"labels":["AB","ABCDE"]}`,
+			wantMessage: labelsLimit,
+		},
+		{
+			name:       "a named slice within its element limit decodes",
+			method:     http.MethodPost,
+			perm:       accesstypes.Create,
+			body:       `{"labels":["AB","ABCD"]}`,
+			wantFields: []accesstypes.Field{"Labels"},
 		},
 		{
 			name:        "a decimal sent as a string is sized the same",

@@ -79,6 +79,18 @@ var arrayDisplayTypes = func() []displayType {
 // arrays.
 var displayTypes = slices.Concat(scalarDisplayTypes, arrayDisplayTypes)
 
+// maxLengthDisplayTypes are the members whose fields carry the column's character limit
+// as maxLength (resourceField.TypescriptMaxLength): a string, per element a string
+// array, and a picker, whose key is a string. The client reads the limit as the
+// STRING(n) length of a string-typed value (FieldMeta.maxLength in @cccteam/resource),
+// so an object, which a @typescript declaration may put over a sized column, carries
+// none: the limit stays on the patch request struct's tag, where the decoder applies it.
+var maxLengthDisplayTypes = []displayType{
+	displayTypeString,
+	displayTypeString + displayType(sliceSuffix),
+	displayTypeEnumerated,
+}
+
 // renderDisplayType renders a field's display type as the metadata carries it: the
 // name the field method returned (a leaf's table spelling, Date or civilDate, or a
 // member by name), lower-cased, with its [] kept. A value outside the vocabulary fails

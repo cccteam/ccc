@@ -16,14 +16,17 @@ const (
 
 // valueKindOf classifies a source field's Go type the way the resource package
 // classifies the request struct's field at runtime (resource.ValueKind): the kind of
-// the scalar, and whether the field is a slice of it. A pointer is its element, []byte
-// is bytes rather than a slice of anything, and a slice of slices has no kind.
+// the scalar, and whether the field is a slice of it. A pointer is its element, a named
+// slice type is its underlying slice (type Marks []string is a slice of strings, as
+// reflection reads it), []byte is bytes rather than a slice of anything, and a slice of
+// slices has no kind. The named wrappers are structs, so reading the underlying type
+// for the slice match leaves them to scalarValueKind, which resolves them by name.
 func valueKindOf(t types.Type) (kind resource.ValueKind, slice bool) {
 	t = types.Unalias(t)
 	if p, ok := t.(*types.Pointer); ok {
 		t = types.Unalias(p.Elem())
 	}
-	if s, ok := t.(*types.Slice); ok && !isByte(s.Elem()) {
+	if s, ok := t.Underlying().(*types.Slice); ok && !isByte(s.Elem()) {
 		elemKind, nested := valueKindOf(s.Elem())
 		if nested {
 			return resource.ValueKindOther, false

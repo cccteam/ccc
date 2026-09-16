@@ -168,7 +168,7 @@ Read back at runtime by the `resource` package; listed here for reading generate
 | `allow_filter:"true"` | Copied from the source struct; makes an unindexed field filterable. |
 | `pii:"true"` | From `conditions:"pii"`; the field is rejected in URL filter expressions. |
 | `masking:"positional"` | Copied from the source struct; a sort, filter, or cursor on the field runs on the real column while the cell stays masked in the output. Absent on a concealing field. `positional` is the only value written; any other value in a request struct is a startup error (the stale-struct guard). |
-| `sqltype:"STRING(64)"` | The column's declared type, verbatim from the schema, on a patch request-struct field whose value the decoder sizes before anything is buffered (section 11): a string-kinded field on `STRING(n)`, `[]byte` on `BYTES(n)`, a decimal on `NUMERIC`, and a slice of one of those on the matching `ARRAY<…>`. Absent on `MAX` columns, on keys and output-only fields (hidden from the patch wire), and on every other type. A value the runtime cannot pair with the field's type is a startup error (the stale-struct guard). |
+| `sqltype:"STRING(64)"` | The column's declared type, verbatim from the schema, on a patch request-struct field whose value the decoder sizes before anything is buffered (section 11): a string-kinded field on `STRING(n)`, `[]byte` on `BYTES(n)`, a decimal on `NUMERIC`, and a slice of one of those, named or not, on the matching `ARRAY<…>`. Absent on `MAX` columns, on keys and output-only fields (hidden from the patch wire), and on every other type. A value the runtime cannot pair with the field's type is a startup error (the stale-struct guard). |
 | `nullable:"true"` | On a patch request-struct field typed by a slice whose column allows NULL, and nowhere else: a Go slice has one form, so the decoder cannot read the fact off the field's type as it does off a pointer or a Null wrapper. The decoder accepts a JSON `null` for the field and stores the nil slice, which the Spanner client writes as NULL (section 12, nullable slices); a slice field without the tag refuses `null` with `<field> cannot be null`, since its column is NOT NULL. `true` is the only value written; any other value, or the tag on a field that is not a slice, is a startup error (the stale-struct guard). |
 
 ## 4. Reserved query parameters
@@ -614,7 +614,7 @@ rule:
 | `string`, a named string type, `*string`, `spanner.NullString` | `STRING(n)` | at most `n` code points (`utf8.RuneCountInString`); Spanner counts code points, so a combining mark counts and a CJK character counts once |
 | `[]byte` | `BYTES(n)` | at most `n` bytes |
 | `decimal.Decimal`, `*decimal.Decimal`, `decimal.NullDecimal`, `spanner.NullNumeric` | `NUMERIC` | trailing zeros trimmed, then at most 29 digits before the decimal point and 9 after (GoogleSQL `NUMERIC` is 38 digits of precision with 9 of scale); `1.1234567890` is accepted, `1.1234567891` is not |
-| a slice of a checked type | `ARRAY<…>` of the matching type | each element by its rule |
+| a slice of a checked type, named or not (`[]string`, `type Marks []string`, `[]decimal.Decimal`) | `ARRAY<…>` of the matching type | each element by its rule |
 
 No tag, and no check, on `STRING(MAX)` and `BYTES(MAX)` (Spanner's ceiling of 2,621,440
 characters stays a 409 at commit, section 10); on `ccc.UUID` and `ccc.NullUUID`, whose
@@ -637,13 +637,22 @@ names:
 A `PATCH` checks only the fields it carries. The consolidated handler decodes each
 operation through the same function.
 
+The tag follows the Go type and the column alone: a type's name changes nothing, and a
+`@typescript` declaration on the type (section 1) changes the interface, never the limit.
+
 The TypeScript field metadata carries the character limit as `maxLength` for the
-string-kinded pairs (`STRING(n)`, and per element for `ARRAY<STRING(n)>`), so a form control
-refuses before sending; nothing is emitted for bytes or `NUMERIC`. JavaScript measures a
-string in UTF-16 units, so a form refuses a little early on astral characters and never
-accepts what the server refuses. The framework-neutral client does not pre-check a string:
-the server stays the single authority. Example: [Ship.Registry](lodestar/pkg/resources/ships.go)
-on `STRING(16)`, and [Mission.Fee](lodestar/pkg/resources/missions.go) on `NUMERIC`.
+string-kinded pairs (`STRING(n)`, and per element for `ARRAY<STRING(n)>`) on the fields
+whose display type is `string`, `string[]`, or `enumerated` (a picker's key is a string the
+column sizes), so a form control refuses before sending; nothing is emitted for bytes or
+`NUMERIC`. A field typed by a declaration importing a name (`@typescript(Name, from:
+"module")` over a named string or a named slice on a sized column) has display type
+`object`: it carries the tag, since the decoder sizes the column's value, and no
+`maxLength`, since the interface type is not a string and a form would count the wrong
+thing. JavaScript measures a string in UTF-16 units, so a form refuses a little early on
+astral characters and never accepts what the server refuses. The framework-neutral client
+does not pre-check a string: the server stays the single authority. Example:
+[Ship.Registry](lodestar/pkg/resources/ships.go) on `STRING(16)`, and
+[Mission.Fee](lodestar/pkg/resources/missions.go) on `NUMERIC`.
 
 ## 12. TypeScript types for columns
 
