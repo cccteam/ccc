@@ -183,7 +183,6 @@ func TestPaging_contract(t *testing.T) {
 		wantStatus int
 		wantRows   int
 		wantLink   bool
-		wantMore   string
 		wantTotal  string
 	}{
 		{
@@ -281,9 +280,6 @@ func TestPaging_contract(t *testing.T) {
 			}
 			if hasLink := rr.Header().Get(resource.LinkHeader) != ""; hasLink != tt.wantLink {
 				t.Errorf("Link header present = %v, want %v: %q", hasLink, tt.wantLink, rr.Header().Get(resource.LinkHeader))
-			}
-			if got := rr.Header().Get(resource.PageMoreHeader); got != tt.wantMore {
-				t.Errorf("Page-More = %q, want %q", got, tt.wantMore)
 			}
 			if got := rr.Header().Get(resource.TotalCountHeader); got != tt.wantTotal {
 				t.Errorf("Total-Count = %q, want %q", got, tt.wantTotal)

@@ -141,7 +141,8 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 
 - `pkg/resources`: every struct and annotation (design plan §5), each with `@page` and
   all but the hull catalog with `@order` ([`order.none`](pkg/resources/ship_classes.go),
-  a list that is not sorted until the request asks); `pkg/rpc`: the thirteen transitions and the effect methods, including the
+  a catalog read whole and unsorted, whose pages need a requested sort,
+  [`order.required`](pkg/resources/ship_classes.go)); `pkg/rpc`: the thirteen transitions and the effect methods, including the
   client-form [`rpc.client-form`](pkg/rpc/compile_briefing.go); `pkg/computedresources`
   (the pushdown [`computed.pushdown`](pkg/computedresources/service_ledgers.go) and the
   fold) and `pkg/virtualresources`; `pkg/router`: the generated router over three outlets

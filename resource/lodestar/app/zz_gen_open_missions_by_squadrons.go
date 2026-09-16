@@ -99,3 +99,67 @@ func (a *App) OpenMissionsBySquadrons() http.HandlerFunc {
 		return httpio.NewEncoder(w).Ok(resp)
 	})
 }
+
+func (a *App) OpenMissionsBySquadron() http.HandlerFunc {
+	type response struct {
+		SquadronID   ccc.UUID   `json:"squadronId"   index:"true" perm:"-"`
+		SquadronName string     `json:"squadronName"`
+		SectorID     string     `json:"sectorId"     index:"true" perm:"-"`
+		OpenMissions int64      `json:"openMissions"`
+		NextDeadline *time.Time `json:"nextDeadline"`
+	}
+
+	decoder := NewQueryDecoder[virtualresources.OpenMissionsBySquadron, response](a, accesstypes.Read)
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+		squadronID := httpio.Param[ccc.UUID](r, router.OpenMissionsBySquadronSquadronID)
+		sectorID := httpio.Param[string](r, router.OpenMissionsBySquadronSectorID)
+
+		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		res := virtualresources.NewOpenMissionsBySquadronQueryFromQuerySet(querySet).SetSquadronID(squadronID).SetSectorID(sectorID)
+
+		row, err := res.Read(ctx, a.ResourceClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		rec := (*response)(&row.Data)
+		rmap := make(map[string]any)
+		for _, field := range querySet.Fields() {
+			switch string(field) {
+			case "SquadronID":
+				if !row.Masked("squadronId") {
+					rmap["squadronId"] = rec.SquadronID
+				}
+			case "SquadronName":
+				if !row.Masked("squadronName") {
+					rmap["squadronName"] = rec.SquadronName
+				}
+			case "SectorID":
+				if !row.Masked("sectorId") {
+					rmap["sectorId"] = rec.SectorID
+				}
+			case "OpenMissions":
+				if !row.Masked("openMissions") {
+					rmap["openMissions"] = rec.OpenMissions
+				}
+			case "NextDeadline":
+				if !row.Masked("nextDeadline") {
+					rmap["nextDeadline"] = rec.NextDeadline
+				}
+			}
+		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
+		}
+
+		return httpio.NewEncoder(w).Ok(rmap)
+	})
+}

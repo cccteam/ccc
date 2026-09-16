@@ -252,6 +252,9 @@ func (t *typescriptGenerator) Generate() error {
 	if err := t.resolveFieldEnumerations(resources, computedResources); err != nil {
 		return err
 	}
+	if err := t.validatePickerSources(resources, computedResources); err != nil {
+		return err
+	}
 
 	t.resources = resources
 	// A view's @rowsOf names a table-backed resource, refusing a view of either kind,
@@ -265,6 +268,9 @@ func (t *typescriptGenerator) Generate() error {
 		rpcStructs := parser.ParsePackage(pkg).Structs
 		t.rpcMethods, err = t.structsToRPCMethods(rpcStructs, t.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 		if err != nil {
+			return err
+		}
+		if err := t.validateRPCPickerSources(t.rpcMethods); err != nil {
 			return err
 		}
 	}

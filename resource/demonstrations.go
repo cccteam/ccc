@@ -119,6 +119,7 @@ var Demonstrations = []Demonstration{
 	{"virtual.with-clause", "A virtual subquery with a WITH clause."},
 	{"virtual.named-param", "A virtual subquery with a named parameter."},
 	{"virtual.domain", "A tenant-scoped virtual resource over a view column."},
+	{"virtual.keyed-read", "A @virtual view that declares its @primarykey serves a keyed read route beside its list, as a table does, so a picker over a bounded view reads the chosen row by key; a view with no key lists only and its metadata says readDisabled."},
 	{"@rowsOf", "The struct-scope @rowsOf(Table) on a view: the view declares its backing table, a create goes into the table, and the new row shows up in the view on the next list because the view's SQL reads that table."},
 	{"@rowsOf.same-row", "A view keyed by its table's own key: a row opens the table's page, an edit patches the table, and a delete removes the row, while the view's other columns stay its own."},
 	{"@rowsOf.association", "Two views over one association table, keyed by the table's compound key under its column names: the key rides in every list request, a row is deleted from the list through the table, and a create associates through the table's form."},
@@ -163,7 +164,8 @@ var Demonstrations = []Demonstration{
 	// Paging.
 	{"@order", "@order(Field asc|desc): a list's declared total order."},
 	{"@page", "@page(default: N, max: M): a list's page sizes, carried into the descriptor."},
-	{"order.none", "A list with no @order and no request sort is not sorted: a table statement carries no ORDER BY and its rows arrive in the database's own order, a computed list keeps the order its body yielded, and no cursor is issued, Page-More marking a first page that did not fit until a sort is asked."},
+	{"order.none", "A whole list (limit=all) with no @order and no request sort is not sorted: a table statement carries no ORDER BY and its rows arrive in the database's own order, and a computed list keeps the order its body yielded; the same resource paged without a sort is refused."},
+	{"order.required", "Every paged list request carries an order: with no @order on the struct and no sort on the request, a bare GET or a limit is refused with a 400 naming the resource and the two ways out (add a sort, or ask limit=all where no maximum is declared), so a page never hides that more rows exist without saying where they are."},
 	{"paging.cursor", "A keyset cursor: pages positioned by the row the last page ended on."},
 	{"paging.link-header", "The Link header's next and prev relations, followed exactly as issued."},
 	{"paging.total-count", "count=true on a first page answers Total-Count."},

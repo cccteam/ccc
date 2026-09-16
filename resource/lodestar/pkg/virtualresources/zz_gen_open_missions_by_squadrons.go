@@ -49,6 +49,30 @@ func NewOpenMissionsBySquadronQueryFromQuerySet(qSet *resource.QuerySet[OpenMiss
 	return &OpenMissionsBySquadronQuery{qSet: qSet}
 }
 
+func (q *OpenMissionsBySquadronQuery) SetSquadronID(v ccc.UUID) *OpenMissionsBySquadronQuery {
+	q.qSet.SetKey("SquadronID", v)
+
+	return q
+}
+
+func (q *OpenMissionsBySquadronQuery) SquadronID() ccc.UUID {
+	v, _ := q.qSet.Key("SquadronID").(ccc.UUID)
+
+	return v
+}
+
+func (q *OpenMissionsBySquadronQuery) SetSectorID(v string) *OpenMissionsBySquadronQuery {
+	q.qSet.SetKey("SectorID", v)
+
+	return q
+}
+
+func (q *OpenMissionsBySquadronQuery) SectorID() string {
+	v, _ := q.qSet.Key("SectorID").(string)
+
+	return v
+}
+
 // Enforce arms the query against the caller a generated handler stamped on the
 // context (resource.CallerFrom): Read runs the routes' Read permission gate and List
 // the List gate — resource, then the requested fields, conditional grants riding the

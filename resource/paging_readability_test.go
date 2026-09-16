@@ -66,11 +66,11 @@ func TestQuerySet_List_sortAndFilterReadability(t *testing.T) {
 		},
 		{
 			name:   "filter on a granted field is admitted",
-			target: "/?filter=public:eq:x",
+			target: "/?filter=public:eq:x&limit=all",
 		},
 		{
 			name:   "filter on a conditionally granted field is admitted",
-			target: "/?filter=public:eq:x,tagged:eq:y",
+			target: "/?filter=public:eq:x,tagged:eq:y&limit=all",
 		},
 		{
 			name:            "the refusal names the denied field and its decision",

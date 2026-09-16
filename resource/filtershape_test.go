@@ -128,7 +128,7 @@ func TestFilterShape_Match(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			qSet := decodeBoard(t, "/?filter="+tt.filter, Paging{})
+			qSet := decodeBoard(t, "/?filter="+tt.filter+"&limit=all", Paging{})
 			var got []string
 			for _, row := range boardRows() {
 				ok, err := qSet.Filter().Match(row)
@@ -212,9 +212,10 @@ func TestFilterShape_Take(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			target := "/"
+			// A list request with no sort is served only whole (requireOrder).
+			target := "/?limit=all"
 			if tt.filter != "" {
-				target = "/?filter=" + tt.filter
+				target = "/?filter=" + tt.filter + "&limit=all"
 			}
 			qSet := decodeBoard(t, target, Paging{})
 			filter := qSet.Filter()
@@ -365,24 +366,17 @@ func TestQuerySet_Collect(t *testing.T) {
 		wantRels   []string
 	}{
 		{
-			name:     "no query: every row in the order the body yielded, not the key's",
-			target:   func(*testing.T) string { return "/" },
+			name:     "no sort, the whole list: every row in the order the body yielded, not the key's",
+			target:   func(*testing.T) string { return "/?limit=all" },
 			reversed: true,
 			wantRows: []string{"Lantern/hull", "Kingfisher/reactor", "Kingfisher/hull"},
 		},
 		{
-			name:     "no query, the body took the empty sort: its own order stands",
-			target:   func(*testing.T) string { return "/" },
+			name:     "no sort, the whole list, the body took the empty sort: its own order stands",
+			target:   func(*testing.T) string { return "/?limit=all" },
 			takeSort: true,
 			reversed: true,
 			wantRows: []string{"Lantern/hull", "Kingfisher/reactor", "Kingfisher/hull"},
-		},
-		{
-			name:     "no sort, no declaration, a page: the first yielded rows, the more signal, no cursor",
-			target:   func(*testing.T) string { return "/?limit=2" },
-			reversed: true,
-			wantRows: []string{"Lantern/hull", "Kingfisher/reactor"},
-			wantMore: true,
 		},
 		{
 			name:     "filter then sort then page",
@@ -437,7 +431,7 @@ func TestQuerySet_Collect(t *testing.T) {
 		},
 		{
 			name:       "a taken condition is not applied again; the rest is",
-			target:     func(*testing.T) string { return "/?filter=shipName:eq:Lantern,worst:lt:0.9" },
+			target:     func(*testing.T) string { return "/?filter=shipName:eq:Lantern,worst:lt:0.9&limit=all" },
 			takeFilter: []string{"ShipName"},
 			wantRows:   []string{"Kingfisher/reactor", "Lantern/hull"},
 		},

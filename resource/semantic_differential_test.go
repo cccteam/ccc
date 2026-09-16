@@ -865,6 +865,11 @@ func (s *semanticReadShape) query(projected []semanticField) url.Values {
 	default:
 		values.Set(filterParam, s.field.json+":"+isnullStr)
 	}
+	// A filter-only request carries no order, which a paged request needs
+	// (requireOrder): it reads the whole list.
+	if !s.sort {
+		values.Set(limitParam, allLimit)
+	}
 
 	return values
 }

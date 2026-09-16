@@ -116,7 +116,7 @@ export const apiDescriptor: ApiDescriptor = {
       scope: 'domain',
       consolidated: false,
       keys: ['id'],
-      operations: ['list'],
+      operations: ['list', 'read'],
       page: { default: 25, max: 200 },
       order: [{ field: 'name', direction: 'asc' }],
     },
@@ -179,7 +179,7 @@ export interface GlobalApi {
 
 /** Handles for one tenant partition, available on client.domain(...). */
 export interface DomainApi {
-  clientRosters: ResourceHandle<ClientRosters, ClientRostersKey, 'list'>;
+  clientRosters: ResourceHandle<ClientRosters, ClientRostersKey, 'list' | 'read'>;
   distressCalls: ResourceHandle<DistressCalls, DistressCallsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', DistressCallsCreate, DistressCallsPatch>;
   missions: ResourceHandle<Missions, MissionsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', MissionsCreate, MissionsPatch>;
   missionDocuments: ResourceHandle<MissionDocuments, MissionDocumentsKey, 'list' | 'read'>;

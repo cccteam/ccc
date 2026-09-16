@@ -39,8 +39,8 @@ func pageOver(t *testing.T, sort, defaultOrder []SortField, page pageRequest, cu
 
 // TestPage_headers pins the headers a page writes from the rows it saw: the
 // more-exists row past the page size, the prev and next relations by direction,
-// Total-Count on request, Page-More on a list with no order, and nothing for
-// limit=all.
+// Total-Count on request, and nothing for limit=all. Every paged QuerySet here
+// carries an order, as every decoded paged request does (requireOrder).
 func TestPage_headers(t *testing.T) {
 	t.Parallel()
 
@@ -57,7 +57,6 @@ func TestPage_headers(t *testing.T) {
 		wantKept     uint64
 		wantRels     []string
 		wantTotal    string
-		wantMore     string
 		wantNoLink   bool
 	}{
 		{
@@ -121,21 +120,6 @@ func TestPage_headers(t *testing.T) {
 			wantRels:     []string{"next"},
 		},
 		{
-			name:       "no sort and no declared order issues no cursor, only the more signal",
-			page:       pageRequest{size: 2},
-			ids:        []string{"a", "bb", "ccc"},
-			wantKept:   2,
-			wantNoLink: true,
-			wantMore:   "true",
-		},
-		{
-			name:       "no sort and no declared order that fits: nothing",
-			page:       pageRequest{size: 3},
-			ids:        []string{"a", "bb"},
-			wantKept:   2,
-			wantNoLink: true,
-		},
-		{
 			name:      "count answers in Total-Count",
 			sort:      hazard,
 			page:      pageRequest{size: 2, count: true},
@@ -181,10 +165,6 @@ func TestPage_headers(t *testing.T) {
 			if got := w.Header().Get(TotalCountHeader); got != tt.wantTotal {
 				t.Errorf("Total-Count = %q, want %q", got, tt.wantTotal)
 			}
-			if got := w.Header().Get(PageMoreHeader); got != tt.wantMore {
-				t.Errorf("Page-More = %q, want %q", got, tt.wantMore)
-			}
-
 			link := w.Header().Get(LinkHeader)
 			if tt.wantNoLink {
 				if link != "" {

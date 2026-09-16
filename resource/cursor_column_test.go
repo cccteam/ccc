@@ -258,13 +258,14 @@ func TestQuerySet_stmt_positionalMasking(t *testing.T) {
 		},
 		{
 			name:      "a filter on a positional field compares the raw column, so a masked row can match",
-			target:    "/?filter=fee:gt:5&columns=id",
+			target:    "/?filter=fee:gt:5&columns=id&limit=all",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner, projectedResource + ".note": noteOwner},
-			// No sort and no declared order: the statement carries no ORDER BY.
+			// No sort and no declared order, so the whole list: the statement carries
+			// no ORDER BY and no LIMIT.
 			wantSpanner: "SELECT Id FROM projectionResources " +
-				"WHERE `Fee` > @_p1 AND (`projectionResources`.`Station` = @domain) LIMIT 51",
+				"WHERE `Fee` > @_p1 AND (`projectionResources`.`Station` = @domain)",
 			wantPostgres: `SELECT "Id" FROM projectionResources ` +
-				`WHERE "Fee" > @_p1 AND ("projectionResources"."Station" = @domain) LIMIT 51`,
+				`WHERE "Fee" > @_p1 AND ("projectionResources"."Station" = @domain)`,
 			wantParams: map[string]any{"domain": "testDomain", "_p1": 5},
 		},
 		{

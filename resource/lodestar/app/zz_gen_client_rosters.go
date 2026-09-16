@@ -103,3 +103,71 @@ func (a *App) ClientRosters() http.HandlerFunc {
 		return httpio.NewEncoder(w).Ok(resp)
 	})
 }
+
+func (a *App) ClientRoster() http.HandlerFunc {
+	type response struct {
+		ID             ccc.UUID `json:"id"             index:"true" perm:"-"`
+		SectorID       string   `json:"sectorId"`
+		Name           string   `json:"name"`
+		Trusted        bool     `json:"trusted"`
+		ContactCount   int64    `json:"contactCount"`
+		SectorMissions int64    `json:"sectorMissions"`
+	}
+
+	decoder := NewQueryDecoder[virtualresources.ClientRoster, response](a, accesstypes.Read)
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+		id := httpio.Param[ccc.UUID](r, router.ClientRosterID)
+
+		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		res := virtualresources.NewClientRosterQueryFromQuerySet(querySet).SetID(id)
+
+		row, err := res.Read(ctx, a.ResourceClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		rec := (*response)(&row.Data)
+		rmap := make(map[string]any)
+		for _, field := range querySet.Fields() {
+			switch string(field) {
+			case "ID":
+				if !row.Masked("id") {
+					rmap["id"] = rec.ID
+				}
+			case "SectorID":
+				if !row.Masked("sectorId") {
+					rmap["sectorId"] = rec.SectorID
+				}
+			case "Name":
+				if !row.Masked("name") {
+					rmap["name"] = rec.Name
+				}
+			case "Trusted":
+				if !row.Masked("trusted") {
+					rmap["trusted"] = rec.Trusted
+				}
+			case "ContactCount":
+				if !row.Masked("contactCount") {
+					rmap["contactCount"] = rec.ContactCount
+				}
+			case "SectorMissions":
+				if !row.Masked("sectorMissions") {
+					rmap["sectorMissions"] = rec.SectorMissions
+				}
+			}
+		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
+		}
+
+		return httpio.NewEncoder(w).Ok(rmap)
+	})
+}

@@ -174,13 +174,19 @@ r=$(req marshal GET "$ANVIL/missions?limit=201"); check "a page over Missions' d
 r=$(req marshal GET "$ANVIL/missions?limit=all"); check "Missions declares a maximum, so limit=all is refused" 400 "$r"
 r=$(req marshal GET "$ANVIL/missions?offset=5"); check "offset is refused; the cursor is its replacement" 400 "$r"
 r=$(req marshal GET "$API/pilots?limit=all"); assert_py "the crew roster declares no maximum: limit=all answers every pilot" "$r" "len(rows)==17"
-# A list with no @order and no sort is not sorted: the hull catalog is served with no ORDER BY, and a page that does not fit it is marked Page-More with no cursor; a sort restores the cursor. The briefing catalog, a computed resource with no @order, passes its own sequence through.
-page=$(curl -s -D "$S/hulls.h" -L -b "$S/marshal.jar" -H "X-XSRF-TOKEN: $(xsrf marshal)" "$API/ship-classes?limit=2")
-if [ "$(echo "$page" | py "print(len(rows))")" = 2 ] && grep -qi '^Page-More: true' "$S/hulls.h" && ! grep -qi '^Link:' "$S/hulls.h"; then echo "PASS  the hull catalog declares no order: two of four hulls, Page-More, no cursor"; else echo "FAIL  hull catalog first page: $(tr '\n' ' ' < "$S/hulls.h" | head -c 300)"; fails=$((fails+1)); fi
+# Every paged list request carries an order. The hull catalog and the briefing catalog declare no @order, so a bare GET or a limit on either without a sort is refused naming the two ways out; limit=all reads each whole and unsorted (the hulls in Spanner's own order, the sheets in the catalog's sequence), and a requested sort pages them by cursor.
+r=$(req marshal GET "$API/ship-classes"); check "the hull catalog declares no order: a bare GET is refused" 400 "$r"
+assert_py "the refusal names the resource and the two ways out" "$r" "rows=={'message':'ShipClasses declares no order; add a sort, or ask limit=all'}"
+r=$(req marshal GET "$API/ship-classes?limit=2"); check "a page of the hull catalog without a sort is refused too" 400 "$r"
+page=$(curl -s -D "$S/hulls.h" -L -b "$S/marshal.jar" -H "X-XSRF-TOKEN: $(xsrf marshal)" "$API/ship-classes?limit=all")
+if [ "$(echo "$page" | py "print(len(rows))")" = 4 ] && ! grep -qi '^Link:' "$S/hulls.h"; then echo "PASS  limit=all reads the whole hull catalog, unsorted, with no Link header"; else echo "FAIL  hull catalog whole read: $(echo "$page" | head -c 200) $(tr '\n' ' ' < "$S/hulls.h" | head -c 300)"; fails=$((fails+1)); fi
 page=$(curl -s -D "$S/hulls.h" -L -b "$S/marshal.jar" -H "X-XSRF-TOKEN: $(xsrf marshal)" "$API/ship-classes?sort=designation&limit=2")
-grep -qi '^Link:.*rel="next"' "$S/hulls.h" && echo "PASS  a requested sort on the hull catalog restores the cursor" || { echo "FAIL  hull catalog sorted: no Link header"; fails=$((fails+1)); }
-r=$(req marshal GET "$API/briefing-templates"); assert_py "the briefing catalog lists in its own sequence, the standard sheet first, neither by name nor by key" "$r" "[t['id'] for t in rows]==['standard','hazard-first','client-facing','dispatch']"
+grep -qi '^Link:.*rel="next"' "$S/hulls.h" && echo "PASS  a requested sort pages the hull catalog by cursor" || { echo "FAIL  hull catalog sorted: no Link header"; fails=$((fails+1)); }
+r=$(req marshal GET "$API/briefing-templates"); check "the briefing catalog declares no order: a bare GET is refused" 400 "$r"
+r=$(req marshal GET "$API/briefing-templates?limit=all"); assert_py "read whole, the briefing catalog lists in its own sequence, the standard sheet first, neither by name nor by key" "$r" "[t['id'] for t in rows]==['standard','hazard-first','client-facing','dispatch']"
 r=$(req marshal GET "$API/briefing-templates?sort=name"); assert_py "a requested sort orders the briefing catalog by name" "$r" "[t['name'] for t in rows]==sorted(t['name'] for t in rows)"
+r=$(req dispatcher GET "$ANVIL/client-rosters/$HALVARD?columns=id,name,contactCount"); check "the client roster, a keyed view, serves a read: the dispatcher reads Halvard Freight's roster row" 200 "$r"
+assert_py "the roster row carries the picker's display columns" "$r" "rows['name']=='Halvard Freight' and rows['contactCount']==1"
 
 # ---- the flight deck's edges, dry runs first ----
 r=$(dryrun lead POST "$ANVIL/hold-mission" "{\"missionId\":\"$CONVOY\",\"reason\":\"debris on the lane\"}"); check "lead's dry run of Hold is refused in the notes grant's words: the armed write, before anything is touched" 403 "$r"

@@ -75,12 +75,16 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/client-contacts/testClientContactID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/client-rosters", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/client-rosters", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/client-rosters/testClientRosterID", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/client-rosters/testClientRosterID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/distress-calls", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/distress-calls", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/distress-calls/testDistressCallID", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/distress-calls/testDistressCallID", method: http.MethodPost},
 		{url: "/droids/fee-by-kinds", method: http.MethodGet},
 		{url: "/droids/fee-by-kinds", method: http.MethodPost},
+		{url: "/droids/fee-by-kinds/testFeeByKindKindID", method: http.MethodGet},
+		{url: "/droids/fee-by-kinds/testFeeByKindKindID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/hangars", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/hangars", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/hangars/testHangarID", method: http.MethodGet},
@@ -92,18 +96,24 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/missions/testMissionID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/mission-boards", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/mission-boards", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/mission-boards/testMissionBoardID", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/mission-boards/testMissionBoardID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/mission-documents", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/mission-documents", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/mission-documents/testMissionDocumentID", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/mission-documents/testMissionDocumentID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/open-missions-by-squadrons", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/open-missions-by-squadrons", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/open-missions-by-squadrons/testOpenMissionsBySquadronSquadronID/testOpenMissionsBySquadronSectorID", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/open-missions-by-squadrons/testOpenMissionsBySquadronSquadronID/testOpenMissionsBySquadronSectorID", method: http.MethodPost},
 		{url: "/droids/pilots", method: http.MethodGet},
 		{url: "/droids/pilots", method: http.MethodPost},
 		{url: "/droids/pilots/testPilotID", method: http.MethodGet},
 		{url: "/droids/pilots/testPilotID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/pilot-assignments", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/pilot-assignments", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/pilot-assignments/testPilotAssignmentSquadronID/testPilotAssignmentUserID", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/pilot-assignments/testPilotAssignmentSquadronID/testPilotAssignmentUserID", method: http.MethodPost},
 		{url: "/droids/pilot-certifications", method: http.MethodGet},
 		{url: "/droids/pilot-certifications", method: http.MethodPost},
 		{url: "/droids/pilot-certifications/testPilotCertificationUserID/testPilotCertificationCertificationID", method: http.MethodGet},
@@ -146,6 +156,8 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/squadron-memberships/testSquadronMembershipSquadronID/testSquadronMembershipUserID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/squadron-rosters", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/squadron-rosters", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/squadron-rosters/testSquadronRosterSquadronID/testSquadronRosterUserID", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/squadron-rosters/testSquadronRosterSquadronID/testSquadronRosterUserID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/wings", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/wings", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/wings/testWingID", method: http.MethodGet},
@@ -190,6 +202,8 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/sectors/testDomain/droid-reports", method: http.MethodPost},
 		{url: "/portal/api/fee-by-kinds", method: http.MethodGet},
 		{url: "/portal/api/fee-by-kinds", method: http.MethodPost},
+		{url: "/portal/api/fee-by-kinds/testFeeByKindKindID", method: http.MethodGet},
+		{url: "/portal/api/fee-by-kinds/testFeeByKindKindID", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/hangars", method: http.MethodGet},
 		{url: "/portal/api/sectors/testDomain/hangars", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/hangars/testHangarID", method: http.MethodGet},
@@ -197,14 +211,20 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/sectors/testDomain/hangars", method: http.MethodPatch},
 		{url: "/portal/api/sectors/testDomain/mission-boards", method: http.MethodGet},
 		{url: "/portal/api/sectors/testDomain/mission-boards", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/mission-boards/testMissionBoardID", method: http.MethodGet},
+		{url: "/portal/api/sectors/testDomain/mission-boards/testMissionBoardID", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/open-missions-by-squadrons", method: http.MethodGet},
 		{url: "/portal/api/sectors/testDomain/open-missions-by-squadrons", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/open-missions-by-squadrons/testOpenMissionsBySquadronSquadronID/testOpenMissionsBySquadronSectorID", method: http.MethodGet},
+		{url: "/portal/api/sectors/testDomain/open-missions-by-squadrons/testOpenMissionsBySquadronSquadronID/testOpenMissionsBySquadronSectorID", method: http.MethodPost},
 		{url: "/portal/api/pilots", method: http.MethodGet},
 		{url: "/portal/api/pilots", method: http.MethodPost},
 		{url: "/portal/api/pilots/testPilotID", method: http.MethodGet},
 		{url: "/portal/api/pilots/testPilotID", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/pilot-assignments", method: http.MethodGet},
 		{url: "/portal/api/sectors/testDomain/pilot-assignments", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/pilot-assignments/testPilotAssignmentSquadronID/testPilotAssignmentUserID", method: http.MethodGet},
+		{url: "/portal/api/sectors/testDomain/pilot-assignments/testPilotAssignmentSquadronID/testPilotAssignmentUserID", method: http.MethodPost},
 		{url: "/portal/api/pilot-certifications", method: http.MethodGet},
 		{url: "/portal/api/pilot-certifications", method: http.MethodPost},
 		{url: "/portal/api/pilot-certifications/testPilotCertificationUserID/testPilotCertificationCertificationID", method: http.MethodGet},
@@ -247,6 +267,8 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/sectors/testDomain/squadron-memberships/testSquadronMembershipSquadronID/testSquadronMembershipUserID", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/squadron-rosters", method: http.MethodGet},
 		{url: "/portal/api/sectors/testDomain/squadron-rosters", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/squadron-rosters/testSquadronRosterSquadronID/testSquadronRosterUserID", method: http.MethodGet},
+		{url: "/portal/api/sectors/testDomain/squadron-rosters/testSquadronRosterSquadronID/testSquadronRosterUserID", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/wings", method: http.MethodGet},
 		{url: "/portal/api/sectors/testDomain/wings", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/wings/testWingID", method: http.MethodGet},
@@ -376,12 +398,19 @@ func generatedRouteParameters() []string {
 		"sectorID",
 		"clientID",
 		"clientContactID",
+		"clientRosterID",
 		"consignmentID",
 		"distressCallID",
+		"feeByKindKindID",
 		"hangarID",
 		"missionID",
+		"missionBoardID",
 		"missionDocumentID",
+		"openMissionsBySquadronSquadronID",
+		"openMissionsBySquadronSectorID",
 		"pilotID",
+		"pilotAssignmentSquadronID",
+		"pilotAssignmentUserID",
 		"pilotCertificationUserID",
 		"pilotCertificationCertificationID",
 		"refitID",
@@ -395,6 +424,8 @@ func generatedRouteParameters() []string {
 		"squadronID",
 		"squadronMembershipSquadronID",
 		"squadronMembershipUserID",
+		"squadronRosterSquadronID",
+		"squadronRosterUserID",
 		"wingID",
 		"sectorHazardBoardShipID",
 		"sectorHazardBoardSubsystem",
@@ -489,6 +520,16 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"sectorID": "testDomain"},
 		},
 		{
+			url: "/api/sectors/testDomain/client-rosters/testClientRosterID", method: http.MethodGet,
+			handlerFunc: "ClientRoster",
+			parameters:  map[string]string{"sectorID": "testDomain", "clientRosterID": "testClientRosterID"},
+		},
+		{
+			url: "/api/sectors/testDomain/client-rosters/testClientRosterID", method: http.MethodPost,
+			handlerFunc: "ClientRoster",
+			parameters:  map[string]string{"sectorID": "testDomain", "clientRosterID": "testClientRosterID"},
+		},
+		{
 			url: "/portal/api/sectors/testDomain/client-rosters", method: http.MethodGet,
 			handlerFunc: "ClientRosters",
 			parameters:  map[string]string{"sectorID": "testDomain"},
@@ -497,6 +538,16 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/portal/api/sectors/testDomain/client-rosters", method: http.MethodPost,
 			handlerFunc: "ClientRosters",
 			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/portal/api/sectors/testDomain/client-rosters/testClientRosterID", method: http.MethodGet,
+			handlerFunc: "ClientRoster",
+			parameters:  map[string]string{"sectorID": "testDomain", "clientRosterID": "testClientRosterID"},
+		},
+		{
+			url: "/portal/api/sectors/testDomain/client-rosters/testClientRosterID", method: http.MethodPost,
+			handlerFunc: "ClientRoster",
+			parameters:  map[string]string{"sectorID": "testDomain", "clientRosterID": "testClientRosterID"},
 		},
 		{
 			url: "/api/sectors/testDomain/consignments", method: http.MethodGet,
@@ -599,6 +650,16 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{},
 		},
 		{
+			url: "/api/fee-by-kinds/testFeeByKindKindID", method: http.MethodGet,
+			handlerFunc: "FeeByKind",
+			parameters:  map[string]string{"feeByKindKindID": "testFeeByKindKindID"},
+		},
+		{
+			url: "/api/fee-by-kinds/testFeeByKindKindID", method: http.MethodPost,
+			handlerFunc: "FeeByKind",
+			parameters:  map[string]string{"feeByKindKindID": "testFeeByKindKindID"},
+		},
+		{
 			url: "/api/sectors/testDomain/hangars", method: http.MethodGet,
 			handlerFunc: "Hangars",
 			parameters:  map[string]string{"sectorID": "testDomain"},
@@ -674,6 +735,16 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"sectorID": "testDomain"},
 		},
 		{
+			url: "/api/sectors/testDomain/mission-boards/testMissionBoardID", method: http.MethodGet,
+			handlerFunc: "MissionBoard",
+			parameters:  map[string]string{"sectorID": "testDomain", "missionBoardID": "testMissionBoardID"},
+		},
+		{
+			url: "/api/sectors/testDomain/mission-boards/testMissionBoardID", method: http.MethodPost,
+			handlerFunc: "MissionBoard",
+			parameters:  map[string]string{"sectorID": "testDomain", "missionBoardID": "testMissionBoardID"},
+		},
+		{
 			url: "/api/sectors/testDomain/mission-documents", method: http.MethodGet,
 			handlerFunc: "MissionDocuments",
 			parameters:  map[string]string{"sectorID": "testDomain"},
@@ -724,6 +795,16 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"sectorID": "testDomain"},
 		},
 		{
+			url: "/api/sectors/testDomain/open-missions-by-squadrons/testOpenMissionsBySquadronSquadronID/testOpenMissionsBySquadronSectorID", method: http.MethodGet,
+			handlerFunc: "OpenMissionsBySquadron",
+			parameters:  map[string]string{"sectorID": "testDomain", "openMissionsBySquadronSquadronID": "testOpenMissionsBySquadronSquadronID", "openMissionsBySquadronSectorID": "testOpenMissionsBySquadronSectorID"},
+		},
+		{
+			url: "/api/sectors/testDomain/open-missions-by-squadrons/testOpenMissionsBySquadronSquadronID/testOpenMissionsBySquadronSectorID", method: http.MethodPost,
+			handlerFunc: "OpenMissionsBySquadron",
+			parameters:  map[string]string{"sectorID": "testDomain", "openMissionsBySquadronSquadronID": "testOpenMissionsBySquadronSquadronID", "openMissionsBySquadronSectorID": "testOpenMissionsBySquadronSectorID"},
+		},
+		{
 			url: "/api/pilots", method: http.MethodGet,
 			handlerFunc: "Pilots",
 			parameters:  map[string]string{},
@@ -752,6 +833,16 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/api/sectors/testDomain/pilot-assignments", method: http.MethodPost,
 			handlerFunc: "PilotAssignments",
 			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/api/sectors/testDomain/pilot-assignments/testPilotAssignmentSquadronID/testPilotAssignmentUserID", method: http.MethodGet,
+			handlerFunc: "PilotAssignment",
+			parameters:  map[string]string{"sectorID": "testDomain", "pilotAssignmentSquadronID": "testPilotAssignmentSquadronID", "pilotAssignmentUserID": "testPilotAssignmentUserID"},
+		},
+		{
+			url: "/api/sectors/testDomain/pilot-assignments/testPilotAssignmentSquadronID/testPilotAssignmentUserID", method: http.MethodPost,
+			handlerFunc: "PilotAssignment",
+			parameters:  map[string]string{"sectorID": "testDomain", "pilotAssignmentSquadronID": "testPilotAssignmentSquadronID", "pilotAssignmentUserID": "testPilotAssignmentUserID"},
 		},
 		{
 			url: "/api/pilot-certifications", method: http.MethodGet,
@@ -964,6 +1055,16 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"sectorID": "testDomain"},
 		},
 		{
+			url: "/api/sectors/testDomain/squadron-rosters/testSquadronRosterSquadronID/testSquadronRosterUserID", method: http.MethodGet,
+			handlerFunc: "SquadronRoster",
+			parameters:  map[string]string{"sectorID": "testDomain", "squadronRosterSquadronID": "testSquadronRosterSquadronID", "squadronRosterUserID": "testSquadronRosterUserID"},
+		},
+		{
+			url: "/api/sectors/testDomain/squadron-rosters/testSquadronRosterSquadronID/testSquadronRosterUserID", method: http.MethodPost,
+			handlerFunc: "SquadronRoster",
+			parameters:  map[string]string{"sectorID": "testDomain", "squadronRosterSquadronID": "testSquadronRosterSquadronID", "squadronRosterUserID": "testSquadronRosterUserID"},
+		},
+		{
 			url: "/api/sectors/testDomain/wings", method: http.MethodGet,
 			handlerFunc: "Wings",
 			parameters:  map[string]string{"sectorID": "testDomain"},
@@ -1133,6 +1234,10 @@ func (s *generatedHandlersStub) ClientRosters() http.HandlerFunc {
 	return s.record("ClientRosters")
 }
 
+func (s *generatedHandlersStub) ClientRoster() http.HandlerFunc {
+	return s.record("ClientRoster")
+}
+
 func (s *generatedHandlersStub) CompileBriefing() http.HandlerFunc {
 	return s.record("CompileBriefing")
 }
@@ -1167,6 +1272,10 @@ func (s *generatedHandlersStub) FailMission() http.HandlerFunc {
 
 func (s *generatedHandlersStub) FeeByKinds() http.HandlerFunc {
 	return s.record("FeeByKinds")
+}
+
+func (s *generatedHandlersStub) FeeByKind() http.HandlerFunc {
+	return s.record("FeeByKind")
 }
 
 func (s *generatedHandlersStub) HailShip() http.HandlerFunc {
@@ -1213,6 +1322,10 @@ func (s *generatedHandlersStub) MissionBoards() http.HandlerFunc {
 	return s.record("MissionBoards")
 }
 
+func (s *generatedHandlersStub) MissionBoard() http.HandlerFunc {
+	return s.record("MissionBoard")
+}
+
 func (s *generatedHandlersStub) MissionDocuments() http.HandlerFunc {
 	return s.record("MissionDocuments")
 }
@@ -1223,6 +1336,10 @@ func (s *generatedHandlersStub) MissionDocument() http.HandlerFunc {
 
 func (s *generatedHandlersStub) OpenMissionsBySquadrons() http.HandlerFunc {
 	return s.record("OpenMissionsBySquadrons")
+}
+
+func (s *generatedHandlersStub) OpenMissionsBySquadron() http.HandlerFunc {
+	return s.record("OpenMissionsBySquadron")
 }
 
 func (s *generatedHandlersStub) PassFlightTest() http.HandlerFunc {
@@ -1239,6 +1356,10 @@ func (s *generatedHandlersStub) Pilot() http.HandlerFunc {
 
 func (s *generatedHandlersStub) PilotAssignments() http.HandlerFunc {
 	return s.record("PilotAssignments")
+}
+
+func (s *generatedHandlersStub) PilotAssignment() http.HandlerFunc {
+	return s.record("PilotAssignment")
 }
 
 func (s *generatedHandlersStub) PilotCards() http.HandlerFunc {
@@ -1351,6 +1472,10 @@ func (s *generatedHandlersStub) SquadronMembership() http.HandlerFunc {
 
 func (s *generatedHandlersStub) SquadronRosters() http.HandlerFunc {
 	return s.record("SquadronRosters")
+}
+
+func (s *generatedHandlersStub) SquadronRoster() http.HandlerFunc {
+	return s.record("SquadronRoster")
 }
 
 func (s *generatedHandlersStub) StandDownMission() http.HandlerFunc {

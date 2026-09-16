@@ -223,13 +223,14 @@ func Test_computeCollectionData(t *testing.T) {
 					Permissions: []accesstypes.Permission{accesstypes.Execute},
 				},
 				{
-					// @permissionScope(domain) on a generated (virtual) resource.
+					// @permissionScope(domain) on a generated (virtual) resource; the view
+					// declares its key, so it serves a keyed read beside its list.
 					Name:        "Gadgets",
 					Scope:       accesstypes.DomainPermissionScope,
-					Permissions: []accesstypes.Permission{accesstypes.List},
+					Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 					Tags: []resource.TagData{
 						{Name: "id"},
-						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List}},
+						{Name: "name", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					},
 				},
 				{

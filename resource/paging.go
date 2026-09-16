@@ -11,9 +11,10 @@ import "strconv"
 type Paging struct {
 	// Order is the order a list takes when the request carries no sort. The
 	// primary key is appended so the order is total; a request's sort replaces
-	// it for that request. Empty, a sort-less list is not sorted: the statement
-	// carries no ORDER BY, a computed body's yielded order stands, and no cursor
-	// is issued.
+	// it for that request. Empty, a sort-less request is served only as
+	// limit=all, the whole list with no order (the statement carries no ORDER
+	// BY, a computed body's yielded order stands); a sort-less paged request is
+	// refused at decode.
 	Order []SortField
 	// DefaultLimit is the page size a request without limit receives; 0 means
 	// DefaultPageSize.
@@ -37,7 +38,8 @@ type pageRequest struct {
 	// size is the rows per page; the statement fetches one more to learn whether
 	// a next page exists. Meaningless when all is set.
 	size uint64
-	// all asks for every row: no LIMIT, no cursor, no Link header.
+	// all asks for every row: no LIMIT, no cursor, no Link header, and the one
+	// list that needs no order.
 	all bool
 	// count asks for the total under the same WHERE, answered on a first page.
 	count bool

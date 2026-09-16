@@ -20,8 +20,9 @@ import (
 // default, then the primary key) and marks it as the body's: the handler will
 // not sort. A body that takes the sort must yield its rows in exactly this
 // order, or its pages are wrong. An empty order means the list is not sorted, no
-// sort asked and none declared, and the body's own yielded order is the list's;
-// the handler leaves that order alone whether or not the body takes it. The
+// sort asked and none declared, which a decoded request reaches only as
+// limit=all, and the body's own yielded order is the list's; the handler leaves
+// that order alone whether or not the body takes it. The
 // order's NULL placement is the application database's own — Spanner first
 // ascending and last descending, PostgreSQL the reverse — so a plain ORDER BY in
 // the body's query produces it with no NULL handling of its own, and the
@@ -112,9 +113,9 @@ func decodeBoundary(rowType reflect.Type, order []SortField, keys []*string) ([]
 // the body did not take — the residual filter, the sort, the cursor position,
 // and the page — and returns the page the handler encodes, with the headers it
 // writes. The order inside is fixed: filter, then count, then sort, then page,
-// because any other order gives a different answer. A list with no sort asked
-// and no order declared is not sorted: the rows keep the order the body yielded
-// them in, after the filter, and the page issues no cursor. The sort and the cursor
+// because any other order gives a different answer. A whole list (limit=all) with
+// no sort asked and no order declared is not sorted: the rows keep the order the
+// body yielded them in, after the filter. The sort and the cursor
 // position place NULL where the application's database does (the type the
 // computed decoder stamped), so they agree with the rows a body's plain ORDER BY
 // yields; a QuerySet no computed decoder produced is refused.

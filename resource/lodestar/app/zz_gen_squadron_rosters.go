@@ -103,3 +103,72 @@ func (a *App) SquadronRosters() http.HandlerFunc {
 		return httpio.NewEncoder(w).Ok(resp)
 	})
 }
+
+func (a *App) SquadronRoster() http.HandlerFunc {
+	type response struct {
+		SquadronID   ccc.UUID     `json:"squadronId"   index:"true" perm:"-"`
+		UserID       string       `json:"userId"       index:"true" perm:"-"`
+		SectorID     string       `json:"sectorId"`
+		SquadronName string       `json:"squadronName"`
+		PilotName    *string      `json:"pilotName"`
+		PilotID      ccc.NullUUID `json:"pilotId"`
+	}
+
+	decoder := NewQueryDecoder[virtualresources.SquadronRoster, response](a, accesstypes.Read)
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+		squadronID := httpio.Param[ccc.UUID](r, router.SquadronRosterSquadronID)
+		userID := httpio.Param[string](r, router.SquadronRosterUserID)
+
+		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		res := virtualresources.NewSquadronRosterQueryFromQuerySet(querySet).SetSquadronID(squadronID).SetUserID(userID)
+
+		row, err := res.Read(ctx, a.ResourceClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		rec := (*response)(&row.Data)
+		rmap := make(map[string]any)
+		for _, field := range querySet.Fields() {
+			switch string(field) {
+			case "SquadronID":
+				if !row.Masked("squadronId") {
+					rmap["squadronId"] = rec.SquadronID
+				}
+			case "UserID":
+				if !row.Masked("userId") {
+					rmap["userId"] = rec.UserID
+				}
+			case "SectorID":
+				if !row.Masked("sectorId") {
+					rmap["sectorId"] = rec.SectorID
+				}
+			case "SquadronName":
+				if !row.Masked("squadronName") {
+					rmap["squadronName"] = rec.SquadronName
+				}
+			case "PilotName":
+				if !row.Masked("pilotName") {
+					rmap["pilotName"] = rec.PilotName
+				}
+			case "PilotID":
+				if !row.Masked("pilotId") {
+					rmap["pilotId"] = rec.PilotID
+				}
+			}
+		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
+		}
+
+		return httpio.NewEncoder(w).Ok(rmap)
+	})
+}

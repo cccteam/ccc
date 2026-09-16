@@ -53,6 +53,18 @@ func NewMissionBoardQueryFromQuerySet(qSet *resource.QuerySet[MissionBoard]) *Mi
 	return &MissionBoardQuery{qSet: qSet}
 }
 
+func (q *MissionBoardQuery) SetID(v ccc.UUID) *MissionBoardQuery {
+	q.qSet.SetKey("ID", v)
+
+	return q
+}
+
+func (q *MissionBoardQuery) ID() ccc.UUID {
+	v, _ := q.qSet.Key("ID").(ccc.UUID)
+
+	return v
+}
+
 // Enforce arms the query against the caller a generated handler stamped on the
 // context (resource.CallerFrom): Read runs the routes' Read permission gate and List
 // the List gate — resource, then the requested fields, conditional grants riding the

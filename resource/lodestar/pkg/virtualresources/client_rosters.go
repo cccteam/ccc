@@ -17,7 +17,13 @@ type (
 	// shows is the selected sector's. Mission is served on the portal outlet too, and a
 	// declared enumeration must be on every outlet its field is, so the roster is as well.
 	//
-	// Demonstrates: @enumerate.key-view, @virtual, virtual.domain, outlet.shared.
+	// The roster declares a maximum page size, so it is a bounded picker source: the
+	// picker pages it one server page at a time and reads the chosen client by key, and
+	// the view serves that read through the keyed read route its @primarykey gives it
+	// (a view with no key lists only). A bounded source with a suppressed read fails
+	// generation naming the two ways out.
+	//
+	// Demonstrates: @enumerate.key-view, @virtual, virtual.domain, virtual.keyed-read, outlet.shared.
 	//
 	// @virtual
 	// @permissionScope(domain)

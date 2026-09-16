@@ -19,10 +19,11 @@ type (
 	// outlet too, and a declared enumeration must be on every outlet its field is, so
 	// the catalog is as well.
 	//
-	// The catalog declares no @order: it keeps its sheets in the sequence a template
-	// service would rank them, the standard sheet first, and a list with no sort passes
-	// that order through untouched, neither by name nor by key; a request sort still
-	// sorts them, and a page that does not fit them is marked Page-More with no cursor.
+	// The catalog declares no @order and no maximum: read whole (limit=all), it keeps
+	// its sheets in the sequence a template service would rank them, the standard sheet
+	// first, passed through untouched, neither by name nor by key; a request sort still
+	// sorts and pages them, and a page asked without a sort is refused, since every
+	// paged request carries an order.
 	//
 	// Demonstrates: @enumerate.plain-column, picker.read-disabled, @computed, @suppress, outlet.shared, order.none.
 	//

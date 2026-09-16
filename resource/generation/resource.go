@@ -295,6 +295,12 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
+	// A picker over a bounded source reads the chosen row by key, so the source
+	// must serve a read; checked once the declarations and every @page are known.
+	if err := r.validatePickerSources(r.resources, r.computedResources); err != nil {
+		return err
+	}
+
 	// A view's @rowsOf names a table-backed resource and is refused a view of either
 	// kind, so it too resolves only once every kind is extracted.
 	if err := r.resolveRowsOf(r.resources, r.computedResources); err != nil {
@@ -395,6 +401,9 @@ func (r *resourceGenerator) extractAndGenerateRPC(packageMap map[string]*package
 	var err error
 	r.rpcMethods, err = r.structsToRPCMethods(rpcStructs, r.validateStructNameMatchesFile(pkg, false), validateNoPermTags, validateConditionsTags, validateMaskingTags)
 	if err != nil {
+		return err
+	}
+	if err := r.validateRPCPickerSources(r.rpcMethods); err != nil {
 		return err
 	}
 

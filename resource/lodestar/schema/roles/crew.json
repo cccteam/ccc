@@ -533,6 +533,15 @@
           ],
           "Read": [
             {
+              "resource": "ClientRosters",
+              "fields": [
+                "name",
+                "trusted",
+                "contactCount",
+                "sectorMissions"
+              ]
+            },
+            {
               "resource": "MissionDocuments",
               "fields": [
                 "missionId",
@@ -1529,6 +1538,15 @@
           ],
           "Read": [
             {
+              "resource": "ClientRosters",
+              "fields": [
+                "name",
+                "trusted",
+                "contactCount",
+                "sectorMissions"
+              ]
+            },
+            {
               "resource": "MissionDocuments",
               "fields": [
                 "missionId",
@@ -1660,6 +1678,15 @@
           ],
           "Read": [
             {
+              "resource": "ClientRosters",
+              "fields": [
+                "name",
+                "trusted",
+                "contactCount",
+                "sectorMissions"
+              ]
+            },
+            {
               "resource": "Missions",
               "fields": [
                 "sectorId",
@@ -1750,6 +1777,15 @@
             }
           ],
           "Read": [
+            {
+              "resource": "ClientRosters",
+              "fields": [
+                "name",
+                "trusted",
+                "contactCount",
+                "sectorMissions"
+              ]
+            },
             {
               "resource": "Missions",
               "fields": [

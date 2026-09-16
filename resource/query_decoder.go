@@ -193,6 +193,9 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	qSet.filterString = filterString
 	qSet.SetSortFields(parsedQuery.SortFields)
 	qSet.page = &parsedQuery.Page
+	if err := d.requireOrder(qSet); err != nil {
+		return nil, err
+	}
 	qSet.RequestCapabilities(parsedQuery.Capabilities...)
 	if len(parsedQuery.ColumnFields) == 0 {
 		qSet.ReturnAccessibleFields(true)
@@ -203,6 +206,28 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	}
 
 	return qSet, nil
+}
+
+// requireOrder refuses a paged list request that carries no order: no sort on the
+// request and no @order on the struct. A keyset cursor walks a total order, so a
+// page with no order could only say that more rows exist without saying where
+// they are, and the refusal names what is missing instead. limit=all, the whole
+// list in one response, needs no order and is the only order-free list; it stays
+// refused where a maximum is declared (parsePage). A read decoder decodes one row
+// and is not a list, and a hand-built QuerySet is not a decoded request and keeps
+// exactly the sort its caller set.
+func (d *QueryDecoder[Resource, Request]) requireOrder(qSet *QuerySet[Resource]) error {
+	if !slices.Contains(d.resourceSet.Permissions(), accesstypes.List) {
+		return nil
+	}
+	if qSet.page.all || len(qSet.sortFields) > 0 || len(qSet.defaultOrder) > 0 {
+		return nil
+	}
+	if d.paging.MaxLimit != 0 {
+		return httpio.NewBadRequestMessagef("%s serves at most %d rows per page and declares no order; add a sort", qSet.Resource(), d.paging.MaxLimit)
+	}
+
+	return httpio.NewBadRequestMessagef("%s declares no order; add a sort, or ask limit=all", qSet.Resource())
 }
 
 // Decode decodes an http.Request into a QuerySet and enables user permission enforcement

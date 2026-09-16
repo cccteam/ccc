@@ -33,7 +33,8 @@ type (
 	// the enumerate annotation). ClientID is a foreign key into Clients, and it names
 	// ClientRosters, a sector-scoped view over Clients keyed by the same id that carries
 	// the contact and mission counts a booking picker wants; the constraint stays the
-	// guard at write time. BriefingTemplateID is a plain column with no foreign key: it
+	// guard at write time, and the roster's maximum makes it a bounded source the picker
+	// pages and reads by key. BriefingTemplateID is a plain column with no foreign key: it
 	// holds an identifier from the BriefingTemplates catalog, which lives in Go, not in
 	// the schema, so nothing but the declaration says what the picker lists.
 	//

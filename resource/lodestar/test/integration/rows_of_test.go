@@ -56,9 +56,11 @@ func TestRowsOfViews(t *testing.T) {
 			},
 		},
 		{
-			// A view lists and never reads: a board row opens the mission's own page.
-			name: "the board has no read route", user: "marshal",
-			target: sectorPath(anvil, "mission-boards/"+missionHaulerID), wantStatus: http.StatusNotFound,
+			// A keyed view serves a read route, gated on Read of the view itself: the
+			// marshal holds List on the board and no Read, so the row is refused, and a
+			// board row still opens the mission's own page, the @rowsOf target.
+			name: "the board's read route is gated on Read of the view, which the marshal lacks", user: "marshal",
+			target: sectorPath(anvil, "mission-boards/"+missionHaulerID), wantStatus: http.StatusForbidden,
 		},
 		{
 			// The roster's key is SquadronMemberships' key under its own column names,
@@ -227,7 +229,7 @@ func TestRowsOfMetadata(t *testing.T) {
 		{name: "the mission board names Missions", want: "[Resources.MissionBoards]: {\n    route: 'sectors/{sectorID}/mission-boards',\n    rowsOf: Resources.Missions,"},
 		{name: "the roster names SquadronMemberships", want: "[Resources.SquadronRosters]: {\n    route: 'sectors/{sectorID}/squadron-rosters',\n    rowsOf: Resources.SquadronMemberships,"},
 		{name: "the assignments name SquadronMemberships too", want: "[Resources.PilotAssignments]: {\n    route: 'sectors/{sectorID}/pilot-assignments',\n    rowsOf: Resources.SquadronMemberships,"},
-		{name: "an undeclared view names nothing and stays a read-only list", want: "[Resources.OpenMissionsBySquadrons]: {\n    route: 'sectors/{sectorID}/open-missions-by-squadrons',\n    readDisabled: true,"},
+		{name: "an undeclared view names nothing: no rowsOf, and its keyed read stands", want: "[Resources.OpenMissionsBySquadrons]: {\n    route: 'sectors/{sectorID}/open-missions-by-squadrons',\n    fields: ["},
 		{name: "the roster's pilot id names Pilots, the row route's target", want: "{ fieldName: 'pilotId', displayType: 'enumerated', required: false, isIndex: false, enumeratedResource: Resources.Pilots }"},
 		{name: "the assignments' squadron key names Squadrons, the row route's target", want: "{ fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'enumerated', required: false, isIndex: true, filterable: 'always', enumeratedResource: Resources.Squadrons }"},
 		{name: "the roster carries the table's compound key", want: "{ fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },\n      { fieldName: 'userId', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },"},

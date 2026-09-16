@@ -49,6 +49,30 @@ func NewSquadronRosterQueryFromQuerySet(qSet *resource.QuerySet[SquadronRoster])
 	return &SquadronRosterQuery{qSet: qSet}
 }
 
+func (q *SquadronRosterQuery) SetSquadronID(v ccc.UUID) *SquadronRosterQuery {
+	q.qSet.SetKey("SquadronID", v)
+
+	return q
+}
+
+func (q *SquadronRosterQuery) SquadronID() ccc.UUID {
+	v, _ := q.qSet.Key("SquadronID").(ccc.UUID)
+
+	return v
+}
+
+func (q *SquadronRosterQuery) SetUserID(v string) *SquadronRosterQuery {
+	q.qSet.SetKey("UserID", v)
+
+	return q
+}
+
+func (q *SquadronRosterQuery) UserID() string {
+	v, _ := q.qSet.Key("UserID").(string)
+
+	return v
+}
+
 // Enforce arms the query against the caller a generated handler stamped on the
 // context (resource.CallerFrom): Read runs the routes' Read permission gate and List
 // the List gate — resource, then the requested fields, conditional grants riding the

@@ -250,6 +250,11 @@ func genReadShape(rng *rand.Rand) *readShape {
 	case 1:
 		shape.limit = allLimit
 	}
+	// A paged request needs an order (requireOrder); an unsorted shape reads
+	// the whole list.
+	if len(shape.sort) == 0 {
+		shape.limit = allLimit
+	}
 	switch {
 	case shape.limit != allLimit && rng.IntN(3) == 0:
 		direction := pageNext

@@ -15,12 +15,19 @@ const (
 	Domain                            httpio.ParamType = "sectorID"
 	ClientID                          httpio.ParamType = "clientID"
 	ClientContactID                   httpio.ParamType = "clientContactID"
+	ClientRosterID                    httpio.ParamType = "clientRosterID"
 	ConsignmentID                     httpio.ParamType = "consignmentID"
 	DistressCallID                    httpio.ParamType = "distressCallID"
+	FeeByKindKindID                   httpio.ParamType = "feeByKindKindID"
 	HangarID                          httpio.ParamType = "hangarID"
 	MissionID                         httpio.ParamType = "missionID"
+	MissionBoardID                    httpio.ParamType = "missionBoardID"
 	MissionDocumentID                 httpio.ParamType = "missionDocumentID"
+	OpenMissionsBySquadronSquadronID  httpio.ParamType = "openMissionsBySquadronSquadronID"
+	OpenMissionsBySquadronSectorID    httpio.ParamType = "openMissionsBySquadronSectorID"
 	PilotID                           httpio.ParamType = "pilotID"
+	PilotAssignmentSquadronID         httpio.ParamType = "pilotAssignmentSquadronID"
+	PilotAssignmentUserID             httpio.ParamType = "pilotAssignmentUserID"
 	PilotCertificationUserID          httpio.ParamType = "pilotCertificationUserID"
 	PilotCertificationCertificationID httpio.ParamType = "pilotCertificationCertificationID"
 	RefitID                           httpio.ParamType = "refitID"
@@ -34,6 +41,8 @@ const (
 	SquadronID                        httpio.ParamType = "squadronID"
 	SquadronMembershipSquadronID      httpio.ParamType = "squadronMembershipSquadronID"
 	SquadronMembershipUserID          httpio.ParamType = "squadronMembershipUserID"
+	SquadronRosterSquadronID          httpio.ParamType = "squadronRosterSquadronID"
+	SquadronRosterUserID              httpio.ParamType = "squadronRosterUserID"
 	WingID                            httpio.ParamType = "wingID"
 	SectorHazardBoardShipID           httpio.ParamType = "sectorHazardBoardShipID"
 	SectorHazardBoardSubsystem        httpio.ParamType = "sectorHazardBoardSubsystem"
@@ -70,6 +79,7 @@ type GeneratedHandlers interface {
 	ClientContact() http.HandlerFunc
 
 	ClientRosters() http.HandlerFunc
+	ClientRoster() http.HandlerFunc
 
 	CompileBriefing() http.HandlerFunc
 
@@ -86,6 +96,7 @@ type GeneratedHandlers interface {
 	FailMission() http.HandlerFunc
 
 	FeeByKinds() http.HandlerFunc
+	FeeByKind() http.HandlerFunc
 
 	HailShip() http.HandlerFunc
 
@@ -105,11 +116,13 @@ type GeneratedHandlers interface {
 	Mission() http.HandlerFunc
 
 	MissionBoards() http.HandlerFunc
+	MissionBoard() http.HandlerFunc
 
 	MissionDocuments() http.HandlerFunc
 	MissionDocument() http.HandlerFunc
 
 	OpenMissionsBySquadrons() http.HandlerFunc
+	OpenMissionsBySquadron() http.HandlerFunc
 
 	PassFlightTest() http.HandlerFunc
 
@@ -117,6 +130,7 @@ type GeneratedHandlers interface {
 	Pilot() http.HandlerFunc
 
 	PilotAssignments() http.HandlerFunc
+	PilotAssignment() http.HandlerFunc
 
 	PilotCards() http.HandlerFunc
 
@@ -162,6 +176,7 @@ type GeneratedHandlers interface {
 	SquadronMembership() http.HandlerFunc
 
 	SquadronRosters() http.HandlerFunc
+	SquadronRoster() http.HandlerFunc
 
 	StandDownMission() http.HandlerFunc
 
@@ -211,6 +226,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
 	r.Post("/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
 
+	clientRosterHandler := domainGuard(h.ClientRoster())
+	r.Get("/api/sectors/{sectorID}/client-rosters/{clientRosterID}", clientRosterHandler)
+	r.Post("/api/sectors/{sectorID}/client-rosters/{clientRosterID}", clientRosterHandler)
+
 	r.Post("/api/sectors/{sectorID}/compile-briefing", domainGuard(h.CompileBriefing()))
 
 	r.Post("/api/sectors/{sectorID}/complete-mission", domainGuard(h.CompleteMission()))
@@ -238,6 +257,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	feeByKindsHandler := h.FeeByKinds()
 	r.Get("/api/fee-by-kinds", feeByKindsHandler)
 	r.Post("/api/fee-by-kinds", feeByKindsHandler)
+
+	feeByKindHandler := h.FeeByKind()
+	r.Get("/api/fee-by-kinds/{feeByKindKindID}", feeByKindHandler)
+	r.Post("/api/fee-by-kinds/{feeByKindKindID}", feeByKindHandler)
 
 	r.Post("/api/sectors/{sectorID}/hail-ship", domainGuard(h.HailShip()))
 
@@ -271,6 +294,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/api/sectors/{sectorID}/mission-boards", missionBoardsHandler)
 	r.Post("/api/sectors/{sectorID}/mission-boards", missionBoardsHandler)
 
+	missionBoardHandler := domainGuard(h.MissionBoard())
+	r.Get("/api/sectors/{sectorID}/mission-boards/{missionBoardID}", missionBoardHandler)
+	r.Post("/api/sectors/{sectorID}/mission-boards/{missionBoardID}", missionBoardHandler)
+
 	missionDocumentsHandler := domainGuard(h.MissionDocuments())
 	r.Get("/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
 	r.Post("/api/sectors/{sectorID}/mission-documents", missionDocumentsHandler)
@@ -282,6 +309,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	openMissionsBySquadronsHandler := domainGuard(h.OpenMissionsBySquadrons())
 	r.Get("/api/sectors/{sectorID}/open-missions-by-squadrons", openMissionsBySquadronsHandler)
 	r.Post("/api/sectors/{sectorID}/open-missions-by-squadrons", openMissionsBySquadronsHandler)
+
+	openMissionsBySquadronHandler := domainGuard(h.OpenMissionsBySquadron())
+	r.Get("/api/sectors/{sectorID}/open-missions-by-squadrons/{openMissionsBySquadronSquadronID}/{openMissionsBySquadronSectorID}", openMissionsBySquadronHandler)
+	r.Post("/api/sectors/{sectorID}/open-missions-by-squadrons/{openMissionsBySquadronSquadronID}/{openMissionsBySquadronSectorID}", openMissionsBySquadronHandler)
 
 	r.Post("/api/sectors/{sectorID}/pass-flight-test", domainGuard(h.PassFlightTest()))
 
@@ -296,6 +327,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	pilotAssignmentsHandler := domainGuard(h.PilotAssignments())
 	r.Get("/api/sectors/{sectorID}/pilot-assignments", pilotAssignmentsHandler)
 	r.Post("/api/sectors/{sectorID}/pilot-assignments", pilotAssignmentsHandler)
+
+	pilotAssignmentHandler := domainGuard(h.PilotAssignment())
+	r.Get("/api/sectors/{sectorID}/pilot-assignments/{pilotAssignmentSquadronID}/{pilotAssignmentUserID}", pilotAssignmentHandler)
+	r.Post("/api/sectors/{sectorID}/pilot-assignments/{pilotAssignmentSquadronID}/{pilotAssignmentUserID}", pilotAssignmentHandler)
 
 	pilotCardsHandler := h.PilotCards()
 	r.Get("/api/pilot-cards", pilotCardsHandler)
@@ -403,6 +438,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/api/sectors/{sectorID}/squadron-rosters", squadronRostersHandler)
 	r.Post("/api/sectors/{sectorID}/squadron-rosters", squadronRostersHandler)
 
+	squadronRosterHandler := domainGuard(h.SquadronRoster())
+	r.Get("/api/sectors/{sectorID}/squadron-rosters/{squadronRosterSquadronID}/{squadronRosterUserID}", squadronRosterHandler)
+	r.Post("/api/sectors/{sectorID}/squadron-rosters/{squadronRosterSquadronID}/{squadronRosterUserID}", squadronRosterHandler)
+
 	r.Post("/api/sectors/{sectorID}/stand-down-mission", domainGuard(h.StandDownMission()))
 
 	r.Post("/api/sectors/{sectorID}/start-flight-test", domainGuard(h.StartFlightTest()))
@@ -482,6 +521,7 @@ type GeneratedPortalHandlers interface {
 	ClientContact() http.HandlerFunc
 
 	ClientRosters() http.HandlerFunc
+	ClientRoster() http.HandlerFunc
 
 	DistressCalls() http.HandlerFunc
 	DistressCall() http.HandlerFunc
@@ -518,6 +558,10 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	clientRostersHandler := domainGuard(h.ClientRosters())
 	r.Get("/portal/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
 	r.Post("/portal/api/sectors/{sectorID}/client-rosters", clientRostersHandler)
+
+	clientRosterHandler := domainGuard(h.ClientRoster())
+	r.Get("/portal/api/sectors/{sectorID}/client-rosters/{clientRosterID}", clientRosterHandler)
+	r.Post("/portal/api/sectors/{sectorID}/client-rosters/{clientRosterID}", clientRosterHandler)
 
 	distressCallsHandler := domainGuard(h.DistressCalls())
 	r.Get("/portal/api/sectors/{sectorID}/distress-calls", distressCallsHandler)

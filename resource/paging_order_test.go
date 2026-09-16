@@ -129,8 +129,8 @@ func TestQueryDecoder_stampsOrder(t *testing.T) {
 		wantOrder []SortField
 	}{
 		{
-			name:      "no sort, no declaration: no order",
-			target:    "/",
+			name:      "no sort, no declaration, the whole list: no order",
+			target:    "/?limit=all",
 			wantOrder: []SortField{},
 		},
 		{

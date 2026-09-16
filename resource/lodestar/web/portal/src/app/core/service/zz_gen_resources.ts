@@ -91,7 +91,6 @@ const resourceMap: ResourceMap = {
   },
   [Resources.ClientRosters]: {
     route: 'sectors/{sectorID}/client-rosters',
-    readDisabled: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true, filterable: 'always' },

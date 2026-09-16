@@ -49,6 +49,18 @@ func NewClientRosterQueryFromQuerySet(qSet *resource.QuerySet[ClientRoster]) *Cl
 	return &ClientRosterQuery{qSet: qSet}
 }
 
+func (q *ClientRosterQuery) SetID(v ccc.UUID) *ClientRosterQuery {
+	q.qSet.SetKey("ID", v)
+
+	return q
+}
+
+func (q *ClientRosterQuery) ID() ccc.UUID {
+	v, _ := q.qSet.Key("ID").(ccc.UUID)
+
+	return v
+}
+
 // Enforce arms the query against the caller a generated handler stamped on the
 // context (resource.CallerFrom): Read runs the routes' Read permission gate and List
 // the List gate — resource, then the requested fields, conditional grants riding the

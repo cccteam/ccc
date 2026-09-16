@@ -180,6 +180,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
+			name:         "ClientRoster denied",
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/client-rosters/00000000-0000-0000-0000-000000000001",
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "ClientRoster granted",
+			grants:       grants{accesstypes.Read: true},
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/client-rosters/00000000-0000-0000-0000-000000000001",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
 			name:         "ClientRosters (portal) denied",
 			method:       http.MethodGet,
 			target:       "/portal/api/sectors/testDomain/client-rosters",
@@ -190,6 +203,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			grants:       grants{accesstypes.List: true},
 			method:       http.MethodGet,
 			target:       "/portal/api/sectors/testDomain/client-rosters",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
+			name:         "ClientRoster (portal) denied",
+			method:       http.MethodGet,
+			target:       "/portal/api/sectors/testDomain/client-rosters/00000000-0000-0000-0000-000000000001",
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "ClientRoster (portal) granted",
+			grants:       grants{accesstypes.Read: true},
+			method:       http.MethodGet,
+			target:       "/portal/api/sectors/testDomain/client-rosters/00000000-0000-0000-0000-000000000001",
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
@@ -323,6 +349,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
+			name:         "FeeByKind denied",
+			method:       http.MethodGet,
+			target:       "/api/fee-by-kinds/authz-test-key",
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "FeeByKind granted",
+			grants:       grants{accesstypes.Read: true},
+			method:       http.MethodGet,
+			target:       "/api/fee-by-kinds/authz-test-key",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
 			name:         "Hangars denied",
 			method:       http.MethodGet,
 			target:       "/api/sectors/testDomain/hangars",
@@ -435,6 +474,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
+			name:         "MissionBoard denied",
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/mission-boards/00000000-0000-0000-0000-000000000001",
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "MissionBoard granted",
+			grants:       grants{accesstypes.Read: true},
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/mission-boards/00000000-0000-0000-0000-000000000001",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
 			name:         "MissionDocuments denied",
 			method:       http.MethodGet,
 			target:       "/api/sectors/testDomain/mission-documents",
@@ -500,6 +552,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
+			name:         "OpenMissionsBySquadron denied",
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/open-missions-by-squadrons/00000000-0000-0000-0000-000000000001/authz-test-key",
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "OpenMissionsBySquadron granted",
+			grants:       grants{accesstypes.Read: true},
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/open-missions-by-squadrons/00000000-0000-0000-0000-000000000001/authz-test-key",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
 			name:         "Pilots denied",
 			method:       http.MethodGet,
 			target:       "/api/pilots",
@@ -536,6 +601,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			grants:       grants{accesstypes.List: true},
 			method:       http.MethodGet,
 			target:       "/api/sectors/testDomain/pilot-assignments",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
+			name:         "PilotAssignment denied",
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/pilot-assignments/00000000-0000-0000-0000-000000000001/authz-test-key",
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "PilotAssignment granted",
+			grants:       grants{accesstypes.Read: true},
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/pilot-assignments/00000000-0000-0000-0000-000000000001/authz-test-key",
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
@@ -671,14 +749,14 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 		{
 			name:         "ShipClasses denied",
 			method:       http.MethodGet,
-			target:       "/api/ship-classes",
+			target:       "/api/ship-classes?sort=id",
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
 			name:         "ShipClasses granted",
 			grants:       grants{accesstypes.List: true},
 			method:       http.MethodGet,
-			target:       "/api/ship-classes",
+			target:       "/api/ship-classes?sort=id",
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
@@ -812,6 +890,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
+			name:         "SquadronRoster denied",
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/squadron-rosters/00000000-0000-0000-0000-000000000001/authz-test-key",
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "SquadronRoster granted",
+			grants:       grants{accesstypes.Read: true},
+			method:       http.MethodGet,
+			target:       "/api/sectors/testDomain/squadron-rosters/00000000-0000-0000-0000-000000000001/authz-test-key",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
 			name:         "Wings denied",
 			method:       http.MethodGet,
 			target:       "/api/sectors/testDomain/wings",
@@ -840,27 +931,27 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 		{
 			name:         "BriefingTemplates denied",
 			method:       http.MethodGet,
-			target:       "/api/briefing-templates",
+			target:       "/api/briefing-templates?sort=id",
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
 			name:         "BriefingTemplates granted",
 			grants:       grants{accesstypes.List: true},
 			method:       http.MethodGet,
-			target:       "/api/briefing-templates",
+			target:       "/api/briefing-templates?sort=id",
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
 			name:         "BriefingTemplates (portal) denied",
 			method:       http.MethodGet,
-			target:       "/portal/api/briefing-templates",
+			target:       "/portal/api/briefing-templates?sort=id",
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
 			name:         "BriefingTemplates (portal) granted",
 			grants:       grants{accesstypes.List: true},
 			method:       http.MethodGet,
-			target:       "/portal/api/briefing-templates",
+			target:       "/portal/api/briefing-templates?sort=id",
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{

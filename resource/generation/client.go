@@ -737,15 +737,18 @@ func formatRPCInterfaceTypes(rpcMethods []*rpcMethodInfo) string {
 // Views do not have Read handlers.
 // Consolidated resources do not have Patch handlers.
 // Ignored handler types are filtered out.
+// resourceEndpoints is the handler set a resource generates before suppression: a
+// list for every resource; a keyed read for a table and for a view that declares
+// its @primarykey (a view with no key has no read identity); a patch for a table
+// outside the consolidated handler.
 func resourceEndpoints(res *resourceInfo) []HandlerType {
 	handlerTypes := []HandlerType{ListHandler}
 
-	if !res.IsVirtual {
+	if res.HasPrimaryKey() {
 		handlerTypes = append(handlerTypes, ReadHandler)
-
-		if !res.IsConsolidated {
-			handlerTypes = append(handlerTypes, PatchHandler)
-		}
+	}
+	if !res.IsVirtual && !res.IsConsolidated {
+		handlerTypes = append(handlerTypes, PatchHandler)
 	}
 
 	handlerTypes = slices.DeleteFunc(handlerTypes, func(ht HandlerType) bool {

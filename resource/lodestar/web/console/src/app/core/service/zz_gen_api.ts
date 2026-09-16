@@ -432,7 +432,7 @@ export const apiDescriptor: ApiDescriptor = {
       scope: 'domain',
       consolidated: false,
       keys: ['id'],
-      operations: ['list'],
+      operations: ['list', 'read'],
       page: { default: 25, max: 200 },
       order: [{ field: 'name', direction: 'asc' }],
     },
@@ -467,7 +467,7 @@ export const apiDescriptor: ApiDescriptor = {
       scope: 'global',
       consolidated: false,
       keys: ['kindId'],
-      operations: ['list'],
+      operations: ['list', 'read'],
       page: { default: 25, max: 200 },
       order: [{ field: 'totalFee', direction: 'desc' }],
     },
@@ -502,7 +502,7 @@ export const apiDescriptor: ApiDescriptor = {
       scope: 'domain',
       consolidated: false,
       keys: ['id'],
-      operations: ['list'],
+      operations: ['list', 'read'],
       page: { default: 25, max: 200 },
       order: [{ field: 'deadline', direction: 'asc' }],
     },
@@ -524,7 +524,7 @@ export const apiDescriptor: ApiDescriptor = {
       scope: 'domain',
       consolidated: false,
       keys: ['squadronId', 'sectorId'],
-      operations: ['list'],
+      operations: ['list', 'read'],
       page: { default: 25, max: 200 },
       order: [{ field: 'openMissions', direction: 'desc' }],
     },
@@ -547,7 +547,7 @@ export const apiDescriptor: ApiDescriptor = {
       scope: 'domain',
       consolidated: false,
       keys: ['squadronId', 'userId'],
-      operations: ['list'],
+      operations: ['list', 'read'],
       page: { default: 25, max: 200 },
       order: [{ field: 'squadronName', direction: 'asc' }],
     },
@@ -677,7 +677,7 @@ export const apiDescriptor: ApiDescriptor = {
       scope: 'domain',
       consolidated: false,
       keys: ['squadronId', 'userId'],
-      operations: ['list'],
+      operations: ['list', 'read'],
       page: { default: 25, max: 200 },
       order: [{ field: 'pilotName', direction: 'asc' }],
     },
@@ -763,7 +763,7 @@ export const apiDescriptor: ApiDescriptor = {
 export interface GlobalApi {
   clients: ResourceHandle<Clients, ClientsKey, 'list' | 'read' | 'create' | 'patch' | 'remove', ClientsCreate, ClientsPatch>;
   clientContacts: ResourceHandle<ClientContacts, ClientContactsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', ClientContactsCreate, ClientContactsPatch>;
-  feeByKinds: ResourceHandle<FeeByKinds, FeeByKindsKey, 'list'>;
+  feeByKinds: ResourceHandle<FeeByKinds, FeeByKindsKey, 'list' | 'read'>;
   pilots: ResourceHandle<Pilots, PilotsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', PilotsCreate, PilotsPatch>;
   pilotCertifications: ResourceHandle<PilotCertifications, PilotCertificationsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', PilotCertificationsCreate, PilotCertificationsPatch>;
   sectors: ResourceHandle<Sectors, SectorsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', SectorsCreate, SectorsPatch>;
@@ -776,15 +776,15 @@ export interface GlobalApi {
 
 /** Handles for one tenant partition, available on client.domain(...). */
 export interface DomainApi {
-  clientRosters: ResourceHandle<ClientRosters, ClientRostersKey, 'list'>;
+  clientRosters: ResourceHandle<ClientRosters, ClientRostersKey, 'list' | 'read'>;
   consignments: ResourceHandle<Consignments, ConsignmentsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', ConsignmentsCreate, ConsignmentsPatch>;
   distressCalls: ResourceHandle<DistressCalls, DistressCallsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', DistressCallsCreate, DistressCallsPatch>;
   hangars: ResourceHandle<Hangars, HangarsKey, 'list' | 'read' | 'create' | 'patch' | 'remove', HangarsCreate, HangarsPatch>;
   missions: ResourceHandle<Missions, MissionsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', MissionsCreate, MissionsPatch>;
-  missionBoards: ResourceHandle<MissionBoards, MissionBoardsKey, 'list'>;
+  missionBoards: ResourceHandle<MissionBoards, MissionBoardsKey, 'list' | 'read'>;
   missionDocuments: ResourceHandle<MissionDocuments, MissionDocumentsKey, 'list' | 'read'>;
-  openMissionsBySquadrons: ResourceHandle<OpenMissionsBySquadrons, OpenMissionsBySquadronsKey, 'list'>;
-  pilotAssignments: ResourceHandle<PilotAssignments, PilotAssignmentsKey, 'list'>;
+  openMissionsBySquadrons: ResourceHandle<OpenMissionsBySquadrons, OpenMissionsBySquadronsKey, 'list' | 'read'>;
+  pilotAssignments: ResourceHandle<PilotAssignments, PilotAssignmentsKey, 'list' | 'read'>;
   refits: ResourceHandle<Refits, RefitsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', RefitsCreate, RefitsPatch>;
   refitTasks: ResourceHandle<RefitTasks, RefitTasksKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', RefitTasksCreate, RefitTasksPatch>;
   ships: ResourceHandle<Ships, ShipsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', ShipsCreate, ShipsPatch>;
@@ -792,7 +792,7 @@ export interface DomainApi {
   sortieExpenses: ResourceHandle<SortieExpenses, SortieExpensesKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', SortieExpensesCreate, SortieExpensesPatch>;
   squadrons: ResourceHandle<Squadrons, SquadronsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', SquadronsCreate, SquadronsPatch>;
   squadronMemberships: ResourceHandle<SquadronMemberships, SquadronMembershipsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', SquadronMembershipsCreate, SquadronMembershipsPatch>;
-  squadronRosters: ResourceHandle<SquadronRosters, SquadronRostersKey, 'list'>;
+  squadronRosters: ResourceHandle<SquadronRosters, SquadronRostersKey, 'list' | 'read'>;
   wings: ResourceHandle<Wings, WingsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', WingsCreate, WingsPatch>;
   sectorHazardBoards: ResourceHandle<SectorHazardBoards, SectorHazardBoardsKey, 'list' | 'read'>;
   attachMissionDocument: UploadMethodHandle<AttachMissionDocument, AttachMissionDocumentResult>;

@@ -51,34 +51,34 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		// the handler calls the body: a request the handler would refuse never runs.
 		{
 			name:            "filter on an unknown field is Bad Request at decode",
-			target:          "/?filter=nope:eq:x",
+			target:          "/?filter=nope:eq:x&limit=all",
 			grants:          map[accesstypes.Permission][]accesstypes.Resource{},
 			wantBadRequest:  true,
 			wantErrContains: "'nope' is not filterable",
 		},
 		{
 			name:            "filter on a field without allow_filter is Bad Request at decode",
-			target:          "/?filter=id:eq:x",
+			target:          "/?filter=id:eq:x&limit=all",
 			grants:          map[accesstypes.Permission][]accesstypes.Resource{},
 			wantBadRequest:  true,
 			wantErrContains: "'id' is not filterable",
 		},
 		{
 			name:            "malformed filter is Bad Request at decode",
-			target:          "/?filter=public",
+			target:          "/?filter=public&limit=all",
 			grants:          map[accesstypes.Permission][]accesstypes.Resource{},
 			wantBadRequest:  true,
 			wantErrContains: "must have at least field:operator",
 		},
 		{
 			name:          "missing resource-level grant is Forbidden",
-			target:        "/",
+			target:        "/?limit=all",
 			grants:        map[accesstypes.Permission][]accesstypes.Resource{},
 			wantForbidden: true,
 		},
 		{
 			name:   "missing resource-level grant is Forbidden even with every field grant",
-			target: "/",
+			target: "/?limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource + ".public", computedEnforcedResource + ".tagged"},
 			},
@@ -86,7 +86,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "explicitly requested field without its grant is Forbidden",
-			target: "/?columns=public,tagged",
+			target: "/?columns=public,tagged&limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
 			},
@@ -94,7 +94,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "explicitly requested granted fields decode to exactly those fields",
-			target: "/?columns=public",
+			target: "/?columns=public&limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
 			},
@@ -102,7 +102,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "no requested fields narrows to accessible fields silently",
-			target: "/",
+			target: "/?limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
 			},
@@ -110,7 +110,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "no requested fields with every grant materializes every field",
-			target: "/",
+			target: "/?limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public", computedEnforcedResource + ".tagged"},
 			},
@@ -118,7 +118,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:            "permission check error propagates",
-			target:          "/",
+			target:          "/?limit=all",
 			permCheckErr:    errors.New("engine unavailable"),
 			wantErrContains: "engine unavailable",
 		},
@@ -141,7 +141,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "filter on a denied field is Forbidden naming the field",
-			target: "/?filter=tagged:eq:x",
+			target: "/?filter=tagged:eq:x&limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
 			},
@@ -162,7 +162,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "conditional resource-level grant is an invariant breach, not Forbidden",
-			target: "/",
+			target: "/?limit=all",
 			conditional: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource},
 			},
@@ -170,7 +170,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "conditional grant on an explicitly requested field is an invariant breach",
-			target: "/?columns=public",
+			target: "/?columns=public&limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource},
 			},
@@ -181,7 +181,7 @@ func TestComputedQueryDecoder_Decode_permissionEnforcement(t *testing.T) {
 		},
 		{
 			name:   "conditional field grant on the narrowing path is an invariant breach",
-			target: "/",
+			target: "/?limit=all",
 			grants: map[accesstypes.Permission][]accesstypes.Resource{
 				accesstypes.List: {computedEnforcedResource, computedEnforcedResource + ".public"},
 			},

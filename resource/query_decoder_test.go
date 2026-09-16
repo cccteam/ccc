@@ -530,6 +530,9 @@ func TestQueryDecoder_DecodeWithoutPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewQueryDecoder should not fail with default setup: %v", err)
 	}
+	// A paged list request needs an order (requireOrder); the declared one keeps
+	// these requests about the filter alone.
+	decoder.WithPaging(Paging{Order: []SortField{{Field: "Name", Direction: SortAscending}}})
 
 	testCases := []struct {
 		name              string
@@ -690,7 +693,7 @@ func TestQueryDecoder_UnrequestableFields(t *testing.T) {
 	}{
 		{
 			name:       "default field set excludes fields absent from the request type",
-			target:     "http://test",
+			target:     "http://test?limit=all",
 			wantFields: []accesstypes.Field{"ID", "Name"},
 		},
 		{

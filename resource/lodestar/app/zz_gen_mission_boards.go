@@ -119,3 +119,86 @@ func (a *App) MissionBoards() http.HandlerFunc {
 		return httpio.NewEncoder(w).Ok(resp)
 	})
 }
+
+func (a *App) MissionBoard() http.HandlerFunc {
+	type response struct {
+		ID           ccc.UUID  `json:"id"           index:"true" perm:"-"`
+		SectorID     string    `json:"sectorId"`
+		Title        string    `json:"title"`
+		ClientName   string    `json:"clientName"`
+		SquadronName *string   `json:"squadronName"`
+		KindID       string    `json:"kindId"`
+		StatusID     string    `json:"statusId"`
+		Deadline     time.Time `json:"deadline"`
+		DaysLeft     int64     `json:"daysLeft"`
+	}
+
+	decoder := NewQueryDecoder[virtualresources.MissionBoard, response](a, accesstypes.Read)
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+		id := httpio.Param[ccc.UUID](r, router.MissionBoardID)
+
+		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		res := virtualresources.NewMissionBoardQueryFromQuerySet(querySet).SetID(id)
+
+		row, err := res.Read(ctx, a.ResourceClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		rec := (*response)(&row.Data)
+		rmap := make(map[string]any)
+		for _, field := range querySet.Fields() {
+			switch string(field) {
+			case "ID":
+				if !row.Masked("id") {
+					rmap["id"] = rec.ID
+				}
+			case "SectorID":
+				if !row.Masked("sectorId") {
+					rmap["sectorId"] = rec.SectorID
+				}
+			case "Title":
+				if !row.Masked("title") {
+					rmap["title"] = rec.Title
+				}
+			case "ClientName":
+				if !row.Masked("clientName") {
+					rmap["clientName"] = rec.ClientName
+				}
+			case "SquadronName":
+				if !row.Masked("squadronName") {
+					rmap["squadronName"] = rec.SquadronName
+				}
+			case "KindID":
+				if !row.Masked("kindId") {
+					rmap["kindId"] = rec.KindID
+				}
+			case "StatusID":
+				if !row.Masked("statusId") {
+					rmap["statusId"] = rec.StatusID
+				}
+			case "Deadline":
+				if !row.Masked("deadline") {
+					rmap["deadline"] = rec.Deadline
+				}
+			case "DaysLeft":
+				if !row.Masked("daysLeft") {
+					rmap["daysLeft"] = rec.DaysLeft
+				}
+			}
+		}
+		if capabilities := row.Capabilities(); capabilities != nil {
+			rmap[resource.CapabilitiesProperty] = capabilities
+		}
+
+		return httpio.NewEncoder(w).Ok(rmap)
+	})
+}

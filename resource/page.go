@@ -14,13 +14,11 @@ import (
 
 // Response headers a paged list carries. Link (RFC 8288) positions the walk with a
 // complete URL per relation that exists; Total-Count answers count=true on a
-// first page; Page-More marks a list served with no order (no sort asked, none
-// declared) whose rows did not fit the page, where no cursor is issued and paging
-// further requires a sort.
+// first page. Every paged request carries an order (QueryDecoder.requireOrder), so
+// every page has its Link relations or is the whole list.
 const (
 	LinkHeader       = "Link"
 	TotalCountHeader = "Total-Count"
-	PageMoreHeader   = "Page-More"
 )
 
 // The Link relations a page carries.
@@ -32,8 +30,8 @@ const (
 // Page collects one page of a decoded list on the generated handler's behalf. The
 // statement fetches one row past the page size; Add keeps the page's rows and
 // reports the extra one, which tells the page a next page exists and is never
-// encoded. WriteHeaders then writes the Link, Total-Count, and Page-More headers
-// from the rows it saw, before the handler encodes the body.
+// encoded. WriteHeaders then writes the Link and Total-Count headers from the rows
+// it saw, before the handler encodes the body.
 type Page[Resource Resourcer] struct {
 	qSet  *QuerySet[Resource]
 	first *Row[Resource]
@@ -104,9 +102,8 @@ func (p *Page[Resource]) Reversed() bool {
 // Total-Count when a count was asked for, and Link with a complete URL per
 // relation that exists — the first page has no prev, the last page no next.
 // The URLs carry the request's own query with the cursor set and count removed,
-// so a client follows them as given and never assembles one. A list with no
-// order (no sort, no declared order) issues no cursor; Page-More marks its
-// truncation instead. A hand-built QuerySet and limit=all write nothing.
+// so a client follows them as given and never assembles one. A hand-built
+// QuerySet and limit=all write nothing.
 func (p *Page[Resource]) WriteHeaders(w http.ResponseWriter, r *http.Request) error {
 	pg := p.qSet.page
 	if pg == nil || pg.all {
@@ -114,13 +111,6 @@ func (p *Page[Resource]) WriteHeaders(w http.ResponseWriter, r *http.Request) er
 	}
 	if p.total != nil {
 		w.Header().Set(TotalCountHeader, strconv.FormatInt(*p.total, 10))
-	}
-	if !p.qSet.issuesCursors() {
-		if p.more {
-			w.Header().Set(PageMoreHeader, trueStr)
-		}
-
-		return nil
 	}
 	if p.kept == 0 {
 		return nil

@@ -931,11 +931,13 @@ func (r *resourceInfo) ListHandlerDisabled() bool {
 }
 
 // ReadHandlerDisabled reports whether the resource has no keyed read: suppressed with
-// @suppress(readHandler), or a virtual resource, which lists and never reads (the
-// router registers no read route for a view, and the metadata says so, so a picker over
-// it resolves a picked row's display from the list).
+// @suppress(readHandler), or a view with no @primarykey, which has no read identity
+// and lists only (the router registers no read route for it, and the metadata says
+// so, so a picker over it resolves a picked row's display from the list). A view
+// that declares its key serves a keyed read as a table does, which a picker over a
+// bounded view needs to read the chosen row.
 func (r *resourceInfo) ReadHandlerDisabled() bool {
-	return r.IsVirtual || slices.Contains(r.SuppressedHandlers, ReadHandler)
+	return (r.IsVirtual && !r.HasPrimaryKey()) || slices.Contains(r.SuppressedHandlers, ReadHandler)
 }
 
 func (r *resourceInfo) CreateHandlerDisabled() bool {
@@ -994,7 +996,27 @@ func (r *resourceInfo) IsEnumeration() bool {
 }
 
 func (r *resourceInfo) HasCompoundPrimaryKey() bool {
-	return r.PkCount > 1
+	return r.keyCount() > 1
+}
+
+// HasPrimaryKey reports whether the resource has a read identity: a table's key from
+// the schema, a view's from its @primarykey fields.
+func (r *resourceInfo) HasPrimaryKey() bool {
+	return r.keyCount() > 0
+}
+
+// keyCount is the number of key columns: the schema's for a table, the @primarykey
+// fields for a view (PkCount is a table fact and stays 0 on a view).
+func (r *resourceInfo) keyCount() int {
+	if !r.IsVirtual {
+		return r.PkCount
+	}
+	var n int
+	for range r.PrimaryKeys() {
+		n++
+	}
+
+	return n
 }
 
 func (r *resourceInfo) PrimaryKeyIsGeneratedUUID() bool {
@@ -1318,9 +1340,10 @@ func (f *resourceField) WireName() string {
 // these fields, and the generated read handler sets every primary-key part through
 // them; a column of a composite unique index is not one, whatever its index enforces
 // with the key's other columns. On a view the uniqueindex tag is authored and stands
-// as declared.
+// as declared, and a @primarykey field addresses a row as a table's key does: a keyed
+// view serves a read through it.
 func (f *resourceField) AddressesRow() bool {
-	return f.IsUniqueIndex || (f.IsPrimaryKey && !f.Parent.IsVirtual)
+	return f.IsUniqueIndex || f.IsPrimaryKey
 }
 
 // UniqueIndexTag renders index:"true" on the fields a keyed read addresses a row by

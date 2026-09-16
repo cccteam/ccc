@@ -118,26 +118,27 @@ func TestQuerySet_stmt_visibleProjection(t *testing.T) {
 		},
 		{
 			name:   "a filter on an unpruned field compares its CASE, so a masked row never matches",
-			target: "/?filter=fee:gt:5&columns=id,name",
+			target: "/?filter=fee:gt:5&columns=id,name&limit=all",
 			decisions: accesstypes.Decisions{
 				projectedResource + ".fee":  feeOwner,
 				projectedResource + ".note": conditionalOn(projectedResource+".note", "owner = subject OR priority = 3"),
 			},
-			// No sort and no declared order: the statement carries no ORDER BY.
+			// No sort and no declared order, so the whole list: the statement carries
+			// no ORDER BY and no LIMIT.
 			wantSpanner: "SELECT Id, Name FROM projectionResources " +
-				"WHERE CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END > @_p1 AND (`projectionResources`.`Station` = @domain) LIMIT 51",
+				"WHERE CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END > @_p1 AND (`projectionResources`.`Station` = @domain)",
 			wantPostgres: `SELECT "Id", "Name" FROM projectionResources ` +
-				`WHERE CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END > @_p1 AND ("projectionResources"."Station" = @domain) LIMIT 51`,
+				`WHERE CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END > @_p1 AND ("projectionResources"."Station" = @domain)`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain", "_p1": 5},
 		},
 		{
 			name:      "isnull on an unpruned field matches the masked rows",
-			target:    "/?filter=fee:isnull&columns=id",
+			target:    "/?filter=fee:isnull&columns=id&limit=all",
 			decisions: accesstypes.Decisions{projectedResource + ".fee": feeOwner},
 			wantSpanner: "SELECT Id FROM projectionResources " +
-				"WHERE CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL AND (`projectionResources`.`Station` = @domain) LIMIT 51",
+				"WHERE CASE WHEN `projectionResources`.`Owner` = @subject THEN `Fee` END IS NULL AND (`projectionResources`.`Station` = @domain)",
 			wantPostgres: `SELECT "Id" FROM projectionResources ` +
-				`WHERE CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL AND ("projectionResources"."Station" = @domain) LIMIT 51`,
+				`WHERE CASE WHEN "projectionResources"."Owner" = @subject THEN "Fee" END IS NULL AND ("projectionResources"."Station" = @domain)`,
 			wantParams: map[string]any{"subject": "u1", "domain": "testDomain"},
 		},
 		{

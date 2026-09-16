@@ -27,7 +27,8 @@ func newQueryTestDecoder(t *testing.T, paging Paging, key *CursorKey) *QueryDeco
 
 // TestQueryDecoder_declaredPageSizes pins the declared contract: the default page
 // a limit-less request takes, the maximum a request may not exceed, and that a
-// maximum also closes limit=all.
+// maximum also closes limit=all. Every paged request carries a sort, as
+// requireOrder demands (TestQueryDecoder_requireOrder).
 func TestQueryDecoder_declaredPageSizes(t *testing.T) {
 	t.Parallel()
 
@@ -41,28 +42,28 @@ func TestQueryDecoder_declaredPageSizes(t *testing.T) {
 	}{
 		{
 			name:      "generator-wide default page",
-			target:    "/",
+			target:    "/?sort=public",
 			wantPage:  pageRequest{size: DefaultPageSize},
 			wantLimit: "LIMIT 51",
 		},
 		{
 			name:      "declared default page",
 			paging:    Paging{DefaultLimit: 25},
-			target:    "/",
+			target:    "/?sort=public",
 			wantPage:  pageRequest{size: 25},
 			wantLimit: "LIMIT 26",
 		},
 		{
 			name:      "a request within the maximum",
 			paging:    Paging{DefaultLimit: 25, MaxLimit: 200},
-			target:    "/?limit=200",
+			target:    "/?sort=public&limit=200",
 			wantPage:  pageRequest{size: 200},
 			wantLimit: "LIMIT 201",
 		},
 		{
 			name:    "a request over the maximum is refused naming it",
 			paging:  Paging{DefaultLimit: 25, MaxLimit: 200},
-			target:  "/?limit=201",
+			target:  "/?sort=public&limit=201",
 			wantErr: "limit 201 exceeds this resource's maximum page size of 200",
 		},
 		{
@@ -108,6 +109,112 @@ func TestQueryDecoder_declaredPageSizes(t *testing.T) {
 			}
 			if limit != tt.wantLimit {
 				t.Errorf("limitClause() = %q, want %q", limit, tt.wantLimit)
+			}
+		})
+	}
+}
+
+// TestQueryDecoder_requireOrder pins the rule that every paged list request carries
+// an order: with no @order on the struct and no sort on the request, a bare GET or a
+// limit is refused with a 400 naming the resource and the way out, on an unbounded
+// and on a bounded resource; a declared order, a request sort, or limit=all on an
+// unbounded resource passes; limit=all stays refused where a maximum is declared; a
+// read decoder decodes one row and asks for no order.
+func TestQueryDecoder_requireOrder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		paging  Paging
+		target  string
+		read    bool
+		wantErr string
+	}{
+		{
+			name:    "a bare GET on an unbounded resource with no order is refused naming both ways out",
+			target:  "/",
+			wantErr: "enforcementResources declares no order; add a sort, or ask limit=all",
+		},
+		{
+			name:    "a limit on an unbounded resource with no order is refused the same way",
+			target:  "/?limit=10",
+			wantErr: "enforcementResources declares no order; add a sort, or ask limit=all",
+		},
+		{
+			name:    "a bare GET on a bounded resource with no order is refused naming the maximum and the sort",
+			paging:  Paging{MaxLimit: 200},
+			target:  "/",
+			wantErr: "enforcementResources serves at most 200 rows per page and declares no order; add a sort",
+		},
+		{
+			name:    "a filter alone is not an order",
+			target:  "/?filter=public:eq:x",
+			wantErr: "enforcementResources declares no order; add a sort, or ask limit=all",
+		},
+		{
+			name:   "a declared order pages a sort-less request",
+			paging: Paging{Order: []SortField{{Field: "Public", Direction: SortAscending}}},
+			target: "/",
+		},
+		{
+			name:   "a request sort pages a resource that declares none",
+			target: "/?sort=public&limit=10",
+		},
+		{
+			name:   "limit=all needs no order on an unbounded resource: the whole list",
+			target: "/?limit=all",
+		},
+		{
+			name:    "limit=all stays refused where a maximum is declared, before the order is asked",
+			paging:  Paging{MaxLimit: 200},
+			target:  "/?limit=all",
+			wantErr: "limit=all is not permitted: this resource serves at most 200 rows per page",
+		},
+		{
+			name:   "a read decoder decodes one row and asks for no order",
+			target: "/",
+			read:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var qSet *QuerySet[enforcementResource]
+			var err error
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, http.NoBody)
+			if tt.read {
+				resSet, err := NewSet[enforcementResource, enforcementReadRequest](accesstypes.Read)
+				if err != nil {
+					t.Fatalf("NewSet() error = %v", err)
+				}
+				decoder, err := NewQueryDecoder[enforcementResource, enforcementReadRequest](resSet)
+				if err != nil {
+					t.Fatalf("NewQueryDecoder() error = %v", err)
+				}
+				qSet, err = decoder.WithPaging(tt.paging).DecodeWithoutPermissions(req)
+				if err != nil {
+					t.Fatalf("DecodeWithoutPermissions() error = %v", err)
+				}
+			} else {
+				qSet, err = newQueryTestDecoder(t, tt.paging, nil).DecodeWithoutPermissions(req)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("DecodeWithoutPermissions() error = %v, want error containing %q", err, tt.wantErr)
+				}
+				if !httpio.HasBadRequest(err) {
+					t.Errorf("DecodeWithoutPermissions() error = %v, want a 400", err)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("DecodeWithoutPermissions() error = %v", err)
+			}
+			if qSet == nil {
+				t.Fatal("DecodeWithoutPermissions() returned no QuerySet")
 			}
 		})
 	}
@@ -214,12 +321,12 @@ func TestQueryDecoder_bindCursor(t *testing.T) {
 			wantBadReq: true,
 		},
 		{
-			name: "a cursor on a list with no sort and no declared order is refused: paging further requires a sort",
+			name: "a cursor on a list with no sort and no declared order never reaches the cursor: the paged request itself is refused",
 			key:  key,
 			target: func(t *testing.T) string {
 				return "/?cursor=" + seal(t, key, testScope, "", nil, "50")
 			},
-			wantErr:    "paging past the first page requires a sort",
+			wantErr:    "enforcementResources declares no order; add a sort, or ask limit=all",
 			wantBadReq: true,
 		},
 		{
