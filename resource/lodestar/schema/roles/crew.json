@@ -362,7 +362,8 @@
               "resource": "Squadrons",
               "fields": [
                 "wingId",
-                "name"
+                "name",
+                "callsigns"
               ]
             },
             {
@@ -557,7 +558,8 @@
               "resource": "Squadrons",
               "fields": [
                 "wingId",
-                "name"
+                "name",
+                "callsigns"
               ]
             },
             {
@@ -689,7 +691,8 @@
               "resource": "Squadrons",
               "fields": [
                 "wingId",
-                "name"
+                "name",
+                "callsigns"
               ]
             },
             {
@@ -793,7 +796,8 @@
               "resource": "Squadrons",
               "fields": [
                 "wingId",
-                "name"
+                "name",
+                "callsigns"
               ]
             },
             {

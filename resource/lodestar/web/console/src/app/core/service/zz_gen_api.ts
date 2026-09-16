@@ -341,11 +341,13 @@ export type SortieExpensesKey = [id: string];
 export interface SquadronsCreate {
   wingId: string;
   name: string;
+  callsigns?: string[];
 }
 /** The fields a client may change on Squadrons. Keys, server-owned, and immutable fields are absent. */
 export interface SquadronsPatch {
   wingId?: string;
   name?: string;
+  callsigns?: string[];
 }
 /** The primary key of Squadrons, in route order. */
 export type SquadronsKey = [id: string];
@@ -655,7 +657,7 @@ export const apiDescriptor: ApiDescriptor = {
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
       order: [{ field: 'name', direction: 'asc' }],
-      patchable: ['wingId', 'name'],
+      patchable: ['wingId', 'name', 'callsigns'],
     },
     [Resources.SquadronMemberships]: {
       resource: Resources.SquadronMemberships,

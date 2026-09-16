@@ -26,9 +26,10 @@ func (Squadron) DefaultConfig() resource.Config {
 // and read, so a query armed with Enforce meets the field permissions the routes
 // enforce; squadronReadSets holds one Set per read operation.
 type squadronRead struct {
-	ID     ccc.UUID `json:"id"     perm:"-"`
-	WingID ccc.UUID `json:"wingId"`
-	Name   string   `json:"name"`
+	ID        ccc.UUID `json:"id"        perm:"-"`
+	WingID    ccc.UUID `json:"wingId"`
+	Name      string   `json:"name"`
+	Callsigns []string `json:"callsigns"`
 }
 
 var squadronReadSets resource.SetCache[Squadron, squadronRead]
@@ -37,9 +38,10 @@ var squadronReadSets resource.SetCache[Squadron, squadronRead]
 // accept on a mutation, so a patch armed with Enforce meets the field permissions the
 // routes enforce; squadronWriteSets holds one Set per mutation.
 type squadronWrite struct {
-	ID     ccc.UUID `json:"-"`
-	WingID ccc.UUID `json:"wingId"`
-	Name   string   `json:"name"`
+	ID        ccc.UUID `json:"-"`
+	WingID    ccc.UUID `json:"wingId"`
+	Name      string   `json:"name"`
+	Callsigns []string `json:"callsigns" sqltype:"ARRAY<STRING(16)>" nullable:"true"`
 }
 
 var squadronWriteSets resource.SetCache[Squadron, squadronWrite]
@@ -151,6 +153,7 @@ func (c *SquadronColumns) All() *SquadronColumns {
 		"ID",
 		"WingID",
 		"Name",
+		"Callsigns",
 	}
 
 	return c
@@ -170,6 +173,12 @@ func (c *SquadronColumns) WingID() *SquadronColumns {
 
 func (c *SquadronColumns) Name() *SquadronColumns {
 	c.fields = append(c.fields, "Name")
+
+	return c
+}
+
+func (c *SquadronColumns) Callsigns() *SquadronColumns {
+	c.fields = append(c.fields, "Callsigns")
 
 	return c
 }
@@ -274,6 +283,10 @@ func (c *squadronSort) WingID() *SquadronSort {
 
 func (c *squadronSort) Name() *SquadronSort {
 	return c.addField("Name")
+}
+
+func (c *squadronSort) Callsigns() *SquadronSort {
+	return c.addField("Callsigns")
 }
 
 type SquadronSort struct {
@@ -395,6 +408,22 @@ func (p *SquadronCreatePatch) NameIsSet() bool {
 	return p.patchSet.IsSet("Name")
 }
 
+func (p *SquadronCreatePatch) SetCallsigns(v []string) *SquadronCreatePatch {
+	p.patchSet.Set("Callsigns", v)
+
+	return p
+}
+
+func (p *SquadronCreatePatch) Callsigns() []string {
+	v, _ := p.patchSet.Get("Callsigns").([]string)
+
+	return v
+}
+
+func (p *SquadronCreatePatch) CallsignsIsSet() bool {
+	return p.patchSet.IsSet("Callsigns")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *SquadronCreatePatch) Diff(got *SquadronCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -493,6 +522,22 @@ func (p *SquadronUpdatePatch) Name() string {
 
 func (p *SquadronUpdatePatch) NameIsSet() bool {
 	return p.patchSet.IsSet("Name")
+}
+
+func (p *SquadronUpdatePatch) SetCallsigns(v []string) *SquadronUpdatePatch {
+	p.patchSet.Set("Callsigns", v)
+
+	return p
+}
+
+func (p *SquadronUpdatePatch) Callsigns() []string {
+	v, _ := p.patchSet.Get("Callsigns").([]string)
+
+	return v
+}
+
+func (p *SquadronUpdatePatch) CallsignsIsSet() bool {
+	return p.patchSet.IsSet("Callsigns")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

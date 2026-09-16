@@ -600,11 +600,13 @@ export namespace SquadronRosters {
 
 export namespace Squadrons {
   export const fieldName = {
+    callsigns: 'callsigns' as FieldName,
     id: 'id' as FieldName,
     name: 'name' as FieldName,
     wingId: 'wingId' as FieldName,
   };
   export const resourceName = {
+    callsigns: 'Squadrons.callsigns' as Resource,
     id: 'Squadrons.id' as Resource,
     name: 'Squadrons.name' as Resource,
     wingId: 'Squadrons.wingId' as Resource,

@@ -54,9 +54,13 @@ INSERT INTO Wings (Id, SectorId, Name) VALUES ('40000000-0000-4000-8000-00000000
 INSERT INTO Wings (Id, SectorId, Name) VALUES ('40000000-0000-4000-8000-000000000002', 'bastion', 'Rampart Wing');
 INSERT INTO Wings (Id, SectorId, Name) VALUES ('40000000-0000-4000-8000-000000000003', 'cinder', 'Ember Wing');
 
-INSERT INTO Squadrons (Id, WingId, Name) VALUES ('50000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000001', 'Hammer');
+-- Callsigns (a nullable ARRAY<STRING(16)> column typed by the plain slice) take both
+-- answers and the absence of one: Hammer has filed its two, Portcullis flies silent and
+-- says so with an empty array, and Tongs and Ashfall have not filed yet, so the column is
+-- NULL there and the row carries a null.
+INSERT INTO Squadrons (Id, WingId, Name, Callsigns) VALUES ('50000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000001', 'Hammer', ['Hammerfall', 'Anvil Actual']);
 INSERT INTO Squadrons (Id, WingId, Name) VALUES ('50000000-0000-4000-8000-000000000002', '40000000-0000-4000-8000-000000000001', 'Tongs');
-INSERT INTO Squadrons (Id, WingId, Name) VALUES ('50000000-0000-4000-8000-000000000003', '40000000-0000-4000-8000-000000000002', 'Portcullis');
+INSERT INTO Squadrons (Id, WingId, Name, Callsigns) VALUES ('50000000-0000-4000-8000-000000000003', '40000000-0000-4000-8000-000000000002', 'Portcullis', ARRAY<STRING>[]);
 INSERT INTO Squadrons (Id, WingId, Name) VALUES ('50000000-0000-4000-8000-000000000004', '40000000-0000-4000-8000-000000000003', 'Ashfall');
 
 INSERT INTO SquadronMemberships (SquadronId, UserId) VALUES ('50000000-0000-4000-8000-000000000001', 'lead');

@@ -23,7 +23,7 @@ import (
 // metadata, a member of the client's display-type union. Needs no emulator: it reads the
 // committed output.
 //
-// Demonstrates: typescript.second-target, @manualAddResource.outlet, workflow.ts-constant, outlet.isolation, typescript.imported-type, typescript.derived-object, typescript.byte-slice, typescript.array-column.
+// Demonstrates: typescript.second-target, @manualAddResource.outlet, workflow.ts-constant, outlet.isolation, typescript.imported-type, typescript.derived-object, typescript.byte-slice, typescript.array-column, decode.nullable-slice.
 func TestPortalTargetEmission(t *testing.T) {
 	t.Parallel()
 
@@ -103,6 +103,14 @@ func TestPortalTargetEmission(t *testing.T) {
 			want: []string{
 				"  cargoBays?: number[];",
 				"{ fieldName: 'cargoBays', displayType: 'number[]', required: false, isIndex: false }",
+			},
+		},
+		{
+			name:   "the console types the nullable ARRAY<STRING(16)> column a list of strings the metadata does not require",
+			source: consoleResources,
+			want: []string{
+				"  callsigns?: string[];",
+				"{ fieldName: 'callsigns', displayType: 'string[]', required: false, isIndex: false, maxLength: 16 }",
 			},
 		},
 		{

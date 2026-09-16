@@ -159,9 +159,10 @@ func (a *App) PatchResources() http.HandlerFunc {
 	sortieExpenseDecoder := NewDecoder[resources.SortieExpense, sortieExpenseRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type squadronRequest struct {
-		ID     ccc.UUID `json:"-"`
-		WingID ccc.UUID `json:"wingId"`
-		Name   string   `json:"name"`
+		ID        ccc.UUID `json:"-"`
+		WingID    ccc.UUID `json:"wingId"`
+		Name      string   `json:"name"`
+		Callsigns []string `json:"callsigns" sqltype:"ARRAY<STRING(16)>" nullable:"true"`
 	}
 	squadronDecoder := NewDecoder[resources.Squadron, squadronRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 

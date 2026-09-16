@@ -18,9 +18,10 @@ import (
 
 func (a *App) Squadrons() http.HandlerFunc {
 	type squadron struct {
-		ID     ccc.UUID `json:"id"     index:"true" perm:"-"`
-		WingID ccc.UUID `json:"wingId" index:"true"`
-		Name   string   `json:"name"   index:"true"`
+		ID        ccc.UUID `json:"id"        index:"true" perm:"-"`
+		WingID    ccc.UUID `json:"wingId"    index:"true"`
+		Name      string   `json:"name"      index:"true"`
+		Callsigns []string `json:"callsigns"`
 	}
 
 	type response []map[string]any
@@ -71,6 +72,10 @@ func (a *App) Squadrons() http.HandlerFunc {
 					if !row.Masked("name") {
 						rmap["name"] = rec.Name
 					}
+				case "Callsigns":
+					if !row.Masked("callsigns") {
+						rmap["callsigns"] = rec.Callsigns
+					}
 				}
 			}
 			if capabilities := row.Capabilities(); capabilities != nil {
@@ -91,9 +96,10 @@ func (a *App) Squadrons() http.HandlerFunc {
 
 func (a *App) Squadron() http.HandlerFunc {
 	type response struct {
-		ID     ccc.UUID `json:"id"     index:"true" perm:"-"`
-		WingID ccc.UUID `json:"wingId"`
-		Name   string   `json:"name"`
+		ID        ccc.UUID `json:"id"        index:"true" perm:"-"`
+		WingID    ccc.UUID `json:"wingId"`
+		Name      string   `json:"name"`
+		Callsigns []string `json:"callsigns"`
 	}
 
 	decoder := NewQueryDecoder[resources.Squadron, response](a, accesstypes.Read)
@@ -131,6 +137,10 @@ func (a *App) Squadron() http.HandlerFunc {
 			case "Name":
 				if !row.Masked("name") {
 					rmap["name"] = rec.Name
+				}
+			case "Callsigns":
+				if !row.Masked("callsigns") {
+					rmap["callsigns"] = rec.Callsigns
 				}
 			}
 		}
