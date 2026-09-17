@@ -214,7 +214,6 @@ func Test_pointerToSliceRefusal(t *testing.T) {
 	t.Parallel()
 
 	c := nullableFixtureClient(t)
-	generator := &typescriptGenerator{client: c, outletExcludedTables: map[string]struct{}{}}
 
 	table, err := extractNullableFixture(t, c, "Pin")
 	if err != nil {
@@ -252,6 +251,10 @@ func Test_pointerToSliceRefusal(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			// Each subtest types through its own client: a client builds its leaf
+			// resolver and declaration cache on first use and shares them across every
+			// field it types, so two parallel subtests over one client race on them.
+			generator := &typescriptGenerator{client: nullableFixtureClient(t), outletExcludedTables: map[string]struct{}{}}
 			err := generator.resourceFieldsTypescriptType(tt.res)
 			if err == nil {
 				t.Fatal("resourceFieldsTypescriptType() error = nil, want every refusal")
