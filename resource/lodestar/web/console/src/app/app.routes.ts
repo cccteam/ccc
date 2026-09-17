@@ -10,6 +10,7 @@ import { squadronsConfig } from './configs/squadrons.config';
 import { pilotsConfig } from './configs/pilots.config';
 import { sectorsConfig } from './configs/sectors.config';
 import { shipClassesConfig } from './configs/shipClasses.config';
+import { shipsConfig } from './configs/ships.config';
 
 export const routes: Routes = [
   {
@@ -35,6 +36,7 @@ export const routes: Routes = [
       resourceRoutes(pilotsConfig, resourceMeta),
       resourceRoutes(sectorsConfig, resourceMeta),
       resourceRoutes(missionsConfig, resourceMeta),
+      resourceRoutes(shipsConfig, resourceMeta),
       resourceRoutes(squadronsConfig, resourceMeta),
       sectorRoute(),
       { path: '**', redirectTo: 'dashboard' },

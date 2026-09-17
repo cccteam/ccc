@@ -48,7 +48,8 @@ export class BriefingComponent {
   includeHazards = signal(true);
   // The catalog the picker lists, through the generated handle for the resource the
   // metadata names (methodMeta's enumeratedResource for templateId is BriefingTemplates).
-  templates = this.sectors.globalAll((api) => api.briefingTemplates);
+  // The catalog declares no maximum, so limit: 'all' reads it whole in one request.
+  templates = this.sectors.globalList((api) => api.briefingTemplates, { limit: 'all' });
   templateId = signal('standard');
   sheet = signal<CompileBriefingResult | undefined>(undefined);
   refusal = signal<string | undefined>(undefined);

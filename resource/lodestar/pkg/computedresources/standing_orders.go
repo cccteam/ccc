@@ -25,7 +25,7 @@ type (
 	//
 	// @computed
 	StandingOrder struct {
-		Section   string `spanner:"Section" allow_filter:"true"`
+		Section   string `spanner:"Section"   allow_filter:"true"`
 		Directive string `spanner:"Directive"`
 	}
 )

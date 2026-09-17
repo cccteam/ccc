@@ -1,4 +1,4 @@
-// Demonstrates: @enumerate, @enumerate.plain-column, @enumerate.key-view, @enumerate.enum-table, @enumerate.computed, picker.read-disabled, picker.config-driven, virtual.keyed-read.
+// Demonstrates: @enumerate, @enumerate.plain-column, @enumerate.key-view, @enumerate.enum-table, @enumerate.computed, picker.read-disabled, picker.config-driven, picker.paged, picker.whole, column.referenced-in, virtual.keyed-read.
 package integration
 
 // This suite pins the server side of the enumerated pickers: the resources the
@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
 )
 
 // TestEnumeratedPickerResources lists the picker resources as the personas the console
@@ -124,6 +125,117 @@ func TestEnumeratedPickerResources(t *testing.T) {
 			}
 			if tt.check != nil {
 				tt.check(t, body)
+			}
+		})
+	}
+}
+
+// TestPickerReadModes pins the requests the console's pickers and referenced-resource
+// columns make on each read mode, exactly as the library sends them, decided by the
+// maximum page size each source declares. The client roster and the hangars declare
+// one: a picker pages them (the first page with its count and its Link relations, never
+// limit=all, which the server refuses under a maximum) and reads the chosen row by key,
+// and the Ships page's Hangar column resolves a page's keys with one in filter served by
+// the key's index. The hull catalog declares none: a picker and the Class column read it
+// whole with limit=all, unsorted, in one request.
+func TestPickerReadModes(t *testing.T) {
+	t.Parallel()
+
+	_, h, _ := sharedWorld(t)
+
+	tests := []struct {
+		name       string
+		user       accesstypes.User
+		target     string
+		wantStatus int
+		wantRows   int
+		wantTotal  string
+		wantNext   bool
+		wantNoLink bool
+		check      func(t *testing.T, respBody []byte)
+	}{
+		{
+			// The roster picker's page as the library asks for it, at a page size of two
+			// so the seeded four clients need a second page: the count and the next relation.
+			name: "the roster picker's first page carries its count and a next relation", user: "dispatcher",
+			target: sectorPath(anvil, "client-rosters?columns=id,name,contactCount&limit=2&count=true"), wantStatus: http.StatusOK, wantRows: 2, wantTotal: "4", wantNext: true,
+		},
+		{
+			name: "the roster is never read whole: limit=all is refused under its maximum", user: "dispatcher",
+			target: sectorPath(anvil, "client-rosters?columns=id,name&limit=all"), wantStatus: http.StatusBadRequest,
+		},
+		{
+			// Hangars declares an @order, so the picker sends no sort and the server pages by name.
+			name: "the hangar picker's page lists the sector's hangars in their declared order", user: "marshal",
+			target: sectorPath(anvil, "hangars?columns=id,name,zone&count=true"), wantStatus: http.StatusOK, wantRows: 2, wantTotal: "2", wantNoLink: true,
+			check: func(t *testing.T, respBody []byte) {
+				t.Helper()
+				rows := decodeRows(t, respBody)
+				if got := []string{cell[string](t, rows[0], "name"), cell[string](t, rows[1], "name")}; got[0] != "Anvil Dock One" || got[1] != "Quarantine Bay" {
+					t.Errorf("hangar names = %v, want [Anvil Dock One Quarantine Bay]", got)
+				}
+			},
+		},
+		{
+			name: "the chosen hangar is read by key, whichever page the picker is on", user: "marshal",
+			target: sectorPath(anvil, "hangars/"+hangarAnvilDockID+"?columns=id,name"), wantStatus: http.StatusOK,
+			check: func(t *testing.T, respBody []byte) {
+				t.Helper()
+				if got := decodeRow(t, respBody)["name"]; got != "Anvil Dock One" {
+					t.Errorf("name = %v, want Anvil Dock One", got)
+				}
+			},
+		},
+		{
+			// One request over the page's hangar keys, a limit of the batch: every match fits.
+			name: "the Ships page's Hangar column resolves a page's hangars with one in filter", user: "marshal",
+			target: sectorPath(anvil, "hangars?filter=id:in:("+hangarAnvilDockID+","+hangarQuarantineID+")&columns=id,name&limit=2"), wantStatus: http.StatusOK, wantRows: 2, wantNoLink: true,
+			check: func(t *testing.T, respBody []byte) {
+				t.Helper()
+				rows := rowsByID(t, decodeRows(t, respBody), "id")
+				if rows[hangarAnvilDockID]["name"] != "Anvil Dock One" || rows[hangarQuarantineID]["name"] != "Quarantine Bay" {
+					t.Errorf("hangars by key = %v", rows)
+				}
+			},
+		},
+		{
+			name: "the class picker and the Class column read the hull catalog whole, unsorted, with no Link", user: "marshal",
+			target: "/api/ship-classes?columns=id,designation&limit=all", wantStatus: http.StatusOK, wantRows: 4, wantNoLink: true,
+			check: func(t *testing.T, respBody []byte) {
+				t.Helper()
+				for _, row := range decodeRows(t, respBody) {
+					assertKeys(t, row, []string{"id", "designation"})
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := doRequestRecordedAs(t, h, tt.user, http.MethodGet, tt.target, "")
+			assertStatus(t, rec.Code, tt.wantStatus, rec.Body.Bytes())
+			if rec.Code != http.StatusOK {
+				return
+			}
+			if tt.wantRows > 0 {
+				if rows := decodeRows(t, rec.Body.Bytes()); len(rows) != tt.wantRows {
+					t.Errorf("rows = %d, want %d: %s", len(rows), tt.wantRows, rec.Body.Bytes())
+				}
+			}
+			if got := rec.Header().Get(resource.TotalCountHeader); got != tt.wantTotal {
+				t.Errorf("Total-Count = %q, want %q", got, tt.wantTotal)
+			}
+			rels := linkRelations(t, rec.Header().Get(resource.LinkHeader))
+			if _, ok := rels["next"]; ok != tt.wantNext {
+				t.Errorf("next relation present = %v, want %v: %q", ok, tt.wantNext, rec.Header().Get(resource.LinkHeader))
+			}
+			if tt.wantNoLink && len(rels) != 0 {
+				t.Errorf("Link relations = %v, want none", rels)
+			}
+			if tt.check != nil {
+				tt.check(t, rec.Body.Bytes())
 			}
 		})
 	}

@@ -26,9 +26,9 @@ import { StarChartComponent } from '../star-chart/star-chart.component';
 export class HazardBoardComponent {
   sectors = inject(SectorService);
 
-  // The board declares a default page but no maximum, so all() asks limit=all and the
-  // whole board arrives in one answer.
-  rows = this.sectors.sectorAll((sector) => sector.sectorHazardBoards);
+  // The board declares a default page but no maximum, so limit: 'all' asks for the whole
+  // board and it arrives in one answer.
+  rows = this.sectors.sectorList((sector) => sector.sectorHazardBoards, { limit: 'all' });
   columns = ['shipName', 'subsystem', 'worstReading', 'recordedAt', 'recent'];
 
   sector = this.sectors.current;

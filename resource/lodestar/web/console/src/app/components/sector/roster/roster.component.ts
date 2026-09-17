@@ -34,8 +34,9 @@ export class RosterComponent {
   wings = this.sectors.sectorList((sector) => sector.wings);
   squadrons = this.sectors.sectorList((sector) => sector.squadrons);
   memberships = this.sectors.sectorList((sector) => sector.squadronMemberships);
-  // The crew roster declares a default page but no maximum, so all() asks limit=all.
-  pilots = this.sectors.globalAll((api) => api.pilots);
+  // The crew roster declares a default page but no maximum, so limit: 'all' reads it
+  // whole in one request, the explicit spelling of a whole read.
+  pilots = this.sectors.globalList((api) => api.pilots, { limit: 'all' });
   columns = ['name', 'wing', 'members'];
 
   sector = this.sectors.current;

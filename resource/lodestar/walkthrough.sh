@@ -109,6 +109,8 @@ QUARANTINE=80000000-0000-4000-8000-000000000008
 HAMMER=50000000-0000-4000-8000-000000000001
 TONGS=50000000-0000-4000-8000-000000000002
 KINGFISHER=70000000-0000-4000-8000-000000000001
+DOCK_ONE=60000000-0000-4000-8000-000000000001
+QUARANTINE_BAY=60000000-0000-4000-8000-000000000002
 LANTERN=70000000-0000-4000-8000-000000000003
 LANTERN_REFIT=a0000000-0000-4000-8000-000000000001
 MULE_REFIT=a0000000-0000-4000-8000-000000000002
@@ -187,6 +189,14 @@ r=$(req marshal GET "$API/briefing-templates?limit=all"); assert_py "read whole,
 r=$(req marshal GET "$API/briefing-templates?sort=name"); assert_py "a requested sort orders the briefing catalog by name" "$r" "[t['name'] for t in rows]==sorted(t['name'] for t in rows)"
 r=$(req dispatcher GET "$ANVIL/client-rosters/$HALVARD?columns=id,name,contactCount"); check "the client roster, a keyed view, serves a read: the dispatcher reads Halvard Freight's roster row" 200 "$r"
 assert_py "the roster row carries the picker's display columns" "$r" "rows['name']=='Halvard Freight' and rows['contactCount']==1"
+# The console's pickers read on the maximum each source declares, from the generated descriptor. The roster and the hangars declare one: a picker pages them (the first page with its count and its Link relations, never limit=all) and reads the chosen row by key, and the Ships page's Hangar column resolves a page's hangars with one in filter; the hull catalog declares none, so its picker and the Class column read it whole with limit=all. Demonstrates: picker.paged, picker.whole, column.referenced-in.
+page=$(curl -s -D "$S/roster.h" -L -b "$S/dispatcher.jar" -H "X-XSRF-TOKEN: $(xsrf dispatcher)" "$ANVIL/client-rosters?columns=id,name,contactCount&limit=2&count=true")
+if [ "$(echo "$page" | py "print(len(rows))")" = 2 ] && grep -qi '^Total-Count: 4' "$S/roster.h" && grep -qi '^Link:.*rel="next"' "$S/roster.h"; then echo "PASS  the roster picker's first page: two of four, the count, and a next relation"; else echo "FAIL  roster picker page: $(echo "$page" | head -c 200) $(tr '\n' ' ' < "$S/roster.h" | head -c 300)"; fails=$((fails+1)); fi
+r=$(req dispatcher GET "$ANVIL/client-rosters?columns=id,name&limit=all"); check "the roster is never read whole: limit=all is refused under its maximum" 400 "$r"
+r=$(req marshal GET "$ANVIL/hangars?columns=id,name,zone&count=true"); assert_py "the hangar picker's page lists Anvil's two hangars in their declared order" "$r" "[h['name'] for h in rows]==['Anvil Dock One','Quarantine Bay']"
+r=$(req marshal GET "$ANVIL/hangars/$DOCK_ONE?columns=id,name"); assert_py "the chosen hangar is read by key, whichever page the picker is on" "$r" "rows['name']=='Anvil Dock One'"
+r=$(req marshal GET "$ANVIL/hangars?filter=id:in:($DOCK_ONE,$QUARANTINE_BAY)&columns=id,name&limit=2"); assert_py "the Ships page's Hangar column resolves a page's hangars with one in filter" "$r" "sorted(h['name'] for h in rows)==['Anvil Dock One','Quarantine Bay']"
+r=$(req marshal GET "$API/ship-classes?columns=id,designation&limit=all"); assert_py "the class picker reads the hull catalog whole, id and designation alone" "$r" "len(rows)==4 and all(set(c)=={'id','designation'} for c in rows)"
 
 # ---- the flight deck's edges, dry runs first ----
 r=$(dryrun lead POST "$ANVIL/hold-mission" "{\"missionId\":\"$CONVOY\",\"reason\":\"debris on the lane\"}"); check "lead's dry run of Hold is refused in the notes grant's words: the armed write, before anything is touched" 403 "$r"

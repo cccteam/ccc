@@ -111,12 +111,16 @@ export class SectorService {
   // toggle and the global digest alone, never on the selected sector: round 2 derived
   // it from the selection, so selecting a dark star reloaded the roster, the roster's
   // empty loading value snapped the selection back, and the click was discarded.
+  // Sectors declares a maximum page size, so it is never read whole: the chart asks for
+  // one page of the descriptor's maximum, the most one request may carry, and nothing
+  // here walks past it.
   private roster = resource({
     params: () => {
       this.permissions();
       return { wanted: this.chartAll() && this.api.can(Permissions.List, Resources.Sectors) };
     },
-    loader: ({ params }) => (params.wanted ? this.api.sectors.all() : Promise.resolve([])),
+    loader: ({ params }) =>
+      params.wanted ? this.api.sectors.list({ limit: this.api.sectors.descriptor.page?.max }) : Promise.resolve([]),
     defaultValue: [],
   });
 
@@ -297,7 +301,9 @@ export class SectorService {
    * handle off the sector-bound client, the loader re-runs when the sector changes,
    * sits idle while none is selected, and never asks for a list the digest says the
    * user cannot read, except while the selected sector is dark, when it asks anyway so
-   * the refusal is seen. After a mutation, call .reload() on the affected lists.
+   * the refusal is seen. After a mutation, call .reload() on the affected lists. A deck
+   * that wants every row of a resource with no maximum page size passes
+   * `{ limit: 'all' }`; a resource with a maximum is read a page at a time (sectorPage).
    */
   sectorList<Row>(select: (sector: SectorApi) => ListHandle<Row>, query?: ListQuery<Row>): ResourceRef<Row[]> {
     return resource({
@@ -308,24 +314,6 @@ export class SectorService {
         return { handle: handle && (handle.can(Permissions.List) || this.dark()) ? handle : undefined };
       },
       loader: ({ params }) => (params.handle ? params.handle.list(query) : Promise.resolve([])),
-      defaultValue: [],
-    });
-  }
-
-  /**
-   * sectorAll is sectorList over every row: the client's all() asks limit=all where the
-   * resource declares no maximum and walks the pages to the end otherwise, so an
-   * export sees each row once.
-   */
-  sectorAll<Row>(select: (sector: SectorApi) => ListHandle<Row>, query?: ListQuery<Row>): ResourceRef<Row[]> {
-    return resource({
-      params: () => {
-        this.permissions();
-        const sector = this.sector();
-        const handle = sector ? select(sector) : undefined;
-        return { handle: handle && (handle.can(Permissions.List) || this.dark()) ? handle : undefined };
-      },
-      loader: ({ params }) => (params.handle ? params.handle.all(query) : Promise.resolve([])),
       defaultValue: [],
     });
   }
@@ -361,19 +349,6 @@ export class SectorService {
         return { handle: handle.can(Permissions.List) ? handle : undefined };
       },
       loader: ({ params }) => (params.handle ? params.handle.list(query) : Promise.resolve([])),
-      defaultValue: [],
-    });
-  }
-
-  /** globalAll is globalList over every row, through the client's all(). */
-  globalAll<Row>(select: (api: Api) => ListHandle<Row>, query?: ListQuery<Row>): ResourceRef<Row[]> {
-    return resource({
-      params: () => {
-        this.permissions();
-        const handle = select(this.api);
-        return { handle: handle.can(Permissions.List) ? handle : undefined };
-      },
-      loader: ({ params }) => (params.handle ? params.handle.all(query) : Promise.resolve([])),
       defaultValue: [],
     });
   }

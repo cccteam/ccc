@@ -30,7 +30,14 @@ import { enumeratedConfig, field, listViewConfig, rootConfig, section } from '@c
 // clearing the last indexed filter clears it too. A page size over the view's maximum,
 // or a filter the server refuses, is shown in the server's words.
 //
-// Demonstrates: picker.config-driven, @enumerate.plain-column, @enumerate.key-view, picker.read-disabled, @rowsOf.same-row, list.server-paged, metadata.filterable.
+// The two pickers read on their sources' maximums, from the generated descriptor. The
+// client roster declares one, so the client picker pages the roster one server page at
+// a time, Previous and Next inside the panel, in the roster's own @order, and reads the
+// chosen client by the roster's key. The briefing template catalog declares none, so the
+// template picker reads it whole with limit=all and resolves the chosen sheet from that
+// list, which is why the catalog needs no read route.
+//
+// Demonstrates: picker.config-driven, picker.paged, picker.whole, @enumerate.plain-column, @enumerate.key-view, picker.read-disabled, @rowsOf.same-row, list.server-paged, metadata.filterable.
 export const missionsConfig = rootConfig({
   nav: { navItem: { label: 'Missions (config page)' }, group: 'Sector Ops' },
   routeData: { route: 'sector/missions' },

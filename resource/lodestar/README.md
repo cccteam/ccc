@@ -166,7 +166,17 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   ([`list.server-paged`](web/console/src/app/configs/missions.config.ts)), which asks for
   one page of the mission board at the descriptor's size, turns it by the server's cursors,
   and draws a filter control only on the columns the generated metadata marks filterable
-  ([`metadata.filterable`](pkg/resources/missions.go)).
+  ([`metadata.filterable`](pkg/resources/missions.go)). The
+  [Ships page](web/console/src/app/configs/ships.config.ts) puts the two picker read
+  modes side by side, each decided by the maximum page size the generated descriptor
+  carries: [`picker.paged`](web/console/src/app/configs/ships.config.ts) over the
+  hangars, which declare one (one server page at a time, Previous and Next inside the
+  panel, the chosen hangar read by key), and
+  [`picker.whole`](web/console/src/app/configs/ships.config.ts) over the hull catalog,
+  which declares none (read whole with `limit=all`); its Hangar column resolves each
+  page's hangars with one `in` request over the page's keys
+  ([`column.referenced-in`](web/console/src/app/configs/ships.config.ts)) where its
+  Class column maps the catalog read whole once.
 - `test/authz`: the generated authorization matrix, which pins the endpoint gate with
   unconditional grants over the empty schema and so never meets a condition;
   `test/integration`: the suites (§9), where every condition is proven over the seeded
