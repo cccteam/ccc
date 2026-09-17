@@ -215,7 +215,7 @@ func (r *resourceGenerator) handlerFeatures() handlerFeatures {
 	}
 	if r.genComputedResources {
 		for _, res := range r.computedResources {
-			if !res.SuppressReadHandler || !res.SuppressListHandler {
+			if !res.ReadHandlerDisabled() || !res.SuppressListHandler {
 				f.hasComputed = true
 			}
 		}

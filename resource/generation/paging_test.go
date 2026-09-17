@@ -202,6 +202,16 @@ func TestVirtualResourcePaging(t *testing.T) {
 			fixture: "MisorderedDeck",
 			wantErr: "Fee is not a field of MisorderedDeck",
 		},
+		{
+			name:      "a key-less view is a whole list that keeps its declared order",
+			fixture:   "WholeDeck",
+			wantOrder: []resource.SortField{{Field: "Title", Direction: resource.SortAscending}},
+		},
+		{
+			name:    "@page on a key-less view is refused naming the view and the two ways out",
+			fixture: "KeylessDeck",
+			wantErr: "@page on KeylessDeck: paging needs a key, and KeylessDeck declares no @primarykey; declare the key, or drop @page and the list is served whole",
+		},
 	}
 
 	for _, tt := range tests {

@@ -121,7 +121,7 @@ MERIDIAN=10000000-0000-4000-8000-000000000002
 BASTION_RELAY=10000000-0000-4000-8000-000000000003
 CONVOY_SORTIE=90000000-0000-4000-8000-000000000001
 
-for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor archivist assessor hazards dock watch; do
+for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman archivist assessor hazards dock watch; do
   login "$p"
 done
 login_portal client
@@ -236,6 +236,18 @@ r=$(req cadet POST "$ANVIL/compile-briefing" '{}'); check "the cadet holds no br
 r=$(req governor GET "$API/service-ledgers"); assert_py "the ledger lists sectors by fees outstanding, pushed into SQL" "$r" "[l['sectorId'] for l in rows]==['anvil','bastion','cinder']"
 r=$(req governor GET "$API/service-ledgers?filter=name:eq:Bastion"); assert_py "a filter on the ledger is taken into the statement" "$r" "[l['sectorId'] for l in rows]==['bastion']"
 r=$(req governor GET "$API/service-ledgers?sort=name:desc&limit=1"); assert_py "a page of one, sorted, pushed down" "$r" "[l['sectorId'] for l in rows]==['cinder']"
+
+# ---- standing orders: the key-less list ----
+# StandingOrders declares no @primarykey, so it is a whole read-only list: a bare GET serves the book in its own order, a sort orders it, limit=all is the explicit spelling of the same shape, and a numeric limit or a cursor is refused naming the key as the way to page. There is no read route and no Read permission to grant.
+r=$(req yeoman GET "$API/standing-orders"); check "the yeoman reads the standing orders: a key-less list, served whole on a bare GET" 200 "$r"
+assert_py "the whole book in its own order, section by section, neither alphabetical nor keyed" "$r" "[o['section'] for o in rows]==['General','General','Flight','Flight','Hangar','Salvage']"
+r=$(req yeoman GET "$API/standing-orders?sort=section"); assert_py "a requested sort orders the book by section" "$r" "[o['section'] for o in rows]==sorted(o['section'] for o in rows) and len(rows)==6"
+r=$(req yeoman GET "$API/standing-orders?limit=all"); assert_py "limit=all is the explicit spelling of the one shape" "$r" "len(rows)==6"
+r=$(req yeoman GET "$API/standing-orders?limit=10"); check "a key-less list does not page: a limit is refused" 400 "$r"
+assert_py "the refusal names the resource, the missing key, and the way to page" "$r" "rows=={'message':'StandingOrders declares no primary key, so its list is served whole and does not page; drop the limit, or declare @primarykey to page'}"
+r=$(req yeoman GET "$API/standing-orders?cursor=v4.local.anything"); check "a cursor is refused the same way" 400 "$r"
+r=$(req yeoman GET "$API/standing-orders/General"); check "a key-less list has no read route" 404 "$r"
+r=$(req cadet GET "$API/standing-orders"); check "the cadet holds no orders desk" 403 "$r"
 
 # ---- hangar deck ----
 r=$(req engineer PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/refits/$LANTERN_REFIT\",\"value\":{\"estimate\":1000}}]"); check "engineer's estimate refused before inspection" 403 "$r"

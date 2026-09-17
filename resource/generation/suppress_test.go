@@ -214,6 +214,37 @@ func Test_validComputedSuppressArgs(t *testing.T) {
 	}
 }
 
+// Test_computedResource_ReadHandlerDisabled pins the read gate on a computed struct:
+// a keyed struct reads unless it suppresses its read, and a key-less struct never
+// reads, with an explicit suppression on it accepted as redundant.
+func Test_computedResource_ReadHandlerDisabled(t *testing.T) {
+	t.Parallel()
+
+	keyed := []*computedField{{IsPrimaryKey: true}}
+	plain := []*computedField{{}}
+
+	tests := []struct {
+		name string
+		res  computedResource
+		want bool
+	}{
+		{name: "a keyed struct reads", res: computedResource{Fields: keyed}},
+		{name: "a keyed struct may suppress its read", res: computedResource{Fields: keyed, SuppressReadHandler: true}, want: true},
+		{name: "a key-less struct never reads", res: computedResource{Fields: plain}, want: true},
+		{name: "a key-less struct accepts a redundant suppression", res: computedResource{Fields: plain, SuppressReadHandler: true}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.res.ReadHandlerDisabled(); got != tt.want {
+				t.Errorf("ReadHandlerDisabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // Test_resourceInfo_ReadHandlerDisabled pins where a resource's keyed read is absent: a
 // suppressed read handler, and a view with no @primarykey, which has no read identity;
 // a view that declares its key reads as a table does.

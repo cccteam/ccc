@@ -700,6 +700,22 @@ func (c *computedResource) RoutingDisabled() bool {
 	return slices.Contains(c.SuppressedRoutes, AllRoutes)
 }
 
+// HasPrimaryKey reports whether the resource has a read identity: at least one
+// @primarykey field. A struct with none is a whole read-only list: one list route
+// serving every row the filter admits, no read route, no page, no row identity.
+func (c *computedResource) HasPrimaryKey() bool {
+	return len(c.PrimaryKeys()) > 0
+}
+
+// ReadHandlerDisabled reports whether the resource has no keyed read: suppressed
+// with @suppress(readHandler), or key-less, which has no read identity to address
+// a row by (an explicit @suppress(readHandler) on such a struct is redundant and
+// accepted). The router registers no read route for it, the Collection registers
+// List only, and the metadata says so.
+func (c *computedResource) ReadHandlerDisabled() bool {
+	return c.SuppressReadHandler || !c.HasPrimaryKey()
+}
+
 // Converters renders the closures a handler needs to build the named root mirror
 // from a computed row; empty for a flat resource, which converts whole.
 func (c *computedResource) Converters(rootMirror string) string {
@@ -932,10 +948,12 @@ func (r *resourceInfo) ListHandlerDisabled() bool {
 
 // ReadHandlerDisabled reports whether the resource has no keyed read: suppressed with
 // @suppress(readHandler), or a view with no @primarykey, which has no read identity
-// and lists only (the router registers no read route for it, and the metadata says
-// so, so a picker over it resolves a picked row's display from the list). A view
-// that declares its key serves a keyed read as a table does, which a picker over a
-// bounded view needs to read the chosen row.
+// and is a whole read-only list (the router registers no read route for it, the
+// Collection registers List only, and the metadata says so, so a picker over it
+// resolves a picked row's display from the list; computedResource.ReadHandlerDisabled
+// is the same rule for a computed struct). A view that declares its key serves a
+// keyed read as a table does, which a picker over a bounded view needs to read the
+// chosen row.
 func (r *resourceInfo) ReadHandlerDisabled() bool {
 	return (r.IsVirtual && !r.HasPrimaryKey()) || slices.Contains(r.SuppressedHandlers, ReadHandler)
 }

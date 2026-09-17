@@ -244,6 +244,21 @@
       }
     },
     {
+      "user": "yeoman",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon",
+          "OrdersDesk"
+        ],
+        "domains": {
+          "anvil": [
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
       "user": "archivist",
       "password": "lodestar",
       "roles": {

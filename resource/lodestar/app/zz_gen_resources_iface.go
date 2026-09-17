@@ -22,5 +22,6 @@ type Resourcer interface {
 		resources.Sortie | resources.SortieExpense | resources.Squadron |
 		resources.SquadronMembership | virtualresources.SquadronRoster | resources.Wing |
 		computedresources.BriefingTemplate | computedresources.PilotCard |
-		computedresources.SectorHazardBoard | computedresources.ServiceLedger
+		computedresources.SectorHazardBoard | computedresources.ServiceLedger |
+		computedresources.StandingOrder
 }

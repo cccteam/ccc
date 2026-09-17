@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -384,5 +385,156 @@ func TestQuerySet_stmt_unboundCursorFailsClosed(t *testing.T) {
 	}
 	if _, err := qSet.stmt(SpannerDBType); err == nil || !strings.Contains(err.Error(), "never bound to a scope") {
 		t.Errorf("stmt() error = %v, want the unbound-cursor refusal", err)
+	}
+}
+
+// keylessResource is a computed or virtual struct with no @primarykey: its generated
+// list request marks no perm:"-" field, which is how the decoder knows the list has no
+// row identity.
+type keylessResource struct {
+	Section   string `spanner:"Section"`
+	Directive string `spanner:"Directive"`
+}
+
+func (keylessResource) Resource() accesstypes.Resource { return "keylessResources" }
+
+type keylessListRequest struct {
+	Section   string `json:"section"   index:"true"`
+	Directive string `json:"directive"`
+}
+
+func newKeylessTestDecoder(t *testing.T, paging Paging) *QueryDecoder[keylessResource, keylessListRequest] {
+	t.Helper()
+
+	resSet, err := NewSet[keylessResource, keylessListRequest](accesstypes.List)
+	if err != nil {
+		t.Fatalf("NewSet() error = %v", err)
+	}
+	decoder, err := NewQueryDecoder[keylessResource, keylessListRequest](resSet)
+	if err != nil {
+		t.Fatalf("NewQueryDecoder() error = %v", err)
+	}
+
+	return decoder.WithPaging(paging)
+}
+
+// TestQueryDecoder_keyless pins the key-less list: a list decoder whose request type
+// marks no primary key serves the whole list on every request, with or without
+// limit=all, needs no order for it, answers count=true, and refuses a numeric limit
+// or a cursor with a 400 naming the resource, the missing key, and @primarykey as the
+// way to page. TakePage never answers true on such a list.
+func TestQueryDecoder_keyless(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		target    string
+		wantErr   string
+		wantCount bool
+	}{
+		{
+			name:   "a bare GET is the whole list, with no order asked and none declared",
+			target: "/",
+		},
+		{
+			name:   "limit=all is the explicit spelling of the same shape",
+			target: "/?limit=all",
+		},
+		{
+			name:   "a sort orders the whole list",
+			target: "/?sort=section",
+		},
+		{
+			name:      "count=true answers on the whole list",
+			target:    "/?count=true",
+			wantCount: true,
+		},
+		{
+			name:    "a numeric limit is refused naming the resource, the missing key, and the way to page",
+			target:  "/?limit=10",
+			wantErr: "keylessResources declares no primary key, so its list is served whole and does not page; drop the limit, or declare @primarykey to page",
+		},
+		{
+			name:    "a numeric limit with a sort is refused the same way: a sort does not make a page",
+			target:  "/?sort=section&limit=10",
+			wantErr: "keylessResources declares no primary key, so its list is served whole and does not page; drop the limit",
+		},
+		{
+			name:    "a cursor is refused the same way",
+			target:  "/?cursor=v4.local.anything",
+			wantErr: "keylessResources declares no primary key, so its list is served whole and does not page; drop the cursor, or declare @primarykey to page",
+		},
+		{
+			name:    "offset stays refused as on every list",
+			target:  "/?offset=5",
+			wantErr: "offset is not supported",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, http.NoBody)
+			qSet, err := newKeylessTestDecoder(t, Paging{}).DecodeWithoutPermissions(req)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("DecodeWithoutPermissions() error = %v, want error containing %q", err, tt.wantErr)
+				}
+				if !httpio.HasBadRequest(err) {
+					t.Errorf("DecodeWithoutPermissions() error = %v, want a 400", err)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("DecodeWithoutPermissions() error = %v", err)
+			}
+			if !qSet.page.all {
+				t.Errorf("page.all = false, want true: a key-less list is only ever whole")
+			}
+			if qSet.page.count != tt.wantCount {
+				t.Errorf("page.count = %v, want %v", qSet.page.count, tt.wantCount)
+			}
+			if limit, err := qSet.limitClause(); err != nil || limit != "" {
+				t.Errorf("limitClause() = (%q, %v), want no LIMIT and no error", limit, err)
+			}
+			qSet.TakeSort()
+			if _, ok := qSet.TakePage(); ok {
+				t.Error("TakePage() = true, want false: a key-less list does not page")
+			}
+		})
+	}
+}
+
+// TestQueryDecoder_keyless_pageSizePanics pins that a page size on a key-less list is
+// a construction error: the generator refuses @page on such a struct, and a decoder
+// wired by hand with one panics at startup like every other generated-code mismatch.
+func TestQueryDecoder_keyless_pageSizePanics(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		paging Paging
+	}{
+		{name: "a default page size", paging: Paging{DefaultLimit: 25}},
+		{name: "a maximum page size", paging: Paging{MaxLimit: 200}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatal("WithPaging() did not panic")
+				}
+				if want := "keylessResources declares no primary key and does not page; a page size needs a key"; !strings.Contains(fmt.Sprint(r), want) {
+					t.Errorf("WithPaging() panic = %v, want it to contain %q", r, want)
+				}
+			}()
+			newKeylessTestDecoder(t, tt.paging)
+		})
 	}
 }

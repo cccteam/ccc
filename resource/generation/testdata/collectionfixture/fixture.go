@@ -59,6 +59,12 @@ type Summary struct {
 	Total int64    `spanner:"Total"`
 }
 
+// Digest is a computed resource with no @primarykey: a whole read-only list, List
+// only, with no read identity.
+type Digest struct {
+	Total int64 `spanner:"Total"`
+}
+
 type Relic struct {
 	ID   ccc.UUID `spanner:"Id"`
 	Name string   `spanner:"Name"`

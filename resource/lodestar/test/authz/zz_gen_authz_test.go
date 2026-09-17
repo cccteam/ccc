@@ -1007,6 +1007,19 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
 		},
 		{
+			name:         "StandingOrders denied",
+			method:       http.MethodGet,
+			target:       "/api/standing-orders",
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "StandingOrders granted",
+			grants:       grants{accesstypes.List: true},
+			method:       http.MethodGet,
+			target:       "/api/standing-orders",
+			wantStatuses: []int{http.StatusOK, http.StatusNotFound},
+		},
+		{
 			name:         "PatchResources ClientContact create denied",
 			method:       http.MethodPatch,
 			target:       "/api/resources",

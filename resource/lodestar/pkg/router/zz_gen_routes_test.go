@@ -172,6 +172,8 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/sector-hazard-boards/testSectorHazardBoardShipID/testSectorHazardBoardSubsystem", method: http.MethodPost},
 		{url: "/droids/service-ledgers", method: http.MethodGet},
 		{url: "/droids/service-ledgers", method: http.MethodPost},
+		{url: "/droids/standing-orders", method: http.MethodGet},
+		{url: "/droids/standing-orders", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/attach-mission-document", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/begin-refit", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/claim-mission", method: http.MethodPost},
@@ -281,6 +283,8 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/sectors/testDomain/sector-hazard-boards/testSectorHazardBoardShipID/testSectorHazardBoardSubsystem", method: http.MethodPost},
 		{url: "/portal/api/service-ledgers", method: http.MethodGet},
 		{url: "/portal/api/service-ledgers", method: http.MethodPost},
+		{url: "/portal/api/standing-orders", method: http.MethodGet},
+		{url: "/portal/api/standing-orders", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/attach-mission-document", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/begin-refit", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/claim-mission", method: http.MethodPost},
@@ -1145,6 +1149,16 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{},
 		},
 		{
+			url: "/api/standing-orders", method: http.MethodGet,
+			handlerFunc: "StandingOrders",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/standing-orders", method: http.MethodPost,
+			handlerFunc: "StandingOrders",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/api/resources", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
 		},
@@ -1480,6 +1494,10 @@ func (s *generatedHandlersStub) SquadronRoster() http.HandlerFunc {
 
 func (s *generatedHandlersStub) StandDownMission() http.HandlerFunc {
 	return s.record("StandDownMission")
+}
+
+func (s *generatedHandlersStub) StandingOrders() http.HandlerFunc {
+	return s.record("StandingOrders")
 }
 
 func (s *generatedHandlersStub) StartFlightTest() http.HandlerFunc {

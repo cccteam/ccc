@@ -686,6 +686,16 @@ func Collection() *resource.GeneratedCollection {
 				QueryKeys:     []accesstypes.Tag{"designation", "roleId"},
 			},
 			{
+				Name:        "StandingOrders",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Computed:    true,
+				Permissions: []accesstypes.Permission{accesstypes.List},
+				Tags: []resource.TagData{
+					{Name: "directive", Permissions: []accesstypes.Permission{accesstypes.List}},
+					{Name: "section", Permissions: []accesstypes.Permission{accesstypes.List}},
+				},
+			},
+			{
 				Name:        "ViewAsUser",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},

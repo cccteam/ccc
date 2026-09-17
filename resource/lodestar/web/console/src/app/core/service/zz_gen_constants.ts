@@ -47,6 +47,7 @@ export const Resources = {
   SquadronMemberships: 'SquadronMemberships' as Resource,
   SquadronRosters: 'SquadronRosters' as Resource,
   Squadrons: 'Squadrons' as Resource,
+  StandingOrders: 'StandingOrders' as Resource,
   Wings: 'Wings' as Resource,
 };
 
@@ -610,6 +611,17 @@ export namespace Squadrons {
     id: 'Squadrons.id' as Resource,
     name: 'Squadrons.name' as Resource,
     wingId: 'Squadrons.wingId' as Resource,
+  };
+}
+
+export namespace StandingOrders {
+  export const fieldName = {
+    directive: 'directive' as FieldName,
+    section: 'section' as FieldName,
+  };
+  export const resourceName = {
+    directive: 'StandingOrders.directive' as Resource,
+    section: 'StandingOrders.section' as Resource,
   };
 }
 

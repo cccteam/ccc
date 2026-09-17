@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, NullBoolean, ResourceHandle, UploadMethodHandle } from '@cccteam/resource';
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
-import { Clients, ClientContacts, ClientRosters, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, PilotCards, SectorHazardBoards, ServiceLedgers } from './zz_gen_resources';
+import { Clients, ClientContacts, ClientRosters, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders } from './zz_gen_resources';
 import { AttachMissionDocument, AttachMissionDocumentResult, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ResumeMission, ScrapShip, StandDownMission, StartFlightTest } from './zz_gen_methods';
 
 /**
@@ -394,6 +394,9 @@ export type SectorHazardBoardsKey = [shipId: string, subsystem: string];
 /** The primary key of ServiceLedgers, in route order. */
 export type ServiceLedgersKey = [sectorId: string];
 
+/** The primary key of StandingOrders, in route order. */
+export type StandingOrdersKey = [];
+
 /** The generated API as the @cccteam/resource runtime addresses it. Routes carry no API prefix. */
 export const apiDescriptor: ApiDescriptor = {
   domainRoute: { segment: 'sectors', param: 'sectorID' },
@@ -736,6 +739,16 @@ export const apiDescriptor: ApiDescriptor = {
       page: { default: 25, max: 200 },
       order: [{ field: 'feesOutstanding', direction: 'desc' }],
     },
+    [Resources.StandingOrders]: {
+      resource: Resources.StandingOrders,
+      property: 'standingOrders',
+      route: 'standing-orders',
+      scope: 'global',
+      consolidated: false,
+      keys: [],
+      operations: ['list'],
+      page: { default: 50 },
+    },
   },
   methods: {
     [Methods.AttachMissionDocument]: { method: Methods.AttachMissionDocument, property: 'attachMissionDocument', route: 'attach-mission-document', scope: 'domain', answers: true, upload: { maxBytes: 5242880 } },
@@ -771,6 +784,7 @@ export interface GlobalApi {
   briefingTemplates: ResourceHandle<BriefingTemplates, BriefingTemplatesKey, 'list'>;
   pilotCards: ResourceHandle<PilotCards, PilotCardsKey, 'list'>;
   serviceLedgers: ResourceHandle<ServiceLedgers, ServiceLedgersKey, 'list'>;
+  standingOrders: ResourceHandle<StandingOrders, StandingOrdersKey, 'list'>;
   issueBulletin: MethodHandle<IssueBulletin>;
 }
 

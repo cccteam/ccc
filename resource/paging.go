@@ -39,7 +39,8 @@ type pageRequest struct {
 	// a next page exists. Meaningless when all is set.
 	size uint64
 	// all asks for every row: no LIMIT, no cursor, no Link header, and the one
-	// list that needs no order.
+	// list that needs no order. Set by limit=all, and on every request to a
+	// key-less list, which is only ever whole (QueryDecoder.wholeListOnly).
 	all bool
 	// count asks for the total under the same WHERE, answered on a first page.
 	count bool

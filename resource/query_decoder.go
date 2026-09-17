@@ -45,7 +45,9 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	// field: a nested object or a list cannot be ordered by.
 	requestType reflect.Type
 	// keyFields are the request type's primary-key fields (the perm:"-"
-	// markers), appended to every decoded order as the tiebreak.
+	// markers), appended to every decoded order as the tiebreak. A list decoder
+	// with none serves a key-less resource, whose list is only ever whole
+	// (wholeListOnly).
 	keyFields []accesstypes.Field
 	// paging is the resource's declared paging contract (WithPaging); the zero
 	// value is the generator-wide default.
@@ -111,8 +113,12 @@ func (d *QueryDecoder[Resource, Request]) WithCursorKey(key *CursorKey) *QueryDe
 // a sort-less request takes and the page sizes. The generator emits the call from
 // the @order and @page annotations. An order field the request type does not
 // carry is a programming error and panics at construction, like every other
-// generated-code mismatch.
+// generated-code mismatch, and so is a page size on a key-less list, which the
+// generator refuses at @page and which does not page (wholeListOnly).
 func (d *QueryDecoder[Resource, Request]) WithPaging(paging Paging) *QueryDecoder[Resource, Request] {
+	if d.wholeListOnly() && (paging.DefaultLimit != 0 || paging.MaxLimit != 0) {
+		panic(fmt.Sprintf("resource.QueryDecoder.WithPaging: %s declares no primary key and does not page; a page size needs a key", d.resourceSet.BaseResource()))
+	}
 	for _, sf := range paging.Order {
 		field, ok := structField(d.requestType, sf.Field)
 		if !ok || !slices.Contains(d.requestFieldMapper.Fields(), accesstypes.Field(sf.Field)) {
@@ -213,9 +219,10 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 // page with no order could only say that more rows exist without saying where
 // they are, and the refusal names what is missing instead. limit=all, the whole
 // list in one response, needs no order and is the only order-free list; it stays
-// refused where a maximum is declared (parsePage). A read decoder decodes one row
-// and is not a list, and a hand-built QuerySet is not a decoded request and keeps
-// exactly the sort its caller set.
+// refused where a maximum is declared (parsePage). A key-less list is only ever
+// whole (wholeListOnly), so it is never refused here. A read decoder decodes one
+// row and is not a list, and a hand-built QuerySet is not a decoded request and
+// keeps exactly the sort its caller set.
 func (d *QueryDecoder[Resource, Request]) requireOrder(qSet *QuerySet[Resource]) error {
 	if !slices.Contains(d.resourceSet.Permissions(), accesstypes.List) {
 		return nil
@@ -341,16 +348,34 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values) (*parsedQ
 	}, nil
 }
 
+// wholeListOnly reports whether this decoder lists a key-less resource: a list
+// decoder whose request type marks no primary key (a @computed or @virtual struct
+// with no @primarykey). Such a list has no row identity, so a keyset cursor has
+// nothing to anchor on and no page can be positioned: the list is served whole,
+// as limit=all serves a keyed list, and a numeric limit or a cursor is refused
+// naming @primarykey as the way to page (parsePage). A read decoder decodes one
+// row and is out of it.
+func (d *QueryDecoder[Resource, Request]) wholeListOnly() bool {
+	return len(d.keyFields) == 0 && slices.Contains(d.resourceSet.Permissions(), accesstypes.List)
+}
+
 // parsePage reads the paging parameters against the resource's declared
 // contract. A request without limit takes the declared default page (the
 // generator-wide DefaultPageSize when none is declared); limit=all is admitted
 // only on a resource with no declared maximum; a limit over the maximum is
 // refused naming it, never clamped; limit=0 is refused; offset is refused
 // naming the cursor as its replacement; count is admitted on a first page only.
+// A key-less list (wholeListOnly) is whole with or without limit=all, and a
+// numeric limit or a cursor on it is refused naming the resource, that it
+// declares no key, and that @primarykey is how a list pages.
 func (d *QueryDecoder[Resource, Request]) parsePage(query url.Values) (pageRequest, error) {
 	page := pageRequest{size: d.paging.DefaultLimit}
 	if page.size == 0 {
 		page.size = DefaultPageSize
+	}
+	keyless := d.wholeListOnly()
+	if keyless {
+		page.all = true
 	}
 
 	if limitStr := query.Get(limitParam); limitStr != "" {
@@ -364,6 +389,9 @@ func (d *QueryDecoder[Resource, Request]) parsePage(query url.Values) (pageReque
 			size, err := strconv.ParseUint(limitStr, 10, 64)
 			if err != nil {
 				return pageRequest{}, httpio.NewBadRequestMessagef("invalid limit value: %s", limitStr)
+			}
+			if keyless {
+				return pageRequest{}, httpio.NewBadRequestMessagef("%s declares no primary key, so its list is served whole and does not page; drop the limit, or declare @primarykey to page", d.resourceSet.BaseResource())
 			}
 			if size == 0 {
 				return pageRequest{}, httpio.NewBadRequestMessage("limit must be at least 1; omit it for the default page, or ask for limit=all where the resource permits it")
@@ -381,6 +409,9 @@ func (d *QueryDecoder[Resource, Request]) parsePage(query url.Values) (pageReque
 	}
 
 	if token := query.Get(cursorParam); token != "" {
+		if keyless {
+			return pageRequest{}, httpio.NewBadRequestMessagef("%s declares no primary key, so its list is served whole and does not page; drop the cursor, or declare @primarykey to page", d.resourceSet.BaseResource())
+		}
 		if page.all {
 			return pageRequest{}, httpio.NewBadRequestMessage("a cursor cannot be combined with limit=all")
 		}

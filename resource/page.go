@@ -12,10 +12,12 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// Response headers a paged list carries. Link (RFC 8288) positions the walk with a
+// Response headers a list carries. Link (RFC 8288) positions the walk with a
 // complete URL per relation that exists; Total-Count answers count=true on a
-// first page. Every paged request carries an order (QueryDecoder.requireOrder), so
-// every page has its Link relations or is the whole list.
+// first page, the whole list (limit=all, or a key-less list, which is only ever
+// whole) included. Every paged request carries an order
+// (QueryDecoder.requireOrder), so every page has its Link relations or is the
+// whole list.
 const (
 	LinkHeader       = "Link"
 	TotalCountHeader = "Total-Count"
@@ -103,16 +105,17 @@ func (p *Page[Resource]) Reversed() bool {
 // relation that exists — the first page has no prev, the last page no next.
 // The URLs carry the request's own query with the cursor set and count removed,
 // so a client follows them as given and never assembles one. A hand-built
-// QuerySet and limit=all write nothing.
+// QuerySet writes nothing; the whole list (limit=all, or a key-less list) writes
+// Total-Count when asked and no Link, since it has no neighboring pages.
 func (p *Page[Resource]) WriteHeaders(w http.ResponseWriter, r *http.Request) error {
 	pg := p.qSet.page
-	if pg == nil || pg.all {
+	if pg == nil {
 		return nil
 	}
 	if p.total != nil {
 		w.Header().Set(TotalCountHeader, strconv.FormatInt(*p.total, 10))
 	}
-	if p.kept == 0 {
+	if pg.all || p.kept == 0 {
 		return nil
 	}
 

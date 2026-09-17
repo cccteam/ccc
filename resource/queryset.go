@@ -504,10 +504,11 @@ func (q *QuerySet[Resource]) KeySet() KeySet {
 // total order. With neither a sort nor a declared order the list is not sorted:
 // Order answers nothing, the statement carries no ORDER BY and its rows arrive in
 // the database's own order, and a computed list keeps the order its body yielded.
-// A decoded request reaches that state only as limit=all, the whole list in one
-// response; a paged request with no order is refused at decode
-// (QueryDecoder.requireOrder). On a hand-built QuerySet it is exactly the sort the
-// caller set.
+// A decoded request reaches that state only as a whole list, limit=all or a
+// key-less list, in one response; a paged request with no order is refused at
+// decode (QueryDecoder.requireOrder). A key-less list has no key fields to append,
+// so its order is exactly the sort or the declared default. On a hand-built
+// QuerySet it is exactly the sort the caller set.
 func (q *QuerySet[Resource]) Order() []SortField {
 	order := q.sortFields
 	if len(order) == 0 {

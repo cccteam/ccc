@@ -38,7 +38,7 @@ func (c *client) pickerSourceOf(name string) (pickerSource, bool) {
 	}
 	for _, res := range c.computedResources {
 		if c.pluralize(res.Name()) == name {
-			return pickerSource{pageMax: res.PageMax, reads: !res.SuppressReadHandler, routed: !res.RoutingDisabled()}, true
+			return pickerSource{pageMax: res.PageMax, reads: !res.ReadHandlerDisabled(), routed: !res.RoutingDisabled()}, true
 		}
 	}
 

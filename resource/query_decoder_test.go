@@ -35,6 +35,7 @@ func (tr TestResource) DefaultConfig() Config {
 }
 
 type TestRequest struct {
+	ID                 string   `json:"id"                 perm:"-"`
 	Name               string   `json:"name"               index:"true"`
 	Age                int      `json:"age"                index:"true"`
 	Status             string   `json:"status"`

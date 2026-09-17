@@ -120,6 +120,27 @@ func Test_apiClientData(t *testing.T) {
 			},
 		},
 		{
+			name: "key-less computed resource: an empty key tuple, the list operation alone, the generator-wide page",
+			generator: func() *typescriptGenerator {
+				digest := fixtureComputedResource(t, structs, "Digest")
+				for _, f := range digest.Fields {
+					f.typescriptType = "string"
+				}
+				return &typescriptGenerator{client: &client{computedResources: []*computedResource{digest}}}
+			},
+			wantContains: []string{
+				"export type DigestsKey = [];",
+				"keys: [],",
+				"operations: ['list'],",
+				"page: { default: 50 },",
+				"  digests: ResourceHandle<Digests, DigestsKey, 'list'>;",
+			},
+			wantNotContains: []string{
+				"'read'",
+				"order:",
+			},
+		},
+		{
 			name: "computed resource: list and read only, no write shapes",
 			generator: func() *typescriptGenerator {
 				summary := fixtureComputedResource(t, structs, "Summary")

@@ -11,23 +11,36 @@ import (
 
 // TestComputedQueryRules pins the generation-time rules for a computed resource's
 // query surface: allow_filter on a comparable leaf is admitted, an index tag is
-// refused (no database index exists), allow_filter on a list is refused, and a
-// declared order may name only a leaf field.
+// refused (no database index exists), allow_filter on a list is refused, a
+// declared order may name only a leaf field, and a struct with no @primarykey is a
+// whole list that keeps its @order, has no read handler, and refuses @page.
 func TestComputedQueryRules(t *testing.T) {
 	t.Parallel()
 
 	structs := fixtureStructs(loadFixture(t, "pagingfixture"))
 
 	tests := []struct {
-		name       string
-		structName string
-		wantOrder  []resource.SortField
-		wantErr    string
+		name         string
+		structName   string
+		wantOrder    []resource.SortField
+		wantReadless bool
+		wantErr      string
 	}{
 		{
 			name:       "comparable filterable leaves and a leaf order are admitted",
 			structName: "Board",
 			wantOrder:  []resource.SortField{{Field: "Worst", Direction: resource.SortDescending}},
+		},
+		{
+			name:         "a key-less struct is a whole list: its order stands and its read handler is absent",
+			structName:   "WholeBoard",
+			wantOrder:    []resource.SortField{{Field: "Name", Direction: resource.SortAscending}},
+			wantReadless: true,
+		},
+		{
+			name:       "@page on a key-less struct is refused naming the struct and the two ways out",
+			structName: "KeylessBoard",
+			wantErr:    "@page on KeylessBoard: paging needs a key, and KeylessBoard declares no @primarykey; declare the key, or drop @page and the list is served whole",
 		},
 		{
 			name:       "an index tag is refused naming the field",
@@ -67,6 +80,9 @@ func TestComputedQueryRules(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantOrder, resources[0].DeclaredOrder); diff != "" {
 				t.Errorf("DeclaredOrder mismatch (-want +got):\n%s", diff)
+			}
+			if got := resources[0].ReadHandlerDisabled(); got != tt.wantReadless {
+				t.Errorf("ReadHandlerDisabled() = %v, want %v", got, tt.wantReadless)
 			}
 		})
 	}

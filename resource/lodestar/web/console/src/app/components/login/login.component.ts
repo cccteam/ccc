@@ -44,6 +44,7 @@ export const CREW_MANIFEST: Persona[] = [
   { login: 'quartermaster', name: 'Quartermaster Quill', deck: 'Hangar deck', proves: 'Books sortie expenses only while the mission is underway (two hops deep).' },
   { login: 'supercargo', name: 'Supercargo Sol', deck: 'Salvage hold', proves: 'Releases bonded cargo once; disposes of expired bond.' },
   { login: 'salvor', name: 'Salvor Sable', deck: 'Salvage hold', proves: 'Recovers wrecks for outfits whose salvage cover is not refused; undecided outfits still qualify.' },
+  { login: 'yeoman', name: 'Yeoman Yael', deck: 'Headquarters', proves: 'Reads the standing orders: a key-less list served whole, sorted on request, never paged.' },
   { login: 'archivist', name: 'Archivist Ada', deck: 'Archive', proves: 'Finished missions everywhere; fees redacted until completed; the ship’s log.' },
   { login: 'assessor', name: 'Assessor Asa', deck: 'Hazard board', proves: 'Prices cover on open missions: sees every title, and the hazard level only while a mission is still open.' },
   { login: 'hazards', name: 'Hazard Analyst Hale', deck: 'Hazard board', proves: 'The hazard board under a certification that expires.' },

@@ -133,6 +133,16 @@ func Test_computedResourceHandlerTemplate_decoder(t *testing.T) {
 	if notWant := " NewQueryDecoder["; strings.Contains(computedResourceHandlerTemplate, notWant) {
 		t.Errorf("computedResourceHandlerTemplate must not construct the deferred QueryDecoder: found %q", notWant)
 	}
+	// The read handler is gated on ReadHandlerDisabled, not on the suppression alone:
+	// a key-less struct has no read identity, and rendering its read handler would
+	// declare `row` inside key branches that never run, so the output would not
+	// compile.
+	if want := "{{- if not .Resource.ReadHandlerDisabled }}"; !strings.Contains(computedResourceHandlerTemplate, want) {
+		t.Errorf("computedResourceHandlerTemplate missing the read gate %q", want)
+	}
+	if notWant := ".Resource.SuppressReadHandler"; strings.Contains(computedResourceHandlerTemplate, notWant) {
+		t.Errorf("computedResourceHandlerTemplate gates on %q; a key-less struct must gate on ReadHandlerDisabled", notWant)
+	}
 	// The declared order renders as resource.Paging and resource.SortField through a
 	// template function, so the qualifier is not in the template text; the import
 	// block must still declare it, or every computed handler falls back to goimports.

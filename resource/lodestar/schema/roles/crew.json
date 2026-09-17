@@ -329,6 +329,20 @@
             }
           ]
         }
+      },
+      {
+        "name": "OrdersDesk",
+        "permissions": {
+          "List": [
+            {
+              "resource": "StandingOrders",
+              "fields": [
+                "section",
+                "directive"
+              ]
+            }
+          ]
+        }
       }
     ],
     "domain": [

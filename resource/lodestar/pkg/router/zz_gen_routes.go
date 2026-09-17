@@ -180,6 +180,8 @@ type GeneratedHandlers interface {
 
 	StandDownMission() http.HandlerFunc
 
+	StandingOrders() http.HandlerFunc
+
 	StartFlightTest() http.HandlerFunc
 
 	Wings() http.HandlerFunc
@@ -443,6 +445,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Post("/api/sectors/{sectorID}/squadron-rosters/{squadronRosterSquadronID}/{squadronRosterUserID}", squadronRosterHandler)
 
 	r.Post("/api/sectors/{sectorID}/stand-down-mission", domainGuard(h.StandDownMission()))
+
+	standingOrdersHandler := h.StandingOrders()
+	r.Get("/api/standing-orders", standingOrdersHandler)
+	r.Post("/api/standing-orders", standingOrdersHandler)
 
 	r.Post("/api/sectors/{sectorID}/start-flight-test", domainGuard(h.StartFlightTest()))
 

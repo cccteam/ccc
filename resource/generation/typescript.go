@@ -931,7 +931,7 @@ func (t *typescriptGenerator) apiComputedResource(res *computedResource) *tsAPIR
 	if !res.SuppressListHandler {
 		out.Operations = append(out.Operations, "list")
 	}
-	if !res.SuppressReadHandler {
+	if !res.ReadHandlerDisabled() {
 		out.Operations = append(out.Operations, "read")
 	}
 

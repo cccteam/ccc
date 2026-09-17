@@ -276,6 +276,11 @@ export interface ServiceLedgers {
   lastReturnAt?: Date;
 }
 
+export interface StandingOrders {
+  section?: string;
+  directive?: string;
+}
+
 const resourceMap: ResourceMap = {
   [Resources.Clients]: {
     route: 'clients',
@@ -632,6 +637,17 @@ const resourceMap: ResourceMap = {
       { fieldName: 'lastReturnAt', displayType: 'date', required: false, isIndex: false },
     ],
   },
+  [Resources.StandingOrders]: {
+    route: 'standing-orders',
+    readDisabled: true,
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'section', displayType: 'string', required: false, isIndex: false, filterable: 'always' },
+      { fieldName: 'directive', displayType: 'string', required: false, isIndex: false },
+    ],
+  },
 };
 
 export function resourceMeta(resource: Resource): ResourceMeta {
@@ -675,6 +691,7 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.PilotCards]: PermissionScopes.global,
   [Resources.SectorHazardBoards]: PermissionScopes.domain,
   [Resources.ServiceLedgers]: PermissionScopes.global,
+  [Resources.StandingOrders]: PermissionScopes.global,
 };
 
 export type OperationType = 'add' | 'patch' | 'remove';

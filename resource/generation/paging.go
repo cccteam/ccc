@@ -13,8 +13,8 @@ import (
 
 // pagingDecl is a resource's declared paging contract, read off the @order and
 // @page annotations and carried to the generated list handler as its decoder's
-// resource.Paging. The zero value declares nothing: the decoder lists by primary
-// key with the generator-wide page size and no maximum.
+// resource.Paging. The zero value declares nothing: the decoder serves the
+// generator-wide page size with no maximum and no declared order.
 type pagingDecl struct {
 	// DeclaredOrder is the @order list, each entry a Go field name and direction.
 	DeclaredOrder []resource.SortField
@@ -59,6 +59,19 @@ func (p *pagingDecl) PagingOption() string {
 	b.WriteString("})")
 
 	return b.String()
+}
+
+// refusePageWithoutKey is the refusal a @page earns on a struct with no
+// @primarykey: a key-less list has no row identity for a cursor to anchor on, so
+// it is served whole and never pages, and a page size on it is a contradiction.
+// The message names the struct and the two ways out; nil where no @page is
+// declared (@order stays legal: a whole list may still be sorted).
+func (p *pagingDecl) refusePageWithoutKey(name string) error {
+	if p.PageDefault == 0 && p.PageMax == 0 {
+		return nil
+	}
+
+	return errors.Newf("@%s on %s: paging needs a key, and %s declares no @%s; declare the key, or drop @%s and the list is served whole", pageKeyword, name, name, primarykeyKeyword, pageKeyword)
 }
 
 // declaresOrderOn reports whether the @order names the field.
@@ -183,7 +196,9 @@ func (p *pagingDecl) resolvePaging(annotations genlang.StructAnnotations, sortab
 }
 
 // resolveResourcePaging applies the paging annotations of a table or view
-// resource. Every field of a resource is a column, so every field is sortable.
+// resource. Every field of a resource is a column, so every field is sortable. A
+// view with no @primarykey is a whole list and refuses @page; a table's key comes
+// from the schema, so a table is never key-less.
 func resolveResourcePaging(res *resourceInfo, annotations genlang.StructAnnotations) error {
 	err := res.resolvePaging(annotations, func(field string) error {
 		if !slices.ContainsFunc(res.Fields, func(f *resourceField) bool { return f.Name() == field }) {
@@ -195,12 +210,16 @@ func resolveResourcePaging(res *resourceInfo, annotations genlang.StructAnnotati
 	if err != nil {
 		return errors.Wrapf(err, "on %s", res.Name())
 	}
+	if res.IsVirtual && !res.HasPrimaryKey() {
+		return res.refusePageWithoutKey(res.Name())
+	}
 
 	return nil
 }
 
 // resolveComputedPaging applies the paging annotations of a computed resource. A
 // nested field is opaque and never a sort key, so only a leaf field may be named.
+// A struct with no @primarykey is a whole list and refuses @page.
 func resolveComputedPaging(res *computedResource, annotations genlang.StructAnnotations) error {
 	err := res.resolvePaging(annotations, func(field string) error {
 		i := slices.IndexFunc(res.Fields, func(f *computedField) bool { return f.Name() == field })
@@ -215,6 +234,9 @@ func resolveComputedPaging(res *computedResource, annotations genlang.StructAnno
 	})
 	if err != nil {
 		return errors.Wrapf(err, "on %s", res.Name())
+	}
+	if !res.HasPrimaryKey() {
+		return res.refusePageWithoutKey(res.Name())
 	}
 
 	return nil

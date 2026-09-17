@@ -39,8 +39,9 @@ func pageOver(t *testing.T, sort, defaultOrder []SortField, page pageRequest, cu
 
 // TestPage_headers pins the headers a page writes from the rows it saw: the
 // more-exists row past the page size, the prev and next relations by direction,
-// Total-Count on request, and nothing for limit=all. Every paged QuerySet here
-// carries an order, as every decoded paged request does (requireOrder).
+// Total-Count on request, and for limit=all no Link and the Total-Count it was
+// asked for. Every paged QuerySet here carries an order, as every decoded paged
+// request does (requireOrder).
 func TestPage_headers(t *testing.T) {
 	t.Parallel()
 
@@ -130,11 +131,20 @@ func TestPage_headers(t *testing.T) {
 			wantTotal: "41",
 		},
 		{
-			name:       "limit=all keeps every row and writes nothing",
+			name:       "limit=all keeps every row and writes no Link",
 			sort:       hazard,
 			page:       pageRequest{all: true},
 			ids:        []string{"a", "bb", "ccc", "dddd"},
 			wantKept:   4,
+			wantNoLink: true,
+		},
+		{
+			name:       "the whole list still answers the count it was asked for",
+			page:       pageRequest{all: true, count: true},
+			total:      new(int64(4)),
+			ids:        []string{"a", "bb", "ccc", "dddd"},
+			wantKept:   4,
+			wantTotal:  "4",
 			wantNoLink: true,
 		},
 		{

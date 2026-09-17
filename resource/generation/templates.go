@@ -1794,7 +1794,7 @@ const resourceMap: ResourceMap = {
 	{{- if $resource.SuppressListHandler }}
     listDisabled: true,
     {{- end }}
-	{{- if $resource.SuppressReadHandler }}
+	{{- if $resource.ReadHandlerDisabled }}
     readDisabled: true,
     {{- end }}
     createDisabled: true,
@@ -3189,7 +3189,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 }
 {{- end }}
 
-{{- if not .Resource.SuppressReadHandler }}
+{{- if not .Resource.ReadHandlerDisabled }}
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
 	{{- with .Resource.Shape.MirrorDecls }}
 	// Mirrors of the structs the row reaches, leaves first: a nested field is one

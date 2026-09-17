@@ -156,6 +156,41 @@ type (
 		ID       ccc.UUID  // @primarykey
 		Readings []Reading // @enumerate(Boards)
 	}
+
+	// WholeBoard declares no @primarykey: a whole read-only list, sorted by its
+	// declared order, never paged and never read by key.
+	//
+	// @computed
+	// @order(Name asc)
+	WholeBoard struct {
+		Name string
+		Note string
+	}
+
+	// KeylessBoard declares @page with no @primarykey; a key-less list does not page.
+	//
+	// @computed
+	// @page(default: 25, max: 200)
+	KeylessBoard struct {
+		Name string
+	}
+
+	// WholeDeck is a view with no @primarykey: a whole read-only list, sorted by its
+	// declared order.
+	//
+	// @virtual
+	// @order(Title asc)
+	WholeDeck struct {
+		Title string `spanner:"Title" index:"true"`
+	}
+
+	// KeylessDeck declares @page with no @primarykey; a key-less view does not page.
+	//
+	// @virtual
+	// @page(default: 25, max: 200)
+	KeylessDeck struct {
+		Title string `spanner:"Title" index:"true"`
+	}
 )
 
 func (Board) Resource() accesstypes.Resource            { return "Boards" }
@@ -167,6 +202,10 @@ func (EnumeratedBoard) Resource() accesstypes.Resource  { return "EnumeratedBoar
 func (EnumeratedNestedBoard) Resource() accesstypes.Resource {
 	return "EnumeratedNestedBoards"
 }
+func (WholeBoard) Resource() accesstypes.Resource   { return "WholeBoards" }
+func (KeylessBoard) Resource() accesstypes.Resource { return "KeylessBoards" }
+func (WholeDeck) Resource() accesstypes.Resource    { return "WholeDecks" }
+func (KeylessDeck) Resource() accesstypes.Resource  { return "KeylessDecks" }
 
 type Client struct{}
 
@@ -219,6 +258,14 @@ func ReadEnumeratedNestedBoard(context.Context, ccc.UUID, *resource.QuerySet[Enu
 }
 
 func ListPositionalBoard(context.Context, *resource.QuerySet[PositionalBoard], resource.Client, *Client) iter.Seq2[*PositionalBoard, error] {
+	return nil
+}
+
+func ListWholeBoard(context.Context, *resource.QuerySet[WholeBoard], resource.Client, *Client) iter.Seq2[*WholeBoard, error] {
+	return nil
+}
+
+func ListKeylessBoard(context.Context, *resource.QuerySet[KeylessBoard], resource.Client, *Client) iter.Seq2[*KeylessBoard, error] {
 	return nil
 }
 

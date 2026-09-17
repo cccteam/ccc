@@ -147,35 +147,19 @@ func (r *resourceGenerator) authzMatrixCases() ([]authzCase, error) {
 // request pins the gate and not the order: every paged list request needs an order
 // (resource.QueryDecoder), and the matrix must reach data access with exactly the
 // List grant. Nothing where the struct declares an @order; else a sort on the first
-// key field, which is always granted (perm:"-"); else, on a key-less resource,
-// limit=all where no maximum is declared, since a whole list needs no order, and a
-// sort on the first field that is not a list column where one is. keys and fields
-// are the resource's key and field names in wire (JSON) spelling; list reports
-// whether the field at that index is a list column.
-func matrixListQuery(declaresOrder bool, keys, fields []string, list func(i int) bool, pageMax uint64) string {
-	switch {
-	case declaresOrder:
+// key field, which is always granted (perm:"-"); else nothing, since a key-less
+// resource is served whole and a whole list needs no order. keys are the resource's
+// key names in wire (JSON) spelling.
+func matrixListQuery(declaresOrder bool, keys []string) string {
+	if declaresOrder || len(keys) == 0 {
 		return ""
-	case len(keys) > 0:
-		return sortParam + "=" + keys[0]
-	case pageMax == 0:
-		return limitParam + "=" + allLimit
-	}
-	for i, field := range fields {
-		if !list(i) {
-			return sortParam + "=" + field
-		}
 	}
 
-	return ""
+	return sortParam + "=" + keys[0]
 }
 
-// The list query parameters the matrix spells, as the resource package reads them.
-const (
-	sortParam  = "sort"
-	limitParam = "limit"
-	allLimit   = "all"
-)
+// The list query parameter the matrix spells, as the resource package reads it.
+const sortParam = "sort"
 
 // resourceMatrixListQuery is matrixListQuery for a table or view resource.
 func resourceMatrixListQuery(res *resourceInfo) string {
@@ -183,14 +167,8 @@ func resourceMatrixListQuery(res *resourceInfo) string {
 	for _, f := range res.PrimaryKeys() {
 		keys = append(keys, f.WireName())
 	}
-	fields := make([]string, 0, len(res.Fields))
-	for _, f := range res.Fields {
-		fields = append(fields, f.WireName())
-	}
 
-	return matrixListQuery(len(res.DeclaredOrder) > 0, keys, fields, func(i int) bool {
-		return isListColumn(res.Fields[i].GoType())
-	}, res.PageMax)
+	return matrixListQuery(len(res.DeclaredOrder) > 0, keys)
 }
 
 // computedMatrixListQuery is matrixListQuery for a computed resource.
@@ -199,14 +177,8 @@ func computedMatrixListQuery(res *computedResource) string {
 	for _, f := range res.PrimaryKeys() {
 		keys = append(keys, caser.ToCamel(f.Name()))
 	}
-	fields := make([]string, 0, len(res.Fields))
-	for _, f := range res.Fields {
-		fields = append(fields, caser.ToCamel(f.Name()))
-	}
 
-	return matrixListQuery(len(res.DeclaredOrder) > 0, keys, fields, func(i int) bool {
-		return isListColumn(res.Fields[i].GoType())
-	}, res.PageMax)
+	return matrixListQuery(len(res.DeclaredOrder) > 0, keys)
 }
 
 // queryRouteCase builds the denied/granted case for a list or read route; ok is false

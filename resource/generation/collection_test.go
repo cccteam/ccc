@@ -187,6 +187,7 @@ func collectionFixtureGenerator(t *testing.T) *resourceGenerator {
 	}
 	r.computedResources = []*computedResource{
 		fixtureComputedResource(t, structs, "Summary"),
+		fixtureComputedResource(t, structs, "Digest"),
 	}
 	r.rpcMethods = []*rpcMethodInfo{
 		{Struct: structs["DoSomething"], PermissionScope: accesstypes.DomainPermissionScope},
@@ -263,6 +264,17 @@ func Test_computeCollectionData(t *testing.T) {
 					},
 					Order:     []accesstypes.Tag{"deadline"},
 					QueryKeys: []accesstypes.Tag{"name"},
+				},
+				{
+					// A key-less computed resource is a whole read-only list: List only, no
+					// read registration, no key tag.
+					Name:        "Digests",
+					Scope:       accesstypes.GlobalPermissionScope,
+					Computed:    true,
+					Permissions: []accesstypes.Permission{accesstypes.List},
+					Tags: []resource.TagData{
+						{Name: "total", Permissions: []accesstypes.Permission{accesstypes.List}},
+					},
 				},
 				{
 					// Consolidated and routing-disabled: no list/read routes, but the shared

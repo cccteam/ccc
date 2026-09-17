@@ -136,6 +136,7 @@ var Demonstrations = []Demonstration{
 	{"computed.null-placement", "A computed list sorts and pages NULL where the application's database does: a pushdown body's plain ORDER BY, its own cursor predicate, and the handler's in-memory sort and boundary test agree across the NULL boundary, whether the body pages itself or the handler pages over its order."},
 	{"computed.user", "QuerySet.User(): the identity the check ran as, for a caller-scoped computed read."},
 	{"computed.scope", "QuerySet.Scope(): the partition the check ran in."},
+	{"computed.keyless", "A @computed struct with no @primarykey is a whole read-only list: one list route serves every row the filter admits in one response, sorted when a sort is asked or declared, with no read route, no page (a numeric limit or a cursor is refused naming @primarykey as the way to page), and no row identity; declaring a key brings all three back."},
 	{"@manualAddResource", "A permission registered by hand for a hand-written route."},
 	{"@manualAddResource.scope", "@manualAddResource(Perm, domain): the scope argument."},
 	{"@manualAddResource.execute", "@manualAddResource(Execute): a manual Execute registration reaching the TypeScript Methods constants."},

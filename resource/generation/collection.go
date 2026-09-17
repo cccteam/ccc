@@ -370,7 +370,7 @@ func (r *resourceGenerator) collectComputedRegistrations(b *resource.CollectionB
 			permission accesstypes.Permission
 		}{
 			{suppressed: res.SuppressListHandler, permission: accesstypes.List},
-			{suppressed: res.SuppressReadHandler, permission: accesstypes.Read},
+			{suppressed: res.ReadHandlerDisabled(), permission: accesstypes.Read},
 		}
 		registered := false
 		for _, handler := range handlers {

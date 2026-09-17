@@ -162,7 +162,7 @@ func (r *resourceGenerator) accumulateComputedRoutes(outlets []routerOutlet, out
 	constComputedResources = make([]*computedResource, 0, len(r.computedResources))
 	routerTestRoutes = make([]*generatedRoute, 0, len(r.computedResources))
 	for _, res := range r.computedResources {
-		if !res.SuppressReadHandler {
+		if !res.ReadHandlerDisabled() {
 			constComputedResources = append(constComputedResources, res)
 		}
 
@@ -301,7 +301,7 @@ func (r *resourceGenerator) computedResourceRoutes(res *computedResource, routeP
 		routes = append(routes, route)
 	}
 
-	if !res.SuppressReadHandler {
+	if !res.ReadHandlerDisabled() {
 		pkNames := make([]string, 0, len(res.PrimaryKeys()))
 		for _, field := range res.PrimaryKeys() {
 			pkNames = append(pkNames, field.Name())
