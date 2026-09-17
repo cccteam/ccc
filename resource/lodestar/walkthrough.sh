@@ -253,7 +253,7 @@ r=$(req marshal POST "$ANVIL/scrap-ship" "{\"refitId\":\"$SAMARITAN_REFIT\"}"); 
 r=$(req pilot POST "$ANVIL/hail-ship" "{\"shipId\":\"$KINGFISHER\"}"); check "pilot hails a docked ship (the Touch answers No Content)" 204 "$r"
 r=$(req pilot POST "$ANVIL/hail-ship" "{\"shipId\":\"$LANTERN\"}"); check "pilot cannot hail the quarantined Lantern" 403 "$r"
 # The ARRAY<INT64> column rides as a JSON array of numbers (the generated interface says number[]); a ship with no bays carries [].
-r=$(req marshal GET "$ANVIL/ships?limit=all"); assert_py "the Stubborn Mule's cargo bays are a JSON array of numbers and the Kingfisher's an empty array" "$r" "next(s for s in rows if s['registry']=='LS-202')['cargoBays']==[60,60,30] and next(s for s in rows if s['registry']=='LS-101')['cargoBays']==[]"
+r=$(req marshal GET "$ANVIL/ships?limit=100"); assert_py "the Stubborn Mule's cargo bays are a JSON array of numbers and the Kingfisher's an empty array" "$r" "next(s for s in rows if s['registry']=='LS-202')['cargoBays']==[60,60,30] and next(s for s in rows if s['registry']=='LS-101')['cargoBays']==[]"
 r=$(req marshal GET "$ANVIL/ships?sort=cargoBays:asc"); check "a sort naming the array column answers 400" 400 "$r"
 # A nullable ARRAY<STRING(16)> column typed by the plain slice: NULL (Tongs has not filed) and [] (a stated none) are different answers, and a null in a PATCH is accepted where the column allows it and refused where it does not.
 r=$(req marshal GET "$ANVIL/squadrons"); assert_py "Hammer's callsigns are filed and Tongs's are null (not yet filed)" "$r" "next(s for s in rows if s['name']=='Hammer')['callsigns']==['Hammerfall','Anvil Actual'] and next(s for s in rows if s['name']=='Tongs')['callsigns'] is None"
