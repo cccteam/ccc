@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/cccteam/ccc/resource"
@@ -204,6 +205,19 @@ func TestWarning_String(t *testing.T) {
 			},
 			want: "RefitTask resolves its tenant through ShipId, Ships.HangarId, Hangars.SectorId, so its lists scan all of RefitTasks, every tenant, and no index on RefitTasks changes that; a table listed at volume carries the tenant key on the row",
 		},
+		{
+			name: "enumeration size warning naming the fields that bake the table",
+			warning: EnumerationSizeWarning{
+				Type: "ShipRole", Table: "ShipRoles", Rows: 612, Bytes: 30600,
+				Fields: []string{"ShipClass.RoleID", "FailMission.ReasonID"},
+			},
+			want: "ShipRole enumerates 612 rows of ShipRoles, above the 500 a baked table may hold without a warning, so 30600 bytes of enumeration ride in the metadata of each field keyed into it: ShipClass.RoleID, FailMission.ReasonID; drop @enumerate from ShipRole (the generated constants go with it) and expose ShipRoles with a @resource struct, whose picker reads it whole with no @page maximum or paged under one",
+		},
+		{
+			name:    "enumeration size warning on a table no field keys into",
+			warning: EnumerationSizeWarning{Type: "ShipRole", Table: "ShipRoles", Rows: 612, Bytes: 30600},
+			want:    "ShipRole enumerates 612 rows of ShipRoles, above the 500 a baked table may hold without a warning, so 30600 bytes of enumeration ride in the metadata of each field keyed into it: none yet, and the first one bakes every row; drop @enumerate from ShipRole (the generated constants go with it) and expose ShipRoles with a @resource struct, whose picker reads it whole with no @page maximum or paged under one",
+		},
 	}
 
 	for _, tt := range tests {
@@ -212,6 +226,99 @@ func TestWarning_String(t *testing.T) {
 
 			if got := tt.warning.String(); got != tt.want {
 				t.Errorf("String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestEnumerationWarnings pins the enumeration size warning over synthetic rows: the
+// line, the values a warning carries, which fields it names, and the order two warn in.
+// A row is fixed-width ({ id: "k000", display: "Kind 000" }, 35 bytes), so the bytes a
+// warning states are the literal's: 35 a row, a two-byte separator between rows, and
+// the brackets.
+func TestEnumerationWarnings(t *testing.T) {
+	t.Parallel()
+
+	rows := func(n int) []*enumData {
+		values := make([]*enumData, 0, n)
+		for i := range n {
+			values = append(values, &enumData{ID: fmt.Sprintf("k%03d", i), Description: fmt.Sprintf("Kind %03d", i)})
+		}
+
+		return values
+	}
+	structs := fixtureStructs(loadCollectionFixture(t))
+	// referencing builds every kind of field that bakes WidgetKinds, and one foreign
+	// key into an ordinary table, which bakes nothing.
+	referencing := func(c *client) {
+		c.resources = []*resourceInfo{fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
+			res.Fields[1].IsForeignKey = true
+			res.Fields[1].ReferencedResource = "WidgetKinds"
+			res.Fields[2].applyEnumeration(enumerationSource{Name: "WidgetKinds", Enumeration: "WidgetKind"})
+			res.Fields[3].IsForeignKey = true
+			res.Fields[3].ReferencedResource = "Gadgets"
+		})}
+		summary := &computedField{Field: structs["Summary"].Fields()[1]}
+		summary.applyEnumeration(enumerationSource{Name: "WidgetKinds", Enumeration: "WidgetKind"})
+		c.computedResources = []*computedResource{{Struct: structs["Summary"], Fields: []*computedField{summary}}}
+		input := &rpcField{Field: structs["DoSomething"].Fields()[0]}
+		input.applyEnumeration(enumerationSource{Name: "WidgetKinds", Enumeration: "WidgetKind"})
+		c.rpcMethods = []*rpcMethodInfo{{Struct: structs["DoSomething"], Fields: []*rpcField{input}}}
+	}
+
+	tests := []struct {
+		name   string
+		tables map[string]string
+		values map[string][]*enumData
+		mutate func(*client)
+		want   []Warning
+	}{
+		{
+			name:   "500 rows are silent",
+			tables: map[string]string{"WidgetKinds": "WidgetKind"},
+			values: map[string][]*enumData{"WidgetKinds": rows(500)},
+			mutate: referencing,
+		},
+		{
+			name:   "501 rows warn, naming every field that bakes the table and no other",
+			tables: map[string]string{"WidgetKinds": "WidgetKind"},
+			values: map[string][]*enumData{"WidgetKinds": rows(501)},
+			mutate: referencing,
+			want: []Warning{EnumerationSizeWarning{
+				Type: "WidgetKind", Table: "WidgetKinds", Rows: 501, Bytes: 501*35 + 500*2 + 2,
+				Fields: []string{"Widget.Name", "Widget.ListedName", "Summary.Total", "DoSomething.Input"},
+			}},
+		},
+		{
+			name:   "a table no field keys into warns with no field named",
+			tables: map[string]string{"WidgetKinds": "WidgetKind"},
+			values: map[string][]*enumData{"WidgetKinds": rows(501)},
+			want:   []Warning{EnumerationSizeWarning{Type: "WidgetKind", Table: "WidgetKinds", Rows: 501, Bytes: 501*35 + 500*2 + 2}},
+		},
+		{
+			name:   "two tables above the line warn in table-name order, the one below stays silent",
+			tables: map[string]string{"WidgetKinds": "WidgetKind", "Grades": "Grade", "Shades": "Shade"},
+			values: map[string][]*enumData{"WidgetKinds": rows(700), "Grades": rows(3), "Shades": rows(501)},
+			want: []Warning{
+				EnumerationSizeWarning{Type: "Shade", Table: "Shades", Rows: 501, Bytes: 501*35 + 500*2 + 2},
+				EnumerationSizeWarning{Type: "WidgetKind", Table: "WidgetKinds", Rows: 700, Bytes: 700*35 + 699*2 + 2},
+			},
+		},
+		{
+			name: "no enumeration table is silent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := &client{enumerateTables: tt.tables, enumValues: tt.values}
+			if tt.mutate != nil {
+				tt.mutate(c)
+			}
+			if diff := cmp.Diff(tt.want, c.enumerationWarnings()); diff != "" {
+				t.Errorf("enumerationWarnings() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

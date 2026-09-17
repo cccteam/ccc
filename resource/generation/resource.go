@@ -327,6 +327,11 @@ func (r *resourceGenerator) Generate() error {
 		return err
 	}
 
+	// An @enumerate table above the line warns once every kind that can key into it
+	// is extracted, the RPC methods last, so the warning names every field that bakes
+	// it.
+	r.warnings = append(r.warnings, r.enumerationWarnings()...)
+
 	// Workflow DOT files draw declared transitions, so they render only after
 	// RPC extraction resolves them.
 	if err := r.generateWorkflowGraphs(); err != nil {

@@ -2,16 +2,18 @@ package generation
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
 	"github.com/cccteam/ccc/resource"
 )
 
-// Warning is a schema finding generation raises about a resource it generated:
-// informational, never a refusal, since index presence is a performance matter the
-// application decides. Every Warning is one of the kinds in this file; a runner prints
-// each one on its own line after a successful run (Generator.Warnings).
+// Warning is a schema finding generation raises about a resource it generated or an
+// enumeration it baked: informational, never a refusal, since an index's presence and
+// a baked table's size are performance matters the application decides. Every Warning
+// is one of the kinds in this file; a runner prints each one on its own line after a
+// successful run (Generator.Warnings).
 type Warning interface {
 	fmt.Stringer
 	warning()
@@ -64,6 +66,41 @@ func (w JoinPathWarning) String() string {
 
 	return fmt.Sprintf("%s resolves its tenant through %s, so its lists scan all of %s, every tenant, and no index on %s changes that; a table listed at volume carries the tenant key on the row",
 		w.Resource, strings.Join(path, ", "), w.Table, w.Table)
+}
+
+// maxBakedEnumerationRows is the row count above which an @enumerate table raises an
+// EnumerationSizeWarning. Every field keyed into the table carries the whole table in
+// the TypeScript metadata, a copy per field, and at about fifty bytes a row 500 rows
+// is some 25 KB each; past that a runtime resource serves a picker better.
+const maxBakedEnumerationRows = 500
+
+// EnumerationSizeWarning says an @enumerate table holds more than
+// maxBakedEnumerationRows rows: every field keyed into the table carries all of them in
+// the TypeScript metadata, Bytes of them, one copy per field. Fields are the
+// Struct.Field names that bake the table, in extraction order (resources, computed
+// resources, RPC methods); empty when none keys into it yet, since the first one bakes
+// every row. The alternative is a runtime resource: drop @enumerate from the type (the
+// generated constants go with it) and expose the table with a @resource struct, whose
+// picker reads it whole with no @page maximum or paged under one.
+type EnumerationSizeWarning struct {
+	Type   string
+	Table  string
+	Rows   int
+	Bytes  int
+	Fields []string
+}
+
+func (EnumerationSizeWarning) warning() {}
+
+// String renders the one-line warning, names verbatim from the schema.
+func (w EnumerationSizeWarning) String() string {
+	fields := "none yet, and the first one bakes every row"
+	if len(w.Fields) > 0 {
+		fields = strings.Join(w.Fields, ", ")
+	}
+
+	return fmt.Sprintf("%s enumerates %d rows of %s, above the %d a baked table may hold without a warning, so %d bytes of enumeration ride in the metadata of each field keyed into it: %s; drop @%s from %s (the generated constants go with it) and expose %s with a @%s struct, whose picker reads it whole with no @%s maximum or paged under one",
+		w.Type, w.Rows, w.Table, maxBakedEnumerationRows, w.Bytes, fields, enumerateKeyword, w.Type, w.Table, resourceKeyword, pageKeyword)
 }
 
 // schemaWarnings reads the extracted table-backed resources against the table map for
@@ -186,4 +223,79 @@ func indexKeyColumns(tenantColumn string, order []resource.SortField) []string {
 	}
 
 	return terms
+}
+
+// enumerationWarnings reads every @enumerate table the run registered
+// (registerEnumerations) against the rows it fetched for it: a table above
+// maxBakedEnumerationRows warns once, whether or not a field keys into it yet, naming
+// the fields that bake it (enumerationReferences). Warnings come in table-name order.
+func (c *client) enumerationWarnings() []Warning {
+	references := c.enumerationReferences()
+
+	var warnings []Warning
+	for _, table := range slices.Sorted(maps.Keys(c.enumerateTables)) {
+		if w, ok := enumerationSizeWarning(c.enumerateTables[table], table, c.enumValues[table], references[table]); ok {
+			warnings = append(warnings, w)
+		}
+	}
+
+	return warnings
+}
+
+// enumerationReferences lists, per @enumerate table, the Struct.Field names whose
+// metadata bakes its rows, in extraction order: a table-backed field whose foreign key
+// targets the table, which the TypeScript metadata renders inline
+// (resolveKeyEnumeration), and every resource, computed, or RPC field whose
+// field-scope @enumerate named the table (resolveFieldEnumerations,
+// declareRPCEnumeration).
+func (c *client) enumerationReferences() map[string][]string {
+	references := make(map[string][]string)
+	add := func(table, structName, fieldName string) {
+		references[table] = append(references[table], structName+"."+fieldName)
+	}
+	for _, res := range c.resources {
+		for _, field := range res.Fields {
+			switch {
+			case field.Enumeration != "":
+				add(field.declaredResource, res.Name(), field.Name())
+			case field.IsForeignKey:
+				if _, ok := c.enumerationOf(field.ReferencedResource); ok {
+					add(field.ReferencedResource, res.Name(), field.Name())
+				}
+			}
+		}
+	}
+	for _, res := range c.computedResources {
+		for _, field := range res.Fields {
+			if field.Enumeration != "" {
+				add(field.enumeratedResource, res.Name(), field.Name())
+			}
+		}
+	}
+	for _, method := range c.rpcMethods {
+		for _, field := range method.Fields {
+			if field.Enumeration != "" {
+				add(field.enumeratedResource, method.Name(), field.Name())
+			}
+		}
+	}
+
+	return references
+}
+
+// enumerationSizeWarning reads one @enumerate table's rows against the line: above
+// maxBakedEnumerationRows it answers the warning, with the bytes the metadata literal
+// carries (enumerationLiteral) and the referencing fields as given.
+func enumerationSizeWarning(typeName, table string, values []*enumData, fields []string) (EnumerationSizeWarning, bool) {
+	if len(values) <= maxBakedEnumerationRows {
+		return EnumerationSizeWarning{}, false
+	}
+
+	return EnumerationSizeWarning{
+		Type:   typeName,
+		Table:  table,
+		Rows:   len(values),
+		Bytes:  len(enumerationLiteral(values)),
+		Fields: fields,
+	}, true
 }
