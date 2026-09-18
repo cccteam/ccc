@@ -26,9 +26,12 @@ import { WorkflowGraphComponent } from '../workflow-graph/workflow-graph.compone
  * Workflows constant with the current state lit and the edges the row's
  * zzCapabilities.Execute list names drawn live. Beneath it, Add sortie renders when the
  * mission row's Create list names Sorties, and a sortie's Add expense when the sortie
- * row's list names SortieExpenses. No page copies a state rule.
+ * row's list names SortieExpenses. No page copies a state rule. The refusals the deck
+ * reports in place, CompleteMission's declared 409 answer and the 403 on an edit, raise
+ * no global notice: the client resolved the answer and the deck caught the refusal, and
+ * the notice the application's ErrorHandler raises is for the error nobody caught.
  *
- * Demonstrates: capability-envelope, create-under-parent, cell-masking, @answers, rpc.dry-run, @upload, @enumerate, @enumerate.enum-table, paging.descriptor-sizes, workflow.ts-constant, paging.link-header, paging.total-count, condition.now.
+ * Demonstrates: capability-envelope, create-under-parent, cell-masking, @answers, rpc.dry-run, @upload, @enumerate, @enumerate.enum-table, paging.descriptor-sizes, workflow.ts-constant, paging.link-header, paging.total-count, condition.now, client.uncaught-notice.
  */
 @Component({
   selector: 'app-flight-deck',

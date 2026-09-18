@@ -108,3 +108,102 @@ func TestConsoleCarriesLibrarySurface(t *testing.T) {
 		})
 	}
 }
+
+// TestConsoleHandsTheClientItsHooks pins how both browser applications render the
+// client's judgment, where the library's HTTP interceptor used to judge responses one
+// layer below the client and toast every in-place refusal a second time: each
+// app.config.ts spreads the options provideResourceClient hands its factory (the
+// transport that counts activity, the error hook that returns the browser to the login
+// page on a 401) into the generated createApi and registers no interceptor, HttpClient
+// keeps the XSRF echo alone, no provider after it re-provides ErrorHandler (the
+// BrowserAnimationsModule import that did is the standalone provideAnimationsAsync), each
+// login page reads AuthService.redirectUrl once and clears it, and the flight deck reports its refusals in place (the declared 409 answer,
+// the 403 on an edit) so they reach no notice. Lodestar has no browser specs, so the
+// committed sources are the proof the wiring is present; the redirect and the notice are
+// driven in the browser (README, "Running it"). Needs no emulator.
+//
+// Demonstrates: client.login-redirect, client.uncaught-notice.
+func TestConsoleHandsTheClientItsHooks(t *testing.T) {
+	t.Parallel()
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	web := filepath.Join(filepath.Dir(thisFile), "..", "..", "web")
+
+	// No interceptor, and no importProvidersFrom(BrowserAnimationsModule): BrowserModule's providers
+	// carry Angular's default ErrorHandler, which would replace the adapter's and silence the notice.
+	noInterceptor := []string{"HTTP_INTERCEPTORS", "ui-interceptor", "withInterceptorsFromDi", "ApiInterceptor", "BrowserAnimationsModule", "importProvidersFrom"}
+
+	tests := []struct {
+		name   string
+		file   string
+		want   []string
+		absent []string
+	}{
+		{
+			name: "the console spreads the adapter's options into createApi and registers no interceptor",
+			file: "console/src/app/app.config.ts",
+			want: []string{
+				"provideResourceClient((options) => createApi({ baseUrl: environment.apiUrl, ...options }))",
+				"provideHttpClient(withXsrfConfiguration({ cookieName: 'crew-xsrf' }))",
+				"provideAnimationsAsync(),",
+				"{ provide: FRONTEND_LOGIN_PATH, useValue: '/login' }",
+				"{ provide: BASE_URL, useValue: environment.baseUrl }",
+			},
+			absent: noInterceptor,
+		},
+		{
+			name: "the portal the same, over its own cookie",
+			file: "portal/src/app/app.config.ts",
+			want: []string{
+				"provideResourceClient((options) => createApi({ baseUrl: environment.apiUrl, ...options }))",
+				"provideHttpClient(withXsrfConfiguration({ cookieName: 'members-xsrf' }))",
+				"provideAnimationsAsync(),",
+			},
+			absent: noInterceptor,
+		},
+		{
+			name: "the console's login page returns to the URL the hook kept, read once and cleared",
+			file: "console/src/app/components/login/login.component.ts",
+			want: []string{"const redirectUrl = this.auth.redirectUrl();", "this.auth.redirectUrl.set('');"},
+		},
+		{
+			name: "the portal's login page the same, through the directory's return URL",
+			file: "portal/src/app/components/login/login.component.ts",
+			want: []string{"const redirectUrl = this.auth.redirectUrl();", "this.auth.redirectUrl.set('');"},
+		},
+		{
+			name: "the flight deck reports the declared answer and the edit refusal in place",
+			file: "console/src/app/components/sector/flight-deck/flight-deck.component.ts",
+			want: []string{
+				"if (answer.status === 409) {",
+				"this.refusal.set(",
+				"if (e instanceof ApiError && e.status === 403) {",
+				"this.editRefusal.set(e.message);",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			data, err := os.ReadFile(filepath.Join(web, tt.file))
+			if err != nil {
+				t.Fatalf("reading %s: %v", tt.file, err)
+			}
+			source := string(data)
+			for _, want := range tt.want {
+				if !strings.Contains(source, want) {
+					t.Errorf("%s: missing %q", tt.file, want)
+				}
+			}
+			for _, absent := range tt.absent {
+				if strings.Contains(source, absent) {
+					t.Errorf("%s: carries %q, want absent", tt.file, absent)
+				}
+			}
+		})
+	}
+}

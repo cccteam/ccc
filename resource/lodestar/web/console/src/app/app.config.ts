@@ -1,12 +1,7 @@
-import {
-  HTTP_INTERCEPTORS,
-  provideHttpClient,
-  withInterceptorsFromDi,
-  withXsrfConfiguration,
-} from '@angular/common/http';
-import { ApplicationConfig, computed, importProvidersFrom, inject, Injector, Signal } from '@angular/core';
-import { MatNativeDateModule } from '@angular/material/core';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { provideHttpClient, withXsrfConfiguration } from '@angular/common/http';
+import { ApplicationConfig, computed, inject, Injector, Signal } from '@angular/core';
+import { provideNativeDateAdapter } from '@angular/material/core';
+import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
 import { createApi } from '@app/service/zz_gen_api';
 import { methodMeta } from '@app/service/zz_gen_methods';
@@ -29,7 +24,6 @@ import {
   RESOURCE_META,
   SESSION_PATH,
 } from '@cccteam/resource-angular/types';
-import { ApiInterceptor } from '@cccteam/resource-angular/ui-interceptor';
 import { SectorService } from '@components/sector/sector.service';
 import { environment } from '@env';
 import { routes } from './app.routes';
@@ -74,7 +68,10 @@ export const appConfig: ApplicationConfig = {
       useFactory: (): (() => void) => {
         const injector = inject(Injector);
         return (): void => {
-          injector.get(AuthService).logout().subscribe({ error: (): void => undefined });
+          injector
+            .get(AuthService)
+            .logout()
+            .subscribe({ error: (): void => undefined });
         };
       },
     },
@@ -89,17 +86,33 @@ export const appConfig: ApplicationConfig = {
         };
       },
     },
-    { provide: HTTP_INTERCEPTORS, useClass: ApiInterceptor, multi: true },
     { provide: BASE_URL, useValue: environment.baseUrl },
     { provide: API_URL, useValue: environment.apiUrl },
     // The generated API client: one typed surface over every route, one permission
     // cache for the app's pages and the library's guard, directive, and forms. The
-    // transport rides HttpClient so the interceptor keeps applying.
-    provideResourceClient((transport) => createApi({ baseUrl: environment.apiUrl, transport })),
+    // library hands the factory the options it owns and the application spreads them
+    // beside its own baseUrl: the transport over HttpClient, which counts each request
+    // as activity for the progress bar, and the error hook, which on a 401 (the session
+    // gone) keeps the attempted URL in AuthService.redirectUrl and returns the browser to
+    // FRONTEND_LOGIN_PATH, where the login page reads it once the session is back. With
+    // the client comes the ErrorHandler: an ApiError nobody caught raises one global
+    // notice in the server's words (a delete Spanner refuses on the Squadrons page, say),
+    // while a refusal a page reports in place and a declared answer raise none (the
+    // flight deck's CompleteMission 409, its 403 on an edit). The console keeps no HTTP
+    // interceptor; HttpClient carries the XSRF echo alone, and no provider after this one
+    // re-provides ErrorHandler.
+    //
+    // Demonstrates: client.login-redirect, client.uncaught-notice.
+    provideResourceClient((options) => createApi({ baseUrl: environment.apiUrl, ...options })),
     provideRouter(routes, withComponentInputBinding(), withRouterConfig({ paramsInheritanceStrategy: 'always' })),
-    importProvidersFrom(MatNativeDateModule, BrowserAnimationsModule),
+    // The date adapter and the animations as standalone providers: the animations module,
+    // imported through the module-to-providers bridge, carried the browser module's
+    // providers, whose default ErrorHandler replaced the one provideResourceClient registers
+    // above, and the adapter refuses to start that way.
+    provideNativeDateAdapter(),
+    provideAnimationsAsync(),
     // The XSRF cookie is the crew auth's (pkg/auth/crew, XSRFCookie): HttpClient echoes it in
     // the X-XSRF-TOKEN header on every mutating request, and the server verifies the echo.
-    provideHttpClient(withInterceptorsFromDi(), withXsrfConfiguration({ cookieName: 'crew-xsrf' })),
+    provideHttpClient(withXsrfConfiguration({ cookieName: 'crew-xsrf' })),
   ],
 };

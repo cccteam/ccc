@@ -185,9 +185,15 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   ([`idle.configured`](web/console/src/app/app.config.ts)); the Squadrons page's channel
   card and its "Other squadrons in this sector"
   ([`config.component`](web/console/src/app/configs/squadrons.config.ts),
-  [`config.array`](web/console/src/app/configs/squadrons.config.ts)); and the leave-page
+  [`config.array`](web/console/src/app/configs/squadrons.config.ts)); the leave-page
   confirmation every config-driven route carries
-  ([`form.leave-page`](web/console/src/app/app.routes.ts)).
+  ([`form.leave-page`](web/console/src/app/app.routes.ts)); and the client's judgment
+  rendered by the adapter, with no HTTP interceptor of the console's own: a 401
+  mid-session returns the browser to the login page with the attempted URL kept
+  ([`client.login-redirect`](web/console/src/app/app.config.ts)), and an `ApiError` nobody
+  caught raises one global notice in the server's words while the flight deck's in-place
+  refusals raise none
+  ([`client.uncaught-notice`](web/console/src/app/components/sector/flight-deck/flight-deck.component.ts)).
 - `test/authz`: the generated authorization matrix, which pins the endpoint gate with
   unconditional grants over the empty schema and so never meets a condition;
   `test/integration`: the suites (§9), where every condition is proven over the seeded
