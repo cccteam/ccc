@@ -25,7 +25,7 @@ func (a *App) MissionDocuments() http.HandlerFunc {
 		FileName    string                `json:"fileName"`
 		ContentType string                `json:"contentType"`
 		Size        int64                 `json:"size"`
-		StoreKey    string                `json:"storeKey"`
+		StoreKey    string                `json:"-"`
 		UploadedBy  string                `json:"uploadedBy"`
 		UploadedAt  time.Time             `json:"uploadedAt"`
 		Provenance  *resources.Provenance `json:"provenance"`
@@ -92,10 +92,6 @@ func (a *App) MissionDocuments() http.HandlerFunc {
 					if !row.Masked("size") {
 						rmap["size"] = rec.Size
 					}
-				case "StoreKey":
-					if !row.Masked("storeKey") {
-						rmap["storeKey"] = rec.StoreKey
-					}
 				case "UploadedBy":
 					if !row.Masked("uploadedBy") {
 						rmap["uploadedBy"] = rec.UploadedBy
@@ -138,7 +134,7 @@ func (a *App) MissionDocument() http.HandlerFunc {
 		FileName    string                `json:"fileName"`
 		ContentType string                `json:"contentType"`
 		Size        int64                 `json:"size"`
-		StoreKey    string                `json:"storeKey"`
+		StoreKey    string                `json:"-"`
 		UploadedBy  string                `json:"uploadedBy"`
 		UploadedAt  time.Time             `json:"uploadedAt"`
 		Provenance  *resources.Provenance `json:"provenance"`
@@ -193,10 +189,6 @@ func (a *App) MissionDocument() http.HandlerFunc {
 				if !row.Masked("size") {
 					rmap["size"] = rec.Size
 				}
-			case "StoreKey":
-				if !row.Masked("storeKey") {
-					rmap["storeKey"] = rec.StoreKey
-				}
 			case "UploadedBy":
 				if !row.Masked("uploadedBy") {
 					rmap["uploadedBy"] = rec.UploadedBy
@@ -220,5 +212,51 @@ func (a *App) MissionDocument() http.HandlerFunc {
 		}
 
 		return httpio.NewEncoder(w).Ok(rmap)
+	})
+}
+
+func (a *App) MissionDocumentContent() http.HandlerFunc {
+	// The frame's projection: the key, and the columns that deliver the file, read for
+	// the frame itself without field grants. The gate is Read on the resource and on
+	// content, the route's own field.
+	type request struct {
+		ID          ccc.UUID `json:"id" perm:"-"`
+		StoreKey    string   `json:"-"  perm:"-"`
+		FileName    string   `json:"-"  perm:"-"`
+		ContentType string   `json:"-"  perm:"-"`
+	}
+
+	decoder := NewFileDecoder[resources.MissionDocument, request](a, "content")
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+		id := httpio.Param[ccc.UUID](r, router.MissionDocumentID)
+
+		domain := httpio.Param[accesstypes.Domain](r, router.Domain)
+		querySet, err := decoder.Decode(r, a.UserPermissions(r), accesstypes.DomainScope(domain))
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		// The row through the resource's own read path: absent, cross-tenant, or hidden
+		// by the caller's Read condition is 404, as on the read route.
+
+		row, err := resources.NewMissionDocumentQueryFromQuerySet(querySet).SetID(id).Read(ctx, a.ResourceClient())
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		source := &row.Data
+		file := resource.StoredFile{}
+		file.Key = source.StoreKey
+		file.Name = source.FileName
+		file.ContentType = source.ContentType
+
+		if err := resource.ServeStoredFile(ctx, w, r, a.FileStore(), file, "content", "MissionDocument", id); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+
+		return nil
 	})
 }

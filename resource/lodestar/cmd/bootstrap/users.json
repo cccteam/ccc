@@ -259,6 +259,21 @@
       }
     },
     {
+      "user": "purser",
+      "password": "lodestar",
+      "roles": {
+        "global": [
+          "CrewCommon"
+        ],
+        "domains": {
+          "anvil": [
+            "Purser",
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
       "user": "archivist",
       "password": "lodestar",
       "roles": {

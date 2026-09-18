@@ -154,6 +154,7 @@ export const apiDescriptor: ApiDescriptor = {
       operations: ['list', 'read'],
       page: { default: 25, max: 200 },
       order: [{ field: 'uploadedAt', direction: 'desc' }],
+      files: ['content'],
     },
     [Resources.BriefingTemplates]: {
       resource: Resources.BriefingTemplates,

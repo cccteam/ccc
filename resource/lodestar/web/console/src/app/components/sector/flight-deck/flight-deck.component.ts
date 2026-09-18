@@ -309,9 +309,13 @@ export class FlightDeckComponent {
     return this.sectors.sectorApi().attachMissionDocument.can();
   }
 
-  /** The hand-written download route: reading a file back is the application's own. */
+  /**
+   * The generated file route: the resource's @file serves a document's bytes under its
+   * read route, and the handle addresses it (fileUrl) as it addresses the row (url). The
+   * browser fetches it itself, session cookie and all; a 304 answers a kept copy.
+   */
   documentUrl(document: MissionDocuments): string {
-    return `/api/sectors/${this.sectors.sectorApi().domain}/mission-documents/${document.id}/content`;
+    return this.sectors.sectorApi().missionDocuments.fileUrl([document.id]);
   }
 
   pickFiles(event: Event): void {

@@ -24,6 +24,7 @@ export const Resources = {
   Clients: 'Clients' as Resource,
   Consignments: 'Consignments' as Resource,
   DistressCalls: 'DistressCalls' as Resource,
+  ExpenseManifests: 'ExpenseManifests' as Resource,
   FeeByKinds: 'FeeByKinds' as Resource,
   Hangars: 'Hangars' as Resource,
   MissionBoards: 'MissionBoards' as Resource,
@@ -194,6 +195,23 @@ export namespace DistressCalls {
   };
 }
 
+export namespace ExpenseManifests {
+  export const fieldName = {
+    content: 'content' as FieldName,
+    expenses: 'expenses' as FieldName,
+    missionId: 'missionId' as FieldName,
+    sorties: 'sorties' as FieldName,
+    title: 'title' as FieldName,
+  };
+  export const resourceName = {
+    content: 'ExpenseManifests.content' as Resource,
+    expenses: 'ExpenseManifests.expenses' as Resource,
+    missionId: 'ExpenseManifests.missionId' as Resource,
+    sorties: 'ExpenseManifests.sorties' as Resource,
+    title: 'ExpenseManifests.title' as Resource,
+  };
+}
+
 export namespace FeeByKinds {
   export const fieldName = {
     kindId: 'kindId' as FieldName,
@@ -251,6 +269,7 @@ export namespace MissionBoards {
 
 export namespace MissionDocuments {
   export const fieldName = {
+    content: 'content' as FieldName,
     contentType: 'contentType' as FieldName,
     digest: 'digest' as FieldName,
     fileName: 'fileName' as FieldName,
@@ -258,12 +277,12 @@ export namespace MissionDocuments {
     missionId: 'missionId' as FieldName,
     provenance: 'provenance' as FieldName,
     size: 'size' as FieldName,
-    storeKey: 'storeKey' as FieldName,
     title: 'title' as FieldName,
     uploadedAt: 'uploadedAt' as FieldName,
     uploadedBy: 'uploadedBy' as FieldName,
   };
   export const resourceName = {
+    content: 'MissionDocuments.content' as Resource,
     contentType: 'MissionDocuments.contentType' as Resource,
     digest: 'MissionDocuments.digest' as Resource,
     fileName: 'MissionDocuments.fileName' as Resource,
@@ -271,7 +290,6 @@ export namespace MissionDocuments {
     missionId: 'MissionDocuments.missionId' as Resource,
     provenance: 'MissionDocuments.provenance' as Resource,
     size: 'MissionDocuments.size' as Resource,
-    storeKey: 'MissionDocuments.storeKey' as Resource,
     title: 'MissionDocuments.title' as Resource,
     uploadedAt: 'MissionDocuments.uploadedAt' as Resource,
     uploadedBy: 'MissionDocuments.uploadedBy' as Resource,

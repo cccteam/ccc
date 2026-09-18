@@ -73,8 +73,8 @@ type Configurer interface {
 	PortalDist() string
 	// DroidsAPIKey is the bearer key the droids outlet's clients present.
 	DroidsAPIKey() string
-	// Documents is the store the generated upload frame streams files into (UploadStore)
-	// and MissionDocumentContent reads them back from.
+	// Documents is the store the generated frames drive (FileStore): the upload frame
+	// streams files into it and the generated file route reads them back from it.
 	Documents() *store.DirStore
 	TenancyConfigurer
 }
@@ -332,11 +332,12 @@ func (a *App) ComputedClient() *computedresources.Client {
 	return a.computedClient
 }
 
-// UploadStore is the store the generated upload frame streams each file part to before
-// an @upload method's body runs, promotes after the transaction commits, and discards
-// when it does not.
+// FileStore is the store the generated frames drive: the upload frame streams each file
+// part to it before an @upload method's body runs and deletes the parts when the
+// transaction does not commit, and the generated file route on MissionDocuments opens a
+// document from it.
 //
-// Demonstrates: rpc.upload-store.
-func (a *App) UploadStore() resource.UploadStore {
+// Demonstrates: rpc.upload-store, @file.stored.
+func (a *App) FileStore() resource.FileStore {
 	return a.documents
 }

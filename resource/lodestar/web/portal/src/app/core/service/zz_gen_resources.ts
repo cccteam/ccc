@@ -57,7 +57,6 @@ export interface MissionDocuments {
   fileName?: string;
   contentType?: string;
   size?: number;
-  storeKey?: string;
   uploadedBy?: string;
   uploadedAt?: Date;
   provenance?: MissionDocuments.Provenance;
@@ -149,7 +148,6 @@ const resourceMap: ResourceMap = {
       { fieldName: 'fileName', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'contentType', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'size', displayType: 'number', required: true, isIndex: false },
-      { fieldName: 'storeKey', displayType: 'string', required: true, isIndex: false, maxLength: 36 },
       { fieldName: 'uploadedBy', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'uploadedAt', displayType: 'date', required: true, isIndex: false },
       { fieldName: 'provenance', displayType: 'object', required: false, isIndex: false },

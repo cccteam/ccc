@@ -18,11 +18,11 @@ type AppHandlers interface {
 
 	// The console's hand-written routes: the sector-scoped ship's log over the
 	// change-tracking table (registered through @manualAddResource(List, domain)), the
-	// mission document download, the impersonation mint route and the watch desk over
-	// the live impersonated sessions. EndImpersonation and EnforceReadOnlyMask are the
-	// session library's own, through PasswordAuthHandlers.
+	// impersonation mint route and the watch desk over the live impersonated sessions.
+	// EndImpersonation and EnforceReadOnlyMask are the session library's own, through
+	// PasswordAuthHandlers. The mission document download is generated: the @file on
+	// MissionDocument.StoreKey serves it under the read route.
 	ShipsLogEntries() http.HandlerFunc
-	MissionDocumentContent() http.HandlerFunc
 	Impersonate() http.HandlerFunc
 	ActiveImpersonations() http.HandlerFunc
 	RevokeImpersonation() http.HandlerFunc
@@ -31,10 +31,6 @@ type AppHandlers interface {
 	// (registered through @manualAddResource(List, domain) with @outlet(portal)).
 	ClientStatements() http.HandlerFunc
 }
-
-// MissionDocumentContentRoute serves a mission document's bytes; the document listing
-// is the generated mission-documents route beside it.
-const MissionDocumentContentRoute = "/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content"
 
 // ImpersonationRoute names one live impersonated session on the watch desk.
 const ImpersonationRoute = "/api/impersonations/{impersonationID}"
@@ -63,7 +59,6 @@ func AppHooks(h AppHandlers) Hooks {
 				r.Use(h.EnforceReadOnlyMask)
 
 				r.Get("/api/sectors/{sectorID}/ships-log-entries", h.DomainGuard()(h.ShipsLogEntries()))
-				r.Get(MissionDocumentContentRoute, h.DomainGuard()(h.MissionDocumentContent()))
 				r.Post("/api/impersonate", h.Impersonate())
 				r.Get("/api/impersonations", h.ActiveImpersonations())
 				r.Delete(ImpersonationRoute, h.RevokeImpersonation())

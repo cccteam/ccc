@@ -46,6 +46,23 @@ func NewRPCDecoder[Method rpc.Method, Request any](a *App, perm accesstypes.Perm
 	return resource.MustNewRPCDecoder[Request](a, method.Method(), perm).WithCollection(router.Collection())
 }
 
+// NewFileDecoder builds the decoder of a generated resource's @file route: Read on the
+// resource and on the route's own field checked as the read route checks them, wired to
+// the generated collection so a conditional Read grant renders into the row's
+// statement. The Resourcer union keeps construction inside the generated universe: a
+// decoder over any other struct is a compile error.
+func NewFileDecoder[Resource Resourcer, Request any](_ *App, segment string) *resource.FileDecoder[Resource, Request] {
+	return resource.MustNewFileDecoder[Resource, Request](router.Collection(), segment)
+}
+
+// NewComputedFileDecoder builds the decoder of a generated computed resource's @file
+// route: the gate checked at decode, as every computed resource's is, and the QuerySet
+// carrying the checked scope and identity to the application's function. The Resourcer
+// union keeps construction inside the generated universe.
+func NewComputedFileDecoder[Resource Resourcer, Request any](_ *App, segment string) *resource.FileDecoder[Resource, Request] {
+	return resource.MustNewComputedFileDecoder[Resource, Request](segment)
+}
+
 // NewTargetedRPCDecoder builds a decoder for a @target-bearing RPC method
 // request, wired to the generated collection so a conditional Execute grant
 // rides to the handler's located-row check instead of being refused at decode.

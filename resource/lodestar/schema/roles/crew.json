@@ -358,7 +358,6 @@
                 "fileName",
                 "contentType",
                 "size",
-                "storeKey",
                 "uploadedBy",
                 "uploadedAt",
                 "provenance",
@@ -563,11 +562,11 @@
                 "fileName",
                 "contentType",
                 "size",
-                "storeKey",
                 "uploadedBy",
                 "uploadedAt",
                 "provenance",
-                "digest"
+                "digest",
+                "content"
               ]
             },
             {
@@ -1463,7 +1462,6 @@
                 "fileName",
                 "contentType",
                 "size",
-                "storeKey",
                 "uploadedBy",
                 "uploadedAt",
                 "provenance",
@@ -1568,11 +1566,11 @@
                 "fileName",
                 "contentType",
                 "size",
-                "storeKey",
                 "uploadedBy",
                 "uploadedAt",
                 "provenance",
-                "digest"
+                "digest",
+                "content"
               ]
             },
             {
@@ -2629,6 +2627,32 @@
               "resource": "Missions",
               "fields": [
                 "settlement"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Purser",
+        "permissions": {
+          "List": [
+            {
+              "resource": "ExpenseManifests",
+              "fields": [
+                "title",
+                "sorties",
+                "expenses"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "ExpenseManifests",
+              "fields": [
+                "title",
+                "sorties",
+                "expenses",
+                "content"
               ]
             }
           ]

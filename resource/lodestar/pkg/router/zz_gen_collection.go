@@ -129,6 +129,19 @@ func Collection() *resource.GeneratedCollection {
 				QueryKeys: []accesstypes.Tag{"sectorId", "shipId"},
 			},
 			{
+				Name:        "ExpenseManifests",
+				Scope:       accesstypes.DomainPermissionScope,
+				Computed:    true,
+				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
+				Tags: []resource.TagData{
+					{Name: "content", Permissions: []accesstypes.Permission{accesstypes.Read}},
+					{Name: "expenses", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "missionId"},
+					{Name: "sorties", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "title", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+				},
+			},
+			{
 				Name:        "FailFlightTest",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
@@ -212,6 +225,7 @@ func Collection() *resource.GeneratedCollection {
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
 				Tags: []resource.TagData{
+					{Name: "content", Permissions: []accesstypes.Permission{accesstypes.Read}},
 					{Name: "contentType", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "digest", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "fileName", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
@@ -219,7 +233,6 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "missionId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "provenance", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "size", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
-					{Name: "storeKey", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "title", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "uploadedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "uploadedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},

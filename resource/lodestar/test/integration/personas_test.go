@@ -64,6 +64,8 @@ func TestDemoPersonaViews(t *testing.T) {
 		{name: "the supercargo's first page is the hold's default of ten", user: "supercargo", target: sectorPath(anvil, "consignments"), wantStatus: http.StatusOK, wantRows: 10},
 		{name: "the hazard analyst's board, every row through limit=all", user: "hazards", target: sectorPath(anvil, "sector-hazard-boards?limit=all"), wantStatus: http.StatusOK, wantRows: 32},
 		{name: "the yeoman's standing orders, a key-less list served whole on a bare GET", user: "yeoman", target: "/api/standing-orders", wantStatus: http.StatusOK, wantRows: 6},
+		{name: "the purser's expense manifests, one per Anvil mission", user: "purser", target: sectorPath(anvil, "expense-manifests?limit=200"), wantStatus: http.StatusOK, wantRows: 30},
+		{name: "the marshal holds no purse", user: "marshal", target: sectorPath(anvil, "expense-manifests"), wantStatus: http.StatusForbidden},
 		{name: "the cadet has no hangar deck", user: "cadet", target: sectorPath(anvil, "refits"), wantStatus: http.StatusForbidden},
 		{name: "the client's grants answer by company wherever her session group binds them", user: "client", target: sectorPath(anvil, "missions?limit=200"), wantStatus: http.StatusOK, wantRows: 10},
 		{name: "the bulletin officer issues a bulletin while the authorization holds", user: "marshal", target: "/api/issue-bulletin", wantStatus: http.StatusOK},

@@ -103,7 +103,6 @@ export interface MissionDocuments {
   fileName?: string;
   contentType?: string;
   size?: number;
-  storeKey?: string;
   uploadedBy?: string;
   uploadedAt?: Date;
   provenance?: MissionDocuments.Provenance;
@@ -240,6 +239,13 @@ export interface BriefingTemplates {
   name?: string;
   audience?: string;
   summary?: string;
+}
+
+export interface ExpenseManifests {
+  missionId: string;
+  title?: string;
+  sorties?: number;
+  expenses?: number;
 }
 
 export interface PilotCards {
@@ -410,7 +416,6 @@ const resourceMap: ResourceMap = {
       { fieldName: 'fileName', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'contentType', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'size', displayType: 'number', required: true, isIndex: false },
-      { fieldName: 'storeKey', displayType: 'string', required: true, isIndex: false, maxLength: 36 },
       { fieldName: 'uploadedBy', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'uploadedAt', displayType: 'date', required: true, isIndex: false },
       { fieldName: 'provenance', displayType: 'object', required: false, isIndex: false },
@@ -592,6 +597,18 @@ const resourceMap: ResourceMap = {
       { fieldName: 'summary', displayType: 'string', required: false, isIndex: false },
     ],
   },
+  [Resources.ExpenseManifests]: {
+    route: 'sectors/{sectorID}/expense-manifests',
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'missionId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: true, isIndex: false },
+      { fieldName: 'title', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'sorties', displayType: 'number', required: false, isIndex: false },
+      { fieldName: 'expenses', displayType: 'number', required: false, isIndex: false },
+    ],
+  },
   [Resources.PilotCards]: {
     route: 'pilot-cards',
     readDisabled: true,
@@ -688,6 +705,7 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.SquadronRosters]: PermissionScopes.domain,
   [Resources.Wings]: PermissionScopes.domain,
   [Resources.BriefingTemplates]: PermissionScopes.global,
+  [Resources.ExpenseManifests]: PermissionScopes.domain,
   [Resources.PilotCards]: PermissionScopes.global,
   [Resources.SectorHazardBoards]: PermissionScopes.domain,
   [Resources.ServiceLedgers]: PermissionScopes.global,

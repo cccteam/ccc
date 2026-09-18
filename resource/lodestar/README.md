@@ -44,9 +44,10 @@ droid channel.
 The served application also serves the built bundles (`bun run build` in `web/`): the
 console at `/` and the portal at `/portal/`, paths overridable through
 `APP_CONSOLE_DIST` and `APP_PORTAL_DIST`. Mission documents land in the directory
-`APP_UPLOAD_DIR` names (default `uploads/`, gitignored): uploads stream into its
-`pending/` subdirectory until their transaction commits, and `store.DirStore.Sweep` is the
-application's answer to a crash between commit and promotion.
+`APP_UPLOAD_DIR` names (default `uploads/`, gitignored): the upload frame streams each
+file there under a minted key, the transaction's commit claims it, a failure before
+commit deletes it, and the generated file route reads it back; `store.DirStore.Sweep` is
+the application's safety net for an object no row claims, never the mechanism.
 
 ## Running against a real Spanner instance
 
@@ -117,7 +118,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 | Login | Who | What their view proves |
 | --- | --- | --- |
 | `governor` | Governor Greer, headquarters | Every global role and Sector Marshal in all three sectors: the pruned pure-RBAC baseline. Runs the watch desk over every live impersonated session and can revoke one. Demonstrates: impersonation.active-list, impersonation.revoke, impersonation.act-as-role, computed.pushdown. |
-| `marshal` | Marshal Maren, Anvil | Full sector authority at Anvil, nothing at Bastion or Cinder (the fail-closed border); every transition including Scrap; the row-free `now` condition on IssueBulletin; the sector briefing with every fee; attaches mission documents through the `@upload` method. Demonstrates: tenancy.concealed, @transition.multi-from, condition.now, rpc.client-form, @upload, impersonation.view-as. |
+| `marshal` | Marshal Maren, Anvil | Full sector authority at Anvil, nothing at Bastion or Cinder (the fail-closed border); every transition including Scrap; the row-free `now` condition on IssueBulletin; the sector briefing with every fee; attaches mission documents through the `@upload` method and downloads them through the generated file route, whose gate is her Read grant on `content` (the client portal lists documents and holds no such grant). Demonstrates: tenancy.concealed, @transition.multi-from, condition.now, rpc.client-form, @upload, @file.stored, impersonation.view-as. |
 | `cadet` | Cadet Cass | `hazard IN (1, 2)`; the flight deck with only Claim lit; the two-input distress-call form (create-form narrowing). Demonstrates: execute-condition, create-form-narrowing, capability-envelope. |
 | `pilot` | Pilot Pax, clearance 3 | `hazard <= subject.clearance AND (requiredCert IS NULL OR requiredCert IN subject.certifications)`; `hangarZone != 'quarantine'` on ships and on HailShip, the touch that answers No Content. Demonstrates: @subjectValue, @subjectSet.global, @attribute.nullable-fk, @attribute.join-path, touch, @answers.no-content. |
 | `veteran` | Veteran Vela | `NOT (hazard IN (1, 2) OR fee < 5000)`. Demonstrates: condition.prefix-not. |
@@ -131,6 +132,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 | `supercargo` | Supercargo Sol | `releasedAt IS NULL` on Update and on ReleaseConsignment (shared with the droid, which reads the manifest armed and answers a receipt); `expiresOn < '2026-09-01'`; `allow_filter` on Mass; the hold walked by release date across the NULL boundary. Demonstrates: @attribute.date, allow_filter, paging.nullable-sort, rpc.armed-read, rpc.typed-result, outlet.shared. |
 | `salvor` | Salvor Sable | `insured IS NULL OR insured = true` on Clients, the salvage desk's one grant: the seed leaves Halvard covered, Meridian and Bastion Relay undecided, and Vellum refused, so she lists the first three and never Vellum, disagreeing with the trusted view in both directions; `= true` alone, or `!= false`, would drop the undecided outfits (the semantic differential proves that half on the same shape). Demonstrates: @attribute.nullable-bool. |
 | `yeoman` | Yeoman Yael | The standing orders, a `@computed` struct with no `@primarykey`: a whole read-only list, served in the book's own order on a bare GET, sorted by section on request, never paged (a `limit` or a `cursor` is refused with a 400 naming the key as the way to page), with no read route and no row identity. Demonstrates: computed.keyless. |
+| `purser` | Purser Priya | The expense manifests, a keyed `@computed` struct whose struct-scope `@file` renders each mission's booked expenses as a `text/csv` sheet on request: `GET .../expense-manifests/{missionId}/content` under her Read grant on `content`, with the sheet's digest as its validator, so a kept copy asks again and hears 304 until an expense is booked; the marshal reads no manifest and the cadet none of it. Demonstrates: @file.rendered. |
 | `archivist` | Archivist Ada, all sectors | Terminal-state rows; fee and settlement redacted until completed (two read grants on one resource) and sorted over the visible projection, while the deadline, declared `masking:"positional"`, orders every page on the real column; a fee sort her grid does not display pages on the cursor's copy of the fee; the deploy warns that her fee filter sorts the partition; PII withheld; the domain-scoped ship's log; a briefing that counts her redactions. Demonstrates: cell-masking, paging.masked-sort, paging.unselected-sort-key, masking.positional, warning.concealing-key, pii, @manualAddResource.scope, rpc.armed-read. |
 | `assessor` | Assessor Asa | Prices cover before launch: one List grant on Missions, the title unconditionally and the hazard level under `state = 'open'`. Hazard is a named variant of INT64 (`type HazardLevel int64`), concealing and unindexed, so a grid that sorts by hazard without displaying it pages on the cursor's copy of the visible hazard, decoded into the field's own type where the Spanner client refuses a pointer to a pointer to it, and the missions no longer open walk through the NULL region in Spanner's placement. Demonstrates: paging.named-variant-key. |
 | `hazards` | Hazard Analyst Hale | A conditional (row-free `now`) grant on a computed resource, the whole board through `limit=all`. Demonstrates: computed.conditional-grant, paging.limit-all, computed.fold. |
@@ -150,8 +152,12 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   [`computed.keyless`](pkg/computedresources/standing_orders.go)) and `pkg/virtualresources`; `pkg/router`: the generated router over three outlets
   (`/api`, `/portal/api`, `/droids`) with its chain documented at the top of
   `zz_gen_router.go`, and `hooks.go`, the console's and the portal's own routes composed
-  into it; `app/`: wiring, middleware, the ship's log, the client statement, the document
-  download, the impersonation mint route, and the watch desk.
+  into it; `app/`: wiring, middleware, the ship's log, the client statement, the
+  impersonation mint route, and the watch desk. The mission document download is
+  generated from `MissionDocument.StoreKey`'s `@file`
+  ([`@file.stored`](pkg/resources/mission_documents.go)), and the purser's expense
+  manifest is a computed resource whose struct-scope `@file` renders a CSV sheet on
+  request ([`@file.rendered`](pkg/computedresources/expense_manifests.go)).
 - `pkg/auth/crew` and `pkg/auth/members`: the two populations; `schema/roles/*.json`:
   every grant in §7 per auth; `cmd/bootstrap/users.json`: the personas and the droid.
 - `schema/migrations` and `schema/devseed`: the schema and the world the suites and the

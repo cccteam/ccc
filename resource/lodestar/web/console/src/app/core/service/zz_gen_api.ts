@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, NullBoolean, ResourceHandle, UploadMethodHandle } from '@cccteam/resource';
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
-import { Clients, ClientContacts, ClientRosters, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders } from './zz_gen_resources';
+import { Clients, ClientContacts, ClientRosters, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders } from './zz_gen_resources';
 import { AttachMissionDocument, AttachMissionDocumentResult, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ResumeMission, ScrapShip, StandDownMission, StartFlightTest } from './zz_gen_methods';
 
 /**
@@ -385,6 +385,9 @@ export type WingsKey = [id: string];
 /** The primary key of BriefingTemplates, in route order. */
 export type BriefingTemplatesKey = [id: string];
 
+/** The primary key of ExpenseManifests, in route order. */
+export type ExpenseManifestsKey = [missionId: string];
+
 /** The primary key of PilotCards, in route order. */
 export type PilotCardsKey = [userId: string];
 
@@ -519,6 +522,7 @@ export const apiDescriptor: ApiDescriptor = {
       operations: ['list', 'read'],
       page: { default: 25, max: 200 },
       order: [{ field: 'uploadedAt', direction: 'desc' }],
+      files: ['content'],
     },
     [Resources.OpenMissionsBySquadrons]: {
       resource: Resources.OpenMissionsBySquadrons,
@@ -706,6 +710,18 @@ export const apiDescriptor: ApiDescriptor = {
       operations: ['list'],
       page: { default: 50 },
     },
+    [Resources.ExpenseManifests]: {
+      resource: Resources.ExpenseManifests,
+      property: 'expenseManifests',
+      route: 'expense-manifests',
+      scope: 'domain',
+      consolidated: false,
+      keys: ['missionId'],
+      operations: ['list', 'read'],
+      page: { default: 25, max: 200 },
+      order: [{ field: 'title', direction: 'asc' }],
+      files: ['content'],
+    },
     [Resources.PilotCards]: {
       resource: Resources.PilotCards,
       property: 'pilotCards',
@@ -808,6 +824,7 @@ export interface DomainApi {
   squadronMemberships: ResourceHandle<SquadronMemberships, SquadronMembershipsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', SquadronMembershipsCreate, SquadronMembershipsPatch>;
   squadronRosters: ResourceHandle<SquadronRosters, SquadronRostersKey, 'list' | 'read'>;
   wings: ResourceHandle<Wings, WingsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', WingsCreate, WingsPatch>;
+  expenseManifests: ResourceHandle<ExpenseManifests, ExpenseManifestsKey, 'list' | 'read'>;
   sectorHazardBoards: ResourceHandle<SectorHazardBoards, SectorHazardBoardsKey, 'list' | 'read'>;
   attachMissionDocument: UploadMethodHandle<AttachMissionDocument, AttachMissionDocumentResult>;
   beginRefit: MethodHandle<BeginRefit>;

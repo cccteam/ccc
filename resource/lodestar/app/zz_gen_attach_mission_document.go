@@ -58,11 +58,11 @@ func (a *App) AttachMissionDocument() http.HandlerFunc {
 		p := (*rpc.AttachMissionDocument)(params)
 
 		// The files stream to the application's store under keys the frame minted;
-		// the body records the keys, and the transaction is what claims them. A dry
-		// run (X-Dry-Run: true) streams nothing: the Files describe the parts with
-		// empty keys, the body runs, and the transaction rolls back.
+		// the body records the keys, and the transaction's commit is what claims them.
+		// A dry run (X-Dry-Run: true) streams nothing: the Files describe the parts
+		// with empty keys, the body runs, and the transaction rolls back.
 		dryRun := resource.IsDryRun(r)
-		store := a.UploadStore()
+		store := a.FileStore()
 		files, err := upload.Stream(ctx, store, dryRun)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
@@ -106,7 +106,7 @@ func (a *App) AttachMissionDocument() http.HandlerFunc {
 			return nil
 		}); err != nil {
 			// Nothing committed, so nothing claims the streamed objects: they are
-			// discarded, and the answer is the failure's own.
+			// deleted, and the answer is the failure's own.
 			err = resource.DiscardUpload(ctx, store, files, err)
 			if dryRun && resource.DryRunRolledBack(err) {
 				return httpio.NewEncoder(w).Ok(nil)
@@ -115,11 +115,8 @@ func (a *App) AttachMissionDocument() http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 		}
 
-		// The transaction committed with the keys recorded: the store makes them
-		// permanent.
-		if err := store.Promote(ctx, files.Keys()); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "resource.UploadStore.Promote()"))
-		}
+		// The transaction committed with the keys recorded: the rows claim the
+		// objects, and nothing more happens to the store.
 		if result == nil {
 			return httpio.NewEncoder(w).Ok(nil)
 		}

@@ -123,7 +123,7 @@ MERIDIAN=10000000-0000-4000-8000-000000000002
 BASTION_RELAY=10000000-0000-4000-8000-000000000003
 CONVOY_SORTIE=90000000-0000-4000-8000-000000000001
 
-for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman archivist assessor hazards dock watch; do
+for p in governor marshal cadet pilot veteran lead dispatcher overseer booking wingco engineer quartermaster supercargo salvor yeoman purser archivist assessor hazards dock watch; do
   login "$p"
 done
 login_portal client
@@ -214,11 +214,18 @@ r=$(req marshal POST "$ANVIL/stand-down-mission" "{\"missionId\":\"$CONVOY\"}");
 r=$(req booking POST "$ANVIL/stand-down-mission" "{\"missionId\":\"$HAULER\"}"); check "booking stands down her own open booking" 200 "$r"
 printf 'Three survey barges through the debris belt; hold formation at the belt edge.' > "$S/brief.txt"
 r=$(upload marshal "$ANVIL/attach-mission-document" "{\"missionId\":\"$CONVOY\",\"title\":\"Escort brief\"}" "$S/brief.txt"); check "marshal attaches the escort brief (a multipart @upload the transaction claims)" 200 "$r"
-r=$(req marshal GET "$ANVIL/mission-documents?filter=missionId:eq:$CONVOY"); assert_py "the brief is listed with its store key" "$r" "rows[0]['title']=='Escort brief' and rows[0]['fileName']=='brief.txt' and rows[0]['storeKey']"
+r=$(req marshal GET "$ANVIL/mission-documents?filter=missionId:eq:$CONVOY"); assert_py "the brief is listed, its store key off the wire" "$r" "rows[0]['title']=='Escort brief' and rows[0]['fileName']=='brief.txt' and 'storeKey' not in rows[0]"
 # The BYTES column rides as one base64 string (the generated interface says string, display type bytes), the SHA-256 of the file.
 assert_py "the brief's digest is the SHA-256 of its bytes, one base64 string on the wire" "$r" "__import__('base64').b64decode(rows[0]['digest'])==__import__('hashlib').sha256(open('$S/brief.txt','rb').read()).digest()"
 DOC=$(body "$r" | py "print(rows[0]['id'])")
-r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content"); check "the brief downloads through the application's own route" 200 "$r"
+# The download is the generated @file route under the read route: Read on MissionDocuments and a Read grant on content open it, the bytes come typed and named by the row, and the key rides as the validator.
+r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content" "" -D "$S/doc.hdr"); check "the brief downloads through the generated file route" 200 "$r"
+if [ "$(body "$r")" = "$(cat "$S/brief.txt")" ]; then echo "PASS  the download is the brief's bytes"; else echo "FAIL  the download is the brief's bytes: $(body "$r" | head -c 120)"; fails=$((fails + 1)); fi
+DOC_ETAG=$(awk 'tolower($1)=="etag:" {print $2}' "$S/doc.hdr" | tr -d '\r')
+if grep -qi '^content-type: text/plain' "$S/doc.hdr" && grep -qi '^content-disposition: inline; filename=brief.txt' "$S/doc.hdr" && grep -qi '^cache-control: private, no-cache' "$S/doc.hdr" && [ -n "$DOC_ETAG" ]; then echo "PASS  the file route types and names the download from the row, and sends a validator"; else echo "FAIL  the file route's headers: $(cat "$S/doc.hdr" | tr '\n' ' ' | head -c 300)"; fails=$((fails + 1)); fi
+r=$(req marshal GET "$ANVIL/mission-documents/$DOC/content" "" -H "If-None-Match: $DOC_ETAG"); check "a kept copy asks again with the validator and hears 304" 304 "$r"
+r=$(req cadet GET "$ANVIL/mission-documents/$DOC/content"); check "the cadet holds no Read on the documents: the file route refuses" 403 "$r"
+r=$(req governor GET "$API/sectors/bastion/mission-documents/$DOC/content"); check "another sector's document is indistinguishable from none" 404 "$r"
 r=$(dryrun lead POST "$ANVIL/complete-mission" "{\"missionId\":\"$CONVOY\"}"); check "lead's dry run of Complete would commit (the Paymaster's checker posts the settlement)" 200 "$r"
 r=$(req lead POST "$ANVIL/complete-mission" "{\"missionId\":\"$CONVOY\"}"); check "lead completes Hammer's convoy (the method answers with the settlement)" 200 "$r"
 assert_py "the settlement is the fee less the booked expenses" "$r" "rows['fee']=='15000' and rows['expenses']=='1600' and rows['net']=='13400'"
@@ -258,6 +265,17 @@ assert_py "the refusal names the resource, the missing key, and the way to page"
 r=$(req yeoman GET "$API/standing-orders?cursor=v4.local.anything"); check "a cursor is refused the same way" 400 "$r"
 r=$(req yeoman GET "$API/standing-orders/General"); check "a key-less list has no read route" 404 "$r"
 r=$(req cadet GET "$API/standing-orders"); check "the cadet holds no orders desk" 403 "$r"
+
+# ---- expense manifests: the rendered file ----
+# ExpenseManifests is a keyed @computed struct with a struct-scope @file: the purser's Read grant on content opens GET .../{missionId}/content, whose bytes ExpenseManifestContent renders as a text/csv sheet at request time, its digest the validator.
+r=$(req purser GET "$ANVIL/expense-manifests?limit=200"); check "the purser lists the sector's expense manifests" 200 "$r"
+assert_py "the convoy's manifest counts its sorties and sums its booked expenses" "$r" "next(m for m in rows if m['missionId']=='$CONVOY')['sorties']==1 and next(m for m in rows if m['missionId']=='$CONVOY')['expenses']=='1600'"
+r=$(req purser GET "$ANVIL/expense-manifests/$CONVOY/content" "" -D "$S/manifest.hdr"); check "the purser downloads the convoy's manifest, a CSV sheet rendered on request" 200 "$r"
+if grep -qi '^content-type: text/csv' "$S/manifest.hdr" && [ "$(body "$r" | head -1)" = "sortie,pilot,launchedAt,category,amount,note" ] && [ "$(body "$r" | wc -l)" -eq 4 ]; then echo "PASS  the sheet is text/csv, a header and one line per booked expense"; else echo "FAIL  the sheet: $(body "$r" | head -c 200)"; fails=$((fails + 1)); fi
+MANIFEST_ETAG=$(awk 'tolower($1)=="etag:" {print $2}' "$S/manifest.hdr" | tr -d '\r')
+r=$(req purser GET "$ANVIL/expense-manifests/$CONVOY/content" "" -H "If-None-Match: $MANIFEST_ETAG"); check "the sheet's digest is its validator: a kept copy hears 304" 304 "$r"
+r=$(req marshal GET "$ANVIL/expense-manifests/$CONVOY/content"); check "the marshal holds no Read on the manifests: the file route refuses" 403 "$r"
+r=$(req purser GET "$ANVIL/expense-manifests/80000000-0000-4000-8000-0000000000ff/content"); check "a manifest of a mission that is not the sector's is 404" 404 "$r"
 
 # ---- hangar deck ----
 r=$(req engineer PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/anvil/refits/$LANTERN_REFIT\",\"value\":{\"estimate\":1000}}]"); check "engineer's estimate refused before inspection" 403 "$r"

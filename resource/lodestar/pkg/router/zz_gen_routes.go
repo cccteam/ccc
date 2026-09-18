@@ -44,6 +44,7 @@ const (
 	SquadronRosterSquadronID          httpio.ParamType = "squadronRosterSquadronID"
 	SquadronRosterUserID              httpio.ParamType = "squadronRosterUserID"
 	WingID                            httpio.ParamType = "wingID"
+	ExpenseManifestMissionID          httpio.ParamType = "expenseManifestMissionID"
 	SectorHazardBoardShipID           httpio.ParamType = "sectorHazardBoardShipID"
 	SectorHazardBoardSubsystem        httpio.ParamType = "sectorHazardBoardSubsystem"
 )
@@ -91,6 +92,10 @@ type GeneratedHandlers interface {
 	DistressCalls() http.HandlerFunc
 	DistressCall() http.HandlerFunc
 
+	ExpenseManifests() http.HandlerFunc
+	ExpenseManifest() http.HandlerFunc
+	ExpenseManifestContent() http.HandlerFunc
+
 	FailFlightTest() http.HandlerFunc
 
 	FailMission() http.HandlerFunc
@@ -120,6 +125,7 @@ type GeneratedHandlers interface {
 
 	MissionDocuments() http.HandlerFunc
 	MissionDocument() http.HandlerFunc
+	MissionDocumentContent() http.HandlerFunc
 
 	OpenMissionsBySquadrons() http.HandlerFunc
 	OpenMissionsBySquadron() http.HandlerFunc
@@ -252,6 +258,16 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	r.Get("/api/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
 	r.Post("/api/sectors/{sectorID}/distress-calls/{distressCallID}", distressCallHandler)
 
+	expenseManifestsHandler := domainGuard(h.ExpenseManifests())
+	r.Get("/api/sectors/{sectorID}/expense-manifests", expenseManifestsHandler)
+	r.Post("/api/sectors/{sectorID}/expense-manifests", expenseManifestsHandler)
+
+	expenseManifestHandler := domainGuard(h.ExpenseManifest())
+	r.Get("/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}", expenseManifestHandler)
+	r.Post("/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}", expenseManifestHandler)
+
+	r.Get("/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}/content", domainGuard(h.ExpenseManifestContent()))
+
 	r.Post("/api/sectors/{sectorID}/fail-flight-test", domainGuard(h.FailFlightTest()))
 
 	r.Post("/api/sectors/{sectorID}/fail-mission", domainGuard(h.FailMission()))
@@ -307,6 +323,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	missionDocumentHandler := domainGuard(h.MissionDocument())
 	r.Get("/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
 	r.Post("/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
+
+	r.Get("/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content", domainGuard(h.MissionDocumentContent()))
 
 	openMissionsBySquadronsHandler := domainGuard(h.OpenMissionsBySquadrons())
 	r.Get("/api/sectors/{sectorID}/open-missions-by-squadrons", openMissionsBySquadronsHandler)
@@ -537,6 +555,7 @@ type GeneratedPortalHandlers interface {
 
 	MissionDocuments() http.HandlerFunc
 	MissionDocument() http.HandlerFunc
+	MissionDocumentContent() http.HandlerFunc
 
 	StandDownMission() http.HandlerFunc
 
@@ -592,6 +611,8 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	missionDocumentHandler := domainGuard(h.MissionDocument())
 	r.Get("/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
 	r.Post("/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
+
+	r.Get("/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content", domainGuard(h.MissionDocumentContent()))
 
 	r.Post("/portal/api/sectors/{sectorID}/stand-down-mission", domainGuard(h.StandDownMission()))
 

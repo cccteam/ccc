@@ -332,13 +332,13 @@ func newTestAppWithEngines(db *initiator.SpannerDB, crewEngine, membersEngine ac
 }
 
 // withHandWrittenRoutes mounts the application's hand-written routes beside the generated
-// test router, where production's router.New mounts them: the ship's log, the mission
-// document download, and the portal's client statement.
+// test router, where production's router.New mounts them: the ship's log and the portal's
+// client statement. The mission document download is generated, so it rides the test
+// router with every other generated route.
 func withHandWrittenRoutes(a *app.App) http.Handler {
 	r := chi.NewRouter()
 	r.Use(httpio.WithParams)
 	r.Get("/api/sectors/{sectorID}/ships-log-entries", a.DomainGuard()(a.ShipsLogEntries()))
-	r.Get(router.MissionDocumentContentRoute, a.DomainGuard()(a.MissionDocumentContent()))
 	r.Get(router.ClientStatementsRoute, a.DomainGuard()(a.ClientStatements()))
 	r.Mount("/", router.NewTestRouter(a))
 

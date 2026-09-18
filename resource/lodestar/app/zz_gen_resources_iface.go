@@ -21,7 +21,7 @@ type Resourcer interface {
 		resources.RefitTask | resources.Sector | resources.Ship | resources.ShipClass |
 		resources.Sortie | resources.SortieExpense | resources.Squadron |
 		resources.SquadronMembership | virtualresources.SquadronRoster | resources.Wing |
-		computedresources.BriefingTemplate | computedresources.PilotCard |
-		computedresources.SectorHazardBoard | computedresources.ServiceLedger |
-		computedresources.StandingOrder
+		computedresources.BriefingTemplate | computedresources.ExpenseManifest |
+		computedresources.PilotCard | computedresources.SectorHazardBoard |
+		computedresources.ServiceLedger | computedresources.StandingOrder
 }

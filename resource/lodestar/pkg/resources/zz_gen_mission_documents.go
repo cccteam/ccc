@@ -33,7 +33,7 @@ type missionDocumentRead struct {
 	FileName    string      `json:"fileName"`
 	ContentType string      `json:"contentType"`
 	Size        int64       `json:"size"`
-	StoreKey    string      `json:"storeKey"`
+	StoreKey    string      `json:"-"`
 	UploadedBy  string      `json:"uploadedBy"`
 	UploadedAt  time.Time   `json:"uploadedAt"`
 	Provenance  *Provenance `json:"provenance"`
@@ -52,7 +52,7 @@ type missionDocumentWrite struct {
 	FileName    string      `json:"fileName"`
 	ContentType string      `json:"contentType"`
 	Size        int64       `json:"size"`
-	StoreKey    string      `json:"storeKey"    sqltype:"STRING(36)"`
+	StoreKey    string      `json:"-"`
 	UploadedBy  string      `json:"uploadedBy"`
 	UploadedAt  time.Time   `json:"uploadedAt"`
 	Provenance  *Provenance `json:"provenance"`

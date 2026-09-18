@@ -1,18 +1,21 @@
-// Demonstrates: @upload, rpc.upload-store, hand-written-route, execute-condition.
+// Demonstrates: @upload, rpc.upload-store, @file.stored, execute-condition.
 package integration
 
-// This suite covers the upload form against the demo world: AttachMissionDocument
-// declares @upload(max: 5MB), so its request is multipart — the JSON part first, the
-// files after — and its body claims the streamed files with one MissionDocuments row
-// each. A committed transaction leaves the rows with their keys and the files in the
-// store; a refusal or a failure before commit leaves neither; a dry run writes
-// nothing and answers 200; the portal lists documents without the store key; the
-// download route serves the bytes to a crew member with an unconditional Read.
+// This suite covers the upload form and the stored file route against the demo world:
+// AttachMissionDocument declares @upload(max: 5MB), so its request is multipart — the
+// JSON part first, the files after — and its body claims the streamed files with one
+// MissionDocuments row each. A committed transaction leaves the rows and the objects in
+// the store; a refusal or a failure before commit leaves neither; a dry run writes
+// nothing and answers 200; no listing carries the store key. The generated file route
+// under the read route serves the bytes to a crew member holding Read on the documents
+// and on content, typed and named by the row, with the key as its validator; the client
+// portal lists documents and holds no content, so it cannot download them.
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -28,6 +31,8 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/store"
 	"github.com/cccteam/session/sessioninfo"
@@ -96,9 +101,8 @@ func doUploadAs(t *testing.T, h http.Handler, user accesstypes.User, target stri
 	return rr.Code, rr.Body.Bytes()
 }
 
-// documentWorld is a fresh demo world whose App writes documents into a directory
-// the test owns, served with the hand-written download route beside the generated
-// ones.
+// documentWorld is a fresh demo world whose App writes documents into a directory the
+// test owns, served through the generated routes alone.
 func documentWorld(t *testing.T) (h http.Handler, documents *store.DirStore, dir string) {
 	t.Helper()
 
@@ -113,14 +117,10 @@ func documentWorld(t *testing.T) (h http.Handler, documents *store.DirStore, dir
 	}
 	t.Cleanup(func() { _ = documents.Close() })
 
-	a := newAppWithDocuments(db, demoAccessClient(t), documents)
-	r := router.NewTestRouter(a)
-	r.Get(router.MissionDocumentContentRoute, a.MissionDocumentContent())
-
-	return r, documents, dir
+	return router.NewTestRouter(newAppWithDocuments(db, demoAccessClient(t), documents)), documents, dir
 }
 
-// storedFiles lists the promoted objects in the store directory.
+// storedFiles lists the objects in the store directory.
 func storedFiles(t *testing.T, dir string) []string {
 	t.Helper()
 
@@ -155,12 +155,11 @@ func TestAttachMissionDocument(t *testing.T) {
 		files      []uploadFile
 		dryRun     bool
 		wantStatus int
-		// wantRows is the number of MissionDocuments rows and promoted files
-		// afterwards; the pending directory is always empty afterwards.
+		// wantRows is the number of MissionDocuments rows and stored objects afterwards.
 		wantRows int
 		wantBody string
 	}{
-		{name: "the marshal attaches two files: rows claim the keys and the files are promoted", user: "marshal", missionID: missionConvoyID, files: []uploadFile{brief, chart}, wantStatus: http.StatusOK, wantRows: 2},
+		{name: "the marshal attaches two files: the rows claim the keys and the objects stay", user: "marshal", missionID: missionConvoyID, files: []uploadFile{brief, chart}, wantStatus: http.StatusOK, wantRows: 2},
 		{name: "the dispatcher attaches to a live mission", user: "dispatcher", missionID: missionConvoyID, files: []uploadFile{brief}, wantStatus: http.StatusOK, wantRows: 1},
 		{name: "the dispatcher's grant condition refuses a closed mission, and nothing is stored", user: "dispatcher", missionID: "80000000-0000-4000-8000-000000000005", files: []uploadFile{brief}, wantStatus: http.StatusForbidden},
 		{name: "a mission that does not exist fails the body, and nothing is stored", user: "marshal", missionID: "80000000-0000-4000-8000-0000000000ff", files: []uploadFile{brief}, wantStatus: http.StatusNotFound},
@@ -183,33 +182,31 @@ func TestAttachMissionDocument(t *testing.T) {
 				t.Errorf("body = %s, want it to contain %q", respBody, tt.wantBody)
 			}
 
-			pending, err := documents.Pending()
-			if err != nil {
-				t.Fatalf("store.DirStore.Pending() error = %v", err)
-			}
-			if len(pending) != 0 {
-				t.Errorf("pending = %v, want none left behind", pending)
-			}
 			stored := storedFiles(t, dir)
 			if len(stored) != tt.wantRows {
 				t.Errorf("stored files = %v, want %d", stored, tt.wantRows)
 			}
+			keys, err := documents.Keys()
+			if err != nil {
+				t.Fatalf("store.DirStore.Keys() error = %v", err)
+			}
+			slices.Sort(keys)
+			if !slices.Equal(keys, stored) {
+				t.Errorf("Keys() = %v, store directory holds %v", keys, stored)
+			}
 
-			var keys []string
 			iter := readRows(t, h, tt.user, sectorPath(anvil, "mission-documents"))
+			if len(iter) != tt.wantRows {
+				t.Errorf("rows = %d, want %d: %v", len(iter), tt.wantRows, iter)
+			}
 			for _, row := range iter {
-				key, _ := row["storeKey"].(string)
-				keys = append(keys, key)
+				// The store key is off the wire: the file route delivers what it names.
+				if _, onWire := row["storeKey"]; onWire {
+					t.Errorf("row %v carries the store key", row)
+				}
 				if row["uploadedBy"] != string(tt.user) || row["missionId"] != tt.missionID {
 					t.Errorf("row = %v, want uploadedBy %s on mission %s", row, tt.user, tt.missionID)
 				}
-			}
-			slices.Sort(keys)
-			if tt.wantRows > 0 && !slices.Equal(keys, stored) {
-				t.Errorf("rows claim %v, store holds %v", keys, stored)
-			}
-			if tt.wantRows == 0 && len(iter) != 0 {
-				t.Errorf("rows = %v, want none", iter)
 			}
 			if status == http.StatusOK && !tt.dryRun {
 				var answer map[string][]string
@@ -238,16 +235,13 @@ func readRows(t *testing.T, h http.Handler, user accesstypes.User, target string
 	return decodeRows(t, body)
 }
 
-func TestMissionDocument_portalAndDownload(t *testing.T) {
-	t.Parallel()
+// attachHaulerBrief attaches one brief to Halvard's stranded hauler, the portal
+// client's own company's mission, and returns the document's id.
+func attachHaulerBrief(t *testing.T, h http.Handler) string {
+	t.Helper()
 
-	h, _, _ := documentWorld(t)
-
-	// The marshal attaches a brief to Halvard's stranded hauler — the portal client's
-	// own company's mission.
-	const haulerID = "80000000-0000-4000-8000-000000000001"
-	body, contentType := multipartBody(t, fmt.Sprintf(`{"missionId":%q,"title":"Hauler brief"}`, haulerID),
-		uploadFile{name: "brief.txt", contentType: "text/plain", content: []byte("Halvard hauler: crew of four, main drive lost")})
+	body, contentType := multipartBody(t, fmt.Sprintf(`{"missionId":%q,"title":"Hauler brief"}`, missionHaulerID),
+		uploadFile{name: "brief.txt", contentType: "text/plain", content: []byte(haulerBrief)})
 	status, respBody := doUploadAs(t, h, "marshal", sectorPath(anvil, "attach-mission-document"), body, contentType, false)
 	assertStatus(t, status, http.StatusOK, respBody)
 
@@ -255,11 +249,47 @@ func TestMissionDocument_portalAndDownload(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("rows = %v, want one", rows)
 	}
-	id, _ := rows[0]["id"].(string)
-	assertKeys(t, rows[0], []string{"id", "missionId", "title", "fileName", "contentType", "size", "storeKey", "uploadedBy", "uploadedAt", "provenance", "digest"})
+	assertKeys(t, rows[0], []string{"id", "missionId", "title", "fileName", "contentType", "size", "uploadedBy", "uploadedAt", "provenance", "digest"})
 
-	// The portal lists the client's documents through its own outlet, with the
-	// grant's fields: no store key, no uploader.
+	return cell[string](t, rows[0], "id")
+}
+
+const haulerBrief = "Halvard hauler: crew of four, main drive lost"
+
+// fileRequestAs GETs a file route as the user with the given request headers (the
+// validator, a range) and returns the recorded response.
+func fileRequestAs(t *testing.T, h http.Handler, user accesstypes.User, target string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	sessionID, err := ccc.NewUUID()
+	if err != nil {
+		t.Fatalf("ccc.NewUUID: %v", err)
+	}
+	ctx := context.WithValue(t.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionData{
+		SessionInfo: &sessioninfo.SessionInfo{ID: sessionID, Username: string(user)},
+	})
+	if portalUsers[user] {
+		ctx = auth.Bind(ctx, members.Name)
+	}
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, target, http.NoBody)
+	for name, value := range headers {
+		req.Header.Set(name, value)
+	}
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	return rr
+}
+
+// TestMissionDocument_portalListing pins the portal's view: the client lists her
+// company's documents through her own outlet with the grant's fields, no store key and
+// no uploader, and, holding no grant on content, is refused the download.
+func TestMissionDocument_portalListing(t *testing.T) {
+	t.Parallel()
+
+	h, _, _ := documentWorld(t)
+	id := attachHaulerBrief(t, h)
+
 	portalStatus, portalBody := doRequestAs(t, h, "client", http.MethodGet, "/portal/api/sectors/anvil/mission-documents", "")
 	assertStatus(t, portalStatus, http.StatusOK, portalBody)
 	portalRows := decodeRows(t, portalBody)
@@ -268,25 +298,116 @@ func TestMissionDocument_portalAndDownload(t *testing.T) {
 	}
 	assertKeys(t, portalRows[0], []string{"id", "missionId", "title", "fileName", "contentType", "size", "uploadedAt", "provenance"})
 
-	// The download route serves the bytes to the crew, and refuses the client, whose
-	// Read is conditional and holds no storeKey.
-	target := sectorPath(anvil, "mission-documents/"+id+"/content")
-	status, content := doRequestAs(t, h, "marshal", http.MethodGet, target, "")
-	assertStatus(t, status, http.StatusOK, content)
-	if string(content) != "Halvard hauler: crew of four, main drive lost" {
-		t.Errorf("content = %q, want the uploaded bytes", content)
-	}
-	status, content = doRequestAs(t, h, "client", http.MethodGet, target, "")
+	status, content := doRequestAs(t, h, "client", http.MethodGet, portalPath(anvil, "mission-documents/"+id+"/content"), "")
 	assertStatus(t, status, http.StatusForbidden, content)
-	// The governor, a marshal in every sector, asks for the anvil document under
-	// bastion: another sector's document is indistinguishable from none.
-	status, content = doRequestAs(t, h, "governor", http.MethodGet, sectorPath(bastion, "mission-documents/"+id+"/content"), "")
-	assertStatus(t, status, http.StatusNotFound, content)
+	if !strings.Contains(string(content), "MissionDocuments.content") {
+		t.Errorf("refusal = %s, want it to name the content field", content)
+	}
 }
 
-// TestDirStore_sweep pins the application's answer to a crash between commit and
-// promotion: a pending object older than the window is promoted when a row claims
-// it and deleted when none does; a young one is left alone.
+// TestMissionDocument_fileRoute pins the generated file route: Read on the documents and
+// on content serve the bytes typed and named by the row with the key as the validator,
+// the validator answers 304, a crew member without Read is refused, a member with Read
+// but no content is refused naming the field, and another sector's document is
+// indistinguishable from none.
+func TestMissionDocument_fileRoute(t *testing.T) {
+	t.Parallel()
+
+	h, _, _ := documentWorld(t)
+	id := attachHaulerBrief(t, h)
+	target := sectorPath(anvil, "mission-documents/"+id+"/content")
+
+	rec := doRequestRecordedAs(t, h, "marshal", http.MethodGet, target, "")
+	assertStatus(t, rec.Code, http.StatusOK, rec.Body.Bytes())
+	etag := rec.Header().Get("ETag")
+
+	tests := []struct {
+		name        string
+		user        accesstypes.User
+		target      string
+		headers     map[string]string
+		wantStatus  int
+		wantHeaders map[string]string
+		wantBody    string
+		wantMessage string
+	}{
+		{
+			name:       "the marshal downloads the brief, typed and named by the row, with its validator",
+			user:       "marshal",
+			target:     target,
+			wantStatus: http.StatusOK,
+			wantHeaders: map[string]string{
+				"Content-Type":        "text/plain",
+				"Content-Disposition": `inline; filename=brief.txt`,
+				"Cache-Control":       "private, no-cache",
+				"Content-Length":      fmt.Sprint(len(haulerBrief)),
+			},
+			wantBody: haulerBrief,
+		},
+		{
+			name:        "the dispatcher's content grant opens it too",
+			user:        "dispatcher",
+			target:      target,
+			wantStatus:  http.StatusOK,
+			wantHeaders: map[string]string{"ETag": etag},
+			wantBody:    haulerBrief,
+		},
+		{
+			name:        "a kept copy asks again with the validator and hears 304",
+			user:        "marshal",
+			target:      target,
+			headers:     map[string]string{"If-None-Match": etag},
+			wantStatus:  http.StatusNotModified,
+			wantHeaders: map[string]string{"ETag": etag, "Cache-Control": "private, no-cache"},
+		},
+		{
+			name:        "the cadet holds no Read on the documents",
+			user:        "cadet",
+			target:      target,
+			wantStatus:  http.StatusForbidden,
+			wantMessage: "does not have (Read) on [MissionDocuments",
+		},
+		{
+			name:       "the governor, a marshal in every sector, asks under bastion: another sector's document is indistinguishable from none",
+			user:       "governor",
+			target:     sectorPath(bastion, "mission-documents/"+id+"/content"),
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "a document that does not exist is 404",
+			user:       "marshal",
+			target:     sectorPath(anvil, "mission-documents/80000000-0000-4000-8000-0000000000ff/content"),
+			wantStatus: http.StatusNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rr := fileRequestAs(t, h, tt.user, tt.target, tt.headers)
+			assertStatus(t, rr.Code, tt.wantStatus, rr.Body.Bytes())
+			for name, want := range tt.wantHeaders {
+				if got := rr.Header().Get(name); got != want {
+					t.Errorf("%s = %q, want %q", name, got, want)
+				}
+			}
+			if tt.wantStatus == http.StatusOK && rr.Header().Get("ETag") == "" {
+				t.Error("ETag missing: a stored file's key is its validator")
+			}
+			if tt.wantBody != "" && rr.Body.String() != tt.wantBody {
+				t.Errorf("body = %q, want %q", rr.Body.String(), tt.wantBody)
+			}
+			if tt.wantMessage != "" && !strings.Contains(rr.Body.String(), tt.wantMessage) {
+				t.Errorf("body = %s, want the message %q", rr.Body.String(), tt.wantMessage)
+			}
+		})
+	}
+}
+
+// TestDirStore_sweep pins the application's safety net: an object no row claims, older
+// than the window, is deleted; a claimed one and a young one are left alone; and a key
+// that is not a UUID never reaches the directory.
 func TestDirStore_sweep(t *testing.T) {
 	t.Parallel()
 
@@ -305,7 +426,7 @@ func TestDirStore_sweep(t *testing.T) {
 		}
 		if old {
 			stale := time.Now().Add(-2 * time.Hour)
-			if err := os.Chtimes(filepath.Join(dir, "pending", key), stale, stale); err != nil {
+			if err := os.Chtimes(filepath.Join(dir, key), stale, stale); err != nil {
 				t.Fatalf("os.Chtimes() error = %v", err)
 			}
 		}
@@ -319,26 +440,22 @@ func TestDirStore_sweep(t *testing.T) {
 	put(unclaimed, true)
 	put(young, false)
 
-	promoted, deleted, err := documents.Sweep(ctx, time.Hour, func(_ context.Context, key string) (bool, error) {
+	deleted, err := documents.Sweep(ctx, time.Hour, func(_ context.Context, key string) (bool, error) {
 		return key == claimed, nil
 	})
 	if err != nil {
 		t.Fatalf("Sweep() error = %v", err)
 	}
-	if promoted != 1 || deleted != 1 {
-		t.Errorf("Sweep() = %d promoted, %d deleted; want 1 and 1", promoted, deleted)
+	if deleted != 1 {
+		t.Errorf("Sweep() deleted %d, want 1", deleted)
 	}
-	if got := storedFiles(t, dir); !slices.Equal(got, []string{claimed}) {
-		t.Errorf("promoted = %v, want the claimed key", got)
-	}
-	pending, err := documents.Pending()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(pending, []string{young}) {
-		t.Errorf("pending = %v, want the young key alone", pending)
+	if got := storedFiles(t, dir); !slices.Equal(got, []string{claimed, young}) {
+		t.Errorf("stored = %v, want the claimed and the young key", got)
 	}
 	if err := documents.Put(ctx, "../escape", "text/plain", strings.NewReader("x")); err == nil {
 		t.Error("Put() with a non-UUID key succeeded, want a refusal")
+	}
+	if _, err := documents.Open(ctx, "0193e2a7-522c-708f-bfd0-4adf33486bb4"); !errors.Is(err, resource.ErrFileNotFound) {
+		t.Errorf("Open() of an absent key error = %v, want resource.ErrFileNotFound", err)
 	}
 }

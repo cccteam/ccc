@@ -109,6 +109,7 @@ export namespace DistressCalls {
 
 export namespace MissionDocuments {
   export const fieldName = {
+    content: 'content' as FieldName,
     contentType: 'contentType' as FieldName,
     digest: 'digest' as FieldName,
     fileName: 'fileName' as FieldName,
@@ -116,12 +117,12 @@ export namespace MissionDocuments {
     missionId: 'missionId' as FieldName,
     provenance: 'provenance' as FieldName,
     size: 'size' as FieldName,
-    storeKey: 'storeKey' as FieldName,
     title: 'title' as FieldName,
     uploadedAt: 'uploadedAt' as FieldName,
     uploadedBy: 'uploadedBy' as FieldName,
   };
   export const resourceName = {
+    content: 'MissionDocuments.content' as Resource,
     contentType: 'MissionDocuments.contentType' as Resource,
     digest: 'MissionDocuments.digest' as Resource,
     fileName: 'MissionDocuments.fileName' as Resource,
@@ -129,7 +130,6 @@ export namespace MissionDocuments {
     missionId: 'MissionDocuments.missionId' as Resource,
     provenance: 'MissionDocuments.provenance' as Resource,
     size: 'MissionDocuments.size' as Resource,
-    storeKey: 'MissionDocuments.storeKey' as Resource,
     title: 'MissionDocuments.title' as Resource,
     uploadedAt: 'MissionDocuments.uploadedAt' as Resource,
     uploadedBy: 'MissionDocuments.uploadedBy' as Resource,
