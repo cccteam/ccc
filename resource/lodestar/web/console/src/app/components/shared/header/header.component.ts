@@ -1,4 +1,4 @@
-/** Demonstrates: impersonation.end, impersonation.max-duration, computed.user. */
+/** Demonstrates: impersonation.end, impersonation.max-duration, computed.user, idle.configured. */
 import { Component, computed, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -18,7 +18,7 @@ import { TopbarComponent } from '../topbar/topbar.component';
 })
 export class HeaderComponent {
   private router = inject(Router);
-  private idle = inject(IdleService);
+  idle = inject(IdleService);
   auth = inject(AuthService);
   impersonation = inject(ImpersonationService);
   private sectors = inject(SectorService);

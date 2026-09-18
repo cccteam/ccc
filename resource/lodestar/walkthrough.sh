@@ -287,6 +287,11 @@ r=$(req dock GET "$ANVIL/refits"); d=${r##*$'\n'}
 r=$(req watch GET "$ANVIL/refits"); n=${r##*$'\n'}
 if { [ "$d" = 200 ] && [ "$n" = 403 ]; } || { [ "$d" = 403 ] && [ "$n" = 200 ]; }; then echo "PASS  exactly one shift sees the hangar deck (dara=$d nadia=$n)"; else echo "FAIL  shift pair: dara=$d nadia=$n"; fails=$((fails+1)); fi
 
+# ---- squadrons config page: the array config's request ----
+# The Squadrons page's "Other squadrons in this sector" is an arrayConfig over the same resource, its listFilter excluding the page's row by the indexed key; Squadrons declares a maximum, so the library asks one server page (the key column alone, with the count) and draws each row by the iterated config. Demonstrates: config.array.
+r=$(req marshal GET "$ANVIL/squadrons?columns=id&filter=id:ne:$HAMMER&count=true"); check "the other squadrons in Anvil: one server page of the squadrons that are not Hammer" 200 "$r"
+assert_py "the page holds Tongs alone, its key and nothing else" "$r" "[s['id'] for s in rows]==['$TONGS'] and all(set(s)=={'id'} for s in rows)"
+
 # ---- salvage hold: the nullable walk, the receipt ----
 page=$(curl -s -D "$S/hold.h" -L -b "$S/supercargo.jar" -H "X-XSRF-TOKEN: $(xsrf supercargo)" "$ANVIL/consignments?limit=4")
 echo "$page" | py "sys.exit(0 if all(c['releasedAt'] is not None for c in rows) and len(rows)==4 else 1)" && echo "PASS  the hold's first page, releasedAt desc: released cargo first, unreleased (NULL) last in Spanner's placement" || { echo "FAIL  hold page 1: $(echo "$page" | head -c 200)"; fails=$((fails+1)); }

@@ -1,5 +1,8 @@
 import { Resources, SquadronMemberships, SquadronRosters, Squadrons, Wings } from '@app/service/zz_gen_constants';
+import { Squadrons as SquadronRow } from '@app/service/zz_gen_resources';
 import {
+  arrayConfig,
+  componentConfig,
   enumeratedConfig,
   field,
   foreignKeyDefault,
@@ -7,6 +10,7 @@ import {
   rootConfig,
   section,
 } from '@cccteam/resource-angular/types';
+import { SquadronChannelComponent } from '@components/sector/squadron-channel/squadron-channel.component';
 
 // Squadrons is a config-driven page in the selected sector whose row page carries the
 // squadron's roster: the SquadronRosters view over SquadronMemberships, one row per
@@ -19,7 +23,12 @@ import {
 // names the roster's pilotId, whose declared enumeration is Pilots: a row opens the
 // pilot's page by that value, gated on Read of Pilots.
 //
-// Demonstrates: @rowsOf.association, list.row-route.
+// The row page also carries the two related-config shapes that are not a list: the
+// squadron's channel card, the application's own component handed the row
+// (componentConfig), and the sector's other squadrons, the same resource filtered by
+// the page's row and each drawn as its own form (arrayConfig).
+//
+// Demonstrates: @rowsOf.association, list.row-route, config.component, config.array.
 export const squadronsConfig = rootConfig({
   nav: { navItem: { label: 'Squadrons (config page)' }, group: 'Sector Ops' },
   routeData: { route: 'sector/squadrons' },
@@ -47,6 +56,8 @@ export const squadronsConfig = rootConfig({
     ],
   }),
   relatedConfigs: [
+    // The channel card: rendered in the row's page with the squadron as its parentData.
+    componentConfig({ primaryResource: Resources.Squadrons, component: SquadronChannelComponent }),
     listViewConfig({
       title: 'Roster',
       createTitle: 'Pilot',
@@ -72,6 +83,38 @@ export const squadronsConfig = rootConfig({
           ],
         }),
       ],
+    }),
+    // The sector's other squadrons: the listFilter excludes the page's row by the primary
+    // key, indexed and so filterable everywhere, and the iterated config draws each row
+    // as its own form. How the rows are read is the descriptor's statement, not this
+    // config's: Squadrons declares a maximum page size, so the library asks one server
+    // page at the descriptor's default and turns it with Previous and Next; a resource
+    // declaring none would be read whole.
+    arrayConfig({
+      title: 'Other squadrons in this sector',
+      primaryResource: Resources.Squadrons,
+      listFilter: (squadron: SquadronRow): string => `${Squadrons.fieldName.id}:ne:${squadron.id}`,
+      iteratedConfig: listViewConfig({
+        primaryResource: Resources.Squadrons,
+        listColumns: [{ id: Squadrons.fieldName.name }, { id: Squadrons.fieldName.wingId }],
+        elements: [
+          section({
+            label: 'Squadron',
+            children: [
+              field({ name: Squadrons.fieldName.name, label: 'Name', cols: 6 }),
+              field({
+                name: Squadrons.fieldName.wingId,
+                label: 'Wing',
+                cols: 6,
+                enumeratedConfig: enumeratedConfig({
+                  listDisplay: [Wings.fieldName.name],
+                  viewDisplay: [Wings.fieldName.name],
+                }),
+              }),
+            ],
+          }),
+        ],
+      }),
     }),
   ],
 });

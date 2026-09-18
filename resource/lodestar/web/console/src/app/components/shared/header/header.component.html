@@ -19,6 +19,14 @@
       </span>
     }
     <span class="username">{{ auth.sessionInfo().username }}</span>
+    <!--
+      The idle warning holds until this action is taken (IDLE_TIMEOUT_REQUIRE_CONFIRMATION):
+      the library's alert counts down above the page, and this button is the stay-logged-in
+      action the idle service exposes.
+    -->
+    @if (idle.isWarning()) {
+      <button mat-flat-button class="stay" (click)="idle.stayLoggedIn()">Stay logged in · {{ idle.countdown() }}s</button>
+    }
     <button mat-stroked-button (click)="logout()">Logout</button>
   </div>
 </div>

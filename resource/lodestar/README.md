@@ -176,7 +176,18 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   which declares none (read whole with `limit=all`); its Hangar column resolves each
   page's hangars with one `in` request over the page's keys
   ([`column.referenced-in`](web/console/src/app/configs/ships.config.ts)) where its
-  Class column maps the catalog read whole once.
+  Class column maps the catalog read whole once. Lodestar is also the browser library's
+  application: `@cccteam/resource` and `@cccteam/resource-angular` live in
+  [cccteam/ccc-lib](https://github.com/cccteam/ccc-lib), hold no application of their own,
+  and are proven here through the yalc loop (`web/ccclib.sh local|push`, "Running it"). The
+  console carries the library surface no generated page reaches: the idle session
+  configured from the build's environment, with the stay-logged-in action in the header
+  ([`idle.configured`](web/console/src/app/app.config.ts)); the Squadrons page's channel
+  card and its "Other squadrons in this sector"
+  ([`config.component`](web/console/src/app/configs/squadrons.config.ts),
+  [`config.array`](web/console/src/app/configs/squadrons.config.ts)); and the leave-page
+  confirmation every config-driven route carries
+  ([`form.leave-page`](web/console/src/app/app.routes.ts)).
 - `test/authz`: the generated authorization matrix, which pins the endpoint gate with
   unconditional grants over the empty schema and so never meets a condition;
   `test/integration`: the suites (§9), where every condition is proven over the seeded

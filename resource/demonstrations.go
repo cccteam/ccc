@@ -165,6 +165,12 @@ var Demonstrations = []Demonstration{
 	{"auth.skipauth-directory", "The session library's skipAuth build simulating the directory from APP_USERNAME and APP_ROLES."},
 	{"auth.login-refusal-code", "A refused login returns to the login page with a code in ?code=, never text: the page holds the sentence for each code and shows nothing for one it does not know."},
 
+	// The browser library's application.
+	{"idle.configured", "The idle session configured by the application through the library's six tokens: IDLE_SESSION_DURATION, IDLE_WARNING_DURATION, and IDLE_KEEPALIVE_DURATION read from the build's environment so a development build can shorten them, IDLE_TIMEOUT_REQUIRE_CONFIRMATION true so the warning holds until the stay-logged-in action the idle service exposes is taken, and IDLE_LOGOUT_ACTION and LOGOUT_ACTION as the application's hooks, where the tokens' factory defaults applied."},
+	{"config.component", "A componentConfig among a config-driven page's related configs: the application's own component, extending CustomConfigComponent, rendered in the row's page with the row as its parentData, saying what no field renders."},
+	{"config.array", "An arrayConfig among a config-driven page's related configs: the rows of a resource its listFilter selects from the page's row, each drawn by the iteratedConfig, read on the listed resource's read mode (whole where it declares no maximum page size, one server page with Previous and Next where it declares one)."},
+	{"form.leave-page", "The leave-page confirmation: the library's resourceRoutes attaches its canDeactivateGuard to every config-driven list and row route, so leaving a page whose form FormStateService holds dirty opens LeavePageConfirmationModalComponent and a route to FRONTEND_LOGIN_PATH leaves without asking; the application provides the path and adds no guard of its own."},
+
 	// Paging.
 	{"@order", "@order(Field asc|desc): a list's declared total order."},
 	{"@page", "@page(default: N, max: M): a list's page sizes, carried into the descriptor."},

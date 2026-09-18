@@ -31,6 +31,14 @@ export const routes: Routes = [
       // sector-scoped decks are hand-written (see SectorService), except the Missions
       // page, a config-driven page in the selected sector (RESOURCE_DOMAIN) whose
       // pickers list exactly the resources the metadata names.
+      //
+      // Every config-driven list and row route carries the library's canDeactivateGuard,
+      // attached by resourceRoutes: leaving a page whose form is dirty (FormStateService)
+      // opens the library's LeavePageConfirmationModalComponent, and a route to the
+      // FRONTEND_LOGIN_PATH app.config.ts provides leaves without asking. The console
+      // adds no guard of its own.
+      //
+      // Demonstrates: form.leave-page.
       resourceRoutes(clientsConfig, resourceMeta),
       resourceRoutes(shipClassesConfig, resourceMeta),
       resourceRoutes(pilotsConfig, resourceMeta),

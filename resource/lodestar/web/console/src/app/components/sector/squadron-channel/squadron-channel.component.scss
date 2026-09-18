@@ -1,0 +1,21 @@
+.channel {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 8px 0 16px;
+  padding: 8px 12px;
+  border-left: 3px solid #f2b544;
+  background: rgba(242, 181, 68, 0.08);
+
+  .label {
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #a5640a;
+    white-space: nowrap;
+  }
+
+  .line {
+    font-style: italic;
+  }
+}
